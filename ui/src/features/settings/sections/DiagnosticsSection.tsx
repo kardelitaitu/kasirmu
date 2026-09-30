@@ -11,6 +11,9 @@ import {
   type AvailabilityFeatureKey,
 } from '@/api/subscription';
 import { getDeploymentInfo, type DeploymentInfo } from '@/api/settings';
+// The shared answered-or-unknown read contract; a refusal must not render as
+// the absence of a value.
+import { settleRead } from '@/utils/settle-read';
 import './DiagnosticsSection.css';
 
 /** The v1 verdict keys, in display order (the resolver's own feature set). */
@@ -54,6 +57,18 @@ export default function DiagnosticsSection() {
   const [loading, setLoading] = useState(false);
   const [failed, setFailed] = useState(false);
   const [deployment, setDeployment] = useState<DeploymentInfo | null>(null);
+  // The version row answered a question with `deployment?.appVersion ?? ''` --
+  // a blank where the version goes. This section exists so support can tell a
+  // user which build they are on; a blank reads as 'this build has no version',
+  // and it is indistinguishable from the seconds before the read lands. A
+  // refusal is plausible: get_deployment_info requires permissions::SETTINGS_READ
+  // (crates/kasirmu-bridge/src/settings.rs:496-503), so a staff user who can see
+  // this section at all may still be refused. The answer is a third state.
+  const [deploymentUnknown, setDeploymentUnknown] = useState(false);
+  // One nonce serves both reads: the Refresh button is the same gesture for the
+  // verdicts and for the version, and two nonces would let it repair one and
+  // leave the other blank.
+  const [readNonce, setReadNonce] = useState(0);
 
   const refresh = useCallback(async () => {
     if (!sessionToken) return;
@@ -77,10 +92,21 @@ export default function DiagnosticsSection() {
 
   useEffect(() => {
     if (!sessionToken) return;
-    getDeploymentInfo(sessionToken)
-      .then(setDeployment)
-      .catch(() => setDeployment(null));
-  }, [sessionToken]);
+    let cancelled = false;
+    settleRead('deployment_info', getDeploymentInfo(sessionToken)).then((read) => {
+      if (cancelled) return;
+      if (read.ok) {
+        setDeployment(read.value);
+        setDeploymentUnknown(false);
+      } else {
+        setDeployment(null);
+        setDeploymentUnknown(true);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionToken, readNonce]);
 
   return (
     <Card
@@ -102,7 +128,17 @@ export default function DiagnosticsSection() {
         </p>
 
         <div className="settings-field settings-field--horizontal">
-          <Button variant="ghost" loading={loading} onClick={() => void refresh()}>
+          {/* One gesture, both reads: the verdicts are re-fetched by the call,
+              the version by the nonce the deployment effect depends on. A Refresh
+              that left the version blank would look like it worked. */}
+          <Button
+            variant="ghost"
+            loading={loading}
+            onClick={() => {
+              void refresh();
+              setReadNonce((n) => n + 1);
+            }}
+          >
             <Localized id="settings-diagnostics-refresh">
               <span>Refresh</span>
             </Localized>
@@ -116,11 +152,23 @@ export default function DiagnosticsSection() {
           )}
         </div>
 
-        <div className="settings-field settings-field--horizontal" data-testid="diagnostics-version">
-          <Localized id="settings-diagnostics-deployment-version" vars={{ version: deployment?.appVersion ?? '' }}>
-            <span>{'App version: { $version }'}</span>
-          </Localized>
-        </div>
+        {/* The unknown branch comes BEFORE the empty one. While the read is in
+            flight the row prints nothing at all, which is the same as a refused
+            read -- so an unanswered read must say so, and the Refresh above is
+            already the affordance that answers it. */}
+        {deploymentUnknown ? (
+          <div className="settings-field settings-field--horizontal" role="alert" data-testid="diagnostics-version-unknown">
+            <Localized id="settings-diagnostics-deployment-unknown">
+              <span>Could not read the app version.</span>
+            </Localized>
+          </div>
+        ) : (
+          <div className="settings-field settings-field--horizontal" data-testid="diagnostics-version">
+            <Localized id="settings-diagnostics-deployment-version" vars={{ version: deployment?.appVersion ?? '' }}>
+              <span>{'App version: { $version }'}</span>
+            </Localized>
+          </div>
+        )}
 
         <ul className="settings-diagnostics-list" aria-label={requiredLocalized(l10n, 'settings-diagnostics-list-aria')}>
           {FEATURES.map(({ key, labelId }) => {

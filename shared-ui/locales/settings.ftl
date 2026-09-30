@@ -1070,6 +1070,7 @@ settings-diagnostics-detail-scope-not-covered = Does not cover this location
 settings-diagnostics-detail-expires = Expires: { $expiresAt }
 settings-diagnostics-detail-grace = Grace until: { $graceUntil }
 settings-diagnostics-deployment-version = App version: { $version }
+settings-diagnostics-deployment-unknown = Could not read the app version.
 
 
 # ── Receipt format (receipt-format axis, Business Defaults screen) ──

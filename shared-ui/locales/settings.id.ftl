@@ -1046,6 +1046,7 @@ settings-diagnostics-detail-scope-not-covered = Tidak mencakup lokasi ini
 settings-diagnostics-detail-expires = Kedaluwarsa: { $expiresAt }
 settings-diagnostics-detail-grace = Tenggang hingga: { $graceUntil }
 settings-diagnostics-deployment-version = Versi aplikasi: { $version }
+settings-diagnostics-deployment-unknown = Tidak dapat membaca versi aplikasi.
 
 
 # ── Format struk (receipt-format axis, layar Business Defaults) ──
