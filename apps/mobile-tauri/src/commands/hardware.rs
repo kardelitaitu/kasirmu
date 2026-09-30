@@ -265,10 +265,8 @@ pub async fn print_sales_receipt_scoped(
             Settings::get_store_name(&conn)?.unwrap_or_else(|| "kasir.mu Store".into());
         let store_address = Settings::get_store_address(&conn)?.unwrap_or_default();
         let store_tax_id = Settings::get_store_tax_id(&conn)?;
-        let effective = kasirmu_core::Store::new(conn).effective_receipt_format(
-            terminal_id.as_deref(),
-            None,
-        )?;
+        let effective = kasirmu_core::Store::new(conn)
+            .effective_receipt_format(terminal_id.as_deref(), None)?;
         let decimal_separator = match effective
             .content
             .as_ref()
@@ -296,7 +294,13 @@ pub async fn print_sales_receipt_scoped(
             .as_ref()
             .map(|c| c.footer_text.clone())
             .filter(|f| !f.is_empty())
-            .or_else(|| effective.layout.footer_note.clone().filter(|f| !f.is_empty()))
+            .or_else(|| {
+                effective
+                    .layout
+                    .footer_note
+                    .clone()
+                    .filter(|f| !f.is_empty())
+            })
             .or_else(|| {
                 Settings::get_receipt_footer(&conn)
                     .ok()

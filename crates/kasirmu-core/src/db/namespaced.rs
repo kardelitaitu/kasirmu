@@ -359,7 +359,6 @@ impl Namespace<'_, '_> {
         }
         Ok(out)
     }
-
 }
 
 /// The pure core of the namespace check: what tables does `sql` name, and may

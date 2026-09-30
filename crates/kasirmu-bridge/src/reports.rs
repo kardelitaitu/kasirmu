@@ -399,7 +399,11 @@ pub async fn get_low_stock_alerts(
 ) -> Result<Vec<LowStockAlert>, BridgeError> {
     let db = ctx.db.lock().await;
     let store = Store::new(&db);
-    let rows = ReportingFacade::low_stock_alerts_at_location(&store, kasirmu_core::inventory::CANONICAL_DEFAULT_LOCATION_UUID, threshold)?;
+    let rows = ReportingFacade::low_stock_alerts_at_location(
+        &store,
+        kasirmu_core::inventory::CANONICAL_DEFAULT_LOCATION_UUID,
+        threshold,
+    )?;
     drop(db);
     Ok(rows)
 }

@@ -35,7 +35,11 @@ impl<'a> InventoryRepository<'a> {
     /// Create a new `InventoryRepository` borrowing a SQLite connection.
     pub fn new(conn: &'a Connection) -> Self {
         Self {
-            ns: NamespacedStore::new(Store::new(conn), OWNER, Grants::from_manifest_json(OWNER, MANIFEST)),
+            ns: NamespacedStore::new(
+                Store::new(conn),
+                OWNER,
+                Grants::from_manifest_json(OWNER, MANIFEST),
+            ),
         }
     }
 

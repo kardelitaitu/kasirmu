@@ -224,7 +224,10 @@ fn real_manifests_declare_a_grant_only_for_a_declared_dependency() {
         }
         checked += 1;
     }
-    assert!(checked >= 14, "expected the full module set, checked {checked}");
+    assert!(
+        checked >= 14,
+        "expected the full module set, checked {checked}"
+    );
 }
 
 /// P4.4 acceptance: a module whose store carries only its manifest-declared

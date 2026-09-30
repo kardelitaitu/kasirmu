@@ -35,7 +35,11 @@ impl<'a> CrmRepository<'a> {
     /// Create a new `CrmRepository` over the module's own namespace.
     pub fn new(conn: &'a Connection) -> Self {
         Self {
-            ns: NamespacedStore::new(Store::new(conn), OWNER, Grants::from_manifest_json(OWNER, MANIFEST)),
+            ns: NamespacedStore::new(
+                Store::new(conn),
+                OWNER,
+                Grants::from_manifest_json(OWNER, MANIFEST),
+            ),
         }
     }
 
@@ -80,7 +84,11 @@ impl<'a> CrmRepository<'a> {
         // store over the same transaction writes inside it. We build the store
         // from the passed `tx` so the statement is namespace-checked in exactly
         // the same way as `get_customer`.
-        let ns = NamespacedStore::new(Store::new(tx), OWNER, Grants::from_manifest_json(OWNER, MANIFEST));
+        let ns = NamespacedStore::new(
+            Store::new(tx),
+            OWNER,
+            Grants::from_manifest_json(OWNER, MANIFEST),
+        );
         ns.own().execute(
             "INSERT INTO customers (id, name, email, phone, loyalty_points, total_spent_minor, currency, notes, created_at, updated_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",

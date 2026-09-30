@@ -349,7 +349,13 @@ fn read_receipt_config_for_scope(
         .as_ref()
         .map(|c| c.footer_text.clone())
         .filter(|f| !f.is_empty())
-        .or_else(|| effective.layout.footer_note.clone().filter(|f| !f.is_empty()))
+        .or_else(|| {
+            effective
+                .layout
+                .footer_note
+                .clone()
+                .filter(|f| !f.is_empty())
+        })
         .or_else(|| {
             Settings::get_receipt_footer(conn)
                 .ok()

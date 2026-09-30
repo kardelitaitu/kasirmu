@@ -6,11 +6,11 @@ findings: MSL-4 FIXED here — earn_points and redeem_points now maintain custom
 next: none | perf: projection UPDATE is one indexed row per mutation
 */
 
-use rusqlite::{params, OptionalExtension, Transaction, TransactionBehavior};
+use rusqlite::{OptionalExtension, Transaction, TransactionBehavior, params};
 
 use crate::error::CoreError;
 use crate::loyalty::{LoyaltyAccount, LoyaltyAccountWithDetails, LoyaltyTier, LoyaltyTransaction};
-use crate::{format_minor, Currency};
+use crate::{Currency, format_minor};
 
 use super::Store;
 

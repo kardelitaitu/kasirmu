@@ -191,7 +191,6 @@ impl Module for GrantingModule {
     }
 }
 
-
 /// A no-op module used to satisfy a dependency edge in a boot test.
 #[derive(Debug)]
 struct LeafModule {
@@ -209,7 +208,9 @@ fn load_fails_when_a_namespace_grant_is_not_a_declared_dependency() {
     let mut kernel = Kernel::new();
     // Register the declared dependency so dependency resolution passes and the
     // grant check is what decides the outcome.
-    kernel.register(Box::new(LeafModule { id: "sales" })).unwrap();
+    kernel
+        .register(Box::new(LeafModule { id: "sales" }))
+        .unwrap();
     kernel
         .register(Box::new(GrantingModule {
             id: "reporting",
@@ -231,7 +232,9 @@ fn load_fails_when_a_namespace_grant_is_not_a_declared_dependency() {
 #[test]
 fn load_succeeds_when_every_namespace_grant_is_a_declared_dependency() {
     let mut kernel = Kernel::new();
-    kernel.register(Box::new(LeafModule { id: "sales" })).unwrap();
+    kernel
+        .register(Box::new(LeafModule { id: "sales" }))
+        .unwrap();
     kernel
         .register(Box::new(LeafModule { id: "inventory" }))
         .unwrap();
