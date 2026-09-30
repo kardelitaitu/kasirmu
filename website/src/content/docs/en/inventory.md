@@ -52,6 +52,30 @@ Restocking via suppliers goes through purchase orders: manage suppliers, create
 an order with a supplier and order date, and **Receive** it when the delivery
 arrives — the received quantities land in stock automatically.
 
+## The weekly count routine
+
+Counting done the way the workflows above fit together, in order:
+
+1. **Plan the count.** Create a stock count and open an **inventory shift**
+   (why: the count records *who* and *when*). Give the shift a name —
+   `Night shift count`
+   is fine for a single-owner shop.
+2. **Count the shelf.** Count physically, then enter what is there. This
+   stage only records; nothing sells or moves yet.
+3. **Reconcile the count.** Close the shift. The corrections between the
+   system and the shelf are written against the shift as a movement ledger
+   entry, so a later discrepancy is still explainable — status filters and
+the detail history let you reopen any count.
+4. **Adjust anything that is not a count.** Spoilage, breakage, and customer
+   returns use a manual **adjustment** with its reason (Damaged / spoiled,
+   Write-off / expiry, Customer return…), not a count.
+5. **Restock first, then reorder.** Receive your **purchase order** so the
+   good quantity lands in sellable stock, then run the
+   **Inventory Report** to see what new low-stock threshold alerts appear.
+
+Done weekly, this loop keeps the system close enough to the shelf that a
+single bad number is traceable instead of snowballing.
+
 ## Reports and the movement ledger
 
 The **Inventory Report** shows stock, threshold, unit price and cost, margin,

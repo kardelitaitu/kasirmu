@@ -64,6 +64,24 @@ which devices are up and working. Devices report in when they reconnect, and
 a terminal that has been offline shows up here before it causes a surprise
 at the counter.
 
+## Diagnostics
+
+**Settings → System → System Diagnostics** shows why each feature is
+available or locked for you right now — the same gates the app enforces,
+with the reason named. It is read-only and works offline. If a feature is
+silent or unavailable on a device, start there: it will say which gate is
+blocking it rather than leaving you to guess.
+
+Two gotchas worth knowing up front:
+
+- **Test prints use the last-saved layout.** In the Restaurant POS receipt
+  settings, the test-print button prints your *saved* layout — save your
+draft first or the test shows the old one.
+- **A terminal that looks offline** (silent printer, no signal) almost
+always needs a reconnect rather than a re-register. Check the terminal's
+name and its device identifier (hostname or MAC) and its online/active
+status in the dashboard before deleting and re-adding it.
+
 ## Terminals in the topology
 
 Terminals appear in the topology editor alongside your locations and

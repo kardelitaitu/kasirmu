@@ -64,6 +64,25 @@ perangkat mana yang aktif dan bekerja. Perangkat melapor saat terhubung
 kembali, dan terminal yang lama offline terlihat di sini sebelum menyebabkan
 kejutan di kasir.
 
+## Diagnostik
+
+**Pengaturan → Sistem → Diagnostik** menampilkan alasan setiap fitur
+terbuka atau terkunci untuk Anda saat ini — gerbang yang sama yang
+memberlakukan aplikasi, dengan alasan yang disebutkan. Layarnya hanya-baca
+dan bekerja offline. Jika sebuah fitur diam atau tidak tersedia di perangkat,
+mulai dari sana: layar itu akan menyebut gerbang yang memblokirnya daripada
+membiarkan Anda menebak.
+
+Dua lubang yang perlu diwaspadai sejak awal:
+
+- **Uji cetak memakai tata letak yang terakhir disimpan.** Di pengaturan
+  struk POS Restoran, tombol uji cetak mencetak tata letak *tersimpan* Anda
+  — simpan draf dulu atau ujinya menampilkan yang lama.
+- **Terminal yang tampak offline** (printer diam, tanpa sinyal) hampir
+  selalu butuh terhubung lagi, bukan didaftarkan ulang. Periksa nama terminal
+  dan pengenal perangkatnya (hostname atau MAC) serta status daring/aktifnya
+di dasbor sebelum menghapus dan menambahkannya lagi.
+
 ## Terminal dalam topologi
 
 Terminal muncul di editor topologi bersama lokasi dan gudang, dan tata letak

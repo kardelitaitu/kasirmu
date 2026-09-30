@@ -52,6 +52,30 @@ Pengisian ulang melalui pemasok melewati pesanan pembelian: kelola pemasok,
 buat pesanan dengan pemasok dan tanggal pesanan, lalu **Terima** saat
 pengiriman tiba — jumlah yang diterima masuk ke stok secara otomatis.
 
+## Rutinitas kegawatan stok mingguan
+
+Menghitung dengan cara alur di atas menyatu, berurutan:
+
+1. **Rencanakan opname.** Buat stok opname dan buka **shift stok** (karena
+   opname mencatat *siapa* dan *kapan*). Beri nama shift — `Night shift
+   count` cukup untuk toko satu pemilik.
+2. **Hitung rak.** Hitung secara fisik, lalu masukkan jumlah yang ada.
+   Tahap ini hanya mencatat; belum ada yang terjual atau berpindah.
+3. **Rekonsiliasikan opname.** Tutup shift. Koreksi antara sistem dan
+   rak ditulis terhadap shift sebagai entri buku besar pergerakan, sehingga
+   selisih di kemudian hari tetap bisa dijelaskan — filter status dan
+   riwayat detail memungkinkan Anda membuka kembali opname mana pun.
+4. **Sesuaikan hal yang bukan opname.** Kehilangan, kerusakan, dan retur
+   pelanggan pakai **penyesuaian** manual dengan alasannya (Rusak /
+   kedaluwarsa, Penghapusan / kedaluwarsa, Retur pelanggan…), bukan opname.
+5. **Isi ulang dulu, baru pesan lagi.** **Terima** pesanan pembelian Anda
+   agar jumlah baik masuk ke stok yang dapat dijual, lalu jalankan
+   **Laporan Inventaris** untuk melihat peringatan batas stok baru yang
+   muncul.
+
+Dilakukan mingguan, putaran ini menjaga sistem tetap dekat dengan rak
+sehingga satu angka buruk dapat ditelusuri dan bukannya menggunung.
+
 ## Laporan dan buku besar pergerakan
 
 **Laporan Stok** menampilkan stok, batas, harga satuan dan biaya, margin,
