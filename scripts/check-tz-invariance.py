@@ -102,6 +102,15 @@ TESTS = [
     "src/__tests__/RevenueLineChartWidget.test.tsx",
     "src/__tests__/HourlyHeatmapWidget.test.tsx",
     "src/__tests__/CategoryPieChartWidget.test.tsx",
+    # Added 2026-09-30 with the EOD store-day repair. The cases in this file pin
+    # the instant explicitly rather than reading the wall clock, so they hold
+    # under every host zone BY CONSTRUCTION -- which is exactly why registering
+    # it is still worth the seconds: the component cases above it are not
+    # pinned, and this file is where a future edit that reintroduces a wall-clock
+    # read inside the helper would show up as a red zone rather than as a rare
+    # failure on one machine. A file that is never replayed under another zone
+    # cannot demonstrate host-independence.
+    "src/__tests__/EodReportScreen.test.tsx",
 ]
 
 # Chosen to straddle the date line and both sides of UTC, and to include the
