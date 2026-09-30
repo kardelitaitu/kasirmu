@@ -821,7 +821,17 @@ docker run -d \
   oz-pos-cloud:latest
 ```
 
-> **Note:** If running without Docker, the binary is built via `cargo build --package oz-cloud-server --release` and produces `target/release/oz-cloud-server`. Defaults: `OZ_API_PORT=3099`, `OZ_DB_PATH=/data/kasir.db`.
+> **On the two names in this section.** `oz-pos-cloud:latest` is a Docker image tag and
+> `oz-cloud-server` is a container name, and both are the OPERATOR'S choice at `docker
+> build` / `docker run` time -- this repository pins neither. `ops/docker/docker-compose.prod.yml:26`
+> and `ops/docker/docker-compose.override.yml:22` both name the service `pos-cloud-server`,
+> and no compose file in the repo sets `container_name:`. So every `docker stop
+> oz-cloud-server` below works only against a container created with exactly this
+> section's `--name`; if you deploy through compose, substitute the name compose gives
+> it. The one name the repository does own is the Rust package, `kasirmu-cloud`, which
+> `ops/docker/Dockerfile.server:179` builds and :212 copies to `/app/kasirmu-cloud`.
+>
+> **Note:** If running without Docker, the binary is built via `cargo build --package kasirmu-cloud --bin kasirmu-cloud --release` and produces `target/release/kasirmu-cloud`. Defaults: `OZ_API_PORT=3099`, `OZ_DB_PATH=/data/kasir.db`.
 
 **2. Verify the new server is healthy**
 
