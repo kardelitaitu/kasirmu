@@ -387,4 +387,33 @@ first attempt at each was a `?` in the wrong position.
 seeded location an index id (the migration does not), proves the code round-trips, then drops
 `locations.index_id` and the index over it so the code read fails. Verified RED with the swallow
 restored — the full DTO returned with `code: None` — and GREEN with the fix.
+
+## Amendment 2026-10-04 (f) — the divergence this decision exists to stop, found once more
+
+Amendment (e) fixed the Base62 code reads in the bridge's `to_location_dto` and `to_terminal_dto`.
+This amendment is the same defect in the **tablet's own copy** of that surface:
+`apps/mobile-tauri/src/commands/terminals.rs` enriched each `TerminalDto` with its code through
+`get_terminal_code(..).unwrap_or(None)`, in both `run_list_terminals` and `get_terminal_scoped`.
+
+**This is precisely the divergence ADR-49 exists to track, and it is worth recording as such.**
+The bridge was repaired under `ab1e84700`; the tablet kept the old behaviour for the length of
+this campaign, because the two bodies are separate copies and fixing one does not fix the other.
+That is §What was NOT done item 1 still costing something concrete: not a style complaint about
+duplication, but a defect repaired in one copy and left live in the second.
+
+**The failure mode, unchanged from the bridge's.** A read failure produced `code: None`, which is
+byte-identical to a terminal never assigned a code. The listing is what the terminals screen
+renders, so a locked or corrupt table blanked the code column across every row with nothing to
+distinguish it from an unconfigured fleet.
+
+**Both sites now propagate**, and the listing loop became an explicit `for` because its body can
+fail. Pinned by `a_failed_terminal_code_read_refuses_instead_of_listing_blanks`, which drops
+`terminals.index_id` and the index over it -- the column `get_terminal_code` reads and
+`list_terminals` does not, so the loop is entered and its later read fails. Verified RED with the
+swallow restored: a complete `TerminalDto` returned with `code: None`. GREEN with the fix.
+
+**The parity lesson, stated plainly.** A sweep of the bridge does not sweep the tablet, and this
+campaign's sweeps had been running one crate at a time. A fix reported as "the code reads" should
+name its crate, because the twin is a separate file that will not inherit it.
+
 > last audited 29-09-26 by docs-auditor
