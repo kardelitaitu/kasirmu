@@ -1802,6 +1802,24 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
       />
 
       {/* ── Item modifier modal ──────────── */}
+      {/*
+       * NOT WIRED, and deliberately left inert rather than half-wired.
+       *
+       * `groups={[]}` means the modal has nothing to select, so Confirm has
+       * nothing to return -- and onConfirm discards both arguments anyway.
+       * The retail Modifiers button in RetailCartPanel.tsx:305-315 therefore
+       * opens a dialog that cannot change the cart.
+       *
+       * The data is missing end to end, which is why this cannot be fixed
+       * here: `ProductDto` has no modifier field, `toProduct` (:49-61) cannot
+       * carry one, and crates/kasirmu-bridge/src/products.rs returns none.
+       * RetailMenu is the working reference -- RestaurantMenu.tsx:642 feeds
+       * real groups from `getProductModifierGroups` and :263 applies the
+       * returned price AND selections to the cart line.
+       *
+       * Wiring the button to an always-empty dialog is worse than the stub:
+       * it looks finished. Leave it inert until the backend read exists.
+       */}
       <ItemModifierModal
         open={!!modifierLine}
         productName={modifierLine?.name ?? modifierLine?.sku ?? ''}
