@@ -60,6 +60,12 @@ export default function TerminalStatusPanel({ refreshTrigger }: TerminalStatusPa
     };
   }, [load]);
 
+  // Measured and left UNGUARDED, like the KDS device indicator and unlike the stock-alert
+  // pollers (8c42f592f). Same mechanism -- clearing the interval does not cancel an
+  // in-flight request -- but the consequence is display-only: `terminals` renders an
+  // online count and a status table, and no handler takes an id from it into a write.
+  //
+  // A wrong store's terminals therefore show for up to 30s and correct on the next tick.
   const onlineCount = terminals.filter((t) => isOnline(t.lastSeenAt)).length;
 
   return (
