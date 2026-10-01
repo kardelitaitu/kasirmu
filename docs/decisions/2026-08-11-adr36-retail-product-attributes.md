@@ -327,4 +327,33 @@ what `unwrap_or(false)` / `unwrap_or(1i64)` were already doing. Pinned by
 `?`-read column and omitting the rest. Verified RED with the swallows restored — the mapper
 returned a COMPLETE `Product` (`track_serial: false, version: 1, cost_minor: 0, is_active: true`)
 from a projection that supplied almost none of its columns — and GREEN with the fix.
+
+## The sweep that closed the family, and the one that mattered most (2026-10-04, `9c2c8dddf`)
+
+The section above fixed `row_to_product`. Sweeping every other row mapper in the core db layer for
+the same shape left four `row.get(..).unwrap_or(..)` calls in three mappers, all now propagating:
+`popularity_score` in `row_to_product_with_details`, `version` in `Store::row_to_sale_header`, and
+`notes` in three `InventoryTransaction` mappers. In each case the default was already in the
+schema (`popularity_score REAL NOT NULL DEFAULT 0`, `version INTEGER NOT NULL DEFAULT 1`, `notes
+TEXT NOT NULL DEFAULT ''`), so the `unwrap_or` only ever fired on a real read error.
+
+**The sales one is the most serious instance of this family found so far, and it is worth saying
+why.** `version` is not display data — it is the optimistic-concurrency token that the
+compare-and-set updates key on. Defaulting it handed the caller a **fabricated `version: 1`**: a
+CAS that either silently matches the wrong row state or refuses a correct write, on money-bearing
+records, with no error anywhere.
+
+**And the mapper's own doc already forbade it.** `row_to_sale_header`'s doc records that
+`list_sales_by_user` "deliberately keeps its own strict variant (propagating rather than defaulting
+a NULL discount/version)" — and that strict variant reads `version` with `?` at
+`sales_crud.rs:399`. Four lines of documentation explaining exactly why the shared mapper must not
+default, directly above a mapper that did.
+
+**The sweep is now closed for this crate**, which is the useful outcome beyond these four lines:
+`grep -rn 'row\.get(..)\.unwrap_or' crates/kasirmu-core/src/db` returns no production hits. The
+practical rule the whole exercise settles on: **a default belongs in the schema or in the typed
+getter that owns it, never in the mapper that reads the row.** Written one layer above the layer
+that already owns it, an `unwrap_or` is not a default — it is a swallow wearing a default's
+clothes, and it fires on precisely the reads you most want to hear about.
+
 > last audited 29-09-26 by docs-auditor
