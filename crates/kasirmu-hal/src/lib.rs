@@ -38,6 +38,9 @@ next: WeightScale discovery path still open; otherwise stable | perf: N/A
 // NOT allowed, so a link to an item that does not exist still fails the
 // build. Precedent: `kasirmu-crypto/src/lib.rs`, `platform/core/src/lib.rs`.
 #![allow(rustdoc::private_intra_doc_links)]
+// `async_trait` generates Box<dyn Future> decorated with #[must_use] on methods
+// whose signatures already return Result, triggering Clippy's double_must_use lint.
+#![allow(clippy::double_must_use)]
 
 /// Turning saved hardware configuration into registered drivers.
 pub mod bootstrap;

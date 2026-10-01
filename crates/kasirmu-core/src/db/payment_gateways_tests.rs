@@ -43,7 +43,10 @@ fn upsert_and_get_payment_gateway_roundtrip_with_at_rest_encryption() {
         )
         .expect("raw query");
 
-    assert!(!raw_config.contains("SB-Mid-server-secret"), "Raw DB row must be encrypted!");
+    assert!(
+        !raw_config.contains("SB-Mid-server-secret"),
+        "Raw DB row must be encrypted!"
+    );
     assert_ne!(raw_config, input.config_json);
 
     // Fetch via get_payment_gateway
@@ -79,8 +82,14 @@ fn upsert_updates_existing_gateway_preserving_id_and_created_at() {
         .expect("update");
 
     assert_eq!(updated.id, first.id, "ID must be preserved on conflict");
-    assert_eq!(updated.created_at, "2026-10-01T10:00:00Z", "created_at must be preserved");
-    assert_eq!(updated.updated_at, "2026-10-01T11:00:00Z", "updated_at must be updated");
+    assert_eq!(
+        updated.created_at, "2026-10-01T10:00:00Z",
+        "created_at must be preserved"
+    );
+    assert_eq!(
+        updated.updated_at, "2026-10-01T11:00:00Z",
+        "updated_at must be updated"
+    );
     assert!(!updated.is_active);
 
     let parsed: serde_json::Value = serde_json::from_str(&updated.config_json).unwrap();
@@ -166,7 +175,12 @@ fn delete_payment_gateway() {
 
     assert!(store.delete_payment_gateway("default", "square").unwrap());
     assert!(!store.delete_payment_gateway("default", "square").unwrap());
-    assert!(store.get_payment_gateway("default", "square").unwrap().is_none());
+    assert!(
+        store
+            .get_payment_gateway("default", "square")
+            .unwrap()
+            .is_none()
+    );
 }
 
 #[test]
@@ -260,8 +274,14 @@ fn tenant_isolation() {
         )
         .unwrap();
 
-    let gw_a = store.get_payment_gateway("tenant-a", "midtrans").unwrap().unwrap();
-    let gw_b = store.get_payment_gateway("tenant-b", "midtrans").unwrap().unwrap();
+    let gw_a = store
+        .get_payment_gateway("tenant-a", "midtrans")
+        .unwrap()
+        .unwrap();
+    let gw_b = store
+        .get_payment_gateway("tenant-b", "midtrans")
+        .unwrap()
+        .unwrap();
 
     let parsed_a: serde_json::Value = serde_json::from_str(&gw_a.config_json).unwrap();
     let parsed_b: serde_json::Value = serde_json::from_str(&gw_b.config_json).unwrap();

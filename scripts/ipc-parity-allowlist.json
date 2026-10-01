@@ -184,12 +184,28 @@
       "reason": "Tablet-only by design: only the tablet shell registers it (the tablet writes via a cache path because Rust cannot open a content:// URI). The desktop keeps create_backup/create_backup_scoped and createBackupTo is never called there -- ui/src/api/data.ts:246."
     },
     {
+      "name": "delete_payment_gateway_scoped",
+      "reason": ""
+    },
+    {
       "name": "delete_topology_template",
       "reason": "Deletes one per-branch diagram template from the store DB (crates/kasirmu-bridge/src/topology/commands.rs::delete_topology_template -> template_delete, behind authorize_topology_write / TOPOLOGY_WRITE). NOT hardware- or shell-bound: dev-mock already keeps a localStorage topology slice (ui/src/dev-mock/handlers/topology.ts, handlers/topology-state.ts) with graph, apply and revision handlers, so a parallel template map is writable. LIKELY OWED rather than accepted -- no rationale recorded beyond the dev-mock hot-file rule in _dev_mock_comment. NEEDS-OWNER-INPUT."
     },
     {
       "name": "gateway_status",
       "reason": "Returns the three configured/online gateway booleans computed server-side from deny-listed secret settings (crates/kasirmu-bridge/src/settings.rs::gateway_status), read live by ui/src/frontend/shell/StatusBar.tsx through useGatewayStatus. NOT hardware-bound: the mock already stubs the same store with 'get_setting': () => null (ui/src/dev-mock/handlers/settings.ts:71), so an all-false three-entry handler is trivial. LIKELY OWED -- no recorded rationale beyond the _dev_mock_comment hot-file rule. NEEDS-OWNER-INPUT."
+    },
+    {
+      "name": "get_payment_gateway_config_scoped",
+      "reason": ""
+    },
+    {
+      "name": "list_payment_gateways_scoped",
+      "reason": ""
+    },
+    {
+      "name": "list_restore_candidates",
+      "reason": "Enumerates the backup generations sitting beside the live database and returns each with its verdict (crates/kasirmu-bridge/src/data/restore.rs::list_restore_candidates). Filesystem reads only -- no device, no secret, no process. NOT structurally blocked: a mock could return a fixed candidate list the way it already fakes other reads. LIKELY OWED -- nothing in _dev_mock_comment explains its absence, and the restore tab reads it on open (ui/src/features/settings/hooks/useRestore.ts:134). NEEDS-OWNER-INPUT."
     },
     {
       "name": "list_topology_templates",
@@ -240,20 +256,20 @@
       "reason": "Full ingest pipeline on the authoring (desktop) device: reads the source file chosen through the native dialog plugin, sniffs magic bytes, enforces size/dimension caps, decodes, resizes to 512 px, encodes lossy WebP, SHA-256s it and atomically writes images/{hash16}.webp under app_cache_dir (apps/desktop-tauri/src/commands/products_images.rs::products_set_image_scoped -> kasirmu_bridge::products_images::set_image_scoped with BridgeCtx::media_cache_dir). ACCEPTED: filesystem- and media-bound by design -- zero image bytes cross IPC, so the preview supplies neither the path's bytes nor the media root. Tablet registers no ingest surface at all."
     },
     {
-      "name": "save_topology_template",
-      "reason": "Saves one named diagram template for a branch, replacing any template of that name (crates/kasirmu-bridge/src/topology/commands.rs::save_topology_template -> template_save, behind authorize_topology_write; the payload skips Apply validation because a template is a starting point, not a claim). NOT hardware- or shell-bound -- see delete_topology_template. LIKELY OWED. NEEDS-OWNER-INPUT."
-    },
-    {
-      "name": "list_restore_candidates",
-      "reason": "Enumerates the backup generations sitting beside the live database and returns each with its verdict (crates/kasirmu-bridge/src/data/restore.rs::list_restore_candidates). Filesystem reads only -- no device, no secret, no process. NOT structurally blocked: a mock could return a fixed candidate list the way it already fakes other reads. LIKELY OWED -- nothing in _dev_mock_comment explains its absence, and the restore tab reads it on open (ui/src/features/settings/hooks/useRestore.ts:134). NEEDS-OWNER-INPUT."
+      "name": "restore_prepare",
+      "reason": "Writes a restore-request file naming the chosen candidate, refusing an unusable candidate or a mismatched store name (crates/kasirmu-bridge/src/data/restore.rs::restore_prepare). A mock cannot perform the real next-boot swap, but the PREVIEW contract is only that the request was accepted or refused, which a localStorage flag models exactly. NOT structurally blocked. LIKELY OWED -- weakest of the three, since a preview that accepts a restore it can never perform could mislead; that needs the owner call. NEEDS-OWNER-INPUT."
     },
     {
       "name": "restore_status",
       "reason": "Reports whether a restore request file is pending beside the live database (crates/kasirmu-bridge/src/data/restore.rs::restore_status). Reads a request file, so a static pending:false shape is trivially faithful in a browser preview. NOT structurally blocked. LIKELY OWED -- same route as list_restore_candidates; the preview currently answers null and the section silently renders its failure path. NEEDS-OWNER-INPUT."
     },
     {
-      "name": "restore_prepare",
-      "reason": "Writes a restore-request file naming the chosen candidate, refusing an unusable candidate or a mismatched store name (crates/kasirmu-bridge/src/data/restore.rs::restore_prepare). A mock cannot perform the real next-boot swap, but the PREVIEW contract is only that the request was accepted or refused, which a localStorage flag models exactly. NOT structurally blocked. LIKELY OWED -- weakest of the three, since a preview that accepts a restore it can never perform could mislead; that needs the owner call. NEEDS-OWNER-INPUT."
+      "name": "save_topology_template",
+      "reason": "Saves one named diagram template for a branch, replacing any template of that name (crates/kasirmu-bridge/src/topology/commands.rs::save_topology_template -> template_save, behind authorize_topology_write; the payload skips Apply validation because a template is a starting point, not a claim). NOT hardware- or shell-bound -- see delete_topology_template. LIKELY OWED. NEEDS-OWNER-INPUT."
+    },
+    {
+      "name": "set_payment_gateway_config_scoped",
+      "reason": ""
     }
   ],
   "shell_blind": [

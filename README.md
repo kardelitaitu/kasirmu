@@ -46,7 +46,7 @@
 | **Automated test suite** | **9,026 Rust `#[test]` functions** and **623 frontend test files** | [`README-3.md`](./README-3.md) |
 | **Test code volume** | **>508,000 lines of test code** (>50% of the entire codebase is automated verification) | [`stats.json`](./stats.json) |
 | **Development model** | **Solo developer — 95% of code authored and verified with AI** | [Section 4 below](#4-engineering-scale--the-ai-native-development-model) |
-| **Current release** | **v0.0.40** (all 6 roadmap phases delivered) | [Status below](#6-what-is-real-today--honest-roadmap) |
+| **Current release** | **v0.0.40** (all 6 roadmap phases delivered) | [Status below](#6-20-phase-strategic-platform-roadmap) |
 
 ---
 

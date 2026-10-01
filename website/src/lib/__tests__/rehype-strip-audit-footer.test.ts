@@ -13,25 +13,25 @@
 import { describe, expect, it } from 'vitest';
 import rehypeStripAuditFooter from '../../plugins/rehype-strip-audit-footer.mjs';
 
-const blockquote = (text) => ({
+const blockquote = (text: string) => ({
   type: 'element',
   tagName: 'blockquote',
   children: [{ type: 'element', tagName: 'p', children: [{ type: 'text', value: text }] }],
 });
 
-const paragraph = (text) => ({
+const paragraph = (text: string) => ({
   type: 'element',
   tagName: 'p',
   children: [{ type: 'text', value: text }],
 });
 
-function textOf(node) {
+function textOf(node: any): string {
   if (!node) return '';
   if (node.type === 'text') return String(node.value ?? '');
   return (node.children ?? []).map(textOf).join('');
 }
 
-function run(children) {
+function run(children: any[]) {
   const tree = { type: 'root', children };
   rehypeStripAuditFooter()(tree);
   return tree.children;
@@ -62,7 +62,7 @@ describe('rehype-strip-audit-footer', () => {
 
   it('keeps the surrounding content', () => {
     const out = run([paragraph('Keep reading'), blockquote('last audited 30-09-26 by x'), paragraph('Tail')]);
-    expect(out.map((n) => n.children[0].value)).toEqual(['Keep reading', 'Tail']);
+    expect(out.map((n: any) => n.children[0].value)).toEqual(['Keep reading', 'Tail']);
   });
 
   // The two shapes the first implementation MISSED. It removed a whole blockquote

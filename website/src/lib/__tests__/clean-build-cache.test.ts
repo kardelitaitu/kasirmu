@@ -15,7 +15,7 @@ import { spawnSync } from 'node:child_process';
 
 const SCRIPT = new URL('../../../scripts/clean-build-cache.mjs', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
 
-let root;
+let root: string;
 
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), 'kasirmu-clean-'));

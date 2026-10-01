@@ -2,9 +2,9 @@
 //! clamps, category scoping, and overflow fail-closed behavior (PROMO-1/2/6/8).
 
 use super::*;
+use crate::SaleStatus;
 use crate::foundation::{Currency, Money};
 use crate::sale::SaleLine;
-use crate::SaleStatus;
 
 fn idr() -> Currency {
     Currency(*b"IDR")

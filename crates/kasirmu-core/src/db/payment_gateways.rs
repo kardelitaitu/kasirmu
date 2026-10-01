@@ -68,19 +68,29 @@ fn validate_gateway_input(input: &UpsertPaymentGateway) -> Result<(String, Strin
             message: "gateway name must be 64 characters or fewer".into(),
         });
     }
-    if !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
+    if !name
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
         return Err(CoreError::Validation {
             field: "name",
-            message: "gateway name may only contain alphanumeric characters, hyphens, and underscores".into(),
+            message:
+                "gateway name may only contain alphanumeric characters, hyphens, and underscores"
+                    .into(),
         });
     }
 
     let config_raw = input.config_json.trim();
-    let config_str = if config_raw.is_empty() { "{}" } else { config_raw };
-    let parsed: serde_json::Value = serde_json::from_str(config_str).map_err(|err| CoreError::Validation {
-        field: "config_json",
-        message: format!("config_json must be valid JSON: {err}"),
-    })?;
+    let config_str = if config_raw.is_empty() {
+        "{}"
+    } else {
+        config_raw
+    };
+    let parsed: serde_json::Value =
+        serde_json::from_str(config_str).map_err(|err| CoreError::Validation {
+            field: "config_json",
+            message: format!("config_json must be valid JSON: {err}"),
+        })?;
     if !parsed.is_object() {
         return Err(CoreError::Validation {
             field: "config_json",
@@ -100,8 +110,12 @@ fn decrypt_row(
     created_at: String,
     updated_at: String,
 ) -> Result<PaymentGatewayConfig, CoreError> {
-    let config_json = kasirmu_crypto::decrypt_payment_gateway_config(&raw_config)
-        .map_err(|err| CoreError::Internal(format!("failed to decrypt payment gateway config for {name}: {err}")))?;
+    let config_json =
+        kasirmu_crypto::decrypt_payment_gateway_config(&raw_config).map_err(|err| {
+            CoreError::Internal(format!(
+                "failed to decrypt payment gateway config for {name}: {err}"
+            ))
+        })?;
     Ok(PaymentGatewayConfig {
         id,
         tenant_id,
@@ -126,7 +140,9 @@ impl Store<'_> {
     ) -> Result<PaymentGatewayConfig, CoreError> {
         let (name, validated_config) = validate_gateway_input(input)?;
         let encrypted_config = kasirmu_crypto::encrypt_payment_gateway_config(&validated_config)
-            .map_err(|err| CoreError::Internal(format!("failed to encrypt payment gateway config: {err}")))?;
+            .map_err(|err| {
+                CoreError::Internal(format!("failed to encrypt payment gateway config: {err}"))
+            })?;
         let id = uuid::Uuid::now_v7().to_string();
 
         let tx = self.conn.unchecked_transaction()?;
@@ -148,8 +164,9 @@ impl Store<'_> {
         )?;
         tx.commit()?;
 
-        self.get_payment_gateway(tenant_id, &name)?
-            .ok_or_else(|| CoreError::Internal(format!("payment gateway {name} vanished after upsert")))
+        self.get_payment_gateway(tenant_id, &name)?.ok_or_else(|| {
+            CoreError::Internal(format!("payment gateway {name} vanished after upsert"))
+        })
     }
 
     /// Load a single gateway configuration by name for a tenant.
@@ -267,11 +284,7 @@ impl Store<'_> {
     }
 
     /// Delete a payment gateway configuration by name for a tenant.
-    pub fn delete_payment_gateway(
-        &self,
-        tenant_id: &str,
-        name: &str,
-    ) -> Result<bool, CoreError> {
+    pub fn delete_payment_gateway(&self, tenant_id: &str, name: &str) -> Result<bool, CoreError> {
         let norm_name = name.trim().to_ascii_lowercase();
         let tx = self.conn.unchecked_transaction()?;
         let affected = tx.execute(
