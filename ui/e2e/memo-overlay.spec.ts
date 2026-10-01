@@ -140,31 +140,54 @@ test.describe('Memo stack never covers a visible control', () => {
    * construction. It failed on both projects for the right reason -- it was measuring
    * the wrong relation, and that failure is what pointed at the right one.
    *
-   * What the band buys is measurable and falsifiable: padding-bottom on the scroller
-   * adds the stack's strip to the scroll range, so the LAST rows can be scrolled into
-   * a clear strip. Without the band the range is short by exactly that amount. That
-   * difference is what this case pins.
+   * What the band buys is measurable and falsifiable: padding-bottom on the box that
+   * SIZES a scroller adds the stack's strip to that scroller's range, so the LAST
+   * rows can be scrolled into a clear strip. Without the band the range is short by
+   * exactly that amount. That difference is what this case pins.
+   *
+   * BOTH surfaces are asserted. The picker half existed first and the settings half
+   * was added the same round after a probe showed removing `.settings-body`'s band
+   * still passed 6/6 -- one of the two surfaces this file covers was unguarded.
    */
-  test('the clearance band reserves scroll room for the memo stack strip', async ({ page }) => {
+  test('the clearance bands reserve scroll room for the memo stack strip', async ({ page }) => {
     await seedMemos(page, 3);
+
+    /** padding on the given box vs the stack's measured height */
+    const band = (selector: string) =>
+      page.evaluate((sel) => {
+        const stack = document.querySelector('.memo-stack');
+        const box = document.querySelector(sel);
+        if (!stack || !box) return null;
+        return {
+          strip: Math.round(stack.getBoundingClientRect().height),
+          pad: parseFloat(getComputedStyle(box).paddingBottom) || 0,
+        };
+      }, selector);
+
+    // Picker: .ws-main is the scroller; the band is on the box that sizes it.
     await expect(page.getByTestId('workspace-home')).toBeVisible({ timeout: 15_000 });
     await page.waitForTimeout(500);
-
-    const band = await page.evaluate(() => {
-      const stack = document.querySelector('.memo-stack');
-      const main = document.querySelector('.ws-main');
-      if (!stack || !main) return null;
-      return {
-        strip: Math.round(stack.getBoundingClientRect().height),
-        pad: parseFloat(getComputedStyle(main).paddingBottom) || 0,
-      };
-    });
-    expect(band, 'the picker clearance band (.ws-main) was not found').not.toBeNull();
+    const picker = await band('.ws-main');
+    expect(picker, 'the picker clearance band (.ws-main) was not found').not.toBeNull();
     expect(
-      band!.pad,
-      `the picker's clearance band is ${band!.pad}px but the memo stack is ${band!.strip}px tall -- the band is gone, or shorter than the strip it reserves`,
-    ).toBeGreaterThanOrEqual(band!.strip);
+      picker!.pad,
+      `the picker's clearance band is ${picker!.pad}px but the memo stack is ${picker!.strip}px tall -- the WorkspaceHome.css band is gone, or shorter than the strip it reserves`,
+    ).toBeGreaterThanOrEqual(picker!.strip);
+
+    // Settings: .settings-body sizes the sidebar and content scrollers, so its
+    // padding-bottom is the band there.
+    await selectWorkspace(page, WORKSPACES.ADMIN);
+    await navigateTo(page, 'settings');
+    await page.waitForSelector('[data-testid="settings-sidebar"]', { timeout: 15_000 });
+    await page.waitForTimeout(500);
+    const settings = await band('.settings-body');
+    expect(settings, 'the settings clearance band (.settings-body) was not found').not.toBeNull();
+    expect(
+      settings!.pad,
+      `the settings clearance band is ${settings!.pad}px but the memo stack is ${settings!.strip}px tall -- the SettingsNavTree.css band is gone, or shorter than the strip it reserves`,
+    ).toBeGreaterThanOrEqual(settings!.strip);
   });
 });
+
 
 
