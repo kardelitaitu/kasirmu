@@ -143,9 +143,14 @@ impl Store<'_> {
     ///    `sales.total_minor` carried no tip term and that the two aggregates
     ///    diverged by exactly tip + service. It does not, and the claim was
     ///    wrong; it is corrected here rather than left to mislead the next
-    ///    reader. The payment breakdown is still the right source for
-    ///    `expected_cash_minor` (:283): it splits by tender method, which
-    ///    `sales.total_minor` cannot do.
+    ///    reader.
+    ///
+    /// The ledger side is load-bearing for a DIFFERENT reason than the tip, and
+    ///    that is C16: a split tender records one `payments` row per leg, so
+    ///    `sales.total_minor` alone cannot say how much was CASH.
+    ///    `close_shift_and_report_agree_on_cash_for_a_split_tender` in
+    ///    shifts_tests.rs pins the close and the report together on this -- it is
+    ///    the test that fails if either end stops reading the ledger.
     ///
     /// All reads and the final write run inside a single SQLite transaction
     /// to prevent concurrent close operations from observing inconsistent
