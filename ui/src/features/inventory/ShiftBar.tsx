@@ -49,9 +49,20 @@ export default function ShiftBar({ onShiftChange }: ShiftBarProps) {
   // `listInventoryLocations` would leave `selectedLocationId` pointing at a location
   // in the store the cashier just LEFT -- and that id is what
   // `handleStartShift` passes to `startInventoryShift`, so the operator would be
-  // offered (and could open) a shift at the wrong store's location. The core layer
-  // opens the store DB from the session but does not verify the location belongs
-  // to it, so the bad id reaches the write.
+  // offered a location from the wrong store.
+  //
+  // CORRECTION (round 123): this used to end "...so the bad id reaches the write", on the
+  // grounds that core opens the store DB from the session without verifying the location
+  // belongs to it. Core still does not verify it -- but the FOREIGN KEY does. The schema is
+  // `location_id TEXT NOT NULL REFERENCES inventory_locations(id) ON DELETE RESTRICT`, and
+  // `open_store(store_id)` opens a SEPARATE database per store
+  // (platform/core/src/database/manager.rs:73). A location id from another store therefore
+  // does not exist in this store's inventory_locations and the INSERT is REJECTED.
+  //
+  // So the real consequence is a constraint error at open-shift time, not a shift written
+  // against a foreign location. The guard is still worth keeping -- the user is offered a
+  // location they cannot use and gets an opaque error instead of a correct list -- but the
+  // severity was overstated here, and that matters to anyone weighing whether to keep it.
   const loadSeq = useRef(0);
   
   // Timer state
