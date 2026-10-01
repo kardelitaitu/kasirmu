@@ -55,7 +55,22 @@ async fn throwaway_pool() -> Option<(deadpool_postgres::Pool, String)> {
     drop(admin_pool);
 
     // Connect to the new DB and apply schema.
-    let db_url = format!("postgres://postgres:postgres@localhost:15432/{db_name}");
+    //
+    // DERIVED from `url`, never hardcoded. This line read
+    // `postgres://postgres:postgres@localhost:15432/{db_name}` -- the local dev
+    // container's port -- while the admin connection above correctly used `url`.
+    // In CI `OZ_TEST_PG_URL` points at the service container on 5432, so the
+    // admin created the database on 5432 and this line then dialled 15432, where
+    // nothing listens. `.ok()?` swallowed the error and every caller reported
+    // "cannot create throwaway DB". That is a DETERMINISTIC failure, not a race:
+    // it only read as flaky because nextest's `fail-fast = { max-fail = 1 }`
+    // surfaced one victim per run, and a different one per shard. It was never
+    // seen before fda1412ac because the path router skipped this job entirely.
+    // Same shape as `kasirmu-api/src/pg_tests.rs`, which already did it right.
+    let (base, _old_db) = url
+        .rsplit_once('/')
+        .expect("OZ_TEST_PG_URL must carry a database path");
+    let db_url = format!("{base}/{db_name}");
     let db_config = tokio_postgres::Config::from_str(&db_url).ok()?;
     let mgr = deadpool_postgres::Manager::new(db_config, tokio_postgres::NoTls);
     let pool = deadpool_postgres::Pool::builder(mgr)
