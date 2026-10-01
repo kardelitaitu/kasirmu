@@ -328,6 +328,10 @@ impl LuaRuntime {
                 Err(_) => return Ok(None),
             }
         };
+        // MONEY-05, the same hand-off as `build_lines_table` below: money and qty
+        // go to the VM as Lua *floats* so plugin arithmetic such as
+        // `qty * unit_price_minor` cannot run as Lua 5.4 integer math and wrap
+        // silently. Realistic minor-unit values are exact in f64 (below 2^53).
         let result: mlua::Value = hook
             .call((sku, qty as f64, unit_price_minor as f64, currency))
             .map_err(|e| LuaError::Script(e.to_string()))?;
@@ -349,6 +353,10 @@ impl LuaRuntime {
             Ok(f) => f,
             Err(_) => return Ok(None),
         };
+        // MONEY-05, the same hand-off as `build_lines_table` below: money and qty
+        // go to the VM as Lua *floats* so plugin arithmetic such as
+        // `qty * unit_price_minor` cannot run as Lua 5.4 integer math and wrap
+        // silently. Realistic minor-unit values are exact in f64 (below 2^53).
         let result: mlua::Value = hook
             .call((sku, qty as f64, unit_price_minor as f64, currency))
             .map_err(|e| LuaError::Script(e.to_string()))?;
@@ -428,6 +436,17 @@ fn parse_discount_result(val: mlua::Value) -> Option<DiscountResult> {
             if !(0..=100).contains(&percent) {
                 return None;
             }
+            // `label` is genuinely optional, so `.ok().and_then(..)` is the right
+            // shape here: an unreadable label degrades the LABEL, not the discount.
+            // Contrast `percent` above and `rate_bps`/`is_inclusive` below, where
+            // the field is required and its absence must drop the whole result.
+            //
+            // ⚠️ A required BOOL cannot be guarded by `.ok()?` the way a required
+            // number can: a missing Lua key reads as `nil`, `nil -> i64` FAILS
+            // (so `.ok()?` detects it), but `nil -> bool` SUCCEEDS as `false`
+            // (measured), so `.ok()?` silently yields the wrong answer. A required
+            // bool must be tested with `Table::contains_key` — see
+            // `parse_tax_override`.
             let label: Option<String> = tbl.get("label").ok().and_then(|v: Option<String>| v);
             Some(DiscountResult { percent, label })
         }
@@ -439,7 +458,35 @@ fn parse_tax_override(val: mlua::Value) -> Option<TaxOverride> {
     match val {
         mlua::Value::Table(tbl) => {
             let rate_bps: i64 = tbl.get("rate_bps").ok()?;
-            let is_inclusive: bool = tbl.get("is_inclusive").unwrap_or(false);
+            // `is_inclusive` is REQUIRED. The key's PRESENCE is tested explicitly,
+            // which is the only test that works here -- and the reason a first
+            // attempt at this fix was a silent no-op.
+            //
+            // `.get::<bool>("is_inclusive")` CANNOT detect the absence: a missing
+            // Lua key reads as `nil`, and `nil -> bool` is a SUCCESSFUL conversion
+            // in mlua (measured: `Ok(false)`), so `.ok()?` never fails and an
+            // absent key silently becomes `false` again. `.ok()?` works two lines
+            // up for `rate_bps` only because `nil -> i64` DOES fail
+            // (`FromLuaConversionError`), which is why the asymmetry was invisible
+            // in the code shape.
+            //
+            // `false` is a money VALUE on this path, not an absence:
+            // `compute_line_tax` divides by `10_000` when exclusive but by
+            // `10_000 + rate_bps` when inclusive (`db/sales.rs:599-608`), so a
+            // hook that omitted the key priced every line differently, and the
+            // exclusive branch also accumulated it into `exclusive_tax`, which is
+            // added to the sale total (`db/sales_tax.rs:194-202`).
+            //
+            // The documented shape is `{rate_bps, is_inclusive}` or `nil`
+            // (`lib.rs:36`, `docs/guides/developer/plugin-guide.md:190`,
+            // `README.md:16`), with `nil` as the way to return nothing, so `None`
+            // is the contract-conformant answer for a half-formed table -- and the
+            // fail-SAFE one: the override is dropped and the line falls back to the
+            // DB-resolved rate rather than being priced by a flag never stated.
+            if !tbl.contains_key("is_inclusive").ok()? {
+                return None;
+            }
+            let is_inclusive: bool = tbl.get("is_inclusive").ok()?;
             Some(TaxOverride {
                 rate_bps,
                 is_inclusive,

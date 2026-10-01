@@ -432,6 +432,21 @@ step "client type drift self-test" "python3 scripts/check-client-type-drift.py -
 # (file, field), so any OTHER mapper with the same defect still fails.
 # Exits 2 on a refused --roots list, so a starved corpus never reads as clean.
 step "mapper alignment" "python3 scripts/check-mapper-alignment.py" python3 scripts/check-mapper-alignment.py
+# The extractor's own cases, beside the gate they prove. Added 2026-10-05: the flag
+# existed since f2da67900 but NO runner passed it, so these cases had only ever been
+# run by hand. verify-selftests-wired.py found that; this is the fix it prescribes.
+step "mapper alignment self-test" "python3 scripts/check-mapper-alignment.py --self-test" python3 scripts/check-mapper-alignment.py --self-test
+
+# Merged source lines: a generator that joins a patch with no trailing element fuses
+# its last line into the following code (`const a = useRef(0);  useEffect(() => {`).
+# Syntactically valid, so eslint, tsc, the suites and all seven pre-commit steps pass.
+# Seen at least three times, once surviving in HEAD through later verification cycles
+# (3e352058b); each was found by reading, never by a check. Scanned 1339 files and
+# exited 0 on the commit that added it, so it starts green.
+step "merged lines" "python3 scripts/check-merged-lines.py" python3 scripts/check-merged-lines.py
+# Same gap as mapper alignment above: the 7 cases added in 1a432b328 declared a flag
+# no runner used, so they were verified by hand once and never again.
+step "merged lines self-test" "python3 scripts/check-merged-lines.py --self-test" python3 scripts/check-merged-lines.py --self-test
 
 # COR-7 replay fork: the tablet shell re-implements the per-attempt idempotency
 # rules, and nothing checked the two copies. They drifted into a security defect --
@@ -442,6 +457,42 @@ step "mapper alignment" "python3 scripts/check-mapper-alignment.py" python3 scri
 # one side only is always a regression. Exits 2 on a refused --root, so a starved
 # corpus never reads as clean.
 step "replay fork" "python3 scripts/check-replay-fork.py" python3 scripts/check-replay-fork.py
+# Self-test for the gate above, following the sibling checkers' convention. It proves
+# the control check keys on the DEFINITION site rather than a bare name, which is
+# what stops a rename of a control from passing as presence -- the exact false pass
+# the first mutation attempt hit. Touches no files.
+step "replay fork self-test" "python3 scripts/test-replay-fork.py" python3 scripts/test-replay-fork.py
+
+# scripts/gates.json is the single source of truth for gate names and status
+# (AUDIT-27 CI-08), and it records which step in this script and which step in
+# dev-ci.yml runs each gate. Nothing compared those claims, so they rot: the
+# coverage-floors entry declared a CI step named "Generate coverage report" that
+# has never existed (dev-ci.yml has carried "Coverage report" since e44fed2b2),
+# which would have told an auditor the gate has no CI runner when it does.
+#
+# Decorated step names are matched by prefix (check.sh spells some steps "clippy
+# workspace", "no-raw-params (ADR #7 Phase 4)"), a hyphen is NOT a decorator
+# (skill-drift-guard is a different step from skill-drift), and a runner that
+# runs inline rather than through step() is reported as a NOTE rather than a
+# failure -- several advisory legs do that, and panic-inventory carries a
+# _runner_note saying so. Exits 2 on a refused --root.
+step "gate roster" "python3 scripts/check-gate-runners.py" python3 scripts/check-gate-runners.py
+# Its own cases, beside it. This checker decides whether every OTHER declared runner
+# resolves, so a pattern that stopped matching would silently bless the roster --
+# the same self-referential failure the parity and attribute gates document.
+step "gate roster self-test" "python3 scripts/check-gate-runners.py --self-test" python3 scripts/check-gate-runners.py --self-test
+
+# The OTHER direction from the step above. check-gate-runners.py proves every label the
+# roster DECLARES resolves to a step; nothing proved every step is DECLARED. A step
+# with no row is invisible to verify-ci-docs-drift.py, which iterates the gates
+# PRESENT in the manifest, so it can never be reported as required-but-unenforced.
+# Rounds 148-149 found seven such steps, including a whole suite (`script tests`) that
+# had been red for an unknown period because nothing ran it. This gate requires an
+# EXACT claim, not a prefix: the "migration" row once resolved by prefix while
+# "migration idempotency" was claimed by nothing.
+# Gate: scripts/gates.json -> "gate-completeness".
+step "gate completeness" "python3 scripts/verify-gate-completeness.py" python3 scripts/verify-gate-completeness.py
+step "gate completeness self-test" "python3 scripts/verify-gate-completeness.py --self-test" python3 scripts/verify-gate-completeness.py --self-test
 
 # ── Namespace governance — soft rules for module seams (Round 4) ────────
 # ADR-62 named the seams; docs/architecture/module-namespace-governance.md names
@@ -490,6 +541,11 @@ step "capability parity" "python3 scripts/verify-namespace-governance.py --check
 # exactly how a retired namespace edge leaves namespace-governance-baseline.json.
 # Mutation-proven (adding three lines to audit.rs fails with +3). The self-test
 # runs beside it (verify-selftests-wired.py).
+#
+# Gate: scripts/gates.json -> "core-size". The row was missing until 2026-10-05: this
+# step had run for months with no manifest entry, and verify-ci-docs-drift.py only
+# iterates gates present in the manifest, so it could never be reported as
+# required-but-unenforced. Add the row when you add a step, not after.
 step "core size ratchet" "python3 scripts/verify-core-size.py" python3 scripts/verify-core-size.py
 step "core size ratchet self-test" "python3 scripts/verify-core-size.py --self-test" python3 scripts/verify-core-size.py --self-test
 
@@ -932,6 +988,15 @@ step "bundle parity" "python3 scripts/verify-bundle-parity.py --scan-dirs featur
 # extraction, so a pattern that stopped matching would report "0 missing key(s)"
 # and pass on a tree it was no longer reading.
 step "bundle parity self-test" "python3 scripts/verify-bundle-parity.py --self-test" python3 scripts/verify-bundle-parity.py --self-test
+
+# Gate: scripts/gates.json -> "ftl-attrs". The class the parity checker declares
+# OUT OF SCOPE: attrs={{...}} requests an ATTRIBUTE, and a message defining no
+# .placeholder makes @fluent/react fall back to the between-tag children -- a
+# hardcoded English literal. Three messages shipped that way (d9cc0098f).
+step "ftl attribute requests" "python3 scripts/check-ftl-attrs.py" python3 scripts/check-ftl-attrs.py
+# The extractor's own cases, beside the gate they prove. This checker is all regex
+# extraction, so a pattern that stopped matching would report a clean tree.
+step "ftl attribute requests self-test" "python3 scripts/check-ftl-attrs.py --self-test" python3 scripts/check-ftl-attrs.py --self-test
 
 # ── Migration correctness (steps 6 and 7 of the pre-commit hook) ───────────
 # Both lived in ci.yml, retired to .bak by 23c96330, and were never restored in

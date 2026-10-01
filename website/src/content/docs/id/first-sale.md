@@ -3,7 +3,7 @@ title: Transaksi Pertama Anda
 description: Lakukan transaksi dari awal hingga akhir — bahkan tanpa internet.
 category: gettingStarted
 order: 6
-updated: "2026-08-16"
+updated: "2026-10-01"
 ---
 
 ## Siapkan ruang kerja

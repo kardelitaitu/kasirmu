@@ -30,6 +30,37 @@ use crate::commands::picker_ticket;
 use crate::error::AppError;
 use crate::state::AppState;
 
+/// The current Unix time in seconds, or `None` when the clock cannot be read.
+///
+/// A pre-epoch system clock must not silently become the timestamp `0` on this
+/// surface, because `0` is not neutral in either direction it is used here:
+///
+/// * `verify_picker_ticket` tests `expiry_ts < now_ts`, so `now_ts = 0` satisfies
+///   it for EVERY ticket ever minted — an expired picker ticket then verifies and
+///   `create_session` mints a session from it. The HMAC is still required, so this
+///   is not forgery, but staleness stops mattering entirely.
+/// * the session/impersonation/keepalive mints compute `now_ts + ttl`, so `0` dates
+///   every session to 1970 and it is born expired.
+/// * the STAFF-06 timing mask computes `50 + nanos % 151`, so `0` yields a CONSTANT
+///   50 ms delay and defeats the randomisation it exists to provide.
+///
+/// Callers refuse rather than substitute a default. Same rule as the bridge's
+/// `now_unix_secs` (`kasirmu-bridge/src/auth.rs`) and `now_ts`
+/// (`kasirmu-bridge/src/auth/session.rs`), which this shell's copies predate —
+/// the bodies were duplicated per ADR-49 and the fix landed on one side only.
+fn now_unix_secs() -> Option<i64> {
+    match SystemTime::now().duration_since(UNIX_EPOCH) {
+        Ok(d) => i64::try_from(d.as_secs()).ok(),
+        Err(e) => {
+            tracing::error!(
+                error = %e,
+                "system clock is before the UNIX epoch; refusing to mint or verify a credential against it"
+            );
+            None
+        }
+    }
+}
+
 // Phase 3.3 T5: the auth wire DTOs moved to the shared `kasirmu_bridge::auth`
 // module and are re-exported here, same as the desktop shell. The wire
 // contract is one definition across shells — including `CreateSessionArgs`,
@@ -127,11 +158,27 @@ pub async fn staff_check_username(
         return Err(AppError::Invalid("username must not be empty".into()));
     }
 
-    // S3: Random delay (50–200ms) to mask timing side-channels.
+    // S3: Random delay (50–200ms) to mask timing side-channels. A pre-epoch clock
+    // must NOT collapse this to a constant: `subsec_nanos()` of a failed read is
+    // `0`, which yields exactly 50 ms every time and defeats the mask. The jitter is
+    // seeded from the wall clock rather than a CSPRNG because it only needs to be
+    // unpredictable to a remote client, and a refusal here would deny a legitimate
+    // login for a reason unrelated to credentials — so the seed degrades to a
+    // clock-independent value instead.
     let nanos = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .subsec_nanos();
+        .map(|d| d.subsec_nanos())
+        .unwrap_or_else(|_| {
+            tracing::warn!("system clock is before the UNIX epoch; timing mask seeded without it");
+            // A CONSTANT would defeat the mask, which is the whole point of this
+            // line, so the seed degrades to a clock-independent value instead: a
+            // process-local counter, which still differs between attempts.
+            use std::sync::atomic::{AtomicU32, Ordering};
+            static FALLBACK_SEQ: AtomicU32 = AtomicU32::new(0);
+            FALLBACK_SEQ
+                .fetch_add(2654435761, Ordering::Relaxed)
+                .wrapping_mul(0x9E37_79B9)
+        });
     let delay_ms: u64 = 50 + (nanos % 151) as u64;
 
     // Scope the DB lock so Store<'_> (not Send) is dropped before await.
@@ -328,10 +375,11 @@ pub async fn staff_login(
     // user (audit-open-findings residual, parity with the desktop client). It is
     // only valid for the pre-session workspace picker; `create_session`
     // hands out the opaque session token afterwards.
-    let now_ts = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs() as i64;
+    let Some(now_ts) = now_unix_secs() else {
+        return Err(AppError::Internal(
+            "cannot read the system clock; refusing to mint a picker ticket".into(),
+        ));
+    };
     let picker_ticket = picker_ticket::sign_picker_ticket(
         &state.picker_ticket_secret,
         &user.id,
@@ -377,10 +425,11 @@ pub async fn create_session(
     // caller-supplied value. The tablet DTO silently dropped this field
     // until Phase 3.3 T5, so this shell minted sessions with no ticket
     // verification — restored field-for-field against the bridge gate.
-    let now_ts = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs() as i64;
+    let Some(now_ts) = now_unix_secs() else {
+        return Err(AppError::Internal(
+            "cannot read the system clock; refusing to verify a picker ticket".into(),
+        ));
+    };
     let verified_user_id = picker_ticket::verify_picker_ticket(
         &state.picker_ticket_secret,
         &args.picker_ticket,
@@ -488,10 +537,11 @@ pub async fn create_session(
     let token = uuid::Uuid::now_v7().to_string();
 
     // Snapshot the current time once for both expiry and creation timestamp.
-    let now_ts = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs() as i64;
+    let Some(now_ts) = now_unix_secs() else {
+        return Err(AppError::Internal(
+            "cannot read the system clock; refusing to mint a session".into(),
+        ));
+    };
 
     // Compute session expiry from the cached TTL setting.
     let expires_at = if state.session_ttl_seconds > 0 {
@@ -696,10 +746,11 @@ pub async fn switch_organization(
     // 6. INVALIDATE the old token FIRST, then mint the new session.
     state.invalidate_session(&session_token);
 
-    let now_ts = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs() as i64;
+    let Some(now_ts) = now_unix_secs() else {
+        return Err(AppError::Internal(
+            "cannot read the system clock; refusing to mint a session".into(),
+        ));
+    };
     let token = uuid::Uuid::now_v7().to_string();
     let expires_at = if state.session_ttl_seconds > 0 {
         Some(now_ts + state.session_ttl_seconds)
@@ -863,10 +914,11 @@ pub async fn impersonate_user_scoped(
     };
 
     // Snapshot time once for both the expiry and the creation timestamp.
-    let now_ts = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs() as i64;
+    let Some(now_ts) = now_unix_secs() else {
+        return Err(AppError::Internal(
+            "cannot read the system clock; refusing to mint a session".into(),
+        ));
+    };
 
     let token = uuid::Uuid::now_v7().to_string();
     let expires_at = Some(now_ts + IMPERSONATION_SESSION_TTL_SECONDS);
@@ -994,6 +1046,15 @@ pub async fn destroy_session(
     if let Some(ctx) = ctx {
         let db = state.db.lock().await;
         let store = Store::new(&db);
+        // The display name is BEST-EFFORT; the audit identity is not. `user_id` goes
+        // to `SecurityEvent::logout` directly and is always resolved, so the record
+        // keeps its authoritative actor either way — this read only fills the
+        // human-readable column. All three swallows are therefore deliberate: a read
+        // error, a user row that is gone, and a missing field each degrade the NAME,
+        // never the event. Contrast the clock reads above, where a silent default
+        // changed an authorization decision; here nothing enforceable rides on it.
+        // (An empty name is a cosmetic loss on a logout row, not an audit gap — but
+        // it is why `username` in this table can legitimately read as `''`.)
         let username = store
             .get_user(&ctx.user_id)
             .ok()
@@ -1039,10 +1100,11 @@ pub async fn session_keepalive(
         return Err(AppError::InvalidSession);
     }
 
-    let now_ts = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs() as i64;
+    let Some(now_ts) = now_unix_secs() else {
+        return Err(AppError::Internal(
+            "cannot read the system clock; refusing to mint a session".into(),
+        ));
+    };
     let expires_at = if state.session_ttl_seconds > 0 {
         Some(now_ts + state.session_ttl_seconds)
     } else {

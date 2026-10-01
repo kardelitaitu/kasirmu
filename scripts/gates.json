@@ -442,10 +442,35 @@
       "status": "required",
       "runners": {
         "check.sh": [
-          "migration"
+          "migration smoke test",
+          "migration idempotency"
         ]
       },
       "_note": "Local-only. check.sh:98-99 run `cargo run -p kasirmu-cli -- migrate` twice (smoke + idempotency). No CI job does. ⚠ The section comment at check.sh:97 says 'mirrors CI `migration` job' and that is FALSE -- dev-ci.yml's ten jobs are changes, website, cargo-check, cargo-nextest, ui-test, i18n, ci-docs-drift, static-gates, release-readiness, northflank-deploy; none is named `migration`. Distinct from pg-schema-drift and migration-column-types, which ARE CI-backed in static-gates since 0.0.37; this entry is the SQLite migrate-up path, which never is."
+    },
+    {
+      "id": "script-tests",
+      "label": "Node script tests",
+      "status": "required",
+      "_note": "Added 2026-10-05 (round 149). scripts/__tests__/*.test.mjs is a whole suite that ui/package.json exposes as `npm run test:scripts` and that NOTHING invoked -- not the hook, not CI, not check.sh -- until check.sh:961 wired the glob. It had been red for an unknown period for exactly that reason: verify-ci-docs-drift.test.mjs built a fixture writing docs/ci-pipeline.md after the doc moved to docs/operations/, and pipefail.test.mjs read the retired ci.yml and nightly.yml and used bare `bash`, which on Windows is WSL and hangs rather than failing. Both were fixed, and the step wires the GLOB rather than cherry-picking files, so a future file cannot be silently excluded. The row was missing until now: the step existed but no gates.json entry claimed it, which meant verify-ci-docs-drift.py -- which iterates the gates PRESENT in the manifest -- could never report it as required-but-unenforced.",
+      "runners": {
+        "check.sh": [
+          "script tests"
+        ]
+      }
+    },
+    {
+      "id": "gate-completeness",
+      "label": "Gate roster completeness",
+      "status": "required",
+      "_note": "Added 2026-10-05 (round 150). The inverse of gate-roster-runners. That gate proves every label the manifest DECLARES resolves to a real check.sh step; nothing proved every step is DECLARED, and the gap is invisible from the manifest side because a step with no row is simply absent from the list any tool iterates. verify-ci-docs-drift.py walks the gates PRESENT, so an unrostered gate can never be reported as required-but-unenforced. Rounds 148-149 matched every step against every label by hand and found seven, including `script tests` -- a whole suite exposed as npm run test:scripts that had been red for an unknown period because nothing invoked it, and which was still unclaimed after it was finally wired. Requires an EXACT claim rather than a prefix, which is the one deliberate difference from gate-roster-runners: while the migration row declared the bare label \"migration\", the prefix rule reported `migration smoke test` as claimed while `migration idempotency` was claimed by nothing. Starts green -- 118 of 118 steps claimed exactly -- which round 109 established a new gate needs.",
+      "runners": {
+        "check.sh": [
+          "gate completeness",
+          "gate completeness self-test"
+        ]
+      },
+      "self_test": "python3 scripts/verify-gate-completeness.py --self-test"
     },
     {
       "id": "skill-drift",
@@ -793,6 +818,18 @@
       "_note": "Added 2026-09-28 with P2-4. Until this row, `cargo doc` had NO runner anywhere — not in check.sh, not in any live workflow, not in release.sh — so a broken intra-doc link was never a failure in any context. It is the exact shape of `rust-clippy` before C25 and `fuzz` before P0-3: a surface that looked covered because nothing reported on it. Measured 2026-09-28, the undeclared check was hiding 295 errors across 20 crates. SIX of them were not link noise but docs confidently describing something that does not exist: `KdsSyncEvent::OrderRecalled` (the variant is `Recalled`), `DriverRegistry::apply_config` (it is a FREE FUNCTION, not a method), `BridgeError::NotFound` (x3 — no such variant; the enum has Core/Hardware/Invalid/PermissionDenied/InvalidSession/TopologyValidation/Internal), `WebhookEndpoint::redacted` (no such method), and `get_setup_status` (x2 — the same file marks it REMOVED in a comment 10 lines above the link). THE ENV VAR AND THE RUNNER LANDED IN ONE COMMIT, and that is the whole point: `RUSTDOCFLAGS: -D warnings` set on its own would have been a dead setting — rustdoc is the only reader, and with no `cargo doc` invocation it would have changed nothing while reading like a gate in review. Both halves or neither. TWO TRAPS this gate had to avoid, both measured rather than assumed: (1) the LOCAL step must pass `RUSTDOCFLAGS` inline — without it `cargo doc` reports warnings and STILL EXITS 0, so the step would be decoration that can never fail; (2) `--no-deps` is required, because without it a dependency's own doc warnings would fail this gate for a crate this repo does not own. CI runs `cargo doc --workspace --no-deps` with the variable supplied by the workflow-level env block (dev-ci.yml:10-16); local runs supply it inline per step. The acceptance command `RUSTDOCFLAGS=\"-D warnings\" cargo doc --workspace --no-deps` was verified to exit 0 with zero errors AND zero warnings before either half landed — the ordered acceptance in P2-4 is what kept this from being a red gate on every PR, and it is worth keeping in mind for the next gate added this way."
     },
     {
+      "id": "core-size",
+      "label": "kasirmu-core size ratchet",
+      "status": "required",
+      "_note": "Added 2026-10-05 (round 148). This step has been in check.sh with a full rationale at line 524-533 and NO gates.json record, which is the structural blind spot the bundle-parity note describes: verify-ci-docs-drift.py iterates the gates present in the manifest, so a gate with no row can never be reported as required-but-not-enforced. Found by running every checker and asking why one FAILED rather than assuming; the failure itself was another session in-flight core work, but the missing row was real. The ratchet counts non-blank production lines under crates/kasirmu-core/src, minus whole test files and inline #[cfg(test)] mod blocks, and fails when the count rises above scripts/core-size-baseline.json. Mutation-proven: adding three lines to audit.rs fails with +3. LOWERING the ceiling is a deliberate edit in a commit that says why, the same shape as namespace-governance-baseline.json. NOTE it is environment-INDEPENDENT but tree-DEPENDENT: it fails whenever any session has in-flight core growth, so a red run in a shared checkout is not automatically yours -- check `git status --porcelain -- crates/kasirmu-core` first.",
+      "runners": {
+        "check.sh": [
+          "core size ratchet"
+        ]
+      },
+      "self_test": "python3 scripts/verify-core-size.py --self-test"
+    },
+    {
       "id": "coverage-floors",
       "label": "Per-crate coverage floors",
       "status": "required",
@@ -1096,6 +1133,24 @@
         "workflow": "dev-ci.yml",
         "job": "static-gates",
         "step": "i18n bundle parity"
+      }
+    },
+    {
+      "id": "ftl-attrs",
+      "label": "ftl attribute requests",
+      "status": "required",
+      "_note": "Added 2026-10-05. Closes the class verify-bundle-parity.py declares OUT OF SCOPE at its own docstring: that checker validates message IDs, not the ATTRIBUTES a call site asks for via attrs={{...}}. When a message defines no .placeholder, @fluent/react falls back to the between-tag children -- a hardcoded English literal -- so the component renders, the suite passes, and the translation that exists in *.id.ftl is never shown. Three messages shipped that way and were fixed in d9cc0098f. All three real findings sat behind a DYNAMIC id (id={flag ? a : b}), which is why the checker resolves BOTH branches; a resolver keyed on the nearest LITERAL id produced three false positives first, which is the trap worth knowing about. Unresolvable sites (id={JS_VAR}) are counted and printed rather than skipped, so the coverage cannot look wider than it is.",
+      "runners": {
+        "check.sh": [
+          "ftl attribute requests",
+          "ftl attribute requests self-test"
+        ]
+      },
+      "self_test": "python3 scripts/check-ftl-attrs.py --self-test",
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "static-gates",
+        "step": "FTL attribute requests"
       }
     },
     {
@@ -1458,7 +1513,8 @@
       "_note": "Added 2026-10-04. `name: row.get(3)?` couples a mapper to its SQL by POSITION and nothing in Rust checks that coupling: reorder the projection, insert a column, or copy a mapper onto a new struct and the fields silently take each other's values -- every one present, correctly typed, and wrong. Not hypothetical: run_list_credit_sales (crates/kasirmu-bridge/src/settings/core.rs) reads index 1, `p.gateway_reference`, into `customer_name`, the field the retail credit list renders in a Customer column (ui/src/features/retail/RetailModals.tsx), so an operator reads a payment reference where the buyer's name belongs. It survived because the pin covering that type builds the DTO from hand-written literals -- a wire-shape pin that never runs a query, so it cannot see the mapping. The checker pairs each mapper block with the statement feeding it and compares the Nth column against the field name. ONE mismatch is acknowledged and reported each run without failing it: choosing which column a customer name should come from is a product ruling, not a repair, and the record is docs/records/JOURNAL.md (2026-10-04, a3c871787). The suppression is keyed by (file, field), so any OTHER mapper with the same defect still fails -- verified by re-running the checker against a copy of that mapper under a different path, where it reports and exits 1. Required rather than advisory so 0 findings is a baseline a flip can be measured from. Exits 2 on a refused --roots list, so a starved corpus never reads as a clean tree.",
       "runners": {
         "check.sh": [
-          "mapper alignment"
+          "mapper alignment",
+          "mapper alignment self-test"
         ]
       },
       "ci": {
@@ -1476,7 +1532,8 @@
       "_note": "Added 2026-10-05. The tablet command layer is a fork of the desktop one, so the per-attempt idempotency rules (COR-7) exist twice -- kasirmu-bridge/src/pos/checkout/replay.rs and apps/mobile-tauri/src/commands/pos/checkout.rs -- and the fork's own header says 'a second implementation of the SAME rules ... keep them in step'. Nothing checked that, and they drifted into a SECURITY defect: only the bridge refused a colon in the attempt id (validated_attempt_id), which is what stops a crafted `a:rekey:b` from composing a base key byte-identical to another attempt's re-key LOOKUP key and making the replay guard answer with a sale the basket never rang up (1596631d2). The trim half of the same contract stayed in step ONLY because `whitespace_only_attempt_id_is_unguarded_like_the_tablet` pinned it, so the failure mode is precisely a rule added to one fork without a cross-shell pin. The checker pins the CONTROL SET and not the bodies: the fork returns a different error type (AppError vs BridgeError) and legitimately diverges in behaviour, so a body diff would over-report, but a control present on one side only is always a regression. Exits 2 on a refused --root so a starved corpus never reads as a clean tree. NOT gating the tablet's missing re-key EPOCH counter: that is the Rekey-vs-refuse product ruling plus a missing port, not a control that can be required today.",
       "runners": {
         "check.sh": [
-          "replay fork"
+          "replay fork",
+          "replay fork self-test"
         ]
       },
       "ci": {
@@ -1484,6 +1541,25 @@
         "job": "static-gates",
         "steps": [
           "Replay fork control set"
+        ]
+      }
+    },
+    {
+      "id": "gate-roster-runners",
+      "label": "Gate roster runner claims",
+      "status": "required",
+      "_note": "Added 2026-10-05. scripts/gates.json records, per gate, which step in check.sh and which step in dev-ci.yml runs it, and NOTHING compared those claims, so they rot: the coverage-floors entry declared a CI step named 'Generate coverage report' that has never existed -- dev-ci.yml has carried 'Coverage report' since e44fed2b2 -- so an auditor reading the roster would conclude the gate has no CI runner when it does. This gate is the roster auditing itself. It matches decorated step names by PREFIX (check.sh spells some steps 'clippy workspace' and 'no-raw-params (ADR #7 Phase 4)'), does NOT treat a hyphen as a decorator (skill-drift-guard is a different step from skill-drift), downgrades a runner that runs INLINE rather than through step() to a note (five do: invoke-token-parity, no-hardcoded-money-format, skill-drift, a11y-advisory, audit) so a working gate is not reported broken, and honours a _runner_note (panic-inventory). Ships with --self-test, 10 cases, because a checker that cannot fail is worse than none -- and writing it DID find a real flaw in the first draft matcher, recorded in the script.",
+      "runners": {
+        "check.sh": [
+          "gate roster",
+          "gate roster self-test"
+        ]
+      },
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "static-gates",
+        "steps": [
+          "Gate roster runners"
         ]
       }
     },
@@ -1549,6 +1625,21 @@
         "job": "static-gates"
       },
       "_note": "Added 2026-10-03 (Phase 3 P3.4 of the modular-scaffolding plan, section 11.1). The plan's boundary rule for extraction has a number: crates/kasirmu-core must not grow as modules move out. Without a measured ceiling the extraction is reversible by accident -- new logic lands back in core and nothing notices, because a codebase that is 'smaller than yesterday' has no yesterday. scripts/verify-core-size.py counts NON-BLANK production lines under crates/kasirmu-core/src, excluding whole test files (*_tests.rs, tests.rs, any tests/ directory) and inline #[cfg(test)] mod blocks, with comments and string bodies masked first; scripts/core-size-baseline.json records the ceiling (36590 across 176 files). The checker FAILS when the count rises above the ceiling and reports the headroom when it falls, so LOWERING the ceiling is a deliberate edit in a commit that says why -- exactly how a retired namespace edge leaves scripts/namespace-governance-baseline.json. Mutation-proven: adding three production lines to crates/kasirmu-core/src/audit.rs fails with +3, removing them passes. The self-test is a separate step because verify-selftests-wired.py is what keeps that pairing true."
+    },
+    {
+      "id": "merged-lines",
+      "label": "Merged source lines",
+      "status": "required",
+      "runners": {
+        "check.sh": [
+          "merged lines",
+          "merged lines self-test"
+        ]
+      },
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "static-gates"
+      }
     }
   ]
 }

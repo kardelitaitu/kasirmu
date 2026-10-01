@@ -679,6 +679,40 @@ guard that keeps this table honest.
 > for whoever owns the deploy. It is also entangled with the gap AGENTS.md records: that
 > job omits `release-readiness` from its `needs`, so a re-armed push path would
 > auto-deploy without the updater-signing check having passed.
+>
+> > **WITHDRAWN 2026-10-01 — the `release-readiness` half of that finding is not a gap.**
+> > It was carried here from AGENTS.md, which records it as a code-level finding. The
+> > workflow now answers it directly, and the answer is a decision, not an oversight
+> > (`dev-ci.yml:1581-1601`, "Two jobs are left out of `needs` as decisions, not as
+> > oversights"):
+> >
+> >   * `release-readiness` proves the **desktop updater signing chain**; this job
+> >     consumes none of it. The deploy POSTs a commit sha to Northflank, which builds
+> >     `ops/docker/Dockerfile.unified` — a backend container carrying no installer, no
+> >     `latest.json` and no updater pubkey. That chain is already hard-gated where it
+> >     actually binds: `release.yml` runs the same `check-updater-compat.mjs` in
+> >     `release-validate`, which `release-build` needs and `release-publish` needs.
+> >     Adding the edge here would bind 100% of deploys to a check unrelated to the
+> >     artifact shipped — and the router forces `release=true` on every non-PR event,
+> > so the cost is total, not occasional.
+> >   * Its own failure surface argues the same way: an unstable rust-toolchain pin,
+> >     node 24 and a cold cargo build under the workflow-wide `RUSTFLAGS` could stop a
+> >     deploy of an artifact they cannot affect. Measured by the workflow's own
+> >     argument: the release router paths held 140 of 7,841 commits over 90 days
+> >     (1.79%), so the check would be paid on nearly every deploy to guard nearly
+> >     nothing.
+> >   * `ci-docs-drift` is omitted for a different reason: its `drift` step ends on
+> >     `[ "$status" = "PASS" ]`, so it is not advisory, and a docs-truthfulness
+> >     mismatch should not hold a production deploy hostage.
+> >
+> > **So the two jobs' absence from `needs` is settled, and the residual risk is named
+> > rather than hidden:** `main` is unprotected, so a red `release-readiness` or a red
+> > `ci-docs-drift` is still mergeable. Both fail visibly; neither fails the deploy.
+> > That is a protection question, not a missing edge — and the push path is already
+> > armed (`:6-7`), so this paragraph describes a live state, not a hypothetical.
+> >
+> > Re-derived against `dev-ci.yml` at commit-level read on 2026-10-01; the finding
+> > above is kept verbatim as the dated record it was.
 
 The mechanism below is real and is what `northflank-deploy` does when it runs: it
 triggers a Northflank API build of the exact commit (`POST

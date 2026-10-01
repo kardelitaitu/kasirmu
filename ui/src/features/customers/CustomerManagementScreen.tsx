@@ -108,6 +108,15 @@ export default function CustomerManagementScreen() {
   const [searchTotal, setSearchTotal] = useState<number | null>(null);
   const [searching, setSearching] = useState(false);
   const searchSeqRef = useRef(0);
+  // Same discipline, applied to the history dialog: openHistory sets
+  // historyTarget BEFORE its await, so opening customer A then B can leave
+  // A slower read landing last and showing A PURCHASE HISTORY under B name
+  // (the subtitle renders historyTarget.name). retryHistory adds a third
+  // overlap, since Retry is live while a read is in flight.
+  //
+  // Same class as StockTransfersScreen.openDetail (1b0f0fb3a) -- the
+  // discriminator is the record id, not the session token.
+  const historySeqRef = useRef(0);
   // R3: bounded list data path — the table renders one page of the loaded or
   // searched set through the shared policy, not the whole collection.
   const {
@@ -273,18 +282,25 @@ export default function CustomerManagementScreen() {
     setHistory(null);
     setHistoryError(false);
     setHistoryLoading(true);
+    const seq = ++historySeqRef.current;
+    const stale = () => historySeqRef.current !== seq;
     void getCustomerHistoryScoped(sessionToken, customer.id)
       .then((h) => {
+        if (stale()) return;
         setHistory(h);
         setHistoryLoading(false);
       })
       .catch(() => {
+        if (stale()) return;
         setHistoryError(true);
         setHistoryLoading(false);
       });
   }, [sessionToken]);
 
   const closeHistory = useCallback(() => {
+    // Retire anything still in flight, so a late answer cannot populate the
+    // dialog of a customer that has since been closed.
+    historySeqRef.current += 1;
     setHistoryTarget(null);
     setHistory(null);
     setHistoryError(false);
@@ -303,12 +319,16 @@ export default function CustomerManagementScreen() {
     setHistory(null);
     setHistoryError(false);
     setHistoryLoading(true);
+    const seq = ++historySeqRef.current;
+    const stale = () => historySeqRef.current !== seq;
     void getCustomerHistoryScoped(sessionToken, historyTarget.id)
       .then((h) => {
+        if (stale()) return;
         setHistory(h);
         setHistoryLoading(false);
       })
       .catch(() => {
+        if (stale()) return;
         setHistoryError(true);
         setHistoryLoading(false);
       });

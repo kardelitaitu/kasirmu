@@ -3,7 +3,7 @@ title: Your First Sale
 description: Ring up a sale end to end — even with no internet.
 category: gettingStarted
 order: 6
-updated: "2026-08-16"
+updated: "2026-10-01"
 ---
 
 ## Set up a workspace

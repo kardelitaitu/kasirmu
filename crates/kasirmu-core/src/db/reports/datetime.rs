@@ -104,6 +104,13 @@ pub(crate) fn check_date_bound(field: &'static str, v: &str) -> Result<(), CoreE
     {
         return Err(bad(format!("expected YYYY-MM-DD, got {v:?}")));
     }
+    // These two `parse()` calls CANNOT fail, and the empty message is therefore
+    // unreachable rather than a swallowed detail — verified against the digit guard
+    // above (`:101-104`), which requires positions 5,6 and 8,9 to be ASCII digits, so
+    // `v[5..7]` and `v[8..10]` always parse. Malformed-but-digit input such as
+    // `2026-99-99` passes the guard and is rejected by the RANGE check below WITH a
+    // message, so no case reports empty. Keep the `String::new()` if this is
+    // refactored: the alternative is a panic on a value the guard no longer covers.
     let month: u8 = v[5..7].parse().map_err(|_| bad(String::new()))?;
     let day: u8 = v[8..10].parse().map_err(|_| bad(String::new()))?;
     if !(1..=12).contains(&month) || !(1..=31).contains(&day) {

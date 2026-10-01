@@ -135,6 +135,20 @@ impl Store<'_> {
                     count.updated_at,
                 ],
             )?;
+            // Two properties of the statement above are load-bearing and were
+            // checked rather than assumed:
+            //
+            // `MAX(...) + 1` runs INSIDE the INSERT ... SELECT, in the same
+            // `BEGIN IMMEDIATE`, so there is no SELECT-then-INSERT window for two
+            // concurrent allocations to read the same maximum. Same shape as
+            // `fiscal::claim_statutory_number_for_sale`, which documents it as its
+            // whole concurrency contract.
+            //
+            // The `SUBSTR(count_number, 14)` offset is fixed-width because the
+            // PREFIX is (`'CNT-' || 8 digits || '-'`), not because the counter is:
+            // `printf('%03d', n)` is a MINIMUM width, so 1000 renders as `1000` and
+            // position 14 still lands on the first digit. Verified at 1, 999, 1000
+            // and 12345 -- the suffix reads back as the number at every width.
             if inserted != 1 {
                 return Err(CoreError::Internal(
                     "stock count number allocation inserted no row".into(),

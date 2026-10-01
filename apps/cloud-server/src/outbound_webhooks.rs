@@ -163,7 +163,28 @@ fn row_to_endpoint(
     created_at: String,
     updated_at: String,
 ) -> EndpointRow {
-    let events = serde_json::from_str(&events_json).unwrap_or_else(|_| vec![WILDCARD.to_string()]);
+    // A corrupt `events_json` must NOT become the WILDCARD. `endpoint_matches`
+    // (:147-151) reads `*` as "this endpoint subscribes to every event", so
+    // defaulting to it turns a data-integrity failure into the BROADEST possible
+    // subscription: a customer who deliberately subscribed to one action silently
+    // starts receiving every event, including ones from other domains.
+    //
+    // An empty list is the conservative direction — it delivers nothing, which is
+    // the failure the endpoint's owner can SEE and fix, rather than one they cannot.
+    // The write path already validates (`validate_events`, :126) and serialises with
+    // `?` (:194), so reaching this needs external tampering or a schema change, and
+    // the warn is what makes that visible instead of silently widening delivery.
+    let events = match serde_json::from_str::<Vec<String>>(&events_json) {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::warn!(
+                endpoint_id = %id,
+                error = %e,
+                "endpoint events_json is unreadable; subscribing to no events until it is repaired"
+            );
+            Vec::new()
+        }
+    };
     EndpointRow {
         id,
         tenant_id,

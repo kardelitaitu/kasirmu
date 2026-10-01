@@ -773,6 +773,15 @@ pub fn build_router(
         // ADR sync-auth-hardening P2: gate token minting with the admin key
         // when configured; open in dev mode when unset.
         admin_key: config.admin_key.clone(),
+        // `unwrap_or_default()` here yields "" only in NON-PRODUCTION, verified
+        // rather than assumed: `config::validate_production` (`config.rs:442`,
+        // called at `config.rs:238` while the config is built) refuses to load a
+        // production config whose `OZ_API_SECRET` is unset or empty, and the
+        // loader filters an empty env var to `None` first (`config.rs:215-217`),
+        // so it cannot pass as a non-empty secret. `kasirmu-api`'s standalone
+        // `serve()` has the mirror-image guard (`kasirmu-api/src/lib.rs:430`,
+        // API-1). An empty secret therefore never reaches a production router;
+        // in dev it is the intended no-JWT-signing mode.
         api_secret: config.api_secret.clone().unwrap_or_default(),
         allow_terminal_credentials: true,
         db_path: config.db_path.clone(),

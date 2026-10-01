@@ -14,6 +14,9 @@ next: none for PAY-2/PAY-3/PAY-4 (all closed above; see PAY-C). Genuinely open i
 // an item that does not exist still fails the build. Precedent:
 // `kasirmu-crypto/src/lib.rs`, `platform/core/src/lib.rs`.
 #![allow(rustdoc::private_intra_doc_links)]
+// `async_trait` generates Box<dyn Future> decorated with #[must_use] on methods
+// whose signatures already return Result, triggering Clippy's double_must_use lint.
+#![allow(clippy::double_must_use)]
 
 //! Payment processor abstraction for kasir.mu.
 //!

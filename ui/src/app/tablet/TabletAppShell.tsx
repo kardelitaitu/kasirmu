@@ -243,25 +243,31 @@ export default function TabletAppShell() {
 
   // ── Hash-based routing, mirroring AppShell.tsx:350-395 ────────────────
   //
-  // MEASURED DEFECT (fixed 2026-09-30). The provisioning flow's "Set up with a
-  // phone instead" button does `window.location.hash = '#/mobile-setup'`. On the
-  // DESKTOP shell that worked, because AppShell listens for hashchange and maps
-  // #/route onto the page registry. The TABLET shell had no such listener: it
-  // kept currentRoute at 'pos' and re-rendered the same provisioning form, so
-  // the button was a dead end for exactly the device it was written for — the
-  // merchant pressed it and nothing happened, forever.
+  // MEASURED DEFECT (fixed 2026-09-30, generalised 2026-10-01). This shell had
+  // no hashchange listener at all: a hash deep link changed the URL and
+  // rendered nothing, while the DESKTOP shell mapped #/route onto the page
+  // registry. The gap was first noticed through the provisioning flow's
+  // "Set up with a phone instead" button, which navigated to a mobile-setup
+  // wizard that has since been retired outright — the provisioning flow above
+  // IS the setup wizard, on every surface. The listener stays: it is this
+  // shell's only hash routing, and e2e deep links depend on it.
   //
-  // The e2e that pins it is mobile-setup-wizard.spec.ts ('unprovisioned tablet
-  // shell can navigate directly to mobile-setup wizard'). It had been failing
-  // since 43689705f introduced the button; the suite is not run on this
-  // project's normal gate, so it went unnoticed.
-  //
-  // The hash is read on mount as well as on change so a #/mobile-setup
+  // The hash is read on mount as well as on change so a #/route
   // deep link / reload works, not only a live click.
   useEffect(() => {
     const syncFromHash = () => {
       const raw = window.location.hash.replace(/^#\/?/, '').split('?')[0];
-      if (!raw) return;
+      if (!raw) {
+        // Mirror AppShell.tsx:357-364: a CLEARED hash means "leave whatever
+        // fullscreen page the hash put us on". This copy returned early
+        // instead, so the only way out of a fullscreen page was forward —
+        // clearing the hash did nothing and currentRoute stayed put. 'pos' is
+        // this shell's default (the same value onProvisioned resets to), and
+        // while the device is still unprovisioned the !hasCompletedSetup gate
+        // below re-renders ProvisioningFlow regardless of the route.
+        setCurrentRoute('pos');
+        return;
+      }
       if (getPage(raw)) setCurrentRoute(raw);
     };
     syncFromHash();

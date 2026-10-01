@@ -26,6 +26,39 @@ fn expired_ticket_is_rejected() {
     assert_eq!(verify_picker_ticket(&secret(), &sig, 1_800_000_301), None);
 }
 
+/// `now_ts = 0` accepts EVERY ticket, expired or not — the hazard callers must
+/// never create.
+///
+/// The expiry test is `expiry_ts < now_ts`, so a pre-epoch clock satisfies it for
+/// any ticket ever minted. That is not a bug in this function — it takes the clock
+/// as a parameter and documents the requirement — but it IS the reason
+/// `now_ts` must never be defaulted upstream.
+///
+/// `auth.rs` read the clock with `.unwrap_or_default()` in exactly this position,
+/// which produced 0 on a pre-epoch clock: an expired picker ticket would verify and
+/// the caller would mint a session from it. That now goes through a fail-closed
+/// helper, and THIS test is the pin on why it must.
+///
+/// It is written to be the discriminating one: it fails if anyone makes the
+/// zero-clock case look safe by changing the comparison, which would silently move
+/// the hazard instead of removing it. VERIFIED: guarding the comparison with
+/// `|| now_ts == 0` makes this test fail (left `None`, right `Some(user-owner)`).
+#[test]
+fn a_zero_clock_makes_every_ticket_verify_including_expired_ones() {
+    // Expired at a real time: the ordinary test above rejects this at t+301.
+    let sig = sign_picker_ticket(&secret(), "user-owner", 1_800_000_000);
+    assert_eq!(
+        verify_picker_ticket(&secret(), &sig, 1_800_000_301),
+        None,
+        "control: this ticket IS expired at a real clock"
+    );
+    assert_eq!(
+        verify_picker_ticket(&secret(), &sig, 0).as_deref(),
+        Some("user-owner"),
+        "a zero clock accepts the same expired ticket -- which is why no caller may pass 0"
+    );
+}
+
 #[test]
 fn forged_ticket_is_rejected() {
     // Signed with a different secret — must not verify.

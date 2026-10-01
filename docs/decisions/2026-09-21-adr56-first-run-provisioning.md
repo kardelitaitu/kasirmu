@@ -1030,4 +1030,35 @@ question, so `terminal_id` must be resolvable **before** the gate renders — i.
 (ADR #54 §1.4). If it is not resolvable, the shell must fall to `Unprovisioned` rather than guess,
 matching §2.1's fail-closed direction.
 
+## Amendment 2026-10-04 — an id whose uniqueness cannot be computed is not unique
+
+`new_id` (`crates/kasirmu-core/src/db/provisioning.rs`) mints the location id this section's shape
+describes, and its doc makes a specific promise: *"two devices provisioning against one store DB
+cannot collide"*. The id is `loc-{nanos:032x}{seq:04x}` — a clock reading plus a per-process
+counter.
+
+**That promise rests entirely on the clock field.** Two processes each start `COUNTER` at 0, so
+their first ids differ only by `nanos`. The code read it with `.map_or(0, |d| d.as_nanos())`, which
+under a pre-epoch clock made `nanos = 0` on **both** devices and produced the collision the doc
+promises cannot happen. This is the fail-open shape this campaign has found repeatedly, but with an
+extra edge: the code and its own contract disagreed, so a reader auditing against the doc would have
+concluded the guarantee held.
+
+**Fixed.** The failing branch falls back to an OS-seeded value from `RandomState` — the one entropy
+source already in scope through `std`, so a path that should never run adds no dependency — widened
+to `u128` to match `as_nanos()` so the `{nanos:032x}` field keeps its width and every id stays the
+same shape.
+
+**The pin does not depend on the branch being reachable**, which matters because the clock cannot be
+moved from a test. `the_clock_failure_fallback_is_not_a_constant` asserts the fallback differs
+between calls and renders to the full 32-hex width; a constant restores the exact collision whether
+or not the clock ever fails. Verified by returning `0`: the test fails (`left: 0, right: 0`).
+
+**Related, and deliberately NOT changed.** `.unwrap_or_default()` on the clock in
+`export/cloud_destination.rs:759` is the fail-CLOSED shape: a pre-epoch clock stamps `iat = 0` and
+`exp = 3600` on the GCP OAuth assertion, a window that closed in 1970, so Google refuses it and the
+export fails visibly. Unlike the session and picker-ticket defaults fixed in `8df4ceae1` and
+`b229f41c7`, no local check consumes that value — the only reader is Google — so the cost is a wrong
+`iat` in a diagnostic rather than an authorisation decision.
+
 > last audited 29-09-26 by docs-auditor

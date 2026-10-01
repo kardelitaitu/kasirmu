@@ -503,6 +503,14 @@ fn earn_basis_falls_back_to_the_sale_total_without_the_snapshot() {
 /// WHAT THE SERVER DOES NOT DO, pinned so the trust gap is an executable
 /// statement rather than a comment. `base_total_minor` is written by the client
 /// (pos/checkout.rs:427) and no server read re-derives it, so the row is BELIEVED.
+///
+/// This is a KNOWN, TRACKED item rather than a live surprise. The review checklist
+/// records it verbatim under C15, in its "What is NOT covered" clause:
+/// `base_total_minor` -- the loyalty earn basis -- remains client-supplied with no
+/// server re-derivation; the review lists that in 9.2 and it was not addressed here.
+/// So the gap is deliberate and owned, and this test is the executable form of that
+/// sentence rather than a fresh report of it.
+///
 /// This is the test to delete when the value is bounded or re-derived: while it
 /// stands, it is the executable record that an implausible claim is honoured.
 #[test]

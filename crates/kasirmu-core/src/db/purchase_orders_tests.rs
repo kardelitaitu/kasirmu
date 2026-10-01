@@ -1211,3 +1211,79 @@ fn receive_refuses_a_receipt_whose_sum_would_overflow() {
     assert_eq!(after.lines[0].received_qty, 0, "no partial write");
     assert_eq!(after.lines[0].damaged_qty, 0, "no partial write");
 }
+
+/// A purchase order must be receivable ONCE, and this pins the SEQUENTIAL case.
+///
+/// WHAT IS GUARDED, verified rather than assumed:
+///
+///   * Sequential. Both doors re-read the sale through `get_purchase_order` and
+///     refuse anything whose status is not `approved` (purchase_orders.rs:383,
+///     :465), so a second receive is refused and stock does not move twice. This
+///     test is that guarantee.
+///   * Concurrent. The status UPDATE is UNGUARDED (`WHERE id = ?3`, no
+///     `AND status = 'approved'`, :402 and :480) and `unchecked_transaction()` is
+///     DEFERRED, so the transaction takes its write lock only at that UPDATE --
+///     after the guard read. That would allow a double receive across two
+///     connections.
+///
+/// The concurrent half is NOT reachable through the only caller:
+/// `purchasing::receive_purchase_order` holds `ctx.lock_global()` (a
+/// `MutexGuard` over the shared connection, ctx.rs:602) across the whole call, so
+/// both doors serialize inside one process. The unguarded UPDATE is therefore a
+/// latent weakness, not a live defect, and it is left in place deliberately: adding
+/// `AND status = 'approved'` would be the defence-in-depth fix if the bridge ever
+/// stopped holding the lock.
+///
+/// What is pinned here is the half a regression COULD break: if a future change
+/// moved the guard after the write, or relaxed it to a warning, stock would be
+/// credited twice on a sequential re-receive and every other receive test would
+/// still pass.
+#[test]
+fn receiving_an_already_received_purchase_order_is_refused() {
+    let conn = fresh();
+    seed_supplier(&conn);
+    seed_product(&conn);
+
+    let lines = vec![CreatePoLineInput {
+        sku: "SKU-001".into(),
+        product_name: "Widget".into(),
+        qty: 5,
+        unit_cost_minor: 1000,
+    }];
+    let po = store(&conn)
+        .create_purchase_order("PO-TWICE", "sup-po", "", "", None, &lines)
+        .unwrap();
+    store(&conn)
+        .update_po_status(&po.order.id, "approved")
+        .unwrap();
+
+    store(&conn).receive_purchase_order(&po.order.id).unwrap();
+    let after_first: i64 = conn
+        .query_row(
+            "SELECT qty FROM inventory WHERE product_id='prod-po'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        after_first, 15,
+        "one receive credits the ordered quantity once"
+    );
+
+    let second = store(&conn).receive_purchase_order(&po.order.id);
+    let after_second: i64 = conn
+        .query_row(
+            "SELECT qty FROM inventory WHERE product_id='prod-po'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert!(
+        second.is_err(),
+        "an already-received order must refuse: got {second:?}"
+    );
+    assert_eq!(
+        after_second, 15,
+        "a refused second receive must not move stock again"
+    );
+}

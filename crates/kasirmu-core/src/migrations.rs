@@ -498,6 +498,30 @@ pub fn run(conn: &mut rusqlite::Connection) -> Result<(), crate::CoreError> {
 /// see an UNPROVISIONED database, and seeding here by default would
 /// re-introduce the fiction §2.6 removed.
 #[doc(hidden)]
+/// Seed the rows a PROVISIONED store has: a location, a legal entity, the standard
+/// workspace instances and a free tenant subscription.
+///
+/// # CALL THIS INSTEAD OF WRITING THE INSERTS A SECOND TIME
+///
+/// Two attempts to hand-write these rows (in `tests/payment_failure_integration.rs`,
+/// 2026-10-01) both died on constraints - first `NOT NULL: workspace_instances.description`,
+/// then `FOREIGN KEY constraint failed` - because the SQL was written against
+/// `20260813_init.sql`, whose `workspace_instances` still declares `store_id`.
+///
+/// **The init SQL is the PRE-migration shape.** `20260906_rename_store_to_location.sql:18`
+/// does `ALTER TABLE workspace_instances RENAME COLUMN store_id TO location_id`, so the
+/// schema actually applied has `location_id` - which is what this seed correctly uses.
+/// Reading init.sql and stopping is what sends an author wrong; it is the FIRST migration,
+/// not the current one.
+///
+/// # AND NOTE THE IDS
+///
+/// The workspaces this seeds are `default-store-pos`, `default-restaurant-pos`,
+/// `default-warehouse`, `default-admin`, `default-kds` - never a bare `default`. Callers
+/// that resolve a primary location through `sales_checkout.rs` (which defaults its
+/// `workspace_instance_id` to the literal `"default"`) still need to bind one of these
+/// under that id; see the re-key in `tests/payment_failure_integration.rs`. Seeding is
+/// necessary, and on its own not sufficient, for that path.
 pub fn seed_provisioned_baseline(conn: &rusqlite::Connection) {
     conn.execute_batch(
         "INSERT INTO locations (id, name, is_primary) VALUES ('default', 'Default Store', 1);

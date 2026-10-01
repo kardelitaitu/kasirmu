@@ -117,9 +117,24 @@ impl<'a> InventoryRepository<'a> {
             rack_location: row.get(15).unwrap_or(None),
             notes: row.get(16).unwrap_or(None),
             unit: row.get(17).unwrap_or(None),
+            // `image_hash` is index 21, NOT 20: the SELECT puts `popularity_score`
+            // at 20 and `image_hash` LAST. The pre-fix `row.get(20)` therefore read
+            // the popularity score into this field and never touched the real
+            // column.
+            //
+            // MEASURED, and it corrected the reporter's first reading: because the
+            // score is REAL and the target is `Option<String>`, that read FAILS and
+            // `.unwrap_or(None)` swallows it, so the field came back `None` (verified
+            // RED: left `None`, right `Some("deadbeef")`) rather than carrying the
+            // score. Both are wrong answers delivered silently; the exact flavour is
+            // None here because of the type mismatch.
+            //
+            // Nothing caught it: the mapper is positional, and every fixture in
+            // repository_tests.rs leaves BOTH columns unset, so the correct and
+            // incorrect indices returned the same None.
             is_active: row.get::<_, i64>(18).unwrap_or(1) != 0,
             default_supplier_id: row.get(19).unwrap_or(None),
-            image_hash: row.get(20).unwrap_or(None),
+            image_hash: row.get(21).unwrap_or(None),
         })
     }
 

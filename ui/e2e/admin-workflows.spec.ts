@@ -117,22 +117,42 @@ test.describe('Admin Settings Screens', () => {
   // only appearance control still reachable inside the settings hub is the
   // footer theme toggle, which this test now exercises.
 
-  test('appearance control (theme toggle) renders in the hub', async ({ page }) => {
+  test('appearance control (theme toggle) renders AND switches the theme', async ({ page }) => {
     // The Appearance page is GONE (see the block comment above). The one
     // appearance control still reachable inside the hub is the footer theme
     // toggle, which carries a theme-derived accessible name.
     //
-    // Deliberately NOT clicking it: on the tablet project a stacked
-    // .memo-banner (position: fixed, z-index 300 — MemoBanner.css:55-58)
-    // genuinely overlaps the footer toggle's box (measured: 37x23px
-    // overlap, banner y=1338 vs toggle y=1322) and Playwright refuses the
-    // click as intercepted. That is an app-level overlay collision, out of
-    // this spec's fence — reported rather than papered over. The original
-    // test only asserted the appearance surface RENDERS, so that is what
-    // this asserts.
+    // RESTORED to a real click, 2026-10-01. This test used to assert only that
+    // the control RENDERS, with a comment explaining why: a stacked
+    // .memo-banner (position: fixed, MemoBanner.css:55-58) genuinely overlapped
+    // the footer toggle's box on the tablet project (measured 37x23px, banner
+    // y=1338 vs toggle y=1322) and Playwright refused the click as intercepted.
+    // That collision is GONE — SettingsPage.css:403's
+    // `body:has(.settings-footer) { --memo-bottom-inset: calc(2.75rem +
+    // var(--space-6)) }` now clears the stack above the footer, and the same
+    // run that retired the note measured the toggle clickable in 42ms with the
+    // theme flipping dark -> light.
+    //
+    // So the old comment had become a FALSE CLAIM about the present: it taught
+    // that this control could not be operated, which is no longer true, and it
+    // held the test below the thing it exists to prove. A control that RENDERS
+    // and is unreachable is a defect; one that renders and works is the feature,
+    // and only the second is worth a test.
     const toggle = page.locator('.settings-footer-theme-toggle');
     await expect(toggle).toBeVisible({ timeout: SCREEN_TIMEOUT });
     await expect(toggle).toHaveAttribute('aria-label', /switch to (light|dark) mode/i);
+
+    const readTheme = () =>
+      page.evaluate(() => document.documentElement.dataset['theme'] ?? document.documentElement.className);
+    const before = await readTheme();
+
+    await toggle.click({ timeout: 5_000 });
+
+    // The theme actually moved. A click that Playwright accepted but the app
+    // ignored would pass a render-only assertion, which is the whole point.
+    await expect
+      .poll(async () => readTheme(), { timeout: 5_000 })
+      .not.toBe(before);
   });
 
   // ── Receipt ───────────────────────────────────────────────

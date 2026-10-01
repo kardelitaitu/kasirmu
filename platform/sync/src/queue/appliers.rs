@@ -68,7 +68,24 @@ pub(super) struct SalePayload {
 #[derive(Deserialize)]
 pub(super) struct SaleLinePayload {
     pub(super) sku: String,
-    #[serde(default)]
+    /// REQUIRED, deliberately without `#[serde(default)]`.
+    ///
+    /// With a default, a `complete_sale` payload whose line omits `qty`
+    /// deserialized to `qty = 0`, and the arm then called
+    /// `adjust_stock_in_tx(tx, sku, -0)` — which passes every check in that
+    /// function (`new_qty == previous_qty`, still `>= 0`) and writes a
+    /// `stock_movements` row with `delta = 0`. The line deducted NOTHING while
+    /// the item was receipted as applied, so the missing deduction never
+    /// retried: silent stock inflation on every replicated sale that lost the
+    /// key. Verified against `products_stock_query.rs:458-466` (the
+    /// non-negative check cannot see a zero delta) rather than inferred.
+    ///
+    /// Absent `qty` is a malformed payload, not a zero-quantity line, so it must
+    /// fail deserialization and dead-letter for an operator — the same
+    /// fail-closed direction `price_minor`'s `-1` sentinel takes in the live
+    /// `product.created` arm. A genuinely zero-quantity line is not a thing the
+    /// producer emits; if it ever becomes one, it needs its own explicit
+    /// handling rather than a default that hides a lost key.
     pub(super) qty: i64,
 }
 

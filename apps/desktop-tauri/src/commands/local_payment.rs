@@ -2,11 +2,30 @@
 //! queue #6) — the market rail surface, entity → location.
 //!
 //! Wire contract: the core `EffectivePaymentRail` model is returned as-is
-//! (camelCase serde — the shape the dev-mock and the card mirror). The
-//! module never touches entitlements or `payment_gateways`: which rails a
-//! market/site offers is a MARKET fact; `supports_qris` is a TIER answer
-//! (license layer) and gateway credentials live in `payment_gateways`. The
-//! write path rejects credential-shaped parameter keys outright.
+//! (camelCase serde — the shape the dev-mock and the card mirror).
+//!
+//! TWO AXES LIVE HERE NOW, and they must not be conflated (corrected
+//! 2026-10-01). This doc previously said the module "never touches
+//! `payment_gateways`" and that "the write path rejects credential-shaped
+//! parameter keys outright". BOTH were true when written and are FALSE of this
+//! file since `a5212ca5f` added the four `payment_gateways` commands here. The
+//! claim was security-shaped, so leaving it would have told the next reader that
+//! credentials cannot cross this module — they do, by design, on one axis:
+//!
+//!   * MARKET RAIL (`*_payment_methods*`): which rails a market/site offers is a
+//!     MARKET fact and `supports_qris` is a TIER answer (license layer). The write
+//!     path really does reject credential-shaped parameter keys outright, because
+//!     a rail carries no secrets.
+//!   * GATEWAY CREDENTIALS (`*_payment_gateway*`): the opposite by purpose. The
+//!     write path takes a `config_json` that CONTAINS plaintext credentials and
+//!     core encrypts it at rest under a domain-separated key
+//!     (`kasirmu-crypto`, `PAYMENT_GATEWAY_AT_REST_DOMAIN`). Core validates only
+//!     that the value is a JSON object — it is not a scrubber, and must not be read
+//!     as one.
+//!
+//! So a credential reaching this module is EXPECTED on the gateway axis and a
+//! DEFECT on the rail axis. What is not expected is the two being documented as
+//! one thing.
 //!
 //! Read: `settings:read` (any operator can see the rail surface).
 //! Write: `settings:edit` + the ADR #47 location-resource gate — the
@@ -74,6 +93,67 @@ pub async fn set_local_payment_methods_scoped(
         &ctx,
         &location_id,
         rails,
+        &session_token,
+    )
+    .await
+    .map_err(Into::into)
+}
+
+pub use kasirmu_bridge::local_payment::{PaymentGatewayConfig, SetPaymentGatewayArgs};
+
+/// Read a single payment gateway configuration for the session's store.
+#[tauri::command]
+pub async fn get_payment_gateway_config_scoped(
+    gateway_name: String,
+    session_token: String,
+    state: State<'_, AppState>,
+) -> Result<Option<PaymentGatewayConfig>, AppError> {
+    let ctx = state.bridge_ctx();
+    kasirmu_bridge::local_payment::get_payment_gateway_config_scoped(
+        &ctx,
+        &gateway_name,
+        &session_token,
+    )
+    .await
+    .map_err(Into::into)
+}
+
+/// List all payment gateway configurations for the session's store.
+#[tauri::command]
+pub async fn list_payment_gateways_scoped(
+    session_token: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<PaymentGatewayConfig>, AppError> {
+    let ctx = state.bridge_ctx();
+    kasirmu_bridge::local_payment::list_payment_gateways_scoped(&ctx, &session_token)
+        .await
+        .map_err(Into::into)
+}
+
+/// Upsert a payment gateway configuration for the session's store.
+#[tauri::command]
+pub async fn set_payment_gateway_config_scoped(
+    args: SetPaymentGatewayArgs,
+    session_token: String,
+    state: State<'_, AppState>,
+) -> Result<PaymentGatewayConfig, AppError> {
+    let ctx = state.bridge_ctx();
+    kasirmu_bridge::local_payment::set_payment_gateway_config_scoped(&ctx, args, &session_token)
+        .await
+        .map_err(Into::into)
+}
+
+/// Delete a payment gateway configuration for the session's store.
+#[tauri::command]
+pub async fn delete_payment_gateway_scoped(
+    gateway_name: String,
+    session_token: String,
+    state: State<'_, AppState>,
+) -> Result<bool, AppError> {
+    let ctx = state.bridge_ctx();
+    kasirmu_bridge::local_payment::delete_payment_gateway_scoped(
+        &ctx,
+        &gateway_name,
         &session_token,
     )
     .await

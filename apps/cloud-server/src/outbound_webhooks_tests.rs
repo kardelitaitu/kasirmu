@@ -11,6 +11,63 @@ fn fresh_db() -> rusqlite::Connection {
     kasirmu_core::migrations::fresh_db()
 }
 
+/// A corrupt `events_json` must NOT widen the endpoint's subscription.
+///
+/// `row_to_endpoint` used `.unwrap_or_else(|_| vec![WILDCARD.to_string()])`, and
+/// `endpoint_matches` reads `*` as "subscribes to every event" — so a
+/// data-integrity failure silently turned a customer who deliberately subscribed
+/// to ONE action into a subscriber of every event, including ones from other
+/// domains. That is the same fail-blind shape as the location and clock defects,
+/// with the sign flipped: the fallback is the BROADEST value instead of the
+/// narrowest.
+///
+/// The pair of assertions matters. The first says an unreadable list matches
+/// nothing; the second says a genuine wildcard still matches everything, so the
+/// fix cannot be satisfied by breaking the wildcard feature itself. Without the
+/// second, deleting WILDCARD support entirely would pass.
+#[test]
+fn a_corrupt_events_json_does_not_subscribe_the_endpoint_to_everything() {
+    let corrupt = row_to_endpoint(
+        "ep-1".into(),
+        "tenant-1".into(),
+        "https://example.test/hooks".into(),
+        "secret".into(),
+        "{ this is not json".into(),
+        1,
+        "2026-01-01T00:00:00Z".into(),
+        "2026-01-01T00:00:00Z".into(),
+    );
+    assert!(
+        corrupt.events.is_empty(),
+        "an unreadable events list must subscribe to nothing, got {:?}",
+        corrupt.events
+    );
+    assert!(
+        !endpoint_matches(&corrupt, "sale.completed"),
+        "a corrupt row must not receive events"
+    );
+    assert!(
+        !endpoint_matches(&corrupt, "*"),
+        "a corrupt row must not match the wildcard either"
+    );
+
+    // The positive half: a real wildcard row is unaffected and still matches all.
+    let wildcard = row_to_endpoint(
+        "ep-2".into(),
+        "tenant-1".into(),
+        "https://example.test/hooks2".into(),
+        "secret".into(),
+        "[\"*\"]".into(),
+        1,
+        "2026-01-01T00:00:00Z".into(),
+        "2026-01-01T00:00:00Z".into(),
+    );
+    assert!(
+        endpoint_matches(&wildcard, "sale.completed"),
+        "a genuine wildcard subscription must keep matching every event"
+    );
+}
+
 // ── Validation ──────────────────────────────────────────────────────
 
 #[test]

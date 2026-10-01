@@ -77,6 +77,11 @@ impl Store<'_> {
     /// If the refcount reaches zero the row is kept for the grace window
     /// (cloud GC sweeps refcount=0 rows older than the configured grace).
     /// Returns the number of rows affected (0 means the pair did not exist).
+    ///
+    /// The decrement is the literal `1`, not a caller-supplied amount, so the
+    /// negative-input class that `MAX(total_spent_minor - ?1, 0)` was vulnerable
+    /// to (`e29c7b050`) cannot reach this clamp: there is no parameter to make
+    /// negative.
     pub fn unref_image(&self, tenant_id: &str, hash: &str) -> Result<usize, CoreError> {
         let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
         let affected = self.conn.execute(

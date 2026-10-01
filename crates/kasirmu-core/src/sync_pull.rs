@@ -105,10 +105,19 @@ pub(crate) struct SnapshotTaxRate {
     /// Rate in basis points (1 bps = 0.01 %).
     rate_bps: i64,
     /// Whether this is the default tax rate for the store.
-    #[serde(default)]
+    ///
+    /// REQUIRED, like `is_inclusive` below. Both mirrors of this wire struct —
+    /// this one and `platform_sync::transport::SnapshotTaxRate` — carried
+    /// `#[serde(default)]` on these two fields, so they agreed column-for-column
+    /// on a default that is wrong. Keeping them in lockstep meant changing BOTH;
+    /// the contract was satisfied, the value was not.
+    /// Both columns exist in the BASELINE schema (`20260813_init.sql:885,888`), so
+    /// the back-compat ruling that justifies the four scope/window fields below
+    /// does not reach them — no server version could omit them. Defaulting to
+    /// `false` is a MONEY bug rather than an absence: `is_inclusive = false` means
+    /// "tax added on top", and the upsert overwrites the stored value with it.
     is_default: bool,
-    /// Whether tax is included in the displayed price.
-    #[serde(default)]
+    /// Whether tax is included in the displayed price. Required — see `is_default`.
     is_inclusive: bool,
     /// ISO-8601 creation timestamp.
     created_at: Option<String>,

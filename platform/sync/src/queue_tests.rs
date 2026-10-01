@@ -521,6 +521,48 @@ fn apply_remote_atomic_transient_failure_burns_the_retry_budget() {
     assert!(!queue.apply_remote_atomic(&store, &remote).unwrap());
 }
 
+/// A `complete_sale` line that omits `qty` must FAIL, not deduct zero.
+///
+/// `SaleLinePayload` carried `#[serde(default)]` on `qty`, so an omitted key
+/// deserialized to 0 and the arm called `adjust_stock_in_tx(tx, sku, -0)`. That
+/// passes every check inside `adjust_stock_in_tx` (`new_qty == previous_qty`,
+/// still `>= 0`) and writes a `stock_movements` row with `delta = 0`, so the
+/// line deducted NOTHING while the item was receipted as applied — the missing
+/// deduction never retried. Silent stock inflation, on the live arm.
+///
+/// The producer cannot omit the key: the payload is built as
+/// `line_items: event.line_items` (`platform/startup/src/event_handlers.rs:61`)
+/// from `SaleCompletedLine`, whose `qty` has no `#[serde(default)]`
+/// (`foundation/src/events.rs:35`). So the default only ever masked a WIRE-SHAPE
+/// DRIFT, and rejecting it cannot refuse a payload the producer emits.
+///
+/// The assertion is on STOCK, not on the error alone: the defect's signature is a
+/// wrong quantity, not a missed error.
+#[test]
+fn a_complete_sale_line_without_qty_does_not_silently_deduct_zero() {
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
+    seed_product_and_inventory(&store);
+    let queue = SyncQueue::new();
+    let remote = OfflineQueueItem {
+        id: "remote-sale-no-qty".into(),
+        action: "complete_sale".into(),
+        payload: r#"{"line_items":[{"sku":"COFFEE"}]}"#.into(),
+        ..OfflineQueueItem::new("complete_sale", "{}")
+    };
+
+    let result = queue.apply_remote_atomic(&store, &remote);
+    assert!(
+        result.is_err(),
+        "a line with no qty is a malformed payload, not a zero-quantity line"
+    );
+    assert_eq!(
+        inventory_qty(&store, "COFFEE"),
+        50,
+        "nothing may be deducted, and no zero-delta movement may be recorded"
+    );
+}
+
 #[test]
 fn apply_remote_atomic_clears_stale_failure_after_success() {
     let store_conn = migrations::fresh_db();

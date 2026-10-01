@@ -6,6 +6,7 @@ import {
   createContext,
   useContext,
   useEffect,
+  useRef,
   useState,
   useCallback,
   type ReactNode,
@@ -49,18 +50,38 @@ export function BrandProvider({ children }: BrandProviderProps) {
   const [settings, setSettings] = useState<BrandSettings>(DEFAULT_SETTINGS);
   const [loading, setLoading] = useState(true);
 
+  // A monotonic token, so only the LATEST refresh may write -- the same shape
+  // CurrencyContext.refresh (51c86e9e8) and SettingsContext (09ac4df43) needed.
+  //
+  // Reachable here, unlike SubscriptionContext.refresh: `refreshBrandSettings` is
+  // public and has eight call sites, including one in `useSettingsSave` after every
+  // save and three in AppearanceSettings (logo, colour, store name). Two saves in
+  // quick succession start overlapping reads, and a slower earlier one would
+  // overwrite the newer brand -- which is white-label identity: the store name
+  // printed on receipts and the accent colour used across the UI.
+  const refreshSeq = useRef(0);
+
   const refreshBrandSettings = useCallback(() => {
+    const seq = ++refreshSeq.current;
+    const stale = () => refreshSeq.current !== seq;
     setLoading(true);
     getBrandSettings()
       .then((s) => {
+        if (stale()) return;
         setSettings(s);
         setLoading(false);
       })
       .catch(() => {
+        // A superseded load must not clear the CURRENT load's spinner either.
+        if (stale()) return;
         setLoading(false);
         /* keep current settings on error */
       });
   }, []);
+
+  // Unmounting retires any read still in flight, so it cannot write after the
+  // provider goes away.
+  useEffect(() => () => { refreshSeq.current += 1; }, []);
 
   // Load on first mount.
   useEffect(() => {

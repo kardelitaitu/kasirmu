@@ -404,8 +404,10 @@ def hook_step_orphans(gates: list[dict]) -> list[str]:
                 for lb in items:
                     reachable |= label_scripts.get(str(lb), set())
         # A gate may also name its tooling directly; honour that if it ever does.
+        # Prose in notes/descriptions must not be mistaken for a tooling reference.
+        tooling_fields = {k: v for k, v in g.items() if k not in ("_note", "note", "description")}
         reachable |= set(re.findall(
-            r"([A-Za-z0-9_.-]+\.(?:py|sh|mjs))", json.dumps(g)))
+            r"([A-Za-z0-9_.-]+\.(?:py|sh|mjs))", json.dumps(tooling_fields)))
 
     orphans: list[str] = []
     headers = re.findall(r"^# ── (.+?) ─", hook, re.M)

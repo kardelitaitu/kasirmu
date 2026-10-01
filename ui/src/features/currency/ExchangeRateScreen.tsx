@@ -122,15 +122,57 @@ export default function ExchangeRateScreen() {
 
   useEffect(() => { load(); }, [load]);
 
+  // Same LOAD-07 request-generation guard the load() above already carries, for
+  // the same reason. Deps name sessionToken, so a store switch starts a second
+  // read while the first is in flight and a slower earlier one can land last.
+  //
+  // What makes it worth guarding rather than a label: the switch is the visible
+  // state of the RATE-SYNC DAEMON, and this file already refuses to lie about that
+  // daemon. The catch arm of toggleAutoSync (:152) rolls the toggle back because
+  // "an optimistic toggle that stays flipped lies about the daemon's actual state"
+  // -- a stale read here does the same lie from the other direction, showing a
+  // daemon state that belongs to the previous store, with no error to hint at it.
+  //
+  // Rates themselves are NOT at risk: listExchangeRatesScoped feeds only the rate
+  // table, and conversions read the stored rate rather than this boolean.
+  // UNPINNED, AND THE REASON IS RECORDED RATHER THAN LEFT AS A PUZZLE.
+  //
+  // Three attempts to pin this by mutation all SURVIVED (removing the line below and
+  // re-running ExchangeRateScreen.test.tsx stayed green), so there is currently no test
+  // that distinguishes guarded from unguarded here. Two causes were isolated:
+  //
+  //   1. A timing-only test can release the stale promise BEFORE the second read is
+  //      issued, so nothing is actually raced. Fixed by waiting on the call count.
+  //   2. With the ordering enforced, a probe that replaced this guard with a
+  //      console.log DID show the stale arm reaching setAutoSync -- DIAG apply 0 after
+  //      DIAG apply 1. So on that reading the write does happen when unguarded.
+  //
+  // Those two facts do not reconcile: aria-checked is a CONTROLLED attribute fed
+  // straight from autoSync, so a state change should surface in the DOM, yet the
+  // assertion kept reading true. Later probes of that same assertion gave
+  // contradictory results, so those probe edits were not landing where they were
+  // believed to be, and no conclusion drawn from them is trustworthy -- including the
+  // DIAG line above.
+  //
+  // WHAT TO DO INSTEAD: do not retry this from outside the component. Observe the
+  // effect directly (renderHook on the callback, or a logger inside the component
+  // render) so the state transition is READ rather than inferred from the DOM. Until
+  // then, treat this guard as verified-by-reasoning and NOT verified-by-test.
+  const autoSyncSeqRef = useRef(0);
+
   const loadAutoSync = useCallback(async () => {
+    const seq = ++autoSyncSeqRef.current;
     try {
       const raw = await getSettingScoped(sessionToken || null, RATE_SYNC_ENABLED_KEY);
+      if (seq !== autoSyncSeqRef.current) return;
       setAutoSync(raw === '1');
     } catch {
       // Unset key (never written) or no session token: the backend default
       // for this key is "0", which is also what we just rendered.
     } finally {
-      setAutoSyncLoading(false);
+      if (seq === autoSyncSeqRef.current) {
+        setAutoSyncLoading(false);
+      }
     }
   }, [sessionToken]);
 

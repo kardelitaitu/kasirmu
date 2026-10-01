@@ -38,6 +38,38 @@ use platform_core::settings::keys;
 
 use crate::ctx::BridgeCtx;
 use crate::error::BridgeError;
+
+/// Read the Unix clock, refusing a pre-epoch value rather than defaulting to 0.
+///
+/// Every timestamp this module hands to a session or a picker ticket is derived
+/// from this, and 0 is the one value that must never be assumed. A session minted
+/// at 0 expires in 1970 and a picker-ticket expiry compared against 0 is never
+/// "in the past", so `.unwrap_or_default()` — which is what this replaced, in
+/// three separate places — turned an unreadable clock into a clock that trusts
+/// every stale credential.
+///
+/// Returning `None` is the fail-closed answer: the caller denies. It is a
+/// `Result`-free helper because the only sensible response is a denial, and
+/// making each caller match on an error would invite one of them to default.
+///
+/// `pub(crate)` on purpose, and the scoping was load-bearing in the wrong
+/// direction: this was private to this module while THREE callers elsewhere kept
+/// their own `.unwrap_or_default()` copies — the picker-ticket verifies in
+/// `workspaces.rs` (two) and the ticket mint in `staff.rs`. A fix that stops at a
+/// module boundary leaves exactly the duplicates ADR-49 creates. Reach for this
+/// helper rather than a fresh `SystemTime::now()` in any new caller.
+pub(crate) fn now_unix_secs() -> Option<i64> {
+    match SystemTime::now().duration_since(UNIX_EPOCH) {
+        Ok(d) => i64::try_from(d.as_secs()).ok(),
+        Err(e) => {
+            tracing::error!(
+                error = %e,
+                "system clock is before the UNIX epoch; refusing to mint or verify a credential against it"
+            );
+            None
+        }
+    }
+}
 use crate::picker;
 
 /// Arguments for the `staff_login` command.
@@ -483,10 +515,13 @@ pub async fn staff_login(
     // Mint the short-lived picker ticket bound to this authenticated
     // user. It is only valid for the pre-session workspace picker;
     // `create_session` hands out the opaque session token afterwards.
-    let now_ts = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs() as i64;
+    // Fail closed: a pre-epoch clock would mint a ticket whose expiry is
+    // meaningless, and `now_ts` also rides the session's `created_at`.
+    let Some(now_ts) = now_unix_secs() else {
+        return Err(BridgeError::Internal(
+            "system clock is before the UNIX epoch; refusing to mint a session".into(),
+        ));
+    };
     let picker_ticket = picker::sign_picker_ticket(
         &ctx.picker_ticket_secret,
         &user.id,
@@ -537,10 +572,15 @@ pub async fn create_session(
     // The ticket was minted by staff_login/bootstrap_owner and bound to the
     // authenticated user. We derive user_id from the ticket instead of
     // trusting the caller-supplied value.
-    let now_ts = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs() as i64;
+    // Fail closed, and this site is the sharpest of the three:
+    // `verify_picker_ticket` compares the ticket's expiry against this value, so
+    // a 0 here satisfies the check for every ticket ever minted — an expired
+    // ticket would verify and a session would be minted from it.
+    let Some(now_ts) = now_unix_secs() else {
+        return Err(BridgeError::Internal(
+            "system clock is before the UNIX epoch; refusing to verify a picker ticket".into(),
+        ));
+    };
     let verified_user_id =
         picker::verify_picker_ticket(&ctx.picker_ticket_secret, &args.picker_ticket, now_ts)
             .ok_or_else(|| {
@@ -662,17 +702,52 @@ pub async fn create_session(
         && let Ok(expiry_dt) = chrono::DateTime::parse_from_rfc3339(expires_at_str)
     {
         let expiry = expiry_dt.with_timezone(&chrono::Utc);
+        // A failed ledger read means the ANTI-ROLLBACK time source is unavailable,
+        // which is not the same as "now" — so this does NOT substitute the wall
+        // clock. Doing so was the exact bypass MSL-32 closed one layer down:
+        // `compute_max_ledger_timestamp` propagates its read errors precisely so a
+        // failure is not answered with `Utc::now()` (see its doc at
+        // `subscription.rs:305-312`, "the guard would then compare the OS clock
+        // against itself and pass"), and every core caller fails CLOSED on that
+        // error — `is_within_grace_period_for_connection` -> `false`,
+        // `effective_tier_for_connection` -> `Free` (`subscription.rs:390,671`).
+        // The `.unwrap_or_else(|_| Utc::now())` here undid that at the outermost
+        // caller, where a tenant with a rolled-back OS clock would never enter the
+        // window and the re-auth verdict would never reach the device.
+        //
+        // Skipping the window is the conservative direction and removes no lock:
+        // §2.3 only makes the status REFRESH happen. The two checks that actually
+        // refuse a session are outside it — §2.4a.2's device-revocation read of the
+        // cached verdict, and §2.5's tenant revocation — and both still run.
         let now_ledger = {
             let db = ctx.lock_global().await;
             match TenantSubscription::compute_max_ledger_timestamp(&db) {
-                Ok(ts) => chrono::DateTime::parse_from_rfc3339(&ts)
-                    .map(|dt| dt.with_timezone(&chrono::Utc))
-                    .unwrap_or_else(|_| chrono::Utc::now()),
-                Err(_) => chrono::Utc::now(),
+                Ok(ts) => match chrono::DateTime::parse_from_rfc3339(&ts) {
+                    Ok(dt) => Some(dt.with_timezone(&chrono::Utc)),
+                    Err(e) => {
+                        tracing::warn!(
+                            tenant_id = %sub.tenant_id,
+                            error = %e,
+                            "ledger timestamp is unparseable; skipping the pre-expiry re-auth window"
+                        );
+                        None
+                    }
+                },
+                Err(e) => {
+                    tracing::warn!(
+                        tenant_id = %sub.tenant_id,
+                        error = %e,
+                        "ledger clock unreadable; skipping the pre-expiry re-auth window"
+                    );
+                    None
+                }
             }
         };
-        let window_start = expiry - chrono::Duration::days(3);
-        if now_ledger >= window_start && now_ledger <= expiry {
+        let in_window = now_ledger.is_some_and(|now_ledger| {
+            let window_start = expiry - chrono::Duration::days(3);
+            now_ledger >= window_start && now_ledger <= expiry
+        });
+        if in_window {
             tracing::info!(
                 tenant_id = %sub.tenant_id,
                 "tenant is within 3-day pre-expiry window — executing re-auth status check (ADR #58 §2.3)"
@@ -898,10 +973,11 @@ pub fn refresh_picker_ticket(
         }
     }
 
-    let now_ts = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs() as i64;
+    let Some(now_ts) = now_unix_secs() else {
+        return Err(BridgeError::Internal(
+            "cannot read the system clock; refusing to mint a picker ticket".into(),
+        ));
+    };
 
     let picker_ticket = picker::sign_picker_ticket(
         &ctx.picker_ticket_secret,

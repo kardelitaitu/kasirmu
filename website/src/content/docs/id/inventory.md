@@ -3,7 +3,7 @@ title: Inventaris & Gudang
 description: Pantau stok lintas gudang dengan riwayat pergerakan.
 category: guides
 order: 3
-updated: "2026-09-09"
+updated: "2026-10-01"
 ---
 
 <!-- Audit stamp: 2026-09-09 · DSH · status: ACCURATE AFTER REPAIR (1 finding) · Indonesian counterpart of en/inventory.md, same single finding repaired: the transaction-log enumeration was extended to all seven movement types the screen actually covers (TransactionLogScreen.tsx:173-179), using the app's own id labels from inventory.id.ftl:140-146 — Penjualan, Void, Refund, Transfer, PO Diterima, Stok Opname, Penyesuaian Manual. The log screen itself is registered nowhere in ui/src (unreachable from navigation) and the page now says so; flagged as app-side drift, not deleted. · All other claims verified and left alone (full evidence list in the en/inventory.md stamp): alasan penyesuaian persis inventory.id.ftl:54-59, shift stok dengan placeholder "e.g., Night shift count" (inventory.ftl:74-75), filter status opname (api/inventoryCounts.ts:9), ambang per lokasi dengan fallback Global (Semua Lokasi) dan aktif/nonaktif terpisah (ThresholdConfigScreen.tsx:152-155,203,279-280), audit transit dengan tanda terlambat (TransitAuditScreen.tsx:68-112), pembatalan transfer mengembalikan stok (stock_transfers.rs:666-679), Terima pesanan pembelian masuk stok otomatis (purchasing.id.ftl:74 po-action-receive = Terima; purchase_orders.rs:395-470), Laporan Stok = nav-inventory-report (shared.id.ftl:261) dengan kolom stok/ambang/harga/biaya/margin/nilai stok cetak+CSV (inventory.ftl:57-65). · Replacement sentence composed from the page's own patterns; rest untouched. -->

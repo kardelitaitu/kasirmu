@@ -3,7 +3,7 @@ title: Docs Styling Guide
 description: How to use callouts, links, tables, code, and charts when writing documentation.
 category: reference
 order: 4
-updated: "2026-08-16"
+updated: "2026-10-01"
 ---
 
 ## Callouts
@@ -119,3 +119,17 @@ See [Offline-First Mode](../offline-mode/) for a working example.
   engines read the markdown, not the SVG.
 - Keep the `mermaid` source in the page. Never replace it with an exported
   PNG: the source is what stays reviewable, diffable, and translatable.
+
+## Locale parity
+
+Every `en` page needs an `id` twin with the same filename. Run the checker
+after adding, renaming, or removing a page:
+
+```sh
+python3 scripts/check-doc-parity.py   # from website/
+```
+
+It fails when a counterpart is missing, and warns on heading-count or
+`updated` drift between locales. The `updated` frontmatter of both locales
+moves together whenever content changes — it is the page's freshness
+signal, so editing a page without bumping it is itself drift.

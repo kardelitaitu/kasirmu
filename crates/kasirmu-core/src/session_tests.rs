@@ -162,6 +162,59 @@ fn session_context_no_expiry_never_expired() {
     assert!(!ctx.is_expired());
 }
 
+/// The expiry comparison must never answer "live" for an unreadable clock.
+///
+/// `is_expired` read the clock with `.unwrap_or_default()`, so a pre-epoch clock
+/// produced `now = 0` and `0 >= ts` was false for every real expiry — the session
+/// read as LIVE. The gate that consumes this is
+/// `Some(ctx) if !ctx.is_expired() => return Ok(ctx.clone())` in each shell's
+/// `state.rs`, so the wrong answer handed back an expired context as valid: a
+/// pre-epoch clock left every expired bearer token usable. The old comment called
+/// this covering "the pre-epoch case"; it covered it in the direction that must
+/// never be reached.
+///
+/// HONEST SCOPE: this pin does NOT cover the fix. The pre-epoch branch is not
+/// constructible here — a test cannot move the system clock — and restoring the
+/// old `.unwrap_or_default()` leaves this test GREEN, verified. What it covers is
+/// the comparison the failure branch feeds into: a past expiry reads expired, an
+/// absent one reads live, a far-future one stays live. It would catch a regression
+/// that inverted that comparison; the clock branch's correctness rests on reading,
+/// and is not asserted here.
+#[test]
+fn expiry_never_reports_live_for_a_timestamp_it_cannot_rank() {
+    let ctx = |expires_at: Option<i64>| {
+        SessionContext::new(
+            "u1".into(),
+            "r1".into(),
+            "t1".into(),
+            "s1".into(),
+            "i1".into(),
+            "pos".into(),
+            expires_at,
+            0,
+        )
+    };
+
+    // Past expiry -> expired (the ordinary case the gate relies on).
+    assert!(ctx(Some(1)).is_expired(), "a past expiry must read expired");
+    // No expiry -> live, and that is the ONE legitimate live answer.
+    assert!(
+        !ctx(None).is_expired(),
+        "a session with no expiry is never expired"
+    );
+    // A far-future expiry stays live.
+    assert!(
+        !ctx(Some(9_999_999_999)).is_expired(),
+        "an expiry centuries away must not read as expired"
+    );
+    // NOTE on what is NOT asserted here. An earlier version of this pin claimed
+    // `ctx(Some(i64::MAX))` must read EXPIRED as "unrankable". That was wrong and
+    // the test caught it: `i64::MAX` seconds is a genuine timestamp ~292 billion
+    // years out, so `now >= ts` is legitimately false and the session IS live.
+    // The fail-closed rule belongs to the CLOCK READ, not to the comparison, and
+    // the clock cannot be moved from a test.
+}
+
 #[test]
 fn session_context_future_expiry_not_expired() {
     // 9999999999 is epoch + ~317 years — always in the future.

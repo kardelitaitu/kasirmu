@@ -13381,4 +13381,41 @@ what it currently carries, or dropping the field from the wire changes what a ca
 is a behaviour change to a surface already repaired once under this name. What this round could
 do honestly is remove the blindness, so the pin now fails on any future edit to the projection
 and the swap can no longer happen unseen. Recorded for the credit-list owner to decide.
+### 2026-10-06 — Registration ratchet: desktop floor 481 -> 485 for the payment-gateway door
+
+**Problem:** `a5212ca5f` (feat(payments): persist payment gateways with at-rest
+encryption and wire frontend settings) registered four desktop commands and moved
+neither `REGISTERED_FLOOR` nor the generated debt ledger, so
+`drift_pin_registration_floor_is_met` was red at HEAD in a suite no other lane's
+per-crate checks were running. The floor leg reads the tree on purpose — the only way
+it can fail is that names were registered — which is exactly what happened. Found by a
+full-workspace run, not by the per-crate checks, the same way the 343 -> 345 tablet
+twin above was found.
+
+**What landed:** `commands::local_payment::get_payment_gateway_config_scoped`,
+`list_payment_gateways_scoped`, `set_payment_gateway_config_scoped` and
+`delete_payment_gateway_scoped` — four names, and nothing else.
+
+**Attributed by measurement, not by the red message.** The pre-raise assertion reported
+`left: 481, right: 485`, and the four `+` lines in that commit's `lib.rs` diff are
+exactly the four names above, so the delta and the cause agree. That check matters
+because the pin's remedy — raise the floor to the measured number — is the same action
+whether four names landed or the sweep stopped parsing; only the diff distinguishes
+a real registration from a broken harness, which is the failure the leg's own doc warns
+about in its first assertion.
+
+**All four arrive GATED**, so as in the 475 -> 481 step above no ceiling and no ledger
+row moved: regenerating the ledger rewrote only `REGISTERED_TOTAL` and left the debt
+rows byte-identical. This pass records what landed; it does not approve it.
+
+**The tablet floor (345) is NOT affected** and was checked rather than assumed: that
+commit touched the desktop `lib.rs` only, and
+`cargo test -p kasirmu-mobile --lib registration_gate` is green at 345. Recorded so the
+desktop-vs-tablet twin scan is not needed here — unlike the 343 -> 345 entry above,
+where the same commit moved both.
+
+**Verified:** `cargo test -p kasirmu-app --lib commands::registration_gate_tests` → 14
+passed. `cargo test -p kasirmu-mobile --lib registration_gate` → 12 passed, floor
+unchanged.
+
 > last audited 29-09-26 by docs-auditor

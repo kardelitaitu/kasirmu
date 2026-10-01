@@ -742,6 +742,55 @@ fn total_refunded_for_nonexistent_sale_returns_not_found() {
     assert!(matches!(err, CoreError::NotFound { .. }));
 }
 
+/// A NEGATIVE refund total must not CREDIT the customer's lifetime spend.
+///
+/// The reversal is `MAX(total_spent_minor - ?1, 0)`, so subtracting a negative
+/// increases the column — the opposite of the guarantee "a refund can never drive
+/// the lifetime total negative". Nothing upstream refuses a negative total:
+/// `Refund::new` accepts any `Money`, and `create_refund`'s guard is
+/// `after > sale_total`, an UPPER bound that a negative passes trivially. The sync
+/// lane takes `payload.total_minor` straight off the wire, so a corrupt or hostile
+/// replicated refund reaches the same arithmetic.
+///
+/// The existing `reverse_lifetime_spend_clamps_at_zero` covers only the POSITIVE
+/// over-refund (`4000` against `1000`), which the clamp already handles; it says
+/// nothing about the direction that breaks it. This is the discriminating input,
+/// VERIFIED RED with the clamp removed: lifetime spend went 5000 -> 6000.
+#[test]
+fn a_negative_refund_total_does_not_credit_lifetime_spend() {
+    let conn = fresh();
+    seed_completed_sale(&conn);
+    conn.execute_batch(
+        "INSERT INTO customers (id, name, total_spent_minor, created_at, updated_at) VALUES
+            ('cust-neg', 'Neg', 5000, '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z');
+         UPDATE sales SET customer_id = 'cust-neg' WHERE id = 'ref-sale-1';",
+    )
+    .unwrap();
+
+    // A negative total, as a corrupt replicated payload would carry it.
+    crate::db::refunds::reverse_customer_spend_on_refund(
+        &conn,
+        "cust-neg",
+        -1000,
+        700,
+        None,
+        "2025-02-01T00:00:00.000Z",
+    )
+    .unwrap();
+
+    let spent: i64 = conn
+        .query_row(
+            "SELECT total_spent_minor FROM customers WHERE id = 'cust-neg'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        spent, 5000,
+        "a negative refund total must not increase lifetime spend"
+    );
+}
+
 #[test]
 fn refund_zero_price_line_restores_stock() {
     let conn = fresh();

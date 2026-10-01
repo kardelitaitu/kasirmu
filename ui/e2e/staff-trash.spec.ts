@@ -164,19 +164,43 @@ test.describe('Staff trash — delete and restore round trip', () => {
     await expect(page.locator('.staff-mgmt-header')).toBeVisible({ timeout: 10_000 });
 
     // The dev preview pins memo bubbles to the viewport's bottom-left (fixed,
-    // z-index --z-overlay). At the tablet viewport the role list reaches that
-    // corner, so a bubble physically covers the Delete button and Playwright
-    // refuses the click as intercepted — the same app-level overlay collision
-    // admin-workflows.spec.ts documents for the settings footer. The overlap
-    // itself is being fixed at the layout level in parallel; here the demo
-    // bubbles are dismissed rather than clicked through, because
-    // `click({ force: true })` would dispatch past an overlay a real tablet
-    // user hits and hide the collision this spec is supposed to expose.
+    // z-index --z-overlay), and a bubble that lands over a control is
+    // unclickable to a real tablet user — so it is dismissed here rather than
+    // dispatched past with `click({ force: true })`, which would hide exactly
+    // the collision this spec exists to expose.
     //
-    // Clearing once at the top does not survive a case this long: the flow
-    // fills three fields and saves (slow on the tablet project) and the stack
-    // is live again by the Delete click. So every critical click clears first,
-    // and retries after re-clearing if a bubble still wins the race.
+    // CORRECTED 2026-10-01 — the two claims this comment used to make are both
+    // false now, and the original text is kept below rather than deleted:
+    //
+    //   * "The overlap itself is being fixed at the layout level in parallel" —
+    //     it is not outstanding. StaffManagementScreen.css already reserves the
+    //     stack's height (`body:has(.memo-stack) .staff-mgmt-main`,
+    //     padding-bottom: --space-6 + 215px).
+    //   * "the same app-level overlay collision admin-workflows.spec.ts documents
+    //     for the settings footer" — that one is RESOLVED. Measured: the footer
+    //     toggle clicks in 42ms and flips dark -> light, and that spec clicks it
+    //     again as of 1beccd7d8.
+    //
+    // Measured on both projects with the dismissal REMOVED: the Delete button's
+    // centre hit-tests to itself (`occluded: false`) and the click lands in 39ms
+    // (desktop) / 180ms (tablet). So the band is doing its job and this helper
+    // is belt-and-braces rather than load-bearing.
+    //
+    // KEPT DELIBERATELY, with that known: a candidate gate asserting the Delete
+    // button is not occluded was written and then measured by REMOVING the band
+    // — and it passed with the band and without it. It is vacuous, so it was not
+    // committed. That is the honest state: the helper below would mask a band
+    // regression, and no cheap assertion has been found that would not. Recorded
+    // so the next attempt starts from "this is hard to gate", not from a plan
+    // that looks obvious and is not.
+    //
+    // Original text, kept as the dated record:
+    //   "At the tablet viewport the role list reaches that corner, so a bubble
+    //    physically covers the Delete button and Playwright refuses the click as
+    //    intercepted... Clearing once at the top does not survive a case this long
+    //    (the flow fills three fields and saves, slow on the tablet project) and
+    //    the stack is live again by the Delete click. So every critical click clears
+    //    first, and retries after re-clearing if a bubble still wins the race."
     const clearMemos = async () => {
       const ackButtons = page.getByTestId('memo-banner-acknowledge');
       for (let i = 0; i < 5; i++) {

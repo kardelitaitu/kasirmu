@@ -4,6 +4,130 @@ use crate::testing::TestBridge;
 use crate::testing::seeded_row_reaches_a_paid_tier;
 use crate::testing::{assert_refused_by_the_seeded_row, seeded_row_loads};
 
+/// No bridge module may derive a credential timestamp from a DEFAULTED clock.
+///
+/// `.duration_since(UNIX_EPOCH).unwrap_or_default()` supplies `0` on an unreadable
+/// clock, and `0` is the one value that must never be assumed here: a picker-ticket
+/// expiry compared against it is never in the past (so an EXPIRED ticket verifies),
+/// and an expiry computed from it lands in 1970 (so a fresh ticket is born expired).
+///
+/// This exists because the fix DID stop at a module boundary. `now_unix_secs` was
+/// private to `auth`, so the round-171 repair converted its three local callers and
+/// left five elsewhere: two picker-ticket verifies in `workspaces.rs`, a ticket mint
+/// in `staff.rs`, a ticket refresh back in `auth.rs`, and the STAFF-06 timing mask in
+/// `auth/session.rs`. That is the ADR-49 duplicate problem in miniature, and it is
+/// why the helper is now `pub(crate)` and why this test sweeps the WHOLE crate rather
+/// than the modules someone remembered.
+///
+/// Whitespace-insensitive, because the formatter reflows the call chain onto separate
+/// lines and a literal search then silently matches nothing (measured on the tablet
+/// twin, where the first version of this assertion passed WITH the defect restored).
+#[test]
+fn no_bridge_module_timestamps_a_credential_from_a_defaulted_clock() {
+    let sources = [
+        ("auth.rs", include_str!("auth.rs")),
+        ("auth/session.rs", include_str!("auth/session.rs")),
+        ("workspaces.rs", include_str!("workspaces.rs")),
+        ("staff.rs", include_str!("staff.rs")),
+        ("picker.rs", include_str!("picker.rs")),
+    ];
+
+    for (name, source) in sources {
+        let compact: String = source.chars().filter(|c| !c.is_whitespace()).collect();
+        assert!(
+            !compact.contains("duration_since(UNIX_EPOCH).unwrap_or_default()")
+                && !compact.contains("duration_since(std::time::UNIX_EPOCH).unwrap_or_default()"),
+            "{name} derives a timestamp from a defaulted clock; call crate::auth::now_unix_secs instead"
+        );
+    }
+}
+
+/// No bridge module may answer a failed LEDGER read with the wall clock.
+///
+/// `compute_max_ledger_timestamp` exists so subscription time comes from the database
+/// ledger rather than the OS clock, and it propagates its read errors ON PURPOSE — see
+/// its doc at `crates/kasirmu-core/src/subscription.rs:305-312`: answering a failed read
+/// with `Utc::now()` makes "the guard compare the OS clock against itself and pass",
+/// which is the rollback bypass MSL-32 closed. Every core caller fails CLOSED on that
+/// error (`is_within_grace_period_for_connection` -> `false`, `effective_tier_for_connection`
+/// -> `Free`, `:390` and `:671`).
+///
+/// `auth.rs`'s pre-expiry window (ADR #58 §2.3) undid that at the outermost caller: on
+/// `Err(_)` it substituted `chrono::Utc::now()`, so a tenant with a rolled-back OS clock
+/// never entered the window and the re-auth verdict never reached the device. It now
+/// skips the window and warns, which is the conservative direction and removes no lock —
+/// §2.3 only makes the status REFRESH happen, while the two checks that refuse a session
+/// (§2.4a.2's cached device verdict, §2.5's tenant revocation) sit outside it.
+///
+/// SCOPE, stated honestly: this is a SOURCE assertion because the arm cannot be reached
+/// from a test. Reaching §2.3 needs a PAID, non-expired tenant, and a paid tier cannot be
+/// minted by a test — the schema-seeded row is `free` and any paid `tier_key` falls
+/// through to RSA verification against the release public key (`testing.rs:252`, and
+/// `seeded_row_reaches_a_paid_tier` documents the two routes that can). So this pins the
+/// shape that must not return, rather than claiming coverage of the branch.
+///
+/// Whitespace-insensitive for the formatter-reflow reason recorded on the sweeps above.
+#[test]
+fn no_bridge_module_answers_an_unreadable_ledger_with_the_wall_clock() {
+    let source = include_str!("auth.rs");
+    let compact: String = source.chars().filter(|c| !c.is_whitespace()).collect();
+
+    assert!(
+        !compact.contains("compute_max_ledger_timestamp(&db){Ok(ts)=>chrono::DateTime::parse_from_rfc3339(&ts).map(|dt|dt.with_timezone(&chrono::Utc)).unwrap_or_else(|_|chrono::Utc::now()),Err(_)=>chrono::Utc::now(),}"),
+        "the pre-expiry window must not fall back to the wall clock when the ledger is unreadable"
+    );
+    // The positive half: the two arms must still be present and must skip, so this
+    // cannot be satisfied by deleting the window entirely.
+    assert!(
+        compact.contains("ledgerclockunreadable;skippingthepre-expiryre-authwindow")
+            && compact.contains("ledgertimestampisunparseable;skippingthepre-expiryre-authwindow"),
+        "both unreadable-ledger arms must still skip the window and say so"
+    );
+}
+
+/// No bridge module may resolve a deduction location through a DEFAULTED fallback.
+///
+/// `resolve_primary_location` already returns tier 4 (the canonical default) for a
+/// workspace with genuinely no binding — that is its documented fall-through. So an
+/// `.unwrap_or_else(|_| get_default_location_id())` at a call site can only ever catch
+/// a READ FAILURE, and it makes that failure indistinguishable from "unbound": the
+/// sale then deducts stock from the canonical default location while reporting success.
+///
+/// This exists for the same reason as the clock sweep above, and it earned its place
+/// the hard way: the claim that every caller propagated was made from INSPECTION and
+/// was WRONG twice in one round. `pos/cart.rs` propagated in the `Some` arm of a match
+/// and swallowed in the `None` arm beside it — a split WITHIN one match, where the two
+/// arms differ only in where the instance id comes from — and the swallow was on the
+/// `None` arm, which is the one real deployments take. `pos/checkout.rs` swallowed on
+/// the explicit-stock-locations branch. Reading the `resolve_primary_location(` line
+/// showed a `?` in both cases; only reading the whole expression showed the rest.
+///
+/// `pos/cart.rs` and `pos/checkout.rs` are the only bridge files that call the resolver
+/// (verified by grep over the crate), and both are swept below. Whitespace-insensitive
+/// for the formatter-reflow reason recorded above.
+#[test]
+fn no_bridge_module_defaults_a_deduction_location() {
+    let sources = [
+        ("pos/cart.rs", include_str!("pos/cart.rs")),
+        ("pos/checkout.rs", include_str!("pos/checkout.rs")),
+    ];
+
+    for (name, source) in sources {
+        let compact: String = source.chars().filter(|c| !c.is_whitespace()).collect();
+        assert!(
+            !compact.contains("resolve_primary_location(..None,)||get_default_location_id()")
+                && !compact.contains("get_default_location_id()),"),
+            "{name} defaults a deduction location on a failed resolve; propagate the error"
+        );
+        // The precise shape guarded, stated separately so a reformat cannot hollow the
+        // assertion above out: a `?` immediately closing the resolver call.
+        assert!(
+            !compact.contains(")||get_default_location_id()"),
+            "{name} still carries a defaulted-location fallback"
+        );
+    }
+}
+
 // The release leg for a command this file drives through the subscription gate.
 //-- The release leg for these sessions lives in crate::testing (RULE at assert_refused_by_the_seeded_row) --
 

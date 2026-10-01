@@ -6,9 +6,9 @@
 // the payment modal or long-press timers. 24 tests.
 
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
+import { act, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { renderWithProviders } from '@/__tests__/test-utils/render';
+import { renderWithProviders, renderWithProvidersSync, rerenderWithProviders } from '@/__tests__/test-utils/render';
 import { createUsePosStateMock } from '@/__tests__/test-utils/mocks/usePosState';
 import { mockedBarcode } from '@/__tests__/test-utils/mocks/barcodeScanner';
 import { retailProducts } from '@/__tests__/test-utils/mocks/retailPos';
@@ -105,9 +105,16 @@ vi.mock('@/contexts/AuthContext', async () => {
   };
 });
 
+// Mutable so a test can SWITCH STORES; declared ABOVE the factory so the mock closes
+// over it, and createWorkspaceContextMock reads it live on every render.
+const wsState = vi.hoisted(() => ({ sessionToken: 'mock-session-token' }));
+
 vi.mock('@/contexts/WorkspaceContext', async () => {
   const { createWorkspaceContextMock } = await import('@/__tests__/test-utils/mocks/contexts');
-  return createWorkspaceContextMock();
+  // Pass wsState ITSELF, not wsState.sessionToken: the factory closes over the
+  // object, so a later mutation is seen. Passing the VALUE captures it at
+  // registration time and the switch is invisible -- measured, not theorised.
+  return createWorkspaceContextMock({ get sessionToken() { return wsState.sessionToken; } });
 });
 
 const catFtl = `
@@ -137,6 +144,12 @@ async function showAllProducts() {
 
 describe('RetailPosScreen — rendering', () => {
   beforeEach(async () => {
+    // The store-switch cases MUTATE this and it must not leak: a case that starts with
+    // the token already at its target value sees no change, so its effect never re-runs
+    // and it races nothing while still passing. Found by bisecting this suite -- with
+    // the shift case ahead of the store-settings case the latter saw ONE read, and
+    // exactly two with that predecessor removed.
+    wsState.sessionToken = 'mock-session-token';
     mockedBarcode.reset();
     const sp = await import('@/features/sales/usePosState');
     vi.mocked(sp.usePosState).mockReset();
@@ -150,6 +163,12 @@ describe('RetailPosScreen — rendering', () => {
     const sales = await import('@/api/sales');
     vi.mocked(sales.listHeldCartsScoped).mockReset();
     vi.mocked(sales.getHeldCartScoped).mockReset();
+    // Same reason, for the two reads the store-switch and shift-badge cases override:
+    // a surviving `mockResolvedValue` leaks an open shift into every later case.
+    const shifts = await import('@/api/shifts');
+    vi.mocked(shifts.getActiveShiftScoped).mockReset();
+    const settings = await import('@/api/settings');
+    vi.mocked(settings.getStoreSettingsScoped).mockReset();
   });
 
   it('renders the store header with name, branch, and clock', async () => {
@@ -174,6 +193,98 @@ describe('RetailPosScreen — rendering', () => {
     expect(screen.getByText('F5')).toBeInTheDocument();
     expect(screen.getByText('F9')).toBeInTheDocument();
     expect(screen.getByText('F10')).toBeInTheDocument();
+  });
+
+  // A store switch must not let a SLOWER earlier shift read win (guard added in
+  // 116803906). The sink is the header shift badge, one of three distinct strings.
+  //
+  // Order by CALL COUNT, and the two arms answer DISTINCTLY (a shift, then null).
+  it('ignores a slower earlier shift read after a token change', async () => {
+    let releaseStale: (v: unknown) => void = () => {};
+    const stalePending = new Promise((resolve) => { releaseStale = resolve; });
+
+    const shifts = await import('@/api/shifts');
+    // Read 1 (store A) held open; read 2 answers null at once.
+    vi.mocked(shifts.getActiveShiftScoped).mockImplementationOnce(() => stalePending as never);
+    vi.mocked(shifts.getActiveShiftScoped).mockResolvedValue(null as never);
+
+    const view = renderWithProvidersSync(<RetailPosScreen />, salesFtl, productsFtl, tablesFtl, catFtl);
+    await waitFor(() => expect(shifts.getActiveShiftScoped).toHaveBeenCalledTimes(1));
+
+    wsState.sessionToken = 'mock-session-token-2';
+    await act(async () => {
+      rerenderWithProviders(view, <RetailPosScreen />, salesFtl, productsFtl, tablesFtl, catFtl);
+    });
+    await waitFor(() => expect(shifts.getActiveShiftScoped).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.getByText(/No shift/)).toBeInTheDocument());
+
+    // Only NOW does the store-A read settle, after store B already won.
+    await act(async () => {
+      releaseStale({ id: 'shift-from-store-a', totalSalesMinor: 99000, openedAt: new Date().toISOString(), closedAt: null, status: 'open' });
+      await stalePending;
+    });
+
+    // The guard held: the late shift did not replace the idle badge.
+    expect(screen.getByText(/No shift/)).toBeInTheDocument();
+  });
+
+
+  // A store switch must not let a SLOWER earlier store-settings read win (eee76b542).
+  // THE SINK IS MONEY: `storeSettings.currency` feeds minorUnitExponent() when parsing
+  // the opening and closing drawer balances and the manual discount, so IDR (exponent
+  // 0) against USD (exponent 2) misreads those amounts by a factor of 100.
+  //
+  // The observable is the shift badge, which formats `totalSalesMinor` with
+  // `storeSettings.currency` (RetailHeader.tsx:95): the SAME 99000 minor units render as
+  // a different AMOUNT, not merely a different settings object. The locale renders it as
+  // '$ 990,00', which is asserted with the comma rather than a dot.
+  //
+  // This case depends on the beforeEach restoring wsState.sessionToken. Without it an
+  // earlier store-switch case leaves the token already at its target value, the switch
+  // is a NO-OP, the effect never re-runs, and the test would pass while racing nothing.
+  it('ignores a slower earlier store-settings read after a token change', async () => {
+    let releaseStale: (v: unknown) => void = () => {};
+    const stalePending = new Promise((resolve) => { releaseStale = resolve; });
+
+    const settings = await import('@/api/settings');
+    const shifts = await import('@/api/shifts');
+
+    // A shift is open so the badge renders a formatted amount at all. Set for EVERY read,
+    // not once: the token switch re-issues this read, and a once-value would leave the
+    // second one on the module default (a rejection), clearing the badge before the
+    // assertion -- measured, not guessed.
+    vi.mocked(shifts.getActiveShiftScoped).mockResolvedValue({
+      id: 'shift-1', totalSalesMinor: 99000, openedAt: new Date().toISOString(), closedAt: null, status: 'open',
+    } as never);
+
+    // Read 1 (store A, held open) answers IDR; read 2 (store B) answers USD.
+    vi.mocked(settings.getStoreSettingsScoped).mockReturnValueOnce(stalePending as never);
+    vi.mocked(settings.getStoreSettingsScoped).mockReturnValueOnce(
+      Promise.resolve({ name: 'TOKO B', address: '', taxId: '', currency: 'USD', branch: '', logo: '' }) as never,
+    );
+
+    const view = renderWithProvidersSync(<RetailPosScreen />, salesFtl, productsFtl, tablesFtl, catFtl);
+    await waitFor(() => expect(settings.getStoreSettingsScoped).toHaveBeenCalledTimes(1));
+
+    wsState.sessionToken = 'mock-session-token-2';
+    await act(async () => {
+      rerenderWithProviders(view, <RetailPosScreen />, salesFtl, productsFtl, tablesFtl, catFtl);
+    });
+    await waitFor(() => expect(settings.getStoreSettingsScoped).toHaveBeenCalledTimes(2));
+
+    // Store B is USD: the same minor units format as $ 990,00 rather than IDR's 99.000.
+    await waitFor(() => {
+      expect(screen.getByText(/990,00/)).toBeInTheDocument();
+    });
+
+    // Only NOW does store A's IDR settings settle, after store B already won.
+    await act(async () => {
+      releaseStale({ name: 'TOKO A', address: '', taxId: '', currency: 'IDR', branch: '', logo: '' });
+      await stalePending;
+    });
+
+    // The guard held: the amount is still formatted as USD, not IDR.
+    expect(screen.getByText(/990,00/)).toBeInTheDocument();
   });
 
   it('displays "No shift" badge when no active shift', async () => {

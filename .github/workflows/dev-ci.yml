@@ -1145,6 +1145,18 @@ jobs:
       # step -- see scripts/check-mapper-alignment.py for the record.
       - name: Mapper alignment
         run: python3 scripts/check-mapper-alignment.py
+      # Blocking beside its gate, the convention stated at "i18n bundle parity
+      # self-test": these checkers are all regex extraction, so a pattern that
+      # stops matching reports a clean tree instead of failing.
+      - name: Mapper alignment self-test
+        run: python3 scripts/check-mapper-alignment.py --self-test
+      # A generator that joins a patch with no trailing element fuses its last
+      # line into the following code. The result compiles, lints and passes every
+      # suite, so nothing else here sees it -- see scripts/check-merged-lines.py.
+      - name: Merged source lines
+        run: python3 scripts/check-merged-lines.py
+      - name: Merged source lines self-test
+        run: python3 scripts/check-merged-lines.py --self-test
       # The COR-7 per-attempt idempotency rules exist TWICE -- the implementation
       # in kasirmu-bridge and a fork in the tablet shell -- and the fork drifted
       # into a security defect: only the bridge refused a colon in the attempt id,
@@ -1153,6 +1165,26 @@ jobs:
       # drifts silently; this pins the control set on both sides.
       - name: Replay fork control set
         run: python3 scripts/check-replay-fork.py
+      # scripts/gates.json is the single source of truth for gate names and
+      # status, and it records which CI step runs each gate. Nothing compared
+      # those claims, so the coverage-floors entry sat claiming a step named
+      # "Generate coverage report" that has never existed -- which would tell an
+      # auditor the gate has no CI runner when it does.
+      - name: Gate roster runners
+        run: python3 scripts/check-gate-runners.py
+      # This one decides whether every OTHER declared runner resolves, so a pattern
+      # that stopped matching would silently bless the whole roster.
+      - name: Gate roster runners self-test
+        run: python3 scripts/check-gate-runners.py --self-test
+      # The inverse direction: every check.sh step must be NAMED by a gates.json row.
+      # gate-roster-runners proves the roster's labels resolve; nothing proved the
+      # roster is complete, and a step with no row is invisible to ci-docs-drift,
+      # which iterates the gates PRESENT in the manifest. Rounds 148-149 found seven,
+      # including a suite that had been red for an unknown period because nothing ran it.
+      - name: Gate roster completeness
+        run: python3 scripts/verify-gate-completeness.py
+      - name: Gate roster completeness self-test
+        run: python3 scripts/verify-gate-completeness.py --self-test
       # R36-11: release.yml was renamed to .bak with an empty commit message and
       # nothing noticed that tagging had stopped producing installers. A workflow
       # that never runs cannot report its own breakage, so this validates the
@@ -1231,6 +1263,21 @@ jobs:
       # case 1 red with "expected [...], got []", exit 1).
       - name: i18n bundle parity self-test
         run: python3 scripts/verify-bundle-parity.py --self-test
+
+      # The class the parity checker declares OUT OF SCOPE at its docstring: it
+      # validates message IDs, not the ATTRIBUTES a call site asks for. A message
+      # without `.placeholder` makes @fluent/react fall back to the between-tag
+      # children -- a hardcoded English literal -- so the component renders, the
+      # suite passes, and the translation that exists in *.id.ftl is never shown.
+      # Three messages shipped that way (d9cc0098f). All three sat behind a DYNAMIC
+      # id ({flag ? a : b}), which is why the checker resolves both branches.
+      - name: FTL attribute requests
+        run: python3 scripts/check-ftl-attrs.py
+      # Blocking beside its gate, for the reason the parity self-test states above:
+      # this checker's whole job is extraction, so a pattern that stops matching
+      # reports a clean tree rather than failing.
+      - name: FTL attribute requests self-test
+        run: python3 scripts/check-ftl-attrs.py --self-test
       # These two lived in ci.yml, which 23c96330 retired to .bak, and neither was
       # ever restored -- so for two releases the ONLY guard was the opt-in
       # pre-commit hook. core.hooksPath is set by scripts/setup-dev.ps1 and is not
@@ -1566,7 +1613,34 @@ jobs:
     # `0.0.*` branch safe as an offline backup (todo-operational-integrity.md
     # Phase 4b depends on it).
     #
-    # Two jobs are left out of `needs` as decisions, not as oversights:
+    # FOUR jobs are left out of `needs`, three decisions and one structural.
+    # This said "two" until 2026-10-01, when an audit enumerated them and found
+    # `release-bridge-test` and `rust-doc` absent with no note here at all.
+    #
+    #   * rust-doc was ADDED here on 2026-10-01 and REMOVED the same day. The reasoning
+    #     for adding it was sound -- it is a rust-gated merge gate, and the router forces
+    #     `rust=true` on every non-PR event, so it cannot be skipped on a deploy run,
+    #     which is the same argument that covers `go-gate`. But nobody had run the job
+    #     first, and it is RED as of a5212ca5f, which shipped two unresolved intra-doc
+    #     links in `crates/kasirmu-core/src/db/payment_gateways.rs`:
+    #     `error: unresolved link to PaymentGatewayConfig` and the same for
+    #     `UpsertPaymentGateway` (exit 101 under this file's RUSTDOCFLAGS). Listing a red
+    #     job here would have stopped every PRODUCTION DEPLOY, not just merges, for a
+    #     failure in generated API documentation that no backend container consumes.
+    #     VERIFY A JOB IS GREEN BEFORE ADDING IT HERE. The merge gate still catches it;
+    #     re-add this edge once `cargo doc --workspace --no-deps` passes clean.
+    #
+    # So three remain:
+    #
+    #   * release-bridge-test CANNOT be listed here, and that is structural rather than
+    #     a judgement call. Its `if:` requires `github.event_name == 'push'`, and
+    #     workflow_dispatch is a second, unfiltered entry point to this job. A skipped
+    #     dependency skips this one, so listing it would make every DISPATCH deploy
+    #     impossible -- and the first row of this comment is the reason that matters.
+    #     Adding it would require relaxing that `if:` to cover dispatch, which is the
+    #     mirror image of the `all()`/`go-gate` coupling noted above: the two must move
+    #     together. Until someone does both, its absence is the safe side to err on.
+    #
     #
     #   * release-readiness proves the DESKTOP updater signing chain, and this job
     #     consumes none of it. It POSTs the commit sha to Northflank, which builds

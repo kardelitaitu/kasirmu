@@ -895,7 +895,12 @@ fn snapshot_tax_rate_accepts_a_payload_without_the_scope_keys() {
     // The back-compat ruling, pinned at the wire: a server predating
     // 20260921 sends seven keys, not eleven. That must deserialize — to the
     // tenant-global shape — rather than fail the whole snapshot.
-    let legacy = r#"{"id":"t-1","name":"Tax One","rate_bps":1000}"#;
+    // SEVEN keys, as the pre-20260921 wire actually carried: the four omitted
+    // ones are the SCOPE/WINDOW keys this test is about. `is_default` and
+    // `is_inclusive` are baseline columns (`20260813_init.sql:885,888`) and were
+    // always sent, so leaving them out would test a shape no server produced.
+    let legacy = r#"{"id":"t-1","name":"Tax One","rate_bps":1000,
+                     "is_default":false,"is_inclusive":false}"#;
     let rate: SnapshotTaxRate = serde_json::from_str(legacy).unwrap();
     assert_eq!(rate.id, "t-1");
     assert_eq!(rate.rate_bps, 1000);
@@ -910,6 +915,7 @@ fn snapshot_tax_rate_round_trips_scope_and_window_verbatim() {
     // Values are carried, not re-derived: the exclusive-end rule lives in
     // kasirmu_core::db::tax and must not be restated per transport.
     let json = r#"{"id":"t-2","name":"Jakarta","rate_bps":1100,
+                   "is_default":false,"is_inclusive":false,
                    "legal_entity_id":null,"location_id":"loc-jkt",
                    "effective_from":"2026-01-01","effective_to":"2027-01-01"}"#;
     let rate: SnapshotTaxRate = serde_json::from_str(json).unwrap();

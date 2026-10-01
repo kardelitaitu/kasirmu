@@ -3,7 +3,7 @@ title: Lisensi & Paket
 description: Paket, paket gratis selamanya, kedaluwarsa, dan masa tenggang.
 category: reference
 order: 1
-updated: "2026-08-17"
+updated: "2026-10-01"
 ---
 
 ## Paket

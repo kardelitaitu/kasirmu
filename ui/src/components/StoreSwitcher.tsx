@@ -20,6 +20,21 @@ export default function StoreSwitcher() {
   const ref = useRef<HTMLDivElement>(null);
   const listboxRef = useRef<HTMLUListElement>(null);
 
+  // Measured and left UNGUARDED, unlike the ten sibling fixes (write-up at
+  // SettingsContext:207). Deps name sessionToken so a store switch CAN overlap two
+  // of these reads. What decided it is the CONSEQUENCE:
+  //
+  //   primary feeds only the picker label (currentName) and the
+  //   already-selected short-circuit in handleSelect. A stale read shows the
+  //   wrong store NAME on the switcher and makes the current store re-selectable.
+  //   It cannot move money and cannot block a sale -- selecting any store goes
+  //   through setPrimaryLocationScoped then switchStore, both scoped calls that
+  //   re-resolve from the session.
+  //
+  // So a guard here would buy a correct label at the cost of another token, and it
+  //   would be the eleventh site in a class whose running cost is a comment each.
+  //   If this picker ever gates anything -- disables itself on a stale primary, or
+  //   feeds one -- it becomes money and needs the guard with it.
   const load = useCallback(async () => {
     try {
       const data = await listLocationsScoped(sessionToken!);

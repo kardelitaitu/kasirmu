@@ -77,6 +77,14 @@ pub(crate) fn with_env<T>(
         // An un-cleared Java exception poisons every later JNI call on this
         // thread, so surface its own message when one is pending and fall
         // back to the Rust-side JNI error text otherwise.
+        //
+        // `unwrap_or(false)` is safe HERE because this closure has already been
+        // handed an `Err`: it selects WHICH message to build, never WHETHER to
+        // fail -- both branches return `HalError::Bluetooth`. A failed
+        // `exception_check` therefore degrades the diagnostic, not the outcome.
+        // The same call in a success path would be a fail-blind ("no exception"
+        // read from a check that did not run), so do not lift this shape out of
+        // the error mapping.
         if env.exception_check().unwrap_or(false) {
             exception_message(&mut env)
         } else {

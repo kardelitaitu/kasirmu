@@ -1335,4 +1335,41 @@ and it never routes a device check cross-region.
 - **Not a client-side brick.** §2.7 forbids making the app or its database unopenable.
 - **Not coverage of `local` installs** — see §3.4, where the exemption is now a stated decision rather than an open question.
 
+## Amendment 2026-10-04 — a clock that cannot be read must not authorise anyone
+
+This decision is about when a session stops being valid, so it owns the rule this amendment
+records: **a credential whose expiry cannot be evaluated is not a live credential.**
+
+Four clock reads in the bridge auth path used `.unwrap_or_default()` and therefore returned `0` on
+a pre-epoch clock. Zero is the one timestamp value that must never be assumed, and three of the
+four read it in a direction that grants access:
+
+- `verify_picker_ticket` tests `expiry_ts < now_ts`, so `now_ts = 0` satisfies it for **every**
+  ticket ever minted — an expired picker ticket verifies, and `create_session` mints a session
+  from it. This is the sharpest instance, and it is the one this amendment is really about: the
+  ticket's HMAC is still required, so it is not a forgery, but staleness stops mattering;
+- `sign_picker_ticket`'s expiry base and the session's `created_at` (the same `now_ts`) land in
+  1970;
+- `session.rs`'s `now_ts()` feeds `now_ts + TTL` for keepalive, switch-org and impersonation, so
+  each mints an already-dead session.
+
+**The second and third happened to be closed** once `SessionContext::is_expired` was made to fail
+closed in `8df4ceae1`, because the resulting sessions read as expired. That is not a defence. Two
+independent fail-open decisions that happen to cancel out are a coincidence with a maintenance
+cost: the next change to either one silently re-opens the other, and nothing tests the pair. All
+four sites now refuse at the source, through a reader returning `Option<i64>` that logs the
+condition; a `None` denies the operation.
+
+**`verify_picker_ticket` keeps taking the clock as a parameter.** That shape is right — the caller
+owns the clock, and the function is a pure verifier — but a required argument is precisely where a
+caller is most likely to supply a default, so the requirement is now stated in its doc rather than
+left to be inferred.
+
+**The regression test asserts the hazard, not the fix.** `a_zero_clock_makes_every_ticket_verify_
+including_expired_ones` pins that a ticket correctly rejected at a real clock is ACCEPTED at
+`now_ts = 0`. That is a property of the zero-clock semantics, so it fails if anyone makes the zero
+case *look* safe by adjusting the comparison instead of removing the default. Verified by guarding
+the comparison with `|| now_ts == 0`: the pin fails. Measured, not assumed — it is stated this way
+because four earlier pins in this campaign passed against the defect they were written for.
+
 > last audited 29-09-26 by docs-auditor

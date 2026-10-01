@@ -77,12 +77,32 @@ impl Store<'_> {
         staff_user_id: &str,
         terminal_id: Option<&str>,
     ) -> Result<crate::sale_deduction::CompleteSaleResult, CoreError> {
-        let location = crate::location_resolver::resolve_primary_location(
-            self.conn,
-            workspace_instance_id.unwrap_or("default"),
-            None,
-        )
-        .unwrap_or_else(|_| crate::location_resolver::get_default_location_id());
+        // PROPAGATES, matching the four bridge callers and the sibling in
+        // `sales_lifecycle.rs`. The earlier `.unwrap_or_else(|_| get_default_location_id())`
+        // made a FAILED resolve look like an unbound workspace, so the deduction went to
+        // the canonical default location instead of the bound one — silently.
+        // `resolve_primary_location` already returns tier 4 for a workspace with no
+        // binding, so only an ERROR reaches here, and an error is not "unbound".
+        //
+        // `None` means LEGACY SINGLE-LOCATION, as this function's doc has always said, and
+        // the canonical default LOCATION is the right answer for that case. It used to
+        // substitute the literal `"default"` as a workspace-instance id and resolve through
+        // `resolve_primary_location`, which is a different question: that resolver is keyed
+        // by workspace instance, and nothing is ever registered under that id.
+        // `provision_device` (provisioning.rs:762) creates workspaces with `new_id()`
+        // (fresh UUIDs) and `seed_provisioned_baseline` names them `default-store-pos` and
+        // friends — neither produces a bare `default`. Measured 2026-10-01: 37 tests across
+        // `db::sales::tests`, `payment_failure_integration` and
+        // `corruption_recovery_integration` all failed with
+        // `NotFound { entity: "workspace_instance", id: "default" }`.
+        //
+        // So `None` now takes the documented path directly, with no lookup to fail. A
+        // caller that means "this workspace" passes the real id and gets the real
+        // resolution, error included.
+        let location = match workspace_instance_id {
+            Some(id) => crate::location_resolver::resolve_primary_location(self.conn, id, None)?,
+            None => crate::location_resolver::get_default_location_id(),
+        };
         self.complete_sale_deduction_with_locations(
             sale,
             workspace_instance_id,

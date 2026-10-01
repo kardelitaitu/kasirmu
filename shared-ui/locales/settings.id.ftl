@@ -138,7 +138,11 @@ setup-provision-offline-switch-local = Selesaikan tanpa akun
 # Yang sebenarnya dibutuhkan QR, dinyatakan sebelum merchant mengeklik: perangkat
 # kedua yang SUDAH masuk ke akun. Kalau tidak disebut, terbaca sebagai universal,
 # dan merchant yang menyiapkan satu terminal sendirian tidak dapat melakukannya.
-setup-account-pair-requirement = { ' Pasangkan QR membutuhkan HP kedua yang sudah masuk ke akun Anda.' }
+# Teks biasa, BUKAN `{ ' …' }`. Pesan yang seluruh nilainya hanya placeable
+# ditolak parser Fluent, sehingga id-nya tidak ada saat runtime dan
+# @fluent/react memakai children komponen sebagai cadangan — yaitu Bahasa Inggris
+# di semua perangkat. Terdeteksi di perangkat keras 2026-10-01.
+setup-account-pair-requirement = Pasangkan QR membutuhkan HP kedua yang sudah masuk ke akun Anda.
 # Gerbang kirim, diberi nama. Tombol nonaktif tidak bisa ditekan dan tidak bisa
 # menjelaskan dirinya sendiri, dan kartu ini lebih tinggi dari viewport, sehingga
 # syarat yang belum terpenuhi maupun kontrol untuk memperbaikinya sama-sama
@@ -165,13 +169,14 @@ setup-provision-step-progress = Langkah { $current } dari { $total }
 setup-provision-step-account = Akun
 setup-provision-step-store = Toko
 setup-provision-step-owner = Pemilik
+setup-provision-step-back = Kembali
+setup-provision-step-next = Lanjut
 setup-mode-local-title = Offline saja
 setup-mode-local-desc = Jaga terminal ini sepenuhnya offline. Tanpa akun, tanpa sinkronisasi — ruang kerja gratis dibuat di perangkat.
 setup-mode-linked-title = Tautkan akun kasir.mu Anda
 setup-mode-linked-desc = Daftar atau masuk untuk menautkan terminal ini ke akun Anda, untuk sinkronisasi antarperangkat, backup cloud, dan paket Anda.
 setup-tab-pair = Pasangkan QR
 setup-tab-email = Kode Email
-setup-tab-wizard = Panduan Wizard
 setup-provision-store-type = Jenis usaha apa ini?
 setup-store-type-simple-retail = Toko
 setup-store-type-simple-retail-blurb = Barcode, tunai, struk, stok, pajak
@@ -229,7 +234,6 @@ setup-features-toggle-aria =
     .aria-label = Aktifkan/nonaktifkan { $label }
 
 # Gerbang setup QRIS (pemicu Free→Plus C1 — onboarding)
-
 
     [one] fitur diaktifkan
     *[other] fitur diaktifkan
@@ -348,8 +352,10 @@ settings-footer-placeholder =
     .placeholder = Terima kasih telah berbelanja!
 settings-server-url-placeholder =
     .placeholder = https://api.example.com
-settings-api-key-placeholder = Masukkan kunci API
-settings-api-key-masked = ••••••••
+settings-api-key-placeholder =
+    .placeholder = Masukkan kunci API
+settings-api-key-masked =
+    .placeholder = ••••••••
 settings-api-key-show-aria = Tampilkan kunci API
 settings-api-key-hide-aria = Sembunyikan kunci API
 settings-btn-save-aria =
@@ -617,7 +623,6 @@ category-name-fallback = (tanpa nama)
 
 # ── Settings Tabs ──
 
-
 # ── General Settings ──
 # ── Receipt Settings ──
 settings-margins-heading = Margin Kertas (mm)
@@ -766,7 +771,8 @@ settings-email-port = Port
 settings-email-username = Nama Pengguna
 settings-email-username-placeholder = Opsional
 settings-email-password = Kata Sandi
-settings-email-password-placeholder = Masukkan kata sandi
+settings-email-password-placeholder =
+    .placeholder = Masukkan kata sandi
 settings-email-password-show = Tampilkan kata sandi
 settings-email-password-hide = Sembunyikan kata sandi
 settings-email-from = Alamat Pengirim
@@ -1016,7 +1022,6 @@ settings-localpay-empty-list = Belum ada jalur yang dicatat — tambahkan yang d
 settings-localpay-scope-location = Diatur di lokasi ini
 settings-localpay-scope-legal-entity = Default pasar (badan hukum)
 
-
 # ── Diagnostik (hasil ketersediaan fitur) ──
 settings-diagnostics-title = Diagnostik
 settings-diagnostics-intro = Mengapa setiap fitur tersedia atau terkunci untuk Anda saat ini — gerbang yang sama yang diterapkan aplikasi, dengan alasannya disebutkan. Hanya baca, bekerja offline.
@@ -1051,7 +1056,6 @@ settings-diagnostics-detail-expires = Kedaluwarsa: { $expiresAt }
 settings-diagnostics-detail-grace = Tenggang hingga: { $graceUntil }
 settings-diagnostics-deployment-version = Versi aplikasi: { $version }
 settings-diagnostics-deployment-unknown = Tidak dapat membaca versi aplikasi.
-
 
 # ── Format struk (receipt-format axis, layar Business Defaults) ──
 settings-rcptfmt-title = Format struk
@@ -1129,50 +1133,6 @@ settings-fiscalnum-overview-col-prefix = Awalan
 settings-fiscalnum-overview-col-current = Nomor terakhir
 settings-fiscalnum-overview-col-updated = Diperbarui
 
-# ── Mobile Setup Wizard & Welcome Flow (Figma spec 720x1280) ──
-setup-mobile-welcome-cta = Setup Wizard →
-setup-mobile-welcome-guide = Panduan 2 menit konfigurasi perangkat
-setup-mobile-welcome-signup = Sign up
-setup-mobile-welcome-signup-hint = Belum punya lisensi? Buat akun dulu
-setup-mobile-welcome-blurb = Solusi kasir modern serba bisa untuk mencatat penjualan, kelola stok barang, cetak struk thermal, dan pantau omset toko secara otomatis.
-
-setup-mobile-hub-title = Setup Device Baru
-setup-mobile-hub-subtitle = Sistem kasir & Inventory modern, cepat & offline-first untuk toko retail, cafe & restoran.
-setup-mobile-feature-offline = Bekerja 100% Offline Tanpa Koneksi Internet
-setup-mobile-feature-printer = Cetak Struk Thermal Bluetooth
-setup-mobile-feature-multidevice = Multi-Device & Sinkronisasi Lokal via WiFi / LAN
-setup-mobile-feature-reports = Laporan Stok, Kas & Omset Otomatis Real-time
-setup-mobile-hub-connect-hint = Hubungkan toko untuk sinkronisasi katalog, staf & laporan transaksi
-setup-mobile-auth-google-title = Masuk dengan Akun Google
-setup-mobile-auth-google-desc = Aman, cepat, dan otomatis backup cloud ke Google Drive
-setup-mobile-auth-email-title = Masuk dengan Email & Password
-setup-mobile-auth-email-desc = Gunakan akun Owner, Store Manager, atau Kasir yang terdaftar
-setup-mobile-auth-qr-title = Hubungkan via QR Code / Login Code
-setup-mobile-auth-qr-desc = Scan QR dengan akun owner/admin
-setup-mobile-hub-footer = Belum punya akun Kasirmu? Hubungi sales@kasirmu.com atau daftar di kasirmu.id
-
-setup-mobile-back = Kembali
-setup-mobile-google-title = Pilih akun untuk melanjutkan
-setup-mobile-google-subtitle = ke aplikasi Kasir.mu Sync & Cloud Backup
-setup-mobile-google-privacy = Kasir.mu hanya meminta izin sinkronisasi profil Google. Data penjualan dan transaksi Anda tetap tersimpan privat di perangkat lokal.
-
-setup-mobile-email-intro = Masukkan kredensial akun untuk menghubungkan data katalog & stok toko:
-setup-mobile-email-forgot = Lupa kata sandi?
-setup-mobile-email-submit = Masuk →
-setup-mobile-email-security = 🔒 Koneksi terenkripsi end-to-end SSL 256-bit & tersimpan lokal di perangkat
-
-setup-mobile-qr-reticle-hint = Pastikan QR code berada di dalam bingkai
-setup-mobile-qr-guide-title = Petunjuk Penggunaan QR code
-setup-mobile-qr-step1 = 1. Buka website dashboard.kasir.mu
-setup-mobile-qr-step2 = 2. Masuk dengan akun owner
-setup-mobile-qr-step3 = 3. Klik tombol 'Pasangkan Device Baru' untuk menampilkan QR code pairing
-setup-mobile-code-guide-title = Petunjuk Penggunaan login code
-setup-mobile-code-step1 = 1. Buka website kasir.mu
-setup-mobile-code-step2 = 2. Masuk dengan akun owner
-setup-mobile-code-step3 = Klik link ini :
-setup-mobile-code-copy = Copy
-setup-mobile-code-copied = Tersalin!
-
 # EDC Terminals Settings
 settings-edc-title = Terminal Kartu EDC
 settings-edc-description = Konfigurasikan terminal pembayaran EDC fisik untuk pemrosesan kartu.
@@ -1210,4 +1170,3 @@ settings-edc-default-auto = Otomatis (Pertama Dibuat)
 settings-edc-saved = Terminal EDC berhasil disimpan.
 settings-edc-deleted = Terminal EDC berhasil dihapus.
 settings-edc-delete-confirm = Apakah Anda yakin ingin menghapus terminal EDC ini?
-

@@ -322,9 +322,12 @@ impl Store<'_> {
                 params![transfer_id],
                 |row| row.get(0),
             )
-            .map_err(|_| CoreError::NotFound {
-                entity: "stock_transfer",
-                id: transfer_id.to_owned(),
+            .map_err(|error| match error {
+                rusqlite::Error::QueryReturnedNoRows => CoreError::NotFound {
+                    entity: "stock_transfer",
+                    id: transfer_id.to_owned(),
+                },
+                other => CoreError::Db(other),
             })?;
 
         if status != "draft" {
@@ -386,9 +389,12 @@ impl Store<'_> {
                 params![line_id],
                 |row| row.get(0),
             )
-            .map_err(|_| CoreError::NotFound {
-                entity: "stock_transfer_line",
-                id: line_id.to_owned(),
+            .map_err(|error| match error {
+                rusqlite::Error::QueryReturnedNoRows => CoreError::NotFound {
+                    entity: "stock_transfer_line",
+                    id: line_id.to_owned(),
+                },
+                other => CoreError::Db(other),
             })?;
 
         let status: String = conn.query_row(
@@ -529,9 +535,12 @@ impl Store<'_> {
                     params![line.sku],
                     |row| row.get::<_, String>(0),
                 )
-                .map_err(|_| CoreError::NotFound {
-                    entity: "product",
-                    id: line.sku.clone(),
+                .map_err(|error| match error {
+                    rusqlite::Error::QueryReturnedNoRows => CoreError::NotFound {
+                        entity: "product",
+                        id: line.sku.clone(),
+                    },
+                    other => CoreError::Db(other),
                 })?;
 
             // Route the deduction through the canonical per-location adjust
@@ -670,9 +679,12 @@ impl Store<'_> {
                         params![sku],
                         |row| row.get(0),
                     )
-                    .map_err(|_| CoreError::NotFound {
-                        entity: "product",
-                        id: sku.clone(),
+                    .map_err(|error| match error {
+                        rusqlite::Error::QueryReturnedNoRows => CoreError::NotFound {
+                            entity: "product",
+                            id: sku.clone(),
+                        },
+                        other => CoreError::Db(other),
                     })?;
 
                 // Route the credit through the canonical per-location adjust

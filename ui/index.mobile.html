@@ -2,11 +2,17 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <!-- TAB-05: WCAG 1.4.4 (Resize Text) — no maximum-scale / user-scalable
-         lockout. Pinch-zoom stays enabled; touch-action: manipulation in the
-         inline styles below prevents double-tap zoom without blocking
-         pinch-to-zoom. -->
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content" />
+    <!-- TAB-05 (REVERSED 2026-10-02, owner call): the original decision kept
+         pinch-zoom enabled in the name of WCAG 1.4.4 (Resize Text). On the
+         terminal that was the wrong trade: a merchant's palm or two-finger grip
+         during a sale pinches the POS out of layout, and the app already ships
+         its OWN resize mechanism -- ZoomProvider (main.mobile.tsx) scales the
+         root font-size from Settings > Appearance, which is the WCAG-preferred
+         "user interface setting" form of 1.4.4. The lock also stays overridable
+         by the system accessibility setting "force enable zoom", so the escape
+         hatch for users who need it remains. touch-action: manipulation in the
+         inline styles below keeps double-tap zoom off. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />

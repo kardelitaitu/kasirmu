@@ -970,10 +970,11 @@ pub async fn bootstrap_owner(
     // Mint the short-lived picker ticket bound to the new owner. It is
     // only valid for the pre-session workspace picker; `create_session`
     // hands out the opaque session token afterwards.
-    let now_ts = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs() as i64;
+    let Some(now_ts) = crate::auth::now_unix_secs() else {
+        return Err(BridgeError::Internal(
+            "cannot read the system clock; refusing to mint a picker ticket".into(),
+        ));
+    };
     result.picker_ticket = sign_picker_ticket(
         &ctx.picker_ticket_secret,
         &result.session.user_id,

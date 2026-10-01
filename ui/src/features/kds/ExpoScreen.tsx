@@ -154,10 +154,27 @@ export default function ExpoScreen() {
   // 15-minute window expiry move without their own timer.
   const [nowMs, setNowMs] = useState(() => Date.now());
 
+  // Guarded against a store switch, and this one has a CONSEQUENCE the other pollers do
+  // not: `orders` supplies the RECALL candidates (:232) and restoreOrder passes one to
+  // updateKdsStatusScoped with the CURRENT token, so a stale list offers a foreign order
+  // for restoration. It is the id-discriminator hazard reached through the poll.
+  //
+  // THE CLIENT-SIDE STORE FILTER BELOW DOES NOT COVER THIS, which is worth stating because
+  // it looks like it should. The stale closure captured BOTH token_A and storeId_A, so
+  // `activeStoreId` matches the rows it is filtering: store A orders pass a filter built
+  // from store A id. The filter defends against a SERVER returning the wrong rows for a
+  // token; it cannot see that the TOKEN is stale, because staleness is not a property of
+  // the response.
+  const ordersTokenRef = useRef(sessionToken);
+  useEffect(() => { ordersTokenRef.current = sessionToken; }, [sessionToken]);
+
   const load = useCallback(async () => {
     if (!sessionToken) return;
+    const forToken = sessionToken;
     try {
-      const all = await listKdsOrdersScoped(sessionToken);
+      const all = await listKdsOrdersScoped(forToken);
+      // Drop a response that arrived after the store moved on.
+      if (ordersTokenRef.current !== forToken) return;
       const activeStoreId = workspaceScope?.storeId;
       let filtered = all;
       if (activeStoreId) {

@@ -53,6 +53,27 @@ export default function PurchaseOrderForm({ editingId, onClose, onSaved }: Props
 
   useFocusTrap(panelRef, !saving, onClose);
 
+  // Measured and left UNGUARDED, like StoreSwitcher.load. Deps name sessionToken
+  // so a store switch CAN overlap two of these reads. The consequence is what
+  // decided it:
+  //
+  //   suppliers feeds ONLY the dropdown. A stale read fills it with the PREVIOUS
+  //   store suppliers and submits supplierId. The write is still scoped, and the FK IS
+  //   THE LAYER THAT DOES IT: purchase_orders.supplier_id is
+  //   `TEXT NOT NULL REFERENCES suppliers(id)` (migrations/20260813_init.sql:509), and
+  //   create_purchase_order_scoped opens a SEPARATE database per store
+  //   (purchasing.rs:711, :717; platform/core/src/database/manager.rs:73). A supplier id
+  //   from another store does not exist in this store's suppliers, so the INSERT is
+  //   rejected. The failure is a confusing reject, not a cross-tenant write.
+  //
+  //   VERIFIED 2026-10-05 the way round 123 should have been done the first time: by
+  //   reading the SCHEMA, not only the Rust call. The scoping function establishes WHICH
+  //   database; the foreign key is what makes a foreign id impossible. Where a claim of
+  //   this kind rests on the function alone, check the constraint too.
+  //
+  // So no guard here: it would buy a correct dropdown at the cost of another
+  // token. If the supplier list ever gates submission rather than feeding it,
+  // this becomes money and needs the guard with it.
   useEffect(() => {
     listSuppliers(sessionToken).then(setSuppliers)    .catch(() => {
       addToast({ message: requiredLocalized(l10nRef.current, 'po-form-error-suppliers-failed'), type: 'error' });

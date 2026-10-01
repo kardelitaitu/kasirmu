@@ -204,6 +204,70 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingKeysRef = useRef<Set<string>>(new Set());
   const mountedRef = useRef(true);
+  // A monotonic token, so only the LATEST load may write into `settings`.
+  //
+  // THIS IS ONE OF TWELVE FIXES FOR ONE SHAPE, and the shape has no gate. In every
+  // case an effect whose dependency list names sessionToken re-ran on a store
+  // switch, two reads overlapped, and the slower landed last.
+  //
+  // THE TWELVE, with their coverage as of round 117. "Pinned" means a mutation was
+  // run: the guard was deleted and the suite went red.
+  //
+  //   51c86e9e8 CurrencyContext.refresh          pinned (80d5c121c)
+  //   09ac4df43 SettingsContext loadAll/loadScoped pinned (8593d76ca)
+  //   184fcc75e BrandContext.refreshBrandSettings pinned (184fcc75e, same commit)
+  //   88415f10f ShiftBar locations/shift         pinned (round 79)
+  //   760e0c8da PosScreen receipt settings       pinned (bffa33fd7)
+  //   760e0c8da PosScreen course firing         pinned (14295df1a re-verified)
+  //   1b0f0fb3a StockTransfersScreen.openDetail pinned (0900ba1eb, re-verified r117)
+  //   1aead7518 usePosShifts                     pinned (5bbef0162)
+  //   116803906 RetailPosScreen shift            pinned (14295df1a)
+  //   eee76b542 RetailPosScreen currency         pinned (4ccb51020)
+  //   ac8910736 EmailReportSettings SMTP         pinned (fbf28503d)
+  //   e19e412e4 useKdsPreferences localStorage   pinned (e139c2135)
+  //   bb279c34d ExchangeRateScreen rate-sync      DEAD END, recorded in place
+  //
+  // The one dead end is honest rather than open: three attempts survived, the
+  // reconciliation failure is written up at its guard, and the next step there is to
+  // read the state transition directly instead of inferring it from the DOM.
+  //
+  // IF YOU WRITE A NEW ONE, the test must make the stale read resolve with
+  // DISTINCTLY DIFFERENT values. Returning the same ones makes the test pass with
+  // the guard REMOVED -- that cost two mutations each in Currency and Settings.
+  //
+  // WHEN RECORDING A COVERAGE GAP, NAME IT PRECISELY. Two commits in this campaign said
+  // a module "has no test file of its own yet" (e139c2135, 40754c909). Both were WRONG:
+  // `git cat-file -e <sha>:<path>` shows the test file existed in each case, committed
+  // earlier, and only the store-switch case for the new guard was missing. The
+  // conclusion was right -- the guard was genuinely unpinned, verified by running the
+  // mutation -- but the wording sent the next attempt to write a NEW test file when the
+  // existing suite was the place to add a case. "The existing suite does not cover this
+  // guard" is the true and more useful statement; say that instead.
+  //
+  // ALSO MEASURED ACROSS THIS CAMPAIGN, because each cost a round: a mock that
+  // captures the token BY VALUE rather than through a getter never sees a switch; a
+  // test that leaves the token mutated makes the next case's switch a silent NO-OP;
+  // and a read mocked once is consumed by the first call, so the token-switch
+  // re-issue falls through to the default. All three make a test pass without racing
+  // anything.
+  //
+  // A gate was attempted and deliberately NOT shipped: scanning ui/src for the
+  // shape reports 41 sites, most of them false positives (a `setInterval` inside a
+  // poll, a store switcher's own setter), and a gate that over-reports gets
+  // disabled. The sibling verify-settled-read-copies.py stops the READ verdict
+  // being re-declared because that shape is exact; this one is not. Deciding which
+  // of the 41 overlap and matter is a human reading what the written value drives.
+  //
+  // `loadAll` depends on sessionToken, so the initial-load effect below re-runs
+  // on every STORE SWITCH and those reads overlap. `mountedRef` only guards
+  // unmount -- it stays true across a switch -- so a slower read from the previous
+  // store could land afterwards and overwrite the current store's settings:
+  // receipt format, tax configuration and CURRENCY among them.
+  //
+  // This is the same defect CurrencyContext.refresh had (51c86e9e8), on a wider
+  // surface. Bumping on unmount also retires any read still in flight when the
+  // provider goes away.
+  const loadSeq = useRef(0);
 
   // Read sessionToken for scoped settings APIs. `terminalId` is the
   // device id (`getDeviceId()`); the backend tags `settings_updated` events
@@ -273,6 +337,13 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
     setLoading(true);
     setError(null);
 
+    // Same invalidation as loadScoped: `loadAll` depends on sessionToken, so a
+    // store switch starts a second one while the first is in flight, and
+    // allSettled only guarantees the WRITES are batched -- not that they belong to
+    // the store that is still active when they land.
+    const seq = ++loadSeq.current;
+    const stale = () => loadSeq.current !== seq;
+
     const results = await Promise.allSettled([
       getReceiptSettingsScoped(sessionToken),
       getStoreSettingsScoped(sessionToken),
@@ -286,6 +357,9 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
 
     let hasAnyFailure = false;
     try {
+      // A store switch during this load supersedes it entirely: applying any part
+      // of it would mix two stores' receipt, tax and currency settings.
+      if (stale()) return;
       if (rR.status === 'fulfilled' && rR.value) {
         setSettings((prev) => ({ ...prev, receipt: rR.value }));
       } else {
@@ -367,11 +441,15 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
     }
 
     setLoading(true);
+    // Only this load may write: a store switch invalidates every earlier one.
+    const seq = ++loadSeq.current;
+    const stale = () => loadSeq.current !== seq;
     const tasks: Array<Promise<unknown>> = [];
 
     if (scopes.has('receipt')) {
       tasks.push(
         getReceiptSettingsScoped(sessionToken).then((v) => {
+          if (stale()) return;
           if (!v) return;
           setSettings((prev) => ({ ...prev, receipt: v }));
         }),
@@ -380,6 +458,7 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
     if (scopes.has('store')) {
       tasks.push(
         getStoreSettingsScoped(sessionToken).then((v) => {
+          if (stale()) return;
           if (!v) return;
           setSettings((prev) => ({ ...prev, store: v }));
         }),
@@ -388,6 +467,7 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
     if (scopes.has('currencies')) {
       tasks.push(
         listCurrenciesScoped(sessionToken).then((v) => {
+          if (stale()) return;
           if (!v) return;
           setSettings((prev) => ({ ...prev, currencies: v }));
         }),
@@ -396,6 +476,7 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
     if (scopes.has('sync')) {
       tasks.push(
         getSyncSettingsScoped(sessionToken).then((v) => {
+          if (stale()) return;
           if (!v) return;
           setSettings((prev) => ({ ...prev, sync: withSyncDefaults(v) }));
         }),
@@ -404,6 +485,7 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
     if (scopes.has('preferences')) {
       tasks.push(
         getUserPreferencesScoped(sessionToken).then((p) => {
+          if (stale()) return;
           if (!p) return;
           const cardSize = p['cardsize'] !== undefined
             ? Math.min(4, Math.max(0, parseInt(p['cardsize'], 10) || 0))
@@ -422,6 +504,7 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
     if (scopes.has('brand')) {
       tasks.push(
         getBrandSettingsScoped(sessionToken).then((v) => {
+          if (stale()) return;
           if (!v) return;
           setSettings((prev) => ({
             ...prev,
@@ -433,6 +516,7 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
     if (scopes.has('version')) {
       tasks.push(
         getVersionScoped(sessionToken).then((v: VersionInfo) => {
+          if (stale()) return;
           if (!v) return;
           setSettings((prev) => ({ ...prev, appVersion: v.version }));
         }),
@@ -440,7 +524,9 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
     }
 
     await Promise.allSettled(tasks);
-    if (mountedRef.current) setLoading(false);
+    // A superseded load must not clear the CURRENT load's spinner -- that is how a
+    // stale write made itself visible in the first place.
+    if (mountedRef.current && !stale()) setLoading(false);
   }, [sessionToken, loadAll]);
 
   // ── Debounced update handler ────────────────────────────────
@@ -483,6 +569,9 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
     loadAll();
     return () => {
       mountedRef.current = false;
+      // Retire any load still in flight: `mountedRef` guards the effect body but
+      // not a `loadAll`/`loadScoped` that has already awaited past it.
+      loadSeq.current += 1;
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
   }, [loadAll]);

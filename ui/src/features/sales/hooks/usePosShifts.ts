@@ -128,6 +128,26 @@ export function usePosShifts({ sessionToken, userId, lines, l10nRef, currency = 
   // nobody had opened a shift. The guards then refused every sale. Setting
   // shiftUnavailable makes the failure observable, lets the guards stand down,
   // and keeps a genuine no-shift-open store on the original path.
+  // Guarded. The deps name sessionToken, so a store switch starts a second read
+  // while the first is in flight, and a slower earlier one would land last.
+  // Same class as CurrencyContext (51c86e9e8), SettingsContext (09ac4df43),
+  // BrandContext (184fcc75e), ShiftBar (88415f10f), PosScreen (760e0c8da) and
+  // StockTransfersScreen (1b0f0fb3a); the write-up is at SettingsContext:207.
+  //
+  // Unlike the PaymentModal one measured in round 88, this one is MONEY:
+  // activeShift GATES EVERY SALE. PosScreen refuses to add a product or open a
+  // payment when there is no shift (`!activeShiftRef.current &&
+  // !shiftUnavailableRef.current`, :406 and :470), so a stale read goes wrong in
+  // both directions --
+  //
+  //   - a stale null tells the cashier to open a shift when one IS open;
+  //   - a stale shift from the PREVIOUS store leaves the POS believing a shift is
+  //     open at a location that does not belong to this store.
+  //
+  // Both arms are guarded, including the spinner: a superseded read must not clear
+  //   the current one or stand the shift gate down for the load in flight.
+  const shiftSeq = useRef(0);
+
   useEffect(() => {
     if (!userId) {
       setActiveShift(null);
@@ -135,13 +155,17 @@ export function usePosShifts({ sessionToken, userId, lines, l10nRef, currency = 
       setShiftLoading(false);
       return;
     }
+    const seq = ++shiftSeq.current;
+    const stale = () => shiftSeq.current !== seq;
     setShiftLoading(true);
     getActiveShiftScoped(sessionToken)
       .then((shift) => {
+        if (stale()) return;
         setActiveShift(shift);
         setShiftUnavailable(false);
       })
       .catch(() => {
+        if (stale()) return;
         // The shift service could not be reached. We cannot tell a missing
         // command from a transport failure here, and refusing to sell on
         // either would gate the till on an informational feature — so the
@@ -149,7 +173,10 @@ export function usePosShifts({ sessionToken, userId, lines, l10nRef, currency = 
         setActiveShift(null);
         setShiftUnavailable(true);
       })
-      .finally(() => setShiftLoading(false));
+      .finally(() => {
+        if (!stale()) setShiftLoading(false);
+      });
+    return () => { shiftSeq.current += 1; };
   }, [userId, sessionToken]);
 
   const handleCloseShiftClick = useCallback(() => {

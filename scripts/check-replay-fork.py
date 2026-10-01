@@ -40,6 +40,13 @@ CONTROL SET, which is the part that silently disappears.
 Exit code 0 = both sides carry the same control set.
 Exit code 1 = a control exists on one side only.
 Exit code 2 = a REFUSED command line (a named root resolved to no file).
+
+SELF-TEST: `python3 scripts/test-replay-fork.py` (10 cases, touches no files). It lives in
+its own file rather than behind a flag because this checker is the gate that would have
+caught the fork losing the colon rejection -- the one control here with a security
+consequence -- and a checker that cannot fail is worse than none. The self-test proves
+both halves of the substring trap the CONTROLS markers below exist to close: that a
+bare name check IS fooled by renaming a control, and that the definition check is not.
 """
 
 from __future__ import annotations
@@ -48,12 +55,19 @@ import argparse
 import sys
 from pathlib import Path
 
-# The COR-7 controls, by the name each side uses for them. Each is a guard that
+# The COR-7 controls, by the DEFINITION each side writes. Each is a guard that
 # changes WHAT the replay guard does, not a helper of convenience: losing one lets
 # a client reach a branch the other shell refuses.
+#
+# The marker is the `fn NAME(` form and NOT the bare name, deliberately. A bare name
+# is a SUBSTRING question, and renaming `normalized_attempt_id` to
+# `normalized_attempt_id_renamed` leaves the original inside the new name -- so a
+# name-presence check reports the control still present and a rename of the control
+# survives as a false pass. Keying on the definition site cannot be fooled that way,
+# and scripts/test-replay-fork.py pins both halves of that.
 CONTROLS = [
     # Rejects an attempt id carrying `:`, closing the key-namespace forgery.
-    ("validated_attempt_id", "normalized_attempt_id"),
+    ("fn validated_attempt_id(", "fn normalized_attempt_id("),
 ]
 
 BRIDGE_REL = "crates/kasirmu-bridge/src/pos/checkout/replay.rs"

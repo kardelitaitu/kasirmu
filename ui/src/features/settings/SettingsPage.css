@@ -301,6 +301,23 @@
 
 /* ── Footer ─────────────────────────────────────────────────── */
 
+/* RETRACTED 2026-10-01: this band on .settings-footer was removed as a NO-OP, not
+ * merged elsewhere. A second band was added here on the reading that
+ * elementFromPoint returned the footer at the stack's button positions -- that
+ * reading was wrong about which element moved. Measured with and without this rule:
+ * footer y=458 either way, stack y=500-709 either way.
+ *
+ * Why: the footer is a flex SIBLING of .settings-body inside .settings-page
+ * (SettingsPage.tsx:434; the body closes at :431), and it is `flex: 0 0 auto` at the
+ * bottom of that column. Padding it cannot move it. The clearance that does lift the
+ * footer off the stack is the .settings-body band in SettingsNavTree.css, which
+ * shrinks the region above it and lets the column re-lay out.
+ *
+ * Removed rather than kept: a band that measures as no-op on every value it claims
+ * to move is not a safety margin, it is a comment that outlives its own falsification
+ * and sends the next reader looking for a second surface that does not need clearing.
+ */
+
 .settings-footer {
   flex: 0 0 auto;
   min-height: 1.5rem;

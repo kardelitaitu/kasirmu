@@ -376,7 +376,9 @@ const THEMES: ThemeInfo[] = [
 ];
 
 describe('WCAG AA colour contrast compliance', () => {
-  const css = readFileSync(TOKENS_PATH, 'utf-8');  for (const { selector, label } of THEMES) {
+  const css = readFileSync(TOKENS_PATH, 'utf-8');
+
+  for (const { selector, label } of THEMES) {
     const tokens = extractTokens(css, selector);
     const pairs = buildPairs(tokens, label);
     const tokenCount = Object.keys(tokens).length;

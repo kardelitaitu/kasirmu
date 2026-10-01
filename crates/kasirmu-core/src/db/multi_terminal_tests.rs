@@ -20,6 +20,19 @@ use rusqlite::Connection;
 fn fresh() -> Connection {
     let conn = migrations::fresh_db();
     migrations::seed_provisioned_baseline(&conn);
+    // Plus a workspace instance whose id is literally `default`: the settlement
+    // doors here are called with `None` for `workspace_instance_id`, which becomes
+    // this literal (`sales_lifecycle.rs:225`), and `seed_provisioned_baseline` seeds
+    // `default-restaurant-pos` and friends but NOT a bare `default`. Without the row
+    // the doors used to fall back to the canonical default location on the resulting
+    // `NotFound`; they now PROPAGATE it, as the four bridge callers always have, so
+    // the fixture must supply the instance these tests actually resolve.
+    conn.execute(
+        "INSERT INTO workspace_instances (id, type_key, location_id, name, status, last_accessed_at) \
+         VALUES ('default', 'store-pos', 'default', 'Default', 'active', '2025-01-01T00:00:00.000Z')",
+        [],
+    )
+    .expect("seed the literal 'default' workspace instance these doors resolve");
     conn
 }
 

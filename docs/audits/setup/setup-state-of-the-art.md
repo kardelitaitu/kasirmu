@@ -1423,6 +1423,35 @@ wrong: the store type is a DECISION, and hiding it would mean a merchant cannot 
 about to ask. Detail can be disclosed progressively; a choice should stay visible. I narrowed the
 change rather than editing the test.
 
+> **SUPERSEDED 2026-10-01 — this is the dated record of what was decided then, not of what
+> ships.** The reasoning above held at the time and the test it preserved was right about
+> the *offering*: both store types are still reachable, and `provisioning.spec.ts` still
+> asserts that. What changed is the *placement*, and not by choice of argument — by a
+> commit. `185bccb69` ("make the provisioning flow a true three-step wizard", +144/−42)
+> gates the step behind `activeStep`: `ProvisioningFlow.tsx:999` now reads
+> `{activeStep === 1 && (` where the store type lives, so it renders only once step 1
+> is answered.
+>
+> Nobody recorded reversing this decision — `185bccb69` has an empty commit body —
+> and round 38 of this document flagged that as the open question rather than settling
+> it. It is worth being precise about what actually happened, because "a decision was
+> taken" and "a draft was reverted" look identical from a diff and are not:
+>
+>   - The **test was not edited to accommodate the change.** The repair in round 19 was
+>     to walk the wizard (`provision-step-next`) the way a merchant does, and to assert the
+>     store types are *offered* after step 1 instead of *placed* on first paint. The
+>     coverage is the same; only the placement assumption was dropped, deliberately and
+>     with the reason recorded at the case.
+>   - So the disagreement recorded above survived as **reachability**, and the decision
+>     it actually made — "a choice should stay visible" — did not. On first paint the
+>     merchant now sees a mode question, not the store-type choice.
+>
+> Whether that is right is a product call this audit should not make. The cost is
+> small and defensible (one extra click before a choice the wizard now asks in
+> context); the loss is the round-30 argument that a merchant cannot see what the form
+> is about to ask. **If the wizard's placement is intended to stand, this paragraph is
+> the record to strike — not silently, by rewriting it to sound agreed.**
+
 ### The honest limits
 
 - **First paint is unchanged** (967px initial vs 1460px at step 2). The owner fields were never the
@@ -1780,15 +1809,158 @@ element is `overflow: hidden` with `scrollHeight == clientHeight` (676 == 676) �
 scroll container. `.settings-sidebar-nav` is `flex: 1; overflow-y: auto`, and the band
 belongs there; the region now measures 791 > 623 and the row is reachable.
 
-**Not proven closed, and not gateable as measured.** A whole-app interception census
-timed out partway through the route list, so warehouse/products/locations were never
-reached. Worse, four attempts to turn the census into a gate all failed the only test that
-matters — *does it fail without the fix?* Screen-wide sampling with no scroll is too strict
-(it calls every below-the-fold control occluded); per-element with Playwright's minimum
-scroll is too strict even WITH the band; per-element with `block: 'center'` is vacuous (it
-passes with the band removed); a 3s click timeout is vacuous on the picker. **No walker was
-committed.** The measurement is the finding; the gate would have been a false assurance,
+**Not gateable as measured, and the reason is now understood (2026-10-01).** The census that
+timed out partway was re-run over the ten routes it never reached — products,
+inventory-adjustment, stock-transfers, warehouses, customers, locations, topology,
+sales-history, data-management, shift-management — and found **zero** memo occlusion on every
+one. The single element reported on each route is the same `Skip to main content` link,
+whose box sits at `top: 0` under the app topbar; `clip: rect(0,0,0,0)` clips painting only,
+so the box still exists geometrically (`AppLayout.css:518`, `tablet.css:280`). That is the
+shell's own visually-hidden-until-focused pattern, not a collision and not a defect.
+
+**So the family is three surfaces, all banded, and the survey is exhausted.** What could not be
+built is a GATE — and the reason is worth more than a sixth attempt would have been.
+
+**Every formulation failed on the same hidden cause: the dev-mock's memo state is MUTABLE and
+PERSISTS.** `locations.ts:105` documents it outright — "Mutable memo list backing the dev mock
+— acknowledgements persist" — so a test that acks a memo removes it for every later test. Any
+occlusion assertion therefore rests on a precondition it does not control: a run where an earlier
+case acknowledged the stack passes VACUOUSLY, and a run where none did flags a real overlap.
+That is why the same three lines of code produced four different results across the day:
+
+| Formulation | With the band | Band removed | Verdict |
+|---|---|---|---|
+| screen-wide, no scroll | too strict | too strict | counts below-the-fold controls |
+| per-element, minimum scroll | too strict | too strict | lands the row at the overlay edge |
+| per-element, `block: 'center'` | passes | **passes** | vacuous |
+| 3s click timeout | passes | **passes** | vacuous on the picker |
+| per-element hit-test (staff) | passes | **passes** | vacuous |
+| per-element hit-test (picker) | passes | **passes** | vacuous |
+| default-position, in-viewport only | passes | **passes** | vacuous; the band is not load-bearing here |
+
+**No walker was committed.** A test that passes with and without the fix is a false assurance,
 which is the specific thing this audit keeps warning about.
+
+**What a real gate must do first, and this is the actionable part:** seed the stack rather than
+assume it. The dev-mock already exposes the affordance — dropping every persisted slice
+returns the preview to its seed state (`mockDatabase.ts:126`, `resetMockDatabase`) — so the test
+resets the mock, asserts the stack is present, and only then asserts no in-viewport control is
+covered. Every formulation above skipped that step, and skipped it *silently*, which is what
+made them look convincing.
+
+**And the step after it does not work — measured, twice, and the second measurement ends
+it** (2026-10-01). The obvious seeding is
+`import('/src/dev-mock/core/mockDatabase.ts') -> resetMockDatabase()` followed by `page.reload()`.
+Round 5 found the reload **drops the in-memory session**, so the "is the stack up?" assertion ran
+on the login screen. Round 6 fixed that (re-authenticate after the reset) and measured the result:
+
+```
+SEEDED bubbles=0
+SEEDED_HITS []      → 1 passed
+```
+
+**The reset does not RESTORE the stack, it removes it.** `resetMockDatabase()` clears the memo
+key, and on the next load the memo slice does not come back — so the precondition this gate
+needs can never be made true by resetting, and a test written this way passes vacuously *by
+construction*. There is no re-seeding path from the browser side: the mock's memo list is
+module state behind a read at load, and the only handle a test has clears it.
+
+**So the contract is right and the harness is not reachable with the current mock.** A gate for
+this family needs a mock affordance that DETERMINISTICALLY PRODUCES N pending memos — not a
+reset that empties them. That is a dev-mock change, not a test change, and it is the honest
+recommendation: stop trying to gate the overlay from the e2e side until the mock can be made to
+serve a known stack. Nine formulations have now failed; the tenth should not be attempted
+before the mock changes.
+
+**CORRECTION (2026-10-01) — the previous paragraph here was wrong, and the wrong way round.**
+It concluded the bands "are not demonstrably load-bearing" because, with the band removed, the
+staff Delete button and the picker's Settings card still landed clear **after a scroll**. True —
+and it measured the wrong thing. At the DEFAULT scroll position, with the stack at its full size,
+those bands do NOT prevent coverage. Measured with the seam below serving exactly 3 bubbles:
+
+| Surface | Covered at default scroll | Hit test returns |
+|---|---|---|
+| Workspace picker | Analytics, Reports tool cards | `BUTTON.memo-banner-open` |
+| Settings sidebar | Offline Queue, Tax Configuration, System Diagnostics (and each row's `Pin …` trigger) | `P.memo-banner-text` / `STRONG.memo-banner-title` |
+
+So the bands buy SCROLL ROOM — the row can be reached by scrolling — and they do not deliver
+"nothing visible is covered". A merchant looking at the picker sees two tool cards they cannot
+press until they scroll. That is a real, open product defect, it is what the seven rounds were
+chasing, and it is **not fixed**. The weaker claim was still an overclaim, in the opposite
+direction from the one it replaced.
+
+**The seam that made this measurable** (2026-10-01, in `dev-mock/handlers/locations.ts`):
+`?memos=N`, and the same value via `sessionStorage['oz-dev-mock:memo-count']`, serve exactly N
+pending bubbles, clamped to MAX_STACK (3). Verified 0→0, 1→1, 3→3, 5→3. The sessionStorage twin is not redundancy — `loginAs` navigates to plain `/`, which DROPS a query string, and a seam set before loginAs is silently lost. That trap cost a round here too, and it is the reason the note lives beside the code.
+
+**What is now true, stated precisely:** the overlay collision is reproducible on demand, the
+harness to catch it exists, and the product is currently FAILING the contract it would assert.
+The gate itself is not committed — it is red, and committing a red test is not an improvement.
+
+**PARTIALLY FIXED 2026-10-01 (rounds 9-10) — and the previous entry overclaimed.**
+Round 9 reported the picker's Analytics/Reports cards and the sidebar's three nav rows clear "on
+both projects". That was read off a REDUCED failure list, not a green run: the tablet project
+went green and **desktop did not**. Read the next entry as a retraction, not as a completion.
+
+The mechanism round 9 identified is real and still stands: `padding-bottom` on a scroll container
+SCROLLS WITH ITS CONTENT, so it buys room at the END of the scroll and does nothing at the default
+scroll position. The clearance has to go on a box that SIZES the scroller. Round 10 collapsed
+the two settings rules into one on `.settings-body` (the flex row that sizes BOTH the sidebar
+and the main content) — two rules where one is correct is also how a surface gets missed, because
+the one you banded is the one you test.
+
+**Measured state at the end of round 10, with `?memos=3`:**
+
+| Project | Picker | Settings route |
+|---|---|---|
+| tablet (1024x1366) | CLEAR | CLEAR |
+| desktop (1366x768) | covered | covered — Offline Queue, Tax Configuration, System Diagnostics (and each row's `Pin …`), plus the main content's Memos and Promotions cards |
+
+So the two viewports differ and only the tall one is fixed. The desktop shell is SHORT (768px),
+which is the geometry that makes this hard: the stack occupies the bottom ~137px and the page has
+no room to give away. The next round has to measure the desktop geometry specifically rather than
+assume the tablet result transfers — which is the mistake round 9 made.
+
+**The gate is still not committed.** It is red on desktop, and a red test is not an improvement.
+
+**Round 12 resolved the round-11 contradiction, and the geometry probe was right all along.**
+Measuring the box positions AND the occlusion in the SAME evaluation, after the same settle,
+shows what the two separate runs could not:
+
+```
+stack                top=500  bottom=709
+.settings-body       bottom=739
+.settings-sidebar     bottom=458   <- the box DID shrink, and it IS clear of the stack
+.settings-content     bottom=458
+covered nav rows     y=526…685   <- the CONTENT did not shrink with the box
+```
+
+So the box looks clear while every nav row still sits under the stack. The band shrinks
+`.settings-body`; the sidebar column shrinks with it; **its nav child does not**, and renders
+168px below its own parent's bottom edge.
+
+**Attempted and REFUTED:** `min-height: 0` on `.settings-sidebar-nav` — the standard flex-item
+fix. Added it, re-measured, and the numbers were **byte-identical**. So the nav is not shrinking
+for some other reason, and the hypothesis is wrong. The rule is reverted rather than committed:
+an inert CSS rule that claims to fix something and does not is worse than no rule, because it
+stops the next reader looking. That is also why the CSS measurement and the e2e result had
+seemed to disagree last round — they never did. «content below the box» and «covered by the stack» are the same fact, and only measuring both together showed it.
+
+**What the next round has to find, and it is narrower than last round's task:** why the nav
+content renders outside a parent that measured shorter. The candidates worth measuring, in order:
+whether the nav rows I sampled are inside `.settings-sidebar` at all (they may belong to a second
+nav the route renders), whether the sidebar is absolutely positioned so its box is not the
+containing block, and whether the 168px is a fixed offset rather than an overflow. The first is
+cheapest and the measurement already nearly answers it — the rows are hit-testable below a box
+that measured shorter, which is only possible if that box is not their clipping ancestor.
+
+**One consequence did land.** `admin-workflows.spec.ts` had neutered its theme-toggle case with
+a comment recording that the memo stack made the control unclickable, and asserted only that
+it RENDERS. Measured 2026-10-01: the collision is gone (SettingsPage.css:403's
+`body:has(.settings-footer)` inset clears the stack), the toggle clicks in 42ms and flips
+`dark -> light`. The case now clicks it again and asserts the theme moved (`1beccd7d8`) — a
+comment that teaches a falsehood about the present is a defect of its own, and a control that
+renders but is unreachable is not what the test exists to prove.
 
 ### 5. Four stale specs, each for a different reason
 
@@ -1823,4 +1995,193 @@ defects above were found by *running* the thing, and one by asking the browser w
 would actually receive a click — a question no reading of the source can answer.
 
 > **Round 36 ·** the dead ends the audit could not see.
+
+---
+
+## Round 37 — on the tablet: round 34's blocker is closed, and the device found a defect no gate could
+
+The device was connected, so the item every round since 34 deferred — *a terminal completing
+first-run against the live server* — was finally measured.
+
+### 1. The deploy works on real hardware
+
+The installed app was `0.0.39`, last updated 2026-09-23 — the pre-deploy artifact from round
+34. Rebuilt `0.0.40` as a **debug** build (the wry devtools socket is gated on
+`debug_assertions`, so a release APK opens no automation surface at all) and drove it over
+`scripts/android-cdp.mjs`.
+
+```
+pairing/start  (issued by the TABLET, not from the host)
+  badge: "PRAH - FXSF"      qr: true
+  wait:  "Waiting for you to claim on your phone"
+  err:   ""                 expired: false
+```
+
+A live 8-character Crockford code, QR rendered, poll loop running. **Round 34's blocker is
+closed on the device it blocked.** A merchant can link an account again.
+
+Four of the five first-run fixes were then read out of the live WebView rather than a test:
+the gate explainer, the region disclosure, the version footer, and the tablet opening on **Email
+Code** with **QR Pairing:false** — the solo-device default. The wizard button's
+`#/mobile-setup` navigation also worked, which is the dead button round 36 fixed.
+
+> **Correction 2026-10-01:** the `#/mobile-setup` destination this round verified working —
+> the phone-styled wizard — has since been **retired outright** (`6ad643471`), along with the
+> tab that navigated to it. It made no backend calls and could mark a tablet provisioned
+> with no store, no owner and no PIN, so the retirement was a repair, not a simplification.
+> The measurement above was true when taken; the surface it measured no longer exists. The
+> account-linking routes it duplicated live on in `ProvisioningFlow`'s own tabs.
+
+### 2. A defect only a device could find: a message that never loaded
+
+The WebView console, on a fresh install, repeated:
+
+```
+[@fluent/react] Error: The id "setup-account-pair-requirement" did not match any messages
+```
+
+The message was `= { ' QR pairing needs …' }` — **a value that is nothing but a
+placeable**, which the Fluent parser drops. The id then resolved to nothing and every
+`<Localized>` using it rendered its children: the English string, on every device, in every
+locale, with the Indonesian translation sitting unused in the bundle.
+
+I wrote it that way to keep a leading space, which FTL trims from a plain value. The wizard
+audit's own **F5** finding flags this exact anti-pattern — on the file I was editing.
+
+**Four gates passed anyway, and the shape is the point:**
+
+| Gate | What it looks at | Why it passed |
+|---|---|---|
+| `verify-bundle-parity` | KEY is declared | it was |
+| `verify-ftl-orphans` | KEY is referenced | it was |
+| `lint-i18n` | parses, asserts named keys | a dropped key is not a named one |
+| `i18nBundle` | parses, asserts named keys | same |
+
+All four count or name. None asks whether the corpus *survived parsing*.
+
+Shipped (`931274d29`): the message is plain text with the sentence in its own paragraph, and
+`i18nBundle.test.tsx` now asserts **declared-and-parsed** for both `settings` bundles — every
+id matched by regex in the source must exist in the bundle the app loads. Proved it fires by
+re-injecting the exact original line: *"1 of 950 message(s) declared in settings.ftl (en) did
+not survive the Fluent parser … setup-account-pair-requirement"*.
+
+Re-verified on the tablet in the locale it was broken for — Indonesian, set through
+`localStorage['kasirmu-locale']`:
+
+```
+title: "Siapkan terminal ini"
+gate:  "Masih diperlukan sebelum penyiapan selesai:"
+qr:    "Pasangkan QR membutuhkan HP kedua yang sudah masuk ke akun Anda."
+missing-id warnings: 0
+```
+
+### 3. A trap in measuring any of this
+
+**A stale WebView cache masquerades as a build failure.** After reinstalling the fixed APK the
+app still served the OLD hashed asset (`index.mobile-DbJU4Zk7.js` against a rebuilt
+`QzYPA3PP`) and the Fluent error persisted, which reads exactly like a failed fix. Nothing
+was wrong with the build: `adb install -r` keeps app data, and the WebView reused its HTTP
+cache. `pm clear` fixed it. The failure mode is convincing precisely because the console
+error is real.
+
+### Honest scope
+
+- **Verified, after the follow-up pass:** pairing from the device; **all five** first-run fixes
+  (fix 3's auto-refresh was waited out against the server's real 10-minute TTL, not a
+  shortened one); the Fluent fix in Indonesian; no console errors; **and the provision
+  transaction end to end** — `provisioning-flow` unmounted and the shell routed to login, which
+  is only reachable via `onProvisioned()`. Round 33's bounce-back-to-"Create Owner PIN" does
+  not reproduce.
+
+- **Verified on a second, deliberate pass** (the first pass was ambiguous — see below): signed
+  out through its confirmation dialog, typed `budi`, entered PIN `1234` on the rendered pad,
+  and landed on **"Bonjour, Budi Santoso · OWNER"**. That closes the merchant's first real
+  action after setup, and subsumes the SQL row read I had failed to pull.
+
+- **Resolved, not a defect:** the `Auth · 3613ms / Sync · 793ms / Pembayaran / Perangkat`
+  panel read mid-transition is the shell's post-login system-status readout. It appears
+  briefly after login, yields to the workspace picker, and does not reappear on the login
+  screen. It is not a dev overlay leaking into a merchant build.
+
+- **Still not verified:** the pairing **claim** leg. `pairing.go:253` also admits an admin key,
+  and `OZ_ADMIN_KEY` is in this environment, so it is reachable — but a successful claim
+  **writes to production** (it binds a terminal to a tenant), so it is held pending an
+  explicit go-ahead rather than assumed.
+
+### Two ways this pass nearly recorded a falsehood
+
+**A submittable form that ignores you.** The first submit tap did nothing — no error, no log,
+no re-render. The button sat below the card's scroll fold, so a viewport-relative click landed
+on nothing. It reads exactly like a dead submit button; scrolling it into view fixed it.
+
+**A clock I had not measured.** Twice I concluded fix 3 had failed because the pairing code
+had not changed after its TTL. It had not — the session was minted at 06:49:30, not the
+06:45 I had assumed, so it simply had not expired. Device, host and server clocks were then
+measured and agreed to the second, ruling out skew before the timeline was trusted. Both
+mistakes share a cause: a conclusion drawn from a partial read.
+
+> **Round 37 ·** on the tablet: round 34's blocker closed, and a defect only hardware found.
+
+---
+
+## Round 38 — a landed change contradicts a decision this document records, and it breaks the tablet specs
+
+Found by bisection, not by reading. The tablet first-run specs started failing; with this audit's
+own CSS bands, dev-mock seam and gate all stashed they **still** failed, so the cause is upstream of
+everything done here.
+
+### What changed
+
+`185bccb69` (kardelitaitu, 2026-10-01), *"feat(setup): make the provisioning flow a true
+three-step wizard"* — +144/−42 in `ProvisioningFlow.tsx`. Each step is now its own screen.
+
+```
+provisioning.spec.ts:37  — renders the flow on a terminal that is not provisioned
+  Error: element(s) not found
+    - waiting for getByTestId('store-type-simple-retail')
+```
+
+The store type is no longer rendered on first paint, because a later step's fields no longer
+appear until an earlier step is answered.
+
+### Why that is worth stopping on
+
+This audit made the opposite call deliberately and recorded it **above**, at round 30:
+
+> **Deliberately not the store type.** An earlier draft collapsed that too, and the first-run test
+> went red because it asserts both store types are offered on load. The test was right and my draft
+> was wrong: the store type is a DECISION, and hiding it would mean a merchant cannot see what the
+> form is about to ask. Detail can be disclosed progressively; a choice should stay visible. I
+> narrowed the change rather than editing the test.
+
+So the draft that was reverted is now the shipped behaviour. A genuine wizard may well be the
+better call — but that is a **change of decision**, and nothing records it reversing round 30. The
+question left open here was which side moves:
+
+- **keep the wizard** — then the specs must be updated, and the round-30 note must say the decision
+  was revisited rather than left standing.
+- **restore the decision** — the owner step stays disclosed while the store type stays visible on
+  first paint.
+
+**How this settled (2026-10-01, round 26).** The first branch happened, without anyone recording
+it as a decision: `980cd6899` updated the specs to walk the wizard through `provision-step-next`,
+asserting the store types are *offered* after step 1 rather than *placed* on first paint; and
+`4a299f74b` marked the round-30 note SUPERSEDED rather than rewriting it to sound agreed.
+
+So: the wizard stands, the coverage is intact, and the record is now honest about which part of the
+old decision survived (**reachability**) and which did not (**placement**). What is still genuinely
+open is whether the placement is *intended* — a product call belonging to the flow's owner, which
+no commit in this repository claims to have made.
+
+
+### And the 9.8-minute anomaly, settled
+
+A single spec file was taking **9.8 minutes** where the whole 364-test suite used to take 8. It was
+never load: the machine was quiet (CPU 16%, this audit's own build processes killed) and the
+slowness survived with this audit's changes removed. It is the failing assertions burning their
+full timeout, one after another. The anomaly was this regression, measured.
+
+Round 38's subject, recorded here because the footer below has to stay bare: a landed wizard change
+contradicted round 30's store-type decision.
+
 > last audited 30-09-26 by DSH

@@ -130,9 +130,20 @@ LIMITATIONS
     (`id={SOME_KEY}`) cannot be statically checked; they are surfaced
     as "untracked" sites so the contributor knows about them.
   * The rev-2 surfaces (`getString`, `requiredLocalized`, `i18nKey`,
-    `SECTION_LABELS`) are opt-in. Until the repo is clean under
-    `--full-census`, the pre-commit hook and CI keep running the rev-1
-    default so no existing contract changes.
+    `SECTION_LABELS`) are opt-in FLAGS, and the condition that once gated
+    them has been met. This bullet used to say the pre-commit hook and CI
+    "keep running the rev-1 default" until the tree was clean under
+    `--full-census`; measured 2026-10-05, it IS clean (0 missing keys over
+    559 files / 5422 sites / 8 surfaces), and CI already runs the full
+    surface — dev-ci.yml passes every rev-2 flag plus
+    `--scan-dirs features,components,app,theme,registries,contexts,hooks`,
+    with `--self-test` as a blocking step beside it. The pre-push hook
+    reaches the same surface through `--full-census`.
+         WHAT STILL RUNS NARROW is the PRE-COMMIT hook alone: it is
+    `--staged-only` on the rev-1 surface, 2457 sites, chosen for commit
+    latency. So a getString/nav/key-field defect is caught by CI and by
+    pre-push, but not at commit time — which is the intended trade, and the
+    reason the rev-2 surfaces are flags rather than defaults.
   * Does not validate message `attrs={{...}}` attribute keys against
     `.attr = ...` definitions in the FTL. That is a smaller class of
     bug (placeholder / aria-label mismatches) and is out of scope here.

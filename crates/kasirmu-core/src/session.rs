@@ -141,15 +141,34 @@ impl SessionContext {
             // `as_secs()` is u64; `i64::try_from` rather than `as i64` so a
             // clock past 2262 (where u64 seconds exceed i64) fails the
             // comparison as expired-true rather than wrapping negative and
-            // reporting a long-dead session as live. `unwrap_or_default()`
-            // below already covers the pre-epoch case, so this only has to
-            // be honest about the far future.
-            let now = SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_secs();
-            let now = i64::try_from(now).unwrap_or(i64::MAX);
-            now >= ts
+            // reporting a long-dead session as live.
+            //
+            // A clock that cannot be read is EXPIRED-TRUE, which corrects what
+            // stood here. `.unwrap_or_default()` returned `Duration::ZERO`, so
+            // `now` became 0 and `0 >= ts` was false for every real expiry
+            // timestamp: `is_expired()` answered false for sessions that had
+            // long expired. The gate at `apps/*/src/state.rs`
+            // (`Some(ctx) if !ctx.is_expired() => return Ok(ctx.clone())`) then
+            // handed back an expired context as VALID, so a pre-epoch clock
+            // left every expired bearer token usable. The old comment called
+            // that covering "the pre-epoch case"; it covered it in the one
+            // direction that must never be reached.
+            //
+            // A session whose expiry cannot be evaluated is not a live session.
+            match SystemTime::now().duration_since(UNIX_EPOCH) {
+                Ok(d) => match i64::try_from(d.as_secs()) {
+                    Ok(now) => now >= ts,
+                    // Past 2262: expired-true, as before.
+                    Err(_) => true,
+                },
+                Err(e) => {
+                    tracing::error!(
+                        error = %e,
+                        "system clock is before the UNIX epoch; treating the session as expired"
+                    );
+                    true
+                }
+            }
         })
     }
 }

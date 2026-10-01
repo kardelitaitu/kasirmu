@@ -16,6 +16,7 @@ import TableManagementScreen from '@/features/tables/TableManagementScreen';
 import SalesHistoryScreen from '@/features/sales/SalesHistoryScreen';
 import RestaurantReceiptsScreen from '@/features/restaurant/screens/RestaurantReceiptsScreen';
 import RestaurantPaymentsScreen from '@/features/restaurant/screens/RestaurantPaymentsScreen';
+import RestaurantSettingsScreen from '@/features/restaurant/screens/RestaurantSettingsScreen';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useWorkspaceNav } from '@/hooks/useWorkspaceNav';
 
@@ -202,6 +203,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   const [showStockInquiry, setShowStockInquiry] = useState(false);
   const [showReceiptsSettings, setShowReceiptsSettings] = useState(false);
   const [showPaymentsSettings, setShowPaymentsSettings] = useState(false);
+  const [showRestaurantSettings, setShowRestaurantSettings] = useState(false);
   const [showPayment, setShowPayment] = useState(false);
   const [showDiscountInput, setShowDiscountInput] = useState(false);
   const [showPromotions, setShowPromotions] = useState(false);
@@ -620,25 +622,50 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   });
 
   // ── Load receipt settings on mount ────────────────────────────
+  const receiptSettingsSeq = useRef(0);
   useEffect(() => {
     if (!sessionToken) return;
+    const seq = ++receiptSettingsSeq.current;
+    const stale = () => receiptSettingsSeq.current !== seq;
     getReceiptSettingsScoped(sessionToken)
-      .then((s) => setShowTableNumberSetting(s.showTableNumber))
+      .then((s) => {
+        if (stale()) return;
+        setShowTableNumberSetting(s.showTableNumber);
+      })
       .catch((err: unknown) => {
+        if (stale()) return;
         const kind = (err as { kind?: string } | null)?.kind;
         if (kind === 'invalidSession') return;
         addToast({ message: requiredLocalized(l10nRef.current, 'pos-toast-receipt-settings-failed'), type: 'error' });
       });
+    return () => { receiptSettingsSeq.current += 1; };
   }, [addToast, sessionToken]); // l10n via ref — stable dep chain
 
   // ── Load restaurant course-firing flag on mount ─────────────────
   // Best-effort display gate only: a failed read leaves the workspace
   // check as the gate (null), so coursing never disappears on a
   // settings-fetch failure.
+  //
+  // Guarded, like CurrencyContext, SettingsContext, BrandContext and ShiftBar
+  // before it (the whole class is written up in SettingsContext:207). This one
+  // is not cosmetic: CartPanel gates the course controls on
+  // `courseFiringEnabled !== false` (:631, :669), so a stale read carrying the
+  // PREVIOUS store's setting forward would hide course firing on a store that has
+  // it enabled -- a POS capability disappearing across a store switch.
+  const courseFiringSeq = useRef(0);
   useEffect(() => {
+    const seq = ++courseFiringSeq.current;
+    const stale = () => courseFiringSeq.current !== seq;
     getSettingScoped(sessionToken || null, 'restaurant.course_firing')
-      .then((raw) => setCourseFiringEnabled(raw === 'true'))
-      .catch(() => setCourseFiringEnabled(null));
+      .then((raw) => {
+        if (stale()) return;
+        setCourseFiringEnabled(raw === 'true');
+      })
+      .catch(() => {
+        if (stale()) return;
+        setCourseFiringEnabled(null);
+      });
+    return () => { courseFiringSeq.current += 1; };
   }, [sessionToken]);
 
   const handleRequestExit = useCallback(() => {
@@ -757,6 +784,17 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     );
   }
 
+  // ── Sub-screen: Restaurant General Settings ──────────────────
+  if (showRestaurantSettings) {
+    return (
+      <div className="pos-screen">
+        <div style={{ flex: 1, overflow: 'auto' }}>
+          <RestaurantSettingsScreen onBack={() => setShowRestaurantSettings(false)} />
+        </div>
+      </div>
+    );
+  }
+
   // ── Sub-screen: Settings (4-tab-routing) ──────────────────────
   // Same pattern as the desktop `RetailOptionsScreen`: four tabs
   // (Appearance / Features / Data / Sync) that route to the
@@ -858,6 +896,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     onOpenKitchenDisplay: () => onNavigate?.('kds'),
     onOpenReceipts: () => setShowReceiptsSettings(true),
     onOpenPayments: () => setShowPaymentsSettings(true),
+    onOpenSettings: () => setShowRestaurantSettings(true),
     onRequestExit: handleRequestExit,
   };
 

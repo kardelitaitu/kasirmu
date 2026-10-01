@@ -1,10 +1,10 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, type ReactNode } from 'react';
 import { Localized, useLocalization } from '@fluent/react';
-import { Card } from '@/components/Card';
-import { Button } from '@/components/Button';
 import { useToast } from '@/components/Toast';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { useTerminalHardware } from '@/hooks/useTerminalHardware';
+import { UnsavedChangesDialog } from '@/components/UnsavedChangesDialog';
+import SettingsSelect from '@/features/settings/SettingsSelect';
 import { getPrimaryLocationScoped } from '@/api/locations';
 import {
   getLocalPaymentMethodsScoped,
@@ -18,18 +18,26 @@ import {
   edcTerminalStatusScoped,
   type EdcTerminalDto,
 } from '@/api/edc';
-import SettingsSelect from '@/features/settings/SettingsSelect';
-import { sanitizeRailCode, isCoreRail, mergeCoreRails, computeRailsDirty, type DraftRail } from './paymentRailsLogic';
-import { PaymentMethodCard } from './PaymentMethodCard';
+import {
+  getPaymentGatewayConfigScoped,
+  setPaymentGatewayConfigScoped,
+} from '@/api/payment-gateways';
+import {
+  isCoreRail,
+  mergeCoreRails,
+  computeRailsDirty,
+  sanitizeRailCode,
+  type DraftRail,
+} from './paymentRailsLogic';
 import './RestaurantSettingsScreens.css';
 
 // ── Icons ───────────────────────────────────────────────────────────
 
 function CashIcon() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="18" height="18" aria-hidden="true">
       <rect x="2" y="6" width="20" height="12" rx="2" />
-      <circle cx="12" cy="12" r="3" />
+      <circle cx="12" cy="12" r="2" />
       <path d="M6 12h.01M18 12h.01" />
     </svg>
   );
@@ -37,52 +45,187 @@ function CashIcon() {
 
 function QrisIcon() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="18" height="18" aria-hidden="true">
       <rect x="3" y="3" width="7" height="7" />
       <rect x="14" y="3" width="7" height="7" />
+      <rect x="14" y="14" width="7" height="7" />
       <rect x="3" y="14" width="7" height="7" />
-      <path d="M14 14h3v3h-3zM17 17h4v4h-4zM14 20h3v1h-3zM20 14v3" />
     </svg>
   );
 }
 
 function EdcIcon() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <rect x="2" y="5" width="20" height="14" rx="2" />
-      <line x1="2" y1="10" x2="22" y2="10" />
-      <circle cx="6" cy="15" r="1" />
-      <circle cx="10" cy="15" r="1" />
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="18" height="18" aria-hidden="true">
+      <rect x="4" y="2" width="16" height="20" rx="2" />
+      <line x1="8" y1="6" x2="16" y2="6" />
+      <line x1="8" y1="10" x2="16" y2="10" />
+      <circle cx="8" cy="15" r="1" />
+      <circle cx="12" cy="15" r="1" />
+      <circle cx="16" cy="15" r="1" />
+      <circle cx="8" cy="18" r="1" />
+      <circle cx="12" cy="18" r="1" />
+      <circle cx="16" cy="18" r="1" />
     </svg>
   );
 }
 
 function MidtransIcon() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="18" height="18" aria-hidden="true">
+      <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
     </svg>
   );
 }
 
 function StripeIcon() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <circle cx="12" cy="12" r="10" />
-      <line x1="2" y1="12" x2="22" y2="12" />
-      <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="18" height="18" aria-hidden="true">
+      <path d="M2 16.1A5 5 0 0 1 5.9 14h12.2a5 5 0 0 1 3.9 2.1" />
+      <line x1="12" y1="3" x2="12" y2="15" />
+      <path d="m7 8 5-5 5 5" />
     </svg>
   );
 }
 
 function GenericRailIcon() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <rect x="2" y="4" width="20" height="16" rx="2" />
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="18" height="18" aria-hidden="true">
+      <rect x="2" y="5" width="20" height="14" rx="2" />
       <line x1="2" y1="10" x2="22" y2="10" />
     </svg>
   );
 }
+
+// ── Payment Method Card Template ────────────────────────────────────
+
+export interface PaymentMethodCardProps {
+  id: string;
+  title: string;
+  description?: string | undefined;
+  code: string;
+  icon?: ReactNode | undefined;
+  badge?: string | undefined;
+  badgeVariant?: ('default' | 'primary' | 'success' | 'warning') | undefined;
+  enabled: boolean;
+  onToggle: (enabled: boolean) => void;
+  isCore?: boolean | undefined;
+  onRemove?: (() => void) | undefined;
+  removeAriaLabel?: string | undefined;
+  mountBodyWhenCollapsed?: boolean | undefined;
+  children?: ReactNode | undefined;
+}
+
+export function PaymentMethodCard({
+  id,
+  title,
+  code,
+  icon,
+  enabled,
+  onToggle,
+  isCore = true,
+  onRemove,
+  removeAriaLabel,
+  mountBodyWhenCollapsed = false,
+  children,
+}: PaymentMethodCardProps) {
+  const [isExpanded, setIsExpanded] = useState(enabled);
+
+  useEffect(() => {
+    setIsExpanded(enabled);
+  }, [enabled]);
+
+  const shouldMountBody = isExpanded || mountBodyWhenCollapsed;
+
+  return (
+    <div
+      className={`resto-payment-card-wrapper ${isExpanded ? 'resto-payment-card-wrapper--expanded' : 'resto-payment-card-wrapper--collapsed'}`}
+      data-testid={`payment-card-${id}`}
+    >
+      <div className={`resto-payment-card ${isExpanded ? 'resto-payment-card--expanded' : 'resto-payment-card--collapsed'}`}>
+        <div className="restaurant-settings-card-header resto-payment-card-header restaurant-rail-row">
+          <div className="resto-payment-card-title-group">
+            <button
+              type="button"
+              className="resto-card-expand-btn"
+              onClick={() => setIsExpanded((prev) => !prev)}
+              aria-expanded={isExpanded}
+              aria-controls={`payment-card-body-${id}`}
+              aria-label={isExpanded ? `Collapse ${title}` : `Expand ${title}`}
+              data-testid={`payment-card-expand-${id}`}
+            >
+              <span
+                className={`resto-card-chevron ${isExpanded ? 'resto-card-chevron--expanded' : ''}`}
+                aria-hidden="true"
+              >
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <polyline points="6 9 12 15 18 9" />
+                </svg>
+              </span>
+              {icon && (
+                <span className="restaurant-settings-header-icon" aria-hidden="true">
+                  {icon}
+                </span>
+              )}
+              <span className="resto-payment-card-title">{title}</span>
+            </button>
+            <span className="restaurant-rail-code sr-only">{code}</span>
+          </div>
+
+          <div className="resto-payment-card-header-actions restaurant-rail-actions">
+            {!isCore && onRemove && (
+              <button
+                type="button"
+                className="restaurant-rail-remove"
+                onClick={onRemove}
+                aria-label={removeAriaLabel || `Remove ${title}`}
+                data-testid={`payment-card-remove-${id}`}
+              >
+                &times;
+              </button>
+            )}
+            <label className="settings-toggle-switch" htmlFor={`rail-toggle-${code}`}>
+              <input
+                id={`rail-toggle-${code}`}
+                type="checkbox"
+                role="switch"
+                checked={enabled}
+                aria-checked={enabled}
+                aria-label={title}
+                data-testid={`payment-card-toggle-${id}`}
+                onChange={(e) => {
+                  onToggle(e.target.checked);
+                  setIsExpanded(e.target.checked);
+                }}
+              />
+              <span className="settings-toggle-slider" aria-hidden="true" />
+            </label>
+          </div>
+        </div>
+
+        {shouldMountBody && children && (
+          <div
+            id={`payment-card-body-${id}`}
+            className={`resto-payment-card-body ${!isExpanded ? 'resto-payment-card-body--hidden' : ''}`}
+          >
+            {children}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Main Screen Component ───────────────────────────────────────────
 
 export interface RestaurantPaymentsScreenProps {
   terminalId?: string;
@@ -102,22 +245,41 @@ export function RestaurantPaymentsScreen({
   const hw = useTerminalHardware(effectiveTerminalId);
 
   const [locationId, setLocationId] = useState<string | null>(null);
-  const [drafts, setDrafts] = useState<DraftRail[]>([]);
+  const [drafts, setDrafts] = useState<DraftRail[]>(() => {
+    const base = mergeCoreRails([]);
+    const extras: DraftRail[] = [
+      { rail_code: 'midtrans', label: 'Midtrans Gateway', is_enabled: false, parameters: '{}' },
+      { rail_code: 'stripe', label: 'Stripe Processing', is_enabled: false, parameters: '{}' },
+    ];
+    return [...base, ...extras.filter((ex) => !base.some((b) => b.rail_code === ex.rail_code))];
+  });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
   const [edcTerminals, setEdcTerminals] = useState<EdcTerminalDto[]>([]);
   const [defaultEdcTerminalId, setDefaultEdcTerminalId] = useState('');
   const [testingEdc, setTestingEdc] = useState(false);
 
-  // New custom rail draft state
-  const [newCode, setNewCode] = useState('');
-  const [newLabel, setNewLabel] = useState('');
+  // Fallback states for core toggles
+  const [cashLocalEnabled, setCashLocalEnabled] = useState(true);
+  const [qrisLocalEnabled, setQrisLocalEnabled] = useState(true);
+  const [cardLocalEnabled, setCardLocalEnabled] = useState(false);
 
-  // ── UI States for Expanded Payment Cards ──────────────────────
+  // ── UI States for Expanded Payment Cards ──────────────────────────
   // Cash
   const [cashDrawerAutoKick, setCashDrawerAutoKick] = useState(true);
   const [cashDrawerVerify, setCashDrawerVerify] = useState(false);
   const [cashCustomLabel, setCashCustomLabel] = useState('Cash');
+  const [activeCashPresets, setActiveCashPresets] = useState<string[]>([
+    'exact',
+    '1000',
+    '2000',
+    '5000',
+    '10000',
+    '20000',
+    '50000',
+    '100000',
+  ]);
 
   // QRIS
   const [qrisMode, setQrisMode] = useState<'static' | 'dynamic'>('static');
@@ -153,6 +315,10 @@ export function RestaurantPaymentsScreen({
   const [stripeReader, setStripeReader] = useState('wisepos_e');
   const [stripeCurrency, setStripeCurrency] = useState('IDR');
 
+  // Custom Payment Rail Creation
+  const [newRailCode, setNewRailCode] = useState('');
+  const [newRailLabel, setNewRailLabel] = useState('');
+
   // Dirty state tracking
   const originalsRef = useRef<{
     drafts: DraftRail[];
@@ -161,7 +327,7 @@ export function RestaurantPaymentsScreen({
   const [dirtyVersion, setDirtyVersion] = useState(0);
   const hwInitializedRef = useRef(false);
 
-  // Sync initial EDC terminal preference from hardware profile without wiping drafts on profile updates
+  // Sync initial EDC terminal preference from hardware profile
   useEffect(() => {
     if (hwInitializedRef.current || !hw.profile) return;
     const currentEdc = hw.profile.localPrefs?.defaultEdcTerminalId ?? '';
@@ -173,11 +339,11 @@ export function RestaurantPaymentsScreen({
 
   // Load location, payment rails, and EDC terminals
   useEffect(() => {
-    if (!sessionToken) return;
     let cancelled = false;
-    setLoading(true);
 
     const loadAll = async () => {
+      if (!sessionToken) return;
+      setLoading(true);
       try {
         const [primary, edcList] = await Promise.all([
           getPrimaryLocationScoped(sessionToken),
@@ -195,10 +361,125 @@ export function RestaurantPaymentsScreen({
           const rawRails = await getLocalPaymentMethodsScoped(sessionToken, primary.id);
           if (cancelled) return;
 
-          // Standard core methods + any custom rails are merged by the pure paymentRailsLogic helper
           const mergedDrafts = mergeCoreRails(rawRails);
-          setDrafts(mergedDrafts);
-          originalsRef.current.drafts = mergedDrafts.map((d) => ({ ...d }));
+          const fullDrafts = [...mergedDrafts];
+          const extras: DraftRail[] = [
+            { rail_code: 'midtrans', label: 'Midtrans Gateway', is_enabled: false, parameters: '{}' },
+            { rail_code: 'stripe', label: 'Stripe Processing', is_enabled: false, parameters: '{}' },
+          ];
+          for (const ex of extras) {
+            if (!fullDrafts.some((d) => d.rail_code.toLowerCase() === ex.rail_code)) {
+              fullDrafts.push(ex);
+            }
+          }
+
+          setDrafts(fullDrafts);
+          originalsRef.current.drafts = fullDrafts.map((d) => ({ ...d }));
+
+          // Hydrate card configurations from merged parameters
+          const cash = fullDrafts.find((d) => d.rail_code.toLowerCase() === 'cash');
+          if (cash) {
+            setCashLocalEnabled(cash.is_enabled);
+            setCashCustomLabel(cash.label || 'Cash');
+            try {
+              const p = JSON.parse(cash.parameters);
+              if (typeof p.autoKick === 'boolean') setCashDrawerAutoKick(p.autoKick);
+              if (typeof p.verifyDrawer === 'boolean') setCashDrawerVerify(p.verifyDrawer);
+              if (Array.isArray(p.presets) && p.presets.length > 0) setActiveCashPresets(p.presets);
+            } catch {
+              // Ignore parse error, keep defaults
+            }
+          }
+
+          const qris = fullDrafts.find((d) => d.rail_code.toLowerCase() === 'qris');
+          if (qris) {
+            setQrisLocalEnabled(qris.is_enabled);
+            try {
+              const p = JSON.parse(qris.parameters);
+              if (p.mode === 'static' || p.mode === 'dynamic') setQrisMode(p.mode);
+              if (p.nmid) setQrisNmid(p.nmid);
+              if (p.surcharge) setQrisSurcharge(p.surcharge);
+              if (typeof p.printReceipt === 'boolean') setQrisPrintReceipt(p.printReceipt);
+            } catch {
+              // Ignore parse error, keep defaults
+            }
+          }
+
+          const card = fullDrafts.find((d) => d.rail_code.toLowerCase() === 'card');
+          if (card) {
+            setCardLocalEnabled(card.is_enabled);
+            try {
+              const p = JSON.parse(card.parameters);
+              if (typeof p.requireTrace === 'boolean') setRequireEdcTraceCode(p.requireTrace);
+              if (Array.isArray(p.acceptedCards) && p.acceptedCards.length > 0) setAcceptedCards(p.acceptedCards);
+            } catch {
+              // Ignore parse error, keep defaults
+            }
+          }
+
+          const midtrans = fullDrafts.find((d) => d.rail_code.toLowerCase() === 'midtrans');
+          if (midtrans) {
+            setMidtransLocalEnabled(midtrans.is_enabled);
+            try {
+              const p = JSON.parse(midtrans.parameters);
+              if (p.env === 'sandbox' || p.env === 'production') setMidtransEnv(p.env);
+              if (p.merchantId) setMidtransMerchantId(p.merchantId);
+              if (p.clientKey) setMidtransClientKey(p.clientKey);
+              if (p.serverKey) setMidtransServerKey(p.serverKey);
+              if (p.channels && typeof p.channels === 'object') setMidtransChannels(p.channels);
+              if (typeof p.autoConfirm === 'boolean') setMidtransAutoConfirm(p.autoConfirm);
+            } catch {
+              // Ignore parse error, keep defaults
+            }
+          }
+
+          const stripe = fullDrafts.find((d) => d.rail_code.toLowerCase() === 'stripe');
+          if (stripe) {
+            setStripeLocalEnabled(stripe.is_enabled);
+            try {
+              const p = JSON.parse(stripe.parameters);
+              if (p.mode === 'test' || p.mode === 'live') setStripeMode(p.mode);
+              if (p.publishableKey) setStripePublishableKey(p.publishableKey);
+              if (p.secretKey) setStripeSecretKey(p.secretKey);
+              if (p.reader) setStripeReader(p.reader);
+              if (p.currency) setStripeCurrency(p.currency);
+            } catch {
+              // Ignore parse error, keep defaults
+            }
+          }
+
+          // Load payment gateway credentials (stored separately in payment_gateways)
+          try {
+            const [midtransGw, stripeGw] = await Promise.all([
+              getPaymentGatewayConfigScoped(sessionToken, 'midtrans').catch(() => null),
+              getPaymentGatewayConfigScoped(sessionToken, 'stripe').catch(() => null),
+            ]);
+            if (midtransGw) {
+              setMidtransLocalEnabled(midtransGw.isActive);
+              try {
+                const p = JSON.parse(midtransGw.configJson);
+                if (p.env === 'sandbox' || p.env === 'production') setMidtransEnv(p.env);
+                if (p.merchantId) setMidtransMerchantId(p.merchantId);
+                if (p.clientKey) setMidtransClientKey(p.clientKey);
+                if (p.serverKey) setMidtransServerKey(p.serverKey);
+              } catch {
+                // Ignore parse error
+              }
+            }
+            if (stripeGw) {
+              setStripeLocalEnabled(stripeGw.isActive);
+              try {
+                const p = JSON.parse(stripeGw.configJson);
+                if (p.mode === 'test' || p.mode === 'live') setStripeMode(p.mode);
+                if (p.publishableKey) setStripePublishableKey(p.publishableKey);
+                if (p.secretKey) setStripeSecretKey(p.secretKey);
+              } catch {
+                // Ignore parse error
+              }
+            }
+          } catch {
+            // Ignore error
+          }
         }
       } catch {
         addToast({
@@ -218,13 +499,72 @@ export function RestaurantPaymentsScreen({
 
   const dirty = useMemo(() => {
     void dirtyVersion;
+    if (loading || !originalsRef.current.drafts || originalsRef.current.drafts.length === 0) {
+      return false;
+    }
     return computeRailsDirty(
-      originalsRef.current.drafts ?? [],
+      originalsRef.current.drafts,
       drafts,
       originalsRef.current.defaultEdcTerminalId,
       defaultEdcTerminalId,
     );
-  }, [drafts, defaultEdcTerminalId, dirtyVersion]);
+  }, [loading, drafts, defaultEdcTerminalId, dirtyVersion]);
+
+  // ── Helper to update rail parameters safely ───────────────────────
+  const updateRailParams = useCallback((code: string, newParams: Record<string, unknown>) => {
+    const lower = code.toLowerCase();
+    setDrafts((prev) => {
+      const idx = prev.findIndex((d) => d.rail_code.toLowerCase() === lower);
+      if (idx >= 0) {
+        return prev.map((d, i) => {
+          if (i !== idx) return d;
+          let parsed: Record<string, unknown> = {};
+          try {
+            parsed = JSON.parse(d.parameters);
+          } catch {
+            parsed = {};
+          }
+          const merged = { ...parsed, ...newParams };
+          return { ...d, parameters: JSON.stringify(merged) };
+        });
+      }
+      const labelMap: Record<string, string> = {
+        cash: 'Cash',
+        qris: 'QRIS',
+        card: 'Card / EDC Terminal',
+        midtrans: 'Midtrans Gateway',
+        stripe: 'Stripe Processing',
+      };
+      return [
+        ...prev,
+        {
+          rail_code: lower,
+          label: labelMap[lower] || code,
+          is_enabled: false,
+          parameters: JSON.stringify(newParams),
+        },
+      ];
+    });
+  }, []);
+
+  const updateRailLabel = useCallback((code: string, label: string) => {
+    const lower = code.toLowerCase();
+    setDrafts((prev) => {
+      const idx = prev.findIndex((d) => d.rail_code.toLowerCase() === lower);
+      if (idx >= 0) {
+        return prev.map((d, i) => (i === idx ? { ...d, label } : d));
+      }
+      return [
+        ...prev,
+        {
+          rail_code: lower,
+          label,
+          is_enabled: false,
+          parameters: '{}',
+        },
+      ];
+    });
+  }, []);
 
   const handleToggleRail = (index: number, checked: boolean) => {
     setDrafts((prev) => {
@@ -237,24 +577,37 @@ export function RestaurantPaymentsScreen({
   };
 
   const handleToggleCode = (code: string, checked: boolean) => {
-    const idx = drafts.findIndex((d) => d.rail_code.toLowerCase() === code.toLowerCase());
-    if (idx >= 0) {
-      handleToggleRail(idx, checked);
-    } else {
-      if (code === 'midtrans') {
-        setMidtransLocalEnabled(checked);
-        setDrafts((prev) => [
-          ...prev,
-          { rail_code: 'midtrans', label: 'Midtrans Gateway', is_enabled: checked, parameters: '{}' },
-        ]);
-      } else if (code === 'stripe') {
-        setStripeLocalEnabled(checked);
-        setDrafts((prev) => [
-          ...prev,
-          { rail_code: 'stripe', label: 'Stripe Processing', is_enabled: checked, parameters: '{}' },
-        ]);
+    const lower = code.toLowerCase();
+    if (lower === 'cash') setCashLocalEnabled(checked);
+    if (lower === 'qris') setQrisLocalEnabled(checked);
+    if (lower === 'card') setCardLocalEnabled(checked);
+    if (lower === 'midtrans') setMidtransLocalEnabled(checked);
+    if (lower === 'stripe') setStripeLocalEnabled(checked);
+
+    setDrafts((prev) => {
+      const idx = prev.findIndex((d) => d.rail_code.toLowerCase() === lower);
+      if (idx >= 0) {
+        const copy = [...prev];
+        copy[idx] = { ...copy[idx]!, is_enabled: checked };
+        return copy;
       }
-    }
+      const labelMap: Record<string, string> = {
+        cash: 'Cash',
+        qris: 'QRIS',
+        card: 'Card / EDC Terminal',
+        midtrans: 'Midtrans Gateway',
+        stripe: 'Stripe Processing',
+      };
+      return [
+        ...prev,
+        {
+          rail_code: lower,
+          label: labelMap[lower] || code,
+          is_enabled: checked,
+          parameters: '{}',
+        },
+      ];
+    });
   };
 
   const handleStaticQrChange = (value: string) => {
@@ -271,29 +624,38 @@ export function RestaurantPaymentsScreen({
     );
   };
 
-  const handleAddCustomRail = useCallback(() => {
-    const code = sanitizeRailCode(newCode);
-    const label = newLabel.trim();
-    if (!code || !label) return;
-    if (drafts.some((d) => d.rail_code.toLowerCase() === code)) return;
-
-    setDrafts((prev) => [
-      ...prev,
-      { rail_code: code, label, is_enabled: true, parameters: '{}' },
-    ]);
-    setNewCode('');
-    setNewLabel('');
-  }, [newCode, newLabel, drafts]);
-
   const handleRemoveRail = (index: number) => {
     setDrafts((prev) => prev.filter((_, i) => i !== index));
   };
 
-  const handleRemoveCode = (code: string) => {
-    const idx = drafts.findIndex((d) => d.rail_code.toLowerCase() === code.toLowerCase());
-    if (idx >= 0) {
-      handleRemoveRail(idx);
+  const handleAddCustomRail = () => {
+    const sanitized = sanitizeRailCode(newRailCode);
+    if (!sanitized) {
+      addToast({
+        message: l10n.getString('settings-localpay-code-placeholder') || 'Payment method code is required',
+        type: 'warning',
+      });
+      return;
     }
+    const label = newRailLabel.trim() || sanitized.toUpperCase();
+    if (drafts.some((d) => d.rail_code.toLowerCase() === sanitized)) {
+      addToast({
+        message: 'A payment method with this code already exists',
+        type: 'warning',
+      });
+      return;
+    }
+    setDrafts((prev) => [
+      ...prev,
+      {
+        rail_code: sanitized,
+        label,
+        is_enabled: true,
+        parameters: '{}',
+      },
+    ]);
+    setNewRailCode('');
+    setNewRailLabel('');
   };
 
   // ── Test EDC Terminal ───────────────────────────────────────
@@ -324,15 +686,76 @@ export function RestaurantPaymentsScreen({
       const tasks: Promise<unknown>[] = [];
 
       // 1. Save workspace / location payment rails
-      const payload: LocalPaymentRailArgs[] = drafts.map((d) => ({
-        rail_code: d.rail_code,
-        label: d.label,
-        is_enabled: d.is_enabled,
-        parameters: d.parameters,
-      }));
+      // Sanitize parameters so credentials are never stored in market rails
+      const payload: LocalPaymentRailArgs[] = drafts.map((d) => {
+        const lower = d.rail_code.toLowerCase();
+        let paramsObj: Record<string, unknown> = {};
+        try {
+          paramsObj = JSON.parse(d.parameters);
+        } catch {
+          paramsObj = {};
+        }
+
+        if (lower === 'midtrans') {
+          const clean: Record<string, unknown> = {};
+          if (paramsObj['channels']) clean['channels'] = paramsObj['channels'];
+          if (typeof paramsObj['autoConfirm'] === 'boolean') clean['autoConfirm'] = paramsObj['autoConfirm'];
+          return {
+            rail_code: d.rail_code,
+            label: d.label,
+            is_enabled: d.is_enabled,
+            parameters: JSON.stringify(clean),
+          };
+        }
+
+        if (lower === 'stripe') {
+          const clean: Record<string, unknown> = {};
+          if (paramsObj['reader']) clean['reader'] = paramsObj['reader'];
+          if (paramsObj['currency']) clean['currency'] = paramsObj['currency'];
+          return {
+            rail_code: d.rail_code,
+            label: d.label,
+            is_enabled: d.is_enabled,
+            parameters: JSON.stringify(clean),
+          };
+        }
+
+        return {
+          rail_code: d.rail_code,
+          label: d.label,
+          is_enabled: d.is_enabled,
+          parameters: d.parameters,
+        };
+      });
       tasks.push(setLocalPaymentMethodsScoped(sessionToken, locationId, payload));
 
-      // 2. Save hardware EDC default terminal preference
+      // 2. Save payment gateway credentials (encrypted at rest in payment_gateways)
+      tasks.push(
+        setPaymentGatewayConfigScoped(sessionToken, {
+          gatewayName: 'midtrans',
+          isActive: midtransLocalEnabled,
+          configJson: JSON.stringify({
+            merchantId: midtransMerchantId,
+            clientKey: midtransClientKey,
+            serverKey: midtransServerKey,
+            env: midtransEnv,
+          }),
+        }),
+      );
+
+      tasks.push(
+        setPaymentGatewayConfigScoped(sessionToken, {
+          gatewayName: 'stripe',
+          isActive: stripeLocalEnabled,
+          configJson: JSON.stringify({
+            publishableKey: stripePublishableKey,
+            secretKey: stripeSecretKey,
+            mode: stripeMode,
+          }),
+        }),
+      );
+
+      // 3. Save hardware EDC default terminal preference
       if (effectiveTerminalId && hw.profile) {
         hw.updateLocalPrefs({ defaultEdcTerminalId: defaultEdcTerminalId || undefined });
         tasks.push(hw.save());
@@ -367,10 +790,41 @@ export function RestaurantPaymentsScreen({
     effectiveTerminalId,
     hw,
     defaultEdcTerminalId,
+    midtransLocalEnabled,
+    midtransMerchantId,
+    midtransClientKey,
+    midtransServerKey,
+    midtransEnv,
+    stripeLocalEnabled,
+    stripePublishableKey,
+    stripeSecretKey,
+    stripeMode,
     onSaved,
     addToast,
     l10n,
   ]);
+
+  // ── Back Navigation Guard with Unsaved Dialog ───────────────
+  const handleRequestBack = useCallback(() => {
+    if (dirty) {
+      setShowUnsavedDialog(true);
+    } else {
+      onBack?.();
+    }
+  }, [dirty, onBack]);
+
+  useEffect(() => {
+    if (!onBack) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if ((e.target as HTMLElement)?.closest('[role="dialog"]')) return;
+      e.preventDefault();
+      e.stopPropagation();
+      handleRequestBack();
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [onBack, handleRequestBack]);
 
   // Find drafts for the 5 targeted payment methods
   const cashDraft = drafts.find((d) => d.rail_code.toLowerCase() === 'cash');
@@ -381,9 +835,14 @@ export function RestaurantPaymentsScreen({
 
   const staticQrValue = qrisDraft ? readStaticQrPayload(qrisDraft.parameters) ?? '' : '';
 
-  // Non-specialized rails (e.g. open_bill, credit, or dynamically added custom rails like gopay)
+  // Non-specialized payment methods (e.g. custom methods like gopay, excluding internal open_bill/credit)
+  const internalHiddenCodes = ['open_bill', 'credit'];
   const specializedCodes = ['cash', 'card', 'qris', 'midtrans', 'stripe'];
-  const otherRails = drafts.filter((d) => !specializedCodes.includes(d.rail_code.toLowerCase()));
+  const otherRails = drafts.filter(
+    (d) =>
+      !specializedCodes.includes(d.rail_code.toLowerCase()) &&
+      !internalHiddenCodes.includes(d.rail_code.toLowerCase()),
+  );
 
   return (
     <div className="restaurant-settings-screen">
@@ -393,7 +852,7 @@ export function RestaurantPaymentsScreen({
             <button
               type="button"
               className="restaurant-settings-back-btn"
-              onClick={onBack}
+              onClick={handleRequestBack}
               aria-label={l10n.getString('back') || 'Back'}
               data-testid="restaurant-payments-back-btn"
             >
@@ -490,80 +949,105 @@ export function RestaurantPaymentsScreen({
               badge="Core Method"
               badgeVariant="primary"
               icon={<CashIcon />}
-              enabled={cashDraft ? cashDraft.is_enabled : true}
+              enabled={cashDraft ? cashDraft.is_enabled : cashLocalEnabled}
               onToggle={(enabled) => handleToggleCode('cash', enabled)}
               isCore={true}
             >
-              <div className="settings-field settings-field--horizontal">
-                <label htmlFor="cash-custom-label" className="settings-label">
-                  Checkout Display Label
-                </label>
-                <input
-                  id="cash-custom-label"
-                  type="text"
-                  className="settings-input"
-                  value={cashCustomLabel}
-                  onChange={(e) => setCashCustomLabel(e.target.value)}
-                  placeholder="Cash"
-                />
-              </div>
-
-              <div className="resto-toggle-row">
-                <div className="resto-toggle-info">
-                  <span className="resto-toggle-title">Open Cash Drawer</span>
-                  <span className="resto-toggle-desc">
-                    Automatically send RJ11 pulse to kick open the cash drawer when completing cash sale
-                  </span>
-                </div>
-                <span className="settings-toggle">
-                  <span className="settings-toggle-switch">
+              <div className="resto-compact-form">
+                <div className="resto-compact-row">
+                  <span className="resto-compact-label">Display Label</span>
+                  <div className="resto-compact-control">
                     <input
-                      id="cash-drawer-kick"
-                      type="checkbox"
-                      role="switch"
-                      checked={cashDrawerAutoKick}
-                      onChange={(e) => setCashDrawerAutoKick(e.target.checked)}
-                      aria-label="Open Cash Drawer"
+                      id="cash-custom-label"
+                      type="text"
+                      className="settings-input"
+                      value={cashCustomLabel}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setCashCustomLabel(val);
+                        updateRailLabel('cash', val);
+                      }}
+                      placeholder="Cash"
+                      aria-label="Display Label"
+                      data-testid="cash-custom-label-input"
                     />
-                    <span className="settings-toggle-slider" />
-                  </span>
-                </span>
-              </div>
+                  </div>
+                </div>
 
-              <div style={{ marginTop: 'var(--space-3)' }}>
-                <div className="resto-toggle-title" style={{ marginBottom: '6px' }}>Quick Cash Suggestion Presets</div>
-                <div className="resto-payment-chips-row">
-                  {['Exact Amount', 'Rp 10.000', 'Rp 20.000', 'Rp 50.000', 'Rp 100.000'].map((preset) => (
-                    <span key={preset} className="resto-payment-chip resto-payment-chip--active">
-                      {preset}
+                <div className="resto-compact-row">
+                  <span className="resto-compact-label">Automatic Cash Drawer</span>
+                  <div className="resto-compact-control">
+                    <span className="settings-toggle">
+                      <label className="settings-toggle-switch" htmlFor="cash-drawer-kick">
+                        <input
+                          id="cash-drawer-kick"
+                          type="checkbox"
+                          role="switch"
+                          checked={cashDrawerAutoKick}
+                          onChange={(e) => {
+                            const val = e.target.checked;
+                            setCashDrawerAutoKick(val);
+                            updateRailParams('cash', { autoKick: val });
+                          }}
+                          aria-label="Automatic Cash Drawer"
+                          data-testid="cash-drawer-kick-toggle"
+                        />
+                        <span className="settings-toggle-slider" aria-hidden="true" />
+                      </label>
                     </span>
-                  ))}
+                  </div>
                 </div>
-                <p className="settings-hint" style={{ marginTop: '4px' }}>
-                  Smart denomination suggestion pills rendered on the POS checkout modal for faster cash handling.
-                </p>
-              </div>
 
-              <div className="resto-toggle-row" style={{ marginTop: 'var(--space-3)' }}>
-                <div className="resto-toggle-info">
-                  <span className="resto-toggle-title">Cashier Drawer Verification</span>
-                  <span className="resto-toggle-desc">
-                    Require cashier to acknowledge physical drawer closure before resetting POS cart
-                  </span>
+                <div className="resto-compact-block">
+                  <span className="resto-compact-block-title">Cash Suggestion Presets</span>
+                  <div className="resto-compact-chips">
+                    {['exact', '1000', '2000', '5000', '10000', '20000', '50000', '100000'].map((preset) => {
+                      const active = activeCashPresets.some((p) => p.toLowerCase() === preset.toLowerCase());
+                      return (
+                        <button
+                          key={preset}
+                          type="button"
+                          className={`resto-compact-chip ${active ? 'resto-compact-chip--active' : ''}`}
+                          onClick={() => {
+                            const next = active
+                              ? activeCashPresets.filter((p) => p.toLowerCase() !== preset.toLowerCase())
+                              : [...activeCashPresets, preset];
+                            setActiveCashPresets(next);
+                            updateRailParams('cash', { presets: next });
+                          }}
+                          aria-pressed={active}
+                          data-testid={`cash-preset-${preset.toLowerCase().replace('.', '')}`}
+                        >
+                          {preset}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
-                <span className="settings-toggle">
-                  <span className="settings-toggle-switch">
-                    <input
-                      id="cash-drawer-verify"
-                      type="checkbox"
-                      role="switch"
-                      checked={cashDrawerVerify}
-                      onChange={(e) => setCashDrawerVerify(e.target.checked)}
-                      aria-label="Cashier Drawer Verification"
-                    />
-                    <span className="settings-toggle-slider" />
-                  </span>
-                </span>
+
+                <div className="resto-compact-row">
+                  <span className="resto-compact-label">Cashier Drawer Verification</span>
+                  <div className="resto-compact-control">
+                    <span className="settings-toggle">
+                      <label className="settings-toggle-switch" htmlFor="cash-drawer-verify">
+                        <input
+                          id="cash-drawer-verify"
+                          type="checkbox"
+                          role="switch"
+                          checked={cashDrawerVerify}
+                          onChange={(e) => {
+                            const val = e.target.checked;
+                            setCashDrawerVerify(val);
+                            updateRailParams('cash', { verifyDrawer: val });
+                          }}
+                          aria-label="Cashier Drawer Verification"
+                          data-testid="cash-drawer-verify-toggle"
+                        />
+                        <span className="settings-toggle-slider" aria-hidden="true" />
+                      </label>
+                    </span>
+                  </div>
+                </div>
               </div>
             </PaymentMethodCard>
 
@@ -576,100 +1060,126 @@ export function RestaurantPaymentsScreen({
               badge="National QR"
               badgeVariant="success"
               icon={<QrisIcon />}
-              enabled={qrisDraft ? qrisDraft.is_enabled : true}
+              enabled={qrisDraft ? qrisDraft.is_enabled : qrisLocalEnabled}
               onToggle={(enabled) => handleToggleCode('qris', enabled)}
               isCore={true}
               mountBodyWhenCollapsed={false}
             >
-              <div style={{ marginBottom: 'var(--space-3)' }}>
-                <div className="resto-toggle-title" style={{ marginBottom: '6px' }}>QR Presentation Mode</div>
-                <div className="resto-segmented-group" role="group" aria-label="QR Mode">
-                  <button
-                    type="button"
-                    className={`resto-segmented-btn ${qrisMode === 'static' ? 'resto-segmented-btn--active' : ''}`}
-                    onClick={() => setQrisMode('static')}
-                  >
-                    Static QR (Counter / Sticker)
-                  </button>
-                  <button
-                    type="button"
-                    className={`resto-segmented-btn ${qrisMode === 'dynamic' ? 'resto-segmented-btn--active' : ''}`}
-                    onClick={() => setQrisMode('dynamic')}
-                  >
-                    Dynamic QR (POS Generated)
-                  </button>
+              <div className="resto-compact-form">
+                <div className="resto-compact-row">
+                  <span className="resto-compact-label">Mode</span>
+                  <div className="resto-compact-control">
+                    <div className="resto-segmented-group" role="group" aria-label="QR Mode">
+                      <button
+                        type="button"
+                        className={`resto-segmented-btn ${qrisMode === 'static' ? 'resto-segmented-btn--active' : ''}`}
+                        onClick={() => {
+                          setQrisMode('static');
+                          updateRailParams('qris', { mode: 'static' });
+                        }}
+                        data-testid="qris-mode-static"
+                      >
+                        Static
+                      </button>
+                      <button
+                        type="button"
+                        className={`resto-segmented-btn ${qrisMode === 'dynamic' ? 'resto-segmented-btn--active' : ''}`}
+                        onClick={() => {
+                          setQrisMode('dynamic');
+                          updateRailParams('qris', { mode: 'dynamic' });
+                        }}
+                        data-testid="qris-mode-dynamic"
+                      >
+                        Dynamic
+                      </button>
+                    </div>
+                  </div>
                 </div>
-              </div>
 
-              <div className="settings-field">
-                <label htmlFor="resto-static-qris" className="settings-label">
-                  <Localized id="settings-localpay-static-qr-label">Static QR payload (EMVCo string)</Localized>
-                </label>
-                <div className="restaurant-static-qr-box">
-                  <textarea
-                    id="resto-static-qris"
-                    className="settings-input"
-                    rows={3}
-                    placeholder="00020101021126580014ID.LINKAJA.WWW0118936009110022201389..."
-                    value={staticQrValue}
-                    onChange={(e) => handleStaticQrChange(e.target.value)}
-                    aria-label="Static QR payload (EMVCo string)"
-                    spellCheck={false}
-                  />
-                  <p className="settings-hint">
-                    Paste the merchant QR string (EMVCo format) to enable in-app counter QR presentation.
-                  </p>
-                </div>
-              </div>
-
-              <div className="settings-field settings-field--horizontal" style={{ marginTop: 'var(--space-3)' }}>
-                <label htmlFor="qris-nmid" className="settings-label">
-                  Merchant NMID
-                </label>
-                <input
-                  id="qris-nmid"
-                  type="text"
-                  className="settings-input"
-                  value={qrisNmid}
-                  onChange={(e) => setQrisNmid(e.target.value)}
-                  placeholder="ID1020030040050"
-                />
-              </div>
-
-              <div className="settings-field settings-field--horizontal">
-                <label htmlFor="qris-surcharge" className="settings-label">
-                  MDR Customer Surcharge (%)
-                </label>
-                <input
-                  id="qris-surcharge"
-                  type="text"
-                  className="settings-input"
-                  value={qrisSurcharge}
-                  onChange={(e) => setQrisSurcharge(e.target.value)}
-                  placeholder="0.7"
-                />
-              </div>
-
-              <div className="resto-toggle-row" style={{ marginTop: 'var(--space-2)' }}>
-                <div className="resto-toggle-info">
-                  <span className="resto-toggle-title">Print Pay-at-Table QR</span>
-                  <span className="resto-toggle-desc">
-                    Print dynamic payment QR code directly on customer pre-check bill slips
-                  </span>
-                </div>
-                <span className="settings-toggle">
-                  <span className="settings-toggle-switch">
-                    <input
-                      id="qris-print-bill"
-                      type="checkbox"
-                      role="switch"
-                      checked={qrisPrintReceipt}
-                      onChange={(e) => setQrisPrintReceipt(e.target.checked)}
-                      aria-label="Print Pay-at-Table QR"
+                <div className="resto-compact-block">
+                  <label htmlFor="resto-static-qris" className="resto-compact-block-title">
+                    <Localized id="settings-localpay-static-qr-label">Static QR payload (EMVCo string)</Localized>
+                  </label>
+                  <div className="restaurant-static-qr-box">
+                    <textarea
+                      id="resto-static-qris"
+                      className="settings-input"
+                      rows={2}
+                      placeholder="00020101021126580014ID.LINKAJA.WWW0118936009110022201389..."
+                      value={staticQrValue}
+                      onChange={(e) => handleStaticQrChange(e.target.value)}
+                      aria-label="Static QR payload (EMVCo string)"
+                      spellCheck={false}
+                      data-testid="qris-static-payload-input"
                     />
-                    <span className="settings-toggle-slider" />
-                  </span>
-                </span>
+                  </div>
+                </div>
+
+                <div className="resto-compact-row">
+                  <label htmlFor="qris-nmid" className="resto-compact-label">
+                    Merchant NMID
+                  </label>
+                  <div className="resto-compact-control">
+                    <input
+                      id="qris-nmid"
+                      type="text"
+                      className="settings-input"
+                      value={qrisNmid}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setQrisNmid(val);
+                        updateRailParams('qris', { nmid: val });
+                      }}
+                      placeholder="ID1020030040050"
+                      data-testid="qris-nmid-input"
+                    />
+                  </div>
+                </div>
+
+                <div className="resto-compact-row">
+                  <label htmlFor="qris-surcharge" className="resto-compact-label">
+                    MDR Fee (%)
+                  </label>
+                  <div className="resto-compact-control">
+                    <input
+                      id="qris-surcharge"
+                      type="text"
+                      className="settings-input"
+                      value={qrisSurcharge}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setQrisSurcharge(val);
+                        updateRailParams('qris', { surcharge: val });
+                      }}
+                      placeholder="0.7"
+                      data-testid="qris-surcharge-input"
+                    />
+                  </div>
+                </div>
+
+                <div className="resto-compact-row">
+                  <span className="resto-compact-label">Print Pay-at-Table QR</span>
+                  <div className="resto-compact-control">
+                    <span className="settings-toggle">
+                      <label className="settings-toggle-switch" htmlFor="qris-print-bill">
+                        <input
+                          id="qris-print-bill"
+                          type="checkbox"
+                          role="switch"
+                          checked={qrisPrintReceipt}
+                          onChange={(e) => {
+                            const val = e.target.checked;
+                            setQrisPrintReceipt(val);
+                            updateRailParams('qris', { printReceipt: val });
+                          }}
+                          aria-label="Print Pay-at-Table QR"
+                          data-testid="qris-print-bill-toggle"
+                        />
+                        <span className="settings-toggle-slider" aria-hidden="true" />
+                      </label>
+                    </span>
+                  </div>
+                </div>
               </div>
             </PaymentMethodCard>
 
@@ -682,91 +1192,104 @@ export function RestaurantPaymentsScreen({
               badge="Hardware Terminal"
               badgeVariant="primary"
               icon={<EdcIcon />}
-              enabled={cardDraft ? cardDraft.is_enabled : false}
+              enabled={cardDraft ? cardDraft.is_enabled : cardLocalEnabled}
               onToggle={(enabled) => handleToggleCode('card', enabled)}
               isCore={true}
               mountBodyWhenCollapsed={true}
             >
-              <div className="settings-field settings-field--horizontal">
-                <label htmlFor="resto-default-edc" className="settings-label">
-                  <Localized id="settings-edc-default-select">Default EDC Terminal</Localized>
-                </label>
-                <SettingsSelect
-                  id="resto-default-edc"
-                  value={defaultEdcTerminalId}
-                  onChange={(v) => setDefaultEdcTerminalId(v)}
-                  options={[
-                    { value: '', label: 'None (Manual Card Entry)' },
-                    ...edcTerminals.map((t) => ({
-                      value: t.id,
-                      label: `${t.name} (${t.transport} - ${t.address})`,
-                    })),
-                  ]}
-                />
-              </div>
-
-              {defaultEdcTerminalId && (
-                <div className="settings-actions" style={{ justifyContent: 'flex-start', marginTop: '8px' }}>
-                  <Button
-                    variant="secondary"
-                    onClick={handleTestEdc}
-                    disabled={testingEdc}
-                  >
-                    <Localized id="settings-edc-test">Test Connection</Localized>
-                  </Button>
-                </div>
-              )}
-
-              <div style={{ marginTop: 'var(--space-3)' }}>
-                <div className="resto-toggle-title" style={{ marginBottom: '6px' }}>Supported Card Networks</div>
-                <div className="resto-payment-chips-row">
-                  {[
-                    { id: 'gpn', label: 'Debit GPN' },
-                    { id: 'visa', label: 'Visa' },
-                    { id: 'mastercard', label: 'Mastercard' },
-                    { id: 'bca', label: 'BCA Card' },
-                    { id: 'jcb', label: 'JCB' },
-                    { id: 'amex', label: 'American Express' },
-                  ].map((network) => {
-                    const active = acceptedCards.includes(network.id);
-                    return (
-                      <button
-                        key={network.id}
-                        type="button"
-                        className={`resto-payment-chip ${active ? 'resto-payment-chip--active' : ''}`}
-                        onClick={() =>
-                          setAcceptedCards((prev) =>
-                            active ? prev.filter((id) => id !== network.id) : [...prev, network.id],
-                          )
-                        }
-                      >
-                        {network.label}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div className="resto-toggle-row" style={{ marginTop: 'var(--space-3)' }}>
-                <div className="resto-toggle-info">
-                  <span className="resto-toggle-title">Require Approval Code</span>
-                  <span className="resto-toggle-desc">
-                    Prompt cashier to input the 6-digit trace/approval code printed on EDC bank slip
-                  </span>
-                </div>
-                <span className="settings-toggle">
-                  <span className="settings-toggle-switch">
-                    <input
-                      id="edc-require-trace"
-                      type="checkbox"
-                      role="switch"
-                      checked={requireEdcTraceCode}
-                      onChange={(e) => setRequireEdcTraceCode(e.target.checked)}
-                      aria-label="Require Approval Code"
+              <div className="resto-compact-form">
+                <div className="resto-compact-row">
+                  <label htmlFor="resto-default-edc" className="resto-compact-label">
+                    <Localized id="settings-edc-default-select">Default EDC</Localized>
+                  </label>
+                  <div className="resto-compact-control">
+                    <SettingsSelect
+                      id="resto-default-edc"
+                      data-testid="edc-default-select"
+                      value={defaultEdcTerminalId}
+                      onChange={(v: string) => {
+                        setDefaultEdcTerminalId(v);
+                        updateRailParams('card', { defaultTerminalId: v });
+                      }}
+                      options={[
+                        { value: '', label: 'None (Manual Card Entry)' },
+                        ...edcTerminals.map((t) => ({
+                          value: t.id,
+                          label: `${t.name} (${t.transport} - ${t.address})`,
+                        })),
+                      ]}
                     />
-                    <span className="settings-toggle-slider" />
-                  </span>
-                </span>
+                    {defaultEdcTerminalId && (
+                      <button
+                        type="button"
+                        className="resto-compact-btn"
+                        onClick={handleTestEdc}
+                        disabled={testingEdc}
+                        data-testid="edc-test-connection-btn"
+                      >
+                        <Localized id="settings-edc-test">Test Connection</Localized>
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <div className="resto-compact-block">
+                  <span className="resto-compact-block-title">Supported Card Networks</span>
+                  <div className="resto-compact-chips">
+                    {[
+                      { id: 'gpn', label: 'Debit GPN' },
+                      { id: 'visa', label: 'Visa' },
+                      { id: 'mastercard', label: 'Mastercard' },
+                      { id: 'bca', label: 'BCA Card' },
+                      { id: 'jcb', label: 'JCB' },
+                      { id: 'amex', label: 'American Express' },
+                    ].map((network) => {
+                      const active = acceptedCards.includes(network.id);
+                      return (
+                        <button
+                          key={network.id}
+                          type="button"
+                          className={`resto-compact-chip ${active ? 'resto-compact-chip--active' : ''}`}
+                          onClick={() => {
+                            const next = active
+                              ? acceptedCards.filter((id) => id !== network.id)
+                              : [...acceptedCards, network.id];
+                            setAcceptedCards(next);
+                            updateRailParams('card', { acceptedCards: next });
+                          }}
+                          aria-pressed={active}
+                          data-testid={`card-network-${network.id}`}
+                        >
+                          {network.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="resto-compact-row">
+                  <span className="resto-compact-label">Require Approval Code</span>
+                  <div className="resto-compact-control">
+                    <span className="settings-toggle">
+                      <label className="settings-toggle-switch" htmlFor="edc-require-trace">
+                        <input
+                          id="edc-require-trace"
+                          type="checkbox"
+                          role="switch"
+                          checked={requireEdcTraceCode}
+                          onChange={(e) => {
+                            const val = e.target.checked;
+                            setRequireEdcTraceCode(val);
+                            updateRailParams('card', { requireTrace: val });
+                          }}
+                          aria-label="Require Approval Code"
+                          data-testid="edc-require-trace-toggle"
+                        />
+                        <span className="settings-toggle-slider" aria-hidden="true" />
+                      </label>
+                    </span>
+                  </div>
+                </div>
               </div>
             </PaymentMethodCard>
 
@@ -781,122 +1304,179 @@ export function RestaurantPaymentsScreen({
               icon={<MidtransIcon />}
               enabled={midtransDraft ? midtransDraft.is_enabled : midtransLocalEnabled}
               onToggle={(enabled) => handleToggleCode('midtrans', enabled)}
-              isCore={false}
-              onRemove={midtransDraft ? () => handleRemoveCode('midtrans') : undefined}
+              isCore={true}
             >
-              <div style={{ marginBottom: 'var(--space-3)' }}>
-                <div className="resto-toggle-title" style={{ marginBottom: '6px' }}>Gateway Environment</div>
-                <div className="resto-segmented-group" role="group" aria-label="Midtrans Environment">
-                  <button
-                    type="button"
-                    className={`resto-segmented-btn ${midtransEnv === 'sandbox' ? 'resto-segmented-btn--active' : ''}`}
-                    onClick={() => setMidtransEnv('sandbox')}
-                  >
-                    Sandbox (Testing)
-                  </button>
-                  <button
-                    type="button"
-                    className={`resto-segmented-btn ${midtransEnv === 'production' ? 'resto-segmented-btn--active' : ''}`}
-                    onClick={() => setMidtransEnv('production')}
-                  >
-                    Production (Live)
-                  </button>
+              <div className="resto-compact-form">
+                <div className="resto-compact-row">
+                  <span className="resto-compact-label">Environment</span>
+                  <div className="resto-compact-control">
+                    <div className="resto-segmented-group" role="group" aria-label="Midtrans Environment">
+                      <button
+                        type="button"
+                        className={`resto-segmented-btn ${midtransEnv === 'sandbox' ? 'resto-segmented-btn--active' : ''}`}
+                        onClick={() => {
+                          setMidtransEnv('sandbox');
+                          updateRailParams('midtrans', { env: 'sandbox' });
+                        }}
+                        data-testid="midtrans-env-sandbox"
+                      >
+                        Sandbox
+                      </button>
+                      <button
+                        type="button"
+                        className={`resto-segmented-btn ${midtransEnv === 'production' ? 'resto-segmented-btn--active' : ''}`}
+                        onClick={() => {
+                          setMidtransEnv('production');
+                          updateRailParams('midtrans', { env: 'production' });
+                        }}
+                        data-testid="midtrans-env-production"
+                      >
+                        Production
+                      </button>
+                    </div>
+                  </div>
                 </div>
-              </div>
 
-              <div className="settings-field settings-field--horizontal">
-                <label htmlFor="midtrans-merchant-id" className="settings-label">
-                  Merchant ID
-                </label>
-                <input
-                  id="midtrans-merchant-id"
-                  type="text"
-                  className="settings-input"
-                  value={midtransMerchantId}
-                  onChange={(e) => setMidtransMerchantId(e.target.value)}
-                  placeholder="G123456789"
-                />
-              </div>
-
-              <div className="settings-field settings-field--horizontal">
-                <label htmlFor="midtrans-client-key" className="settings-label">
-                  Client Key
-                </label>
-                <input
-                  id="midtrans-client-key"
-                  type="text"
-                  className="settings-input"
-                  value={midtransClientKey}
-                  onChange={(e) => setMidtransClientKey(e.target.value)}
-                  placeholder="SB-Mid-client-XXXXX"
-                />
-              </div>
-
-              <div className="settings-field settings-field--horizontal">
-                <label htmlFor="midtrans-server-key" className="settings-label">
-                  Server Key
-                </label>
-                <input
-                  id="midtrans-server-key"
-                  type="password"
-                  className="settings-input"
-                  value={midtransServerKey}
-                  onChange={(e) => setMidtransServerKey(e.target.value)}
-                  placeholder="SB-Mid-server-XXXXX"
-                />
-              </div>
-
-              <div style={{ marginTop: 'var(--space-3)' }}>
-                <div className="resto-toggle-title" style={{ marginBottom: '6px' }}>Active Payment Channels</div>
-                <div className="resto-payment-checkbox-grid">
-                  {[
-                    { key: 'gopay', label: 'GoPay / QRIS' },
-                    { key: 'shopeepay', label: 'ShopeePay' },
-                    { key: 'bca_va', label: 'BCA Virtual Account' },
-                    { key: 'mandiri_va', label: 'Mandiri Bill' },
-                    { key: 'bni_va', label: 'BNI Virtual Account' },
-                    { key: 'bri_va', label: 'BRI Virtual Account' },
-                  ].map((ch) => (
-                    <label key={ch.key} className="resto-payment-checkbox-item">
-                      <input
-                        type="checkbox"
-                        checked={Boolean(midtransChannels[ch.key])}
-                        onChange={(e) =>
-                          setMidtransChannels((prev) => ({ ...prev, [ch.key]: e.target.checked }))
-                        }
-                      />
-                      <span>{ch.label}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-
-              <div className="resto-toggle-row" style={{ marginTop: 'var(--space-3)' }}>
-                <div className="resto-toggle-info">
-                  <span className="resto-toggle-title">Instant Webhook Auto-Complete</span>
-                  <span className="resto-toggle-desc">
-                    Automatically complete checkout order as soon as Midtrans webhook HTTP notification succeeds
-                  </span>
-                </div>
-                <span className="settings-toggle">
-                  <span className="settings-toggle-switch">
+                <div className="resto-compact-row">
+                  <label htmlFor="midtrans-merchant-id" className="resto-compact-label">
+                    Merchant ID
+                  </label>
+                  <div className="resto-compact-control">
                     <input
-                      id="midtrans-auto-confirm"
-                      type="checkbox"
-                      role="switch"
-                      checked={midtransAutoConfirm}
-                      onChange={(e) => setMidtransAutoConfirm(e.target.checked)}
-                      aria-label="Instant Webhook Auto-Complete"
+                      id="midtrans-merchant-id"
+                      type="text"
+                      className="settings-input"
+                      value={midtransMerchantId}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setMidtransMerchantId(val);
+                        updateRailParams('midtrans', { merchantId: val });
+                      }}
+                      placeholder="G123456789"
+                      data-testid="midtrans-merchant-id-input"
                     />
-                    <span className="settings-toggle-slider" />
-                  </span>
-                </span>
-              </div>
+                  </div>
+                </div>
 
-              <div className="settings-actions" style={{ justifyContent: 'flex-start', marginTop: 'var(--space-3)' }}>
-                <Button variant="secondary" onClick={() => addToast({ message: 'Midtrans API credentials valid (Sandbox)', type: 'success' })}>
-                  Test API Keys
-                </Button>
+                <div className="resto-compact-row">
+                  <label htmlFor="midtrans-client-key" className="resto-compact-label">
+                    Client Key
+                  </label>
+                  <div className="resto-compact-control">
+                    <input
+                      id="midtrans-client-key"
+                      type="text"
+                      className="settings-input"
+                      value={midtransClientKey}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setMidtransClientKey(val);
+                        updateRailParams('midtrans', { clientKey: val });
+                      }}
+                      placeholder="SB-Mid-client-XXXXX"
+                      data-testid="midtrans-client-key-input"
+                    />
+                  </div>
+                </div>
+
+                <div className="resto-compact-row">
+                  <label htmlFor="midtrans-server-key" className="resto-compact-label">
+                    Server Key
+                  </label>
+                  <div className="resto-compact-control">
+                    <input
+                      id="midtrans-server-key"
+                      type="password"
+                      className="settings-input"
+                      value={midtransServerKey}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setMidtransServerKey(val);
+                        updateRailParams('midtrans', { serverKey: val });
+                      }}
+                      placeholder="SB-Mid-server-XXXXX"
+                      data-testid="midtrans-server-key-input"
+                    />
+                  </div>
+                </div>
+
+                <div className="resto-compact-block">
+                  <span className="resto-compact-block-title">Payment Channels</span>
+                  <div className="resto-compact-chips">
+                    {[
+                      { key: 'gopay', label: 'GoPay / QRIS' },
+                      { key: 'shopeepay', label: 'ShopeePay' },
+                      { key: 'bca_va', label: 'BCA VA' },
+                      { key: 'mandiri_va', label: 'Mandiri' },
+                      { key: 'bni_va', label: 'BNI VA' },
+                      { key: 'bri_va', label: 'BRI VA' },
+                    ].map((ch) => {
+                      const active = Boolean(midtransChannels[ch.key]);
+                      return (
+                        <button
+                          key={ch.key}
+                          type="button"
+                          className={`resto-compact-chip ${active ? 'resto-compact-chip--active' : ''}`}
+                          onClick={() => {
+                            const next = { ...midtransChannels, [ch.key]: !midtransChannels[ch.key] };
+                            setMidtransChannels(next);
+                            updateRailParams('midtrans', { channels: next });
+                          }}
+                          aria-pressed={active}
+                          data-testid={`midtrans-channel-${ch.key}`}
+                        >
+                          {ch.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="resto-compact-row">
+                  <span className="resto-compact-label">Instant Webhook</span>
+                  <div className="resto-compact-control">
+                    <span className="settings-toggle">
+                      <label className="settings-toggle-switch" htmlFor="midtrans-auto-confirm">
+                        <input
+                          id="midtrans-auto-confirm"
+                          type="checkbox"
+                          role="switch"
+                          checked={midtransAutoConfirm}
+                          onChange={(e) => {
+                            const val = e.target.checked;
+                            setMidtransAutoConfirm(val);
+                            updateRailParams('midtrans', { autoConfirm: val });
+                          }}
+                          aria-label="Instant Webhook"
+                          data-testid="midtrans-auto-confirm-toggle"
+                        />
+                        <span className="settings-toggle-slider" aria-hidden="true" />
+                      </label>
+                    </span>
+                  </div>
+                </div>
+
+                <div className="resto-compact-row">
+                  <span className="resto-compact-label">Connection</span>
+                  <div className="resto-compact-control">
+                    <button
+                      type="button"
+                      className="resto-compact-btn"
+                      onClick={() => {
+                        const isConfigured = Boolean(midtransClientKey && midtransServerKey);
+                        addToast({
+                          message: isConfigured
+                            ? `Midtrans credentials format verified (${midtransEnv.toUpperCase()})`
+                            : 'Please enter Client Key and Server Key',
+                          type: isConfigured ? 'success' : 'warning',
+                        });
+                      }}
+                      data-testid="midtrans-test-api-btn"
+                    >
+                      Test API Keys
+                    </button>
+                  </div>
+                </div>
               </div>
             </PaymentMethodCard>
 
@@ -911,94 +1491,147 @@ export function RestaurantPaymentsScreen({
               icon={<StripeIcon />}
               enabled={stripeDraft ? stripeDraft.is_enabled : stripeLocalEnabled}
               onToggle={(enabled) => handleToggleCode('stripe', enabled)}
-              isCore={false}
-              onRemove={stripeDraft ? () => handleRemoveCode('stripe') : undefined}
+              isCore={true}
             >
-              <div style={{ marginBottom: 'var(--space-3)' }}>
-                <div className="resto-toggle-title" style={{ marginBottom: '6px' }}>Account Mode</div>
-                <div className="resto-segmented-group" role="group" aria-label="Stripe Mode">
-                  <button
-                    type="button"
-                    className={`resto-segmented-btn ${stripeMode === 'test' ? 'resto-segmented-btn--active' : ''}`}
-                    onClick={() => setStripeMode('test')}
-                  >
-                    Test Mode
-                  </button>
-                  <button
-                    type="button"
-                    className={`resto-segmented-btn ${stripeMode === 'live' ? 'resto-segmented-btn--active' : ''}`}
-                    onClick={() => setStripeMode('live')}
-                  >
-                    Live Mode
-                  </button>
+              <div className="resto-compact-form">
+                <div className="resto-compact-row">
+                  <span className="resto-compact-label">Mode</span>
+                  <div className="resto-compact-control">
+                    <div className="resto-segmented-group" role="group" aria-label="Stripe Mode">
+                      <button
+                        type="button"
+                        className={`resto-segmented-btn ${stripeMode === 'test' ? 'resto-segmented-btn--active' : ''}`}
+                        onClick={() => {
+                          setStripeMode('test');
+                          updateRailParams('stripe', { mode: 'test' });
+                        }}
+                        data-testid="stripe-mode-test"
+                      >
+                        Test
+                      </button>
+                      <button
+                        type="button"
+                        className={`resto-segmented-btn ${stripeMode === 'live' ? 'resto-segmented-btn--active' : ''}`}
+                        onClick={() => {
+                          setStripeMode('live');
+                          updateRailParams('stripe', { mode: 'live' });
+                        }}
+                        data-testid="stripe-mode-live"
+                      >
+                        Live
+                      </button>
+                    </div>
+                  </div>
                 </div>
-              </div>
 
-              <div className="settings-field settings-field--horizontal">
-                <label htmlFor="stripe-pub-key" className="settings-label">
-                  Publishable Key
-                </label>
-                <input
-                  id="stripe-pub-key"
-                  type="text"
-                  className="settings-input"
-                  value={stripePublishableKey}
-                  onChange={(e) => setStripePublishableKey(e.target.value)}
-                  placeholder="pk_test_51XXXXXXXXXXXXX"
-                />
-              </div>
+                <div className="resto-compact-row">
+                  <label htmlFor="stripe-pub-key" className="resto-compact-label">
+                    Publishable Key
+                  </label>
+                  <div className="resto-compact-control">
+                    <input
+                      id="stripe-pub-key"
+                      type="text"
+                      className="settings-input"
+                      value={stripePublishableKey}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setStripePublishableKey(val);
+                        updateRailParams('stripe', { publishableKey: val });
+                      }}
+                      placeholder="pk_test_51..."
+                      data-testid="stripe-pub-key-input"
+                    />
+                  </div>
+                </div>
 
-              <div className="settings-field settings-field--horizontal">
-                <label htmlFor="stripe-sec-key" className="settings-label">
-                  Secret Key
-                </label>
-                <input
-                  id="stripe-sec-key"
-                  type="password"
-                  className="settings-input"
-                  value={stripeSecretKey}
-                  onChange={(e) => setStripeSecretKey(e.target.value)}
-                  placeholder="sk_test_51XXXXXXXXXXXXX"
-                />
-              </div>
+                <div className="resto-compact-row">
+                  <label htmlFor="stripe-sec-key" className="resto-compact-label">
+                    Secret Key
+                  </label>
+                  <div className="resto-compact-control">
+                    <input
+                      id="stripe-sec-key"
+                      type="password"
+                      className="settings-input"
+                      value={stripeSecretKey}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setStripeSecretKey(val);
+                        updateRailParams('stripe', { secretKey: val });
+                      }}
+                      placeholder="sk_test_51..."
+                      data-testid="stripe-sec-key-input"
+                    />
+                  </div>
+                </div>
 
-              <div className="settings-field settings-field--horizontal">
-                <label htmlFor="stripe-reader" className="settings-label">
-                  Card Reader Hardware
-                </label>
-                <SettingsSelect
-                  id="stripe-reader"
-                  value={stripeReader}
-                  onChange={(v) => setStripeReader(v)}
-                  options={[
-                    { value: 'wisepos_e', label: 'BBPOS WisePOS E (Countertop Wi-Fi)' },
-                    { value: 'reader_s700', label: 'Stripe Reader S700 (Handheld Smart POS)' },
-                    { value: 'tap_to_pay', label: 'Tap to Pay on Mobile (NFC)' },
-                  ]}
-                />
-              </div>
+                <div className="resto-compact-row">
+                  <label htmlFor="stripe-reader" className="resto-compact-label">
+                    Card Reader
+                  </label>
+                  <div className="resto-compact-control">
+                    <SettingsSelect
+                      id="stripe-reader"
+                      data-testid="stripe-reader-select"
+                      value={stripeReader}
+                      onChange={(v: string) => {
+                        setStripeReader(v);
+                        updateRailParams('stripe', { reader: v });
+                      }}
+                      options={[
+                        { value: 'wisepos_e', label: 'BBPOS WisePOS E (Wi-Fi)' },
+                        { value: 'reader_s700', label: 'Stripe Reader S700' },
+                        { value: 'tap_to_pay', label: 'Tap to Pay (NFC)' },
+                      ]}
+                    />
+                  </div>
+                </div>
 
-              <div className="settings-field settings-field--horizontal">
-                <label htmlFor="stripe-currency" className="settings-label">
-                  Default Settlement Currency
-                </label>
-                <SettingsSelect
-                  id="stripe-currency"
-                  value={stripeCurrency}
-                  onChange={(v) => setStripeCurrency(v)}
-                  options={[
-                    { value: 'IDR', label: 'IDR - Indonesian Rupiah' },
-                    { value: 'USD', label: 'USD - United States Dollar' },
-                    { value: 'SGD', label: 'SGD - Singapore Dollar' },
-                    { value: 'EUR', label: 'EUR - Euro' },
-                  ]}
-                />
-              </div>
+                <div className="resto-compact-row">
+                  <label htmlFor="stripe-currency" className="resto-compact-label">
+                    Currency
+                  </label>
+                  <div className="resto-compact-control">
+                    <SettingsSelect
+                      id="stripe-currency"
+                      data-testid="stripe-currency-select"
+                      value={stripeCurrency}
+                      onChange={(v: string) => {
+                        setStripeCurrency(v);
+                        updateRailParams('stripe', { currency: v });
+                      }}
+                      options={[
+                        { value: 'IDR', label: 'IDR - Indonesian Rupiah' },
+                        { value: 'USD', label: 'USD - US Dollar' },
+                        { value: 'SGD', label: 'SGD - Singapore Dollar' },
+                        { value: 'EUR', label: 'EUR - Euro' },
+                      ]}
+                    />
+                  </div>
+                </div>
 
-              <div className="settings-actions" style={{ justifyContent: 'flex-start', marginTop: 'var(--space-3)' }}>
-                <Button variant="secondary" onClick={() => addToast({ message: 'Stripe API connection verified', type: 'success' })}>
-                  Verify Stripe Keys
-                </Button>
+                <div className="resto-compact-row">
+                  <span className="resto-compact-label">Connection</span>
+                  <div className="resto-compact-control">
+                    <button
+                      type="button"
+                      className="resto-compact-btn"
+                      onClick={() => {
+                        const isConfigured = Boolean(stripePublishableKey && stripeSecretKey);
+                        addToast({
+                          message: isConfigured
+                            ? `Stripe keys format valid (${stripeMode.toUpperCase()})`
+                            : 'Please enter Publishable Key and Secret Key',
+                          type: isConfigured ? 'success' : 'warning',
+                        });
+                      }}
+                      data-testid="stripe-verify-keys-btn"
+                    >
+                      Verify Keys
+                    </button>
+                  </div>
+                </div>
               </div>
             </PaymentMethodCard>
 
@@ -1013,7 +1646,7 @@ export function RestaurantPaymentsScreen({
                   code={rail.rail_code}
                   title={rail.label}
                   description={`Configured payment option for ${rail.label}`}
-                  badge={isCore ? 'Core Method' : 'Custom Rail'}
+                  badge={isCore ? 'Core Method' : 'Custom Method'}
                   badgeVariant={isCore ? 'default' : 'warning'}
                   icon={<GenericRailIcon />}
                   enabled={rail.is_enabled}
@@ -1023,64 +1656,96 @@ export function RestaurantPaymentsScreen({
                   removeAriaLabel={`Remove ${rail.label}`}
                 >
                   <p className="settings-hint">
-                    Active tender rail ready for cashier checkout and receipt attribution.
+                    Active tender method ready for cashier checkout and receipt attribution.
                   </p>
                 </PaymentMethodCard>
               );
             })}
 
-            {/* ── Add Custom Payment Rail Card ───────────────────── */}
-            <div className="resto-payment-card-add-rail">
-              <Card
-                shadow="sm"
-                header={
-                  <div className="restaurant-settings-card-header">
-                    <div>
-                      <h2 className="settings-section-title">
-                        <Localized id="restaurant-payment-rails-heading">Add Custom Payment Rail</Localized>
-                      </h2>
-                      <p>
-                        <Localized id="restaurant-payment-rails-sub">
-                          Register additional digital payment options and tender codes
-                        </Localized>
-                      </p>
-                    </div>
-                  </div>
-                }
-              >
-                <div className="settings-form">
-                  <div className="restaurant-rail-add">
-                    <input
-                      type="text"
-                      className="settings-input"
-                      value={newCode}
-                      onChange={(e) => setNewCode(e.target.value)}
-                      placeholder="e.g. ovo, shopeepay, debit_mandiri"
-                      aria-label="New rail code"
-                    />
-                    <input
-                      type="text"
-                      className="settings-input"
-                      value={newLabel}
-                      onChange={(e) => setNewLabel(e.target.value)}
-                      placeholder="e.g. OVO E-Wallet"
-                      aria-label="New rail display label"
-                    />
-                    <Button
-                      variant="secondary"
-                      onClick={handleAddCustomRail}
-                      disabled={!newCode.trim() || !newLabel.trim()}
-                    >
-                      <Localized id="settings-localpay-add">Add rail</Localized>
-                    </Button>
+            {/* ── Add Custom Payment Method ── */}
+            <div className="resto-payment-card-wrapper" data-testid="add-custom-rail-card">
+              <div className="resto-payment-card resto-payment-card--expanded">
+                <div className="restaurant-settings-card-header resto-payment-card-header">
+                  <div className="resto-payment-card-title-group">
+                    <span className="restaurant-settings-header-icon" aria-hidden="true">
+                      <GenericRailIcon />
+                    </span>
+                    <span className="resto-payment-card-title">
+                      <Localized id="settings-localpay-add">Add Custom Payment Method</Localized>
+                    </span>
                   </div>
                 </div>
-              </Card>
+                <div className="resto-payment-card-body">
+                  <div className="resto-compact-form">
+                    <div className="resto-compact-row">
+                      <label htmlFor="new-rail-code" className="resto-compact-label">
+                        <Localized id="settings-localpay-code-label">Method Code</Localized>
+                      </label>
+                      <div className="resto-compact-control">
+                        <input
+                          id="new-rail-code"
+                          type="text"
+                          className="settings-input"
+                          value={newRailCode}
+                          onChange={(e) => setNewRailCode(e.target.value)}
+                          placeholder="e.g. ovo, shopeepay, voucher"
+                          data-testid="new-rail-code-input"
+                        />
+                      </div>
+                    </div>
+                    <div className="resto-compact-row">
+                      <label htmlFor="new-rail-label" className="resto-compact-label">
+                        <Localized id="settings-localpay-label-label">Display Name</Localized>
+                      </label>
+                      <div className="resto-compact-control">
+                        <input
+                          id="new-rail-label"
+                          type="text"
+                          className="settings-input"
+                          value={newRailLabel}
+                          onChange={(e) => setNewRailLabel(e.target.value)}
+                          placeholder="e.g. OVO Wallet"
+                          data-testid="new-rail-label-input"
+                        />
+                      </div>
+                    </div>
+                    <div className="resto-compact-row">
+                      <span className="resto-compact-label" />
+                      <div className="resto-compact-control">
+                        <button
+                          type="button"
+                          className="btn btn--primary btn--md"
+                          onClick={() => handleAddCustomRail()}
+                          disabled={!newRailCode.trim()}
+                          data-testid="add-custom-rail-btn"
+                        >
+                          <Localized id="settings-localpay-add">Add Method</Localized>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
 
           </div>
         )}
       </div>
+
+      {/* Unsaved Changes Confirmation Dialog */}
+      <UnsavedChangesDialog
+        open={showUnsavedDialog}
+        onCancel={() => setShowUnsavedDialog(false)}
+        onDiscard={() => {
+          setShowUnsavedDialog(false);
+          onBack?.();
+        }}
+        onSave={async () => {
+          await handleSave();
+          setShowUnsavedDialog(false);
+        }}
+        saving={saving}
+      />
     </div>
   );
 }

@@ -30,9 +30,20 @@ async function linkByEmail(page: Page, email = 'merchant@example.com') {
   });
 }
 
-/** Answer the owner step and press submit. Assumes the owner fields are already open. */
+/**
+ * Answer the owner step and press submit.
+ *
+ * Walks the wizard since `185bccb69`: leave the step on screen if it is still
+ * owed (a linked session has just linked and sits on step 1; a local one has
+ * already advanced past it), answer the store step, advance, then fill the owner
+ * fields. A Next that is disabled is a no-op to check rather than a click that
+ * hangs for the full timeout — which is what these two cases were doing.
+ */
 async function fillOwnerAndSubmit(page: Page) {
+  const next = page.getByTestId('provision-step-next');
+  if (await next.isEnabled().catch(() => false)) await next.click();
   await page.getByTestId('store-type-simple-retail').click();
+  await next.click();
   await page.getByLabel(/Shop name/i).fill('Toko Berkah');
   await page.getByLabel(/Your name/i).fill('Budi Santoso');
   await page.getByLabel(/Login name/i).fill('budi');

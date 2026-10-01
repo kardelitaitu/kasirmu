@@ -54,6 +54,22 @@ fn profile_field_roundtrip() {
 }
 
 #[test]
+fn payment_gateway_config_roundtrip() {
+    let config = r#"{"serverKey":"SB-Mid-server-xxx","clientKey":"SB-Mid-client-yyy"}"#;
+    let encrypted = encrypt_payment_gateway_config(config).unwrap();
+    assert_ne!(encrypted, config);
+    let decrypted = decrypt_payment_gateway_config(&encrypted).unwrap();
+    assert_eq!(decrypted, config);
+}
+
+#[test]
+fn payment_gateway_config_legacy_plaintext_passthrough() {
+    let legacy = r#"{"merchantId":"G12345"}"#;
+    let result = decrypt_payment_gateway_config(legacy).unwrap();
+    assert_eq!(result, legacy);
+}
+
+#[test]
 fn corrupted_ciphertext_fails() {
     let result = decrypt_api_key("not-valid-base64!!!", "machine-id");
     assert!(result.is_err());
@@ -124,6 +140,10 @@ fn all_secret_types_roundtrip() {
     );
     assert_eq!(
         decrypt_profile_field(&encrypt_profile_field(val).unwrap()).unwrap(),
+        val
+    );
+    assert_eq!(
+        decrypt_payment_gateway_config(&encrypt_payment_gateway_config(val).unwrap()).unwrap(),
         val
     );
 }

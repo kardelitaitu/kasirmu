@@ -39,6 +39,31 @@ export default function ShiftBar({ onShiftChange }: ShiftBarProps) {
   const [locations, setLocations] = useState<InventoryLocation[]>([]);
   const [selectedLocationId, setSelectedLocationId] = useState('');
   const [notes, setNotes] = useState('');
+
+  // A monotonic token, so a store switch cannot let the PREVIOUS store's reads
+  // land afterwards. Same shape as CurrencyContext.refresh (51c86e9e8),
+  // SettingsContext (09ac4df43) and BrandContext (184fcc75e) needed.
+  //
+  // The effect below depends on sessionToken, so switching stores starts a second
+  // pair of reads while the first is in flight. Without this, a slower earlier
+  // `listInventoryLocations` would leave `selectedLocationId` pointing at a location
+  // in the store the cashier just LEFT -- and that id is what
+  // `handleStartShift` passes to `startInventoryShift`, so the operator would be
+  // offered a location from the wrong store.
+  //
+  // CORRECTION (round 123): this used to end "...so the bad id reaches the write", on the
+  // grounds that core opens the store DB from the session without verifying the location
+  // belongs to it. Core still does not verify it -- but the FOREIGN KEY does. The schema is
+  // `location_id TEXT NOT NULL REFERENCES inventory_locations(id) ON DELETE RESTRICT`, and
+  // `open_store(store_id)` opens a SEPARATE database per store
+  // (platform/core/src/database/manager.rs:73). A location id from another store therefore
+  // does not exist in this store's inventory_locations and the INSERT is REJECTED.
+  //
+  // So the real consequence is a constraint error at open-shift time, not a shift written
+  // against a foreign location. The guard is still worth keeping -- the user is offered a
+  // location they cannot use and gets an opaque error instead of a correct list -- but the
+  // severity was overstated here, and that matters to anyone weighing whether to keep it.
+  const loadSeq = useRef(0);
   
   // Timer state
   const [elapsedText, setElapsedText] = useState('00:00:00');
@@ -64,8 +89,12 @@ export default function ShiftBar({ onShiftChange }: ShiftBarProps) {
   useEffect(() => {
     if (!sessionToken || !session?.user_id) return;
 
+    const seq = ++loadSeq.current;
+    const stale = () => loadSeq.current !== seq;
+
     listInventoryLocations(sessionToken)
       .then(locs => {
+        if (stale()) return;
         const activeLocs = locs.filter(l => l.is_active);
         setLocations(activeLocs);
         if (activeLocs.length > 0) {
@@ -73,17 +102,22 @@ export default function ShiftBar({ onShiftChange }: ShiftBarProps) {
         }
       })
       .catch(() => {
+        if (stale()) return;
         addToast({ message: requiredLocalized(l10nRef.current, 'inv-shift-error-locations'), type: 'error' });
       });
 
     getActiveInventoryShift(sessionToken)
       .then(shift => {
+        if (stale()) return;
         setActiveShift(shift);
         onShiftChange?.(shift);
       })
       .catch(() => {
+        if (stale()) return;
         addToast({ message: requiredLocalized(l10nRef.current, 'inv-shift-error-active'), type: 'error' });
       });
+
+    return () => { loadSeq.current += 1; };
   }, [sessionToken, session?.user_id, onShiftChange, addToast]); // l10n via ref — stable dep chain
 
   // Handle timer tick

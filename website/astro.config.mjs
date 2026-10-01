@@ -6,6 +6,7 @@ import tailwindcss from '@tailwindcss/vite';
 import { unified } from '@astrojs/markdown-remark';
 import rehypeCallouts from './src/plugins/rehype-callouts.mjs';
 import rehypeMermaidClass from './src/plugins/rehype-mermaid-class.mjs';
+import rehypeStripAuditFooter from './src/plugins/rehype-strip-audit-footer.mjs';
 import rehypeMermaid from 'rehype-mermaid';
 import { SITE, createSitemapOptions } from './scripts/sitemap-options.mjs';
 
@@ -31,8 +32,15 @@ export default defineConfig({
     sitemap(createSitemapOptions()),
   ],
   markdown: {
-    // Astro 7: remark/rehype plugins now live on the unified() processor
-    // (top-level markdown.rehypePlugins is deprecated and prints a warning).
+    // THESE MUST USE THE `processor` KEY. Measured both ways with the content cache
+    // wiped (round 140): `processor` leaves 0 of the 20 pages leaking; the flat
+    // `rehypePlugins` key leaves ALL 20, so it does not reach the content layer
+    // (src/content.config.ts, the `glob` loader). The flat key is also the deprecated
+    // one. Two earlier commits (1f4edbc9d, d32a58176) concluded the reverse from builds
+    // that had REUSED A STALE CACHE -- website/.astro caches rendered content, so a
+    // config change appears to do nothing, and a plugin made deliberately inert still
+    // appears to work. Wipe website/.astro when measuring this.
+    //
     // rehypeMermaid renders ```mermaid blocks to inline SVG at build time
     // (Playwright, browser at build only — zero client JS; see
     // src/content/docs/en/docs-authoring.md → Charts & diagrams).
@@ -42,7 +50,12 @@ export default defineConfig({
     // cache: true writes rendered SVGs to node_modules/.cache/rehype-mermaid
     // so unchanged diagrams skip the Chromium launch on subsequent builds.
     // strategy img-svg embeds the SVG inline (no extra HTTP request).
-    processor: unified({ rehypePlugins: [rehypeCallouts, rehypeMermaidClass, [rehypeMermaid, { strategy: 'img-svg', cache: true }]] }),
+    //
+    // rehypeStripAuditFooter drops the internal `> last audited …` marker that half
+    // the copied docs pages carry; it is an audit artefact, not reader content. See
+    // src/plugins/rehype-strip-audit-footer.mjs for why it is a build rule rather
+    // than a one-off edit of those pages.
+    processor: unified({ rehypePlugins: [rehypeStripAuditFooter, rehypeCallouts, rehypeMermaidClass, [rehypeMermaid, { strategy: 'img-svg', cache: true }]] }),
   },
   vite: {
     plugins: [tailwindcss()],

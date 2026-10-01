@@ -461,6 +461,18 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
   // 'linked' mode it completes only once an account is actually linked. That is
   // deliberate: the step is "is this terminal attached to an account", which the
   // mode alone does not answer.
+  /**
+   * Which of the three steps the wizard is SHOWING.
+   *
+   * This is navigation, not the completion meter beside it: the rail's ticks
+   * stay derived from `stepDone`, and this is the one the merchant moves with
+   * Back/Next. They were one state before, which is why "go back and change an
+   * answer" and "this step is finished" could not be expressed at once — the
+   * rail could not show a step as complete unless it was also the open one.
+   */
+  const [activeStep, setActiveStep] = useState(0);
+  const lastStep = STEPS.length - 1;
+
   const stepAccountDone = provisionMode === 'local' || isLinked;
   const stepStoreDone = storeType !== null;
   const stepOwnerDone =
@@ -470,35 +482,35 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
     pin.length >= 4 &&
     pin === confirmPin;
   const stepDone = [stepAccountDone, stepStoreDone, stepOwnerDone];
-  const currentStep = stepDone.indexOf(false);
 
-  // ── Progressive disclosure ─────────────────────────────────────────
+  /**
+   * Whether the rail may jump straight to step `i`.
+   *
+   * Backwards is always allowed from the step you are on; forwards is allowed
+   * only once every step before the target is complete. Without the forward
+   * guard a dot would be a way around the Next gate, and a merchant could reach
+   * the submit with a gap they were never shown.
+   */
+  // Not a useCallback: `stepDone` is rebuilt every render, so a memo would
+  // either churn every render or need its own useMemo wrapper for no gain —
+  // this is only read during render.
+  const canJumpTo = (i: number) => i === activeStep || stepDone.slice(0, i).every(Boolean);
+
+  // ── Step navigation ────────────────────────────────────────────────
   //
-  // The rail above TELLS the merchant where they are; these flags let the card show
-  // only that much. Measured on the desktop POS viewport (1366x768, the terminal this
-  // flow actually ships to once a build is packaged — the dev bypass is
-  // `import.meta.env.DEV` only): on first paint only the mode box was FULLY visible.
-  // The store type, the shop name and the submit button were all below the fold, so a
-  // fresh merchant saw a set of choices and no way to tell a form followed them.
+  // The card used to show every section at once and COLLAPSE the ones past the
+  // current step. Measured on the desktop POS viewport (1366x768, the terminal
+  // this ships to): the card is 1423px, so the submit button and the last two
+  // fields started below the fold, and the only signal that anything remained
+  // was the rail at the very top.
   //
-  // Sections after the current step are collapsed rather than unmounted: unmounting
-  // would drop half-typed values when a merchant moves back to change their answer,
-  // and `canSubmit` reads every field regardless of visibility. Collapsing keeps the
-  // form's state identical while removing the height.
-  //
-  // `currentStep === -1` means every step is done — then everything is open, so the
-  // merchant can review and press the button.
-  //
-  // ONLY the owner step (3) collapses. The store-type choice stays visible even while
-  // step 1 is open, deliberately: hiding it would mean a merchant cannot see what the
-  // form is about to ask them, and the store type is a DECISION rather than detail —
-  // measuring the tradeoff, the merchant should be able to see the whole shape of the
-  // choice even when they cannot yet act on all of it.
-  //
-  // `currentStep === -1` means every step is done — then it opens, so the merchant can
-  // review their answers and press the button. One-way: once open it stays open, so a
-  // correction to an earlier answer never hides the section being corrected.
-  const ownerStepOpen = currentStep === -1 || currentStep >= 2;
+  // It now shows ONE step at a time. The panels stay MOUNTED rather than being
+  // unmounted: half-typed values survive a trip back, and `canSubmit` reads
+  // every field regardless of which panel is open. `hidden` is the mechanism
+  // for the same reason — it removes the panel from the layout and from the
+  // accessibility tree while leaving the form's state exactly as it was.
+  const goBack = useCallback(() => setActiveStep((s) => Math.max(0, s - 1)), []);
+  const goNext = useCallback(() => setActiveStep((s) => Math.min(lastStep, s + 1)), [lastStep]);
 
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {
@@ -585,19 +597,31 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
             <ol className="provisioning-step-list" data-testid="provisioning-step-rail">
               {STEPS.map((step, i) => {
                 const done = stepDone[i];
-                const isCurrent = currentStep === i;
+                const isCurrent = activeStep === i;
                 return (
                   <li
                     key={step.id}
                     className={`provisioning-step${done ? ' is-done' : ''}${isCurrent ? ' is-current' : ''}`}
                     aria-current={isCurrent ? 'step' : undefined}
                   >
-                    <span className="provisioning-step-marker" aria-hidden="true">
-                      {done ? '✓' : i + 1}
-                    </span>
-                    <Localized id={step.labelId}>
-                      <span className="provisioning-step-label">{step.fallback}</span>
-                    </Localized>
+                    {/* The dot is a control now, not a decoration: a completed
+                        step can be reopened to review or correct an answer. It is
+                        disabled while an earlier step is unfinished, so the rail
+                        cannot be used to skip the Next gate. */}
+                    <button
+                      type="button"
+                      className="provisioning-step-jump"
+                      onClick={() => setActiveStep(i)}
+                      disabled={!canJumpTo(i)}
+                      data-testid={`provision-step-jump-${step.id}`}
+                    >
+                      <span className="provisioning-step-marker" aria-hidden="true">
+                        {done ? '✓' : i + 1}
+                      </span>
+                      <Localized id={step.labelId}>
+                        <span className="provisioning-step-label">{step.fallback}</span>
+                      </Localized>
+                    </button>
                   </li>
                 );
               })}
@@ -605,7 +629,7 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
             <p className="provisioning-step-progress">
               <Localized
                 id="setup-provision-step-progress"
-                vars={{ current: String(currentStep === -1 ? stepDone.length : currentStep + 1), total: String(stepDone.length) }}
+                vars={{ current: String(activeStep + 1), total: String(stepDone.length) }}
               >
                 {'Step { $current } of { $total }'}
               </Localized>
@@ -629,6 +653,7 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
         )}
 
         {/* Step 1: Mode Selection (ADR #56 §2.3) */}
+        {activeStep === 0 && (
         <section className="provisioning-mode-box" aria-labelledby="provision-mode-heading">
           <h2 id="provision-mode-heading" style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--font-weight-medium)', margin: 0 }}>
             <Localized id="setup-provision-mode-section">Setup Mode</Localized>
@@ -666,9 +691,10 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
             </button>
           </div>
         </section>
+        )}
 
         {/* Step 2: Account Linking (Shown only for Mode 2: Linked) */}
-        {provisionMode === 'linked' && (
+        {activeStep === 0 && provisionMode === 'linked' && (
           <section className="provisioning-account-box" aria-labelledby="provision-account-heading" id="provision-account-box">
             <h2 id="provision-account-heading" style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--font-weight-medium)', margin: 0 }}>
               <Localized id="setup-provision-account-section">kasir.mu Account</Localized>
@@ -677,13 +703,23 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
               <Localized id="setup-provision-account-hint">
                 Connect your device to your free account to enable automatic sync and license protection.
               </Localized>
-              {/* The QR route's precondition, stated before the merchant hits
-                  it. "Scan this QR code with your phone" reads as universal;
-                  it is not — it needs a phone already signed in to the account,
-                  which a merchant setting up one terminal alone does not have.
-                  QR stays available; this says what it costs before the tap. */}
+            </p>
+            {/* The QR route's precondition, stated before the merchant hits
+                it. "Scan this QR code with your phone" reads as universal;
+                it is not — it needs a phone already signed in to the account,
+                which a merchant setting up one terminal alone does not have.
+                QR stays available; this says what it costs before the tap.
+
+                Its OWN paragraph rather than a second sentence in the one above,
+                because the message has to be plain FTL text: a value that is
+                only a placeable is dropped by the parser, so the id resolves to
+                nothing at runtime and the merchant reads the component's English
+                fallback on every device. Caught on hardware 2026-10-01 — the key
+                was in both bundles and in the built asset, and the only symptom
+                was one console warning. */}
+            <p className="provisioning-account-hint">
               <Localized id="setup-account-pair-requirement">
-                {' QR pairing needs a second phone signed in to your account.'}
+                <span>QR pairing needs a second phone signed in to your account.</span>
               </Localized>
             </p>
 
@@ -750,16 +786,15 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
                   >
                     <Localized id="setup-tab-email">Email Code</Localized>
                   </button>
-                  <button
-                    type="button"
-                    className="provisioning-subtab"
-                    data-testid="provisioning-open-wizard-btn"
-                    onClick={() => {
-                      window.location.hash = '#/mobile-setup';
-                    }}
-                  >
-                    <Localized id="setup-tab-wizard">Setup Wizard</Localized>
-                  </button>
+                  {/* The third tab here was "Setup Wizard", which set
+                      #/mobile-setup and handed the merchant to a second wizard
+                      (MobileWelcomeFlow -> MobileSetupHub). That one made no
+                      backend calls at all: it called onProvisioned the moment a
+                      Google account was "selected" or an email "submitted", so
+                      on a real tablet the shell marked hasCompletedSetup with no
+                      store, no owner and no PIN. It was retired with the rest of
+                      features/setup/mobile -- this flow IS the setup wizard, on
+                      every surface. */}
                 </div>
 
                 {tabletTab === 'pair' ? (
@@ -961,6 +996,7 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
           </section>
         )}
 
+        {activeStep === 1 && (
         <fieldset className="provisioning-fieldset">
           <legend>
             <Localized id="setup-provision-store-type">
@@ -989,8 +1025,9 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
             ))}
           </div>
         </fieldset>
+        )}
 
-        {ownerStepOpen && (
+        {activeStep === 2 && (
         <>
         <div className="provisioning-field">
           {/* eslint-disable-next-line jsx-a11y/label-has-associated-control -- text via Localized span */}
@@ -1097,7 +1134,7 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
             character would talk over what they are typing. It sits beside the
             button it explains, which is the one control on this card they are
             guaranteed to be looking at. */}
-        {submitBlockers.length > 0 && (
+        {activeStep === lastStep && submitBlockers.length > 0 && (
           <div className="provisioning-submit-blockers" role="status" data-testid="provision-submit-blockers">
             <Localized id="setup-provision-gate-heading">
               <p className="provisioning-submit-blockers-heading">
@@ -1122,11 +1159,43 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
           </div>
         )}
 
-        <Button size="lg" type="submit" disabled={!canSubmit || busy} data-testid="provision-submit">
-          <Localized id="setup-provision-submit">
-            <span>Finish setup</span>
-          </Localized>
-        </Button>
+        {/* Navigation. Next is disabled until the step it would leave is
+            complete, so the merchant cannot advance past a gap and then hunt for
+            it; Back is disabled on the first step, which is the only place there
+            is nothing to go back to. The submit only exists on the last step —
+            on the earlier ones the primary action is Next, and a "Finish setup"
+            button that cannot be pressed yet is a promise the screen cannot keep. */}
+        <div className="provisioning-nav" data-testid="provisioning-nav">
+          <Button
+            variant="secondary"
+            type="button"
+            onClick={goBack}
+            disabled={activeStep === 0 || busy}
+            data-testid="provision-step-back"
+          >
+            <Localized id="setup-provision-step-back">
+              <span>Back</span>
+            </Localized>
+          </Button>
+          {activeStep < lastStep ? (
+            <Button
+              type="button"
+              onClick={goNext}
+              disabled={!stepDone[activeStep]}
+              data-testid="provision-step-next"
+            >
+              <Localized id="setup-provision-step-next">
+                <span>Next</span>
+              </Localized>
+            </Button>
+          ) : (
+            <Button size="lg" type="submit" disabled={!canSubmit || busy} data-testid="provision-submit">
+              <Localized id="setup-provision-submit">
+                <span>Finish setup</span>
+              </Localized>
+            </Button>
+          )}
+        </div>
 
         {/* The locale the terminal is being provisioned WITH, stated before the
             submit rather than discovered afterwards. `provisionDevice` has
@@ -1140,8 +1209,7 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
         </p>
 
         {/* Version and IP, matching every other setup and auth surface
-            (MobileSetupHub, MobileWelcomeScreen, the three auth modals,
-            StaffLoginScreen, LicenseActivationScreen). The footer was already
+            (StaffLoginScreen, LicenseActivationScreen). The footer was already
             invented and agreed on; this flow is the one screen that omitted it,
             so a merchant told their terminal's version on the next screen read a
             different one here. Not localized: it is a version string and a legal

@@ -333,6 +333,29 @@ impl Store<'_> {
     /// availability resolver takes exactly this `Option<bool>` and leaves
     /// `scope` out of the precedence contest when it is `None`.
     ///
+    /// ⚠️ FOUR CALLERS TREAT `None` AS A DENIAL, and that is a KNOWN DIVERGENCE
+    /// rather than an oversight to repair here. All four are the same org gate
+    /// on the session-creation / org-switch path, written as
+    /// `if !covered.unwrap_or(false)` — `crates/kasirmu-bridge/src/auth.rs:616`,
+    /// `crates/kasirmu-bridge/src/auth/session.rs:401`,
+    /// `apps/mobile-tauri/src/commands/auth.rs:420` and `:656` — each with a
+    /// `// (fail-closed)` comment. For a row-less user the ENFORCEMENT path
+    /// behaves differently: `require_permission_for_resource` (`db/staff.rs:382`)
+    /// skips the scope check entirely when there is no assignment and still runs
+    /// `authorize_with`, so such a user is permitted by SCOPE and decided by
+    /// ROLE (`users.role_id` fallback, `staff.rs:423`).
+    ///
+    /// So the divergence is between a coverage verdict and an authorization one,
+    /// which the tests name explicitly: "Some(true) is a coverage verdict, never
+    /// an authorization one" (`db/assignments_tests.rs:1093`). It is NOT pinned
+    /// either way — `l194_create_session_org_denied_without_assignment_coverage`
+    /// (`bridge/auth_tests.rs:1488`) exercises `Some(false)` (a user whose
+    /// assignment covers a different org), never `None`. Listed rather than
+    /// changed because resolving it is a product ruling: the four gates are
+    /// STRICTER than the enforcement path, so 'fixing' them would LOOSEN access
+    /// for row-less users, and tightening the enforcement path instead is the
+    /// change the `staff.rs:363-367` note deliberately defers.
+    ///
     /// Read-only and non-authoritative — it never consults the permission
     /// registry. Enforcement stays in
     /// [`Store::require_permission_for_resource`], which layers

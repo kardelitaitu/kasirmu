@@ -250,7 +250,9 @@ export default function NodeTopologyEditor({
   /** Latest l10n for ref-based callbacks (duplicate commit/cancel) so the
    *  announcement strings always come from the current bundle. */
   const l10nRef = useRef(l10n);
-  l10nRef.current = l10n;    const { settings } = useSettings();
+  l10nRef.current = l10n;
+
+  const { settings } = useSettings();
 
   const canvasRef = useRef<HTMLDivElement>(null);
 

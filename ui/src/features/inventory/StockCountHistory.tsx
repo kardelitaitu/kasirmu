@@ -36,6 +36,21 @@ export default function StockCountHistory() {
   const { sessionToken: rawSessionToken } = useWorkspace();
   const sessionToken = rawSessionToken ?? '';
 
+  // Measured and left UNGUARDED: the deps name sessionToken, so a store switch overlaps
+  // two of these reads -- the overlap is real. What decided it is the consequence.
+  //
+  //   `counts` and `adjustments` feed the history LIST only. Selecting a count calls
+  //   `handleSelectCount`, which re-reads the lines with the CURRENT token, so no stale
+  //   value reaches a write and nothing is gated on this state. A stale read shows the
+  //   previous store's completed counts until the next switch, and self-corrects then.
+  //
+  // So a guard here would buy a correct list at the cost of another token, and it would
+  // be the thirteenth site in a class whose running cost is a comment each (the class is
+  // written up in SettingsContext:207, with the coverage record for all twelve fixes).
+  //
+  // IF THIS CHANGES: if anything ever writes from `counts` or `adjustments` -- a bulk
+  // action over the visible rows, an export that is treated as authoritative -- this
+  // becomes a data-carrying read and needs the guard with it.
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);

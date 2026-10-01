@@ -67,6 +67,27 @@ Matriks ini adalah target untuk basis kode:
   dibuat dan dikelola di layar **Peran** tersendiri, yang dibuka lewat tombol
   **Peran** di halaman Staf.
 
+## Menyusun peran kustom
+
+Layar **Peran** — dibuka lewat tombol **Peran** di halaman Staf — adalah
+tempat peran kustom dibangun. Layar ini terpisah dari daftar staf dan
+dijaga lebih ketat: **manajer atau pemilik** *dan* izin
+`staff:manage_roles`. Staf hanya-baca tidak bisa mengaksesnya meski boleh
+melihat daftar staf, karena sebuah peran menentukan hak yang menjadi dasar
+setiap pemeriksaan berikutnya.
+
+Peran yang disusun adalah sekumpulan kunci izin yang dipilih dari registri
+yang sama dengan lima preset — tidak ada yang bisa diberikan di sana
+selain yang backend terapkan, dan pemilih hanya mendaftar kunci nyata.
+Peran dapat diganti nama, diberi ulang izinnya, dan dihapus, dengan dua
+pengaman: lima preset tidak dapat disunting atau dihapus lewat layar ini
+(disinkronkan ulang dari tabel bawaan setiap reseeding, jadi suntingan
+di sana akan hilang), dan peran yang masih dipegang akun mana pun tidak
+dapat dihapus.
+
+Karena penugasanlah yang diperiksa aplikasi, layar ini juga menampilkan
+akun mana yang memegang sebuah peran.
+
 ## Status implementasi
 
 Empat celah dalam rencana telah ditutup:

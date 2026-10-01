@@ -55,6 +55,37 @@ fn get_product_with_optional_fields() {
     assert_eq!(p.unit.as_deref(), Some("pcs"));
 }
 
+/// `image_hash` is read from index 21, the column the SELECT actually lists there.
+///
+/// The mapper is positional and the SELECT is 22 columns, with `popularity_score`
+/// at 20 and `image_hash` LAST at 21. The pre-fix code read `row.get(20)` for
+/// `image_hash`, so the DTO carried the product's popularity SCORE and the real
+/// column was never read at all.
+///
+/// This survived because the two spellings agree on the existing fixtures:
+/// `seed_product` sets neither column, so both return `None`, and nothing else in
+/// this file asserts `image_hash`. The pin sets BOTH to distinct non-null values,
+/// which is the only way the swap is observable, and asserts each lands on its own
+/// field.
+#[test]
+fn get_product_reads_image_hash_from_its_own_column_not_the_popularity_score() {
+    let conn = fresh();
+    conn.execute(
+        "INSERT INTO products (id, sku, name, price_minor, currency, product_type, version, is_active, created_at, updated_at, popularity_score, image_hash)
+         VALUES ('p-img', 'IMG-SKU', 'Imaged', 100, 'USD', 'retail', 1, 1, '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z', 42.5, 'deadbeef')
+         ",
+        [],
+    )
+    .unwrap();
+    let repo = InventoryRepository::new(&conn);
+    let p = repo.get_product("p-img").unwrap().unwrap();
+    assert_eq!(
+        p.image_hash.as_deref(),
+        Some("deadbeef"),
+        "image_hash must come from the image_hash column, not from popularity_score"
+    );
+}
+
 #[test]
 fn get_product_with_barcode() {
     let conn = fresh();

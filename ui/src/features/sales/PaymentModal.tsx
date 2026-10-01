@@ -492,6 +492,26 @@ retryCurrencyLoad,
     }
   }, [selectedCustomer, sessionToken, addToast, loyaltyLicensed]); // l10n via ref — stable dep chain
 
+  // Measured and LEFT UNGUARDED on purpose, unlike the four sibling fixes
+  // (CurrencyContext 51c86e9e8, SettingsContext 09ac4df43, BrandContext
+  // 184fcc75e, ShiftBar 88415f10f). The deps name sessionToken, so a store
+  // switch CAN overlap two of these reads -- the overlap is real. What is not
+  // real is the consequence, and that is what decided it:
+  //
+  //   pointsWorthMinor is the value of the BALANCE, and it is read at exactly one
+  //   place -- the parenthesised worth beside the points figure in
+  //   LoyaltyTenderPanel:164. It is a LABEL.
+  //
+  // The money is moved by pointsToRedeem, and that is seeded from
+  //   loyaltyAccount.account.points (the redeem-start handler in this file),
+  //   NOT from this valuation. A stale worth therefore mislabels the balance and
+  //   nothing else -- it cannot reach the discount, the tender math, the Settle
+  //   button or the redemption payload.
+  //
+  // So the fix belongs where the consequence is, and adding a token here would be
+  //   the seventh guard in a class whose running cost is now a comment per site.
+  //   If this stops being display-only -- if a caller ever seeds pointsToRedeem
+  //   from the worth -- this effect becomes money and needs the guard with it.
   useEffect(() => {
     if (loyaltyAccount?.account && loyaltyAccount.account.points > 0) {
       if (!sessionToken) {

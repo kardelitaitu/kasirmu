@@ -756,6 +756,15 @@ async fn get_gcp_access_token(key_json: &str) -> Result<String, String> {
         .ok_or("missing private_key in service-account key")?;
 
     // Create a JWT assertion for GCP OAuth.
+    //
+    // `.unwrap_or_default()` is deliberate here and NOT the fail-open shape its
+    // siblings in the session and picker-ticket paths had. A pre-epoch clock gives
+    // `now = 0`, so this assertion carries `iat = 0` and `exp = 3600` -- a window
+    // that closed in 1970. Google refuses it, so the export FAILS VISIBLY; nothing
+    // is written to BigQuery under a timestamp nobody can verify. The `iat` an
+    // operator would read in the token is wrong, which is a diagnosability cost,
+    // not an authorisation one: unlike a session expiry, no local check consumes
+    // this value, and the token's only reader is Google.
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()

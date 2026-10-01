@@ -155,7 +155,17 @@ mod debt;
 /// `REGISTERED_TOTAL` (475 -> 481) and left all 68 debt rows identical. That is why
 /// this step touches the floor alone: there is no new debt to record, only new
 /// registrations to count. Provenance recorded in docs/records/JOURNAL.md.
-const REGISTERED_FLOOR: usize = 481;
+///
+/// 481 -> 485, for `a5212ca5f` (feat(payments): persist payment gateways with
+/// at-rest encryption and wire frontend settings), which registered FOUR names in
+/// `commands::local_payment` — `get_payment_gateway_config_scoped`,
+/// `list_payment_gateways_scoped`, `set_payment_gateway_config_scoped` and
+/// `delete_payment_gateway_scoped`. All four arrive GATED, so as in the step above
+/// there is no new debt row, only new registrations to count. Measured, not assumed:
+/// the pre-raise assertion reported `left: 481, right: 485`, and the four `+` lines in
+/// that commit's `lib.rs` diff are exactly the four names — the delta and the cause
+/// agree. Provenance recorded in docs/records/JOURNAL.md.
+const REGISTERED_FLOOR: usize = 485;
 /// How far the GENERATED ledger's total may lag the tree before the ledger is overdue a
 /// regeneration. It is not slack on this floor — the floor is measured, not padded — and
 /// the hard pin on the ledger's own rows is

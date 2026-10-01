@@ -867,6 +867,12 @@ fn apply_pulled_page(
         // there is nothing to clobber.) Contrast the anchor READ at the top of
         // the tick, which must error — there a silent default would force a
         // full-history replay instead of refusing one.
+        //
+        // RE-VERIFIED (audit sweep of `platform/`): this default is conservative
+        // because `(None, None)` cannot equal a captured pair unless both were
+        // already `None` (there is then nothing to clobber), and the test compares
+        // the WHOLE state rather than one field. Left as-is on purpose — this is a
+        // documented fail-safe, not one of the fail-blind shapes the sweep seeks.
         let durable = store.get_sync_pull_state().unwrap_or_default();
         let rewound =
             durable.since.as_deref() != prev_since || durable.cursor.as_deref() != prev_cursor;

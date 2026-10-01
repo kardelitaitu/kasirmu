@@ -4,7 +4,7 @@
 // workspace switcher, user switcher (ADR #6), and theme toggle.
 // ────────────────────────────────────────────────────────────────────
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { Localized, useLocalization } from "@fluent/react";
 import { requiredLocalized } from "@/components";
 import { useGatewayStatus } from "@/hooks/useGatewayStatus";
@@ -40,10 +40,25 @@ export default function StatusBar() {
   const [conflictCount, setConflictCount] = useState(0);
 
   // P1-3: Poll conflict count every 30 seconds.
+  //
+  // Guarded against a store switch. The deps name sessionToken and the cleanup clears the
+  // interval, so a switch DOES start a fresh poll -- but an IN-FLIGHT request from the old
+  // token is not cancelled by clearing the timer. It can resolve after the new poll and
+  // write the PREVIOUS store's count, which then shows for up to the full 30s interval
+  // before the next tick corrects it.
+  //
+  // Display-only, and it self-corrects, so this is the cheapest form of the fix rather than
+  // the full token: a single comparison that retires the stale response instead of adding a
+  // request-generation counter for a value that is corrected on its own schedule.
+  const pollTokenRef = useRef(sessionToken);
   useEffect(() => {
+    pollTokenRef.current = sessionToken;
     const poll = async () => {
+      const forToken = sessionToken;
       try {
-        const s = await getOfflineQueueStatusSummaryScoped(sessionToken!);
+        const s = await getOfflineQueueStatusSummaryScoped(forToken!);
+        // Drop a response that arrived after the store moved on.
+        if (pollTokenRef.current !== forToken) return;
         setConflictCount(s.conflictCount);
       } catch { /* offline */ }
     };

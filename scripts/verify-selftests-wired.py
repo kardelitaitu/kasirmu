@@ -30,14 +30,43 @@ because "should this gate have a self-test" is a judgement per checker; the swee
 that found the nine is recorded in the docstring above so the next one to be added
 knows the convention exists.
 
-AND, concretely, the checkers that are not Python. The glob is verify-*/check-*, so a
---self-test in a Node checker is invisible here. One exists: check.sh's "updater manifest
-generator" step runs `generate-latest-json.mjs --self-test`, and nothing polices whether
-that flag keeps working or has a caller. Widening the glob to .mjs/.ts/.js is NOT done
-here, and deliberately so: a first pass at it would have to guess which Node scripts are
-checkers rather than tools, which is the same judgement-per-file problem above, and
-guessing wrong produces a gate that fires on scripts that were never meant to be policed.
+AND a checker whose FILE NAME falls outside the pattern. SCRIPT_RE matches
+`^(?:verify|check)-NAME` with a suffix of `py`, `mjs` or `sh`, and one qualifying script is
+neither: it is
+`generate-latest-json.mjs`.
+
+CORRECTED 2026-10-05 (round 147). This paragraph previously said Node checkers were
+"invisible here" because the glob was assumed to be `verify-*/check-*`. That was wrong:
+SCRIPT_RE covers `.mjs` and `.sh` as well as `.py`, and checkers() returns 10 `.mjs` and 8
+`.sh` files alongside 47 `.py`. The real gap is one NAME, not one LANGUAGE -- and the wrong
+version would have sent the next reader to widen a glob that was already wide.
+
+MEASURED: `generate-latest-json.mjs` declares the quoted `--self-test` and HAS three
+callers (scripts/check.sh:856, dev-ci.yml:1565, release.yml:324), so nothing is currently
+dead. What is missing is only the policing: if one of those three invocations were removed
+tomorrow, this gate could not see it. So the gap is prospective here too.
+
+WHY IT IS STILL NOT WIDENED to `generate-*`: the prefix is the one signal separating a
+checker from a generator that merely accepts a flag, and `generate-latest-json.mjs` is the
+only script that would be added. A pattern admitting every `generate-*` with a self-test
+would need the argv/exports judgement for all of them, which is the problem named below.
 Named rather than left to be rediscovered.
+
+MEASURED 2026-10-05, and the guess is avoidable. The judgement the paragraph above calls
+unmakeable has an operational definition: a Node CHECKER reads `process.argv` and mentions
+`--self-test` outside a comment; a LIBRARY imports and exports. Under that test the repo
+has FIVE Node checkers with a self-test, not one -- check-release-version, check-testid,
+check-updater-compat, generate-latest-json and verify-updater-signature -- and every one is
+invoked by a runner (check.sh and/or dev-ci.yml and/or release.yml). So the current tree is
+clean, and the gap is prospective: nothing stops a sixth from being added uncalled.
+
+`updater-crypto.mjs` is the FALSE POSITIVE that makes the point. It is a library whose
+header says it is shared helpers for two of the five, it declares no CLI, and it contains
+zero `process.argv` -- but it matched a naive text search on `--self-test` because three of
+its COMMENTS describe the primitives its consumers use in theirs. Running it exits 0 with
+no output, which reads as "the self-test passed" and is really "nothing happened". A gate
+built on the text search would have reported a phantom uncalled self-test; this is why the
+scope note warns against widening the glob without the argv/exports distinction.
 
 Exit 0 clean, 1 uncalled self-test(s), 2 usage or self-test failure.
 """
@@ -60,6 +89,11 @@ RUNNERS = (
     ROOT / "scripts" / "check.ps1",
     ROOT / ".githooks" / "pre-commit",
 )
+# verify-* and check-*. `generate-*` is deliberately absent: `generate-latest-json.mjs`
+# declares a --self-test and has three callers, but it is a GENERATOR that accepts a flag
+# rather than a checker, and it is the only such script -- admitting the prefix would add
+# one entry and require judging every future generate-*. See the scope note in the
+# docstring; this line and that paragraph must move together.
 SCRIPT_RE = re.compile(r"^(?:verify|check)-[A-Za-z0-9_-]+\.(?:py|mjs|sh)$")
 # "<name>.py --self-test" anywhere on the line. Deliberately not anchored to a
 # command position: a step that pipes or redirects still calls the flag, and a

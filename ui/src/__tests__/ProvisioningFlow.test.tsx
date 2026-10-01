@@ -191,8 +191,30 @@ describe('ProvisioningFlow (ADR #56 §2.3 / §2.5)', () => {
     });
   };
 
+  /**
+   * Advance to the following step. Disabled while the open step is unfinished,
+   * so a test that clicks it is also asserting that step was answerable.
+   */
+  const nextStep = () => {
+    fireEvent.click(screen.getByTestId('provision-step-next'));
+  };
+  /** Return to the previous step. Every typed value survives — see the test that pins it. */
+  const backStep = () => {
+    fireEvent.click(screen.getByTestId('provision-step-back'));
+  };
+
+  /**
+   * Walk from step 2 to the owner step and fill it in.
+   *
+   * The wizard shows ONE step at a time, so filling the form is now also
+   * advancing through it: each step's Next enables only once that step is
+   * complete. Callers are expected to have answered step 1 already — offline
+   * mode, or a linked account — because that is what enables the first Next.
+   */
   const fillBasicForm = () => {
+    nextStep();
     fireEvent.click(screen.getByTestId('store-type-simple-retail'));
+    nextStep();
     fireEvent.change(screen.getByLabelText(/Shop name/i), { target: { value: 'Toko Berkah' } });
     fireEvent.change(screen.getByLabelText(/Your name/i), { target: { value: 'Budi Santoso' } });
     fireEvent.change(screen.getByLabelText(/Login name/i), { target: { value: 'budi' } });
@@ -377,13 +399,16 @@ describe('ProvisioningFlow (ADR #56 §2.3 / §2.5)', () => {
     expect(stepLi('Account')).toHaveAttribute('aria-current', 'step');
     expect(screen.getByText(/Step 1 of 3/i)).toBeInTheDocument();
 
-    // Choosing the offline mode completes step 1 with nothing to link.
+    // Choosing the offline mode completes step 1 with nothing to link — and
+    // Next is what advances now, not the completion itself.
     fireEvent.click(screen.getByTestId('provision-mode-local'));
+    nextStep();
     expect(screen.getByText(/Step 2 of 3/i)).toBeInTheDocument();
     expect(stepLi('Account')).not.toHaveAttribute('aria-current');
 
-    // Picking a store type advances to the owner step.
+    // Picking a store type completes step 2; advancing reaches the owner step.
     fireEvent.click(screen.getByTestId('store-type-simple-retail'));
+    nextStep();
     expect(screen.getByText(/Step 3 of 3/i)).toBeInTheDocument();
     expect(stepLi('Owner')).toHaveAttribute('aria-current', 'step');
   });
@@ -406,9 +431,11 @@ describe('ProvisioningFlow (ADR #56 §2.3 / §2.5)', () => {
     render(<ProvisioningFlow onProvisioned={mockOnProvisioned} />);
     fireEvent.click(screen.getByTestId('provision-mode-local'));
 
-    // Step 1 done, but the owner step is untouched — one check only.
+    // Step 1 done, but the owner step is untouched — one check only. The submit
+    // does not exist yet: it is the primary action of the LAST step, and on
+    // step 2 that action is Next.
     expect(screen.getAllByText('✓')).toHaveLength(1);
-    expect(screen.getByTestId('provision-submit')).toBeDisabled();
+    expect(screen.queryByTestId('provision-submit')).not.toBeInTheDocument();
 
     // Now fill EVERYTHING except the PIN agreement. The owner step must stay
     // incomplete, because `canSubmit` still refuses. This is the half that
@@ -469,9 +496,9 @@ describe('ProvisioningFlow (ADR #56 §2.3 / §2.5)', () => {
     expect(inline.textContent).toMatch(/Could not finish setting up this terminal/i);
     expect(inline.getAttribute('role')).toBe('alert');
 
-    // It must be a SIBLING of the button (same gap, same scroll position), not
-    // the form-wide banner at the top of the card.
-    expect(submit.previousElementSibling).toBe(inline);
+    // It must sit immediately before the row holding the button (same gap, same
+    // scroll position), not in the form-wide banner at the top of the card.
+    expect(screen.getByTestId('provisioning-nav').previousElementSibling).toBe(inline);
     expect(inline.className).not.toContain('provisioning-card-top');
   });
 
@@ -481,14 +508,17 @@ describe('ProvisioningFlow (ADR #56 §2.3 / §2.5)', () => {
     // right place. The two paths must not be collapsed into one.
     render(<ProvisioningFlow onProvisioned={mockOnProvisioned} />);
 
-    // The default (linked) mode, with a store type chosen but no account linked.
-    // `handleSubmit` is what raises the guard, and on a disabled submit the browser
-    // will not fire it — so the guard is reached only when `canSubmit` passes for
-    // some other reason. Its real job is the defensive branch, and what the merchant
-    // meets is the disabled button plus the account box still asking.
-    fireEvent.click(screen.getByTestId('store-type-simple-retail'));
+    // The default (linked) mode, no account linked. `handleSubmit` is what
+    // raises the guard, and on a disabled submit the browser will not fire it —
+    // so the guard is reached only when `canSubmit` passes for some other
+    // reason. Its real job is the defensive branch, and what the merchant meets
+    // is the account box still asking plus a Next that will not advance.
+    //
+    // The store type belongs to step 2, so it is NOT offered here: a merchant
+    // who has not linked cannot reach it.
     expect(screen.getByRole('heading', { name: /kasir\.mu Account/i })).toBeInTheDocument();
-    expect(screen.getByTestId('provision-submit')).toBeDisabled();
+    expect(screen.queryByTestId('store-type-simple-retail')).not.toBeInTheDocument();
+    expect(screen.getByTestId('provision-step-next')).toBeDisabled();
 
     // No submit-scoped error is shown before anything is submitted.
     expect(screen.queryByTestId('provision-submit-error')).not.toBeInTheDocument();
@@ -501,54 +531,123 @@ describe('ProvisioningFlow (ADR #56 §2.3 / §2.5)', () => {
     // values the submit will refuse.
     render(<ProvisioningFlow onProvisioned={mockOnProvisioned} />);
     expect(screen.getByTestId('provision-mode-linked').getAttribute('aria-pressed')).toBe('true');
-    // Even choosing a store type does not open them: step 1 is still owed.
-    fireEvent.click(screen.getByTestId('store-type-simple-retail'));
+    // Step 1 is still owed, so Next will not advance — and the store type (step
+    // 2) and the owner fields (step 3) are simply not offered yet. The owner
+    // fields cannot be reached at all on this path until an account is linked.
+    expect(screen.getByTestId('provision-step-next')).toBeDisabled();
+    expect(screen.queryByTestId('store-type-simple-retail')).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/Shop name/i)).not.toBeInTheDocument();
   });
 
-  // ── Progressive disclosure of the owner step ───────────────────────
+  // ── One step at a time ────────────────────────────────────────────
   //
-  // Measured on the flows this ships to: before this, the card was 1460px against the
-  // desktop POS viewport (768px), with the store type, shop name and submit all below
-  // the fold on first paint. The owner fields are now withheld until step 3 is current,
-  // which drops the card to ~905px once a store type is chosen and puts submit on screen.
+  // Measured on the flows this ships to: the card was 1460px against the desktop
+  // POS viewport (768px), with the store type, the shop name and the submit all
+  // below the fold on first paint. The wizard now shows ONE step, so nothing the
+  // merchant must act on is off-screen, and the rail at the top is navigation
+  // rather than a meter they cannot use.
   //
-  // Deliberately only the OWNER step. The store-type choice stays visible while step 1 is
-  // open: it is a decision, and hiding it would mean a merchant cannot see what the form
-  // is about to ask. An earlier draft collapsed it too and broke the first-run test that
-  // asserts both store types are offered on load — the test was right.
+  // The panels are conditionally rendered, not merely hidden: a withheld field
+  // must be absent from the DOM, or a screen reader offers a control the merchant
+  // is not allowed to reach. Values survive the trip back because they live in
+  // the component's state, not in the inputs — pinned by the test above.
 
   it('withholds the owner fields until the earlier steps are answered', async () => {
     render(<ProvisioningFlow onProvisioned={mockOnProvisioned} />);
 
-    // First paint: the two decisions are offered, the owner fields are not yet.
+    // First paint: only the mode choice is offered. The store type is step 2
+    // and the owner fields step 3, so neither is reachable yet.
     expect(screen.getByTestId('provision-mode-linked')).toBeInTheDocument();
-    expect(screen.getByTestId('store-type-simple-retail')).toBeInTheDocument();
+    expect(screen.queryByTestId('store-type-simple-retail')).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/Shop name/i)).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/Confirm PIN/i)).not.toBeInTheDocument();
 
-    // Answering step 1 (offline mode) is not enough — the store type is still owed.
+    // Answering step 1 (offline mode) and advancing offers the store type —
+    // still not the owner fields, which are a step further on.
     fireEvent.click(screen.getByTestId('provision-mode-local'));
+    nextStep();
+    expect(screen.getByTestId('store-type-simple-retail')).toBeInTheDocument();
     expect(screen.queryByLabelText(/Shop name/i)).not.toBeInTheDocument();
 
-    // Choosing a store type completes step 2 and reveals the owner fields.
+    // Choosing a store type completes step 2; advancing reveals the owner fields.
     fireEvent.click(screen.getByTestId('store-type-simple-retail'));
+    nextStep();
     expect(screen.getByLabelText(/Shop name/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/Confirm PIN/i)).toBeInTheDocument();
   });
 
-  it('keeps the owner fields mounted once revealed, so a correction cannot hide them', async () => {
-    // One-way by design: a merchant who goes back to change their store type must not
-    // lose the owner values they already typed. The fields stay mounted (so React keeps
-    // their state) — the section is conditionally RENDERED, never remounted on a toggle.
+  it('keeps the owner values when a merchant goes back to correct an earlier step', async () => {
+    // THE property a stepper has to hold: going back to change an answer must not
+    // cost the merchant what they already typed. The values live in the
+    // component's state, not in the DOM, so unmounting the panel on the way back
+    // and remounting it on the way forward leaves them intact.
     render(<ProvisioningFlow onProvisioned={mockOnProvisioned} />);
     fireEvent.click(screen.getByTestId('provision-mode-local'));
+    nextStep();
     fireEvent.click(screen.getByTestId('store-type-simple-retail'));
+    nextStep();
     fireEvent.change(screen.getByLabelText(/Shop name/i), { target: { value: 'Toko Berkah' } });
 
-    // Change the store type — the merchant is correcting an earlier answer.
+    // Back to step 2, change the store type, then forward again.
+    backStep();
     fireEvent.click(screen.getByTestId('store-type-restaurant'));
+    nextStep();
     expect(screen.getByLabelText(/Shop name/i)).toHaveValue('Toko Berkah');
+  });
+
+  // ── The stepper's own contract ────────────────────────────────────
+  //
+  // The wizard used to be one long page whose rail was only a completion meter.
+  // It looked like steps and had no way to move between them, which is why the
+  // absent Back read as a defect rather than a design. These pin the three
+  // properties that make it a stepper now: Next is gated, Back exists and costs
+  // nothing, and the rail cannot be used to skip a gate.
+
+  it('refuses to advance while the open step is unfinished', () => {
+    render(<ProvisioningFlow onProvisioned={mockOnProvisioned} />);
+
+    // Step 1 is owed on the default linked path, so Next is dead — and dead for
+    // a reason the merchant can see: nothing is linked yet.
+    expect(screen.getByTestId('provision-step-next')).toBeDisabled();
+    // Back is disabled on the first step: there is nothing behind it.
+    expect(screen.getByTestId('provision-step-back')).toBeDisabled();
+
+    // Answering the step is what enables it.
+    fireEvent.click(screen.getByTestId('provision-mode-local'));
+    expect(screen.getByTestId('provision-step-next')).not.toBeDisabled();
+  });
+
+  it('offers the submit only on the last step, and Back on every step after the first', () => {
+    render(<ProvisioningFlow onProvisioned={mockOnProvisioned} />);
+    selectOfflineMode();
+
+    // Steps 1 and 2: the primary action is Next, and "Finish setup" is not on
+    // screen yet — a button that cannot be pressed is a promise the step cannot
+    // keep, and the merchant cannot even see the fields it depends on.
+    expect(screen.queryByTestId('provision-submit')).not.toBeInTheDocument();
+    nextStep();
+    fireEvent.click(screen.getByTestId('store-type-simple-retail'));
+    expect(screen.queryByTestId('provision-submit')).not.toBeInTheDocument();
+    expect(screen.getByTestId('provision-step-back')).not.toBeDisabled();
+
+    // Step 3: Next is gone and the submit has taken its place.
+    nextStep();
+    expect(screen.queryByTestId('provision-step-next')).not.toBeInTheDocument();
+    expect(screen.getByTestId('provision-submit')).toBeInTheDocument();
+  });
+
+  it('lets the rail jump back to a completed step, but not skip past an unfinished one', () => {
+    render(<ProvisioningFlow onProvisioned={mockOnProvisioned} />);
+    selectOfflineMode();
+    nextStep();
+
+    // Step 3 is not reachable by clicking its dot while step 2 is unanswered —
+    // the rail must not become a way around the Next gate.
+    expect(screen.getByTestId('provision-step-jump-owner')).toBeDisabled();
+    // Step 1 IS complete, so its dot reopens it.
+    fireEvent.click(screen.getByTestId('provision-step-jump-account'));
+    expect(screen.getByTestId('provision-mode-local')).toBeInTheDocument();
+    expect(screen.queryByTestId('store-type-simple-retail')).not.toBeInTheDocument();
   });
 
   it('opens the owner fields once every step is complete, so the form can be reviewed', async () => {
@@ -572,10 +671,10 @@ describe('ProvisioningFlow (ADR #56 §2.3 / §2.5)', () => {
     // alone does not answer it — so the assertion is the submit state, which is
     // what the merchant meets, rather than a fill that cannot happen yet.
     expect(screen.getByRole('heading', { name: /kasir\.mu Account/i })).toBeInTheDocument();
-    expect(screen.getByTestId('provision-submit')).toBeDisabled();
-    // Choose a store type — still not enough, because the account is owed.
-    fireEvent.click(screen.getByTestId('store-type-simple-retail'));
-    expect(screen.getByTestId('provision-submit')).toBeDisabled();
+    // The merchant cannot leave step 1 while the account is owed, which is the
+    // modern shape of "requires an account before submitting": the submit lives
+    // on the last step, and this is the gate that keeps them off it.
+    expect(screen.getByTestId('provision-step-next')).toBeDisabled();
   });
 
   it('Mode 1 (Offline only) allows completion without internet/account', async () => {
@@ -623,7 +722,9 @@ describe('ProvisioningFlow (ADR #56 §2.3 / §2.5)', () => {
 
     render(<ProvisioningFlow onProvisioned={mockOnProvisioned} />);
     selectOfflineMode();
+    nextStep();
     fireEvent.click(screen.getByTestId('store-type-restaurant'));
+    nextStep();
     fireEvent.change(screen.getByLabelText(/Shop name/i), { target: { value: 'Warung Makan' } });
     fireEvent.change(screen.getByLabelText(/Your name/i), { target: { value: 'Budi Santoso' } });
     fireEvent.change(screen.getByLabelText(/Login name/i), { target: { value: 'budi' } });
@@ -804,8 +905,9 @@ describe('ProvisioningFlow (ADR #56 §2.3 / §2.5)', () => {
     // Submit stays disabled until the account is linked. The owner fields are NOT yet
     // reachable: step 1 is "is this terminal attached to an account", and on the linked
     // path the mode choice alone does not answer it (progressive disclosure).
-    const submitBtn = screen.getByTestId('provision-submit');
-    expect(submitBtn).toBeDisabled();
+    // The submit lives on the last step, so what the merchant meets here is a
+    // Next that refuses to advance while the account is owed.
+    expect(screen.getByTestId('provision-step-next')).toBeDisabled();
     expect(screen.queryByLabelText(/Shop name/i)).not.toBeInTheDocument();
 
     // Simulate Google account link on desktop
@@ -826,6 +928,7 @@ describe('ProvisioningFlow (ADR #56 §2.3 / §2.5)', () => {
       expect(screen.getByText(/Linked to owner@example\.com\./i)).toBeInTheDocument();
     }, FAST_WAIT);
     fillBasicForm();
+    const submitBtn = screen.getByTestId('provision-submit');
     await waitFor(() => {
       expect(submitBtn).not.toBeDisabled();
     }, FAST_WAIT);
@@ -1001,7 +1104,16 @@ describe('ProvisioningFlow (ADR #56 §2.3 / §2.5)', () => {
   it('names every unmet requirement of the submit gate beside the button', () => {
     render(<ProvisioningFlow onProvisioned={mockOnProvisioned} />);
 
-    // First paint, linked mode: the account is not linked and nothing is filled.
+    // The gate list lives on the LAST step, beside the button it explains, so
+    // the test walks there first. That is also why it names the OWNER fields:
+    // the account and store-type requirements are enforced by the Next gate, and
+    // a merchant cannot reach this step with either outstanding. The list and the
+    // step gate are not two systems — they are one predicate, split by step.
+    selectOfflineMode();
+    nextStep();
+    fireEvent.click(screen.getByTestId('store-type-simple-retail'));
+    nextStep();
+
     // The list sits ABOVE the button — the control that cannot be pressed.
     const blockers = screen.getByTestId('provision-submit-blockers');
     const submit = screen.getByTestId('provision-submit');
@@ -1012,20 +1124,20 @@ describe('ProvisioningFlow (ADR #56 §2.3 / §2.5)', () => {
     // every keystroke, and an alert per character would talk over typing.
     expect(blockers.getAttribute('role')).toBe('status');
 
-    // The account step is named — the one requirement with no field of its own.
-    expect(within(blockers).getByText(/Link an account, or pick/i)).toBeInTheDocument();
-    // …and the store type, which is a decision the merchant can already see but
-    // has not made.
-    expect(within(blockers).getByText(/Choose the kind of shop/i)).toBeInTheDocument();
+    // Every owner field still owed is named, including the one requirement that
+    // is not a field (the PIN length).
+    expect(within(blockers).getByText(/Shop name/i)).toBeInTheDocument();
+    expect(within(blockers).getByText(/A PIN of at least 4 digits/i)).toBeInTheDocument();
   });
 
   it('each gate item moves focus to the control that must change', () => {
     render(<ProvisioningFlow onProvisioned={mockOnProvisioned} />);
     selectOfflineMode();
-
-    // Answering steps 1 and 2 opens the owner fields, so the remaining blockers
-    // are fields that exist and can take focus.
+    // Answering steps 1 and 2 and advancing opens the owner fields, so the
+    // remaining blockers are fields that exist and can take focus.
+    nextStep();
     fireEvent.click(screen.getByTestId('store-type-simple-retail'));
+    nextStep();
     const blockers = screen.getByTestId('provision-submit-blockers');
     expect(within(blockers).queryByText(/Choose the kind of shop/i)).not.toBeInTheDocument();
 
@@ -1043,7 +1155,9 @@ describe('ProvisioningFlow (ADR #56 §2.3 / §2.5)', () => {
   it('drops a requirement from the gate as soon as it is satisfied', () => {
     render(<ProvisioningFlow onProvisioned={mockOnProvisioned} />);
     selectOfflineMode();
+    nextStep();
     fireEvent.click(screen.getByTestId('store-type-simple-retail'));
+    nextStep();
 
     const blockers = () => screen.getByTestId('provision-submit-blockers');
     // Four owner fields are still empty, plus the PIN agreement.
@@ -1053,7 +1167,10 @@ describe('ProvisioningFlow (ADR #56 §2.3 / §2.5)', () => {
 
     // When nothing is left, the explainer leaves with the disabled button —
     // it must not linger as a stale list under an enabled submit.
-    fillBasicForm();
+    fireEvent.change(screen.getByLabelText(/Your name/i), { target: { value: 'Budi Santoso' } });
+    fireEvent.change(screen.getByLabelText(/Login name/i), { target: { value: 'budi' } });
+    fireEvent.change(screen.getByLabelText(/^PIN/i), { target: { value: '1234' } });
+    fireEvent.change(screen.getByLabelText(/Confirm PIN/i), { target: { value: '1234' } });
     expect(screen.queryByTestId('provision-submit-blockers')).not.toBeInTheDocument();
     expect(screen.getByTestId('provision-submit')).not.toBeDisabled();
   });
@@ -1064,23 +1181,32 @@ describe('ProvisioningFlow (ADR #56 §2.3 / §2.5)', () => {
     // button refuses (or worse, the reverse). Walking the form proves they are
     // the same predicate by construction.
     render(<ProvisioningFlow onProvisioned={mockOnProvisioned} />);
+    // The gate and its list both live on the last step, so walk there: steps 1
+    // and 2 are answered on the way, which is exactly what makes the remaining
+    // list the owner fields.
+    selectOfflineMode();
+    nextStep();
+    fireEvent.click(screen.getByTestId('store-type-simple-retail'));
+    nextStep();
+
     const submit = screen.getByTestId('provision-submit');
     const outstanding = () =>
       screen.queryAllByRole('listitem').filter((li) => li.closest('.provisioning-submit-blockers')).length;
 
     expect(submit).toBeDisabled();
-    expect(outstanding()).toBeGreaterThan(0);
+    const start = outstanding();
+    expect(start).toBeGreaterThan(0);
 
-    selectOfflineMode();
-    expect(outstanding()).toBeGreaterThan(0);
-    fireEvent.click(screen.getByTestId('store-type-simple-retail'));
-
-    // One step closer: fewer requirements, still not submittable.
-    const beforeFields = outstanding();
+    // One requirement satisfied: the list shrinks by exactly one and the button
+    // still refuses, so the two are demonstrably the same predicate.
+    fireEvent.change(screen.getByLabelText(/Shop name/i), { target: { value: 'Toko Berkah' } });
+    expect(outstanding()).toBe(start - 1);
     expect(submit).toBeDisabled();
-    expect(beforeFields).toBeGreaterThan(0);
 
-    fillBasicForm();
+    fireEvent.change(screen.getByLabelText(/Your name/i), { target: { value: 'Budi Santoso' } });
+    fireEvent.change(screen.getByLabelText(/Login name/i), { target: { value: 'budi' } });
+    fireEvent.change(screen.getByLabelText(/^PIN/i), { target: { value: '1234' } });
+    fireEvent.change(screen.getByLabelText(/Confirm PIN/i), { target: { value: '1234' } });
     expect(outstanding()).toBe(0);
     expect(submit).not.toBeDisabled();
   });
@@ -1104,10 +1230,12 @@ describe('ProvisioningFlow (ADR #56 §2.3 / §2.5)', () => {
     const escape = screen.getByTestId('provision-offline-use-local');
     fireEvent.click(escape);
 
-    // Which completes step 1, so the owner fields open: the merchant is no
-    // longer stranded at a decision they cannot act on.
+    // Which completes step 1, so Next advances and the merchant is no longer
+    // stranded at a decision they cannot act on.
     expect(screen.getByTestId('provision-mode-local').getAttribute('aria-pressed')).toBe('true');
+    nextStep();
     fireEvent.click(screen.getByTestId('store-type-simple-retail'));
+    nextStep();
     expect(screen.getByLabelText(/Shop name/i)).toBeInTheDocument();
   });
 

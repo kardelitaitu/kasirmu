@@ -148,6 +148,19 @@ pub async fn start_sale_scoped(
     let id = cart.id();
 
     // Resolve the primary deduction location for this workspace instance.
+    //
+    // BOTH arms propagate. The `None` arm used to swallow with
+    // `.unwrap_or_else(|_| get_default_location_id())` while the `Some` arm beside it
+    // used `?` — a split WITHIN one match, which is the clearest form of this defect
+    // in the whole family: the two arms differ only in where the instance id comes
+    // from, so there was never a reason to handle a failed read differently.
+    //
+    // The `None` arm is also the one real deployments take (no stock-target override),
+    // and the next statement LOCKS the answer on the cart row
+    // (`save_active_cart(.., Some(deduction_location_id))`), so the swallow persisted
+    // the canonical default as that cart's deduction location for its whole lifetime.
+    // A workspace with genuinely no binding still gets tier 4 from the resolver
+    // itself; only a READ FAILURE reaches this `?`.
     let deduction_location_id = match stock_target_instance_id.as_deref() {
         Some(target_instance_id) => kasirmu_core::location_resolver::resolve_primary_location(
             &db,
@@ -158,8 +171,7 @@ pub async fn start_sale_scoped(
             &db,
             &session.instance_id,
             None,
-        )
-        .unwrap_or_else(|_| kasirmu_core::location_resolver::get_default_location_id()),
+        )?,
     };
 
     store.save_active_cart(&cart, Some(deduction_location_id.as_str()))?;

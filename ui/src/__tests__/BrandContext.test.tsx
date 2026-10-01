@@ -150,6 +150,57 @@ describe('BrandContext', () => {
     });
   });
 
+  // Two refreshes in quick succession -- which is what a double save does, since
+  // `useSettingsSave` calls `refreshBrandSettings` after every write and
+  // `AppearanceSettings` adds three more call sites. The reads OVERLAP, so without
+  // the sequence guard a slower earlier one overwrites the newer brand.
+  //
+  // The stale read resolves with DISTINCTLY DIFFERENT values. Returning the same
+  // values would make this pass with the guard removed, because the late write
+  // would then be indistinguishable from the correct one -- which is exactly how
+  // the SettingsContext equivalent fooled its own mutation twice.
+  it('ignores a slower earlier refresh that settles last', async () => {
+    let releaseStale: (v: unknown) => void = () => {};
+    const stalePending = new Promise((resolve) => { releaseStale = resolve; });
+
+    await renderProvider();
+    await waitFor(() => {
+      expect(screen.getByTestId('store').textContent).toBe('Test Store');
+    });
+
+    // First refresh: held open, will answer with the STALE brand.
+    mockGetBrandSettings.mockClear();
+    mockGetBrandSettings.mockImplementationOnce(() => stalePending);
+    act(() => { screen.getByTestId('refresh').click(); });
+
+    // Second refresh: resolves immediately with the CURRENT brand.
+    mockGetBrandSettings.mockResolvedValueOnce({
+      primary_colour: '#22c55e',
+      logo_path: null,
+      store_name: 'Current Store',
+    });
+    act(() => { screen.getByTestId('refresh').click(); });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('store').textContent).toBe('Current Store');
+    });
+
+    // Now the stale one lands, after the current one already won.
+    await act(async () => {
+      releaseStale({
+        primary_colour: '#ef4444',
+        logo_path: '/stale-logo.png',
+        store_name: 'Stale Store',
+      });
+      await stalePending;
+    });
+
+    // The current brand survives the late arrival.
+    expect(screen.getByTestId('store').textContent).toBe('Current Store');
+    expect(screen.getByTestId('colour').textContent).toBe('#22c55e');
+    expect(screen.getByTestId('logo').textContent).toBe('no-logo');
+  });
+
   it('throws when useBrand is used outside BrandProvider', () => {
     // Suppress console.error from React and JSDOM for this expected error
     const spy = vi.spyOn(console, 'error').mockImplementation(() => {});

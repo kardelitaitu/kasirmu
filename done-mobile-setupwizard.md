@@ -1,6 +1,24 @@
 # todo-mobile-setupwizard.md
 
-> Status: COMPLETED · last reviewed 2026-09-24 · branch 0.0.40
+> Status: RETIRED 2026-10-01 · was COMPLETED · last reviewed 2026-09-24 · branch 0.0.40
+>
+> **Everything this plan delivered was deleted on 2026-10-01**, in the setup-wizard
+> convergence (`6ad643471`): the five screens, the orchestrator, the route
+> `mobile-setup`, and every `setup-mobile-*` FTL key. Two findings forced it:
+>
+> 1. The wizard made **zero backend calls**. It fired `onProvisioned?.()` the moment
+>    a Google account was "selected" or an email "submitted", and both shells wired
+>    that to `setHasCompletedSetup(true)` — so a tablet that reached it through the
+>    provisioning flow's old "Setup Wizard" tab could be marked provisioned with no
+>    store, no owner and no PIN.
+> 2. `ProvisioningFlow` was the wizard that actually provisioned (`provision_device`),
+>    on every surface. Two wizards for one job, one of them hollow, was not a design —
+>    it was the Figma work landing without its wiring.
+>
+> The component paths in the table below no longer exist. They are kept because the
+> table is the record of what was built and why. If a companion-phone flow is wanted
+> again, start from the Figma nodes here and wire it to the real provisioning API —
+> do not resurrect these files.
 
 ## Context
 
@@ -16,7 +34,7 @@ Five screens matching Figma section `3:13 — Kasirmu Mobile Welcome Screen (Por
 
 Orchestrator: `MobileWelcomeFlow.tsx` — `useState<MobileScreenState>` machine.  
 CSS: single shared module `MobileWelcomeFlow.module.css` (incl. orientation queries and animations).  
-All files live at `ui/src/features/setup/mobile/`.
+All files live at `ui/src/features/setup/mobile/`. <!-- dead-ref: ok: deleted by the 2026-10-01 retirement; the directory and everything in it is the record this document keeps -->
 
 ---
 
@@ -26,7 +44,7 @@ All files live at `ui/src/features/setup/mobile/`.
 - [x] Shared CSS module with full dark token palette — `MobileWelcomeFlow.module.css`
 - [x] 44 English FTL strings (`setup-mobile-*`) — `shared-ui/locales/settings.ftl`
 - [x] 44 Indonesian FTL strings — `shared-ui/locales/settings.id.ftl`
-- [x] 12 unit tests passing — `ui/src/__tests__/MobileWelcomeFlow.test.tsx`
+- [x] 12 unit tests passing — `ui/src/__tests__/MobileWelcomeFlow.test.tsx` <!-- dead-ref: ok: deleted with the retirement; the suite graded a wizard that no longer exists -->
 - [x] TypeScript clean — `tsc --noEmit` exit 0
 - [x] ESLint clean — 0 errors
 - [x] Portrait / landscape adaptive CSS — commit `69f80d70f`

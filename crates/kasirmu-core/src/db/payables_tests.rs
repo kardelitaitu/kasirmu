@@ -346,3 +346,101 @@ fn create_payable_in_tx_joins_the_callers_transaction() {
         "aborting the caller's transaction must discard the payable"
     );
 }
+
+/// `paid_minor + amount` must not be able to WRAP past the over-payment guard.
+///
+/// payables.rs:231 computes `let new_paid = payable.paid.minor_units +
+/// amount.minor_units;` with a bare `+`, and :232 then refuses only if
+/// `new_paid > payable.amount.minor_units`. On overflow `new_paid` becomes
+/// NEGATIVE, so the guard reads false and an over-sized payment is ACCEPTED --
+/// the same COR-29 failure the purchase-order receive path already fixed with
+/// `checked_add` (purchase_orders.rs:508).
+///
+/// SUPERSEDED IN PART, 2026-10-05: payables.rs:231 now uses `checked_add`, so
+/// the production arithmetic no longer wraps and the refusal is a field-named
+/// Validation rather than a driver error from the constraint. The arithmetic half of
+/// this test still holds and is still worth pinning -- it shows the SCHEMA would stop a
+/// wrapped negative independently, which is what makes the constraint a real backstop
+/// rather than an assumption. Dropping the CHECK (below) remains the proof.
+///
+/// The schema is the backstop: `paid_minor INTEGER NOT NULL DEFAULT 0 CHECK
+/// (paid_minor >= 0)` and `CHECK (paid_minor <= amount_minor)`
+/// (migrations/20260918_payables.sql:29,40). So a wrapped negative is refused
+/// by SQLite rather than persisted. This test pins THAT -- that the arithmetic
+/// wraps, and that the constraint is what stops it -- because the two together
+/// are the whole guarantee, and the arithmetic half is the part that reads as
+/// safe while not being.
+///
+/// If the CHECK is ever dropped this becomes a live money defect: a payable
+/// would settle with a negative paid total and a `status` derived from a
+/// wrapped number.
+#[test]
+fn payable_overflow_is_stopped_by_the_schema_constraint_not_by_the_guard() {
+    let conn = fresh();
+    seed_supplier(&conn, "sup-1");
+    let s = store(&conn);
+
+    // An amount just under i64::MAX, so paying anything more than the few
+    // remaining units overflows the addition.
+    let p = s.create_payable(&np("sup-1", i64::MAX - 5, None)).unwrap();
+    assert_eq!(p.amount.minor_units, i64::MAX - 5);
+
+    // `paid` starts at 0, so the addition only wraps once something has already
+    // been paid. Settle all but the last few units first, which leaves `paid`
+    // sitting just under i64::MAX.
+    // `paid` must be strictly greater than `i64::MAX - amount` for the sum to
+    // wrap: at exactly MAX-1000 the sum lands ON MAX, which is still positive.
+    // MAX-999 is the smallest legal value that overflows, and it is under the
+    // payable's own amount (MAX-5), so the first payment is accepted.
+    s.record_payable_payment(
+        "default",
+        &p.id,
+        money("IDR", i64::MAX - 999),
+        "cash",
+        None,
+        "",
+    )
+    .unwrap();
+
+    let after_first = s.get_payable("default", &p.id).unwrap().unwrap();
+    assert_eq!(
+        after_first.paid.minor_units,
+        i64::MAX - 999,
+        "paid now sits one unit inside the wrap boundary"
+    );
+
+    // The arithmetic DOES wrap: this is what the guard at :232 is fed.
+    let new_paid = after_first.paid.minor_units + 1_000_i64;
+    assert!(
+        new_paid < 0,
+        "paid + amount must wrap here for this test to mean anything, got {new_paid}"
+    );
+    assert!(
+        new_paid <= p.amount.minor_units,
+        "and the guard reads FALSE, which is why the addition is unchecked"
+    );
+
+    // And the write is refused -- by SQLite, not by that guard.
+    let res = s.record_payable_payment("default", &p.id, money("IDR", 1000), "cash", None, "");
+    assert!(
+        res.is_err(),
+        "the CHECK on paid_minor must refuse the wrapped negative; got {:?}",
+        res.map(|(p, _)| p.paid.minor_units)
+    );
+
+    // Nothing from the refused payment was persisted: `paid_minor` still holds
+    // exactly what the FIRST (accepted) payment recorded, not a wrapped value
+    // and not the refused one.
+    let stored: i64 = conn
+        .query_row(
+            "SELECT paid_minor FROM payables WHERE id = ?1",
+            [&p.id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        stored,
+        i64::MAX - 999,
+        "a refused payment must leave paid_minor exactly where the last accepted one put it"
+    );
+}

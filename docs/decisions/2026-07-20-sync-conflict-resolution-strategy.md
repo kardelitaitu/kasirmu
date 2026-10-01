@@ -696,3 +696,29 @@ Both daemons read the durable SYNC-01 pull anchor and collapsed a read failure i
 The HTTP daemon now tracks anchor readability with an explicit flag — deliberately NOT derived from `sync_error`, which may already hold an unrelated push error such as `PlanRequired`; conflating the two would skip a healthy pull (this exact mistake briefly broke `daemon_surfaces_plan_required_without_retry_or_quarantine`, which asserts push and pull each fire once). A failed anchor read surfaces on `sync_error` and skips the pull for the cycle. The PG daemon propagates the error into `read_error`.
 
 Pinned by `run_tick_surfaces_an_unreadable_pull_anchor_instead_of_replaying` (`daemon_tests.rs`; drops `sync_pull_state`, ticks against a pull-counting server, and requires `last_error` set with zero pull hits) and `tick_with_an_unreadable_pull_anchor_reports_an_error` (`pg_daemon_tests.rs`).
+
+## A negative refund total CREDITED lifetime spend instead of reversing it (2026-10-04)
+
+The section above closes C64 by arguing the zero floor is unreachable, and both guards it names
+bound the refund from ABOVE. Neither considers a negative total, which breaks the floor from the
+other side: `reverse_lifetime_spend_in_tx` clamps with `MAX(total_spent_minor - ?1, 0)`, so
+subtracting a negative INCREASES the column. A negative refund therefore credited the customer
+instead of reversing them — the opposite of the documented guarantee.
+
+Nothing upstream refused it, and each guard was checked rather than assumed: `Refund::new`
+(`foundation/src/sales.rs:329`) accepts any `Money` and the type carries no non-negative invariant;
+`create_refund`'s only money guard is `after > sale_total` (`refunds.rs:132`), an UPPER bound a
+negative passes trivially; and the sync lane passes `payload.total_minor` straight off the wire
+(`queue/appliers.rs:701`), so a corrupt or hostile replicated `refund_sale` reaches the same
+arithmetic — which is why this belongs in this record rather than only in core's.
+
+Clamped at the source in `reverse_customer_spend_on_refund`, before the base-currency conversion,
+since that conversion is where a sign would otherwise be reintroduced; a negative input is logged
+so it is visible rather than silently swallowed.
+
+**The pin fills a gap the existing test left.** `reverse_lifetime_spend_clamps_at_zero`
+(`db/customers_tests.rs:526`) exercises only the POSITIVE over-refund (4000 against 1000), which the
+clamp handles by construction, so it says nothing about the direction that breaks it.
+`a_negative_refund_total_does_not_credit_lifetime_spend` supplies the negative total directly, the
+way a corrupt replicated payload would; verified RED with the clamp removed (5000 -> 6000) and GREEN
+with it.

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { screen, fireEvent, waitFor } from '@testing-library/react';
+import { act, screen, fireEvent, waitFor } from '@testing-library/react';
 import { renderInAct } from '@/test-utils/renderInAct';
 import { withFluent, withFluentLocale } from '@/i18n/test-utils';
 import EmailReportSettings from '@/features/settings/EmailReportSettings';
@@ -46,9 +46,14 @@ vi.mock('@/contexts/AuthContext', () => ({
   }),
 }));
 
+// Mutable so a test can SWITCH STORES: loadConfig and loadSchedule both depend on
+// sessionToken, so changing it issues a second read while the first is in flight.
+// Reset in beforeEach so the token cannot leak between cases.
+const wsState = vi.hoisted(() => ({ sessionToken: 'mock-session-token' }));
+
 vi.mock('@/contexts/WorkspaceContext', () => ({
   useWorkspace: () => ({
-    sessionToken: 'mock-session-token',
+    sessionToken: wsState.sessionToken,
     terminalId: 'test-terminal',
   }),
 }));
@@ -106,6 +111,8 @@ async function renderWithFluentId(ui: React.ReactElement) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // A store-switching test mutates this, so later cases need it restored.
+  wsState.sessionToken = 'mock-session-token';
   mockGetSetting.mockResolvedValue(null);
   mockGetReportSchedule.mockResolvedValue(null);
   // Configured in parallel rather than by delegating, for the reason above.
@@ -143,6 +150,49 @@ describe('EmailReportSettings — EN', () => {
       await renderWithFluent(<EmailReportSettings />);
       expect(screen.getByText(/email reports/i)).toBeInTheDocument();
     });
+
+  // A store switch must not let a SLOWER earlier config read win (guard added in
+  // ac8910736). The sink is the SMTP host input, controlled from `config`, so it is
+  // directly inspectable -- and this file already locates it by placeholder.
+  //
+  // It matters more than a mislabelled field: saveConfig writes the config state that was
+  // just rendered, so a stale read can persist the PREVIOUS store's SMTP host, username
+  // and password over this one.
+  //
+  // Order is enforced by CALL COUNT and the stale arm answers with a DIFFERENT host, so
+  // the late write is observable rather than a no-op.
+  it('ignores a slower earlier SMTP config read after the token changes', async () => {
+    let releaseStale: (v: unknown) => void = () => {};
+    const stalePending = new Promise((resolve) => { releaseStale = resolve; });
+
+    // Call 1 (store A) held open; it will answer with the PREVIOUS host.
+    mockGetSetting.mockImplementationOnce(() => stalePending);
+    mockGetSetting.mockImplementation(() =>
+      Promise.resolve(JSON.stringify({ host: 'current-store.example.com', port: 587 })),
+    );
+
+    const view = await renderWithFluent(<EmailReportSettings />);
+    await waitFor(() => expect(mockGetSetting).toHaveBeenCalledTimes(1));
+
+    // Switch stores; the second read is issued and wins with the CURRENT host.
+    wsState.sessionToken = 'mock-session-token-2';
+    await act(async () => {
+      view.rerender(withFluent(<EmailReportSettings />, sharedFtl, salesFtl, settingsFtl));
+    });
+    await waitFor(() => expect(mockGetSetting).toHaveBeenCalledTimes(2));
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText('smtp.example.com')).toHaveValue('current-store.example.com');
+    });
+
+    // Only NOW does the store-A read settle, after store B already won.
+    await act(async () => {
+      releaseStale(JSON.stringify({ host: 'stale-store.example.com', port: 25 }));
+      await stalePending;
+    });
+
+    // The guard held: the late host was discarded.
+    expect(screen.getByPlaceholderText('smtp.example.com')).toHaveValue('current-store.example.com');
+  });
 
     it('renders SMTP host input', async () => {
       await renderWithFluent(<EmailReportSettings />);

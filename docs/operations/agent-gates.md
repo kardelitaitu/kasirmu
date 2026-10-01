@@ -71,4 +71,29 @@ would sweep their half-finished work. Report it instead, and verify your own cha
 smallest command that covers it (`npm run test -- <file>`) is stronger evidence than a whole-suite run
 you cannot attribute.
 
+## Writing a checker: two self-test forms, and say which you chose
+
+Six of the seven `scripts/check-*.py` checkers expose `--self-test`; `check-replay-fork.py` keeps its
+cases in `scripts/test-replay-fork.py` instead. Both are correct — that one explains why at its
+docstring (`:44-49`): it is the gate that would have caught the fork losing the colon rejection, so
+"a checker that cannot fail is worse than none" and it wanted the cases somewhere harder to overlook.
+
+**The absence of the flag is not the absence of a self-test.** A text search for "self-test" marks the
+fork checker as having none, and the next step is to "fix" it by adding a flag the author had already
+considered and rejected. Check by RUNNING both forms:
+
+```
+python3 scripts/check-<name>.py --self-test
+python3 scripts/test-<name>.py
+```
+
+Either form is fine. What is not fine is silence: if your checker has no self-test, or has one and does
+not say where, nothing distinguishes that from a checker whose cases were never written.
+
+**And make the cases reproduce the bug they pin.** Three self-tests this project added were vacuous on
+first write — they passed with the defect deliberately reintroduced — because the case exercised a shape
+the detector could not actually see. Run the mutation: reintroduce the bug, confirm the self-test fails,
+then restore. `check-mapper-alignment.py` carries two cases for its two directions, and rebuilding the
+original line-walk makes both fail, which is the only reason to trust them.
+
 > last audited 29-09-26 by docs-auditor

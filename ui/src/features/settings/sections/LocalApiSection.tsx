@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Localized, useLocalization } from '@fluent/react';
 import { requiredLocalized } from '@/components';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
@@ -49,13 +49,59 @@ export default function LocalApiSection() {
   // Store selector: only meaningful on multi-store installs, so the
   // list is fetched lazily and the row renders when >1 store exists.
   const [stores, setStores] = useState<LocationProfile[]>([]);
+  // True once the operator has edited the port field. The 2s poll below re-reads the
+  // server port every tick, and that read must NOT overwrite an edit in progress:
+  // otherwise the field reverts under the cursor mid-typing, and because `portDirty`
+  // (:185) compares the draft to `status.port`, the revert also clears the dirty state
+  // and the Apply button DISAPPEARS while the edit is being made. The poll runs exactly
+  // while the server is enabled-but-not-running, which is when someone is most likely to
+  // be fixing the port.
+  const portEditedRef = useRef(false);
+
+  // UNPINNED, AND THE SWEEP FOR SIBLINGS WAS INCONCLUSIVE -- recorded as a BOUNDARY.
+  //
+  // The guard above stops the poll seeding this field once the operator has edited it.
+  // A sweep was run for the same defect elsewhere: a setInterval callback writing state
+  // that an <input>/<select> binds as its value.
+  //
+  // IT CANNOT BE ANSWERED BY SCANNING, and that is the finding. Two detector versions
+  // were tried and BOTH were control-tested against the pre-fix and post-fix shapes of
+  // THIS file: each fired on both, because the difference is not whether a setter is
+  // reachable from an interval but whether that particular write is CONDITIONAL on a
+  // ref. That is a dataflow property, not a lexical one -- the same wall the async-
+  // overlap scan hit in round 80 and the reason it was kept out of CI.
+  //
+  // WHAT THE SCAN CAN SAY, and all it says: this file is the only one in ui/src where a
+  // setter reachable from an interval backs a bound input value. That is a FLOOR, not a
+  // complete answer -- a file that binds an uncontrolled input, or writes through a
+  // callback parameter rather than a setter, would not appear.
+  //
+  // BOTH BLIND SPOTS ARE NOW CLOSED (round 132), so this is a clearance rather than the
+  // boundary round 131 recorded:
+  //
+  //   blind spot 2 -- a poll calling a FUNCTION that writes bound state, which the
+  //     window-based detector could not see. Resolving the interval's callee and scanning
+  //     the function BODY gets it, and the detector was CONTROL-TESTED both ways: it fires
+  //     on a poll whose callee writes a value={} field, and stays silent when that state
+  //     is only rendered in a span. Result: ZERO files.
+  //
+  //   blind spot 1 -- uncontrolled inputs and ref bindings. Widened to value/defaultValue/
+  //     checked/ref. Result: three hits, ALL false positives -- this file's `status` (a
+  //     read-only display), and `pairingSession` in LicenseActivationScreen and
+  //     ProvisioningFlow, where the poll only READS the session and writes nothing but
+  //     `pairingExpired`.
+  //
+  // So the poll-clobber defect has exactly one instance in ui/src and it is the one fixed
+  // above. Both scans carry working controls, which is what makes the negative meaningful
+  // where round 131's was not.
 
   const refresh = useCallback(async () => {
     if (!sessionToken) return;
     try {
       const s = await getLocalApiStatusScoped(sessionToken);
       setStatus(s);
-      setPortDraft(String(s.port));
+      // Seed the draft from the server only until the operator starts editing it.
+      if (!portEditedRef.current) setPortDraft(String(s.port));
     } catch {
       // Status is advisory; a failed fetch leaves the last snapshot.
     }
@@ -247,7 +293,7 @@ export default function LocalApiSection() {
                 inputMode="numeric"
                 value={portDraft}
                 disabled={busy}
-                onChange={(e) => setPortDraft(e.target.value)}
+                onChange={(e) => { portEditedRef.current = true; setPortDraft(e.target.value); }}
               />
               {portDirty && (
                 <Button variant="ghost" onClick={() => void onApplyPort()} disabled={busy}>

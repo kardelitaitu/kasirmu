@@ -129,16 +129,34 @@ export default function StockTransfersScreen() {
 
   useEffect(() => { load(); }, [load]);
 
+  // A monotonic token, so a slow earlier detail read cannot overwrite a newer
+  // one. Same class as CurrencyContext (51c86e9e8), SettingsContext
+  // (09ac4df43), BrandContext (184fcc75e), ShiftBar (88415f10f) and PosScreen
+  // (760e0c8da); the write-up is at SettingsContext:207.
+  //
+  // Here the id is the DISCRIMINATOR rather than a session token: `detailId` is set
+  // BEFORE the await, so opening transfer A and then B can leave A's read landing
+  // after B's and put A's contents under B's heading. That is not cosmetic --
+  // `openReceiveModal` pre-fills the received quantities from `detail.lines`, so the
+  // operator would receive against the WRONG transfer's lines. `openSend` adds a
+  // second overlapping write by re-opening the detail after its own await.
+  const detailSeq = useRef(0);
+
   const openDetail = useCallback(async (id: string) => {
+    const seq = ++detailSeq.current;
+    const stale = () => detailSeq.current !== seq;
     setDetailId(id);
     setDetailLoading(true);
     try {
       const data = await getStockTransfer(sessionToken, id);
+      if (stale()) return;
       if (data) setDetail(data);
     } catch {
+      if (stale()) return;
       setError(l10n.getString('stock-transfers-error-load'));
     } finally {
-      setDetailLoading(false);
+      // A superseded read must not clear the CURRENT read's spinner either.
+      if (!stale()) setDetailLoading(false);
     }
   }, [l10n, sessionToken]);
 
@@ -518,7 +536,13 @@ export default function StockTransfersScreen() {
                   </div>
                   <div className="stock-transfers-detail-field">
                     <Localized id="stock-transfers-destination"><span className="stock-transfers-detail-label">Destination</span></Localized>
-                    <span>{detail.transfer.destination_location ?? detail.transfer.destination_terminal_id ?? '—'}</span>
+                    {/* Testid on the value, not the wrapper: it is the only part that
+                        differs between transfers, so it is what pins the stale-read
+                        guard in openDetail (the id is set before the await, so a slow
+                        earlier read can otherwise put one transfer's contents under
+                        another transfer's heading -- and openReceiveModal prefills the
+                        received quantities from these lines). */}
+                    <span data-testid="stock-transfer-detail-destination">{detail.transfer.destination_location ?? detail.transfer.destination_terminal_id ?? '—'}</span>
                   </div>
                   <div className="stock-transfers-detail-field">
                     <Localized id="stock-transfers-notes"><span className="stock-transfers-detail-label">Notes</span></Localized>

@@ -819,12 +819,18 @@ pub async fn complete_sale_scoped(
             // complete_sale_deduction wrapper performs internally —
             // routed through with_locations so checkout promotions
             // persist on this branch too.
+            //
+            // PROPAGATES, like every other site in this family. A swallowed failure
+            // here made the sale deduct stock from the canonical default location
+            // while reporting success — the same defect as the core and tablet
+            // callers, on the bridge's explicit-stock-locations branch. A workspace
+            // with genuinely no binding still gets tier 4 from the resolver; only a
+            // READ FAILURE reaches this `?`.
             let primary = kasirmu_core::location_resolver::resolve_primary_location(
                 &db,
                 deduction_instance_id,
                 None,
-            )
-            .unwrap_or_else(|_| kasirmu_core::location_resolver::get_default_location_id());
+            )?;
             store.complete_sale_deduction_with_locations_and_estimate(
                 &sale,
                 Some(deduction_instance_id),

@@ -37,18 +37,72 @@ function getAudio(filename: string): HTMLAudioElement | null {
   }
 }
 
+/** Check if interaction sound is enabled */
+export function isInteractionSoundEnabled(): boolean {
+  try {
+    const val = localStorage.getItem('pos.interaction_sound');
+    if (val !== null) return val === 'true';
+  } catch {
+    /* ignore storage errors */
+  }
+  return true;
+}
+
+/** Check if interaction vibration is enabled */
+export function isInteractionVibrationEnabled(): boolean {
+  try {
+    const val = localStorage.getItem('pos.interaction_vibration');
+    if (val !== null) return val === 'true';
+  } catch {
+    /* ignore storage errors */
+  }
+  return true;
+}
+
+/** Set interaction sound preference */
+export function setInteractionSoundEnabled(enabled: boolean): void {
+  try {
+    localStorage.setItem('pos.interaction_sound', String(enabled));
+  } catch {
+    /* ignore storage errors */
+  }
+}
+
+/** Set interaction vibration preference */
+export function setInteractionVibrationEnabled(enabled: boolean): void {
+  try {
+    localStorage.setItem('pos.interaction_vibration', String(enabled));
+  } catch {
+    /* ignore storage errors */
+  }
+}
+
 /** Play the configured sound and (optionally) vibrate for the given interaction. */
 export function triggerInteraction(name: InteractionName): void {
   const config = INTERACTIONS[name];
   if (!config) return;
 
-  const audio = getAudio(config.sound);
-  if (audio) {
-    audio.currentTime = 0;
-    audio.play().catch(() => {});
+  if (isInteractionSoundEnabled()) {
+    const audio = getAudio(config.sound);
+    if (audio) {
+      audio.currentTime = 0;
+      try {
+        const p = audio.play();
+        if (p && typeof p.catch === 'function') {
+          p.catch(() => {});
+        }
+      } catch {
+        // Ignore audio play errors in restricted environments
+      }
+    }
   }
 
-  if (config.vibrate && navigator.vibrate) {
-    navigator.vibrate(15);
+  if (isInteractionVibrationEnabled() && typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+    try {
+      navigator.vibrate(15);
+    } catch {
+      // Ignored if platform restricts vibration
+    }
   }
 }
+

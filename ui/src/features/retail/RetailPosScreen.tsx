@@ -852,11 +852,56 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
   // ── Store settings ──────────────────────────────────────────
 
   const [storeSettings, setStoreSettings] = useState<StoreSettingsDto>({ name: '', address: '', taxId: '', currency: 'IDR', branch: '', logo: '' });
+  // A `mounted` flag is the WRONG GUARD here and this used to have one. It only
+  // tracks unmount, so it stays true across a store switch -- exactly like
+  // SettingsContext.mountedRef, which needed this same correction in 09ac4df43.
+  // The reads overlap because the deps name sessionToken, so a slower earlier one
+  // lands last and applies the PREVIOUS store's settings.
+  //
+  // THE CONSEQUENCE IS MONEY, at three sites. `storeSettings.currency` is passed to
+  // minorUnitExponent() when parsing the OPENING drawer balance (:930), the CLOSING
+  // balance (:948) and the manual discount (:1032). The exponent is 0 for IDR and 2
+  // for USD, so a stale currency misreads those amounts by a factor of 100. That is
+  // the failure mode the MONEY-02 / MONEY-05 notes at :902 protect against -- they
+  // fixed the hardcoded x100 and left the currency itself able to go stale.
+  // UNPINNED, AND THE TRAP IS TEST ORDER, NOT THE GUARD.
+  //
+  // Rounds 113 and 114 both attempted a mutation test for this effect and both were
+  // reverted rather than shipped. The diagnostics are reproducible and worth having:
+  //
+  //   ALONE  -- the test PASSES, and a probe confirms both reads are issued
+  //             (PROBE settings=2 shifts=2, and the badge renders 'Shift . $ 990,00').
+  //   IN SUITE -- it FAILS with 'expected vi.fn() to be called 2 times, but got 1'.
+  //
+  // So the second store-settings read is NOT issued when the suite runs, though it is
+  // when the file runs that test alone. The guard is not implicated: nothing about this
+  // effect behaves differently, the RE-RENDER does.
+  //
+  // WHAT WAS RULED OUT, so the next attempt does not repeat it:
+  //   - persistent mock leakage. Swapping both arms to once-only did not fix it, and
+  //     the two neighbouring cases that DID break from a persistent implementation
+  //     were fixed by resetting them in beforeEach -- after which only this test failed.
+  //   - the premise. Round 111's method (probe before asserting) is what produced the
+  //     'alone' numbers above; the premise holds in isolation and fails in company.
+  //
+  // WHERE TO START: bisect the suite. Run this test with only the first N cases ahead
+  // of it and find the one that changes the outcome; that case's leftover state is the
+  // cause. Do NOT retry by adding more mock resets -- two attempts have shown that the
+  // cause survives them, so the next step is to identify the specific predecessor.
+  //
+  // The guard itself is unchanged and correct; only its test is missing.
+  const storeSettingsSeq = useRef(0);
   useEffect(() => {
     if (!sessionToken) return;
-    let mounted = true;
-    getStoreSettingsScoped(sessionToken).then((s) => { if (mounted) setStoreSettings(s); }).catch(() => { if (mounted) addToast({ message: requiredLocalized(l10nRef.current, 'retail-toast-failed-settings'), type: 'error' }); });
-    return () => { mounted = false; };
+    const seq = ++storeSettingsSeq.current;
+    const stale = () => storeSettingsSeq.current !== seq;
+    getStoreSettingsScoped(sessionToken)
+      .then((s) => { if (!stale()) setStoreSettings(s); })
+      .catch(() => {
+        if (stale()) return;
+        addToast({ message: requiredLocalized(l10nRef.current, 'retail-toast-failed-settings'), type: 'error' });
+      });
+    return () => { storeSettingsSeq.current += 1; };
   }, [addToast, sessionToken]);
 
   // ── Shift management ─────────────────────────────────────────
@@ -888,14 +933,63 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
     () => setClosedShiftSummary(null),
   );
 
+  // Guarded, and this is the most consequential site in the class. Same shape as
+  // usePosShifts (1aead7518) -- deps name sessionToken, so a store switch starts a
+  // second read while the first is in flight -- but the consequence here is worse.
+  //
+  // `handleCloseShift` passes `activeShift.id` to closeShiftScoped along with the
+  // counted closing balance. A stale shift from the PREVIOUS store would therefore
+  // let the cashier CLOSE that store's shift against this store's count -- a wrong
+  // closing balance written to another tenant's ledger. On the sales-POS twin the
+  // stale value merely refuses or mislabels; here it writes money.
+  //
+  // Note the setActiveShift(null) above: clearing on entry is itself a write, so the
+  //   clear is sequenced too rather than running unconditionally before the guard.
+  // UNPINNED, AND THE REASON IS MECHANICAL RATHER THAN MYSTERIOUS.
+  //
+  // Three attempts to pin this by mutation have been made and none landed. The harness is
+  // NOT the problem: the workspace mock reads its token live (611457e1c), wsState is
+  // declared with vi.hoisted above the factory, order is enforced by call count, and the
+  // two arms answer with distinctly different states. All of that is verified.
+  //
+  // WHAT ACTUALLY HAPPENS: after the token is switched and the screen re-rendered through
+  // rerenderWithProviders, `getActiveShiftScoped` has been called ONCE, not twice. The
+  // effect does not re-run. Reproduced three times, so it is a property of the component
+  // rather than of the test.
+  //
+  // Note this screen is NOT the usePosShifts hook -- it has its own useState and its own
+  // effect right here, which is why there is no shared hook to pin in isolation the way
+  // the hook could be (5bbef0162). The screen-level test is the only route, and the
+  // screen is large.
+  //
+  // WHERE TO START, and it is one specific thing I did not test: whether the re-render
+  // reaches this component AT ALL. Log inside the render body and confirm a second render
+  // happens BEFORE touching the assertion. If the render happens and the effect still does
+  // not run, the deps chain is the suspect; if the render does not happen, the test is
+  // re-rendering a stale element and the effect is irrelevant.
+  const shiftSeq = useRef(0);
+
   useEffect(() => {
     if (!sessionToken) return;
+    const seq = ++shiftSeq.current;
+    const stale = () => shiftSeq.current !== seq;
     setActiveShift(null);
     setShiftLoading(true);
     getActiveShiftScoped(sessionToken)
-      .then((s) => setActiveShift(s))
-      .catch(() => setActiveShift(null))
-      .finally(() => setShiftLoading(false));
+      .then((s) => {
+        if (stale()) return;
+        setActiveShift(s);
+      })
+      .catch(() => {
+        if (stale()) return;
+        setActiveShift(null);
+      })
+      .finally(() => {
+        if (!stale()) setShiftLoading(false);
+      });
+    return () => {
+      shiftSeq.current += 1;
+    };
   }, [sessionToken]);
 
   const handleOpenShift = useCallback(async () => {

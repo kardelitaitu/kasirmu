@@ -44,16 +44,31 @@ export const StockAlertPanel = memo(function StockAlertPanel({
 
   // ── Fetch alerts ──────────────────────────────────────────────────
 
+  // Guarded against a store switch, and this one is NOT merely cosmetic: `alerts` renders
+  // the acknowledge buttons and `handleAcknowledge` sends `acknowledgeStockAlert(token,
+  // alertId)` with the CURRENT token but an id taken from whatever list is displayed. A
+  // stale list therefore offers acknowledgements for the previous store's alerts.
+  //
+  // The mechanism is round 126's: the cleanup clears the poll interval, which does NOT
+  // cancel a request already in flight, so an old-token response can land after the new
+  // store's and replace the list.
+  const alertsTokenRef = useRef(token);
+  useEffect(() => { alertsTokenRef.current = token; }, [token]);
+
   const fetchAlerts = useCallback(async () => {
     if (!token || !locationId) return;
+    const forToken = token;
     try {
       setError(null);
-      const data = await getActiveStockAlerts(token, locationId);
+      const data = await getActiveStockAlerts(forToken, locationId);
+      // Drop a response that arrived after the store moved on.
+      if (alertsTokenRef.current !== forToken) return;
       setAlerts(data.slice(0, maxAlerts));
     } catch (err) {
+      if (alertsTokenRef.current !== forToken) return;
       setError(l10nErrorMessage(err, l10nRef.current, 'inv-alert-error-load'));
     } finally {
-      setLoading(false);
+      if (alertsTokenRef.current === forToken) setLoading(false);
     }
   }, [token, locationId, maxAlerts]); // l10n accessed via ref — stable dep chain
 

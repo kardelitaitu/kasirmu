@@ -76,6 +76,20 @@ export const KdsDeviceStatusIndicator = memo(
     const [expanded, setExpanded] = useState(false);
     const [loading, setLoading] = useState(false);
 
+    // Measured and left UNGUARDED, unlike the two stock-alert pollers (8c42f592f). The
+    // mechanism is identical -- clearInterval does NOT cancel an in-flight request, so a
+    // store switch can let an old-token response land after the new store's -- but the
+    // CONSEQUENCE is not.
+    //
+    // `devices` is read only for a connected-count badge and the zero-device branch that
+    // gates the enroll button. Nothing takes an id from this list into a write:
+    // `onEnrollDevice` is a PROP the parent supplies, so enrollment does not depend on
+    // which devices this poll last saw. That is the difference from StockAlertPanel, where
+    // handleAcknowledge passes an id from the DISPLAYED list to a scoped call.
+    //
+    // So the damage is a wrong count for up to pollIntervalMs, corrected on the next tick.
+    // If an action ever reads an id from `devices`, this becomes the id-discriminator
+    // hazard and needs the token capture with it.
     const fetchDevices = useCallback(async () => {
       if (!sessionToken) return;
       setLoading(true);

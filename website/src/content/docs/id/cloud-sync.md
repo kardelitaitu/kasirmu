@@ -3,7 +3,7 @@ title: Sinkron Cloud
 description: Sinkron lintas lokasi dan register melalui cloud.
 category: guides
 order: 8
-updated: "2026-08-16"
+updated: "2026-10-01"
 ---
 
 ## Cara kerja sinkron

@@ -44,6 +44,41 @@ fn a_record(terminal_id: &str) -> ProvisioningRecord {
     }
 }
 
+// ── The id generator's cross-device guarantee ────────────────────
+
+/// The fallback that keeps two devices from agreeing on an id.
+///
+/// `new_id` documents that "two devices provisioning against one store DB cannot
+/// collide", and that rests ENTIRELY on its clock field: two processes each start
+/// their `seq` at 0, so their ids differ only by `nanos`. The old
+/// `.map_or(0, |d| d.as_nanos())` therefore did not merely weaken the guarantee —
+/// under a pre-epoch clock BOTH devices wrote `nanos = 0` and their first ids
+/// collided exactly.
+///
+/// The clock cannot be moved from a test, so this pins the FALLBACK the failure
+/// branch uses. That is the discriminating property, and it does not depend on the
+/// branch being reachable: a constant here would restore the collision the fix
+/// removes, whether or not the clock ever fails. VERIFIED: returning `0` makes
+/// this test fail (`left: 0, right: 0`).
+#[test]
+fn the_clock_failure_fallback_is_not_a_constant() {
+    // Two independent draws must differ. A constant fallback — 0, or any fixed
+    // value — makes this fail, which is exactly the old behaviour.
+    let a = random_u128();
+    let b = random_u128();
+    assert_ne!(
+        a, b,
+        "the fallback must differ between calls, or two devices share a prefix and collide"
+    );
+
+    // And it must be usable as the id's field at full width: a value that could
+    // not fill `{nanos:032x}` would shorten every id this branch produces.
+    assert!(
+        format!("{a:032x}").len() == 32,
+        "the fallback must render to the same 32-hex width as `as_nanos()`"
+    );
+}
+
 // ── The derived state (§2.1) ─────────────────────────────────────
 
 #[test]

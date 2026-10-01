@@ -249,6 +249,58 @@ describe('useRetailColumnPrefs', () => {
     expect(result.current.prefs.visibleColumns).toEqual([...RETAIL_COLUMN_DEFAULTS]);
   });
 
+  // A store switch must not let a SLOWER earlier read win -- and here the damage is
+  // WRITTEN to localStorage, not merely rendered (guard added in 40754c909).
+  //
+  // This is the same persisted-stale shape as useKdsPreferences (e19e412e4), and the
+  // observable is the same one the write-through case above already uses: the stored
+  // value. A stale read would persist the PREVIOUS store's columns under the current
+  // user, where they survive a reload and are read back BEFORE the server answers.
+  //
+  // Order by CALL COUNT, and the two arms answer DISTINCTLY ('name' vs 'barcode'), so
+  // the late write is observable rather than a no-op.
+  it('ignores a slower earlier read when the session token changes', async () => {
+    let releaseStale: (v: unknown) => void = () => {};
+    const stalePending = new Promise((resolve) => { releaseStale = resolve; });
+
+    const api = await import('@/api/settings');
+    // Read 1 (store A) held open and answers with the PREVIOUS columns.
+    vi.mocked(api.getUserPreferencesScoped).mockImplementationOnce(
+      () => stalePending as never,
+    );
+    // Every later read is the CURRENT store.
+    vi.mocked(api.getUserPreferencesScoped).mockResolvedValue({
+      retail_visible_columns: JSON.stringify(['name']),
+    } as never);
+
+    const view = renderHook(() => useRetailColumnPrefs(), { wrapper: Wrapper });
+    // Fake timers are active in this suite, so drive with act + advance rather than
+    // waitFor, which would stall on a real clock that never advances.
+    await act(async () => {
+      vi.advanceTimersByTime(1);
+    });
+    expect(api.getUserPreferencesScoped).toHaveBeenCalledTimes(1);
+
+    // Switch stores while the first read is still in flight.
+    mockSessionToken = 'token-2';
+    await act(async () => {
+      view.rerender();
+      vi.advanceTimersByTime(1);
+    });
+    expect(api.getUserPreferencesScoped).toHaveBeenCalledTimes(2);
+
+    // Now let the stale read land, after the current one already won.
+    await act(async () => {
+      releaseStale({ retail_visible_columns: JSON.stringify(['barcode']) });
+      await stalePending;
+      vi.advanceTimersByTime(100);
+    });
+
+    // The guard held: storage carries the CURRENT store's columns, not 'barcode'.
+    const parsed = JSON.parse(localStorage.getItem(storeKey('user-1'))!) as { visibleColumns: string[] };
+    expect(parsed.visibleColumns).toEqual(['name']);
+  });
+
   it('skips the server write when there is no signed-in user', async () => {
     mockUserId = '';
     const { result } = renderHook(() => useRetailColumnPrefs(), { wrapper: Wrapper });

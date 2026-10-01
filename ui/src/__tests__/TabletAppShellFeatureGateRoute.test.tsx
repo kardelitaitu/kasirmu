@@ -226,12 +226,11 @@ describe('TabletAppShell — feature-disabled pages still render via every table
   //
   // This case once asserted the tablet shell IGNORES location.hash, with the
   // header above calling hash routing a desktop-only vector. That was a true
-  // reading of the code, and it was the bug: ProvisioningFlow's "Set up with a
-  // phone instead" button navigates by setting window.location.hash = '#/mobile-setup'
-  // (it lives in another component and cannot call handleNavigate), so on a
-  // tablet it changed the URL and rendered nothing — a dead button on the one
-  // device it was written for. The shell now syncs hash -> currentRoute exactly as
-  // AppShell.tsx:350-395 does, and mobile-setup-wizard.spec.ts pins the round trip.
+  // reading of the code, and it was the bug: hash navigations (in-page buttons
+  // that cannot call handleNavigate) changed the URL and rendered nothing on a
+  // tablet. The shell now syncs hash -> currentRoute exactly as
+  // AppShell.tsx:350-395 does. The mobile-setup wizard that first exercised
+  // this route has since been retired; the route source itself is general.
   //
   // The pin is inverted, not deleted: the FEATURE gate remains the subject. A
   // feature-disabled page reached BY HASH still renders, because pageDenied is a

@@ -338,6 +338,43 @@ body:has(.memo-stack) .settings-sidebar-nav {
   padding-bottom: calc(var(--space-2) + 215px);
 }
 
+/*
+ * The clearance that actually WORKS, and why the rule above cannot.
+ *
+ * `.settings-sidebar-nav` is `overflow-y: auto` (this file, the scroll-region
+ * rule), so its padding-bottom SCROLLS WITH ITS CONTENT: it buys room at the
+ * END of the scroll and does nothing at the default scroll position, which is
+ * where the merchant is. Measured 2026-10-01 with the dev-mock `?memos=3` seam:
+ * Offline Queue, Tax Configuration and System Diagnostics were all still covered
+ * by the stack at rest with the rule above in place.
+ *
+ * One band, on `.settings-body`, replaces the per-sidebar rule round 9 added here.
+ * `.settings-body` is the flex ROW that SIZES both the sidebar and the main
+ * content, so padding on it shrinks both boxes at once — and the round-9 version,
+ * which banded only `.settings-sidebar`, left the main content's cards (Memos,
+ * Promotions) covered with a 3-bubble stack. Two rules where one is correct is
+ * also how a surface gets missed: the one you banded is the one you test.
+ */
+body:has(.memo-stack) .settings-body {
+  /* The stack's OWN bottom inset plus its height — not a flat 215px.
+   *
+   * Measured 2026-10-01 on the 1366x768 desktop shell with `?memos=3`:
+   *   stack            y=500  h=209  bottom=709   (token resolves to 1.5rem here)
+   *   .settings-body   y=63   h=676  bottom=739
+   *   content          y=63   h=454  bottom=517   <- 17px INSIDE the stack
+   *
+   * A flat band gets the SIZE right and the POSITION wrong, and the position is
+   * what the shell decides: the stack is pinned to `--memo-bottom-inset`, which is
+   * 1.5rem on desktop, larger on the tablet (tab bar), and a fallback
+   * `--space-6` on a chrome-free fullscreen branch. Adding the same inset the
+   * stack was placed with gives 24 + 215 + 8 = 247px, which puts the content
+   * bottom at 492 — clear of the stack's 500 on desktop, and grows automatically
+   * on the shells where the stack sits higher. The tablet measured clear with the
+   * flat value only because its extra inset happened to leave room; that was
+   * luck, not correctness. */
+  padding-bottom: calc(var(--memo-bottom-inset, var(--space-6)) + 215px + var(--space-2));
+}
+
 /* ── Scrollbar: subtle when idle, visible on hover ────── */
 
 .settings-sidebar-nav::-webkit-scrollbar {

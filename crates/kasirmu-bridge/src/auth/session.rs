@@ -120,12 +120,27 @@ fn invalidate_session(ctx: &BridgeCtx<'_>, token: &str) -> bool {
     store.remove(token).is_some()
 }
 
-/// Unix seconds, exactly as the command bodies compute it.
-fn now_ts() -> i64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs() as i64
+/// Unix seconds, or `None` when the clock cannot be read.
+///
+/// This mirrored the command bodies' `.unwrap_or_default()`, which returned 0 on
+/// a pre-epoch clock. Zero is not a harmless default for a session timestamp: the
+/// expiry is computed as `now_ts + TTL` and `created_at` IS this value, so a
+/// keepalive would stamp an expiry in 1970 and a switch/impersonation mint would
+/// create an already-dead session. That direction happens to be closed — the
+/// resulting session reads as expired — but only because `is_expired` was fixed
+/// to fail closed as well; relying on the two to agree silently was the real
+/// hazard, and this now refuses at the source.
+fn now_ts() -> Option<i64> {
+    match SystemTime::now().duration_since(UNIX_EPOCH) {
+        Ok(d) => i64::try_from(d.as_secs()).ok(),
+        Err(e) => {
+            tracing::error!(
+                error = %e,
+                "system clock is before the UNIX epoch; refusing to timestamp a session"
+            );
+            None
+        }
+    }
 }
 
 /// Check a username before the PIN step (STAFF-06).
@@ -148,11 +163,32 @@ pub async fn check_username(
     validate_not_empty("username", &username).map_err(|e| BridgeError::Invalid(e.to_string()))?;
 
     // S3: Random delay (50-200ms) to mask timing side-channels.
-    // Computed before the DB lock so the delay is not blocked by the mutex.
+    //
+    // A pre-epoch clock must NOT collapse this to a constant: `subsec_nanos()` of a
+    // failed read is `0`, which yields exactly 50 ms on every attempt and defeats the
+    // mask this line exists to provide — the STAFF-06 account-enumeration defence.
+    // The seed degrades to a clock-independent value rather than refusing, because a
+    // refusal here would deny a legitimate login for a reason unrelated to
+    // credentials, and because the mask only needs to be unpredictable to a remote
+    // client, not cryptographically strong.
+    //
+    // Twin of the tablet's copy (`apps/mobile-tauri/src/commands/auth.rs`), which was
+    // fixed first; the two are ADR-49 duplicates and must stay in step. Unlike the
+    // `now_ts` helper below, this one does NOT propagate an error — see the note
+    // there for why the two sites legitimately differ.
     let nanos = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .subsec_nanos();
+        .map(|d| d.subsec_nanos())
+        .unwrap_or_else(|_| {
+            tracing::warn!("system clock is before the UNIX epoch; timing mask seeded without it");
+            // A CONSTANT would defeat the mask, which is this line's whole purpose,
+            // so fall back to a process-local counter that still differs per attempt.
+            use std::sync::atomic::{AtomicU32, Ordering};
+            static FALLBACK_SEQ: AtomicU32 = AtomicU32::new(0);
+            FALLBACK_SEQ
+                .fetch_add(2654435761, Ordering::Relaxed)
+                .wrapping_mul(0x9E37_79B9)
+        });
     let delay_ms: u64 = 50 + (nanos % 151) as u64;
 
     // Scope the DB lock so Store<'_> (which is not Send) is dropped
@@ -303,7 +339,11 @@ pub fn session_keepalive(
         return Err(BridgeError::InvalidSession);
     }
 
-    let now_ts = now_ts();
+    let Some(now_ts) = now_ts() else {
+        return Err(BridgeError::Internal(
+            "system clock is before the UNIX epoch; refusing to refresh a session expiry".into(),
+        ));
+    };
     let expires_at = if ctx.session_ttl_seconds > 0 {
         Some(now_ts + ctx.session_ttl_seconds)
     } else {
@@ -422,7 +462,11 @@ pub async fn switch_organization(
     // 6. INVALIDATE the old token FIRST, then mint the new session.
     invalidate_session(ctx, session_token);
 
-    let now_ts = now_ts();
+    let Some(now_ts) = now_ts() else {
+        return Err(BridgeError::Internal(
+            "system clock is before the UNIX epoch; refusing to mint a switched session".into(),
+        ));
+    };
     let token = insert_session(
         ctx,
         &user_id,
@@ -565,7 +609,12 @@ pub async fn impersonate_user_scoped(
     };
 
     // Snapshot time once for both the expiry and the creation timestamp.
-    let now_ts = now_ts();
+    let Some(now_ts) = now_ts() else {
+        return Err(BridgeError::Internal(
+            "system clock is before the UNIX epoch; refusing to mint an impersonation session"
+                .into(),
+        ));
+    };
     let expires_at = Some(now_ts + IMPERSONATION_SESSION_TTL_SECONDS);
 
     // 5. Record the start event (actor = operator, subject = target). The

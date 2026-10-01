@@ -81,10 +81,81 @@ fn complete_sale_args_deserialize_minimal() {
     assert!(args.serial_numbers.is_none());
 }
 
+/// A failed location resolve must REFUSE, not deduct from the default location.
+///
+/// `run_complete_sale_scoped` resolved the workspace's deduction location with
+/// `.unwrap_or_else(|_| kasirmu_core::location_resolver::get_default_location_id())`
+/// (`commands/pos/checkout.rs:571`), so a FAILED resolve made the sale deduct stock
+/// from the canonical default location while reporting success — silently, at the
+/// till. `commands/pos.rs::start_sale_scoped` carried the same swallow one layer up,
+/// where it is worse: the very next statement LOCKS the answer on the cart row
+/// (`save_active_cart(.., Some(location))`), so the wrong location persists for the
+/// cart's whole lifetime.
+///
+/// The distinction that makes propagation right: a workspace with genuinely NO
+/// binding is not an error — `resolve_primary_location` returns tier 4 (the canonical
+/// default) for it, which is the documented fall-through. Only a READ FAILURE reaches
+/// this arm, and that must not be converted into a location.
+///
+/// SCOPE, stated honestly: this pins the CHECKOUT door, which has a callable harness
+/// (`run_complete_sale_scoped` is `pub(super)`). The `pos.rs` site cannot be pinned
+/// here — `start_sale_scoped` is a `#[command]` taking `State<'_, AppState>` and has
+/// no `run_*` twin — so its half is covered by inspection and by the shared resolver
+/// contract, not by this test.
+///
+/// Dropping `workspace_instances` is the discriminating input: the resolve fails
+/// while the rest of the schema stays valid, so the assertion is about the resolver
+/// rather than about a broken database.
+#[test]
+fn a_failed_location_resolve_refuses_the_settlement() {
+    let conn = fresh_conn();
+    seed_cashier_without_override_permission(&conn, "user-cashier");
+    seed_stock(&conn, "REPLAY-COFFEE");
+    let cart_id = seed_cart_with_line(&conn, "REPLAY-COFFEE", 2, 350);
+    let session = replay_session();
+
+    conn.execute_batch("DROP TABLE workspace_instances;")
+        .unwrap();
+
+    // `expect_err` needs `T: Debug` and `SaleSettlement` has no `Debug`, so match
+    // rather than deriving one on a production type for a test's convenience.
+    let msg =
+        match run_complete_sale_scoped(&conn, &session, &scoped_args(cart_id, Some("att-loc"))) {
+            Ok(_) => panic!("a failed location resolve must refuse, not deduct from the default"),
+            Err(e) => e.to_string(),
+        };
+    assert!(
+        msg.contains("workspace_instances") || msg.contains("workspace_instance"),
+        "the refusal must name the real cause, got: {msg}"
+    );
+
+    // And nothing was deducted: a refusal is not a settled sale.
+    assert_eq!(sale_rows(&conn), 0, "a refused settlement writes no sale");
+}
+
 // ── Bug #2: override_cart_deduction_location permission check ───
 
 fn fresh_conn() -> Connection {
-    migrations::fresh_db()
+    let conn = migrations::fresh_db();
+    // `replay_session()` names `tablet-instance`, and BOTH settlement doors resolve
+    // that id to decide which location to deduct from (`commands/pos.rs:161`,
+    // `commands/pos/checkout.rs:571`). Nothing seeded it, so the row these tests
+    // resolve did not exist — and the fixtures passed only while those two call sites
+    // swallowed the resulting `NotFound` and substituted the canonical default
+    // location. They now PROPAGATE it, so the fixture must supply the instance.
+    //
+    // The binding targets the SAME location `seed_stock` stocks
+    // (`01926b3a-0000-7000-8000-000000000001`), so the deduction lands where the
+    // fixture put the inventory rather than somewhere the test never intended.
+    conn.execute_batch(
+        "INSERT OR IGNORE INTO locations (id, name, is_primary)
+             VALUES ('store-replay', 'Replay Store', 0);
+         INSERT OR IGNORE INTO workspace_instances (id, type_key, location_id, name, bound_location_id)
+             VALUES ('tablet-instance', 'store-pos', 'store-replay', 'Replay Tablet',
+                     '01926b3a-0000-7000-8000-000000000001');",
+    )
+    .expect("seed the workspace instance `replay_session` names");
+    conn
 }
 
 /// Seed a user with ONLY sales:process permission (no SALES_OVERRIDE_PRICE).

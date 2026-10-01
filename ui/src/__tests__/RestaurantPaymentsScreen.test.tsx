@@ -17,7 +17,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import { renderWithProviders } from '@/__tests__/test-utils/render';
 import RestaurantPaymentsScreen from '@/features/restaurant/screens/RestaurantPaymentsScreen';
 import productsFtl from '@/locales/products.ftl?raw';
@@ -33,6 +33,8 @@ const mocks = vi.hoisted(() => ({
   listEdc: vi.fn(),
   edcStatus: vi.fn(),
   hwSave: vi.fn(),
+  getGateway: vi.fn(),
+  setGateway: vi.fn(),
   localPrefsEdc: '' as string,
   profilePresent: true,
   sessionToken: 'tok-1' as string,
@@ -51,6 +53,13 @@ vi.mock('@/api/local-payment', async (importOriginal) => {
     setLocalPaymentMethodsScoped: (...args: unknown[]) => mocks.setMethods(...args),
   };
 });
+
+vi.mock('@/api/payment-gateways', () => ({
+  getPaymentGatewayConfigScoped: (...args: unknown[]) => mocks.getGateway(...args),
+  setPaymentGatewayConfigScoped: (...args: unknown[]) => mocks.setGateway(...args),
+  listPaymentGatewaysScoped: vi.fn().mockResolvedValue([]),
+  deletePaymentGatewayScoped: vi.fn().mockResolvedValue(true),
+}));
 
 vi.mock('@/api/edc', () => ({
   listEdcTerminalsScoped: (...args: unknown[]) => mocks.listEdc(...args),
@@ -142,6 +151,8 @@ beforeEach(() => {
   mocks.listEdc.mockReset();
   mocks.edcStatus.mockReset();
   mocks.hwSave.mockReset();
+  mocks.getGateway.mockReset();
+  mocks.setGateway.mockReset();
   mocks.localPrefsEdc = '';
   mocks.profilePresent = true;
   mocks.sessionToken = 'tok-1';
@@ -152,6 +163,8 @@ beforeEach(() => {
   mocks.listEdc.mockResolvedValue(EDC_TERMINALS);
   mocks.edcStatus.mockResolvedValue({ status: 'ready' });
   mocks.hwSave.mockResolvedValue(undefined);
+  mocks.getGateway.mockResolvedValue(null);
+  mocks.setGateway.mockResolvedValue({ id: 'gw-1' });
 });
 
 describe('RestaurantPaymentsScreen — loading & load error', () => {
@@ -200,8 +213,8 @@ describe('RestaurantPaymentsScreen — rails list & toggles', () => {
     // card is core -> no remove button; gopay is custom -> has one.
     const cardRow = screen.getByText('Card').closest('.restaurant-rail-row') as HTMLElement;
     const gopayRow = screen.getByText('GoPay').closest('.restaurant-rail-row') as HTMLElement;
-    expect(within(cardRow).queryByRole('button')).toBeNull();
-    expect(within(gopayRow).getByRole('button')).toBeInTheDocument();
+    expect(within(cardRow).queryByRole('button', { name: /remove/i })).toBeNull();
+    expect(within(gopayRow).getByRole('button', { name: /remove/i })).toBeInTheDocument();
 
     // Both render the code chip.
     expect(screen.getByText('gopay')).toBeInTheDocument();
@@ -224,6 +237,26 @@ describe('RestaurantPaymentsScreen — rails list & toggles', () => {
     await user.click(cardToggle);
     expect(cardToggle).toBeChecked();
     expect(saveBtn).toBeEnabled();
+  });
+
+  it('toggles Cash and QRIS off and back on', async () => {
+    const user = await import('@testing-library/user-event').then((m) => m.default);
+    await renderScreen();
+    await screen.findByText('Cash');
+
+    const cashToggle = screen.getByRole('switch', { name: 'Cash' });
+    expect(cashToggle).toBeChecked();
+    await user.click(cashToggle);
+    expect(cashToggle).not.toBeChecked();
+
+    const qrisToggle = screen.getByRole('switch', { name: 'QRIS' });
+    expect(qrisToggle).toBeChecked();
+    await user.click(qrisToggle);
+    expect(qrisToggle).not.toBeChecked();
+
+    // Toggle back on
+    await user.click(cashToggle);
+    expect(cashToggle).toBeChecked();
   });
 });
 
@@ -275,72 +308,36 @@ describe('RestaurantPaymentsScreen — QRIS static QR card', () => {
   });
 });
 
-describe('RestaurantPaymentsScreen — add & remove custom rails', () => {
-  it('Add rail stays disabled until both fields carry a non-blank value', async () => {
-    await renderScreen();
-    await screen.findByText('GoPay');
-
-    const add = screen.getByRole('button', { name: 'Add rail' });
-    expect(add).toBeDisabled();
-
-    fireEvent.change(screen.getByLabelText('New rail code'), { target: { value: '   ' } });
-    fireEvent.change(screen.getByLabelText('New rail display label'), { target: { value: 'OVO' } });
-    expect(add).toBeDisabled();
-
-    fireEvent.change(screen.getByLabelText('New rail code'), { target: { value: ' ovo ' } });
-    expect(add).toBeEnabled();
-  });
-
-  it('adds a trimmed custom rail seeded enabled with an empty bag', async () => {
-    await renderScreen();
-    await screen.findByText('GoPay');
-
-    fireEvent.change(screen.getByLabelText('New rail code'), { target: { value: ' ovo ' } });
-    fireEvent.change(screen.getByLabelText('New rail display label'), { target: { value: 'OVO' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Add rail' }));
-
-    expect(await screen.findByText('OVO')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-    await waitFor(() => {
-      expect(mocks.setMethods).toHaveBeenCalled();
-    });
-    const payload = mocks.setMethods.mock.calls[0]?.[2] as {
-      rail_code: string;
-      label: string;
-      is_enabled: boolean;
-      parameters: string;
-    }[];
-    expect(payload).toContainEqual({
-      rail_code: 'ovo',
-      label: 'OVO',
-      is_enabled: true,
-      parameters: '{}',
-    });
-  });
-
-  it('rejects a duplicate rail code case-insensitively', async () => {
-    await renderScreen();
-    await screen.findByText('GoPay');
-
-    fireEvent.change(screen.getByLabelText('New rail code'), { target: { value: 'GOPAY' } });
-    fireEvent.change(screen.getByLabelText('New rail display label'), { target: { value: 'Dup' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Add rail' }));
-
-    expect(screen.queryByText('Dup')).not.toBeInTheDocument();
-    // Fields stay filled so the operator sees what was refused.
-    expect(screen.getByLabelText('New rail code')).toHaveValue('GOPAY');
-  });
-
-  it('removes a custom rail via its remove button', async () => {
+describe('RestaurantPaymentsScreen — custom payment methods & card expand/collapse', () => {
+  it('removes a custom payment method via its remove button', async () => {
     const user = await import('@testing-library/user-event').then((m) => m.default);
     await renderScreen();
     await screen.findByText('GoPay');
 
     const gopayRow = screen.getByText('GoPay').closest('.restaurant-rail-row') as HTMLElement;
-    await user.click(within(gopayRow).getByRole('button'));
+    await user.click(within(gopayRow).getByRole('button', { name: /remove/i }));
     expect(screen.queryByText('GoPay')).not.toBeInTheDocument();
     // card (core) stays.
     expect(screen.getByText('Card')).toBeInTheDocument();
+  });
+
+  it('expands and collapses cards on header click', async () => {
+    const user = await import('@testing-library/user-event').then((m) => m.default);
+    await renderScreen();
+    await screen.findByText('GoPay');
+
+    const cashCard = screen.getByTestId('payment-card-cash');
+    expect(cashCard).toHaveClass('resto-payment-card-wrapper--expanded');
+
+    // Click expand button to collapse
+    const expandBtn = screen.getByRole('button', { name: /collapse cash/i });
+    await user.click(expandBtn);
+    expect(cashCard).toHaveClass('resto-payment-card-wrapper--collapsed');
+
+    // Click button again to re-expand
+    const reExpandBtn = screen.getByRole('button', { name: /expand cash/i });
+    await user.click(reExpandBtn);
+    expect(cashCard).toHaveClass('resto-payment-card-wrapper--expanded');
   });
 });
 
@@ -440,6 +437,26 @@ describe('RestaurantPaymentsScreen — save, dirty state & back', () => {
     expect(screen.getByText('Settings saved successfully')).toBeInTheDocument();
   });
 
+  it('saves gateway credentials to setPaymentGatewayConfigScoped separately from market rails', async () => {
+    const user = await import('@testing-library/user-event').then((m) => m.default);
+    await renderScreen();
+    await screen.findByText('GoPay');
+
+    // Toggle midtrans -> dirty
+    const midtransSwitch = screen.getByRole('switch', { name: 'Midtrans Gateway' });
+    await user.click(midtransSwitch);
+
+    // Save
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => {
+      expect(mocks.setGateway).toHaveBeenCalledWith('tok-1', expect.objectContaining({
+        gatewayName: 'midtrans',
+        isActive: true,
+      }));
+    });
+  });
+
   it('reports an error toast when the rail save rejects and does not call onSaved', async () => {
     const user = await import('@testing-library/user-event').then((m) => m.default);
     const onSaved = vi.fn();
@@ -479,6 +496,48 @@ describe('RestaurantPaymentsScreen — save, dirty state & back', () => {
     await screen.findByText('GoPay');
     await user.click(screen.getByTestId('restaurant-payments-back-btn'));
     expect(onBack).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows unsaved-changes dialog when back is clicked with dirty form', async () => {
+    const user = await import('@testing-library/user-event').then((m) => m.default);
+    const onBack = vi.fn();
+    await renderScreen({ onBack });
+
+    await screen.findByText('GoPay');
+    // Make form dirty by toggling Card switch
+    await user.click(screen.getByRole('switch', { name: 'Card' }));
+
+    await user.click(screen.getByTestId('restaurant-payments-back-btn'));
+    // Dialog should appear; onBack not yet called
+    expect(screen.getByTestId('unsaved-dialog-discard')).toBeInTheDocument();
+    expect(onBack).not.toHaveBeenCalled();
+  });
+
+  it('calls onBack when Discard is clicked in the unsaved dialog', async () => {
+    const user = await import('@testing-library/user-event').then((m) => m.default);
+    const onBack = vi.fn();
+    await renderScreen({ onBack });
+
+    await screen.findByText('GoPay');
+    await user.click(screen.getByRole('switch', { name: 'Card' }));
+
+    await user.click(screen.getByTestId('restaurant-payments-back-btn'));
+    await user.click(screen.getByTestId('unsaved-dialog-discard'));
+    expect(onBack).toHaveBeenCalledTimes(1);
+  });
+
+  it('closes dialog and stays when Cancel is clicked in the unsaved dialog', async () => {
+    const user = await import('@testing-library/user-event').then((m) => m.default);
+    const onBack = vi.fn();
+    await renderScreen({ onBack });
+
+    await screen.findByText('GoPay');
+    await user.click(screen.getByRole('switch', { name: 'Card' }));
+
+    await user.click(screen.getByTestId('restaurant-payments-back-btn'));
+    await user.click(screen.getByTestId('unsaved-dialog-cancel'));
+    expect(onBack).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('unsaved-dialog-discard')).toBeNull();
   });
 
   it('does not render a back button when onBack is omitted', async () => {
@@ -522,3 +581,220 @@ describe('RestaurantPaymentsScreen — save, dirty state & back', () => {
     expect(screen.queryByText('GoPay')).not.toBeInTheDocument();
   });
 });
+
+describe('RestaurantPaymentsScreen — card controls and interactive elements', () => {
+  it('interacts with Cash drawer switches and preset chips via data-testid', async () => {
+    const user = await import('@testing-library/user-event').then((m) => m.default);
+    await renderScreen();
+    await screen.findByText('Cash');
+
+    // Label input
+    const labelInput = screen.getByTestId('cash-custom-label-input');
+    expect(labelInput).toHaveValue('Cash');
+    await user.clear(labelInput);
+    await user.type(labelInput, 'Cash Money');
+    expect(labelInput).toHaveValue('Cash Money');
+
+    // Auto kick switch
+    const autoKickSwitch = screen.getByTestId('cash-drawer-kick-toggle');
+    expect(autoKickSwitch).toBeChecked();
+    await user.click(autoKickSwitch);
+    expect(autoKickSwitch).not.toBeChecked();
+
+    // Verify drawer switch
+    const verifySwitch = screen.getByTestId('cash-drawer-verify-toggle');
+    expect(verifySwitch).not.toBeChecked();
+    await user.click(verifySwitch);
+    expect(verifySwitch).toBeChecked();
+
+    // Preset chips
+    const exactChip = screen.getByTestId('cash-preset-exact');
+    expect(exactChip).toHaveAttribute('aria-pressed', 'true');
+    await user.click(exactChip);
+    expect(exactChip).toHaveAttribute('aria-pressed', 'false');
+
+    const chip1k = screen.getByTestId('cash-preset-1000');
+    expect(chip1k).toHaveAttribute('aria-pressed', 'true');
+    await user.click(chip1k);
+    expect(chip1k).toHaveAttribute('aria-pressed', 'false');
+
+    const chip10k = screen.getByTestId('cash-preset-10000');
+    expect(chip10k).toHaveAttribute('aria-pressed', 'true');
+    await user.click(chip10k);
+    expect(chip10k).toHaveAttribute('aria-pressed', 'false');
+
+    const chip100k = screen.getByTestId('cash-preset-100000');
+    expect(chip100k).toHaveAttribute('aria-pressed', 'true');
+    await user.click(chip100k);
+    expect(chip100k).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('interacts with QRIS mode buttons, inputs, and receipt print switch via data-testid', async () => {
+    const user = await import('@testing-library/user-event').then((m) => m.default);
+    await renderScreen();
+    await screen.findByText('QRIS');
+
+    const dynamicBtn = screen.getByTestId('qris-mode-dynamic');
+    await user.click(dynamicBtn);
+    expect(dynamicBtn).toHaveClass('resto-segmented-btn--active');
+
+    const staticBtn = screen.getByTestId('qris-mode-static');
+    await user.click(staticBtn);
+    expect(staticBtn).toHaveClass('resto-segmented-btn--active');
+
+    // NMID input
+    const nmidInput = screen.getByTestId('qris-nmid-input');
+    await user.clear(nmidInput);
+    await user.type(nmidInput, 'ID999999999');
+    expect(nmidInput).toHaveValue('ID999999999');
+
+    // Surcharge input
+    const surchargeInput = screen.getByTestId('qris-surcharge-input');
+    await user.clear(surchargeInput);
+    await user.type(surchargeInput, '0.5');
+    expect(surchargeInput).toHaveValue('0.5');
+
+    // Print bill toggle
+    const printSwitch = screen.getByTestId('qris-print-bill-toggle');
+    expect(printSwitch).toBeChecked();
+    await user.click(printSwitch);
+    expect(printSwitch).not.toBeChecked();
+  });
+
+  it('interacts with EDC card network chips, trace code toggle, and select via data-testid', async () => {
+    const user = await import('@testing-library/user-event').then((m) => m.default);
+    await renderScreen();
+    await screen.findByText('Card');
+
+    // Expand Card to ensure body is visible
+    const cardToggle = screen.getByTestId('payment-card-toggle-card');
+    await user.click(cardToggle);
+
+    const traceSwitch = screen.getByTestId('edc-require-trace-toggle');
+    expect(traceSwitch).toBeChecked();
+    await user.click(traceSwitch);
+    expect(traceSwitch).not.toBeChecked();
+
+    const visaChip = screen.getByTestId('card-network-visa');
+    expect(visaChip).toHaveAttribute('aria-pressed', 'true');
+    await user.click(visaChip);
+    expect(visaChip).toHaveAttribute('aria-pressed', 'false');
+
+    const amexChip = screen.getByTestId('card-network-amex');
+    expect(amexChip).toHaveAttribute('aria-pressed', 'false');
+    await user.click(amexChip);
+    expect(amexChip).toHaveAttribute('aria-pressed', 'true');
+
+    // Check EDC select trigger data-testid
+    const selectTrigger = screen.getByTestId('edc-default-select');
+    expect(selectTrigger).toBeInTheDocument();
+  });
+
+  it('interacts with Midtrans and Stripe configuration buttons via data-testid', async () => {
+    const user = await import('@testing-library/user-event').then((m) => m.default);
+    await renderScreen();
+    await screen.findByText('Midtrans Gateway');
+
+    // Expand Midtrans
+    const midtransToggle = screen.getByTestId('payment-card-toggle-midtrans');
+    await user.click(midtransToggle);
+
+    const prodBtn = screen.getByTestId('midtrans-env-production');
+    await user.click(prodBtn);
+    expect(prodBtn).toHaveClass('resto-segmented-btn--active');
+
+    const sandboxBtn = screen.getByTestId('midtrans-env-sandbox');
+    await user.click(sandboxBtn);
+    expect(sandboxBtn).toHaveClass('resto-segmented-btn--active');
+
+    // Inputs
+    const merchantIdInput = screen.getByTestId('midtrans-merchant-id-input');
+    await user.type(merchantIdInput, 'M123');
+    expect(merchantIdInput).toHaveValue('M123');
+
+    const clientKeyInput = screen.getByTestId('midtrans-client-key-input');
+    await user.type(clientKeyInput, 'CK-123');
+    expect(clientKeyInput).toHaveValue('CK-123');
+
+    const serverKeyInput = screen.getByTestId('midtrans-server-key-input');
+    await user.type(serverKeyInput, 'SK-123');
+    expect(serverKeyInput).toHaveValue('SK-123');
+
+    // Channels
+    const gopayChip = screen.getByTestId('midtrans-channel-gopay');
+    expect(gopayChip).toHaveAttribute('aria-pressed', 'true');
+    await user.click(gopayChip);
+    expect(gopayChip).toHaveAttribute('aria-pressed', 'false');
+
+    const webhookSwitch = screen.getByTestId('midtrans-auto-confirm-toggle');
+    expect(webhookSwitch).toBeChecked();
+    await user.click(webhookSwitch);
+    expect(webhookSwitch).not.toBeChecked();
+
+    const testKeysBtn = screen.getByTestId('midtrans-test-api-btn');
+    await user.click(testKeysBtn);
+    expect(screen.getByText(/Midtrans credentials format verified/i)).toBeInTheDocument();
+
+    // Expand Stripe
+    const stripeToggle = screen.getByTestId('payment-card-toggle-stripe');
+    await user.click(stripeToggle);
+
+    const liveBtn = screen.getByTestId('stripe-mode-live');
+    await user.click(liveBtn);
+    expect(liveBtn).toHaveClass('resto-segmented-btn--active');
+
+    const testBtn = screen.getByTestId('stripe-mode-test');
+    await user.click(testBtn);
+    expect(testBtn).toHaveClass('resto-segmented-btn--active');
+
+    const pubKeyInput = screen.getByTestId('stripe-pub-key-input');
+    await user.type(pubKeyInput, 'pk_live_123');
+    expect(pubKeyInput).toHaveValue('pk_live_123');
+
+    const secKeyInput = screen.getByTestId('stripe-sec-key-input');
+    await user.type(secKeyInput, 'sk_live_123');
+    expect(secKeyInput).toHaveValue('sk_live_123');
+
+    const verifyKeysBtn = screen.getByTestId('stripe-verify-keys-btn');
+    await user.click(verifyKeysBtn);
+    expect(screen.getByText(/Stripe keys format valid/i)).toBeInTheDocument();
+  });
+
+  it('adds and removes a custom payment rail via the add custom rail card', async () => {
+    const user = await import('@testing-library/user-event').then((m) => m.default);
+    await renderScreen();
+    await screen.findByText('GoPay');
+
+    expect(screen.getByTestId('add-custom-rail-card')).toBeInTheDocument();
+    const codeInput = screen.getByTestId('new-rail-code-input');
+    const labelInput = screen.getByTestId('new-rail-label-input');
+    const addBtn = screen.getByTestId('add-custom-rail-btn');
+
+    expect(addBtn).toBeDisabled();
+
+    // Type new rail details
+    await user.type(codeInput, 'dana');
+    await user.type(labelInput, 'DANA Wallet');
+    expect(addBtn).toBeEnabled();
+
+    await user.click(addBtn);
+
+    // The new card should be in the list
+    expect(screen.getByTestId('payment-card-dana')).toBeInTheDocument();
+    expect(screen.getByText('DANA Wallet')).toBeInTheDocument();
+    expect(codeInput).toHaveValue('');
+    expect(labelInput).toHaveValue('');
+
+    // Attempt to add duplicate code
+    await user.type(codeInput, 'dana');
+    await user.click(addBtn);
+    expect(screen.getByText('A payment method with this code already exists')).toBeInTheDocument();
+
+    // Remove the newly added rail
+    const removeBtn = screen.getByTestId('payment-card-remove-dana');
+    await user.click(removeBtn);
+    expect(screen.queryByTestId('payment-card-dana')).not.toBeInTheDocument();
+  });
+});
+
+

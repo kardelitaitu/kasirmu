@@ -335,18 +335,6 @@ const SCREENS: ScreenEntry[] = [
     // utility sheet, not a class this feature's own sheet should have to own.
     parentCss: ['../theme/components.css'],
   },
-  {
-    name: 'MobileWelcomeFlow',
-    tsx: 'setup/mobile/MobileWelcomeFlow.tsx',
-    additionalTsx: [
-      'setup/mobile/MobileWelcomeScreen.tsx',
-      'setup/mobile/MobileSetupHub.tsx',
-      'setup/mobile/MobileGoogleAuthModal.tsx',
-      'setup/mobile/MobileEmailAuthModal.tsx',
-      'setup/mobile/MobileQrPairingModal.tsx',
-    ],
-    css: ['setup/mobile/MobileWelcomeFlow.module.css'],
-  },
 
   // ── Customers ─────────────────────────────────────────
   {
@@ -766,8 +754,25 @@ const SCREENS: ScreenEntry[] = [
     // case 3 sees three defined rules with no reference and needs SOME shield; any
     // shield states the wrong thing, and this is the one that can be checked by
     // deleting it.
-    dynamicClassPrefixes: [ 'settings-sync-expiry-badge--good', 'settings-sync-expiry-badge--warn', 'settings-sync-expiry-badge--critical'],
+    // memo-stack backs this sheet's clearance band for the fixed memo stack
+    // (body:has(.memo-stack) .settings-footer). MEASURED 2026-10-01 by
+    // ui/e2e/memo-overlay.spec.ts: the settings route is FULLSCREEN, so no shell
+    // ancestor moves the stack, and it sits on the viewport's bottom-left - exactly
+    // where .settings-footer is a fixed-height bar. elementFromPoint at the
+    // stack's own buttons returned the footer.
+    //
+    // The stack is a SIBLING of this page under #root, so its class can never
+    // appear in the settings markup, and extractClassSelectors mints memo-stack
+    // from the :has() selector in THIS sheet. dynamicClassPrefixes rather than
+    // externalClasses for the reason the WorkspaceHome entry documents at :913 -
+    // a whole-name entry is not a wildcard, so the prefix excuses exactly
+    // memo-stack and nothing else.
+    //
+    // A second entry for one class is not duplication: WorkspaceHome.css and this
+    // sheet each carry their own band, and each guard entry describes its own sheet.
+    dynamicClassPrefixes: [ 'settings-sync-expiry-badge--good', 'settings-sync-expiry-badge--warn', 'settings-sync-expiry-badge--critical', 'memo-stack'],
   },
+
   {
     name: 'DataManagementScreen',
     tsx: 'settings/DataManagementScreen.tsx',

@@ -17,6 +17,47 @@ fn expired_ticket_is_rejected() {
     assert_eq!(verify_picker_ticket(&secret(), &sig, 1_800_000_301), None);
 }
 
+/// The command layer must not derive a verify timestamp from a DEFAULTED clock.
+///
+/// `verify_picker_ticket` tests `expiry_ts < now_ts`, so `now_ts = 0` accepts every
+/// ticket ever minted. That is a property of the comparison and cannot be pinned
+/// from here — a first version of this test asserted exactly that, and PASSED with
+/// the comparison deliberately rewritten to `(now_ts != 0 && expiry_ts < now_ts)`,
+/// i.e. it was a false green. The invariant that actually changed is the CALLER's:
+/// it used to read
+/// `SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default()`, supplying
+/// `0` on an unreadable clock.
+///
+/// So this asserts over the SOURCE, the technique `apps/cloud-server/src/sync_api_tests.rs`
+/// uses for source contracts, because the property is 'the command refuses rather
+/// than defaults' — which no behavioural test of a pure function can observe.
+/// `include_str!` on the command file makes the coupling explicit: reintroduce the
+/// default in `auth.rs` and this fails.
+#[test]
+fn the_session_command_does_not_verify_a_ticket_against_a_defaulted_clock() {
+    let command_source = include_str!("auth.rs");
+
+    // WHITESPACE-INSENSITIVE, and that is not tidiness. The first version of this
+    // assertion compared a literal string and PASSED with the defect restored:
+    // `cargo fmt` reflows the four-call chain onto separate lines, so the literal
+    // never matched and the gate could not see the shape it was written to catch.
+    // A source contract must survive the formatter, so whitespace is stripped first.
+    let compact: String = command_source
+        .chars()
+        .filter(|c| !c.is_whitespace())
+        .collect();
+
+    assert!(
+        !compact.contains("duration_since(UNIX_EPOCH).unwrap_or_default()")
+            && !compact.contains("duration_since(std::time::UNIX_EPOCH).unwrap_or_default()"),
+        "the command must refuse an unreadable clock, not timestamp a ticket as 0"
+    );
+    assert!(
+        command_source.contains("now_unix_secs()"),
+        "the command must obtain its timestamp from the fail-closed helper"
+    );
+}
+
 #[test]
 fn forged_ticket_is_rejected() {
     let sig = sign_picker_ticket(b"attacker-secret".as_slice(), "user-owner", 1_800_000_000);

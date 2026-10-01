@@ -25,9 +25,44 @@ script finds the SELECT that feeds it and compares the Nth column against the fi
 name. A disagreement is reported unless the column is aliased (`... AS x`) or the
 field is a documented rename.
 
-It is a HEURISTIC and is written to over-report rather than miss: a finding is a
-prompt to read the two lists side by side, not proof of a bug. Known legitimate
-renames are listed in KNOWN_RENAMES with the reason each is legitimate.
+THE BLOCK IS MATCHED BY BRACES, not by lines, and that distinction is the difference
+between this gate working and not. It previously walked forward from the anchor until
+a line that was not a `row.get`, which stops early on any mapper with a bare shorthand
+field (`sku,`, bound earlier) or a nested struct literal (`price: Money { ... },`).
+`modules/inventory/src/repository.rs` has BOTH between its first field and
+`image_hash`, so the walk ended at index 2 and the gate reported exit 0 over a mapper
+that read `image_hash` from the `popularity_score` column -- a real misalignment, found
+by hand, that this script exists to catch. Four lexical repairs were attempted first
+and all failed: a line rule cannot tell a nested literal's closer from the end of the
+block, and INDENTATION does not separate them either (the nested `},` sits at the same
+column as the fields it follows). String literals are blanked before counting, so a
+format string's braces do not desynchronise the depth.
+
+`--roots` DEFAULTS TO THE WHOLE WORKSPACE (`crates`, `apps`, `platform`, `modules`),
+which is a correction with a lesson in it. It used to name three directories, and
+`modules` was added only after a real misalignment was found there BY HAND -- the gate
+had never scanned that tree at all. Since both callers (`scripts/check.sh`,
+`dev-ci.yml#static-gates`) invoke this with no `--roots`, the default IS the coverage,
+and a default that needs widening after each miss makes coverage something an author
+remembers rather than a property of the tool. It now scans 799 production files, up
+from 267 when the brace-matching bug was fixed and 267+58 with the first widening.
+
+ALIASED COLUMNS ARE CHECKED TOO, against their own alias. This section used to record
+the opposite as an accepted limitation, and the reasoning that produced it was wrong:
+an earlier revision skipped every aliased column entirely, which meant a reordered
+aliased projection went unreported -- the gate's entire purpose, defeated by an
+unrelated exemption. The alias IS the author's stated intent for that index, so
+comparing the field to it is exactly as sound as comparing it to a bare column name.
+Swapping `shift_count: row.get(1)` and `closed_shift_count: row.get(2)` in
+`analytics_shift_rows` now fails at exit 1, verified.
+
+The comparison is by WORDS, not by suffix, and that distinction was also learned by
+running it: `COALESCE(...) AS closed_count` legitimately feeds `closed_shift_count`,
+which interleaves `closed` + `shift` + `count`, so neither name is a suffix of the
+other and a suffix rule reported a FALSE POSITIVE on correct code. An alias is
+accepted when every one of its words appears in the field name, which tolerates that
+reorder while still catching a genuinely different alias. A finding remains a prompt to
+read two lists; the absence of one is not proof of correctness.
 
 Exit code 0 = no unaliased disagreement found.
 Exit code 1 = at least one mapper reads a column whose name does not match its field.
@@ -146,6 +181,93 @@ def column_base(col: str) -> str:
     return body.lower()
 
 
+def strip_rust_strings(s: str) -> str:
+    """Blank out Rust string literals so braces inside SQL text are not counted."""
+    out: list[str] = []
+    i, n = 0, len(s)
+    while i < n:
+        if s[i] == chr(34):
+            i += 1
+            while i < n and s[i] != chr(34):
+                if s[i] == "\\":
+                    i += 1
+                i += 1
+            i += 1
+        else:
+            out.append(s[i])
+            i += 1
+    return "".join(out)
+
+
+def collect_mapped_fields(lines: list[str], anchor: int) -> list[tuple[str, int]]:
+    """Every `field: row.get(N)` in the STRUCT LITERAL containing `anchor`.
+
+    Brace matching, not line heuristics. The previous walk stopped at the first line
+    that was not a `row.get`, which a mapper with a bare shorthand field (`sku,`)
+    or a nested struct literal (`price: Money { ... },`) breaks on -- and
+    `modules/inventory/src/repository.rs` has both between its first field and
+    `image_hash`, so the walk ended at index 2 and the gate reported a clean tree
+    over a real misalignment it exists to find.
+
+    Four lexical repairs were attempted and each failed for the same reason: a line
+    rule cannot tell a nested literal's closer from the end of the block, and
+    INDENTATION does not separate them either (the nested `},` sits at the same
+    column as the fields it follows). Depth counting is the only thing that
+    distinguishes them, so that is what this does.
+
+    String literals are blanked first: SQL text contains no unbalanced braces, but
+    a Rust format string in the block would, and counting those would desynchronise
+    the depth.
+    """
+    fields: list[tuple[str, int]] = []
+
+    # 1. Walk BACK to the line that opens the enclosing literal.
+    depth = 0
+    start = None
+    for j in range(anchor, max(-1, anchor - 80), -1):
+        for ch in reversed(strip_rust_strings(lines[j])):
+            if ch in ")]}":
+                depth += 1
+            elif ch in "([{":
+                depth -= 1
+        if depth < 0:
+            start = j
+            break
+    if start is None:
+        return fields
+
+    # 2. Walk FORWARD from that opener until its depth returns to zero.
+    depth = 0
+    for j in range(start, min(len(lines), start + 120)):
+        for ch in strip_rust_strings(lines[j]):
+            if ch in "([{":
+                depth += 1
+            elif ch in ")]}":
+                depth -= 1
+        if j >= anchor:
+            fm = FIELD_RE.match(lines[j])
+            if fm:
+                fields.append((fm.group(1), int(fm.group(2))))
+        if depth == 0 and j > start:
+            break
+    return fields
+
+
+def words_related(alias: str, field: str) -> bool:
+    """True when every word of `alias` appears in `field`, in any order.
+
+    A legitimate SQL alias and the Rust field it feeds may order their words
+    differently: `COALESCE(...) AS closed_count` populates `closed_shift_count`.
+    Suffix matching rejects that, which is a false positive; word containment
+    accepts it while still catching an alias naming a different quantity
+    (`AS shift_count` feeding `closed_shift_count` shares only `count`).
+    """
+    parts = [w for w in alias.split("_") if w]
+    if not parts:
+        return False
+    return all(w in field for w in parts)
+
+
 def scan(path: Path) -> tuple[list[str], list[str]]:
     text = path.read_text(encoding="utf-8", errors="replace")
     if any(m in text for m in TEMPLATE_MARKERS):
@@ -171,13 +293,18 @@ def scan(path: Path) -> tuple[list[str], list[str]]:
         # highest index the mapper reads. An inner subquery fails that length
         # test; an unrelated earlier query is never reached, because the nearest
         # candidate is examined first.
+        # The mapped fields, gathered by matching the STRUCT LITERAL's braces.
+        # A line-based walk cannot do this: a bare shorthand field (`sku,`) and a
+        # nested literal (`price: Money { ... },`) are both neither a `row.get` nor
+        # the end of the block, and indentation does not separate the nested closer
+        # from the fields. See `collect_mapped_fields`.
+        fields = collect_mapped_fields(lines, i)
+        if len(fields) < 3:
+            continue
+
         want = 0
-        for j in range(i, min(len(lines), i + 25)):
-            fm = FIELD_RE.match(lines[j])
-            if fm:
-                want = max(want, int(fm.group(2)) + 1)
-            elif want:
-                break
+        for _name, _idx in fields:
+            want = max(want, _idx + 1)
 
         cols: list[str] = []
         for j in range(i, max(-1, i - 80), -1):
@@ -197,28 +324,33 @@ def scan(path: Path) -> tuple[list[str], list[str]]:
         if len(cols) < 3:
             continue
 
-
-        fields: list[tuple[str, int]] = []
-        for j in range(i, min(len(lines), i + 25)):
-            fm = FIELD_RE.match(lines[j])
-            if fm:
-                fields.append((fm.group(1), int(fm.group(2))))
-            elif fields:
-                break
-        if len(fields) < 3:
-            continue
-
         bad: list[str] = []
         for name, idx in fields:
             if idx >= len(cols):
                 bad.append(f"{name}[{idx}] reads past the projection ({len(cols)} columns)")
                 continue
             col = cols[idx]
-            if re.search(r"\bAS\b", col, re.IGNORECASE):
-                continue  # an explicit alias is a deliberate rename
-            base = column_base(col)
+            # AN ALIASED COLUMN IS NOW CHECKED AGAINST ITS OWN ALIAS, which closes
+            # the blind spot the docstring used to record as uncovered. Skipping
+            # every aliased column entirely meant a reordered aliased projection went
+            # unreported -- the gate's whole purpose, defeated by an unrelated
+            # exemption. The ALIAS is the author's stated intent for that index, so
+            # comparing the field to the alias is exactly as sound as comparing it to
+            # a bare column name, and it still tolerates the legitimate renames
+            # (`closed_count` -> `closed_shift_count`).
+            alias = re.search(r"\bAS\s+([A-Za-z_][A-Za-z0-9_]*)", col, re.IGNORECASE)
+            base = alias.group(1).lower() if alias else column_base(col)
             lname = name.lower()
             if base.endswith(lname) or lname.endswith(base):
+                continue
+            if alias and words_related(base, lname):
+                # An ALIAS is checked by its WORDS, not by suffix. A legitimate
+                # rename may reorder them: `AS closed_count` feeding
+                # `closed_shift_count` interleaves `closed` + `shift` + `count`, so
+                # neither is a suffix of the other and a suffix rule reports it as a
+                # defect -- a false positive loud enough to get the gate ignored.
+                # Requiring the alias's words to all appear in the field accepts that
+                # rename while still catching a genuinely different alias.
                 continue
             if any(lname == f and base == c for f, c in KNOWN_RENAMES):
                 continue
@@ -238,11 +370,91 @@ def scan(path: Path) -> tuple[list[str], list[str]]:
     return findings, acked
 
 
+def _self_test() -> int:
+    """Prove the block walker on the two shapes that broke the previous one.
+
+    This checker shipped a clean report over a REAL misalignment because its walk
+    stopped at the first line that was not a `row.get`. The repair is brace
+    matching, and this pins that -- a self-test is the only way to show the walker
+    still does the thing the fix was for, since the live corpus happens to be
+    aligned and an exit-0 run proves nothing about the walker.
+    """
+    cases: list[tuple[str, list[str], list[tuple[str, int]]]] = []
+
+    # The regression: a bare shorthand field BEFORE a nested struct literal. The old
+    # line-walk stopped at the shorthand and never reached `image_hash`.
+    cases.append((
+        "a shorthand and a nested literal do not stop the walk",
+        [
+            "    let rows = items",
+            "        .into_iter()",
+            "        .map(|row| Thing {",
+            "            sku,",
+            "            name: row.get(0)?,",
+            "            price: Money {",
+            "                minor_units: row.get(1)?,",
+            "                currency: row.get(2)?,",
+            "            },",
+            "            image_hash: row.get(3)?,",
+            "        })",
+        ],
+        [("name", 0), ("minor_units", 1), ("currency", 2), ("image_hash", 3)],
+    ))
+
+    # The plain case must still work -- a repair that fixed the hard shape by
+    # breaking the easy one would pass the first case alone.
+    cases.append((
+        "a plain mapper still collects every field",
+        [
+            "        Thing {",
+            "            a: row.get(0)?,",
+            "            b: row.get(1)?,",
+            "        },",
+        ],
+        [("a", 0), ("b", 1)],
+    ))
+
+    bad = 0
+    for name, lines, want in cases:
+        anchor = next(i for i, l in enumerate(lines) if "row.get(" in l)
+        got = collect_mapped_fields(lines, anchor)
+        ok = got == want
+        if not ok:
+            bad += 1
+            print("  %-52s FAIL" % name)
+            print("      want %s" % want)
+            print("      got  %s" % got)
+        else:
+            print("  %-52s ok" % name)
+    print("SELF-TEST %s (%d cases, no files touched)"
+          % ("FAILED" if bad else "OK", len(cases)))
+    return 1 if bad else 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="Check positional row-mapper alignment")
-    ap.add_argument("--roots", nargs="+",
-                    default=["crates/kasirmu-core/src", "crates/kasirmu-bridge/src"])
+    ap.add_argument(
+        "--self-test",
+        action="store_true",
+        help="prove the block walker on both directions, touch no files",
+    )
+    ap.add_argument(
+        "--roots",
+        nargs="+",
+        # The WHOLE workspace, not a chosen subset. The default used to name three
+        # directories, and `modules` was added to it only after a real misalignment
+        # was found there by hand -- the gate had never scanned that tree at all.
+        # A default that has to be widened after each miss makes coverage a thing
+        # someone remembers rather than a property of the tool, and both callers
+        # (`scripts/check.sh`, `dev-ci.yml#static-gates`) invoke this with no
+        # `--roots`, so the default IS the coverage. Any directory holding row.
+        # mappers belongs here; `tests/` dirs are excluded by the file walk below.
+        default=["crates", "apps", "platform", "modules"],
+    )
     args = ap.parse_args()
+
+    if args.self_test:
+        return _self_test()
 
     files: list[Path] = []
     missing: list[str] = []

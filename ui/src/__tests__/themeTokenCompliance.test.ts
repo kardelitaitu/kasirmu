@@ -3241,6 +3241,14 @@ const LINE_HEIGHT_LITERAL_BASELINE: Array<[string, string, number]> = [
   ["1", "ui/src/features/inventory/StockAlertPanel.css", 1],
   ["1", "ui/src/features/kds/components/KdsProductPickerModal.css", 1],
   ["1.35", "ui/src/features/kds/components/ModifierBadge.css", 1],
+  // 1.35 in this sheet (RestaurantSettingsScreens.css:1312/1380/1433, the compact
+  // payment-card typography from peer commit 011600489) is NOT a new value on the
+  // scale -- ModifierBadge.css above already freezes 1.35, so the step is
+  // established and this is a fourth site of an existing one. Listed, not
+  // invented: the parked-item rule asks a human to pick a step when one does
+  // not exist, and this one does.
+  ["1.35", "ui/src/features/restaurant/screens/RestaurantSettingsScreens.css", 3],
+
   ["1", "ui/src/features/kds/KdsScreen.css", 2],
   ["1.2", "ui/src/features/kds/KdsScreen.css", 1],
   ["1.3", "ui/src/features/kds/KdsScreen.css", 1],
