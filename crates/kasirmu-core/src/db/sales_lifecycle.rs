@@ -220,12 +220,26 @@ impl Store<'_> {
             resolutions.iter().map(|r| (r.sku.as_str(), r)).collect();
 
         // Resolve primary/default location once for non-resolution lines.
+        //
+        // PROPAGATES rather than falling back, matching all four bridge callers
+        // (`bridge/pos/checkout.rs:441,572,764,822`, `bridge/pos/cart.rs:152,157`),
         let primary_location = crate::location_resolver::resolve_primary_location(
             &tx,
             workspace_instance_id.unwrap_or("default"),
             None,
-        )
-        .unwrap_or_else(|_| crate::location_resolver::get_default_location_id());
+        )?;
+        //
+        // `?` where all four bridge callers also use it. An earlier
+        // `.unwrap_or_else(|_| get_default_location_id())`
+        // made a FAILED resolve indistinguishable from an unbound workspace, so the
+        // deduction below was applied to the CANONICAL DEFAULT location instead of the
+        // one this workspace is bound to — silently, inside a committed transaction.
+        //
+        // The distinction that matters: tier 4 IS the documented fall-through for a
+        // workspace with genuinely no binding, and `resolve_primary_location` still
+        // returns it for that case. Only an ERROR reaches this line, and an error is
+        // not "unbound" — it means the binding could not be read, so the store must
+        // refuse rather than deduct somewhere arbitrary.
 
         for line in &sale.lines {
             // Check product info to determine if this line tracks inventory.

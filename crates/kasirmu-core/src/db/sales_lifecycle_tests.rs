@@ -11,7 +11,32 @@ use crate::{Cart, CartLine, Sku};
 use rusqlite::Connection;
 
 fn fresh() -> Connection {
-    migrations::fresh_db()
+    // `seed_provisioned_baseline` is required, not optional polish: every caller in
+    // this file passes `None` for `workspace_instance_id`, which the door turns into
+    // the literal `"default"`, and `resolve_primary_location` now PROPAGATES a
+    // missing instance instead of falling back to the canonical default. Without
+    // this seed the door refuses with `NotFound { entity: "workspace_instance",
+    // id: "default" }` before it ever reaches the logic under test.
+    //
+    // The gap was invisible while that fallback existed — the same one-branch gap
+    // that hid the tier-3 swallows one commit earlier — so the seed is also what
+    // makes these tests exercise the REAL resolve path rather than a degraded one.
+    // Same shape as `inventory_seam_tests.rs:6-11`, which seeded it from the start.
+    let conn = migrations::fresh_db();
+    migrations::seed_provisioned_baseline(&conn);
+    // Plus a workspace instance whose id is literally `default`, because that is
+    // what `complete_sale_with_resolved_shortfalls` is called with here (`None`
+    // becomes this literal, `sales_lifecycle.rs:225`). `seed_provisioned_baseline`
+    // seeds `default-restaurant-pos` and friends but NOT a bare `default`, so
+    // without this row the resolve fails — which is exactly what the door used to
+    // hide by falling back to the canonical default location.
+    conn.execute(
+        "INSERT INTO workspace_instances (id, type_key, location_id, name, status, last_accessed_at) \
+         VALUES ('default', 'store-pos', 'default', 'Default', 'active', '2025-01-01T00:00:00.000Z')",
+        [],
+    )
+    .expect("seed the literal 'default' workspace instance these tests resolve");
+    conn
 }
 
 fn store(conn: &Connection) -> Store<'_> {
