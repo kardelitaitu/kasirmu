@@ -6,7 +6,7 @@
  * commands using the `smtp_config` settings key as JSON.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Localized, useLocalization } from '@fluent/react';
 import { Card } from '@/components/Card';
 import { Button } from '@/components/Button';
@@ -85,15 +85,29 @@ export default function EmailReportSettings() {
   const [scheduleLoading, setScheduleLoading] = useState(true);
   const [scheduleSaving, setScheduleSaving] = useState(false);
 
+  // Guarded. The note above records that the deps were changed to [sessionToken] so a
+  // store switch re-fetches instead of showing the previous SMTP config -- correct, and
+  // incomplete: re-fetching on that dependency is exactly what makes two reads OVERLAP.
+  // The latch was never added, so a slower earlier response lands last and shows the
+  // previous store again, by a different route.
+  //
+  // THE CONSEQUENCE IS CREDENTIALS. `saveConfig` (:134) writes the CONFIG STATE that was
+  // just rendered, so a stale read does not merely display the wrong host -- it can
+  // persist the previous store SMTP host, username and password over this one.
+  const configSeqRef = useRef(0);
   const loadConfig = useCallback(async () => {
+    const seq = ++configSeqRef.current;
+    const stale = () => configSeqRef.current !== seq;
     try {
       const raw = await getSettingScoped(sessionToken ?? null, SMTP_CONFIG_KEY);
       if (raw) {
         const loaded = JSON.parse(raw) as Partial<SmtpConfigDto>;
         // Report the secret, never echo it: the field stays empty and the
         // placeholder shows bullets instead of pretending nothing is stored.
+        if (stale()) return;
         setHasStoredPassword(Boolean(loaded.password));
         const { password: _echoed, ...rest } = loaded;
+        if (stale()) return;
         setConfig({ ...DEFAULT_SMTP, ...rest });
       }
     } catch {
@@ -110,7 +124,13 @@ export default function EmailReportSettings() {
   useEffect(() => { loadConfig(); }, [loadConfig]);
 
   // ── Load schedule config ───────────────────────────────────────────
+  // Same latch as loadConfig above, for the same reason: the deps name sessionToken,
+  // so a store switch overlaps two reads. `saveSchedule` (:188) writes the schedule
+  // state this read populated, so a stale one can be persisted.
+  const scheduleSeqRef = useRef(0);
   const loadSchedule = useCallback(async () => {
+    const seq = ++scheduleSeqRef.current;
+    const stale = () => scheduleSeqRef.current !== seq;
     try {
       // ADR #7 conditional scoping. get_report_schedule_scoped enforces REPORTS_SCHEDULE; the
       // unscoped command checks nothing, while the save path in this same screen already
@@ -121,7 +141,7 @@ export default function EmailReportSettings() {
       // getReportSchedule returns null when no schedule exists yet
       // (Tauri IPC resolves with null for unset data). Guard against
       // overwriting the initial default values with null.
-      if (sched) setSchedule(sched);
+      if (sched && !stale()) setSchedule(sched);
     } catch {
       // Use defaults
     } finally {
