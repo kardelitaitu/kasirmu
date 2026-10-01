@@ -1548,6 +1548,11 @@ pub fn run() {
             // Local payment methods (slice 6, saas-2 design).
             commands::local_payment::get_local_payment_methods_scoped,
             commands::local_payment::set_local_payment_methods_scoped,
+            // Payment gateway configuration CRUD.
+            commands::local_payment::get_payment_gateway_config_scoped,
+            commands::local_payment::list_payment_gateways_scoped,
+            commands::local_payment::set_payment_gateway_config_scoped,
+            commands::local_payment::delete_payment_gateway_scoped,
             // Receipt format (receipt-format axis, saas-2 design).
             commands::receipt_format::get_receipt_format_scoped,
             commands::receipt_format::set_receipt_layout_scoped,

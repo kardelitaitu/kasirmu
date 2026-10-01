@@ -216,3 +216,50 @@ fn rail_args_still_accept_the_camelcase_alias() {
     assert_eq!(rails[0].rail_code, "va-bca");
     assert!(!rails[0].is_enabled);
 }
+
+#[tokio::test]
+async fn payment_gateway_bridge_roundtrip() {
+    let conn = crate::testing::temp_conn();
+    seed_owner(&conn);
+    let tb = flow_bridge(conn);
+    owner_session(&tb, "owner-tok");
+
+    let saved = set_payment_gateway_config_scoped(
+        &tb.ctx(),
+        SetPaymentGatewayArgs {
+            gateway_name: "midtrans".into(),
+            is_active: true,
+            config_json: r#"{"serverKey":"secret-123"}"#.into(),
+        },
+        "owner-tok",
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(saved.name, "midtrans");
+    assert!(saved.is_active);
+    assert_eq!(saved.config_json, r#"{"serverKey":"secret-123"}"#);
+
+    let loaded = get_payment_gateway_config_scoped(&tb.ctx(), "midtrans", "owner-tok")
+        .await
+        .unwrap()
+        .expect("found");
+    assert_eq!(loaded.name, "midtrans");
+    assert_eq!(loaded.config_json, r#"{"serverKey":"secret-123"}"#);
+
+    let list = list_payment_gateways_scoped(&tb.ctx(), "owner-tok")
+        .await
+        .unwrap();
+    assert_eq!(list.len(), 1);
+    assert_eq!(list[0].name, "midtrans");
+
+    let deleted = delete_payment_gateway_scoped(&tb.ctx(), "midtrans", "owner-tok")
+        .await
+        .unwrap();
+    assert!(deleted);
+
+    let after_delete = get_payment_gateway_config_scoped(&tb.ctx(), "midtrans", "owner-tok")
+        .await
+        .unwrap();
+    assert!(after_delete.is_none());
+}

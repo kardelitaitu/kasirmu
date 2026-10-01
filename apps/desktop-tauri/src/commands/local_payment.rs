@@ -79,3 +79,64 @@ pub async fn set_local_payment_methods_scoped(
     .await
     .map_err(Into::into)
 }
+
+pub use kasirmu_bridge::local_payment::{PaymentGatewayConfig, SetPaymentGatewayArgs};
+
+/// Read a single payment gateway configuration for the session's store.
+#[tauri::command]
+pub async fn get_payment_gateway_config_scoped(
+    gateway_name: String,
+    session_token: String,
+    state: State<'_, AppState>,
+) -> Result<Option<PaymentGatewayConfig>, AppError> {
+    let ctx = state.bridge_ctx();
+    kasirmu_bridge::local_payment::get_payment_gateway_config_scoped(
+        &ctx,
+        &gateway_name,
+        &session_token,
+    )
+    .await
+    .map_err(Into::into)
+}
+
+/// List all payment gateway configurations for the session's store.
+#[tauri::command]
+pub async fn list_payment_gateways_scoped(
+    session_token: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<PaymentGatewayConfig>, AppError> {
+    let ctx = state.bridge_ctx();
+    kasirmu_bridge::local_payment::list_payment_gateways_scoped(&ctx, &session_token)
+        .await
+        .map_err(Into::into)
+}
+
+/// Upsert a payment gateway configuration for the session's store.
+#[tauri::command]
+pub async fn set_payment_gateway_config_scoped(
+    args: SetPaymentGatewayArgs,
+    session_token: String,
+    state: State<'_, AppState>,
+) -> Result<PaymentGatewayConfig, AppError> {
+    let ctx = state.bridge_ctx();
+    kasirmu_bridge::local_payment::set_payment_gateway_config_scoped(&ctx, args, &session_token)
+        .await
+        .map_err(Into::into)
+}
+
+/// Delete a payment gateway configuration for the session's store.
+#[tauri::command]
+pub async fn delete_payment_gateway_scoped(
+    gateway_name: String,
+    session_token: String,
+    state: State<'_, AppState>,
+) -> Result<bool, AppError> {
+    let ctx = state.bridge_ctx();
+    kasirmu_bridge::local_payment::delete_payment_gateway_scoped(
+        &ctx,
+        &gateway_name,
+        &session_token,
+    )
+    .await
+    .map_err(Into::into)
+}

@@ -513,6 +513,9 @@ const LOCAL_API_SECRET_DOMAIN: &[u8] = b"oz-pos.local-api-secret.v1:";
 /// whole settings value.
 const CLOUD_EXPORT_AT_REST_DOMAIN: &[u8] = b"oz-pos.cloud-export-at-rest.v1:";
 
+/// Payment gateway credentials at-rest domain-separation prefix.
+const PAYMENT_GATEWAY_AT_REST_DOMAIN: &[u8] = b"kasirmu.payment-gateway-at-rest.v1:";
+
 // ── Machine-bound (API key / SMTP password) ──────────────────────────
 
 /// Encrypt an API key with a machine-bound key.
@@ -753,6 +756,28 @@ pub fn decrypt_cloud_export_secret(encrypted: &str) -> Result<String, CryptoErro
     }
 }
 
+/// Encrypt payment gateway configuration for at-rest storage (static key, portable).
+pub fn encrypt_payment_gateway_config(plaintext: &str) -> Result<String, CryptoError> {
+    let key = portable_key(PAYMENT_GATEWAY_AT_REST_DOMAIN, derive_static_key);
+    encrypt(plaintext, &key)
+}
+
+/// Decrypt payment gateway configuration previously encrypted with [`encrypt_payment_gateway_config`].
+///
+/// Legacy passthrough is format-gated: values that are not valid base64 or shorter than our
+/// nonce+tag minimum are treated as legacy plaintext and returned unchanged; values in our
+/// ciphertext format that fail decryption return an error.
+pub fn decrypt_payment_gateway_config(encrypted: &str) -> Result<String, CryptoError> {
+    match decrypt_with_candidates(
+        encrypted,
+        &candidate_keys(PAYMENT_GATEWAY_AT_REST_DOMAIN, derive_static_key),
+    ) {
+        Ok(plaintext) => Ok(plaintext),
+        Err(_) if !looks_like_ciphertext(encrypted) => Ok(encrypted.to_string()),
+        Err(e) => Err(e),
+    }
+}
+
 // ── Rotation: re-encrypting a row under the current key (C1 slice S2c) ──
 
 /// One install-key-derived at-rest family, for a rotation sweep.
@@ -789,6 +814,8 @@ pub enum AtRestFamily {
     /// A credential FIELD inside `settings.cloud_export_config`'s JSON blob:
     /// the BigQuery `service_account_key_b64` or the Snowflake `password`.
     CloudExportAtRest,
+    /// Gateway credentials in `payment_gateways.config_json`.
+    PaymentGatewayAtRest,
 }
 
 /// The signature every install-key derivation closure in this crate shares: a
@@ -817,6 +844,7 @@ impl AtRestFamily {
             Self::SmtpAtRest => (SMTP_AT_REST_DOMAIN, derive_static_key),
             Self::ProfileAtRest => (PROFILE_AT_REST_DOMAIN, derive_static_key),
             Self::CloudExportAtRest => (CLOUD_EXPORT_AT_REST_DOMAIN, derive_static_key),
+            Self::PaymentGatewayAtRest => (PAYMENT_GATEWAY_AT_REST_DOMAIN, derive_static_key),
         }
     }
 

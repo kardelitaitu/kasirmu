@@ -19,6 +19,10 @@ import {
   type EdcTerminalDto,
 } from '@/api/edc';
 import {
+  getPaymentGatewayConfigScoped,
+  setPaymentGatewayConfigScoped,
+} from '@/api/payment-gateways';
+import {
   isCoreRail,
   mergeCoreRails,
   computeRailsDirty,
@@ -433,6 +437,39 @@ export function RestaurantPaymentsScreen({
               // Ignore parse error, keep defaults
             }
           }
+
+          // Load payment gateway credentials (stored separately in payment_gateways)
+          try {
+            const [midtransGw, stripeGw] = await Promise.all([
+              getPaymentGatewayConfigScoped(sessionToken, 'midtrans').catch(() => null),
+              getPaymentGatewayConfigScoped(sessionToken, 'stripe').catch(() => null),
+            ]);
+            if (midtransGw) {
+              setMidtransLocalEnabled(midtransGw.isActive);
+              try {
+                const p = JSON.parse(midtransGw.configJson);
+                if (p.env === 'sandbox' || p.env === 'production') setMidtransEnv(p.env);
+                if (p.merchantId) setMidtransMerchantId(p.merchantId);
+                if (p.clientKey) setMidtransClientKey(p.clientKey);
+                if (p.serverKey) setMidtransServerKey(p.serverKey);
+              } catch {
+                // Ignore parse error
+              }
+            }
+            if (stripeGw) {
+              setStripeLocalEnabled(stripeGw.isActive);
+              try {
+                const p = JSON.parse(stripeGw.configJson);
+                if (p.mode === 'test' || p.mode === 'live') setStripeMode(p.mode);
+                if (p.publishableKey) setStripePublishableKey(p.publishableKey);
+                if (p.secretKey) setStripeSecretKey(p.secretKey);
+              } catch {
+                // Ignore parse error
+              }
+            }
+          } catch {
+            // Ignore error
+          }
         }
       } catch {
         addToast({
@@ -606,15 +643,76 @@ export function RestaurantPaymentsScreen({
       const tasks: Promise<unknown>[] = [];
 
       // 1. Save workspace / location payment rails
-      const payload: LocalPaymentRailArgs[] = drafts.map((d) => ({
-        rail_code: d.rail_code,
-        label: d.label,
-        is_enabled: d.is_enabled,
-        parameters: d.parameters,
-      }));
+      // Sanitize parameters so credentials are never stored in market rails
+      const payload: LocalPaymentRailArgs[] = drafts.map((d) => {
+        const lower = d.rail_code.toLowerCase();
+        let paramsObj: Record<string, unknown> = {};
+        try {
+          paramsObj = JSON.parse(d.parameters);
+        } catch {
+          paramsObj = {};
+        }
+
+        if (lower === 'midtrans') {
+          const clean: Record<string, unknown> = {};
+          if (paramsObj['channels']) clean['channels'] = paramsObj['channels'];
+          if (typeof paramsObj['autoConfirm'] === 'boolean') clean['autoConfirm'] = paramsObj['autoConfirm'];
+          return {
+            rail_code: d.rail_code,
+            label: d.label,
+            is_enabled: d.is_enabled,
+            parameters: JSON.stringify(clean),
+          };
+        }
+
+        if (lower === 'stripe') {
+          const clean: Record<string, unknown> = {};
+          if (paramsObj['reader']) clean['reader'] = paramsObj['reader'];
+          if (paramsObj['currency']) clean['currency'] = paramsObj['currency'];
+          return {
+            rail_code: d.rail_code,
+            label: d.label,
+            is_enabled: d.is_enabled,
+            parameters: JSON.stringify(clean),
+          };
+        }
+
+        return {
+          rail_code: d.rail_code,
+          label: d.label,
+          is_enabled: d.is_enabled,
+          parameters: d.parameters,
+        };
+      });
       tasks.push(setLocalPaymentMethodsScoped(sessionToken, locationId, payload));
 
-      // 2. Save hardware EDC default terminal preference
+      // 2. Save payment gateway credentials (encrypted at rest in payment_gateways)
+      tasks.push(
+        setPaymentGatewayConfigScoped(sessionToken, {
+          gatewayName: 'midtrans',
+          isActive: midtransLocalEnabled,
+          configJson: JSON.stringify({
+            merchantId: midtransMerchantId,
+            clientKey: midtransClientKey,
+            serverKey: midtransServerKey,
+            env: midtransEnv,
+          }),
+        }),
+      );
+
+      tasks.push(
+        setPaymentGatewayConfigScoped(sessionToken, {
+          gatewayName: 'stripe',
+          isActive: stripeLocalEnabled,
+          configJson: JSON.stringify({
+            publishableKey: stripePublishableKey,
+            secretKey: stripeSecretKey,
+            mode: stripeMode,
+          }),
+        }),
+      );
+
+      // 3. Save hardware EDC default terminal preference
       if (effectiveTerminalId && hw.profile) {
         hw.updateLocalPrefs({ defaultEdcTerminalId: defaultEdcTerminalId || undefined });
         tasks.push(hw.save());
@@ -649,6 +747,15 @@ export function RestaurantPaymentsScreen({
     effectiveTerminalId,
     hw,
     defaultEdcTerminalId,
+    midtransLocalEnabled,
+    midtransMerchantId,
+    midtransClientKey,
+    midtransServerKey,
+    midtransEnv,
+    stripeLocalEnabled,
+    stripePublishableKey,
+    stripeSecretKey,
+    stripeMode,
     onSaved,
     addToast,
     l10n,

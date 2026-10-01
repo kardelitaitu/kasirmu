@@ -33,6 +33,8 @@ const mocks = vi.hoisted(() => ({
   listEdc: vi.fn(),
   edcStatus: vi.fn(),
   hwSave: vi.fn(),
+  getGateway: vi.fn(),
+  setGateway: vi.fn(),
   localPrefsEdc: '' as string,
   profilePresent: true,
   sessionToken: 'tok-1' as string,
@@ -51,6 +53,13 @@ vi.mock('@/api/local-payment', async (importOriginal) => {
     setLocalPaymentMethodsScoped: (...args: unknown[]) => mocks.setMethods(...args),
   };
 });
+
+vi.mock('@/api/payment-gateways', () => ({
+  getPaymentGatewayConfigScoped: (...args: unknown[]) => mocks.getGateway(...args),
+  setPaymentGatewayConfigScoped: (...args: unknown[]) => mocks.setGateway(...args),
+  listPaymentGatewaysScoped: vi.fn().mockResolvedValue([]),
+  deletePaymentGatewayScoped: vi.fn().mockResolvedValue(true),
+}));
 
 vi.mock('@/api/edc', () => ({
   listEdcTerminalsScoped: (...args: unknown[]) => mocks.listEdc(...args),
@@ -142,6 +151,8 @@ beforeEach(() => {
   mocks.listEdc.mockReset();
   mocks.edcStatus.mockReset();
   mocks.hwSave.mockReset();
+  mocks.getGateway.mockReset();
+  mocks.setGateway.mockReset();
   mocks.localPrefsEdc = '';
   mocks.profilePresent = true;
   mocks.sessionToken = 'tok-1';
@@ -152,6 +163,8 @@ beforeEach(() => {
   mocks.listEdc.mockResolvedValue(EDC_TERMINALS);
   mocks.edcStatus.mockResolvedValue({ status: 'ready' });
   mocks.hwSave.mockResolvedValue(undefined);
+  mocks.getGateway.mockResolvedValue(null);
+  mocks.setGateway.mockResolvedValue({ id: 'gw-1' });
 });
 
 describe('RestaurantPaymentsScreen — loading & load error', () => {
@@ -422,6 +435,26 @@ describe('RestaurantPaymentsScreen — save, dirty state & back', () => {
       expect(onSaved).toHaveBeenCalledTimes(1);
     });
     expect(screen.getByText('Settings saved successfully')).toBeInTheDocument();
+  });
+
+  it('saves gateway credentials to setPaymentGatewayConfigScoped separately from market rails', async () => {
+    const user = await import('@testing-library/user-event').then((m) => m.default);
+    await renderScreen();
+    await screen.findByText('GoPay');
+
+    // Toggle midtrans -> dirty
+    const midtransSwitch = screen.getByRole('switch', { name: 'Midtrans Gateway' });
+    await user.click(midtransSwitch);
+
+    // Save
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => {
+      expect(mocks.setGateway).toHaveBeenCalledWith('tok-1', expect.objectContaining({
+        gatewayName: 'midtrans',
+        isActive: true,
+      }));
+    });
   });
 
   it('reports an error toast when the rail save rejects and does not call onSaved', async () => {

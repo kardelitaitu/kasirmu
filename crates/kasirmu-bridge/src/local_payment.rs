@@ -107,6 +107,91 @@ pub async fn set_local_payment_methods_scoped(
     Ok(store.local_payment_methods_for_location(location_id)?)
 }
 
+pub use kasirmu_core::db::payment_gateways::PaymentGatewayConfig;
+
+/// DTO for saving/updating a payment gateway configuration.
+#[derive(Debug, serde::Deserialize)]
+pub struct SetPaymentGatewayArgs {
+    /// Gateway name: "midtrans", "stripe", etc.
+    #[serde(alias = "gatewayName")]
+    pub gateway_name: String,
+    /// Whether the gateway is active.
+    #[serde(alias = "isActive")]
+    pub is_active: bool,
+    /// Configuration JSON string (plaintext credentials to be encrypted by core).
+    #[serde(alias = "configJson", default)]
+    pub config_json: String,
+}
+
+/// Read a single payment gateway configuration for the session's store.
+pub async fn get_payment_gateway_config_scoped(
+    ctx: &BridgeCtx<'_>,
+    gateway_name: &str,
+    session_token: &str,
+) -> Result<Option<PaymentGatewayConfig>, BridgeError> {
+    let (session, conn) = ctx.resolve_scope(session_token)?;
+    ctx.require_session_permission(&session, permissions::SETTINGS_READ)
+        .await?;
+    let conn = conn
+        .lock()
+        .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
+    let store = Store::new(&conn);
+    Ok(store.get_payment_gateway("default", gateway_name)?)
+}
+
+/// List all payment gateway configurations for the session's store.
+pub async fn list_payment_gateways_scoped(
+    ctx: &BridgeCtx<'_>,
+    session_token: &str,
+) -> Result<Vec<PaymentGatewayConfig>, BridgeError> {
+    let (session, conn) = ctx.resolve_scope(session_token)?;
+    ctx.require_session_permission(&session, permissions::SETTINGS_READ)
+        .await?;
+    let conn = conn
+        .lock()
+        .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
+    let store = Store::new(&conn);
+    Ok(store.list_payment_gateways("default")?)
+}
+
+/// Upsert a payment gateway configuration for the session's store.
+pub async fn set_payment_gateway_config_scoped(
+    ctx: &BridgeCtx<'_>,
+    args: SetPaymentGatewayArgs,
+    session_token: &str,
+) -> Result<PaymentGatewayConfig, BridgeError> {
+    let (session, conn) = ctx.resolve_scope(session_token)?;
+    ctx.require_session_permission(&session, permissions::SETTINGS_EDIT)
+        .await?;
+    let conn = conn
+        .lock()
+        .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
+    let store = Store::new(&conn);
+    let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+    let input = kasirmu_core::db::payment_gateways::UpsertPaymentGateway {
+        name: args.gateway_name,
+        is_active: args.is_active,
+        config_json: args.config_json,
+    };
+    Ok(store.upsert_payment_gateway("default", &input, &now)?)
+}
+
+/// Delete a payment gateway configuration for the session's store.
+pub async fn delete_payment_gateway_scoped(
+    ctx: &BridgeCtx<'_>,
+    gateway_name: &str,
+    session_token: &str,
+) -> Result<bool, BridgeError> {
+    let (session, conn) = ctx.resolve_scope(session_token)?;
+    ctx.require_session_permission(&session, permissions::SETTINGS_EDIT)
+        .await?;
+    let conn = conn
+        .lock()
+        .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
+    let store = Store::new(&conn);
+    Ok(store.delete_payment_gateway("default", gateway_name)?)
+}
+
 #[cfg(test)]
 #[path = "local_payment_tests.rs"]
 mod tests;
