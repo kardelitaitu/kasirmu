@@ -225,6 +225,26 @@ describe('RestaurantPaymentsScreen — rails list & toggles', () => {
     expect(cardToggle).toBeChecked();
     expect(saveBtn).toBeEnabled();
   });
+
+  it('toggles Cash and QRIS off and back on', async () => {
+    const user = await import('@testing-library/user-event').then((m) => m.default);
+    await renderScreen();
+    await screen.findByText('Cash');
+
+    const cashToggle = screen.getByRole('switch', { name: 'Cash' });
+    expect(cashToggle).toBeChecked();
+    await user.click(cashToggle);
+    expect(cashToggle).not.toBeChecked();
+
+    const qrisToggle = screen.getByRole('switch', { name: 'QRIS' });
+    expect(qrisToggle).toBeChecked();
+    await user.click(qrisToggle);
+    expect(qrisToggle).not.toBeChecked();
+
+    // Toggle back on
+    await user.click(cashToggle);
+    expect(cashToggle).toBeChecked();
+  });
 });
 
 describe('RestaurantPaymentsScreen — QRIS static QR card', () => {

@@ -101,12 +101,17 @@ export function RestaurantPaymentsScreen({
   const hw = useTerminalHardware(effectiveTerminalId);
 
   const [locationId, setLocationId] = useState<string | null>(null);
-  const [drafts, setDrafts] = useState<DraftRail[]>([]);
+  const [drafts, setDrafts] = useState<DraftRail[]>(() => mergeCoreRails([]));
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [edcTerminals, setEdcTerminals] = useState<EdcTerminalDto[]>([]);
   const [defaultEdcTerminalId, setDefaultEdcTerminalId] = useState('');
   const [testingEdc, setTestingEdc] = useState(false);
+
+  // Fallback states for UI toggling
+  const [cashLocalEnabled, setCashLocalEnabled] = useState(true);
+  const [qrisLocalEnabled, setQrisLocalEnabled] = useState(true);
+  const [cardLocalEnabled, setCardLocalEnabled] = useState(false);
 
   // ── UI States for Expanded Payment Cards ──────────────────────
   // Cash
@@ -232,24 +237,37 @@ export function RestaurantPaymentsScreen({
   };
 
   const handleToggleCode = (code: string, checked: boolean) => {
-    const idx = drafts.findIndex((d) => d.rail_code.toLowerCase() === code.toLowerCase());
-    if (idx >= 0) {
-      handleToggleRail(idx, checked);
-    } else {
-      if (code === 'midtrans') {
-        setMidtransLocalEnabled(checked);
-        setDrafts((prev) => [
-          ...prev,
-          { rail_code: 'midtrans', label: 'Midtrans Gateway', is_enabled: checked, parameters: '{}' },
-        ]);
-      } else if (code === 'stripe') {
-        setStripeLocalEnabled(checked);
-        setDrafts((prev) => [
-          ...prev,
-          { rail_code: 'stripe', label: 'Stripe Processing', is_enabled: checked, parameters: '{}' },
-        ]);
+    const lower = code.toLowerCase();
+    if (lower === 'cash') setCashLocalEnabled(checked);
+    if (lower === 'qris') setQrisLocalEnabled(checked);
+    if (lower === 'card') setCardLocalEnabled(checked);
+    if (lower === 'midtrans') setMidtransLocalEnabled(checked);
+    if (lower === 'stripe') setStripeLocalEnabled(checked);
+
+    setDrafts((prev) => {
+      const idx = prev.findIndex((d) => d.rail_code.toLowerCase() === lower);
+      if (idx >= 0) {
+        const copy = [...prev];
+        copy[idx] = { ...copy[idx]!, is_enabled: checked };
+        return copy;
       }
-    }
+      const labelMap: Record<string, string> = {
+        cash: 'Cash',
+        qris: 'QRIS',
+        card: 'Card / EDC Terminal',
+        midtrans: 'Midtrans Gateway',
+        stripe: 'Stripe Processing',
+      };
+      return [
+        ...prev,
+        {
+          rail_code: lower,
+          label: labelMap[lower] || code,
+          is_enabled: checked,
+          parameters: '{}',
+        },
+      ];
+    });
   };
 
   const handleStaticQrChange = (value: string) => {
@@ -476,7 +494,7 @@ export function RestaurantPaymentsScreen({
               badge="Core Method"
               badgeVariant="primary"
               icon={<CashIcon />}
-              enabled={cashDraft ? cashDraft.is_enabled : true}
+              enabled={cashDraft ? cashDraft.is_enabled : cashLocalEnabled}
               onToggle={(enabled) => handleToggleCode('cash', enabled)}
               isCore={true}
             >
@@ -562,7 +580,7 @@ export function RestaurantPaymentsScreen({
               badge="National QR"
               badgeVariant="success"
               icon={<QrisIcon />}
-              enabled={qrisDraft ? qrisDraft.is_enabled : true}
+              enabled={qrisDraft ? qrisDraft.is_enabled : qrisLocalEnabled}
               onToggle={(enabled) => handleToggleCode('qris', enabled)}
               isCore={true}
               mountBodyWhenCollapsed={false}
@@ -668,7 +686,7 @@ export function RestaurantPaymentsScreen({
               badge="Hardware Terminal"
               badgeVariant="primary"
               icon={<EdcIcon />}
-              enabled={cardDraft ? cardDraft.is_enabled : false}
+              enabled={cardDraft ? cardDraft.is_enabled : cardLocalEnabled}
               onToggle={(enabled) => handleToggleCode('card', enabled)}
               isCore={true}
               mountBodyWhenCollapsed={true}
