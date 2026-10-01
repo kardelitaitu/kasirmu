@@ -71,6 +71,20 @@ export default function WarehouseCountFlow({ sessionToken, locationId, onComplet
   // Scan input
   const [scanInput, setScanInput] = useState('');
   const scanRef = useRef<HTMLInputElement>(null);
+  // Serialises scans of the SAME line. The count-line update is an ABSOLUTE
+  // write (`update_count_line` SETs counted_qty, and the bridge copies
+  // `args.counted_qty` straight through), so the client has to read-modify-write
+  // `counted + 1` from the `lines` array. Two scans that overlap before the first
+  // `await loadLines()` returns both read the same `counted_qty` and the second
+  // write silently discards one count -- on a PHYSICAL stock count, which then
+  // feeds an inventory adjustment. Barcode scanners fire faster than a round
+  // trip, so this is reachable in normal use.
+  //
+  // A per-line in-flight set, not a global busy flag: scanning two DIFFERENT
+  // products concurrently is fine and must not be serialised, and the ref is
+  // mutated (not state) so the guard never triggers a re-render or an await on
+  // a stale closure.
+  const scansInFlight = useRef(new Set<string>());
 
   const loadCounts = useCallback(async () => {
     if (!sessionToken) return;
@@ -172,6 +186,10 @@ export default function WarehouseCountFlow({ sessionToken, locationId, onComplet
         return;
       }
       const existing = lines.find((l) => l.sku === product.sku);
+      // Skip a scan for a line whose previous increment is still in flight; the
+      // counter would otherwise be read stale and the +1 lost.
+      if (existing && scansInFlight.current.has(product.sku)) return;
+      if (existing) scansInFlight.current.add(product.sku);
       try {
         if (existing) {
           // Scan again = +1 counted
@@ -191,6 +209,11 @@ export default function WarehouseCountFlow({ sessionToken, locationId, onComplet
         await loadLines();
       } catch (err) {
         addToast({ type: 'error', message: l10nErrorMessage(err, l10n, 'warehouse-count-error') });
+      } finally {
+        // Released in `finally`, not after the success path: a failed increment
+        // must not leave the SKU locked out of scanning for the rest of the
+        // session, which would silently drop real counts.
+        if (existing) scansInFlight.current.delete(product.sku);
       }
     },
     [sessionToken, activeCount, products, lines, loadLines, l10n, addToast],
