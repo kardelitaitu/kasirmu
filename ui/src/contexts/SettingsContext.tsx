@@ -206,17 +206,41 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
   const mountedRef = useRef(true);
   // A monotonic token, so only the LATEST load may write into `settings`.
   //
-  // THIS IS THE FOURTH FIX FOR ONE SHAPE, and the shape has no gate. The first
-  // three: CurrencyContext.refresh (51c86e9e8), BrandContext
-  // .refreshBrandSettings (184fcc75e) and ShiftBar's location/shift load
-  // (88415f10f) -- the last because the stale location id is what
-  // `start_inventory_shift` receives and core never checks it belongs to the
-  // store. In every case an effect whose dependency list names sessionToken
-  // re-ran on a store switch, two reads overlapped, and the slower landed last.
+  // THIS IS ONE OF TWELVE FIXES FOR ONE SHAPE, and the shape has no gate. In every
+  // case an effect whose dependency list names sessionToken re-ran on a store
+  // switch, two reads overlapped, and the slower landed last.
+  //
+  // THE TWELVE, with their coverage as of round 117. "Pinned" means a mutation was
+  // run: the guard was deleted and the suite went red.
+  //
+  //   51c86e9e8 CurrencyContext.refresh          pinned (80d5c121c)
+  //   09ac4df43 SettingsContext loadAll/loadScoped pinned (8593d76ca)
+  //   184fcc75e BrandContext.refreshBrandSettings pinned (184fcc75e, same commit)
+  //   88415f10f ShiftBar locations/shift         pinned (round 79)
+  //   760e0c8da PosScreen receipt settings       pinned (bffa33fd7)
+  //   760e0c8da PosScreen course firing         pinned (14295df1a re-verified)
+  //   1b0f0fb3a StockTransfersScreen.openDetail pinned (0900ba1eb, re-verified r117)
+  //   1aead7518 usePosShifts                     pinned (5bbef0162)
+  //   116803906 RetailPosScreen shift            pinned (14295df1a)
+  //   eee76b542 RetailPosScreen currency         pinned (4ccb51020)
+  //   ac8910736 EmailReportSettings SMTP         pinned (fbf28503d)
+  //   e19e412e4 useKdsPreferences localStorage   pinned (e139c2135)
+  //   bb279c34d ExchangeRateScreen rate-sync      DEAD END, recorded in place
+  //
+  // The one dead end is honest rather than open: three attempts survived, the
+  // reconciliation failure is written up at its guard, and the next step there is to
+  // read the state transition directly instead of inferring it from the DOM.
   //
   // IF YOU WRITE A NEW ONE, the test must make the stale read resolve with
   // DISTINCTLY DIFFERENT values. Returning the same ones makes the test pass with
   // the guard REMOVED -- that cost two mutations each in Currency and Settings.
+  //
+  // ALSO MEASURED ACROSS THIS CAMPAIGN, because each cost a round: a mock that
+  // captures the token BY VALUE rather than through a getter never sees a switch; a
+  // test that leaves the token mutated makes the next case's switch a silent NO-OP;
+  // and a read mocked once is consumed by the first call, so the token-switch
+  // re-issue falls through to the default. All three make a test pass without racing
+  // anything.
   //
   // A gate was attempted and deliberately NOT shipped: scanning ui/src for the
   // shape reports 41 sites, most of them false positives (a `setInterval` inside a
