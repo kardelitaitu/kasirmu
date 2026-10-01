@@ -1568,6 +1568,20 @@
         "job": "static-gates"
       },
       "_note": "Added 2026-10-03 (Phase 3 P3.4 of the modular-scaffolding plan, section 11.1). The plan's boundary rule for extraction has a number: crates/kasirmu-core must not grow as modules move out. Without a measured ceiling the extraction is reversible by accident -- new logic lands back in core and nothing notices, because a codebase that is 'smaller than yesterday' has no yesterday. scripts/verify-core-size.py counts NON-BLANK production lines under crates/kasirmu-core/src, excluding whole test files (*_tests.rs, tests.rs, any tests/ directory) and inline #[cfg(test)] mod blocks, with comments and string bodies masked first; scripts/core-size-baseline.json records the ceiling (36590 across 176 files). The checker FAILS when the count rises above the ceiling and reports the headroom when it falls, so LOWERING the ceiling is a deliberate edit in a commit that says why -- exactly how a retired namespace edge leaves scripts/namespace-governance-baseline.json. Mutation-proven: adding three production lines to crates/kasirmu-core/src/audit.rs fails with +3, removing them passes. The self-test is a separate step because verify-selftests-wired.py is what keeps that pairing true."
+    },
+    {
+      "id": "merged-lines",
+      "label": "Merged source lines",
+      "status": "required",
+      "runners": {
+        "check.sh": [
+          "merged lines"
+        ]
+      },
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "static-gates"
+      }
     }
   ]
 }

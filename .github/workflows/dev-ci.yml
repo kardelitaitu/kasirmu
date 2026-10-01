@@ -1145,6 +1145,11 @@ jobs:
       # step -- see scripts/check-mapper-alignment.py for the record.
       - name: Mapper alignment
         run: python3 scripts/check-mapper-alignment.py
+      # A generator that joins a patch with no trailing element fuses its last
+      # line into the following code. The result compiles, lints and passes every
+      # suite, so nothing else here sees it -- see scripts/check-merged-lines.py.
+      - name: Merged source lines
+        run: python3 scripts/check-merged-lines.py
       # The COR-7 per-attempt idempotency rules exist TWICE -- the implementation
       # in kasirmu-bridge and a fork in the tablet shell -- and the fork drifted
       # into a security defect: only the bridge refused a colon in the attempt id,

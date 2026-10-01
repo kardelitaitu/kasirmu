@@ -433,6 +433,14 @@ step "client type drift self-test" "python3 scripts/check-client-type-drift.py -
 # Exits 2 on a refused --roots list, so a starved corpus never reads as clean.
 step "mapper alignment" "python3 scripts/check-mapper-alignment.py" python3 scripts/check-mapper-alignment.py
 
+# Merged source lines: a generator that joins a patch with no trailing element fuses
+# its last line into the following code (`const a = useRef(0);  useEffect(() => {`).
+# Syntactically valid, so eslint, tsc, the suites and all seven pre-commit steps pass.
+# Seen at least three times, once surviving in HEAD through later verification cycles
+# (3e352058b); each was found by reading, never by a check. Scanned 1339 files and
+# exited 0 on the commit that added it, so it starts green.
+step "merged lines" "python3 scripts/check-merged-lines.py" python3 scripts/check-merged-lines.py
+
 # COR-7 replay fork: the tablet shell re-implements the per-attempt idempotency
 # rules, and nothing checked the two copies. They drifted into a security defect --
 # the fork had no rejection for a colon in the attempt id, which is what keeps a
