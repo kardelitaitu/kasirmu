@@ -34,6 +34,27 @@ use rusqlite::{OptionalExtension, Transaction, TransactionBehavior};
 /// points formula is currency-naive (`total_minor * points_per_unit /
 /// 100`), so charging in a low-exponent currency would otherwise
 /// multiply the reward by the exchange rate.
+///
+/// WHAT "BASE TOTAL" COSTS, since the reason above is about currency and the
+/// consequence is about trust. `base_total_minor` is CLIENT-SUPPLIED
+/// (`CompleteSaleWithResolvedShortfallsArgs.base_total_minor`, copied straight
+/// in pos/checkout.rs:427) and no server read re-derives it -- the server
+/// re-derives `sale.total` but not this. It is stored faithfully: SQLite
+/// `INTEGER` is an AFFINITY, not a 32-bit cap, so an i64 round-trips exactly
+/// (verified against the real schema). So a client claiming i64::MAX stores
+/// i64::MAX, and the award chain saturates on it twice rather than refusing:
+/// `saturating_mul(points_per_unit)` in earn_points_with_conn
+/// (`loyalty.rs:677`), then `i64::try_from(q).unwrap_or(i64::MAX)` at
+/// `loyalty.rs:48`. The customer is awarded a maximum-tier point total.
+///
+/// The sibling use of the SAME value is safe by comparison:
+/// `accrue_lifetime_spend_in_tx` is a plain SQL `total_spent_minor + ?1`, so
+/// SQLite RAISES on overflow and the `tracing::warn!` below reports it. Same
+/// input, opposite outcome.
+///
+/// Not fixed here: bounding `base_total_minor` needs a real sale ceiling, and
+/// none is defined in the schema or the engine. Guessing one would refuse
+/// legitimate large sales, which is a worse failure than the current one.
 fn apply_customer_stats_on_completion(tx: &rusqlite::Transaction<'_>, sale_id: &str) {
     let sale_row = tx.query_row(
         "SELECT customer_id, base_total_minor, total_minor FROM sales WHERE id = ?1",
