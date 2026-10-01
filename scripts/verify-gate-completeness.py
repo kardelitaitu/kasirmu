@@ -86,6 +86,20 @@ def check_steps(text: str) -> list[str]:
 
 WORKFLOWS = ROOT / ".github" / "workflows"
 
+# The complete field vocabulary of a gate record, and of its two sub-objects. Derived by
+# enumerating what the manifest actually uses, then frozen here ON PURPOSE: the point is
+# that adding a field requires editing this list, because an unrecognised key is how a
+# claim goes missing without anything reporting it. Round 154 measured the failure --
+# renaming `runners` to `runner` on one gate dropped its label from the declared set
+# (166 -> 164), left the step it backed claimed by nothing, and EVERY checker still
+# exited 0. A field is unvalidated by definition until something reads it.
+GATE_FIELDS = frozenset({
+    "id", "label", "status", "runners", "ci", "self_test",
+    "note", "_note", "_runner_note", "_parser_note",
+})
+RUNNER_FIELDS = frozenset({"check.sh", "check:all"})
+CI_FIELDS = frozenset({"workflow", "job", "step", "steps"})
+
 
 def workflow_jobs(text: str) -> set[str]:
     """Job keys of a workflow file: two-space-indented names under `jobs:`."""
@@ -129,10 +143,42 @@ def ci_claim_findings(manifest: dict) -> list[str]:
         if job not in workflow_jobs(text):
             out.append("%s: ci.job %r is not a job in %s" % (gate.get("id"), job, wf))
             continue
+        found = job_steps(text, job) or []
         step = ci.get("step")
-        if step and step not in (job_steps(text, job) or []):
+        if step and step not in found:
             out.append("%s: ci.step %r is not a step in %s/%s"
                        % (gate.get("id"), step, wf, job))
+        # `steps` (plural) is a LIST and is a different key, not a variant spelling:
+        # 18 gates use it to name several steps in one job. It went unchecked until
+        # round 154 -- this function read only the singular.
+        for one in (ci.get("steps") or []):
+            if one not in found:
+                out.append("%s: ci.steps %r is not a step in %s/%s"
+                           % (gate.get("id"), one, wf, job))
+    return out
+
+
+def schema_findings(manifest: dict) -> list[str]:
+    """Keys the manifest uses that no validator knows about.
+
+    The failure this catches, measured in round 154: renaming a gate key -- `runners` to
+    `runner` -- silently removes its runner claim. The label disappears from the declared
+    set, the step it backed becomes claimed by nothing, and every checker exits 0, because
+    an unknown key is simply not in any `get()` a validator performs.
+
+    A misspelled key and a deliberately new field are indistinguishable to a reader, so
+    both stop here: adding a field means adding it to the vocabulary above, which is the
+    moment to decide what validates it.
+    """
+    out: list[str] = []
+    for gate in manifest.get("gates", []):
+        gid = gate.get("id")
+        for key in sorted(set(gate) - GATE_FIELDS):
+            out.append("%s: unknown gate field %r" % (gid, key))
+        for key in sorted(set(gate.get("runners") or {}) - RUNNER_FIELDS):
+            out.append("%s: unknown runners.* key %r" % (gid, key))
+        for key in sorted(set(gate.get("ci") or {}) - CI_FIELDS):
+            out.append("%s: unknown ci.* key %r" % (gid, key))
     return out
 
 
@@ -235,6 +281,20 @@ def _self_test() -> int:
     ]
     # self_test claims, through the real function: it reads scripts/ from disk, so these
     # cases name scripts that genuinely exist rather than fabricated fixtures.
+    # Schema cases, on the defect round 154 measured: a renamed key removes a claim and
+    # every check still exits 0.
+    schema_cases: list[tuple[str, dict, int]] = [
+        ("a well-formed gate is clean",
+         {"id": "g", "label": "G", "status": "required", "runners": {"check.sh": ["x"]}}, 0),
+        ("a renamed runners key is a finding",
+         {"id": "g", "label": "G", "status": "required", "runner": {"check.sh": ["x"]}}, 1),
+        ("an unknown ci key is a finding",
+         {"id": "g", "label": "G", "status": "required", "ci": {"workflow": "w", "jobs": "j"}}, 1),
+        ("an unknown runners.* key is a finding",
+         {"id": "g", "label": "G", "status": "required", "runners": {"check.shh": ["x"]}}, 1),
+        ("ci.steps is a known key, not a typo of ci.step",
+         {"id": "g", "label": "G", "status": "required", "ci": {"workflow": "w", "job": "j", "steps": []}}, 0),
+    ]
     st_cases: list[tuple[str, str, int]] = [
         ("an accurate self_test command passes",
          "python3 scripts/verify-gate-completeness.py --self-test", 0),
@@ -269,6 +329,13 @@ def _self_test() -> int:
             print("  %-52s FAIL want=%d got=%d" % (name, want, got))
         else:
             print("  %-52s ok" % name)
+    for name, gate, want in schema_cases:
+        got = len(schema_findings({"gates": [gate]}))
+        if got != want:
+            bad += 1
+            print("  %-52s FAIL want=%d got=%d" % (name, want, got))
+        else:
+            print("  %-52s ok" % name)
     for name, command, want in st_cases:
         got = len(selftest_findings({"gates": [{"id": "under-test", "self_test": command}]}))
         if got != want:
@@ -277,7 +344,8 @@ def _self_test() -> int:
         else:
             print("  %-52s ok" % name)
     print("SELF-TEST %s (%d cases, no files touched)"
-          % ("FAILED" if bad else "OK", len(cases) + len(ci_cases) + len(st_cases)))
+          % ("FAILED" if bad else "OK",
+             len(cases) + len(ci_cases) + len(st_cases) + len(schema_cases)))
     return 1 if bad else 0
 
 
@@ -300,6 +368,7 @@ def main() -> int:
     missing = unclaimed(steps, labels)
     ci_bad = ci_claim_findings(manifest)
     st_bad = selftest_findings(manifest)
+    schema_bad = schema_findings(manifest)
 
     for name in missing:
         print("  unclaimed step: %r -- no gates.json row names it" % name)
@@ -307,17 +376,22 @@ def main() -> int:
         print("  bad ci claim: %s" % line)
     for line in st_bad:
         print("  bad self_test claim: %s" % line)
+    for line in schema_bad:
+        print("  unknown field: %s" % line)
     print("checked %d check.sh step(s) against %d declared runner label(s)"
           % (len(steps), len(labels)))
     print("checked the ci block of %d gate(s) against the workflow files"
           % sum(1 for g in manifest.get("gates", []) if (g.get("ci") or {}).get("job")))
     print("checked the self_test command of %d gate(s)"
           % sum(1 for g in manifest.get("gates", []) if g.get("self_test")))
-    if ci_bad or st_bad:
-        print("FAIL: %d bad ci claim(s) and %d bad self_test claim(s). The roster is the source"
-              " of truth for what runs a gate, so a wrong job name tells an auditor the gate is"
-              " enforced somewhere it is not, and an unreadable self_test command is a claim no"
-              " tool can falsify." % (len(ci_bad), len(st_bad)))
+    print("checked the field vocabulary: %d gate field(s), %d runners.* key(s), %d ci.* key(s)"
+          % (len(GATE_FIELDS), len(RUNNER_FIELDS), len(CI_FIELDS)))
+    if ci_bad or st_bad or schema_bad:
+        print("FAIL: %d bad ci claim(s), %d bad self_test claim(s), %d unknown field(s). A wrong"
+              " job name tells an auditor a gate is enforced somewhere it is not; an"
+              " unreadable self_test command is a claim no tool can falsify; and an UNKNOWN"
+              " field is worse than both, because a renamed key removes a claim silently --"
+              " every check still exits 0." % (len(ci_bad), len(st_bad), len(schema_bad)))
         return 1
     if missing:
         print("FAIL: %d step(s) no roster row claims. A step with no row is invisible "
