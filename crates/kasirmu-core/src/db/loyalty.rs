@@ -840,6 +840,13 @@ pub fn reverse_loyalty_on_refund(
     } else {
         0
     };
+    // Clamped BEFORE the subtraction, which is what keeps the `MAX(points - ?1, 0)`
+    // below from running the wrong way. A negative `deduct` would INCREASE points
+    // and lifetime_points instead of reversing them -- the defect
+    // `reverse_customer_spend_on_refund` carried until `e29c7b050`, where the same
+    // `MAX(x - ?1, 0)` shape was fed an unclamped caller value. Here the floor is
+    // applied at the source and the non-positive case returns early, so the
+    // subtraction is never handed a negative.
     let deduct = proportional.min(headroom).max(0);
     if deduct <= 0 {
         return Ok(None);
