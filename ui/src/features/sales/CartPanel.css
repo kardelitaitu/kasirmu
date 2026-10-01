@@ -420,7 +420,7 @@
   padding: var(--space-1) var(--space-2);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
-  background: var(--color-bg-secondary, rgba(0, 0, 0, 0.03));
+  background: var(--color-bg-secondary);
   color: var(--color-fg-primary);
   font-size: var(--text-sm);
   cursor: pointer;
@@ -428,7 +428,7 @@
 }
 
 .pos-cart-table-select-btn:hover {
-  background: var(--color-bg-hover, rgba(0, 0, 0, 0.06));
+  background: var(--color-bg-hover);
 }
 
 /* ── Footer wrapper (children live in CartPanelFooter.css) */

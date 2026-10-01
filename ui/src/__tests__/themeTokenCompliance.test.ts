@@ -3273,10 +3273,20 @@ const LINE_HEIGHT_LITERAL_BASELINE: Array<[string, string, number]> = [
   ["1.3", "ui/src/features/retail/RetailPosScreen.css", 1],
   ["1.4", "ui/src/features/retail/RetailPosScreen.css", 3],
   ["1.8", "ui/src/features/retail/RetailPosScreen.css", 1],
+  // Decision recorded 2026-10-01: `line-height: 1` on `.pos-cart-table-select-btn`
+  // is deliberate optical tightening, not a prose measure -- the control is a
+  // flex-centred button whose height is padding + content, and `normal` (~1.2)
+  // would grow it. No --leading-* step is 1, so deleting the declaration would be
+  // a visual change rather than a token adoption; it is listed here instead.
+  ["1", "ui/src/features/sales/CartPanel.css", 1],
   ["1.4", "ui/src/features/sales/CartPanel.css", 2],
   ["1", "ui/src/features/sales/CartPanelCourseBar.css", 2],
   ["1", "ui/src/features/sales/CartPanelFooterTotals.css", 1],
-  ["1.3", "ui/src/features/sales/CartPanelLineItem.css", 1],
+  // 1 -> 3 on 2026-10-01: the sales lane added two more 1.3 declarations
+  // (:163, :486) beside the original at :541. 1.3 is not a --leading-* step
+  // (condensed 1.2 / tight 1.25 / snug 1.4 / normal 1.5 / relaxed 1.625), so
+  // there is no token to adopt and the freeze is restated instead.
+  ["1.3", "ui/src/features/sales/CartPanelLineItem.css", 3],
   ["1.6", "ui/src/features/sales/EodReportScreen.css", 1],
   ["1", "ui/src/features/sales/PaymentModal.css", 3],
   ["1.4", "ui/src/features/sales/PaymentModal.css", 1],

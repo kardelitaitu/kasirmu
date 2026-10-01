@@ -708,7 +708,6 @@ export function CartPanel({
             className="pos-cart-held-badge"
             onClick={() => { setShowOpenBills(true); }}
             aria-label={l10n.getString('pos-cart-open-bills-aria')}
-            title={l10n.getString('pos-cart-open-bills-aria')}
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="14" height="14" aria-hidden="true">
               <rect x="3" y="6" width="18" height="12" rx="2" />

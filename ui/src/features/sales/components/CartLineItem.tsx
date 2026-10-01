@@ -165,7 +165,6 @@ export function CartLineItem({
                   e.stopPropagation();
                   openNoteEditor();
                 }}
-                title={line.note ? (l10n.getString('pos-cart-line-edit-note') || 'Edit Note') : (l10n.getString('pos-cart-line-add-note') || 'Add Note')}
                 aria-label={line.note ? `${l10n.getString('pos-cart-line-edit-note') || 'Edit Note'}: ${line.note}` : (l10n.getString('pos-cart-line-add-note') || 'Add Note')}
                 data-testid="cart-line-note-btn"
               >
