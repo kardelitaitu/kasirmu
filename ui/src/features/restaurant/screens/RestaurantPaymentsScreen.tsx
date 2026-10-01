@@ -115,6 +115,7 @@ export function PaymentMethodCard({
   id,
   title,
   code,
+  icon,
   enabled,
   onToggle,
   isCore = true,
@@ -164,6 +165,11 @@ export function PaymentMethodCard({
                   <polyline points="6 9 12 15 18 9" />
                 </svg>
               </span>
+              {icon && (
+                <span className="restaurant-settings-header-icon" aria-hidden="true">
+                  {icon}
+                </span>
+              )}
               <span className="resto-payment-card-title">{title}</span>
             </button>
             <span className="restaurant-rail-code sr-only">{code}</span>
@@ -231,7 +237,14 @@ export function RestaurantPaymentsScreen({
   const hw = useTerminalHardware(effectiveTerminalId);
 
   const [locationId, setLocationId] = useState<string | null>(null);
-  const [drafts, setDrafts] = useState<DraftRail[]>(() => mergeCoreRails([]));
+  const [drafts, setDrafts] = useState<DraftRail[]>(() => {
+    const base = mergeCoreRails([]);
+    const extras: DraftRail[] = [
+      { rail_code: 'midtrans', label: 'Midtrans Gateway', is_enabled: false, parameters: '{}' },
+      { rail_code: 'stripe', label: 'Stripe Processing', is_enabled: false, parameters: '{}' },
+    ];
+    return [...base, ...extras.filter((ex) => !base.some((b) => b.rail_code === ex.rail_code))];
+  });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
@@ -255,6 +268,7 @@ export function RestaurantPaymentsScreen({
     '20.000',
     '50.000',
     '100.000',
+    '200.000',
   ]);
 
   // QRIS
@@ -334,12 +348,24 @@ export function RestaurantPaymentsScreen({
           if (cancelled) return;
 
           const mergedDrafts = mergeCoreRails(rawRails);
-          setDrafts(mergedDrafts);
-          originalsRef.current.drafts = mergedDrafts.map((d) => ({ ...d }));
+          const fullDrafts = [...mergedDrafts];
+          const extras: DraftRail[] = [
+            { rail_code: 'midtrans', label: 'Midtrans Gateway', is_enabled: false, parameters: '{}' },
+            { rail_code: 'stripe', label: 'Stripe Processing', is_enabled: false, parameters: '{}' },
+          ];
+          for (const ex of extras) {
+            if (!fullDrafts.some((d) => d.rail_code.toLowerCase() === ex.rail_code)) {
+              fullDrafts.push(ex);
+            }
+          }
+
+          setDrafts(fullDrafts);
+          originalsRef.current.drafts = fullDrafts.map((d) => ({ ...d }));
 
           // Hydrate card configurations from merged parameters
-          const cash = mergedDrafts.find((d) => d.rail_code.toLowerCase() === 'cash');
+          const cash = fullDrafts.find((d) => d.rail_code.toLowerCase() === 'cash');
           if (cash) {
+            setCashLocalEnabled(cash.is_enabled);
             setCashCustomLabel(cash.label || 'Cash');
             try {
               const p = JSON.parse(cash.parameters);
@@ -351,8 +377,9 @@ export function RestaurantPaymentsScreen({
             }
           }
 
-          const qris = mergedDrafts.find((d) => d.rail_code.toLowerCase() === 'qris');
+          const qris = fullDrafts.find((d) => d.rail_code.toLowerCase() === 'qris');
           if (qris) {
+            setQrisLocalEnabled(qris.is_enabled);
             try {
               const p = JSON.parse(qris.parameters);
               if (p.mode === 'static' || p.mode === 'dynamic') setQrisMode(p.mode);
@@ -364,8 +391,9 @@ export function RestaurantPaymentsScreen({
             }
           }
 
-          const card = mergedDrafts.find((d) => d.rail_code.toLowerCase() === 'card');
+          const card = fullDrafts.find((d) => d.rail_code.toLowerCase() === 'card');
           if (card) {
+            setCardLocalEnabled(card.is_enabled);
             try {
               const p = JSON.parse(card.parameters);
               if (typeof p.requireTrace === 'boolean') setRequireEdcTraceCode(p.requireTrace);
@@ -375,8 +403,9 @@ export function RestaurantPaymentsScreen({
             }
           }
 
-          const midtrans = mergedDrafts.find((d) => d.rail_code.toLowerCase() === 'midtrans');
+          const midtrans = fullDrafts.find((d) => d.rail_code.toLowerCase() === 'midtrans');
           if (midtrans) {
+            setMidtransLocalEnabled(midtrans.is_enabled);
             try {
               const p = JSON.parse(midtrans.parameters);
               if (p.env === 'sandbox' || p.env === 'production') setMidtransEnv(p.env);
@@ -390,8 +419,9 @@ export function RestaurantPaymentsScreen({
             }
           }
 
-          const stripe = mergedDrafts.find((d) => d.rail_code.toLowerCase() === 'stripe');
+          const stripe = fullDrafts.find((d) => d.rail_code.toLowerCase() === 'stripe');
           if (stripe) {
+            setStripeLocalEnabled(stripe.is_enabled);
             try {
               const p = JSON.parse(stripe.parameters);
               if (p.mode === 'test' || p.mode === 'live') setStripeMode(p.mode);
@@ -433,29 +463,57 @@ export function RestaurantPaymentsScreen({
   // ── Helper to update rail parameters safely ───────────────────────
   const updateRailParams = useCallback((code: string, newParams: Record<string, unknown>) => {
     const lower = code.toLowerCase();
-    setDrafts((prev) =>
-      prev.map((d) => {
-        if (d.rail_code.toLowerCase() !== lower) return d;
-        let parsed: Record<string, unknown> = {};
-        try {
-          parsed = JSON.parse(d.parameters);
-        } catch {
-          parsed = {};
-        }
-        const merged = { ...parsed, ...newParams };
-        return { ...d, parameters: JSON.stringify(merged) };
-      }),
-    );
+    setDrafts((prev) => {
+      const idx = prev.findIndex((d) => d.rail_code.toLowerCase() === lower);
+      if (idx >= 0) {
+        return prev.map((d, i) => {
+          if (i !== idx) return d;
+          let parsed: Record<string, unknown> = {};
+          try {
+            parsed = JSON.parse(d.parameters);
+          } catch {
+            parsed = {};
+          }
+          const merged = { ...parsed, ...newParams };
+          return { ...d, parameters: JSON.stringify(merged) };
+        });
+      }
+      const labelMap: Record<string, string> = {
+        cash: 'Cash',
+        qris: 'QRIS',
+        card: 'Card / EDC Terminal',
+        midtrans: 'Midtrans Gateway',
+        stripe: 'Stripe Processing',
+      };
+      return [
+        ...prev,
+        {
+          rail_code: lower,
+          label: labelMap[lower] || code,
+          is_enabled: false,
+          parameters: JSON.stringify(newParams),
+        },
+      ];
+    });
   }, []);
 
   const updateRailLabel = useCallback((code: string, label: string) => {
     const lower = code.toLowerCase();
-    setDrafts((prev) =>
-      prev.map((d) => {
-        if (d.rail_code.toLowerCase() !== lower) return d;
-        return { ...d, label };
-      }),
-    );
+    setDrafts((prev) => {
+      const idx = prev.findIndex((d) => d.rail_code.toLowerCase() === lower);
+      if (idx >= 0) {
+        return prev.map((d, i) => (i === idx ? { ...d, label } : d));
+      }
+      return [
+        ...prev,
+        {
+          rail_code: lower,
+          label,
+          is_enabled: false,
+          parameters: '{}',
+        },
+      ];
+    });
   }, []);
 
   const handleToggleRail = (index: number, checked: boolean) => {
@@ -518,13 +576,6 @@ export function RestaurantPaymentsScreen({
 
   const handleRemoveRail = (index: number) => {
     setDrafts((prev) => prev.filter((_, i) => i !== index));
-  };
-
-  const handleRemoveCode = (code: string) => {
-    const idx = drafts.findIndex((d) => d.rail_code.toLowerCase() === code.toLowerCase());
-    if (idx >= 0) {
-      handleRemoveRail(idx);
-    }
   };
 
   // ── Test EDC Terminal ───────────────────────────────────────
@@ -776,7 +827,7 @@ export function RestaurantPaymentsScreen({
                   <span className="resto-compact-label">Automatic Cash Drawer</span>
                   <div className="resto-compact-control">
                     <span className="settings-toggle">
-                      <span className="settings-toggle-switch">
+                      <label className="settings-toggle-switch" htmlFor="cash-drawer-kick">
                         <input
                           id="cash-drawer-kick"
                           type="checkbox"
@@ -789,8 +840,8 @@ export function RestaurantPaymentsScreen({
                           }}
                           aria-label="Automatic Cash Drawer"
                         />
-                        <span className="settings-toggle-slider" />
-                      </span>
+                        <span className="settings-toggle-slider" aria-hidden="true" />
+                      </label>
                     </span>
                   </div>
                 </div>
@@ -798,7 +849,7 @@ export function RestaurantPaymentsScreen({
                 <div className="resto-compact-block">
                   <span className="resto-compact-block-title">Cash Suggestion Presets</span>
                   <div className="resto-compact-chips">
-                    {['Exact', '10.000', '20.000', '50.000', '100.000'].map((preset) => {
+                    {['Exact', '10.000', '20.000', '50.000', '100.000', '200.000'].map((preset) => {
                       const active = activeCashPresets.includes(preset);
                       return (
                         <button
@@ -825,7 +876,7 @@ export function RestaurantPaymentsScreen({
                   <span className="resto-compact-label">Cashier Drawer Verification</span>
                   <div className="resto-compact-control">
                     <span className="settings-toggle">
-                      <span className="settings-toggle-switch">
+                      <label className="settings-toggle-switch" htmlFor="cash-drawer-verify">
                         <input
                           id="cash-drawer-verify"
                           type="checkbox"
@@ -838,8 +889,8 @@ export function RestaurantPaymentsScreen({
                           }}
                           aria-label="Cashier Drawer Verification"
                         />
-                        <span className="settings-toggle-slider" />
-                      </span>
+                        <span className="settings-toggle-slider" aria-hidden="true" />
+                      </label>
                     </span>
                   </div>
                 </div>
@@ -951,7 +1002,7 @@ export function RestaurantPaymentsScreen({
                   <span className="resto-compact-label">Print Pay-at-Table QR</span>
                   <div className="resto-compact-control">
                     <span className="settings-toggle">
-                      <span className="settings-toggle-switch">
+                      <label className="settings-toggle-switch" htmlFor="qris-print-bill">
                         <input
                           id="qris-print-bill"
                           type="checkbox"
@@ -964,8 +1015,8 @@ export function RestaurantPaymentsScreen({
                           }}
                           aria-label="Print Pay-at-Table QR"
                         />
-                        <span className="settings-toggle-slider" />
-                      </span>
+                        <span className="settings-toggle-slider" aria-hidden="true" />
+                      </label>
                     </span>
                   </div>
                 </div>
@@ -1057,7 +1108,7 @@ export function RestaurantPaymentsScreen({
                   <span className="resto-compact-label">Require Approval Code</span>
                   <div className="resto-compact-control">
                     <span className="settings-toggle">
-                      <span className="settings-toggle-switch">
+                      <label className="settings-toggle-switch" htmlFor="edc-require-trace">
                         <input
                           id="edc-require-trace"
                           type="checkbox"
@@ -1070,8 +1121,8 @@ export function RestaurantPaymentsScreen({
                           }}
                           aria-label="Require Approval Code"
                         />
-                        <span className="settings-toggle-slider" />
-                      </span>
+                        <span className="settings-toggle-slider" aria-hidden="true" />
+                      </label>
                     </span>
                   </div>
                 </div>
@@ -1089,8 +1140,7 @@ export function RestaurantPaymentsScreen({
               icon={<MidtransIcon />}
               enabled={midtransDraft ? midtransDraft.is_enabled : midtransLocalEnabled}
               onToggle={(enabled) => handleToggleCode('midtrans', enabled)}
-              isCore={false}
-              onRemove={midtransDraft ? () => handleRemoveCode('midtrans') : undefined}
+              isCore={true}
             >
               <div className="resto-compact-form">
                 <div className="resto-compact-row">
@@ -1216,7 +1266,7 @@ export function RestaurantPaymentsScreen({
                   <span className="resto-compact-label">Instant Webhook</span>
                   <div className="resto-compact-control">
                     <span className="settings-toggle">
-                      <span className="settings-toggle-switch">
+                      <label className="settings-toggle-switch" htmlFor="midtrans-auto-confirm">
                         <input
                           id="midtrans-auto-confirm"
                           type="checkbox"
@@ -1229,8 +1279,8 @@ export function RestaurantPaymentsScreen({
                           }}
                           aria-label="Instant Webhook"
                         />
-                        <span className="settings-toggle-slider" />
-                      </span>
+                        <span className="settings-toggle-slider" aria-hidden="true" />
+                      </label>
                     </span>
                   </div>
                 </div>
@@ -1269,8 +1319,7 @@ export function RestaurantPaymentsScreen({
               icon={<StripeIcon />}
               enabled={stripeDraft ? stripeDraft.is_enabled : stripeLocalEnabled}
               onToggle={(enabled) => handleToggleCode('stripe', enabled)}
-              isCore={false}
-              onRemove={stripeDraft ? () => handleRemoveCode('stripe') : undefined}
+              isCore={true}
             >
               <div className="resto-compact-form">
                 <div className="resto-compact-row">

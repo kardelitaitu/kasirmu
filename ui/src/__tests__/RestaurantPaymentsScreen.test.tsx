@@ -548,3 +548,102 @@ describe('RestaurantPaymentsScreen — save, dirty state & back', () => {
     expect(screen.queryByText('GoPay')).not.toBeInTheDocument();
   });
 });
+
+describe('RestaurantPaymentsScreen — card controls and interactive elements', () => {
+  it('interacts with Cash drawer switches and preset chips', async () => {
+    const user = await import('@testing-library/user-event').then((m) => m.default);
+    await renderScreen();
+    await screen.findByText('Cash');
+
+    const autoKickSwitch = screen.getByRole('switch', { name: 'Automatic Cash Drawer' });
+    expect(autoKickSwitch).toBeChecked();
+    await user.click(autoKickSwitch);
+    expect(autoKickSwitch).not.toBeChecked();
+
+    const verifySwitch = screen.getByRole('switch', { name: 'Cashier Drawer Verification' });
+    expect(verifySwitch).not.toBeChecked();
+    await user.click(verifySwitch);
+    expect(verifySwitch).toBeChecked();
+
+    const chip10k = screen.getByRole('button', { name: '10.000' });
+    expect(chip10k).toHaveAttribute('aria-pressed', 'true');
+    await user.click(chip10k);
+    expect(chip10k).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('interacts with QRIS mode buttons and receipt print switch', async () => {
+    const user = await import('@testing-library/user-event').then((m) => m.default);
+    await renderScreen();
+    await screen.findByText('QRIS');
+
+    const dynamicBtn = screen.getByRole('button', { name: 'Dynamic' });
+    await user.click(dynamicBtn);
+    expect(dynamicBtn).toHaveClass('resto-segmented-btn--active');
+
+    const printSwitch = screen.getByRole('switch', { name: 'Print Pay-at-Table QR' });
+    expect(printSwitch).toBeChecked();
+    await user.click(printSwitch);
+    expect(printSwitch).not.toBeChecked();
+  });
+
+  it('interacts with EDC card network chips and trace code toggle', async () => {
+    const user = await import('@testing-library/user-event').then((m) => m.default);
+    await renderScreen();
+    await screen.findByText('Card');
+
+    // Expand Card to ensure body is visible
+    const cardToggle = screen.getByRole('switch', { name: 'Card' });
+    await user.click(cardToggle);
+
+    const traceSwitch = screen.getByRole('switch', { name: 'Require Approval Code' });
+    expect(traceSwitch).toBeChecked();
+    await user.click(traceSwitch);
+    expect(traceSwitch).not.toBeChecked();
+
+    const visaChip = screen.getByRole('button', { name: 'Visa' });
+    expect(visaChip).toHaveAttribute('aria-pressed', 'true');
+    await user.click(visaChip);
+    expect(visaChip).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('interacts with Midtrans and Stripe configuration buttons', async () => {
+    const user = await import('@testing-library/user-event').then((m) => m.default);
+    await renderScreen();
+    await screen.findByText('Midtrans Gateway');
+
+    // Expand Midtrans
+    const midtransToggle = screen.getByRole('switch', { name: 'Midtrans Gateway' });
+    await user.click(midtransToggle);
+
+    const prodBtn = screen.getByRole('button', { name: 'Production' });
+    await user.click(prodBtn);
+    expect(prodBtn).toHaveClass('resto-segmented-btn--active');
+
+    const gopayChip = screen.getByRole('button', { name: 'GoPay / QRIS' });
+    expect(gopayChip).toHaveAttribute('aria-pressed', 'true');
+    await user.click(gopayChip);
+    expect(gopayChip).toHaveAttribute('aria-pressed', 'false');
+
+    const webhookSwitch = screen.getByRole('switch', { name: 'Instant Webhook' });
+    expect(webhookSwitch).toBeChecked();
+    await user.click(webhookSwitch);
+    expect(webhookSwitch).not.toBeChecked();
+
+    const testKeysBtn = screen.getByRole('button', { name: 'Test API Keys' });
+    await user.click(testKeysBtn);
+    expect(screen.getByText(/Please enter Client Key and Server Key/i)).toBeInTheDocument();
+
+    // Expand Stripe
+    const stripeToggle = screen.getByRole('switch', { name: 'Stripe Processing' });
+    await user.click(stripeToggle);
+
+    const liveBtn = screen.getByRole('button', { name: 'Live' });
+    await user.click(liveBtn);
+    expect(liveBtn).toHaveClass('resto-segmented-btn--active');
+
+    const verifyKeysBtn = screen.getByRole('button', { name: 'Verify Keys' });
+    await user.click(verifyKeysBtn);
+    expect(screen.getByText(/Please enter Publishable Key and Secret Key/i)).toBeInTheDocument();
+  });
+});
+
