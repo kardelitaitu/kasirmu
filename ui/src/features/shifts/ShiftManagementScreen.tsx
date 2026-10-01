@@ -220,6 +220,13 @@ export default function ShiftManagementScreen() {
 
   // ── Create payout ─────────────────────────────────────────────────
 
+  // Parsed ONCE and shared with the button's disabled state. The button used to
+  // call `parseBalanceInput` twice and coalesce the second to 0 -- a branch that
+  // can never be taken, because the line above already rejects `null`. TypeScript
+  // also refuses to narrow across two separate calls, so the `?? 0` was there to
+  // satisfy the checker rather than to describe a real case.
+  const parsedPayout = parseBalanceInput(payoutAmount.trim(), currency);
+
   const handleCreatePayout = useCallback(async () => {
     if (!activeShift) return;
     const trimmed = payoutAmount.trim();
@@ -735,11 +742,7 @@ export default function ShiftManagementScreen() {
                   variant="primary"
                   onClick={handleCreatePayout}
                   loading={saving}
-                  disabled={
-                    !payoutAmount.trim() ||
-                    parseBalanceInput(payoutAmount.trim(), currency) === null ||
-                    (parseBalanceInput(payoutAmount.trim(), currency) ?? 0) <= 0
-                  }
+                  disabled={parsedPayout === null || parsedPayout <= 0}
                 >
                   Record Payout
                 </Button>
