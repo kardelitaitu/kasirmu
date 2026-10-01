@@ -9,7 +9,7 @@
 //! `state.*` -> `ctx.*` (`bridge_ctx()` seam), `AppError::` ->
 //! `BridgeError::`, and `picker_ticket::` -> `crate::picker::`.
 
-use std::time::{SystemTime, UNIX_EPOCH};
+use crate::auth::now_unix_secs;
 
 use serde::Serialize;
 
@@ -112,10 +112,11 @@ pub async fn list_workspaces(
     store_id: String,
 ) -> Result<Vec<WorkspaceDto>, BridgeError> {
     // 1. Verify the ticket — uniform denial for forged/expired/malformed.
-    let now_ts = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs() as i64;
+    let Some(now_ts) = now_unix_secs() else {
+        return Err(BridgeError::Internal(
+            "cannot read the system clock; refusing to verify a picker ticket".into(),
+        ));
+    };
     let user_id = crate::picker::verify_picker_ticket(&ctx.picker_ticket_secret, &ticket, now_ts)
         .ok_or_else(|| {
         BridgeError::PermissionDenied("invalid or expired picker session".into())
@@ -197,10 +198,11 @@ pub async fn list_workspace_screens(
     type_key: String,
     store_id: String,
 ) -> Result<Vec<WorkspaceScreenDto>, BridgeError> {
-    let now_ts = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs() as i64;
+    let Some(now_ts) = now_unix_secs() else {
+        return Err(BridgeError::Internal(
+            "cannot read the system clock; refusing to verify a picker ticket".into(),
+        ));
+    };
     let user_id = crate::picker::verify_picker_ticket(&ctx.picker_ticket_secret, &ticket, now_ts)
         .ok_or_else(|| {
         BridgeError::PermissionDenied("invalid or expired picker session".into())

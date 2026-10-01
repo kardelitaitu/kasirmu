@@ -51,7 +51,14 @@ use crate::error::BridgeError;
 /// Returning `None` is the fail-closed answer: the caller denies. It is a
 /// `Result`-free helper because the only sensible response is a denial, and
 /// making each caller match on an error would invite one of them to default.
-fn now_unix_secs() -> Option<i64> {
+///
+/// `pub(crate)` on purpose, and the scoping was load-bearing in the wrong
+/// direction: this was private to this module while THREE callers elsewhere kept
+/// their own `.unwrap_or_default()` copies — the picker-ticket verifies in
+/// `workspaces.rs` (two) and the ticket mint in `staff.rs`. A fix that stops at a
+/// module boundary leaves exactly the duplicates ADR-49 creates. Reach for this
+/// helper rather than a fresh `SystemTime::now()` in any new caller.
+pub(crate) fn now_unix_secs() -> Option<i64> {
     match SystemTime::now().duration_since(UNIX_EPOCH) {
         Ok(d) => i64::try_from(d.as_secs()).ok(),
         Err(e) => {
@@ -931,10 +938,11 @@ pub fn refresh_picker_ticket(
         }
     }
 
-    let now_ts = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs() as i64;
+    let Some(now_ts) = now_unix_secs() else {
+        return Err(BridgeError::Internal(
+            "cannot read the system clock; refusing to mint a picker ticket".into(),
+        ));
+    };
 
     let picker_ticket = picker::sign_picker_ticket(
         &ctx.picker_ticket_secret,

@@ -163,11 +163,32 @@ pub async fn check_username(
     validate_not_empty("username", &username).map_err(|e| BridgeError::Invalid(e.to_string()))?;
 
     // S3: Random delay (50-200ms) to mask timing side-channels.
-    // Computed before the DB lock so the delay is not blocked by the mutex.
+    //
+    // A pre-epoch clock must NOT collapse this to a constant: `subsec_nanos()` of a
+    // failed read is `0`, which yields exactly 50 ms on every attempt and defeats the
+    // mask this line exists to provide — the STAFF-06 account-enumeration defence.
+    // The seed degrades to a clock-independent value rather than refusing, because a
+    // refusal here would deny a legitimate login for a reason unrelated to
+    // credentials, and because the mask only needs to be unpredictable to a remote
+    // client, not cryptographically strong.
+    //
+    // Twin of the tablet's copy (`apps/mobile-tauri/src/commands/auth.rs`), which was
+    // fixed first; the two are ADR-49 duplicates and must stay in step. Unlike the
+    // `now_ts` helper below, this one does NOT propagate an error — see the note
+    // there for why the two sites legitimately differ.
     let nanos = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .subsec_nanos();
+        .map(|d| d.subsec_nanos())
+        .unwrap_or_else(|_| {
+            tracing::warn!("system clock is before the UNIX epoch; timing mask seeded without it");
+            // A CONSTANT would defeat the mask, which is this line's whole purpose,
+            // so fall back to a process-local counter that still differs per attempt.
+            use std::sync::atomic::{AtomicU32, Ordering};
+            static FALLBACK_SEQ: AtomicU32 = AtomicU32::new(0);
+            FALLBACK_SEQ
+                .fetch_add(2654435761, Ordering::Relaxed)
+                .wrapping_mul(0x9E37_79B9)
+        });
     let delay_ms: u64 = 50 + (nanos % 151) as u64;
 
     // Scope the DB lock so Store<'_> (which is not Send) is dropped

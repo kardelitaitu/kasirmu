@@ -4,6 +4,44 @@ use crate::testing::TestBridge;
 use crate::testing::seeded_row_reaches_a_paid_tier;
 use crate::testing::{assert_refused_by_the_seeded_row, seeded_row_loads};
 
+/// No bridge module may derive a credential timestamp from a DEFAULTED clock.
+///
+/// `.duration_since(UNIX_EPOCH).unwrap_or_default()` supplies `0` on an unreadable
+/// clock, and `0` is the one value that must never be assumed here: a picker-ticket
+/// expiry compared against it is never in the past (so an EXPIRED ticket verifies),
+/// and an expiry computed from it lands in 1970 (so a fresh ticket is born expired).
+///
+/// This exists because the fix DID stop at a module boundary. `now_unix_secs` was
+/// private to `auth`, so the round-171 repair converted its three local callers and
+/// left five elsewhere: two picker-ticket verifies in `workspaces.rs`, a ticket mint
+/// in `staff.rs`, a ticket refresh back in `auth.rs`, and the STAFF-06 timing mask in
+/// `auth/session.rs`. That is the ADR-49 duplicate problem in miniature, and it is
+/// why the helper is now `pub(crate)` and why this test sweeps the WHOLE crate rather
+/// than the modules someone remembered.
+///
+/// Whitespace-insensitive, because the formatter reflows the call chain onto separate
+/// lines and a literal search then silently matches nothing (measured on the tablet
+/// twin, where the first version of this assertion passed WITH the defect restored).
+#[test]
+fn no_bridge_module_timestamps_a_credential_from_a_defaulted_clock() {
+    let sources = [
+        ("auth.rs", include_str!("auth.rs")),
+        ("auth/session.rs", include_str!("auth/session.rs")),
+        ("workspaces.rs", include_str!("workspaces.rs")),
+        ("staff.rs", include_str!("staff.rs")),
+        ("picker.rs", include_str!("picker.rs")),
+    ];
+
+    for (name, source) in sources {
+        let compact: String = source.chars().filter(|c| !c.is_whitespace()).collect();
+        assert!(
+            !compact.contains("duration_since(UNIX_EPOCH).unwrap_or_default()")
+                && !compact.contains("duration_since(std::time::UNIX_EPOCH).unwrap_or_default()"),
+            "{name} derives a timestamp from a defaulted clock; call crate::auth::now_unix_secs instead"
+        );
+    }
+}
+
 // The release leg for a command this file drives through the subscription gate.
 //-- The release leg for these sessions lives in crate::testing (RULE at assert_refused_by_the_seeded_row) --
 
