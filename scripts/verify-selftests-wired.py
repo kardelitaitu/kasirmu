@@ -31,13 +31,27 @@ that found the nine is recorded in the docstring above so the next one to be add
 knows the convention exists.
 
 AND, concretely, the checkers that are not Python. The glob is verify-*/check-*, so a
---self-test in a Node checker is invisible here. One exists: check.sh's "updater manifest
-generator" step runs `generate-latest-json.mjs --self-test`, and nothing polices whether
-that flag keeps working or has a caller. Widening the glob to .mjs/.ts/.js is NOT done
-here, and deliberately so: a first pass at it would have to guess which Node scripts are
-checkers rather than tools, which is the same judgement-per-file problem above, and
+--self-test in a Node checker is invisible here. Widening the glob to .mjs/.ts/.js is NOT
+done here, and deliberately so: a first pass at it would have to guess which Node scripts
+are checkers rather than tools, which is the same judgement-per-file problem above, and
 guessing wrong produces a gate that fires on scripts that were never meant to be policed.
 Named rather than left to be rediscovered.
+
+MEASURED 2026-10-05, and the guess is avoidable. The judgement the paragraph above calls
+unmakeable has an operational definition: a Node CHECKER reads `process.argv` and mentions
+`--self-test` outside a comment; a LIBRARY imports and exports. Under that test the repo
+has FIVE Node checkers with a self-test, not one -- check-release-version, check-testid,
+check-updater-compat, generate-latest-json and verify-updater-signature -- and every one is
+invoked by a runner (check.sh and/or dev-ci.yml and/or release.yml). So the current tree is
+clean, and the gap is prospective: nothing stops a sixth from being added uncalled.
+
+`updater-crypto.mjs` is the FALSE POSITIVE that makes the point. It is a library whose
+header says it is shared helpers for two of the five, it declares no CLI, and it contains
+zero `process.argv` -- but it matched a naive text search on `--self-test` because three of
+its COMMENTS describe the primitives its consumers use in theirs. Running it exits 0 with
+no output, which reads as "the self-test passed" and is really "nothing happened". A gate
+built on the text search would have reported a phantom uncalled self-test; this is why the
+scope note warns against widening the glob without the argv/exports distinction.
 
 Exit 0 clean, 1 uncalled self-test(s), 2 usage or self-test failure.
 """
