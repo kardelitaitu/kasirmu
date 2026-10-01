@@ -445,3 +445,61 @@ fn discount_is_never_negative() {
     let s = sale(1_000, vec![line("A", 1, 1_000)]);
     assert_eq!(compute_discount_unscoped(&p, &s, now()).unwrap(), 500);
 }
+
+/// STACKING: each promotion computes against the ALREADY-REDUCED total.
+///
+/// `Store::compute_checkout_promotions` (db/promotions.rs:403) reduces
+/// `sale.total` in place as it goes, and `compute_discount` takes `sale.total`
+/// as the base for an unscoped promotion (promotion_engine.rs:125). So two 10%
+/// promotions on 10000 give 8100, not 8000 -- sequential, compounding downward.
+///
+/// This was the documented contract and nothing tested it: 42 cases covered each
+/// promotion type in isolation, and a regression that made stacking multiplicative
+/// (or, worse, computed every promotion against the ORIGINAL total) would have
+/// left the suite green while changing what the customer pays.
+#[test]
+fn stacked_percentages_compound_downward_on_the_reduced_total() {
+    let sale = sale(10_000, vec![line("A", 1, 10_000)]);
+    let ten = promo("percentage", 10);
+
+    let first = compute_discount(&ten, &sale, now(), |_| None).unwrap();
+    assert_eq!(first, 1_000, "10% of 10000");
+
+    // The second promotion sees 9000, so it takes 900.
+    let mut reduced = sale.clone();
+    reduced.total = money(sale.total.minor_units - first);
+    let second = compute_discount(&ten, &reduced, now(), |_| None).unwrap();
+    assert_eq!(second, 900, "the base is the REDUCED total, not the original");
+    assert_eq!(
+        sale.total.minor_units - first - second,
+        8_100,
+        "8100, not the 8000 a multiplicative stack would give"
+    );
+}
+
+/// Two half-off promotions must leave a quarter, and must never drive the total
+/// below zero -- the clamp at promotion_engine.rs:205 uses the CURRENT total, so
+/// the second one is bounded by what is left.
+#[test]
+fn stacked_half_off_leaves_a_quarter_and_never_goes_negative() {
+    let sale = sale(10_000, vec![line("A", 1, 10_000)]);
+    let half = promo("percentage", 50);
+
+    let first = compute_discount(&half, &sale, now(), |_| None).unwrap();
+    assert_eq!(first, 5_000);
+
+    let mut reduced = sale.clone();
+    reduced.total = money(sale.total.minor_units - first);
+    let second = compute_discount(&half, &reduced, now(), |_| None).unwrap();
+    assert_eq!(second, 2_500, "50% of the remaining 5000");
+    assert_eq!(sale.total.minor_units - first - second, 2_500);
+
+    // A promotion applied to an ALREADY-EMPTY total yields zero, not a negative.
+    let mut emptied = sale.clone();
+    emptied.total = money(0);
+    let third = compute_discount(&half, &emptied, now(), |_| None).unwrap();
+    assert_eq!(
+        third, 0,
+        "clamp(0, sale.total) must floor at zero, never discount below the payable"
+    );
+}
