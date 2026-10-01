@@ -128,6 +128,18 @@ Most POS vendors generate margin by locking merchants into expensive, proprietar
 | **Receipt printers** | Proprietary locked printers ($250+) | **Standard ESC/POS:** Generic $15–$30 USB/Bluetooth printers | **Save $200+ per register** |
 | **Barcode scanners** | Vendor-locked wireless scanners ($150) | **Standard HID:** Generic $10 USB or Bluetooth scanners | **Save $100+ per register** |
 
+### Competitive comparison matrix: kasir.mu vs. market alternatives
+
+| Feature / Metric | Conventional Cloud POS (Moka, Majoo) | Legacy Enterprise POS (Toast, NCR) | kasir.mu |
+|---|---|---|---|
+| **Offline Architecture** | Degraded mode (cached read-only fallback) | Cloud-dependent or complex local server | **100% full offline read/write on every terminal** |
+| **Hardware Requirement** | Proprietary smart POS lease ($300–$600) | Expensive locked registers ($1,000+) | **Bring Your Own Device ($0): PC, tablet, Linux** |
+| **Platform Take-Rate** | 0.2% – 0.7% on top of payment acquirer | 1.0% – 2.5% platform commission | **0% platform fee** (merchant keeps 100%) |
+| **Server Cost / Revenue** | 4% – 8% ARR (up to 12% in peak rush hours) | 10% – 20% of revenue | **Under 1% of gross revenue (~0.26% simulated)** |
+| **Active Memory Footprint**| 500 MB – 1 GB (Electron / Java) | 1 GB – 2 GB | **30 MB – 50 MB (Native Rust + Tauri v2)** |
+| **Installer Size** | 150 MB – 400 MB | Multi-gigabyte installations | **< 15 MB standalone package** |
+| **KDS & Multi-Terminal** | Expensive add-on or locked behind Enterprise | High per-screen monthly fee | **Included in standard tiers (Pro/Premium)** |
+
 ---
 
 ## 2. "How good is it?": Engineered for absolute speed & reliability
@@ -145,6 +157,16 @@ A point-of-sale system sits directly between a merchant and their revenue. It ca
    - **623 frontend test suites** in Vitest covering UI components, accessibility, and offline caching.
    - **>508,000 lines of test code** (>50% of the entire codebase is automated test suites, mocks, and property checks).
 5. **Universal Hardware Abstraction Layer (HAL):** Vendor-independent driver traits for printers, scanners, cash drawers, scales, customer displays, and payment terminals—backed by mock implementations that allow 100% CI testing without physical hardware.
+6. **Deterministic offline conflict resolution:**
+   - **Append-only financial ledgers:** Sales, refunds, and shifts are immutable transactional events minted with client-side UUID idempotency keys. They never overwrite or collide with other terminals.
+   - **Relative delta stock adjustments:** Offline inventory decrements record signed delta operations (`delta: -1`) rather than absolute state (`set stock = 5`). When multiple offline terminals sell the same SKU, their deltas sum with mathematical determinism upon reconnection.
+   - **Non-blocking checkout:** In the rare case of stock overselling across isolated offline registers, the customer transaction is completed immediately at the counter, emitting an asynchronous reconciliation event for managers rather than blocking sales.
+7. **Enterprise security & offline data protection:**
+   - **Encrypted backup snapshots:** Backup packages (`.kasirpkg`) are protected with `Argon2id` key derivation, `AES-256-GCM` authenticated encryption, and `zstd` compression.
+   - **PAN masking & zero plaintext cards:** Strict PCI-DSS alignment ensures customer payment card numbers are masked at the edge and never stored plaintext on terminal disks.
+   - **Platform keychains:** API tokens and cryptographic keys are anchored directly into OS secure enclaves (Windows Credential Manager / Android KeyStore).
+8. **Embedded Lua rule engine (`mlua`):**
+   - Sandboxed dynamic pricing, happy hours, tiered volume discounts, and local tax rules are hot-reloaded at runtime, eliminating the traditional 3–6 month wait for vendor app-store binary updates.
 
 ---
 
@@ -318,7 +340,20 @@ For comprehensive technical, financial, and market documentation, see:
 
 ---
 
-## 9. License & contact
+## 9. Next steps & engagement
+
+### For developers & contributors
+- **Explore verified architecture:** Inspect the engineering specification in [`README-3.md`](./README-3.md).
+- **Run locally:** Follow the quickstart instructions above or in [`docs/guides/developer/QUICKSTART.md`](./docs/guides/developer/QUICKSTART.md).
+- **Inspect automated tests:** Run `cargo test --workspace` (9,026 tests) or Vitest (623 frontend test suites).
+
+### For investors & commercial partners
+- **Schedule a Demonstration:** Contact **adikaradwiatmaja@gmail.com** to review live benchmarks, edge synchronization, and the visual node topology canvas.
+- **Commercial Licensing & Whitelabel:** Enterprise multi-tenant deployments, bespoke HAL hardware drivers, and dedicated SLA partnerships available under commercial agreement.
+
+---
+
+## 10. License & contact
 
 **Proprietary and Confidential — Copyright (c) 2024–2026 kasir.mu Contributors / All Rights Reserved.**
 
