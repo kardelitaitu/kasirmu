@@ -1054,3 +1054,14 @@ pos-cart-line-edit-note = Ubah Catatan
 pos-cart-line-note-title = Permintaan Khusus
 pos-cart-line-note-placeholder = cth. Tanpa bawang, kurangi es, alergi...
 pos-cart-line-note-clear = Hapus
+
+# ── Save Tab / Open Bills integration ──
+pos-cart-save-tab = Simpan Tagihan
+pos-cart-update-tab = Perbarui Tagihan
+pos-cart-update-tab-aria = Perbarui tagihan terbuka untuk meja ini
+pos-cart-customer-label = Pelanggan
+pos-cart-customer-placeholder = Nama (opsional)...
+pos-cart-customer-aria = Nama pelanggan (opsional)
+pos-cart-new-tab = Tagihan Baru
+pos-cart-new-tab-title = Bersihkan keranjang untuk memulai tagihan baru
+

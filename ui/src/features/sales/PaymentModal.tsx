@@ -908,12 +908,12 @@ retryCurrencyLoad,
     if (rateUnknown) return false;
     if (splitMode) return splitComplete;
     if (method === 'other' && !otherLabel.trim()) return false;
-    if (method === 'open_bill') return customerName.trim().length > 0;
+    if (method === 'open_bill') return customerName.trim().length > 0 || (tableNumber != null && tableNumber.trim().length > 0);
     if (method === 'credit') return customerName.trim().length > 0;
     if (method === 'cash') return sufficient;
     if (method === 'qris') return qrReference.length > 0;
     return true;
-  }, [rateUnknown, splitMode, splitComplete, method, otherLabel, sufficient, customerName, qrReference]);
+  }, [rateUnknown, splitMode, splitComplete, method, otherLabel, sufficient, customerName, tableNumber, qrReference]);
 
   const complete = useCallback(async () => {
     setProcessing(true);
@@ -939,10 +939,11 @@ retryCurrencyLoad,
           discountPercent,
           discountLabel,
           ...(trimmedTable ? { tableNumber: trimmedTable } : {}),
+          ...(trimmedName ? { customerName: trimmedName } : {}),
         });
-        const label = trimmedName
-          ? (trimmedTable ? `${trimmedName} (${trimmedTable})` : trimmedName)
-          : (trimmedTable ? `Table ${trimmedTable}` : `Open Bill #${Date.now()}`);
+        const label = trimmedTable
+          ? (trimmedName ? `Table ${trimmedTable} (${trimmedName})` : `Table ${trimmedTable}`)
+          : (trimmedName ? trimmedName : `Open Bill #${Date.now()}`);
 
         await holdCartScoped(sessionToken!, {
           label,

@@ -7,6 +7,7 @@ import {
   holdCartScoped,
   listOpenBillsScoped,
   getHeldCartScoped,
+  deleteHeldCartScoped,
   type HeldCartRow,
 } from '@/api/sales';
 import type { Promotion } from '@/api/promotions';
@@ -31,6 +32,8 @@ export interface UsePosHeldCartsParams {
   setDiscount: (percent: number, label: string) => void;
   tableNumber?: string;
   setTableNumber: (table: string) => void;
+  customerName?: string;
+  setCustomerName?: (name: string) => void;
 }
 
 /**
@@ -57,6 +60,8 @@ export function usePosHeldCarts({
   setDiscount,
   tableNumber = '',
   setTableNumber,
+  customerName = '',
+  setCustomerName,
 }: UsePosHeldCartsParams) {
   // An open bill is a Restaurant POS concept: `list_open_bills_scoped` — its
   // only reader — refuses every other vertical in the bridge
@@ -134,7 +139,7 @@ export function usePosHeldCarts({
     setOpeningBill(true);
     try {
       const trimmedTable = (tableNumber ?? '').trim();
-      const trimmedName = openBillName.trim();
+      const trimmedName = (customerName || openBillName || '').trim();
       const cartData = JSON.stringify({
         lines: lines.map((l) => ({
           sku: l.sku,
@@ -151,10 +156,16 @@ export function usePosHeldCarts({
         discountPercent,
         discountLabel,
         ...(trimmedTable ? { tableNumber: trimmedTable } : {}),
+        ...(trimmedName ? { customerName: trimmedName } : {}),
       });
-      const label = trimmedName
-        ? (trimmedTable ? `${trimmedName} (${trimmedTable})` : trimmedName)
-        : (trimmedTable ? `Table ${trimmedTable}` : `Open Bill #${Date.now()}`);
+      const label = trimmedTable
+        ? (trimmedName ? `Table ${trimmedTable} (${trimmedName})` : `Table ${trimmedTable}`)
+        : (trimmedName ? trimmedName : `Open Bill #${Date.now()}`);
+
+      // If updating an already resumed open bill, delete the previous record first so we don't produce duplicate tabs
+      if (activeOpenBillId) {
+        await deleteHeldCartScoped(sessionToken, activeOpenBillId).catch(() => {});
+      }
 
       await holdCartScoped(sessionToken, {
         label,
@@ -165,18 +176,25 @@ export function usePosHeldCarts({
         bill_type: 'open_bill',
         customer_name: trimmedName || (trimmedTable ? `Table ${trimmedTable}` : ''),
       });
+      const wasUpdating = !!activeOpenBillId;
       resetCart();
       setTableNumber('');
+      setCustomerName?.('');
+      setActiveOpenBillId(null);
       setAppliedPromotions([]);
       openBillInputExit.requestClose();
       setOpenBillName('');
       loadOpenBills();
+      addToast({
+        message: wasUpdating ? `Tab for ${label} updated` : `Tab for ${label} saved`,
+        type: 'success',
+      });
     } catch {
       addToast({ message: 'Failed to save open bill', type: 'error' });
     } finally {
       setOpeningBill(false);
     }
-  }, [activeShift, lines, subtotal, openBillName, tableNumber, discountPercent, discountLabel, resetCart, setTableNumber, loadOpenBills, addToast, openBillInputExit, sessionToken, setAppliedPromotions]);
+  }, [activeShift, lines, subtotal, customerName, openBillName, tableNumber, discountPercent, discountLabel, resetCart, setTableNumber, setCustomerName, activeOpenBillId, loadOpenBills, addToast, openBillInputExit, sessionToken, setAppliedPromotions]);
 
   const handleResumeOpenBill = useCallback(async (id: string) => {
     try {
@@ -215,12 +233,20 @@ export function usePosHeldCarts({
       if (typeof data.tableNumber === 'string') {
         setTableNumber(data.tableNumber);
       }
+      if (typeof data.customerName === 'string') {
+        setCustomerName?.(data.customerName);
+      } else if (full.customer_name) {
+        const cust = full.customer_name.replace(/^Table\s+\w+\s*[-–(]?\s*/i, '').replace(/\)$/, '');
+        if (cust && !cust.startsWith('Table ')) {
+          setCustomerName?.(cust);
+        }
+      }
       setActiveOpenBillId(id);
       openBillsExit.requestClose();
     } catch {
       addToast({ message: 'Failed to resume open bill', type: 'error' });
     }
-  }, [setLines, setDiscount, setTableNumber, addToast, openBillsExit, sessionToken]);
+  }, [setLines, setDiscount, setTableNumber, setCustomerName, addToast, openBillsExit, sessionToken]);
 
   return {
     activeOpenBillId,

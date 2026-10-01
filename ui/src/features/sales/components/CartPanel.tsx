@@ -188,6 +188,11 @@ export interface CartPanelProps {
   resetCart: () => void;
   setShowOpenBills: Dispatch<SetStateAction<boolean>>;
   openBills: HeldCartRow[];
+  customerName?: string | undefined;
+  setCustomerName?: ((name: string) => void) | undefined;
+  activeOpenBillId?: string | null | undefined;
+  setActiveOpenBillId?: ((id: string | null) => void) | undefined;
+  handleOpenBill?: (() => Promise<void>) | undefined;
 }
 
 export function CartPanel({
@@ -273,6 +278,11 @@ export function CartPanel({
   resetCart,
   setShowOpenBills,
   openBills,
+  customerName,
+  setCustomerName,
+  activeOpenBillId,
+  setActiveOpenBillId,
+  handleOpenBill,
 }: CartPanelProps) {
   const { l10n } = useLocalization();
   // In the restaurant workspace the cart header's buttons do not live here at
@@ -523,21 +533,67 @@ export function CartPanel({
           )}
         </div>
 
-        {/* ── Table number input (only when setting enabled) ── */}
-        {showTableNumberSetting && (
+        {/* ── Active Tab Indicator Banner ── */}
+        {activeOpenBillId && (
+          <div className="pos-cart-active-tab-banner" data-testid="pos-active-tab-banner">
+            <span className="pos-cart-active-tab-info">
+              <span className="pos-cart-active-tab-dot" aria-hidden="true">●</span>
+              <span className="pos-cart-active-tab-text">
+                {tableNumber ? `Table ${tableNumber}` : ''}
+                {tableNumber && customerName ? ` (${customerName})` : customerName || 'Active Tab'}
+              </span>
+            </span>
+            <button
+              type="button"
+              className="pos-cart-new-tab-btn"
+              onClick={() => {
+                resetCart();
+                setTableNumber('');
+                setCustomerName?.('');
+                setActiveOpenBillId?.(null);
+              }}
+              title={l10n.getString('pos-cart-new-tab-title') || 'Start a new tab without affecting this tab'}
+              data-testid="pos-cart-new-tab-btn"
+            >
+              + {l10n.getString('pos-cart-new-tab') || 'New Tab'}
+            </button>
+          </div>
+        )}
+
+        {/* ── Table number input & optional customer name ── */}
+        {(showTableNumberSetting || activeWorkspace === 'restaurant-pos') && (
           <div className="pos-cart-table-row">
-            <label htmlFor="pos-table-number" className="pos-cart-table-label">
-              {l10n.getString('pos-cart-table-label')}
-            </label>
-            <input
-              id="pos-table-number"
-              type="text"
-              className="pos-cart-table-input"
-              value={tableNumber}
-              onChange={(e) => setTableNumber(e.target.value)}
-              aria-label={l10n.getString('pos-cart-table-aria')}
-              placeholder={l10n.getString('pos-cart-table-placeholder')}
-            />
+            <div className="pos-cart-table-field">
+              <label htmlFor="pos-table-number" className="pos-cart-table-label">
+                {l10n.getString('pos-cart-table-label')}
+              </label>
+              <input
+                id="pos-table-number"
+                type="text"
+                className="pos-cart-table-input"
+                value={tableNumber}
+                onChange={(e) => setTableNumber(e.target.value)}
+                aria-label={l10n.getString('pos-cart-table-aria')}
+                placeholder={l10n.getString('pos-cart-table-placeholder')}
+              />
+            </div>
+            {setCustomerName && (
+              <div className="pos-cart-customer-field">
+                <label htmlFor="pos-customer-name" className="pos-cart-customer-label">
+                  {l10n.getString('pos-cart-customer-label') || 'Customer (opt)'}
+                </label>
+                <input
+                  id="pos-customer-name"
+                  type="text"
+                  className="pos-cart-customer-input"
+                  value={customerName ?? ''}
+                  onChange={(e) => setCustomerName(e.target.value)}
+                  aria-label={l10n.getString('pos-cart-customer-aria') || 'Customer Name (optional)'}
+                  placeholder={l10n.getString('pos-cart-customer-placeholder') || 'Name...'}
+                  data-testid="pos-cart-customer-input"
+                />
+              </div>
+            )}
             {isEnabled(FEATURES.TABLE_MANAGEMENT) && (
               <button
                 type="button"
@@ -697,6 +753,10 @@ export function CartPanel({
               setDeductionLocationName={setDeductionLocationName}
               setDeductionOverridden={setDeductionOverridden}
               resetCart={resetCart}
+              tableNumber={tableNumber}
+              customerName={customerName}
+              activeOpenBillId={activeOpenBillId}
+              handleOpenBill={handleOpenBill}
             />
           </CartFooterTotals>
         )}

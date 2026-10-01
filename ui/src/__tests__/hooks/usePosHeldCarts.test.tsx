@@ -14,6 +14,7 @@ vi.mock('@/api/sales', async (importOriginal) => {
     listOpenBillsScoped: vi.fn(() => Promise.resolve([])),
     holdCartScoped: vi.fn(() => Promise.resolve({ id: 'held-1' })),
     getHeldCartScoped: vi.fn(() => Promise.resolve(null)),
+    deleteHeldCartScoped: vi.fn(() => Promise.resolve()),
   };
 });
 
@@ -54,6 +55,7 @@ describe('usePosHeldCarts — open-bills workspace gate', () => {
       setLines: noop,
       setDiscount: noop,
       setTableNumber: noop,
+      setCustomerName: noop,
       ...overrides,
     };
   }
@@ -283,6 +285,133 @@ describe('usePosHeldCarts — open-bills workspace gate', () => {
         }),
       ]),
     );
+  });
+
+  it('preserves customerName and tableNumber in cart_data and label when holding an open bill', async () => {
+    setScope({ storeId: 's', instanceId: 'i', typeKey: 'restaurant-pos' });
+    const { holdCartScoped } = await import('@/api/sales');
+    const resetCart = vi.fn();
+    const setTableNumber = vi.fn();
+    const setCustomerName = vi.fn();
+
+    const { result } = renderHook(() =>
+      usePosHeldCarts(
+        params({
+          activeShift: { id: 'sh-1' } as never,
+          tableNumber: '5',
+          customerName: 'Budi',
+          setTableNumber,
+          setCustomerName,
+          resetCart,
+          lines: [
+            {
+              id: 'line-1' as never,
+              sku: 'COFFEE' as never,
+              name: 'Coffee',
+              qty: 2,
+              unit_price: { minor_units: 25000, currency: 'IDR' },
+            },
+          ],
+          subtotal: { minor_units: 50000, currency: 'IDR' },
+        }),
+      ),
+    );
+
+    await act(async () => {
+      await result.current.handleOpenBill();
+    });
+
+    expect(holdCartScoped).toHaveBeenCalledWith(
+      'tok',
+      expect.objectContaining({
+        label: 'Table 5 (Budi)',
+        customer_name: 'Budi',
+        bill_type: 'open_bill',
+        cart_data: expect.stringContaining('"customerName":"Budi"'),
+      }),
+    );
+    expect(setTableNumber).toHaveBeenCalledWith('');
+    expect(setCustomerName).toHaveBeenCalledWith('');
+    expect(resetCart).toHaveBeenCalled();
+  });
+
+  it('deletes prior held cart and updates tab when activeOpenBillId is already set', async () => {
+    setScope({ storeId: 's', instanceId: 'i', typeKey: 'restaurant-pos' });
+    const { holdCartScoped, deleteHeldCartScoped, getHeldCartScoped } = await import('@/api/sales');
+    const setLines = vi.fn();
+    const setTableNumber = vi.fn();
+    const setCustomerName = vi.fn();
+
+    vi.mocked(getHeldCartScoped).mockResolvedValueOnce({
+      id: 'existing-bill-1',
+      label: 'Table 5',
+      item_count: 1,
+      total_minor: 25000,
+      currency: 'IDR',
+      created_at: '2026-10-01T00:00:00Z',
+      bill_type: 'open_bill',
+      customer_name: 'Table 5',
+      deduction_location_id: null,
+      cart_data: JSON.stringify({
+        lines: [
+          {
+            sku: 'COFFEE',
+            name: 'Coffee',
+            qty: 1,
+            unit_price: { minor_units: 25000, currency: 'IDR' },
+          },
+        ],
+        tableNumber: '5',
+        customerName: 'Budi',
+      }),
+    });
+
+    const { result } = renderHook(() =>
+      usePosHeldCarts(
+        params({
+          activeShift: { id: 'sh-1' } as never,
+          tableNumber: '5',
+          customerName: 'Budi',
+          setLines,
+          setTableNumber,
+          setCustomerName,
+          lines: [
+            {
+              id: 'line-1' as never,
+              sku: 'COFFEE' as never,
+              name: 'Coffee',
+              qty: 2,
+              unit_price: { minor_units: 25000, currency: 'IDR' },
+            },
+          ],
+          subtotal: { minor_units: 50000, currency: 'IDR' },
+        }),
+      ),
+    );
+
+    // Resume the bill first
+    await act(async () => {
+      await result.current.handleResumeOpenBill('existing-bill-1');
+    });
+    expect(result.current.activeOpenBillId).toBe('existing-bill-1');
+    expect(setCustomerName).toHaveBeenCalledWith('Budi');
+
+    // Now update / save the tab
+    await act(async () => {
+      await result.current.handleOpenBill();
+    });
+
+    // Expect the existing bill to have been deleted
+    expect(deleteHeldCartScoped).toHaveBeenCalledWith('tok', 'existing-bill-1');
+    // And newly saved
+    expect(holdCartScoped).toHaveBeenCalledWith(
+      'tok',
+      expect.objectContaining({
+        label: 'Table 5 (Budi)',
+        bill_type: 'open_bill',
+      }),
+    );
+    expect(result.current.activeOpenBillId).toBeNull();
   });
 });
 

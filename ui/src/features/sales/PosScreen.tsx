@@ -186,6 +186,12 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
       if (typeof data.serviceChargeEnabled === 'boolean') {
         setServiceCharge(data.serviceChargeEnabled, data.serviceChargePercent);
       }
+      if (typeof data.tableNumber === 'string') {
+        setTableNumber(data.tableNumber);
+      }
+      if (typeof data.customerName === 'string') {
+        setCustomerName(data.customerName);
+      }
       localStorage.removeItem(LOCKED_CART_KEY);
     } catch { /* ignore */ }
   }, [setLines, setDiscount, setAppliedPromotions, setTipPercent, setServiceCharge]);
@@ -201,6 +207,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   const [discountInput, setDiscountInput] = useState('');
   const [discountName, setDiscountName] = useState('');
   const [tableNumber, setTableNumber] = useState('');
+  const [customerName, setCustomerName] = useState('');
   const [showTableNumberSetting, setShowTableNumberSetting] = useState(false);
   // Restaurant coursing: `restaurant.course_firing` gates the firing bar +
   // per-line course chip. Defaults to the workspace check alone until the
@@ -505,6 +512,8 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     setDiscount,
     tableNumber,
     setTableNumber,
+    customerName,
+    setCustomerName,
   });
 
   const { handlePaymentComplete: customerDisplayPaymentComplete } = useCustomerDisplay({
@@ -557,9 +566,10 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     }
     resetCart();
     setTableNumber('');
+    setCustomerName('');
     // Also clear the customer-facing pole display.
     customerDisplayPaymentComplete();
-  }, [resetCart, setTableNumber, customerDisplayPaymentComplete, activeOpenBillId, loadOpenBills, addToast, sessionToken, deductionLocationIdRef, setActiveOpenBillId, setCartId, setDeductionLocationName, setDeductionOverridden]);
+  }, [resetCart, setTableNumber, setCustomerName, customerDisplayPaymentComplete, activeOpenBillId, loadOpenBills, addToast, sessionToken, deductionLocationIdRef, setActiveOpenBillId, setCartId, setDeductionLocationName, setDeductionOverridden]);
 
   // ── Lock: save cart state to localStorage, then logout ───────────
 
@@ -584,6 +594,8 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
           tipPercent,
           serviceChargeEnabled,
           serviceChargePercent,
+          tableNumber,
+          customerName,
         };
         localStorage.setItem(LOCKED_CART_KEY, JSON.stringify(data));
       } else {
@@ -591,7 +603,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
       }
     } catch { /* storage quota or unavailable — ignore */ }
     logout();
-  }, [lines, discountPercent, discountLabel, appliedPromotions, tipPercent, serviceChargeEnabled, serviceChargePercent, logout]);
+  }, [lines, discountPercent, discountLabel, appliedPromotions, tipPercent, serviceChargeEnabled, serviceChargePercent, tableNumber, customerName, logout]);
 
   // ── Keyboard navigation (↑ / ↓ / + / − / Del / Enter) ─────────
   // Behaviour lives in useCartKeyboardNav; the cart-line ref Map and its
@@ -775,7 +787,13 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     isEnabled, setShowTables, setShowSalesHistory, setShowStockInquiry,
     onNavigate, handleOpenSettings, handleLock,
   };
-  const tableNumberRow = { showTableNumberSetting, tableNumber, setTableNumber };
+  const tableNumberRow = {
+    showTableNumberSetting,
+    tableNumber,
+    setTableNumber,
+    customerName,
+    setCustomerName,
+  };
   const cartLineRows = {
     lines, fireCourse, fireAllCourses, assignCourse, setCartLineRef,
     handleRemoveLine, handleDecreaseQty, handleIncreaseQty,
@@ -798,6 +816,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   const checkoutRow = {
     handlePay, addToast, setShowOpenBillInput, setCartId, resetCart,
     setShowOpenBills, openBills,
+    activeOpenBillId, setActiveOpenBillId, handleOpenBill,
   };
   const cartPanelProps: CartPanelProps = {
     ...panelChrome, ...shiftRow, ...deductionBinding, ...hubNav, ...tableNumberRow,

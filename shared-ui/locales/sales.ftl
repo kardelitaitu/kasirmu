@@ -1080,3 +1080,13 @@ pos-cart-line-edit-note = Edit Note
 pos-cart-line-note-title = Special Request
 pos-cart-line-note-placeholder = e.g. No onion, less ice, allergy...
 pos-cart-line-note-clear = Clear
+
+# ── Save Tab / Open Bills integration ──
+pos-cart-save-tab = Save Tab
+pos-cart-update-tab = Update Tab
+pos-cart-update-tab-aria = Update open tab for this table
+pos-cart-customer-label = Customer
+pos-cart-customer-placeholder = Name (optional)...
+pos-cart-customer-aria = Customer name (optional)
+pos-cart-new-tab = New Tab
+pos-cart-new-tab-title = Clear active cart to start a new tab

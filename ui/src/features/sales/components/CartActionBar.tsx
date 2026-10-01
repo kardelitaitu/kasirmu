@@ -15,6 +15,10 @@ export interface CartActionBarProps {
   setDeductionLocationName: Dispatch<SetStateAction<string | null>>;
   setDeductionOverridden: Dispatch<SetStateAction<boolean>>;
   resetCart: () => void;
+  tableNumber?: string | undefined;
+  customerName?: string | undefined;
+  activeOpenBillId?: string | null | undefined;
+  handleOpenBill?: (() => Promise<void>) | undefined;
 }
 
 
@@ -28,6 +32,10 @@ export function CartActionBar({
   setDeductionLocationName,
   setDeductionOverridden,
   resetCart,
+  tableNumber,
+  customerName,
+  activeOpenBillId,
+  handleOpenBill,
 }: CartActionBarProps) {
   const { l10n } = useLocalization();
 
@@ -63,24 +71,31 @@ export function CartActionBar({
         </Localized>
       </button>
 
-      {/* Open Bill button */}
-<button
-  type="button"
-  className="pos-cart-open-bill-btn"
-  onClick={() => {
-    if (!activeShift) {
-      addToast({ message: 'Open a shift first', type: 'warning' });
-      return;
-    }
-    setShowOpenBillInput(true);
-  }}
-  aria-label={l10n.getString('pos-cart-open-bill-aria')}
->
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="16" height="16" aria-hidden="true">
-    <rect x="3" y="6" width="18" height="12" rx="2" />
-    <line x1="3" y1="10" x2="21" y2="10" />
-  </svg>
-  {l10n.getString('pos-cart-open-bill')}
+      {/* Save Tab / Update Tab button */}
+      <button
+        type="button"
+        className="pos-cart-open-bill-btn"
+        onClick={() => {
+          if (!activeShift) {
+            addToast({ message: 'Open a shift first', type: 'warning' });
+            return;
+          }
+          if (tableNumber?.trim() || customerName?.trim() || activeOpenBillId) {
+            void handleOpenBill?.();
+          } else {
+            setShowOpenBillInput(true);
+          }
+        }}
+        aria-label={activeOpenBillId ? (l10n.getString('pos-cart-update-tab-aria') || 'Update Tab') : l10n.getString('pos-cart-open-bill-aria')}
+        data-testid="pos-cart-save-tab-btn"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="16" height="16" aria-hidden="true">
+          <rect x="3" y="6" width="18" height="12" rx="2" />
+          <line x1="3" y1="10" x2="21" y2="10" />
+        </svg>
+        {activeOpenBillId
+          ? (l10n.getString('pos-cart-update-tab') || 'Update Tab')
+          : (l10n.getString('pos-cart-save-tab') || 'Save Tab')}
       </button>
     </div>
   );
