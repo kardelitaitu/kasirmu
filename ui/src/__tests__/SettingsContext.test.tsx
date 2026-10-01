@@ -194,6 +194,12 @@ function wrapper({ children }: { children: ReactNode }) {
 }
 
 function resetFailures() {
+  // The store-switch case mutates the workspace token and must not leak. A later case
+  // that sets the token to the value a previous one already left it at sees NO CHANGE,
+  // so its effect never re-runs and it would pass while racing nothing -- the failure
+  // mode found by bisecting RetailPosScreen (9bba6975e). Nothing collides today, since
+  // only one case writes it; this is so the next one cannot.
+  wsState.sessionToken = 'test-token-123';
   mocks.failReceipt = false;
   mocks.failStore = false;
   mocks.failCurrencies = false;
