@@ -1819,15 +1819,29 @@ resets the mock, asserts the stack is present, and only then asserts no in-viewp
 covered. Every formulation above skipped that step, and skipped it *silently*, which is what
 made them look convincing.
 
-**And the step after it does not work as naively written** (measured 2026-10-01, the seeded
-formulation attempted and abandoned). The obvious seeding is
-`import('/src/dev-mock/core/mockDatabase.ts') -> resetMockDatabase()` followed by `page.reload()`,
-but the reload **drops the in-memory session**: the app comes back on the login screen, so the
-subsequent "is the stack up?" assertion runs against a page that has no picker and no memo stack at
-all, and fails for a reason that has nothing to do with occlusion. Whoever attempts this again
-must re-authenticate after the reset — and must confirm the memo slice is re-seeded on the way
-back, since the reset clears the key the handler reads on load. The recipe is right; the
-mechanics around it are not free.
+**And the step after it does not work — measured, twice, and the second measurement ends
+it** (2026-10-01). The obvious seeding is
+`import('/src/dev-mock/core/mockDatabase.ts') -> resetMockDatabase()` followed by `page.reload()`.
+Round 5 found the reload **drops the in-memory session**, so the "is the stack up?" assertion ran
+on the login screen. Round 6 fixed that (re-authenticate after the reset) and measured the result:
+
+```
+SEEDED bubbles=0
+SEEDED_HITS []      → 1 passed
+```
+
+**The reset does not RESTORE the stack, it removes it.** `resetMockDatabase()` clears the memo
+key, and on the next load the memo slice does not come back — so the precondition this gate
+needs can never be made true by resetting, and a test written this way passes vacuously *by
+construction*. There is no re-seeding path from the browser side: the mock's memo list is
+module state behind a read at load, and the only handle a test has clears it.
+
+**So the contract is right and the harness is not reachable with the current mock.** A gate for
+this family needs a mock affordance that DETERMINISTICALLY PRODUCES N pending memos — not a
+reset that empties them. That is a dev-mock change, not a test change, and it is the honest
+recommendation: stop trying to gate the overlay from the e2e side until the mock can be made to
+serve a known stack. Nine formulations have now failed; the tenth should not be attempted
+before the mock changes.
 
 **Also measured, and worth not re-deriving:** the clearance bands are not demonstrably
 load-bearing on the two surfaces re-tested this round. With the band removed, the staff Delete
