@@ -1843,12 +1843,31 @@ recommendation: stop trying to gate the overlay from the e2e side until the mock
 serve a known stack. Nine formulations have now failed; the tenth should not be attempted
 before the mock changes.
 
-**Also measured, and worth not re-deriving:** the clearance bands are not demonstrably
-load-bearing on the two surfaces re-tested this round. With the band removed, the staff Delete
-button and the picker's Settings card both still land clear after a scroll (clicks in 39ms /
-180ms / 85ms). What the bands demonstrably change is the DEFAULT rendering — the last rows sit
-clear without the merchant scrolling first. That is a real improvement, and it is a weaker claim
-than "the control was unclickable", so it is recorded as the weaker one.
+**CORRECTION (2026-10-01) — the previous paragraph here was wrong, and the wrong way round.**
+It concluded the bands "are not demonstrably load-bearing" because, with the band removed, the
+staff Delete button and the picker's Settings card still landed clear **after a scroll**. True —
+and it measured the wrong thing. At the DEFAULT scroll position, with the stack at its full size,
+those bands do NOT prevent coverage. Measured with the seam below serving exactly 3 bubbles:
+
+| Surface | Covered at default scroll | Hit test returns |
+|---|---|---|
+| Workspace picker | Analytics, Reports tool cards | `BUTTON.memo-banner-open` |
+| Settings sidebar | Offline Queue, Tax Configuration, System Diagnostics (and each row's `Pin …` trigger) | `P.memo-banner-text` / `STRONG.memo-banner-title` |
+
+So the bands buy SCROLL ROOM — the row can be reached by scrolling — and they do not deliver
+"nothing visible is covered". A merchant looking at the picker sees two tool cards they cannot
+press until they scroll. That is a real, open product defect, it is what the seven rounds were
+chasing, and it is **not fixed**. The weaker claim was still an overclaim, in the opposite
+direction from the one it replaced.
+
+**The seam that made this measurable** (2026-10-01, in `dev-mock/handlers/locations.ts`):
+`?memos=N`, and the same value via `sessionStorage['oz-dev-mock:memo-count']`, serve exactly N
+pending bubbles, clamped to MAX_STACK (3). Verified 0→0, 1→1, 3→3, 5→3. The sessionStorage twin is not redundancy — `loginAs` navigates to plain `/`, which DROPS a query string, and a seam set before loginAs is silently lost. That trap cost a round here too, and it is the reason the note lives beside the code.
+
+**What is now true, stated precisely:** the overlay collision is reproducible on demand, the
+harness to catch it exists, and the product is currently FAILING the contract it would assert.
+The gate itself is not committed — it is red, and committing a red test is not an improvement.
+The next round's work is a CSS fix for the two surfaces, then the gate goes green and lands.
 
 **One consequence did land.** `admin-workflows.spec.ts` had neutered its theme-toggle case with
 a comment recording that the memo stack made the control unclickable, and asserted only that

@@ -146,6 +146,62 @@ const mockMemos: MockActiveMemo[] = [
 ];
 const MEMO_CADENCE = { baseIntervalSecs: 900, kdsIntervalSecs: 2 * 900 };
 
+/**
+ * Bubbles the stack can show at once — MAX_STACK in `MemoBanner.tsx`, measured
+ * at 215px on the 1024x1366 tablet profile. `?memos=N` clamps to it.
+ */
+const MEMO_MAX_STACK = 3;
+
+/** sessionStorage key mirroring the `?memos=N` seam — see `requestedMemoCount`. */
+const MEMO_COUNT_KEY = 'oz-dev-mock:memo-count';
+
+
+/**
+ * How many pending memos to serve, from `?memos=N`, or `null` for the seed.
+ *
+ * WHY THIS EXISTS (2026-10-01). `mockMemos` is module state and the only
+ * handle a test has from the browser side is `resetMockDatabase()`, which
+ * EMPTIES it and does not restore it — so no memo-dependent assertion can make
+ * its own precondition true, and every such test either passes vacuously or
+ * fails for a reason unrelated to what it is testing. That cost six rounds of
+ * trying to gate the memo-overlay collision and finding the gate vacuous.
+ *
+ * This seam gives the precondition. `?memos=3` serves exactly three PENDING
+ * bubbles, deterministically, with no dependence on what an earlier case
+ * acknowledged. Read at CALL time for the reason `unprovisionedRequested` gives
+ * at `handlers/system.ts:29`, and guarded the same way for jsdom.
+ *
+ * The stack renders at most MAX_STACK (3, measured at 215px — see
+ * `StaffManagementScreen.css`), so N is clamped to it: a test asking for 5 and
+ * silently receiving 3 would be measuring the clamp, not the overlay.
+ */
+function requestedMemoCount(): number | null {
+  // sessionStorage FIRST, then the query string, and the reason is measured:
+  // `loginAs` (e2e/helpers.ts) navigates to plain '/', which DROPS the query
+  // string. A test that set ?memos=N and then called loginAs silently got the
+  // seed back — the seam looked like it did nothing. sessionStorage survives that
+  // navigation, so a test sets the key BEFORE loginAs and both routes agree.
+  try {
+    const stored = window.sessionStorage?.getItem(MEMO_COUNT_KEY);
+    const raw = stored ?? new URLSearchParams(window.location.search).get('memos');
+    if (raw === null) return null;
+    const n = Number.parseInt(raw, 10);
+    if (!Number.isFinite(n) || n < 0) return null;
+    return Math.min(n, MEMO_MAX_STACK);
+  } catch {
+    return null;
+  }
+}
+
+/** Pending memos the stack should show when `?memos=N` asked for N. */
+function memoStackFor(count: number): MockActiveMemo[] {
+  const published = mockMemos.filter((m) => m.memo.status === 'published');
+  if (published.length === 0) return [];
+  return Array.from({ length: count }, (_, i) => {
+    const base = published[i % published.length]!;
+    return { ...base, memo: { ...base.memo }, deliveryStatus: 'pending' };
+  });
+}
 
 /** Cadence served with the memo list — mirrors `kasirmu_core::memo`:
  *  `NOTIFICATION_BASE_INTERVAL_SECS` (900s) and the derived
@@ -155,11 +211,16 @@ function listMockActiveMemos(): {
   memos: MockActiveMemo[];
   cadence: { baseIntervalSecs: number; kdsIntervalSecs: number };
 } {
+  const requested = requestedMemoCount();
+  const served =
+    requested === null
+      ? mockMemos
+          .filter((m) => m.memo.status === 'published')
+          .sort((a, b) => Number(a.memo.locationIds.length === 0) - Number(b.memo.locationIds.length === 0))
+          .map((m) => ({ ...m, memo: { ...m.memo } }))
+      : memoStackFor(requested);
   return {
-    memos: mockMemos
-      .filter((m) => m.memo.status === 'published')
-      .sort((a, b) => Number(a.memo.locationIds.length === 0) - Number(b.memo.locationIds.length === 0))
-      .map((m) => ({ ...m, memo: { ...m.memo } })),
+    memos: served,
     cadence: { ...MEMO_CADENCE },
   };
 }
