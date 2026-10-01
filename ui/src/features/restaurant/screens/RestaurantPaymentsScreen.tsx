@@ -271,12 +271,14 @@ export function RestaurantPaymentsScreen({
   const [cashDrawerVerify, setCashDrawerVerify] = useState(false);
   const [cashCustomLabel, setCashCustomLabel] = useState('Cash');
   const [activeCashPresets, setActiveCashPresets] = useState<string[]>([
-    'Exact',
-    '10.000',
-    '20.000',
-    '50.000',
-    '100.000',
-    '200.000',
+    'exact',
+    '1000',
+    '2000',
+    '5000',
+    '10000',
+    '20000',
+    '50000',
+    '100000',
   ]);
 
   // QRIS
@@ -996,8 +998,8 @@ export function RestaurantPaymentsScreen({
                 <div className="resto-compact-block">
                   <span className="resto-compact-block-title">Cash Suggestion Presets</span>
                   <div className="resto-compact-chips">
-                    {['Exact', '10.000', '20.000', '50.000', '100.000', '200.000'].map((preset) => {
-                      const active = activeCashPresets.includes(preset);
+                    {['exact', '1000', '2000', '5000', '10000', '20000', '50000', '100000'].map((preset) => {
+                      const active = activeCashPresets.some((p) => p.toLowerCase() === preset.toLowerCase());
                       return (
                         <button
                           key={preset}
@@ -1005,7 +1007,7 @@ export function RestaurantPaymentsScreen({
                           className={`resto-compact-chip ${active ? 'resto-compact-chip--active' : ''}`}
                           onClick={() => {
                             const next = active
-                              ? activeCashPresets.filter((p) => p !== preset)
+                              ? activeCashPresets.filter((p) => p.toLowerCase() !== preset.toLowerCase())
                               : [...activeCashPresets, preset];
                             setActiveCashPresets(next);
                             updateRailParams('cash', { presets: next });

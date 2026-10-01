@@ -613,15 +613,20 @@ describe('RestaurantPaymentsScreen — card controls and interactive elements', 
     await user.click(exactChip);
     expect(exactChip).toHaveAttribute('aria-pressed', 'false');
 
+    const chip1k = screen.getByTestId('cash-preset-1000');
+    expect(chip1k).toHaveAttribute('aria-pressed', 'true');
+    await user.click(chip1k);
+    expect(chip1k).toHaveAttribute('aria-pressed', 'false');
+
     const chip10k = screen.getByTestId('cash-preset-10000');
     expect(chip10k).toHaveAttribute('aria-pressed', 'true');
     await user.click(chip10k);
     expect(chip10k).toHaveAttribute('aria-pressed', 'false');
 
-    const chip200k = screen.getByTestId('cash-preset-200000');
-    expect(chip200k).toHaveAttribute('aria-pressed', 'true');
-    await user.click(chip200k);
-    expect(chip200k).toHaveAttribute('aria-pressed', 'false');
+    const chip100k = screen.getByTestId('cash-preset-100000');
+    expect(chip100k).toHaveAttribute('aria-pressed', 'true');
+    await user.click(chip100k);
+    expect(chip100k).toHaveAttribute('aria-pressed', 'false');
   });
 
   it('interacts with QRIS mode buttons, inputs, and receipt print switch via data-testid', async () => {
