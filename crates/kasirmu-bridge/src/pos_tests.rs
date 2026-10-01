@@ -1117,10 +1117,44 @@ async fn stale_attempt_id_on_a_different_cart_settles_a_new_sale() {
         let store_conn = bridge.db_manager().open_store(store_id).unwrap();
         let db = store_conn.lock().unwrap();
         db.execute_batch(
-            "INSERT INTO products (id, sku, name, price_minor, currency, product_type)
+            // `replay-instance` MUST exist: the session installed below names it,
+            // and the settle door resolves it to decide WHERE to deduct from.
+            // Nothing seeded it before because the door used to FALL BACK to the
+            // canonical default location on the resulting `NotFound`; it now
+            // PROPAGATES that error, as the four bridge callers have always done,
+            // so the fixture must provision the instance its own session claims.
+            // `location_id` must name a row that EXISTS in this store DB's
+            // `locations`: the baseline seeder creates the literal `'default'`
+            // (`migrations.rs:503`), not the canonical inventory UUID. And
+            // `bound_location_id` is left NULL deliberately — it FKs to
+            // `inventory_locations` (`20260813_init.sql:996`), which this store DB
+            // does not seed, so naming one here fails the insert. NULL is also the
+            // honest shape for this fixture: with no single binding the resolver
+            // takes its documented multi-binding / tier-4 path, which is what the
+            // test is exercising (`resolve_primary_location` filters on
+            // `.filter(|b| !b.is_empty())`, so NULL and empty behave alike).
+            // Three rows, in FK order, mirroring the working fixture above
+            // (`:496-503`): a store DB carries no `locations` row of its own, so
+            // the fixture must create the location it binds to. `bound_location_id`
+            // FKs to `inventory_locations` (`20260813_init.sql:996`) and
+            // `location_id` FKs to `locations` — different tables, hence two rows.
+            // The stock below must sit at the SAME location the instance binds to,
+            // or the door sees an empty primary and reports a shortfall that the
+            // fixture never intended (measured: `primaryQtyAvailable: 0` while the
+            // rows sat at the canonical UUID). Before this change the door fell back
+            // to the canonical default location on the missing instance, which is
+            // why the mismatch was invisible.
+            "INSERT OR IGNORE INTO locations (id, name, is_primary)
+                 VALUES ('replay-store', 'Replay Store', 0);
+             INSERT OR IGNORE INTO inventory_locations (id, name, type)
+                 VALUES ('replay-location', 'Replay Location', 'store');
+             INSERT INTO workspace_instances (id, type_key, location_id, name, bound_location_id)
+                 VALUES ('replay-instance', 'restaurant-pos', 'replay-store', 'Replay POS',
+                         'replay-location');
+             INSERT INTO products (id, sku, name, price_minor, currency, product_type)
                  VALUES ('replay-product', 'REPLAY-COFFEE', 'Replay Coffee', 350, 'USD', 'retail');
              INSERT INTO stock_summary (item_id, location_id, qty)
-                 VALUES ('replay-product', '01926b3a-0000-7000-8000-000000000001', 100);",
+                 VALUES ('replay-product', 'replay-location', 100);",
         )
         .unwrap();
     }
@@ -1271,10 +1305,44 @@ fn replay_guard_bridge() -> crate::testing::TestBridge {
         let store_conn = bridge.db_manager().open_store(store_id).unwrap();
         let db = store_conn.lock().unwrap();
         db.execute_batch(
-            "INSERT INTO products (id, sku, name, price_minor, currency, product_type)
+            // `replay-instance` MUST exist: the session installed below names it,
+            // and the settle door resolves it to decide WHERE to deduct from.
+            // Nothing seeded it before because the door used to FALL BACK to the
+            // canonical default location on the resulting `NotFound`; it now
+            // PROPAGATES that error, as the four bridge callers have always done,
+            // so the fixture must provision the instance its own session claims.
+            // `location_id` must name a row that EXISTS in this store DB's
+            // `locations`: the baseline seeder creates the literal `'default'`
+            // (`migrations.rs:503`), not the canonical inventory UUID. And
+            // `bound_location_id` is left NULL deliberately — it FKs to
+            // `inventory_locations` (`20260813_init.sql:996`), which this store DB
+            // does not seed, so naming one here fails the insert. NULL is also the
+            // honest shape for this fixture: with no single binding the resolver
+            // takes its documented multi-binding / tier-4 path, which is what the
+            // test is exercising (`resolve_primary_location` filters on
+            // `.filter(|b| !b.is_empty())`, so NULL and empty behave alike).
+            // Three rows, in FK order, mirroring the working fixture above
+            // (`:496-503`): a store DB carries no `locations` row of its own, so
+            // the fixture must create the location it binds to. `bound_location_id`
+            // FKs to `inventory_locations` (`20260813_init.sql:996`) and
+            // `location_id` FKs to `locations` — different tables, hence two rows.
+            // The stock below must sit at the SAME location the instance binds to,
+            // or the door sees an empty primary and reports a shortfall that the
+            // fixture never intended (measured: `primaryQtyAvailable: 0` while the
+            // rows sat at the canonical UUID). Before this change the door fell back
+            // to the canonical default location on the missing instance, which is
+            // why the mismatch was invisible.
+            "INSERT OR IGNORE INTO locations (id, name, is_primary)
+                 VALUES ('replay-store', 'Replay Store', 0);
+             INSERT OR IGNORE INTO inventory_locations (id, name, type)
+                 VALUES ('replay-location', 'Replay Location', 'store');
+             INSERT INTO workspace_instances (id, type_key, location_id, name, bound_location_id)
+                 VALUES ('replay-instance', 'restaurant-pos', 'replay-store', 'Replay POS',
+                         'replay-location');
+             INSERT INTO products (id, sku, name, price_minor, currency, product_type)
                  VALUES ('replay-product', 'REPLAY-COFFEE', 'Replay Coffee', 350, 'USD', 'retail');
              INSERT INTO stock_summary (item_id, location_id, qty)
-                 VALUES ('replay-product', '01926b3a-0000-7000-8000-000000000001', 100);",
+                 VALUES ('replay-product', 'replay-location', 100);",
         )
         .unwrap();
     }
