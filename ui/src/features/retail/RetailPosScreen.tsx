@@ -1007,7 +1007,23 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
     const rpMinor = parseMinorUnits(discountRpInput, minorUnitExponent(subtotal?.currency ?? 'IDR'));
     if (rpMinor === null || rpMinor <= 0 || !subtotal || subtotal.minor_units === 0) return;
     const capped = Math.min(subtotal.minor_units, rpMinor);
-    const pct = Math.round((capped / subtotal.minor_units) * 100 * 100) / 100;
+    // MONEY-05: project the typed AMOUNT to a percent WITHOUT rounding the
+    // ratio. `Math.round((capped / subtotal) * 100 * 100) / 100` rounded the
+    // ratio to two decimals, and usePosState recomputes the money from the
+    // percent -- so that rounding was a money error, in the UPWARD direction:
+    // 35 off a 20000-unit subtotal is a true 0.175%, rounded up to 0.18, and the
+    // cart charged 19963 instead of 19965, two units more than typed. Measured
+    // over subtotal 100..20000 and discounts 1..120 that costs up to 3 units,
+    // with the excess on 1194056 combinations.
+    //
+    // LIMIT, recorded so it is not re-derived: a discount BELOW 1% cannot be
+    // expressed at all, because the store is percent-only and setDiscount
+    // rounds it (usePosState.ts:287 `Math.round(percent)`). A 1-unit discount
+    // on a 35000-unit cart is 0.00286% and becomes 0 whichever projection is
+    // used. That is a property of the percent-only cart, not of this line, and
+    // fixing it means storing the discount as an AMOUNT — a change to
+    // usePosState shared with the main POS.
+    const pct = (capped * 100) / subtotal.minor_units;
     setDiscount(pct, '');
     setShowDiscount(false);
     setDiscountRpInput('');

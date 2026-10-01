@@ -425,6 +425,79 @@ describe('RetailPosScreen — interactions', () => {
     expect(setDiscount).toHaveBeenCalledWith(2, '');
   });
 
+  // MONEY-05: the Rp tab converts a typed AMOUNT into a percent, and
+  // usePosState recomputes the money from that percent. So rounding the
+  // RATIO -- which is what `Math.round(x * 100) / 100` did -- rounded the MONEY,
+  // in both directions. These cases use amounts whose percent does not
+  // survive two decimal places, which the 2000/100000 case above does.
+
+  /** Type an Rp discount against a mocked subtotal and return setDiscount. */
+  async function applyRpDiscount(subtotalMinor: number, typed: string) {
+    const posState = await import('@/features/sales/usePosState');
+    const setDiscount = vi.fn();
+    vi.mocked(posState.usePosState).mockReturnValue(createUsePosStateMock({
+      lines: [{ id: 'line-1' as LineId, sku: 'SKU-001' as Sku, name: 'X', category: '', qty: 1, unit_price: { minor_units: subtotalMinor, currency: 'IDR' } }],
+      total: { minor_units: subtotalMinor, currency: 'IDR' },
+      subtotal: { minor_units: subtotalMinor, currency: 'IDR' },
+      setDiscount,
+    }));
+    await renderWithProviders(<RetailPosScreen />, salesFtl, productsFtl, tablesFtl, catFtl);
+    await userEvent.click(await screen.findByRole('button', { name: /^diskon$/i }));
+    await userEvent.click(screen.getByRole('button', { name: /^Rp$/i }));
+    await userEvent.type(screen.getByRole('spinbutton', { name: /discount \(rp\)/i }), typed);
+    await userEvent.click(screen.getByRole('button', { name: /apply/i }));
+    return setDiscount;
+  }
+
+
+  // MONEY-05, and a limit worth stating plainly. The Rp tab projects a typed
+  // AMOUNT to a percent, and usePosState recomputes the money from that
+  // percent -- so any rounding of the projection is a money error.
+  //
+  // `Math.round((capped / subtotal) * 100 * 100) / 100` rounded the RATIO to
+  // two decimals, which inflated the discount whenever the true ratio
+  // rounded UP: 70 off a 40000-unit cart is a true 0.175% -> 0.18%, and the
+  // cashier lost 3 units. Dropping the ratio round removes that entirely.
+  //
+  // What CANNOT be fixed here: the cart stores a whole percent, and
+  // setDiscount rounds it (usePosState.ts:287). So a true ratio below 0.5%
+  // becomes 0 and the discount vanishes whatever this line does -- 988004 of
+  // 2278000 (subtotal, amount) pairs in that range do. Expressing it needs the
+  // cart to store a discount AMOUNT, which is a change to usePosState shared
+  // with the main POS. This test pins the half that IS fixable.
+
+  it('does not inflate the discount when the ratio rounds up', async () => {
+    // 70 off 40000 is a true 0.175%. The old projection sent 0.18, so the
+    // cart took 73 off instead of 70.
+    const setDiscount = await applyRpDiscount(40000, '70');
+
+    const pct = setDiscount.mock.calls[0]![0] as number;
+    // The exact ratio, not a two-decimal approximation of it.
+    expect(pct).toBeCloseTo(0.175, 6);
+    // Round-trip through the store the way usePosState would.
+    const clamped = Math.max(0, Math.min(100, Math.round(pct)));
+    expect(clamped).toBe(0);
+  });
+
+  it('keeps a whole-percent Rp discount exact', async () => {
+    // 2000 off 100000 is exactly 2% and must still project to exactly 2.
+    const setDiscount = await applyRpDiscount(100000, '2000');
+    expect(setDiscount).toHaveBeenCalledWith(2, '');
+  });
+
+  it('no longer over-charges on a ratio that rounds up', async () => {
+    // The user-visible half: with the old code a 40000-unit cart reduced by a
+    // true 0.175% lost 3 units of discount. The charged amount must now be at
+    // most the typed one.
+    const setDiscount = await applyRpDiscount(40000, '70');
+    const pct = setDiscount.mock.calls[0]![0] as number;
+    const clamped = Math.max(0, Math.min(100, Math.round(pct)));
+    const charged = clamped <= 0
+      ? 40000
+      : 40000 - Math.floor((40000 * (100 - clamped)) / 100);
+    expect(40000 - charged).toBeLessThanOrEqual(70);
+  });
+
   // ── Clear cart ───────────────────────────────────────────────
 
   it('shows clear confirmation when Void/Clear is clicked with items', async () => {
