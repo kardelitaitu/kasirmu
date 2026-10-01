@@ -40,6 +40,13 @@ CONTROL SET, which is the part that silently disappears.
 Exit code 0 = both sides carry the same control set.
 Exit code 1 = a control exists on one side only.
 Exit code 2 = a REFUSED command line (a named root resolved to no file).
+
+SELF-TEST: `python3 scripts/test-replay-fork.py` (10 cases, touches no files). It lives in
+its own file rather than behind a flag because this checker is the gate that would have
+caught the fork losing the colon rejection -- the one control here with a security
+consequence -- and a checker that cannot fail is worse than none. The self-test proves
+both halves of the substring trap the CONTROLS markers below exist to close: that a
+bare name check IS fooled by renaming a control, and that the definition check is not.
 """
 
 from __future__ import annotations
