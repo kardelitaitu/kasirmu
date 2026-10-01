@@ -18,9 +18,32 @@ import { test, expect, type Page } from '@playwright/test';
 /** The tablet entry, with the first-run gate forced open. */
 const FIRST_RUN = '/index.mobile.html?unprovisioned=1';
 
-/** Fill the fields a local-mode provisioning needs. */
+/**
+ * Choose the standalone (offline) mode and leave step 1.
+ *
+ * `185bccb69` turned the flow into a true three-step wizard: each step renders on
+ * its own and `provision-step-next` is disabled until the step it leaves is done.
+ * The specs drive it the way a merchant does rather than reaching past the gate.
+ */
+async function selectOfflineMode(page: Page) {
+  await page.getByTestId('provision-mode-local').click();
+  await page.getByTestId('provision-step-next').click();
+}
+
+/**
+ * Fill the fields a provisioning needs, from wherever the wizard currently is.
+ *
+ * `185bccb69` made the flow a real three-step wizard, so this walks it: leave
+ * the step on screen if it is still owed, answer the store step, advance, then
+ * fill the owner fields. Both starting points are covered - a linked session is
+ * on step 1 having just linked, a local one has already advanced past it - so a
+ * Next that is disabled is a no-op to check rather than a click that hangs.
+ */
 async function fillOwnerForm(page: Page, opts: { store?: string; shop?: string } = {}) {
+  const next = page.getByTestId('provision-step-next');
+  if (await next.isEnabled().catch(() => false)) await next.click();
   await page.getByTestId('store-type-' + (opts.store ?? 'simple-retail')).click();
+  await next.click();
   await page.getByLabel(/Shop name/i).fill(opts.shop ?? 'Toko Berkah');
   await page.getByLabel(/Your name/i).fill('Budi Santoso');
   await page.getByLabel(/Login name/i).fill('budi');
@@ -34,24 +57,34 @@ test.describe('First-run provisioning', () => {
     await page.getByTestId('provisioning-flow').waitFor({ state: 'visible', timeout: 15_000 });
   });
 
-  test('renders the flow on a terminal that is not provisioned', async ({ page }) => {
+  test('offers both store types and the offline path on a terminal that is not provisioned', async ({ page }) => {
     // The screen a merchant sees before they have a working register.
     await expect(page.getByRole('heading', { name: /Set up this terminal/i })).toBeVisible();
-    // Both store types are offered, and the offline path is reachable.
+    await expect(page.getByTestId('provision-mode-local')).toBeVisible();
+
+    // Both store types must be OFFERED. Asserted after the mode step is
+    // answered rather than on first paint: `185bccb69` made the flow a true
+    // three-step wizard, so a later step's fields render once an earlier step is
+    // answered. What this test is for is the OFFERING, not the placement — a
+    // wizard that holds the choice until step 1 is answered still offers it.
+    await selectOfflineMode(page);
     await expect(page.getByTestId('store-type-simple-retail')).toBeVisible();
     await expect(page.getByTestId('store-type-restaurant')).toBeVisible();
-    await expect(page.getByTestId('provision-mode-local')).toBeVisible();
   });
 
   test('will not submit until the form is complete', async ({ page }) => {
     // A disabled control is the first line of defence; the empty-form state must
-    // never be submittable.
+    // never be submittable. The submit lives on the LAST step since the wizard
+    // landed, so the two earlier steps are answered to reach it.
+    await selectOfflineMode(page);
+    await page.getByTestId('store-type-simple-retail').click();
+    await page.getByTestId('provision-step-next').click();
     await expect(page.getByTestId('provision-submit')).toBeDisabled();
   });
 
   test('completes an offline setup end to end and leaves the flow', async ({ page }) => {
     // The merchant's core promise: no account, no connection, a working terminal.
-    await page.getByTestId('provision-mode-local').click();
+    await selectOfflineMode(page);
     await fillOwnerForm(page);
 
     const submit = page.getByTestId('provision-submit');
@@ -65,7 +98,7 @@ test.describe('First-run provisioning', () => {
   test('names a PIN mismatch instead of leaving submit silently dead', async ({ page }) => {
     // The inline validation added in the audit. Before it the button simply stayed
     // disabled and the merchant had to guess which field was wrong.
-    await page.getByTestId('provision-mode-local').click();
+    await selectOfflineMode(page);
     await fillOwnerForm(page);
     await page.getByLabel(/Confirm PIN/i).fill('9999');
 
@@ -75,7 +108,7 @@ test.describe('First-run provisioning', () => {
   });
 
   test('marks a too-short PIN', async ({ page }) => {
-    await page.getByTestId('provision-mode-local').click();
+    await selectOfflineMode(page);
     await fillOwnerForm(page);
     await page.getByLabel(/Confirm PIN/i).fill('');
     await page.getByLabel(/^PIN/i).fill('12');
@@ -105,10 +138,14 @@ test.describe('First-run provisioning', () => {
     await expect(steps.filter({ hasText: 'Account' })).toHaveAttribute('aria-current', 'step');
 
     // Completing a step advances the count and marks it done.
-    await page.getByTestId('provision-mode-local').click();
+    await selectOfflineMode(page);
     await expect(page.getByText(/Step 2 of 3/i)).toBeVisible();
 
     await page.getByTestId('store-type-simple-retail').click();
+    // "Step N of 3" tracks the step ON SCREEN since the wizard landed, and the
+    // step advances on Next rather than the moment a choice is made — so the
+    // store row being selected is not yet step 3.
+    await page.getByTestId('provision-step-next').click();
     await expect(page.getByText(/Step 3 of 3/i)).toBeVisible();
   });
 
@@ -126,7 +163,7 @@ test.describe('First-run provisioning', () => {
 
     });
 
-    await page.getByTestId('provision-mode-local').click();
+    await selectOfflineMode(page);
     await fillOwnerForm(page);
     const submit = page.getByTestId('provision-submit');
     await submit.scrollIntoViewIfNeeded();
@@ -235,7 +272,7 @@ test.describe('First-run owner bootstrap', () => {
     await page.goto('/index.mobile.html?nousers=1&unprovisioned=1');
     await page.waitForSelector('[data-testid="provisioning-flow"]', { timeout: 20_000 });
 
-    await page.getByTestId('provision-mode-local').click();
+    await selectOfflineMode(page);
     await fillOwnerForm(page);
     await page.getByTestId('provision-submit').click();
 

@@ -33,6 +33,16 @@ import { loginAs, selectWorkspace, WORKSPACES, navigateTo } from './helpers';
  * The skip-to-content link is excluded BY CONSTRUCTION, not by name: its
  * clip: rect(0,0,0,0) clips painting only, so its 149x32 box still exists
  * geometrically under the topbar (AppLayout.css:518, tablet.css:280).
+ *
+ * READ THIS BEFORE TRUSTING IT - the premise moved (2026-10-01). This file was
+ * built against the pre-wizard flow, where the tool grid reached the bottom of
+ * the viewport and the stack covered it. `185bccb69` made provisioning a true
+ * three-step wizard, which changed both surfaces' geometry, and the collision no
+ * longer reproduces: with the clearance bands stashed this file passes 4/4. So at
+ * HEAD it is a REGRESSION GUARD for a defect that is currently ABSENT, not proof
+ * that the bands are load-bearing. The bands remain worth keeping - they are the
+ * clearance this file asserts - but their necessity is now UNPROVEN, and a reader
+ * who wants that answer should remove them and check rather than trust this file.
  */
 
 const MEMO_COUNT_KEY = 'oz-dev-mock:memo-count';
@@ -102,6 +112,16 @@ test.describe('Memo stack never covers a visible control', () => {
     await navigateTo(page, 'settings');
     await page.waitForSelector('[data-testid="settings-sidebar"]', { timeout: 15_000 });
     await expect(page.locator('.settings-nav-item').filter({ hasText: 'System Diagnostics' })).toHaveCount(1);
+
+    // A fixed settle, NOT expect.poll. Polling was tried here because the case
+    // passed 2 of 4 on a --repeat-each=2 — and it removed the flake by removing
+    // the assertion's teeth: with the clearance bands stashed, the polling version
+    // passed 4/4. A test that passes with the fix removed is the false assurance
+    // this file exists to avoid, so the strict single sample stands and the
+    // instability is reported instead. The cause is a layout race: the bands are
+    // gated on :has(.memo-stack) and the footer lays out when the stack arrives,
+    // so the sample can read a pre-reflow frame.
+    await page.waitForTimeout(500);
 
     expect(await coveredControls(page), 'a control visible on the settings route is covered by the memo stack').toEqual([]);
   });

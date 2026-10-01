@@ -301,6 +301,28 @@
 
 /* ── Footer ─────────────────────────────────────────────────── */
 
+/* Clearance for the fixed memo stack, on the same page.
+ *
+ * MEASURED 2026-10-01 (gate `ui/e2e/memo-overlay.spec.ts`): the stack is pinned to
+ * the viewport's bottom-left and the settings route is FULLSCREEN, so no shell
+ * ancestor moves it. `.settings-footer` is a fixed-height bar across the bottom of
+ * the content column — exactly that corner — and the stack's own controls land
+ * on it: elementFromPoint at the stack's buttons returned the footer, and the
+ * footer's own controls at the same y range were unreachable.
+ *
+ * The band is the stack's own bottom inset plus its full height, so the footer
+ * moves clear on every shell that sets a different inset (status bar, tab bar,
+ * chrome-free fallback) rather than only the one that was measured.
+ *
+ * This is a third clearance site, not a duplicate of the two in
+ * `SettingsNavTree.css` and `WorkspaceHome.css`: those keep a region's CONTENT out
+ * of the strip, this keeps the page's own bottom bar out of it. They are
+ * complementary and all three are gated on the stack being present.
+ */
+body:has(.memo-stack) .settings-footer {
+  padding-bottom: calc(var(--memo-bottom-inset, var(--space-6)) + 215px + var(--space-2));
+}
+
 .settings-footer {
   flex: 0 0 auto;
   min-height: 1.5rem;
