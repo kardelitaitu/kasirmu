@@ -259,8 +259,7 @@ fn a_sale_row_that_cannot_be_read_does_not_default_its_version() {
         .unwrap();
     let mut rows = stmt.query([]).unwrap();
     let row = rows.next().unwrap().unwrap();
-    let err =
-        Store::row_to_sale_header(row).expect_err("a missing version must not default to 1");
+    let err = Store::row_to_sale_header(row).expect_err("a missing version must not default to 1");
     assert!(
         matches!(err, rusqlite::Error::InvalidColumnName(_)),
         "expected the missing column to be named, got {err:?}"
