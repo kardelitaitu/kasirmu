@@ -1780,22 +1780,51 @@ element is `overflow: hidden` with `scrollHeight == clientHeight` (676 == 676) �
 scroll container. `.settings-sidebar-nav` is `flex: 1; overflow-y: auto`, and the band
 belongs there; the region now measures 791 > 623 and the row is reachable.
 
-**Not gateable as measured, but the survey is now COMPLETE (2026-10-01).** The census that
+**Not gateable as measured, and the reason is now understood (2026-10-01).** The census that
 timed out partway was re-run over the ten routes it never reached — products,
 inventory-adjustment, stock-transfers, warehouses, customers, locations, topology,
 sales-history, data-management, shift-management — and found **zero** memo occlusion on every
 one. The single element reported on each route is the same `Skip to main content` link,
-whose box sits at `top: 0` under the app topbar; it is the shell's own visually-hidden-until-
-focused pattern (`tablet.css:277`), not a collision, and it is not a product defect.
+whose box sits at `top: 0` under the app topbar; `clip: rect(0,0,0,0)` clips painting only,
+so the box still exists geometrically (`AppLayout.css:518`, `tablet.css:280`). That is the
+shell's own visually-hidden-until-focused pattern, not a collision and not a defect.
 
 **So the family is three surfaces, all banded, and the survey is exhausted.** What could not be
-built is a GATE: four attempts each failed the only question that matters — *does it fail
-without the fix?* Screen-wide sampling with no scroll is too strict (it calls every
-below-the-fold control occluded); per-element with Playwright's minimum scroll is too strict
-even WITH the band; per-element with `block: 'center'` is vacuous (passes with the band
-removed); a 3s click timeout is vacuous on the picker. **No walker was committed.** A test that
-passes with and without the fix is a false assurance, which is the specific thing this audit
-keeps warning about.
+built is a GATE — and the reason is worth more than a sixth attempt would have been.
+
+**Every formulation failed on the same hidden cause: the dev-mock's memo state is MUTABLE and
+PERSISTS.** `locations.ts:105` documents it outright — "Mutable memo list backing the dev mock
+— acknowledgements persist" — so a test that acks a memo removes it for every later test. Any
+occlusion assertion therefore rests on a precondition it does not control: a run where an earlier
+case acknowledged the stack passes VACUOUSLY, and a run where none did flags a real overlap.
+That is why the same three lines of code produced four different results across the day:
+
+| Formulation | With the band | Band removed | Verdict |
+|---|---|---|---|
+| screen-wide, no scroll | too strict | too strict | counts below-the-fold controls |
+| per-element, minimum scroll | too strict | too strict | lands the row at the overlay edge |
+| per-element, `block: 'center'` | passes | **passes** | vacuous |
+| 3s click timeout | passes | **passes** | vacuous on the picker |
+| per-element hit-test (staff) | passes | **passes** | vacuous |
+| per-element hit-test (picker) | passes | **passes** | vacuous |
+| default-position, in-viewport only | passes | **passes** | vacuous; the band is not load-bearing here |
+
+**No walker was committed.** A test that passes with and without the fix is a false assurance,
+which is the specific thing this audit keeps warning about.
+
+**What a real gate must do first, and this is the actionable part:** seed the stack rather than
+assume it. The dev-mock already exposes the affordance — dropping every persisted slice
+returns the preview to its seed state (`mockDatabase.ts:120-125`) — so the test resets the mock,
+asserts the stack is present, and only then asserts no in-viewport control is covered. Every
+formulation above skipped that step, and skipped it *silently*, which is what made them look
+convincing.
+
+**Also measured, and worth not re-deriving:** the clearance bands are not demonstrably
+load-bearing on the two surfaces re-tested this round. With the band removed, the staff Delete
+button and the picker's Settings card both still land clear after a scroll (clicks in 39ms /
+180ms / 85ms). What the bands demonstrably change is the DEFAULT rendering — the last rows sit
+clear without the merchant scrolling first. That is a real improvement, and it is a weaker claim
+than "the control was unclickable", so it is recorded as the weaker one.
 
 **One consequence did land.** `admin-workflows.spec.ts` had neutered its theme-toggle case with
 a comment recording that the memo stack made the control unclickable, and asserted only that
