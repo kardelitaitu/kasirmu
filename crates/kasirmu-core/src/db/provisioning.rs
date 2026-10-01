@@ -705,15 +705,50 @@ fn write_provisioning_settings(
 /// Clock plus a per-process counter rather than sequential: a location id leaks
 /// nothing about how many locations exist, and two devices provisioning against
 /// one store DB cannot collide.
+///
+/// The cross-device half of that guarantee rests ENTIRELY on the clock field: two
+/// processes each start `seq` at 0, so their ids differ only by `nanos`. The
+/// previous `.map_or(0, |d| d.as_nanos())` therefore broke the guarantee rather
+/// than merely weakening it — a pre-epoch clock made `nanos = 0` on BOTH devices
+/// and their first ids collided exactly. A clock that cannot be read is not an
+/// id that can share a prefix with another device's.
+///
+/// The per-process counter is mixed in regardless, so a failing clock still yields
+/// ids unique WITHIN a process; the fallback only has to restore the cross-device
+/// half, and it does so from a second source that cannot fail the same way.
 fn new_id() -> String {
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::{SystemTime, UNIX_EPOCH};
     static COUNTER: AtomicU64 = AtomicU64::new(0);
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_or(0, |d| d.as_nanos());
+    /// Distinguishes processes when the clock cannot be read.
+    static FALLBACK: std::sync::OnceLock<u128> = std::sync::OnceLock::new();
+    let nanos = SystemTime::now().duration_since(UNIX_EPOCH).map_or_else(
+        |e| {
+            tracing::error!(
+                error = %e,
+                "system clock is before the UNIX epoch; falling back to an OS-seeded id suffix"
+            );
+            // An OS-seeded value, not a constant: two devices must not agree
+            // here, which is the whole job of this field.
+            *FALLBACK.get_or_init(random_u128)
+        },
+        |d| d.as_nanos(),
+    );
     let seq = COUNTER.fetch_add(1, Ordering::Relaxed);
     format!("loc-{nanos:032x}{seq:04x}")
+}
+
+/// A process-unique value from the OS entropy source, widened to the id's field.
+///
+/// Used only when the clock cannot be read. `RandomState` is the one entropy
+/// source already in scope through `std` — it seeds from the OS and differs per
+/// process — so this needs no new dependency for a fallback that should never run.
+fn random_u128() -> u128 {
+    use std::collections::hash_map::RandomState;
+    use std::hash::{BuildHasher, Hasher};
+    // `u128` to match `as_nanos()`, so the `{nanos:032x}` field keeps its width and
+    // every id this function has ever produced stays the same shape.
+    u128::from(RandomState::new().build_hasher().finish())
 }
 /// Create the workspace instances this location trades with (ADR #56 §2.6).
 ///
