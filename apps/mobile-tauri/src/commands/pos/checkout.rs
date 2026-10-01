@@ -38,6 +38,31 @@ use super::{
 // `replay_verdict`), which this crate cannot import: the tablet shell is a
 // fork of the command layer, so the helpers below are a second
 // implementation of the SAME rules, not shared code. Keep them in step.
+//
+// ⚠️ MEASURED DIVERGENCE, not repaired here. The fork has drifted from the bridge
+// in a way that changes what a cashier can do after a void. Compared line by line
+// against `crates/kasirmu-bridge/src/pos/checkout/replay.rs:175-234`:
+//
+// 1. Step 1, re-keyed sale is VOIDED. Bridge returns `Rekey(stem)` and settles a
+//    NEW sale under the next epoch (:195-197). This shell returns
+//    `Err(Invalid)` (:146-150) and refuses the checkout outright.
+// 2. Different basket under a used attempt. Bridge returns `Rekey(stem)` and
+//    settles it, so no receipt is orphaned and no legitimate sale is refused
+//    (:218-232). This shell refuses (:173-179).
+// 3. The re-key stem carries NO EPOCH. The bridge counts settlements under the
+//    prefix and stamps `{attempt}:rekey:{basket}:v{n}` (replay.rs:115-137); this
+//    shell stamps a fixed `{attempt}:rekey:{cart_id}` (:169) and probes
+//    `...:rekey:{cart_id}:0` (:141). A second void-and-retry therefore re-derives
+//    the SAME keys, and the UNIQUE index on `payments.idempotency_key` rejects
+//    the second settlement instead of admitting it.
+//
+// So after a void the tablet refuses where the desktop settles. Which is right is
+// a PRODUCT ruling -- a cashier who taps "pay" after a voided attempt either gets
+// a new sale or a message -- so it is not decided here. What is recorded is that
+// the two shells disagree today, that the disagreement is reachable, and that
+// the epoch counter the bridge relies on does not exist on this side. Adopting the
+// bridge's behaviour means porting `count_rekey_settlements` and `rekey_stem`
+// here, not just flipping the three returns.
 
 /// The checkout attempt id this submission wants guarded, normalised.
 ///
