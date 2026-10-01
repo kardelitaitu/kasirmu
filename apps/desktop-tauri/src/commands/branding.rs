@@ -66,7 +66,19 @@ pub async fn pick_logo_file(app_handle: tauri::AppHandle) -> Result<Option<Strin
         .pick_file(move |file| {
             let _ = tx.send(file);
         });
-    let file = rx.await.unwrap_or(None);
+    // `rx.await` ERRORS only when the sender is dropped without sending, which
+    // means the picker callback never ran. The plugin dispatches it with
+    // `let _ = handle.run_on_main_thread(...)`
+    // (tauri-plugin-dialog-2.7.1/src/desktop.rs:148), discarding the Result, so a
+    // failed dispatch drops the callback silently -- and the previous
+    // `.unwrap_or(None)` reported that to the user as a cancelled dialog. The two
+    // are different events and only one of them is the user's doing, so the failure
+    // is now named rather than folded into a `None` the UI renders as a no-op.
+    let file = rx.await.map_err(|_| {
+        AppError::Internal(
+            "the file picker callback never ran (main-thread dispatch did not complete)".into(),
+        )
+    })?;
     Ok(file.map(|f| f.to_string()))
 }
 
