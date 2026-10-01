@@ -1581,7 +1581,7 @@ jobs:
   northflank-deploy:
     name: Deploy Backend (Northflank)
     runs-on: ubuntu-latest
-    needs: [changes, website, rust-fmt, cargo-check, cargo-clippy, rust-doc, fuzz-typecheck, coverage-floors, cargo-nextest, ui-test, i18n, static-gates, go-gate, ipc-parity]
+    needs: [changes, website, rust-fmt, cargo-check, cargo-clippy, fuzz-typecheck, coverage-floors, cargo-nextest, ui-test, i18n, static-gates, go-gate, ipc-parity]
     # A skipped dependency skips this job, and nothing skips on a deploy run: the
     # `changes` router forces every route true for all non-PR events, and
     # `static-gates` carries no `if:` at all, so neither can quietly unblock one.
@@ -1613,12 +1613,24 @@ jobs:
     # `0.0.*` branch safe as an offline backup (todo-operational-integrity.md
     # Phase 4b depends on it).
     #
-    # FOUR jobs are left out of `needs`, three of them decisions and one structural.
+    # FOUR jobs are left out of `needs`, three decisions and one structural.
     # This said "two" until 2026-10-01, when an audit enumerated them and found
-    # `release-bridge-test` and `rust-doc` absent with no note here at all. `rust-doc`
-    # has since been ADDED to `needs` (it is a rust-gated merge gate, and the router
-    # forces `rust=true` on every non-PR event, so it cannot be skipped on a deploy run
-    # -- the same argument that covers `go-gate`). So three remain:
+    # `release-bridge-test` and `rust-doc` absent with no note here at all.
+    #
+    #   * rust-doc was ADDED here on 2026-10-01 and REMOVED the same day. The reasoning
+    #     for adding it was sound -- it is a rust-gated merge gate, and the router forces
+    #     `rust=true` on every non-PR event, so it cannot be skipped on a deploy run,
+    #     which is the same argument that covers `go-gate`. But nobody had run the job
+    #     first, and it is RED as of a5212ca5f, which shipped two unresolved intra-doc
+    #     links in `crates/kasirmu-core/src/db/payment_gateways.rs`:
+    #     `error: unresolved link to PaymentGatewayConfig` and the same for
+    #     `UpsertPaymentGateway` (exit 101 under this file's RUSTDOCFLAGS). Listing a red
+    #     job here would have stopped every PRODUCTION DEPLOY, not just merges, for a
+    #     failure in generated API documentation that no backend container consumes.
+    #     VERIFY A JOB IS GREEN BEFORE ADDING IT HERE. The merge gate still catches it;
+    #     re-add this edge once `cargo doc --workspace --no-deps` passes clean.
+    #
+    # So three remain:
     #
     #   * release-bridge-test CANNOT be listed here, and that is structural rather than
     #     a judgement call. Its `if:` requires `github.event_name == 'push'`, and
