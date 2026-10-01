@@ -137,6 +137,38 @@ STEP_TEXT = (
 )
 
 
+def selftest_findings(manifest: dict) -> list[str]:
+    """Gates whose `self_test` command does not name a script that exists and takes the flag.
+
+    Three gates record the exact command that proves them. Nothing read it: verify-selftests-
+    wired.py infers wiring from SOURCE TEXT and never opens gates.json, so a drifted command
+    here would be a claim no tool could falsify. This checks the two properties that make the
+    claim meaningful -- the named script exists under scripts/, and it is invoked with
+    `--self-test` -- without running it, since running is the runner job and a gate that
+    shells out to other gates is a gate whose failure is hard to attribute.
+    """
+    out: list[str] = []
+    for gate in manifest.get("gates", []):
+        command = gate.get("self_test")
+        if not command:
+            continue
+        gid = gate.get("id")
+        if "--self-test" not in command:
+            out.append("%s: self_test does not pass --self-test: %r" % (gid, command))
+            continue
+        m = re.search(r"(?:^|\s)(scripts/[A-Za-z0-9_.-]+)", command)
+        if not m:
+            out.append("%s: self_test names no script under scripts/: %r" % (gid, command))
+            continue
+        target = ROOT / m.group(1)
+        if not target.is_file():
+            out.append("%s: self_test runs %s, which does not exist" % (gid, m.group(1)))
+        elif "--self-test" not in target.read_text(encoding="utf-8", errors="replace"):
+            out.append("%s: self_test passes --self-test to %s, which does not declare it"
+                       % (gid, m.group(1)))
+    return out
+
+
 def _self_test() -> int:
     """Both directions on the shape that hid a real gate.
 
@@ -172,6 +204,20 @@ def _self_test() -> int:
         # case in this list goes through the pure helpers so a fixture cannot accidentally
         # assert against the real workflow files. That arm is exercised by the live run.
     ]
+    # self_test claims, through the real function: it reads scripts/ from disk, so these
+    # cases name scripts that genuinely exist rather than fabricated fixtures.
+    st_cases: list[tuple[str, str, int]] = [
+        ("an accurate self_test command passes",
+         "python3 scripts/verify-gate-completeness.py --self-test", 0),
+        ("a command omitting the flag is a finding",
+         "python3 scripts/verify-core-size.py", 1),
+        ("a command naming no script is a finding",
+         "python3 --self-test", 1),
+        ("a command naming a missing script is a finding",
+         "python3 scripts/no-such-checker.py --self-test", 1),
+        ("a script that does not declare the flag is a finding",
+         "python3 scripts/verify-docker-all.sh --self-test", 1),
+    ]
     bad = 0
     for name, labels, want in cases:
         got = len(unclaimed(steps, labels))
@@ -194,8 +240,15 @@ def _self_test() -> int:
             print("  %-52s FAIL want=%d got=%d" % (name, want, got))
         else:
             print("  %-52s ok" % name)
+    for name, command, want in st_cases:
+        got = len(selftest_findings({"gates": [{"id": "under-test", "self_test": command}]}))
+        if got != want:
+            bad += 1
+            print("  %-52s FAIL want=%d got=%d" % (name, want, got))
+        else:
+            print("  %-52s ok" % name)
     print("SELF-TEST %s (%d cases, no files touched)"
-          % ("FAILED" if bad else "OK", len(cases) + len(ci_cases)))
+          % ("FAILED" if bad else "OK", len(cases) + len(ci_cases) + len(st_cases)))
     return 1 if bad else 0
 
 
@@ -217,19 +270,25 @@ def main() -> int:
     labels = declared_labels(manifest)
     missing = unclaimed(steps, labels)
     ci_bad = ci_claim_findings(manifest)
+    st_bad = selftest_findings(manifest)
 
     for name in missing:
         print("  unclaimed step: %r -- no gates.json row names it" % name)
     for line in ci_bad:
         print("  bad ci claim: %s" % line)
+    for line in st_bad:
+        print("  bad self_test claim: %s" % line)
     print("checked %d check.sh step(s) against %d declared runner label(s)"
           % (len(steps), len(labels)))
     print("checked the ci block of %d gate(s) against the workflow files"
           % sum(1 for g in manifest.get("gates", []) if (g.get("ci") or {}).get("job")))
-    if ci_bad:
-        print("FAIL: %d gate(s) name a workflow, job or step that does not exist. The roster"
-              " is the source of truth for what runs a gate, so a wrong job name tells an"
-              " auditor the gate is enforced somewhere it is not." % len(ci_bad))
+    print("checked the self_test command of %d gate(s)"
+          % sum(1 for g in manifest.get("gates", []) if g.get("self_test")))
+    if ci_bad or st_bad:
+        print("FAIL: %d bad ci claim(s) and %d bad self_test claim(s). The roster is the source"
+              " of truth for what runs a gate, so a wrong job name tells an auditor the gate is"
+              " enforced somewhere it is not, and an unreadable self_test command is a claim no"
+              " tool can falsify." % (len(ci_bad), len(st_bad)))
         return 1
     if missing:
         print("FAIL: %d step(s) no roster row claims. A step with no row is invisible "
