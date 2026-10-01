@@ -346,6 +346,20 @@ impl DriverRegistry {
         }
 
         // --- Bluetooth (SPP) receipt printers (and companion cash drawers) ---
+        // `.unwrap_or_default()` collapses a FAILED port enumeration into "no BT
+        // printers are paired". That is latent rather than live: this whole function
+        // is deliberately UNCALLED in production -- `apps/desktop-tauri/src/lib.rs:314`
+        // keeps it out of startup because it "binds whatever is attached under
+        // hardware-derived ids and opens serial and Bluetooth ports nobody named",
+        // and `discover_scanners_excluding` (the path actually used) filters by the
+        // `claimed` ports instead. Recorded, not repaired, because repairing it means
+        // choosing a reporting channel for a function nobody runs.
+        //
+        // The trap to know about if it is ever wired up: a working BT printer whose
+        // enumeration fails is indistinguishable here from no BT printer at all, and
+        // the sibling serial loop above would still register its port. `probe_bluetooth`
+        // returns a proper `Result`, so the fix is to propagate it rather than to
+        // special-case the empty list.
         let bt_ports = crate::transport::serial::probe_bluetooth().unwrap_or_default();
         for port_info in bt_ports {
             let info = DeviceInfo::new("bluetooth", &port_info.description, &port_info.port_name);
