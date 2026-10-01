@@ -25,6 +25,12 @@ const paragraph = (text) => ({
   children: [{ type: 'text', value: text }],
 });
 
+function textOf(node) {
+  if (!node) return '';
+  if (node.type === 'text') return String(node.value ?? '');
+  return (node.children ?? []).map(textOf).join('');
+}
+
 function run(children) {
   const tree = { type: 'root', children };
   rehypeStripAuditFooter()(tree);
@@ -57,6 +63,28 @@ describe('rehype-strip-audit-footer', () => {
   it('keeps the surrounding content', () => {
     const out = run([paragraph('Keep reading'), blockquote('last audited 30-09-26 by x'), paragraph('Tail')]);
     expect(out.map((n) => n.children[0].value)).toEqual(['Keep reading', 'Tail']);
+  });
+
+  // The two shapes the first implementation MISSED. It removed a whole blockquote
+  // whose entire text was the footer, which left these three pages leaking on the built
+  // site -- docs/en/location, docs/id/inventory and docs/id/location. Caught by scanning
+  // every page in dist rather than the single page sampled by hand.
+  it('drops a footer that is the LAST LINE of a blockquote carrying prose', () => {
+    const out = run([
+      blockquote('2026-09-30 · Rename sweep: Store -> Location.\nlast audited 08-09-26 by docs-auditor'),
+    ]);
+    expect(out).toHaveLength(1);
+    const text = textOf(out[0]);
+    expect(text).toContain('Rename sweep');
+    expect(text).not.toContain('last audited');
+  });
+
+  it('drops a footer sharing a paragraph with following prose', () => {
+    const out = run([blockquote('last audited 09-09-26 by docs-auditor\nterhubung ke menu navigasi.')]);
+    expect(out).toHaveLength(1);
+    const text = textOf(out[0]);
+    expect(text).toContain('terhubung ke menu navigasi.');
+    expect(text).not.toContain('last audited');
   });
 
   it('reaches a footer nested deeper in the tree', () => {

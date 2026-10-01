@@ -33,8 +33,34 @@ function textOf(node) {
   return node.children.map(textOf).join('');
 }
 
+// A footer may be the ONLY thing in its node, or the LAST LINE of a node that also
+// carries prose. Both shapes occur in the corpus and the second is why this removes a
+// LINE rather than a node:
+//
+//   docs/en/location.md   the footer is the last line of a multi-line changelog
+//                         blockquote ("2026-09-30 · Customer rename sweep: ...")
+//   docs/id/inventory.md  the footer is its own line, but the paragraph after it is
+//                         NOT in the blockquote, so it shares a <p> with that prose
+//
+// Dropping the whole blockquote for those would delete the changelog note with it.
+function stripText(value) {
+  const lines = String(value ?? '').split('\n');
+  const kept = lines.filter((l) => !FOOTER.test(l));
+  if (kept.length === lines.length) return value;
+  // Drop the node entirely when the footer was all it held.
+  return kept.join('\n').trim() === '' ? null : kept.join('\n');
+}
+
 function strip(node) {
   if (!node || typeof node !== 'object') return;
+
+  if (node.type === 'text') {
+    const next = stripText(node.value);
+    if (next === null) node.value = '';
+    else node.value = next;
+    return;
+  }
+
   const children = node.children;
   if (!Array.isArray(children)) return;
 
@@ -47,6 +73,12 @@ function strip(node) {
   });
 
   for (const child of node.children) strip(child);
+
+  // A container left holding nothing but whitespace (its only text was the footer)
+  // is dropped so no empty <p>/<blockquote> reaches the page.
+  if (node.children.length && node.children.every((c) => (c.type === 'text' ? String(c.value).trim() === '' : false))) {
+    node.children = [];
+  }
 }
 
 export default function rehypeStripAuditFooter() {
