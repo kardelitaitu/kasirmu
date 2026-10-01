@@ -2151,4 +2151,7 @@ never load: the machine was quiet (CPU 16%, this audit's own build processes kil
 slowness survived with this audit's changes removed. It is the failing assertions burning their
 full timeout, one after another. The anomaly was this regression, measured.
 
-> last audited 30-09-26 by DSH (round 38 · a landed wizard change contradicts round 30)
+Round 38's subject, recorded here because the footer below has to stay bare: a landed wizard change
+contradicted round 30's store-type decision.
+
+> last audited 30-09-26 by DSH
