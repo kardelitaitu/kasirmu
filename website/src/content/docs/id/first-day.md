@@ -12,13 +12,13 @@ butuh satu menit.
 
 ## Daftar periksa
 
-- [ ] Perangkat keras terikat dan merespons — printer, laci kas, pemindai.
+- Perangkat keras terikat dan merespons — printer, laci kas, pemindai.
       Lihat di bawah.
-- [ ] Pembayaran terverifikasi — satu potongan QRIS sungguhan (atau uang
+- Pembayaran terverifikasi — satu potongan QRIS sungguhan (atau uang
       masuk, uang keluar).
-- [ ] Shift dibuka dengan float yang benar.
-- [ ] Staf dibuat, PIN diketahui, ruang kerja ditugaskan.
-- [ ] Uji coba offline sudah dilakukan sekali, agar tidak panik nanti.
+- Shift dibuka dengan float yang benar.
+- Staf dibuat, PIN diketahui, ruang kerja ditugaskan.
+- Uji coba offline sudah dilakukan sekali, agar tidak panik nanti.
 
 ## Verifikasi perangkat keras
 

@@ -17,11 +17,11 @@ a real customer stands at your counter. Most take a minute each.
 
 ## The checklist
 
-- [ ] Hardware bound and responding — printer, drawer, scanner. See below.
-- [ ] Payment verified — one real QRIS charge (or cash in, cash out).
-- [ ] Shift opened with the right float.
-- [ ] Staff created, PIN known, workspaces assigned.
-- [ ] Offline drill done once, so nobody panics later.
+- Hardware bound and responding — printer, drawer, scanner. See below.
+- Payment verified — one real QRIS charge (or cash in, cash out).
+- Shift opened with the right float.
+- Staff created, PIN known, workspaces assigned.
+- Offline drill done once, so nobody panics later.
 
 ## Verify the hardware
 
