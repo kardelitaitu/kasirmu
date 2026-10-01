@@ -1814,10 +1814,20 @@ which is the specific thing this audit keeps warning about.
 
 **What a real gate must do first, and this is the actionable part:** seed the stack rather than
 assume it. The dev-mock already exposes the affordance — dropping every persisted slice
-returns the preview to its seed state (`mockDatabase.ts:120-125`) — so the test resets the mock,
-asserts the stack is present, and only then asserts no in-viewport control is covered. Every
-formulation above skipped that step, and skipped it *silently*, which is what made them look
-convincing.
+returns the preview to its seed state (`mockDatabase.ts:126`, `resetMockDatabase`) — so the test
+resets the mock, asserts the stack is present, and only then asserts no in-viewport control is
+covered. Every formulation above skipped that step, and skipped it *silently*, which is what
+made them look convincing.
+
+**And the step after it does not work as naively written** (measured 2026-10-01, the seeded
+formulation attempted and abandoned). The obvious seeding is
+`import('/src/dev-mock/core/mockDatabase.ts') -> resetMockDatabase()` followed by `page.reload()`,
+but the reload **drops the in-memory session**: the app comes back on the login screen, so the
+subsequent "is the stack up?" assertion runs against a page that has no picker and no memo stack at
+all, and fails for a reason that has nothing to do with occlusion. Whoever attempts this again
+must re-authenticate after the reset — and must confirm the memo slice is re-seeded on the way
+back, since the reset clears the key the handler reads on load. The recipe is right; the
+mechanics around it are not free.
 
 **Also measured, and worth not re-deriving:** the clearance bands are not demonstrably
 load-bearing on the two surfaces re-tested this round. With the band removed, the staff Delete
