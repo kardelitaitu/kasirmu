@@ -33,6 +33,23 @@ const POINTS_TO_MINOR_RATIO: i64 = 1;
 /// `refunds.rs` (CRM-06). Inputs are non-negative in practice (sale
 /// totals × positive points_per_unit); the floor-division normalization
 /// keeps the rule uniform for any sign.
+///
+/// SATURATION, not a rejection. `unwrap_or(i64::MAX)` turns an out-of-range
+/// result into the largest possible award, so overflow awards rather than
+/// refuses. That matters because `base` is not always a server-computed
+/// total: it arrives as `total_minor.saturating_mul(points_per_unit)` at
+/// earn_points_with_conn (:677), and that `total_minor` is the earn basis
+/// chosen at sales_lifecycle.rs:58 as `base_total_minor.unwrap_or(total)` --
+/// and `base_total_minor` is CLIENT-SUPPLIED (pos/checkout.rs:427). A client
+/// claiming a `base_total_minor` near i64::MAX therefore saturates at the
+/// multiplication AND at the narrowing, and lands a top-tier award.
+///
+/// Bounding it needs a real sale ceiling, which is not defined anywhere, so
+/// it is not guessed here. Note the sibling consumer of the SAME value does
+/// not share the weakness: `accrue_lifetime_spend_in_tx` (customers.rs:322)
+/// is a plain SQL `total_spent_minor + ?1`, so SQLite RAISES on overflow and
+/// sales_lifecycle.rs:53-56 logs it non-fatally. The two paths disagree on
+/// purpose until the trust question is settled.
 pub(crate) fn compute_points(base: i64, multiplier_millionths: i64) -> i64 {
     const DEN: i128 = 100 * 1_000_000;
     let num = i128::from(base) * i128::from(multiplier_millionths);
