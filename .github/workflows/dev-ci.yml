@@ -532,6 +532,22 @@ jobs:
         uses: taiki-e/install-action@fa23953489c080190314742a9b907f8e97c6767c # cargo-llvm-cov
         with:
           tool: cargo-llvm-cov
+      # nextest, because the plain runner was racing the PG tests. `cargo llvm-cov`
+      # shells out to `cargo test`, which does NOT read .config/nextest.toml -- so
+      # `[test-groups.shared-postgres] max-threads = 1`, the serialization this repo
+      # already built for exactly these tests, did not apply here. This job then ran
+      # every PG case concurrently in one process, and each one drops every
+      # `oz_sync_test_%` database it finds as "stale" (sync_store_tests.rs:26), so
+      # siblings destroyed each other's databases. Observed 2026-10-01: this job
+      # failed on `pg_integration_rest_rls_non_owner` with deadpool's
+      # "Error occurred while creating a new object: db error" while nextest -- the
+      # runner that DOES read the config -- passed that test and failed a different
+      # PG test instead. `cargo llvm-cov nextest` internally calls `cargo nextest run`,
+      # so the group serialization applies and the flake receipt keeps working.
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@fa23953489c080190314742a9b907f8e97c6767c # v2
+        with:
+          tool: cargo-nextest
       # Postgres is declared as a service above because kasirmu-cloud and
       # platform/sync carry PG-gated cases that connect when OZ_TEST_PG_URL
       # is set; without it those tests still PASS (they return early) but
@@ -539,7 +555,7 @@ jobs:
       # depress the numbers instead of failing them.
       - name: Coverage report
         run: |
-          cargo llvm-cov --workspace --all-features \
+          cargo llvm-cov nextest --workspace --all-features \
             --exclude kasirmu-app --exclude kasirmu-mobile \
             --json --output-path coverage-probe.json
       - name: Grade against the floors
@@ -551,6 +567,19 @@ jobs:
     runs-on: ubuntu-latest
     needs: changes
     if: needs.changes.outputs.rust == 'true'
+    # Three shards, because the suite is the longest job in this workflow and
+    # the run -- not the build -- is what makes it long. `hash` rather than
+    # `count`: hash is deterministic, so a test keeps its shard as the list
+    # changes, which keeps cache reuse and flake history stable. Measured
+    # 2026-10-01 with `cargo nextest list --partition` over 10,835 tests:
+    # hash 3581 / 3581 / 3673 (2.6% spread), count 3641 / 3611 / 3583 (1.6%).
+    # The serialized shared-postgres group splits evenly either way (~280 each).
+    # `fail-fast: false` at the matrix level so one shard's red does not cancel
+    # the others and hide the rest of the failures.
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
     services:
       postgres:
         image: postgres:17-alpine
@@ -590,7 +619,7 @@ jobs:
         with:
           tool: cargo-nextest
       - name: Run Nextest
-        run: cargo nextest run --workspace --all-features
+        run: cargo nextest run --workspace --all-features --partition hash:${{ matrix.shard }}/3
       - name: Check Nextest flake receipt
         run: python3 scripts/verify-pg-tests-ran.py --nextest-junit target/nextest/default/junit.xml
 
