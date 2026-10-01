@@ -328,6 +328,10 @@ impl LuaRuntime {
                 Err(_) => return Ok(None),
             }
         };
+        // MONEY-05, the same hand-off as `build_lines_table` below: money and qty
+        // go to the VM as Lua *floats* so plugin arithmetic such as
+        // `qty * unit_price_minor` cannot run as Lua 5.4 integer math and wrap
+        // silently. Realistic minor-unit values are exact in f64 (below 2^53).
         let result: mlua::Value = hook
             .call((sku, qty as f64, unit_price_minor as f64, currency))
             .map_err(|e| LuaError::Script(e.to_string()))?;
@@ -349,6 +353,10 @@ impl LuaRuntime {
             Ok(f) => f,
             Err(_) => return Ok(None),
         };
+        // MONEY-05, the same hand-off as `build_lines_table` below: money and qty
+        // go to the VM as Lua *floats* so plugin arithmetic such as
+        // `qty * unit_price_minor` cannot run as Lua 5.4 integer math and wrap
+        // silently. Realistic minor-unit values are exact in f64 (below 2^53).
         let result: mlua::Value = hook
             .call((sku, qty as f64, unit_price_minor as f64, currency))
             .map_err(|e| LuaError::Script(e.to_string()))?;
