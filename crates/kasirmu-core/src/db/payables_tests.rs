@@ -416,7 +416,7 @@ fn payable_overflow_is_stopped_by_the_schema_constraint_not_by_the_guard() {
         "paid + amount must wrap here for this test to mean anything, got {new_paid}"
     );
     assert!(
-        !(new_paid > p.amount.minor_units),
+        new_paid <= p.amount.minor_units,
         "and the guard reads FALSE, which is why the addition is unchecked"
     );
 

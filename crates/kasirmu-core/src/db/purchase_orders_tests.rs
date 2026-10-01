@@ -1280,8 +1280,7 @@ fn receiving_an_already_received_purchase_order_is_refused() {
         .unwrap();
     assert!(
         second.is_err(),
-        "an already-received order must refuse: got {:?}",
-        second
+        "an already-received order must refuse: got {second:?}"
     );
     assert_eq!(
         after_second, 15,
