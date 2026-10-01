@@ -320,4 +320,33 @@ restored (it answered `("", "auto")`) and GREEN with the fix.
 `a_missing_profile_row_falls_through_to_the_legacy_keys` pins the one absence that must NOT error,
 and in doing so records the getter's own `"auto"` default so a future edit cannot quietly drop it.
 
+## Amendment 2026-10-04 (d) — a list that cannot be read must not come back full of blanks
+
+The previous three amendments were about a `None` that could mean either absence or failure. This
+one is the harder version of the same bug: a value that is present, well-typed, and **wrong**.
+
+`list_staff_scoped` makes three reads per member — the profile, the assignment, and the badge
+code — and all three swallowed their error (`.ok().flatten()` twice, `.unwrap_or(None)` for the
+code). A failure anywhere in the loop therefore returned a roster that still *looked* populated
+while every entry carried a blank profile and a blank `staff_code`. Nothing in the response
+distinguished it from a correct roster of members who simply had not filled anything in. The same
+three reads appear again in `restore_staff_scoped` and `list_staff_trash_scoped`, so a manager
+could restore a member and receive back a DTO that reads as incomplete.
+
+**Why this is worse than the earlier sites.** An absent value can at least be reasoned about — a
+blank footer, a missing scale, an unset preference. A list of correctly-shaped objects carrying
+silently-emptied fields cannot: every field is present and every field is a lie, and the caller has
+no signal to branch on. The rule the earlier amendments stated (absence and failure must be
+distinguishable) was satisfied here on paper — the function returned `Ok` — while being violated in
+substance.
+
+**Fixed by propagating, with the loops made explicit.** All three sites use `?`; the two
+`.iter().map(..).collect()` loops became `for` loops because the body can now fail, which also
+makes the per-member cost visible. A roster either reflects the store or fails.
+
+**Pin.** `a_failed_roster_read_refuses_instead_of_listing_blanks` drops `users.index_id` — the
+column `get_staff_code` reads and `list_users` does not — together with the index over it (SQLite
+refuses `DROP COLUMN` while an index covers it), so the loop is entered and its later read fails.
+Verified RED with the swallows restored, returning a full roster with every `staff_code: None` and
+`is_profile_complete: false`, and GREEN with the fix.
 > last audited 29-09-26 by docs-auditor
