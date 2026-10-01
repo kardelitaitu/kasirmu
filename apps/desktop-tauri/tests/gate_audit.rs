@@ -172,7 +172,18 @@ static PINNED_DESKTOP: &[(&str, usize, &[&str])] = &[
     ("legal_entities", 4, &["SETTINGS_EDIT", "SETTINGS_READ"]),
     ("license", 3, &["SETTINGS_EDIT"]),
     ("local_api", 6, &["SETTINGS_EDIT", "SETTINGS_READ"]),
-    ("local_payment", 3, &["SETTINGS_EDIT", "SETTINGS_READ"]),
+    // 3 -> 7 at a5212ca5f ("persist payment gateways with at-rest encryption"), which
+    // registered four payment_gateways commands on this module: get / list / set /
+    // delete gateway config. The KEY SET is unchanged - the pin's SETTINGS_EDIT +
+    // SETTINGS_READ already covers all seven, and the census confirmed the keys
+    // matched while only the count drifted. So this is a count update for newly gated
+    // commands, not a widening of what the module may touch: nothing here became
+    // reachable that the previous three were not.
+    //
+    // The gate call is deliberately NOT re-derived. That is what this row is FOR: the
+    // census read the source and found the drift, so the pin moved to meet it and a
+    // reviewer can see those four commands in a5212ca5f rather than take this on faith.
+    ("local_payment", 7, &["SETTINGS_EDIT", "SETTINGS_READ"]),
     ("locations", 13, &["SETTINGS_EDIT", "SETTINGS_READ"]),
     (
         "loyalty",
