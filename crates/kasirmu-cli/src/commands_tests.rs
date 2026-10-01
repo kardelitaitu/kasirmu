@@ -14,7 +14,13 @@ fn make_store(conn: &Connection) -> Store<'_> {
 
 #[test]
 fn open_db_fails_on_bad_path() {
-    let result = open_db(r"\0/?:invalid\0path");
+    // A NUL byte is illegal in a path on every platform, which is what makes
+    // this case portable. The literal used to be a RAW string, so `\0` was a
+    // backslash and a zero and `?`/`:` are only illegal on Windows -- on Linux
+    // that path was a legal relative filename, `open_db` created its parent and
+    // opened it, and the assertion could not hold. It went unnoticed because the
+    // path router was skipping this job entirely until fda1412ac.
+    let result = open_db("\0/?:invalid\0path");
     assert!(result.is_err());
 }
 
