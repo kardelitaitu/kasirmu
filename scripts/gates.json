@@ -442,10 +442,22 @@
       "status": "required",
       "runners": {
         "check.sh": [
-          "migration"
+          "migration smoke test",
+          "migration idempotency"
         ]
       },
       "_note": "Local-only. check.sh:98-99 run `cargo run -p kasirmu-cli -- migrate` twice (smoke + idempotency). No CI job does. ⚠ The section comment at check.sh:97 says 'mirrors CI `migration` job' and that is FALSE -- dev-ci.yml's ten jobs are changes, website, cargo-check, cargo-nextest, ui-test, i18n, ci-docs-drift, static-gates, release-readiness, northflank-deploy; none is named `migration`. Distinct from pg-schema-drift and migration-column-types, which ARE CI-backed in static-gates since 0.0.37; this entry is the SQLite migrate-up path, which never is."
+    },
+    {
+      "id": "script-tests",
+      "label": "Node script tests",
+      "status": "required",
+      "_note": "Added 2026-10-05 (round 149). scripts/__tests__/*.test.mjs is a whole suite that ui/package.json exposes as `npm run test:scripts` and that NOTHING invoked -- not the hook, not CI, not check.sh -- until check.sh:961 wired the glob. It had been red for an unknown period for exactly that reason: verify-ci-docs-drift.test.mjs built a fixture writing docs/ci-pipeline.md after the doc moved to docs/operations/, and pipefail.test.mjs read the retired ci.yml and nightly.yml and used bare `bash`, which on Windows is WSL and hangs rather than failing. Both were fixed, and the step wires the GLOB rather than cherry-picking files, so a future file cannot be silently excluded. The row was missing until now: the step existed but no gates.json entry claimed it, which meant verify-ci-docs-drift.py -- which iterates the gates PRESENT in the manifest -- could never report it as required-but-unenforced.",
+      "runners": {
+        "check.sh": [
+          "script tests"
+        ]
+      }
     },
     {
       "id": "skill-drift",
@@ -1117,7 +1129,8 @@
       "_note": "Added 2026-10-05. Closes the class verify-bundle-parity.py declares OUT OF SCOPE at its own docstring: that checker validates message IDs, not the ATTRIBUTES a call site asks for via attrs={{...}}. When a message defines no .placeholder, @fluent/react falls back to the between-tag children -- a hardcoded English literal -- so the component renders, the suite passes, and the translation that exists in *.id.ftl is never shown. Three messages shipped that way and were fixed in d9cc0098f. All three real findings sat behind a DYNAMIC id (id={flag ? a : b}), which is why the checker resolves BOTH branches; a resolver keyed on the nearest LITERAL id produced three false positives first, which is the trap worth knowing about. Unresolvable sites (id={JS_VAR}) are counted and printed rather than skipped, so the coverage cannot look wider than it is.",
       "runners": {
         "check.sh": [
-          "ftl attribute requests"
+          "ftl attribute requests",
+          "ftl attribute requests self-test"
         ]
       },
       "self_test": "python3 scripts/check-ftl-attrs.py --self-test",
@@ -1487,7 +1500,8 @@
       "_note": "Added 2026-10-04. `name: row.get(3)?` couples a mapper to its SQL by POSITION and nothing in Rust checks that coupling: reorder the projection, insert a column, or copy a mapper onto a new struct and the fields silently take each other's values -- every one present, correctly typed, and wrong. Not hypothetical: run_list_credit_sales (crates/kasirmu-bridge/src/settings/core.rs) reads index 1, `p.gateway_reference`, into `customer_name`, the field the retail credit list renders in a Customer column (ui/src/features/retail/RetailModals.tsx), so an operator reads a payment reference where the buyer's name belongs. It survived because the pin covering that type builds the DTO from hand-written literals -- a wire-shape pin that never runs a query, so it cannot see the mapping. The checker pairs each mapper block with the statement feeding it and compares the Nth column against the field name. ONE mismatch is acknowledged and reported each run without failing it: choosing which column a customer name should come from is a product ruling, not a repair, and the record is docs/records/JOURNAL.md (2026-10-04, a3c871787). The suppression is keyed by (file, field), so any OTHER mapper with the same defect still fails -- verified by re-running the checker against a copy of that mapper under a different path, where it reports and exits 1. Required rather than advisory so 0 findings is a baseline a flip can be measured from. Exits 2 on a refused --roots list, so a starved corpus never reads as a clean tree.",
       "runners": {
         "check.sh": [
-          "mapper alignment"
+          "mapper alignment",
+          "mapper alignment self-test"
         ]
       },
       "ci": {
@@ -1524,7 +1538,8 @@
       "_note": "Added 2026-10-05. scripts/gates.json records, per gate, which step in check.sh and which step in dev-ci.yml runs it, and NOTHING compared those claims, so they rot: the coverage-floors entry declared a CI step named 'Generate coverage report' that has never existed -- dev-ci.yml has carried 'Coverage report' since e44fed2b2 -- so an auditor reading the roster would conclude the gate has no CI runner when it does. This gate is the roster auditing itself. It matches decorated step names by PREFIX (check.sh spells some steps 'clippy workspace' and 'no-raw-params (ADR #7 Phase 4)'), does NOT treat a hyphen as a decorator (skill-drift-guard is a different step from skill-drift), downgrades a runner that runs INLINE rather than through step() to a note (five do: invoke-token-parity, no-hardcoded-money-format, skill-drift, a11y-advisory, audit) so a working gate is not reported broken, and honours a _runner_note (panic-inventory). Ships with --self-test, 10 cases, because a checker that cannot fail is worse than none -- and writing it DID find a real flaw in the first draft matcher, recorded in the script.",
       "runners": {
         "check.sh": [
-          "gate roster"
+          "gate roster",
+          "gate roster self-test"
         ]
       },
       "ci": {
@@ -1604,7 +1619,8 @@
       "status": "required",
       "runners": {
         "check.sh": [
-          "merged lines"
+          "merged lines",
+          "merged lines self-test"
         ]
       },
       "ci": {
