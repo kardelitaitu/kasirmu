@@ -38,8 +38,14 @@ block, and INDENTATION does not separate them either (the nested `},` sits at th
 column as the fields it follows). String literals are blanked before counting, so a
 format string's braces do not desynchronise the depth.
 
-`--roots` defaults now include `modules`, which was a second, independent gap: it had
-never been in the scanned set.
+`--roots` DEFAULTS TO THE WHOLE WORKSPACE (`crates`, `apps`, `platform`, `modules`),
+which is a correction with a lesson in it. It used to name three directories, and
+`modules` was added only after a real misalignment was found there BY HAND -- the gate
+had never scanned that tree at all. Since both callers (`scripts/check.sh`,
+`dev-ci.yml#static-gates`) invoke this with no `--roots`, the default IS the coverage,
+and a default that needs widening after each miss makes coverage something an author
+remembers rather than a property of the tool. It now scans 799 production files, up
+from 267 when the brace-matching bug was fixed and 267+58 with the first widening.
 
 WHAT THE ALIAS EXEMPTION DOES NOT COVER, measured 2026-10-05 and recorded because it
 is the boundary a reader is most likely to assume away. Trusting the alias is right --
@@ -334,8 +340,19 @@ def scan(path: Path) -> tuple[list[str], list[str]]:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="Check positional row-mapper alignment")
-    ap.add_argument("--roots", nargs="+",
-                    default=["crates/kasirmu-core/src", "crates/kasirmu-bridge/src", "modules"])
+    ap.add_argument(
+        "--roots",
+        nargs="+",
+        # The WHOLE workspace, not a chosen subset. The default used to name three
+        # directories, and `modules` was added to it only after a real misalignment
+        # was found there by hand -- the gate had never scanned that tree at all.
+        # A default that has to be widened after each miss makes coverage a thing
+        # someone remembers rather than a property of the tool, and both callers
+        # (`scripts/check.sh`, `dev-ci.yml#static-gates`) invoke this with no
+        # `--roots`, so the default IS the coverage. Any directory holding row.
+        # mappers belongs here; `tests/` dirs are excluded by the file walk below.
+        default=["crates", "apps", "platform", "modules"],
+    )
     args = ap.parse_args()
 
     files: list[Path] = []
