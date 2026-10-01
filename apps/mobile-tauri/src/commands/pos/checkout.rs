@@ -90,10 +90,34 @@ use super::{
 /// not cosmetic: an untrimmed "   " would become the stem `"   :0"`, a key
 /// no client can ever replay, which would look guarded while guarding
 /// nothing. No key is ever minted server-side.
-pub(super) fn normalized_attempt_id(raw: Option<&str>) -> Option<String> {
-    raw.map(str::trim)
-        .filter(|s| !s.is_empty())
-        .map(str::to_string)
+///
+/// COLON IS REFUSED, matching `checkout::replay::validated_attempt_id`
+/// (crates/kasirmu-bridge/src/pos/checkout/replay.rs:63), which this function
+/// predates. The id is opaque and never parsed, but the KEY NAMESPACE around it
+/// is colon-separated — `{attempt}:0`, `{attempt}:{n}`, `{attempt}:rekey:{cart}` —
+/// so a crafted `a:rekey:b` composes a base key identical to another attempt's
+/// re-key LOOKUP key, and the replay guard would hand that basket a sale it did
+/// not ring up. This shell built its re-key namespace on the same `:` and had no
+/// rejection, so the forgery was reachable here and is not on the desktop; the
+/// bridge pins its own side in
+/// `attempt_ids_with_colons_are_rejected_and_rekey_stems_stay_disjoint`.
+///
+/// Honest clients are unaffected: the ids the UI mints are UUIDs, which contain
+/// no colon.
+pub(super) fn normalized_attempt_id(raw: Option<&str>) -> Result<Option<String>, AppError> {
+    let Some(raw) = raw else {
+        return Ok(None);
+    };
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+    if trimmed.contains(':') {
+        return Err(AppError::Invalid(
+            "checkout attempt id must not contain ':'".into(),
+        ));
+    }
+    Ok(Some(trimmed.to_owned()))
 }
 
 /// Stamp one idempotency key per split from a normalised attempt id.
@@ -442,7 +466,8 @@ pub(super) fn run_complete_sale_scoped(
     )?;
 
     // ── COR-7 replay guard — BEFORE any write, including the cart ──
-    let attempt = normalized_attempt_id(args.attempt_id.as_deref());
+    // `?` so a colon-bearing id is refused here, before any key is stamped.
+    let attempt = normalized_attempt_id(args.attempt_id.as_deref())?;
     let mut effective_attempt_id = attempt.clone();
     match replay_verdict(&store, attempt.as_deref(), Some(&args.cart_id))? {
         ReplayVerdict::Replayed(receipt) => {

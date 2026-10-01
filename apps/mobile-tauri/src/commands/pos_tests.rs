@@ -1,7 +1,7 @@
 use super::*;
+use kasirmu_core::migrations;
 use kasirmu_core::Currency;
 use kasirmu_core::Sku;
-use kasirmu_core::migrations;
 use rusqlite::Connection;
 
 fn usd() -> Currency {
@@ -782,22 +782,30 @@ fn per_split_keys_are_indexed_and_a_blank_attempt_stamps_nothing() {
             idempotency_key: None,
         },
     ];
-    stamp_attempt_split_keys(normalized_attempt_id(Some("att-9")).as_deref(), &mut splits);
+    stamp_attempt_split_keys(
+        normalized_attempt_id(Some("att-9")).unwrap().as_deref(),
+        &mut splits,
+    );
     assert_eq!(splits[0].idempotency_key.as_deref(), Some("att-9:0"));
     assert_eq!(splits[1].idempotency_key.as_deref(), Some("att-9:1"));
 
-    stamp_attempt_split_keys(normalized_attempt_id(Some("  \n")).as_deref(), &mut splits);
+    stamp_attempt_split_keys(
+        normalized_attempt_id(Some("  \n")).unwrap().as_deref(),
+        &mut splits,
+    );
     assert_eq!(
         splits[0].idempotency_key.as_deref(),
         Some("att-9:0"),
         "a blank attempt must leave already-stamped keys alone, never re-stamp a suffix"
     );
     assert_eq!(
-        normalized_attempt_id(Some("  att-10  ")).as_deref(),
+        normalized_attempt_id(Some("  att-10  "))
+            .unwrap()
+            .as_deref(),
         Some("att-10")
     );
-    assert!(normalized_attempt_id(Some("")).is_none());
-    assert!(normalized_attempt_id(None).is_none());
+    assert!(normalized_attempt_id(Some("")).unwrap().is_none());
+    assert!(normalized_attempt_id(None).unwrap().is_none());
 }
 
 #[test]
@@ -988,5 +996,54 @@ fn shortfall_args_refuse_unknown_fields() {
     assert!(
         serde_json::from_str::<CompleteSaleWithResolvedShortfallsArgs>(&with_extra).is_err(),
         "an unknown field must hard-fail on tablet (the bridge drops it — the shells differ deliberately)"
+    );
+}
+
+/// A colon in the attempt id must be REFUSED, not trimmed and used.
+///
+/// The id is opaque and never parsed, but the key namespace around it is
+/// colon-separated -- `{attempt}:{n}` for splits and `{attempt}:rekey:{cart}` for a
+/// re-keyed settlement -- so a crafted `a:rekey:b` composes a base key that is
+/// byte-identical to another attempt's re-key LOOKUP key. The replay guard would
+/// then answer with a sale this basket never rang up.
+///
+/// This shell's normalizer predates the bridge's rejection
+/// (`checkout::replay::validated_attempt_id`, added with
+/// `attempt_ids_with_colons_are_rejected_and_rekey_stems_stay_disjoint`), so the
+/// forgery was reachable on the tablet and never on the desktop. The bridge pins
+/// its half; this is the tablet half.
+///
+/// Honest clients are unaffected -- the ids the UI mints are UUIDs.
+#[test]
+fn an_attempt_id_containing_a_colon_is_refused() {
+    assert_eq!(
+        normalized_attempt_id(Some("att-x")).unwrap().as_deref(),
+        Some("att-x"),
+    );
+    assert_eq!(
+        normalized_attempt_id(Some("  att-x  ")).unwrap().as_deref(),
+        Some("att-x"),
+        "trimming still happens before the check"
+    );
+
+    // The forgery itself.
+    assert!(
+        normalized_attempt_id(Some("a:rekey:b")).is_err(),
+        "a colon lets a crafted attempt forge another attempt's re-key lookup key"
+    );
+    // Any colon at all, not just the rekey substring.
+    assert!(normalized_attempt_id(Some("a:b")).is_err());
+    assert!(normalized_attempt_id(Some(":leading")).is_err());
+    assert!(normalized_attempt_id(Some("trailing:")).is_err());
+
+    // UNGUARDED is still reachable without a colon.
+    assert!(normalized_attempt_id(None).unwrap().is_none());
+    assert!(normalized_attempt_id(Some("   ")).unwrap().is_none());
+
+    // A UUID, which is what the UI actually mints, passes untouched.
+    let uuid = "01926b3a-0000-7000-8000-000000000001";
+    assert_eq!(
+        normalized_attempt_id(Some(uuid)).unwrap().as_deref(),
+        Some(uuid)
     );
 }

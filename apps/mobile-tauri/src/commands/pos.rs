@@ -785,7 +785,9 @@ pub async fn complete_sale_with_resolved_shortfalls_scoped(
     // are `.await` points (crates/kasirmu-bridge/src/pos.rs:1740-1754), so the
     // desktop two-lock gap is still open for structural reasons and relies
     // on fail-closed settlement + the UNIQUE index instead.
-    let attempt = normalized_attempt_id(args.attempt_id.as_deref());
+    // `?` so a colon-bearing attempt id is refused before any key is stamped;
+    // see `normalized_attempt_id` in pos/checkout.rs for why `:` is refused at all.
+    let attempt = normalized_attempt_id(args.attempt_id.as_deref())?;
     let settlement = {
         let db = state.db.lock().await;
         let store = Store::new(&db);
