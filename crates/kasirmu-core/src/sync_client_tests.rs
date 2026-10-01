@@ -813,8 +813,10 @@ fn pull_lands_a_scoped_rate_and_the_branch_prices_only_its_location() {
     let result = pull(
         &store,
         r#"{"tax_rates": [
-            {"id": "r-global", "name": "Global VAT", "rate_bps": 1000, "is_default": true},
+            {"id": "r-global", "name": "Global VAT", "rate_bps": 1000,
+             "is_default": true, "is_inclusive": false},
             {"id": "r-jkt", "name": "Jakarta", "rate_bps": 1100,
+             "is_default": false, "is_inclusive": false,
              "location_id": "loc-jkt", "effective_from": "2026-01-01", "effective_to": "2027-01-01"}
         ]}"#,
     );
@@ -868,7 +870,11 @@ fn pull_lands_a_legacy_payload_as_the_tenant_global_row() {
     seed_scope(&store, "ent-a", "loc-a");
     let result = pull(
         &store,
-        r#"{"tax_rates": [{"id": "r-old", "name": "Old shape", "rate_bps": 825, "is_default": true}]}"#,
+        // Only the four SCOPE/WINDOW keys are absent -- that is this test's subject.
+        // The flags are supplied because they are REQUIRED and always were present on
+        // the wire (they are baseline columns, `20260813_init.sql:885,888`); omitting
+        // them here would have tested the wrong absence.
+        r#"{"tax_rates": [{"id": "r-old", "name": "Old shape", "rate_bps": 825, "is_default": true, "is_inclusive": false}]}"#,
     );
     assert_eq!(result.tax_rates_pulled, 1);
     assert_eq!(stored_scope(&store, "r-old"), (None, None, None, None));
@@ -894,10 +900,13 @@ fn pull_refuses_a_scoped_rate_whose_target_is_absent_locally() {
     let result = pull(
         &store,
         r#"{"tax_rates": [
-            {"id": "r-ghost", "name": "Ghost scope", "rate_bps": 1500, "location_id": "loc-ghost"},
+            {"id": "r-ghost", "name": "Ghost scope", "rate_bps": 1500,
+             "is_default": false, "is_inclusive": false, "location_id": "loc-ghost"},
             {"id": "r-both", "name": "Ambiguous", "rate_bps": 1600,
+             "is_default": false, "is_inclusive": false,
              "legal_entity_id": "ent-a", "location_id": "loc-a"},
-            {"id": "r-ok", "name": "Fine", "rate_bps": 1000, "is_default": true}
+            {"id": "r-ok", "name": "Fine", "rate_bps": 1000,
+             "is_default": true, "is_inclusive": false}
         ]}"#,
     );
     assert_eq!(
@@ -942,7 +951,9 @@ fn pull_clears_a_stale_scope_when_the_server_row_is_unscoped() {
 
     pull(
         &store,
-        r#"{"tax_rates": [{"id": "r-x", "name": "Now global", "rate_bps": 1100}]}"#,
+        // The subject is the SCOPE clearing; the flags are required and always
+        // travelled (baseline columns), so they are supplied rather than omitted.
+        r#"{"tax_rates": [{"id": "r-x", "name": "Now global", "rate_bps": 1100, "is_default": false, "is_inclusive": false}]}"#,
     );
     assert_eq!(
         stored_scope(&store, "r-x"),

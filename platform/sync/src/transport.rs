@@ -168,10 +168,21 @@ pub struct SnapshotTaxRate {
     /// Rate in basis points (1/10000); must be >= 0.
     pub rate_bps: i64,
     /// Whether this is the store's default tax rate.
-    #[serde(default)]
+    ///
+    /// REQUIRED, deliberately without `#[serde(default)]`, and the same ruling
+    /// applies to `is_inclusive` below. Both columns exist in the BASELINE schema
+    /// (`20260813_init.sql:885,888`), so there is no older server that could omit
+    /// them — the back-compat argument that justifies the four scope/window
+    /// fields below does NOT apply here. Absent therefore means a drifted or
+    /// hand-built payload, and defaulting to `false` would be a MONEY bug, not an
+    /// absence: `is_inclusive = false` means "tax added on top", so a rate that
+    /// arrived without the key would price every line differently, and the upsert
+    /// (`lib.rs:426`) OVERWRITES the stored value with it. Rejecting the payload
+    /// dead-letters it for an operator instead. (`groundwork` — the same
+    /// `#[serde(default)]`-on-a-required-field shape as the `qty` defect fixed in
+    /// `f2530fbd4`.)
     pub is_default: bool,
-    /// Whether tax is included in the displayed price.
-    #[serde(default)]
+    /// Whether tax is included in the displayed price. Required — see `is_default`.
     pub is_inclusive: bool,
     /// ISO-8601 creation timestamp.
     #[serde(default)]

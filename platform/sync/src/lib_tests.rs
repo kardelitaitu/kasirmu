@@ -1174,7 +1174,11 @@ fn import_snapshot_out_of_schema_fields_ignored() {
     let wire = serde_json::json!({
         "version": 1,
         "products": [{"id":"p-extra","sku":"EXTRA-FIELDS","name":"Has Extra","price_minor":100,"currency":"USD","future_field":"kept"}],
-        "tax_rates": [{"id":"tax-extra","name":"Extra Tax","rate_bps":500,"future_flag":true}],
+        // `future_flag` is this test's subject (unknown keys must be tolerated).
+        // The two flags are required and always travelled -- baseline columns,
+        // `20260813_init.sql:885,888` -- so omitting them would test a shape no
+        // server produced rather than the unknown-key tolerance under test.
+        "tax_rates": [{"id":"tax-extra","name":"Extra Tax","rate_bps":500,"is_default":false,"is_inclusive":false,"future_flag":true}],
         "users": [{"id":"u-extra","username":"extra-user","display_name":"Extra User","role_id":"role-1","metadata":"ignored"}]
     });
     let _rt: transport::SyncSnapshotResponse =
