@@ -59,8 +59,69 @@ fn setup() -> Connection {
     conn
 }
 
+/// A provisioned store with NO workspace named `default` — the shape production has.
+///
+/// `setup()` re-keys the seeded store POS instance onto `default`, and that re-key is
+/// precisely what made the OLD code accidentally pass: with a workspace by that name
+/// present, `resolve_primary_location(.., "default", ..)` succeeds, so a legacy-branch test
+/// built on `setup()` cannot tell the fix from the bug. `provision_device`
+/// (provisioning.rs:762) creates workspaces with `new_id()` — fresh UUIDs — so no bare
+/// `default` ever exists in a real install.
+fn setup_legacy() -> Connection {
+    let conn = migrations::fresh_db();
+    migrations::seed_provisioned_baseline(&conn);
+    conn
+}
+
 fn store(conn: &Connection) -> Store<'_> {
     Store::new(conn)
+}
+// ── Legacy single-location (workspace_instance_id: None) ────────────────────
+
+/// The branch `209feab8b` changed, pinned by behaviour rather than by not-erroring.
+///
+/// `complete_sale_deduction`'s doc has always said `None` means "legacy
+/// single-location deployments — the canonical default UUID is used". The code
+/// substituted the literal `"default"` as a WORKSPACE-INSTANCE id and resolved through
+/// `resolve_primary_location`, which is keyed by workspace instance; nothing is ever
+/// registered under that id, so every such caller got
+/// `NotFound { entity: "workspace_instance", id: "default" }` (measured: 37 tests across
+/// three suites). The fix takes the documented path directly.
+///
+/// Every other test here passes `Some(..)`, so they prove the other branch and would
+/// not have caught that regression. This one passes `None`.
+#[test]
+fn legacy_single_location_checkout_resolves_the_canonical_default() {
+    let conn = setup_legacy();
+    let s = store(&conn);
+    s.create_product("LEGACY", "Legacy Item", price(500), None, None, 5, None)
+        .unwrap();
+
+    let sale = new_sale(
+        "sale-legacy",
+        vec![new_sale_line("sale-legacy", "LEGACY", 2, 500, 1)],
+        1000,
+    );
+    let payment_splits = vec![PaymentSplitArg {
+        method: "cash".to_string(),
+        amount_minor: 1000,
+        gateway_reference: None,
+        gateway_status: None,
+        gateway_response: None,
+        idempotency_key: None,
+    }];
+
+    // `None` — the legacy single-location call shape.
+    let result = s
+        .complete_sale_deduction(&sale, None, &payment_splits, "staff-1", None)
+        .expect("a legacy single-location checkout must resolve, not raise NotFound");
+
+    assert_eq!(result.sale_id, "sale-legacy");
+    assert_eq!(
+        get_stock(&s, "LEGACY"),
+        3,
+        "the deduction lands wherever the canonical default location resolves to"
+    );
 }
 
 fn usd() -> Currency {
