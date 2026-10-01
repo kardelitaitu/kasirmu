@@ -55,6 +55,58 @@ def check_steps(text: str) -> list[str]:
     return STEP_RE.findall(text)
 
 
+WORKFLOWS = ROOT / ".github" / "workflows"
+
+
+def workflow_jobs(text: str) -> set[str]:
+    """Job keys of a workflow file: two-space-indented names under `jobs:`."""
+    m = re.search(r"(?m)^jobs:\s*$", text)
+    if not m:
+        return set()
+    return set(re.findall(r"(?m)^  ([A-Za-z0-9_-]+):\s*$", text[m.end():]))
+
+
+def job_steps(text: str, job: str) -> list[str] | None:
+    """The `- name:` values inside one job's block, or None when the job is absent."""
+    m = re.search(r"(?m)^  " + re.escape(job) + r":\s*$", text)
+    if not m:
+        return None
+    rest = text[m.end():]
+    nxt = re.search(r"(?m)^  [A-Za-z0-9_-]+:\s*$", rest)
+    block = rest[:nxt.start()] if nxt else rest
+    return re.findall(r"(?m)^\s*- name:\s*(.+?)\s*$", block)
+
+
+def ci_claim_findings(manifest: dict) -> list[str]:
+    """Gates whose `ci` block names a workflow, job or step that does not exist.
+
+    The roster makes a finer claim than a `runners` label: a gate can say WHICH workflow
+    and WHICH job runs it, and optionally WHICH step inside that job. Nothing validated
+    the job axis before this -- `ftl-attrs` claimed job `i18n` while its step actually
+    sits in `static-gates`, and every check passed, because the label-side validator only
+    looks at `runners`.
+    """
+    out: list[str] = []
+    for gate in manifest.get("gates", []):
+        ci = gate.get("ci") or {}
+        wf, job = ci.get("workflow"), ci.get("job")
+        if not wf or not job:
+            continue
+        path = WORKFLOWS / wf
+        if not path.is_file():
+            out.append("%s: ci.workflow %r does not exist" % (gate.get("id"), wf))
+            continue
+        text = path.read_text(encoding="utf-8", errors="replace")
+        if job not in workflow_jobs(text):
+            out.append("%s: ci.job %r is not a job in %s" % (gate.get("id"), job, wf))
+            continue
+        step = ci.get("step")
+        if step and step not in (job_steps(text, job) or []):
+            out.append("%s: ci.step %r is not a step in %s/%s"
+                       % (gate.get("id"), step, wf, job))
+    return out
+
+
 def declared_labels(manifest: dict) -> list[str]:
     out: list[str] = []
     for gate in manifest.get("gates", []):
@@ -67,6 +119,22 @@ def unclaimed(steps: list[str], labels: list[str]) -> list[str]:
     """Steps no label names EXACTLY. Prefix matching is deliberately NOT used."""
     known = set(labels)
     return [s for s in steps if s not in known]
+
+
+# A miniature workflow used by the ci-block cases above. Two jobs, and the step that
+# `ftl-attrs` really lives in, so the cases exercise the defect as it actually occurred:
+# a gate that named `i18n` while its step sat in `static-gates`.
+STEP_TEXT = (
+    "jobs:\n"
+    "  i18n:\n"
+    "    steps:\n"
+    "      - name: i18n bundle parity\n"
+    "      - name: Something else\n"
+    "  static-gates:\n"
+    "    steps:\n"
+    "      - name: i18n bundle parity\n"
+    "      - name: FTL attribute requests\n"
+)
 
 
 def _self_test() -> int:
@@ -89,6 +157,21 @@ def _self_test() -> int:
          ["migration smoke test", "migration idempotency", "merged lines"], 0),
         ("an empty roster claims nothing", [], 3),
     ]
+    # The ci-block axis, on the defect that motivated it: a gate claiming the wrong job.
+    ci_cases: list[tuple[str, dict, str, int]] = [
+        ("a correct job and step resolve",
+         {"workflow": "dev-ci.yml", "job": "static-gates", "step": "i18n bundle parity"},
+         STEP_TEXT, 0),
+        ("a job that does not exist is a finding",
+         {"workflow": "dev-ci.yml", "job": "no-such-job", "step": "i18n bundle parity"},
+         STEP_TEXT, 1),
+        ("a step belonging to a DIFFERENT job is a finding",
+         {"workflow": "dev-ci.yml", "job": "i18n", "step": "FTL attribute requests"},
+         STEP_TEXT, 1),
+        # The missing-WORKFLOW arm is not covered here: it reads the filesystem, and every
+        # case in this list goes through the pure helpers so a fixture cannot accidentally
+        # assert against the real workflow files. That arm is exercised by the live run.
+    ]
     bad = 0
     for name, labels, want in cases:
         got = len(unclaimed(steps, labels))
@@ -97,8 +180,22 @@ def _self_test() -> int:
             print("  %-52s FAIL want=%d got=%d" % (name, want, got))
         else:
             print("  %-52s ok" % name)
+    # Tested through the PURE helpers, not ci_claim_findings: that one reads the real
+    # workflow file, so a fixture-based case would silently assert against production.
+    for name, ci, text, want in ci_cases:
+        job = ci.get("job")
+        if job not in workflow_jobs(text):
+            got = 1
+        else:
+            step = ci.get("step")
+            got = 1 if (step and step not in (job_steps(text, job) or [])) else 0
+        if got != want:
+            bad += 1
+            print("  %-52s FAIL want=%d got=%d" % (name, want, got))
+        else:
+            print("  %-52s ok" % name)
     print("SELF-TEST %s (%d cases, no files touched)"
-          % ("FAILED" if bad else "OK", len(cases)))
+          % ("FAILED" if bad else "OK", len(cases) + len(ci_cases)))
     return 1 if bad else 0
 
 
@@ -119,11 +216,21 @@ def main() -> int:
     manifest = json.loads(GATES_JSON.read_text(encoding="utf-8"))
     labels = declared_labels(manifest)
     missing = unclaimed(steps, labels)
+    ci_bad = ci_claim_findings(manifest)
 
     for name in missing:
         print("  unclaimed step: %r -- no gates.json row names it" % name)
+    for line in ci_bad:
+        print("  bad ci claim: %s" % line)
     print("checked %d check.sh step(s) against %d declared runner label(s)"
           % (len(steps), len(labels)))
+    print("checked the ci block of %d gate(s) against the workflow files"
+          % sum(1 for g in manifest.get("gates", []) if (g.get("ci") or {}).get("job")))
+    if ci_bad:
+        print("FAIL: %d gate(s) name a workflow, job or step that does not exist. The roster"
+              " is the source of truth for what runs a gate, so a wrong job name tells an"
+              " auditor the gate is enforced somewhere it is not." % len(ci_bad))
+        return 1
     if missing:
         print("FAIL: %d step(s) no roster row claims. A step with no row is invisible "
               "to verify-ci-docs-drift.py, which iterates the gates PRESENT in the "

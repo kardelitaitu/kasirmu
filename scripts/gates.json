@@ -1149,7 +1149,7 @@
       "self_test": "python3 scripts/check-ftl-attrs.py --self-test",
       "ci": {
         "workflow": "dev-ci.yml",
-        "job": "i18n",
+        "job": "static-gates",
         "step": "FTL attribute requests"
       }
     },
