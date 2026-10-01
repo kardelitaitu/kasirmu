@@ -125,27 +125,27 @@ impl Store<'_> {
     /// Calculates `expected_cash_minor` (opening + cash sales) and
     /// `cash_difference_minor` (closing - expected).
     ///
-    /// NOTE the two aggregate sources, which differ ON PURPOSE and are easy to
-    /// misread as a bug (this doc previously said "all aggregated sales fields
-    /// from the sales table", which is only true of one of them):
+    /// NOTE the two aggregate sources. They are NOT the same column, and it is
+    ///    worth stating why they nevertheless agree:
     ///
-    ///  - `total_sales_minor` sums `sales.total_minor`, which carries NO tip or
-    ///    service-charge term.
+    ///  - `total_sales_minor` sums `sales.total_minor`.
     ///  - `total_cash_minor` / `total_card_minor` / `total_other_minor` sum the
-    ///    `payments` ledger, which DOES. On a cash sale with a 500 tip against a
-    ///    10000 cart the two are 10000 and 10500, and both are correct for their
-    ///    own question.
+    ///    `payments` ledger.
     ///
-    /// The ledger side is the right one for reconciliation: `expected_cash_minor`
-    ///    is built from `total_cash_minor` (:283), and the drawer really does hold
-    ///    the tip the customer handed over. Reading the sales row instead would
-    ///    under-count the till on every tipped cash sale, which is why this file
-    ///    never mentions tip at all -- it reads what was actually tendered.
+    /// `compute_sale_tax_for_location` ADDS tip and service charge into
+    ///    `sales.total` (sales_tax.rs:357-368), pinned by
+    ///    `compute_tax_adds_tip_and_service_to_the_sale_total` in sales_tests.rs
+    ///    (850 = 700 cart + 100 tip + 50 service). So a tipped cash sale is 10500
+    ///    on BOTH sides and the "two-total sale" split that
+    ///    manager-codebase-review.md raised is already CLOSED.
     ///
-    /// Whether ONE SALE should carry ONE TOTAL (i.e. whether tip belongs in
-    ///    `sales.total_minor` rather than only in `payments`) is a separate, open
-    ///    decision -- see manager-codebase-review.md "The two-total sale". It is
-    ///    NOT settled here and nothing in this function depends on it.
+    /// An earlier version of this doc claimed the opposite -- that
+    ///    `sales.total_minor` carried no tip term and that the two aggregates
+    ///    diverged by exactly tip + service. It does not, and the claim was
+    ///    wrong; it is corrected here rather than left to mislead the next
+    ///    reader. The payment breakdown is still the right source for
+    ///    `expected_cash_minor` (:283): it splits by tender method, which
+    ///    `sales.total_minor` cannot do.
     ///
     /// All reads and the final write run inside a single SQLite transaction
     /// to prevent concurrent close operations from observing inconsistent
