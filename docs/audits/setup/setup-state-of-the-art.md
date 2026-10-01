@@ -1708,4 +1708,102 @@ So the blocker a merchant would have hit is gone, but the thing Round 34 actuall
 terminal completing first-run against the live server on real hardware — is still unmeasured.
 
 > **Round 35 ·** a live re-measure of round 34's deferred deploy.
-> last audited 30-09-26 by DSH
+
+---
+
+## Round 36 — the dead ends the audit could not see, and what they had in common
+
+Rounds 1-35 audited *components*. This round followed the complaints instead, and every
+defect it found was invisible to a component test — which is the point, not a caveat.
+
+### 1. Five fixes to the first-run card itself (`bf5db7b94`)
+
+The live `ProvisioningFlow` had six independent reasons to refuse submit and named none of
+them; a card taller than its viewport had no version or region disclosure; offline said why
+linking was shut and offered no way out; an expired pairing code announced its own death
+only after the merchant came back to a QR that no longer scanned; and the tablet opened on
+the one linking route a merchant with a single terminal cannot use. All five are in
+`bf5db7b94`, with 11 new tests. Fix 1's mechanism is the one worth keeping: the blockers
+are derived from the *same values* as `canSubmit`, so the explainer cannot disagree with
+the gate, and four tests pin that agreement at every step.
+
+### 2. A dead button on the tablet — found by RUNNING the suite, not reading it
+
+`ProvisioningFlow`'s "Set up with a phone instead" button navigates with
+`window.location.hash = '#/mobile-setup'`. The desktop shell listens for `hashchange`
+(`AppShell.tsx:350-395`); the tablet shell never did, so it kept `currentRoute` at `'pos'`
+and re-rendered the same form. Measured, not inferred: the hash went `''` →
+`#/mobile-setup` and the rendered `[data-testid]` list was byte-identical before and after.
+Since `43689705f` introduced the button, the merchant pressed it and nothing happened — on
+the only device it was written for. Fixed in `a26797b53`.
+
+### 3. A test that pinned the bug
+
+`TabletAppShellFeatureGateRoute.test.tsx` asserted "ignores `location.hash` entirely — the
+desktop direct-entry vector does not exist here". That was a *true reading of the code*,
+and it was the bug. The header's "NO HASH ROUTING … zero hits" bullet now describes the
+listener that was added, and the case is inverted rather than deleted (the file's own
+rule: *invert, never delete*). The feature gate is still the subject — now reached
+through a route source that exists on this shell.
+
+### 4. One defect class, three surfaces, one shape
+
+The fixed memo banner is `pointer-events: none`, but `.memo-banner-open` re-enables it
+(`MemoBanner.css:247-266`) — the bubble's whole body *is* that one button. So only its
+padding was click-through, and each bubble the body was hit-testable over whatever it
+overlapped. Three surfaces, all measured with `elementFromPoint` at the target's centre:
+
+| Surface | Occluded | Hit test returned |
+|---|---|---|
+| Workspace picker (`WorkspaceHome.css`) | the Settings tool card — the ONLY route into the admin workspace | `P.memo-banner-text` |
+| Settings sidebar (`SettingsNavTree.css`) | the "System Diagnostics" nav row | `STRONG.memo-banner-title` |
+| Staff roster | already banded (`StaffManagementScreen.css`) | — |
+
+Each was a 90-second Playwright refusal, not a visual nit. Both new bands reserve the
+stack's height in the region's own scroller — **not** another `--memo-bottom-inset`
+overse, which every existing site rejects because the occluder is a page row, not a
+pinned footer.
+
+**One measurement killed the obvious fix.** The settings band was first written on
+`.settings-sidebar`; it computed to 236px of padding and moved nothing, because that
+element is `overflow: hidden` with `scrollHeight == clientHeight` (676 == 676) — not a
+scroll container. `.settings-sidebar-nav` is `flex: 1; overflow-y: auto`, and the band
+belongs there; the region now measures 791 > 623 and the row is reachable.
+
+**Not proven closed.** A whole-app interception census timed out partway through the route
+list, so warehouse/products/locations were never reached. Absence of findings there is
+weaker than it looks — which is what round 37 exists to settle.
+
+### 5. Four stale specs, each for a different reason
+
+`staff-trash` asserted `staff-delete-staff-5` on the roster, where it cannot exist — the
+controls moved into the detail drawer in `d52298f0f` (2026-09-26) and the spec predates it
+(`23d629649`, 2026-09-23). `adr22` expected a staff session to be *redirected* off
+`#/settings`; the shell refuses it **in place**, naming the missing registry key
+(`a25f31fbb`), and asserting the denial is the stronger claim — "the sidebar is absent"
+is also true of a blank page. Both KDS specs read `.kds-tab-count` while the loading
+skeleton was still up: `initialLoading` gates only `KdsMainContent`, so the header paints
+with `orders` still `[]` and the count is `filteredOrders.length` — 0 for exactly that
+window.
+
+### 6. The audit's last open recommendation, closed (`293f6ed0f`)
+
+Recommendation 2 said to purge the `setup-*` namespace down to what `ProvisioningFlow`
+reads. Measured: 102 keys, **4 orphans**, all from the retired wizard's account step
+(`setup-account-title` / `-desc` / `-sent` / `-optional`), referenced nowhere in `ui/src`—
+tests included. Removed from both bundles with the reason recorded in place; 98 keys
+remain and every one is referenced. The census now reports zero `setup-*` candidates.
+
+**Why they survived four rounds:** `verify-ftl-orphans.py` gates what a *commit* can be
+held to, and it is **staged-only** — it never ran on the commit that deleted the wizard,
+because that commit staged no locale file. The gate is precise about the two directions it
+does check and says nothing about inherited debt; `--census` is the whole-tree view and is
+advisory by design.
+
+### The method note this round earned
+
+Component audits cannot see a deployment, a hash listener, or an overlay. Three of the
+defects above were found by *running* the thing, and one by asking the browser what it
+would actually receive a click — a question no reading of the source can answer.
+
+> last audited 30-09-26 by DSH (round 36 · the dead ends the audit could not see)
