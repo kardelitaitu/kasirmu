@@ -460,12 +460,16 @@ The loopback HTTP API. Desktop-only: there is no tablet handler for any of these
 - **`local_api_set_store_scoped`** [D] — Choose which store the local API serves. Empty string resets to the primary store. Running servers restart against the new target.
 - **`local_api_status_scoped`** [D] — Report whether the local API is enabled/running and on which port.
 
-### `commands::local_payment` (2)
+### `commands::local_payment` (6)
 
-Regional slice 6 — the payment rails a location accepts, as one read and one whole-list write.
+Regional slice 6 — the payment rails a location accepts, as one read and one whole-list write, plus gateway configuration.
 
+- **`delete_payment_gateway_scoped`** [D+T] — Delete a payment gateway configuration for the session's store.
 - **`get_local_payment_methods_scoped`** [D+T] — Read the effective payment-rail surface for one location of the session's store.
+- **`get_payment_gateway_config_scoped`** [D+T] — Read a single payment gateway configuration for the session's store.
+- **`list_payment_gateways_scoped`** [D+T] — List all payment gateway configurations for the session's store.
 - **`set_local_payment_methods_scoped`** [D+T] — Replace the location's rail list (the card's whole-list write) and return the freshly effective set.
+- **`set_payment_gateway_config_scoped`** [D+T] — Upsert a payment gateway configuration for the session's store.
 
 ### `commands::loyalty` (8)
 
