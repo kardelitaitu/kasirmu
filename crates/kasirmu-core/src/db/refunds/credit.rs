@@ -67,7 +67,28 @@ impl Store<'_> {
                     })?;
 
             // Determine if this is a full or partial refund of the line.
-            let total_deducted: i64 = deductions.iter().filter_map(|d| d["qty"].as_i64()).sum();
+            // Every entry must carry an integer qty. `filter_map(..).sum()`
+            // silently DROPPED an entry it could not read, which UNDER-counts
+            // this bound -- and a low bound is the dangerous direction: the
+            // `credit_after > total_deducted` check below then lets more stock
+            // through than was ever deducted, which is the exact over-credit the
+            // COR-25 comment under this block says the sum exists to prevent.
+            // The two other readers of this same JSON shape in this file already
+            // refuse a bad qty (:147, :175); this one now matches them.
+            let mut total_deducted: i64 = 0;
+            for d in deductions {
+                let qty = d["qty"].as_i64().ok_or_else(|| CoreError::Validation {
+                    field: "deduction_locations.qty",
+                    message: "deduction entry records no integer qty, so the ".to_string()
+                        + "deductible bound cannot be computed",
+                })?;
+                total_deducted = total_deducted
+                    .checked_add(qty)
+                    .ok_or_else(|| CoreError::Validation {
+                        field: "deduction_locations.qty",
+                        message: "deducted quantity overflow".to_string(),
+                    })?;
+            }
             let refund_qty = refund_line.qty;
 
             if refund_qty <= 0 {
