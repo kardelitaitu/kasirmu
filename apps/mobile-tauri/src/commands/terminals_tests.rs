@@ -14,6 +14,40 @@ fn list_terminals_empty_db() {
 }
 
 #[test]
+fn a_failed_terminal_code_read_refuses_instead_of_listing_blanks() {
+    // `run_list_terminals` enriched each DTO with its Base62 code through
+    // `get_terminal_code(..).unwrap_or(None)`, and the single `get_terminal_scoped`
+    // did the same. A read failure therefore produced `code: None` --
+    // byte-identical to a terminal that was never assigned one -- across the whole
+    // listing. Same defect the bridge twin carried (`kasirmu-bridge/src/terminals.rs`
+    // before ab1e84700); this copy is the tablet's.
+    let conn = fresh_conn();
+    let store = Store::new(&conn);
+    let t = Terminal::new("Front Counter", "host-01");
+    store.create_terminal(&t).unwrap();
+
+    // Happy path first: the mapper must be reachable and the seed sane.
+    let before = run_list_terminals(&conn).unwrap();
+    assert_eq!(before.len(), 1);
+
+    // `terminals.index_id` is what `get_terminal_code` reads; `list_terminals`
+    // does not select it, so the loop still runs. SQLite refuses `DROP COLUMN`
+    // while an index covers the column, so the index goes first.
+    conn.execute_batch(
+        "DROP INDEX idx_terminals_tenant_index_id; \
+         ALTER TABLE terminals DROP COLUMN index_id;",
+    )
+    .expect("dropping index_id and the index over it");
+
+    let err =
+        run_list_terminals(&conn).expect_err("a failed code read must not become a blank code");
+    assert!(
+        matches!(err, AppError::Core { .. }),
+        "expected the read failure to surface, got {err:?}"
+    );
+}
+
+#[test]
 fn list_terminals_with_seeded_data() {
     let conn = fresh_conn();
     let store = Store::new(&conn);

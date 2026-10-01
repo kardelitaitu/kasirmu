@@ -299,15 +299,19 @@ pub(crate) fn run_set_device_binding(
 fn run_list_terminals(conn: &rusqlite::Connection) -> Result<Vec<TerminalDto>, AppError> {
     let store = Store::new(conn);
     let terminals = store.list_terminals()?;
-    let dtos: Vec<TerminalDto> = terminals
-        .into_iter()
-        .map(|t| {
-            let code = store.get_terminal_code(&t.id).unwrap_or(None);
-            let mut dto = TerminalDto::from(t);
-            dto.code = code;
-            dto
-        })
-        .collect();
+    // Propagates. A code that cannot be READ is not a terminal without one; the
+    // `.unwrap_or(None)` made a failed read byte-identical to a never-assigned
+    // code, across the whole listing.
+    // Propagates. A code that cannot be READ is not a terminal without one; the
+    // `.unwrap_or(None)` made a failed read byte-identical to a never-assigned
+    // code, across the whole listing.
+    let mut dtos = Vec::with_capacity(terminals.len());
+    for t in terminals {
+        let code = store.get_terminal_code(&t.id)?;
+        let mut dto = TerminalDto::from(t);
+        dto.code = code;
+        dtos.push(dto);
+    }
     Ok(dtos)
 }
 
@@ -359,7 +363,8 @@ pub async fn get_terminal_scoped(
     let db = &*db_guard;
     let store = Store::new(&db);
     let terminal = store.get_terminal(&id)?;
-    let code = store.get_terminal_code(&id).unwrap_or(None);
+    // Propagates, for the same reason as `run_list_terminals` above.
+    let code = store.get_terminal_code(&id)?;
     drop(db);
 
     Ok(terminal.map(|t| {
