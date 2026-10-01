@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderWithFluentSync } from '@/__tests__/test-utils/render';
@@ -481,6 +481,21 @@ describe('ExchangeRateScreen — auto-sync toggle', () => {
   // The assertion is by VALUE against a store zone the test controls, so it
   // cannot pass on a host that happens to agree.
   describe('effective date anchoring', () => {
+    // The clock is pinned so these cases assert a property of the fixture, not
+    // of the hour the suite happens to run at. The case below requires a
+    // +14:00 store to be on a DIFFERENT calendar day from UTC, and that only
+    // holds while UTC is at or past 10:00 -- at 00:38 UTC both are still on the
+    // same date, so `not.toBe(storeToday('+00:00'))` could not hold and the
+    // suite failed for ten hours of every day. 14:00 UTC puts Kiritimati on
+    // the next day, which is the state the case is about.
+    beforeEach(() => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      vi.setSystemTime(new Date('2026-09-05T14:00:00Z'));
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
     /** The date the store's zone is currently on, computed the way the backend computes it. */
     function storeToday(tz: string): string {
       const now = new Date();

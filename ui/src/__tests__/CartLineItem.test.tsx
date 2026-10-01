@@ -402,7 +402,7 @@ describe('CartLineItem — kitchen notes & special instructions', () => {
 
     const btn = screen.getByTestId('cart-line-note-btn');
     expect(btn).toBeDefined();
-    expect(btn.getAttribute('title')).toBe('Add Note');
+    expect(btn.getAttribute('aria-label')).toBe('Add Note');
     expect(screen.queryByTestId('cart-line-note')).toBeNull();
   });
 
