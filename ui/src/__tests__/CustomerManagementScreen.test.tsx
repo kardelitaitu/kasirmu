@@ -3,10 +3,15 @@ import { readFileSync } from 'fs';
 import { join } from 'path';
 import { screen, waitFor, fireEvent, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { renderWithProvidersSync } from '@/__tests__/test-utils/render';
+import { renderWithProvidersSync, rerenderWithProviders } from '@/__tests__/test-utils/render';
 import { getBundle } from '@/i18n';
 import customersFtl from '@/locales/customers.ftl?raw';
 import sharedFtl from '@/locales/shared.ftl?raw';
+
+// Mutable so a test can SWITCH STORES. openHistory sets `historyTarget` BEFORE its
+// await, so a store switch starts a second read while the first is in flight. Declared
+// via vi.hoisted so the vi.mock factories below can close over it.
+const wsState = vi.hoisted(() => ({ sessionToken: 'session-1' }));
 
 vi.mock('@/api/customers', () => {
   const listCustomersScoped = vi.fn();
@@ -26,7 +31,7 @@ vi.mock('@/api/customers', () => {
 });
 
 vi.mock('@/contexts/WorkspaceContext', () => ({
-  useWorkspace: () => ({ sessionToken: 'session-1' }),
+  useWorkspace: () => ({ sessionToken: wsState.sessionToken }),
 }));
 
 import CustomerManagementScreen from '@/features/customers/CustomerManagementScreen';
@@ -56,6 +61,9 @@ const sampleCustomers = [
 
 describe('CustomerManagementScreen', () => {
   beforeEach(() => {
+    // A store-switching test mutates this; several cases assert the token verbatim
+    // (e.g. toHaveBeenCalledWith('session-1', ...)), so it must be restored.
+    wsState.sessionToken = 'session-1';
     mockListCustomers.mockResolvedValue(sampleCustomers);
   });
 
@@ -541,6 +549,64 @@ describe('CustomerManagementScreen', () => {
     });
     expect(screen.getByText('No tier')).toBeInTheDocument();
     expect(screen.getByText('No sales yet.')).toBeInTheDocument();
+  });
+
+  // A store switch must not leave ONE customer's history under ANOTHER customer's name.
+  //
+  // openHistory sets `historyTarget` BEFORE its await, so clicking A then B can leave A's
+  // slower read landing last. The dialog subtitle renders `historyTarget.name`, so the
+  // result is A's purchase and loyalty history presented as B's -- the operator reads it
+  // as B's, which is a correctness and privacy problem, not a stale label.
+  //
+  // The sink is the loyalty tier, a controlled read from `history`. Order is enforced by
+  // CALL COUNT and the two arms answer with DISTINCT tiers, so the late write is
+  // observable rather than a no-op.
+  it('ignores a slower earlier history read after a store switch', async () => {
+    const user = userEvent.setup();
+    let releaseStale: (v: unknown) => void = () => {};
+    const stalePending = new Promise((resolve) => { releaseStale = resolve; });
+
+    // Call 1 (customer Alice, store A) held open; it will answer LAST.
+    mockGetHistory.mockImplementationOnce(() => stalePending);
+    mockGetHistory.mockImplementation(() =>
+      Promise.resolve({
+        customer: sampleCustomers[1],
+        loyalty: { points: 0, lifetime_points: 0, tier_name: 'Current Tier' },
+        sales: [],
+        sales_total: 0,
+      }),
+    );
+
+    const view = renderWithProvidersSync(<CustomerManagementScreen />, customersFtl, sharedFtl);
+    await waitFor(() => expect(screen.getByText('Alice')).toBeInTheDocument());
+
+    // Open Alice's history, then switch stores and open Bob's.
+    await user.click(screen.getByRole('button', { name: 'View history for Alice' }));
+    wsState.sessionToken = 'session-2';
+    await act(async () => {
+      rerenderWithProviders(view, <CustomerManagementScreen />, customersFtl, sharedFtl);
+    });
+    await user.click(screen.getByRole('button', { name: 'View history for Bob' }));
+
+    await waitFor(() => expect(mockGetHistory).toHaveBeenCalledTimes(2));
+    await waitFor(() => {
+      expect(screen.getByText('Current Tier')).toBeInTheDocument();
+    });
+
+    // Only NOW does Alice's read settle, after Bob's already won.
+    await act(async () => {
+      releaseStale({
+        customer: sampleCustomers[0],
+        loyalty: { points: 0, lifetime_points: 0, tier_name: 'Stale Tier' },
+        sales: [],
+        sales_total: 0,
+      });
+      await stalePending;
+    });
+
+    // The guard held: the late Alice response was discarded.
+    expect(screen.getByText('Current Tier')).toBeInTheDocument();
+    expect(screen.queryByText('Stale Tier')).toBeNull();
   });
 
   it('closes the history modal on Escape and restores focus to the opener (CUST-11)', async () => {
