@@ -372,6 +372,62 @@ async fn an_unreadable_queue_depth_is_unknown_not_an_empty_queue() {
     );
 }
 
+/// A failed anchor min-scan must be REPORTED, not just skipped.
+///
+/// `oldest_created_at` returns `None` both when the queue is empty and when the
+/// min-scan failed, and the pull handler treats `None` as "skip the P-1
+/// anchor-expiry check". So a failed scan hands a client behind a pruned horizon a
+/// normal page instead of the 410 `anchor_expired`, and — the part that made this
+/// invisible — it LOWERS `SYNC_ANCHOR_EXPIRED_TOTAL`, the only signal that path
+/// has. A broken min-scan read as "fewer expiries", never as "the check stopped
+/// running".
+///
+/// Keeping `None` for both is deliberate (the pull must not fail on a min-scan),
+/// so the distinction is made loud instead: the counter must move. Every previous
+/// read in this file is proven readable first, so what the assertion below is about
+/// is the failure, not a fixture that never had data.
+#[tokio::test]
+async fn a_failed_anchor_min_scan_is_counted_not_silently_skipped() {
+    let conn = fresh_db();
+    let store = SyncStore::sqlite(conn.clone());
+
+    let item = sample_item("anchor-1");
+    assert!(matches!(
+        store.push_item(&item, "tenant-a").await.unwrap(),
+        PushOutcome::Accepted
+    ));
+    let before = crate::metrics::SYNC_ANCHOR_CHECK_SKIPPED_TOTAL.get();
+
+    // Readable first: a real timestamp, and NO skip counted.
+    assert!(
+        store.oldest_created_at("tenant-a").await.is_some(),
+        "the anchor is readable before the schema is broken"
+    );
+    assert_eq!(
+        crate::metrics::SYNC_ANCHOR_CHECK_SKIPPED_TOTAL.get(),
+        before,
+        "a successful scan must not count as a skip"
+    );
+
+    {
+        let guard = conn.lock().await;
+        guard
+            .execute("DROP TABLE offline_queue", [])
+            .expect("drop offline_queue");
+    }
+
+    // The value stays `None` (the pull must not fail), but the skip is counted.
+    assert!(
+        store.oldest_created_at("tenant-a").await.is_none(),
+        "a failed scan stays None so the pull proceeds"
+    );
+    assert_eq!(
+        crate::metrics::SYNC_ANCHOR_CHECK_SKIPPED_TOTAL.get(),
+        before + 1.0,
+        "a failed anchor min-scan must be counted, or it is indistinguishable from an empty queue"
+    );
+}
+
 /// Integration test against a live Postgres instance (the same Docker
 /// service `db.rs` uses, port 15432). Skips when unreachable, so the
 /// suite stays green on machines without a running Postgres.
