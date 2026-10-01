@@ -702,17 +702,52 @@ pub async fn create_session(
         && let Ok(expiry_dt) = chrono::DateTime::parse_from_rfc3339(expires_at_str)
     {
         let expiry = expiry_dt.with_timezone(&chrono::Utc);
+        // A failed ledger read means the ANTI-ROLLBACK time source is unavailable,
+        // which is not the same as "now" — so this does NOT substitute the wall
+        // clock. Doing so was the exact bypass MSL-32 closed one layer down:
+        // `compute_max_ledger_timestamp` propagates its read errors precisely so a
+        // failure is not answered with `Utc::now()` (see its doc at
+        // `subscription.rs:305-312`, "the guard would then compare the OS clock
+        // against itself and pass"), and every core caller fails CLOSED on that
+        // error — `is_within_grace_period_for_connection` -> `false`,
+        // `effective_tier_for_connection` -> `Free` (`subscription.rs:390,671`).
+        // The `.unwrap_or_else(|_| Utc::now())` here undid that at the outermost
+        // caller, where a tenant with a rolled-back OS clock would never enter the
+        // window and the re-auth verdict would never reach the device.
+        //
+        // Skipping the window is the conservative direction and removes no lock:
+        // §2.3 only makes the status REFRESH happen. The two checks that actually
+        // refuse a session are outside it — §2.4a.2's device-revocation read of the
+        // cached verdict, and §2.5's tenant revocation — and both still run.
         let now_ledger = {
             let db = ctx.lock_global().await;
             match TenantSubscription::compute_max_ledger_timestamp(&db) {
-                Ok(ts) => chrono::DateTime::parse_from_rfc3339(&ts)
-                    .map(|dt| dt.with_timezone(&chrono::Utc))
-                    .unwrap_or_else(|_| chrono::Utc::now()),
-                Err(_) => chrono::Utc::now(),
+                Ok(ts) => match chrono::DateTime::parse_from_rfc3339(&ts) {
+                    Ok(dt) => Some(dt.with_timezone(&chrono::Utc)),
+                    Err(e) => {
+                        tracing::warn!(
+                            tenant_id = %sub.tenant_id,
+                            error = %e,
+                            "ledger timestamp is unparseable; skipping the pre-expiry re-auth window"
+                        );
+                        None
+                    }
+                },
+                Err(e) => {
+                    tracing::warn!(
+                        tenant_id = %sub.tenant_id,
+                        error = %e,
+                        "ledger clock unreadable; skipping the pre-expiry re-auth window"
+                    );
+                    None
+                }
             }
         };
-        let window_start = expiry - chrono::Duration::days(3);
-        if now_ledger >= window_start && now_ledger <= expiry {
+        let in_window = now_ledger.is_some_and(|now_ledger| {
+            let window_start = expiry - chrono::Duration::days(3);
+            now_ledger >= window_start && now_ledger <= expiry
+        });
+        if in_window {
             tracing::info!(
                 tenant_id = %sub.tenant_id,
                 "tenant is within 3-day pre-expiry window — executing re-auth status check (ADR #58 §2.3)"

@@ -42,6 +42,49 @@ fn no_bridge_module_timestamps_a_credential_from_a_defaulted_clock() {
     }
 }
 
+/// No bridge module may answer a failed LEDGER read with the wall clock.
+///
+/// `compute_max_ledger_timestamp` exists so subscription time comes from the database
+/// ledger rather than the OS clock, and it propagates its read errors ON PURPOSE — see
+/// its doc at `crates/kasirmu-core/src/subscription.rs:305-312`: answering a failed read
+/// with `Utc::now()` makes "the guard compare the OS clock against itself and pass",
+/// which is the rollback bypass MSL-32 closed. Every core caller fails CLOSED on that
+/// error (`is_within_grace_period_for_connection` -> `false`, `effective_tier_for_connection`
+/// -> `Free`, `:390` and `:671`).
+///
+/// `auth.rs`'s pre-expiry window (ADR #58 §2.3) undid that at the outermost caller: on
+/// `Err(_)` it substituted `chrono::Utc::now()`, so a tenant with a rolled-back OS clock
+/// never entered the window and the re-auth verdict never reached the device. It now
+/// skips the window and warns, which is the conservative direction and removes no lock —
+/// §2.3 only makes the status REFRESH happen, while the two checks that refuse a session
+/// (§2.4a.2's cached device verdict, §2.5's tenant revocation) sit outside it.
+///
+/// SCOPE, stated honestly: this is a SOURCE assertion because the arm cannot be reached
+/// from a test. Reaching §2.3 needs a PAID, non-expired tenant, and a paid tier cannot be
+/// minted by a test — the schema-seeded row is `free` and any paid `tier_key` falls
+/// through to RSA verification against the release public key (`testing.rs:252`, and
+/// `seeded_row_reaches_a_paid_tier` documents the two routes that can). So this pins the
+/// shape that must not return, rather than claiming coverage of the branch.
+///
+/// Whitespace-insensitive for the formatter-reflow reason recorded on the sweeps above.
+#[test]
+fn no_bridge_module_answers_an_unreadable_ledger_with_the_wall_clock() {
+    let source = include_str!("auth.rs");
+    let compact: String = source.chars().filter(|c| !c.is_whitespace()).collect();
+
+    assert!(
+        !compact.contains("compute_max_ledger_timestamp(&db){Ok(ts)=>chrono::DateTime::parse_from_rfc3339(&ts).map(|dt|dt.with_timezone(&chrono::Utc)).unwrap_or_else(|_|chrono::Utc::now()),Err(_)=>chrono::Utc::now(),}"),
+        "the pre-expiry window must not fall back to the wall clock when the ledger is unreadable"
+    );
+    // The positive half: the two arms must still be present and must skip, so this
+    // cannot be satisfied by deleting the window entirely.
+    assert!(
+        compact.contains("ledgerclockunreadable;skippingthepre-expiryre-authwindow")
+            && compact.contains("ledgertimestampisunparseable;skippingthepre-expiryre-authwindow"),
+        "both unreadable-ledger arms must still skip the window and say so"
+    );
+}
+
 /// No bridge module may resolve a deduction location through a DEFAULTED fallback.
 ///
 /// `resolve_primary_location` already returns tier 4 (the canonical default) for a
