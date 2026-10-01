@@ -72,7 +72,7 @@ impl Store<'_> {
     /// a value withheld by permission. That is the right answer for a renderer and
     /// the wrong one for an operator checking whether a key rotation or a storage
     /// fault has stranded PII ciphertext: this accessor is the distinction, read
-    /// from the stored bytes with [`StoredCipher`], with no plaintext ever
+    /// from the stored bytes with `StoredCipher`, with no plaintext ever
     /// escaping. It is a diagnostic, not a gate — it does not itself deny any
     /// read.
     pub fn user_profile_has_unreadable_seal(&self, user_id: &str) -> Result<bool, CoreError> {
