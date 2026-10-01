@@ -855,8 +855,8 @@ fn next_count_number_propagates_db_error() {
 /// so a caller that read-modify-writes (`counted + 1`, which is exactly what
 /// `WarehouseCountFlow.resolveScan` does per barcode scan) loses an update when
 /// two writes overlap: both read 5, both write 6, and the count is 6 rather
-/// than 7. This is the SERVER half of the race the UI guard in
-/// `WarehouseCountFlow.tsx` closes on its side; that guard serialises the
+/// than 7. This is the SERVER half of the race the warehouse count screen's
+/// own guard closes on its side; that guard serialises the
 /// client's own scans but cannot help two terminals counting the same sheet.
 ///
 /// Asserted here so the behaviour is explicit: the store does NOT merge, and
