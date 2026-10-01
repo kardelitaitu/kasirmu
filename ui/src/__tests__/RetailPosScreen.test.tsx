@@ -141,6 +141,15 @@ describe('RetailPosScreen — rendering', () => {
     const sp = await import('@/features/sales/usePosState');
     vi.mocked(sp.usePosState).mockReset();
     vi.mocked(sp.usePosState).mockReturnValue(createUsePosStateMock());
+    // The global test-setup beforeEach calls vi.clearAllMocks(), which clears
+    // call HISTORY but keeps mock IMPLEMENTATIONS. Any test that resolves a
+    // held-carts read therefore leaks that answer into the next test in this
+    // file, which is why the suite was order-dependent. Reset the two reads
+    // the held-cart tests override so each test starts from the api mock
+    // defaults, matching the intent of this block.
+    const sales = await import('@/api/sales');
+    vi.mocked(sales.listHeldCartsScoped).mockReset();
+    vi.mocked(sales.getHeldCartScoped).mockReset();
   });
 
   it('renders the store header with name, branch, and clock', async () => {
@@ -289,6 +298,73 @@ describe('RetailPosScreen — rendering', () => {
     await waitFor(() => expect(screen.getByText('F1')).toBeInTheDocument());
     await userEvent.keyboard('?');
     expect(screen.getByText(/Keyboard Shortcuts/)).toBeInTheDocument();
+  });
+
+  // ── Held-cart discount restore ───────────────────────────────────
+  //
+  // The resume path validates every line it restores and then restored the
+  // discount with a TRUTHINESS test on an `unknown`:
+  //   if (data['discountPercent']) setDiscount(data['discountPercent'] as number, ...)
+  // The main POS already guards the identical field with a typeof check
+  // (features/sales/hooks/usePosHeldCarts.ts:209), so the retail copy had
+  // drifted. A STRING passes a truthiness test, and setDiscount does
+  // Math.round(percent) -- Math.round of a non-numeric string is NaN, and
+  // Math.max(0, Math.min(100, NaN)) is still NaN because every comparison
+  // against NaN is false.
+  //
+  // NaN then FAILS the `discountPercent <= 0` guard in usePosState without
+  // taking its early return, so the memos carry on to `100 - NaN` and the
+  // cart total becomes NaN minor units -- not merely an unvoided discount.
+
+  /** Drive the real resume path: reminder -> held list -> resume. */
+  async function resumeHeldCartWith(discountPercent: unknown) {
+    const posState = await import('@/features/sales/usePosState');
+    const sales = await import('@/api/sales');
+    const setDiscount = vi.fn();
+    vi.mocked(posState.usePosState).mockReturnValue(
+      createUsePosStateMock({ setDiscount }),
+    );
+    const cartData = JSON.stringify({ lines: [], discountPercent });
+    vi.mocked(sales.listHeldCartsScoped).mockResolvedValue([{
+      id: 'held-1',
+      label: 'Hold #1',
+      cart_data: cartData,
+      item_count: 0,
+      total_minor: 0,
+      currency: 'IDR',
+      bill_type: 'hold',
+    }] as never);
+    vi.mocked(sales.getHeldCartScoped).mockResolvedValue({
+      id: 'held-1',
+      cart_data: cartData,
+    } as never);
+    await renderWithProviders(<RetailPosScreen />, salesFtl, productsFtl, tablesFtl);
+    // handleResume (RetailPosScreen.tsx:1238-1241) auto-resumes when exactly
+    // ONE held cart exists, so the list modal never opens for a single row.
+    await userEvent.click(await screen.findByRole('button', { name: /resume/i }));
+    await waitFor(() => {
+      expect(vi.mocked(sales.getHeldCartScoped)).toHaveBeenCalled();
+    });
+    return setDiscount;
+  }
+
+  it('does not restore a discount from a non-numeric cart field', async () => {
+    const setDiscount = await resumeHeldCartWith('abc');
+
+    // The whole point: setDiscount is where Math.round(NaN) would enter.
+    expect(setDiscount).not.toHaveBeenCalled();
+  });
+
+  it('ignores an object discount rather than passing it through', async () => {
+    const setDiscount = await resumeHeldCartWith({ pct: 10 });
+    expect(setDiscount).not.toHaveBeenCalled();
+  });
+
+  it('restores a numeric discount from a held cart', async () => {
+    const setDiscount = await resumeHeldCartWith(25);
+    // The guard is a typeof test, not a blanket refusal: a real number must
+    // still restore, or the fix would be "never resume a discount".
+    expect(setDiscount).toHaveBeenCalledWith(25, '');
   });
 
   it('shows hold warning when no cart items', async () => {

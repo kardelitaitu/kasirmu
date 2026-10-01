@@ -1206,7 +1206,22 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
       if (hasCorruptLines) {
         addToast({ message: requiredLocalized(l10nRef.current, 'retail-toast-corrupt-cart'), type: 'error' });
       }
-      if (data['discountPercent']) setDiscount(data['discountPercent'] as number, (data['discountLabel'] as string) ?? '');
+      // typeof, not truthiness. This is the only field below that reached
+      // setDiscount unchecked, and it is the one the main POS already guards:
+      // `if (typeof data.discountPercent === 'number')` at
+      // features/sales/hooks/usePosHeldCarts.ts:209. A truthiness test also
+      // passes a STRING, and setDiscount does `Math.round(percent)` --
+      // Math.round('abc') is NaN, and Math.max(0, Math.min(100, NaN)) is
+      // still NaN because every comparison against NaN is false.
+      //
+      // NaN then fails `discountPercent <= 0` in usePosState (the guard that
+      // otherwise returns the subtotal unmodified) WITHOUT falling back to it:
+      // the memos carry on to `100 - NaN` and the cart total becomes NaN
+      // minor units. Every field above is validated and this one was not, in a
+      // loop whose whole purpose is recovering a cart from untrusted JSON.
+      if (typeof data['discountPercent'] === 'number') {
+        setDiscount(data['discountPercent'], (data['discountLabel'] as string) ?? '');
+      }
       await deleteHeldCartScoped(sessionToken, cartId);
       setHeldCartId(null);
       setShowHeldCartsList(false);
