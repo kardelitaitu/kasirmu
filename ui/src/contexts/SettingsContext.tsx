@@ -235,6 +235,15 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
   // DISTINCTLY DIFFERENT values. Returning the same ones makes the test pass with
   // the guard REMOVED -- that cost two mutations each in Currency and Settings.
   //
+  // WHEN RECORDING A COVERAGE GAP, NAME IT PRECISELY. Two commits in this campaign said
+  // a module "has no test file of its own yet" (e139c2135, 40754c909). Both were WRONG:
+  // `git cat-file -e <sha>:<path>` shows the test file existed in each case, committed
+  // earlier, and only the store-switch case for the new guard was missing. The
+  // conclusion was right -- the guard was genuinely unpinned, verified by running the
+  // mutation -- but the wording sent the next attempt to write a NEW test file when the
+  // existing suite was the place to add a case. "The existing suite does not cover this
+  // guard" is the true and more useful statement; say that instead.
+  //
   // ALSO MEASURED ACROSS THIS CAMPAIGN, because each cost a round: a mock that
   // captures the token BY VALUE rather than through a getter never sees a switch; a
   // test that leaves the token mutated makes the next case's switch a silent NO-OP;
