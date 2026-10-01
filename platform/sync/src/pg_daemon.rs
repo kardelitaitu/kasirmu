@@ -287,19 +287,31 @@ impl PgSyncDaemon {
                 // unreachable on push-idle cycles, which would have starved
                 // relay terminals of remote updates.
                 let pg_config = if enabled {
+                    // These three carried `.unwrap_or_default().unwrap_or_default()`,
+                    // which collapses BOTH the `Result` error and the `None` into
+                    // `""` -- the same shape the password fix below documents: a
+                    // read failure is not an unset value, and an empty host/db/user
+                    // is presented to PostgreSQL as a blank connection target rather
+                    // than as the integrity failure it is. `Ok(None)` stays the ONE
+                    // legitimate absence and still becomes an empty string, because
+                    // that is what the transport expects for "not configured".
+                    //
+                    // Propagated with `?` like the two reads above, into the same
+                    // `read_error` channel.
                     let host = Settings::get_pg_sync_host(&conn)
-                        .unwrap_or_default()
+                        .map_err(|e| format!("could not read pg_sync.host: {e}"))?
                         .unwrap_or_default();
+                    // The port keeps its literal default, which is what an absent
+                    // setting already means; only a READ failure is fatal.
                     let port: String = Settings::get_pg_sync_port(&conn)
-                        .ok()
-                        .flatten()
+                        .map_err(|e| format!("could not read pg_sync.port: {e}"))?
                         .filter(|p| !p.is_empty())
                         .unwrap_or_else(|| "5432".into());
                     let dbname = Settings::get_pg_sync_dbname(&conn)
-                        .unwrap_or_default()
+                        .map_err(|e| format!("could not read pg_sync.dbname: {e}"))?
                         .unwrap_or_default();
                     let user = Settings::get_pg_sync_user(&conn)
-                        .unwrap_or_default()
+                        .map_err(|e| format!("could not read pg_sync.user: {e}"))?
                         .unwrap_or_default();
                     // A decrypt failure is NOT "no password set". The typed
                     // getter fails closed on a value with ciphertext shape that
@@ -323,14 +335,25 @@ impl PgSyncDaemon {
                     // transport refuses plaintext connections (fail-closed
                     // for cloud PostgreSQL). Defaults to plaintext to match
                     // the historical NoTls transport.
-                    let require_tls = Settings::get_pg_sync_require_tls(&conn).unwrap_or(false);
+                    // Propagates for the same reason as the reads above, and with a
+                    // sharper consequence: `.unwrap_or(false)` turned a read FAILURE
+                    // into "TLS not required", i.e. it silently DOWNGRADED the
+                    // transport to plaintext -- the opposite of the fail-closed
+                    // intent this setting exists for.
+                    let require_tls = Settings::get_pg_sync_require_tls(&conn)
+                        .map_err(|e| format!("could not read pg_sync.require_tls: {e}"))?;
                     // The transport scopes every query to this tenant, so a
                     // shared multi-tenant database never leaks another
                     // tenant's rows to this terminal. Falls back to the
                     // local queue's tenant when the license setting is
                     // absent (pre-license installs).
+                    // Propagated, not defaulted: `.unwrap_or_default()` here turned a
+                    // read failure into "no tenant", which fell through the `or_else`
+                    // to the local queue's tenant and then to `"default"`. On a
+                    // shared multi-tenant remote that is a cross-tenant read, which
+                    // is exactly what the scoping passed to the transport prevents.
                     let tenant_id: String = Settings::get(&conn, "license.tenant_id")
-                        .unwrap_or_default()
+                        .map_err(|e| format!("could not read license.tenant_id: {e}"))?
                         .filter(|s| !s.is_empty())
                         .or_else(|| pending.first().map(|i| i.tenant_id.clone()))
                         .unwrap_or_else(|| "default".into());

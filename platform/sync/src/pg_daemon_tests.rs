@@ -847,6 +847,59 @@ async fn daemon_status_shows_pending_count_after_tick() {
     tokio::time::sleep(Duration::from_millis(100)).await;
 }
 
+/// A pg_sync setting that cannot be READ must surface as the cycle's error.
+///
+/// The config block built its host/dbname/user with
+/// `.unwrap_or_default().unwrap_or_default()`, which collapsed BOTH the `Result`
+/// error and the `None` into `""` -- so a read failure was presented to
+/// PostgreSQL as a blank connection target rather than as the integrity failure
+/// it is. `pg_sync.require_tls` and `license.tenant_id` had the same shape, and
+/// those two were worse: `.unwrap_or(false)` silently DOWNGRADED the transport to
+/// plaintext, and the tenant default fell through to `"default"` -- a
+/// cross-tenant read on a shared remote, the exact thing the scoping exists to
+/// prevent. The neighbouring reads in this same closure already propagated into
+/// `read_error`; these now do too.
+///
+/// The trigger is a `settings.value` holding invalid UTF-8: SQLite TEXT is bytes,
+/// so it stores, and `row.get::<_, String>` then fails on it.
+#[tokio::test]
+async fn a_malformed_pg_sync_setting_surfaces_as_the_cycle_error() {
+    let db = setup_db();
+    {
+        let db_clone = db.clone();
+        tokio::task::spawn_blocking(move || {
+            let conn = db_clone.blocking_lock();
+            // PG sync ON, and a host whose stored value is not valid UTF-8.
+            Settings::set_pg_sync_enabled(&conn, true).unwrap();
+            conn.execute(
+                "INSERT INTO settings (key, value) VALUES ('pg_sync.host', CAST(x'80ff' AS TEXT)) \
+                 ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                [],
+            )
+            .unwrap();
+        })
+        .await
+        .unwrap();
+    }
+
+    let daemon = PgSyncDaemon::with_interval(Duration::from_millis(30));
+    daemon.start(db).await;
+    tokio::time::sleep(Duration::from_millis(80)).await;
+
+    let status = daemon.status().await;
+    let err = status
+        .last_error
+        .as_deref()
+        .expect("an unreadable pg_sync.host must surface, not become a blank host");
+    assert!(
+        err.contains("pg_sync.host"),
+        "the error must name the setting that failed, got: {err}"
+    );
+
+    daemon.stop().await;
+    tokio::time::sleep(Duration::from_millis(100)).await;
+}
+
 // ── Concurrent daemon instances (advisory lock simulation) ──────
 
 #[tokio::test]
