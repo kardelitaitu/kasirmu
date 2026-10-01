@@ -48,12 +48,19 @@ import argparse
 import sys
 from pathlib import Path
 
-# The COR-7 controls, by the name each side uses for them. Each is a guard that
+# The COR-7 controls, by the DEFINITION each side writes. Each is a guard that
 # changes WHAT the replay guard does, not a helper of convenience: losing one lets
 # a client reach a branch the other shell refuses.
+#
+# The marker is the `fn NAME(` form and NOT the bare name, deliberately. A bare name
+# is a SUBSTRING question, and renaming `normalized_attempt_id` to
+# `normalized_attempt_id_renamed` leaves the original inside the new name -- so a
+# name-presence check reports the control still present and a rename of the control
+# survives as a false pass. Keying on the definition site cannot be fooled that way,
+# and scripts/test-replay-fork.py pins both halves of that.
 CONTROLS = [
     # Rejects an attempt id carrying `:`, closing the key-namespace forgery.
-    ("validated_attempt_id", "normalized_attempt_id"),
+    ("fn validated_attempt_id(", "fn normalized_attempt_id("),
 ]
 
 BRIDGE_REL = "crates/kasirmu-bridge/src/pos/checkout/replay.rs"

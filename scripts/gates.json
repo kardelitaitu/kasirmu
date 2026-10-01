@@ -1476,7 +1476,8 @@
       "_note": "Added 2026-10-05. The tablet command layer is a fork of the desktop one, so the per-attempt idempotency rules (COR-7) exist twice -- kasirmu-bridge/src/pos/checkout/replay.rs and apps/mobile-tauri/src/commands/pos/checkout.rs -- and the fork's own header says 'a second implementation of the SAME rules ... keep them in step'. Nothing checked that, and they drifted into a SECURITY defect: only the bridge refused a colon in the attempt id (validated_attempt_id), which is what stops a crafted `a:rekey:b` from composing a base key byte-identical to another attempt's re-key LOOKUP key and making the replay guard answer with a sale the basket never rang up (1596631d2). The trim half of the same contract stayed in step ONLY because `whitespace_only_attempt_id_is_unguarded_like_the_tablet` pinned it, so the failure mode is precisely a rule added to one fork without a cross-shell pin. The checker pins the CONTROL SET and not the bodies: the fork returns a different error type (AppError vs BridgeError) and legitimately diverges in behaviour, so a body diff would over-report, but a control present on one side only is always a regression. Exits 2 on a refused --root so a starved corpus never reads as a clean tree. NOT gating the tablet's missing re-key EPOCH counter: that is the Rekey-vs-refuse product ruling plus a missing port, not a control that can be required today.",
       "runners": {
         "check.sh": [
-          "replay fork"
+          "replay fork",
+          "replay fork self-test"
         ]
       },
       "ci": {

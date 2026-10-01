@@ -442,6 +442,11 @@ step "mapper alignment" "python3 scripts/check-mapper-alignment.py" python3 scri
 # one side only is always a regression. Exits 2 on a refused --root, so a starved
 # corpus never reads as clean.
 step "replay fork" "python3 scripts/check-replay-fork.py" python3 scripts/check-replay-fork.py
+# Self-test for the gate above, following the sibling checkers' convention. It proves
+# the control check keys on the DEFINITION site rather than a bare name, which is
+# what stops a rename of a control from passing as presence -- the exact false pass
+# the first mutation attempt hit. Touches no files.
+step "replay fork self-test" "python3 scripts/test-replay-fork.py" python3 scripts/test-replay-fork.py
 
 # scripts/gates.json is the single source of truth for gate names and status
 # (AUDIT-27 CI-08), and it records which step in this script and which step in
