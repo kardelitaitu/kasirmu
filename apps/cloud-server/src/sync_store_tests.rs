@@ -46,9 +46,24 @@ async fn throwaway_pool() -> Option<(deadpool_postgres::Pool, String)> {
     };
 
     // Clean up stale throwaway DBs from crashed runs.
+    //
+    // ONLY databases with no live connections, and that clause is load-bearing.
+    // Measured 2026-10-01: a parallel `cargo test -p kasirmu-cloud --all-features`
+    // failed 1 test with "connection to the new database ... refused" on every
+    // run, and passed 412/412 with `--test-threads=1`. The name pattern
+    // `oz_sync_test_%` matches EVERY throwaway DB on the server, including ones
+    // created seconds earlier by a test still running in this same binary, and
+    // `WITH (FORCE)` terminates their sessions. So this cleanup was killing a
+    // concurrent test's database mid-use -- which then failed to connect.
+    //
+    // `datallowconn` is Postgres's own flag for exactly this and is the cheaper
+    // predicate; it is false while any session is attached. Matching on it rather
+    // than on age or on PID: the name embeds the process id, but parallel tests
+    // inside ONE process share that id, so a PID filter would not separate them.
     let stale: Vec<String> = match admin
         .query(
-            "SELECT datname FROM pg_database WHERE datname LIKE 'oz_sync_test_%'",
+            "SELECT datname FROM pg_database
+             WHERE datname LIKE 'oz_sync_test_%' AND datallowconn",
             &[],
         )
         .await
