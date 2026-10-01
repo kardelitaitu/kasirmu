@@ -60,7 +60,14 @@ setup-provision-offline-switch-local = Set up without an account instead
 # What QR pairing actually costs, stated before the merchant taps it: a second
 # device ALREADY signed in to the account. It reads as universal otherwise, and a
 # merchant setting up a single terminal alone cannot meet it.
-setup-account-pair-requirement = { ' QR pairing needs a second phone signed in to your account.' }
+# Plain text, NOT `{ ' …' }`. A message whose whole value is a bare placeable is
+# rejected by the Fluent parser, so the id resolves to nothing at runtime and
+# @fluent/react falls back to the component's children — which is English on
+# every device. Caught on hardware 2026-10-01, not by any test: the id appeared
+# in both bundles and in the built asset, and the only symptom was a console
+# warning. `verify-bundle-parity` counts KEYS, so it saw a key present and passed.
+# The leading space that motivated the placeable is handled in JSX instead.
+setup-account-pair-requirement = QR pairing needs a second phone signed in to your account.
 # The submit gate, named. A disabled button cannot be pressed and cannot explain
 # itself, and this card is taller than the viewport, so the unmet requirement and
 # the control that fixes it were both invisible. Items are buttons: each moves

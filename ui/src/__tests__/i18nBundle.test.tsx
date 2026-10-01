@@ -35,6 +35,8 @@ import salesEn from '@/locales/sales.ftl?raw';
 import salesId from '@/locales/sales.id.ftl?raw';
 import multiStoreEn from '@/locales/multi-location.ftl?raw';
 import multiStoreId from '@/locales/multi-location.id.ftl?raw';
+import settingsEn from '@/locales/settings.ftl?raw';
+import settingsId from '@/locales/settings.id.ftl?raw';
 
 describe('i18n bundle loader', () => {
   it('exposes en and id locales via getAvailableLocales()', () => {
@@ -42,6 +44,34 @@ describe('i18n bundle loader', () => {
     expect(locales).toContain('en');
     expect(locales).toContain('id');
     expect(locales.length).toBe(2);
+  });
+
+  it('every declared message actually PARSES — a dropped id is a fallback, not a translation', () => {
+    // The failure this exists for, found on hardware 2026-10-01 and not by any
+    // other gate in the repo.
+    //
+    // `setup-account-pair-requirement = { ' QR pairing needs …' }` — a value
+    // that is nothing but a placeable — is REJECTED by the Fluent parser. The key
+    // was declared, so `verify-bundle-parity` counted it and passed; the id was
+    // present in both bundles AND in the built JS asset, so both lint gates
+    // passed. At runtime the id resolved to nothing, @fluent/react logged one
+    // warning, and every Indonesian merchant read the component's English
+    // fallback children instead. Nothing in CI could see it.
+    //
+    // Declared-and-parsed is the pair that matters: a key that does not survive
+    // the parser is a key that does not exist at runtime, and no amount of
+    // key-counting reports it.
+    const DECLARED = /^([A-Za-z0-9][A-Za-z0-9._-]*)\s*=/gm;
+    for (const [label, source] of [['en', settingsEn], ['id', settingsId]] as const) {
+      const bundle = getBundle(label);
+      const declared = new Set<string>();
+      for (const m of source.matchAll(DECLARED)) declared.add(m[1]!);
+      const missing = [...declared].filter((id) => bundle.getMessage(id) === undefined);
+      expect(
+        missing,
+        `${declared.size} message(s) declared in settings.ftl (${label}) did not survive the Fluent parser, so they resolve to nothing at runtime and every <Localized> using them falls back to its English children: ${missing.join(', ')}`,
+      ).toEqual([]);
+    }
   });
 
   it('returns distinct FluentBundle instances per locale (no cross-leak)', () => {

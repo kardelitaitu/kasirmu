@@ -677,13 +677,23 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
               <Localized id="setup-provision-account-hint">
                 Connect your device to your free account to enable automatic sync and license protection.
               </Localized>
-              {/* The QR route's precondition, stated before the merchant hits
-                  it. "Scan this QR code with your phone" reads as universal;
-                  it is not — it needs a phone already signed in to the account,
-                  which a merchant setting up one terminal alone does not have.
-                  QR stays available; this says what it costs before the tap. */}
+            </p>
+            {/* The QR route's precondition, stated before the merchant hits
+                it. "Scan this QR code with your phone" reads as universal;
+                it is not — it needs a phone already signed in to the account,
+                which a merchant setting up one terminal alone does not have.
+                QR stays available; this says what it costs before the tap.
+
+                Its OWN paragraph rather than a second sentence in the one above,
+                because the message has to be plain FTL text: a value that is
+                only a placeable is dropped by the parser, so the id resolves to
+                nothing at runtime and the merchant reads the component's English
+                fallback on every device. Caught on hardware 2026-10-01 — the key
+                was in both bundles and in the built asset, and the only symptom
+                was one console warning. */}
+            <p className="provisioning-account-hint">
               <Localized id="setup-account-pair-requirement">
-                {' QR pairing needs a second phone signed in to your account.'}
+                <span>QR pairing needs a second phone signed in to your account.</span>
               </Localized>
             </p>
 

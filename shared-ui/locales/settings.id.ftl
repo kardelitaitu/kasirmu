@@ -138,7 +138,11 @@ setup-provision-offline-switch-local = Selesaikan tanpa akun
 # Yang sebenarnya dibutuhkan QR, dinyatakan sebelum merchant mengeklik: perangkat
 # kedua yang SUDAH masuk ke akun. Kalau tidak disebut, terbaca sebagai universal,
 # dan merchant yang menyiapkan satu terminal sendirian tidak dapat melakukannya.
-setup-account-pair-requirement = { ' Pasangkan QR membutuhkan HP kedua yang sudah masuk ke akun Anda.' }
+# Teks biasa, BUKAN `{ ' …' }`. Pesan yang seluruh nilainya hanya placeable
+# ditolak parser Fluent, sehingga id-nya tidak ada saat runtime dan
+# @fluent/react memakai children komponen sebagai cadangan — yaitu Bahasa Inggris
+# di semua perangkat. Terdeteksi di perangkat keras 2026-10-01.
+setup-account-pair-requirement = Pasangkan QR membutuhkan HP kedua yang sudah masuk ke akun Anda.
 # Gerbang kirim, diberi nama. Tombol nonaktif tidak bisa ditekan dan tidak bisa
 # menjelaskan dirinya sendiri, dan kartu ini lebih tinggi dari viewport, sehingga
 # syarat yang belum terpenuhi maupun kontrol untuk memperbaikinya sama-sama
