@@ -18,10 +18,24 @@
  * SOURCE, where the audit checker still needs it — the checker reads files, not the
  * built site, so removing it in the tree would have silenced the audit instead.
  *
- * Narrow on purpose: only a blockquote whose ENTIRE text is the footer is dropped, so a
- * page that quotes the line while documenting the convention keeps its prose.
+ * Narrow on purpose: only the footer LINE is removed. It can be the whole content of a
+ * blockquote, the last line of one that also carries a changelog note, or share a <p>
+ * with prose that follows it — all three occur in the corpus. A page that quotes the
+ * line while documenting the convention keeps its prose only if the quote does not
+ * match the footer's exact shape (`DD-MM-YY by <who>`).
  *
  * Dependency-free, like its siblings here: it walks the hast tree by hand.
+ *
+ * MEASURING THIS REQUIRES WIPING website/.astro FIRST. The content layer caches RENDERED
+ * entries there, so after a config or plugin change a build reuses the old output: the
+ * plugin appears to do nothing when it is correct, and — worse — appears to work when it
+ * has been made deliberately inert. Both happened while writing this file. The key is
+ * likewise settled only by a cache-wiped A/B: `markdown.processor: unified(...)` reaches
+ * the content layer and the flat `markdown.rehypePlugins` does NOT, despite the flat key
+ * being the shape the deprecation notice points away from. Two commits (1f4edbc9d,
+ * d32a58176) asserted the reverse from stale-cache builds; d32a58176 is superseded here.
+ * The reliable check is the built output, not the config, and not any instrumentation:
+ * an `appendFileSync` probe imported into this module made it silently stop running.
  */
 
 const FOOTER = /^\s*last audited\s+(\d{2})-(\d{2})-(\d{2})\s+by\s+\S+\s*$/i;

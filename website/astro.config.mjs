@@ -3,6 +3,7 @@ import { defineConfig } from 'astro/config';
 import react from '@astrojs/react';
 import sitemap from '@astrojs/sitemap';
 import tailwindcss from '@tailwindcss/vite';
+import { unified } from '@astrojs/markdown-remark';
 import rehypeCallouts from './src/plugins/rehype-callouts.mjs';
 import rehypeMermaidClass from './src/plugins/rehype-mermaid-class.mjs';
 import rehypeStripAuditFooter from './src/plugins/rehype-strip-audit-footer.mjs';
@@ -31,15 +32,14 @@ export default defineConfig({
     sitemap(createSitemapOptions()),
   ],
   markdown: {
-    // NOTE, measured in round 139: these MUST use the flat `rehypePlugins` key, even
-    // though it is marked deprecated in favour of `markdown.processor: unified(...)`.
-    // The docs/guides/legal collections are loaded by the CONTENT LAYER
-    // (src/content.config.ts, the `glob` loader), and that pipeline does NOT read
-    // `markdown.processor` -- a plugin registered there is never invoked. This was
-    // silent: `rehype-callouts` had been configured but inert, which is why built
-    // blockquotes carry no `callout` class, and it is why an earlier attempt to strip
-    // the audit footer via `processor` had no effect at all while appearing to work.
-    // The flat key reaches the content layer; the processor key does not.
+    // THESE MUST USE THE `processor` KEY. Measured both ways with the content cache
+    // wiped (round 140): `processor` leaves 0 of the 20 pages leaking; the flat
+    // `rehypePlugins` key leaves ALL 20, so it does not reach the content layer
+    // (src/content.config.ts, the `glob` loader). The flat key is also the deprecated
+    // one. Two earlier commits (1f4edbc9d, d32a58176) concluded the reverse from builds
+    // that had REUSED A STALE CACHE -- website/.astro caches rendered content, so a
+    // config change appears to do nothing, and a plugin made deliberately inert still
+    // appears to work. Wipe website/.astro when measuring this.
     //
     // rehypeMermaid renders ```mermaid blocks to inline SVG at build time
     // (Playwright, browser at build only — zero client JS; see
@@ -55,12 +55,7 @@ export default defineConfig({
     // the copied docs pages carry; it is an audit artefact, not reader content. See
     // src/plugins/rehype-strip-audit-footer.mjs for why it is a build rule rather
     // than a one-off edit of those pages.
-    rehypePlugins: [
-      rehypeStripAuditFooter,
-      rehypeCallouts,
-      rehypeMermaidClass,
-      [rehypeMermaid, { strategy: 'img-svg', cache: true }],
-    ],
+    processor: unified({ rehypePlugins: [rehypeStripAuditFooter, rehypeCallouts, rehypeMermaidClass, [rehypeMermaid, { strategy: 'img-svg', cache: true }]] }),
   },
   vite: {
     plugins: [tailwindcss()],
