@@ -2044,6 +2044,59 @@ fn credit_sale_dto_emits_the_camel_case_wire_the_retail_list_reads() {
     );
 }
 
+/// What the QUERY actually puts in each field. The pin above tests the DTO's
+/// wire shape from hand-made values, so it cannot see which SQL column feeds
+/// which field -- which is how the mismatch below survived the 2026-09-15 wire
+/// repair and this whole campaign's sweeps.
+///
+/// MEASURED, and asserted here so it is not lost: index 1 of the projection is
+/// `p.gateway_reference`, and it lands in `customer_name`. `cashier_name` takes
+/// index 6, `COALESCE(u.display_name, '')`. The retail credit list renders
+/// `customerName` in a **Customer** column (`RetailModals.tsx:376`), so an
+/// operator currently reads the payment gateway's own reference where the buyer's
+/// name belongs -- and the doc on the struct calls that field "the cashier name",
+/// which is a third, different reading of the same line.
+///
+/// The test pins TODAY'S behaviour rather than a corrected one: choosing which
+/// column a customer name should come from (there is a `customers.name` the
+/// projection does not join) is a product ruling, not a repair, and the wire has
+/// already been repaired once under this name. If the mapping is corrected, this
+/// test fails and must be updated with it -- the point is that the swap can no
+/// longer happen unseen.
+#[test]
+fn the_credit_sale_projection_maps_gateway_reference_into_the_customer_column() {
+    let conn = fresh_conn();
+    {
+        let store = Store::new(&conn);
+        store.seed_default_roles().unwrap();
+    }
+    conn.execute_batch(
+        "INSERT INTO customers (id, name) VALUES ('cus-1', 'Bagus');
+         INSERT INTO users (id, username, pin_hash, display_name, role_id, is_active, created_at, updated_at)
+           VALUES ('u-1', 'rina', 'h', 'Rina', 'role-owner', 1, '2026-01-01', '2026-01-01');
+         INSERT INTO sales (id, total_minor, currency, line_count, status, user_id, customer_id, created_at, updated_at)
+           VALUES ('s-1', 25000, 'IDR', 1, 'completed', 'u-1', 'cus-1', '2026-01-01', '2026-01-01');
+         INSERT INTO payments (id, sale_id, method, gateway_reference, amount_minor, currency, created_at)
+           VALUES ('pay-1', 's-1', 'credit', 'GW-REF-9', 25000, 'IDR', '2026-01-01');",
+    )
+    .expect("seeding a completed credit sale");
+
+    let rows = run_list_credit_sales(&conn).expect("the listing must resolve");
+    assert_eq!(rows.len(), 1);
+    let sale = &rows[0];
+
+    // TODAY'S TRUTH, pinned. The buyer is 'Bagus' and there is no join that could
+    // reach that name; what arrives is the gateway reference.
+    assert_eq!(
+        sale.customer_name, "GW-REF-9",
+        "measured: the projection puts p.gateway_reference into customer_name"
+    );
+    assert_eq!(
+        sale.cashier_name, "Rina",
+        "cashier_name comes from the user"
+    );
+}
+
 // ── R10 gate-KIND: the scoped settings WRITERS are scope-aware ──────────
 
 /// A `settings:edit` holder whose only assignment covers a DIFFERENT branch is
