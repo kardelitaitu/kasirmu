@@ -349,16 +349,21 @@ pub async fn list_staff_scoped(
     require_permission_for_user(&store, &session.user_id, permissions::STAFF_READ)?;
     let users = store.list_users()?;
     let roles = store.list_roles()?;
-    let dtos = users
-        .iter()
-        .map(|u| {
-            let profile = store.get_user_profile(&u.id).ok().flatten();
-            let assignment = store.assignment_for_user(&u.id).ok().flatten();
-            let mut dto = to_staff_dto(u, &roles, profile.as_ref(), assignment.as_ref());
-            dto.staff_code = store.get_staff_code(&u.id).unwrap_or(None);
-            dto
-        })
-        .collect();
+    // Three reads per user, and every one of them used to swallow its error
+    // (`.ok().flatten()`, `.unwrap_or(None)`). A failure anywhere in the loop
+    // therefore produced a staff list that still looked populated but carried
+    // blank profiles, blank assignments and blank staff codes -- a wrong answer
+    // presented as a right one, with nothing to tell the operator. Each read
+    // now propagates: a list this command returns either reflects the store or
+    // fails.
+    let mut dtos = Vec::with_capacity(users.len());
+    for u in &users {
+        let profile = store.get_user_profile(&u.id)?;
+        let assignment = store.assignment_for_user(&u.id)?;
+        let mut dto = to_staff_dto(u, &roles, profile.as_ref(), assignment.as_ref());
+        dto.staff_code = store.get_staff_code(&u.id)?;
+        dtos.push(dto);
+    }
     drop(db);
     Ok(dtos)
 }

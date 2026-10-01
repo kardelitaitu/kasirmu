@@ -115,11 +115,13 @@ pub async fn restore_staff_scoped(
             SECURITY_REASON_ACCOUNT_RESTORED,
         ),
     );
+    // Propagates rather than degrading to a blank profile: see the same three
+    // reads in `list_staff_scoped` for why (`staff.rs`).
     let roles = store.list_roles()?;
-    let profile = store.get_user_profile(&user.id).ok().flatten();
-    let assignment = store.assignment_for_user(&user.id).ok().flatten();
+    let profile = store.get_user_profile(&user.id)?;
+    let assignment = store.assignment_for_user(&user.id)?;
     let mut dto = to_staff_dto(&user, &roles, profile.as_ref(), assignment.as_ref());
-    dto.staff_code = store.get_staff_code(&user.id).unwrap_or(None);
+    dto.staff_code = store.get_staff_code(&user.id)?;
     drop(db);
     Ok(dto)
 }
@@ -148,19 +150,19 @@ pub async fn list_staff_trash_scoped(
     // windows that have expired, so a stale row is never listed as restorable
     // after its deadline.
     store.purge_expired_users()?;
+    // Same three reads as the roster, and the same rule: a trash entry that
+    // cannot be read is an error, not a name with a blank profile.
     let roles = store.list_roles()?;
-    let dtos = store
-        .list_trashed_users()?
-        .iter()
-        .map(|entry| {
-            let profile = store.get_user_profile(&entry.user.id).ok().flatten();
-            let assignment = store.assignment_for_user(&entry.user.id).ok().flatten();
-            let mut dto = to_staff_dto(&entry.user, &roles, profile.as_ref(), assignment.as_ref());
-            dto.staff_code = store.get_staff_code(&entry.user.id).unwrap_or(None);
-            dto.deleted_at = Some(entry.deleted_at.clone());
-            dto
-        })
-        .collect();
+    let trashed = store.list_trashed_users()?;
+    let mut dtos = Vec::with_capacity(trashed.len());
+    for entry in &trashed {
+        let profile = store.get_user_profile(&entry.user.id)?;
+        let assignment = store.assignment_for_user(&entry.user.id)?;
+        let mut dto = to_staff_dto(&entry.user, &roles, profile.as_ref(), assignment.as_ref());
+        dto.staff_code = store.get_staff_code(&entry.user.id)?;
+        dto.deleted_at = Some(entry.deleted_at.clone());
+        dtos.push(dto);
+    }
     drop(db);
     Ok(dtos)
 }

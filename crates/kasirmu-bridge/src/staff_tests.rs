@@ -1982,3 +1982,53 @@ async fn scoped_role_trash_round_trip_keeps_the_row_restorable() {
             .any(|r| r.id == "role-temp")
     );
 }
+
+// -- a roster read that fails must not come back as a roster of blanks --
+
+/// `list_staff_scoped` makes three reads per member — the profile, the
+/// assignment, and the badge code — and all three used to swallow their error
+/// (`.ok().flatten()`, `.unwrap_or(None)`). A failure anywhere in the loop
+/// therefore returned a roster that still LOOKED populated while every entry
+/// carried a blank profile and a blank staff code: a wrong answer presented as a
+/// right one, with nothing to tell the operator. The same three reads appear
+/// again in `restore_staff_scoped` and `list_staff_trash_scoped`.
+///
+/// The pin drops `users.index_id`, which `get_staff_code` reads and `list_users`
+/// does not, so the loop is entered and its later read fails. The roster must
+/// REFUSE rather than degrade to blanks.
+#[tokio::test]
+async fn a_failed_roster_read_refuses_instead_of_listing_blanks() {
+    let conn = crate::testing::temp_conn();
+    seed_global_users(&conn);
+    let bridge =
+        scoped_state_with_token(conn, "owner-token", "user-owner", "role-owner", "store-a");
+    let ctx = bridge.ctx();
+
+    // Prove the happy path first, so the failure below is the only change.
+    let roster = list_staff_scoped("owner-token".into(), &ctx).await.unwrap();
+    assert!(
+        !roster.is_empty(),
+        "the seed must put someone on the roster"
+    );
+
+    // `index_id` is what `get_staff_code` reads; dropping it makes that read
+    // fail without disturbing `list_users`, which does not select the column.
+    // SQLite refuses `DROP COLUMN` while an index covers it, so the index goes
+    // first.
+    {
+        let db = ctx.lock_global().await;
+        db.execute_batch(
+            "DROP INDEX idx_users_tenant_index_id; \
+             ALTER TABLE users DROP COLUMN index_id;",
+        )
+        .expect("dropping index_id and the index over it");
+    }
+
+    let err = list_staff_scoped("owner-token".into(), &ctx)
+        .await
+        .expect_err("a failed per-member read must not become a blank roster");
+    assert!(
+        matches!(err, BridgeError::Core { .. }),
+        "expected the read failure to surface, got {err:?}"
+    );
+}
