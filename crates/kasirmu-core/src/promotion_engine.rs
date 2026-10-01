@@ -202,6 +202,15 @@ pub fn compute_discount(
     };
 
     // Final clamps: never negative, never more than the payable total.
+    //
+    // Verified (audit sweep): the two truncating `/ 100` divisions above are each
+    // guarded, and the guards are layered rather than duplicated. Both use
+    // `checked_mul` before dividing, so `base * value_minor` cannot wrap; the
+    // Percentage arm then applies `raw.min(base)` and the BuyXGetY arm
+    // `raw.min(per_item).max(0)`, before this clamp bounds the result against the
+    // payable total. Truncation rounds DOWN on purpose (`:130`) — the customer-
+    // favorable direction — so it can only ever under-charge, and the money is
+    // integer minor units throughout.
     Ok(discount.clamp(0, sale.total.minor_units))
 }
 
