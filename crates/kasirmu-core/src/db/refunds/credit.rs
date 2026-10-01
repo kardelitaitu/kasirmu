@@ -68,13 +68,19 @@ impl Store<'_> {
 
             // Determine if this is a full or partial refund of the line.
             // Every entry must carry an integer qty. `filter_map(..).sum()`
-            // silently DROPPED an entry it could not read, which UNDER-counts
-            // this bound -- and a low bound is the dangerous direction: the
-            // `credit_after > total_deducted` check below then lets more stock
-            // through than was ever deducted, which is the exact over-credit the
-            // COR-25 comment under this block says the sum exists to prevent.
-            // The two other readers of this same JSON shape in this file already
-            // refuse a bad qty (:147, :175); this one now matches them.
+            // silently DROPPED an entry it could not read, so a malformed entry
+            // made the bound below too LOW -- the dangerous direction, since
+            // `credit_after > total_deducted` is what stops the credit at the
+            // amount actually deducted (see the COR-25 comment below).
+            //
+            // MEASURED (verified RED with the sum restored): with a non-integer
+            // qty the old code did not credit bad stock silently -- the bound came
+            // out wrong, and the refund then failed LATER at the crediting loop
+            // (:147), which reads the same entries and refuses a bad qty. So the
+            // old behaviour was a late, MISATTRIBUTED error on data the bound had
+            // already mispriced, not a silent over-credit. Refusing here is both
+            // correct and earlier, and it makes this reader agree with the two
+            // others on the same shape (:147, :175).
             let mut total_deducted: i64 = 0;
             for d in deductions {
                 let qty = d["qty"].as_i64().ok_or_else(|| CoreError::Validation {
