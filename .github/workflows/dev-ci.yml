@@ -1581,7 +1581,7 @@ jobs:
   northflank-deploy:
     name: Deploy Backend (Northflank)
     runs-on: ubuntu-latest
-    needs: [changes, website, rust-fmt, cargo-check, cargo-clippy, fuzz-typecheck, coverage-floors, cargo-nextest, ui-test, i18n, static-gates, go-gate, ipc-parity]
+    needs: [changes, website, rust-fmt, cargo-check, cargo-clippy, rust-doc, fuzz-typecheck, coverage-floors, cargo-nextest, ui-test, i18n, static-gates, go-gate, ipc-parity]
     # A skipped dependency skips this job, and nothing skips on a deploy run: the
     # `changes` router forces every route true for all non-PR events, and
     # `static-gates` carries no `if:` at all, so neither can quietly unblock one.
@@ -1613,7 +1613,22 @@ jobs:
     # `0.0.*` branch safe as an offline backup (todo-operational-integrity.md
     # Phase 4b depends on it).
     #
-    # Two jobs are left out of `needs` as decisions, not as oversights:
+    # FOUR jobs are left out of `needs`, three of them decisions and one structural.
+    # This said "two" until 2026-10-01, when an audit enumerated them and found
+    # `release-bridge-test` and `rust-doc` absent with no note here at all. `rust-doc`
+    # has since been ADDED to `needs` (it is a rust-gated merge gate, and the router
+    # forces `rust=true` on every non-PR event, so it cannot be skipped on a deploy run
+    # -- the same argument that covers `go-gate`). So three remain:
+    #
+    #   * release-bridge-test CANNOT be listed here, and that is structural rather than
+    #     a judgement call. Its `if:` requires `github.event_name == 'push'`, and
+    #     workflow_dispatch is a second, unfiltered entry point to this job. A skipped
+    #     dependency skips this one, so listing it would make every DISPATCH deploy
+    #     impossible -- and the first row of this comment is the reason that matters.
+    #     Adding it would require relaxing that `if:` to cover dispatch, which is the
+    #     mirror image of the `all()`/`go-gate` coupling noted above: the two must move
+    #     together. Until someone does both, its absence is the safe side to err on.
+    #
     #
     #   * release-readiness proves the DESKTOP updater signing chain, and this job
     #     consumes none of it. It POSTs the commit sha to Northflank, which builds
