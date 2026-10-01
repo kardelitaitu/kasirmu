@@ -25,9 +25,21 @@ script finds the SELECT that feeds it and compares the Nth column against the fi
 name. A disagreement is reported unless the column is aliased (`... AS x`) or the
 field is a documented rename.
 
-It is a HEURISTIC and is written to over-report rather than miss: a finding is a
-prompt to read the two lists side by side, not proof of a bug. Known legitimate
-renames are listed in KNOWN_RENAMES with the reason each is legitimate.
+WHAT THE ALIAS EXEMPTION DOES NOT COVER, measured 2026-10-05 and recorded because it
+is the boundary a reader is most likely to assume away. Trusting the alias is right --
+`COUNT(*) AS shift_count` IS the declaration that the mapping is correct -- but the
+consequence is that an ALIASED mapper is unchecked ENTIRELY, not merely unchecked for
+its name. Swapping the indices of two aliased columns in analytics.rs
+(analytics_shift_rows: `shift_count: row.get(1)` and `closed_shift_count: row.get(2)`,
+backed by `AS shift_count` and `AS closed_count`) leaves this script at exit 0, because
+each column carries an alias and neither alias is compared to its own name.
+
+So it catches a POSITIONAL mapper whose columns are NOT aliased -- which is exactly
+the acknowledged defect this gate exists for, `p.gateway_reference` having no alias.
+It does not catch a reordering inside an aliased projection, and cannot without
+deciding that an alias must equal its field name, which would fail every legitimate
+rename. That trade is the gate's stated posture: a finding is a prompt to read two
+lists, and the absence of one is not proof of correctness.
 
 Exit code 0 = no unaliased disagreement found.
 Exit code 1 = at least one mapper reads a column whose name does not match its field.
