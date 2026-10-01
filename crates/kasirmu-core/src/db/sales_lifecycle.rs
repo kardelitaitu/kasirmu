@@ -223,11 +223,20 @@ impl Store<'_> {
         //
         // PROPAGATES rather than falling back, matching all four bridge callers
         // (`bridge/pos/checkout.rs:441,572,764,822`, `bridge/pos/cart.rs:152,157`),
-        let primary_location = crate::location_resolver::resolve_primary_location(
-            &tx,
-            workspace_instance_id.unwrap_or("default"),
-            None,
-        )?;
+        // `None` means LEGACY SINGLE-LOCATION, and the canonical default LOCATION is
+        // the right answer for that — the same correction as the sibling in
+        // `sales_checkout.rs`, and for the same reason. This used to substitute the
+        // literal `"default"` as a workspace-instance id and resolve through
+        // `resolve_primary_location`, which is keyed by workspace instance: nothing is
+        // ever registered under that id. `provision_device` (provisioning.rs:762) creates
+        // workspaces with `new_id()` and `seed_provisioned_baseline` names them
+        // `default-store-pos` and friends — neither produces a bare `default`.
+        // Measured 2026-10-01: 10 `db::sales::tests` failed with
+        // `NotFound { entity: "workspace_instance", id: "default" }` on this path.
+        let primary_location = match workspace_instance_id {
+            Some(id) => crate::location_resolver::resolve_primary_location(&tx, id, None)?,
+            None => crate::location_resolver::get_default_location_id(),
+        };
         //
         // `?` where all four bridge callers also use it. An earlier
         // `.unwrap_or_else(|_| get_default_location_id())`
