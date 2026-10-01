@@ -41,6 +41,11 @@ const mocks = vi.hoisted(() => ({
   // Failure sets
   failReceipt: false, failStore: false, failCurrencies: false, failSync: false,
   failPrefs: false, failBrand: false, failVersion: false,
+  // When set, the store-settings read waits on this deferred before resolving,
+  // and resolves with `stale` -- the previous store's values, so a late write is
+  // OBSERVABLE rather than indistinguishable from the current one.
+  // null = resolve immediately (every case that is not testing the overlap).
+  gate: null as { promise: Promise<void>; release: () => void; stale: Record<string, string> } | null,
 }));
 
 // Device-id + terminal-list identity mocks (own-terminal event suppression).
@@ -62,9 +67,22 @@ vi.mock('@/api/settings', async () => {
     getReceiptSettingsScoped: vi.fn(() =>
       mocks.failReceipt ? Promise.reject(new Error('Receipt fail')) : Promise.resolve({ ...mocks.receiptSettings }),
     ),
-    getStoreSettingsScoped: vi.fn(() =>
-      mocks.failStore ? Promise.reject(new Error('Store fail')) : Promise.resolve({ ...mocks.storeSettings }),
-    ),
+    getStoreSettingsScoped: vi.fn(() => {
+      if (mocks.failStore) return Promise.reject(new Error('Store fail'));
+      // `gate` lets a test hold ONE read open across a store switch, so the two
+      // loads overlap and the stale one settles LAST. It is deliberately
+      // ONE-SHOT: if it gated every call the post-switch read would wait on the
+      // same deferred and neither load would ever resolve.
+      //
+      // It resolves with `gate.stale` -- the PREVIOUS store's values -- rather
+      // than a copy of the live fixture. Returning live values makes the test
+      // pass with the guard REMOVED: the stale load would apply store B's data
+      // and look identical, so the assertion could not tell the two apart.
+      const gate = mocks.gate;
+      if (!gate) return Promise.resolve({ ...mocks.storeSettings });
+      mocks.gate = null;
+      return gate.promise.then(() => ({ ...gate.stale }));
+    }),
     getUserPreferencesScoped: vi.fn(() =>
       mocks.failPrefs ? Promise.reject(new Error('Prefs fail')) : Promise.resolve({ ...mocks.userPreferences }),
     ),
@@ -123,9 +141,14 @@ vi.mock('@tauri-apps/api/event', () => ({
 
 // ── WorkspaceContext mock ────────────────────────────────────────
 
+// Mutable so a test can SWITCH STORES: SettingsContext's loaders depend on
+// sessionToken, so changing it starts a second load while the first is in
+// flight -- the overlap the sequence guard exists for.
+const wsState = vi.hoisted(() => ({ sessionToken: 'test-token-123' as string }));
+
 vi.mock('@/contexts/WorkspaceContext', () => ({
   useWorkspace: () => ({
-    sessionToken: 'test-token-123',
+    sessionToken: wsState.sessionToken,
     activeWorkspace: 'admin',
     setActiveWorkspace: vi.fn(),
     activeInstance: null,
@@ -213,6 +236,57 @@ afterEach(() => {
 
 describe('SettingsContext', () => {
   // ── Full load ──────────────────────────────────────────────
+
+  // A store switch must not let a SLOWER load from the PREVIOUS store win.
+  //
+  // `loadAll` depends on sessionToken, so switching starts a second load while the
+  // first is still in flight, and neither loader used to check whether it was
+  // still current. The stale result would then overwrite the current store's
+  // settings -- currency, receipt format and tax configuration among them -- and
+  // every money figure in the app is formatted with `settings.currencies`.
+  it('ignores a slower load from the previous store after a switch', async () => {
+    // Store A's read is held OPEN so the switch happens while it is still in
+    // flight. `mocks.gate` is read by the store-settings mock factory, so this
+    // holds every other test to the default resolve-immediately behaviour.
+    let release: () => void = () => {};
+    const pending = new Promise<void>((resolve) => { release = resolve; });
+    mocks.gate = {
+      promise: pending,
+      release: () => release(),
+      // What the PREVIOUS store would have returned. If the stale load is
+      // applied, these values overwrite store B's and the assertions below fail.
+      stale: { name: 'Store A', address: '', taxId: '', currency: 'IDR', branch: '' },
+    };
+    Object.assign(mocks.storeSettings, { name: 'Store B', currency: 'SGD' });
+
+    const { result, rerender } = renderHook(() => useSettings(), { wrapper });
+
+    // Store A is still loading, because its read has not resolved.
+    await waitFor(() => {
+      expect(mocks.failStore).toBe(false);
+    });
+
+    // Switch store. The NEW token's read must not be gated, or it would wait on
+    // the same deferred -- so drop the gate and let only the in-flight call stay
+    // open, which is what a per-request gate models.
+    Object.assign(mocks.storeSettings, { name: 'Store B', currency: 'SGD' });
+    await act(async () => {
+      wsState.sessionToken = 'test-token-456';
+    });
+    rerender();
+
+    await waitFor(() => expect(result.current.settings.store.name).toBe('Store B'));
+
+    // Now let the stale store-A reads settle, after store B already won.
+    await act(async () => {
+      release();
+      await pending;
+    });
+
+    // Store B's values survive the late arrival.
+    expect(result.current.settings.store.name).toBe('Store B');
+    expect(result.current.settings.store.currency).toBe('SGD');
+  });
 
   it('loads all 7 settings scopes on mount', async () => {
     const { result } = renderHook(() => useSettings(), { wrapper });
