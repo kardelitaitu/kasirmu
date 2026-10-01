@@ -233,7 +233,7 @@ See `docs/specs/_active/p1-sync-batching-compression-retention.md` for full acce
 - `platform/sync/tests/integration_test.rs` — 19 cross-terminal integration tests
 - `ui/src/components/FastPINOverlay.tsx` ✅
 
-> last audited 29-09-26 by docs-auditor
+> last audited 04-10-26 by docs-auditor
 
 ---
 

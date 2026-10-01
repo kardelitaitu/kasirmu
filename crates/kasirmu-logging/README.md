@@ -34,4 +34,4 @@ crate is now pure safe Rust and denies `unsafe_code` crate-wide.
 - `missing_docs` is warned via `[lints] workspace = true`, inherited from the
   root `[workspace.lints]`.
 
-> last audited 31-08-26 by docs-auditor
+> last audited 29-09-26 by docs-auditor
