@@ -589,9 +589,27 @@ fn settle_shortfall_resolved(
             .map_err(|e| AppError::Invalid(e.to_string()))?;
     }
 
-    // Apply discount if configured
+    // Apply discount if configured.
+    //
+    // Clamped through the bridge helper, NOT `args.discount_percent as u8`. The
+    // bare cast truncates, and this is the SHORTFALL door -- the one the bridge's
+    // own test was written about: `preview_and_shortfall_doors_treat_a_high_
+    // discount_percent_identically` records that this door once cast raw while the
+    // preview door clamped, so 300 previewed at 100% and charged at 44%, and 256
+    // truncated to 0 and DROPPED the discount entirely. The bridge is fixed
+    // (pos/checkout.rs:404 routes through `checkout_discount_percent`); this copy
+    // of the same door was not, so the tablet and the desktop disagreed for every
+    // wire value above 100.
+    //
+    // Measured: bridge 101/128/200/256/300/357/511/512 all resolve to 100; this
+    // cast resolved them to 101/128/200/0/44/101/255/0. The `> 0` guard and
+    // `Percentage::new`'s own rejection make every value at or below 100 agree, so
+    // only the out-of-range band differed -- and 256 silently discarding the whole
+    // discount is the case that costs the store the money.
     if args.discount_percent > 0
-        && let Some(pct) = foundation::Percentage::new(args.discount_percent as u8)
+        && let Some(pct) = foundation::Percentage::new(
+            kasirmu_bridge::pos::checkout_discount_percent(args.discount_percent) as u8,
+        )
     {
         cart.set_discount(pct, args.discount_label.clone());
     }
