@@ -47,6 +47,7 @@ next: none — all open COR findings from the closed campaign resolved | perf: N
 #![allow(clippy::doc_markdown)] // 462
 #![allow(clippy::must_use_candidate)] // 184
 #![allow(clippy::missing_panics_doc)]
+#![allow(rustdoc::redundant_explicit_links)]
 // 3
 // 10 findings, all in `db/` query helpers that accept an owned aggregate and
 // hand it to a `&T` boundary. Taking `&T` at the signature cascades up every

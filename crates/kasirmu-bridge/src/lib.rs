@@ -23,6 +23,7 @@
 //! below are all landed.
 
 #![deny(unsafe_code)]
+#![allow(rustdoc::redundant_explicit_links)]
 
 pub mod ctx;
 pub mod error;
