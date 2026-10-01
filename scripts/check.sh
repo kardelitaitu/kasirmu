@@ -433,6 +433,16 @@ step "client type drift self-test" "python3 scripts/check-client-type-drift.py -
 # Exits 2 on a refused --roots list, so a starved corpus never reads as clean.
 step "mapper alignment" "python3 scripts/check-mapper-alignment.py" python3 scripts/check-mapper-alignment.py
 
+# COR-7 replay fork: the tablet shell re-implements the per-attempt idempotency
+# rules, and nothing checked the two copies. They drifted into a security defect --
+# the fork had no rejection for a colon in the attempt id, which is what keeps a
+# crafted id from forging another attempt's re-key LOOKUP key (fixed 1596631d2).
+# This pins the CONTROL SET rather than the bodies: the fork legitimately returns a
+# different error type, so a body diff would over-report, but a control present on
+# one side only is always a regression. Exits 2 on a refused --root, so a starved
+# corpus never reads as clean.
+step "replay fork" "python3 scripts/check-replay-fork.py" python3 scripts/check-replay-fork.py
+
 # ── Namespace governance — soft rules for module seams (Round 4) ────────
 # ADR-62 named the seams; docs/architecture/module-namespace-governance.md names
 # the RULES and freezes today's debt as data. Deliberately SOFT: all modules share
