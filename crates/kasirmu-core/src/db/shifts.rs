@@ -123,8 +123,29 @@ impl Store<'_> {
     /// Close an active shift with a counted closing balance and optional notes.
     ///
     /// Calculates `expected_cash_minor` (opening + cash sales) and
-    /// `cash_difference_minor` (closing - expected). Updates all aggregated
-    /// sales fields from the sales table.
+    /// `cash_difference_minor` (closing - expected).
+    ///
+    /// NOTE the two aggregate sources, which differ ON PURPOSE and are easy to
+    /// misread as a bug (this doc previously said "all aggregated sales fields
+    /// from the sales table", which is only true of one of them):
+    ///
+    ///  - `total_sales_minor` sums `sales.total_minor`, which carries NO tip or
+    ///    service-charge term.
+    ///  - `total_cash_minor` / `total_card_minor` / `total_other_minor` sum the
+    ///    `payments` ledger, which DOES. On a cash sale with a 500 tip against a
+    ///    10000 cart the two are 10000 and 10500, and both are correct for their
+    ///    own question.
+    ///
+    /// The ledger side is the right one for reconciliation: `expected_cash_minor`
+    ///    is built from `total_cash_minor` (:283), and the drawer really does hold
+    ///    the tip the customer handed over. Reading the sales row instead would
+    ///    under-count the till on every tipped cash sale, which is why this file
+    ///    never mentions tip at all -- it reads what was actually tendered.
+    ///
+    /// Whether ONE SALE should carry ONE TOTAL (i.e. whether tip belongs in
+    ///    `sales.total_minor` rather than only in `payments`) is a separate, open
+    ///    decision -- see manager-codebase-review.md "The two-total sale". It is
+    ///    NOT settled here and nothing in this function depends on it.
     ///
     /// All reads and the final write run inside a single SQLite transaction
     /// to prevent concurrent close operations from observing inconsistent
