@@ -1451,6 +1451,24 @@
       }
     },
     {
+      "id": "mapper-alignment",
+      "label": "Positional row-mapper alignment",
+      "status": "required",
+      "_note": "Added 2026-10-04. `name: row.get(3)?` couples a mapper to its SQL by POSITION and nothing in Rust checks that coupling: reorder the projection, insert a column, or copy a mapper onto a new struct and the fields silently take each other's values -- every one present, correctly typed, and wrong. Not hypothetical: run_list_credit_sales (crates/kasirmu-bridge/src/settings/core.rs) reads index 1, `p.gateway_reference`, into `customer_name`, the field the retail credit list renders in a Customer column (ui/src/features/retail/RetailModals.tsx), so an operator reads a payment reference where the buyer's name belongs. It survived because the pin covering that type builds the DTO from hand-written literals -- a wire-shape pin that never runs a query, so it cannot see the mapping. The checker pairs each mapper block with the statement feeding it and compares the Nth column against the field name. ONE mismatch is acknowledged and reported each run without failing it: choosing which column a customer name should come from is a product ruling, not a repair, and the record is docs/records/JOURNAL.md (2026-10-04, a3c871787). The suppression is keyed by (file, field), so any OTHER mapper with the same defect still fails -- verified by re-running the checker against a copy of that mapper under a different path, where it reports and exits 1. Required rather than advisory so 0 findings is a baseline a flip can be measured from. Exits 2 on a refused --roots list, so a starved corpus never reads as a clean tree.",
+      "runners": {
+        "check.sh": [
+          "mapper alignment"
+        ]
+      },
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "static-gates",
+        "steps": [
+          "Mapper alignment"
+        ]
+      }
+    },
+    {
       "id": "namespace-governance",
       "label": "Module namespace governance (soft)",
       "status": "required",

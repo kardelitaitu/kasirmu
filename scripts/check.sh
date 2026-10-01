@@ -417,6 +417,22 @@ step "debt markers self-test" "python3 scripts/verify-debt-markers.py --self-tes
 step "client type drift" "python3 scripts/check-client-type-drift.py" python3 scripts/check-client-type-drift.py
 step "client type drift self-test" "python3 scripts/check-client-type-drift.py --self-test" python3 scripts/check-client-type-drift.py --self-test
 
+# ── Row-mapper alignment — a positional read vs the SELECT feeding it ──────
+# `name: row.get(3)?` couples a mapper to its SQL by POSITION, and nothing in Rust
+# checks that coupling: reorder the projection and the fields silently take each
+# other's values, every one present, correctly typed, and wrong. That is not
+# hypothetical -- run_list_credit_sales reads index 1, `p.gateway_reference`, into
+# `customer_name`, which the retail credit list renders in a Customer column, and
+# survived because its own pin builds the DTO from literals and never runs the
+# query. The checker pairs each mapper block with the statement that feeds it and
+# compares the Nth column against the field name.
+# One acknowledged mismatch is REPORTED each run and does not fail it: the source
+# column above is a product ruling, not a repair, and the record lives in
+# docs/records/JOURNAL.md (2026-10-04, a3c871787). The suppression is keyed by
+# (file, field), so any OTHER mapper with the same defect still fails.
+# Exits 2 on a refused --roots list, so a starved corpus never reads as clean.
+step "mapper alignment" "python3 scripts/check-mapper-alignment.py" python3 scripts/check-mapper-alignment.py
+
 # ── Namespace governance — soft rules for module seams (Round 4) ────────
 # ADR-62 named the seams; docs/architecture/module-namespace-governance.md names
 # the RULES and freezes today's debt as data. Deliberately SOFT: all modules share

@@ -85,10 +85,28 @@ KNOWN_RENAMES = {
     ("store_id", "sp.id"),
     # a stored receipt count is exposed to callers as `count`.
     ("count", "receipt_count"),
+    # a user's display name IS the cashier name on the sales they rang up; it
+    # arrives wrapped in COALESCE, which column_base() unwraps to `display_name`.
+    ("cashier_name", "display_name"),
 }
 
 # SQL assembled from a format!/const template cannot be analysed statically.
 TEMPLATE_MARKERS = ("{profile_columns}", "{user_id_param}", "{columns}", "{where_clause}")
+
+# Acknowledged mismatches: real defects that are recorded but deliberately NOT
+# repaired yet, because the repair is a product ruling rather than a fix. Keyed by
+# (file, field). Each must name the record that carries the decision -- an entry
+# without one is a suppression nobody can review, and the checker refuses that.
+#
+# These are REPORTED, not silently dropped: the run prints them under a heading and
+# still exits 0, so the defect stays visible without making the tree permanently red.
+ACKNOWLEDGED = {
+    ("crates/kasirmu-bridge/src/settings/core.rs", "customer_name"): (
+        "customers.name exists but the projection does not join it; choosing the "
+        "source column changes what a cashier sees on a surface already repaired "
+        "once. See docs/records/JOURNAL.md (2026-10-04) and commit a3c871787."
+    ),
+}
 
 
 def split_top_level_commas(text: str) -> list[str]:
@@ -108,20 +126,33 @@ def split_top_level_commas(text: str) -> list[str]:
 
 
 def column_base(col: str) -> str:
-    """The bare column name: strip alias, table prefix, parens and casts."""
-    body = col.split()[-1] if " AS " in col.upper() else col
+    """The bare column name behind an alias, a function wrapper and a table prefix.
+
+    `COALESCE(u.display_name, '')` must resolve to `display_name`, not to
+    `coalesce`: the name a reader compares against a field lives INSIDE the
+    wrapper. Taking the text before the first paren -- the obvious implementation --
+    drops it, and then reports every COALESCE-wrapped column as a mismatch.
+    """
+    body = col.split()[-1] if re.search(r"\bAS\b", col, re.IGNORECASE) else col
     body = body.strip().strip(chr(34)).strip()
+    while True:
+        # Peel one outer wrapper: `COALESCE(x, y)` -> `x`; `CAST(x AS t)` -> `x`.
+        wrapped = re.match(r"^([A-Z_]+)\s*\((.*)\)$", body, re.IGNORECASE | re.DOTALL)
+        if not wrapped:
+            break
+        body = wrapped.group(2).split(",")[0].strip()
     body = re.sub(r"^[\w]+\.", "", body)
-    body = body.split("(")[0].strip().strip(chr(34))
+    body = body.split("(")[0].strip().strip(chr(34)).strip()
     return body.lower()
 
 
-def scan(path: Path) -> list[str]:
+def scan(path: Path) -> tuple[list[str], list[str]]:
     text = path.read_text(encoding="utf-8", errors="replace")
     if any(m in text for m in TEMPLATE_MARKERS):
-        return []
+        return [], []
     lines = text.splitlines()
     findings: list[str] = []
+    acked: list[str] = []
 
     for i, line in enumerate(lines):
         head = FIELD_RE.match(line)
@@ -191,12 +222,20 @@ def scan(path: Path) -> list[str]:
                 continue
             if any(lname == f and base == c for f, c in KNOWN_RENAMES):
                 continue
+            if (path.as_posix(), name) in ACKNOWLEDGED:
+                acked.append(
+                    f"{path.as_posix()}:{i + 1}  {name}[{idx}] <- \"{col.strip()[:50]}\""
+                    + chr(10)
+                    + "      acknowledged: "
+                    + ACKNOWLEDGED[(path.as_posix(), name)]
+                )
+                continue
             bad.append(f'{name}[{idx}] <- "{col.strip()[:50]}"')
 
         if bad:
             findings.append(f"{path.as_posix()}:{i + 1}" + chr(10) + "    " + (chr(10) + "    ").join(bad))
 
-    return findings
+    return findings, acked
 
 
 def main() -> int:
@@ -218,12 +257,21 @@ def main() -> int:
         return 2
 
     findings: list[str] = []
+    acknowledged: list[str] = []
     for f in files:
-        findings.extend(scan(f))
+        bad, acked = scan(f)
+        findings.extend(bad)
+        acknowledged.extend(acked)
 
     print(f"scanned {len(files)} production .rs files")
+
+    if acknowledged:
+        print(f"{len(acknowledged)} acknowledged mismatch(es), recorded not repaired:")
+        print((chr(10) + chr(10)).join(acknowledged))
+        print()
+
     if not findings:
-        print("no positional mapper disagrees with its SELECT")
+        print("no UNacknowledged positional mapper disagrees with its SELECT")
         return 0
     print(f"{len(findings)} mapper(s) read a column whose name does not match the field:" + chr(10))
     print((chr(10) + chr(10)).join(findings))

@@ -1139,6 +1139,12 @@ jobs:
         run: python3 scripts/check-client-type-drift.py
       - name: Client type drift self-test
         run: python3 scripts/check-client-type-drift.py --self-test
+      # A positional row-mapper read is coupled to its SELECT by nothing the
+      # compiler checks: reorder the projection and the fields swap values
+      # silently. One acknowledged mismatch is reported and does not fail this
+      # step -- see scripts/check-mapper-alignment.py for the record.
+      - name: Mapper alignment
+        run: python3 scripts/check-mapper-alignment.py
       # R36-11: release.yml was renamed to .bak with an empty commit message and
       # nothing noticed that tagging had stopped producing installers. A workflow
       # that never runs cannot report its own breakage, so this validates the
