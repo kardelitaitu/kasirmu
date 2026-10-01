@@ -59,6 +59,28 @@ export default function RefundModal({ open, sale, onClose, onRefunded }: RefundM
   /**
    * The refundable share of one sale line, in minor units.
    *
+   * THE CONTRACT with the server, which is not arbitrary. For a refund of
+   * `qty` units from a line booked at `total_minor` for `line.qty` units:
+   *
+   *   client sends   round(total_minor * qty / line.qty)
+   *   server accepts <= floor(total_minor * qty / line.qty) + 1
+   *
+   * because round(x) <= floor(x) + 1 for every x >= 0 the client can never
+   * exceed the ceiling. Verified exhaustively for total_minor 0..=400,
+   * line.qty 1..=12, qty 1..=line.qty: zero overshoots.
+   *
+   * That inequality is also exactly why the server tolerance is ONE minor unit
+   * rather than an equality -- see
+   * crates/kasirmu-core/src/db/refunds.rs:283-294, which names this client
+   * and explains the margin. The previous unit-price-then-multiply form
+   * overshot by up to qty-1 units and needed the whole tolerance to absorb it;
+   * this form needs none, so the margin is now belt-and-braces.
+   *
+   * Why pro-rata on the LINE rather than unit_minor * qty: a price override is
+   * legitimate and stores line_minor != unit_minor * qty, so an equality against
+   * the unit price would refuse refunds the server itself sold at a changed
+   * price (crates/kasirmu-core/src/db/refunds_tests.rs:1483-1501 seeds it).
+   *
    * ONE rule, used by both the displayed total and the submitted payload.
    * The two used to disagree: the total showed the exact fraction
    * `total_minor * qty / line.qty` while the payload rounded a UNIT price
