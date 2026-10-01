@@ -529,6 +529,11 @@ step "capability parity" "python3 scripts/verify-namespace-governance.py --check
 # exactly how a retired namespace edge leaves namespace-governance-baseline.json.
 # Mutation-proven (adding three lines to audit.rs fails with +3). The self-test
 # runs beside it (verify-selftests-wired.py).
+#
+# Gate: scripts/gates.json -> "core-size". The row was missing until 2026-10-05: this
+# step had run for months with no manifest entry, and verify-ci-docs-drift.py only
+# iterates gates present in the manifest, so it could never be reported as
+# required-but-unenforced. Add the row when you add a step, not after.
 step "core size ratchet" "python3 scripts/verify-core-size.py" python3 scripts/verify-core-size.py
 step "core size ratchet self-test" "python3 scripts/verify-core-size.py --self-test" python3 scripts/verify-core-size.py --self-test
 

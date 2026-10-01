@@ -793,6 +793,18 @@
       "_note": "Added 2026-09-28 with P2-4. Until this row, `cargo doc` had NO runner anywhere — not in check.sh, not in any live workflow, not in release.sh — so a broken intra-doc link was never a failure in any context. It is the exact shape of `rust-clippy` before C25 and `fuzz` before P0-3: a surface that looked covered because nothing reported on it. Measured 2026-09-28, the undeclared check was hiding 295 errors across 20 crates. SIX of them were not link noise but docs confidently describing something that does not exist: `KdsSyncEvent::OrderRecalled` (the variant is `Recalled`), `DriverRegistry::apply_config` (it is a FREE FUNCTION, not a method), `BridgeError::NotFound` (x3 — no such variant; the enum has Core/Hardware/Invalid/PermissionDenied/InvalidSession/TopologyValidation/Internal), `WebhookEndpoint::redacted` (no such method), and `get_setup_status` (x2 — the same file marks it REMOVED in a comment 10 lines above the link). THE ENV VAR AND THE RUNNER LANDED IN ONE COMMIT, and that is the whole point: `RUSTDOCFLAGS: -D warnings` set on its own would have been a dead setting — rustdoc is the only reader, and with no `cargo doc` invocation it would have changed nothing while reading like a gate in review. Both halves or neither. TWO TRAPS this gate had to avoid, both measured rather than assumed: (1) the LOCAL step must pass `RUSTDOCFLAGS` inline — without it `cargo doc` reports warnings and STILL EXITS 0, so the step would be decoration that can never fail; (2) `--no-deps` is required, because without it a dependency's own doc warnings would fail this gate for a crate this repo does not own. CI runs `cargo doc --workspace --no-deps` with the variable supplied by the workflow-level env block (dev-ci.yml:10-16); local runs supply it inline per step. The acceptance command `RUSTDOCFLAGS=\"-D warnings\" cargo doc --workspace --no-deps` was verified to exit 0 with zero errors AND zero warnings before either half landed — the ordered acceptance in P2-4 is what kept this from being a red gate on every PR, and it is worth keeping in mind for the next gate added this way."
     },
     {
+      "id": "core-size",
+      "label": "kasirmu-core size ratchet",
+      "status": "required",
+      "_note": "Added 2026-10-05 (round 148). This step has been in check.sh with a full rationale at line 524-533 and NO gates.json record, which is the structural blind spot the bundle-parity note describes: verify-ci-docs-drift.py iterates the gates present in the manifest, so a gate with no row can never be reported as required-but-not-enforced. Found by running every checker and asking why one FAILED rather than assuming; the failure itself was another session in-flight core work, but the missing row was real. The ratchet counts non-blank production lines under crates/kasirmu-core/src, minus whole test files and inline #[cfg(test)] mod blocks, and fails when the count rises above scripts/core-size-baseline.json. Mutation-proven: adding three lines to audit.rs fails with +3. LOWERING the ceiling is a deliberate edit in a commit that says why, the same shape as namespace-governance-baseline.json. NOTE it is environment-INDEPENDENT but tree-DEPENDENT: it fails whenever any session has in-flight core growth, so a red run in a shared checkout is not automatically yours -- check `git status --porcelain -- crates/kasirmu-core` first.",
+      "runners": {
+        "check.sh": [
+          "core size ratchet"
+        ]
+      },
+      "self_test": "python3 scripts/verify-core-size.py --self-test"
+    },
+    {
       "id": "coverage-floors",
       "label": "Per-crate coverage floors",
       "status": "required",
