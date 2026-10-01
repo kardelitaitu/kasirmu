@@ -88,20 +88,35 @@ pub fn ingredient_info_by_id_in_tx(
 ///
 /// # Errors
 ///
-/// Returns `CoreError::NotFound` when no product carries the SKU.
+/// Returns `CoreError::NotFound` when no product carries the SKU, and
+/// `CoreError::Db` on a read failure OTHER than "no rows" — the same
+/// discrimination its two siblings above (`product_info_by_sku_in_tx`,
+/// `ingredient_info_by_id_in_tx`) already make.
 pub fn require_product_id_by_sku_in_tx(
     tx: &rusqlite::Transaction<'_>,
     sku: &str,
 ) -> Result<String, CoreError> {
-    tx.query_row(
+    // Was `.map_err(|_| CoreError::NotFound { .. })`, which folded EVERY error —
+    // including a read failure — into "no product carries the SKU". That is not a
+    // benign default on this path: the single production caller
+    // (`db/sales_lifecycle.rs:280`) reaches it only after
+    // `product_info_by_sku_in_tx` has ALREADY read that same row by the same SKU in
+    // the same transaction, so a `NotFound` here contradicts a read that just
+    // succeeded — it can only mean the store became unreadable, and the operator
+    // was told the product does not exist. Two neighbours got this right; this
+    // one carried the swallow.
+    match tx.query_row(
         "SELECT id FROM products WHERE sku = ?1",
         rusqlite::params![sku],
         |row| row.get(0),
-    )
-    .map_err(|_| CoreError::NotFound {
-        entity: "product",
-        id: sku.to_owned(),
-    })
+    ) {
+        Ok(id) => Ok(id),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Err(CoreError::NotFound {
+            entity: "product",
+            id: sku.to_owned(),
+        }),
+        Err(e) => Err(CoreError::Db(e)),
+    }
 }
 
 /// Current `stock_summary` quantity for a product at a location inside the

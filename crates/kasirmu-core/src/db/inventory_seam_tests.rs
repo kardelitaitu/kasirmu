@@ -105,6 +105,35 @@ fn require_product_id_by_sku_fails_not_found() {
     assert!(matches!(err, CoreError::NotFound { .. }), "got {err:?}");
 }
 
+/// A read FAILURE must surface as `Db`, never as `NotFound`.
+///
+/// The function used `.map_err(|_| CoreError::NotFound { entity: "product", .. })`,
+/// which folded every error into "no product carries the SKU". The sibling test
+/// above covers only the genuinely-absent case, so the swallow was invisible — the
+/// same shape of gap this campaign keeps finding in pins that exercise one branch.
+///
+/// Why `NotFound` is actively wrong here rather than merely imprecise: the single
+/// production caller (`db/sales_lifecycle.rs:280`) reaches this only after
+/// `product_info_by_sku_in_tx` read the SAME row by the SAME SKU in the SAME
+/// transaction and succeeded, so a "product not found" verdict at that point
+/// contradicts a read that just worked. It can only mean the store became
+/// unreadable, and the operator must be told that.
+///
+/// Dropping the table is the discriminating input: it makes the read fail while
+/// the surrounding transaction stays valid.
+#[test]
+fn require_product_id_by_sku_propagates_a_read_failure_as_db() {
+    let mut conn = fresh();
+    let t = tx(&mut conn);
+    t.execute_batch("DROP TABLE products;").unwrap();
+
+    let err = require_product_id_by_sku_in_tx(&t, "ANY").unwrap_err();
+    assert!(
+        matches!(err, CoreError::Db(_)),
+        "a read failure must not be reported as a missing product, got {err:?}"
+    );
+}
+
 #[test]
 fn location_qty_reads_the_summary_row() {
     let mut conn = fresh();
