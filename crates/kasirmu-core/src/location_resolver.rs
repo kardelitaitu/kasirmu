@@ -2,7 +2,7 @@
 /*
 last audited 25-07-26 by RSA-Agent (kasirmu-core slice C2: location_resolver deep read)
 crate: kasirmu-core | status: SAFE | lint: CLEAN
-findings: strict ADR-19 priority tree with split-brain detection in both paths; COR-32 LOW-MED FIXED 2026-10-04: the 30s TTL LOCATION_CACHE is now invalidated by the binding mutator (Store::set_workspace_inventory_locations calls invalidate_location_cache() after tx.commit, so a workspace rebind is visible on the very next resolve); the pre-fix callers only cleared on session switch (crates/kasirmu-bridge/src/auth.rs) or via an explicit IPC that the rebind path never invoked; chain resolver stock read .unwrap_or(0) is fail-closed for display (excludes empty locations); multi_count .unwrap_or(0) degrades to canonical default on DB error (COR-25 family); poisoned-mutex silent miss degrades safely to a DB read
+findings: strict ADR-19 priority tree with split-brain detection in both paths; COR-32 LOW-MED FIXED 2026-10-04: the 30s TTL LOCATION_CACHE is now invalidated by the binding mutator (Store::set_workspace_inventory_locations calls invalidate_location_cache() after tx.commit, so a workspace rebind is visible on the very next resolve); the pre-fix callers only cleared on session switch (crates/kasirmu-bridge/src/auth.rs) or via an explicit IPC that the rebind path never invoked; chain resolver stock read .unwrap_or(0) is fail-closed for display (excludes empty locations); multi_count .unwrap_or(0) degrades to canonical default on DB error (COR-25 family) — UPDATED 2026-10-06: still degrades, now LOGS (tracing::warn) that the count could not be read, and the tier-3 primary read's `.ok()` was given the same treatment, because BOTH folded a read failure into the admin-has-not-finished case and the 30s cache then remembered the wrong location; poisoned-mutex silent miss degrades safely to a DB read
 next: none | perf: cache avoids per-cart-open SELECT; the mutator clears it so a rebind costs one extra SELECT, which is the correct trade
 */
 //!
@@ -340,25 +340,58 @@ pub fn resolve_primary_location(
     }
 
     // Check for multi-binding rows.
-    let multi_count: i64 = conn
-        .query_row(
-            "SELECT COUNT(*) FROM workspace_inventory_locations WHERE instance_id = ?1",
-            params![workspace_instance_id],
-            |row| row.get(0),
-        )
-        .unwrap_or(0);
+    //
+    // The COUNT cannot return no rows, so `QueryReturnedNoRows` is not a case to
+    // keep — but a READ FAILURE is, and it must not be silently equal to zero. An
+    // earlier `.unwrap_or(0)` made a busy or unreadable table look like "this
+    // workspace has no bindings", which then falls through to tier 4 and deducts
+    // stock from the CANONICAL DEFAULT location — the wrong place — and the answer
+    // is CACHED for the 30s TTL. The outcome stays the documented fall-through (a
+    // hard error here would break an admin mid-configuration), so this keeps the
+    // behaviour and makes the cause visible instead: same shape as `enqueue_origin`
+    // and the receipt probe, which log loudly where the value cannot be trusted.
+    let multi_count: i64 = match conn.query_row(
+        "SELECT COUNT(*) FROM workspace_inventory_locations WHERE instance_id = ?1",
+        params![workspace_instance_id],
+        |row| row.get(0),
+    ) {
+        Ok(n) => n,
+        Err(e) => {
+            tracing::warn!(
+                workspace_instance_id,
+                error = %e,
+                "could not count workspace bindings; falling through to the canonical default location"
+            );
+            0
+        }
+    };
 
     if multi_count > 0 {
         // Tier 3: multi-binding primary.
-        let primary: Option<String> = conn
-            .query_row(
-                "SELECT location_id FROM workspace_inventory_locations \
-                 WHERE instance_id = ?1 AND is_primary = 1 \
-                 LIMIT 1",
-                params![workspace_instance_id],
-                |row| row.get(0),
-            )
-            .ok();
+        //
+        // `.ok()` carried the same problem one line further: a failed read here is
+        // indistinguishable from "no is_primary=1 row", and the two have opposite
+        // meanings — the latter is the documented admin-not-finished case, the
+        // former is a store that cannot be read. Logged so the fall-through is
+        // attributable.
+        let primary: Option<String> = match conn.query_row(
+            "SELECT location_id FROM workspace_inventory_locations \
+             WHERE instance_id = ?1 AND is_primary = 1 \
+             LIMIT 1",
+            params![workspace_instance_id],
+            |row| row.get(0),
+        ) {
+            Ok(id) => Some(id),
+            Err(rusqlite::Error::QueryReturnedNoRows) => None,
+            Err(e) => {
+                tracing::warn!(
+                    workspace_instance_id,
+                    error = %e,
+                    "could not read the primary binding; falling through to the canonical default location"
+                );
+                None
+            }
+        };
 
         if let Some(pid) = primary {
             let loc = LocationId::from(pid);

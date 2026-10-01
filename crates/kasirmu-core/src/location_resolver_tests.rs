@@ -14,6 +14,44 @@ fn seed_fks(conn: &rusqlite::Connection) {
     .unwrap();
 }
 
+/// A tier-3 READ FAILURE must still resolve, but must not do so SILENTLY.
+///
+/// Two swallows lived in tier 3: `multi_count.unwrap_or(0)` and `primary.ok()`.
+/// Both folded a failed read into the admin-has-not-finished case, so the resolver
+/// fell through to the canonical default — deducting stock from the WRONG location
+/// — and then CACHED that answer for the 30s TTL, turning a transient fault into a
+/// half-minute of misdirected deductions.
+///
+/// The behaviour is deliberately UNCHANGED (a hard error would break an admin
+/// mid-configuration, which is what tier 4 exists for), so a behavioural assertion
+/// cannot distinguish the fix from the defect. This pins what DID change, over the
+/// source: each tier-3 read now matches on the error and warns. Whitespace-
+/// insensitive, because the formatter reflows the call chain onto separate lines
+/// and a literal search then silently matches nothing — the trap that produced a
+/// false-green pin twice already in this campaign.
+#[test]
+fn tier_three_read_failures_are_not_silent() {
+    let source = include_str!("location_resolver.rs");
+    let compact: String = source.chars().filter(|c| !c.is_whitespace()).collect();
+
+    assert!(
+        !compact.contains("multi_count: i64 = conn.query_row"),
+        "the binding count must not be read through a bare `.unwrap_or(0)`; it must match on the error and warn"
+    );
+    assert!(
+        compact.contains("couldnotcountworkspacebindings")
+            && compact.contains("couldnotreadtheprimarybinding"),
+        "both tier-3 read failures must be reported, not folded into 'unconfigured'"
+    );
+    assert_eq!(
+        resolve_primary_location(&migrated(), "no-such-instance", None)
+            .unwrap_or_else(|_| get_default_location_id())
+            .as_str(),
+        CANONICAL_DEFAULT_LOCATION_UUID,
+        "the documented tier-4 fall-through is preserved"
+    );
+}
+
 #[test]
 fn get_default_location_id_returns_canonical() {
     let loc = get_default_location_id();
