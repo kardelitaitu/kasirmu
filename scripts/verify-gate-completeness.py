@@ -120,6 +120,31 @@ def job_steps(text: str, job: str) -> list[str] | None:
     return re.findall(r"(?m)^\s*- name:\s*(.+?)\s*$", block)
 
 
+def ci_findings_in(ci: dict, workflow_text: str) -> list[str]:
+    """Findings for one gate's `ci` block against a workflow's text.
+
+    Split out so the self-test can drive the REAL logic with a fixture workflow instead of
+    reimplementing it -- see the note at its case loop. ci_claim_findings reads the files
+    and delegates here, so there is exactly ONE implementation of the rule.
+    """
+    out: list[str] = []
+    wf = ci.get("workflow")
+    job = ci.get("job")
+    if not wf or not job:
+        return out
+    if job not in workflow_jobs(workflow_text):
+        out.append("ci.job %r is not a job in %s" % (job, wf))
+        return out
+    found = job_steps(workflow_text, job) or []
+    step = ci.get("step")
+    if step and step not in found:
+        out.append("ci.step %r is not a step in %s/%s" % (step, wf, job))
+    for one in (ci.get("steps") or []):
+        if one not in found:
+            out.append("ci.steps %r is not a step in %s/%s" % (one, wf, job))
+    return out
+
+
 def ci_claim_findings(manifest: dict) -> list[str]:
     """Gates whose `ci` block names a workflow, job or step that does not exist.
 
@@ -140,21 +165,8 @@ def ci_claim_findings(manifest: dict) -> list[str]:
             out.append("%s: ci.workflow %r does not exist" % (gate.get("id"), wf))
             continue
         text = path.read_text(encoding="utf-8", errors="replace")
-        if job not in workflow_jobs(text):
-            out.append("%s: ci.job %r is not a job in %s" % (gate.get("id"), job, wf))
-            continue
-        found = job_steps(text, job) or []
-        step = ci.get("step")
-        if step and step not in found:
-            out.append("%s: ci.step %r is not a step in %s/%s"
-                       % (gate.get("id"), step, wf, job))
-        # `steps` (plural) is a LIST and is a different key, not a variant spelling:
-        # 18 gates use it to name several steps in one job. It went unchecked until
-        # round 154 -- this function read only the singular.
-        for one in (ci.get("steps") or []):
-            if one not in found:
-                out.append("%s: ci.steps %r is not a step in %s/%s"
-                           % (gate.get("id"), one, wf, job))
+        for finding in ci_findings_in(ci, text):
+            out.append("%s: %s" % (gate.get("id"), finding))
     return out
 
 
@@ -275,6 +287,27 @@ def _self_test() -> int:
         ("a step belonging to a DIFFERENT job is a finding",
          {"workflow": "dev-ci.yml", "job": "i18n", "step": "FTL attribute requests"},
          STEP_TEXT, 1),
+        # A job absent from the workflow. The job-exists arm was unpinned until round 155:
+        # disabling it survived the whole suite. ci_findings_in has three arms and each
+        # now has a case, which is the property that made the other two mutations kill.
+        # NO `step` KEY, deliberately: with a step present the step-arm reports one
+        # finding of its own, so the COUNT is the same whether or not the job arm fires --
+        # which is why the first version of this case left the job arm unpinned. Omitting
+        # the step makes the job arm the only thing that can produce a finding.
+        ("a job absent from the workflow is a finding",
+         {"workflow": "dev-ci.yml", "job": "no-such-job"},
+         STEP_TEXT, 1),
+        # The PLURAL `ci.steps` LIST, which 18 gates use. This arm had no case until round
+        # 155, and a mutation that emptied its loop survived the whole suite. The live run
+        # DID catch a broken entry, so the function was never wrong -- the fixture pool was
+        # just missing the one case that pins this arm.
+        ("a good entry in the ci.steps LIST resolves",
+         {"workflow": "dev-ci.yml", "job": "static-gates",
+          "steps": ["FTL attribute requests"]},
+         STEP_TEXT, 0),
+        ("a bad entry in the ci.steps LIST is a finding",
+         {"workflow": "dev-ci.yml", "job": "static-gates", "steps": ["No Such Step"]},
+         STEP_TEXT, 1),
         # The missing-WORKFLOW arm is not covered here: it reads the filesystem, and every
         # case in this list goes through the pure helpers so a fixture cannot accidentally
         # assert against the real workflow files. That arm is exercised by the live run.
@@ -315,15 +348,14 @@ def _self_test() -> int:
             print("  %-52s FAIL want=%d got=%d" % (name, want, got))
         else:
             print("  %-52s ok" % name)
-    # Tested through the PURE helpers, not ci_claim_findings: that one reads the real
-    # workflow file, so a fixture-based case would silently assert against production.
+    # DRIVE THE REAL FUNCTION, never a reimplementation of its rule. Round 155 measured
+    # the cost of the other choice: this loop used to repeat the ci.steps logic inline,
+    # so emptying that loop inside ci_findings_in left every case green while the live
+    # check was dead -- a case asserting against test-shaped code, which is the same
+    # failure as asserting against production and harder to notice. ci_findings_in takes
+    # the workflow TEXT so a fixture is a real input, not a stub.
     for name, ci, text, want in ci_cases:
-        job = ci.get("job")
-        if job not in workflow_jobs(text):
-            got = 1
-        else:
-            step = ci.get("step")
-            got = 1 if (step and step not in (job_steps(text, job) or [])) else 0
+        got = 1 if ci_findings_in(ci, text) else 0
         if got != want:
             bad += 1
             print("  %-52s FAIL want=%d got=%d" % (name, want, got))
