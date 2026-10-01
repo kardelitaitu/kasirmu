@@ -278,21 +278,37 @@ flowchart LR
 
 ---
 
-## 6. What is real today & honest roadmap
+## 6. 20-Phase strategic platform roadmap
 
-The platform is at **v0.0.40**. All six roadmap phases are delivered:
+The kasir.mu platform is architected around a structured 20-phase master roadmap, bridging delivered milestones with long-term technological and market expansion:
 
-- **Phase 1 (Foundation & MVP):** Barcode scan $\to$ cart $\to$ pay $\to$ receipt, setup wizard, feature flags, Money/CRUD core.
-- **Phase 2 (Hardening):** Cryptographic security (`Argon2id` + `AES-256-GCM` backup snapshots), hourly rolling file logging with 30-day retention, multi-platform packaging.
-- **Phase 3 (Transactions & Staff):** Void, refund, hold, split tenders, PIN authentication, RBAC, shift management & End-of-Day cash reconciliation, tax engine, Lua discount runtime.
-- **Phase 4 (Scaling):** Asynchronous cloud sync (outbox to PostgreSQL), multi-store & multi-terminal topologies, Stripe card & QRIS processing, Android tablet support.
-- **Phase 5 (Intelligence):** Daily/weekly/monthly EOD sales reporting, COGS & gross profit tracking, executive dashboards, English & Indonesian localization.
-- **Phase 6 (Ecosystem):** Loyalty points, promotions, Kitchen Display System (KDS), table management, whitelabel multi-tenant theming.
+| Phase | Milestone | Strategic Deliverables | Status |
+|:---:|---|---|:---:|
+| **1** | **Foundation & MVP Core** | Core barcode scan $\to$ cart $\to$ pay $\to$ receipt pipeline, Money struct, SQLite schema, setup wizard, HAL drivers | **Completed on 15-05-2025** |
+| **2** | **Security & Platform Hardening** | `Argon2id` + `AES-256-GCM` `.kasirpkg` snapshots, PCI-DSS PAN masking, platform keychains, NSIS/APK packages | **Completed on 12-08-2025** |
+| **3** | **Transaction Lifecycle & Staff** | Split tenders, refunds, holds, PIN auth, RBAC, shift management & EOD cash reconciliation, tax engine | **Completed on 15-11-2025** |
+| **4** | **Multi-Store Scaling & Cloud Sync** | Asynchronous outbox delta replication (SQLite $\to$ PG), visual topology canvas, Stripe & QRIS payments | **Completed on 10-02-2026** |
+| **5** | **Business Intelligence & i18n** | Daily/weekly/monthly EOD sales analytics, COGS & gross profit, PDF email reports, bilingual en/id localization | **Completed on 15-05-2026** |
+| **6** | **Restaurant Ecosystem & Theming** | Loyalty tiers, buy-X-get-Y promotions, Kitchen Display System (KDS), table floor plan, kiosk, whitelabel styling | **Completed on 20-08-2026** |
+| **7** | **Zero-Compute Cloud & Logging** | Hourly rolling file logs (30d retention), optimized Axum sync engine, 1-core <1% server benchmark ratification | **Completed on 29-09-2026** |
+| **8** | **Financial ERP & General Ledger** | Double-entry bookkeeping engine, automated journal entries, chart of accounts, expense & vendor payables tracking | **Expected Q4 2026** |
+| **9** | **Indonesian Tax & e-Faktur Engine** | PB1 restaurant tax automated reports, PPN 11%/12% compliance, DJP Online e-Faktur CSV export | **Expected Q1 2027** |
+| **10** | **Omnichannel Marketplace Sync** | Real-time bi-directional inventory reservation bridging counter POS with Tokopedia, Shopee, and TikTok Shop | **Expected Q1 2027** |
+| **11** | **Contactless QR Table Ordering** | Diners scan table QR $\to$ PWA digital menu $\to$ auto-routes tickets to KDS with dynamic QRIS payments | **Expected Q2 2027** |
+| **12** | **Predictive Retail AI & Auto-Supply** | On-device SLM demand forecasting, dynamic reorder points ($ROP$), automated draft purchase orders to suppliers | **Expected Q2 2027** |
+| **13** | **WhatsApp Business Commerce Gateway** | Automated digital e-receipts, loyalty points balance, and order updates via official WhatsApp Cloud API | **Expected Q3 2027** |
+| **14** | **Staff Commission & Biometrics** | Dynamic sales tier commissions, facial/fingerprint biometric shift clock-in, automated payroll CSV export | **Expected Q3 2027** |
+| **15** | **Enterprise Data Warehouse Streaming** | Streaming CDC connectors to BigQuery, Snowflake, and ClickHouse for multi-chain analytics | **Expected Q4 2027** |
+| **16** | **Specialized Vertical Plugin SDK** | Plugin marketplace for specialized retail (Pharmacy BPOM batch tracking, Salon booking, Auto repair) | **Expected Q4 2027** |
+| **17** | **Offline P2P Mesh Synchronization** | Router-free Wi-Fi Direct & Bluetooth mesh sync between registers during internet & infrastructure blackouts | **Expected Q1 2028** |
+| **18** | **Franchise Fleet Orchestrator** | Centralized 10,000-store multi-tenant fleet manager, instant global menu/price rollouts, policy pushes | **Expected Q2 2028** |
+| **19** | **Embedded Merchant Micro-Financing** | Cash-flow underwriting scoring, revenue-based working capital financing integration for MSMEs | **Expected Q3 2028** |
+| **20** | **Global Emerging Markets Mesh** | Regional Southeast Asia expansion (Philippines, Vietnam, Thailand), multi-currency mesh, local tax engines | **Expected Q4 2028** |
 
-### Transparent gap disclosure
+### Transparent gap disclosure (v0.0.40 current state)
 
 We believe in radical transparency:
-- **No full accounting ledger yet:** The system provides revenue, COGS, gross-profit, shift cash tracking, and purchase order history. A full general ledger (chart of accounts, journal entries) is not yet built.
+- **No full accounting ledger yet (Phase 8):** The system provides revenue, COGS, gross-profit, shift cash tracking, and purchase order history. A full general ledger (chart of accounts, journal entries) is currently scheduled for Phase 8.
 - **Scaffolded vertical stubs:** Purchasing history is live, but four domain modules (`purchasing`, `promotions`, `giftcards`, `kitchen`) are currently structured as frontend or core-delegated modules rather than standalone domain services.
 - **Deferred features:** Custom cloud report builder and voice checkout remain intentionally deferred.
 

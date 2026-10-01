@@ -16,14 +16,28 @@ This document defines the phased delivery plan for kasir.mu. Each phase has a cl
 
 ## Overview
 
-| Phase | Name | Target | Goal |
-|-------|------|--------|------|
-| **1** | Foundation & MVP | Month 1–2 | Working POS terminal: scan, sell, receipt |
-| **2** | Hardening | Month 3–4 | Secure, tested, deployable on all platforms |
-| **3** | Transactions & Staff | Month 5–6 | Full transaction lifecycle + staff management |
-| **4** | Scaling | Month 7–8 | Multi-store, multi-terminal, payment gateways |
-| **5** | Intelligence | Month 9–10 | Reporting, analytics, dashboards |
-| **6** | Ecosystem | Month 11+ | Plugins, marketplace, advanced features |
+| Phase | Milestone Name | Target Date | Status | Strategic Focus |
+|:---:|---|---|:---:|---|
+| **1** | Foundation & MVP | Month 1–2 (2025-05) | **Completed on 15-05-2025** | Working POS terminal: scan, sell, receipt, Setup Wizard |
+| **2** | Hardening & Security | Month 3–4 (2025-08) | **Completed on 12-08-2025** | Encrypted snapshots, PCI-DSS PAN masking, keychains, packaging |
+| **3** | Transactions & Staff | Month 5–6 (2025-11) | **Completed on 15-11-2025** | Full transaction lifecycle, refunds, shifts, RBAC, tax engine |
+| **4** | Scaling & Multi-Store | Month 7–8 (2026-02) | **Completed on 10-02-2026** | Multi-store topology, cloud outbox sync, Stripe & QRIS payments |
+| **5** | Intelligence & Reports | Month 9–10 (2026-05) | **Completed on 15-05-2026** | Sales reporting, COGS/profit, bilingual en/id, email delivery |
+| **6** | Ecosystem & KDS | Month 11–12 (2026-08) | **Completed on 20-08-2026** | Loyalty, promotions, Kitchen Display (KDS), kiosk, whitelabeling |
+| **7** | Zero-Compute Cloud | Month 13 (2026-09) | **Completed on 29-09-2026** | 1-core <1% server benchmark, rolling file sinks, Axum sync tuning |
+| **8** | Financial ERP & Ledger | Month 14–15 (Q4 2026) | **Expected Q4 2026** | Double-entry bookkeeping engine, automated journal entries, chart of accounts |
+| **9** | Tax & e-Faktur Engine | Month 16–17 (Q1 2027) | **Expected Q1 2027** | Indonesian PB1 restaurant tax, PPN 11/12%, DJP Online e-Faktur CSV export |
+| **10** | Omnichannel Sync | Month 18 (Q1 2027) | **Expected Q1 2027** | Real-time stock reservation for Tokopedia, Shopee, and TikTok Shop |
+| **11** | Contactless QR Ordering | Month 19 (Q2 2027) | **Expected Q2 2027** | Table QR scan $\to$ PWA menu $\to$ auto-routes to KDS with dynamic QRIS |
+| **12** | Predictive Retail AI | Month 20–21 (Q2 2027) | **Expected Q2 2027** | On-device SLM demand forecasting, dynamic ROP, automated draft POs |
+| **13** | WhatsApp Commerce Gateway | Month 22 (Q3 2027) | **Expected Q3 2027** | Automated digital e-receipts, points balance, and notifications via WhatsApp API |
+| **14** | Staff Commission & Biometrics | Month 23 (Q3 2027) | **Expected Q3 2027** | Tiered sales commission rules, biometric shift clock-in, payroll export |
+| **15** | Data Warehouse Streaming | Month 24 (Q4 2027) | **Expected Q4 2027** | Streaming CDC connectors to BigQuery, Snowflake, and ClickHouse |
+| **16** | Vertical Plugin SDK | Month 25–26 (Q4 2027) | **Expected Q4 2027** | Specialized vertical plugins (Pharmacy BPOM, Salon booking, Auto repair) |
+| **17** | Offline P2P Mesh Sync | Month 27–28 (Q1 2028) | **Expected Q1 2028** | Router-free Wi-Fi Direct & Bluetooth mesh sync during network/power outages |
+| **18** | Franchise Fleet Orchestrator | Month 29–30 (Q2 2028) | **Expected Q2 2028** | Centralized 10,000-store multi-tenant fleet manager, instant global menu/price rollouts |
+| **19** | Embedded Micro-Financing | Month 31–32 (Q3 2028) | **Expected Q3 2028** | Cash-flow underwriting scoring, revenue-based working capital financing for MSMEs |
+| **20** | Global Emerging Markets Mesh | Month 33+ (Q4 2028) | **Expected Q4 2028** | Southeast Asia regionalization (PH, VN, TH), multi-currency mesh, local tax engines |
 
 ---
 
@@ -598,9 +612,191 @@ This document defines the phased delivery plan for kasir.mu. Each phase has a cl
 - [x] A third-party plugin installs and a custom barcode scanner works (custom_barcode_scanner example, 6 tests)
 - [x] Loyalty points accrue and redeem correctly at checkout (16+ tests across unit + integration)
 - [x] `cargo doc` builds without warnings
+- [x] `cargo doc` builds without warnings
 - [x] KDS shows incoming restaurant orders in real time
 - [x] Kiosk mode: no way to exit to OS without manager PIN
 - [x] Custom brand colour applies immediately across all screens
+
+---
+
+## Phase 7 — Zero-Compute Cloud & Edge Reliability
+> **Goal:** High-concurrency cloud synchronization, robust logging telemetry, and <1% server infrastructure cost ratio.
+> **Status:** **Completed on 29-09-2026**
+
+### Deliverables
+- [x] Hourly rolling log sinks with 30-day retention across Windows, Android, and Linux shells (`kasirmu-logging`)
+- [x] High-performance Axum + Tokio cloud server with batched transaction inserts (`apps/cloud-server`)
+- [x] 1-core server benchmark simulation ratifying 533 sync reqs/sec (~48,000 terminals, ~0.26% server cost)
+- [x] Rate limiting token buckets with per-tenant isolation (100 push/min, 300 pull/min)
+- [x] Deterministic delta sync conflict resolution with client-generated UUID idempotency keys
+
+---
+
+## Phase 8 — Financial ERP & General Ledger
+> **Goal:** Transform sales reports into a compliant double-entry general ledger.
+> **Status:** **Expected Q4 2026**
+
+### Deliverables
+- [ ] Standardized Chart of Accounts (Assets, Liabilities, Equity, Revenue, COGS, Expenses)
+- [ ] Automated double-entry journal creation triggered by sales, refunds, voids, and cash drawer drops
+- [ ] Accounts Payable (AP) & vendor invoice tracking with Net 30/60 payment terms
+- [ ] Operational expense recording (rent, utilities, operational overhead)
+- [ ] Automated Financial Statements: Balance Sheet, Income Statement (P&L), and Cash Flow Statement
+
+---
+
+## Phase 9 — Indonesian Regulatory Tax & e-Faktur Engine
+> **Goal:** Complete local tax automation for Indonesian F&B and retail merchants.
+> **Status:** **Expected Q1 2027**
+
+### Deliverables
+- [ ] Automated PB1 (Pajak Restoran) 10% calculation and local municipal tax report generation
+- [ ] PPN 11% and scheduled 12% value-added tax compliance engine
+- [ ] One-click DJP Online e-Faktur CSV export schema
+- [ ] NPWP / NIK customer and vendor identification mapping
+- [ ] Withholding tax (PPh 21/23) tracking for vendor and contractor payments
+
+---
+
+## Phase 10 — Omnichannel Marketplace Synchronization
+> **Goal:** Bi-directional stock and order synchronization with top Indonesian e-commerce platforms.
+> **Status:** **Expected Q1 2027**
+
+### Deliverables
+- [ ] Tokopedia Open API inventory and order webhook integration
+- [ ] Shopee Open Platform multi-location inventory syncing
+- [ ] TikTok Shop order reservation and automatic counter dispatch
+- [ ] Unified product catalog mapper bridging online SKUs with physical counter SKUs
+- [ ] Centralized omnichannel order dispatch screen inside POS
+
+---
+
+## Phase 11 — Contactless QR Table Ordering & Kitchen Routing
+> **Goal:** Zero-waiter digital dining workflow directly connected to POS and KDS.
+> **Status:** **Expected Q2 2027**
+
+### Deliverables
+- [ ] Table-specific encrypted QR code generator
+- [ ] Customer PWA mobile web menu (no app install required)
+- [ ] Direct ticket routing from patron's smartphone to Kitchen Display System (KDS)
+- [ ] Integrated dynamic QRIS payment on customer phone before or after meal
+- [ ] Real-time kitchen status tracker visible on customer's phone
+
+---
+
+## Phase 12 — Predictive Retail AI & Autonomous Inventory
+> **Goal:** Edge-native demand forecasting and automated supplier replenishment.
+> **Status:** **Expected Q2 2027**
+
+### Deliverables
+- [ ] On-device Small Language Model (SLM) / local statistical engine for demand forecasting
+- [ ] Dynamic Reorder Point ($ROP$) calculation factoring in lead time and historical rush heatmaps
+- [ ] Automated draft Purchase Order (PO) generation to pre-configured supplier WhatsApp/emails
+- [ ] Shrinkage and cashier anomaly detection (unusual voids, off-hours drawer opens, excessive manual discounts)
+- [ ] Ingredient prep forecasting for restaurants based on day-of-week and weather conditions
+
+---
+
+## Phase 13 — WhatsApp Business Commerce Gateway
+> **Goal:** Native customer engagement and receipts via WhatsApp Business Cloud API.
+> **Status:** **Expected Q3 2027**
+
+### Deliverables
+- [ ] Automated paperless e-receipt delivery via WhatsApp upon sale completion
+- [ ] Interactive customer loyalty balance and rewards catalog via WhatsApp chat
+- [ ] Broadcast marketing engine for happy-hour specials and VIP customer re-engagement
+- [ ] Order pickup and delivery status notifications
+- [ ] In-chat customer feedback and rating collection after checkout
+
+---
+
+## Phase 14 — Staff Commission & Biometric Timeclock
+> **Goal:** Advanced human resource management, attendance verification, and performance incentives.
+> **Status:** **Expected Q3 2027**
+
+### Deliverables
+- [ ] Tablet camera facial recognition and USB fingerprint verification for shift clock-in/out
+- [ ] Tiered sales commission calculator (per-item commission, percentage of shift sales, team pools)
+- [ ] Staff tip distribution and pooled tips calculation
+- [ ] Lateness and overtime automated deduction rules
+- [ ] One-click payroll export (CSV formatted for Indonesian banks: BCA, Mandiri, BRI)
+
+---
+
+## Phase 15 — Enterprise Data Warehouse Streaming
+> **Goal:** Real-time data pipeline for high-scale enterprise retail chains.
+> **Status:** **Expected Q4 2027**
+
+### Deliverables
+- [ ] Change Data Capture (CDC) streaming connector from PostgreSQL sync server
+- [ ] Native BigQuery, Snowflake, and ClickHouse data warehouse adapters
+- [ ] Pre-built dbt models for retail analytics (basket analysis, customer lifetime value, cohort churn)
+- [ ] Custom visual drag-and-drop report builder in cloud dashboard
+- [ ] Multi-tenant data segregation with encryption-in-transit and row-level access control
+
+---
+
+## Phase 16 — Specialized Vertical Plugin SDK
+> **Goal:** Sandboxed plugin architecture for specialized retail and service verticals.
+> **Status:** **Expected Q4 2027**
+
+### Deliverables
+- [ ] **Pharmacy Vertical:** BPOM compliance, drug batch number tracking, expiry warnings, doctor prescription intake
+- [ ] **Salon & Spa Vertical:** Appointment calendar, stylist commission allocation, multi-chair room allocation
+- [ ] **Automotive & Hardware:** Serialized part tracking, vehicle plate number history, mechanic work orders
+- [ ] Third-party developer portal with plugin submission, version verification, and automated security scanning
+
+---
+
+## Phase 17 — Offline P2P Mesh Synchronization
+> **Goal:** Zero-router, peer-to-peer register synchronization during infrastructure blackouts.
+> **Status:** **Expected Q1 2028**
+
+### Deliverables
+- [ ] Wi-Fi Direct and Bluetooth Low Energy (BLE) peer discovery between counter terminals
+- [ ] Conflict-free Replicated Data Type (CRDT) state synchronization without central router
+- [ ] Local floor-wide stock reservation during internet and router power failures
+- [ ] Automatic master node election and mesh topology healing
+- [ ] Seamless bulk outbox push to cloud when any single node regains internet
+
+---
+
+## Phase 18 — Corporate Franchise Fleet Orchestrator
+> **Goal:** Centralized governance for 1,000+ branch restaurant and retail franchises.
+> **Status:** **Expected Q2 2028**
+
+### Deliverables
+- [ ] Global catalog and regional pricing tier override cascades
+- [ ] Scheduled promotional campaigns pushed to thousands of registers simultaneously
+- [ ] Centralized device health monitoring, remote telemetry, and fleet-wide version rollback
+- [ ] Role-based access control with corporate headquarters vs regional franchise operator permissions
+- [ ] Regional tax authority and franchise royalty fee split engine
+
+---
+
+## Phase 19 — Embedded Merchant Micro-Financing
+> **Goal:** Cash-flow underwriting and automated working capital financing for MSMEs.
+> **Status:** **Expected Q3 2028**
+
+### Deliverables
+- [ ] Real-time merchant creditworthiness scoring based on verified historical POS transactions
+- [ ] Licensed fintech/banking API integration for instant working capital approvals
+- [ ] Automated split-settlement loan repayment (repaying loans via small percentage of daily QRIS/card sales)
+- [ ] Supplier invoice financing (PO financing) directly inside procurement module
+- [ ] OJK-compliant financial disclosure and consent interfaces
+
+---
+
+## Phase 20 — Global Emerging Markets & Multi-Currency Mesh
+> **Goal:** Internationalization for high-growth emerging retail economies across Southeast Asia and beyond.
+> **Status:** **Expected Q4 2028**
+
+### Deliverables
+- [ ] Regional localization for Philippines (BIR CAS tax), Vietnam (VAT invoices), and Thailand (PromptPay)
+- [ ] Dynamic multi-currency edge conversions with offline-cached bank mid-rates
+- [ ] Cross-border franchise topology linking multi-country operating entities
+- [ ] Multilingual locale expansions (Tagalog, Vietnamese, Thai)
+- [ ] Global payment network integrations (GrabPay, GCash, PromptPay, TrueMoney)
 
 ---
 
@@ -612,9 +808,11 @@ These features are available as opt-in services, billed per usage or per store.
 |--------|-------------|-----------------|
 | **Cloud Database** | Managed PostgreSQL / CockroachDB; auto-backup, multi-region, point-in-time restore | Phase 4 |
 | **Cloud Sync** | SQLite → PostgreSQL outbox sync daemon, hosted | Phase 4 |
-| **Analytics Export** | Push sales data to BigQuery / Snowflake; scheduled reports | Phase 5 |
+| **Analytics Export** | Push sales data to BigQuery / Snowflake; scheduled reports | Phase 5 / Phase 15 |
 | **Advanced Reporting** | Custom report builder with email delivery | Phase 5 |
 | **Loyalty Program** | Customer points, rewards tiers, and redemption engine | Phase 6 |
+| **Marketplace Sync** | Bi-directional inventory sync with Tokopedia/Shopee/TikTok | Phase 10 |
+| **WhatsApp Gateway** | Automated e-receipts and notifications via WhatsApp API | Phase 13 |
 | **Priority Support** | SLA-backed support tickets, dedicated onboarding, and setup assistance | Any phase |
 
 ---
@@ -622,12 +820,15 @@ These features are available as opt-in services, billed per usage or per store.
 ## Dependency Graph
 
 ```
-Phase 1 (MVP)
-    └── Phase 2 (Hardening)
-            └── Phase 3 (Transactions & Staff)
-                    └── Phase 4 (Scaling)
-                            └── Phase 5 (Intelligence)
-                                    └── Phase 6 (Ecosystem)
+Phases 1–6 (Core POS & Ecosystem) ──► Phase 7 (Zero-Compute Cloud)
+                                                │
+Phase 10 (Omnichannel) ◄── Phase 9 (Tax Engine) ◄── Phase 8 (Financial ERP)
+        │
+Phase 11 (Contactless QR) ──► Phase 12 (Predictive AI) ──► Phase 13 (WhatsApp Gateway)
+                                                                 │
+Phase 16 (Plugin SDK) ◄── Phase 15 (Warehouse CDC) ◄── Phase 14 (Staff Commission)
+        │
+Phase 17 (P2P Mesh) ──► Phase 18 (Franchise Fleet) ──► Phase 19 (Micro-Financing) ──► Phase 20 (Global Markets)
 ```
 
 On-Features can be activated at any phase once the core infrastructure is in place.
