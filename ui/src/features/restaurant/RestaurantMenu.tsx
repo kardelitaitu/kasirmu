@@ -307,6 +307,38 @@ export default function RestaurantMenu({
       });
     return () => { cancelled = true; };
   }, [sessionToken, unavailableSettingKey, userId, locationId]);
+
+  // Re-poll unavailable items from the backend when the tab regains visibility.
+  // This ensures that 86'd items from another terminal appear within seconds of
+  // refocusing, without a full page reload. (Cross-terminal awareness gap — §F5.)
+  const refetchUnavailable = useCallback(() => {
+    if (!sessionToken || typeof settingsApi.getSettingScoped !== 'function') return;
+    settingsApi.getSettingScoped(sessionToken, unavailableSettingKey)
+      .then((raw) => {
+        if (!raw) return;
+        try {
+          const arr = JSON.parse(raw);
+          if (Array.isArray(arr)) {
+            const remoteSet = new Set<string>(arr);
+            setUnavailable(prev => {
+              // Only update state (and trigger a re-render) when the set differs.
+              const prevStr = [...prev].sort().join(',');
+              const nextStr = [...remoteSet].sort().join(',');
+              if (prevStr === nextStr) return prev;
+              saveUnavailable(remoteSet, userId, locationId);
+              return remoteSet;
+            });
+          }
+        } catch { /* malformed */ }
+      })
+      .catch(() => {});
+  }, [sessionToken, unavailableSettingKey, userId, locationId]);
+
+  useEffect(() => {
+    const onVisible = () => { if (document.visibilityState === 'visible') refetchUnavailable(); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [refetchUnavailable]);
   const addCountRef = useRef<Record<string, number>>(loadPop(userId));
   const [popularityCounts, setPopularityCounts] = useState<Record<string, number>>(() => loadPop(userId));
   const [sortMode, setSortMode] = useState<SortMode>(() => {

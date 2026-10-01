@@ -30,6 +30,7 @@ import type { CartTaxCacheState } from '@/hooks/useCartTax';
 import type { CartLineTaxInput } from '@/api/tax';
 import { lookupByBarcodeScoped, lookupProductBySkuScoped } from '@/api/products';
 import { lookupBundleBySku } from '@/api/bundles';
+import { listTablesScoped, updateTableStatusScoped } from '@/api/tables';
 import { expandBundleItems } from './bundleExpansion';
 import { CartTaxWatcher, createIdleTaxState } from '@/features/pos/components/CartTaxWatcher';
 import { CartPanel } from './components/CartPanel';
@@ -657,6 +658,21 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
             onSelectTable={(tableName) => {
               setTableNumber(tableName);
               setShowTables(false);
+              // Mark the table as occupied in the backend when it is assigned
+              // to an active cart. Failure is non-fatal — the cart assignment
+              // (setTableNumber) already succeeded; the table status is cosmetic.
+              if (sessionToken) {
+                void listTablesScoped(sessionToken)
+                  .then((tables) => {
+                    const match = tables.find(
+                      (t) => t.name === tableName || t.id === tableName,
+                    );
+                    if (match && match.status !== 'occupied') {
+                      return updateTableStatusScoped(sessionToken, match.id, 'occupied');
+                    }
+                  })
+                  .catch(() => {});
+              }
             }}
           />
         </div>
