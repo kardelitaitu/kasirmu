@@ -77,10 +77,28 @@ export function createAuthContextMock(overrides: AuthContextOverrides = {}) {
 // ── WorkspaceContext ──────────────────────────────────────────────
 
 /**
- * Optional overrides. `sessionToken` is a GETTER-compatible value read on every
- * render, so a test can hold the factory's result and mutate the object it passes
- * here to simulate a store switch -- the pattern createAuthContextMock already uses
- * for its own fields.
+ * Optional overrides.
+ *
+ * `sessionToken` is read on every render, so a test can mutate a held object to
+ * simulate a STORE SWITCH -- the pattern createAuthContextMock already uses for its
+ * own fields.
+ *
+ * PASS A GETTER, NOT A SNAPSHOT. This is the whole subtlety and it cost three rounds
+ * of a test that silently never raced anything (fixed in 14295df1a):
+ *
+ *   // WRONG -- the property is evaluated ONCE, at mock-registration time, and the
+ *   // factory then reads a frozen string forever. A later mutation of wsState is
+ *   // invisible, so the effect under test never re-runs and the test passes without
+ *   // exercising the race at all.
+ *   createWorkspaceContextMock({ sessionToken: wsState.sessionToken })
+ *
+ *   // RIGHT -- the factory closes over the OBJECT, so each read sees the current
+ *   // value.
+ *   createWorkspaceContextMock({ get sessionToken() { return wsState.sessionToken; } })
+ *
+ * A mock declared as `useWorkspace: () => ({ sessionToken: wsState.sessionToken })`
+ * is equally live and needs no override at all -- that inline arrow is what most of
+ * the suite uses, and why most files can switch stores without this parameter.
  */
 export interface WorkspaceContextOverrides {
   sessionToken?: string | null;
