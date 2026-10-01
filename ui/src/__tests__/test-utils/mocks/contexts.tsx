@@ -77,6 +77,16 @@ export function createAuthContextMock(overrides: AuthContextOverrides = {}) {
 // ── WorkspaceContext ──────────────────────────────────────────────
 
 /**
+ * Optional overrides. `sessionToken` is a GETTER-compatible value read on every
+ * render, so a test can hold the factory's result and mutate the object it passes
+ * here to simulate a store switch -- the pattern createAuthContextMock already uses
+ * for its own fields.
+ */
+export interface WorkspaceContextOverrides {
+  sessionToken?: string | null;
+}
+
+/**
  * Create a mock WorkspaceContext module factory.
  *
  * Returns the full module shape that `vi.mock('@/contexts/WorkspaceContext')`
@@ -85,7 +95,13 @@ export function createAuthContextMock(overrides: AuthContextOverrides = {}) {
  * Defaults to `store-pos` active workspace with a mock session token.
  * Components that need `useWorkspaceScope()` will receive non-null defaults.
  */
-export function createWorkspaceContextMock() {
+export function createWorkspaceContextMock(
+  overrides: WorkspaceContextOverrides = {},
+) {
+  // Read through the overrides OBJECT on every render rather than destructuring once:
+  // a test that mutates `wsState.sessionToken` after mount must be seen by the next
+  // render, or a store switch silently re-reads the old token.
+  const sessionToken = () => overrides.sessionToken ?? 'mock-session-token';
   return {
     useWorkspace: () => ({
       activeWorkspace: 'store-pos' as string | null,
@@ -100,7 +116,7 @@ export function createWorkspaceContextMock() {
       lastWorkspace: null,
       switchStore: vi.fn((_storeId: string) => {}),
       resolvedStoreId: 'default',
-      sessionToken: 'mock-session-token' as string | null,
+      sessionToken: sessionToken() as string | null,
       swapSessionToken: vi.fn(async (_newUserId: string, _newRoleId: string) => {}),
       terminalId: '',
     }),
