@@ -299,6 +299,6 @@ New contributors are encouraged to start with documentation improvements, UI pol
 
 This software (`kasir.mu`) is **NOT open source**. No part of this codebase, associated binaries, or documentation may be copied, modified, distributed, sublicensed, hosted, or deployed in any commercial, non-commercial, or production setting without explicit written permission and a valid executed Commercial License Agreement.
 
-See [LICENSE](./LICENSE) for terms and restrictions. For commercial licensing and pricing inquiries, contact: **adikaradwiatmaja@gmail.com**.
+See [LICENSE](./LICENSE) for terms and restrictions. For commercial licensing and pricing inquiries, contact: **support@kasir.mu**.
 
 ![GitHub Profile Stats](https://kgnio-profile-card.vercel.app/api/card?user=kardelitaitu&theme=azure-noir)

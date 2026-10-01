@@ -367,7 +367,7 @@ For comprehensive technical, financial, and market documentation, see:
 - **Inspect automated tests:** Run `cargo test --workspace` (9,026 tests) or Vitest (623 frontend test suites).
 
 ### For investors & commercial partners
-- **Schedule a Demonstration:** Contact **adikaradwiatmaja@gmail.com** to review live benchmarks, edge synchronization, and the visual node topology canvas.
+- **Schedule a Demonstration:** Contact **support@kasir.mu** to review live benchmarks, edge synchronization, and the visual node topology canvas.
 - **Commercial Licensing & Whitelabel:** Enterprise multi-tenant deployments, bespoke HAL hardware drivers, and dedicated SLA partnerships available under commercial agreement.
 
 ---
@@ -380,6 +380,6 @@ This software is **proprietary commercial software**. No part of this codebase, 
 
 - **Website:** [https://kasir.mu](https://kasir.mu)
 - **General & Support:** support@kasir.mu
-- **Commercial Licensing & Partnerships:** **adikaradwiatmaja@gmail.com**
+- **Commercial Licensing & Partnerships:** **support@kasir.mu**
 
 See [LICENSE](./LICENSE) for formal terms and conditions.
