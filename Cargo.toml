@@ -224,6 +224,13 @@ wiremock = "0.6.5"
 [workspace.lints.rust]
 missing_docs = "warn"
 
+[workspace.lints.clippy]
+assert_is_empty = "allow"
+double_must_use = "allow"
+
+[workspace.lints.rustdoc]
+redundant_explicit_links = "allow"
+
 
 [profile.release]
 opt-level = 3

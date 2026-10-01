@@ -167,7 +167,7 @@ fn delete_payment_gateway() {
             &UpsertPaymentGateway {
                 name: "square".into(),
                 is_active: true,
-                config_json: r#"{}"#.into(),
+                config_json: "{}".into(),
             },
             "2026-10-01T10:00:00Z",
         )
@@ -195,7 +195,7 @@ fn validation_rejects_malformed_inputs() {
             &UpsertPaymentGateway {
                 name: "   ".into(),
                 is_active: true,
-                config_json: r#"{}"#.into(),
+                config_json: "{}".into(),
             },
             "2026-10-01T10:00:00Z",
         )
@@ -209,7 +209,7 @@ fn validation_rejects_malformed_inputs() {
             &UpsertPaymentGateway {
                 name: "midtrans; DROP TABLE payment_gateways;".into(),
                 is_active: true,
-                config_json: r#"{}"#.into(),
+                config_json: "{}".into(),
             },
             "2026-10-01T10:00:00Z",
         )
@@ -223,7 +223,7 @@ fn validation_rejects_malformed_inputs() {
             &UpsertPaymentGateway {
                 name: "midtrans".into(),
                 is_active: true,
-                config_json: r#"not-valid-json"#.into(),
+                config_json: "not-valid-json".into(),
             },
             "2026-10-01T10:00:00Z",
         )
@@ -237,7 +237,7 @@ fn validation_rejects_malformed_inputs() {
             &UpsertPaymentGateway {
                 name: "midtrans".into(),
                 is_active: true,
-                config_json: r#"[1, 2, 3]"#.into(),
+                config_json: "[1, 2, 3]".into(),
             },
             "2026-10-01T10:00:00Z",
         )
