@@ -301,27 +301,22 @@
 
 /* ── Footer ─────────────────────────────────────────────────── */
 
-/* Clearance for the fixed memo stack, on the same page.
+/* RETRACTED 2026-10-01: this band on .settings-footer was removed as a NO-OP, not
+ * merged elsewhere. A second band was added here on the reading that
+ * elementFromPoint returned the footer at the stack's button positions -- that
+ * reading was wrong about which element moved. Measured with and without this rule:
+ * footer y=458 either way, stack y=500-709 either way.
  *
- * MEASURED 2026-10-01 (gate `ui/e2e/memo-overlay.spec.ts`): the stack is pinned to
- * the viewport's bottom-left and the settings route is FULLSCREEN, so no shell
- * ancestor moves it. `.settings-footer` is a fixed-height bar across the bottom of
- * the content column — exactly that corner — and the stack's own controls land
- * on it: elementFromPoint at the stack's buttons returned the footer, and the
- * footer's own controls at the same y range were unreachable.
+ * Why: the footer is a flex SIBLING of .settings-body inside .settings-page
+ * (SettingsPage.tsx:434; the body closes at :431), and it is `flex: 0 0 auto` at the
+ * bottom of that column. Padding it cannot move it. The clearance that does lift the
+ * footer off the stack is the .settings-body band in SettingsNavTree.css, which
+ * shrinks the region above it and lets the column re-lay out.
  *
- * The band is the stack's own bottom inset plus its full height, so the footer
- * moves clear on every shell that sets a different inset (status bar, tab bar,
- * chrome-free fallback) rather than only the one that was measured.
- *
- * This is a third clearance site, not a duplicate of the two in
- * `SettingsNavTree.css` and `WorkspaceHome.css`: those keep a region's CONTENT out
- * of the strip, this keeps the page's own bottom bar out of it. They are
- * complementary and all three are gated on the stack being present.
+ * Removed rather than kept: a band that measures as no-op on every value it claims
+ * to move is not a safety margin, it is a comment that outlives its own falsification
+ * and sends the next reader looking for a second surface that does not need clearing.
  */
-body:has(.memo-stack) .settings-footer {
-  padding-bottom: calc(var(--memo-bottom-inset, var(--space-6)) + 215px + var(--space-2));
-}
 
 .settings-footer {
   flex: 0 0 auto;

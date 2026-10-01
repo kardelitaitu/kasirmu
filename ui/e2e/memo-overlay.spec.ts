@@ -125,4 +125,46 @@ test.describe('Memo stack never covers a visible control', () => {
 
     expect(await coveredControls(page), 'a control visible on the settings route is covered by the memo stack').toEqual([]);
   });
+
+  /**
+   * The relation the clearance bands actually uphold: they RESERVE SCROLL ROOM for
+   * the stack's strip. They do not lift the region above it.
+   *
+   * The hit-test cases above are census-shaped and can be green with every band
+   * stashed -- measured 2026-10-01, all of them passed with the bands removed. So they
+   * are a regression guard for the current layout, not proof the bands do work.
+   *
+   * An earlier version of this case asserted the stack sat BELOW the clearing region.
+   * That is not what the band does: measured on 1366x768 with 3 bubbles, the stack is
+   * y=538-747 and .workspace-home bottom=768, so the stack sits inside the region by
+   * construction. It failed on both projects for the right reason -- it was measuring
+   * the wrong relation, and that failure is what pointed at the right one.
+   *
+   * What the band buys is measurable and falsifiable: padding-bottom on the scroller
+   * adds the stack's strip to the scroll range, so the LAST rows can be scrolled into
+   * a clear strip. Without the band the range is short by exactly that amount. That
+   * difference is what this case pins.
+   */
+  test('the clearance band reserves scroll room for the memo stack strip', async ({ page }) => {
+    await seedMemos(page, 3);
+    await expect(page.getByTestId('workspace-home')).toBeVisible({ timeout: 15_000 });
+    await page.waitForTimeout(500);
+
+    const band = await page.evaluate(() => {
+      const stack = document.querySelector('.memo-stack');
+      const main = document.querySelector('.ws-main');
+      if (!stack || !main) return null;
+      return {
+        strip: Math.round(stack.getBoundingClientRect().height),
+        pad: parseFloat(getComputedStyle(main).paddingBottom) || 0,
+      };
+    });
+    expect(band, 'the picker clearance band (.ws-main) was not found').not.toBeNull();
+    expect(
+      band!.pad,
+      `the picker's clearance band is ${band!.pad}px but the memo stack is ${band!.strip}px tall -- the band is gone, or shorter than the strip it reserves`,
+    ).toBeGreaterThanOrEqual(band!.strip);
+  });
 });
+
+
