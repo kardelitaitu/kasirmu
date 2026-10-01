@@ -1,13 +1,18 @@
 # kasir.mu — the POS that keeps selling when the internet doesn't
 
+[![Code Size](https://img.shields.io/badge/code%20size-1%2C334.8k%20lines-blue?style=flat-square)](./stats.json)
+[![Rust Coverage](https://img.shields.io/badge/rust%20coverage-73.9%25-brightgreen?style=flat-square)](./scripts/coverage-floors.json)
+[![Tests](https://img.shields.io/badge/tests-9%2C000%2B%20rust%20%7C%20620%2B%20ui-orange?style=flat-square)](./README-3.md)
+[![Built with AI](https://img.shields.io/badge/development-solo%20dev%20%7C%2095%25%20AI%20written-purple?style=flat-square)](./README.md#engineering-scale--ai-native-development)
+
 > **Point-of-sale software that runs on the hardware you already own and needs no connection
 > to take money. Free forever for one store. Paid plans start at $4.99/month — one flat price,
 > never a cut of your sales.**
 >
-> **How to read this page.** This is the product-level one: what kasir.mu does for a merchant,
-> what it costs, and what is deliberately not built yet. The engineering README is
-> [`README-3.md`](./README-3.md) — architecture, commands, and verified figures. Pricing and quotas
-> below are quoted exactly as [`docs/guides/user/subscription-tiers.md`](./docs/guides/user/subscription-tiers.md)
+> **How to read this page.** This is the product and investment overview: what kasir.mu does for
+> a merchant, its technical scale, developer metrics, and what is deliberately not built yet. The
+> engineering README is [`README-3.md`](./README-3.md) — architecture, commands, and verified figures.
+> Pricing and quotas below are quoted exactly as [`docs/guides/user/subscription-tiers.md`](./docs/guides/user/subscription-tiers.md)
 > writes them, and that file is the authority when the two ever disagree.
 
 ---
@@ -187,6 +192,9 @@ own, this is the difference between a cashier waiting on a spinner and a queue t
 | | |
 |---|---|
 | **What it is** | Offline-first point-of-sale for retail, cafés, restaurants, and multi-location chains |
+| **Codebase size** | 1.33M+ lines of code (1,334.8k lines across 5,954 files, [`stats.json`](./stats.json)) |
+| **Testing & coverage** | 73.9% Rust workspace line coverage (99.4% foundation), 9,000+ Rust tests, 620+ frontend test files, >50% test code ratio |
+| **Development model** | Solo developer — 95% of code written and verified with AI |
 | **Free plan** | Rp 0 / $0 forever — one store, one register, one warehouse, 3 months of history |
 | **Paid from** | Rp 49.000 / $4.99 per month; the yearly column is billed as roughly ten months (two months free) |
 | **Commission on sales** | 0% — we never take a cut of a transaction |
@@ -235,6 +243,31 @@ We would rather show you the gaps than have you find them yourself.
 
 ---
 
+## Engineering scale & AI-native development
+
+kasir.mu is a testament to the power of modern agentic workflows and extreme capital efficiency: **architected and maintained by a solo developer, with 95% of the codebase written and verified by AI**.
+
+Rather than compromising software quality for speed, the development model pairs autonomous execution with non-negotiable correctness invariants, automated pre-commit gates, and exhaustive test coverage.
+
+### Codebase metrics ([`stats.json`](./stats.json))
+
+- **Total volume:** **1,334,821 lines of code** across **5,954 files**.
+- **Rust core backend:** **510,786 lines** (1,389 files) — domain logic, SQLite persistence, HAL device drivers, security, cryptography, and sync outbox.
+- **TypeScript frontend:** **387,698 lines** (1,514 files) — desktop and tablet POS interfaces, offline-first client engines, KDS, and management dashboards.
+- **Licensing, tooling & migrations:** **44,882 lines of Go** (licensing daemon), **40,590 lines of Python** (verification gates and generation scripts), and **8,666 lines of SQL** (70 migrations).
+- **Documentation & UI:** **132,955 lines of Markdown** (technical specifications, guides, and ADRs), **62,045 lines of CSS**, and **12,619 lines of Fluent (`.ftl`) localization**.
+
+### Test coverage & engineering rigor
+
+To ensure AI-generated code never accumulates hidden debt, testing is treated as a first-class engineering deliverable:
+
+- **73.9% measured Rust workspace line coverage** (ratified in [`scripts/coverage-floors.json`](./scripts/coverage-floors.json)), with core modules reaching **99.4%** (`foundation`) and **83.8%** (`kasirmu-core`).
+- **9,000+ Rust tests** (`#[test]`) and **620+ frontend test files** running under Vitest and cargo test harnesses.
+- **>50% test code ratio:** Over **508,000 lines of code** in the repository consist of test suites, mock drivers, and verification suites.
+- **Architectural invariants:** Strict minor-unit `Money` integers (zero floating-point currency representation), mandatory rusqlite transactional writes, and seven automated pre-commit gate suites guarding against drift.
+
+---
+
 ## Getting started
 
 1. **Download and run.** Windows installer, Android tablet build, or Linux package.
@@ -249,6 +282,13 @@ We would rather show you the gaps than have you find them yourself.
 
 ## For investors and partners
 
+- **Unprecedented capital efficiency (Solo Dev + 95% AI):** Built by a solo developer with
+  95% of the codebase authored and verified by AI. A platform of 1.33M+ lines of code,
+  cross-platform Tauri desktop/tablet shells, and 14 modular domains was delivered without
+  burning millions in venture capital on a large engineering headcount.
+- **Moat backed by automated verification:** High test coverage (73.9% Rust workspace line
+  coverage, 99.4% in critical foundation, 9,000+ tests) ensures that fast AI generation
+  produces durable, enterprise-grade IP rather than brittle prototypes.
 - **Why now:** connectivity is still the weakest link in merchant software, and hardware cost
   is the largest barrier to digital adoption for small merchants. One architectural decision
   addresses both.
