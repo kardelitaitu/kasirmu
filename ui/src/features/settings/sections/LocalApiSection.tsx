@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Localized, useLocalization } from '@fluent/react';
 import { requiredLocalized } from '@/components';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
@@ -49,13 +49,22 @@ export default function LocalApiSection() {
   // Store selector: only meaningful on multi-store installs, so the
   // list is fetched lazily and the row renders when >1 store exists.
   const [stores, setStores] = useState<LocationProfile[]>([]);
+  // True once the operator has edited the port field. The 2s poll below re-reads the
+  // server port every tick, and that read must NOT overwrite an edit in progress:
+  // otherwise the field reverts under the cursor mid-typing, and because `portDirty`
+  // (:185) compares the draft to `status.port`, the revert also clears the dirty state
+  // and the Apply button DISAPPEARS while the edit is being made. The poll runs exactly
+  // while the server is enabled-but-not-running, which is when someone is most likely to
+  // be fixing the port.
+  const portEditedRef = useRef(false);
 
   const refresh = useCallback(async () => {
     if (!sessionToken) return;
     try {
       const s = await getLocalApiStatusScoped(sessionToken);
       setStatus(s);
-      setPortDraft(String(s.port));
+      // Seed the draft from the server only until the operator starts editing it.
+      if (!portEditedRef.current) setPortDraft(String(s.port));
     } catch {
       // Status is advisory; a failed fetch leaves the last snapshot.
     }
@@ -247,7 +256,7 @@ export default function LocalApiSection() {
                 inputMode="numeric"
                 value={portDraft}
                 disabled={busy}
-                onChange={(e) => setPortDraft(e.target.value)}
+                onChange={(e) => { portEditedRef.current = true; setPortDraft(e.target.value); }}
               />
               {portDirty && (
                 <Button variant="ghost" onClick={() => void onApplyPort()} disabled={busy}>
