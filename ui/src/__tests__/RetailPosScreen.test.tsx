@@ -163,6 +163,12 @@ describe('RetailPosScreen — rendering', () => {
     const sales = await import('@/api/sales');
     vi.mocked(sales.listHeldCartsScoped).mockReset();
     vi.mocked(sales.getHeldCartScoped).mockReset();
+    // Same reason, for the two reads the store-switch and shift-badge cases override:
+    // a surviving `mockResolvedValue` leaks an open shift into every later case.
+    const shifts = await import('@/api/shifts');
+    vi.mocked(shifts.getActiveShiftScoped).mockReset();
+    const settings = await import('@/api/settings');
+    vi.mocked(settings.getStoreSettingsScoped).mockReset();
   });
 
   it('renders the store header with name, branch, and clock', async () => {
@@ -222,6 +228,64 @@ describe('RetailPosScreen — rendering', () => {
     expect(screen.getByText(/No shift/)).toBeInTheDocument();
   });
 
+
+  // A store switch must not let a SLOWER earlier store-settings read win (eee76b542).
+  // THE SINK IS MONEY: `storeSettings.currency` feeds minorUnitExponent() when parsing
+  // the opening and closing drawer balances and the manual discount, so IDR (exponent
+  // 0) against USD (exponent 2) misreads those amounts by a factor of 100.
+  //
+  // The observable is the shift badge, which formats `totalSalesMinor` with
+  // `storeSettings.currency` (RetailHeader.tsx:95): the SAME 99000 minor units render as
+  // a different AMOUNT, not merely a different settings object. The locale renders it as
+  // '$ 990,00', which is asserted with the comma rather than a dot.
+  //
+  // This case depends on the beforeEach restoring wsState.sessionToken. Without it an
+  // earlier store-switch case leaves the token already at its target value, the switch
+  // is a NO-OP, the effect never re-runs, and the test would pass while racing nothing.
+  it('ignores a slower earlier store-settings read after a token change', async () => {
+    let releaseStale: (v: unknown) => void = () => {};
+    const stalePending = new Promise((resolve) => { releaseStale = resolve; });
+
+    const settings = await import('@/api/settings');
+    const shifts = await import('@/api/shifts');
+
+    // A shift is open so the badge renders a formatted amount at all. Set for EVERY read,
+    // not once: the token switch re-issues this read, and a once-value would leave the
+    // second one on the module default (a rejection), clearing the badge before the
+    // assertion -- measured, not guessed.
+    vi.mocked(shifts.getActiveShiftScoped).mockResolvedValue({
+      id: 'shift-1', totalSalesMinor: 99000, openedAt: new Date().toISOString(), closedAt: null, status: 'open',
+    } as never);
+
+    // Read 1 (store A, held open) answers IDR; read 2 (store B) answers USD.
+    vi.mocked(settings.getStoreSettingsScoped).mockReturnValueOnce(stalePending as never);
+    vi.mocked(settings.getStoreSettingsScoped).mockReturnValueOnce(
+      Promise.resolve({ name: 'TOKO B', address: '', taxId: '', currency: 'USD', branch: '', logo: '' }) as never,
+    );
+
+    const view = renderWithProvidersSync(<RetailPosScreen />, salesFtl, productsFtl, tablesFtl, catFtl);
+    await waitFor(() => expect(settings.getStoreSettingsScoped).toHaveBeenCalledTimes(1));
+
+    wsState.sessionToken = 'mock-session-token-2';
+    await act(async () => {
+      rerenderWithProviders(view, <RetailPosScreen />, salesFtl, productsFtl, tablesFtl, catFtl);
+    });
+    await waitFor(() => expect(settings.getStoreSettingsScoped).toHaveBeenCalledTimes(2));
+
+    // Store B is USD: the same minor units format as $ 990,00 rather than IDR's 99.000.
+    await waitFor(() => {
+      expect(screen.getByText(/990,00/)).toBeInTheDocument();
+    });
+
+    // Only NOW does store A's IDR settings settle, after store B already won.
+    await act(async () => {
+      releaseStale({ name: 'TOKO A', address: '', taxId: '', currency: 'IDR', branch: '', logo: '' });
+      await stalePending;
+    });
+
+    // The guard held: the amount is still formatted as USD, not IDR.
+    expect(screen.getByText(/990,00/)).toBeInTheDocument();
+  });
 
   it('displays "No shift" badge when no active shift', async () => {
     await renderWithProviders(<RetailPosScreen />, salesFtl, productsFtl, tablesFtl, catFtl);
