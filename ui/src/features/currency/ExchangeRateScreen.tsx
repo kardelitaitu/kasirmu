@@ -122,15 +122,34 @@ export default function ExchangeRateScreen() {
 
   useEffect(() => { load(); }, [load]);
 
+  // Same LOAD-07 request-generation guard the load() above already carries, for
+  // the same reason. Deps name sessionToken, so a store switch starts a second
+  // read while the first is in flight and a slower earlier one can land last.
+  //
+  // What makes it worth guarding rather than a label: the switch is the visible
+  // state of the RATE-SYNC DAEMON, and this file already refuses to lie about that
+  // daemon. The catch arm of toggleAutoSync (:152) rolls the toggle back because
+  // "an optimistic toggle that stays flipped lies about the daemon's actual state"
+  // -- a stale read here does the same lie from the other direction, showing a
+  // daemon state that belongs to the previous store, with no error to hint at it.
+  //
+  // Rates themselves are NOT at risk: listExchangeRatesScoped feeds only the rate
+  // table, and conversions read the stored rate rather than this boolean.
+  const autoSyncSeqRef = useRef(0);
+
   const loadAutoSync = useCallback(async () => {
+    const seq = ++autoSyncSeqRef.current;
     try {
       const raw = await getSettingScoped(sessionToken || null, RATE_SYNC_ENABLED_KEY);
+      if (seq !== autoSyncSeqRef.current) return;
       setAutoSync(raw === '1');
     } catch {
       // Unset key (never written) or no session token: the backend default
       // for this key is "0", which is also what we just rendered.
     } finally {
-      setAutoSyncLoading(false);
+      if (seq === autoSyncSeqRef.current) {
+        setAutoSyncLoading(false);
+      }
     }
   }, [sessionToken]);
 
