@@ -1759,10 +1759,20 @@ overlapped. Three surfaces, all measured with `elementFromPoint` at the target's
 | Settings sidebar (`SettingsNavTree.css`) | the "System Diagnostics" nav row | `STRONG.memo-banner-title` |
 | Staff roster | already banded (`StaffManagementScreen.css`) | — |
 
-Each was a 90-second Playwright refusal, not a visual nit. Both new bands reserve the
-stack's height in the region's own scroller — **not** another `--memo-bottom-inset`
-overse, which every existing site rejects because the occluder is a page row, not a
-pinned footer.
+Both new bands reserve the stack's height in the region's own scroller — **not** another
+`--memo-bottom-inset` override, which every existing site rejects because the
+occluder is a page row, not a pinned footer.
+
+**CORRECTION (later the same day) — the causal claim this section first made is withdrawn.**
+It originally read "Each was a 90-second Playwright refusal". Re-measured in isolation,
+`admin-workflows.spec.ts:95` — the spec the settings failure came from — **passes with and
+without the band**. What was measured is real: at the default scroll position two of the
+fourteen nav rows sat under the bubble (`elementFromPoint` → `STRONG.memo-banner-title`),
+and the band removes that. But Playwright's click retries past an intercept, so the spec
+only ever failed under 4-worker load, and that failure is not reproduced without the
+band either. So the band is a **measured removal of a real occlusion**, not a demonstrated
+repair of a failing test. The full suite did go 7 failed → 0 failed, but that is equally
+consistent with load variance and **must not be cited as proof**.
 
 **One measurement killed the obvious fix.** The settings band was first written on
 `.settings-sidebar`; it computed to 236px of padding and moved nothing, because that
@@ -1770,9 +1780,15 @@ element is `overflow: hidden` with `scrollHeight == clientHeight` (676 == 676) �
 scroll container. `.settings-sidebar-nav` is `flex: 1; overflow-y: auto`, and the band
 belongs there; the region now measures 791 > 623 and the row is reachable.
 
-**Not proven closed.** A whole-app interception census timed out partway through the route
-list, so warehouse/products/locations were never reached. Absence of findings there is
-weaker than it looks — which is what round 37 exists to settle.
+**Not proven closed, and not gateable as measured.** A whole-app interception census
+timed out partway through the route list, so warehouse/products/locations were never
+reached. Worse, four attempts to turn the census into a gate all failed the only test that
+matters — *does it fail without the fix?* Screen-wide sampling with no scroll is too strict
+(it calls every below-the-fold control occluded); per-element with Playwright's minimum
+scroll is too strict even WITH the band; per-element with `block: 'center'` is vacuous (it
+passes with the band removed); a 3s click timeout is vacuous on the picker. **No walker was
+committed.** The measurement is the finding; the gate would have been a false assurance,
+which is the specific thing this audit keeps warning about.
 
 ### 5. Four stale specs, each for a different reason
 
