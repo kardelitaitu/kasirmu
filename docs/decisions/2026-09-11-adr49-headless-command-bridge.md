@@ -349,4 +349,42 @@ column `get_staff_code` reads and `list_users` does not — together with the in
 refuses `DROP COLUMN` while an index covers it), so the loop is entered and its later read fails.
 Verified RED with the swallows restored, returning a full roster with every `staff_code: None` and
 `is_profile_complete: false`, and GREEN with the fix.
+
+## Amendment 2026-10-04 (e) — the last four swallows, and what made them findable
+
+Amendment (d) fixed the roster loop. Sweeping for the same shape found five more, all in this
+crate and all the same one: a Base62 **code** read through `unwrap_or(None)`.
+
+`to_location_dto` and `to_terminal_dto` enrich a DTO with its code via `get_location_code` /
+`get_terminal_code`, and both swallowed. These two helpers sit on the read path for every scoped
+location and terminal command — including the write responses the UI echoes straight back — so a
+locked or corrupt table would have blanked the code across the list **and** on create and update.
+Three more sat in `staff.rs`: the code in `create_staff_scoped`, and the pair in
+`update_staff_scoped`.
+
+**What made them findable is worth recording, because it is a technique rather than a fix.** The
+`update_staff_scoped` site reads:
+
+```
+    (
+        store.assignment_for_user(&args.id)?,
+        store.get_staff_code(&args.id).unwrap_or(None),
+    )
+```
+
+Two reads of the same row, adjacent, one propagating and one swallowing. The inconsistency is the
+tell. It is the same signal that located the receipt-footer defect (every other settings read in
+that function used `?`) and the scanner-preference defect. **When a function handles one kind of
+read two different ways, the divergent one is the bug** — no amount of grepping for a pattern finds
+that as reliably as reading the neighbour.
+
+**Fixed.** Both `to_*_dto` helpers return `Result` and propagate; the three `staff.rs` reads do
+the same. Callers thread it — `.collect::<Result<Vec<_>, _>>()?` for the list sites and
+`.transpose()?` for the optional ones, which is the idiomatic spelling and worth noting since the
+first attempt at each was a `?` in the wrong position.
+
+**Pin.** `a_failed_location_code_read_refuses_instead_of_returning_a_blank_code` assigns the
+seeded location an index id (the migration does not), proves the code round-trips, then drops
+`locations.index_id` and the index over it so the code read fails. Verified RED with the swallow
+restored — the full DTO returned with `code: None` — and GREEN with the fix.
 > last audited 29-09-26 by docs-auditor
