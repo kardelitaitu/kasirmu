@@ -33,6 +33,27 @@ footer. Tracked files and new-but-not-ignored files are always checked; git is
 consulted once for the whole tree, and git being unavailable restores the old
 walk-everything behaviour rather than failing open.
 
+OPEN QUESTION, MEASURED BUT NOT RESOLVED (2026-10-05): six of the nine `footer
+with no stamp` entries are PUBLISHED pages under website/src/content/docs/ (en and
+id: first-day, quickstart, setup-wizard). The footer is meant to be machine-read
+by this checker and by detect.sh, but nothing establishes whether it should appear
+on a customer-facing page at all — the site build has no rule that strips it, and
+website/src/content/docs/en/docs-authoring.md says nothing about footers either
+way. That is the shape of an internal convention that leaked outward, not a
+decision: the footer arrived with the pages in 8d9e7f66f ("add quickstart and
+setup-wizard pages"), not from a deliberate audit-the-website pass, and the
+convention is applied to exactly HALF the corpus — 20 of 40 website docs carry it,
+20 do not.
+
+WHAT IS NOT KNOWN, and why this is recorded rather than fixed: whether the footer
+RENDERS on the built site was not verified (that needs the site running, which is
+technically outside this checker's scope), so it is not established that readers
+see it. The two candidate rulings have opposite fixes — either the website is
+in-scope for audit footers and 20 pages should gain stamps, or it is out of scope
+and 20 pages should lose the footer. Guessing between them would edit 20 published
+pages on a coin-flip, so the measurement is left here for whoever owns the
+docs-authoring convention.
+
 Exit codes: 0 clean, 1 findings in the OLDER class or an impossible date,
 2 the checker itself failed. The NEWER class is informational and does not
 affect the exit code.
