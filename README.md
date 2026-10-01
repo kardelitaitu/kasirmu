@@ -9,10 +9,10 @@
 > to take money. Free forever for one store. Paid plans start at $4.99/month — one flat price,
 > never a cut of your sales.**
 >
-> **How to read this page.** This is the product and investment overview: what kasir.mu does for
-> a merchant, its technical scale, developer metrics, and what is deliberately not built yet. The
-> engineering README is [`README-3.md`](./README-3.md) — architecture, commands, and verified figures.
-> Pricing and quotas below are quoted exactly as [`docs/guides/user/subscription-tiers.md`](./docs/guides/user/subscription-tiers.md)
+> **How to read this page.** This is the product-level one: what kasir.mu does for a merchant,
+> what it costs, and what is deliberately not built yet. The engineering README is
+> [`README-3.md`](./README-3.md) — architecture, commands, and verified figures. Pricing and quotas
+> below are quoted exactly as [`docs/guides/user/subscription-tiers.md`](./docs/guides/user/subscription-tiers.md)
 > writes them, and that file is the authority when the two ever disagree.
 
 ---
