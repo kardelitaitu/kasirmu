@@ -135,6 +135,29 @@ export default function ExchangeRateScreen() {
   //
   // Rates themselves are NOT at risk: listExchangeRatesScoped feeds only the rate
   // table, and conversions read the stored rate rather than this boolean.
+  // UNPINNED, AND THE REASON IS RECORDED RATHER THAN LEFT AS A PUZZLE.
+  //
+  // Three attempts to pin this by mutation all SURVIVED (removing the line below and
+  // re-running ExchangeRateScreen.test.tsx stayed green), so there is currently no test
+  // that distinguishes guarded from unguarded here. Two causes were isolated:
+  //
+  //   1. A timing-only test can release the stale promise BEFORE the second read is
+  //      issued, so nothing is actually raced. Fixed by waiting on the call count.
+  //   2. With the ordering enforced, a probe that replaced this guard with a
+  //      console.log DID show the stale arm reaching setAutoSync -- DIAG apply 0 after
+  //      DIAG apply 1. So on that reading the write does happen when unguarded.
+  //
+  // Those two facts do not reconcile: aria-checked is a CONTROLLED attribute fed
+  // straight from autoSync, so a state change should surface in the DOM, yet the
+  // assertion kept reading true. Later probes of that same assertion gave
+  // contradictory results, so those probe edits were not landing where they were
+  // believed to be, and no conclusion drawn from them is trustworthy -- including the
+  // DIAG line above.
+  //
+  // WHAT TO DO INSTEAD: do not retry this from outside the component. Observe the
+  // effect directly (renderHook on the callback, or a logger inside the component
+  // render) so the state transition is READ rather than inferred from the DOM. Until
+  // then, treat this guard as verified-by-reasoning and NOT verified-by-test.
   const autoSyncSeqRef = useRef(0);
 
   const loadAutoSync = useCallback(async () => {
