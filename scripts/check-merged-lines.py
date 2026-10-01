@@ -39,6 +39,19 @@ starts green. That is a property worth stating: a gate that begins life red gets
 disabled, which is the lesson from the over-broad async-overlap scan considered and
 rejected in round 80.
 
+WHY ONLY `.ts`/`.tsx`, measured rather than assumed (round 125). The generator that caused
+this wrote `.rs`, `.py` AND `.sh` as well, so the risk was NOT obviously TypeScript-only
+and the scope was checked before being left alone. A sweep of every `.rs`/`.py`/`.sh` in
+the repository for the same two-statement signature returned ZERO candidates, while the
+same sweep over `ui/src` had found six. So the damage was confined to TypeScript in
+practice, and widening this gate would add three languages of pattern surface for a class
+that has never occurred in them.
+
+If a merged line is ever found in one of those languages, widen SCAN_ROOTS and the
+suffix list TOGETHER -- the two-sided shape is what keeps the false-positive rate at the
+three doc-comment lines above, and a looser pattern for a new language would trade that
+away for coverage of a class that has not been seen there.
+
 Exit 0 clean, 1 finding(s), 2 self-test or usage failure.
 """
 from __future__ import annotations
