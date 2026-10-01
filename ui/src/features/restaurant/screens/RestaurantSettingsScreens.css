@@ -1011,13 +1011,6 @@
   font-size: var(--text-sm);
 }
 
-.restaurant-rails-list {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  margin-top: var(--space-2);
-}
-
 .restaurant-rail-row {
   display: flex;
   align-items: center;
@@ -1029,17 +1022,6 @@
   gap: var(--space-2);
 }
 
-.restaurant-rail-info {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-}
-
-.restaurant-rail-label {
-  font-weight: 500;
-  font-size: var(--text-sm);
-}
-
 .restaurant-rail-code {
   font-size: var(--text-xs);
   color: var(--color-fg-muted);
@@ -1047,17 +1029,6 @@
   background: var(--color-bg-subtle);
   padding: 1px 5px;
   border-radius: var(--radius-sm);
-}
-
-.restaurant-rail-add {
-  display: flex;
-  gap: var(--space-2);
-  margin-top: var(--space-3);
-  align-items: center;
-}
-
-.restaurant-rail-add input {
-  flex: 1;
 }
 
 .restaurant-rail-actions {
@@ -1083,10 +1054,20 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
-  margin-top: var(--space-2);
-  padding: var(--space-2) var(--space-3);
-  background: var(--color-bg-subtle);
-  border-radius: var(--radius-md);
+  width: 100%;
+  margin-top: 0;
+  padding: 0;
+  background: transparent;
+  border: none;
+}
+
+.restaurant-static-qr-box textarea.settings-input {
+  width: 100%;
+  min-height: 56px;
+  font-size: var(--text-base);
+  padding: 8px 10px;
+  box-sizing: border-box;
+  resize: vertical;
 }
 
 /* Business Logo in Preview & Settings */
@@ -1252,12 +1233,13 @@
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
-.resto-payment-card .card-header {
-  padding: 0;
-  margin: 0;
-  border-bottom: none;
+.resto-payment-card--expanded {
+  border-color: var(--color-border);
 }
 
+.resto-payment-card--collapsed {
+  border-color: var(--color-border);
+}
 .resto-payment-card:hover {
   border-color: var(--color-border-strong);
 }
@@ -1338,13 +1320,8 @@
 }
 
 /* Collapsed card: compact bar */
-.resto-payment-card-wrapper--collapsed .card-header {
-  padding: 0;
+.resto-payment-card-wrapper--collapsed .resto-payment-card-header {
   border-bottom: none;
-}
-
-.resto-payment-card-wrapper--collapsed .card-body {
-  display: none !important;
 }
 
 .resto-payment-card-body--hidden {
@@ -1352,8 +1329,7 @@
 }
 
 /* Expanded card: reveals properties inside */
-.resto-payment-card-wrapper--expanded .card-header {
-  padding: 0;
+.resto-payment-card-wrapper--expanded .resto-payment-card-header {
   border-bottom: 1px solid var(--color-border-subtle, rgba(255, 255, 255, 0.08));
 }
 
@@ -1405,8 +1381,7 @@
   gap: var(--space-2);
 }
 
-.resto-compact-control .settings-input,
-.resto-compact-control .settings-select {
+.resto-compact-control .settings-input {
   width: 100%;
   max-width: 200px;
   height: 36px;
@@ -1494,67 +1469,6 @@
   border-color: var(--color-border-strong);
 }
 
-/* Form fields inside payment cards: wrap cleanly in multi-column layout */
-.resto-payment-card .settings-field,
-.resto-payment-card .settings-field--horizontal {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 6px;
-  margin-bottom: var(--space-3);
-}
-
-.resto-payment-card .settings-field .settings-label,
-.resto-payment-card .settings-field--horizontal .settings-label {
-  font-size: var(--text-base);
-  font-weight: 500;
-  color: var(--color-fg-muted);
-  margin-bottom: 0;
-}
-
-.resto-payment-card .settings-field .settings-input,
-.resto-payment-card .settings-field--horizontal .settings-input,
-.resto-payment-card .settings-field textarea.settings-input,
-.resto-payment-card .settings-field select.settings-select {
-  width: 100%;
-  font-size: var(--text-base);
-  box-sizing: border-box;
-}
-
-/* Toggle rows inside expanded payment card */
-.resto-payment-card .resto-toggle-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: var(--space-3);
-  padding: 10px 0;
-  border-top: 1px solid var(--color-border-subtle, rgba(255, 255, 255, 0.08));
-}
-
-.resto-payment-card .resto-toggle-row:first-of-type {
-  border-top: none;
-}
-
-.resto-payment-card .resto-toggle-info {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-  flex: 1;
-}
-
-.resto-payment-card .resto-toggle-title {
-  font-size: var(--text-sm, 13px);
-  font-weight: var(--font-weight-medium, 500);
-  color: var(--color-fg);
-  line-height: 1.3;
-}
-
-.resto-payment-card .resto-toggle-desc {
-  font-size: var(--text-xs, 12px);
-  color: var(--color-fg-muted);
-  line-height: 1.4;
-}
 
 /* Segmented button groups (e.g. Sandbox vs Production, Static vs Dynamic QR) */
 .resto-payment-card .resto-segmented-group {
@@ -1662,63 +1576,4 @@
   }
 }
 
-.resto-payment-chips-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-  margin-top: var(--space-1);
-}
-
-.resto-payment-chip {
-  padding: 6px 12px;
-  border-radius: var(--radius-md);
-  font-size: var(--text-base);
-  font-weight: 500;
-  border: 1px solid var(--color-border);
-  background: var(--color-bg-elevated);
-  color: var(--color-fg);
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.resto-payment-chip:hover {
-  border-color: var(--color-border-strong);
-}
-
-.resto-payment-chip--active {
-  background: var(--color-primary);
-  color: var(--color-white, #fff);
-  border-color: var(--color-primary);
-}
-
-.resto-payment-card .resto-payment-checkbox-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 6px;
-  margin-top: var(--space-2);
-}
-
-.resto-payment-card .resto-payment-checkbox-item {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 10px;
-  background: var(--color-bg-elevated);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  font-size: var(--text-base);
-  color: var(--color-fg);
-  cursor: pointer;
-  min-width: 0;
-  overflow: hidden;
-}
-
-.resto-payment-card .resto-payment-checkbox-item span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 

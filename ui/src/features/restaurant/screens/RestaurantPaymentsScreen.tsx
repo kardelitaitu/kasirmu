@@ -1,8 +1,10 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, type ReactNode } from 'react';
 import { Localized, useLocalization } from '@fluent/react';
 import { useToast } from '@/components/Toast';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { useTerminalHardware } from '@/hooks/useTerminalHardware';
+import { UnsavedChangesDialog } from '@/components/UnsavedChangesDialog';
+import SettingsSelect from '@/features/settings/SettingsSelect';
 import { getPrimaryLocationScoped } from '@/api/locations';
 import {
   getLocalPaymentMethodsScoped,
@@ -16,18 +18,21 @@ import {
   edcTerminalStatusScoped,
   type EdcTerminalDto,
 } from '@/api/edc';
-import SettingsSelect from '@/features/settings/SettingsSelect';
-import { isCoreRail, mergeCoreRails, computeRailsDirty, type DraftRail } from './paymentRailsLogic';
-import { PaymentMethodCard } from './PaymentMethodCard';
+import {
+  isCoreRail,
+  mergeCoreRails,
+  computeRailsDirty,
+  type DraftRail,
+} from './paymentRailsLogic';
 import './RestaurantSettingsScreens.css';
 
 // ── Icons ───────────────────────────────────────────────────────────
 
 function CashIcon() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="18" height="18" aria-hidden="true">
       <rect x="2" y="6" width="20" height="12" rx="2" />
-      <circle cx="12" cy="12" r="3" />
+      <circle cx="12" cy="12" r="2" />
       <path d="M6 12h.01M18 12h.01" />
     </svg>
   );
@@ -35,52 +40,178 @@ function CashIcon() {
 
 function QrisIcon() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="18" height="18" aria-hidden="true">
       <rect x="3" y="3" width="7" height="7" />
       <rect x="14" y="3" width="7" height="7" />
+      <rect x="14" y="14" width="7" height="7" />
       <rect x="3" y="14" width="7" height="7" />
-      <path d="M14 14h3v3h-3zM17 17h4v4h-4zM14 20h3v1h-3zM20 14v3" />
     </svg>
   );
 }
 
 function EdcIcon() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <rect x="2" y="5" width="20" height="14" rx="2" />
-      <line x1="2" y1="10" x2="22" y2="10" />
-      <circle cx="6" cy="15" r="1" />
-      <circle cx="10" cy="15" r="1" />
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="18" height="18" aria-hidden="true">
+      <rect x="4" y="2" width="16" height="20" rx="2" />
+      <line x1="8" y1="6" x2="16" y2="6" />
+      <line x1="8" y1="10" x2="16" y2="10" />
+      <circle cx="8" cy="15" r="1" />
+      <circle cx="12" cy="15" r="1" />
+      <circle cx="16" cy="15" r="1" />
+      <circle cx="8" cy="18" r="1" />
+      <circle cx="12" cy="18" r="1" />
+      <circle cx="16" cy="18" r="1" />
     </svg>
   );
 }
 
 function MidtransIcon() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="18" height="18" aria-hidden="true">
+      <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
     </svg>
   );
 }
 
 function StripeIcon() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <circle cx="12" cy="12" r="10" />
-      <line x1="2" y1="12" x2="22" y2="12" />
-      <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="18" height="18" aria-hidden="true">
+      <path d="M2 16.1A5 5 0 0 1 5.9 14h12.2a5 5 0 0 1 3.9 2.1" />
+      <line x1="12" y1="3" x2="12" y2="15" />
+      <path d="m7 8 5-5 5 5" />
     </svg>
   );
 }
 
 function GenericRailIcon() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <rect x="2" y="4" width="20" height="16" rx="2" />
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="18" height="18" aria-hidden="true">
+      <rect x="2" y="5" width="20" height="14" rx="2" />
       <line x1="2" y1="10" x2="22" y2="10" />
     </svg>
   );
 }
+
+// ── Payment Method Card Template ────────────────────────────────────
+
+export interface PaymentMethodCardProps {
+  id: string;
+  title: string;
+  description?: string | undefined;
+  code: string;
+  icon?: ReactNode | undefined;
+  badge?: string | undefined;
+  badgeVariant?: ('default' | 'primary' | 'success' | 'warning') | undefined;
+  enabled: boolean;
+  onToggle: (enabled: boolean) => void;
+  isCore?: boolean | undefined;
+  onRemove?: (() => void) | undefined;
+  removeAriaLabel?: string | undefined;
+  mountBodyWhenCollapsed?: boolean | undefined;
+  children?: ReactNode | undefined;
+}
+
+export function PaymentMethodCard({
+  id,
+  title,
+  code,
+  enabled,
+  onToggle,
+  isCore = true,
+  onRemove,
+  removeAriaLabel,
+  mountBodyWhenCollapsed = false,
+  children,
+}: PaymentMethodCardProps) {
+  const [isExpanded, setIsExpanded] = useState(enabled);
+
+  useEffect(() => {
+    setIsExpanded(enabled);
+  }, [enabled]);
+
+  const shouldMountBody = isExpanded || mountBodyWhenCollapsed;
+
+  return (
+    <div
+      className={`resto-payment-card-wrapper ${isExpanded ? 'resto-payment-card-wrapper--expanded' : 'resto-payment-card-wrapper--collapsed'}`}
+      data-testid={`payment-card-${id}`}
+    >
+      <div className={`resto-payment-card ${isExpanded ? 'resto-payment-card--expanded' : 'resto-payment-card--collapsed'}`}>
+        <div className="restaurant-settings-card-header resto-payment-card-header restaurant-rail-row">
+          <div className="resto-payment-card-title-group">
+            <button
+              type="button"
+              className="resto-card-expand-btn"
+              onClick={() => setIsExpanded((prev) => !prev)}
+              aria-expanded={isExpanded}
+              aria-controls={`payment-card-body-${id}`}
+              aria-label={isExpanded ? `Collapse ${title}` : `Expand ${title}`}
+            >
+              <span
+                className={`resto-card-chevron ${isExpanded ? 'resto-card-chevron--expanded' : ''}`}
+                aria-hidden="true"
+              >
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <polyline points="6 9 12 15 18 9" />
+                </svg>
+              </span>
+              <span className="resto-payment-card-title">{title}</span>
+            </button>
+            <span className="restaurant-rail-code sr-only">{code}</span>
+          </div>
+
+          <div className="resto-payment-card-header-actions restaurant-rail-actions">
+            {!isCore && onRemove && (
+              <button
+                type="button"
+                className="restaurant-rail-remove"
+                onClick={onRemove}
+                aria-label={removeAriaLabel || `Remove ${title}`}
+              >
+                &times;
+              </button>
+            )}
+            <label className="settings-toggle-switch" htmlFor={`rail-toggle-${code}`}>
+              <input
+                id={`rail-toggle-${code}`}
+                type="checkbox"
+                role="switch"
+                checked={enabled}
+                aria-checked={enabled}
+                aria-label={title}
+                onChange={(e) => {
+                  onToggle(e.target.checked);
+                  setIsExpanded(e.target.checked);
+                }}
+              />
+              <span className="settings-toggle-slider" aria-hidden="true" />
+            </label>
+          </div>
+        </div>
+
+        {shouldMountBody && children && (
+          <div
+            id={`payment-card-body-${id}`}
+            className={`resto-payment-card-body ${!isExpanded ? 'resto-payment-card-body--hidden' : ''}`}
+          >
+            {children}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Main Screen Component ───────────────────────────────────────────
 
 export interface RestaurantPaymentsScreenProps {
   terminalId?: string;
@@ -103,16 +234,17 @@ export function RestaurantPaymentsScreen({
   const [drafts, setDrafts] = useState<DraftRail[]>(() => mergeCoreRails([]));
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
   const [edcTerminals, setEdcTerminals] = useState<EdcTerminalDto[]>([]);
   const [defaultEdcTerminalId, setDefaultEdcTerminalId] = useState('');
   const [testingEdc, setTestingEdc] = useState(false);
 
-  // Fallback states for UI toggling
+  // Fallback states for core toggles
   const [cashLocalEnabled, setCashLocalEnabled] = useState(true);
   const [qrisLocalEnabled, setQrisLocalEnabled] = useState(true);
   const [cardLocalEnabled, setCardLocalEnabled] = useState(false);
 
-  // ── UI States for Expanded Payment Cards ──────────────────────
+  // ── UI States for Expanded Payment Cards ──────────────────────────
   // Cash
   const [cashDrawerAutoKick, setCashDrawerAutoKick] = useState(true);
   const [cashDrawerVerify, setCashDrawerVerify] = useState(false);
@@ -167,7 +299,7 @@ export function RestaurantPaymentsScreen({
   const [dirtyVersion, setDirtyVersion] = useState(0);
   const hwInitializedRef = useRef(false);
 
-  // Sync initial EDC terminal preference from hardware profile without wiping drafts on profile updates
+  // Sync initial EDC terminal preference from hardware profile
   useEffect(() => {
     if (hwInitializedRef.current || !hw.profile) return;
     const currentEdc = hw.profile.localPrefs?.defaultEdcTerminalId ?? '';
@@ -179,11 +311,11 @@ export function RestaurantPaymentsScreen({
 
   // Load location, payment rails, and EDC terminals
   useEffect(() => {
-    if (!sessionToken) return;
     let cancelled = false;
-    setLoading(true);
 
     const loadAll = async () => {
+      if (!sessionToken) return;
+      setLoading(true);
       try {
         const [primary, edcList] = await Promise.all([
           getPrimaryLocationScoped(sessionToken),
@@ -201,10 +333,76 @@ export function RestaurantPaymentsScreen({
           const rawRails = await getLocalPaymentMethodsScoped(sessionToken, primary.id);
           if (cancelled) return;
 
-          // Standard core methods + any custom rails are merged by the pure paymentRailsLogic helper
           const mergedDrafts = mergeCoreRails(rawRails);
           setDrafts(mergedDrafts);
           originalsRef.current.drafts = mergedDrafts.map((d) => ({ ...d }));
+
+          // Hydrate card configurations from merged parameters
+          const cash = mergedDrafts.find((d) => d.rail_code.toLowerCase() === 'cash');
+          if (cash) {
+            setCashCustomLabel(cash.label || 'Cash');
+            try {
+              const p = JSON.parse(cash.parameters);
+              if (typeof p.autoKick === 'boolean') setCashDrawerAutoKick(p.autoKick);
+              if (typeof p.verifyDrawer === 'boolean') setCashDrawerVerify(p.verifyDrawer);
+              if (Array.isArray(p.presets) && p.presets.length > 0) setActiveCashPresets(p.presets);
+            } catch {
+              // Ignore parse error, keep defaults
+            }
+          }
+
+          const qris = mergedDrafts.find((d) => d.rail_code.toLowerCase() === 'qris');
+          if (qris) {
+            try {
+              const p = JSON.parse(qris.parameters);
+              if (p.mode === 'static' || p.mode === 'dynamic') setQrisMode(p.mode);
+              if (p.nmid) setQrisNmid(p.nmid);
+              if (p.surcharge) setQrisSurcharge(p.surcharge);
+              if (typeof p.printReceipt === 'boolean') setQrisPrintReceipt(p.printReceipt);
+            } catch {
+              // Ignore parse error, keep defaults
+            }
+          }
+
+          const card = mergedDrafts.find((d) => d.rail_code.toLowerCase() === 'card');
+          if (card) {
+            try {
+              const p = JSON.parse(card.parameters);
+              if (typeof p.requireTrace === 'boolean') setRequireEdcTraceCode(p.requireTrace);
+              if (Array.isArray(p.acceptedCards) && p.acceptedCards.length > 0) setAcceptedCards(p.acceptedCards);
+            } catch {
+              // Ignore parse error, keep defaults
+            }
+          }
+
+          const midtrans = mergedDrafts.find((d) => d.rail_code.toLowerCase() === 'midtrans');
+          if (midtrans) {
+            try {
+              const p = JSON.parse(midtrans.parameters);
+              if (p.env === 'sandbox' || p.env === 'production') setMidtransEnv(p.env);
+              if (p.merchantId) setMidtransMerchantId(p.merchantId);
+              if (p.clientKey) setMidtransClientKey(p.clientKey);
+              if (p.serverKey) setMidtransServerKey(p.serverKey);
+              if (p.channels && typeof p.channels === 'object') setMidtransChannels(p.channels);
+              if (typeof p.autoConfirm === 'boolean') setMidtransAutoConfirm(p.autoConfirm);
+            } catch {
+              // Ignore parse error, keep defaults
+            }
+          }
+
+          const stripe = mergedDrafts.find((d) => d.rail_code.toLowerCase() === 'stripe');
+          if (stripe) {
+            try {
+              const p = JSON.parse(stripe.parameters);
+              if (p.mode === 'test' || p.mode === 'live') setStripeMode(p.mode);
+              if (p.publishableKey) setStripePublishableKey(p.publishableKey);
+              if (p.secretKey) setStripeSecretKey(p.secretKey);
+              if (p.reader) setStripeReader(p.reader);
+              if (p.currency) setStripeCurrency(p.currency);
+            } catch {
+              // Ignore parse error, keep defaults
+            }
+          }
         }
       } catch {
         addToast({
@@ -231,6 +429,34 @@ export function RestaurantPaymentsScreen({
       defaultEdcTerminalId,
     );
   }, [drafts, defaultEdcTerminalId, dirtyVersion]);
+
+  // ── Helper to update rail parameters safely ───────────────────────
+  const updateRailParams = useCallback((code: string, newParams: Record<string, unknown>) => {
+    const lower = code.toLowerCase();
+    setDrafts((prev) =>
+      prev.map((d) => {
+        if (d.rail_code.toLowerCase() !== lower) return d;
+        let parsed: Record<string, unknown> = {};
+        try {
+          parsed = JSON.parse(d.parameters);
+        } catch {
+          parsed = {};
+        }
+        const merged = { ...parsed, ...newParams };
+        return { ...d, parameters: JSON.stringify(merged) };
+      }),
+    );
+  }, []);
+
+  const updateRailLabel = useCallback((code: string, label: string) => {
+    const lower = code.toLowerCase();
+    setDrafts((prev) =>
+      prev.map((d) => {
+        if (d.rail_code.toLowerCase() !== lower) return d;
+        return { ...d, label };
+      }),
+    );
+  }, []);
 
   const handleToggleRail = (index: number, checked: boolean) => {
     setDrafts((prev) => {
@@ -377,6 +603,28 @@ export function RestaurantPaymentsScreen({
     l10n,
   ]);
 
+  // ── Back Navigation Guard with Unsaved Dialog ───────────────
+  const handleRequestBack = useCallback(() => {
+    if (dirty) {
+      setShowUnsavedDialog(true);
+    } else {
+      onBack?.();
+    }
+  }, [dirty, onBack]);
+
+  useEffect(() => {
+    if (!onBack) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if ((e.target as HTMLElement)?.closest('[role="dialog"]')) return;
+      e.preventDefault();
+      e.stopPropagation();
+      handleRequestBack();
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [onBack, handleRequestBack]);
+
   // Find drafts for the 5 targeted payment methods
   const cashDraft = drafts.find((d) => d.rail_code.toLowerCase() === 'cash');
   const cardDraft = drafts.find((d) => d.rail_code.toLowerCase() === 'card');
@@ -403,7 +651,7 @@ export function RestaurantPaymentsScreen({
             <button
               type="button"
               className="restaurant-settings-back-btn"
-              onClick={onBack}
+              onClick={handleRequestBack}
               aria-label={l10n.getString('back') || 'Back'}
               data-testid="restaurant-payments-back-btn"
             >
@@ -513,7 +761,11 @@ export function RestaurantPaymentsScreen({
                       type="text"
                       className="settings-input"
                       value={cashCustomLabel}
-                      onChange={(e) => setCashCustomLabel(e.target.value)}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setCashCustomLabel(val);
+                        updateRailLabel('cash', val);
+                      }}
                       placeholder="Cash"
                       aria-label="Display Label"
                     />
@@ -530,7 +782,11 @@ export function RestaurantPaymentsScreen({
                           type="checkbox"
                           role="switch"
                           checked={cashDrawerAutoKick}
-                          onChange={(e) => setCashDrawerAutoKick(e.target.checked)}
+                          onChange={(e) => {
+                            const val = e.target.checked;
+                            setCashDrawerAutoKick(val);
+                            updateRailParams('cash', { autoKick: val });
+                          }}
                           aria-label="Automatic Cash Drawer"
                         />
                         <span className="settings-toggle-slider" />
@@ -549,11 +805,13 @@ export function RestaurantPaymentsScreen({
                           key={preset}
                           type="button"
                           className={`resto-compact-chip ${active ? 'resto-compact-chip--active' : ''}`}
-                          onClick={() =>
-                            setActiveCashPresets((prev) =>
-                              active ? prev.filter((p) => p !== preset) : [...prev, preset],
-                            )
-                          }
+                          onClick={() => {
+                            const next = active
+                              ? activeCashPresets.filter((p) => p !== preset)
+                              : [...activeCashPresets, preset];
+                            setActiveCashPresets(next);
+                            updateRailParams('cash', { presets: next });
+                          }}
                           aria-pressed={active}
                         >
                           {preset}
@@ -573,7 +831,11 @@ export function RestaurantPaymentsScreen({
                           type="checkbox"
                           role="switch"
                           checked={cashDrawerVerify}
-                          onChange={(e) => setCashDrawerVerify(e.target.checked)}
+                          onChange={(e) => {
+                            const val = e.target.checked;
+                            setCashDrawerVerify(val);
+                            updateRailParams('cash', { verifyDrawer: val });
+                          }}
                           aria-label="Cashier Drawer Verification"
                         />
                         <span className="settings-toggle-slider" />
@@ -606,14 +868,20 @@ export function RestaurantPaymentsScreen({
                       <button
                         type="button"
                         className={`resto-segmented-btn ${qrisMode === 'static' ? 'resto-segmented-btn--active' : ''}`}
-                        onClick={() => setQrisMode('static')}
+                        onClick={() => {
+                          setQrisMode('static');
+                          updateRailParams('qris', { mode: 'static' });
+                        }}
                       >
                         Static
                       </button>
                       <button
                         type="button"
                         className={`resto-segmented-btn ${qrisMode === 'dynamic' ? 'resto-segmented-btn--active' : ''}`}
-                        onClick={() => setQrisMode('dynamic')}
+                        onClick={() => {
+                          setQrisMode('dynamic');
+                          updateRailParams('qris', { mode: 'dynamic' });
+                        }}
                       >
                         Dynamic
                       </button>
@@ -649,7 +917,11 @@ export function RestaurantPaymentsScreen({
                       type="text"
                       className="settings-input"
                       value={qrisNmid}
-                      onChange={(e) => setQrisNmid(e.target.value)}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setQrisNmid(val);
+                        updateRailParams('qris', { nmid: val });
+                      }}
                       placeholder="ID1020030040050"
                     />
                   </div>
@@ -665,7 +937,11 @@ export function RestaurantPaymentsScreen({
                       type="text"
                       className="settings-input"
                       value={qrisSurcharge}
-                      onChange={(e) => setQrisSurcharge(e.target.value)}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setQrisSurcharge(val);
+                        updateRailParams('qris', { surcharge: val });
+                      }}
                       placeholder="0.7"
                     />
                   </div>
@@ -681,7 +957,11 @@ export function RestaurantPaymentsScreen({
                           type="checkbox"
                           role="switch"
                           checked={qrisPrintReceipt}
-                          onChange={(e) => setQrisPrintReceipt(e.target.checked)}
+                          onChange={(e) => {
+                            const val = e.target.checked;
+                            setQrisPrintReceipt(val);
+                            updateRailParams('qris', { printReceipt: val });
+                          }}
                           aria-label="Print Pay-at-Table QR"
                         />
                         <span className="settings-toggle-slider" />
@@ -715,7 +995,10 @@ export function RestaurantPaymentsScreen({
                     <SettingsSelect
                       id="resto-default-edc"
                       value={defaultEdcTerminalId}
-                      onChange={(v) => setDefaultEdcTerminalId(v)}
+                      onChange={(v: string) => {
+                        setDefaultEdcTerminalId(v);
+                        updateRailParams('card', { defaultTerminalId: v });
+                      }}
                       options={[
                         { value: '', label: 'None (Manual Card Entry)' },
                         ...edcTerminals.map((t) => ({
@@ -754,11 +1037,13 @@ export function RestaurantPaymentsScreen({
                           key={network.id}
                           type="button"
                           className={`resto-compact-chip ${active ? 'resto-compact-chip--active' : ''}`}
-                          onClick={() =>
-                            setAcceptedCards((prev) =>
-                              active ? prev.filter((id) => id !== network.id) : [...prev, network.id],
-                            )
-                          }
+                          onClick={() => {
+                            const next = active
+                              ? acceptedCards.filter((id) => id !== network.id)
+                              : [...acceptedCards, network.id];
+                            setAcceptedCards(next);
+                            updateRailParams('card', { acceptedCards: next });
+                          }}
                           aria-pressed={active}
                         >
                           {network.label}
@@ -778,7 +1063,11 @@ export function RestaurantPaymentsScreen({
                           type="checkbox"
                           role="switch"
                           checked={requireEdcTraceCode}
-                          onChange={(e) => setRequireEdcTraceCode(e.target.checked)}
+                          onChange={(e) => {
+                            const val = e.target.checked;
+                            setRequireEdcTraceCode(val);
+                            updateRailParams('card', { requireTrace: val });
+                          }}
                           aria-label="Require Approval Code"
                         />
                         <span className="settings-toggle-slider" />
@@ -811,14 +1100,20 @@ export function RestaurantPaymentsScreen({
                       <button
                         type="button"
                         className={`resto-segmented-btn ${midtransEnv === 'sandbox' ? 'resto-segmented-btn--active' : ''}`}
-                        onClick={() => setMidtransEnv('sandbox')}
+                        onClick={() => {
+                          setMidtransEnv('sandbox');
+                          updateRailParams('midtrans', { env: 'sandbox' });
+                        }}
                       >
                         Sandbox
                       </button>
                       <button
                         type="button"
                         className={`resto-segmented-btn ${midtransEnv === 'production' ? 'resto-segmented-btn--active' : ''}`}
-                        onClick={() => setMidtransEnv('production')}
+                        onClick={() => {
+                          setMidtransEnv('production');
+                          updateRailParams('midtrans', { env: 'production' });
+                        }}
                       >
                         Production
                       </button>
@@ -836,7 +1131,11 @@ export function RestaurantPaymentsScreen({
                       type="text"
                       className="settings-input"
                       value={midtransMerchantId}
-                      onChange={(e) => setMidtransMerchantId(e.target.value)}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setMidtransMerchantId(val);
+                        updateRailParams('midtrans', { merchantId: val });
+                      }}
                       placeholder="G123456789"
                     />
                   </div>
@@ -852,7 +1151,11 @@ export function RestaurantPaymentsScreen({
                       type="text"
                       className="settings-input"
                       value={midtransClientKey}
-                      onChange={(e) => setMidtransClientKey(e.target.value)}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setMidtransClientKey(val);
+                        updateRailParams('midtrans', { clientKey: val });
+                      }}
                       placeholder="SB-Mid-client-XXXXX"
                     />
                   </div>
@@ -868,7 +1171,11 @@ export function RestaurantPaymentsScreen({
                       type="password"
                       className="settings-input"
                       value={midtransServerKey}
-                      onChange={(e) => setMidtransServerKey(e.target.value)}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setMidtransServerKey(val);
+                        updateRailParams('midtrans', { serverKey: val });
+                      }}
                       placeholder="SB-Mid-server-XXXXX"
                     />
                   </div>
@@ -891,9 +1198,11 @@ export function RestaurantPaymentsScreen({
                           key={ch.key}
                           type="button"
                           className={`resto-compact-chip ${active ? 'resto-compact-chip--active' : ''}`}
-                          onClick={() =>
-                            setMidtransChannels((prev) => ({ ...prev, [ch.key]: !prev[ch.key] }))
-                          }
+                          onClick={() => {
+                            const next = { ...midtransChannels, [ch.key]: !midtransChannels[ch.key] };
+                            setMidtransChannels(next);
+                            updateRailParams('midtrans', { channels: next });
+                          }}
                           aria-pressed={active}
                         >
                           {ch.label}
@@ -913,7 +1222,11 @@ export function RestaurantPaymentsScreen({
                           type="checkbox"
                           role="switch"
                           checked={midtransAutoConfirm}
-                          onChange={(e) => setMidtransAutoConfirm(e.target.checked)}
+                          onChange={(e) => {
+                            const val = e.target.checked;
+                            setMidtransAutoConfirm(val);
+                            updateRailParams('midtrans', { autoConfirm: val });
+                          }}
                           aria-label="Instant Webhook"
                         />
                         <span className="settings-toggle-slider" />
@@ -928,7 +1241,15 @@ export function RestaurantPaymentsScreen({
                     <button
                       type="button"
                       className="resto-compact-btn"
-                      onClick={() => addToast({ message: 'Midtrans API credentials valid (Sandbox)', type: 'success' })}
+                      onClick={() => {
+                        const isConfigured = Boolean(midtransClientKey && midtransServerKey);
+                        addToast({
+                          message: isConfigured
+                            ? `Midtrans credentials format verified (${midtransEnv.toUpperCase()})`
+                            : 'Please enter Client Key and Server Key',
+                          type: isConfigured ? 'success' : 'warning',
+                        });
+                      }}
                     >
                       Test API Keys
                     </button>
@@ -959,14 +1280,20 @@ export function RestaurantPaymentsScreen({
                       <button
                         type="button"
                         className={`resto-segmented-btn ${stripeMode === 'test' ? 'resto-segmented-btn--active' : ''}`}
-                        onClick={() => setStripeMode('test')}
+                        onClick={() => {
+                          setStripeMode('test');
+                          updateRailParams('stripe', { mode: 'test' });
+                        }}
                       >
                         Test
                       </button>
                       <button
                         type="button"
                         className={`resto-segmented-btn ${stripeMode === 'live' ? 'resto-segmented-btn--active' : ''}`}
-                        onClick={() => setStripeMode('live')}
+                        onClick={() => {
+                          setStripeMode('live');
+                          updateRailParams('stripe', { mode: 'live' });
+                        }}
                       >
                         Live
                       </button>
@@ -984,7 +1311,11 @@ export function RestaurantPaymentsScreen({
                       type="text"
                       className="settings-input"
                       value={stripePublishableKey}
-                      onChange={(e) => setStripePublishableKey(e.target.value)}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setStripePublishableKey(val);
+                        updateRailParams('stripe', { publishableKey: val });
+                      }}
                       placeholder="pk_test_51..."
                     />
                   </div>
@@ -1000,7 +1331,11 @@ export function RestaurantPaymentsScreen({
                       type="password"
                       className="settings-input"
                       value={stripeSecretKey}
-                      onChange={(e) => setStripeSecretKey(e.target.value)}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setStripeSecretKey(val);
+                        updateRailParams('stripe', { secretKey: val });
+                      }}
                       placeholder="sk_test_51..."
                     />
                   </div>
@@ -1014,7 +1349,10 @@ export function RestaurantPaymentsScreen({
                     <SettingsSelect
                       id="stripe-reader"
                       value={stripeReader}
-                      onChange={(v) => setStripeReader(v)}
+                      onChange={(v: string) => {
+                        setStripeReader(v);
+                        updateRailParams('stripe', { reader: v });
+                      }}
                       options={[
                         { value: 'wisepos_e', label: 'BBPOS WisePOS E (Wi-Fi)' },
                         { value: 'reader_s700', label: 'Stripe Reader S700' },
@@ -1032,7 +1370,10 @@ export function RestaurantPaymentsScreen({
                     <SettingsSelect
                       id="stripe-currency"
                       value={stripeCurrency}
-                      onChange={(v) => setStripeCurrency(v)}
+                      onChange={(v: string) => {
+                        setStripeCurrency(v);
+                        updateRailParams('stripe', { currency: v });
+                      }}
                       options={[
                         { value: 'IDR', label: 'IDR - Indonesian Rupiah' },
                         { value: 'USD', label: 'USD - US Dollar' },
@@ -1049,7 +1390,15 @@ export function RestaurantPaymentsScreen({
                     <button
                       type="button"
                       className="resto-compact-btn"
-                      onClick={() => addToast({ message: 'Stripe API connection verified', type: 'success' })}
+                      onClick={() => {
+                        const isConfigured = Boolean(stripePublishableKey && stripeSecretKey);
+                        addToast({
+                          message: isConfigured
+                            ? `Stripe keys format valid (${stripeMode.toUpperCase()})`
+                            : 'Please enter Publishable Key and Secret Key',
+                          type: isConfigured ? 'success' : 'warning',
+                        });
+                      }}
                     >
                       Verify Keys
                     </button>
@@ -1088,6 +1437,21 @@ export function RestaurantPaymentsScreen({
           </div>
         )}
       </div>
+
+      {/* Unsaved Changes Confirmation Dialog */}
+      <UnsavedChangesDialog
+        open={showUnsavedDialog}
+        onCancel={() => setShowUnsavedDialog(false)}
+        onDiscard={() => {
+          setShowUnsavedDialog(false);
+          onBack?.();
+        }}
+        onSave={async () => {
+          await handleSave();
+          setShowUnsavedDialog(false);
+        }}
+        saving={saving}
+      />
     </div>
   );
 }

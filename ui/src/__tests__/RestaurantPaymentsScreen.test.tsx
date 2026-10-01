@@ -465,6 +465,48 @@ describe('RestaurantPaymentsScreen — save, dirty state & back', () => {
     expect(onBack).toHaveBeenCalledTimes(1);
   });
 
+  it('shows unsaved-changes dialog when back is clicked with dirty form', async () => {
+    const user = await import('@testing-library/user-event').then((m) => m.default);
+    const onBack = vi.fn();
+    await renderScreen({ onBack });
+
+    await screen.findByText('GoPay');
+    // Make form dirty by toggling Card switch
+    await user.click(screen.getByRole('switch', { name: 'Card' }));
+
+    await user.click(screen.getByTestId('restaurant-payments-back-btn'));
+    // Dialog should appear; onBack not yet called
+    expect(screen.getByTestId('unsaved-dialog-discard')).toBeInTheDocument();
+    expect(onBack).not.toHaveBeenCalled();
+  });
+
+  it('calls onBack when Discard is clicked in the unsaved dialog', async () => {
+    const user = await import('@testing-library/user-event').then((m) => m.default);
+    const onBack = vi.fn();
+    await renderScreen({ onBack });
+
+    await screen.findByText('GoPay');
+    await user.click(screen.getByRole('switch', { name: 'Card' }));
+
+    await user.click(screen.getByTestId('restaurant-payments-back-btn'));
+    await user.click(screen.getByTestId('unsaved-dialog-discard'));
+    expect(onBack).toHaveBeenCalledTimes(1);
+  });
+
+  it('closes dialog and stays when Cancel is clicked in the unsaved dialog', async () => {
+    const user = await import('@testing-library/user-event').then((m) => m.default);
+    const onBack = vi.fn();
+    await renderScreen({ onBack });
+
+    await screen.findByText('GoPay');
+    await user.click(screen.getByRole('switch', { name: 'Card' }));
+
+    await user.click(screen.getByTestId('restaurant-payments-back-btn'));
+    await user.click(screen.getByTestId('unsaved-dialog-cancel'));
+    expect(onBack).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('unsaved-dialog-discard')).toBeNull();
+  });
+
   it('does not render a back button when onBack is omitted', async () => {
     await renderScreen();
     await screen.findByText('GoPay');
