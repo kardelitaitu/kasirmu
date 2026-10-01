@@ -325,6 +325,12 @@ pub(super) async fn pg_snapshot_products(
             "updated_at".into(),
             serde_json::Value::String(row.try_get("updated_at").map_err(|e| e.to_string())?),
         );
+        // The read ERROR and the NULL are handled separately, which is the point:
+        // `try_get(..).map_err(..)?` PROPAGATES an unreadable column (same as
+        // `created_at`/`updated_at` above), and `unwrap_or_default()` applies only
+        // to the `Option` — a NULL becomes `""`, SQLite's spelling of "no
+        // timestamp". Collapsing the read error here too would make a broken query
+        // look like a product whose price never changed.
         let price_updated: Option<String> =
             row.try_get("price_updated_at").map_err(|e| e.to_string())?;
         m.insert(
