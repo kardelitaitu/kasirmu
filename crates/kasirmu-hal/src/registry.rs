@@ -462,6 +462,13 @@ impl DriverRegistry {
     /// rebuilds the printer from it at startup. The companion drawer is the
     /// same `PrinterKickCashDrawer` the other transports register — one
     /// Bluetooth link drives printer and drawer both.
+    /// NOT COMPILED ON A DESKTOP HOST, so no test run here can cover it -- the
+    /// reason to state its contract rather than leave it implicit. Its shape was
+    /// checked against its siblings by hand (audit sweep 2026-10-04): it mirrors
+    /// `register_serial_drawer` below exactly, and the symbols it names exist --
+    /// `AndroidBtReceiptPrinter::new(address: impl Into<String>, info: DeviceInfo)`
+    /// (`drivers/bt_android_printer.rs:47`) and
+    /// `transport::bt_android::paired_devices` (`transport/bt_android.rs:141`).
     #[cfg(target_os = "android")]
     pub async fn register_bt_android_printer(&self, id: &str, address: &str, info: DeviceInfo) {
         let printer_arc = Arc::new(
