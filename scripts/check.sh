@@ -443,6 +443,21 @@ step "mapper alignment" "python3 scripts/check-mapper-alignment.py" python3 scri
 # corpus never reads as clean.
 step "replay fork" "python3 scripts/check-replay-fork.py" python3 scripts/check-replay-fork.py
 
+# scripts/gates.json is the single source of truth for gate names and status
+# (AUDIT-27 CI-08), and it records which step in this script and which step in
+# dev-ci.yml runs each gate. Nothing compared those claims, so they rot: the
+# coverage-floors entry declared a CI step named "Generate coverage report" that
+# has never existed (dev-ci.yml has carried "Coverage report" since e44fed2b2),
+# which would have told an auditor the gate has no CI runner when it does.
+#
+# Decorated step names are matched by prefix (check.sh spells some steps "clippy
+# workspace", "no-raw-params (ADR #7 Phase 4)"), a hyphen is NOT a decorator
+# (skill-drift-guard is a different step from skill-drift), and a runner that
+# runs inline rather than through step() is reported as a NOTE rather than a
+# failure -- several advisory legs do that, and panic-inventory carries a
+# _runner_note saying so. Exits 2 on a refused --root.
+step "gate roster" "python3 scripts/check-gate-runners.py" python3 scripts/check-gate-runners.py
+
 # ── Namespace governance — soft rules for module seams (Round 4) ────────
 # ADR-62 named the seams; docs/architecture/module-namespace-governance.md names
 # the RULES and freezes today's debt as data. Deliberately SOFT: all modules share

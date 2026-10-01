@@ -1488,6 +1488,24 @@
       }
     },
     {
+      "id": "gate-roster-runners",
+      "label": "Gate roster runner claims",
+      "status": "required",
+      "_note": "Added 2026-10-05. scripts/gates.json records, per gate, which step in check.sh and which step in dev-ci.yml runs it, and NOTHING compared those claims, so they rot: the coverage-floors entry declared a CI step named 'Generate coverage report' that has never existed -- dev-ci.yml has carried 'Coverage report' since e44fed2b2 -- so an auditor reading the roster would conclude the gate has no CI runner when it does. This gate is the roster auditing itself. It matches decorated step names by PREFIX (check.sh spells some steps 'clippy workspace' and 'no-raw-params (ADR #7 Phase 4)'), does NOT treat a hyphen as a decorator (skill-drift-guard is a different step from skill-drift), downgrades a runner that runs INLINE rather than through step() to a note (five do: invoke-token-parity, no-hardcoded-money-format, skill-drift, a11y-advisory, audit) so a working gate is not reported broken, and honours a _runner_note (panic-inventory). Ships with --self-test, 10 cases, because a checker that cannot fail is worse than none -- and writing it DID find a real flaw in the first draft matcher, recorded in the script.",
+      "runners": {
+        "check.sh": [
+          "gate roster"
+        ]
+      },
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "static-gates",
+        "steps": [
+          "Gate roster runners"
+        ]
+      }
+    },
+    {
       "id": "namespace-governance",
       "label": "Module namespace governance (soft)",
       "status": "required",

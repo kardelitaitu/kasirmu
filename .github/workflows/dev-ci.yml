@@ -1153,6 +1153,13 @@ jobs:
       # drifts silently; this pins the control set on both sides.
       - name: Replay fork control set
         run: python3 scripts/check-replay-fork.py
+      # scripts/gates.json is the single source of truth for gate names and
+      # status, and it records which CI step runs each gate. Nothing compared
+      # those claims, so the coverage-floors entry sat claiming a step named
+      # "Generate coverage report" that has never existed -- which would tell an
+      # auditor the gate has no CI runner when it does.
+      - name: Gate roster runners
+        run: python3 scripts/check-gate-runners.py
       # R36-11: release.yml was renamed to .bak with an empty commit message and
       # nothing noticed that tagging had stopped producing installers. A workflow
       # that never runs cannot report its own breakage, so this validates the
