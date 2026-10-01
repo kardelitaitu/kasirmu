@@ -67,6 +67,46 @@ fn make_line(sku: &str, product_name: &str, qty: i64) -> StockTransferLine {
     }
 }
 
+/// A read FAILURE on the transfer status must surface as `Db`, not `NotFound`.
+///
+/// Four sites in `stock_transfers.rs` mapped with `.map_err(|_|
+/// CoreError::NotFound { .. })`, folding a broken query into "no such transfer".
+/// This file already contained the correct shape FIVE times over (the
+/// `QueryReturnedNoRows => NotFound, other => Db(other)` matches at
+/// `stock_transfers.rs:438,607,765,798` and the `Ok(None)` arm at `:150`), so the
+/// four blind ones were a minority of one shape against a majority of the other —
+/// the same neighbour-divergence tell that located the `inventory_seam` defect.
+///
+/// The distinction is not cosmetic here: each caller acts on the `status` it reads
+/// next (draft-only for `add_transfer_line`, draft/pending for `send_transfer`), so
+/// a misreported failure sends the operator to look for a transfer that exists.
+///
+/// Dropping the table is the discriminating input: the read fails while the
+/// surrounding statement stays valid.
+#[test]
+fn a_failed_transfer_status_read_refuses_instead_of_reporting_not_found() {
+    let conn = fresh();
+    seed_user(&conn, "user-1");
+    seed_product(&conn, "SKU-001", "Widget");
+    seed_inventory(&conn, "SKU-001", 100);
+    let lines = vec![make_line("SKU-001", "Widget", 10)];
+    let t = store(&conn)
+        .create_transfer(None, None, None, None, "", "user-1", &lines)
+        .unwrap();
+
+    // Make the status read fail rather than answer. `add_transfer_line` reads the
+    // transfer's status FIRST, so this is the statement under test.
+    conn.execute_batch("DROP TABLE stock_transfers;").unwrap();
+
+    let err = store(&conn)
+        .add_transfer_line(&t.id, "SKU-001", "Widget", 1)
+        .unwrap_err();
+    assert!(
+        matches!(err, CoreError::Db(_)),
+        "a failed status read must not be reported as a missing transfer, got {err:?}"
+    );
+}
+
 #[test]
 fn create_and_get_transfer() {
     let conn = fresh();
