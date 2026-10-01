@@ -13344,4 +13344,41 @@ move the count pin and regenerate the PG replica in the same pass. They are iner
 (no reader, no writer, no policy that depends on them), so the cost of leaving them is
 schema noise rather than risk. Recorded for the allocator's owner to decide.
 
+## 2026-10-04 — The credit-sale listing shows a payment gateway reference in its Customer column (`kasirmu-bridge`)
+
+Found while sweeping row mappers for reads that degrade instead of propagating. Not a swallow —
+a **column/field misalignment**, which is the worse version of the same family: the value is
+present, correctly typed, and wrong.
+
+`run_list_credit_sales` (`crates/kasirmu-bridge/src/settings/core.rs:66`) selects
+`s.id, p.gateway_reference, s.total_minor, s.currency, s.created_at, p.settled_at,
+COALESCE(u.display_name, '')` and maps those seven columns onto `CreditSaleDto` **positionally**.
+Index 1 is `p.gateway_reference`, and it lands in `customer_name`; `cashier_name` takes index 6,
+the display name. So the projection never reads any customer column at all — it reads the
+payment gateway's reference into the field the UI shows as the buyer.
+
+**Measured, then pinned** (`kasirmu-bridge/src/settings_tests.rs`,
+`the_credit_sale_projection_maps_gateway_reference_into_the_customer_column`, added by
+`a3c871787`): a completed credit sale for customer 'Bagus' (`sales.customer_id` → `customers.id`),
+with a payment whose `gateway_reference` is `GW-REF-9`, returns `customer_name == "GW-REF-9"`.
+The retail credit list renders that field in a **Customer** column
+(`ui/src/features/retail/RetailModals.tsx:376`, `{c.customerName || '—'}`), so an operator reads
+`GW-REF-9` where a name belongs.
+
+**Why it survived.** The existing pin for this type
+(`credit_sale_dto_emits_the_camel_case_wire_the_retail_list_reads`) constructs a `CreditSaleDto`
+from hand-written literals and asserts its serialized shape. That is a real pin — it caught the
+2026-09-15 snake_case/camelCase break — but it is blind to the query, because it never runs one.
+A DTO-shape pin and a query-mapping pin are different facts, and only the first existed. The
+struct's doc comment makes the confusion concrete: it calls this field "the cashier name", while
+the column at its index is the gateway reference — three different readings of one line, none of
+them checked by anything.
+
+**NOT fixed here, deliberately.** Which column a customer name should come from is a product
+ruling, not a repair: `customers.name` exists (`migrations/20260813_init.sql:102`) and the
+projection does not join it, but choosing between adding that join, renaming the field to match
+what it currently carries, or dropping the field from the wire changes what a cashier sees and
+is a behaviour change to a surface already repaired once under this name. What this round could
+do honestly is remove the blindness, so the pin now fails on any future edit to the projection
+and the swap can no longer happen unseen. Recorded for the credit-list owner to decide.
 > last audited 29-09-26 by docs-auditor
