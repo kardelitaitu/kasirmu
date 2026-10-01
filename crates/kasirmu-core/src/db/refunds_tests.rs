@@ -2005,10 +2005,27 @@ fn seed_sale_with_a_qty_less_deduction(conn: &Connection) {
     ).unwrap();
 }
 
-/// The bound is understated, so the refund is REFUSED: dropping the qty-less
-/// entry makes the check fire sooner, never later. A refund of 3 units against a
-/// counted deduction total of 2 is rejected even though the sale line sold 5 —
-/// if the sign were the other way this assert would be an `is_ok()`.
+/// A deduction entry with a MISSING `qty` key must REFUSE where it is read.
+///
+/// The cumulative bound under the COR-25 comment used to be
+/// `deductions.iter().filter_map(|d| d["qty"].as_i64()).sum()`, which silently
+/// DROPPED an entry it could not read and so left the bound too LOW — the
+/// dangerous direction, since `credit_after > total_deducted` is what stops the
+/// credit at the amount actually deducted. `5e287684f` replaced that with the
+/// fail-closed loop now in `refunds/credit.rs:84-98`, which NAMES the bad entry
+/// instead of skipping it.
+///
+/// This test asserted the OLD contract — that the entry is dropped and the bound
+/// understates, so a 3-unit refund is refused by the bound rather than by the read.
+/// It went red when `5e287684f` landed, and stayed red because that commit changed
+/// `credit.rs` only: its own message records that the test file carried 68
+/// uncommitted lines from another session, so a pathspec commit could not carry
+/// the edit with it. The refusal is the same either way; only the field and the
+/// point of refusal moved, earlier and more precisely.
+///
+/// The companion at `refund_deduction_entry_with_a_non_integer_qty_fails` covers
+/// the well-formed-input case (a real qty of the wrong type, `"2"`); this one is
+/// the missing-key case. Both are refused, and neither moves stock.
 #[test]
 fn a_deduction_entry_with_no_qty_understates_the_bound_and_refuses_the_refund() {
     let conn = fresh();
@@ -2032,8 +2049,8 @@ fn a_deduction_entry_with_no_qty_understates_the_bound_and_refuses_the_refund() 
     let err = s.create_refund(&refund).unwrap_err();
     let shown = format!("{err:?}");
     assert!(
-        matches!(err, CoreError::Validation { field, .. } if field == "refund_line.qty"),
-        "expected the cumulative-qty bound to refuse, got {shown}"
+        matches!(err, CoreError::Validation { field, .. } if field == "deduction_locations.qty"),
+        "a qty-less deduction entry must be refused where it is read, not dropped from the bound, got {shown}"
     );
     let movements: i64 = conn
         .query_row("SELECT COUNT(*) FROM stock_movements", [], |r| r.get(0))
