@@ -204,6 +204,18 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingKeysRef = useRef<Set<string>>(new Set());
   const mountedRef = useRef(true);
+  // A monotonic token, so only the LATEST load may write into `settings`.
+  //
+  // `loadAll` depends on sessionToken, so the initial-load effect below re-runs
+  // on every STORE SWITCH and those reads overlap. `mountedRef` only guards
+  // unmount -- it stays true across a switch -- so a slower read from the previous
+  // store could land afterwards and overwrite the current store's settings:
+  // receipt format, tax configuration and CURRENCY among them.
+  //
+  // This is the same defect CurrencyContext.refresh had (51c86e9e8), on a wider
+  // surface. Bumping on unmount also retires any read still in flight when the
+  // provider goes away.
+  const loadSeq = useRef(0);
 
   // Read sessionToken for scoped settings APIs. `terminalId` is the
   // device id (`getDeviceId()`); the backend tags `settings_updated` events
@@ -273,6 +285,13 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
     setLoading(true);
     setError(null);
 
+    // Same invalidation as loadScoped: `loadAll` depends on sessionToken, so a
+    // store switch starts a second one while the first is in flight, and
+    // allSettled only guarantees the WRITES are batched -- not that they belong to
+    // the store that is still active when they land.
+    const seq = ++loadSeq.current;
+    const stale = () => loadSeq.current !== seq;
+
     const results = await Promise.allSettled([
       getReceiptSettingsScoped(sessionToken),
       getStoreSettingsScoped(sessionToken),
@@ -286,6 +305,9 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
 
     let hasAnyFailure = false;
     try {
+      // A store switch during this load supersedes it entirely: applying any part
+      // of it would mix two stores' receipt, tax and currency settings.
+      if (stale()) return;
       if (rR.status === 'fulfilled' && rR.value) {
         setSettings((prev) => ({ ...prev, receipt: rR.value }));
       } else {
@@ -367,11 +389,15 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
     }
 
     setLoading(true);
+    // Only this load may write: a store switch invalidates every earlier one.
+    const seq = ++loadSeq.current;
+    const stale = () => loadSeq.current !== seq;
     const tasks: Array<Promise<unknown>> = [];
 
     if (scopes.has('receipt')) {
       tasks.push(
         getReceiptSettingsScoped(sessionToken).then((v) => {
+          if (stale()) return;
           if (!v) return;
           setSettings((prev) => ({ ...prev, receipt: v }));
         }),
@@ -380,6 +406,7 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
     if (scopes.has('store')) {
       tasks.push(
         getStoreSettingsScoped(sessionToken).then((v) => {
+          if (stale()) return;
           if (!v) return;
           setSettings((prev) => ({ ...prev, store: v }));
         }),
@@ -388,6 +415,7 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
     if (scopes.has('currencies')) {
       tasks.push(
         listCurrenciesScoped(sessionToken).then((v) => {
+          if (stale()) return;
           if (!v) return;
           setSettings((prev) => ({ ...prev, currencies: v }));
         }),
@@ -396,6 +424,7 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
     if (scopes.has('sync')) {
       tasks.push(
         getSyncSettingsScoped(sessionToken).then((v) => {
+          if (stale()) return;
           if (!v) return;
           setSettings((prev) => ({ ...prev, sync: withSyncDefaults(v) }));
         }),
@@ -404,6 +433,7 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
     if (scopes.has('preferences')) {
       tasks.push(
         getUserPreferencesScoped(sessionToken).then((p) => {
+          if (stale()) return;
           if (!p) return;
           const cardSize = p['cardsize'] !== undefined
             ? Math.min(4, Math.max(0, parseInt(p['cardsize'], 10) || 0))
@@ -422,6 +452,7 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
     if (scopes.has('brand')) {
       tasks.push(
         getBrandSettingsScoped(sessionToken).then((v) => {
+          if (stale()) return;
           if (!v) return;
           setSettings((prev) => ({
             ...prev,
@@ -433,6 +464,7 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
     if (scopes.has('version')) {
       tasks.push(
         getVersionScoped(sessionToken).then((v: VersionInfo) => {
+          if (stale()) return;
           if (!v) return;
           setSettings((prev) => ({ ...prev, appVersion: v.version }));
         }),
@@ -440,7 +472,9 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
     }
 
     await Promise.allSettled(tasks);
-    if (mountedRef.current) setLoading(false);
+    // A superseded load must not clear the CURRENT load's spinner -- that is how a
+    // stale write made itself visible in the first place.
+    if (mountedRef.current && !stale()) setLoading(false);
   }, [sessionToken, loadAll]);
 
   // ── Debounced update handler ────────────────────────────────
@@ -483,6 +517,9 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
     loadAll();
     return () => {
       mountedRef.current = false;
+      // Retire any load still in flight: `mountedRef` guards the effect body but
+      // not a `loadAll`/`loadScoped` that has already awaited past it.
+      loadSeq.current += 1;
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
   }, [loadAll]);
