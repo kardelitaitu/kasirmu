@@ -499,13 +499,16 @@ export function RestaurantPaymentsScreen({
 
   const dirty = useMemo(() => {
     void dirtyVersion;
+    if (loading || !originalsRef.current.drafts || originalsRef.current.drafts.length === 0) {
+      return false;
+    }
     return computeRailsDirty(
-      originalsRef.current.drafts ?? [],
+      originalsRef.current.drafts,
       drafts,
       originalsRef.current.defaultEdcTerminalId,
       defaultEdcTerminalId,
     );
-  }, [drafts, defaultEdcTerminalId, dirtyVersion]);
+  }, [loading, drafts, defaultEdcTerminalId, dirtyVersion]);
 
   // ── Helper to update rail parameters safely ───────────────────────
   const updateRailParams = useCallback((code: string, newParams: Record<string, unknown>) => {
