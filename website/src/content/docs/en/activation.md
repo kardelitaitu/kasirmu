@@ -3,7 +3,7 @@ title: License Activation
 description: Get a license key, activate it in the app, and manage your machines.
 category: gettingStarted
 order: 4
-updated: "2026-08-30"
+updated: "2026-10-01"
 ---
 
 ## Get a license key

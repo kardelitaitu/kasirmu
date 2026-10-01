@@ -3,7 +3,7 @@ title: Selamat Datang di kasir.mu
 description: Apa itu kasir.mu dan bagaimana dokumentasi ini disusun.
 category: gettingStarted
 order: 1
-updated: "2026-08-30"
+updated: "2026-10-01"
 ---
 
 ## Apa itu kasir.mu?

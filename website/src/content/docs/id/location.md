@@ -3,7 +3,7 @@ title: Lokasi & Topologi
 description: Modelkan cabang, register, dan gudang dalam satu editor visual.
 category: guides
 order: 4
-updated: "2026-08-16"
+updated: "2026-10-01"
 ---
 
 <!-- Audit stamp: 2026-09-08 · DSH · status: DRIFT - UNREPAIRED ON PURPOSE (1 finding) · Indonesian counterpart of en/stores.md. Page parity is intact (17 en pages, 17 id pages, no gaps either way), and terminology is not the problem one would guess: across all 17 en pages there are 7 capitalized uses of “Store” against 2 of “Location”, so the store→location rename did NOT sweep the customer docs - which is a product question, not a doc-vs-code defect to repair unasked. · The real drift: en/stores.md gained a “Deploy history” section on 08-09-26 documenting a shipped, customer-visible capability (ADR #46 revision browser). This page does not have it. · NOT machine-translated. Authoring customer-facing Indonesian product copy from an English draft is a copywriting decision with brand implications, and an unreviewed translation is worse than a visible gap because it reads as authoritative. Needs a translator or a product decision; recorded here so the gap is deliberate rather than accidental. -->

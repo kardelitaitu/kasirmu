@@ -3,7 +3,7 @@ title: Aktivasi Lisensi
 description: Dapatkan kunci lisensi, aktifkan di aplikasi, dan kelola perangkat Anda.
 category: gettingStarted
 order: 4
-updated: "2026-08-30"
+updated: "2026-10-01"
 ---
 
 ## Dapatkan kunci lisensi

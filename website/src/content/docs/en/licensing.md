@@ -3,7 +3,7 @@ title: Licensing & Plans
 description: Plans, the free-forever tier, expiry, and the grace period.
 category: reference
 order: 1
-updated: "2026-08-17"
+updated: "2026-10-01"
 ---
 
 ## Plans

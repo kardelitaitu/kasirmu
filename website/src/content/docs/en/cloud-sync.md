@@ -3,7 +3,7 @@ title: Cloud Sync
 description: Sync across locations and registers through the cloud.
 category: guides
 order: 8
-updated: "2026-08-16"
+updated: "2026-10-01"
 ---
 
 ## How sync works

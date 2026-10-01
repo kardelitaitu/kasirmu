@@ -3,7 +3,7 @@ title: Installation
 description: Install kasir.mu on Windows, macOS, or Linux.
 category: gettingStarted
 order: 3
-updated: "2026-09-23"
+updated: "2026-10-01"
 ---
 
 ## System requirements

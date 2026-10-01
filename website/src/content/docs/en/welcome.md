@@ -3,7 +3,7 @@ title: Welcome to kasir.mu
 description: What kasir.mu is and how this documentation is organized.
 category: gettingStarted
 order: 1
-updated: "2026-08-30"
+updated: "2026-10-01"
 ---
 
 ## What is kasir.mu?
