@@ -82,12 +82,13 @@ impl Store<'_> {
                     message: "deduction entry records no integer qty, so the ".to_string()
                         + "deductible bound cannot be computed",
                 })?;
-                total_deducted = total_deducted
-                    .checked_add(qty)
-                    .ok_or_else(|| CoreError::Validation {
-                        field: "deduction_locations.qty",
-                        message: "deducted quantity overflow".to_string(),
-                    })?;
+                total_deducted =
+                    total_deducted
+                        .checked_add(qty)
+                        .ok_or_else(|| CoreError::Validation {
+                            field: "deduction_locations.qty",
+                            message: "deducted quantity overflow".to_string(),
+                        })?;
             }
             let refund_qty = refund_line.qty;
 
