@@ -507,6 +507,12 @@ jobs:
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
+      # The workspace .cargo/config.toml sets RUSTC_WRAPPER=sccache, so every job
+      # that compiles Rust has to install it. This job was the last one that did
+      # not, and the failure was masked until the llvm-cov install above was
+      # fixed: cargo died with "could not execute process `sccache ...` (never
+      # executed) / No such file or directory" on the coverage run itself.
+      - uses: mozilla/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
       - name: Install system dependencies (Linux)
         run: |
           sudo apt-get update
