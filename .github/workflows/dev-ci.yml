@@ -1145,6 +1145,14 @@ jobs:
       # step -- see scripts/check-mapper-alignment.py for the record.
       - name: Mapper alignment
         run: python3 scripts/check-mapper-alignment.py
+      # The COR-7 per-attempt idempotency rules exist TWICE -- the implementation
+      # in kasirmu-bridge and a fork in the tablet shell -- and the fork drifted
+      # into a security defect: only the bridge refused a colon in the attempt id,
+      # which is what stops a crafted id forging another attempt's re-key LOOKUP
+      # key (fixed 1596631d2). A rule added to one fork without a cross-shell pin
+      # drifts silently; this pins the control set on both sides.
+      - name: Replay fork control set
+        run: python3 scripts/check-replay-fork.py
       # R36-11: release.yml was renamed to .bak with an empty commit message and
       # nothing noticed that tagging had stopped producing installers. A workflow
       # that never runs cannot report its own breakage, so this validates the
