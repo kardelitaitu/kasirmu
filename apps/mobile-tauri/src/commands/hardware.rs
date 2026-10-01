@@ -427,9 +427,12 @@ pub async fn list_scanners_scoped(
         .await
         .clone()
         .unwrap_or_else(|| "unknown".to_string());
+    // Propagates: a scanner preference that could not be READ is not the same
+    // as one that was never saved, and treating it as absent would offer every
+    // scanner and ignore the saved device.
     let (preferred, mode) = {
         let conn = state.db.lock().await;
-        kasirmu_bridge::hardware::scanner_prefs(&conn, &terminal_id)
+        kasirmu_bridge::hardware::scanner_prefs(&conn, &terminal_id)?
     }; // guard dropped: Connection is !Send
     Ok(prefer_first(
         kasirmu_bridge::hardware::ids_for_mode(ids, &mode)

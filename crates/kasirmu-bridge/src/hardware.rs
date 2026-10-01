@@ -37,6 +37,8 @@ use kasirmu_hal::transport::usb::{UsbDeviceInfo, probe_all};
 use kasirmu_hal::{BarcodeScanner, DisplayContent, HalErrorKind};
 use platform_core::terminal_profile::TerminalProfile;
 
+use rusqlite::OptionalExtension;
+
 use crate::ctx::BridgeCtx;
 use crate::error::BridgeError;
 
@@ -584,7 +586,7 @@ pub fn prefer_first(mut scanners: Vec<ScannerInfo>, preferred: &str) -> Vec<Scan
 /// the workspace settings card was saved and then never consulted again —
 /// [`prefer_first`] could never move anything. The profile is canonical;
 /// the legacy keys cover terminals whose profile was written before it.
-async fn saved_scanner_prefs(ctx: &BridgeCtx<'_>) -> (String, String) {
+async fn saved_scanner_prefs(ctx: &BridgeCtx<'_>) -> Result<(String, String), BridgeError> {
     let terminal_id = ctx
         .terminal_id
         .lock()
@@ -608,24 +610,48 @@ async fn saved_scanner_prefs(ctx: &BridgeCtx<'_>) -> (String, String) {
 /// Exposed as a plain DB read so the shell that has not delegated
 /// `list_scanners_scoped` yet can share it instead of growing a second
 /// copy of the query.
-pub fn scanner_prefs(conn: &rusqlite::Connection, terminal_id: &str) -> (String, String) {
+///
+/// # Errors
+///
+/// Every failure here PROPAGATES. This used to return a bare `(String, String)`
+/// and fold each of its three reads into a default — a missing profile row fell
+/// through via `.ok()`, and both legacy keys via `unwrap_or_default()`. An
+/// unreadable `hardware_profiles` or `settings` table therefore produced
+/// `("", "")`, which is byte-identical to the answer for a terminal that has
+/// never been configured: the saved Device ID stopped being fronted, and an
+/// empty mode falls to the `_ => ids` arm of [`ids_for_mode`], so a
+/// `keyboard`-wedge terminal would silently open COM ports and a serial-only one
+/// would be handed a HID device. `None` from the profile lookup is the ONE
+/// legitimate absence (no row yet) and still falls through to the legacy keys.
+pub fn scanner_prefs(
+    conn: &rusqlite::Connection,
+    terminal_id: &str,
+) -> Result<(String, String), BridgeError> {
     let from_profile = conn
         .query_row(
             "SELECT profile_json FROM hardware_profiles WHERE terminal_id = ?1",
             rusqlite::params![&terminal_id],
             |row| row.get::<_, String>(0),
         )
-        .ok()
-        .and_then(|json| serde_json::from_str::<TerminalProfile>(&json).ok());
+        .optional()
+        .map_err(BridgeError::from)?;
 
-    if let Some(profile) = from_profile {
-        return (profile.scanner_device_id, profile.scanner_input_mode);
+    if let Some(json) = from_profile {
+        // A stored profile that does not parse is corruption, not an absence:
+        // falling through would silently ignore a configuration the operator
+        // did save.
+        let profile: TerminalProfile = serde_json::from_str(&json).map_err(|e| {
+            BridgeError::Internal(format!(
+                "terminal profile for '{terminal_id}' is not readable: {e}"
+            ))
+        })?;
+        return Ok((profile.scanner_device_id, profile.scanner_input_mode));
     }
 
-    (
-        Settings::get_scanner_device_id(conn).unwrap_or_default(),
-        Settings::get_scanner_input_mode(conn).unwrap_or_default(),
-    )
+    Ok((
+        Settings::get_scanner_device_id(conn)?,
+        Settings::get_scanner_input_mode(conn)?,
+    ))
 }
 
 /// Which registered scanners the saved input mode allows.
@@ -671,7 +697,7 @@ pub async fn list_scanners_scoped(
     // authenticated operator. Gating it is a product ruling, not a repair.
     ctx.resolve_scope(session_token)?;
     let ids = ctx.registry.scanner_ids_ranked().await;
-    let (preferred, mode) = saved_scanner_prefs(ctx).await;
+    let (preferred, mode) = saved_scanner_prefs(ctx).await?;
     Ok(prefer_first(
         ids_for_mode(ids, &mode)
             .into_iter()

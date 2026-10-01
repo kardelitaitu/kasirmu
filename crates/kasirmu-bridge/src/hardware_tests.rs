@@ -302,6 +302,62 @@ fn serial_mode_offers_only_port_backed_scanners() {
     assert_eq!(got, ids_of(&["scanner:serial:COM7", "scanner:bt:COM9"]));
 }
 
+// -- a scanner preference that cannot be read is not an unconfigured terminal --
+
+/// `scanner_prefs` returned a bare `(String, String)` and folded all three of
+/// its reads into defaults: a FAILED `hardware_profiles` query fell through via
+/// `.ok()`, and both legacy keys via `unwrap_or_default()`. An unreadable
+/// `settings` table therefore produced `("", "")` -- byte-identical to a
+/// terminal that was never configured. The saved Device ID stopped being
+/// fronted, and an empty mode falls to the `_ => ids` arm of `ids_for_mode`, so
+/// a `keyboard`-wedge terminal would open COM ports and a serial-only one would
+/// be handed a HID device.
+///
+/// The pin makes `settings` PRESENT but unreadable (BLOB `value`) and asserts
+/// the read refuses instead of answering "nothing saved". No profile row exists
+/// for the terminal, so the legacy branch is the one exercised.
+#[test]
+fn an_unreadable_settings_table_is_not_an_unconfigured_terminal() {
+    let conn = rusqlite::Connection::open_in_memory().expect("in-memory settings db");
+    conn.execute_batch(
+        "CREATE TABLE hardware_profiles (terminal_id TEXT PRIMARY KEY, profile_json TEXT NOT NULL); \
+         CREATE TABLE settings (key TEXT PRIMARY KEY, value BLOB NOT NULL, \
+                                 updated_at TEXT NOT NULL DEFAULT ''); \
+         INSERT INTO settings (key, value) VALUES ('scanner.device_id', x'80');",
+    )
+    .expect("building the settings tables");
+
+    let err = scanner_prefs(&conn, "term-1")
+        .expect_err("an unreadable settings table must not read as no preference");
+    assert!(
+        matches!(err, BridgeError::Core { .. }),
+        "expected the read failure to surface, got {err:?}"
+    );
+}
+
+#[test]
+fn a_missing_profile_row_falls_through_to_the_legacy_keys() {
+    // The ONE legitimate absence: no profile row yet. It must not error, and it
+    // must still resolve the legacy keys.
+    let conn = rusqlite::Connection::open_in_memory().expect("in-memory settings db");
+    conn.execute_batch(
+        "CREATE TABLE hardware_profiles (terminal_id TEXT PRIMARY KEY, profile_json TEXT NOT NULL); \
+         CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, \
+                                 updated_at TEXT NOT NULL DEFAULT ''); \
+         INSERT INTO settings (key, value) VALUES ('scanner.device_id', 'scanner:usb:abc');",
+    )
+    .expect("building the settings tables");
+
+    let (preferred, mode) = scanner_prefs(&conn, "term-1").expect("absence must not error");
+    assert_eq!(preferred, "scanner:usb:abc");
+    // The getter's own documented default for an ABSENT key is "auto"
+    // (platform/core/src/settings/typed.rs:272), which is what makes the outer
+    // `unwrap_or_default()` the old code carried doubly wrong: it could only
+    // fire on an error, and it would have replaced that documented default with
+    // an empty string.
+    assert_eq!(mode, "auto");
+}
+
 // -- receipt config: a failed legacy footer read must not read as "no footer" --
 
 /// `read_receipt_config_for_scope` resolves the footer from three layers, the
