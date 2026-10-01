@@ -888,14 +888,39 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
     () => setClosedShiftSummary(null),
   );
 
-  useEffect(() => {
+  // Guarded, and this is the most consequential site in the class. Same shape as
+  // usePosShifts (1aead7518) -- deps name sessionToken, so a store switch starts a
+  // second read while the first is in flight -- but the consequence here is worse.
+  //
+  // `handleCloseShift` passes `activeShift.id` to closeShiftScoped along with the
+  // counted closing balance. A stale shift from the PREVIOUS store would therefore
+  // let the cashier CLOSE that store's shift against this store's count -- a wrong
+  // closing balance written to another tenant's ledger. On the sales-POS twin the
+  // stale value merely refuses or mislabels; here it writes money.
+  //
+  // Note the setActiveShift(null) above: clearing on entry is itself a write, so the
+  //   clear is sequenced too rather than running unconditionally before the guard.
+  const shiftSeq = useRef(0);  useEffect(() => {
     if (!sessionToken) return;
+    const seq = ++shiftSeq.current;
+    const stale = () => shiftSeq.current !== seq;
     setActiveShift(null);
     setShiftLoading(true);
     getActiveShiftScoped(sessionToken)
-      .then((s) => setActiveShift(s))
-      .catch(() => setActiveShift(null))
-      .finally(() => setShiftLoading(false));
+      .then((s) => {
+        if (stale()) return;
+        setActiveShift(s);
+      })
+      .catch(() => {
+        if (stale()) return;
+        setActiveShift(null);
+      })
+      .finally(() => {
+        if (!stale()) setShiftLoading(false);
+      });
+    return () => {
+      shiftSeq.current += 1;
+    };
   }, [sessionToken]);
 
   const handleOpenShift = useCallback(async () => {
