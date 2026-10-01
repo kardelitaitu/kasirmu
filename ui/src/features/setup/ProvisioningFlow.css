@@ -275,6 +275,39 @@
   color: var(--color-fg-muted);
 }
 
+/* The rail marker is a control now. It must still look like the marker it
+ * replaced until the merchant has reason to think it is pressable, so it adds
+ * no chrome — only the affordance and a focus ring worth the name. */
+.provisioning-step-jump {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.provisioning-step-jump:disabled {
+  cursor: default;
+}
+
+.provisioning-step-jump:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+/* Navigation row. Back holds the left slot on every step so the primary action
+ * does not move sideways as the merchant advances. */
+.provisioning-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
 .provisioning-header {
   text-align: center;
 }
