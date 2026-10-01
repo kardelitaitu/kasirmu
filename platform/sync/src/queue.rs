@@ -637,13 +637,29 @@ impl SyncQueue {
             // `query_row(...).optional()?` — the `?` PROPAGATES a read error, so the
             // live path has no such swallow.
             //
-            // The defect here is real for anyone who reads this arm as production
-            // code: `.ok().flatten().is_none()` makes a FAILED read indistinguishable
-            // from a missing product, so a transient store fault falls into the
-            // create branch below and then fails on `products.sku`'s UNIQUE
-            // constraint (`20260813_init.sql:441`) — reporting a duplicate-product
-            // problem that does not exist while the real fault stays hidden. If this
-            // arm is ever revived, propagate with `?` as the live arm does.
+            // TWO defects here are real for anyone who reads this arm as production
+            // code, and BOTH are fixed by copying the live arm above rather than by
+            // patching this one in place:
+            //
+            // (a) `.ok().flatten().is_none()` on the probe below (line ~660) makes a
+            //     FAILED read indistinguishable from a missing product, so a
+            //     transient store fault falls into the create branch and then fails
+            //     on `products.sku`'s UNIQUE constraint (`20260813_init.sql:441`) —
+            //     reporting a duplicate-product problem that does not exist while
+            //     the real fault stays hidden.
+            //
+            // (b) The payload defaults are VALID-LOOKING, which is the sharper
+            //     defect and the reason this arm cannot simply be copied verbatim
+            //     from the live one. Here `name` defaults to "Unknown",
+            //     `price_minor` to `0` and `currency` to "USD". A drifted payload
+            //     missing those keys therefore creates a REAL product named
+            //     "Unknown" priced at 0 USD, because every downstream guard passes:
+            //     `create_product` checks only that the name is non-empty and the
+            //     price is non-negative, and both hold. Contrast the LIVE arm
+            //     (line ~417), which defaults `price_minor` to the INVALID sentinel
+            //     `-1` so the same guard rejects it, and leaves `sku`/`name` as ""
+            //     so the empty-string checks fire. The live arm's defaults all land
+            //     on a REFUSAL; this arm's all land on a plausible product.
             "product.created" => {
                 let payload: serde_json::Value = serde_json::from_str(&item.payload)
                     .map_err(|e| CoreError::Internal(format!("invalid product payload: {e}")))?;

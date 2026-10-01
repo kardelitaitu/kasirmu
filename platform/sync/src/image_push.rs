@@ -272,6 +272,16 @@ impl ImagePushScheduler {
                         let mut map = std::collections::HashMap::new();
                         if let Some(results) = json["results"].as_array() {
                             for item in results {
+                                // Both defaults fail CLOSED, verified against the
+                                // consumer below rather than assumed from the
+                                // literal: `success` is true only for "stored" or
+                                // "duplicate" (line ~305), so an unrecognised status
+                                // maps to the retry branch, and a missing `hash`
+                                // inserts under "" which no real hash can match, so
+                                // `outcomes.get(hash)` yields None and takes the SAME
+                                // retry branch. A garbled or drifted response
+                                // therefore cannot be mistaken for a successful push --
+                                // the image is retried, never silently marked done.
                                 let status = item["status"].as_str().unwrap_or("rejected");
                                 let hash = item["hash"].as_str().unwrap_or_default().to_owned();
                                 map.insert(hash, status.to_owned());
