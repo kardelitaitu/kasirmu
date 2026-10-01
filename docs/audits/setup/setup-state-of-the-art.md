@@ -1996,6 +1996,13 @@ the gate explainer, the region disclosure, the version footer, and the tablet op
 Code** with **QR Pairing:false** — the solo-device default. The wizard button's
 `#/mobile-setup` navigation also worked, which is the dead button round 36 fixed.
 
+> **Correction 2026-10-01:** the `#/mobile-setup` destination this round verified working —
+> the phone-styled wizard — has since been **retired outright** (`6ad643471`), along with the
+> tab that navigated to it. It made no backend calls and could mark a tablet provisioned
+> with no store, no owner and no PIN, so the retirement was a repair, not a simplification.
+> The measurement above was true when taken; the surface it measured no longer exists. The
+> account-linking routes it duplicated live on in `ProvisioningFlow`'s own tabs.
+
 ### 2. A defect only a device could find: a message that never loaded
 
 The WebView console, on a fresh install, repeated:

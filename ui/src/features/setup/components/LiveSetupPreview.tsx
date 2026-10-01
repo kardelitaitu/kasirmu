@@ -2,7 +2,14 @@
  * LiveSetupPreview — real-time preview of which workspaces and
  * navigation items will be unlocked by the currently-selected features.
  *
- * Embedded in SetupWizard (Review step) and FeatureToggleScreen.
+ * Embedded in FeatureToggleScreen only. This header used to name two homes:
+ * the retired SetupWizard's review step, and FeatureToggleScreen. The first
+ * died weeks ago and its replacement, ProvisioningFlow, never embedded this —
+ * it cannot, because the store type IS the feature set there (ADR #56 §2.3:
+ * the preset is evaluated, not interrogated), so a per-feature preview would
+ * imply a choice the flow does not offer. Leaving the second name up made the
+ * file look like shared setup infrastructure when its only live consumer is
+ * the settings screen.
  */
 import { useMemo } from 'react';
 import { Localized, useLocalization } from '@fluent/react';
