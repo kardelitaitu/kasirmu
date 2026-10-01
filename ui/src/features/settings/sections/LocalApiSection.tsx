@@ -76,9 +76,24 @@ export default function LocalApiSection() {
   // complete answer -- a file that binds an uncontrolled input, or writes through a
   // callback parameter rather than a setter, would not appear.
   //
-  // THE HONEST RESIDUE: one site is fixed and one is a false positive (setStatus here
-  // binds a READ-ONLY display at value={status.storeId}). Whether other files poll over
-  // a bound field is UNVERIFIED.
+  // BOTH BLIND SPOTS ARE NOW CLOSED (round 132), so this is a clearance rather than the
+  // boundary round 131 recorded:
+  //
+  //   blind spot 2 -- a poll calling a FUNCTION that writes bound state, which the
+  //     window-based detector could not see. Resolving the interval's callee and scanning
+  //     the function BODY gets it, and the detector was CONTROL-TESTED both ways: it fires
+  //     on a poll whose callee writes a value={} field, and stays silent when that state
+  //     is only rendered in a span. Result: ZERO files.
+  //
+  //   blind spot 1 -- uncontrolled inputs and ref bindings. Widened to value/defaultValue/
+  //     checked/ref. Result: three hits, ALL false positives -- this file's `status` (a
+  //     read-only display), and `pairingSession` in LicenseActivationScreen and
+  //     ProvisioningFlow, where the poll only READS the session and writes nothing but
+  //     `pairingExpired`.
+  //
+  // So the poll-clobber defect has exactly one instance in ui/src and it is the one fixed
+  // above. Both scans carry working controls, which is what makes the negative meaningful
+  // where round 131's was not.
 
   const refresh = useCallback(async () => {
     if (!sessionToken) return;
