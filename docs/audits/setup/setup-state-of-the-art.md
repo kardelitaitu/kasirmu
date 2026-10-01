@@ -2154,24 +2154,25 @@ This audit made the opposite call deliberately and recorded it **above**, at rou
 > form is about to ask. Detail can be disclosed progressively; a choice should stay visible. I
 > narrowed the change rather than editing the test.
 
-So the draft that was reverted is now the shipped behaviour, and the test that was kept is now
-red. A genuine wizard may well be the better call — but that is a **change of decision**, and
-nothing records it reversing round 30. Whoever owns the flow should decide which side moves:
+So the draft that was reverted is now the shipped behaviour. A genuine wizard may well be the
+better call — but that is a **change of decision**, and nothing records it reversing round 30. The
+question left open here was which side moves:
 
-- **keep the wizard** — then `provisioning.spec.ts:37` and the tablet specs must be updated,
-  and the round-30 note must say the decision was revisited rather than left standing.
+- **keep the wizard** — then the specs must be updated, and the round-30 note must say the decision
+  was revisited rather than left standing.
 - **restore the decision** — the owner step stays disclosed while the store type stays visible on
   first paint.
 
-Either way the round-30 note is now a **false record of the present**, and that is the part to fix
-whoever settles it.
+**How this settled (2026-10-01, round 26).** The first branch happened, without anyone recording
+it as a decision: `980cd6899` updated the specs to walk the wizard through `provision-step-next`,
+asserting the store types are *offered* after step 1 rather than *placed* on first paint; and
+`4a299f74b` marked the round-30 note SUPERSEDED rather than rewriting it to sound agreed.
 
-### What was NOT done here, and why
+So: the wizard stands, the coverage is intact, and the record is now honest about which part of the
+old decision survived (**reachability**) and which did not (**placement**). What is still genuinely
+open is whether the placement is *intended* — a product call belonging to the flow's owner, which
+no commit in this repository claims to have made.
 
-`ProvisioningFlow.tsx` is not this audit's file and the change landed from another session, so it
-has been neither edited nor committed. Reporting with the failing assertion and the prior decision
-attached is more useful than rewriting another session's component — or quietly editing the spec
-to match a behaviour change nobody has claimed.
 
 ### And the 9.8-minute anomaly, settled
 
