@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useLocalization } from '@fluent/react';
 import { getActiveStockAlerts } from '@/api/inventory';
 import './StockAlertBell.css';
@@ -28,10 +28,20 @@ export default function StockAlertBell({
   const { l10n } = useLocalization();
   const [count, setCount] = useState(0);
 
+  // Guarded against a store switch. The cleanup clears the 30s interval, but that does
+  // NOT cancel a request already in flight, so an old-token response can land after the
+  // new store's and show its count. Same mechanism as StatusBar (4f1939323) -- the timer
+  // is cleared, the pending fetch is not.
+  const countTokenRef = useRef(sessionToken);
+  useEffect(() => { countTokenRef.current = sessionToken; }, [sessionToken]);
+
   const fetchCount = useCallback(async () => {
     if (!sessionToken) return;
+    const forToken = sessionToken;
     try {
-      const alerts = await getActiveStockAlerts(sessionToken, locationId);
+      const alerts = await getActiveStockAlerts(forToken, locationId);
+      // Drop a response that arrived after the store moved on.
+      if (countTokenRef.current !== forToken) return;
       setCount(alerts.length);
     } catch {
       // Silently ignore — badge just won't show count.
