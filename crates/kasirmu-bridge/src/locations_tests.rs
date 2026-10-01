@@ -421,3 +421,73 @@ async fn update_location_profile_scoped_rejects_unsupported_timezone() {
 
     assert!(matches!(result, Err(BridgeError::Invalid(_))));
 }
+
+// -- a location code that cannot be read is not a location without one --
+
+/// `to_location_dto` enriched the DTO with the Base62 code via
+/// `get_location_code(..).unwrap_or(None)`, so a read failure produced
+/// `code: None` -- byte-identical to a location that was never assigned one.
+/// Every scoped location read goes through this helper, so a locked or corrupt
+/// `settings` table would have blanked the code on the list AND on the write
+/// responses the UI echoes back. The same helper shape existed for terminals.
+///
+/// The pin drops `locations.index_id`, the column `get_location_code` reads, so
+/// that read fails while `list_locations` still succeeds. SQLite refuses
+/// `DROP COLUMN` while an index covers it, so the index goes first.
+#[tokio::test]
+async fn a_failed_location_code_read_refuses_instead_of_returning_a_blank_code() {
+    let conn = crate::testing::temp_conn();
+    seed_owner(&conn);
+    let tb = TestBridge::new().with_conn(conn);
+    tb.sessions().write().unwrap().insert(
+        "owner-tok".into(),
+        SessionContext::new(
+            "user-owner".into(),
+            "role-owner".into(),
+            "terminal-1".into(),
+            "default".into(),
+            "instance-1".into(),
+            "pos".into(),
+            None,
+            0,
+        ),
+    );
+
+    // Assign an index id so the location HAS a code, making the happy path
+    // meaningful; the migration seeds the row without one.
+    {
+        let (_, conn) = tb.ctx().resolve_scope("owner-tok").unwrap();
+        let guard = conn.lock().unwrap();
+        guard
+            .execute("UPDATE locations SET index_id = 1 WHERE id = 'default'", [])
+            .expect("assigning the default location an index id");
+    }
+
+    // Happy path first, so the failure below is the only change.
+    let before = list_locations_scoped(&tb.ctx(), "owner-tok").await.unwrap();
+    assert!(!before.is_empty(), "the seed must produce a location");
+    assert!(
+        before.iter().any(|l| l.code.is_some()),
+        "a location with an index id carries a code on the happy path"
+    );
+
+    {
+        let (session, conn) = tb.ctx().resolve_scope("owner-tok").unwrap();
+        let _ = session;
+        let guard = conn.lock().unwrap();
+        guard
+            .execute_batch(
+                "DROP INDEX idx_locations_tenant_index_id; \
+                 ALTER TABLE locations DROP COLUMN index_id;",
+            )
+            .expect("dropping index_id and the index over it");
+    }
+
+    let err = list_locations_scoped(&tb.ctx(), "owner-tok")
+        .await
+        .expect_err("a failed code read must not return a blank code");
+    assert!(
+        matches!(err, BridgeError::Core { .. }),
+        "expected the read failure to surface, got {err:?}"
+    );
+}

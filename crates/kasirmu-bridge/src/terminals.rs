@@ -174,11 +174,12 @@ impl From<Terminal> for TerminalDto {
 }
 
 /// Helper to enrich a [`TerminalDto`] with its Base62 code.
-pub fn to_terminal_dto(store: &Store<'_>, terminal: Terminal) -> TerminalDto {
-    let code = store.get_terminal_code(&terminal.id).unwrap_or(None);
+pub fn to_terminal_dto(store: &Store<'_>, terminal: Terminal) -> Result<TerminalDto, CoreError> {
+    // Propagates, for the same reason as `to_location_dto`.
+    let code = store.get_terminal_code(&terminal.id)?;
     let mut dto = TerminalDto::from(terminal);
     dto.code = code;
-    dto
+    Ok(dto)
 }
 
 /// Arguments for registering a new terminal.
@@ -257,7 +258,7 @@ pub fn run_list_terminals(conn: &rusqlite::Connection) -> Result<Vec<TerminalDto
     let dtos: Vec<TerminalDto> = terminals
         .into_iter()
         .map(|t| to_terminal_dto(&store, t))
-        .collect();
+        .collect::<Result<Vec<_>, _>>()?;
     Ok(dtos)
 }
 
@@ -279,7 +280,7 @@ pub async fn get_terminal_scoped(
         .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
     let store = Store::new(&db);
     let terminal = store.get_terminal(&id)?;
-    let dto = terminal.map(|t| to_terminal_dto(&store, t));
+    let dto = terminal.map(|t| to_terminal_dto(&store, t)).transpose()?;
     drop(db);
 
     Ok(dto)

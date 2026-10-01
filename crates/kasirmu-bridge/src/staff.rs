@@ -657,7 +657,7 @@ pub async fn create_staff_scoped(
             SECURITY_REASON_ACCOUNT_CREATED,
         ),
     );
-    let staff_code = store.get_staff_code(&user.id).unwrap_or(None);
+    let staff_code = store.get_staff_code(&user.id)?;
     drop(db);
 
     let mut dto = to_staff_dto(&user, &roles, Some(&profile), assignment.as_ref());
@@ -874,7 +874,7 @@ pub async fn update_staff_scoped(
         let store = Store::new(&db);
         (
             store.assignment_for_user(&args.id)?,
-            store.get_staff_code(&args.id).unwrap_or(None),
+            store.get_staff_code(&args.id)?,
         )
     };
     let mut dto = to_staff_dto(&user, &roles, profile.as_ref(), assignment.as_ref());
