@@ -157,9 +157,21 @@ pub async fn start_sale_scoped(
     )?;
 
     // Resolve the primary deduction location for this workspace instance.
+    //
+    // PROPAGATES. The earlier `.unwrap_or_else(|_| get_default_location_id())` had
+    // a consequence worse than a wrong value here: the next line LOCKS this on the
+    // cart row (`save_active_cart(.., Some(deduction_location_id))`), so a failed
+    // resolve would persist the canonical default as the cart's deduction location
+    // for its whole lifetime — every subsequent deduction for that cart landing in
+    // the wrong place, with no error ever surfacing at the till.
+    //
+    // A failed resolve means the workspace's binding could NOT BE READ, which is
+    // not the same as a workspace with no binding: `resolve_primary_location`
+    // already returns tier 4 (the canonical default) for that genuine case, so this
+    // arm is only ever reached on an error. Same rule as the four bridge callers and
+    // the two core callers fixed in 5a931d80f.
     let deduction_location_id =
-        location_resolver::resolve_primary_location(&db, &session.instance_id, None)
-            .unwrap_or_else(|_| location_resolver::get_default_location_id());
+        location_resolver::resolve_primary_location(&db, &session.instance_id, None)?;
 
     store.save_active_cart(&cart, Some(deduction_location_id.as_str()))?;
     drop(db);

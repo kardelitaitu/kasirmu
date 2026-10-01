@@ -568,12 +568,22 @@ pub(super) fn run_complete_sale_scoped(
     // Same primary-location resolution the legacy complete_sale_deduction
     // wrapper performs internally — routed through with_locations so
     // checkout promotions persist.
+    //
+    // PROPAGATES, matching `commands/pos.rs::start_sale_scoped` and the four bridge
+    // callers. The earlier `.unwrap_or_else(|_| get_default_location_id())` made a
+    // FAILED resolve indistinguishable from an unbound workspace, so the sale
+    // deducted stock from the canonical default location while reporting success —
+    // the same defect fixed in the two core callers in 5a931d80f, reached here from
+    // the tablet instead of the bridge.
+    //
+    // Tier 4 is still the answer for a workspace with genuinely no binding, and
+    // `resolve_primary_location` returns it without erroring; only a READ FAILURE
+    // reaches this `?`, and that must refuse rather than deduct somewhere arbitrary.
     let primary = kasirmu_core::location_resolver::resolve_primary_location(
         db,
         session.instance_id.as_str(),
         None,
-    )
-    .unwrap_or_else(|_| kasirmu_core::location_resolver::get_default_location_id());
+    )?;
     store.complete_sale_deduction_with_locations_and_estimate(
         &sale,
         Some(&session.instance_id),
