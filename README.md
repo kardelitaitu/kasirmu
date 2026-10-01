@@ -61,7 +61,7 @@ flowchart TD
         M1["Zero hardware CapEx ($500-$1,200 saved)"]
         M2["Runs on existing Windows PCs (Android APK in dev)"]
         M3["Lean 30-50 MB RAM footprint"]
-        M4["Standard $20 generic ESC/POS printers"]
+        M4["Standard $15-$30 generic ESC/POS printers"]
     end
 
     subgraph ARCH["kasir.mu ARCHITECTURE\nNative Rust + SQLite on device"]
@@ -81,9 +81,9 @@ flowchart TD
     ARCH --> M
     ARCH --> B
 
-    style ARCH fill:#e8f4fd,stroke:#0969da,stroke-width:2px
-    style M fill:#f6f8fa,stroke:#d0d7de
-    style B fill:#f6f8fa,stroke:#d0d7de
+    style ARCH fill:#eff6ff,stroke:#147EFB,stroke-width:2px,color:#1f2328
+    style M fill:#f0fdf4,stroke:#22c55e,color:#1f2328
+    style B fill:#fff7ed,stroke:#fb923c,color:#1f2328
 ```
 
 ### Side A: Slashing server costs to under 1% of gross revenue (for the business)
@@ -253,30 +253,36 @@ By keeping server costs **under 1% of gross revenue** (compared to 10%–30% in 
 
 Going up a plan buys **capacity**, never basic operational survival. We never hold core business features hostage.
 
-| Plan | IDR / Month | USD / Month | Yearly (2 mo free) | What it includes |
+| Plan | IDR / Month | USD / Month | Yearly (2 mo free) USD / IDR | What it includes |
 |---|---:|---:|---:|---|
-| **Free** | Rp 0 | $0 | — | 1 store, 1 register, 1 warehouse, 3 months history. Static QRIS. Full offline. Forever. |
-| **Plus** | Rp 49.000 | $4.99 | $49.99 | 1 store, 2 registers, cloud sync, daily sales dashboard, dynamic QRIS. |
-| **Pro** ⭐ | Rp 99.000 | $9.99 | $99.99 | 2 stores, 5 registers/store, Kitchen Display System (KDS), analytics, card payments. |
-| **Premium** | Rp 399.000 | $39.99 | $399.99 | 5 stores, unlimited registers, customer loyalty, custom Lua scripting, whitelabeling. |
-| **Enterprise** | Bespoke | Bespoke | Custom | Unlimited scale, custom hardware drivers, dedicated SLA, on-premise cloud deployments. |
+| **Free** | Rp 0 | $0 | — | 1 store, 1 register, 3 months history (up to 200 products, 1 staff). Static QRIS. Full offline. Forever. |
+| **Plus** | Rp 49.000 | $4.99 | $49.99 / Rp 500.000 | 1 store, 2 registers, 1 year history, cloud sync, daily sales dashboard, dynamic QRIS. |
+| **Pro** ⭐ | Rp 99.000 | $9.99 | $99.99 / Rp 1.000.000 | 2 stores, 5 registers/store, 2 KDS screens, 5 years history, analytics, Stripe card payments. |
+| **Premium** | Rp 399.000 | $39.99 | $399.99 / Rp 3.999.000 | 5 stores, unlimited registers, **warehouses unlock here**, unlimited history, customer loyalty, custom Lua scripting. |
+| **Enterprise** | Bespoke | Bespoke | Custom | Unlimited scale, **white-label branding**, custom hardware drivers, dedicated SLA, on-premise cloud deployments. |
 
 ```mermaid
 flowchart TD
-    F["<b>1. FREE FOREVER — $0 / mo (Rp 0)</b><br/>• 1 Store · 1 Register · 1 Warehouse · 3 Months History<br/>• 100% Full Offline Operation · Static QRIS · 0% Commission"]
+    F["<b>1. FREE FOREVER — $0 / mo (Rp 0)</b><br/>• 1 Store · 1 Register · 3 Months History · Up to 200 Products<br/>• 100% Full Offline Operation · Static QRIS · 0% Commission"]
     
-    PL["<b>2. PLUS — $4.99 / mo (Rp 49.000)</b><br/>• 1 Store · 2 Registers · 2 Warehouses · 1 Year History<br/>• Automated Cloud Outbox Sync · Dynamic QRIS · Daily Sales Dashboard"]
+    PL["<b>2. PLUS — $4.99 / mo (Rp 49.000)</b><br/>• 1 Store · 2 Registers · 1 Year History · Up to 500 Products<br/>• Automated Cloud Outbox Sync · Dynamic QRIS · Daily Sales Dashboard"]
     
-    PR["<b>3. PRO (Most Popular) — $9.99 / mo (Rp 99.000)</b><br/>• 2 Stores · 5 Registers / Store · 3 Warehouses · 5 Years History<br/>• Kitchen Display System (KDS) · Stripe Card Processing · Sales Analytics"]
+    PR["<b>3. PRO (Most Popular) — $9.99 / mo (Rp 99.000)</b><br/>• 2 Stores · 5 Registers / Store · 2 KDS Screens · 5 Years History<br/>• Kitchen Display System (KDS) · Stripe Card Processing · Sales Analytics"]
     
-    PM["<b>4. PREMIUM — $39.99 / mo (Rp 399.000)</b><br/>• 5 Stores · Unlimited Registers & Warehouses · Unlimited History<br/>• Customer Loyalty Points · Lua Promotion Rules · Full Whitelabel Theming"]
+    PM["<b>4. PREMIUM — $39.99 / mo (Rp 399.000)</b><br/>• 5 Stores · Unlimited Registers · Warehouses Unlock Here<br/>• Unlimited History · Customer Loyalty Points · Lua Promotion Rules"]
     
-    ET["<b>5. ENTERPRISE — Bespoke Contract</b><br/>• Unlimited Stores, Terminals & Regional Warehouses<br/>• Custom HAL Hardware Drivers · Dedicated SLA · Private Cloud Deployments"]
+    ET["<b>5. ENTERPRISE — Bespoke Contract</b><br/>• Unlimited Stores, Terminals and Regional Warehouses<br/>• White-label Branding · Custom HAL Hardware Drivers<br/>• Dedicated SLA · Private Cloud Deployments"]
 
-    F -->|Store needs cloud sync & 2nd register| PL
-    PL -->|Store needs multi-terminal & KDS| PR
-    PR -->|Chain expands to multi-location & loyalty| PM
-    PM -->|Franchise demands custom drivers & SLA| ET
+    F -->|Store needs cloud sync and 2nd register| PL
+    PL -->|Store needs multi-terminal and KDS| PR
+    PR -->|Chain expands to multi-location and loyalty| PM
+    PM -->|Franchise demands white-label, custom drivers and SLA| ET
+
+    style F fill:#f6f8fa,stroke:#94a3b8,color:#1f2328
+    style PL fill:#eff6ff,stroke:#93c5fd,color:#1f2328
+    style PR fill:#dbeafe,stroke:#147EFB,stroke-width:2px,color:#1f2328
+    style PM fill:#f5f3ff,stroke:#a78bfa,color:#1f2328
+    style ET fill:#fff7ed,stroke:#fb923c,color:#1f2328
 ```
 
 ---
@@ -313,7 +319,7 @@ The kasir.mu platform is architected around a structured 20-phase master roadmap
 We believe in radical transparency:
 - **Platform readiness (Windows-only production today):** As of today, the **Windows 10/11 desktop application is the only working production-ready build**. The Android tablet APK (`apps/mobile-tauri`) and Linux builds are in active development (application shell and UI are scaffolded, with physical device testing and hardware binding currently in progress).
 - **No full accounting ledger yet (Phase 8):** The system provides revenue, COGS, gross-profit, shift cash tracking, and purchase order history. A full general ledger (chart of accounts, journal entries) is currently scheduled for Phase 8.
-- **Scaffolded vertical stubs:** Purchasing history is live, but four domain modules (`purchasing`, `promotions`, `giftcards`, `kitchen`) are currently structured as frontend or core-delegated modules rather than standalone domain services.
+- **Scaffolded vertical stubs:** Purchasing history is live, but four domain modules (`purchasing`, `promotions`, `giftcards`, `kitchen`) are currently structured as frontend or core-delegated modules rather than standalone domain services (the KDS screen in `ui/src/features/kds/` is frontend-only today).
 - **Deferred features:** Custom cloud report builder and voice checkout remain intentionally deferred.
 
 ---
