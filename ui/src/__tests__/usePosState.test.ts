@@ -366,5 +366,49 @@ describe('usePosState', () => {
       expect(result.current.lines[0]!.courseId).toBeUndefined();
       expect(result.current.lines[0]!.modifiers).toBeUndefined();
     });
+
+    it('applies meta note and does not merge lines with different notes', () => {
+      const { result } = renderHook(() => usePosState());
+
+      act(() => { result.current.addProduct(makeProduct(), 1, { note: 'Less sugar' }); });
+      act(() => { result.current.addProduct(makeProduct(), 1, { note: 'Extra sweet' }); });
+      act(() => { result.current.addProduct(makeProduct(), 1); });
+
+      expect(result.current.lines).toHaveLength(3);
+      expect(result.current.lines[0]!.note).toBe('Less sugar');
+      expect(result.current.lines[1]!.note).toBe('Extra sweet');
+      expect(result.current.lines[2]!.note).toBeUndefined();
+    });
+
+    it('merges lines when notes match', () => {
+      const { result } = renderHook(() => usePosState());
+
+      act(() => { result.current.addProduct(makeProduct(), 1, { note: 'Less sugar' }); });
+      act(() => { result.current.addProduct(makeProduct(), 2, { note: 'Less sugar' }); });
+
+      expect(result.current.lines).toHaveLength(1);
+      expect(result.current.lines[0]!.qty).toBe(3);
+      expect(result.current.lines[0]!.note).toBe('Less sugar');
+    });
+  });
+
+  describe('updateLineNote', () => {
+    it('sets note on an existing line', () => {
+      const { result } = renderHook(() => usePosState());
+      act(() => { result.current.addProduct(makeProduct()); });
+      const lineId = result.current.lines[0]!.id;
+
+      act(() => { result.current.updateLineNote(lineId, 'No onion, extra spicy'); });
+      expect(result.current.lines[0]!.note).toBe('No onion, extra spicy');
+    });
+
+    it('clears note when empty string or whitespace is given', () => {
+      const { result } = renderHook(() => usePosState());
+      act(() => { result.current.addProduct(makeProduct(), 1, { note: 'Existing note' }); });
+      const lineId = result.current.lines[0]!.id;
+
+      act(() => { result.current.updateLineNote(lineId, '   '); });
+      expect(result.current.lines[0]!.note).toBeUndefined();
+    });
   });
 });

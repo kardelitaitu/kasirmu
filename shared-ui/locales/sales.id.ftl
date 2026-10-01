@@ -1047,3 +1047,10 @@ retail-edit-image-uploading = Mengunggah gambar…
 retail-edit-image-error = Gagal memperbarui gambar. Coba lagi.
 retail-edit-image-menu-note = Item menu selalu memiliki tepat satu gambar.
 retail-edit-image-alt = Gambar { $name } { $slot }
+
+# ── Cart line kitchen notes ──
+pos-cart-line-add-note = Tambah Catatan
+pos-cart-line-edit-note = Ubah Catatan
+pos-cart-line-note-title = Permintaan Khusus
+pos-cart-line-note-placeholder = cth. Tanpa bawang, kurangi es, alergi...
+pos-cart-line-note-clear = Hapus

@@ -146,6 +146,7 @@ export function usePosHeldCarts({
           ...(l.courseId ? { courseId: l.courseId } : {}),
           ...(l.coursingStatus ? { coursingStatus: l.coursingStatus } : {}),
           ...(l.modifiers && l.modifiers.length > 0 ? { modifiers: l.modifiers } : {}),
+          ...(l.note ? { note: l.note } : {}),
         })),
         discountPercent,
         discountLabel,
@@ -192,6 +193,7 @@ export function usePosHeldCarts({
           courseId?: CartLine['courseId'];
           coursingStatus?: CartLine['coursingStatus'];
           modifiers?: CartLine['modifiers'];
+          note?: string;
         }) => ({
           id: `restored-${Date.now()}-${Math.random().toString(36).slice(2)}` as LineId,
           sku: l.sku as Sku,
@@ -204,6 +206,7 @@ export function usePosHeldCarts({
           ...(l.courseId ? { courseId: l.courseId } : {}),
           ...(l.coursingStatus ? { coursingStatus: l.coursingStatus } : {}),
           ...(l.modifiers && l.modifiers.length > 0 ? { modifiers: l.modifiers } : {}),
+          ...(l.note ? { note: l.note } : {}),
         })));
       }
       if (typeof data.discountPercent === 'number') {

@@ -138,6 +138,8 @@ export interface CartPanelProps {
    * and every caller without coursing are unaffected.
    */
   assignCourse?: (lineId: LineId, courseId: CourseId) => void;
+  /** Update or remove the kitchen / special instruction note for a line. */
+  updateLineNote?: (lineId: LineId, note: string) => void;
   handleRemoveLine: (line: CartLine) => void;
   handleDecreaseQty: (line: CartLine) => void;
   handleIncreaseQty: (line: CartLine) => void;
@@ -222,6 +224,7 @@ export function CartPanel({
   fireAllCourses,
   courseFiringEnabled,
   assignCourse,
+  updateLineNote,
   handleRemoveLine,
   handleDecreaseQty,
   handleIncreaseQty,
@@ -600,6 +603,7 @@ export function CartPanel({
                 onDecreaseQty={handleDecreaseQty}
                 onIncreaseQty={handleIncreaseQty}
                 registerRef={setCartLineRef}
+                {...(updateLineNote ? { onUpdateNote: updateLineNote } : {})}
                 {...(isManager ? {
                   onOverride: (l: CartLine) => {
                     setOverrideTarget(l);

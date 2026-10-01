@@ -127,8 +127,8 @@ export function usePosCartActions({
   const handleAddProduct = useCallback(
     (
       product: Product,
-      qtyOrMeta?: number | { courseId?: CourseId; modifiers?: ModifierSelection[] },
-      maybeMeta?: { courseId?: CourseId; modifiers?: ModifierSelection[] },
+      qtyOrMeta?: number | { courseId?: CourseId; modifiers?: ModifierSelection[]; note?: string },
+      maybeMeta?: { courseId?: CourseId; modifiers?: ModifierSelection[]; note?: string },
     ) => {
       // Refuse only when the shift service is REACHABLE and no shift is
       // open. When it is unreachable the requirement does not apply: shifts

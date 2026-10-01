@@ -1073,3 +1073,10 @@ retail-edit-image-uploading = Uploading image…
 retail-edit-image-error = Could not update the image. Try again.
 retail-edit-image-menu-note = Menu items always have exactly one image.
 retail-edit-image-alt = { $name } image { $slot }
+
+# ── Cart line kitchen notes ──
+pos-cart-line-add-note = Add Note
+pos-cart-line-edit-note = Edit Note
+pos-cart-line-note-title = Special Request
+pos-cart-line-note-placeholder = e.g. No onion, less ice, allergy...
+pos-cart-line-note-clear = Clear

@@ -67,11 +67,12 @@ export function usePosState() {
    * @param meta Optional line attributes to apply to the created/merged
    *   line — used by the retail undo path to restore a removed line's
    *   course assignment and modifiers faithfully instead of re-adding a
-   *   bare product.
+   *   `meta` carries restaurant coursing/modifiers/note (courseId, modifiers, note)
+   *   so a coursed or modified item does not clobber a bare product.
    * @returns `true` if the product was added, `false` if rejected
    *   (currency mismatch).
    */
-  const addProduct = useCallback((product: Product, qty: number = 1, meta?: { courseId?: CourseId; modifiers?: ModifierSelection[] }): boolean => {
+  const addProduct = useCallback((product: Product, qty: number = 1, meta?: { courseId?: CourseId; modifiers?: ModifierSelection[]; note?: string }): boolean => {
     // MONEY-AUDIT-F1: reject mixed-currency carts at the source. The backend
     // `Cart::add_line` enforces single-currency carts, so the front-end
     // preview must not silently sum amounts in different currencies.
@@ -92,15 +93,17 @@ export function usePosState() {
     setLines((prev) => {
       const existing = prev.find((l) => {
         if (l.sku !== product.sku) return false;
+        if ((l.note ?? '') !== (meta?.note ?? '')) return false;
         const lMods = (l.modifiers ?? []).map((m) => m.modifierId).sort().join(',');
         const newMods = (meta?.modifiers ?? []).map((m) => m.modifierId).sort().join(',');
         return lMods === newMods;
       });
       const metaSpread =
-        meta?.courseId !== undefined || (meta?.modifiers && meta.modifiers.length > 0)
+        meta?.courseId !== undefined || (meta?.modifiers && meta.modifiers.length > 0) || (meta?.note && meta.note.trim())
           ? {
               ...(meta?.courseId !== undefined ? { courseId: meta.courseId, coursingStatus: 'hold' as const } : {}),
               ...(meta?.modifiers && meta.modifiers.length > 0 ? { modifiers: meta.modifiers } : {}),
+              ...(meta?.note && meta.note.trim() ? { note: meta.note.trim() } : {}),
             }
           : {};
       if (existing) {
@@ -316,6 +319,24 @@ export function usePosState() {
     [],
   );
 
+  /**
+   * Update or remove a kitchen / customer note on a cart line.
+   * Passing an empty string or whitespace removes the note.
+   */
+  const updateLineNote = useCallback((lineId: LineId, note: string) => {
+    const trimmed = note.trim();
+    setLines((prev) =>
+      prev.map((line) => {
+        if (line.id !== lineId) return line;
+        if (!trimmed) {
+          const { note: _dropped, ...rest } = line;
+          return rest;
+        }
+        return { ...line, note: trimmed };
+      }),
+    );
+  }, []);
+
   /** Clear all lines and reset discount, tip, service charge. */
   const resetCart = useCallback(() => {
     setLines([]);
@@ -343,6 +364,7 @@ export function usePosState() {
     removeLine,
     updateQty,
     updateLinePrice,
+    updateLineNote,
     assignCourse,
     fireCourse,
     fireAllCourses,

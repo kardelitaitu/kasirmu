@@ -3,6 +3,8 @@ import { useCallback, useState, useEffect, useRef } from 'react';
 import type { CSSProperties } from 'react';
 import { Localized } from '@/components/Localized';
 import { useLocalization } from '@fluent/react';
+import { Button } from '@/components/Button';
+import { Modal } from '@/components/Modal';
 import {
   formatMoney,
   COURSES,
@@ -45,6 +47,10 @@ export interface CartLineItemProps {
   onIncreaseQty: (line: CartLine) => void;
   onOverride?: (line: CartLine) => void;
   /**
+   * Update or remove the kitchen / special instruction note for this line.
+   */
+  onUpdateNote?: ((lineId: LineId, note: string) => void) | undefined;
+  /**
    * Assign a course to this line (restaurant coursing).
    *
    * When omitted the course chip is not rendered at all, so the retail path
@@ -71,6 +77,7 @@ export function CartLineItem({
   onDecreaseQty,
   onIncreaseQty,
   onOverride,
+  onUpdateNote,
   onAssignCourse,
   courseMenuLine = null,
   onCourseMenuLineChange,
@@ -80,6 +87,12 @@ export function CartLineItem({
   const [revealed, setRevealed] = useState(false);
   const [exiting, setExiting] = useState(false);
   const [qtyFlash, setQtyFlash] = useState(false);
+  const [showNoteModal, setShowNoteModal] = useState(false);
+  const [noteDraft, setNoteDraft] = useState('');
+  const openNoteEditor = useCallback(() => {
+    setNoteDraft(line.note ?? '');
+    setShowNoteModal(true);
+  }, [line.note]);
   const prevQty = useRef(line.qty);
   const swipe = useSwipe({
     onSwipeLeft: () => setRevealed(true),
@@ -144,6 +157,21 @@ export function CartLineItem({
         <div className="pos-cart-line-info">
           <div className="pos-cart-line-name">
             {line.name ?? line.sku}
+            {onUpdateNote && (
+              <button
+                type="button"
+                className={`pos-cart-line-note-btn${line.note ? ' pos-cart-line-note-btn--active' : ''}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  openNoteEditor();
+                }}
+                title={line.note ? (l10n.getString('pos-cart-line-edit-note') || 'Edit Note') : (l10n.getString('pos-cart-line-add-note') || 'Add Note')}
+                aria-label={line.note ? `${l10n.getString('pos-cart-line-edit-note') || 'Edit Note'}: ${line.note}` : (l10n.getString('pos-cart-line-add-note') || 'Add Note')}
+                data-testid="cart-line-note-btn"
+              >
+                📝
+              </button>
+            )}
             {onAssignCourse && (
               <span className="pos-cart-line-course">
                 <button
@@ -216,6 +244,28 @@ export function CartLineItem({
                   )}
                 </span>
               ))}
+            </div>
+          )}
+          {line.note && (
+            <div
+              className="pos-cart-line-note-badge"
+              data-testid="cart-line-note"
+              onClick={(e) => {
+                e.stopPropagation();
+                openNoteEditor();
+              }}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.stopPropagation();
+                  openNoteEditor();
+                }
+              }}
+              aria-label={line.note}
+            >
+              <span className="pos-cart-line-note-icon" aria-hidden="true">📝</span>
+              <span className="pos-cart-line-note-text">{line.note}</span>
             </div>
           )}
           <div className="pos-cart-line-price">
@@ -293,6 +343,70 @@ export function CartLineItem({
           </Localized>
         </button>
       </div>
+
+      {/* Note editor modal */}
+      {showNoteModal && (
+        <Modal
+          open={showNoteModal}
+          onClose={() => setShowNoteModal(false)}
+          title={l10n.getString('pos-cart-line-note-title') || 'Special Request'}
+          className="pos-cart-line-note-modal"
+          footer={
+            <div className="pos-cart-note-modal-actions">
+              {line.note && (
+                <Button
+                  variant="ghost"
+                  size="md"
+                  onClick={() => {
+                    onUpdateNote?.(line.id, '');
+                    setShowNoteModal(false);
+                  }}
+                  data-testid="cart-line-note-clear-btn"
+                >
+                  <Localized id="pos-cart-line-note-clear">
+                    <span>Clear</span>
+                  </Localized>
+                </Button>
+              )}
+              <Button
+                variant="ghost"
+                size="md"
+                onClick={() => setShowNoteModal(false)}
+              >
+                <Localized id="cancel">
+                  <span>Cancel</span>
+                </Localized>
+              </Button>
+              <Button
+                variant="primary"
+                size="md"
+                onClick={() => {
+                  onUpdateNote?.(line.id, noteDraft);
+                  setShowNoteModal(false);
+                }}
+                data-testid="cart-line-note-save-btn"
+              >
+                <Localized id="save">
+                  <span>Save</span>
+                </Localized>
+              </Button>
+            </div>
+          }
+        >
+          <div className="pos-cart-note-modal-body">
+            <p className="pos-cart-note-modal-item-name">{line.name ?? line.sku}</p>
+            <textarea
+              className="pos-cart-note-input"
+              rows={3}
+              value={noteDraft}
+              onChange={(e) => setNoteDraft(e.target.value)}
+              placeholder={l10n.getString('pos-cart-line-note-placeholder') || 'e.g. No onion, less ice, allergy...'}
+              data-testid="cart-line-note-input"
+              maxLength={200}
+            />
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }

@@ -157,14 +157,14 @@ describe('usePosHeldCarts — open-bills workspace gate', () => {
     const { result } = renderHook(() =>
       usePosHeldCarts(
         params({
-          activeShift: { id: 'sh-1' } as any,
+          activeShift: { id: 'sh-1' } as never,
           tableNumber: 'T4',
           setTableNumber,
           resetCart,
           lines: [
             {
-              id: 'line-1' as any,
-              sku: 'BURGER' as any,
+              id: 'line-1' as never,
+              sku: 'BURGER' as never,
               name: 'Burger',
               qty: 1,
               unit_price: { minor_units: 50000, currency: 'IDR' },
@@ -177,6 +177,7 @@ describe('usePosHeldCarts — open-bills workspace gate', () => {
                   priceMinor: 0,
                 },
               ],
+              note: 'No pickle',
             },
           ],
           subtotal: { minor_units: 50000, currency: 'IDR' },
@@ -194,6 +195,12 @@ describe('usePosHeldCarts — open-bills workspace gate', () => {
         label: 'Table T4',
         bill_type: 'open_bill',
         cart_data: expect.stringContaining('"modifiers":[{"groupId":"g1","groupName":"Doneness","modifierId":"m1","modifierName":"Medium Rare","priceMinor":0}]'),
+      }),
+    );
+    expect(holdCartScoped).toHaveBeenCalledWith(
+      'tok',
+      expect.objectContaining({
+        cart_data: expect.stringContaining('"note":"No pickle"'),
       }),
     );
     expect(holdCartScoped).toHaveBeenCalledWith(
@@ -238,6 +245,7 @@ describe('usePosHeldCarts — open-bills workspace gate', () => {
                 priceMinor: 0,
               },
             ],
+            note: 'No pickle',
           },
         ],
         tableNumber: 'T4',
@@ -262,6 +270,7 @@ describe('usePosHeldCarts — open-bills workspace gate', () => {
       expect.arrayContaining([
         expect.objectContaining({
           sku: 'BURGER',
+          note: 'No pickle',
           modifiers: [
             expect.objectContaining({
               groupId: 'g1',

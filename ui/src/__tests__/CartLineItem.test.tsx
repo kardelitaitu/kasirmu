@@ -78,6 +78,7 @@ function renderItem(props: {
   onAssignCourse?: (lineId: LineId, courseId: CourseId) => void;
   courseMenuLine?: LineId | null;
   onCourseMenuLineChange?: (lineId: LineId | null) => void;
+  onUpdateNote?: (lineId: LineId, note: string) => void;
 } = {}) {
   const line = props.line ?? makeLine();
   const onRemove = vi.fn();
@@ -92,6 +93,7 @@ function renderItem(props: {
         onIncreaseQty={onIncreaseQty}
         {...(props.onOverride ? { onOverride: props.onOverride } : {})}
         {...(props.registerRef ? { registerRef: props.registerRef } : {})}
+        {...(props.onUpdateNote ? { onUpdateNote: props.onUpdateNote } : {})}
         // Coursing is opt-in: no onAssignCourse, no chip — see the cases below.
         {...(props.onAssignCourse ? {
           onAssignCourse: props.onAssignCourse,
@@ -387,3 +389,71 @@ describe('CartLineItem — course assignment (restaurant coursing)', () => {
     expect(tagsContainer.textContent).toContain('Boba');
   });
 });
+
+describe('CartLineItem — kitchen notes & special instructions', () => {
+  it('renders no note button when onUpdateNote is absent', () => {
+    renderItem();
+    expect(screen.queryByTestId('cart-line-note-btn')).toBeNull();
+  });
+
+  it('renders a note button when onUpdateNote is provided', () => {
+    const onUpdateNote = vi.fn();
+    renderItem({ onUpdateNote });
+
+    const btn = screen.getByTestId('cart-line-note-btn');
+    expect(btn).toBeDefined();
+    expect(btn.getAttribute('title')).toBe('Add Note');
+    expect(screen.queryByTestId('cart-line-note')).toBeNull();
+  });
+
+  it('opens note modal, edits note and saves', () => {
+    const onUpdateNote = vi.fn();
+    const { line } = renderItem({ onUpdateNote });
+
+    fireEvent.click(screen.getByTestId('cart-line-note-btn'));
+
+    const input = screen.getByTestId('cart-line-note-input');
+    expect(input).toBeDefined();
+
+    fireEvent.change(input, { target: { value: 'No ice, extra spicy' } });
+    fireEvent.click(screen.getByTestId('cart-line-note-save-btn'));
+
+    expect(onUpdateNote).toHaveBeenCalledTimes(1);
+    expect(onUpdateNote).toHaveBeenCalledWith(line.id, 'No ice, extra spicy');
+  });
+
+  it('renders note badge when line already has a note', () => {
+    const onUpdateNote = vi.fn();
+    const line: CartLine = {
+      ...makeLine({ name: 'Fried Rice' }),
+      note: 'Extra spicy, no egg',
+    };
+    renderItem({ line, onUpdateNote });
+
+    const badge = screen.getByTestId('cart-line-note');
+    expect(badge).toBeDefined();
+    expect(badge.textContent).toContain('Extra spicy, no egg');
+
+    const btn = screen.getByTestId('cart-line-note-btn');
+    expect(btn.className).toContain('pos-cart-line-note-btn--active');
+  });
+
+  it('allows clearing an existing note from the modal', () => {
+    const onUpdateNote = vi.fn();
+    const line: CartLine = {
+      ...makeLine({ name: 'Fried Rice' }),
+      note: 'Extra spicy',
+    };
+    renderItem({ line, onUpdateNote });
+
+    // Open from badge click
+    fireEvent.click(screen.getByTestId('cart-line-note'));
+
+    const clearBtn = screen.getByTestId('cart-line-note-clear-btn');
+    expect(clearBtn).toBeDefined();
+
+    fireEvent.click(clearBtn);
+    expect(onUpdateNote).toHaveBeenCalledWith(line.id, '');
+  });
+});
+

@@ -19,7 +19,7 @@ import RestaurantPaymentsScreen from '@/features/restaurant/screens/RestaurantPa
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useWorkspaceNav } from '@/hooks/useWorkspaceNav';
 
-import { formatMoney, type LineId, type Product, type Sku } from '@/types/domain';
+import { formatMoney, type CartLine, type LineId, type Product, type Sku } from '@/types/domain';
 import { useSwipe } from '@/hooks/useSwipe';
 import {
   deleteHeldCartScoped,
@@ -107,6 +107,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     removeLine,
     updateQty,
     updateLinePrice,
+    updateLineNote,
     fireCourse,
     fireAllCourses,
     assignCourse,
@@ -150,13 +151,27 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
       if (!raw) return;
       const data = JSON.parse(raw);
       if (data.lines && Array.isArray(data.lines)) {
-        setLines(data.lines.map((l: { sku: string; name?: string; category?: string; qty: number; unit_price: { minor_units: number; currency: string } }) => ({
+        setLines(data.lines.map((l: {
+          sku: string;
+          name?: string;
+          category?: string;
+          qty: number;
+          unit_price: { minor_units: number; currency: string };
+          courseId?: CartLine['courseId'];
+          coursingStatus?: CartLine['coursingStatus'];
+          modifiers?: CartLine['modifiers'];
+          note?: string;
+        }) => ({
           id: `restored-${Date.now()}-${Math.random().toString(36).slice(2)}` as LineId,
           sku: l.sku as Sku,
           name: l.name,
           category: l.category,
           qty: l.qty,
           unit_price: l.unit_price,
+          ...(l.courseId ? { courseId: l.courseId } : {}),
+          ...(l.coursingStatus ? { coursingStatus: l.coursingStatus } : {}),
+          ...(l.modifiers && l.modifiers.length > 0 ? { modifiers: l.modifiers } : {}),
+          ...(l.note ? { note: l.note } : {}),
         })));
       }
       if (typeof data.discountPercent === 'number') {
@@ -558,6 +573,10 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
             category: l.category,
             qty: l.qty,
             unit_price: l.unit_price,
+            ...(l.courseId ? { courseId: l.courseId } : {}),
+            ...(l.coursingStatus ? { coursingStatus: l.coursingStatus } : {}),
+            ...(l.modifiers && l.modifiers.length > 0 ? { modifiers: l.modifiers } : {}),
+            ...(l.note ? { note: l.note } : {}),
           })),
           discountPercent,
           discountLabel,
@@ -760,6 +779,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   const cartLineRows = {
     lines, fireCourse, fireAllCourses, assignCourse, setCartLineRef,
     handleRemoveLine, handleDecreaseQty, handleIncreaseQty,
+    updateLineNote,
     isManager, setOverrideTarget, ensureCart,
     animatedUndoStack, handleUndoRemove, handleDismissUndo,
     courseFiringEnabled,
