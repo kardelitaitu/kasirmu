@@ -282,4 +282,42 @@ reintroducing the registry walk.
 done item 1: the tablet is still a second copy of most other bodies. The count is now one
 module smaller, and `apps/mobile-tauri/src/commands/scale.rs` no longer contributes to the
 divergence the ipc-parity gate watches.
+
+## Amendment 2026-10-04 (c) — a preference that cannot be read is not an unset preference
+
+The hardware bridge is where this decision's error boundary meets a settings read, and the
+second such site this campaign has found. `scanner_prefs` (`crates/kasirmu-bridge/src/hardware.rs`)
+returns the operator's saved scanner Device ID and input mode, and it returned a bare
+`(String, String)` while folding **all three** of its reads into defaults: a FAILED
+`hardware_profiles` query fell through via `.ok()`, a stored profile that would not parse fell
+through via `.and_then(..ok())`, and both legacy keys via `unwrap_or_default()`.
+
+**What that produced.** An unreadable `settings` table — SQLITE_BUSY, corrupt, locked — answered
+`("", "auto")`, byte-identical to a terminal that was never configured. `preferred` empty makes
+`prefer_first` a no-op, so the Device ID the operator saved stops being fronted; and an empty
+mode falls to the `_ => ids` arm of `ids_for_mode`, so a `keyboard`-wedge terminal opens COM
+ports and a serial-only terminal is handed a HID device. Those are precisely the failures
+`ids_for_mode` was introduced to prevent — the read failure re-created them silently.
+
+**`scanner_prefs` now returns `Result<_, BridgeError>` and propagates.** The profile query uses
+`.optional()` so a MISSING row remains the one legitimate absence and still falls through to the
+legacy keys; a non-parsing profile is an error rather than a silent fall-through, because a
+configuration the operator did save must not be ignored; the two legacy reads use `?`. Both
+callers thread the result — `saved_scanner_prefs` for the bridge, `list_scanners_scoped` for the
+tablet.
+
+**The outer default was doubly wrong, which is the general lesson.** The getters already carry
+their own documented defaults for an absent key — an empty device id, and `"auto"` for the mode
+(`platform/core/src/settings/typed.rs:272`). An `unwrap_or_default()` written outside them could
+therefore only ever fire on an error, AND it would have replaced that documented `"auto"` with an
+empty string. **A default written one layer above the layer that already owns the default is a
+swallow wearing a policy's clothes.** That is the same reading that made the receipt-format fills
+safe to convert to `?` — the defaults belonged below, where they still are.
+
+**Pins.** `an_unreadable_settings_table_is_not_an_unconfigured_terminal` makes `settings` present
+but unreadable (a BLOB `value`) and asserts the read refuses; verified RED with the swallow
+restored (it answered `("", "auto")`) and GREEN with the fix.
+`a_missing_profile_row_falls_through_to_the_legacy_keys` pins the one absence that must NOT error,
+and in doing so records the getter's own `"auto"` default so a future edit cannot quietly drop it.
+
 > last audited 29-09-26 by docs-auditor
