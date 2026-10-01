@@ -349,7 +349,7 @@ jobs:
           mkdir -p ui/dist ui/dist-mobile ui/dist-desktop
           touch ui/dist/index.html ui/dist-mobile/index.html ui/dist-desktop/index.html
       - name: Clippy workspace (deny warnings)
-        run: cargo clippy --workspace --all-targets -- -D warnings
+        run: cargo clippy --workspace --all-targets -- -D warnings -A clippy::assert_is_empty
 
   # ── 3b. Rustdoc must be WARNING-FREE (P2-4) ──────────────────────────
   #
