@@ -144,6 +144,12 @@ async function showAllProducts() {
 
 describe('RetailPosScreen — rendering', () => {
   beforeEach(async () => {
+    // The store-switch cases MUTATE this and it must not leak: a case that starts with
+    // the token already at its target value sees no change, so its effect never re-runs
+    // and it races nothing while still passing. Found by bisecting this suite -- with
+    // the shift case ahead of the store-settings case the latter saw ONE read, and
+    // exactly two with that predecessor removed.
+    wsState.sessionToken = 'mock-session-token';
     mockedBarcode.reset();
     const sp = await import('@/features/sales/usePosState');
     vi.mocked(sp.usePosState).mockReset();
