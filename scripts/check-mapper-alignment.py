@@ -47,21 +47,22 @@ and a default that needs widening after each miss makes coverage something an au
 remembers rather than a property of the tool. It now scans 799 production files, up
 from 267 when the brace-matching bug was fixed and 267+58 with the first widening.
 
-WHAT THE ALIAS EXEMPTION DOES NOT COVER, measured 2026-10-05 and recorded because it
-is the boundary a reader is most likely to assume away. Trusting the alias is right --
-`COUNT(*) AS shift_count` IS the declaration that the mapping is correct -- but the
-consequence is that an ALIASED mapper is unchecked ENTIRELY, not merely unchecked for
-its name. Swapping the indices of two aliased columns in analytics.rs
-(analytics_shift_rows: `shift_count: row.get(1)` and `closed_shift_count: row.get(2)`,
-backed by `AS shift_count` and `AS closed_count`) leaves this script at exit 0, because
-each column carries an alias and neither alias is compared to its own name.
+ALIASED COLUMNS ARE CHECKED TOO, against their own alias. This section used to record
+the opposite as an accepted limitation, and the reasoning that produced it was wrong:
+an earlier revision skipped every aliased column entirely, which meant a reordered
+aliased projection went unreported -- the gate's entire purpose, defeated by an
+unrelated exemption. The alias IS the author's stated intent for that index, so
+comparing the field to it is exactly as sound as comparing it to a bare column name.
+Swapping `shift_count: row.get(1)` and `closed_shift_count: row.get(2)` in
+`analytics_shift_rows` now fails at exit 1, verified.
 
-So it catches a POSITIONAL mapper whose columns are NOT aliased -- which is exactly
-the acknowledged defect this gate exists for, `p.gateway_reference` having no alias.
-It does not catch a reordering inside an aliased projection, and cannot without
-deciding that an alias must equal its field name, which would fail every legitimate
-rename. That trade is the gate's stated posture: a finding is a prompt to read two
-lists, and the absence of one is not proof of correctness.
+The comparison is by WORDS, not by suffix, and that distinction was also learned by
+running it: `COALESCE(...) AS closed_count` legitimately feeds `closed_shift_count`,
+which interleaves `closed` + `shift` + `count`, so neither name is a suffix of the
+other and a suffix rule reported a FALSE POSITIVE on correct code. An alias is
+accepted when every one of its words appears in the field name, which tolerates that
+reorder while still catching a genuinely different alias. A finding remains a prompt to
+read two lists; the absence of one is not proof of correctness.
 
 Exit code 0 = no unaliased disagreement found.
 Exit code 1 = at least one mapper reads a column whose name does not match its field.
@@ -252,6 +253,21 @@ def collect_mapped_fields(lines: list[str], anchor: int) -> list[tuple[str, int]
     return fields
 
 
+def words_related(alias: str, field: str) -> bool:
+    """True when every word of `alias` appears in `field`, in any order.
+
+    A legitimate SQL alias and the Rust field it feeds may order their words
+    differently: `COALESCE(...) AS closed_count` populates `closed_shift_count`.
+    Suffix matching rejects that, which is a false positive; word containment
+    accepts it while still catching an alias naming a different quantity
+    (`AS shift_count` feeding `closed_shift_count` shares only `count`).
+    """
+    parts = [w for w in alias.split("_") if w]
+    if not parts:
+        return False
+    return all(w in field for w in parts)
+
+
 def scan(path: Path) -> tuple[list[str], list[str]]:
     text = path.read_text(encoding="utf-8", errors="replace")
     if any(m in text for m in TEMPLATE_MARKERS):
@@ -314,11 +330,27 @@ def scan(path: Path) -> tuple[list[str], list[str]]:
                 bad.append(f"{name}[{idx}] reads past the projection ({len(cols)} columns)")
                 continue
             col = cols[idx]
-            if re.search(r"\bAS\b", col, re.IGNORECASE):
-                continue  # an explicit alias is a deliberate rename
-            base = column_base(col)
+            # AN ALIASED COLUMN IS NOW CHECKED AGAINST ITS OWN ALIAS, which closes
+            # the blind spot the docstring used to record as uncovered. Skipping
+            # every aliased column entirely meant a reordered aliased projection went
+            # unreported -- the gate's whole purpose, defeated by an unrelated
+            # exemption. The ALIAS is the author's stated intent for that index, so
+            # comparing the field to the alias is exactly as sound as comparing it to
+            # a bare column name, and it still tolerates the legitimate renames
+            # (`closed_count` -> `closed_shift_count`).
+            alias = re.search(r"\bAS\s+([A-Za-z_][A-Za-z0-9_]*)", col, re.IGNORECASE)
+            base = alias.group(1).lower() if alias else column_base(col)
             lname = name.lower()
             if base.endswith(lname) or lname.endswith(base):
+                continue
+            if alias and words_related(base, lname):
+                # An ALIAS is checked by its WORDS, not by suffix. A legitimate
+                # rename may reorder them: `AS closed_count` feeding
+                # `closed_shift_count` interleaves `closed` + `shift` + `count`, so
+                # neither is a suffix of the other and a suffix rule reports it as a
+                # defect -- a false positive loud enough to get the gate ignored.
+                # Requiring the alias's words to all appear in the field accepts that
+                # rename while still catching a genuinely different alias.
                 continue
             if any(lname == f and base == c for f, c in KNOWN_RENAMES):
                 continue
