@@ -621,6 +621,29 @@ impl SyncQueue {
                 Ok(())
             }
             // A new product created on another terminal — create locally.
+            //
+            // ⚠️ THIS ARM BELONGS TO A NON-PRODUCTION MIRROR, and its probe keeps a
+            // fail-blind shape the LIVE arm does not have. Recorded rather than
+            // repaired: repairing it would change what 40+ existing tests exercise
+            // while altering no production behaviour.
+            //
+            // "Non-production" is MEASURED, not inferred from the name. `apply_remote`
+            // (this fn) has ZERO production callers — every production path goes
+            // through `apply_remote_atomic` / `apply_remote_atomic_full`
+            // (`lib.rs:742`, `daemon_tick.rs:776`, `pg_daemon.rs:904`), and this
+            // function is reached only from `queue_tests.rs`. The LIVE
+            // `product.created` arm above dispatches to
+            // `create_product_if_absent_with_tx`, which probes with
+            // `query_row(...).optional()?` — the `?` PROPAGATES a read error, so the
+            // live path has no such swallow.
+            //
+            // The defect here is real for anyone who reads this arm as production
+            // code: `.ok().flatten().is_none()` makes a FAILED read indistinguishable
+            // from a missing product, so a transient store fault falls into the
+            // create branch below and then fails on `products.sku`'s UNIQUE
+            // constraint (`20260813_init.sql:441`) — reporting a duplicate-product
+            // problem that does not exist while the real fault stays hidden. If this
+            // arm is ever revived, propagate with `?` as the live arm does.
             "product.created" => {
                 let payload: serde_json::Value = serde_json::from_str(&item.payload)
                     .map_err(|e| CoreError::Internal(format!("invalid product payload: {e}")))?;
