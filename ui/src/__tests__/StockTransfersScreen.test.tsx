@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { screen, waitFor, within } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderWithFluentSync } from '@/__tests__/test-utils/render';
 import stockTransfersFtl from '@/locales/stock-transfers.ftl?raw';
@@ -229,6 +229,50 @@ describe('StockTransfersScreen', () => {
       expect(screen.getByText('ST-001')).toBeInTheDocument();
       expect(screen.queryByText('ST-002')).not.toBeInTheDocument();
     });
+  });
+
+  // A slow earlier detail read must not overwrite a newer one.
+  //
+  // Guarded in 1b0f0fb3a. Here the DISCRIMINATOR is the transfer id rather than a
+  // session token: `openDetail` sets `detailId` BEFORE its await, so clicking
+  // ST-001 and then ST-002 can leave the first read landing last and putting
+  // ST-001's destination and LINES under ST-002's heading -- and `openReceiveModal`
+  // prefills the received quantities from those lines, so the operator would
+  // receive against the wrong transfer.
+  //
+  // The two fixtures differ in destination, and the destination is asserted via the
+  // `stock-transfer-detail-destination` testid added alongside the guard.
+  it('keeps the newer transfer when an earlier detail read resolves last', async () => {
+    const user = userEvent.setup();
+    mockListTransfers.mockResolvedValue(sampleTransfers);
+
+    let releaseFirst: (v: unknown) => void = () => {};
+    const firstPending = new Promise((resolve) => { releaseFirst = resolve; });
+
+    // ST-001 (Storefront) is held open and will answer LAST.
+    mockGetTransfer
+      .mockImplementationOnce(() => firstPending)
+      .mockResolvedValue(sampleDetailInTransit);
+
+    renderWithFluentSync(<StockTransfersScreen />, stockTransfersFtl, sharedFtl);
+    await waitFor(() => expect(screen.getByText('ST-001')).toBeInTheDocument());
+
+    // Open ST-001 (slow), then ST-002 (fast) while the first is outstanding.
+    await user.click(screen.getByText('ST-001'));
+    await user.click(screen.getByText('ST-002'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('stock-transfer-detail-destination')).toHaveTextContent('Store B');
+    });
+
+    // Now the stale ST-001 read lands, after ST-002 already won.
+    await act(async () => {
+      releaseFirst(sampleDetail);
+      await firstPending;
+    });
+
+    // ST-002's detail survives: the guard discarded the late ST-001 answer.
+    expect(screen.getByTestId('stock-transfer-detail-destination')).toHaveTextContent('Store B');
   });
 
   // ── Detail modal ─────────────────────────────────────────────

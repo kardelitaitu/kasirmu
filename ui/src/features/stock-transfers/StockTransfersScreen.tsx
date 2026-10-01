@@ -536,7 +536,13 @@ export default function StockTransfersScreen() {
                   </div>
                   <div className="stock-transfers-detail-field">
                     <Localized id="stock-transfers-destination"><span className="stock-transfers-detail-label">Destination</span></Localized>
-                    <span>{detail.transfer.destination_location ?? detail.transfer.destination_terminal_id ?? '—'}</span>
+                    {/* Testid on the value, not the wrapper: it is the only part that
+                        differs between transfers, so it is what pins the stale-read
+                        guard in openDetail (the id is set before the await, so a slow
+                        earlier read can otherwise put one transfer's contents under
+                        another transfer's heading -- and openReceiveModal prefills the
+                        received quantities from these lines). */}
+                    <span data-testid="stock-transfer-detail-destination">{detail.transfer.destination_location ?? detail.transfer.destination_terminal_id ?? '—'}</span>
                   </div>
                   <div className="stock-transfers-detail-field">
                     <Localized id="stock-transfers-notes"><span className="stock-transfers-detail-label">Notes</span></Localized>
