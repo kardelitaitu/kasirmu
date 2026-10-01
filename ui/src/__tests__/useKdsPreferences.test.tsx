@@ -155,6 +155,53 @@ describe('useKdsPreferences', () => {
     expect(result.current.loading).toBe(false);
   });
 
+  // A store switch must not let a SLOWER earlier read win -- and here the damage is
+  // written to storage rather than rendered (guard added in e19e412e4).
+  //
+  // Observable is localStorage, which is why this one IS pinnable while the DOM-based
+  // guards in this class are not: the success path calls writeLocalPrefs(userId, ...),
+  // so a stale read persists the PREVIOUS store's KDS layout under the current user,
+  // where it survives a reload and is read back on the next mount before the server
+  // answers. The comment at useKdsPreferences.ts:86 calls local storage the INSTANT
+  // RESTORE source.
+  //
+  // The two reads answer with DISTINCTLY DIFFERENT layouts. Same values would make
+  // this pass with the guard removed, because the late write would be
+  // indistinguishable from the correct one.
+  it('ignores a slower earlier server fetch after the token changes', async () => {
+    let releaseStale: (v: unknown) => void = () => {};
+    const stalePending = new Promise((resolve) => { releaseStale = resolve; });
+
+    // First read held open; it will answer with the PREVIOUS store's layout.
+    const api = await import('@/api/settings');
+    vi.mocked(api.getUserPreferencesScoped).mockImplementationOnce(
+      () => stalePending as never,
+    );
+
+    const { rerender } = renderHook(() => useKdsPreferences(), { wrapper: Wrapper });
+
+    // Switch stores while the first read is still in flight.
+    mockSessionToken = 'token-2';
+    mockServerPrefs = { kds_layout: 'focus' };
+    rerender();
+
+    await act(async () => {
+      vi.advanceTimersByTime(100);
+    });
+
+    // Now let the stale read land, after the current one already won.
+    await act(async () => {
+      releaseStale({ kds_layout: 'metro' });
+      await stalePending;
+      vi.advanceTimersByTime(100);
+    });
+
+    // The guard held: storage carries the CURRENT store's layout, not 'metro'.
+    const stored = localStorage.getItem('oz-kds-prefs-user-1');
+    expect(stored).not.toBeNull();
+    expect(JSON.parse(stored!).layout).toBe('focus');
+  });
+
   it('falls back to defaults when localStorage has invalid layout', async () => {
     localStorage.setItem('oz-kds-prefs-user-1', JSON.stringify({
       layout: 'invalid-layout',
