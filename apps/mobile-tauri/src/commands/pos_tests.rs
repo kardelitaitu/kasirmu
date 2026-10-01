@@ -84,7 +84,25 @@ fn complete_sale_args_deserialize_minimal() {
 // ── Bug #2: override_cart_deduction_location permission check ───
 
 fn fresh_conn() -> Connection {
-    migrations::fresh_db()
+    let conn = migrations::fresh_db();
+    // `replay_session()` names `tablet-instance`, and the SHORTFALL door resolves
+    // that id to decide which location to deduct from (`commands/pos.rs:161`,
+    // `commands/pos/checkout.rs:571`). Nothing seeded it, so the row these tests
+    // resolve did not exist — the fixture passed only while those two call sites
+    // fell back to the canonical default location on the resulting `NotFound`.
+    //
+    // The binding targets the SAME location `seed_stock` stocks
+    // (`01926b3a-0000-7000-8000-000000000001`), so the deduction lands where the
+    // fixture put the inventory rather than somewhere the test never intended.
+    conn.execute_batch(
+        "INSERT OR IGNORE INTO locations (id, name, is_primary)
+             VALUES ('store-replay', 'Replay Store', 0);
+         INSERT OR IGNORE INTO workspace_instances (id, type_key, location_id, name, bound_location_id)
+             VALUES ('tablet-instance', 'store-pos', 'store-replay', 'Replay Tablet',
+                     '01926b3a-0000-7000-8000-000000000001');",
+    )
+    .expect("seed the workspace instance `replay_session` names");
+    conn
 }
 
 /// Seed a user with ONLY sales:process permission (no SALES_OVERRIDE_PRICE).
