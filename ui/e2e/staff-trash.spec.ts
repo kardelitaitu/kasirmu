@@ -66,13 +66,28 @@ test.describe('Staff trash — delete and restore round trip', () => {
     await expect(trashTab).toBeVisible();
 
     // Only an INACTIVE member is deletable — the button's presence IS the rule,
-    // so state it from both sides: the inactive row has it, the active one has
-    // not.
+    // so state it from both sides: the inactive member's drawer has it, the
+    // active member's has not.
+    //
+    // The button lives in the DETAIL DRAWER, reached by opening the member — it
+    // moved there in d52298f0f (the smart-responsive card redesign), and this
+    // spec predates it (23d629649, 2026-09-23). It kept failing on the card
+    // because staff-delete-staff-5 only exists once the drawer is open, and the
+    // spec asserted it against the roster.
     await expect(page.getByTestId('staff-card-staff-5')).toBeVisible();
+    await page.getByTestId('staff-edit-staff-5').click();
     const deleteBtn = page.getByTestId('staff-delete-staff-5');
     await expect(deleteBtn).toBeVisible();
-    await expect(page.getByTestId('staff-delete-staff-4')).toHaveCount(0);
+    await page.getByTestId('staff-detail-cancel').click();
 
+    // The active member has no Delete at all: open theirs and check the drawer.
+    await page.getByTestId('staff-edit-staff-4').click();
+    await expect(page.getByTestId('staff-toggle-active-staff-4')).toBeVisible();
+    await expect(page.getByTestId('staff-delete-staff-4')).toHaveCount(0);
+    await page.getByTestId('staff-detail-cancel').click();
+
+    await page.getByTestId('staff-edit-staff-5').click();
+    await expect(deleteBtn).toBeVisible();
     await deleteBtn.click();
     // Delete requires explicit confirmation naming the member.
     const confirm = page.getByTestId('confirm-dialog-confirm');
@@ -106,10 +121,16 @@ test.describe('Staff trash — delete and restore round trip', () => {
 
     await page.getByTestId('staff-tab-account').click();
     await expect(page.getByTestId('staff-card-staff-5')).toBeVisible();
-    // Still inactive: the power button offers "restore", and the row is still
+    // Still inactive: the power button offers "restore", and the member is still
     // deletable. Either alone would lie while the member was wrongly active.
+    // Both controls live in the detail drawer (d52298f0f), not on the card.
+    await page.getByTestId('staff-edit-staff-5').click();
+    // The restore affordance is a --restore MODIFIER on the drawer's action
+    // button (StaffDetailDrawer.tsx:702); it was a standalone
+    // staff-mgmt-icon-btn--restore element before d52298f0f moved the drawer
+    // actions, and this pattern was never updated with it.
     await expect(page.getByTestId('staff-toggle-active-staff-5')).toHaveClass(
-      /staff-mgmt-icon-btn--restore/,
+      /staff-drawer-action-btn--restore/,
     );
     await expect(page.getByTestId('staff-delete-staff-5')).toBeVisible();
   });

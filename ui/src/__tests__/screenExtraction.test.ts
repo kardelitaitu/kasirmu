@@ -315,8 +315,7 @@ const SCREENS: ScreenEntry[] = [
     // entry's own sheet. A whole-name entry is not a wildcard — the census credits
     // p === cls only through this list — so it excuses exactly `segmented-tab`
     // and does not reach any future segmented-* name.
-    dynamicClassPrefixes: ['segmented-tab'],
-    externalClasses: ['memo-stack'],
+    dynamicClassPrefixes: ['segmented-tab', 'memo-stack'],
   },
 
   // ── Setup ─────────────────────────────────────────────
@@ -915,7 +914,21 @@ const SCREENS: ScreenEntry[] = [
       'workspaces/components/ToolsCategoryGrid.tsx',
       'workspaces/components/ToolCard.tsx',
     ],
-    dynamicClassPrefixes: [ 'ws-color-admin', 'ws-color-kds', 'ws-color-restaurant-pos', 'ws-color-store-pos', 'ws-color-warehouse', 'role-badge--owner', 'role-badge--manager', 'role-badge--staff', 'role-badge--auditor', 'role-badge--custom', 'role-badge--default'],
+    // `memo-stack` (added 2026-09-30) backs the clearance band
+    // `body:has(.memo-stack) .ws-main` at WorkspaceHome.css:270 — the picker's
+    // last Tools row was unreachable while a memo bubble was pending, because
+    // .memo-banner-open re-enables pointer-events on the bubble body and
+    // physically covered the one card that routes into the admin workspace.
+    // The stack is a SIBLING of this page under #root, so its class can never
+    // appear in the picker's markup.
+    //
+    // dynamicClassPrefixes, not externalClasses, for the reason the
+    // StaffManagementScreen entry documents (moved there 2026-09-29): the
+    // ledger case at :2553 requires an externalClasses value to be defined
+    // OUTSIDE the entry's own css, and `extractClassSelectors` now mints
+    // `memo-stack` from the `:has()` selector in THIS sheet. A whole-name entry
+    // is not a wildcard, so the prefix excuses exactly `memo-stack`.
+    dynamicClassPrefixes: [ 'ws-color-admin', 'ws-color-kds', 'ws-color-restaurant-pos', 'ws-color-store-pos', 'ws-color-warehouse', 'role-badge--owner', 'role-badge--manager', 'role-badge--staff', 'role-badge--auditor', 'role-badge--custom', 'role-badge--default', 'memo-stack'],
     externalClasses: [
       'workspace-card--active',
       'workspace-card-ripple',

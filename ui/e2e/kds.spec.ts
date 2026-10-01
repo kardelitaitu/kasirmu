@@ -56,6 +56,21 @@ test.describe('Kitchen Display System', () => {
     await expect(page.locator('.kds-header')).toBeVisible({ timeout: 5_000 });
     await expect(page.locator('.kds-header-left')).toBeVisible({ timeout: 3_000 });
 
+    // WAIT FOR THE BOARD TO LOAD before reading the count.
+    //
+    // The header paints during the loading skeleton — `initialLoading` gates
+    // only KdsMainContent (KdsMainContent.tsx:102), so `.kds-header` is on
+    // screen while `orders` is still `[]`. The count the assertion below reads
+    // is `filteredOrders.length` (KdsScreen.tsx:427), which is 0 for exactly
+    // that window. Under 4 parallel workers the fetch can take longer than the
+    // header wait, and the assertion then measured an empty board that was
+    // never empty.
+    //
+    // Waiting on the skeleton is the same condition the other cases in this file
+    // already use implicitly — they wait for `.kds-columns`, which only mounts
+    // once loading ends.
+    await expect(page.locator('.kds-loading-container')).toHaveCount(0, { timeout: 10_000 });
+
     // Order count: the Open tab prints the board's order count.
     const openTabCount = page.locator('.kds-tab-count').first();
     await expect(openTabCount).toBeVisible({ timeout: 5_000 });

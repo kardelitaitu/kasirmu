@@ -376,7 +376,7 @@ test.describe('ADR #22 — Workspace config in SettingsNavTree', () => {
 // ── Staff security guard (§7, §9 Security) ────────────────────
 
 test.describe('ADR #22 — Staff security guard', () => {
-  test('staff is redirected away from #/settings', async ({ page }) => {
+  test('staff is refused #/settings, and names the permission it lacks', async ({ page }) => {
     await loginAs(page, 'staff', '1234');
 
     // Should land on workspace home.
@@ -389,8 +389,20 @@ test.describe('ADR #22 — Staff security guard', () => {
     const sidebar = page.locator('[data-testid="settings-sidebar"]');
     await expect(sidebar).not.toBeAttached({ timeout: 5_000 });
 
-    // Positive assertion: workspace home should still be present.
-    await expect(page.getByTestId('workspace-home'))
-      .toBeVisible({ timeout: 5_000 });
+    // The refusal is IN PLACE, not a redirect. Measured 2026-09-30: a staff
+    // session put on #/settings renders the permission-aware denied screen
+    // (PermissionDenied.tsx, `a25f31fbb feat(ui): permission-aware denied
+    // screen (0046)`) naming BOTH the action and the missing registry key. This
+    // spec still expected the old behaviour — bounced back to workspace home —
+    // and had been failing since that commit.
+    //
+    // Asserting the denial is the STRONGER claim: "the sidebar is absent" is
+    // also true of a blank page, whereas this proves the request was read,
+    // understood, and refused with a reason the staff member can act on.
+    const denied = page.locator('.permission-denied');
+    await expect(denied).toBeVisible({ timeout: 5_000 });
+    await expect(denied).toContainText('settings:read');
+    // And the refused page's own content is nowhere on screen.
+    await expect(page.getByTestId('workspace-home')).not.toBeVisible();
   });
 });

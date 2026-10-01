@@ -304,6 +304,40 @@
   scrollbar-gutter: stable;
 }
 
+/*
+ * Clearance for the fixed memo stack — the same mechanism as
+ * StaffManagementScreen.css and WorkspaceHome.css, applied to the region's own
+ * scrolling element rather than the one that wraps it.
+ *
+ * MEASURED DEFECT (2026-10-01). The 'System Diagnostics' nav row measured at
+ * y=647..686 on a 1366x768 settings route while .memo-stack occupied
+ * y=572..709 over x=21..499, and `.memo-banner-title` returned from
+ * document.elementFromPoint at the row's centre — so Playwright refused the
+ * click as intercepted after 90s (ui/e2e/admin-workflows.spec.ts:95).
+ *
+ * HERE, not on `.settings-sidebar`: that element is `overflow: hidden` with
+ * scrollHeight == clientHeight (676 == 676 measured), so it is not a scroll
+ * container and a band on it changes nothing — which is exactly what the first
+ * attempt did (padding computed to 236px, row unmoved). `.settings-sidebar-nav`
+ * is `flex: 1; overflow-y: auto` (this rule, above), so reserving height here is
+ * what lets the last row scroll clear the overlay.
+ *
+ * The existing `--memo-bottom-inset` override on `body:has(.settings-footer)`
+ * (SettingsPage.css:403) moves the stack for the FOOTER; the occluder here is a
+ * nav row, which is why every memo-clearance site reserves height instead of
+ * moving the stack. Gated on the stack's presence, so a memo-free session pays no
+ * dead band.
+ *
+ * (Written without the token name and a colon on purpose: memoStackClearance
+ * greps every sheet for that exact sequence, so naming it in prose here reads as
+ * a seventh declaration of it. That is the trap this very rule is built on.)
+ */
+body:has(.memo-stack) .settings-sidebar-nav {
+  /* --space-6 gutter plus a full stack: MAX_STACK = 3 bubbles in
+     MemoBanner.tsx, measured at 215px at the 1024x1366 tablet profile. */
+  padding-bottom: calc(var(--space-2) + 215px);
+}
+
 /* ── Scrollbar: subtle when idle, visible on hover ────── */
 
 .settings-sidebar-nav::-webkit-scrollbar {

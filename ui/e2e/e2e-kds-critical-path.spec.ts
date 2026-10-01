@@ -52,6 +52,15 @@ test.describe('Critical Path: KDS Full Lifecycle', () => {
       .toBeVisible({ timeout: TIMEOUT });
     await expect(page.locator('.kds-header')).toBeVisible({ timeout: 5_000 });
 
+    // WAIT FOR THE BOARD TO LOAD before reading the count. The header paints
+    // during the loading skeleton — `initialLoading` gates only KdsMainContent
+    // (KdsMainContent.tsx:102) — while `orders` is still `[]`, and the count is
+    // `filteredOrders.length` (KdsScreen.tsx:427). Reading it before the fetch
+    // resolves measures an empty board that was never empty. The `.kds-columns`
+    // wait further down already implies this; doing it explicitly is what stops
+    // the race, and kds.spec.ts:50 was fixed the same way.
+    await expect(page.locator('.kds-loading-container')).toHaveCount(0, { timeout: TIMEOUT });
+
     // Order count must show at least 1 order.
     const countText = await page.locator('.kds-tab-count').first().textContent();
     expect(countText).toBeTruthy();
