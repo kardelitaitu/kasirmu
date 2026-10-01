@@ -8,7 +8,7 @@ import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { act } from 'react';
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { renderWithProviders } from '@/__tests__/test-utils/render';
+import { renderWithProviders, renderWithProvidersSync, rerenderWithProviders } from '@/__tests__/test-utils/render';
 import salesFtl from '@/locales/sales.ftl?raw';
 import productsFtl from '@/locales/products.ftl?raw';
 import inventoryFtl from '@/locales/inventory.ftl?raw';
@@ -173,6 +173,11 @@ vi.mock('@/contexts/AuthContext', async () => {
   };
 });
 
+// Mutable so a test can SWITCH STORES. The receipt-settings read depends on
+// sessionToken, so changing it starts a second read while the first is in flight.
+// Reset in beforeEach so the token cannot leak between cases.
+const wsState = vi.hoisted(() => ({ sessionToken: 'mock-session-token' as string }));
+
 vi.mock('@/contexts/WorkspaceContext', () => ({
   useWorkspace: () => ({
     activeWorkspace: 'store-pos',
@@ -187,7 +192,7 @@ vi.mock('@/contexts/WorkspaceContext', () => ({
     lastWorkspace: null,
     switchStore: vi.fn(),
     resolvedStoreId: 'default',
-    sessionToken: 'mock-session-token',
+    sessionToken: wsState.sessionToken,
     swapSessionToken: vi.fn(),
     terminalId: '',
   }),
@@ -451,10 +456,57 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
     vi.clearAllMocks();
     localStorage.clear();
     mockedBarcode.reset();
+    // A store-switching test mutates this, so later cases need it restored.
+    wsState.sessionToken = 'mock-session-token';
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  // A store switch must not let a SLOWER earlier read win.
+  //
+  // Guarded in PosScreen (760e0c8da). `showTableNumber` decides whether the table
+  // number input is rendered (CartPanel.tsx:564), so a stale value puts the
+  // PREVIOUS store's receipt configuration on this store's screen.
+  //
+  // Unlike the course-firing flag, this one has a cart-FREE observable: the
+  // condition is `showTableNumberSetting || restaurant-pos`, so the input appears
+  // with an empty cart. That is what makes this test able to pin the guard.
+  //
+  // The stale read resolves with DISTINCTLY DIFFERENT values -- true against the
+  // current false -- so the late write is observable rather than a no-op.
+  it('ignores a slower receipt-settings read from the previous store', async () => {
+    let releaseStale: (v: unknown) => void = () => {};
+    const stalePending = new Promise((resolve) => { releaseStale = resolve; });
+
+    // First read held open; it will answer with the PREVIOUS store value.
+    vi.mocked(settingsApi.getReceiptSettingsScoped).mockImplementationOnce(
+      () => stalePending as never,
+    );
+
+    const view = renderWithProvidersSync(<PosScreen />, salesFtl, productsFtl, inventoryFtl, settingsFtl, testCoreFtl);
+    await waitFor(() => expect(settingsApi.getReceiptSettingsScoped).toHaveBeenCalled());
+
+    // Switch stores. The NEW read answers at once with the CURRENT value.
+    vi.mocked(settingsApi.getReceiptSettingsScoped).mockImplementation(
+      () => Promise.resolve({ ...receiptSettingsFixture, showTableNumber: false }) as never,
+    );
+    await act(async () => {
+      wsState.sessionToken = 'mock-session-token-2';
+    });
+    rerenderWithProviders(view, <PosScreen />, salesFtl, productsFtl, inventoryFtl, settingsFtl, testCoreFtl);
+    await waitFor(() => expect(settingsApi.getReceiptSettingsScoped).toHaveBeenCalledTimes(2));
+
+    // Now let the stale read land, after the current one already won.
+    await act(async () => {
+      releaseStale({ ...receiptSettingsFixture, showTableNumber: true });
+      await stalePending;
+    });
+
+    // The guard held: the stale `true` did not land, so the table-number input
+    // stays absent exactly as the CURRENT store configured it.
+    expect(document.querySelector('#pos-table-number')).toBeNull();
   });
 
   it('adds product to cart, opens payment, completes cash sale, resets cart', async () => {
