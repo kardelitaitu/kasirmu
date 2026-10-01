@@ -317,6 +317,11 @@ static PINNED_DESKTOP: &[(&str, usize, &[&str])] = &[
         ],
     ),
     ("sync", 12, &["SYNC_MANAGE"]),
+    // Pinned at its measured shape: the sync test pins module declares the
+    // gates the sync tests drive, but carries no gate CALL of its own, so the
+    // census reads 0 from it. It is a row because the census walks every
+    // non-skipped .rs in the directory -- an added module is a row, gated or not.
+    ("sync_test_pins", 0, &[]),
     (
         "tables",
         6,
@@ -331,7 +336,10 @@ static PINNED_DESKTOP: &[(&str, usize, &[&str])] = &[
     ("tax", 8, &["SETTINGS_EDIT", "SETTINGS_READ"]),
     (
         "terminals",
-        17,
+        // 17 -> 16: one gate call left the module, so the pin moved down with it.
+        // The pin is a census, not a floor -- a removal has to be recorded the same
+        // way an addition does, or the row stops describing the source.
+        16,
         &[
             "TERMINALS_DELETE",
             "TERMINALS_EDIT",
