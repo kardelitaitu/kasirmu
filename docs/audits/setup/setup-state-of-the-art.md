@@ -1867,7 +1867,27 @@ pending bubbles, clamped to MAX_STACK (3). Verified 0→0, 1→1, 3→3, 5→3. 
 **What is now true, stated precisely:** the overlay collision is reproducible on demand, the
 harness to catch it exists, and the product is currently FAILING the contract it would assert.
 The gate itself is not committed — it is red, and committing a red test is not an improvement.
-The next round's work is a CSS fix for the two surfaces, then the gate goes green and lands.
+
+**FIXED 2026-10-01 (round 9) — and the mechanism is the whole lesson.** The bands did not work
+because they were on the wrong element: `padding-bottom` on a scroll container SCROLLS WITH ITS
+CONTENT, so it buys room at the END of the scroll and does nothing at the default scroll
+position, which is where the merchant is. The clearance has to go on the box that SIZES the
+scroller — `overflow: hidden`, so the padding shrinks the scroll region's box and the content
+cannot paint into the strip the stack occupies at ANY offset:
+
+  • `body:has(.memo-stack) .ws-layer-content` (picker; `.ws-layer-content` is overflow:hidden)
+  • `body:has(.memo-stack) .settings-sidebar` (settings; `.settings-sidebar` is overflow:hidden)
+
+Measured after: the picker's Analytics and Reports cards and the sidebar's Offline Queue, Tax
+Configuration and System Diagnostics rows are all CLEAR at the default scroll position, on both
+projects. That is the difference between "reachable if you scroll" and "not in the way".
+
+**One surface remains, and it was never in the audit's scope:** the settings MAIN CONTENT area
+(Memos, Promotions cards) is covered with a 3-bubble stack. It was never measured in the
+ten-route survey because that survey ran before the seam existed and the stack size was
+whatever earlier cases left behind. The fix is the same shape — the settings content region's
+sizing box — but it needs its own measurement, and the gate stays uncommitted until every
+surface is green.
 
 **One consequence did land.** `admin-workflows.spec.ts` had neutered its theme-toggle case with
 a comment recording that the memo stack made the control unclickable, and asserted only that

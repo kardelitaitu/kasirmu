@@ -273,6 +273,25 @@ body:has(.memo-stack) .ws-main {
   padding-bottom: calc(var(--space-6) + 215px);
 }
 
+/*
+ * The clearance that actually WORKS, and why the rule above cannot.
+ *
+ * `.ws-main` is `overflow-y: auto` (this file, the scroll-region rule), so its
+ * padding-bottom SCROLLS WITH ITS CONTENT: it buys room at the END of the scroll
+ * and does nothing at the default scroll position, which is where the merchant
+ * is. Measured 2026-10-01 with the dev-mock `?memos=3` seam: the Analytics and
+ * Reports tool cards were both still covered at rest — hit test returned
+ * `BUTTON.memo-banner-open` — with the rule above in place.
+ *
+ * `.ws-layer-content` is `overflow: hidden`, so padding here SHRINKS the scroll
+ * region's box instead of joining its scroll: the tool grid can no longer paint
+ * into the strip the stack occupies, at ANY scroll offset. That is the
+ * difference between "reachable if you scroll" and "not in the way".
+ */
+body:has(.memo-stack) .ws-layer-content {
+  padding-bottom: calc(var(--space-6) + 215px);
+}
+
 /* ═══════════════════════════════════════════════════════════════════
  * Layer 3: Content (header, cards, grid)
  * Lives inside .ws-layer-content.

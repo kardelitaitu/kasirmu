@@ -338,6 +338,26 @@ body:has(.memo-stack) .settings-sidebar-nav {
   padding-bottom: calc(var(--space-2) + 215px);
 }
 
+/*
+ * The clearance that actually WORKS, and why the rule above cannot.
+ *
+ * `.settings-sidebar-nav` is `overflow-y: auto` (this file, the scroll-region
+ * rule), so its padding-bottom SCROLLS WITH ITS CONTENT: it buys room at the
+ * END of the scroll and does nothing at the default scroll position, which is
+ * where the merchant is. Measured 2026-10-01 with the dev-mock `?memos=3` seam:
+ * Offline Queue, Tax Configuration and System Diagnostics were all still covered
+ * by the stack at rest (hit test returned `P.memo-banner-text` /
+ * `STRONG.memo-banner-title`) with the rule above in place.
+ *
+ * `.settings-sidebar` is `overflow: hidden` (this file, the sidebar rule), so
+ * padding here SHRINKS the nav's box instead of joining its scroll — the nav can
+ * no longer paint into the strip the stack occupies, at any scroll offset.
+ * That is the difference between "reachable if you scroll" and "not in the way".
+ */
+body:has(.memo-stack) .settings-sidebar {
+  padding-bottom: calc(var(--space-2) + 215px);
+}
+
 /* ── Scrollbar: subtle when idle, visible on hover ────── */
 
 .settings-sidebar-nav::-webkit-scrollbar {
