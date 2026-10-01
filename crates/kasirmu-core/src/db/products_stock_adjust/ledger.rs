@@ -254,10 +254,24 @@ impl Store<'_> {
             )?;
 
             // 6. Zero out inventory for products IN SCOPE whose ledger SUM is 0 or
-            //    negative (e.g. all stock was sold) — the INSERT … ON CONFLICT above
-            //    only handles items present in stock_movements. Scoped to match every
-            //    statement above: an unscoped UPDATE here would zero aggregates for
-            //    products this call was never asked to touch.
+            //    negative (e.g. all stock was sold). Scoped to match every statement
+            //    above: an unscoped UPDATE here would zero aggregates for products
+            //    this call was never asked to touch.
+            //
+            // VERIFIED (audit sweep): this is a no-op for the rows step 5 already
+            // wrote — a product whose ledger sums to 0 gets `qty = excluded.qty = 0`
+            // there, so `HAVING SUM(delta) <= 0` reaches rows that are already 0.
+            // Kept because it also covers the `<= 0` side step 5 computes without
+            // asserting, but it is NOT the mechanism for a product with an
+            // inventory row and NO movement at all: that case is handled EARLIER,
+            // by the healing statement (step 1), which writes one compensating
+            // `legacy-backfill` movement so the ledger becomes complete before the
+            // re-derive. Measured, not inferred:
+            // `rebuild_after_ledger_short_opening_stock_keeps_the_unbacked_units`
+            // seeds 60 opening units against 40 of movement and asserts 65 after
+            // the rebuild (+5 sold), i.e. the 20 unbacked units survive. That test
+            // was once `#[ignore]`d as a characterisation of the LOSS and was
+            // un-ignored by the healing rebuild.
             let zero_sql = format!(
                 "UPDATE inventory SET qty = 0, updated_at = ?{} WHERE product_id IN (SELECT item_id FROM stock_movements WHERE item_id IN ({placeholders}) GROUP BY item_id HAVING SUM(delta) <= 0)",
                 n + 1

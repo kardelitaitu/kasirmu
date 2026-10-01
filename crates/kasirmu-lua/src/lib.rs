@@ -436,6 +436,17 @@ fn parse_discount_result(val: mlua::Value) -> Option<DiscountResult> {
             if !(0..=100).contains(&percent) {
                 return None;
             }
+            // `label` is genuinely optional, so `.ok().and_then(..)` is the right
+            // shape here: an unreadable label degrades the LABEL, not the discount.
+            // Contrast `percent` above and `rate_bps`/`is_inclusive` below, where
+            // the field is required and its absence must drop the whole result.
+            //
+            // ⚠️ A required BOOL cannot be guarded by `.ok()?` the way a required
+            // number can: a missing Lua key reads as `nil`, `nil -> i64` FAILS
+            // (so `.ok()?` detects it), but `nil -> bool` SUCCEEDS as `false`
+            // (measured), so `.ok()?` silently yields the wrong answer. A required
+            // bool must be tested with `Table::contains_key` — see
+            // `parse_tax_override`.
             let label: Option<String> = tbl.get("label").ok().and_then(|v: Option<String>| v);
             Some(DiscountResult { percent, label })
         }
