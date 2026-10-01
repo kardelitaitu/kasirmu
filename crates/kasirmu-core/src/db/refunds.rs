@@ -740,6 +740,26 @@ pub fn reverse_customer_spend_on_refund(
     sale_base_total_minor: Option<i64>,
     at: &str,
 ) -> Result<(), CoreError> {
+    // A NEGATIVE reversal amount would run the clamp the wrong way. The clamped
+    // UPDATE is `MAX(total_spent_minor - ?1, 0)`, so subtracting a negative
+    // INCREASES the customer's lifetime spend -- the opposite of the guarantee on
+    // `reverse_lifetime_spend_in_tx` ("a refund can never drive the lifetime total
+    // negative"). Nothing upstream refuses it: `Refund::new` accepts any `Money`
+    // and `create_refund`'s guard is `after > sale_total`, an UPPER bound that a
+    // negative total passes trivially. The sync lane takes `payload.total_minor`
+    // straight off the wire, so this is reachable from a replicated refund too.
+    //
+    // Clamped at the source rather than in the SQL: `max(0)` here also covers the
+    // base-currency conversion below, which is where a sign would otherwise be
+    // reintroduced.
+    if refund_total_minor < 0 {
+        tracing::warn!(
+            customer_id,
+            refund_total_minor,
+            "negative refund total on a spend reversal; clamping to zero rather than crediting the customer"
+        );
+    }
+    let refund_total_minor = refund_total_minor.max(0);
     let refund_base = match (sale_base_total_minor, sale_total_minor) {
         (Some(base), total) if total > 0 && base != total => {
             let num = i128::from(refund_total_minor) * i128::from(base);
