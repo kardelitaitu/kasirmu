@@ -25,6 +25,22 @@ script finds the SELECT that feeds it and compares the Nth column against the fi
 name. A disagreement is reported unless the column is aliased (`... AS x`) or the
 field is a documented rename.
 
+THE BLOCK IS MATCHED BY BRACES, not by lines, and that distinction is the difference
+between this gate working and not. It previously walked forward from the anchor until
+a line that was not a `row.get`, which stops early on any mapper with a bare shorthand
+field (`sku,`, bound earlier) or a nested struct literal (`price: Money { ... },`).
+`modules/inventory/src/repository.rs` has BOTH between its first field and
+`image_hash`, so the walk ended at index 2 and the gate reported exit 0 over a mapper
+that read `image_hash` from the `popularity_score` column -- a real misalignment, found
+by hand, that this script exists to catch. Four lexical repairs were attempted first
+and all failed: a line rule cannot tell a nested literal's closer from the end of the
+block, and INDENTATION does not separate them either (the nested `},` sits at the same
+column as the fields it follows). String literals are blanked before counting, so a
+format string's braces do not desynchronise the depth.
+
+`--roots` defaults now include `modules`, which was a second, independent gap: it had
+never been in the scanned set.
+
 WHAT THE ALIAS EXEMPTION DOES NOT COVER, measured 2026-10-05 and recorded because it
 is the boundary a reader is most likely to assume away. Trusting the alias is right --
 `COUNT(*) AS shift_count` IS the declaration that the mapping is correct -- but the
@@ -158,6 +174,78 @@ def column_base(col: str) -> str:
     return body.lower()
 
 
+def strip_rust_strings(s: str) -> str:
+    """Blank out Rust string literals so braces inside SQL text are not counted."""
+    out: list[str] = []
+    i, n = 0, len(s)
+    while i < n:
+        if s[i] == chr(34):
+            i += 1
+            while i < n and s[i] != chr(34):
+                if s[i] == "\\":
+                    i += 1
+                i += 1
+            i += 1
+        else:
+            out.append(s[i])
+            i += 1
+    return "".join(out)
+
+
+def collect_mapped_fields(lines: list[str], anchor: int) -> list[tuple[str, int]]:
+    """Every `field: row.get(N)` in the STRUCT LITERAL containing `anchor`.
+
+    Brace matching, not line heuristics. The previous walk stopped at the first line
+    that was not a `row.get`, which a mapper with a bare shorthand field (`sku,`)
+    or a nested struct literal (`price: Money { ... },`) breaks on -- and
+    `modules/inventory/src/repository.rs` has both between its first field and
+    `image_hash`, so the walk ended at index 2 and the gate reported a clean tree
+    over a real misalignment it exists to find.
+
+    Four lexical repairs were attempted and each failed for the same reason: a line
+    rule cannot tell a nested literal's closer from the end of the block, and
+    INDENTATION does not separate them either (the nested `},` sits at the same
+    column as the fields it follows). Depth counting is the only thing that
+    distinguishes them, so that is what this does.
+
+    String literals are blanked first: SQL text contains no unbalanced braces, but
+    a Rust format string in the block would, and counting those would desynchronise
+    the depth.
+    """
+    fields: list[tuple[str, int]] = []
+
+    # 1. Walk BACK to the line that opens the enclosing literal.
+    depth = 0
+    start = None
+    for j in range(anchor, max(-1, anchor - 80), -1):
+        for ch in reversed(strip_rust_strings(lines[j])):
+            if ch in ")]}":
+                depth += 1
+            elif ch in "([{":
+                depth -= 1
+        if depth < 0:
+            start = j
+            break
+    if start is None:
+        return fields
+
+    # 2. Walk FORWARD from that opener until its depth returns to zero.
+    depth = 0
+    for j in range(start, min(len(lines), start + 120)):
+        for ch in strip_rust_strings(lines[j]):
+            if ch in "([{":
+                depth += 1
+            elif ch in ")]}":
+                depth -= 1
+        if j >= anchor:
+            fm = FIELD_RE.match(lines[j])
+            if fm:
+                fields.append((fm.group(1), int(fm.group(2))))
+        if depth == 0 and j > start:
+            break
+    return fields
+
+
 def scan(path: Path) -> tuple[list[str], list[str]]:
     text = path.read_text(encoding="utf-8", errors="replace")
     if any(m in text for m in TEMPLATE_MARKERS):
@@ -183,13 +271,18 @@ def scan(path: Path) -> tuple[list[str], list[str]]:
         # highest index the mapper reads. An inner subquery fails that length
         # test; an unrelated earlier query is never reached, because the nearest
         # candidate is examined first.
+        # The mapped fields, gathered by matching the STRUCT LITERAL's braces.
+        # A line-based walk cannot do this: a bare shorthand field (`sku,`) and a
+        # nested literal (`price: Money { ... },`) are both neither a `row.get` nor
+        # the end of the block, and indentation does not separate the nested closer
+        # from the fields. See `collect_mapped_fields`.
+        fields = collect_mapped_fields(lines, i)
+        if len(fields) < 3:
+            continue
+
         want = 0
-        for j in range(i, min(len(lines), i + 25)):
-            fm = FIELD_RE.match(lines[j])
-            if fm:
-                want = max(want, int(fm.group(2)) + 1)
-            elif want:
-                break
+        for _name, _idx in fields:
+            want = max(want, _idx + 1)
 
         cols: list[str] = []
         for j in range(i, max(-1, i - 80), -1):
@@ -207,17 +300,6 @@ def scan(path: Path) -> tuple[list[str], list[str]]:
                 cols = cand
                 break
         if len(cols) < 3:
-            continue
-
-
-        fields: list[tuple[str, int]] = []
-        for j in range(i, min(len(lines), i + 25)):
-            fm = FIELD_RE.match(lines[j])
-            if fm:
-                fields.append((fm.group(1), int(fm.group(2))))
-            elif fields:
-                break
-        if len(fields) < 3:
             continue
 
         bad: list[str] = []
@@ -253,7 +335,7 @@ def scan(path: Path) -> tuple[list[str], list[str]]:
 def main() -> int:
     ap = argparse.ArgumentParser(description="Check positional row-mapper alignment")
     ap.add_argument("--roots", nargs="+",
-                    default=["crates/kasirmu-core/src", "crates/kasirmu-bridge/src"])
+                    default=["crates/kasirmu-core/src", "crates/kasirmu-bridge/src", "modules"])
     args = ap.parse_args()
 
     files: list[Path] = []
