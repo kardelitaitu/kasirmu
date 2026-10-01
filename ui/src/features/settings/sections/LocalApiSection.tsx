@@ -58,6 +58,28 @@ export default function LocalApiSection() {
   // be fixing the port.
   const portEditedRef = useRef(false);
 
+  // UNPINNED, AND THE SWEEP FOR SIBLINGS WAS INCONCLUSIVE -- recorded as a BOUNDARY.
+  //
+  // The guard above stops the poll seeding this field once the operator has edited it.
+  // A sweep was run for the same defect elsewhere: a setInterval callback writing state
+  // that an <input>/<select> binds as its value.
+  //
+  // IT CANNOT BE ANSWERED BY SCANNING, and that is the finding. Two detector versions
+  // were tried and BOTH were control-tested against the pre-fix and post-fix shapes of
+  // THIS file: each fired on both, because the difference is not whether a setter is
+  // reachable from an interval but whether that particular write is CONDITIONAL on a
+  // ref. That is a dataflow property, not a lexical one -- the same wall the async-
+  // overlap scan hit in round 80 and the reason it was kept out of CI.
+  //
+  // WHAT THE SCAN CAN SAY, and all it says: this file is the only one in ui/src where a
+  // setter reachable from an interval backs a bound input value. That is a FLOOR, not a
+  // complete answer -- a file that binds an uncontrolled input, or writes through a
+  // callback parameter rather than a setter, would not appear.
+  //
+  // THE HONEST RESIDUE: one site is fixed and one is a false positive (setStatus here
+  // binds a READ-ONLY display at value={status.storeId}). Whether other files poll over
+  // a bound field is UNVERIFIED.
+
   const refresh = useCallback(async () => {
     if (!sessionToken) return;
     try {
