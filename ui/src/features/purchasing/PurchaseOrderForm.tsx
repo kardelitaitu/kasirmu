@@ -53,6 +53,19 @@ export default function PurchaseOrderForm({ editingId, onClose, onSaved }: Props
 
   useFocusTrap(panelRef, !saving, onClose);
 
+  // Measured and left UNGUARDED, like StoreSwitcher.load. Deps name sessionToken
+  // so a store switch CAN overlap two of these reads. The consequence is what
+  // decided it:
+  //
+  //   suppliers feeds ONLY the dropdown. A stale read fills it with the PREVIOUS
+  //   store suppliers and submits supplierId. The write is still scoped --
+  //   create_purchase_order_scoped resolves the session and opens THAT store
+  //   database (purchasing.rs:711, :717), so a foreign supplier id cannot be
+  //   persisted. The failure is a confusing reject, not a cross-tenant write.
+  //
+  // So no guard here: it would buy a correct dropdown at the cost of another
+  // token. If the supplier list ever gates submission rather than feeding it,
+  // this becomes money and needs the guard with it.
   useEffect(() => {
     listSuppliers(sessionToken).then(setSuppliers)    .catch(() => {
       addToast({ message: requiredLocalized(l10nRef.current, 'po-form-error-suppliers-failed'), type: 'error' });
