@@ -48,6 +48,7 @@ function makeActions(overrides: Partial<RestaurantSidebarActions> = {}): Restaur
     onOpenKitchenDisplay: vi.fn(),
     onOpenReceipts: vi.fn(),
     onOpenPayments: vi.fn(),
+    onOpenSettings: vi.fn(),
     ...overrides,
   };
 }
@@ -231,34 +232,43 @@ describe('RestaurantSidebar — action row handlers', () => {
   });
 });
 
-describe('RestaurantSidebar — manager gating on Receipts/Payments', () => {
-  it('disables and refuses Receipts/Payments for a non-manager', () => {
+describe('RestaurantSidebar — manager gating on Receipts/Payments/Settings', () => {
+  it('disables and refuses Receipts/Payments/Settings for a non-manager', () => {
     const actions = makeActions();
     const onOpenChange = vi.fn();
     renderSidebar({ cartActions: actions, isManager: false, onOpenChange });
     const receipts = screen.getByRole('button', { name: /Receipts/i });
     const payments = screen.getByRole('button', { name: /Payments/i });
+    const settings = screen.getByRole('button', { name: /Settings/i });
     expect(receipts).toBeDisabled();
     expect(payments).toBeDisabled();
+    expect(settings).toBeDisabled();
     fireEvent.click(receipts);
     expect(actions.onOpenReceipts).not.toHaveBeenCalled();
     fireEvent.click(payments);
     expect(actions.onOpenPayments).not.toHaveBeenCalled();
+    fireEvent.click(settings);
+    expect(actions.onOpenSettings).not.toHaveBeenCalled();
     expect(onOpenChange).not.toHaveBeenCalled();
   });
 
-  it('enables Receipts/Payments for a manager and fires their handlers on click', () => {
+  it('enables Receipts/Payments/Settings for a manager and fires their handlers on click', () => {
     const actions = makeActions();
     const onOpenChange = vi.fn();
     renderSidebar({ cartActions: actions, isManager: true, onOpenChange });
     const receipts = screen.getByRole('button', { name: /Receipts/i });
     const payments = screen.getByRole('button', { name: /Payments/i });
+    const settings = screen.getByRole('button', { name: /Settings/i });
     expect(receipts).not.toBeDisabled();
+    expect(payments).not.toBeDisabled();
+    expect(settings).not.toBeDisabled();
     fireEvent.click(receipts);
     expect(actions.onOpenReceipts).toHaveBeenCalled();
     expect(onOpenChange).toHaveBeenCalledWith(false);
     fireEvent.click(payments);
     expect(actions.onOpenPayments).toHaveBeenCalled();
+    fireEvent.click(settings);
+    expect(actions.onOpenSettings).toHaveBeenCalled();
   });
 });
 

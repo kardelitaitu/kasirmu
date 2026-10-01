@@ -16,6 +16,7 @@ import TableManagementScreen from '@/features/tables/TableManagementScreen';
 import SalesHistoryScreen from '@/features/sales/SalesHistoryScreen';
 import RestaurantReceiptsScreen from '@/features/restaurant/screens/RestaurantReceiptsScreen';
 import RestaurantPaymentsScreen from '@/features/restaurant/screens/RestaurantPaymentsScreen';
+import RestaurantSettingsScreen from '@/features/restaurant/screens/RestaurantSettingsScreen';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useWorkspaceNav } from '@/hooks/useWorkspaceNav';
 
@@ -202,6 +203,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   const [showStockInquiry, setShowStockInquiry] = useState(false);
   const [showReceiptsSettings, setShowReceiptsSettings] = useState(false);
   const [showPaymentsSettings, setShowPaymentsSettings] = useState(false);
+  const [showRestaurantSettings, setShowRestaurantSettings] = useState(false);
   const [showPayment, setShowPayment] = useState(false);
   const [showDiscountInput, setShowDiscountInput] = useState(false);
   const [showPromotions, setShowPromotions] = useState(false);
@@ -782,6 +784,17 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     );
   }
 
+  // ── Sub-screen: Restaurant General Settings ──────────────────
+  if (showRestaurantSettings) {
+    return (
+      <div className="pos-screen">
+        <div style={{ flex: 1, overflow: 'auto' }}>
+          <RestaurantSettingsScreen onBack={() => setShowRestaurantSettings(false)} />
+        </div>
+      </div>
+    );
+  }
+
   // ── Sub-screen: Settings (4-tab-routing) ──────────────────────
   // Same pattern as the desktop `RetailOptionsScreen`: four tabs
   // (Appearance / Features / Data / Sync) that route to the
@@ -883,6 +896,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     onOpenKitchenDisplay: () => onNavigate?.('kds'),
     onOpenReceipts: () => setShowReceiptsSettings(true),
     onOpenPayments: () => setShowPaymentsSettings(true),
+    onOpenSettings: () => setShowRestaurantSettings(true),
     onRequestExit: handleRequestExit,
   };
 
