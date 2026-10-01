@@ -39,6 +39,9 @@ next: none | perf: N/A
 // `#![allow(unsafe_code)]`, the file-scoped precedent at
 // `kasirmu-security/src/windows.rs:13`.
 #![deny(unsafe_code)]
+// `async_trait` generates Box<dyn Future> decorated with #[must_use] on methods
+// whose signatures already return Result, triggering Clippy's double_must_use lint.
+#![allow(clippy::double_must_use)]
 
 pub mod email_scheduler;
 pub mod handlers;
