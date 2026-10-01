@@ -1868,26 +1868,31 @@ pending bubbles, clamped to MAX_STACK (3). Verified 0→0, 1→1, 3→3, 5→3. 
 harness to catch it exists, and the product is currently FAILING the contract it would assert.
 The gate itself is not committed — it is red, and committing a red test is not an improvement.
 
-**FIXED 2026-10-01 (round 9) — and the mechanism is the whole lesson.** The bands did not work
-because they were on the wrong element: `padding-bottom` on a scroll container SCROLLS WITH ITS
-CONTENT, so it buys room at the END of the scroll and does nothing at the default scroll
-position, which is where the merchant is. The clearance has to go on the box that SIZES the
-scroller — `overflow: hidden`, so the padding shrinks the scroll region's box and the content
-cannot paint into the strip the stack occupies at ANY offset:
+**PARTIALLY FIXED 2026-10-01 (rounds 9-10) — and the previous entry overclaimed.**
+Round 9 reported the picker's Analytics/Reports cards and the sidebar's three nav rows clear "on
+both projects". That was read off a REDUCED failure list, not a green run: the tablet project
+went green and **desktop did not**. Read the next entry as a retraction, not as a completion.
 
-  • `body:has(.memo-stack) .ws-layer-content` (picker; `.ws-layer-content` is overflow:hidden)
-  • `body:has(.memo-stack) .settings-sidebar` (settings; `.settings-sidebar` is overflow:hidden)
+The mechanism round 9 identified is real and still stands: `padding-bottom` on a scroll container
+SCROLLS WITH ITS CONTENT, so it buys room at the END of the scroll and does nothing at the default
+scroll position. The clearance has to go on a box that SIZES the scroller. Round 10 collapsed
+the two settings rules into one on `.settings-body` (the flex row that sizes BOTH the sidebar
+and the main content) — two rules where one is correct is also how a surface gets missed, because
+the one you banded is the one you test.
 
-Measured after: the picker's Analytics and Reports cards and the sidebar's Offline Queue, Tax
-Configuration and System Diagnostics rows are all CLEAR at the default scroll position, on both
-projects. That is the difference between "reachable if you scroll" and "not in the way".
+**Measured state at the end of round 10, with `?memos=3`:**
 
-**One surface remains, and it was never in the audit's scope:** the settings MAIN CONTENT area
-(Memos, Promotions cards) is covered with a 3-bubble stack. It was never measured in the
-ten-route survey because that survey ran before the seam existed and the stack size was
-whatever earlier cases left behind. The fix is the same shape — the settings content region's
-sizing box — but it needs its own measurement, and the gate stays uncommitted until every
-surface is green.
+| Project | Picker | Settings route |
+|---|---|---|
+| tablet (1024x1366) | CLEAR | CLEAR |
+| desktop (1366x768) | covered | covered — Offline Queue, Tax Configuration, System Diagnostics (and each row's `Pin …`), plus the main content's Memos and Promotions cards |
+
+So the two viewports differ and only the tall one is fixed. The desktop shell is SHORT (768px),
+which is the geometry that makes this hard: the stack occupies the bottom ~137px and the page has
+no room to give away. The next round has to measure the desktop geometry specifically rather than
+assume the tablet result transfers — which is the mistake round 9 made.
+
+**The gate is still not committed.** It is red on desktop, and a red test is not an improvement.
 
 **One consequence did land.** `admin-workflows.spec.ts` had neutered its theme-toggle case with
 a comment recording that the memo stack made the control unclickable, and asserted only that

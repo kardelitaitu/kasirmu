@@ -346,15 +346,16 @@ body:has(.memo-stack) .settings-sidebar-nav {
  * END of the scroll and does nothing at the default scroll position, which is
  * where the merchant is. Measured 2026-10-01 with the dev-mock `?memos=3` seam:
  * Offline Queue, Tax Configuration and System Diagnostics were all still covered
- * by the stack at rest (hit test returned `P.memo-banner-text` /
- * `STRONG.memo-banner-title`) with the rule above in place.
+ * by the stack at rest with the rule above in place.
  *
- * `.settings-sidebar` is `overflow: hidden` (this file, the sidebar rule), so
- * padding here SHRINKS the nav's box instead of joining its scroll — the nav can
- * no longer paint into the strip the stack occupies, at any scroll offset.
- * That is the difference between "reachable if you scroll" and "not in the way".
+ * One band, on `.settings-body`, replaces the per-sidebar rule round 9 added here.
+ * `.settings-body` is the flex ROW that SIZES both the sidebar and the main
+ * content, so padding on it shrinks both boxes at once — and the round-9 version,
+ * which banded only `.settings-sidebar`, left the main content's cards (Memos,
+ * Promotions) covered with a 3-bubble stack. Two rules where one is correct is
+ * also how a surface gets missed: the one you banded is the one you test.
  */
-body:has(.memo-stack) .settings-sidebar {
+body:has(.memo-stack) .settings-body {
   padding-bottom: calc(var(--space-2) + 215px);
 }
 
