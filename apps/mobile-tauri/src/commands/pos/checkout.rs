@@ -104,6 +104,17 @@ use super::{
 ///
 /// Honest clients are unaffected: the ids the UI mints are UUIDs, which contain
 /// no colon.
+///
+/// PARITY, verified both ways rather than asserted: the bridge validates on BOTH
+/// checkout doors (`pos/checkout.rs:343` for the cart door and `:598` for the
+/// shortfall door), and `apps/desktop-tauri` carries no attempt-id handling of its
+/// own — it reaches these through `kasirmu_bridge::pos`, so rejecting here makes
+/// this shell AGREE with the desktop on both doors instead of one.
+///
+/// The trim half of this contract is pinned across shells by
+/// `whitespace_only_attempt_id_is_unguarded_like_the_tablet` in the bridge tests,
+/// which is what kept the two implementations in step while the colon rule drifted
+/// the other way. The colon half is pinned here now.
 pub(super) fn normalized_attempt_id(raw: Option<&str>) -> Result<Option<String>, AppError> {
     let Some(raw) = raw else {
         return Ok(None);
