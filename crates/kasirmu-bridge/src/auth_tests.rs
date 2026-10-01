@@ -42,6 +42,49 @@ fn no_bridge_module_timestamps_a_credential_from_a_defaulted_clock() {
     }
 }
 
+/// No bridge module may resolve a deduction location through a DEFAULTED fallback.
+///
+/// `resolve_primary_location` already returns tier 4 (the canonical default) for a
+/// workspace with genuinely no binding — that is its documented fall-through. So an
+/// `.unwrap_or_else(|_| get_default_location_id())` at a call site can only ever catch
+/// a READ FAILURE, and it makes that failure indistinguishable from "unbound": the
+/// sale then deducts stock from the canonical default location while reporting success.
+///
+/// This exists for the same reason as the clock sweep above, and it earned its place
+/// the hard way: the claim that every caller propagated was made from INSPECTION and
+/// was WRONG twice in one round. `pos/cart.rs` propagated in the `Some` arm of a match
+/// and swallowed in the `None` arm beside it — a split WITHIN one match, where the two
+/// arms differ only in where the instance id comes from — and the swallow was on the
+/// `None` arm, which is the one real deployments take. `pos/checkout.rs` swallowed on
+/// the explicit-stock-locations branch. Reading the `resolve_primary_location(` line
+/// showed a `?` in both cases; only reading the whole expression showed the rest.
+///
+/// `pos/cart.rs` and `pos/checkout.rs` are the only bridge files that call the resolver
+/// (verified by grep over the crate), and both are swept below. Whitespace-insensitive
+/// for the formatter-reflow reason recorded above.
+#[test]
+fn no_bridge_module_defaults_a_deduction_location() {
+    let sources = [
+        ("pos/cart.rs", include_str!("pos/cart.rs")),
+        ("pos/checkout.rs", include_str!("pos/checkout.rs")),
+    ];
+
+    for (name, source) in sources {
+        let compact: String = source.chars().filter(|c| !c.is_whitespace()).collect();
+        assert!(
+            !compact.contains("resolve_primary_location(..None,)||get_default_location_id()")
+                && !compact.contains("get_default_location_id()),"),
+            "{name} defaults a deduction location on a failed resolve; propagate the error"
+        );
+        // The precise shape guarded, stated separately so a reformat cannot hollow the
+        // assertion above out: a `?` immediately closing the resolver call.
+        assert!(
+            !compact.contains(")||get_default_location_id()"),
+            "{name} still carries a defaulted-location fallback"
+        );
+    }
+}
+
 // The release leg for a command this file drives through the subscription gate.
 //-- The release leg for these sessions lives in crate::testing (RULE at assert_refused_by_the_seeded_row) --
 

@@ -740,6 +740,42 @@ fn scoped_bridge_typed(
     type_key: &str,
 ) -> crate::testing::TestBridge {
     let bridge = crate::testing::TestBridge::new().with_conn(conn);
+
+    // The session below names `instance-1`, and the cart-start and settlement doors
+    // resolve that id to decide WHERE to deduct from. Nothing seeded it, so this
+    // helper handed every caller a session whose own workspace did not exist — the
+    // tests passed only while those doors swallowed the resulting `NotFound` and
+    // substituted the canonical default location. They now PROPAGATE it, so the
+    // instance must exist wherever the session claims it.
+    //
+    // Seeded into the STORE db, not the global one: `start_sale_scoped` takes its
+    // connection from `ctx.resolve_store(token)` (`pos/cart.rs:126`) and resolves the
+    // location against THAT (`:157`), while `with_conn` above supplies the global
+    // identity db. Seeding into the global connection is the obvious-looking mistake
+    // here and it does not work — measured: the assertion still failed with the row
+    // present in the wrong database.
+    //
+    // The store id is the one these tests pass as `store_id` (`"s1"`), matching how
+    // `:1997` reaches the same DB. Seeded once in the shared helper rather than per
+    // test, because the gap is a property of the helper, not of any single caller.
+    //
+    // `bound_location_id` is deliberately NULL: it FKs to `inventory_locations`
+    // (`20260813_init.sql:996`), a different table from `location_id`'s `locations`.
+    // NULL is also the honest shape — unbound takes the resolver's documented
+    // multi-binding / tier-4 path, which is what these tests were actually exercising
+    // before the fallback made the outcome unobservable.
+    {
+        let store_conn = bridge.db_manager().open_store(store_id).unwrap();
+        let db = store_conn.lock().unwrap();
+        db.execute_batch(
+            "INSERT OR IGNORE INTO locations (id, name, is_primary)
+                 VALUES ('scoped-store', 'Scoped Store', 0);
+             INSERT OR IGNORE INTO workspace_instances (id, type_key, location_id, name)
+                 VALUES ('instance-1', 'store-pos', 'scoped-store', 'Scoped Instance');",
+        )
+        .expect("seed the workspace instance `scoped_bridge_typed` names");
+    }
+
     bridge.sessions().write().unwrap().insert(
         token.into(),
         SessionContext::new(
@@ -2268,7 +2304,20 @@ fn plugin_gate_bridge(
         let store_conn = bridge.db_manager().open_store(store_id).unwrap();
         let db = store_conn.lock().unwrap();
         db.execute_batch(
-            "INSERT INTO products (id, sku, name, price_minor, currency, product_type)
+            // The session below names `plugin-instance`, which the cart-start door
+            // resolves to choose the deduction location (`pos/cart.rs:126,157`).
+            // Nothing seeded it, so these tests passed only while that door swallowed
+            // the `NotFound` and substituted the canonical default. It now PROPAGATES.
+            // The binding targets the SAME location the stock row below uses, so the
+            // deduction lands where the fixture put the inventory.
+            "INSERT OR IGNORE INTO inventory_locations (id, name, type)
+                 VALUES ('01926b3a-0000-7000-8000-000000000001', 'Default', 'store');
+             INSERT OR IGNORE INTO locations (id, name, is_primary)
+                 VALUES ('plugin-store', 'Plugin Store', 0);
+             INSERT OR IGNORE INTO workspace_instances (id, type_key, location_id, name, bound_location_id)
+                 VALUES ('plugin-instance', 'restaurant-pos', 'plugin-store', 'Plugin POS',
+                         '01926b3a-0000-7000-8000-000000000001');
+             INSERT INTO products (id, sku, name, price_minor, currency, product_type)
                  VALUES ('plugin-product', 'PLUGIN-COFFEE', 'Plugin Coffee', 1000, 'USD', 'retail');
              INSERT INTO stock_summary (item_id, location_id, qty)
                  VALUES ('plugin-product', '01926b3a-0000-7000-8000-000000000001', 100);",
