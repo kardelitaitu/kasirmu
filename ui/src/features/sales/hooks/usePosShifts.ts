@@ -146,7 +146,9 @@ export function usePosShifts({ sessionToken, userId, lines, l10nRef, currency = 
   //
   // Both arms are guarded, including the spinner: a superseded read must not clear
   //   the current one or stand the shift gate down for the load in flight.
-  const shiftSeq = useRef(0);  useEffect(() => {
+  const shiftSeq = useRef(0);
+
+  useEffect(() => {
     if (!userId) {
       setActiveShift(null);
       setShiftUnavailable(false);

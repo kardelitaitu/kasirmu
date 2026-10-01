@@ -919,7 +919,9 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
   //
   // Note the setActiveShift(null) above: clearing on entry is itself a write, so the
   //   clear is sequenced too rather than running unconditionally before the guard.
-  const shiftSeq = useRef(0);  useEffect(() => {
+  const shiftSeq = useRef(0);
+
+  useEffect(() => {
     if (!sessionToken) return;
     const seq = ++shiftSeq.current;
     const stale = () => shiftSeq.current !== seq;
