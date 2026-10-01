@@ -24,6 +24,8 @@ export interface SettingsSelectProps {
   ariaLabel?: string;
   /** Placeholder text shown when no value matches. */
   placeholder?: string;
+  /** Optional data-testid for tests. */
+  'data-testid'?: string;
 }
 
 /**
@@ -43,6 +45,7 @@ export default function SettingsSelect({
   disabled,
   ariaLabel,
   placeholder,
+  'data-testid': testId,
 }: SettingsSelectProps) {
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
@@ -271,6 +274,7 @@ export default function SettingsSelect({
         aria-label={ariaLabel}
         aria-expanded={open}
         aria-haspopup="listbox"
+        data-testid={testId}
       >
         <span className="ssel-label">
           {selectedOption?.label ?? placeholder ?? ''}
