@@ -64,6 +64,12 @@ const EXPECTED_KEYS: Record<string, string> = {
   'retail-sound-enabled': 'features/retail/RetailPosScreen.tsx',
   'retail-tender-presets': 'features/retail/RetailPosScreen.tsx',
 
+  // Interaction feedback (433a12507): the restaurant behaviour settings gate the
+  // sounds and haptics the POS plays. Persisted independently so resetting one
+  // feedback channel does not reset the other.
+  'pos.interaction_sound': 'utils/interaction.ts',
+  'pos.interaction_vibration': 'utils/interaction.ts',
+
   // Settings
   'settings-pinned-sections': 'features/settings/SettingsNavTree.tsx',
   'settings-sidebar-collapsed': 'features/settings/SettingsNavTree.tsx',
@@ -138,6 +144,9 @@ const EXPECTED_KEYS: Record<string, string> = {
   'oz-dev-mock:topology-revisions': 'dev-mock/core/mockDatabase.ts',
   'oz-dev-mock:user-prefs': 'dev-mock/core/mockDatabase.ts',
   'oz-dev-mock:workspaces': 'dev-mock/core/mockDatabase.ts',
+  // The memo banner's seen counter, so a dismissed memo does not reappear on
+  // every reload of the mock.
+  'oz-dev-mock:memo-count': 'dev-mock/handlers/locations.ts',
   // The DevToolbar's tier switch. Dev-only, but persisted on purpose: the
   // selection has to outlive the reload that switch performs, or every tier
   // change would bounce straight back to the default.
