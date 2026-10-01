@@ -496,6 +496,7 @@
       "id": "panic-inventory",
       "label": "Panic inventory",
       "status": "required",
+      "_runner_note": "The check.sh runner label is NOT a step() name. check.sh runs this one as an INLINE block (scripts/check.sh:373-390, `echo -n \"panic-inventory scan... \"` around `python3 scripts/scan-unwrap-panic.py --fail-on-recoverable`), not through `step \"...\"` the way the other 141 do. A cross-check that resolves runner labels against step() names therefore reports it missing, which is a false positive -- the scan runs, and it is required. Recorded here so the next reader does not \"fix\" the label by renaming it to something that still matches nothing, or conclude the gate is unhooked.",
       "runners": {
         "check.sh": [
           "panic-inventory"
@@ -804,7 +805,7 @@
         "workflow": "dev-ci.yml",
         "job": "coverage-floors",
         "steps": [
-          "Generate coverage report",
+          "Coverage report",
           "Grade against the floors"
         ]
       },
