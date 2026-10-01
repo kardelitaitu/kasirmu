@@ -110,8 +110,10 @@ setup-provision-success = This terminal is ready.
 setup-provision-error = Could not finish setting up this terminal. Please try again.
 setup-provision-account-required = Please link your kasir.mu account before finishing setup.
 
-setup-account-title = Your account
-setup-account-desc = Optional. Link this POS to your kasir.mu account so you can sign in on the web with Google.
+# `setup-account-title` and `setup-account-desc` were removed 2026-10-01: they
+# belonged to the RETIRED SetupWizard account step (deleted in badd31d2e) and no
+# source referenced either — see setup-wizard-audit.md recommendation 2. The
+# account family below is ProvisioningFlow's, and its heading is its own.
 setup-account-google = Continue with Google
 setup-account-waiting = Waiting for your browser…
 setup-account-linked = Linked to { $email }.
@@ -128,8 +130,9 @@ setup-account-code-label = Verification code
 setup-account-send = Email me a code
 setup-account-code = 6-digit code
 setup-account-verify = Verify
-setup-account-sent = Code sent. It expires in 15 minutes.
-setup-account-optional = You can skip this. Your licence key still runs the POS.
+# `setup-account-sent` and `setup-account-optional` removed 2026-10-01, same as
+# the pair above: both were the retired wizard's, and both were unread — the flow
+# says nothing when the code is sent (the code field appearing IS the signal).
 # The tablet's in-flight states. `setup-account-waiting` above names a browser and stays with
 # the Google control, which really does open one.
 setup-account-sending = Sending the code…

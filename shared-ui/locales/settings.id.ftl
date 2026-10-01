@@ -189,8 +189,10 @@ setup-provision-success = Terminal ini siap.
 setup-provision-error = Tidak dapat menyelesaikan penyiapan terminal ini. Silakan coba lagi.
 setup-provision-account-required = Harap tautkan akun kasir.mu Anda sebelum menyelesaikan penyiapan.
 
-setup-account-title = Akun Anda
-setup-account-desc = Opsional. Tautkan POS ini ke akun kasir.mu Anda agar bisa masuk di web dengan Google.
+# `setup-account-title` dan `setup-account-desc` dihapus 2026-10-01: keduanya
+# milik langkah akun SetupWizard yang sudah retirement (dihapus di badd31d2e) dan
+# tidak ada sumber yang memakainya — lihat rekomendasi 2 di
+# setup-wizard-audit.md. Keluarga akun di bawah ini milik ProvisioningFlow.
 setup-account-google = Lanjutkan dengan Google
 setup-account-waiting = Menunggu browser Anda…
 setup-account-linked = Tertaut ke { $email }.
@@ -207,8 +209,10 @@ setup-account-code-label = Kode verifikasi
 setup-account-send = Kirim kode ke email
 setup-account-code = Kode 6 digit
 setup-account-verify = Verifikasi
-setup-account-sent = Kode terkirim. Kode kedaluwarsa dalam 15 menit.
-setup-account-optional = Anda dapat melewati ini. Kunci lisensi Anda tetap menjalankan POS.
+# `setup-account-sent` dan `setup-account-optional` dihapus 2026-10-01, sama seperti
+# pasangan di atas: keduanya milik wizard yang sudah retirement, dan keduanya
+# tidak terbaca — alur ini tidak memberi pesan saat kode terkirim (munculnya kolom
+# kode sudah menjadi sinyalnya).
 # Status saat proses (tablet). `setup-account-waiting` di atas menyebut browser dan tetap
 # dipakai kontrol Google, yang memang membuka browser.
 setup-account-sending = Mengirim kode…
