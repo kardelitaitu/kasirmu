@@ -460,6 +460,19 @@
       }
     },
     {
+      "id": "gate-completeness",
+      "label": "Gate roster completeness",
+      "status": "required",
+      "_note": "Added 2026-10-05 (round 150). The inverse of gate-roster-runners. That gate proves every label the manifest DECLARES resolves to a real check.sh step; nothing proved every step is DECLARED, and the gap is invisible from the manifest side because a step with no row is simply absent from the list any tool iterates. verify-ci-docs-drift.py walks the gates PRESENT, so an unrostered gate can never be reported as required-but-unenforced. Rounds 148-149 matched every step against every label by hand and found seven, including `script tests` -- a whole suite exposed as npm run test:scripts that had been red for an unknown period because nothing invoked it, and which was still unclaimed after it was finally wired. Requires an EXACT claim rather than a prefix, which is the one deliberate difference from gate-roster-runners: while the migration row declared the bare label \"migration\", the prefix rule reported `migration smoke test` as claimed while `migration idempotency` was claimed by nothing. Starts green -- 118 of 118 steps claimed exactly -- which round 109 established a new gate needs.",
+      "runners": {
+        "check.sh": [
+          "gate completeness",
+          "gate completeness self-test"
+        ]
+      },
+      "self_test": "python3 scripts/verify-gate-completeness.py --self-test"
+    },
+    {
       "id": "skill-drift",
       "label": "Skill drift guard",
       "status": "required",

@@ -482,6 +482,18 @@ step "gate roster" "python3 scripts/check-gate-runners.py" python3 scripts/check
 # the same self-referential failure the parity and attribute gates document.
 step "gate roster self-test" "python3 scripts/check-gate-runners.py --self-test" python3 scripts/check-gate-runners.py --self-test
 
+# The OTHER direction from the step above. check-gate-runners.py proves every label the
+# roster DECLARES resolves to a step; nothing proved every step is DECLARED. A step
+# with no row is invisible to verify-ci-docs-drift.py, which iterates the gates
+# PRESENT in the manifest, so it can never be reported as required-but-unenforced.
+# Rounds 148-149 found seven such steps, including a whole suite (`script tests`) that
+# had been red for an unknown period because nothing ran it. This gate requires an
+# EXACT claim, not a prefix: the "migration" row once resolved by prefix while
+# "migration idempotency" was claimed by nothing.
+# Gate: scripts/gates.json -> "gate-completeness".
+step "gate completeness" "python3 scripts/verify-gate-completeness.py" python3 scripts/verify-gate-completeness.py
+step "gate completeness self-test" "python3 scripts/verify-gate-completeness.py --self-test" python3 scripts/verify-gate-completeness.py --self-test
+
 # ── Namespace governance — soft rules for module seams (Round 4) ────────
 # ADR-62 named the seams; docs/architecture/module-namespace-governance.md names
 # the RULES and freezes today's debt as data. Deliberately SOFT: all modules share

@@ -1176,6 +1176,15 @@ jobs:
       # that stopped matching would silently bless the whole roster.
       - name: Gate roster runners self-test
         run: python3 scripts/check-gate-runners.py --self-test
+      # The inverse direction: every check.sh step must be NAMED by a gates.json row.
+      # gate-roster-runners proves the roster's labels resolve; nothing proved the
+      # roster is complete, and a step with no row is invisible to ci-docs-drift,
+      # which iterates the gates PRESENT in the manifest. Rounds 148-149 found seven,
+      # including a suite that had been red for an unknown period because nothing ran it.
+      - name: Gate roster completeness
+        run: python3 scripts/verify-gate-completeness.py
+      - name: Gate roster completeness self-test
+        run: python3 scripts/verify-gate-completeness.py --self-test
       # R36-11: release.yml was renamed to .bak with an empty commit message and
       # nothing noticed that tagging had stopped producing installers. A workflow
       # that never runs cannot report its own breakage, so this validates the
