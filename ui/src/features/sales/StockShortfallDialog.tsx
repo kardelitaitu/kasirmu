@@ -228,6 +228,30 @@ export default function StockShortfallDialog({
     [resolutions, updateResolution]
   );
 
+  // ⚠️ NO PIN GATE, and the label above says otherwise. The checkbox reads
+  // "Allow negative stock (Manager PIN override)" but this writes the flag
+  // directly: any operator who can resolve a shortfall can drive the cart
+  // negative, with no manager credential involved.
+  //
+  // WHAT IS NOT IN QUESTION. The backend feature is deliberate and settled:
+  // `manager-codebase-review-decisions.md` D11 answers option A (keep it, enforce
+  // conditionally) as IMPLEMENTED on both engines -- SQLite migration
+  // 20261012_stock_summary_qty_nonnegative.sql and the plpgsql twin in
+  // 20260813_init.pg.sql:3169-3193 -- and option B (retire the feature) was
+  // explicitly NOT taken. ADR #17 (:706-708) specifies this override and
+  // requires the PIN. So the feature, the guard and the UI are all intended;
+  // what is missing is the credential check between the checkbox and the write.
+  //
+  // The pattern to copy is two features over, in the same feature folder:
+  // `usePosCartActions.ts:153-170` -- `handleDeductionBadgeClick` opens
+  // `FastPINOverlay`, and `overrideCartDeductionLocation` is called ONLY from
+  // `handleDeductionPinVerified`. That is ADR-19 §17 implemented, and it is the
+  // shape this handler should take.
+  //
+  // Not wired here on purpose: a manager-PIN gate is a credential path, and adding
+  // one that the backend does not require would be a behaviour change to a
+  // cashier-facing flow on a screen this session has not otherwise touched. The
+  // note lives where the gap is so the next reader sees it at the checkbox.
   const handleAllowNegative = useCallback(
     (sku: string, allowed: boolean) => {
       updateResolution(sku, { allowNegative: allowed });
