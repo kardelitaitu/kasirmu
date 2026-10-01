@@ -2291,7 +2291,10 @@ fn rolled_back_refund_writes_no_outbox_row() {
 /// what the CRM screen shows as lifetime spend.
 #[test]
 fn base_currency_refund_conversion_rounds_half_up_per_refund() {
-    let conn = fresh();
+    // Deliberately NO database handle: this pins the rounding arithmetic itself,
+    // which is why every figure below is computed rather than read back. A
+    // `let conn = fresh();` sat here unused and, under CI's `-D warnings`, that
+    // one binding failed six jobs at once (check, clippy, coverage, 3 shards).
     let base: i64 = 10_000;
     let charged: i64 = 100_000_000;
 
