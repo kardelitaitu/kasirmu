@@ -526,7 +526,7 @@ fn base_total_minor_is_believed_without_re_derivation() {
 /// zero and the under-count is swallowed, leaving a wrong number that later sales
 /// add on top of. Every existing customer_integration case writes the column
 /// directly, so none of them exercises the pair.
-
+///
 /// THE REPRODUCE, and it PASSES AGAINST HEAD: a completed sale followed by a full
 /// refund returns the customer to zero. Both sides derive the amount from the
 /// same basis, so the pair is symmetric on the happy path.
