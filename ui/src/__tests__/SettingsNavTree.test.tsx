@@ -361,7 +361,11 @@ describe('SettingsNavTree (flat 14-page IA)', () => {
     // The pinned group renders ABOVE the flat list (it is a shortcut strip).
     const list = document.querySelector('[data-testid="settings-sidebar"] .settings-nav-list');
     expect(list).not.toBeNull();
-    // eslint-disable-next-line no-bitwise
+    // The no-bitwise disable that stood here was reported unused by npm run lint
+    // (60 warnings, 0 errors; the only one of its kind): the rule is not enabled
+    // in this project's eslint config, so the directive suppressed nothing while
+    // claiming to. A suppression that does not suppress is worse than none -- it
+    // reads as a considered exemption and is not one.
     expect(group!.compareDocumentPosition(list!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 
     // aria-current mirrors inside the pinned group too.
