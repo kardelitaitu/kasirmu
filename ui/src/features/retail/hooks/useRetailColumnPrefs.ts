@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { getUserPreferencesScoped, setUserPreferencesScoped } from '@/api/settings';
@@ -101,11 +101,26 @@ export function useRetailColumnPrefs(): {
   );
   const [loading, setLoading] = useState(true);
 
+  // Guarded. Deps name userId and sessionToken, so a store switch starts a second read
+  // while the first is in flight, and a slower earlier one lands last. Same class as
+  // CurrencyContext (51c86e9e8) through useKdsPreferences (e19e412e4); the whole class is
+  // written up in SettingsContext:207.
+  //
+  // THE CONSEQUENCE IS PERSISTED, which is why this is guarded rather than noted: the
+  // success path calls writeLocalPrefs(userId, serverPrefs) as well as setPrefs. A stale
+  // read therefore does not merely display the previous store's columns -- it writes them
+  // into localStorage under the current user, where they survive a reload and are read
+  // back on the next mount BEFORE the server answers (this file's own readLocalPrefs is
+  // the instant-restore source at :100). Display-only stale state self-corrects; this
+  // does not, and this is the second instance of that shape after useKdsPreferences.
+  const prefsSeqRef = useRef(0);
   useEffect(() => {
     if (!userId || !sessionToken) {
       setLoading(false);
       return;
     }
+    const seq = ++prefsSeqRef.current;
+    const stale = () => prefsSeqRef.current !== seq;
     getUserPreferencesScoped(sessionToken)
       .then((raw) => {
         const serverPrefs: RetailColumnPrefs = {
@@ -113,6 +128,7 @@ export function useRetailColumnPrefs(): {
           hideInactive: raw['retail_hide_inactive'] === 'true',
           viewMode: raw['retail_view_mode'] === 'grid' ? 'grid' : 'text',
         };
+        if (stale()) return;
         setPrefs(serverPrefs);
         writeLocalPrefs(userId, serverPrefs);
       })
