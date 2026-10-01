@@ -1,167 +1,288 @@
-# Android In-App Self-Updater (Method 2)
+# Android In-App Self-Updater Specification & Architecture (Method 2)
 
 **Project:** `kasirmu`  
 **Document:** `todo-android-updater.md`  
-**Status:** Draft for execution  
+**Status:** Approved Architecture Draft for Execution  
 **Date:** 2026-10-02  
 **Target Platform:** Android Tablet & Mobile POS (`apps/mobile-tauri`)  
-**Scope:** Programmatic, user-triggered in-app self-update for Android APK releases  
+**Scope:** Resilient, user-triggered in-app self-updater for Android APK releases  
 
 ---
 
-## 1. Executive Summary
+## 1. Executive Summary & Problem Statement
 
-Kasirmu currently supports auto-updates on desktop (Windows, macOS, Linux) via `@tauri-apps/plugin-updater` and `tauri-plugin-updater`. However, Tauri v2’s official updater plugin does not support mobile targets (Android & iOS).
+### 1.1 The Mobile Updater Gap
+Kasirmu uses `@tauri-apps/plugin-updater` and `tauri-plugin-updater` for desktop platforms (Windows, macOS, Linux). However, Tauri v2’s official updater plugin **does not support mobile targets (Android and iOS)**. 
 
-On Android, updating currently requires manual APK distribution and sideloading via `adb` or manual browser download.
+Currently, on Android POS devices:
+- Updating requires manual APK transfer via `adb` or manual browser download and file management.
+- There is no automated version discovery, checksum validation, or seamless handoff to the Android package installer.
+- A failed or interrupted download leaves corrupted files in storage.
+- An update applied during an active retail checkout or with un-synced offline sales risks data corruption or business disruption.
 
-This document specifies the technical design, security model, and implementation phases for **Method 2: Programmatic In-App Self-Update (Inside the App)** on Android. It provides a non-automatic, user-initiated update mechanism triggered via **Settings > Updates / System** (or an update prompt), allowing the app to download the latest signed APK from GitHub Releases (or a custom hosting endpoint) and launch the Android package installer.
-
----
-
-## 2. Invariants & Security Principles
-
-1. **User-Triggered (Not Automatic / Silent)**:
-   - Updates are explicitly initiated or confirmed by the merchant/operator.
-   - No silent background APK execution.
-2. **Database & Transaction Safety**:
-   - Automated SQLite database backup must be created before launching the APK installer (mirrors desktop `UpdateBanner` safety guarantee).
-   - No update can be triggered while a POS checkout or payment transaction is in-flight.
-3. **Cryptographic & Integrity Verification**:
-   - Downloaded APKs must match a published SHA256 checksum or Minisign signature prior to handing off to the Android package installer.
-   - APKs must be signed by the identical release keystore; Android OS rejects APK updates if the signing certificate does not match the installed version.
-4. **Scoped Storage & FileProvider**:
-   - Downloaded APK resides in app-private cache (`context.cacheDir` / `$APPCACHE/updates/`) and is shared exclusively via `androidx.core.content.FileProvider`.
-   - Never write to insecure world-readable public storage.
-5. **Android 8.0+ (API 26+) Permission Compliance**:
-   - Android 8.0+ deprecates global unknown sources and requires `REQUEST_INSTALL_PACKAGES` per-app permission.
-   - The app must check `packageManager.canRequestPackageInstalls()` before launching the install intent. If false, guide the user to the system settings screen (`ACTION_MANAGE_UNKNOWN_APP_SOURCES`).
+### 1.2 Objective
+Implement **Method 2: Programmatic In-App Self-Update** for Android:
+- **User-Initiated & Operator-Governed**: Explicitly triggered from **Settings > System & Updates**; never silent or disruptive to POS operations.
+- **Fail-Safe POS Invariants**: Mandatory offline-sync audit, cart-idle verification, and pre-update SQLite backup snapshot.
+- **Resilient Network Layer**: ABI-aware release resolution, HTTP `Range` download resumption, and pre-flight disk storage validation.
+- **Android 8.0+ to Android 15 Governance**: Strict `FileProvider` sandboxing, `REQUEST_INSTALL_PACKAGES` permission management, and system settings navigation fallback.
 
 ---
 
-## 3. Architecture Overview
+## 2. System Architecture & High-Level Flow
 
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
-│ UI Layer (React / TypeScript)                                          │
-│  - Settings > System / About > Update Card                             │
-│  - State: idle | checking | available | downloading | ready | error    │
-│  - Actions: Check for Updates | Download & Install                     │
+│ UI Layer (React / TypeScript / Fluent i18n)                            │
+│  - Settings > System & Updates (or Restaurant POS Settings)            │
+│  - State Machine: Idle -> Checking -> Available -> Downloading ->      │
+│                   Verifying -> Ready -> LaunchingInstaller             │
+│  - Guardrails: Active Cart Check, Offline Unsynced Sales Warning       │
 └───────────────────────────────────┬────────────────────────────────────┘
-                                    │ IPC: invoke('check_app_update')
-                                    │      invoke('download_and_install_apk')
+                                    │ IPC: check_app_update
+                                    │      start_apk_download
+                                    │      launch_apk_installer
 ┌───────────────────────────────────▼────────────────────────────────────┐
-│ Tauri Core / Rust Backend (apps/mobile-tauri)                          │
-│  - Version resolver: getVersion() vs remote version.json               │
-│  - SQLite auto-backup: create_backup()                                 │
-│  - Streaming downloader with progress event emitter                    │
-│  - Integrity verification: SHA-256 / Minisign check                    │
+│ Tauri Rust Backend (apps/mobile-tauri)                                 │
+│  - Manifest Resolver (matches device ABI: arm64-v8a / v7a / universal) │
+│  - Pre-flight Storage Check: StatFs (needs 2.5x APK size free)        │
+│  - Resumable Streaming Downloader (reqwest HTTP Range + SHA-256 chunk) │
+│  - Automatic SQLite Backup snapshot: create_backup()                   │
+│  - Persistence: updater.last_backup_path, updater.previous_version     │
 └───────────────────────────────────┬────────────────────────────────────┘
-                                    │ JNI / Android Plugin Call
+                                    │ JNI / Tauri Android Plugin
 ┌───────────────────────────────────▼────────────────────────────────────┐
-│ Android Native Layer (Kotlin / JNI in apps/mobile-tauri)               │
-│  - Check canRequestPackageInstalls()                                   │
-│  - FileProvider.getUriForFile(...) -> content://...                    │
-│  - Intent(Intent.ACTION_VIEW, "application/vnd.android.package-archive")│
-│  - Intent.FLAG_GRANT_READ_URI_PERMISSION + FLAG_ACTIVITY_NEW_TASK     │
-│  - startActivity(intent)                                               │
+│ Android Native Bridge (Kotlin / androidx in apps/mobile-tauri)         │
+│  - canRequestPackageInstalls() check                                   │
+│  - ACTION_MANAGE_UNKNOWN_APP_SOURCES intent if permission missing      │
+│  - FileProvider.getUriForFile(...) -> content://mu.kasir.mobile...     │
+│  - Intent(ACTION_VIEW, "application/vnd.android.package-archive")      │
+│  - FLAG_GRANT_READ_URI_PERMISSION | FLAG_ACTIVITY_NEW_TASK             │
 └────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 4. Implementation Phases
+## 3. Non-Negotiable POS & Security Invariants
 
-### Phase 1: Android Manifest & FileProvider Setup
-- [ ] **Declare Package Install Permission**:
-  - Add `<uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />` in `apps/mobile-tauri/gen/android/app/src/main/AndroidManifest.xml`.
-- [ ] **Verify FileProvider Paths**:
-  - Confirm `apps/mobile-tauri/gen/android/app/src/main/res/xml/file_paths.xml` includes `<cache-path name="cache" path="." />`.
-  - Ensure the target APK is saved inside `context.cacheDir + "/updates/kasirmu.apk"`.
+1. **Transaction & Business Continuity**:
+   - **No Update During Sale**: Block download/install if `cart.lines.length > 0` or if a tender/split payment modal is open.
+   - **Offline Sync Safety Gate**: Check `Store::count_pending_offline()`. If unsynced sales exist, require explicit merchant confirmation or offer a 1-tap "Sync Now" before permitting the update.
+2. **SQLite Database & Rollback Protection**:
+   - Before handing the APK to Android's installer, a full transaction-safe SQLite backup must be committed to `$APPCACHE/backups/pre_update_<version>_<timestamp>.db`.
+   - The backup path and previous version are recorded in `settings`.
+   - On next boot, Kasirmu's startup sentry (`recovery.rs`) verifies database integrity and schema migration success. If the new version crashes repeatedly or fails migrations, safe rollback is possible.
+3. **Cryptographic Integrity & Keystore Alignment**:
+   - The remote manifest provides a SHA-256 hash for every ABI asset. The downloaded file must match byte-for-byte before invoking `FileProvider`.
+   - Shipped APKs must share the identical release keystore signature; Android OS will reject package replacement if the signing certificate differs.
+4. **App-Private Storage Isolation**:
+   - APK files are streamed exclusively to `$APPCACHE/updates/kasirmu-<version>-<abi>.apk`.
+   - Never write to insecure external public shared storage.
 
-### Phase 2: Native Android Installer Bridge
-- [ ] **Android Kotlin Helper / Tauri Plugin**:
-  - Implement a native bridge (in Kotlin or Rust JNI) with two operations:
-    1. `canInstallPackages(context)`: Returns boolean from `context.packageManager.canRequestPackageInstalls()`.
-    2. `openInstallSettings(context)`: Launches `Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + context.packageName))`.
-    3. `launchPackageInstaller(filePath)`:
-       ```kotlin
-       val file = File(filePath)
+---
+
+## 4. Release Manifest Specification (`latest-android.json`)
+
+Hosted on GitHub Releases (or custom CDN): `https://github.com/kardelitaitu/kasirmu/releases/latest/download/latest-android.json`.
+
+```json
+{
+  "version": "0.0.41",
+  "version_code": 41,
+  "release_date": "2026-10-15T08:00:00Z",
+  "min_supported_version": "0.0.1",
+  "notes": "### What's New\n- Performance optimizations for 4GB tablets\n- Bluetooth printer auto-reconnect improvements\n- Enhanced restaurant table layout gestures",
+  "platforms": {
+    "android-arm64-v8a": {
+      "url": "https://github.com/kardelitaitu/kasirmu/releases/download/v0.0.41/kasirmu-v0.0.41-arm64-v8a.apk",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size_bytes": 62450120
+    },
+    "android-armeabi-v7a": {
+      "url": "https://github.com/kardelitaitu/kasirmu/releases/download/v0.0.41/kasirmu-v0.0.41-armeabi-v7a.apk",
+      "sha256": "5f4dcc3b5aa765d61d8327deb882cf992b95bc85091371577f26e9310e17e979",
+      "size_bytes": 58920400
+    },
+    "android-universal": {
+      "url": "https://github.com/kardelitaitu/kasirmu/releases/download/v0.0.41/kasirmu-v0.0.41-universal.apk",
+      "sha256": "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918",
+      "size_bytes": 104737268
+    }
+  }
+}
+```
+
+---
+
+## 5. Detailed Component Design
+
+### 5.1 Native Android Bridge (`AndroidUpdaterPlugin.kt` / JNI)
+1. **Permission Check**:
+   ```kotlin
+   fun canInstallPackages(): Boolean {
+       return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+           activity.packageManager.canRequestPackageInstalls()
+       } else {
+           true
+       }
+   }
+   ```
+2. **Permission Request / Settings Navigation**:
+   ```kotlin
+   fun openInstallPermissionSettings() {
+       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+           val intent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
+               data = Uri.parse("package:${activity.packageName}")
+               addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+           }
+           activity.startActivity(intent)
+       }
+   }
+   ```
+3. **Trigger Package Installer Intent**:
+   ```kotlin
+   fun launchPackageInstaller(apkFilePath: String) {
+       val file = File(apkFilePath)
+       require(file.exists()) { "Target APK file does not exist: $apkFilePath" }
+
        val apkUri = FileProvider.getUriForFile(
-           context,
-           "${context.packageName}.fileprovider",
+           activity,
+           "${activity.packageName}.fileprovider",
            file
        )
+
        val intent = Intent(Intent.ACTION_VIEW).apply {
            setDataAndType(apkUri, "application/vnd.android.package-archive")
            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
        }
-       context.startActivity(intent)
-       ```
-- [ ] **Rust Tauri Command Binding**:
-  - Expose `install_apk(file_path: String) -> Result<(), String>` in `apps/mobile-tauri/src/commands/updater.rs`.
+       activity.startActivity(intent)
+   }
+   ```
 
-### Phase 3: Version Checking & Download Service
-- [ ] **Remote Metadata Spec (`latest-android.json`)**:
-  - Host or release asset:
-    ```json
-    {
-      "version": "0.0.41",
-      "release_date": "2026-10-15T00:00:00Z",
-      "apk_url": "https://github.com/kardelitaitu/kasirmu/releases/download/v0.0.41/kasirmu-arm64-v8a.apk",
-      "sha256": "4a7d...39b",
-      "min_version": "0.0.1",
-      "notes": "Bug fixes and performance improvements."
-    }
-    ```
-- [ ] **Rust Download Manager**:
-  - Async HTTP client via `reqwest` streaming bytes into temporary file `$APPCACHE/updates/update.apk.tmp`.
-  - Progress event emission to webview: `emit("update-download-progress", { received, total, percent })`.
-  - Validate SHA-256 against expected hash.
-  - Rename to `$APPCACHE/updates/update.apk` upon successful validation.
-  - Automatically call `create_backup()` prior to handoff.
+### 5.2 Rust Backend Downloader & Safety Service (`commands/updater.rs`)
+1. **Device ABI Resolution**:
+   - Queries `ro.product.cpu.abi` via JNI or standard target triple.
+   - Matches `android-arm64-v8a` -> `android-armeabi-v7a` -> fallback `android-universal`.
+2. **Storage Pre-flight Check**:
+   - Asserts available cache partition storage is >= `(APK_SIZE * 2) + 100MB`.
+   - Returns typed error `AppError::InsufficientStorage { required_mb, available_mb }`.
+3. **Resumable HTTP Streaming**:
+   - If `$APPCACHE/updates/<filename>.part` exists, reads current size and issues `Range: bytes=<offset>-`.
+   - Streams bytes, updating SHA-256 state and emitting `update-download-progress` event every 250ms (or 1% delta) containing:
+     `{ received_bytes, total_bytes, percentage, speed_bytes_per_sec, eta_seconds }`.
+4. **Integrity Validation & Atomic Finalization**:
+   - Computes final SHA-256 digest and verifies against manifest.
+   - Atomically renames `<filename>.part` -> `<filename>`.
+5. **Database Pre-Update Snapshot**:
+   - Executes `kasirmu_core::backup::create_backup()`.
+   - Updates settings keys: `updater.last_backup_path` and `updater.previous_version`.
 
-### Phase 4: Frontend UI (Settings & Update Dialog)
-- [ ] **Settings Integration**:
-  - Add **Updates** section or card in `SettingsPage.tsx` or a dedicated system screen.
-  - Display current app version, latest remote version, and last checked timestamp.
-- [ ] **Interactive States**:
-  - **Check for Updates** button with spinner during query.
-  - If up-to-date: show green "App is up to date" badge.
-  - If update available:
-    - Display version delta (`v0.0.40 -> v0.0.41`) and release notes summary.
-    - Provide **Download & Install** primary button.
-  - During download:
-    - Progress bar showing percentage, downloaded MB / total MB.
-    - Cancel button.
-  - On complete:
-    - Prompt confirmation: *"Database backup created. The Android installer will now open to complete the update."*
-    - Trigger native installer.
-  - Error state with clear retry button and actionable diagnostics.
+### 5.3 UI State Machine & Interaction Design
+The UI is driven by a deterministic finite state machine (FSM):
 
-### Phase 5: Verification & Automated Gates
-- [ ] **Unit Tests**:
-  - Semver comparison and release metadata parser tests.
-  - UI state machine tests (idle -> checking -> available -> downloading -> ready -> error).
-  - Checksum validation tests.
-- [ ] **Pre-commit & CI Validation**:
-  - Bundle parity on all newly added localization keys (English and Indonesian).
-  - TypeScript typecheck (`npm run typecheck`).
-  - ESLint checks (`npm run lint`).
+```
+       ┌───────────┐
+       │   IDLE    │◄────────────────────────────────────────┐
+       └─────┬─────┘                                         │
+             │ tap "Check for Updates"                       │
+       ┌─────▼─────┐                                         │
+       │ CHECKING  │                                         │
+       └─────┬─────┘                                         │
+             ├──────────────────────────┐                    │
+             │ (newer version found)    │ (up-to-date)       │
+       ┌─────▼──────────┐         ┌─────▼──────────┐         │
+       │ UPDATE_AVAIL   │         │   UP_TO_DATE   │         │
+       └─────┬──────────┘         └────────────────┘         │
+             │ tap "Download Update"                         │
+       ┌─────▼──────────┐                                    │
+       │ PRE_FLIGHT_CHK │──(Unsynced sales or active cart)───┤
+       └─────┬──────────┘                                    │
+             │ checks pass                                   │
+       ┌─────▼──────────┐                                    │
+       │  DOWNLOADING   │◄──(Pause / Resume)                 │
+       └─────┬──────────┘                                    │
+             │ 100% downloaded                               │
+       ┌─────▼──────────┐                                    │
+       │   VERIFYING    │──(Checksum mismatch)───────────────┼──► FAILED
+       └─────┬──────────┘                                    │
+             │ SHA-256 valid                                 │
+       ┌─────▼──────────┐                                    │
+       │ READY_TO_INST  │                                    │
+       └─────┬──────────┘                                    │
+             │ tap "Install Now"                             │
+             ├──────────────────────────┐                    │
+             │ canRequestPackageInstalls│                    │
+             │ == false                 │ == true            │
+       ┌─────▼──────────┐         ┌─────▼──────────┐         │
+       │ PERMISSION_REQ │         │ LAUNCH_INSTALL │         │
+       └────────────────┘         └────────────────┘         │
+```
+
+- **UI Placement**:
+  - `ui/src/features/settings/screens/UpdateSettingsCard.tsx` in Settings page.
+  - Optional badge / notification on Restaurant POS sidebar when an update is ready.
+  - Support for Indonesian (`id`) and English (`en`) via Fluent (`@fluent/react`).
 
 ---
 
-## 5. Acceptance Criteria
+## 6. Implementation Phases & Step-by-Step Task Checklist
+
+### Phase 1: Android Platform Manifest & FileProvider Configuration
+- [ ] **1.1 Manifest Permissions**:
+  - Add `<uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />` in `apps/mobile-tauri/gen/android/app/src/main/AndroidManifest.xml`.
+- [ ] **1.2 FileProvider Paths**:
+  - Verify `apps/mobile-tauri/gen/android/app/src/main/res/xml/file_paths.xml` contains `<cache-path name="internal_cache" path="." />` and `<external-cache-path name="external_cache" path="." />`.
+
+### Phase 2: Native Android Bridge & JNI Plumbing
+- [ ] **2.1 Kotlin Updater Plugin / JNI Methods**:
+  - Create `AndroidUpdaterHelper.kt` in `mu.kasir.mobile` with:
+    - `canRequestPackageInstalls()`
+    - `openUnknownSourcesSettings()`
+    - `installApk(filePath: String)`
+- [ ] **2.2 Rust JNI Invocation**:
+  - Implement JNI binding in `apps/mobile-tauri/src/commands/updater.rs` with safe fallback on non-Android platforms.
+
+### Phase 3: Rust Updater Service & Downloader Engine
+- [ ] **3.1 ABI Detection & Manifest Parser**:
+  - Parse `latest-android.json` and select optimal asset (`arm64-v8a` vs `v7a` vs `universal`).
+- [ ] **3.2 Storage Pre-Flight**:
+  - Read filesystem free space; guard against low-storage failures.
+- [ ] **3.3 Resumable Streaming Client**:
+  - Implement streaming download with HTTP `Range` header support and progress event throttling.
+- [ ] **3.4 Integrity & Backup**:
+  - SHA-256 validation; automatic execution of `create_backup()` prior to handoff.
+
+### Phase 4: Frontend Settings Integration & Localization
+- [ ] **4.1 Create `UpdateSettingsCard.tsx`**:
+  - Modern card showing version, status badge, changelog preview, progress bar, speed/ETA indicator.
+- [ ] **4.2 Pre-flight POS Check Modals**:
+  - Unsaved cart warning & offline transactions warning modal.
+- [ ] **4.3 Fluent Localization Keys**:
+  - Add keys to `products.ftl` and `products.id.ftl` (enforcing 100% bundle parity).
+
+### Phase 5: Testing, Safety Verification & CI Gates
+- [ ] **5.1 Unit Tests**:
+  - Semver comparison, manifest ABI resolution, download progress math.
+- [ ] **5.2 Mock E2E Verification**:
+  - Simulated download, checksum failure rejection, and installer launch.
+- [ ] **5.3 Static Gates**:
+  - `npm run typecheck`
+  - `npm run lint`
+  - `python scripts/verify-bundle-parity.py`
+
+---
+
+## 7. Acceptance Command & Sign-Off Criteria
 
 ```bash
-# Acceptance Command
-npm run test -- Updater && npm run typecheck && python scripts/verify-bundle-parity.py
+# Final Acceptance Verification Suite
+npm run test -- Updater && npm run typecheck && npm run lint && python scripts/verify-bundle-parity.py
 ```
 
-1. Clicking "Check for Updates" queries the remote metadata endpoint.
-2. If a newer version is found, release notes and download actions appear.
-3. APK download writes strictly to app-private cache with verifiable progress events.
-4. Database backup is executed and stored prior to installer invocation.
-5. Android `FileProvider` securely yields an install intent to the OS package installer.
-6. Gate suite passes cleanly with 0 type errors, 0 lint errors, and 100% bundle parity.
+- [ ] "Check for Updates" queries the remote manifest without crashing or hanging.
+- [ ] Download accurately reports progress and resumes if interrupted.
+- [ ] Corrupted or tampered APKs are rejected prior to reaching the OS installer.
+- [ ] Active sales and unsynced offline transactions trigger safety warnings.
+- [ ] Database backup is successfully committed to disk before install trigger.
+- [ ] Full gate suite passes with 0 errors.
