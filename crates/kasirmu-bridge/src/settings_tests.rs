@@ -2052,7 +2052,7 @@ fn credit_sale_dto_emits_the_camel_case_wire_the_retail_list_reads() {
 /// MEASURED, and asserted here so it is not lost: index 1 of the projection is
 /// `p.gateway_reference`, and it lands in `customer_name`. `cashier_name` takes
 /// index 6, `COALESCE(u.display_name, '')`. The retail credit list renders
-/// `customerName` in a **Customer** column (`RetailModals.tsx:376`), so an
+/// `customerName` in a **Customer** column (the retail credit-list modal), so an
 /// operator currently reads the payment gateway's own reference where the buyer's
 /// name belongs -- and the doc on the struct calls that field "the cashier name",
 /// which is a third, different reading of the same line.
