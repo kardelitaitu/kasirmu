@@ -45,6 +45,7 @@ export function PaymentMethodCard({
       data-testid={`payment-card-${id}`}
     >
       <Card
+        padding="none"
         shadow="sm"
         className="resto-payment-card"
         header={

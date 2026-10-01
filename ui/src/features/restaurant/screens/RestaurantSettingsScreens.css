@@ -1248,14 +1248,21 @@
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg, 12px);
   overflow: hidden;
+  padding: 0;
   transition: border-color 0.2s ease;
+}
+
+.resto-payment-card .card-header {
+  padding: 0;
+  margin: 0;
+  border-bottom: none;
 }
 
 .resto-payment-card:hover {
   border-color: var(--color-border-strong);
 }
 
-.resto-payment-card-header {
+.resto-payment-card-header.restaurant-rail-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -1263,6 +1270,10 @@
   min-height: 48px;
   width: 100%;
   box-sizing: border-box;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  margin: 0;
 }
 
 .resto-payment-card-title-group {
