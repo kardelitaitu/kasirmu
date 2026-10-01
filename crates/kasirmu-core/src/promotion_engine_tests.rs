@@ -2,9 +2,9 @@
 //! clamps, category scoping, and overflow fail-closed behavior (PROMO-1/2/6/8).
 
 use super::*;
-use crate::SaleStatus;
 use crate::foundation::{Currency, Money};
 use crate::sale::SaleLine;
+use crate::SaleStatus;
 
 fn idr() -> Currency {
     Currency(*b"IDR")
@@ -453,10 +453,22 @@ fn discount_is_never_negative() {
 /// as the base for an unscoped promotion (promotion_engine.rs:125). So two 10%
 /// promotions on 10000 give 8100, not 8000 -- sequential, compounding downward.
 ///
-/// This was the documented contract and nothing tested it: 42 cases covered each
-/// promotion type in isolation, and a regression that made stacking multiplicative
-/// (or, worse, computed every promotion against the ORIGINAL total) would have
-/// left the suite green while changing what the customer pays.
+/// WHY THIS IS HERE, stated accurately. The door layer DOES test stacking --
+/// `checkout_promotions_stack` (sales_tests.rs:4281) runs two promotions through
+/// `compute_checkout_promotions` and asserts 700 -> 630 -> 530 with both application
+/// rows persisted. So the earlier claim that stacking was untested was wrong, and is
+/// corrected here rather than left standing.
+///
+/// What that test cannot see: it stacks a PERCENTAGE with a FIXED_AMOUNT, and a fixed
+/// discount does not depend on the base at all, so the one question that matters -- is
+/// the second percentage's base the REDUCED total or the original -- never arises. Only
+/// a SAME-TYPE percentage pair distinguishes them: on 10000, compounding gives 8100
+/// and a multiplicative (or original-base) regression gives 8000, with every other
+/// promotion test still green.
+///
+/// So this is not a missing contract, it is a missing DISTINGUISHING case, and it is
+/// placed at the engine because that is where the base is chosen (the `None =>
+/// sale.total.minor_units` arm), which is what both doors share.
 #[test]
 fn stacked_percentages_compound_downward_on_the_reduced_total() {
     let sale = sale(10_000, vec![line("A", 1, 10_000)]);
@@ -469,7 +481,10 @@ fn stacked_percentages_compound_downward_on_the_reduced_total() {
     let mut reduced = sale.clone();
     reduced.total = money(sale.total.minor_units - first);
     let second = compute_discount(&ten, &reduced, now(), |_| None).unwrap();
-    assert_eq!(second, 900, "the base is the REDUCED total, not the original");
+    assert_eq!(
+        second, 900,
+        "the base is the REDUCED total, not the original"
+    );
     assert_eq!(
         sale.total.minor_units - first - second,
         8_100,
