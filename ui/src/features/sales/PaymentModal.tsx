@@ -466,6 +466,14 @@ retryCurrencyLoad,
     if (selectedCustomer) {
       if (!sessionToken) {
         setLoyaltyAccount(null);
+        // The other two resets here are not optional. Without a session there
+        // is no account to redeem against, and redeemPoints/loyaltyDiscount
+        // outlive the token: PosScreen spreads the prop conditionally
+        // (`{...(sessionToken ? { sessionToken } : {})}`) while the modal stays
+        // mounted, so a cleared session leaves a discount that still moves
+        // Total Due with nothing on screen able to cancel it.
+        setRedeemPoints(false);
+        setLoyaltyDiscount(0n);
         return;
       }
       getLoyaltyAccount(sessionToken, selectedCustomer.id)
@@ -504,7 +512,15 @@ retryCurrencyLoad,
       return;
     }
     let cancelled = false;
-    if (!sessionToken) return;
+    if (!sessionToken) {
+      // Same reasoning as the account effect above: without a session this
+      // effect cannot recompute the discount, so the stale one must go rather
+      // than survive. Clearing here rather than relying on `redeemPoints`
+      // being false is deliberate -- that guard is not reached here, because
+      // the one above only resets when redeemPoints is ALREADY off.
+      setLoyaltyDiscount(0n);
+      return;
+    }
     getPointsValue(sessionToken, pointsToRedeem)
       .then((val) => {
         if (!cancelled) {
