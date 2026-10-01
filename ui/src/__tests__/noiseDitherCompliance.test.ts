@@ -523,12 +523,27 @@ function walkShadowPopulation(): void {
  */
 const SELECTOR_BOUNDARY_CHARS = ' >+~:.#,';
 function isExemptSelector(sel: string): boolean {
+  // A compound selector's SUBJECT is its LAST simple selector, so a scoped rule
+  // exempts or not on the part that actually paints.
+  //
+  // `.resto-payment-card .resto-segmented-btn--active` (RestaurantSettingsScreens.css
+  // :1502) carries --shadow-sm on the segmented button, and this file already
+  // waives `.resto-segmented-btn--active` as the `.btn` case — a thin 1px shadow
+  // on a control with no large soft gradient to band. The peer's commit
+  // `8ae599ce6` re-expressed the same rule scoped under the payment card, and the
+  // prefix could not see it because it only matched from position 0 (measured
+  // 2026-10-01: 1 failed | 29 passed). The scoping ancestor does not change what
+  // the shadow is for, so the matcher now also tests the subject.
+  const subject = sel.split(SELECTOR_BOUNDARY_CHARS[0]!).slice(-1)[0] ?? sel;
   return EXEMPT_SELECTOR_PREFIXES.some((prefix) => {
-    if (sel === prefix) return true;
-    if (!sel.startsWith(prefix)) return false;
-    if (prefix.endsWith('-') || prefix.endsWith('_')) return true;
-    const first = sel.slice(prefix.length).charAt(0);
-    return first !== '' && SELECTOR_BOUNDARY_CHARS.includes(first);
+    const candidates = sel === subject ? [sel] : [sel, subject];
+    return candidates.some((candidate) => {
+      if (candidate === prefix) return true;
+      if (!candidate.startsWith(prefix)) return false;
+      if (prefix.endsWith('-') || prefix.endsWith('_')) return true;
+      const first = candidate.slice(prefix.length).charAt(0);
+      return first !== '' && SELECTOR_BOUNDARY_CHARS.includes(first);
+    });
   });
 }
 
@@ -767,9 +782,30 @@ describe('Noise-dither overlay coverage (P11-5)', () => {
       // the '.btn' case (a thin 1px shadow on a control with no large soft
       // gradient to band); naming them here is the "say which element it waives"
       // step the comment above asks for, not a silenced count.
-      '.kds-slider-knob', '.memo-banner-close', '.memo-expanded-close', '.payment-customer-search-modal',
-      '.resto-segmented-btn--active', '.resto-switch-handle',
+      // Added 2026-10-01 by making `isExemptSelector` test the selector's SUBJECT
+      // (its last simple selector) and not only position 0, so a scoped
+      // re-expression of an already-waived control is recognised as the same
+      // control. Both appeared when peers re-wrote a rule under a state/ancestor
+      // selector:
+      //   - '.kds-slider-track:hover .kds-slider-knob' - the same slider knob under
+      //     its track's :hover. A thin 1px control shadow; banding it is the same
+      //     case '.kds-slider-knob' was waived for.
+      //   - '.resto-payment-card .resto-segmented-btn--active' - the same segmented
+      //     button under the payment card (peer commit 8ae599ce6).
+      // Sorted order, so they lead: a space sorts before the '.' that starts every
+      // other entry. Named rather than left implicit - this baseline exists to make a
+      // widened matcher loud, so the widening is recorded, not smuggled.
+      // Sorted by default (UTF-16), so this list is in that order deliberately --
+      // `toEqual` on the measured array compares element order, and a hand-written
+      // list that reads by category instead fails for no reason a reader can see.
+      '.kds-slider-knob', '.kds-slider-track:hover .kds-slider-knob',
+      '.memo-banner-close', '.memo-expanded-close', '.payment-customer-search-modal',
+      '.resto-payment-card .resto-segmented-btn--active', '.resto-segmented-btn--active',
+      '.resto-switch-handle',
     ]);
+
+
+
     expect(sheetsRefused, 'the walk refuses ' + sheetsRefused + ' sheet(s) by basename -- if that number moved, the exclusion at the top of the loop changed scope').toBe(2);
   });
 
