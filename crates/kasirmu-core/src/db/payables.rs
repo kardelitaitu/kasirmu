@@ -228,7 +228,27 @@ impl Store<'_> {
                 ),
             });
         }
-        let new_paid = payable.paid.minor_units + amount.minor_units;
+        // COR-29, the same convention the purchase-order receive path already uses
+        // (purchase_orders.rs:508): a bare `+` on money silently WRAPS, and the guard
+        // below reads a wrapped NEGATIVE as "fits", so an over-sized payment would be
+        // accepted. Today the schema stops it -- `CHECK (paid_minor >= 0)` and
+        // `CHECK (paid_minor <= amount_minor)` (20260918_payables.sql:29,40) -- so the
+        // write is refused by SQLite rather than persisted. That is a rescue, not a
+        // validation: it fires at the SQL layer with a driver error instead of the
+        // field-named one a caller can act on, and it disappears entirely if the
+        // CHECK is ever relaxed. Refusing here is earlier, names the field, and holds
+        // without the schema. `payable_overflow_is_stopped_by_the_schema_constraint_
+        // not_by_the_guard` in payables_tests.rs pins both halves of that claim: with
+        // this checked_add the arithmetic no longer wraps, and with the CHECK dropped
+        // the test still fails.
+        let new_paid = payable
+            .paid
+            .minor_units
+            .checked_add(amount.minor_units)
+            .ok_or_else(|| CoreError::Validation {
+                field: "amount",
+                message: "payment overflows the paid total".into(),
+            })?;
         if new_paid > payable.amount.minor_units {
             return Err(CoreError::Validation {
                 field: "amount",

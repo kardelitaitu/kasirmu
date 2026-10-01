@@ -356,6 +356,13 @@ fn create_payable_in_tx_joins_the_callers_transaction() {
 /// the same COR-29 failure the purchase-order receive path already fixed with
 /// `checked_add` (purchase_orders.rs:508).
 ///
+/// SUPERSEDED IN PART, 2026-10-05: payables.rs:231 now uses `checked_add`, so
+/// the production arithmetic no longer wraps and the refusal is a field-named
+/// Validation rather than a driver error from the constraint. The arithmetic half of
+/// this test still holds and is still worth pinning -- it shows the SCHEMA would stop a
+/// wrapped negative independently, which is what makes the constraint a real backstop
+/// rather than an assumption. Dropping the CHECK (below) remains the proof.
+///
 /// The schema is the backstop: `paid_minor INTEGER NOT NULL DEFAULT 0 CHECK
 /// (paid_minor >= 0)` and `CHECK (paid_minor <= amount_minor)`
 /// (migrations/20260918_payables.sql:29,40). So a wrapped negative is refused
@@ -414,14 +421,7 @@ fn payable_overflow_is_stopped_by_the_schema_constraint_not_by_the_guard() {
     );
 
     // And the write is refused -- by SQLite, not by that guard.
-    let res = s.record_payable_payment(
-        "default",
-        &p.id,
-        money("IDR", 1000),
-        "cash",
-        None,
-        "",
-    );
+    let res = s.record_payable_payment("default", &p.id, money("IDR", 1000), "cash", None, "");
     assert!(
         res.is_err(),
         "the CHECK on paid_minor must refuse the wrapped negative; got {:?}",
