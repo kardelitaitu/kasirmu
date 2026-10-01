@@ -632,6 +632,50 @@ fn refund_line_not_in_deductions_fails() {
     assert!(matches!(err, CoreError::Validation { field, .. } if field == "deduction_locations"));
 }
 
+/// A `qty` the bound cannot read must REFUSE where it is read.
+///
+/// The cumulative bound under the COR-25 comment was
+/// `deductions.iter().filter_map(|d| d["qty"].as_i64()).sum()`, which silently
+/// dropped any entry whose qty was not an integer, leaving the bound too LOW.
+/// `5e287684f` removed it, so the malformed entry is now named instead of skipped.
+///
+/// This is the WELL-FORMED-input case, and it is the sharper of the two: the JSON
+/// parses, the entry carries a real qty of the wrong type (`"2"`, a string), and
+/// every earlier shape guard passes -- so the bound is the only reader that can
+/// catch it. The sibling at `a_deduction_entry_with_no_qty_understates_the_bound_
+/// and_refuses_the_refund` uses a MISSING key instead; both are refused, and both
+/// write no stock movement.
+#[test]
+fn refund_deduction_entry_with_a_non_integer_qty_fails() {
+    let conn = fresh();
+    conn.execute_batch(
+        "INSERT INTO products (id, sku, name, price_minor, currency, created_at, updated_at) VALUES
+            ('sq-p1', 'SQ', 'String Qty Item', 100, 'USD', '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z');
+         INSERT INTO sales (id, total_minor, currency, line_count, status, created_at, updated_at,
+                            deduction_locations) VALUES
+            ('sq-sale-1', 200, 'USD', 1, 'completed', '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z',
+             '{\"version\":1,\"lines\":[{\"sale_line_id\":\"sq-sl-1\",\"sku\":\"SQ\",\"deductions\":[
+                {\"location_id\":\"01926b3a-0000-7000-8000-000000000001\",\"qty\":1},
+                {\"location_id\":\"01926b3a-0000-7000-8000-000000000001\",\"qty\":\"2\"}]}]}');
+         INSERT INTO sale_lines (id, sale_id, sku, qty, unit_minor, line_minor, currency, line_position) VALUES
+            ('sq-sl-1', 'sq-sale-1', 'SQ', 2, 100, 200, 'USD', 1);",
+    )
+    .unwrap();
+    let s = store(&conn);
+
+    let line = RefundLine::new("sq-sl-1", "SQ", 1, price(100), price(100));
+    let refund = Refund::new("sq-sale-1", price(100), "test", "", "user-1", vec![line]);
+    let err = s.create_refund(&refund).unwrap_err();
+    assert!(
+        matches!(err, CoreError::Validation { field, .. } if field == "deduction_locations.qty"),
+        "a non-integer qty must refuse rather than be dropped from the bound, got: {err:?}"
+    );
+    let movements: i64 = conn
+        .query_row("SELECT COUNT(*) FROM stock_movements", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(movements, 0, "and a refusal moves no stock");
+}
+
 #[test]
 fn refund_malformed_deduction_locations_json_fails() {
     let conn = fresh();
