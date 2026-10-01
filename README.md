@@ -356,6 +356,7 @@ For comprehensive technical, financial, and market documentation, see:
 - Market Research: [`docs/guides/product/INDONESIA_POS_ECOSYSTEM_RESEARCH.md`](./docs/guides/product/INDONESIA_POS_ECOSYSTEM_RESEARCH.md)
 - Commercial Strategy: [`docs/guides/product/BUSINESS_PLAN.md`](./docs/guides/product/BUSINESS_PLAN.md)
 - Technical Architecture: [`docs/guides/product/WHITEPAPER.md`](./docs/guides/product/WHITEPAPER.md)
+- Systems Design & Incumbent Analysis: [`docs/guides/product/SYSTEM_DESIGN_AND_INCUMBENT_ANALYSIS.md`](./docs/guides/product/SYSTEM_DESIGN_AND_INCUMBENT_ANALYSIS.md)
 
 ---
 
