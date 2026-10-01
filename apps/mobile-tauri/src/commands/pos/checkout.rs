@@ -285,8 +285,20 @@ pub(super) fn build_preview_cart(
         ))
         .map_err(|e| AppError::Invalid(format!("cart line rejected: {e}")))?;
     }
+    // Routes through the bridge's ONE narrowing helper rather than repeating the
+    // clamp here. `checkout_discount_percent` is `p.clamp(0, 100)`; the `> 0`
+    // guard plus `Percentage::new`'s own rejection of anything over 100 made this
+    // line's `discount_percent.min(100) as u8` equivalent -- but it was a SECOND
+    // spelling of a rule whose bridge test (`preview_and_shortfall_doors_treat_a_
+    // high_discount_percent_identically`) exists because the original truncating
+    // cast was evaded by FORMATTING ALONE: no single line contained both
+    // `Percentage::new(` and the cast, so every source predicate missed. A second
+    // untested spelling is exactly how that comes back, and `256 as u8 == 0`
+    // silently DROPS the discount rather than raising. One helper, one place.
     if discount_percent > 0
-        && let Some(pct) = foundation::Percentage::new(discount_percent.min(100) as u8)
+        && let Some(pct) = foundation::Percentage::new(
+            kasirmu_bridge::pos::checkout_discount_percent(discount_percent) as u8,
+        )
     {
         cart.set_discount(pct, None);
     }
@@ -619,3 +631,7 @@ pub async fn complete_sale_scoped(
         line_count,
     })
 }
+
+#[cfg(test)]
+#[path = "checkout_tests.rs"]
+mod tests;
