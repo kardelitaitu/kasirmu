@@ -2,6 +2,24 @@
 
 use super::*;
 
+/// Set a file's mtime. `File::set_modified` needs write access, and the file has
+/// to exist first.
+fn set_mtime(path: &std::path::Path, t: std::time::SystemTime) {
+    let f = std::fs::OpenOptions::new().write(true).open(path).unwrap();
+    f.set_modified(t).unwrap();
+}
+
+/// A file's mtime in milliseconds since the epoch.
+fn mtime_ms(path: &std::path::Path) -> u128 {
+    std::fs::metadata(path)
+        .unwrap()
+        .modified()
+        .unwrap()
+        .duration_since(std::time::SystemTime::UNIX_EPOCH)
+        .unwrap()
+        .as_millis()
+}
+
 // ── LRU tracker ──────────────────────────────────────────────────────
 
 #[test]
@@ -86,10 +104,26 @@ fn seed_lru_ranks_a_file_by_its_real_mtime_and_keeps_it() {
     let newer = img_dir.join("bbbbbbbbbbbbbbbb.webp");
     std::fs::write(&older, vec![0u8; 80]).unwrap();
     std::fs::write(&newer, vec![0u8; 80]).unwrap();
-    // Prove the fixture before testing the behaviour: both files must exist.
+    // PIN the mtimes rather than hoping two back-to-back writes land in
+    // different ticks. They do not always: where the filesystem's timestamps are
+    // coarse both files got the SAME mtime, `sort_by_key` is stable so the order
+    // fell through to `read_dir`, and the file this test calls "newer" was then
+    // touched first and evicted first. That is why it failed 3/3 retries in CI
+    // while passing locally -- a fixture that never proved the property its own
+    // assertion depends on.
+    let base = std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_700_000_000);
+    set_mtime(&older, base);
+    set_mtime(&newer, base + std::time::Duration::from_secs(60));
+    // Prove the fixture before testing the behaviour: both files must exist, and
+    // the newer one must actually BE newer -- otherwise the ranking below has
+    // nothing to rank and this test grades the filesystem, not the code.
     assert!(
         older.exists() && newer.exists(),
         "fixture: both files must be written"
+    );
+    assert!(
+        mtime_ms(&newer) > mtime_ms(&older),
+        "fixture: the two mtimes must differ"
     );
 
     let mut mgr = ImageDownloadManager::new();
