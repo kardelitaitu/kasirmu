@@ -228,3 +228,41 @@ fn a_committed_competing_transition_is_not_overwritten() {
 
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+// -- a sale header that cannot be read must not map to a plausible default --
+
+/// `row_to_sale_header` read `version` through `.unwrap_or(1)`. The column is
+/// `version INTEGER NOT NULL DEFAULT 1`, so the default comes from the SCHEMA and
+/// the `unwrap_or` only ever fired on a real read error. That matters more here
+/// than elsewhere: `version` is the optimistic-concurrency token the compare-and-
+/// set updates key on, so a swallowed failure would have handed the caller a
+/// fabricated `version: 1` -- a CAS that either silently matches the wrong row
+/// state or refuses a correct write, on money-bearing records.
+///
+/// The pin projects a sale row supplying every other column and omitting
+/// `version`, so the only thing that can fail is the swallowed read.
+#[test]
+fn a_sale_row_that_cannot_be_read_does_not_default_its_version() {
+    let conn = migrations::fresh_db();
+    let mut stmt = conn
+        .prepare(
+            "SELECT 'sale-x' AS id, 100 AS total_minor, 'USD' AS currency, \
+                    1 AS line_count, 'pending' AS status, \
+                    '2026-01-01' AS created_at, '2026-01-01' AS updated_at, \
+                    NULL AS payment_method, NULL AS tendered_minor, \
+                    0 AS discount_percent, NULL AS discount_label, NULL AS user_id, \
+                    100 AS subtotal_minor, 0 AS tax_total_minor, NULL AS customer_id, \
+                    'USD' AS base_currency, 100 AS base_total_minor, \
+                    1000000 AS tender_rate_millionths, 0 AS tip_minor, \
+                    0 AS service_charge_minor",
+        )
+        .unwrap();
+    let mut rows = stmt.query([]).unwrap();
+    let row = rows.next().unwrap().unwrap();
+    let err =
+        Store::row_to_sale_header(row).expect_err("a missing version must not default to 1");
+    assert!(
+        matches!(err, rusqlite::Error::InvalidColumnName(_)),
+        "expected the missing column to be named, got {err:?}"
+    );
+}

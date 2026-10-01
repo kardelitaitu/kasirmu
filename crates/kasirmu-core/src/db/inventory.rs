@@ -599,7 +599,7 @@ impl Store<'_> {
                 staff_id: row.get(3)?,
                 transfer_id: row.get(4)?,
                 purchase_order_id: row.get(5)?,
-                notes: row.get(6).unwrap_or_default(),
+                notes: row.get(6)?,
                 created_at: row.get(7)?,
             })
         })?;
@@ -637,7 +637,7 @@ impl Store<'_> {
                     staff_id: row.get(3)?,
                     transfer_id: row.get(4)?,
                     purchase_order_id: row.get(5)?,
-                    notes: row.get(6).unwrap_or_default(),
+                    notes: row.get(6)?,
                     created_at: row.get(7)?,
                 })
             },
@@ -809,7 +809,7 @@ impl Store<'_> {
                 staff_id: row.get(3)?,
                 transfer_id: row.get(4)?,
                 purchase_order_id: row.get(5)?,
-                notes: row.get(6).unwrap_or_default(),
+                notes: row.get(6)?,
                 created_at: row.get(7)?,
             })
         })?;

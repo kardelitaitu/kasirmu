@@ -3050,3 +3050,42 @@ fn update_product_variant_joins_a_caller_transaction() {
         "a rolled-back caller must not keep the update"
     );
 }
+
+// -- a details row that cannot be read must not map to a plausible default --
+
+/// `row_to_product_with_details` read `popularity_score` through `.unwrap_or(0.0)`.
+/// The column is `REAL NOT NULL DEFAULT 0`, so the default comes from the SCHEMA
+/// and the `unwrap_or` could only ever fire on a real read error -- a missing
+/// column, a type mismatch, a corrupt page -- replacing it with a plausible `0.0`.
+/// Every product listing and search goes through this mapper, so a bad read
+/// would have demoted the whole catalogue's popularity ordering to a tie, with
+/// no error anyone could act on.
+///
+/// The pin projects a row supplying the columns read with `?` and omitting
+/// `popularity_score`, so the only thing that can fail is the swallowed read.
+#[test]
+fn a_details_row_that_cannot_be_read_does_not_default_its_popularity_score() {
+    let conn = fresh();
+    let mut stmt = conn
+        .prepare(
+            "SELECT 'prod-x' AS id, 'SKU-X' AS sku, 'X' AS name, 100 AS price_minor, \
+                    'USD' AS currency, '2026-01-01' AS created_at, \
+                    '2026-01-01' AS updated_at, \
+                    '2026-01-01' AS price_updated_at, 'retail' AS product_type, \
+                    NULL AS category_id, NULL AS barcode, NULL AS brand, \
+                    NULL AS rack_location, NULL AS notes, NULL AS unit, \
+                    NULL AS default_supplier_id, NULL AS image_hash, \
+                    0 AS cost_minor, 1 AS version, 0 AS track_serial, \
+                    1 AS is_active, \
+                    'Drinks' AS category_name, 5 AS stock_qty",
+        )
+        .unwrap();
+    let mut rows = stmt.query([]).unwrap();
+    let row = rows.next().unwrap().unwrap();
+    let err = row_to_product_with_details(row)
+        .expect_err("a missing popularity_score must not default to 0.0");
+    assert!(
+        matches!(err, rusqlite::Error::InvalidColumnName(_)),
+        "expected the missing column to be named, got {err:?}"
+    );
+}

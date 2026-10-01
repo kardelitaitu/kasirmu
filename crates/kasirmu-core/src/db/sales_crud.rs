@@ -199,7 +199,7 @@ impl Store<'_> {
             tender_rate_millionths: row.get("tender_rate_millionths")?,
             tip_minor: row.get("tip_minor")?,
             service_charge_minor: row.get("service_charge_minor")?,
-            version: row.get("version").unwrap_or(1),
+            version: row.get("version")?,
         })
     }
 

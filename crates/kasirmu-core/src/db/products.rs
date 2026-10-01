@@ -75,7 +75,7 @@ fn row_to_product_with_details(row: &rusqlite::Row) -> rusqlite::Result<ProductW
         product,
         category_name: row.get("category_name")?,
         stock_qty: row.get("stock_qty")?,
-        popularity_score: row.get("popularity_score").unwrap_or(0.0),
+        popularity_score: row.get("popularity_score")?,
         images: Vec::new(), // populated by the list/get loaders
     })
 }
