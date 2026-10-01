@@ -250,6 +250,63 @@ async fn drain_receives_topic_and_payload() {
 
 // ── Backoff deadline helper ─────────────────────────────────────────
 
+/// The pre-epoch branch and the arithmetic it depends on.
+///
+/// `backoff_deadline` used `.unwrap_or_default()` on the clock read, so a
+/// pre-epoch clock produced `now = Duration::ZERO` and a deadline of
+/// 1970 + backoff -- a time long past. The drain selects on
+/// `next_attempt_at <= now`, so the entry was immediately eligible again and the
+/// outbox re-delivered in a tight loop until `max_attempts` was spent: seconds
+/// instead of backoff. Fail-OPEN on the one path backoff exists to slow down.
+///
+/// The clock branch itself cannot be reached from a test without injecting a
+/// pre-epoch `SystemTime`, so this pins the ARITHMETIC it delegates to, which is
+/// where the defect lived: `format_deadline` must derive the result from the
+/// `now` it is handed. With `Duration::ZERO` -- exactly what the pre-epoch branch
+/// passes now -- the deadline must still be in the FUTURE by the full amount,
+/// never at the epoch.
+#[test]
+fn a_zero_clock_origin_still_yields_a_future_backoff_deadline() {
+    let parse = |s: &str| chrono::DateTime::parse_from_rfc3339(s).unwrap();
+
+    let epoch = chrono::DateTime::parse_from_rfc3339("1970-01-01T00:00:00Z").unwrap();
+
+    // THE DISCRIMINATOR. The pre-epoch branch must use the CAP, not the
+    // attempt's own backoff: the old `.unwrap_or_default()` produced an
+    // already-elapsed deadline, which the drain's `next_attempt_at <= now`
+    // accepted immediately, so the outbox retried in a loop. An earlier version
+    // of this test asserted only `format_deadline`'s arithmetic and PASSED with
+    // the branch reverted to the per-attempt delay -- it could not see the
+    // choice, which is the entire fix. Verified RED by making this function
+    // return the per-attempt delay: left 240, right 3600.
+    let delay = pre_epoch_backoff_secs();
+    assert_eq!(
+        delay, BACKOFF_CAP_SECS,
+        "a broken clock must delay by the CAP, not by the attempt's own backoff"
+    );
+    assert!(
+        delay > (BACKOFF_BASE_SECS * 2u64.pow(1)).min(BACKOFF_CAP_SECS),
+        "the pre-epoch delay must exceed a first retry's backoff, or it barely differs from retrying now"
+    );
+
+    // And the arithmetic it feeds places that delay after the epoch, not at it.
+    let at_zero = parse(&format_deadline(Duration::ZERO, delay));
+    assert_eq!(
+        at_zero - epoch,
+        chrono::Duration::seconds(delay as i64),
+        "the deadline must be `delay` after the epoch, never ON it"
+    );
+
+    // Monotonic in the delay, which is the property the tight-retry loop violated.
+    let short = parse(&format_deadline(Duration::ZERO, 60));
+    let long = parse(&format_deadline(Duration::ZERO, 600));
+    assert!(short < long, "a larger delay must produce a later deadline");
+    assert!(
+        short > epoch,
+        "a non-zero delay must never land ON the epoch"
+    );
+}
+
 #[test]
 fn backoff_deadline_grows_and_caps() {
     // attempt 1 → 2 min, attempt 2 → 4 min, ... capped at 1 hour.

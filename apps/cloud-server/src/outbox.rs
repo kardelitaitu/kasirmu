@@ -401,11 +401,57 @@ fn now_rfc3339() -> String {
 /// Compute the next attempt timestamp using exponential backoff.
 ///
 /// `attempt` is 1-based (first retry = 1).  Backoff = min(2^attempt × BASE, CAP).
+///
+/// A clock BEFORE the epoch is refused rather than defaulted. The previous
+/// `.unwrap_or_default()` returned `Duration::ZERO`, so the deadline became
+/// 1970 + backoff — a time long past. The drain selects on
+/// `next_attempt_at <= now` (`:157`), so the entry was immediately eligible
+/// again and the outbox re-delivered it in a tight loop until `max_attempts`
+/// was exhausted: seconds instead of the intended backoff. That is fail-OPEN
+/// on exactly the path backoff exists to slow down.
+///
+/// A pre-epoch clock is not reachable through normal operation and is not
+/// silently repaired either (a wrong clock cannot be corrected from inside a
+/// timestamp function). The retry is pushed out by the FULL CAP and the
+/// condition is logged, so the entry is delayed rather than hammered and an
+/// operator can see why — the fail-closed direction for a retry deadline.
 pub fn backoff_deadline(attempt: u64) -> String {
     let secs = (BACKOFF_BASE_SECS * 2u64.pow(attempt as u32)).min(BACKOFF_CAP_SECS);
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default();
+    match std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH) {
+        Ok(now) => format_deadline(now, secs),
+        Err(e) => {
+            tracing::error!(
+                error = %e,
+                cap_secs = BACKOFF_CAP_SECS,
+                "system clock is before the UNIX epoch; pushing the outbox retry out by the full \
+                 backoff cap instead of retrying immediately"
+            );
+            format_deadline(Duration::ZERO, pre_epoch_backoff_secs())
+        }
+    }
+}
+
+/// The delay used when the clock cannot be read at all.
+///
+/// A NAMED function rather than a literal at the branch, because the value is
+/// the whole behaviour change: the pre-fix `.unwrap_or_default()` produced a
+/// deadline in the PAST (1970 + the attempt's own backoff, already elapsed), so
+/// the outbox retried immediately in a loop until `max_attempts` ran out. The
+/// cap is the delay that makes a broken clock slow retries down instead.
+///
+/// Testable directly, which the branch it serves is not -- the clock cannot be
+/// moved before the epoch from a test.
+fn pre_epoch_backoff_secs() -> u64 {
+    BACKOFF_CAP_SECS
+}
+
+/// Render `now + secs` as an RFC 3339 deadline.
+///
+/// Split out of [`backoff_deadline`] so the ARITHMETIC is testable without
+/// injecting a clock: the invariant that matters is that the result is derived
+/// from the `now` it is handed, never from a fresh reading, which is what makes
+/// the pre-epoch branch impossible to satisfy with a past deadline.
+fn format_deadline(now: Duration, secs: u64) -> String {
     let next = now + Duration::from_secs(secs);
     chrono::DateTime::from_timestamp(next.as_secs() as i64, 0)
         .map(|dt| dt.format("%Y-%m-%dT%H:%M:%SZ").to_string())
