@@ -1894,6 +1894,37 @@ assume the tablet result transfers — which is the mistake round 9 made.
 
 **The gate is still not committed.** It is red on desktop, and a red test is not an improvement.
 
+**Round 12 resolved the round-11 contradiction, and the geometry probe was right all along.**
+Measuring the box positions AND the occlusion in the SAME evaluation, after the same settle,
+shows what the two separate runs could not:
+
+```
+stack                top=500  bottom=709
+.settings-body       bottom=739
+.settings-sidebar     bottom=458   <- the box DID shrink, and it IS clear of the stack
+.settings-content     bottom=458
+covered nav rows     y=526…685   <- the CONTENT did not shrink with the box
+```
+
+So the box looks clear while every nav row still sits under the stack. The band shrinks
+`.settings-body`; the sidebar column shrinks with it; **its nav child does not**, and renders
+168px below its own parent's bottom edge.
+
+**Attempted and REFUTED:** `min-height: 0` on `.settings-sidebar-nav` — the standard flex-item
+fix. Added it, re-measured, and the numbers were **byte-identical**. So the nav is not shrinking
+for some other reason, and the hypothesis is wrong. The rule is reverted rather than committed:
+an inert CSS rule that claims to fix something and does not is worse than no rule, because it
+stops the next reader looking. That is also why the CSS measurement and the e2e result had
+seemed to disagree last round — they never did. «content below the box» and «covered by the stack» are the same fact, and only measuring both together showed it.
+
+**What the next round has to find, and it is narrower than last round's task:** why the nav
+content renders outside a parent that measured shorter. The candidates worth measuring, in order:
+whether the nav rows I sampled are inside `.settings-sidebar` at all (they may belong to a second
+nav the route renders), whether the sidebar is absolutely positioned so its box is not the
+containing block, and whether the 168px is a fixed offset rather than an overflow. The first is
+cheapest and the measurement already nearly answers it — the rows are hit-testable below a box
+that measured shorter, which is only possible if that box is not their clipping ancestor.
+
 **One consequence did land.** `admin-workflows.spec.ts` had neutered its theme-toggle case with
 a comment recording that the memo stack made the control unclickable, and asserted only that
 it RENDERS. Measured 2026-10-01: the collision is gone (SettingsPage.css:403's
