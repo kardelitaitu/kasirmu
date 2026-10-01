@@ -2085,4 +2085,63 @@ measured and agreed to the second, ruling out skew before the timeline was trust
 mistakes share a cause: a conclusion drawn from a partial read.
 
 > **Round 37 ·** on the tablet: round 34's blocker closed, and a defect only hardware found.
-> last audited 30-09-26 by DSH
+
+---
+
+## Round 38 — a landed change contradicts a decision this document records, and it breaks the tablet specs
+
+Found by bisection, not by reading. The tablet first-run specs started failing; with this audit's
+own CSS bands, dev-mock seam and gate all stashed they **still** failed, so the cause is upstream of
+everything done here.
+
+### What changed
+
+`185bccb69` (kardelitaitu, 2026-10-01), *"feat(setup): make the provisioning flow a true
+three-step wizard"* — +144/−42 in `ProvisioningFlow.tsx`. Each step is now its own screen.
+
+```
+provisioning.spec.ts:37  — renders the flow on a terminal that is not provisioned
+  Error: element(s) not found
+    - waiting for getByTestId('store-type-simple-retail')
+```
+
+The store type is no longer rendered on first paint, because a later step's fields no longer
+appear until an earlier step is answered.
+
+### Why that is worth stopping on
+
+This audit made the opposite call deliberately and recorded it **above**, at round 30:
+
+> **Deliberately not the store type.** An earlier draft collapsed that too, and the first-run test
+> went red because it asserts both store types are offered on load. The test was right and my draft
+> was wrong: the store type is a DECISION, and hiding it would mean a merchant cannot see what the
+> form is about to ask. Detail can be disclosed progressively; a choice should stay visible. I
+> narrowed the change rather than editing the test.
+
+So the draft that was reverted is now the shipped behaviour, and the test that was kept is now
+red. A genuine wizard may well be the better call — but that is a **change of decision**, and
+nothing records it reversing round 30. Whoever owns the flow should decide which side moves:
+
+- **keep the wizard** — then `provisioning.spec.ts:37` and the tablet specs must be updated,
+  and the round-30 note must say the decision was revisited rather than left standing.
+- **restore the decision** — the owner step stays disclosed while the store type stays visible on
+  first paint.
+
+Either way the round-30 note is now a **false record of the present**, and that is the part to fix
+whoever settles it.
+
+### What was NOT done here, and why
+
+`ProvisioningFlow.tsx` is not this audit's file and the change landed from another session, so it
+has been neither edited nor committed. Reporting with the failing assertion and the prior decision
+attached is more useful than rewriting another session's component — or quietly editing the spec
+to match a behaviour change nobody has claimed.
+
+### And the 9.8-minute anomaly, settled
+
+A single spec file was taking **9.8 minutes** where the whole 364-test suite used to take 8. It was
+never load: the machine was quiet (CPU 16%, this audit's own build processes killed) and the
+slowness survived with this audit's changes removed. It is the failing assertions burning their
+full timeout, one after another. The anomaly was this regression, measured.
+
+> last audited 30-09-26 by DSH (round 38 · a landed wizard change contradicts round 30)
