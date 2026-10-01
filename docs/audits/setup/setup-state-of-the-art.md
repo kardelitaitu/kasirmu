@@ -1907,11 +1907,39 @@ error is real.
 
 ### Honest scope
 
-- **Verified:** pairing from the device; four of the five first-run fixes rendering; the
-  Fluent fix in Indonesian; no console errors.
-- **Not verified:** the pairing **claim** leg (needs a signed-in account on a phone); fix 3's
-  auto-refresh on a real 15-minute expiry (the timer was not waited out); the provision
-  transaction end to end on device.
+- **Verified, after the follow-up pass:** pairing from the device; **all five** first-run fixes
+  (fix 3's auto-refresh was waited out against the server's real 10-minute TTL, not a
+  shortened one); the Fluent fix in Indonesian; no console errors; **and the provision
+  transaction end to end** — `provisioning-flow` unmounted and the shell routed to login, which
+  is only reachable via `onProvisioned()`. Round 33's bounce-back-to-"Create Owner PIN" does
+  not reproduce.
+
+- **Verified on a second, deliberate pass** (the first pass was ambiguous — see below): signed
+  out through its confirmation dialog, typed `budi`, entered PIN `1234` on the rendered pad,
+  and landed on **"Bonjour, Budi Santoso · OWNER"**. That closes the merchant's first real
+  action after setup, and subsumes the SQL row read I had failed to pull.
+
+- **Resolved, not a defect:** the `Auth · 3613ms / Sync · 793ms / Pembayaran / Perangkat`
+  panel read mid-transition is the shell's post-login system-status readout. It appears
+  briefly after login, yields to the workspace picker, and does not reappear on the login
+  screen. It is not a dev overlay leaking into a merchant build.
+
+- **Still not verified:** the pairing **claim** leg. `pairing.go:253` also admits an admin key,
+  and `OZ_ADMIN_KEY` is in this environment, so it is reachable — but a successful claim
+  **writes to production** (it binds a terminal to a tenant), so it is held pending an
+  explicit go-ahead rather than assumed.
+
+### Two ways this pass nearly recorded a falsehood
+
+**A submittable form that ignores you.** The first submit tap did nothing — no error, no log,
+no re-render. The button sat below the card's scroll fold, so a viewport-relative click landed
+on nothing. It reads exactly like a dead submit button; scrolling it into view fixed it.
+
+**A clock I had not measured.** Twice I concluded fix 3 had failed because the pairing code
+had not changed after its TTL. It had not — the session was minted at 06:49:30, not the
+06:45 I had assumed, so it simply had not expired. Device, host and server clocks were then
+measured and agreed to the second, ruling out skew before the timeline was trusted. Both
+mistakes share a cause: a conclusion drawn from a partial read.
 
 > **Round 37 ·** on the tablet: round 34's blocker closed, and a defect only hardware found.
 > last audited 30-09-26 by DSH
