@@ -961,6 +961,15 @@ step "bundle parity" "python3 scripts/verify-bundle-parity.py --scan-dirs featur
 # and pass on a tree it was no longer reading.
 step "bundle parity self-test" "python3 scripts/verify-bundle-parity.py --self-test" python3 scripts/verify-bundle-parity.py --self-test
 
+# Gate: scripts/gates.json -> "ftl-attrs". The class the parity checker declares
+# OUT OF SCOPE: attrs={{...}} requests an ATTRIBUTE, and a message defining no
+# .placeholder makes @fluent/react fall back to the between-tag children -- a
+# hardcoded English literal. Three messages shipped that way (d9cc0098f).
+step "ftl attribute requests" "python3 scripts/check-ftl-attrs.py" python3 scripts/check-ftl-attrs.py
+# The extractor's own cases, beside the gate they prove. This checker is all regex
+# extraction, so a pattern that stopped matching would report a clean tree.
+step "ftl attribute requests self-test" "python3 scripts/check-ftl-attrs.py --self-test" python3 scripts/check-ftl-attrs.py --self-test
+
 # ── Migration correctness (steps 6 and 7 of the pre-commit hook) ───────────
 # Both lived in ci.yml, retired to .bak by 23c96330, and were never restored in
 # dev-ci.yml -- and, as this file proves, they were never in check.sh either. So

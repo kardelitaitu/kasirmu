@@ -1099,6 +1099,23 @@
       }
     },
     {
+      "id": "ftl-attrs",
+      "label": "ftl attribute requests",
+      "status": "required",
+      "_note": "Added 2026-10-05. Closes the class verify-bundle-parity.py declares OUT OF SCOPE at its own docstring: that checker validates message IDs, not the ATTRIBUTES a call site asks for via attrs={{...}}. When a message defines no .placeholder, @fluent/react falls back to the between-tag children -- a hardcoded English literal -- so the component renders, the suite passes, and the translation that exists in *.id.ftl is never shown. Three messages shipped that way and were fixed in d9cc0098f. All three real findings sat behind a DYNAMIC id (id={flag ? a : b}), which is why the checker resolves BOTH branches; a resolver keyed on the nearest LITERAL id produced three false positives first, which is the trap worth knowing about. Unresolvable sites (id={JS_VAR}) are counted and printed rather than skipped, so the coverage cannot look wider than it is.",
+      "runners": {
+        "check.sh": [
+          "ftl attribute requests"
+        ]
+      },
+      "self_test": "python3 scripts/check-ftl-attrs.py --self-test",
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "i18n",
+        "step": "FTL attribute requests"
+      }
+    },
+    {
       "id": "runner-labels",
       "label": "Runner label integrity",
       "status": "required",

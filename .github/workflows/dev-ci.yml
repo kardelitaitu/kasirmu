@@ -1243,6 +1243,21 @@ jobs:
       # case 1 red with "expected [...], got []", exit 1).
       - name: i18n bundle parity self-test
         run: python3 scripts/verify-bundle-parity.py --self-test
+
+      # The class the parity checker declares OUT OF SCOPE at its docstring: it
+      # validates message IDs, not the ATTRIBUTES a call site asks for. A message
+      # without `.placeholder` makes @fluent/react fall back to the between-tag
+      # children -- a hardcoded English literal -- so the component renders, the
+      # suite passes, and the translation that exists in *.id.ftl is never shown.
+      # Three messages shipped that way (d9cc0098f). All three sat behind a DYNAMIC
+      # id ({flag ? a : b}), which is why the checker resolves both branches.
+      - name: FTL attribute requests
+        run: python3 scripts/check-ftl-attrs.py
+      # Blocking beside its gate, for the reason the parity self-test states above:
+      # this checker's whole job is extraction, so a pattern that stops matching
+      # reports a clean tree rather than failing.
+      - name: FTL attribute requests self-test
+        run: python3 scripts/check-ftl-attrs.py --self-test
       # These two lived in ci.yml, which 23c96330 retired to .bak, and neither was
       # ever restored -- so for two releases the ONLY guard was the opt-in
       # pre-commit hook. core.hooksPath is set by scripts/setup-dev.ps1 and is not
