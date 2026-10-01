@@ -3,7 +3,7 @@ title: Panduan Gaya Dokumentasi
 description: Cara menggunakan callout, tautan, tabel, kode, dan bagan saat menulis dokumentasi.
 category: reference
 order: 4
-updated: "2026-08-16"
+updated: "2026-10-01"
 ---
 
 ## Callout
@@ -123,3 +123,17 @@ untuk contoh yang berfungsi.
   mesin pencari membaca markdown, bukan SVG.
 - Simpan sumber `mermaid` di halaman. Jangan menggantinya dengan PNG hasil
   ekspor: sumber itulah yang tetap bisa ditinjau, di-diff, dan diterjemahkan.
+
+## Keparitas lokal
+
+Setiap halaman `en` butuh pasangan `id` dengan nama file yang sama. Jalankan
+pemeriksanya setelah menambah, mengganti nama, atau menghapus halaman:
+
+```sh
+python3 scripts/check-doc-parity.py   # dari website/
+```
+
+Skrip gagal bila pasangan hilang, dan memperingatkan perbedaan jumlah judul
+atau `updated` antar lokal. `updated` kedua lokal bergerak bersama setiap
+kali konten berubah — itulah sinyal kesegaran halaman, jadi mengedit
+halaman tanpa membarukannya adalah drift.
