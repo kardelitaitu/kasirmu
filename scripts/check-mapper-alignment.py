@@ -370,8 +370,74 @@ def scan(path: Path) -> tuple[list[str], list[str]]:
     return findings, acked
 
 
+def _self_test() -> int:
+    """Prove the block walker on the two shapes that broke the previous one.
+
+    This checker shipped a clean report over a REAL misalignment because its walk
+    stopped at the first line that was not a `row.get`. The repair is brace
+    matching, and this pins that -- a self-test is the only way to show the walker
+    still does the thing the fix was for, since the live corpus happens to be
+    aligned and an exit-0 run proves nothing about the walker.
+    """
+    cases: list[tuple[str, list[str], list[tuple[str, int]]]] = []
+
+    # The regression: a bare shorthand field BEFORE a nested struct literal. The old
+    # line-walk stopped at the shorthand and never reached `image_hash`.
+    cases.append((
+        "a shorthand and a nested literal do not stop the walk",
+        [
+            "    let rows = items",
+            "        .into_iter()",
+            "        .map(|row| Thing {",
+            "            sku,",
+            "            name: row.get(0)?,",
+            "            price: Money {",
+            "                minor_units: row.get(1)?,",
+            "                currency: row.get(2)?,",
+            "            },",
+            "            image_hash: row.get(3)?,",
+            "        })",
+        ],
+        [("name", 0), ("minor_units", 1), ("currency", 2), ("image_hash", 3)],
+    ))
+
+    # The plain case must still work -- a repair that fixed the hard shape by
+    # breaking the easy one would pass the first case alone.
+    cases.append((
+        "a plain mapper still collects every field",
+        [
+            "        Thing {",
+            "            a: row.get(0)?,",
+            "            b: row.get(1)?,",
+            "        },",
+        ],
+        [("a", 0), ("b", 1)],
+    ))
+
+    bad = 0
+    for name, lines, want in cases:
+        anchor = next(i for i, l in enumerate(lines) if "row.get(" in l)
+        got = collect_mapped_fields(lines, anchor)
+        ok = got == want
+        if not ok:
+            bad += 1
+            print("  %-52s FAIL" % name)
+            print("      want %s" % want)
+            print("      got  %s" % got)
+        else:
+            print("  %-52s ok" % name)
+    print("SELF-TEST %s (%d cases, no files touched)"
+          % ("FAILED" if bad else "OK", len(cases)))
+    return 1 if bad else 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="Check positional row-mapper alignment")
+    ap.add_argument(
+        "--self-test",
+        action="store_true",
+        help="prove the block walker on both directions, touch no files",
+    )
     ap.add_argument(
         "--roots",
         nargs="+",
@@ -386,6 +452,9 @@ def main() -> int:
         default=["crates", "apps", "platform", "modules"],
     )
     args = ap.parse_args()
+
+    if args.self_test:
+        return _self_test()
 
     files: list[Path] = []
     missing: list[str] = []
