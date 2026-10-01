@@ -14,29 +14,60 @@ fn fresh_db() -> Arc<Mutex<Connection>> {
 async fn throwaway_pool() -> Option<(deadpool_postgres::Pool, String)> {
     let url = std::env::var("OZ_TEST_PG_URL")
         .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:15432/postgres".into());
-    let config = tokio_postgres::Config::from_str(&url).ok()?;
+    // Every failure below is NAMED rather than reduced to `.ok()?`. That is not
+    // style: while this function swallowed its errors, a CI red could only ever
+    // print "cannot create throwaway DB", and the hardcoded-port bug above hid
+    // behind that for four CI runs because a refused connection and a failed
+    // CREATE DATABASE were indistinguishable in the log.
+    let config = match tokio_postgres::Config::from_str(&url) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("throwaway_pool: OZ_TEST_PG_URL is not a valid connection string: {e}");
+            return None;
+        }
+    };
     let admin_mgr = deadpool_postgres::Manager::new(config, tokio_postgres::NoTls);
-    let admin_pool = deadpool_postgres::Pool::builder(admin_mgr)
+    let admin_pool = match deadpool_postgres::Pool::builder(admin_mgr)
         .max_size(2)
         .build()
-        .ok()?;
-    let admin = admin_pool.get().await.ok()?;
+    {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("throwaway_pool: admin pool build failed: {e}");
+            return None;
+        }
+    };
+    let admin = match admin_pool.get().await {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("throwaway_pool: admin connection refused at {url}: {e}");
+            return None;
+        }
+    };
 
     // Clean up stale throwaway DBs from crashed runs.
-    let stale: Vec<String> = admin
+    let stale: Vec<String> = match admin
         .query(
             "SELECT datname FROM pg_database WHERE datname LIKE 'oz_sync_test_%'",
             &[],
         )
         .await
-        .ok()?
-        .iter()
-        .map(|r| r.get::<_, String>(0))
-        .collect();
+    {
+        Ok(rows) => rows.iter().map(|r| r.get::<_, String>(0)).collect(),
+        Err(e) => {
+            eprintln!("throwaway_pool: listing stale oz_sync_test_ databases failed: {e}");
+            return None;
+        }
+    };
     for d in &stale {
-        let _ = admin
+        if let Err(e) = admin
             .batch_execute(&format!("DROP DATABASE IF EXISTS {d} WITH (FORCE);"))
-            .await;
+            .await
+        {
+            // Non-fatal, as before: a leftover that will not drop is not a reason
+            // to fail this test -- but it is a reason to say so.
+            eprintln!("throwaway_pool: dropping stale {d} failed (continuing): {e}");
+        }
     }
 
     // `.simple()` (hex only): the name is interpolated as an unquoted
@@ -47,10 +78,13 @@ async fn throwaway_pool() -> Option<(deadpool_postgres::Pool, String)> {
         std::process::id(),
         uuid::Uuid::now_v7().simple()
     );
-    admin
+    if let Err(e) = admin
         .execute(&format!("CREATE DATABASE {db_name}"), &[])
         .await
-        .ok()?;
+    {
+        eprintln!("throwaway_pool: CREATE DATABASE {db_name} failed: {e}");
+        return None;
+    }
     drop(admin);
     drop(admin_pool);
 
@@ -71,17 +105,35 @@ async fn throwaway_pool() -> Option<(deadpool_postgres::Pool, String)> {
         .rsplit_once('/')
         .expect("OZ_TEST_PG_URL must carry a database path");
     let db_url = format!("{base}/{db_name}");
-    let db_config = tokio_postgres::Config::from_str(&db_url).ok()?;
+    let db_config = match tokio_postgres::Config::from_str(&db_url) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("throwaway_pool: derived url {db_url} is not a valid connection string: {e}");
+            return None;
+        }
+    };
     let mgr = deadpool_postgres::Manager::new(db_config, tokio_postgres::NoTls);
-    let pool = deadpool_postgres::Pool::builder(mgr)
-        .max_size(3)
-        .build()
-        .ok()?;
-    let client = pool.get().await.ok()?;
-    client
+    let pool = match deadpool_postgres::Pool::builder(mgr).max_size(3).build() {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("throwaway_pool: test-db pool build failed: {e}");
+            return None;
+        }
+    };
+    let client = match pool.get().await {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("throwaway_pool: connection to the new database {db_name} refused: {e}");
+            return None;
+        }
+    };
+    if let Err(e) = client
         .batch_execute(kasirmu_core::migrations::PG_INIT)
         .await
-        .ok()?;
+    {
+        eprintln!("throwaway_pool: applying PG_INIT to {db_name} failed: {e}");
+        return None;
+    }
     drop(client);
 
     Some((pool, db_name))
