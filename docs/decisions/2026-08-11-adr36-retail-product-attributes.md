@@ -295,4 +295,36 @@ per-location total, and the visible-column set persists per user via the
 cost snapshot at checkout — migrations 134/135) extends this ADR's cost data
 across the reporting surface; see commits `5a030f67`–`788bf2fa`.
 
+## An attribute that cannot be READ is not an attribute that was never set (appended 2026-10-04)
+
+This decision added the attribute columns (`brand`, `rack_location`, `notes`, `unit`,
+`default_supplier_id`, and the earlier `track_serial` / `version` / `cost_minor` / `is_active`),
+and it named `row_to_product` as the core model that reads them. That mapper read ten of them
+through `unwrap_or(..)`.
+
+**None of those calls supplied a default.** rusqlite maps NULL to `None` for an `Option<T>`
+target, and every NOT NULL column here carries its default in the SCHEMA (`track_serial INTEGER
+NOT NULL DEFAULT 0`, `version INTEGER NOT NULL DEFAULT 1`, `cost_minor INTEGER NOT NULL DEFAULT
+0`, `is_active INTEGER NOT NULL DEFAULT 1`). So the `unwrap_or(..)` forms only ever fired on a
+real error — a missing column, a type mismatch, a corrupt page — and replaced it with a
+plausible value.
+
+**The mapper's own neighbour said so.** `product_type_str` is read with `?` under the comment
+"Use Option<String> for nullable column — reads NULL as None rather than swallowing errors via
+`.ok()`". Ten lines below, six nullable TEXT columns did exactly what that comment forbids. Same
+signal as the receipt footer and the staff row mapper: **when one function handles one kind of
+read two ways, the divergent one is the bug.**
+
+**Why this is the highest-reach instance.** `row_to_product` maps every product in every listing
+and is the mapper behind `products_crud`'s list, search and get-by-sku/get-by-barcode paths. A
+single bad read would have produced a catalogue of products silently carrying `cost_minor: 0`
+or `is_active: false` — a wrong price basis or a product hidden from sale — rather than an error
+anyone could act on.
+
+All ten reads now propagate; `track_serial` and `is_active` read as `i64` and compare, which is
+what `unwrap_or(false)` / `unwrap_or(1i64)` were already doing. Pinned by
+`row_to_product_fails_when_a_read_column_is_missing`, which projects a row supplying every
+`?`-read column and omitting the rest. Verified RED with the swallows restored — the mapper
+returned a COMPLETE `Product` (`track_serial: false, version: 1, cost_minor: 0, is_active: true`)
+from a projection that supplied almost none of its columns — and GREEN with the fix.
 > last audited 29-09-26 by docs-auditor
