@@ -327,12 +327,23 @@ impl ImageDownloadManager {
                 Ok(m) => m,
                 Err(_) => continue,
             };
-            let mtime = meta
+            // Skip rather than fabricate an mtime. `.unwrap_or(0)` stamped an
+            // unreadable mtime as 1970 -- the OLDEST possible -- so the sort just
+            // below put the file at the front of the LRU and `evict()` discarded it
+            // first. For an entry that was very likely just downloaded, that throws
+            // the download away over a metadata read. It was also the odd one out in
+            // this loop: both failures above `continue`, so the file is skipped when
+            // its NAME or its METADATA cannot be read -- only a failed mtime
+            // fabricated a value. Skipping keeps the LRU ignorant of the file rather
+            // than ranking it last.
+            let mtime = match meta
                 .modified()
                 .ok()
                 .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
-                .map(|d| d.as_millis())
-                .unwrap_or(0);
+            {
+                Some(d) => d.as_millis(),
+                None => continue,
+            };
             files.push((mtime, name, meta.len()));
         }
         // Oldest first (least-recently-used at the front).
