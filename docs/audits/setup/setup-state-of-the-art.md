@@ -1423,6 +1423,35 @@ wrong: the store type is a DECISION, and hiding it would mean a merchant cannot 
 about to ask. Detail can be disclosed progressively; a choice should stay visible. I narrowed the
 change rather than editing the test.
 
+> **SUPERSEDED 2026-10-01 — this is the dated record of what was decided then, not of what
+> ships.** The reasoning above held at the time and the test it preserved was right about
+> the *offering*: both store types are still reachable, and `provisioning.spec.ts` still
+> asserts that. What changed is the *placement*, and not by choice of argument — by a
+> commit. `185bccb69` ("make the provisioning flow a true three-step wizard", +144/−42)
+> gates the step behind `activeStep`: `ProvisioningFlow.tsx:999` now reads
+> `{activeStep === 1 && (` where the store type lives, so it renders only once step 1
+> is answered.
+>
+> Nobody recorded reversing this decision — `185bccb69` has an empty commit body —
+> and round 38 of this document flagged that as the open question rather than settling
+> it. It is worth being precise about what actually happened, because "a decision was
+> taken" and "a draft was reverted" look identical from a diff and are not:
+>
+>   - The **test was not edited to accommodate the change.** The repair in round 19 was
+>     to walk the wizard (`provision-step-next`) the way a merchant does, and to assert the
+>     store types are *offered* after step 1 instead of *placed* on first paint. The
+>     coverage is the same; only the placement assumption was dropped, deliberately and
+>     with the reason recorded at the case.
+>   - So the disagreement recorded above survived as **reachability**, and the decision
+>     it actually made — "a choice should stay visible" — did not. On first paint the
+>     merchant now sees a mode question, not the store-type choice.
+>
+> Whether that is right is a product call this audit should not make. The cost is
+> small and defensible (one extra click before a choice the wizard now asks in
+> context); the loss is the round-30 argument that a merchant cannot see what the form
+> is about to ask. **If the wizard's placement is intended to stand, this paragraph is
+> the record to strike — not silently, by rewriting it to sound agreed.**
+
 ### The honest limits
 
 - **First paint is unchanged** (967px initial vs 1460px at step 2). The owner fields were never the
