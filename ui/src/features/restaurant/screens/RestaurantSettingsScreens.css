@@ -1003,6 +1003,16 @@
   border-color: var(--color-primary);
 }
 
+/* Save Bar / Actions */
+
+.restaurant-settings-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  padding-top: var(--space-2);
+}
+
 /* Loading & Payment Screen Elements */
 
 .restaurant-settings-loading {
@@ -1220,187 +1230,8 @@
   color: var(--color-danger-hover);
 }
 
-/* ── Expandable Payment Method Cards Template ──────────────── */
-
-.resto-payment-cards-list {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-  width: 100%;
-}
-
-.resto-payment-card-wrapper {
-  transition: all 0.25s ease;
-  border-radius: var(--radius-lg);
-}
-
-.resto-payment-card-wrapper--collapsed .card-body {
-  display: none;
-}
-
-.resto-payment-card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: var(--space-4);
-  width: 100%;
-}
-
-.resto-payment-card-title-group {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  min-width: 0;
-  flex: 1;
-}
-
-.resto-payment-card-icon-wrap {
-  width: 40px;
-  height: 40px;
-  border-radius: var(--radius-md);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--color-bg-subtle);
-  color: var(--color-primary);
-  border: 1px solid var(--color-border);
-  flex-shrink: 0;
-}
-
-.resto-payment-card-icon-wrap svg {
-  width: 22px;
-  height: 22px;
-}
-
-.resto-payment-card-info {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  flex: 1;
-}
-
-.resto-payment-card-title-row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  flex-wrap: wrap;
-}
-
-.resto-payment-card-title {
-  margin: 0;
-  font-size: var(--text-base);
-  font-weight: var(--font-weight-semibold, 600);
-  color: var(--color-fg);
-  cursor: pointer;
-}
-
-.resto-payment-card-desc {
-  margin: 2px 0 0 0;
-  font-size: var(--text-xs);
-  color: var(--color-fg-muted);
-  line-height: var(--leading-normal);
-}
-
-.resto-payment-card-badge {
-  font-size: 10px;
-  font-weight: 700;
-  padding: 1px 7px;
-  border-radius: var(--radius-full);
-  text-transform: uppercase;
-  letter-spacing: 0.4px;
-  line-height: 1.4;
-}
-
-.resto-payment-card-badge--default {
-  background: var(--color-bg-subtle);
-  color: var(--color-fg-muted);
-  border: 1px solid var(--color-border);
-}
-
-.resto-payment-card-badge--primary {
-  background: rgba(59, 130, 246, 0.12);
-  color: var(--color-primary);
-  border: 1px solid var(--color-primary);
-}
-
-.resto-payment-card-badge--success {
-  background: rgba(34, 197, 94, 0.12);
-  color: var(--color-success);
-  border: 1px solid var(--color-success);
-}
-
-.resto-payment-card-badge--warning {
-  background: rgba(245, 158, 11, 0.12);
-  color: var(--color-warning);
-  border: 1px solid var(--color-warning);
-}
-
-.resto-payment-card-header-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  flex-shrink: 0;
-}
-
-.resto-payment-card-body {
-  padding-top: var(--space-2);
-  animation: restoCardExpand 0.2s ease-out;
-}
-
-@keyframes restoCardExpand {
-  from {
-    opacity: 0;
-    transform: translateY(-4px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.resto-payment-chips-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-  margin-top: var(--space-1);
-}
-
-.resto-payment-chip {
-  padding: 4px 12px;
-  border-radius: var(--radius-md);
-  font-size: var(--text-xs);
-  font-weight: 500;
-  border: 1px solid var(--color-border);
-  background: var(--color-bg-subtle);
-  color: var(--color-fg);
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.resto-payment-chip--active {
-  background: var(--color-primary);
-  color: var(--color-white, #fff);
-  border-color: var(--color-primary);
-}
-
-.resto-payment-checkbox-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: var(--space-2);
-  margin-top: var(--space-2);
-}
-
-.resto-payment-checkbox-item {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-3);
-  background: var(--color-bg-subtle);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  font-size: var(--text-sm);
-  color: var(--color-fg);
-  cursor: pointer;
+.restaurant-settings-actions .btn--primary {
+  color: var(--color-pos-on-primary);
+  font-weight: var(--font-weight-semibold);
 }
 
