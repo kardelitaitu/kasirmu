@@ -45,14 +45,25 @@ setup-wizard pages"), not from a deliberate audit-the-website pass, and the
 convention is applied to exactly HALF the corpus — 20 of 40 website docs carry it,
 20 do not.
 
-WHAT IS NOT KNOWN, and why this is recorded rather than fixed: whether the footer
-RENDERS on the built site was not verified (that needs the site running, which is
-technically outside this checker's scope), so it is not established that readers
-see it. The two candidate rulings have opposite fixes — either the website is
-in-scope for audit footers and 20 pages should gain stamps, or it is out of scope
-and 20 pages should lose the footer. Guessing between them would edit 20 published
-pages on a coin-flip, so the measurement is left here for whoever owns the
-docs-authoring convention.
+RESOLVED 2026-10-05 (round 137): the footer DOES reach readers. It was checked in
+the content pipeline rather than by deploying the site. website/src/pages/[locale]/
+docs/[...slug].astro renders `<Content />` at line 50 — the whole markdown body — and
+astro.config.mjs registers NO remark/rehype plugin that could strip or rewrite it.
+The only `filter` in DocsLayout.astro is on HEADINGS (TOC depth 2-3), not the body.
+So a trailing `> last audited ...` blockquote builds into the page and renders as a
+visible blockquote: on those 20 pages a customer sees "last audited 30-09-26 by
+docs-auditor" under the article.
+
+That makes the leaning clear without settling it. A footer whose purpose is to be
+machine-read by this checker and detect.sh has no business rendering to a customer,
+and the convention covers only half the corpus — so the likelier ruling is the
+website is OUT of scope and the footer should go, not that 20 pages should gain
+stamps. It is still NOT applied here, and the reason is now ownership rather than
+uncertainty: this is a docs-authoring decision about published pages, it touches 20
+files, and the checker's job is to report it. Two things to settle before acting —
+whether any page uses the footer as reader-facing metadata deliberately, and whether
+removeFooter() should be a build-time rule so the convention cannot leak back in
+the next time a page is copied from docs/.
 
 Exit codes: 0 clean, 1 findings in the OLDER class or an impossible date,
 2 the checker itself failed. The NEWER class is informational and does not
