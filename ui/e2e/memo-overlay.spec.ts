@@ -152,7 +152,19 @@ test.describe('Memo stack never covers a visible control', () => {
   test('the clearance bands reserve scroll room for the memo stack strip', async ({ page }) => {
     await seedMemos(page, 3);
 
-    /** padding on the given box vs the stack's measured height */
+    /**
+     * Padding on the given box vs the stack's measured height.
+     *
+     * Polled, not sampled once: the band is gated on `body:has(.memo-stack)`, so
+     * its padding is 0 until the stack has mounted AND the style recalc has
+     * landed. Under the full-suite run that can be later than the 500ms settle
+     * below -- measured 2026-10-01, one tablet case failed there while passing
+     * 24/24 in isolation and under --repeat-each=4. Polling the MEASUREMENT is
+     * not the trap the census cases fell into: here the predicate is a number
+     * that is wrong until the stylesheet applies, and it cannot be wrong by
+     * passing quietly -- a genuinely short band still fails once the poll gives
+     * up (verified: removing the settings band fails this 3/4 immediately).
+     */
     const band = (selector: string) =>
       page.evaluate((sel) => {
         const stack = document.querySelector('.memo-stack');
@@ -164,10 +176,20 @@ test.describe('Memo stack never covers a visible control', () => {
         };
       }, selector);
 
+    const settledBand = async (selector: string) => {
+      let last: { strip: number; pad: number } | null = null;
+      for (let i = 0; i < 12; i++) {
+        last = (await band(selector)) ?? last;
+        if (last && last.pad > 0) return last;
+        await page.waitForTimeout(250);
+      }
+      return last;
+    };
+
     // Picker: .ws-main is the scroller; the band is on the box that sizes it.
     await expect(page.getByTestId('workspace-home')).toBeVisible({ timeout: 15_000 });
     await page.waitForTimeout(500);
-    const picker = await band('.ws-main');
+    const picker = await settledBand('.ws-main');
     expect(picker, 'the picker clearance band (.ws-main) was not found').not.toBeNull();
     expect(
       picker!.pad,
@@ -179,14 +201,15 @@ test.describe('Memo stack never covers a visible control', () => {
     await selectWorkspace(page, WORKSPACES.ADMIN);
     await navigateTo(page, 'settings');
     await page.waitForSelector('[data-testid="settings-sidebar"]', { timeout: 15_000 });
-    await page.waitForTimeout(500);
-    const settings = await band('.settings-body');
+    const settings = await settledBand('.settings-body');
     expect(settings, 'the settings clearance band (.settings-body) was not found').not.toBeNull();
     expect(
       settings!.pad,
       `the settings clearance band is ${settings!.pad}px but the memo stack is ${settings!.strip}px tall -- the SettingsNavTree.css band is gone, or shorter than the strip it reserves`,
     ).toBeGreaterThanOrEqual(settings!.strip);
   });
+
+
 });
 
 
