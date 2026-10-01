@@ -261,20 +261,21 @@ Going up a plan buys **capacity**, never basic operational survival. We never ho
 | **Enterprise** | Bespoke | Bespoke | Custom | Unlimited scale, custom hardware drivers, dedicated SLA, on-premise cloud deployments. |
 
 ```mermaid
-flowchart LR
-    F["<b>Free</b><br/>$0 forever<br/><br/>1 store<br/>1 register<br/>Static QRIS"]
-    PL["<b>Plus</b><br/>$4.99 / mo<br/><br/>2 registers<br/>Daily dashboard<br/>Cloud sync"]
-    PR["<b>Pro</b> (Popular)<br/>$9.99 / mo<br/><br/>2 stores<br/>5 registers/store<br/>KDS + cards"]
-    PM["<b>Premium</b><br/>$39.99 / mo<br/><br/>5 stores<br/>Unlimited registers<br/>Loyalty + scripts"]
-    ET["<b>Enterprise</b><br/>Bespoke<br/><br/>Unlimited scale<br/>Custom drivers<br/>Dedicated SLA"]
+flowchart TD
+    F["<b>1. FREE FOREVER — $0 / mo (Rp 0)</b><br/>• 1 Store · 1 Register · 1 Warehouse · 3 Months History<br/>• 100% Full Offline Operation · Static QRIS · 0% Commission"]
+    
+    PL["<b>2. PLUS — $4.99 / mo (Rp 49.000)</b><br/>• 1 Store · 2 Registers · 2 Warehouses · 1 Year History<br/>• Automated Cloud Outbox Sync · Dynamic QRIS · Daily Sales Dashboard"]
+    
+    PR["<b>3. PRO (Most Popular) — $9.99 / mo (Rp 99.000)</b><br/>• 2 Stores · 5 Registers / Store · 3 Warehouses · 5 Years History<br/>• Kitchen Display System (KDS) · Stripe Card Processing · Sales Analytics"]
+    
+    PM["<b>4. PREMIUM — $39.99 / mo (Rp 399.000)</b><br/>• 5 Stores · Unlimited Registers & Warehouses · Unlimited History<br/>• Customer Loyalty Points · Lua Promotion Rules · Full Whitelabel Theming"]
+    
+    ET["<b>5. ENTERPRISE — Bespoke Contract</b><br/>• Unlimited Stores, Terminals & Regional Warehouses<br/>• Custom HAL Hardware Drivers · Dedicated SLA · Private Cloud Deployments"]
 
-    F --> PL --> PR --> PM --> ET
-
-    style F fill:#f6f8fa,stroke:#d0d7de
-    style PL fill:#f6f8fa,stroke:#d0d7de
-    style PR fill:#f6f8fa,stroke:#d0d7de
-    style PM fill:#f6f8fa,stroke:#d0d7de
-    style ET fill:#f6f8fa,stroke:#d0d7de
+    F -->|Store needs cloud sync & 2nd register| PL
+    PL -->|Store needs multi-terminal & KDS| PR
+    PR -->|Chain expands to multi-location & loyalty| PM
+    PM -->|Franchise demands custom drivers & SLA| ET
 ```
 
 ---
