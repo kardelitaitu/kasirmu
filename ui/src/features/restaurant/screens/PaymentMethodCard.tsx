@@ -28,11 +28,7 @@ export interface PaymentMethodCardProps {
 export function PaymentMethodCard({
   id,
   title,
-  description,
   code,
-  icon,
-  badge,
-  badgeVariant = 'default',
   enabled,
   onToggle,
   isCore = true,
@@ -54,26 +50,13 @@ export function PaymentMethodCard({
         header={
           <div className="restaurant-settings-card-header resto-payment-card-header restaurant-rail-row">
             <div className="resto-payment-card-title-group">
-              <div className="resto-payment-card-icon-wrap" aria-hidden="true">
-                {icon}
-              </div>
-              <div className="resto-payment-card-info">
-                <div className="resto-payment-card-title-row">
-                  <label
-                    htmlFor={`rail-toggle-${code}`}
-                    className="settings-section-title resto-payment-card-title"
-                  >
-                    {title}
-                  </label>
-                  <span className="restaurant-rail-code">{code}</span>
-                  {badge && (
-                    <span className={`resto-payment-card-badge resto-payment-card-badge--${badgeVariant}`}>
-                      {badge}
-                    </span>
-                  )}
-                </div>
-                <p className="resto-payment-card-desc">{description}</p>
-              </div>
+              <label
+                htmlFor={`rail-toggle-${code}`}
+                className="resto-payment-card-title"
+              >
+                {title}
+              </label>
+              <span className="restaurant-rail-code sr-only">{code}</span>
             </div>
 
             <div className="resto-payment-card-header-actions restaurant-rail-actions">
@@ -87,21 +70,18 @@ export function PaymentMethodCard({
                   &times;
                 </button>
               )}
-              <span className="settings-toggle">
-                <span className="sr-only">Toggle {title}</span>
-                <span className="settings-toggle-switch">
-                  <input
-                    id={`rail-toggle-${code}`}
-                    type="checkbox"
-                    role="switch"
-                    checked={enabled}
-                    aria-checked={enabled}
-                    aria-label={title}
-                    onChange={(e) => onToggle(e.target.checked)}
-                  />
-                  <span className="settings-toggle-slider" />
-                </span>
-              </span>
+              <label className="settings-toggle-switch" htmlFor={`rail-toggle-${code}`}>
+                <input
+                  id={`rail-toggle-${code}`}
+                  type="checkbox"
+                  role="switch"
+                  checked={enabled}
+                  aria-checked={enabled}
+                  aria-label={title}
+                  onChange={(e) => onToggle(e.target.checked)}
+                />
+                <span className="settings-toggle-slider" aria-hidden="true" />
+              </label>
             </div>
           </div>
         }
