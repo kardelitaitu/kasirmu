@@ -1,7 +1,7 @@
 use super::*;
-use kasirmu_core::migrations;
 use kasirmu_core::Currency;
 use kasirmu_core::Sku;
+use kasirmu_core::migrations;
 use rusqlite::Connection;
 
 fn usd() -> Currency {
