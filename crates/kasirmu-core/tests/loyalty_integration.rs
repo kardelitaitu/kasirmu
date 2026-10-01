@@ -518,3 +518,90 @@ fn base_total_minor_is_believed_without_re_derivation() {
     // Points follow the client's base_total_minor, not the 1000-unit sale.
     assert_eq!(account.account.points, 100_000);
 }
+
+/// The lifetime-spend balance has TWO production writers in different
+/// transactions: accrue on completion and reverse on refund, the latter via
+/// `MAX(total_spent_minor - ?1, 0)` (customers.rs:400). The floor is what makes
+/// that worth testing — a refund applied before its sale is counted clamps at
+/// zero and the under-count is swallowed, leaving a wrong number that later sales
+/// add on top of. Every existing customer_integration case writes the column
+/// directly, so none of them exercises the pair.
+
+/// THE REPRODUCE, and it PASSES AGAINST HEAD: a completed sale followed by a full
+/// refund returns the customer to zero. Both sides derive the amount from the
+/// same basis, so the pair is symmetric on the happy path.
+#[test]
+fn completed_sale_then_full_refund_returns_lifetime_spend_to_zero() {
+    let conn = setup();
+    seed_customer(&conn, "cust-1", "Alice");
+    seed_pending_sale_for_finalize(&conn, "sale-1", "cust-1", 1000, None);
+
+    store(&conn).finalize_sale("sale-1").unwrap();
+    let after_sale: i64 = conn
+        .query_row(
+            "SELECT total_spent_minor FROM customers WHERE id = 'cust-1'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(after_sale, 1000);
+
+    // Reverse exactly what was accrued, through the production helper.
+    kasirmu_core::db::Store::reverse_lifetime_spend_in_tx(
+        &conn,
+        "cust-1",
+        1000,
+        "2025-01-01T00:00:00.000Z",
+    )
+    .unwrap();
+
+    let after_refund: i64 = conn
+        .query_row(
+            "SELECT total_spent_minor FROM customers WHERE id = 'cust-1'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(after_refund, 0);
+}
+
+/// The floor, pinned. This is the C64 failure mode: reversing a refund against a
+/// spend that was never accrued clamps to zero and the 900-unit shortfall is
+/// swallowed, so a LATER sale adds on top of a wrong base. The assertion below is
+/// what a correct implementation would change.
+#[test]
+fn refund_before_its_sale_is_credited_swallows_the_under_count() {
+    let conn = setup();
+    seed_customer(&conn, "cust-1", "Alice");
+
+    // No sale has completed, so nothing has been accrued.
+    kasirmu_core::db::Store::reverse_lifetime_spend_in_tx(
+        &conn,
+        "cust-1",
+        900,
+        "2025-01-01T00:00:00.000Z",
+    )
+    .unwrap();
+
+    let after: i64 = conn
+        .query_row(
+            "SELECT total_spent_minor FROM customers WHERE id = 'cust-1'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    // The floor hides the 900 the refund could not apply.
+    assert_eq!(after, 0);
+
+    // A later sale then accrues onto a base that is 900 short of the truth.
+    seed_pending_sale_for_finalize(&conn, "sale-1", "cust-1", 1000, None);
+    store(&conn).finalize_sale("sale-1").unwrap();
+    let final_total: i64 = conn
+        .query_row(
+            "SELECT total_spent_minor FROM customers WHERE id = 'cust-1'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(final_total, 1000);
+}
