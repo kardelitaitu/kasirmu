@@ -447,7 +447,35 @@ fn parse_tax_override(val: mlua::Value) -> Option<TaxOverride> {
     match val {
         mlua::Value::Table(tbl) => {
             let rate_bps: i64 = tbl.get("rate_bps").ok()?;
-            let is_inclusive: bool = tbl.get("is_inclusive").unwrap_or(false);
+            // `is_inclusive` is REQUIRED. The key's PRESENCE is tested explicitly,
+            // which is the only test that works here -- and the reason a first
+            // attempt at this fix was a silent no-op.
+            //
+            // `.get::<bool>("is_inclusive")` CANNOT detect the absence: a missing
+            // Lua key reads as `nil`, and `nil -> bool` is a SUCCESSFUL conversion
+            // in mlua (measured: `Ok(false)`), so `.ok()?` never fails and an
+            // absent key silently becomes `false` again. `.ok()?` works two lines
+            // up for `rate_bps` only because `nil -> i64` DOES fail
+            // (`FromLuaConversionError`), which is why the asymmetry was invisible
+            // in the code shape.
+            //
+            // `false` is a money VALUE on this path, not an absence:
+            // `compute_line_tax` divides by `10_000` when exclusive but by
+            // `10_000 + rate_bps` when inclusive (`db/sales.rs:599-608`), so a
+            // hook that omitted the key priced every line differently, and the
+            // exclusive branch also accumulated it into `exclusive_tax`, which is
+            // added to the sale total (`db/sales_tax.rs:194-202`).
+            //
+            // The documented shape is `{rate_bps, is_inclusive}` or `nil`
+            // (`lib.rs:36`, `docs/guides/developer/plugin-guide.md:190`,
+            // `README.md:16`), with `nil` as the way to return nothing, so `None`
+            // is the contract-conformant answer for a half-formed table -- and the
+            // fail-SAFE one: the override is dropped and the line falls back to the
+            // DB-resolved rate rather than being priced by a flag never stated.
+            if !tbl.contains_key("is_inclusive").ok()? {
+                return None;
+            }
+            let is_inclusive: bool = tbl.get("is_inclusive").ok()?;
             Some(TaxOverride {
                 rate_bps,
                 is_inclusive,

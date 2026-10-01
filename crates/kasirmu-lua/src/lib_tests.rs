@@ -353,6 +353,51 @@ fn discount_result_serde_roundtrip() {
     assert_eq!(dr.label.as_deref(), Some("Senior"));
 }
 
+/// A `calc_line_tax` hook that omits `is_inclusive` must yield NO override.
+///
+/// `parse_tax_override` read the key with `tbl.get("is_inclusive")
+/// .unwrap_or(false)`, so an absent key became `false` — and `false` is a money
+/// VALUE here, not an absence: `compute_line_tax` divides by `10_000` when
+/// exclusive but by `10_000 + rate_bps` when inclusive (`db/sales.rs:599-608`),
+/// so the same hook priced every line DIFFERENTLY depending on a key it never
+/// set. The exclusive branch also accumulates into `exclusive_tax`, which is
+/// added to the sale total (`db/sales_tax.rs:194-202`).
+///
+/// `None` (no override at all) is the fail-SAFE answer, and the contract-
+/// conformant one: the documented shape is `{rate_bps, is_inclusive}` or `nil`
+/// (`lib.rs:36`, `docs/guides/developer/plugin-guide.md:190`, `README.md:16`),
+/// with `nil` as the way to return nothing. It also matches the sibling read
+/// two lines above, where an absent `rate_bps` already yields `None`.
+///
+/// This is the discriminating input: every other fixture in this file, and the
+/// shipped `scripts/examples/tax_overrides.lua`, supply the key explicitly.
+#[test]
+fn calc_line_tax_without_is_inclusive_yields_no_override() {
+    let lua = runtime();
+    // A half-formed table: the rate is stated, the inclusive flag is not.
+    lua.load_str("function calc_line_tax(_, _, _, _) return { rate_bps = 1000 } end")
+        .unwrap();
+
+    let result = lua.calc_line_tax("X", 1, 1000, "USD").unwrap();
+    assert!(
+        result.is_none(),
+        "an override missing is_inclusive must be dropped, not priced as exclusive"
+    );
+
+    // And the on-contract shape still yields an override, so this refuses only
+    // the half-formed table rather than disabling the hook.
+    let lua2 = runtime();
+    lua2.load_str(
+        "function calc_line_tax(_, _, _, _) return { rate_bps = 1000, is_inclusive = true } end",
+    )
+    .unwrap();
+    let complete = lua2.calc_line_tax("X", 1, 1000, "USD").unwrap();
+    assert!(
+        complete.is_some_and(|o| o.rate_bps == 1000 && o.is_inclusive),
+        "a hook stating both keys must still override, with its flag honoured"
+    );
+}
+
 #[test]
 fn tax_override_serde_roundtrip() {
     let json = r#"{"rate_bps": 1000, "is_inclusive": true}"#;
