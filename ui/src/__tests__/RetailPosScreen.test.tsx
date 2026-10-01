@@ -6,9 +6,9 @@
 // the payment modal or long-press timers. 24 tests.
 
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
+import { act, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { renderWithProviders } from '@/__tests__/test-utils/render';
+import { renderWithProviders, renderWithProvidersSync, rerenderWithProviders } from '@/__tests__/test-utils/render';
 import { createUsePosStateMock } from '@/__tests__/test-utils/mocks/usePosState';
 import { mockedBarcode } from '@/__tests__/test-utils/mocks/barcodeScanner';
 import { retailProducts } from '@/__tests__/test-utils/mocks/retailPos';
@@ -105,9 +105,16 @@ vi.mock('@/contexts/AuthContext', async () => {
   };
 });
 
+// Mutable so a test can SWITCH STORES; declared ABOVE the factory so the mock closes
+// over it, and createWorkspaceContextMock reads it live on every render.
+const wsState = vi.hoisted(() => ({ sessionToken: 'mock-session-token' }));
+
 vi.mock('@/contexts/WorkspaceContext', async () => {
   const { createWorkspaceContextMock } = await import('@/__tests__/test-utils/mocks/contexts');
-  return createWorkspaceContextMock();
+  // Pass wsState ITSELF, not wsState.sessionToken: the factory closes over the
+  // object, so a later mutation is seen. Passing the VALUE captures it at
+  // registration time and the switch is invisible -- measured, not theorised.
+  return createWorkspaceContextMock({ get sessionToken() { return wsState.sessionToken; } });
 });
 
 const catFtl = `
@@ -175,6 +182,40 @@ describe('RetailPosScreen — rendering', () => {
     expect(screen.getByText('F9')).toBeInTheDocument();
     expect(screen.getByText('F10')).toBeInTheDocument();
   });
+
+  // A store switch must not let a SLOWER earlier shift read win (guard added in
+  // 116803906). The sink is the header shift badge, one of three distinct strings.
+  //
+  // Order by CALL COUNT, and the two arms answer DISTINCTLY (a shift, then null).
+  it('ignores a slower earlier shift read after a token change', async () => {
+    let releaseStale: (v: unknown) => void = () => {};
+    const stalePending = new Promise((resolve) => { releaseStale = resolve; });
+
+    const shifts = await import('@/api/shifts');
+    // Read 1 (store A) held open; read 2 answers null at once.
+    vi.mocked(shifts.getActiveShiftScoped).mockImplementationOnce(() => stalePending as never);
+    vi.mocked(shifts.getActiveShiftScoped).mockResolvedValue(null as never);
+
+    const view = renderWithProvidersSync(<RetailPosScreen />, salesFtl, productsFtl, tablesFtl, catFtl);
+    await waitFor(() => expect(shifts.getActiveShiftScoped).toHaveBeenCalledTimes(1));
+
+    wsState.sessionToken = 'mock-session-token-2';
+    await act(async () => {
+      rerenderWithProviders(view, <RetailPosScreen />, salesFtl, productsFtl, tablesFtl, catFtl);
+    });
+    await waitFor(() => expect(shifts.getActiveShiftScoped).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.getByText(/No shift/)).toBeInTheDocument());
+
+    // Only NOW does the store-A read settle, after store B already won.
+    await act(async () => {
+      releaseStale({ id: 'shift-from-store-a', totalSalesMinor: 99000, openedAt: new Date().toISOString(), closedAt: null, status: 'open' });
+      await stalePending;
+    });
+
+    // The guard held: the late shift did not replace the idle badge.
+    expect(screen.getByText(/No shift/)).toBeInTheDocument();
+  });
+
 
   it('displays "No shift" badge when no active shift', async () => {
     await renderWithProviders(<RetailPosScreen />, salesFtl, productsFtl, tablesFtl, catFtl);
