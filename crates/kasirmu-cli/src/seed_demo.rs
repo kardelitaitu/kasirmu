@@ -184,6 +184,15 @@ fn copy_reference_data(main_db_path: &str, store_conn: &Connection) -> Result<()
 
     for table in tables {
         // Read schema columns from main DB
+        // The `filter_map(|r| r.ok())` that stood here was swept for in the
+        // `row.get(..)` fail-blind family and is UNREACHABLE, so it is left as
+        // written rather than converted: `PRAGMA table_info` column 1 is the
+        // column NAME, which SQLite always returns as TEXT, so this read cannot
+        // fail. The row read below is unreachable for a different reason --
+        // `rusqlite::types::Value`'s `FromSql` is infallible
+        // (rusqlite-0.31.0/src/types/from_sql.rs:249-254, `Ok(value.into())`) and
+        // the index is bounded by `cols.len()`. Recorded so a later sweep does not
+        // re-open it, and so a future change that CAN fail here is noticed.
         let cols: Vec<String> = main_conn
             .prepare(&format!("PRAGMA table_info({table})"))?
             .query_map([], |row| row.get::<_, String>(1))?
