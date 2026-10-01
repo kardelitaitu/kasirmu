@@ -6,6 +6,7 @@ import tailwindcss from '@tailwindcss/vite';
 import { unified } from '@astrojs/markdown-remark';
 import rehypeCallouts from './src/plugins/rehype-callouts.mjs';
 import rehypeMermaidClass from './src/plugins/rehype-mermaid-class.mjs';
+import rehypeStripAuditFooter from './src/plugins/rehype-strip-audit-footer.mjs';
 import rehypeMermaid from 'rehype-mermaid';
 import { SITE, createSitemapOptions } from './scripts/sitemap-options.mjs';
 
@@ -42,7 +43,12 @@ export default defineConfig({
     // cache: true writes rendered SVGs to node_modules/.cache/rehype-mermaid
     // so unchanged diagrams skip the Chromium launch on subsequent builds.
     // strategy img-svg embeds the SVG inline (no extra HTTP request).
-    processor: unified({ rehypePlugins: [rehypeCallouts, rehypeMermaidClass, [rehypeMermaid, { strategy: 'img-svg', cache: true }]] }),
+    //
+    // rehypeStripAuditFooter drops the internal `> last audited …` marker that half
+    // the copied docs pages carry; it is an audit artefact, not reader content. See
+    // src/plugins/rehype-strip-audit-footer.mjs for why it is a build rule rather
+    // than a one-off edit of those pages.
+    processor: unified({ rehypePlugins: [rehypeStripAuditFooter, rehypeCallouts, rehypeMermaidClass, [rehypeMermaid, { strategy: 'img-svg', cache: true }]] }),
   },
   vite: {
     plugins: [tailwindcss()],
