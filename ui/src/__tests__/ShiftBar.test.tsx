@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
+import { act, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { renderWithProvidersSync } from '@/__tests__/test-utils/render';
+import { renderWithProvidersSync, rerenderWithProviders } from '@/__tests__/test-utils/render';
 import inventoryFtl from '@/locales/inventory.ftl?raw';
 
 // ── Mocks ─────────────────────────────────────────────────────────
@@ -22,9 +22,13 @@ vi.mock('@/contexts/AuthContext', () => ({
   }),
 }));
 
+// Mutable so a test can SWITCH STORES: ShiftBar's location/shift load depends
+// on sessionToken, so changing it starts a second read while the first is in flight.
+const wsState = vi.hoisted(() => ({ sessionToken: 'mock-session-token' }));
+
 vi.mock('@/contexts/WorkspaceContext', () => ({
   useWorkspace: () => ({
-    sessionToken: 'mock-session-token',
+    sessionToken: wsState.sessionToken,
     currentInstanceId: 'inst-1',
   }),
 }));
@@ -72,6 +76,9 @@ const transactions = [
 describe('ShiftBar', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // A test that switches stores mutates this; every other case needs the
+    // original token or startInventoryShift is called with the wrong one.
+    wsState.sessionToken = 'mock-session-token';
     mockLocations.mockResolvedValue(locations);
     mockGetActiveShift.mockResolvedValue(null);
     mockStartShift.mockResolvedValue(activeShift);
@@ -82,7 +89,51 @@ describe('ShiftBar', () => {
 
   // ── Empty / Start Form State ──────────────────────────────────
 
-  it('shows start form when no active shift exists', async () => {
+  // A store switch must not leave the location dropdown pointing into the store
+// the cashier just LEFT. `selectedLocationId` is what `handleStartShift` passes
+// to `startInventoryShift`, and core opens the store DB from the session without
+// checking the location belongs to it, so a stale id reaches the write.
+//
+// The stale read resolves with DISTINCTLY DIFFERENT locations -- same values would
+// make this pass with the guard removed, because the late write would be
+// indistinguishable from the correct one.
+it('ignores a slower location load from the previous store after a switch', async () => {
+  let releaseStale: (v: unknown) => void = () => {};
+  const stalePending = new Promise((resolve) => { releaseStale = resolve; });
+
+  mockGetActiveShift.mockResolvedValue(null);
+  // First call: held open, will answer with the PREVIOUS store's locations.
+  mockLocations.mockImplementationOnce(() => stalePending);
+
+  const result = renderWithProvidersSync(<ShiftBar />, inventoryFtl);
+
+  // Switch stores while the first read is outstanding. The re-render must go
+  // through `rerenderWithProviders` -- the raw testing-library `rerender` replaces
+  // the root WITHOUT the providers and anything consuming a context throws.
+  mockLocations.mockResolvedValueOnce([
+    { id: 'loc-b', name: 'Store B Warehouse', type: 'warehouse', description: '', is_active: true, created_at: '', updated_at: '' },
+  ]);
+  wsState.sessionToken = 'mock-session-token-2';
+  await act(async () => { rerenderWithProviders(result, <ShiftBar />, inventoryFtl); });
+
+  await waitFor(() => {
+    expect(screen.getByRole('option', { name: /Store B Warehouse/ })).toBeTruthy();
+  });
+
+  // Now let the stale store-A read settle, after store B already won.
+  await act(async () => {
+    releaseStale([
+      { id: 'loc-a', name: 'Store A Warehouse', type: 'warehouse', description: '', is_active: true, created_at: '', updated_at: '' },
+    ]);
+    await stalePending;
+  });
+
+  // Store B's location survives; store A's never appears.
+  expect(screen.getByRole('option', { name: /Store B Warehouse/ })).toBeTruthy();
+  expect(screen.queryByRole('option', { name: /Store A Warehouse/ })).toBeNull();
+});
+
+it('shows start form when no active shift exists', async () => {
     renderWithProvidersSync(<ShiftBar />, inventoryFtl);
     await waitFor(() => {
       expect(screen.getByText('Start Inventory Shift')).toBeInTheDocument();

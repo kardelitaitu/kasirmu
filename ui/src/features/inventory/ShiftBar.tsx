@@ -39,6 +39,20 @@ export default function ShiftBar({ onShiftChange }: ShiftBarProps) {
   const [locations, setLocations] = useState<InventoryLocation[]>([]);
   const [selectedLocationId, setSelectedLocationId] = useState('');
   const [notes, setNotes] = useState('');
+
+  // A monotonic token, so a store switch cannot let the PREVIOUS store's reads
+  // land afterwards. Same shape as CurrencyContext.refresh (51c86e9e8),
+  // SettingsContext (09ac4df43) and BrandContext (184fcc75e) needed.
+  //
+  // The effect below depends on sessionToken, so switching stores starts a second
+  // pair of reads while the first is in flight. Without this, a slower earlier
+  // `listInventoryLocations` would leave `selectedLocationId` pointing at a location
+  // in the store the cashier just LEFT -- and that id is what
+  // `handleStartShift` passes to `startInventoryShift`, so the operator would be
+  // offered (and could open) a shift at the wrong store's location. The core layer
+  // opens the store DB from the session but does not verify the location belongs
+  // to it, so the bad id reaches the write.
+  const loadSeq = useRef(0);
   
   // Timer state
   const [elapsedText, setElapsedText] = useState('00:00:00');
@@ -64,8 +78,12 @@ export default function ShiftBar({ onShiftChange }: ShiftBarProps) {
   useEffect(() => {
     if (!sessionToken || !session?.user_id) return;
 
+    const seq = ++loadSeq.current;
+    const stale = () => loadSeq.current !== seq;
+
     listInventoryLocations(sessionToken)
       .then(locs => {
+        if (stale()) return;
         const activeLocs = locs.filter(l => l.is_active);
         setLocations(activeLocs);
         if (activeLocs.length > 0) {
@@ -73,17 +91,22 @@ export default function ShiftBar({ onShiftChange }: ShiftBarProps) {
         }
       })
       .catch(() => {
+        if (stale()) return;
         addToast({ message: requiredLocalized(l10nRef.current, 'inv-shift-error-locations'), type: 'error' });
       });
 
     getActiveInventoryShift(sessionToken)
       .then(shift => {
+        if (stale()) return;
         setActiveShift(shift);
         onShiftChange?.(shift);
       })
       .catch(() => {
+        if (stale()) return;
         addToast({ message: requiredLocalized(l10nRef.current, 'inv-shift-error-active'), type: 'error' });
       });
+
+    return () => { loadSeq.current += 1; };
   }, [sessionToken, session?.user_id, onShiftChange, addToast]); // l10n via ref — stable dep chain
 
   // Handle timer tick
