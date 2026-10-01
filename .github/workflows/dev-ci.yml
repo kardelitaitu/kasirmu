@@ -529,7 +529,7 @@ jobs:
       # left implicit it warns "no tool specified", installs nothing, and the
       # next step dies with "error: no such command: `llvm-cov`".
       - name: Install cargo-llvm-cov
-        uses: taiki-e/install-action@fa23953489c080190314742a9b907f8e97c6767c # cargo-llvm-cov
+        uses: taiki-e/install-action@4cef1412cce204788f482e778a0b9187f9626a29 # cargo-llvm-cov
         with:
           tool: cargo-llvm-cov
       # nextest, because the plain runner was racing the PG tests. `cargo llvm-cov`
@@ -545,7 +545,7 @@ jobs:
       # PG test instead. `cargo llvm-cov nextest` internally calls `cargo nextest run`,
       # so the group serialization applies and the flake receipt keeps working.
       - name: Install cargo-nextest
-        uses: taiki-e/install-action@fa23953489c080190314742a9b907f8e97c6767c # v2
+        uses: taiki-e/install-action@4cef1412cce204788f482e778a0b9187f9626a29 # v2
         with:
           tool: cargo-nextest
       # Postgres is declared as a service above because kasirmu-cloud and
@@ -615,7 +615,7 @@ jobs:
           mkdir -p ui/dist ui/dist-mobile ui/dist-desktop
           touch ui/dist/index.html ui/dist-mobile/index.html ui/dist-desktop/index.html
       - name: Install cargo-nextest
-        uses: taiki-e/install-action@fa23953489c080190314742a9b907f8e97c6767c # v2
+        uses: taiki-e/install-action@4cef1412cce204788f482e778a0b9187f9626a29 # v2
         with:
           tool: cargo-nextest
       - name: Run Nextest
@@ -677,7 +677,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends libudev-dev pkg-config
       - name: Install cargo-nextest
-        uses: taiki-e/install-action@1ed6d7be6168f6c9046541087ff549b6bc581fdf # v2
+        uses: taiki-e/install-action@4cef1412cce204788f482e778a0b9187f9626a29 # v2
         with:
           tool: cargo-nextest
       - name: Run bridge tests in the release profile
