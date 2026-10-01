@@ -1780,15 +1780,30 @@ element is `overflow: hidden` with `scrollHeight == clientHeight` (676 == 676) �
 scroll container. `.settings-sidebar-nav` is `flex: 1; overflow-y: auto`, and the band
 belongs there; the region now measures 791 > 623 and the row is reachable.
 
-**Not proven closed, and not gateable as measured.** A whole-app interception census
-timed out partway through the route list, so warehouse/products/locations were never
-reached. Worse, four attempts to turn the census into a gate all failed the only test that
-matters — *does it fail without the fix?* Screen-wide sampling with no scroll is too strict
-(it calls every below-the-fold control occluded); per-element with Playwright's minimum
-scroll is too strict even WITH the band; per-element with `block: 'center'` is vacuous (it
-passes with the band removed); a 3s click timeout is vacuous on the picker. **No walker was
-committed.** The measurement is the finding; the gate would have been a false assurance,
-which is the specific thing this audit keeps warning about.
+**Not gateable as measured, but the survey is now COMPLETE (2026-10-01).** The census that
+timed out partway was re-run over the ten routes it never reached — products,
+inventory-adjustment, stock-transfers, warehouses, customers, locations, topology,
+sales-history, data-management, shift-management — and found **zero** memo occlusion on every
+one. The single element reported on each route is the same `Skip to main content` link,
+whose box sits at `top: 0` under the app topbar; it is the shell's own visually-hidden-until-
+focused pattern (`tablet.css:277`), not a collision, and it is not a product defect.
+
+**So the family is three surfaces, all banded, and the survey is exhausted.** What could not be
+built is a GATE: four attempts each failed the only question that matters — *does it fail
+without the fix?* Screen-wide sampling with no scroll is too strict (it calls every
+below-the-fold control occluded); per-element with Playwright's minimum scroll is too strict
+even WITH the band; per-element with `block: 'center'` is vacuous (passes with the band
+removed); a 3s click timeout is vacuous on the picker. **No walker was committed.** A test that
+passes with and without the fix is a false assurance, which is the specific thing this audit
+keeps warning about.
+
+**One consequence did land.** `admin-workflows.spec.ts` had neutered its theme-toggle case with
+a comment recording that the memo stack made the control unclickable, and asserted only that
+it RENDERS. Measured 2026-10-01: the collision is gone (SettingsPage.css:403's
+`body:has(.settings-footer)` inset clears the stack), the toggle clicks in 42ms and flips
+`dark -> light`. The case now clicks it again and asserts the theme moved (`1beccd7d8`) — a
+comment that teaches a falsehood about the present is a defect of its own, and a control that
+renders but is unreachable is not what the test exists to prove.
 
 ### 5. Four stale specs, each for a different reason
 
