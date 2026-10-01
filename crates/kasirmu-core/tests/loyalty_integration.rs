@@ -432,3 +432,89 @@ fn list_loyalty_accounts_sorted_by_lifetime_points() {
     assert_eq!(list[0].account.customer_id, "cust-2");
     assert_eq!(list[1].account.customer_id, "cust-1");
 }
+
+// ── Multi-currency earn basis (CUR-02 base_total_minor) ──────────────
+//
+// `finalize_sale` awards loyalty on completion via
+// `apply_customer_stats_on_completion`, which reads
+//   SELECT customer_id, base_total_minor, total_minor FROM sales WHERE id = ?1
+// and takes `base_total_minor.unwrap_or(total_minor)` as the earn basis, because
+// the points formula is currency-naive and charging in a low-exponent currency
+// would otherwise multiply the reward by the exchange rate (LOY-06).
+//
+// This branch had NO coverage: every `base_total_minor` under
+// crates/kasirmu-core/tests was `None`, so the multi-currency selection was
+// never executed. The tests below drive the REAL public entry (`finalize_sale`,
+// pending -> completed) rather than a private function.
+
+/// Seed a PENDING sale so `finalize_sale` will award, carrying the CUR-02
+/// snapshot columns when `base_total_minor` is supplied.
+fn seed_pending_sale_for_finalize(
+    conn: &Connection,
+    id: &str,
+    customer_id: &str,
+    charged_minor: i64,
+    base_total_minor: Option<i64>,
+) {
+    conn.execute(
+        "INSERT INTO sales (id, total_minor, currency, line_count, status, customer_id, created_at, updated_at,
+                            subtotal_minor, tax_total_minor, base_currency, base_total_minor)
+         VALUES (?1, ?2, 'IDR', 0, 'pending', ?3,
+                 '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z', ?2, 0, 'USD', ?4)",
+        rusqlite::params![id, charged_minor, customer_id, base_total_minor],
+    )
+    .unwrap();
+}
+
+/// THE REPRODUCE, and it PASSES AGAINST HEAD: a sale charged in IDR for a
+/// high-exponent-currency order must earn on the BASE amount, not the charged
+/// one. IDR has exponent 0, so charged_minor is the whole figure; a USD 100.00
+/// order is 10000 base minor units, which is 10_000_000 in IDR minor units.
+/// Earning on the charged figure would award 10000x the intended points.
+#[test]
+fn earn_basis_prefers_base_total_over_the_charged_total() {
+    let conn = setup();
+    seed_customer(&conn, "cust-1", "Alice");
+    seed_pending_sale_for_finalize(&conn, "sale-1", "cust-1", 10_000_000, Some(10_000));
+
+    store(&conn).finalize_sale("sale-1").unwrap();
+
+    let account = store(&conn).get_loyalty_account("cust-1").unwrap().unwrap();
+    // Bronze: points_per_unit=10, multiplier=1.0.
+    //   on base    10000 -> 10000 * 10 / 100 * 1.0 =  1000 points
+    //   on charged 10_000_000 ->                     10000 points (10x wrong)
+    assert_eq!(account.account.points, 1000);
+}
+
+/// Without the CUR-02 snapshot the earn basis is the sale total, so the
+/// single-currency path is unaffected by the branch above.
+#[test]
+fn earn_basis_falls_back_to_the_sale_total_without_the_snapshot() {
+    let conn = setup();
+    seed_customer(&conn, "cust-1", "Alice");
+    seed_pending_sale_for_finalize(&conn, "sale-1", "cust-1", 1000, None);
+
+    store(&conn).finalize_sale("sale-1").unwrap();
+
+    let account = store(&conn).get_loyalty_account("cust-1").unwrap().unwrap();
+    assert_eq!(account.account.points, 100);
+}
+
+/// WHAT THE SERVER DOES NOT DO, pinned so the trust gap is an executable
+/// statement rather than a comment. `base_total_minor` is written by the client
+/// (pos/checkout.rs:427) and no server read re-derives it, so the row is BELIEVED.
+/// This is the test to delete when the value is bounded or re-derived: while it
+/// stands, it is the executable record that an implausible claim is honoured.
+#[test]
+fn base_total_minor_is_believed_without_re_derivation() {
+    let conn = setup();
+    seed_customer(&conn, "cust-1", "Alice");
+    // An earn basis 1000x the sale total.
+    seed_pending_sale_for_finalize(&conn, "sale-1", "cust-1", 1000, Some(1_000_000));
+
+    store(&conn).finalize_sale("sale-1").unwrap();
+
+    let account = store(&conn).get_loyalty_account("cust-1").unwrap().unwrap();
+    // Points follow the client's base_total_minor, not the 1000-unit sale.
+    assert_eq!(account.account.points, 100_000);
+}
