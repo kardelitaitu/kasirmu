@@ -9,6 +9,7 @@
     "postbuild": "node scripts/bust-admin-cache.mjs && node scripts/inject-module-preloads.mjs",
     "prebuild": "node scripts/prebuild.mjs",
     "build:fast": "astro build",
+    "build:clean": "node scripts/clean-build-cache.mjs && astro build",
     "check": "astro check",
     "precheck": "node scripts/audit-i18n.mjs && node --experimental-strip-types scripts/check-password-policy.mjs && vitest run",
     "check:i18n": "node scripts/audit-i18n.mjs",
