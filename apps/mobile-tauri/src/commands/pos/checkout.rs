@@ -583,6 +583,19 @@ pub async fn complete_sale_scoped(
             sale_id: sale_id.clone(),
             store_id: Some(session.store_id.clone()),
             line_items,
+            // UNREACHABLE default, kept as defence rather than as a live branch.
+            // `total` is `Option<Money>` only because the REPLAY arm can return a
+            // receipt without a settlement -- and that arm returns at :560, before
+            // this block is reached. Both paths that build a `SaleSettlement` with
+            // `sale: Some(..)` set `total: Some(sale.total)` (:502, :352), so by the
+            // time an event is published `total` is always `Some`.
+            //
+            // Recorded because `unwrap_or(0)` on a money field is the exact shape of
+            // the error-collapse family this codebase has been removing, and a
+            // future refactor that let a `None` reach here would publish a
+            // `SaleCompleted` claiming the sale was worth nothing. Making it total
+            // instead would panic on the event bus; the day this needs to change,
+            // the fix is to skip the event, not to invent a figure.
             total_minor: total.map(|m| m.minor_units).unwrap_or(0),
             currency: String::from_utf8_lossy(&sale.currency.0).into_owned(),
             customer_id: args.customer_id.clone(),
