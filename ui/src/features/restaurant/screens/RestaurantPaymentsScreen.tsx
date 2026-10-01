@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Localized, useLocalization } from '@fluent/react';
-import { Card } from '@/components/Card';
 import { Button } from '@/components/Button';
 import { useToast } from '@/components/Toast';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
@@ -19,7 +18,7 @@ import {
   type EdcTerminalDto,
 } from '@/api/edc';
 import SettingsSelect from '@/features/settings/SettingsSelect';
-import { sanitizeRailCode, isCoreRail, mergeCoreRails, computeRailsDirty, type DraftRail } from './paymentRailsLogic';
+import { isCoreRail, mergeCoreRails, computeRailsDirty, type DraftRail } from './paymentRailsLogic';
 import { PaymentMethodCard } from './PaymentMethodCard';
 import './RestaurantSettingsScreens.css';
 
@@ -108,10 +107,6 @@ export function RestaurantPaymentsScreen({
   const [edcTerminals, setEdcTerminals] = useState<EdcTerminalDto[]>([]);
   const [defaultEdcTerminalId, setDefaultEdcTerminalId] = useState('');
   const [testingEdc, setTestingEdc] = useState(false);
-
-  // New custom rail draft state
-  const [newCode, setNewCode] = useState('');
-  const [newLabel, setNewLabel] = useState('');
 
   // ── UI States for Expanded Payment Cards ──────────────────────
   // Cash
@@ -271,20 +266,6 @@ export function RestaurantPaymentsScreen({
     );
   };
 
-  const handleAddCustomRail = useCallback(() => {
-    const code = sanitizeRailCode(newCode);
-    const label = newLabel.trim();
-    if (!code || !label) return;
-    if (drafts.some((d) => d.rail_code.toLowerCase() === code)) return;
-
-    setDrafts((prev) => [
-      ...prev,
-      { rail_code: code, label, is_enabled: true, parameters: '{}' },
-    ]);
-    setNewCode('');
-    setNewLabel('');
-  }, [newCode, newLabel, drafts]);
-
   const handleRemoveRail = (index: number) => {
     setDrafts((prev) => prev.filter((_, i) => i !== index));
   };
@@ -381,9 +362,14 @@ export function RestaurantPaymentsScreen({
 
   const staticQrValue = qrisDraft ? readStaticQrPayload(qrisDraft.parameters) ?? '' : '';
 
-  // Non-specialized rails (e.g. open_bill, credit, or dynamically added custom rails like gopay)
+  // Non-specialized payment methods (e.g. custom methods like gopay, excluding internal open_bill/credit)
+  const internalHiddenCodes = ['open_bill', 'credit'];
   const specializedCodes = ['cash', 'card', 'qris', 'midtrans', 'stripe'];
-  const otherRails = drafts.filter((d) => !specializedCodes.includes(d.rail_code.toLowerCase()));
+  const otherRails = drafts.filter(
+    (d) =>
+      !specializedCodes.includes(d.rail_code.toLowerCase()) &&
+      !internalHiddenCodes.includes(d.rail_code.toLowerCase()),
+  );
 
   return (
     <div className="restaurant-settings-screen">
@@ -1013,7 +999,7 @@ export function RestaurantPaymentsScreen({
                   code={rail.rail_code}
                   title={rail.label}
                   description={`Configured payment option for ${rail.label}`}
-                  badge={isCore ? 'Core Method' : 'Custom Rail'}
+                  badge={isCore ? 'Core Method' : 'Custom Method'}
                   badgeVariant={isCore ? 'default' : 'warning'}
                   icon={<GenericRailIcon />}
                   enabled={rail.is_enabled}
@@ -1023,60 +1009,11 @@ export function RestaurantPaymentsScreen({
                   removeAriaLabel={`Remove ${rail.label}`}
                 >
                   <p className="settings-hint">
-                    Active tender rail ready for cashier checkout and receipt attribution.
+                    Active tender method ready for cashier checkout and receipt attribution.
                   </p>
                 </PaymentMethodCard>
               );
             })}
-
-            {/* ── Add Custom Payment Rail Card ───────────────────── */}
-            <div className="resto-payment-card-add-rail">
-              <Card
-                shadow="sm"
-                header={
-                  <div className="restaurant-settings-card-header">
-                    <div>
-                      <h2 className="settings-section-title">
-                        <Localized id="restaurant-payment-rails-heading">Add Custom Payment Rail</Localized>
-                      </h2>
-                      <p>
-                        <Localized id="restaurant-payment-rails-sub">
-                          Register additional digital payment options and tender codes
-                        </Localized>
-                      </p>
-                    </div>
-                  </div>
-                }
-              >
-                <div className="settings-form">
-                  <div className="restaurant-rail-add">
-                    <input
-                      type="text"
-                      className="settings-input"
-                      value={newCode}
-                      onChange={(e) => setNewCode(e.target.value)}
-                      placeholder="e.g. ovo, shopeepay, debit_mandiri"
-                      aria-label="New rail code"
-                    />
-                    <input
-                      type="text"
-                      className="settings-input"
-                      value={newLabel}
-                      onChange={(e) => setNewLabel(e.target.value)}
-                      placeholder="e.g. OVO E-Wallet"
-                      aria-label="New rail display label"
-                    />
-                    <Button
-                      variant="secondary"
-                      onClick={handleAddCustomRail}
-                      disabled={!newCode.trim() || !newLabel.trim()}
-                    >
-                      <Localized id="settings-localpay-add">Add rail</Localized>
-                    </Button>
-                  </div>
-                </div>
-              </Card>
-            </div>
 
           </div>
         )}

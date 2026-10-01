@@ -17,7 +17,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import { renderWithProviders } from '@/__tests__/test-utils/render';
 import RestaurantPaymentsScreen from '@/features/restaurant/screens/RestaurantPaymentsScreen';
 import productsFtl from '@/locales/products.ftl?raw';
@@ -200,8 +200,8 @@ describe('RestaurantPaymentsScreen — rails list & toggles', () => {
     // card is core -> no remove button; gopay is custom -> has one.
     const cardRow = screen.getByText('Card').closest('.restaurant-rail-row') as HTMLElement;
     const gopayRow = screen.getByText('GoPay').closest('.restaurant-rail-row') as HTMLElement;
-    expect(within(cardRow).queryByRole('button')).toBeNull();
-    expect(within(gopayRow).getByRole('button')).toBeInTheDocument();
+    expect(within(cardRow).queryByRole('button', { name: /remove/i })).toBeNull();
+    expect(within(gopayRow).getByRole('button', { name: /remove/i })).toBeInTheDocument();
 
     // Both render the code chip.
     expect(screen.getByText('gopay')).toBeInTheDocument();
@@ -275,72 +275,36 @@ describe('RestaurantPaymentsScreen — QRIS static QR card', () => {
   });
 });
 
-describe('RestaurantPaymentsScreen — add & remove custom rails', () => {
-  it('Add rail stays disabled until both fields carry a non-blank value', async () => {
-    await renderScreen();
-    await screen.findByText('GoPay');
-
-    const add = screen.getByRole('button', { name: 'Add rail' });
-    expect(add).toBeDisabled();
-
-    fireEvent.change(screen.getByLabelText('New rail code'), { target: { value: '   ' } });
-    fireEvent.change(screen.getByLabelText('New rail display label'), { target: { value: 'OVO' } });
-    expect(add).toBeDisabled();
-
-    fireEvent.change(screen.getByLabelText('New rail code'), { target: { value: ' ovo ' } });
-    expect(add).toBeEnabled();
-  });
-
-  it('adds a trimmed custom rail seeded enabled with an empty bag', async () => {
-    await renderScreen();
-    await screen.findByText('GoPay');
-
-    fireEvent.change(screen.getByLabelText('New rail code'), { target: { value: ' ovo ' } });
-    fireEvent.change(screen.getByLabelText('New rail display label'), { target: { value: 'OVO' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Add rail' }));
-
-    expect(await screen.findByText('OVO')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-    await waitFor(() => {
-      expect(mocks.setMethods).toHaveBeenCalled();
-    });
-    const payload = mocks.setMethods.mock.calls[0]?.[2] as {
-      rail_code: string;
-      label: string;
-      is_enabled: boolean;
-      parameters: string;
-    }[];
-    expect(payload).toContainEqual({
-      rail_code: 'ovo',
-      label: 'OVO',
-      is_enabled: true,
-      parameters: '{}',
-    });
-  });
-
-  it('rejects a duplicate rail code case-insensitively', async () => {
-    await renderScreen();
-    await screen.findByText('GoPay');
-
-    fireEvent.change(screen.getByLabelText('New rail code'), { target: { value: 'GOPAY' } });
-    fireEvent.change(screen.getByLabelText('New rail display label'), { target: { value: 'Dup' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Add rail' }));
-
-    expect(screen.queryByText('Dup')).not.toBeInTheDocument();
-    // Fields stay filled so the operator sees what was refused.
-    expect(screen.getByLabelText('New rail code')).toHaveValue('GOPAY');
-  });
-
-  it('removes a custom rail via its remove button', async () => {
+describe('RestaurantPaymentsScreen — custom payment methods & card expand/collapse', () => {
+  it('removes a custom payment method via its remove button', async () => {
     const user = await import('@testing-library/user-event').then((m) => m.default);
     await renderScreen();
     await screen.findByText('GoPay');
 
     const gopayRow = screen.getByText('GoPay').closest('.restaurant-rail-row') as HTMLElement;
-    await user.click(within(gopayRow).getByRole('button'));
+    await user.click(within(gopayRow).getByRole('button', { name: /remove/i }));
     expect(screen.queryByText('GoPay')).not.toBeInTheDocument();
     // card (core) stays.
     expect(screen.getByText('Card')).toBeInTheDocument();
+  });
+
+  it('expands and collapses cards on header click', async () => {
+    const user = await import('@testing-library/user-event').then((m) => m.default);
+    await renderScreen();
+    await screen.findByText('GoPay');
+
+    const cashCard = screen.getByTestId('payment-card-cash');
+    expect(cashCard).toHaveClass('resto-payment-card-wrapper--expanded');
+
+    // Click expand button to collapse
+    const expandBtn = screen.getByRole('button', { name: /collapse cash/i });
+    await user.click(expandBtn);
+    expect(cashCard).toHaveClass('resto-payment-card-wrapper--collapsed');
+
+    // Click button again to re-expand
+    const reExpandBtn = screen.getByRole('button', { name: /expand cash/i });
+    await user.click(reExpandBtn);
+    expect(cashCard).toHaveClass('resto-payment-card-wrapper--expanded');
   });
 });
 
