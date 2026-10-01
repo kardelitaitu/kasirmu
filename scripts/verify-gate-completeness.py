@@ -29,8 +29,37 @@ while the `migration` row declared the bare label "migration", the resolver repo
 `migration smoke test` as claimed by prefix while `migration idempotency` was claimed by
 nothing at all. Demanding an exact claim is what makes the omission visible.
 
-The tree satisfies that today — 118 of 118 steps claimed exactly, 0 by prefix alone —
+The tree satisfies that today — 120 of 120 steps claimed exactly, 0 by prefix alone —
 so this gate starts green, which is the property round 109 established a new gate needs.
+
+WHAT ELSE THE ROSTER CLAIMS, and where each is checked (audited 2026-10-05, round 153).
+This file covers three axes; the rest are covered elsewhere, and the point of listing them
+is that the list was enumerated rather than assumed:
+
+  runners      every label resolves to a step ......... check-gate-runners.py
+  runners      every step is claimed by a label ........ THIS FILE (exact, not prefix)
+  ci.workflow  the workflow file exists ............... THIS FILE
+  ci.job       the job exists in that workflow ........ THIS FILE
+  ci.step      the step exists in that job ............ THIS FILE
+  self_test    the command names a real script that
+               declares the flag ...................... THIS FILE
+  status       one of required / advisory /
+               required-on-push / retired ............ verify-ci-docs-drift.py load_gates()
+  label        present on every gate .................. by construction; no gate lacks one
+  _runner_note read by the resolver that needs it ..... check-gate-runners.py
+  _note        read by the drift checker .............. verify-ci-docs-drift.py
+
+  note, _parser_note  read by nobody, and both are correct as prose for a human reader
+                      (`fuzz` carries a substantive note beside its _note; client-type-drift
+                      explains why a naive parser breaks on its inputs).
+
+`required-on-push` is a value load_gates() accepts and NO gate currently uses. That is a
+handled-but-unused branch rather than a defect; noted so the next reader does not mistake
+it for a typo in the enum.
+
+This is the full field set of a gate record. If a NEW field is added, it is unvalidated by
+definition until something reads it — which is the gap rounds 148-152 each closed one axis
+at a time.
 
 Exit 0 clean, 1 unclaimed step(s), 2 usage or self-test failure.
 """
