@@ -16,8 +16,47 @@ use rusqlite::Connection;
 
 // ── Helpers ───────────────────────────────────────────────────────────
 
+/// A fresh schema PLUS the rows a checkout actually needs.
+///
+/// `fresh_db()` is migrations only — no `locations`, no `workspace_instances`.
+/// `complete_sale_deduction` resolves a primary location BEFORE it looks at stock at
+/// all (`location_resolver::resolve_primary_location`, sales_checkout.rs:86), so with
+/// no binding every test in this file failed at that lookup instead of at the behaviour
+/// it is named for. Measured 2026-10-01: all 13 failed with
+///
+/// ```
+/// NotFound { entity: "workspace_instance", id: "default" }
+/// ```
+///
+/// which is that function's documented contract, not a defect in it —
+/// location_resolver.rs:130 says "Returns NotFound if the workspace instance does not
+/// exist". The gap was the fixture.
+///
+/// Delegated to `migrations::seed_provisioned_baseline` rather than copying its SQL.
+/// Two earlier attempts wrote the rows inline and both died on constraints — first
+/// `NOT NULL: workspace_instances.description`, then `FOREIGN KEY constraint failed` —
+/// because the INSERT was written against `20260813_init.sql`, whose
+/// `workspace_instances` still declares `store_id`. The APPLIED schema has
+/// `location_id`: `20260906_rename_store_to_location.sql:18` renames the column, so
+/// init.sql alone is the pre-migration shape and reading only that is what sent both
+/// attempts wrong. Calling the seed cannot drift from a future migration the way a
+/// copied INSERT does, and twenty other suites already call it for exactly this reason.
 fn setup() -> Connection {
-    migrations::fresh_db()
+    let conn = migrations::fresh_db();
+    migrations::seed_provisioned_baseline(&conn);
+    // The seed names its workspaces `default-store-pos` / `default-restaurant-pos` /
+    // `default-warehouse` (migrations.rs:507-511) and NEVER a bare `default`, but
+    // `sales_checkout.rs:88` defaults its `workspace_instance_id` argument to exactly
+    // that bare id. So the seed alone still leaves the lookup failing with
+    // `NotFound { entity: "workspace_instance", id: "default" }` — measured, this is
+    // the last of the 13, and it is why calling the seed was necessary but not
+    // sufficient. Re-key the seeded store POS instance onto the id the caller uses.
+    conn.execute(
+        "UPDATE workspace_instances SET id = 'default' WHERE id = 'default-store-pos'",
+        [],
+    )
+    .expect("the provisioned baseline must contain the store POS instance to re-key");
+    conn
 }
 
 fn store(conn: &Connection) -> Store<'_> {
