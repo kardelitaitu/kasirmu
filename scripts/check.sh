@@ -432,6 +432,10 @@ step "client type drift self-test" "python3 scripts/check-client-type-drift.py -
 # (file, field), so any OTHER mapper with the same defect still fails.
 # Exits 2 on a refused --roots list, so a starved corpus never reads as clean.
 step "mapper alignment" "python3 scripts/check-mapper-alignment.py" python3 scripts/check-mapper-alignment.py
+# The extractor's own cases, beside the gate they prove. Added 2026-10-05: the flag
+# existed since f2da67900 but NO runner passed it, so these cases had only ever been
+# run by hand. verify-selftests-wired.py found that; this is the fix it prescribes.
+step "mapper alignment self-test" "python3 scripts/check-mapper-alignment.py --self-test" python3 scripts/check-mapper-alignment.py --self-test
 
 # Merged source lines: a generator that joins a patch with no trailing element fuses
 # its last line into the following code (`const a = useRef(0);  useEffect(() => {`).
@@ -440,6 +444,9 @@ step "mapper alignment" "python3 scripts/check-mapper-alignment.py" python3 scri
 # (3e352058b); each was found by reading, never by a check. Scanned 1339 files and
 # exited 0 on the commit that added it, so it starts green.
 step "merged lines" "python3 scripts/check-merged-lines.py" python3 scripts/check-merged-lines.py
+# Same gap as mapper alignment above: the 7 cases added in 1a432b328 declared a flag
+# no runner used, so they were verified by hand once and never again.
+step "merged lines self-test" "python3 scripts/check-merged-lines.py --self-test" python3 scripts/check-merged-lines.py --self-test
 
 # COR-7 replay fork: the tablet shell re-implements the per-attempt idempotency
 # rules, and nothing checked the two copies. They drifted into a security defect --
@@ -470,6 +477,10 @@ step "replay fork self-test" "python3 scripts/test-replay-fork.py" python3 scrip
 # failure -- several advisory legs do that, and panic-inventory carries a
 # _runner_note saying so. Exits 2 on a refused --root.
 step "gate roster" "python3 scripts/check-gate-runners.py" python3 scripts/check-gate-runners.py
+# Its own cases, beside it. This checker decides whether every OTHER declared runner
+# resolves, so a pattern that stopped matching would silently bless the roster --
+# the same self-referential failure the parity and attribute gates document.
+step "gate roster self-test" "python3 scripts/check-gate-runners.py --self-test" python3 scripts/check-gate-runners.py --self-test
 
 # ── Namespace governance — soft rules for module seams (Round 4) ────────
 # ADR-62 named the seams; docs/architecture/module-namespace-governance.md names

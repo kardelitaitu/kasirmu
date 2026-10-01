@@ -1145,11 +1145,18 @@ jobs:
       # step -- see scripts/check-mapper-alignment.py for the record.
       - name: Mapper alignment
         run: python3 scripts/check-mapper-alignment.py
+      # Blocking beside its gate, the convention stated at "i18n bundle parity
+      # self-test": these checkers are all regex extraction, so a pattern that
+      # stops matching reports a clean tree instead of failing.
+      - name: Mapper alignment self-test
+        run: python3 scripts/check-mapper-alignment.py --self-test
       # A generator that joins a patch with no trailing element fuses its last
       # line into the following code. The result compiles, lints and passes every
       # suite, so nothing else here sees it -- see scripts/check-merged-lines.py.
       - name: Merged source lines
         run: python3 scripts/check-merged-lines.py
+      - name: Merged source lines self-test
+        run: python3 scripts/check-merged-lines.py --self-test
       # The COR-7 per-attempt idempotency rules exist TWICE -- the implementation
       # in kasirmu-bridge and a fork in the tablet shell -- and the fork drifted
       # into a security defect: only the bridge refused a colon in the attempt id,
@@ -1165,6 +1172,10 @@ jobs:
       # auditor the gate has no CI runner when it does.
       - name: Gate roster runners
         run: python3 scripts/check-gate-runners.py
+      # This one decides whether every OTHER declared runner resolves, so a pattern
+      # that stopped matching would silently bless the whole roster.
+      - name: Gate roster runners self-test
+        run: python3 scripts/check-gate-runners.py --self-test
       # R36-11: release.yml was renamed to .bak with an empty commit message and
       # nothing noticed that tagging had stopped producing installers. A workflow
       # that never runs cannot report its own breakage, so this validates the
