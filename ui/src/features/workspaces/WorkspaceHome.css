@@ -289,7 +289,14 @@ body:has(.memo-stack) .ws-main {
  * difference between "reachable if you scroll" and "not in the way".
  */
 body:has(.memo-stack) .ws-layer-content {
-  padding-bottom: calc(var(--space-6) + 215px);
+  /* The stack's OWN bottom inset plus its height — not a flat 215px. Same
+   * correction as the settings band, and for the same reason: the stack is
+   * pinned to `--memo-bottom-inset`, which each shell sets differently (status
+   * bar on desktop, tab bar on tablet, a `--space-6` fallback on a chrome-free
+   * fullscreen branch). A flat band gets the stack's SIZE right and its POSITION
+   * wrong, and position is what decides the overlap. Measured 2026-10-01 at
+   * 1366x768: the flat value left the tool grid's last row 17px inside the stack. */
+  padding-bottom: calc(var(--memo-bottom-inset, var(--space-6)) + 215px + var(--space-2));
 }
 
 /* ═══════════════════════════════════════════════════════════════════

@@ -356,7 +356,23 @@ body:has(.memo-stack) .settings-sidebar-nav {
  * also how a surface gets missed: the one you banded is the one you test.
  */
 body:has(.memo-stack) .settings-body {
-  padding-bottom: calc(var(--space-2) + 215px);
+  /* The stack's OWN bottom inset plus its height — not a flat 215px.
+   *
+   * Measured 2026-10-01 on the 1366x768 desktop shell with `?memos=3`:
+   *   stack            y=500  h=209  bottom=709   (--memo-bottom-inset: 1.5rem)
+   *   .settings-body   y=63   h=676  bottom=739
+   *   content          y=63   h=454  bottom=517   <- 17px INSIDE the stack
+   *
+   * A flat band gets the SIZE right and the POSITION wrong, and the position is
+   * what the shell decides: the stack is pinned to `--memo-bottom-inset`, which is
+   * 1.5rem on desktop, larger on the tablet (tab bar), and a fallback
+   * `--space-6` on a chrome-free fullscreen branch. Adding the same inset the
+   * stack was placed with gives 24 + 215 + 8 = 247px, which puts the content
+   * bottom at 492 — clear of the stack's 500 on desktop, and grows automatically
+   * on the shells where the stack sits higher. The tablet measured clear with the
+   * flat value only because its extra inset happened to leave room; that was
+   * luck, not correctness. */
+  padding-bottom: calc(var(--memo-bottom-inset, var(--space-6)) + 215px + var(--space-2));
 }
 
 /* ── Scrollbar: subtle when idle, visible on hover ────── */
