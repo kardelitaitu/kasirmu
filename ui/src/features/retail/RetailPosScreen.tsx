@@ -919,6 +919,28 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
   //
   // Note the setActiveShift(null) above: clearing on entry is itself a write, so the
   //   clear is sequenced too rather than running unconditionally before the guard.
+  // UNPINNED, AND THE REASON IS MECHANICAL RATHER THAN MYSTERIOUS.
+  //
+  // Three attempts to pin this by mutation have been made and none landed. The harness is
+  // NOT the problem: the workspace mock reads its token live (611457e1c), wsState is
+  // declared with vi.hoisted above the factory, order is enforced by call count, and the
+  // two arms answer with distinctly different states. All of that is verified.
+  //
+  // WHAT ACTUALLY HAPPENS: after the token is switched and the screen re-rendered through
+  // rerenderWithProviders, `getActiveShiftScoped` has been called ONCE, not twice. The
+  // effect does not re-run. Reproduced three times, so it is a property of the component
+  // rather than of the test.
+  //
+  // Note this screen is NOT the usePosShifts hook -- it has its own useState and its own
+  // effect right here, which is why there is no shared hook to pin in isolation the way
+  // the hook could be (5bbef0162). The screen-level test is the only route, and the
+  // screen is large.
+  //
+  // WHERE TO START, and it is one specific thing I did not test: whether the re-render
+  // reaches this component AT ALL. Log inside the render body and confirm a second render
+  // happens BEFORE touching the assertion. If the render happens and the effect still does
+  // not run, the deps chain is the suspect; if the render does not happen, the test is
+  // re-rendering a stale element and the effect is irrelevant.
   const shiftSeq = useRef(0);
 
   useEffect(() => {
