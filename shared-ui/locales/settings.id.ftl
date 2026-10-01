@@ -1156,6 +1156,7 @@ setup-mobile-auth-qr-desc = Scan QR dengan akun owner/admin
 setup-mobile-hub-footer = Belum punya akun Kasirmu? Hubungi sales@kasirmu.com atau daftar di kasirmu.id
 
 setup-mobile-back = Kembali
+setup-mobile-back-to-device = Lanjutkan setup di perangkat ini saja
 setup-mobile-google-title = Pilih akun untuk melanjutkan
 setup-mobile-google-subtitle = ke aplikasi Kasir.mu Sync & Cloud Backup
 setup-mobile-google-privacy = Kasir.mu hanya meminta izin sinkronisasi profil Google. Data penjualan dan transaksi Anda tetap tersimpan privat di perangkat lokal.

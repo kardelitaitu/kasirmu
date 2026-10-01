@@ -4,11 +4,39 @@ import styles from './MobileWelcomeFlow.module.css';
 export interface MobileWelcomeScreenProps {
   onStartSetup: () => void;
   onSignUp?: (() => void) | undefined;
+  /**
+   * Offered when this wizard was reached from another surface — the tablet's
+   * "Set up with a phone instead" button lands here by setting
+   * `#/mobile-setup`. Going back is clearing that hash: both shells reset
+   * their route when it clears, which re-renders the provisioning form this
+   * wizard was opened over. Without it the hop is one-way and a merchant who
+   * opened the phone wizard by accident has no way back to the tablet.
+   */
+  onBackToDevice?: (() => void) | undefined;
 }
 
-export function MobileWelcomeScreen({ onStartSetup, onSignUp }: MobileWelcomeScreenProps) {
+export function MobileWelcomeScreen({
+  onStartSetup,
+  onSignUp,
+  onBackToDevice,
+}: MobileWelcomeScreenProps) {
   return (
     <div className={styles['welcomeRoot']} data-testid="mobile-welcome-screen">
+      {onBackToDevice && (
+        <nav className={styles['topNav']}>
+          <button
+            type="button"
+            className={styles['backButton']}
+            onClick={onBackToDevice}
+            data-testid="mobile-welcome-back-to-device-btn"
+          >
+            <span aria-hidden="true">←</span>
+            <Localized id="setup-mobile-back-to-device">
+              <span>Set up on this device instead</span>
+            </Localized>
+          </button>
+        </nav>
+      )}
       <div className={styles['welcomeBrandSection']}>
         <img
           src="/branding/logo-full-dark.svg"

@@ -2,7 +2,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { screen, fireEvent } from '@testing-library/react';
 import { renderWithFluentSync } from './test-utils/render';
 import settingsFtl from '@/locales/settings.ftl?raw';
-import { MobileWelcomeFlow, registerMobileSetupFeature } from '@/features/setup/mobile';
+import { MobileWelcomeFlow, MobileWelcomeScreen, registerMobileSetupFeature } from '@/features/setup/mobile';
 import { getPage } from '@/registries/page-registry';
 
 describe('MobileWelcomeFlow (Figma 720x1280 Mobile Setup Wizard)', () => {
@@ -36,6 +36,34 @@ describe('MobileWelcomeFlow (Figma 720x1280 Mobile Setup Wizard)', () => {
     fireEvent.click(screen.getByTestId('mobile-hub-back-btn'));
 
     expect(screen.getByTestId('mobile-welcome-screen')).toBeInTheDocument();
+  });
+
+  // The tablet's "Set up with a phone instead" button lands here by setting
+  // `#/mobile-setup`. Until the back control existed that hop was ONE-WAY: the
+  // welcome screen had an onStartSetup and nothing else, so a merchant who
+  // opened the phone wizard by accident had no way back to the tablet. Going
+  // back is clearing the hash — both shells reset their route when it clears
+  // (AppShell.tsx:357, TabletAppShell syncFromHash) — so the assertion pins the
+  // hash, the actual mechanism, rather than a label.
+  it('offers a way back to the device that opened it, and going back clears the hash', () => {
+    window.location.hash = '#/mobile-setup';
+    try {
+      renderWithFluentSync(<MobileWelcomeFlow initialScreen="welcome" />, settingsFtl);
+
+      expect(screen.getByTestId('mobile-welcome-back-to-device-btn')).toBeInTheDocument();
+
+      fireEvent.click(screen.getByTestId('mobile-welcome-back-to-device-btn'));
+
+      expect(window.location.hash).toBe('');
+    } finally {
+      window.location.hash = '';
+    }
+  });
+
+  it('omits the device back control when no onBackToDevice is wired', () => {
+    renderWithFluentSync(<MobileWelcomeScreen onStartSetup={() => {}} />, settingsFtl);
+
+    expect(screen.queryByTestId('mobile-welcome-back-to-device-btn')).not.toBeInTheDocument();
   });
 
   it('navigates to Google Auth View (Frame 3:15) and handles selection', () => {

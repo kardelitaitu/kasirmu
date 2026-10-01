@@ -60,6 +60,13 @@ export function MobileWelcomeFlow({
           <MobileWelcomeScreen
             onStartSetup={() => goTo('hub')}
             {...(onSignUp !== undefined ? { onSignUp } : {})}
+            onBackToDevice={() => {
+              // Back to the surface that sent us here. Both shells reset their
+              // route when the hash clears (AppShell.tsx:357, TabletAppShell
+              // syncFromHash), which re-renders the provisioning form this
+              // wizard was opened over.
+              window.location.hash = '';
+            }}
           />
         )}
 

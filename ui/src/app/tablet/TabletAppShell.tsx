@@ -261,7 +261,18 @@ export default function TabletAppShell() {
   useEffect(() => {
     const syncFromHash = () => {
       const raw = window.location.hash.replace(/^#\/?/, '').split('?')[0];
-      if (!raw) return;
+      if (!raw) {
+        // Mirror AppShell.tsx:357-364: a CLEARED hash means "leave whatever
+        // fullscreen page the hash put us on". This copy returned early
+        // instead, so the only way out of mobile-setup was forward — clearing
+        // the hash did nothing, currentRoute stayed 'mobile-setup', and the
+        // tablet sat on the phone wizard with no way back to its own. 'pos' is
+        // this shell's default (the same value onProvisioned resets to), and
+        // while the device is still unprovisioned the !hasCompletedSetup gate
+        // below re-renders ProvisioningFlow regardless of the route.
+        setCurrentRoute('pos');
+        return;
+      }
       if (getPage(raw)) setCurrentRoute(raw);
     };
     syncFromHash();

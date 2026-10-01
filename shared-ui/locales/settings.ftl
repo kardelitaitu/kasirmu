@@ -1182,6 +1182,7 @@ setup-mobile-auth-qr-desc = Scan QR with owner/admin account
 setup-mobile-hub-footer = Don't have a Kasirmu account? Contact sales@kasirmu.com or register at kasirmu.id
 
 setup-mobile-back = Back
+setup-mobile-back-to-device = Set up on this device instead
 setup-mobile-google-title = Choose an account to continue
 setup-mobile-google-subtitle = to Kasir.mu Sync & Cloud Backup
 setup-mobile-google-privacy = Kasir.mu only requests permission to sync your Google profile. Your sales and transaction data remain stored privately on the local device.

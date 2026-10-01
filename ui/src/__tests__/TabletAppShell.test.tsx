@@ -678,6 +678,32 @@ describe('TabletAppShell — routing', () => {
       }
     });
 
+    // The tablet copy of syncFromHash used to `return` on an empty hash, so the
+    // sequence below — enter mobile-setup, then clear the hash — left the
+    // merchant stranded on the phone wizard with no way back to the tablet.
+    // AppShell's copy has handled a cleared hash since the hash router was
+    // added; this pins the tablet to the same contract.
+    it('returns to the shell when the hash is cleared from a fullscreen page', async () => {
+      await renderWithProviders(<TabletAppShell />, sharedFtl);
+      await waitFor(() => {
+        expect(screen.getByTestId('workspace-home')).toBeInTheDocument();
+      });
+
+      await act(async () => {
+        window.location.hash = '#/mobile-setup';
+        window.dispatchEvent(new HashChangeEvent('hashchange'));
+      });
+      expect(await screen.findByTestId('mobile-setup-page')).toBeInTheDocument();
+
+      await act(async () => {
+        window.location.hash = '';
+        window.dispatchEvent(new HashChangeEvent('hashchange'));
+      });
+
+      expect(screen.queryByTestId('mobile-setup-page')).not.toBeInTheDocument();
+      expect(screen.getByTestId('workspace-home')).toBeInTheDocument();
+    });
+
     it('ignores an unregistered hash instead of blanking the screen', async () => {
       await renderWithProviders(<TabletAppShell />, sharedFtl);
       await waitFor(() => {
