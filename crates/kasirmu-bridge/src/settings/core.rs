@@ -69,7 +69,7 @@ pub fn run_list_credit_sales(
     // ⚠️ MEASURED MISMATCH, deliberately not repaired here. Index 1 of this
     // projection is `p.gateway_reference`, and it lands in `customer_name`; the
     // retail credit list renders that field in a column headed Customer
-    // (ui/src/features/retail/RetailModals.tsx:368,368-376), so an operator
+    // (the retail credit-list modal), so an operator
     // currently reads the payment gateway's own reference where the buyer's name
     // belongs. `customers.name` exists and this projection does not join it.
     //
