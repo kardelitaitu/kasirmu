@@ -2213,3 +2213,49 @@ fn rolled_back_refund_writes_no_outbox_row() {
         .unwrap();
     assert_eq!(refunds, 0, "and no refund row - the two die together");
 }
+
+/// LOY-03/CRM-06: the lifetime-spend reversal converts the refund into the BASE
+/// currency before deducting, because the accrual at finalize_sale was made on
+/// `base_total_minor` (`base_total_minor.unwrap_or(total_minor)`).
+///
+/// The conversion is ROUND-HALF-UP per refund, so a multi-currency sale that is
+/// refunded in SEVERAL partials does not reverse exactly the pro-rata share:
+/// three equal thirds of a 10000-cent sale rounded to 9999, seven equal sevenths
+/// to 10003. The drift is per-refund rounding on a quantity that is only exact
+/// in aggregate.
+///
+/// Pinned because the loyalty reversal beside it (:843) clamps at the un-reversed
+/// headroom, while THIS one has no such clamp -- a customer who never completes
+/// the refund keeps a permanently off lifetime-spend figure, and that figure is
+/// what the CRM screen shows as lifetime spend.
+#[test]
+fn base_currency_refund_conversion_rounds_half_up_per_refund() {
+    let conn = fresh();
+    let base: i64 = 10_000;
+    let charged: i64 = 100_000_000;
+
+    let convert = |refund_charge: i64| -> i64 {
+        let num = i128::from(refund_charge) * i128::from(base);
+        let den = i128::from(charged);
+        ((num * 2 + den) / (den * 2)) as i64
+    };
+
+    // Three equal thirds do not sum back to the base total.
+    let third = charged / 3;
+    let three_thirds = convert(third) * 3;
+    assert_eq!(
+        three_thirds, 9_999,
+        "three equal thirds under-reverse by one"
+    );
+
+    // Seven equal sevenths overshoot instead.
+    let seventh = charged / 7;
+    let seven_sevenths = convert(seventh) * 7;
+    assert_eq!(
+        seven_sevenths, 10_003,
+        "seven equal sevenths over-reverse by three"
+    );
+
+    // A single FULL refund is exact, because the ratio is 1:1.
+    assert_eq!(convert(charged), base);
+}
