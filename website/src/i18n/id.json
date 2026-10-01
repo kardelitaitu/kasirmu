@@ -333,7 +333,7 @@
       "Windows 10 / 11 (64-bit) — tersedia sekarang",
       "macOS 12+ — segera hadir",
       "Linux (x86_64, glibc 2.31+) — segera hadir",
-      "Android 7.0 Nougat atau lebih baru — segera hadir",
+      "Android 8.0 Oreo atau lebih baru — segera hadir",
       "iOS 14.0 atau lebih baru — segera hadir",
       "RAM 4 GB · Disk kosong 1 GB"
     ],
@@ -922,13 +922,13 @@
         "Tablet-optimized: layout responsif dari desktop hingga portrait"
       ],
       "statusTitle": "Status hari ini",
-      "status": "Windows tersedia sekarang. Android 7.0+ dan iOS segera hadir — unduh versi Windows untuk mencoba alurnya, atau hubungi kami untuk kabar rilis Android.",
+      "status": "Windows tersedia sekarang. Android 8.0+ dan iOS segera hadir — unduh versi Windows untuk mencoba alurnya, atau hubungi kami untuk kabar rilis Android.",
       "ctaDownload": "Unduh versi Windows",
       "ctaSupport": "Tanya soal Android",
       "faq": [
         {
           "q": "Kapan aplikasi kasir Android-nya rilis?",
-          "a": "Segera hadir — minimum Android 7.0 Nougat. Versi Windows tersedia hari ini dengan alur yang sama."
+          "a": "Segera hadir — minimum Android 8.0 Oreo. Versi Windows tersedia hari ini dengan alur yang sama."
         },
         {
           "q": "Apakah jalan di tablet murah?",
@@ -944,7 +944,7 @@
         },
         {
           "q": "Apa yang dibutuhkan tabletnya?",
-          "a": "Android 7.0 Nougat atau lebih baru, dengan RAM 4 GB dan ruang kosong 1 GB disarankan. Tablet adalah layar kasir yang dituju."
+          "a": "Android 8.0 Oreo atau lebih baru, dengan RAM 4 GB dan ruang kosong 1 GB disarankan. Tablet adalah layar kasir yang dituju."
         }
       ]
     }

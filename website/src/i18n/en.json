@@ -329,7 +329,7 @@
       "Windows 10 / 11 (64-bit) — available now",
       "macOS 12+ — coming soon",
       "Linux (x86_64, glibc 2.31+) — coming soon",
-      "Android 7.0 Nougat or newer — coming soon",
+      "Android 8.0 Oreo or newer — coming soon",
       "iOS 14.0 or newer — coming soon",
       "4 GB RAM · 1 GB free disk"
     ],
@@ -918,13 +918,13 @@
         "Tablet-optimized: responsive layout from desktop to portrait"
       ],
       "statusTitle": "Status today",
-      "status": "Windows is available now. Android 7.0+ and iOS are coming soon — download the Windows version to try the flow, or contact us for Android release news.",
+      "status": "Windows is available now. Android 8.0+ and iOS are coming soon — download the Windows version to try the flow, or contact us for Android release news.",
       "ctaDownload": "Download the Windows version",
       "ctaSupport": "Ask about Android",
       "faq": [
         {
           "q": "When does the Android POS app ship?",
-          "a": "Coming soon — minimum Android 7.0 Nougat. The Windows version is available today with the same flow."
+          "a": "Coming soon — minimum Android 8.0 Oreo. The Windows version is available today with the same flow."
         },
         {
           "q": "Does it run on cheap tablets?",
@@ -940,7 +940,7 @@
         },
         {
           "q": "What will the tablet need?",
-          "a": "Android 7.0 Nougat or newer, with 4 GB of RAM and 1 GB of free storage recommended. Tablets are the intended cashier screen."
+          "a": "Android 8.0 Oreo or newer, with 4 GB of RAM and 1 GB of free storage recommended. Tablets are the intended cashier screen."
         }
       ]
     }
