@@ -718,6 +718,44 @@ fn template_list_is_scoped_to_its_branch() {
     assert_eq!(template_load(&conn, &main, "Uptown Only").unwrap(), None);
 }
 
+/// A template KEY that cannot be read as TEXT must refuse, not vanish.
+///
+/// `template_list` built its names through `.filter_map(|r| r.ok())`, so a key
+/// that failed the `row.get::<_, String>` was dropped and the panel simply showed
+/// a shorter list, with no error anywhere. Reachable with a `TEXT` key holding
+/// invalid UTF-8: SQLite stores TEXT as bytes and the `LIKE` prefilter does not
+/// decode, so the row IS returned by the query and fails only at the read. (A BLOB
+/// key cannot reach it -- it does not match a TEXT `LIKE` -- which is why the
+/// prefilter hides that case rather than this one.)
+///
+/// The names in this list are the whole of what the template panel offers, so a
+/// silently dropped key is a template the merchant owns and cannot see.
+#[test]
+fn template_list_refuses_an_unreadable_key_instead_of_dropping_it() {
+    let conn = fresh_conn();
+    let topo = topology_setting_key(Some("main")).unwrap();
+
+    // Happy path first, so the failure below is the only change.
+    template_save(&conn, &topo, "Setup", &serde_json::json!({"v": 1})).unwrap();
+    assert_eq!(template_list(&conn, &topo).unwrap().len(), 1);
+
+    // A valid prefix with an invalid UTF-8 tail: `topology.tpl.` + 0xFF. It
+    // matches the LIKE prefilter, so the query returns it and the read fails.
+    let blob_key = format!("{}tpl.\u{FF}", template_key_prefix(&topo));
+    conn.execute(
+        "INSERT INTO settings (key, value) VALUES (CAST(?1 AS BLOB), '{}')",
+        rusqlite::params![blob_key.as_bytes()],
+    )
+    .unwrap();
+
+    let err = template_list(&conn, &topo)
+        .expect_err("an unreadable key must not be silently dropped from the list");
+    assert!(
+        matches!(err, BridgeError::Core { .. }),
+        "expected the read failure to surface, got {err:?}"
+    );
+}
+
 #[test]
 fn template_list_does_not_see_the_diagram_or_runtime_plan() {
     // A branch's diagram lives at `.../topology/main` and its runtime plan at
