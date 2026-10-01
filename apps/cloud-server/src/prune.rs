@@ -92,9 +92,40 @@ async fn run_prune_cycle(db: &Arc<Mutex<Connection>>) {
                 }
             };
 
+            // `filter_map(|r| r.ok())` silently DROPPED a row whose id could not
+            // be read. That row is then never deleted, and worse, the loss is
+            // invisible: every other failure in this loop logs and breaks, and
+            // the counter at :124-127 is the signal operators are told to watch --
+            // a flat `PRUNE_QUEUE_DELETED_TOTAL` means retention is not covering
+            // rows, but nothing would say why. A batch that fails entirely also
+            // hit the `ids.is_empty()` break below, ending the cycle as though the
+            // queue were drained.
+            //
+            // A cursor that cannot be read is not an empty batch, so it is now an
+            // error like every other read failure in this function.
             let ids: Vec<String> =
                 match stmt.query_map(rusqlite::params![cutoff_str], |row| row.get(0)) {
-                    Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
+                    Ok(rows) => {
+                        let mut ids = Vec::new();
+                        let mut failed = false;
+                        for r in rows {
+                            match r {
+                                Ok(id) => ids.push(id),
+                                Err(e) => {
+                                    error!(
+                                        error = %e,
+                                        "prune: failed to read an offline_queue id; aborting the cycle so the retention backlog is not silently skipped"
+                                    );
+                                    failed = true;
+                                    break;
+                                }
+                            }
+                        }
+                        if failed {
+                            break;
+                        }
+                        ids
+                    }
                     Err(e) => {
                         error!(error = %e, "prune: failed to query batch");
                         break;
