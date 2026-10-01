@@ -57,6 +57,14 @@ fn new_mac(secret: &[u8]) -> HmacSha256 {
 /// (forged, expired, malformed) so the caller surfaces one uniform
 /// denial — the ticket cannot be used as an enumeration oracle.
 ///
+/// `now_ts` MUST be a real Unix timestamp. The expiry test below compares
+/// `expiry_ts` against it, so a caller passing a PRE-EPOCH clock (0) would
+/// satisfy it for every ticket ever minted — an EXPIRED ticket would verify, and
+/// the caller would mint a session from it. The clock therefore stays the
+/// caller's responsibility: `now_ts` is a required argument rather than read
+/// here, and the fail-closed decision about an unreadable clock belongs with the
+/// session timestamp it is compared against.
+///
 /// Signature comparison uses `Mac::verify_slice` (constant-time),
 /// never a byte-string equality that could leak the match position.
 pub fn verify_picker_ticket(secret: &[u8], ticket: &str, now_ts: i64) -> Option<String> {

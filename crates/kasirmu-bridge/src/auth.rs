@@ -38,6 +38,31 @@ use platform_core::settings::keys;
 
 use crate::ctx::BridgeCtx;
 use crate::error::BridgeError;
+
+/// Read the Unix clock, refusing a pre-epoch value rather than defaulting to 0.
+///
+/// Every timestamp this module hands to a session or a picker ticket is derived
+/// from this, and 0 is the one value that must never be assumed. A session minted
+/// at 0 expires in 1970 and a picker-ticket expiry compared against 0 is never
+/// "in the past", so `.unwrap_or_default()` — which is what this replaced, in
+/// three separate places — turned an unreadable clock into a clock that trusts
+/// every stale credential.
+///
+/// Returning `None` is the fail-closed answer: the caller denies. It is a
+/// `Result`-free helper because the only sensible response is a denial, and
+/// making each caller match on an error would invite one of them to default.
+fn now_unix_secs() -> Option<i64> {
+    match SystemTime::now().duration_since(UNIX_EPOCH) {
+        Ok(d) => i64::try_from(d.as_secs()).ok(),
+        Err(e) => {
+            tracing::error!(
+                error = %e,
+                "system clock is before the UNIX epoch; refusing to mint or verify a credential against it"
+            );
+            None
+        }
+    }
+}
 use crate::picker;
 
 /// Arguments for the `staff_login` command.
@@ -483,10 +508,13 @@ pub async fn staff_login(
     // Mint the short-lived picker ticket bound to this authenticated
     // user. It is only valid for the pre-session workspace picker;
     // `create_session` hands out the opaque session token afterwards.
-    let now_ts = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs() as i64;
+    // Fail closed: a pre-epoch clock would mint a ticket whose expiry is
+    // meaningless, and `now_ts` also rides the session's `created_at`.
+    let Some(now_ts) = now_unix_secs() else {
+        return Err(BridgeError::Internal(
+            "system clock is before the UNIX epoch; refusing to mint a session".into(),
+        ));
+    };
     let picker_ticket = picker::sign_picker_ticket(
         &ctx.picker_ticket_secret,
         &user.id,
@@ -537,10 +565,15 @@ pub async fn create_session(
     // The ticket was minted by staff_login/bootstrap_owner and bound to the
     // authenticated user. We derive user_id from the ticket instead of
     // trusting the caller-supplied value.
-    let now_ts = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs() as i64;
+    // Fail closed, and this site is the sharpest of the three:
+    // `verify_picker_ticket` compares the ticket's expiry against this value, so
+    // a 0 here satisfies the check for every ticket ever minted — an expired
+    // ticket would verify and a session would be minted from it.
+    let Some(now_ts) = now_unix_secs() else {
+        return Err(BridgeError::Internal(
+            "system clock is before the UNIX epoch; refusing to verify a picker ticket".into(),
+        ));
+    };
     let verified_user_id =
         picker::verify_picker_ticket(&ctx.picker_ticket_secret, &args.picker_ticket, now_ts)
             .ok_or_else(|| {
