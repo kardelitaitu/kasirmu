@@ -852,11 +852,30 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
   // ── Store settings ──────────────────────────────────────────
 
   const [storeSettings, setStoreSettings] = useState<StoreSettingsDto>({ name: '', address: '', taxId: '', currency: 'IDR', branch: '', logo: '' });
+  // A `mounted` flag is the WRONG GUARD here and this used to have one. It only
+  // tracks unmount, so it stays true across a store switch -- exactly like
+  // SettingsContext.mountedRef, which needed this same correction in 09ac4df43.
+  // The reads overlap because the deps name sessionToken, so a slower earlier one
+  // lands last and applies the PREVIOUS store's settings.
+  //
+  // THE CONSEQUENCE IS MONEY, at three sites. `storeSettings.currency` is passed to
+  // minorUnitExponent() when parsing the OPENING drawer balance (:930), the CLOSING
+  // balance (:948) and the manual discount (:1032). The exponent is 0 for IDR and 2
+  // for USD, so a stale currency misreads those amounts by a factor of 100. That is
+  // the failure mode the MONEY-02 / MONEY-05 notes at :902 protect against -- they
+  // fixed the hardcoded x100 and left the currency itself able to go stale.
+  const storeSettingsSeq = useRef(0);
   useEffect(() => {
     if (!sessionToken) return;
-    let mounted = true;
-    getStoreSettingsScoped(sessionToken).then((s) => { if (mounted) setStoreSettings(s); }).catch(() => { if (mounted) addToast({ message: requiredLocalized(l10nRef.current, 'retail-toast-failed-settings'), type: 'error' }); });
-    return () => { mounted = false; };
+    const seq = ++storeSettingsSeq.current;
+    const stale = () => storeSettingsSeq.current !== seq;
+    getStoreSettingsScoped(sessionToken)
+      .then((s) => { if (!stale()) setStoreSettings(s); })
+      .catch(() => {
+        if (stale()) return;
+        addToast({ message: requiredLocalized(l10nRef.current, 'retail-toast-failed-settings'), type: 'error' });
+      });
+    return () => { storeSettingsSeq.current += 1; };
   }, [addToast, sessionToken]);
 
   // ── Shift management ─────────────────────────────────────────
