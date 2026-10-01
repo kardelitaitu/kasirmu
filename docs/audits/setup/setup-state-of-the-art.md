@@ -1823,4 +1823,95 @@ defects above were found by *running* the thing, and one by asking the browser w
 would actually receive a click — a question no reading of the source can answer.
 
 > **Round 36 ·** the dead ends the audit could not see.
+
+---
+
+## Round 37 — on the tablet: round 34's blocker is closed, and the device found a defect no gate could
+
+The device was connected, so the item every round since 34 deferred — *a terminal completing
+first-run against the live server* — was finally measured.
+
+### 1. The deploy works on real hardware
+
+The installed app was `0.0.39`, last updated 2026-09-23 — the pre-deploy artifact from round
+34. Rebuilt `0.0.40` as a **debug** build (the wry devtools socket is gated on
+`debug_assertions`, so a release APK opens no automation surface at all) and drove it over
+`scripts/android-cdp.mjs`.
+
+```
+pairing/start  (issued by the TABLET, not from the host)
+  badge: "PRAH - FXSF"      qr: true
+  wait:  "Waiting for you to claim on your phone"
+  err:   ""                 expired: false
+```
+
+A live 8-character Crockford code, QR rendered, poll loop running. **Round 34's blocker is
+closed on the device it blocked.** A merchant can link an account again.
+
+Four of the five first-run fixes were then read out of the live WebView rather than a test:
+the gate explainer, the region disclosure, the version footer, and the tablet opening on **Email
+Code** with **QR Pairing:false** — the solo-device default. The wizard button's
+`#/mobile-setup` navigation also worked, which is the dead button round 36 fixed.
+
+### 2. A defect only a device could find: a message that never loaded
+
+The WebView console, on a fresh install, repeated:
+
+```
+[@fluent/react] Error: The id "setup-account-pair-requirement" did not match any messages
+```
+
+The message was `= { ' QR pairing needs …' }` — **a value that is nothing but a
+placeable**, which the Fluent parser drops. The id then resolved to nothing and every
+`<Localized>` using it rendered its children: the English string, on every device, in every
+locale, with the Indonesian translation sitting unused in the bundle.
+
+I wrote it that way to keep a leading space, which FTL trims from a plain value. The wizard
+audit's own **F5** finding flags this exact anti-pattern — on the file I was editing.
+
+**Four gates passed anyway, and the shape is the point:**
+
+| Gate | What it looks at | Why it passed |
+|---|---|---|
+| `verify-bundle-parity` | KEY is declared | it was |
+| `verify-ftl-orphans` | KEY is referenced | it was |
+| `lint-i18n` | parses, asserts named keys | a dropped key is not a named one |
+| `i18nBundle` | parses, asserts named keys | same |
+
+All four count or name. None asks whether the corpus *survived parsing*.
+
+Shipped (`931274d29`): the message is plain text with the sentence in its own paragraph, and
+`i18nBundle.test.tsx` now asserts **declared-and-parsed** for both `settings` bundles — every
+id matched by regex in the source must exist in the bundle the app loads. Proved it fires by
+re-injecting the exact original line: *"1 of 950 message(s) declared in settings.ftl (en) did
+not survive the Fluent parser … setup-account-pair-requirement"*.
+
+Re-verified on the tablet in the locale it was broken for — Indonesian, set through
+`localStorage['kasirmu-locale']`:
+
+```
+title: "Siapkan terminal ini"
+gate:  "Masih diperlukan sebelum penyiapan selesai:"
+qr:    "Pasangkan QR membutuhkan HP kedua yang sudah masuk ke akun Anda."
+missing-id warnings: 0
+```
+
+### 3. A trap in measuring any of this
+
+**A stale WebView cache masquerades as a build failure.** After reinstalling the fixed APK the
+app still served the OLD hashed asset (`index.mobile-DbJU4Zk7.js` against a rebuilt
+`QzYPA3PP`) and the Fluent error persisted, which reads exactly like a failed fix. Nothing
+was wrong with the build: `adb install -r` keeps app data, and the WebView reused its HTTP
+cache. `pm clear` fixed it. The failure mode is convincing precisely because the console
+error is real.
+
+### Honest scope
+
+- **Verified:** pairing from the device; four of the five first-run fixes rendering; the
+  Fluent fix in Indonesian; no console errors.
+- **Not verified:** the pairing **claim** leg (needs a signed-in account on a phone); fix 3's
+  auto-refresh on a real 15-minute expiry (the timer was not waited out); the provision
+  transaction end to end on device.
+
+> **Round 37 ·** on the tablet: round 34's blocker closed, and a defect only hardware found.
 > last audited 30-09-26 by DSH
