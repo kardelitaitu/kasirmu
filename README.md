@@ -26,7 +26,8 @@
 |---|---|
 | **What it is** | Offline-first point-of-sale for retail, cafés, restaurants, and multi-location chains |
 | **Server infrastructure cost** | **Under 1% of gross revenue** (vs. 10%–30% for conventional cloud POS / inventory SaaS) |
-| **Merchant hardware CapEx** | **$0** — Bring Your Own Device (BYOD); runs on existing Windows laptops, budget Android tablets, or Linux |
+| **Supported platforms** | **Windows 10/11 (Production-ready)**; Android tablet APK & Linux (In active development) |
+| **Merchant hardware CapEx** | **$0** — Bring Your Own Device (BYOD); runs on existing Windows PCs & laptops (Android in dev) |
 | **Monetization model** | Flat-rate SaaS (Free forever, $4.99 Plus, $9.99 Pro, $39.99 Premium); capacity-gated, zero feature hostage-taking |
 | **Sales commission** | **0%** — we never charge a transaction fee or a cut of merchant turnover |
 | **Payment integrations** | Static QRIS on every plan (including Free); dynamic QRIS from Plus; Stripe cards from Pro |
@@ -58,7 +59,7 @@ flowchart TD
     subgraph M["FOR THE CUSTOMER (MERCHANT)"]
         direction TB
         M1["Zero hardware CapEx ($500-$1,200 saved)"]
-        M2["Runs on existing Windows, Android, Linux"]
+        M2["Runs on existing Windows PCs (Android APK in dev)"]
         M3["Lean 30-50 MB RAM footprint"]
         M4["Standard $20 generic ESC/POS printers"]
     end
@@ -122,7 +123,7 @@ Most POS vendors generate margin by locking merchants into expensive, proprietar
 
 | Hardware Factor | Legacy Cloud POS | kasir.mu | Merchant Impact |
 |---|---|---|---|
-| **Terminal hardware** | Proprietary terminal ($500–$1,200) or iPad | **Bring Your Own Device (BYOD):** Existing Windows laptop, budget Android tablet, or old PC | **Save $500 – $1,200 upfront** |
+| **Terminal hardware** | Proprietary terminal ($500–$1,200) or iPad | **Bring Your Own Device (BYOD):** Existing Windows 10/11 laptop or PC (*production-ready; Android APK in active dev*) | **Save $500 – $1,200 upfront** |
 | **System memory (RAM)** | 500 MB – 1.2 GB (Electron/Java bloat) | **30 MB – 50 MB** (Native compiled Rust + OS webview) | Runs smoothly on low-end Intel Celeron or 2GB RAM |
 | **Installer package** | 150 MB – 400 MB download | **< 15 MB standalone package** | Installs in seconds over spotty mobile tethering |
 | **Receipt printers** | Proprietary locked printers ($250+) | **Standard ESC/POS:** Generic $15–$30 USB/Bluetooth printers | **Save $200+ per register** |
@@ -133,7 +134,7 @@ Most POS vendors generate margin by locking merchants into expensive, proprietar
 | Feature / Metric | Conventional Cloud POS (Moka, Majoo) | Legacy Enterprise POS (Toast, NCR) | kasir.mu |
 |---|---|---|---|
 | **Offline Architecture** | Degraded mode (cached read-only fallback) | Cloud-dependent or complex local server | **100% full offline read/write on every terminal** |
-| **Hardware Requirement** | Proprietary smart POS lease ($300–$600) | Expensive locked registers ($1,000+) | **Bring Your Own Device ($0): PC, tablet, Linux** |
+| **Hardware Requirement** | Proprietary smart POS lease ($300–$600) | Expensive locked registers ($1,000+) | **Bring Your Own Device ($0): Windows PC (*Android in dev*)** |
 | **Platform Take-Rate** | 0.2% – 0.7% on top of payment acquirer | 1.0% – 2.5% platform commission | **0% platform fee** (merchant keeps 100%) |
 | **Server Cost / Revenue** | 4% – 8% ARR (up to 12% in peak rush hours) | 10% – 20% of revenue | **Under 1% of gross revenue (~0.26% simulated)** |
 | **Active Memory Footprint**| 500 MB – 1 GB (Electron / Java) | 1 GB – 2 GB | **30 MB – 50 MB (Native Rust + Tauri v2)** |
@@ -308,6 +309,7 @@ The kasir.mu platform is architected around a structured 20-phase master roadmap
 ### Transparent gap disclosure (v0.0.40 current state)
 
 We believe in radical transparency:
+- **Platform readiness (Windows-only production today):** As of today, the **Windows 10/11 desktop application is the only working production-ready build**. The Android tablet APK (`apps/mobile-tauri`) and Linux builds are in active development (application shell and UI are scaffolded, with physical device testing and hardware binding currently in progress).
 - **No full accounting ledger yet (Phase 8):** The system provides revenue, COGS, gross-profit, shift cash tracking, and purchase order history. A full general ledger (chart of accounts, journal entries) is currently scheduled for Phase 8.
 - **Scaffolded vertical stubs:** Purchasing history is live, but four domain modules (`purchasing`, `promotions`, `giftcards`, `kitchen`) are currently structured as frontend or core-delegated modules rather than standalone domain services.
 - **Deferred features:** Custom cloud report builder and voice checkout remain intentionally deferred.
@@ -319,7 +321,7 @@ We believe in radical transparency:
 ### Prerequisites
 - [Rust](https://rustup.rs/) (1.80+ recommended)
 - [Node.js](https://nodejs.org/) (20+ LTS)
-- OS: Windows 10/11, macOS, or Linux (with WebKit2GTK)
+- OS: **Windows 10/11 (Primary production platform)**; macOS or Linux for development
 
 ### 4-step setup
 
