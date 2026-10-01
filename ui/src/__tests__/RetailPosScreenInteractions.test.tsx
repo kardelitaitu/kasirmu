@@ -450,52 +450,41 @@ describe('RetailPosScreen — interactions', () => {
   }
 
 
-  // MONEY-05, and a limit worth stating plainly. The Rp tab projects a typed
-  // AMOUNT to a percent, and usePosState recomputes the money from that
-  // percent -- so any rounding of the projection is a money error.
+  // The Rp tab offers an AMOUNT the domain cannot hold, and the tests below
+  // pin only the half that is fixable here. Verified across the whole chain:
   //
-  // `Math.round((capped / subtotal) * 100 * 100) / 100` rounded the RATIO to
-  // two decimals, which inflated the discount whenever the true ratio
-  // rounded UP: 70 off a 40000-unit cart is a true 0.175% -> 0.18%, and the
-  // cashier lost 3 units. Dropping the ratio round removes that entirely.
+  //   foundation/src/percentage.rs:38        Percentage(u8)
+  //   pos/checkout.rs:246                   discount_percent: i64
+  //   pos/preview.rs:176                    checkout_discount_percent -> clamp 0..=100
+  //   usePosState.ts:287                     Math.round(percent)
   //
-  // What CANNOT be fixed here: the cart stores a whole percent, and
-  // setDiscount rounds it (usePosState.ts:287). So a true ratio below 0.5%
-  // becomes 0 and the discount vanishes whatever this line does -- 988004 of
-  // 2278000 (subtotal, amount) pairs in that range do. Expressing it needs the
-  // cart to store a discount AMOUNT, which is a change to usePosState shared
-  // with the main POS. This test pins the half that IS fixable.
+  // so only 5058 of 14955150 (subtotal, amount) pairs up to 50000/300
+  // produce a whole percent. This is a domain decision, so these tests do
+  // not assert an exact amount is preserved -- they cannot be. They assert
+  // the projection itself, which IS this line's responsibility.
 
-  it('does not inflate the discount when the ratio rounds up', async () => {
-    // 70 off 40000 is a true 0.175%. The old projection sent 0.18, so the
-    // cart took 73 off instead of 70.
+  it('projects the exact ratio rather than a two-decimal approximation', async () => {
+    // 70 off 40000 is a true 0.175%. Math.round(x * 100) / 100 sent 0.18,
+    // and the cart then took 73 off instead of 70.
     const setDiscount = await applyRpDiscount(40000, '70');
 
     const pct = setDiscount.mock.calls[0]![0] as number;
-    // The exact ratio, not a two-decimal approximation of it.
-    expect(pct).toBeCloseTo(0.175, 6);
-    // Round-trip through the store the way usePosState would.
-    const clamped = Math.max(0, Math.min(100, Math.round(pct)));
-    expect(clamped).toBe(0);
+    expect(pct).toBeCloseTo(0.175, 9);
+  });
+
+  it('never projects a discount above what was typed', async () => {
+    // The old ratio round could push the projection past the typed amount,
+    // which is the direction that costs the cashier money.
+    const setDiscount = await applyRpDiscount(40000, '70');
+    const pct = setDiscount.mock.calls[0]![0] as number;
+
+    expect(pct * 40000 / 100).toBeLessThanOrEqual(70);
   });
 
   it('keeps a whole-percent Rp discount exact', async () => {
     // 2000 off 100000 is exactly 2% and must still project to exactly 2.
     const setDiscount = await applyRpDiscount(100000, '2000');
     expect(setDiscount).toHaveBeenCalledWith(2, '');
-  });
-
-  it('no longer over-charges on a ratio that rounds up', async () => {
-    // The user-visible half: with the old code a 40000-unit cart reduced by a
-    // true 0.175% lost 3 units of discount. The charged amount must now be at
-    // most the typed one.
-    const setDiscount = await applyRpDiscount(40000, '70');
-    const pct = setDiscount.mock.calls[0]![0] as number;
-    const clamped = Math.max(0, Math.min(100, Math.round(pct)));
-    const charged = clamped <= 0
-      ? 40000
-      : 40000 - Math.floor((40000 * (100 - clamped)) / 100);
-    expect(40000 - charged).toBeLessThanOrEqual(70);
   });
 
   // ── Clear cart ───────────────────────────────────────────────

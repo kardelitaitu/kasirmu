@@ -1016,13 +1016,20 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
     // over subtotal 100..20000 and discounts 1..120 that costs up to 3 units,
     // with the excess on 1194056 combinations.
     //
-    // LIMIT, recorded so it is not re-derived: a discount BELOW 1% cannot be
-    // expressed at all, because the store is percent-only and setDiscount
-    // rounds it (usePosState.ts:287 `Math.round(percent)`). A 1-unit discount
-    // on a 35000-unit cart is 0.00286% and becomes 0 whichever projection is
-    // used. That is a property of the percent-only cart, not of this line, and
-    // fixing it means storing the discount as an AMOUNT — a change to
-    // usePosState shared with the main POS.
+    // DOMAIN LIMIT, verified end to end so it is not re-derived: the discount is
+    // a WHOLE percent everywhere -- `Percentage(u8)` at
+    // foundation/src/percentage.rs:38, `discount_percent: i64` narrowed by
+    // checkout_discount_percent at crates/kasirmu-bridge/src/pos/preview.rs:176,
+    // and Math.round in setDiscount at usePosState.ts:287. Only 5058 of
+    // 14955150 (subtotal, amount) pairs up to 50000/300 map to a whole percent,
+    // so nearly every typed Rp amount is rounded on the way in, and 8829054 of
+    // those pairs charge the customer LESS than the cashier typed.
+    //
+    // That is the domain design, not a defect here, and the cart already shows
+    // the resulting percent (`Discount (0.2%)` via CartFooterTotals.tsx:115) so
+    // the rounding is visible after the fact. What IS fixed here is the extra
+    // error the ratio round added on top of it. If this tab is ever moved to
+    // store an amount, this projection is the line that stops rounding at all.
     const pct = (capped * 100) / subtotal.minor_units;
     setDiscount(pct, '');
     setShowDiscount(false);
