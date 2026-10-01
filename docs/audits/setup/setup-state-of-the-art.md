@@ -1822,4 +1822,5 @@ Component audits cannot see a deployment, a hash listener, or an overlay. Three 
 defects above were found by *running* the thing, and one by asking the browser what it
 would actually receive a click — a question no reading of the source can answer.
 
-> last audited 30-09-26 by DSH (round 36 · the dead ends the audit could not see)
+> **Round 36 ·** the dead ends the audit could not see.
+> last audited 30-09-26 by DSH
