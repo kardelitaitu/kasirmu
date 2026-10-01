@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { getUserPreferencesScoped, setUserPreferencesScoped } from '@/api/settings';
@@ -89,6 +89,18 @@ export function useKdsPreferences(): {
   );
   const [loading, setLoading] = useState(true);
 
+  // Guarded. Deps name userId and sessionToken, so a store switch starts a second
+  // read while the first is in flight, and a slower earlier one lands last. Same class
+  // as CurrencyContext, SettingsContext, BrandContext, ShiftBar, PosScreen,
+  // StockTransfersScreen, CustomerManagementScreen and EmailReportSettings.
+  //
+  // THE CONSEQUENCE IS PERSISTED, which is why this one is guarded rather than noted:
+  // the success path calls writeLocalPrefs(userId, serverPrefs) (:113), so a stale read
+  // does not just display the previous store's KDS layout -- it writes it into local
+  // storage under the current user, where it survives a reload, a restart, and going
+  // offline. The comment at :86 says local storage is the INSTANT RESTORE source, so a
+  // bad value here outlives the session that produced it.
+  const prefsSeqRef = useRef(0);
   useEffect(() => {
     if (!userId) {
       setLoading(false);
@@ -99,6 +111,8 @@ export function useKdsPreferences(): {
       setLoading(false);
       return;
     }
+    const seq = ++prefsSeqRef.current;
+    const stale = () => prefsSeqRef.current !== seq;
     getUserPreferencesScoped(sessionToken)
       .then((raw) => {
         const serverPrefs: KdsPreferences = {
@@ -109,6 +123,7 @@ export function useKdsPreferences(): {
           autoAcknowledge: raw['kds_auto_acknowledge'] === 'true',
           acknowledgeDelayMin: Number(raw['kds_ack_delay_min']) || DEFAULTS.acknowledgeDelayMin,
         };
+        if (stale()) return;
         setPrefs(serverPrefs);
         writeLocalPrefs(userId, serverPrefs);
       })
