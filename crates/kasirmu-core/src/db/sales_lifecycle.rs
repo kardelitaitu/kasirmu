@@ -39,22 +39,29 @@ use rusqlite::{OptionalExtension, Transaction, TransactionBehavior};
 /// consequence is about trust. `base_total_minor` is CLIENT-SUPPLIED
 /// (`CompleteSaleWithResolvedShortfallsArgs.base_total_minor`, copied straight
 /// in pos/checkout.rs:427) and no server read re-derives it -- the server
-/// re-derives `sale.total` but not this. It is stored faithfully: SQLite
+/// re-derives `sale.total` but not this. It is also stored faithfully: SQLite
 /// `INTEGER` is an AFFINITY, not a 32-bit cap, so an i64 round-trips exactly
-/// (verified against the real schema). So a client claiming i64::MAX stores
-/// i64::MAX, and the award chain saturates on it twice rather than refusing:
-/// `saturating_mul(points_per_unit)` in earn_points_with_conn
-/// (`loyalty.rs:677`), then `i64::try_from(q).unwrap_or(i64::MAX)` at
-/// `loyalty.rs:48`. The customer is awarded a maximum-tier point total.
+/// (verified against the real schema). So the earn basis is exactly what the
+/// client asked for.
 ///
-/// The sibling use of the SAME value is safe by comparison:
-/// `accrue_lifetime_spend_in_tx` is a plain SQL `total_spent_minor + ?1`, so
-/// SQLite RAISES on overflow and the `tracing::warn!` below reports it. Same
-/// input, opposite outcome.
-///
-/// Not fixed here: bounding `base_total_minor` needs a real sale ceiling, and
+/// That feeds the POINTS ladder, which SATURATES rather than wrapping on
+/// overflow -- deliberately, and pinned by
+/// `compute_points_extremes_do_not_overflow` in loyalty_tests.rs. Saturating
+/// is the right call for a ladder, so the open question is the INPUT, not
+/// the arithmetic: bounding `base_total_minor` needs a real sale ceiling, and
 /// none is defined in the schema or the engine. Guessing one would refuse
-/// legitimate large sales, which is a worse failure than the current one.
+/// legitimate large sales, which is worse than an over-large award.
+///
+/// The sibling use of the same value REFUSES instead of saturating, because
+/// `accrue_lifetime_spend_in_tx` is a plain SQL `total_spent_minor + ?1` and
+/// SQLite RAISES on overflow, logged by the `tracing::warn!` below. Points
+/// saturate, spend refuses: deliberate on the ladder, incidental on the
+/// balance, and both visible rather than silent.
+///
+/// Covered by loyalty_integration.rs: `earn_basis_prefers_base_total_over_
+/// the_charged_total`, `earn_basis_falls_back_to_the_sale_total_without_the_
+/// snapshot`, and `base_total_minor_is_believed_without_re_derivation` --
+/// delete that last one when the value is bounded.
 fn apply_customer_stats_on_completion(tx: &rusqlite::Transaction<'_>, sale_id: &str) {
     let sale_row = tx.query_row(
         "SELECT customer_id, base_total_minor, total_minor FROM sales WHERE id = ?1",

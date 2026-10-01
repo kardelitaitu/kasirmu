@@ -34,22 +34,28 @@ const POINTS_TO_MINOR_RATIO: i64 = 1;
 /// totals × positive points_per_unit); the floor-division normalization
 /// keeps the rule uniform for any sign.
 ///
-/// SATURATION, not a rejection. `unwrap_or(i64::MAX)` turns an out-of-range
-/// result into the largest possible award, so overflow awards rather than
-/// refuses. That matters because `base` is not always a server-computed
-/// total: it arrives as `total_minor.saturating_mul(points_per_unit)` at
-/// earn_points_with_conn (:677), and that `total_minor` is the earn basis
-/// chosen at sales_lifecycle.rs:58 as `base_total_minor.unwrap_or(total)` --
-/// and `base_total_minor` is CLIENT-SUPPLIED (pos/checkout.rs:427). A client
-/// claiming a `base_total_minor` near i64::MAX therefore saturates at the
-/// multiplication AND at the narrowing, and lands a top-tier award.
+/// SATURATION is deliberate, and `compute_points_extremes_do_not_overflow`
+/// (loyalty_tests.rs) pins it: an out-of-range result becomes the largest
+/// possible award rather than wrapping. Saturating is the right choice for a
+/// LADDER -- wrapping would hand a customer a top tier after an enormous
+/// purchase, which is the same wrong answer by a different route.
 ///
-/// Bounding it needs a real sale ceiling, which is not defined anywhere, so
-/// it is not guessed here. Note the sibling consumer of the SAME value does
-/// not share the weakness: `accrue_lifetime_spend_in_tx` (customers.rs:322)
-/// is a plain SQL `total_spent_minor + ?1`, so SQLite RAISES on overflow and
-/// sales_lifecycle.rs:53-56 logs it non-fatally. The two paths disagree on
-/// purpose until the trust question is settled.
+/// What the saturation inherits, though, is the trustworthiness of `base`.
+/// That is not always a server-computed total: it arrives as
+/// `total_minor.saturating_mul(points_per_unit)` at earn_points_with_conn
+/// (:677), and that `total_minor` is the earn basis chosen at
+/// sales_lifecycle.rs:58 as `base_total_minor.unwrap_or(total)` -- where
+/// `base_total_minor` is CLIENT-SUPPLIED (pos/checkout.rs:427) and re-derived
+/// by no server read. A client claiming a `base_total_minor` near i64::MAX
+/// therefore saturates at the multiplication AND at the narrowing.
+///
+/// So the saturation is correct and the INPUT is the open question, and
+/// bounding the input needs a real sale ceiling that is defined nowhere --
+/// so it is not guessed here. The sibling consumer of the same value behaves
+/// differently by design rather than by weakness:
+/// `accrue_lifetime_spend_in_tx` (customers.rs) is a plain SQL
+/// `total_spent_minor + ?1`, so SQLite RAISES on overflow and
+/// sales_lifecycle.rs logs it non-fatally. Points saturate, spend refuses.
 pub(crate) fn compute_points(base: i64, multiplier_millionths: i64) -> i64 {
     const DEN: i128 = 100 * 1_000_000;
     let num = i128::from(base) * i128::from(multiplier_millionths);
