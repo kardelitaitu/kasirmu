@@ -369,7 +369,13 @@ export default function EmailReportSettings() {
                   className="settings-input"
                   type={showPassword ? 'text' : 'password'}
                   id="settings-email-password"
-                  placeholder={hasStoredPassword && !passwordTouched ? '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022' : l10n.getString('settings-email-password-placeholder')}
+                  // The placeholder is Localized's job: the `id` above plus
+                  // `attrs={{ placeholder: true }}` already apply it, and reading the
+                  // same id through getString() here made this file the message's
+                  // ONLY attribute-less consumer — invisible whenever the masked
+                  // branch wins, so a rename would leave bullets where a real
+                  // prompt belonged. It also raced the localized value.
+                  placeholder={hasStoredPassword && !passwordTouched ? '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022' : undefined}
                   value={config.password ?? ''}
                   onChange={(e) => { setPasswordTouched(true); updateField('password', e.target.value || null); }}
                   autoComplete="off"
