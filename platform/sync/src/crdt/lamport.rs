@@ -8,7 +8,8 @@ CONSISTENT WITH causality, so two concurrent events may carry the same counter
 and each replica would otherwise resolve the tie differently and diverge.
 Increment and merge saturate at u64::MAX rather than wrapping, because a
 wrapped counter silently inverts the order.
-next: wire the daemon's mutation path to tick this clock | perf: N/A
+next: none | perf: N/A
+NOT WIRED 2026-10-04: the daemon's mutation path does not tick this clock — it stamps pushes from the persisted settings counter (crate::crdt::CLOCK_KEY) via push_stamp, and nothing else consumes a LamportClock. Kept because it is the total-order primitive a future typed-merge adoption (see delta_mutation.rs) would need; adopting it is separate work, not an outstanding wiring item.
 */
 //!
 //! # What this type cannot do

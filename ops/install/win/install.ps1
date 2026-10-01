@@ -23,7 +23,7 @@
          asset (msiexec /qn — a UAC prompt is expected there).
 
 .EXAMPLE
-    irm https://github.com/kardelitaitu/oz-pos/releases/latest/download/install.ps1 | iex
+    irm https://github.com/kardelitaitu/kasirmu/releases/latest/download/install.ps1 | iex
 .EXAMPLE
     ./install.ps1
 .EXAMPLE
@@ -55,7 +55,7 @@ param(
     [switch]$System,
     [switch]$DryRun,
     [switch]$NoLaunch,
-    [string]$Repo = 'kardelitaitu/oz-pos'
+    [string]$Repo = 'kardelitaitu/kasirmu'
 )
 
 $ErrorActionPreference = 'Stop'

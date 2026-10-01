@@ -1,6 +1,15 @@
-<!-- Audit stamp: 2026-07-22 · Hermes-Agent · status: ACCURATE (1 minor finding) · concrete claims verified: apps/cloud-server/ + crates/kasirmu-plugin/ crates exist; crates/kasirmu-reporting/src/menu_engineering.rs, crates/kasirmu-core/src/recipe.rs + db/recipes.rs, crates/kasirmu-core/src/sync/lan_discovery.rs, Dockerfile.server, docker-compose.yml all present; crates/kasirmu-core/src/features.rs has cafe() (line 362) + franchise() (line 378) presets with tests · FINDING (minor): line 221 references version lock "0.0.4" — branch is 0.0.19 / docs say 0.0.18, so 0.0.4 is a stale version string in the plan text (not a code divergence). All 46/46 phase tasks reference real, existing code · master plan is internally consistent with the implemented modular architecture -->
+<!-- Superseded audit marker (2026-07-22 · Hermes-Agent, body kept verbatim) · retained · status: ACCURATE (1 minor finding) · concrete claims verified: apps/cloud-server/ + crates/kasirmu-plugin/ crates exist; crates/kasirmu-reporting/src/menu_engineering.rs, crates/kasirmu-core/src/recipe.rs + db/recipes.rs, crates/kasirmu-core/src/sync/lan_discovery.rs, Dockerfile.server, docker-compose.yml all present; crates/kasirmu-core/src/features.rs has cafe() (line 362) + franchise() (line 378) presets with tests · FINDING (minor): line 221 references version lock "0.0.4" — branch is 0.0.19 / docs say 0.0.18, so 0.0.4 is a stale version string in the plan text (not a code divergence). All 46/46 phase tasks reference real, existing code · master plan is internally consistent with the implemented modular architecture -->
 
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 229 lines, carrying a 2026-07-22 Hermes-Agent stamp whose substance re-verifies. The stamp checked a long list of concrete claims and they still hold in kind — the cloud server and plugin crates exist, the menu-engineering, recipe, LAN-discovery and feature-preset modules are present, and the phase tasks continue to reference real code rather than aspirations. The stamp's ONE FINDING was a stale version string in the plan text, and that is the right kind of thing to find in a master plan: the plan names a version lock, and a roadmap naming the wrong one misleads a reader about how current it is without any code being wrong. The branch is now `0.0.40`; the string is left as written, because correcting a version reference inside a plan written against a different one is cosmetic, and the prior stamp already records the discrepancy rather than hiding it. · WHAT MAKES THIS DOCUMENT WORTH THE EXTRA PASS is that it is the MODULAR plan, and the modular architecture it describes is now the repository's actual shape: the workspace publishes 40 packages split across `crates/`, `modules/`, `platform/` and `foundation/`, and that four-root layout is exactly what the plan was written to produce. A master plan whose target state is now the starting state has an unusual property worth recording: it can no longer be checked against the code, only against the intent, because the divergence it was written to close is closed. The phase checklists are therefore historical, and the stamp's judgement that the plan is internally consistent with the implemented architecture is the durable claim. · NOT re-measured: the 46 phase tasks individually, which are a delivery record and belong to whoever tracks the roadmap. · Prior stamp retained as original evidence; footer re-dated. -->
 # Modular Application Master Plan: Feature-Based Configuration & Execution Roadmap
+
+<!-- Finding 2026-09-30 · docs-auditor · the body below is left VERBATIM, as this file's own superseded marker requires, and the one live breakage is recorded here instead. A new rule in `.agents/skills/docs-auditor/scripts/check-dead-refs.py` derives the package set from the workspace `Cargo.toml` files and grades every `cargo -p <name>` in the live docs against it. It reports exactly one finding here, at :213: `cargo build --release --package oz-cloud-server`. The 2026-09-29 rebrand renamed that package to `kasirmu-cloud`, so the command fails at argument parsing and never reaches a compile. VERIFIED: `cargo build --package kasirmu-cloud --bin kasirmu-cloud --release` succeeds and writes `target/release/kasirmu-cloud`, and `ops/docker/Dockerfile.server:179` builds that same package, so only the prose went stale. The `oz-pos-cloud:test` image tag at :218 is NOT stale -- `ops/docker/Dockerfile.server:8` still documents that exact tag. This is the same judgement the 2026-09-29 stamp applied to the stale version lock: a completed `[x]` phase item in a superseded plan is a delivery record, and rewriting it edits history instead of fixing anything a reader would run. A reader who wants the working command has it here. · superseded-package: oz-cloud-server · current-package: kasirmu-cloud -->
+> **Module-structure pointers (2026-10-02).** This is the historical master plan; the module architecture it
+> targets now exists. For the current state, read in this order: the handler population
+> (`docs/architecture/handler-census-phase0.md`), the seam taxonomy (`docs/decisions/2026-09-30-adr62-module-seam-taxonomy.md`),
+> the namespace rules and table-ownership map (`docs/architecture/module-namespace-governance.md`), and the
+> Phase 2 store design (`docs/architecture/namespaced-store-api-draft.md`). The event-bus diagram in §3 carries
+> two stale nodes (annotated in place).
 
 **Status:** Active Planning Document  
 **Target Architecture:** Admin-Configurable Feature & Module Engine (`oz-pos`)  
@@ -73,6 +82,10 @@ graph TD
       LocalBus -->|Guaranteed <50ms LAN Delivery| D2
       LocalBus -->|Subscribed: InventoryStockHandler| Deduct[Recipe / BOM Ingredient Deduction]
       LocalBus -->|Subscribed: SaleCompletedReporter| Analytics[Real-Time Analytical Heatmaps]
+      %% CORRECTION (2026-10-02): both nodes above are stale. InventoryStockHandler is DEAD/test-only
+      %% (never subscribed in production); the BOM deduction runs on the sale path. SaleCompletedReporter
+      %% was removed under MSL-11. Current handler set: docs/architecture/handler-census-phase0.md.
+      %% Module boundaries/rules: docs/architecture/module-namespace-governance.md.
     end
 ```
 
@@ -222,8 +235,5 @@ Every phase and high-level objective is broken down below into actionable, atomi
 
 Whenever we are ready to start building, we can pick any sub-item above (e.g. **1.1.1 [Rust Core Presets]**, **3.1.1 [SQLite BOM Schema]**, or **5.1.1 [Headless Server Crate Scaffolding]**), write the code and tests, verify against `cargo test` / `npm test` / `docker build`, and mark the item completed (`[x]`) while preserving 100% documentation integrity and our version lock (`0.0.4`).
 
-> last audited 08-09-26 by buffy
-> audit: Phase 1 Core Architecture & API Docs Audit
-
-> status: ACCURATE (0 findings) · verified accurate: cargo check passed, no structural orphans, no stale version headers, all file references valid
+> last audited 29-09-26 by docs-auditor
 

@@ -41,6 +41,30 @@ fn sale_count(conn: &Connection) -> i64 {
 
 /// Seed a stocked retail product at the canonical default location, so the
 /// door's Phase-1 stock check passes without shortfalls.
+/// A file-backed migrated DB, for the two-connection race below.
+///
+/// Mirrors `gift_cards_tests::fresh_file`: the in-memory `fresh()` cannot be
+/// opened twice, and a race needs two real connections on one file.
+fn fresh_file(dir: &std::path::Path) -> Connection {
+    std::fs::create_dir_all(dir).unwrap();
+    let path = dir.join("kasir.db");
+    let mut file_conn = Connection::open(&path).unwrap();
+    {
+        let template = migrations::fresh_db();
+        let backup = rusqlite::backup::Backup::new(&template, &mut file_conn).unwrap();
+        backup
+            .run_to_completion(10, std::time::Duration::from_millis(0), None)
+            .unwrap();
+    }
+    file_conn
+        .pragma_update(None, "journal_mode", "WAL")
+        .unwrap();
+    file_conn
+        .pragma_update(None, "busy_timeout", "5000")
+        .unwrap();
+    file_conn
+}
+
 fn seed_stocked_product(conn: &Connection, sku: &str) {
     let product_id = uuid::Uuid::now_v7().to_string();
     conn.execute(
@@ -69,7 +93,7 @@ fn single_line_sale(sku: &str, actor: Option<&str>) -> Sale {
     cart.add_line(CartLine::new(Sku::new(sku), 1, price(1000)))
         .unwrap();
     let mut sale = Sale::from_cart(&cart).unwrap();
-    sale.user_id = actor.map(|s| s.to_string());
+    sale.user_id = actor.map(std::string::ToString::to_string);
     sale
 }
 
@@ -355,4 +379,281 @@ fn rolled_back_settlement_writes_no_payment_outbox_row() {
         "a rolled-back settlement must leave no payment outbox row"
     );
     assert_eq!(sale_count(&conn), 0);
+}
+// ── MSL-28: a failed recipe read must not silently skip the deduction ──
+
+/// `complete_sale_with_resolved_shortfalls` read the recipe with
+/// `.unwrap_or_default()`, so a DB failure became "this product has no recipe".
+/// That flips `has_recipe` false, and when the product also does not
+/// `tracks_inventory`, `needs_stock` is false and the line is NOT deducted — a
+/// sale settles with inventory under-reported and no error anywhere.
+///
+/// The CHECKOUT path reads the same function and propagates:
+/// `sales_checkout.rs:259` is `self.get_recipe_ingredients(pid)?`. Two doors,
+/// one read, opposite failure policies.
+#[test]
+fn a_failed_recipe_read_does_not_silently_skip_the_deduction() {
+    let conn = fresh();
+    let s = store(&conn);
+    seed_stocked_product(&conn, "RECIPE-FAIL-SKU");
+
+    // The swallow only bites for a product whose stock comes SOLELY from its
+    // recipe: `tracks_inventory` is true for retail/restaurant/both and false only
+    // for `service`, so a service product with a recipe is the case where
+    // `has_recipe` is the only thing making `needs_stock` true.
+    let parent: String = conn
+        .query_row(
+            "SELECT id FROM products WHERE sku = 'RECIPE-FAIL-SKU'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    conn.execute(
+        "UPDATE products SET product_type = 'service' WHERE id = ?1",
+        rusqlite::params![parent],
+    )
+    .unwrap();
+    // An ingredient that DOES track stock, so the recipe is the only reason to
+    // deduct anything at all.
+    let ing_id = uuid::Uuid::now_v7().to_string();
+    conn.execute(
+        "INSERT INTO products (id, sku, name, price_minor, currency, product_type) \
+         VALUES (?1, 'ING-FAIL-SKU', 'Ingredient', 100, 'USD', 'retail')",
+        rusqlite::params![ing_id],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO stock_summary (item_id, location_id, qty) VALUES (?1, ?2, 10)",
+        rusqlite::params![ing_id, crate::inventory::CANONICAL_DEFAULT_LOCATION_UUID],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO product_recipes (id, parent_product_id, ingredient_product_id, \
+         quantity_required, unit) VALUES (?1, ?2, ?3, 2, 'unit')",
+        rusqlite::params![uuid::Uuid::now_v7().to_string(), parent, ing_id],
+    )
+    .unwrap();
+
+    let sale = single_line_sale("RECIPE-FAIL-SKU", Some("cashier-2"));
+
+    // Force the recipe read to fail for a reason that is NOT "no recipe":
+    // rename the table it selects from.
+    conn.execute_batch("ALTER TABLE product_recipes RENAME TO product_recipes_hidden;")
+        .unwrap();
+
+    let result = s.complete_sale_with_resolved_shortfalls(
+        &sale,
+        None,
+        &tender(1000),
+        "cashier-2",
+        None,
+        &[],
+        &[],
+    );
+
+    // The read failure must PROPAGATE, exactly as the checkout door does: the
+    // operator gets the real cause instead of a settled sale that quietly
+    // skipped its deduction.
+    let err = result.expect_err(
+        "a failed recipe read must fail the settlement, not settle it without deducting",
+    );
+    assert!(
+        err.to_string().contains("product_recipes"),
+        "the propagated error must name the real cause, got: {err}"
+    );
+
+    // And nothing was written: the settlement rolled back with the failure, so the
+    // ingredient still holds its original 10.
+    let ing_qty: i64 = conn
+        .query_row(
+            "SELECT qty FROM stock_summary WHERE item_id = \
+             (SELECT id FROM products WHERE sku = 'ING-FAIL-SKU') AND location_id = ?1",
+            rusqlite::params![crate::inventory::CANONICAL_DEFAULT_LOCATION_UUID],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        ing_qty, 10,
+        "a failed settlement must not have deducted anything"
+    );
+}
+/// COR-8: the in-transaction CAS must refuse a void that lost the race.
+///
+/// `void_sale` reads the sale OUTSIDE its transaction, so the `status != active`
+/// pre-check cannot see a transition that lands in between. The `UPDATE ...
+/// WHERE id = ?2 AND status = 'active'` predicate is what actually closes that,
+/// with `rows == 0` mapped to `Conflict`. Nothing exercised that branch before:
+/// the existing refusal test (`refused_void_writes_no_outbox_row`) trips the
+/// PRE-check, which reports `Validation { field: "status" }` — a different arm.
+///
+/// The shape is the one MSL-78 also had: a real fix with no test defending it,
+/// where deleting the `AND status = 'active'` predicate would leave the suite
+/// green while a completed (paid, points-awarded) sale could be overwritten to
+/// voided. Needs a real second connection, hence the file-backed DB.
+#[test]
+fn void_sale_race_reports_the_conflict_rather_than_overwriting_a_completed_sale() {
+    let dir = std::env::temp_dir().join(format!("oz_void_race_{}", uuid::Uuid::now_v7()));
+    let db_path = dir.join("kasir.db");
+    let sale_id = {
+        let conn = fresh_file(&dir);
+        let mut cart = Cart::new(usd());
+        cart.add_line(CartLine::new(Sku::new("VOID-RACE"), 1, price(1000)))
+            .unwrap();
+        let sale = Sale::from_cart(&cart).unwrap();
+        store(&conn).create_sale(&sale).unwrap();
+        store(&conn)
+            .update_sale_status(&sale.id, crate::SaleStatus::Active)
+            .unwrap();
+        sale.id
+    };
+
+    // B stages the completing transition and holds the write lock, so A's
+    // `void_sale` gets past its out-of-transaction pre-check (the row is still
+    // `active` when A reads it) and THEN blocks on the UPDATE.
+    let (staged_tx, staged_rx) = std::sync::mpsc::channel();
+    let rival = {
+        let db_path = db_path.clone();
+        let sale_id = sale_id.clone();
+        std::thread::spawn(move || {
+            let conn_b = Connection::open(&db_path).unwrap();
+            conn_b.pragma_update(None, "busy_timeout", "5000").unwrap();
+            let tx = conn_b.unchecked_transaction().unwrap();
+            let rows = tx
+                .execute(
+                    "UPDATE sales SET status = 'completed' WHERE id = ?1",
+                    rusqlite::params![sale_id],
+                )
+                .unwrap();
+            assert_eq!(rows, 1, "the rival must stage the sale it is completing");
+            staged_tx.send(()).unwrap();
+            // B releases on its own timer: A is blocked inside `void_sale`.
+            std::thread::sleep(std::time::Duration::from_millis(300));
+            tx.commit().unwrap();
+        })
+    };
+    staged_rx.recv().unwrap();
+
+    let conn_a = Connection::open(&db_path).unwrap();
+    conn_a.pragma_update(None, "busy_timeout", "5000").unwrap();
+    let outcome = store(&conn_a).void_sale(&sale_id, "user-2", "too late");
+    rival.join().unwrap();
+
+    // The race was LOST, so the CAS matched zero rows and reported the conflict.
+    assert!(matches!(
+        outcome,
+        Err(CoreError::Conflict { entity: "sale", .. })
+    ));
+
+    // B's transition survived: the void must not have overwritten it.
+    let status: String = conn_a
+        .query_row(
+            "SELECT status FROM sales WHERE id = ?1",
+            rusqlite::params![sale_id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(status, "completed", "the loser must not win the column");
+
+    drop(conn_a);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+// ── Phase 5 P5.1: the cross-vertical write contract ────────────────────
+
+/// Tables `sales_lifecycle.rs` writes that it does not own. This is the core-owned
+/// analogue of `Module::namespace_grants()`: the sale-lifecycle path runs in core,
+/// so no `NamespacedStore` sees its statements, and this list is what keeps a new
+/// cross-vertical write from slipping in unannounced.
+///
+/// `payments` is NOT here: Phase 5 P5.4 assigned it to `sales` in
+/// `modules/ownership.json`, so the settlement INSERT (:555) is an own-table write.
+/// `customers` remains the one foreign write (crm-owned); P5.3 routes it behind the
+/// crm seam, at which point this list empties.
+const FOREIGN_WRITES: &[&str] = &["customers"];
+
+/// Module dependencies of `sales` that a foreign write's owner must appear in.
+/// Mirrors `dependencies` in `modules/sales/manifest.json`; P5.3 adds `crm` there.
+const MODULE_DEPENDENCIES: &[&str] = &["inventory", "crm"];
+
+/// Every table this path writes that it does not own must be owned by a module
+/// the sales module declares as a dependency. Adding a foreign write without
+/// declaring its owner (here or in modules/sales/manifest.json) fails this test,
+/// which is the whole point of the declaration: the sale lifecycle runs in core,
+/// so this is the only place a new cross-vertical write gets caught.
+///
+/// Since P5.4 every such table must be mapped: an unmapped table is a governance
+/// gap, not an allowed case.
+#[test]
+fn the_foreign_writes_name_owners_that_sales_declares() {
+    use crate::db::ownership::owner_of;
+    for table in FOREIGN_WRITES {
+        let owner = owner_of(table).unwrap_or_else(|| {
+            panic!(
+                "sale lifecycle writes '{table}', which no module owns in modules/ownership.json"
+            )
+        });
+        assert!(
+            MODULE_DEPENDENCIES.contains(&owner),
+            "sale lifecycle writes '{table}', owned by '{owner}', but sales does not declare that dependency"
+        );
+    }
+}
+
+/// The declaration is not vacuous: it must name the foreign write the path still
+/// performs (`customers` accrual). `payments` left this list in P5.4 when it
+/// became sales-owned.
+#[test]
+fn the_foreign_write_declaration_is_not_empty() {
+    assert!(FOREIGN_WRITES.contains(&"customers"));
+    // P5.4: payments is sales-owned now, so it must NOT be a foreign write.
+    assert!(!FOREIGN_WRITES.contains(&"payments"));
+    assert_eq!(
+        crate::db::ownership::owner_of("payments"),
+        Some("sales"),
+        "P5.4 assigned payments to sales; a re-home must update this declaration"
+    );
+}
+
+// ── Phase 5 P5.2: the inventory reads live behind the seam ─────────────
+
+/// The sale-lifecycle path runs in core, below the module layer, so the
+/// namespace firewall's runtime check never sees these statements. P5.2 moved
+/// the `products` / `stock_summary` / `workspace_inventory_locations` READS
+/// out of this file and into `db::inventory_seam`; this is the mutation that
+/// keeps them there.
+///
+/// A regression is silent (the reads still work), so the guard is a source
+/// scan: if any of the five foreign read statements reappears inline in
+/// `sales_lifecycle.rs`, this fails and names the seam that should own it.
+#[test]
+fn the_inventory_reads_stay_behind_the_seam() {
+    const SOURCE: &str = include_str!("sales_lifecycle.rs");
+    for forbidden in [
+        "FROM products",
+        "FROM stock_summary",
+        "FROM workspace_inventory_locations",
+    ] {
+        assert!(
+            !SOURCE.contains(forbidden),
+            "sales_lifecycle.rs reads `{forbidden}` inline again; the P5.2 seam (db::inventory_seam) owns that read"
+        );
+    }
+}
+
+/// The mutation above is only meaningful if the seam actually holds the SQL.
+/// A move that deleted the reads without re-homing them would pass the scan
+/// and break settlement; this pins the other half.
+#[test]
+fn the_inventory_seam_owns_the_read_sql() {
+    const SEAM: &str = include_str!("inventory_seam.rs");
+    for owned in [
+        "FROM products",
+        "FROM stock_summary",
+        "FROM workspace_inventory_locations",
+    ] {
+        assert!(
+            SEAM.contains(owned),
+            "db::inventory_seam no longer holds `{owned}`; either it moved again or the P5.2 extraction was reverted"
+        );
+    }
 }

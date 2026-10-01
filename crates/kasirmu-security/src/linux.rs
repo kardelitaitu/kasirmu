@@ -1,8 +1,8 @@
 /*
 last audited 25-07-26 by RSA-Agent
 crate: kasirmu-security | status: SAFE | lint: N/A (platform-gated, source-reviewed on Windows host)
-findings: SEC-2 embeds a private tokio Runtime and block_on per op — panics if invoked from an async context; SEC-9 set_secret is delete-then-create (non-atomic, crash loses secret), Delete errors swallowed via `let _ =`, "plain" OpenSession sends secrets unencrypted over D-Bus
-next: reentrancy strategy for Runtime; atomic set; numeric error matching | perf: per-instance runtime + D-Bus connection is heavy for short-lived use
+findings: SEC-2 embeds a private tokio Runtime and block_on per op — panics if invoked from an async context; SEC-9 FIXED 2026-10-04 the Delete inside set_secret is no longer swallowed (`let _ =` removed, the error now aborts the write) — a failed supersede would have left the old value live under the same name; atomicity itself is unachievable for a Secret Service that has no transaction; "plain" OpenSession sends secrets unencrypted over D-Bus
+next: reentrancy strategy for Runtime; numeric error matching; SEC-9 documents that atomic set is impossible without a Secret Service transaction | perf: per-instance runtime + D-Bus connection is heavy for short-lived use
 */
 //! Linux Secret Service (libsecret / DBus) implementation of [`Keyring`].
 //!
@@ -139,15 +139,14 @@ impl Keyring for LibSecretKeyring {
     }
 
     fn set_secret(&self, name: &str, value: &str) -> Result<(), SecurityError> {
-        let attrs = attributes(name);
-
-        let session = self.rt.block_on(self.open_session())?;
-        let collection = self.rt.block_on(self.default_collection())?;
-
-        let items = self.rt.block_on(self.search_items(&attrs))?;
-        for item_path in &items {
-            let _ = self
-                .rt
+        // Overwrite is delete-then-create because the Secret Service has no
+        // transaction, so it can never be made atomic. The delete is NOT
+        // best-effort: the previous item must be gone before the replacement
+        // is created, because one name resolving to two live items makes a
+        // later read return either value. A failed delete therefore aborts
+        // the write instead of being swallowed.
+        for item_path in &self.rt.block_on(self.search_items(&attributes(name)))? {
+            self.rt
                 .block_on(self.conn.call_method(
                     Some(SECRET_SERVICE),
                     item_path,
@@ -155,8 +154,11 @@ impl Keyring for LibSecretKeyring {
                     "Delete",
                     &(),
                 ))
-                .map_err(|e| SecurityError::KeyUnavailable(format!("Delete failed: {e}")));
+                .map_err(|e| SecurityError::KeyUnavailable(format!("Delete failed: {e}")))?;
         }
+
+        let session = self.rt.block_on(self.open_session())?;
+        let collection = self.rt.block_on(self.default_collection())?;
 
         let properties = HashMap::from([
             (
@@ -165,12 +167,10 @@ impl Keyring for LibSecretKeyring {
             ),
             (
                 "org.freedesktop.Secret.Item.Attributes".to_string(),
-                Value::new(attrs.clone()),
+                Value::new(attributes(name)),
             ),
         ]);
-
-        let secret: (OwnedObjectPath, Vec<u8>, String) =
-            (session, value.as_bytes().to_vec(), "text/plain".to_string());
+        let secret = (session, value.as_bytes().to_vec(), "text/plain".to_string());
 
         let msg = self
             .rt
@@ -213,8 +213,11 @@ impl Keyring for LibSecretKeyring {
         Ok(true)
     }
 
-    // `rotate_key` and `key_created_at` use the default implementations
-    // from the `Keyring` trait.
+    /// The Secret Service persists across restarts, so a generated key survives
+    /// (C1 hazard H3). Opting in explicitly is the trait's fail-closed contract.
+    fn is_durable(&self) -> bool {
+        true
+    }
 }
 
 fn attributes(name: &str) -> HashMap<String, String> {

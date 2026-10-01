@@ -16,7 +16,7 @@ use foundation::validate_not_empty;
 
 use kasirmu_core::permissions;
 
-use crate::commands::authz::require_permission_for_user;
+use crate::commands::authz::require_permission_for_session;
 use crate::error::AppError;
 use crate::state::AppState;
 
@@ -105,6 +105,24 @@ pub async fn adjust_stock(
 pub async fn list_products(state: State<'_, AppState>) -> Result<Vec<ProductDto>, AppError> {
     let db = state.db.lock().await;
     run_list_products(&db)
+}
+
+/// R3: clamp an optional `(limit, offset)` window onto a row count.
+///
+/// Mirrors `paginate()` in `ui/src/utils/list-policy.ts` — the same
+/// `start = offset`, `end = start + limit` arithmetic the UI pager uses — so
+/// the two halves of the bounded list path cannot drift apart.
+///
+/// `None` for either bound means "unbounded", which is what preserves
+/// today's behaviour for a caller that passes neither (every existing
+/// caller, desktop included).
+pub(crate) fn page_window(total: usize, limit: Option<u64>, offset: Option<u64>) -> (usize, usize) {
+    let start = offset.unwrap_or(0).min(total as u64) as usize;
+    let end = limit
+        .map(|l| (start as u64).saturating_add(l))
+        .unwrap_or(total as u64)
+        .min(total as u64) as usize;
+    (start, end.max(start))
 }
 
 /// Business logic for listing products (extracted for testing).
@@ -333,10 +351,50 @@ pub async fn adjust_stock_scoped(
 }
 
 /// Session-scoped variant of `list_products`.
+///
+/// R3: `limit` and `offset` are **optional and additive**. A caller that
+/// passes neither gets the whole catalog, byte-identical to before — which is
+/// what every existing caller (the desktop shell's own body, the catalog
+/// cache, the KDS picker, the kiosk grid) relies on. The return type is
+/// deliberately UNCHANGED for the same reason: the door is shared with
+/// `apps/desktop-tauri`, so a page envelope here would break that shell's
+/// bare-array contract at runtime.
+///
+/// What the bounds buy is the thing R3 asks for: the IPC payload and the
+/// renderer's copy are capped at `limit` rows instead of the whole catalog.
+///
+/// # KNOWN LIMITATION — the DB read is unbounded (DEFERRED)
+///
+/// This window is applied in Rust, AFTER `Store::list_products` has read and
+/// materialised every row. So the **IPC payload and the renderer are bounded,
+/// the query is not**: peak memory inside this command is still the whole
+/// catalog. Closing it means a LIMIT/OFFSET in `kasirmu-core`, and that is
+/// deferred because it is NOT additive there:
+///
+/// * `Store::list_products(&self) -> Result<Vec<ProductWithDetails>, CoreError>`
+///   (`crates/kasirmu-core/src/db/products_crud.rs:47`) has no bound parameters,
+///   and it has ~40 call sites across `apps/`, `crates/`, `platform/` and
+///   `cli/` (plus core's own integration tests) — every one of which would need
+///   `None, None` threading. A new sibling `list_products_paged(limit, offset)`
+///   would be additive and safe; changing this signature is not.
+/// * The precedent for the sibling already exists in core and should be
+///   mirrored, not invented: `Store::list_sales_for_customer` does a real
+///   `LIMIT ?2 OFFSET ?3` (`crates/kasirmu-core/src/db/sales_crud.rs:432`) and
+///   `Store::search_customers` clamps its page to `[1, 100]`
+///   (`crates/kasirmu-core/src/db/customers.rs:118-125`).
+///
+/// Why the deferral is survivable for now: the catalog is entitlement-capped
+/// upstream — `SubscriptionTier::max_products()` returns `Some(10_000)` for
+/// Premium (`crates/kasirmu-core/src/subscription.rs:211`), and `None` for
+/// Enterprise (`:212`), i.e. **unlimited**. So 10k is the realistic ceiling on
+/// Premium and this deferral is honest there; on Enterprise the read is
+/// genuinely unbounded and the sibling method above is the fix that matters.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn list_products_scoped(
     session_token: String,
+    limit: Option<u64>,
+    offset: Option<u64>,
     state: State<'_, AppState>,
 ) -> Result<Vec<ProductDto>, AppError> {
     let (_session, conn_arc) = state.resolve_scope(&session_token)?;
@@ -344,7 +402,9 @@ pub async fn list_products_scoped(
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
     let db = &*db_guard;
-    run_list_products(&db)
+    let mut products = run_list_products(&db)?;
+    let (start, end) = page_window(products.len(), limit, offset);
+    Ok(products.drain(start..end).collect())
 }
 
 /// Fetch warehouse-tracked products only (excludes services) resolved from a session token. ADR #7.
@@ -410,10 +470,25 @@ pub async fn create_product_scoped(
     args: CreateProductArgs,
     state: State<'_, AppState>,
 ) -> Result<CreateProductResult, AppError> {
+    // R10 gate-KIND + gate-ORDER, 2026-09-25: the session and BOTH gates are resolved
+    // BEFORE the scope block opens the store, and with the scope-aware form the bridge
+    // twin uses (`kasirmu-bridge/src/products.rs:668`, `:674`). The gates are `await`s,
+    // so they cannot live inside the block that exists to keep `Store` (!Send) off an
+    // await point — that constraint is exactly why the old code gated after opening the
+    // store, and why the store was opened for callers who were never authorised.
+    let session = state.resolve_session(&session_token)?;
+    require_permission_for_session(&state, &session, permissions::PRODUCTS_CREATE).await?;
+    // ADR #36 D7: setting a cost (HPP) requires the manager-only
+    // products:edit_cost permission — staff can create products without
+    // ever touching cost.
+    if args.cost_minor != 0 {
+        require_permission_for_session(&state, &session, permissions::PRODUCTS_EDIT_COST).await?;
+    }
+
     // Scope the DB borrow so Store (which is !Send) is dropped before
     // the next .await point when we lock the kernel for event publishing.
     {
-        let (session, conn_arc) = state.resolve_scope(&session_token)?;
+        let conn_arc = state.resolve_store(&session_token)?;
         // Quota: the tier's product/menu cap (subscription-tiers.md
         // §Numeric Limits) is enforced per-location catalog before
         // creation. Tier from the global identity DB, count from the
@@ -431,13 +506,6 @@ pub async fn create_product_scoped(
         let db = &*db_guard;
         let store = Store::new(&db);
 
-        require_permission_for_user(&store, &session.user_id, permissions::PRODUCTS_CREATE)?;
-        // ADR #36 D7: setting a cost (HPP) requires the manager-only
-        // products:edit_cost permission — staff can create products without
-        // ever touching cost.
-        if args.cost_minor != 0 {
-            require_permission_for_user(&store, &session.user_id, permissions::PRODUCTS_EDIT_COST)?;
-        }
         store.enforce_product_quota(
             &Entitlements::from_subscription(&sub, UsageCounts::default()).tier,
         )?;
@@ -510,20 +578,24 @@ pub async fn update_product_scoped(
     args: UpdateProductArgs,
     state: State<'_, AppState>,
 ) -> Result<UpdateProductResult, AppError> {
-    let (session, conn_arc) = state.resolve_scope(&session_token)?;
+    // R10 gate-KIND + gate-ORDER, 2026-09-25: adopt the scope-aware form the bridge twin
+    // uses (`kasirmu-bridge/src/products.rs:889`, `:895`) and run BOTH gates BEFORE the
+    // store is opened. The cost gate is conditional, so it has to be asked here rather
+    // than hoisted into a helper.
+    let session = state.resolve_session(&session_token)?;
+    require_permission_for_session(&state, &session, permissions::PRODUCTS_UPDATE).await?;
+    // ADR #36 D7: changing a product's cost (HPP) requires the manager-only
+    // products:edit_cost permission. A PATCH that does not touch cost
+    // (cost_minor absent) stays open to PRODUCTS_UPDATE holders.
+    if args.cost_minor.is_some() {
+        require_permission_for_session(&state, &session, permissions::PRODUCTS_EDIT_COST).await?;
+    }
+    let conn_arc = state.resolve_store(&session_token)?;
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
     let db = &*db_guard;
     let store = Store::new(&db);
-
-    require_permission_for_user(&store, &session.user_id, permissions::PRODUCTS_UPDATE)?;
-    // ADR #36 D7: changing a product's cost (HPP) requires the manager-only
-    // products:edit_cost permission. A PATCH that does not touch cost
-    // (cost_minor absent) stays open to PRODUCTS_UPDATE holders.
-    if args.cost_minor.is_some() {
-        require_permission_for_user(&store, &session.user_id, permissions::PRODUCTS_EDIT_COST)?;
-    }
 
     let currency: kasirmu_core::Currency = args
         .currency
@@ -622,13 +694,16 @@ pub async fn delete_product_scoped(
     args: DeleteProductArgs,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let (session, conn_arc) = state.resolve_scope(&session_token)?;
+    // R10 gate-KIND + gate-ORDER, 2026-09-25: adopt the scope-aware form the bridge twin
+    // uses (`kasirmu-bridge/src/products.rs:1006`) and run it BEFORE the store is opened.
+    let session = state.resolve_session(&session_token)?;
+    require_permission_for_session(&state, &session, permissions::PRODUCTS_DELETE).await?;
+    let conn_arc = state.resolve_store(&session_token)?;
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
     let db = &*db_guard;
     let store = Store::new(&db);
-    require_permission_for_user(&store, &session.user_id, permissions::PRODUCTS_DELETE)?;
     store.delete_product(&args.sku)?;
     Ok(())
 }

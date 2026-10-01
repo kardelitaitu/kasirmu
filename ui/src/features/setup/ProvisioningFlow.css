@@ -110,6 +110,95 @@
   }
 }
 
+/* The submit gate, named.
+ *
+ * Beside the button it explains, in the same gap the merchant is already
+ * looking at. Deliberately NOT the danger treatment used for .provisioning-error:
+ * an unmet requirement is the normal state of a form mid-fill, and painting it
+ * red on the first screen of setup would make every merchant feel they had
+ * already failed. The heading carries the explanation; each item is a control
+ * that moves the merchant to the field to change, because the card runs well
+ * past the viewport on the terminal this ships to. */
+.provisioning-submit-blockers {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+}
+
+.provisioning-submit-blockers-heading {
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-fg-secondary);
+}
+
+.provisioning-submit-blockers-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--text-sm);
+}
+
+/* Each blocker is a button, not a span, because it does something: it moves
+ * focus to the control that must change. A dead-looking list would leave the
+ * merchant to hunt for an off-screen field on a ~900-1460px card. Underlined so
+ * the affordance is not colour-only (WCAG 1.4.1). */
+.provisioning-submit-blocker-link {
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--color-accent);
+  font: inherit;
+  text-align: left;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.provisioning-submit-blocker-link:hover {
+  color: var(--color-accent-hover);
+}
+
+.provisioning-submit-blocker-link:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+/* Offline, on the linked path. Now carries the way OUT as well as the reason the
+ * way in is shut, so the warning text is its own block and the button sits
+ * beneath it rather than inline against the sentence. */
+.provisioning-status-warn-text {
+  margin: 0 0 var(--space-2) 0;
+}
+
+/* The currency/timezone disclosure, and the version/IP footer.
+ *
+ * Both sit at the bottom of the card and both are the quietest text on it: a
+ * merchant should see them without the card competing for the eye. The locale
+ * note is a real fact they may need to check, so it is muted rather than hidden;
+ * the version line matches the mobile setup surfaces' .telemetryFooter. */
+.provisioning-locale-note {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--color-fg-secondary);
+  text-align: center;
+}
+
+.provisioning-footer {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--color-fg-muted);
+  text-align: center;
+  user-select: none;
+}
+
 /* ── Progress rail ──────────────────────────────────────────────────
  * The card is 1423px tall in a 1366px tablet viewport (measured, Playwright),
  * so the submit button and the last two fields begin below the fold. The rail is

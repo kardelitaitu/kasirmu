@@ -39,7 +39,6 @@ fn issue_gift_card_creates_card_and_transaction() {
     let result = store(&conn)
         .issue_gift_card(IssueGiftCardInput {
             card_number: "GC-1001".into(),
-            pin: None,
             initial_amount_minor: 50000,
             currency: "IDR".into(),
             issued_to: Some("Alice".into()),
@@ -62,7 +61,6 @@ fn issue_gift_card_with_zero_amount_fails() {
     let err = store(&conn)
         .issue_gift_card(IssueGiftCardInput {
             card_number: "GC-1002".into(),
-            pin: None,
             initial_amount_minor: 0,
             currency: "IDR".into(),
             issued_to: None,
@@ -86,7 +84,6 @@ fn get_gift_card_by_card_number() {
     store(&conn)
         .issue_gift_card(IssueGiftCardInput {
             card_number: "GC-2001".into(),
-            pin: None,
             initial_amount_minor: 100000,
             currency: "IDR".into(),
             issued_to: None,
@@ -113,7 +110,6 @@ fn get_gift_card_balance_returns_tuple() {
     store(&conn)
         .issue_gift_card(IssueGiftCardInput {
             card_number: "GC-3001".into(),
-            pin: None,
             initial_amount_minor: 75000,
             currency: "IDR".into(),
             issued_to: Some("Bob".into()),
@@ -138,7 +134,6 @@ fn redeem_gift_card_deducts_balance() {
     store(&conn)
         .issue_gift_card(IssueGiftCardInput {
             card_number: "GC-4001".into(),
-            pin: None,
             initial_amount_minor: 50000,
             currency: "IDR".into(),
             issued_to: None,
@@ -169,7 +164,6 @@ fn redeem_gift_card_is_idempotent() {
     store(&conn)
         .issue_gift_card(IssueGiftCardInput {
             card_number: "GC-4002".into(),
-            pin: None,
             initial_amount_minor: 50000,
             currency: "IDR".into(),
             issued_to: None,
@@ -201,7 +195,6 @@ fn redeem_insufficient_balance_fails() {
     store(&conn)
         .issue_gift_card(IssueGiftCardInput {
             card_number: "GC-5001".into(),
-            pin: None,
             initial_amount_minor: 5000,
             currency: "IDR".into(),
             issued_to: None,
@@ -239,7 +232,6 @@ fn redeem_atomic_decrement_keeps_ledger_in_sync() {
     store(&conn)
         .issue_gift_card(IssueGiftCardInput {
             card_number: "GC-5002".into(),
-            pin: None,
             initial_amount_minor: 30000,
             currency: "IDR".into(),
             issued_to: None,
@@ -287,7 +279,6 @@ fn top_up_increases_balance() {
     store(&conn)
         .issue_gift_card(IssueGiftCardInput {
             card_number: "GC-6001".into(),
-            pin: None,
             initial_amount_minor: 10000,
             currency: "IDR".into(),
             issued_to: None,
@@ -319,7 +310,6 @@ fn freeze_and_unfreeze() {
     store(&conn)
         .issue_gift_card(IssueGiftCardInput {
             card_number: "GC-7001".into(),
-            pin: None,
             initial_amount_minor: 50000,
             currency: "IDR".into(),
             issued_to: None,
@@ -342,7 +332,6 @@ fn list_gift_cards_with_filters() {
     store(&conn)
         .issue_gift_card(IssueGiftCardInput {
             card_number: "GC-L1".into(),
-            pin: None,
             initial_amount_minor: 10000,
             currency: "IDR".into(),
             issued_to: Some("Alice".into()),
@@ -353,7 +342,6 @@ fn list_gift_cards_with_filters() {
     store(&conn)
         .issue_gift_card(IssueGiftCardInput {
             card_number: "GC-L2".into(),
-            pin: None,
             initial_amount_minor: 20000,
             currency: "IDR".into(),
             issued_to: Some("Bob".into()),
@@ -384,7 +372,6 @@ fn redeem_on_frozen_card_fails() {
     store(&conn)
         .issue_gift_card(IssueGiftCardInput {
             card_number: "GC-8001".into(),
-            pin: None,
             initial_amount_minor: 50000,
             currency: "IDR".into(),
             issued_to: None,
@@ -421,7 +408,6 @@ fn issue_gift_card_with_empty_card_number_fails() {
     let err = store(&conn)
         .issue_gift_card(IssueGiftCardInput {
             card_number: "  ".into(),
-            pin: None,
             initial_amount_minor: 10000,
             currency: "IDR".into(),
             issued_to: None,
@@ -445,7 +431,6 @@ fn redeem_gift_card_zero_amount_fails() {
     store(&conn)
         .issue_gift_card(IssueGiftCardInput {
             card_number: "GC-9001".into(),
-            pin: None,
             initial_amount_minor: 50000,
             currency: "IDR".into(),
             issued_to: None,
@@ -507,7 +492,6 @@ fn unfreeze_card_not_frozen_fails() {
     store(&conn)
         .issue_gift_card(IssueGiftCardInput {
             card_number: "GC-10001".into(),
-            pin: None,
             initial_amount_minor: 10000,
             currency: "IDR".into(),
             issued_to: None,
@@ -532,7 +516,6 @@ fn redeem_exhausts_balance_auto_redeemed() {
     store(&conn)
         .issue_gift_card(IssueGiftCardInput {
             card_number: "GC-11001".into(),
-            pin: None,
             initial_amount_minor: 5000,
             currency: "IDR".into(),
             issued_to: None,
@@ -562,7 +545,6 @@ fn notes_format_major_units_via_card_currency() {
     store(&conn)
         .issue_gift_card(IssueGiftCardInput {
             card_number: "GC-12001".into(),
-            pin: None,
             initial_amount_minor: 50000,
             currency: "USD".into(),
             issued_to: None,
@@ -611,7 +593,6 @@ fn notes_keep_raw_minor_for_idr() {
     store(&conn)
         .issue_gift_card(IssueGiftCardInput {
             card_number: "GC-12002".into(),
-            pin: None,
             initial_amount_minor: 50000,
             currency: "IDR".into(),
             issued_to: None,
@@ -640,7 +621,6 @@ fn notes_render_kwd_three_decimals() {
     store(&conn)
         .issue_gift_card(IssueGiftCardInput {
             card_number: "GC-12003".into(),
-            pin: None,
             initial_amount_minor: 500,
             currency: "KWD".into(),
             issued_to: None,
@@ -691,7 +671,6 @@ fn seed_card(conn: &Connection, card_number: &str) {
     store(conn)
         .issue_gift_card(IssueGiftCardInput {
             card_number: card_number.into(),
-            pin: None,
             initial_amount_minor: 50000,
             currency: "IDR".into(),
             issued_to: None,
@@ -906,4 +885,128 @@ fn unfreeze_gift_card_race_cannot_overwrite_a_competing_transition() {
 
     drop(conn_a);
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// The idempotency read must tell "no prior redemption" apart from a read that
+/// FAILED. `redeem_gift_card` used `if let Ok(txn) = existing`, so an
+/// undecodable prior row was read as "no prior redemption" and the function
+/// redeemed a SECOND time — a fail-open on the money path. Every loyalty
+/// idempotency lookup (`db/loyalty.rs` `fetch_earn_txn` and its siblings)
+/// matches `QueryReturnedNoRows` and propagates every other error; this was
+/// the one that disagreed.
+///
+/// The partial unique index `uq_gift_card_redeem_sale` (migration
+/// 20260901) normally catches the second INSERT and rolls the transaction
+/// back — which is why the defect is invisible today. This test drops that
+/// index so the APPLICATION-layer guard is the only thing standing: with the
+/// guard broken, the card is debited twice and a second ledger row is
+/// written. It pins that the application guard, not the index added later,
+/// is what makes a redemption replay safe.
+#[test]
+fn redeem_refuses_when_the_idempotency_read_errors_instead_of_double_redeeming() {
+    let conn = fresh();
+    seed_user(&conn, "staff-1");
+    store(&conn)
+        .issue_gift_card(IssueGiftCardInput {
+            card_number: "GC-ERR-1".into(),
+            initial_amount_minor: 50000,
+            currency: "IDR".into(),
+            issued_to: None,
+            created_by: "staff-1".into(),
+            expiry_date: None,
+        })
+        .unwrap();
+
+    conn.execute(
+        "INSERT INTO sales (id, total_minor, currency, line_count, status, created_at, updated_at, subtotal_minor, tax_total_minor)
+         VALUES ('sale-err-1', 10000, 'IDR', 0, 'completed', '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z', 10000, 0)",
+        [],
+    )
+    .unwrap();
+
+    // A prior redemption exists for this card and sale, but its `amount_minor`
+    // cannot decode as an integer, so the idempotency mapper errors.
+    let card_id: String = conn
+        .query_row(
+            "SELECT id FROM gift_cards WHERE card_number = 'GC-ERR-1'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    conn.execute(
+        "INSERT INTO gift_card_transactions
+             (id, gift_card_id, sale_id, txn_type, amount_minor, balance_after_minor, created_at)
+         VALUES ('red-corrupt', ?1, 'sale-err-1', 'redeem', x'deadbeef', 40000, '2025-01-01T00:00:00.000Z')",
+        params![card_id],
+    )
+    .unwrap();
+
+    // Remove the DB-level backstop so the application guard is the only
+    // protection against a second debit.
+    conn.execute_batch("DROP INDEX IF EXISTS uq_gift_card_redeem_sale;")
+        .unwrap();
+
+    // RED: the failed read was taken for "no prior redemption", so the redemption ran a second
+    // time. GREEN: the read failure propagates — the `if let` leaves the block untouched on
+    // `Err`, which is the whole assertion.
+    if let Ok(r) = store(&conn).redeem_gift_card("GC-ERR-1", 10000, "sale-err-1") {
+        panic!(
+            "unreadable idempotency row was read as absence and re-redeemed: {}",
+            r.transaction.id
+        );
+    }
+
+    let balance: i64 = conn
+        .query_row(
+            "SELECT current_balance_minor FROM gift_cards WHERE card_number = 'GC-ERR-1'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        balance, 50000,
+        "a failed idempotency read must not debit the card"
+    );
+
+    let redeems: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM gift_card_transactions
+             WHERE sale_id = 'sale-err-1' AND txn_type = 'redeem'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(redeems, 1, "no second redemption row may be written");
+}
+
+/// The documented absence path survives the fix: a genuinely absent prior
+/// redemption is not an error, so the first redemption still succeeds and
+/// debits exactly once.
+#[test]
+fn redeem_still_proceeds_when_no_prior_redemption_exists() {
+    let conn = fresh();
+    seed_user(&conn, "staff-1");
+    store(&conn)
+        .issue_gift_card(IssueGiftCardInput {
+            card_number: "GC-OK-1".into(),
+            initial_amount_minor: 50000,
+            currency: "IDR".into(),
+            issued_to: None,
+            created_by: "staff-1".into(),
+            expiry_date: None,
+        })
+        .unwrap();
+
+    conn.execute(
+        "INSERT INTO sales (id, total_minor, currency, line_count, status, created_at, updated_at, subtotal_minor, tax_total_minor)
+         VALUES ('sale-ok-1', 10000, 'IDR', 0, 'completed', '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z', 10000, 0)",
+        [],
+    )
+    .unwrap();
+
+    let result = store(&conn)
+        .redeem_gift_card("GC-OK-1", 10000, "sale-ok-1")
+        .expect("a genuinely absent prior redemption must not be an error");
+    assert_eq!(result.card.current_balance_minor, 40000);
+    assert_eq!(result.transaction.txn_type, "redeem");
 }

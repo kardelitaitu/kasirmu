@@ -43,7 +43,7 @@ fn sale(total: i64, lines: Vec<SaleLine>) -> Sale {
         id: "sale-1".into(),
         status: SaleStatus::Pending,
         total: money(total),
-        line_count: lines.len() as i64,
+        line_count: i64::try_from(lines.len()).expect("fixture count fits i64"),
         currency: idr(),
         payment_method: None,
         tendered_minor: None,

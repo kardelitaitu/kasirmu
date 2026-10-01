@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/wrangler-deploy.sh — Build + deploy the OZ-POS website to Cloudflare Workers.
+# scripts/wrangler-deploy.sh — Build + deploy the kasir.mu website to Cloudflare Workers.
 #
 # Usage:
 #   bash scripts/wrangler-deploy.sh [--message "My deploy note"] [--tag v1.2.3]
@@ -51,7 +51,7 @@ GIT_BRANCH="$(git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || ech
 DEPLOY_MESSAGE="${DEPLOY_MESSAGE:-"Coding Agent — ${GIT_SHA} (${GIT_BRANCH})"}"
 DEPLOY_TAG="${DEPLOY_TAG:-}"
 
-echo "🚀  OZ-POS Website Deploy"
+echo "🚀  kasir.mu Website Deploy"
 echo "    Message : ${DEPLOY_MESSAGE}"
 [[ -n "$DEPLOY_TAG" ]] && echo "    Tag     : ${DEPLOY_TAG}"
 echo "    Account : ${CLOUDFLARE_ACCOUNT_ID}"

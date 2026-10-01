@@ -55,9 +55,10 @@ impl DbPool {
         Self::from_config_with_retries(config, 5).await
     }
 
-    /// Like [`from_config`] but with a caller-chosen PG retry budget.
-    /// Production uses the default (5) via [`from_config`]; tests asserting a
-    /// connection failure on a dead port pass `1` to skip the backoff sleeps.
+    /// Like [`Self::from_config`] but with a caller-chosen PG retry budget.
+    /// Production uses the default (5) via [`Self::from_config`]; tests
+    /// asserting a connection failure on a dead port pass `1` to skip the
+    /// backoff sleeps.
     pub(crate) async fn from_config_with_retries(
         config: &CloudServerConfig,
         max_attempts: u32,
@@ -128,6 +129,16 @@ impl DbPool {
                  path such as /data/kasir.db"
             )));
         }
+        // rusqlite will not create a missing parent, so a fresh clone with no
+        // var/ would fail to open the database at all. Created here rather than
+        // in config so that reading the config stays side-effect free.
+        if let Some(parent) = std::path::Path::new(path).parent()
+            && !parent.as_os_str().is_empty()
+        {
+            std::fs::create_dir_all(parent).map_err(|e| {
+                DbError::Config(format!("cannot create database directory {parent:?}: {e}"))
+            })?;
+        }
         let mut conn = rusqlite::Connection::open(path)?;
         conn.pragma_update(None, "foreign_keys", "ON")?;
         conn.pragma_update(None, "journal_mode", "WAL")?;
@@ -175,7 +186,7 @@ impl DbPool {
         Self::connect_postgres_with_retries(url, require_tls, pool_size, apply_schema, 5).await
     }
 
-    /// Like [`connect_postgres`] but with a caller-chosen retry budget.
+    /// Like [`Self::connect_postgres`] but with a caller-chosen retry budget.
     /// Tests that assert a connection failure should pass `max_attempts: 1`
     /// to avoid the 30+ seconds of backoff sleeps the production retry loop
     /// burns on a dead port.

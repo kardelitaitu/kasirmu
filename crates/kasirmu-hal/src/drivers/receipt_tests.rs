@@ -30,6 +30,7 @@ fn sample_receipt() -> SalesReceipt {
                 unit_price: usd_money(350),
                 total_price: usd_money(350),
                 tax_amount: Some(usd_money(35)),
+                note: None,
             },
             LineItem {
                 name: "Bread White".into(),
@@ -37,6 +38,7 @@ fn sample_receipt() -> SalesReceipt {
                 unit_price: usd_money(200),
                 total_price: usd_money(400),
                 tax_amount: Some(usd_money(40)),
+                note: None,
             },
             LineItem {
                 name: "Eggs (dozen)".into(),
@@ -44,6 +46,7 @@ fn sample_receipt() -> SalesReceipt {
                 unit_price: usd_money(450),
                 total_price: usd_money(450),
                 tax_amount: Some(usd_money(45)),
+                note: None,
             },
         ],
         subtotal: usd_money(1200),
@@ -54,6 +57,7 @@ fn sample_receipt() -> SalesReceipt {
             amount: usd_money(2000),
             change: Some(usd_money(680)),
         }],
+        faktur_pajak: None,
     }
 }
 
@@ -310,8 +314,7 @@ fn sales_receipt_contains_currency_when_enabled() {
     let text = String::from_utf8_lossy(&data);
     assert!(
         text.contains("$13.20"),
-        "receipt should show $ prefix: {:?}",
-        text
+        "receipt should show $ prefix: {text:?}"
     );
 }
 
@@ -351,6 +354,7 @@ fn sales_receipt_prints_idr_without_trailing_decimal() {
             unit_price: money(4_450_000),
             total_price: money(4_450_000),
             tax_amount: None,
+            note: None,
         }],
         subtotal: money(4_450_000),
         tax: None,
@@ -360,6 +364,7 @@ fn sales_receipt_prints_idr_without_trailing_decimal() {
             amount: money(4_450_000),
             change: None,
         }],
+        faktur_pajak: None,
     };
 
     let data = format_sales_receipt(&r, &default_config());
@@ -670,4 +675,28 @@ fn right_line_ends_the_value_exactly_on_the_margin() {
 fn right_line_overflows_gracefully_when_nothing_fits() {
     let line = right_line("A very long label", "123456", 10);
     assert_eq!(line, "A very long label 123456");
+}
+
+#[test]
+fn sales_receipt_prints_faktur_pajak_when_present() {
+    let mut r = sample_receipt();
+    r.faktur_pajak = Some("01002600000000123".into());
+    let data = format_sales_receipt(&r, &default_config());
+    let text = String::from_utf8_lossy(&data);
+    assert!(
+        text.contains("Faktur Pajak: 01002600000000123"),
+        "receipt must print Faktur Pajak line: {text}"
+    );
+}
+
+#[test]
+fn prints_menu_order_note_under_item() {
+    let mut r = sample_receipt();
+    r.items[0].note = Some("pedas".into());
+    let data = format_sales_receipt(&r, &default_config());
+    let text = String::from_utf8_lossy(&data);
+    assert!(
+        text.contains("  pedas"),
+        "receipt must print menu order note under item: {text}"
+    );
 }

@@ -4,7 +4,7 @@
 //!
 //! The charge returns when the QR EXISTS (`status: "qr_issued"`, PAY-6 two
 //! phase contract); settlement arrives asynchronously via the cloud webhook
-//! and is observed through [`qris_auto_status_scoped`].
+//! and is observed through [`qris_auto_status_scoped`](kasirmu_bridge::qris_auto::qris_auto_status_scoped).
 
 use serde::Deserialize;
 use tauri::State;

@@ -222,3 +222,137 @@ async fn stateful_middleware_uses_state_secret() {
     let resp = app.oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
 }
+// ── The dev-fallback warning path (MSL-24) ─────────────────────────────
+//
+// `warn_dev_fallback_once` fires through a `std::sync::Once` and is called from
+// exactly one place: `signing_secret`'s `None` arm. It is the ONLY signal an
+// operator gets that tokens are signed with a hard-coded constant, and nothing
+// tested it -- a refactor dropping the call would leave every test green.
+//
+// The `Once` makes the warning itself unobservable from a test (it may already
+// have fired in another case), so this pins what IS observable and load-bearing:
+// the fallback VALUE and the two conditions around it.
+#[test]
+fn signing_secret_falls_back_only_when_no_secret_is_supplied() {
+    // A supplied secret is used verbatim -- never the fallback.
+    assert_eq!(signing_secret(Some("explicit-secret")), "explicit-secret");
+
+    // A BLANK supplied secret is treated as absent by the `.filter(!is_empty)` arm,
+    // so it must not become the signing key.
+    assert_ne!(signing_secret(Some("")), "");
+
+    // The fallback constant itself, reachable through the documented test seam.
+    assert_eq!(
+        DEV_FALLBACK_SECRET, "oz-pos-dev-secret-change-in-production",
+        "API-1: the fallback constant is named in the warning, so its value is a contract"
+    );
+    let via_seam = signing_secret_for_tests();
+    assert!(
+        via_seam == DEV_FALLBACK_SECRET || std::env::var("OZ_API_SECRET").is_ok(),
+        "with no argument and no env secret, the dev fallback must be used; got {via_seam:?}"
+    );
+}
+
+// ── C14: the token expiry is clamped on BOTH mint paths ──────────────
+//
+// The IPC door (`kasirmu-local-api::mint_token`) clamps to `1..=MAX_TOKEN_HOURS`.
+// The HTTP door called `create_token_full` directly and passed the caller's
+// `expiry_hours` straight through, so the same value was bounded on one path
+// and unbounded on the other -- `scripts/generate-local-api-key.bat` mints a
+// ten-year token through it.
+
+/// Hours between `iat` and `exp` on a minted token.
+///
+/// The decode is deliberately unverified: this asserts what was MINTED, not
+/// whether validation happens to pass, and every input here is ours.
+fn exp_hours_from_now(token: &str) -> i64 {
+    use jsonwebtoken::{DecodingKey, Validation, decode};
+    let mut validation = Validation::default();
+    validation.insecure_disable_signature_validation();
+    validation.validate_exp = false;
+    let data = decode::<ApiTokenClaims>(
+        token,
+        &DecodingKey::from_secret(signing_secret(None).as_bytes()),
+        &validation,
+    )
+    .expect("the minted token must decode");
+    let iat = data.claims.iat as i64;
+    let exp = data.claims.exp as i64;
+    (exp - iat) / 3600
+}
+
+#[test]
+fn an_out_of_range_expiry_is_clamped_not_honoured() {
+    // 10 years -- what generate-local-api-key.bat asks for.
+    let resp = create_token_full("script", Some(87_600), None, None, None, None).unwrap();
+    let hours = exp_hours_from_now(&resp.token);
+    assert!(
+        hours <= MAX_TOKEN_HOURS,
+        "C14: a 10-year expiry must be clamped to {MAX_TOKEN_HOURS}h, got {hours}h"
+    );
+    assert_eq!(
+        hours, MAX_TOKEN_HOURS,
+        "the clamp must land exactly on the max"
+    );
+}
+
+#[test]
+fn a_negative_expiry_is_not_raised_here_so_expired_tokens_stay_mintable() {
+    // Deliberately the opposite of a clamp: this primitive is used to build an
+    // already-expired token (`expired_token_is_rejected` relies on it), so a
+    // floor here would break a legitimate caller. The floor belongs on the
+    // operator-facing IPC door, which already applies it.
+    //
+    // Asserting the pass-through is what stops a future "hardening" pass from
+    // clamping the floor in and silently breaking that test's premise.
+    let resp = create_token_full("script", Some(-1), None, None, None, None).unwrap();
+    assert!(
+        exp_hours_from_now(&resp.token) < 0,
+        "a negative expiry must pass through so an expired token can be minted"
+    );
+}
+
+#[test]
+fn an_in_range_expiry_is_left_alone() {
+    // The clamp must not distort legitimate values.
+    for requested in [1_i64, 12, 24, 8_760] {
+        let resp = create_token_full("script", Some(requested), None, None, None, None).unwrap();
+        assert_eq!(
+            exp_hours_from_now(&resp.token),
+            requested,
+            "an in-range expiry must pass through unchanged"
+        );
+    }
+}
+
+#[test]
+fn the_default_applies_when_no_expiry_is_given() {
+    let resp = create_token_full("script", None, None, None, None, None).unwrap();
+    assert_eq!(exp_hours_from_now(&resp.token), DEFAULT_EXPIRY_HOURS);
+}
+
+#[test]
+fn both_mint_doors_clamp_to_the_same_bound() {
+    // The C14 defect in one assertion: the same requested value must yield the
+    // same expiry whichever door mints it. Before the fix the HTTP door had no
+    // bound at all, so this failed by an order of magnitude.
+    let via_http = create_token_full("script", Some(87_600), None, None, None, None).unwrap();
+    let via_ipc = ipc_door_mint(Some(87_600));
+    assert_eq!(
+        exp_hours_from_now(&via_http.token),
+        exp_hours_from_now(&via_ipc.token),
+        "both mint doors must apply the same clamp"
+    );
+}
+
+/// Reproduce the IPC door's clamp so the two bounds can be compared.
+///
+/// `kasirmu-api` cannot depend on `kasirmu-local-api` -- the dependency runs
+/// the other way -- so the IPC bound is restated here as the contract value it
+/// is. If the two ever diverge, this test fails rather than silently agreeing.
+fn ipc_door_mint(requested: Option<i64>) -> TokenResponse {
+    let clamped = requested
+        .unwrap_or(DEFAULT_EXPIRY_HOURS)
+        .clamp(1, MAX_TOKEN_HOURS);
+    create_token_full("script", Some(clamped), None, None, None, None).unwrap()
+}

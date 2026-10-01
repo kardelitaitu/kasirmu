@@ -1,3 +1,4 @@
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file, and it is the largest document this campaign has audited: 1,647 lines and 88 KB, with no audit stamp, no footer and no marker of any kind. It is working notes on the setup and login/signup surfaces — explicitly a working document rather than a specification, which is the right self-description and the right audit scope. · THE SCOPE IS DELIBERATELY STRUCTURAL, and the reason is worth stating rather than hiding. A 1,647-line working-notes file about a flow that has since been substantially rewritten is not a document whose content can be re-derived; re-deriving it would mean redoing the research. What CAN be established, and is what this pass establishes, is whether its subject still exists in the shape it describes. It does: the provisioning surface is live at `ui/src/features/setup/ProvisioningFlow.tsx`, the setup gate remains in the app shell, and the sibling audits in this same directory record the wizard retirement with the surviving assets relocated rather than dropped. So this is a record of a design process that ran, not a claim about the current build — and reading it as the latter would be the error. · THE ONE THING A READER SHOULD BE CORRECTED ON, and it is a path rather than a design: the boot gate and shell this document locates are at `ui/src/app/AppShell.tsx`, not the `ui/src/frontend/shell/AppShell.tsx` the pre-reorganisation tree used. That relocation is the third independent sighting of the `frontend/` to `app/` move in this campaign — the ThemeProvider in round 16, the UI registries in round 15, and now the application shell. Three separate documents locating the shell at the old path is the pattern; a reader following any of them lands in a directory that no longer exists. · NOT re-measured, and the limit is the document's own nature: working notes accumulate reasoning, dead ends and discarded options whose value is in the record of having considered them. Auditing line by line would either confirm prose or manufacture findings about a design process rather than a design. · No stamp existed; this is the first, and the footer is new rather than bumped. -->
 # Setup wizard + login/signup — state-of-the-art working notes
 
 **Goal:** "our app should have a state-of-the-art setup wizard and login/signup system".
@@ -1645,3 +1646,181 @@ so the merchant cannot get past activation. Re-running this on hardware after a 
 outstanding step.
 
 **No code commits.** Build artifact at `apps/mobile-tauri/gen/android/app/build/outputs/apk/universal/release/`.
+
+---
+
+## Round 35 — the stale deploy is history: the pairing routes are live
+
+Round 34 ended with a production blocker and a deliberately deferred remedy. Re-measured on
+**2026-09-30**, the blocker is gone — someone shipped it in the intervening days. The three 404s
+in the Round 34 table are now the routes working, and the finding above is kept verbatim as the
+dated record it is.
+
+### What the live host answers now
+
+```
+POST https://license.kasir.mu/api/v1/pairing/start
+  { "machine_id": "final-probe", "device_name": "probe" }
+  → 200
+  {"code":"FNR6-3B5W","expires_at":"2026-09-30T21:25:35Z",
+   "poll_token":"2a3c6890…","qr_url":"https://kasir.mu/pair?code=FNR6-3B5W"}
+
+POST https://license.kasir.mu/api/v1/pairing/poll   { "poll_token": "2a3c6890…" }
+  → 200  {"status":"pending"}
+```
+
+The 400s the empty-body probes return are the handler's own validation, not absence of a route —
+`handlePairingStart` answers `{"error":"machine_id is required"}` at `pairing.go:186` and
+`{"error":"invalid JSON body"}` at `:182`, both on a body it received and parsed. A missing
+route answers 404 for every method and every body, which is exactly what Round 34 measured and
+what the host no longer does. Three separate sessions were minted during this pass, each with a
+distinct 8-character Crockford code (`DR40-HMWN`, `DQED-3VYQ`, `FNR6-3B5W`), so this is a live
+code path and not a cached first response.
+
+### The one thing that is still odd, and is not a defect
+
+`GET /api/v1/health` reports `{"status":"ok","version":"0.0.39"}` while the repository is on
+`0.0.40`, and the pairing routes that only exist on this branch answer anyway. Round 34 read that
+`version` field as evidence of a stale deploy; it is not. The host runs the **Rust cloud-server**,
+not the Go licence server: `GET /metrics` serves `webhook_5xx_total`, which is a cloud-server
+counter asserted in `apps/cloud-server/src/main_tests.rs:236` and present in no Go handler.
+`/api/health` returns the cloud server's extended shape (`db`, `rls_posture`,
+`portable_derivation_uses_master_key`) where `apps/license-server/health.go:47-62` returns a
+different one entirely (`smtp`, `admin`, `paddle`, `midtrans`, `market_prices`, `rsa`, `discord`).
+Both services ship a `version` field drawn from the workspace version, so `0.0.39` is the tag the
+running container was cut at — and the pairing routes prove it was cut from a commit that HAS
+them. The field is a build stamp, not a route inventory; it cannot answer "is this deploy current".
+
+### Honest scope of this round
+
+- **Proved from outside:** the three pairing routes exist, parse a body, validate it, mint a code,
+  and poll to `pending` on the live host.
+- **Not proved:** the claim leg. `POST /api/v1/pairing/claim` answers
+  `401 {"error":"missing or invalid session token"}`, which is a web-session requirement
+  (`pairing.go:253` also admits an admin key), and completing a claim needs a signed-in account
+  this session does not have.
+- **Not possible at all today:** the on-device re-run Round 34 asked for. `adb devices` reports
+  an empty device list on this host, so there is no Redmi Pad SE to re-provision. The hardware
+  verification of the activation screen past its first server call remains outstanding, and the
+  Round 34 APK on the device is from before the deploy.
+
+So the blocker a merchant would have hit is gone, but the thing Round 34 actually wanted — a
+terminal completing first-run against the live server on real hardware — is still unmeasured.
+
+> **Round 35 ·** a live re-measure of round 34's deferred deploy.
+
+---
+
+## Round 36 — the dead ends the audit could not see, and what they had in common
+
+Rounds 1-35 audited *components*. This round followed the complaints instead, and every
+defect it found was invisible to a component test — which is the point, not a caveat.
+
+### 1. Five fixes to the first-run card itself (`bf5db7b94`)
+
+The live `ProvisioningFlow` had six independent reasons to refuse submit and named none of
+them; a card taller than its viewport had no version or region disclosure; offline said why
+linking was shut and offered no way out; an expired pairing code announced its own death
+only after the merchant came back to a QR that no longer scanned; and the tablet opened on
+the one linking route a merchant with a single terminal cannot use. All five are in
+`bf5db7b94`, with 11 new tests. Fix 1's mechanism is the one worth keeping: the blockers
+are derived from the *same values* as `canSubmit`, so the explainer cannot disagree with
+the gate, and four tests pin that agreement at every step.
+
+### 2. A dead button on the tablet — found by RUNNING the suite, not reading it
+
+`ProvisioningFlow`'s "Set up with a phone instead" button navigates with
+`window.location.hash = '#/mobile-setup'`. The desktop shell listens for `hashchange`
+(`AppShell.tsx:350-395`); the tablet shell never did, so it kept `currentRoute` at `'pos'`
+and re-rendered the same form. Measured, not inferred: the hash went `''` →
+`#/mobile-setup` and the rendered `[data-testid]` list was byte-identical before and after.
+Since `43689705f` introduced the button, the merchant pressed it and nothing happened — on
+the only device it was written for. Fixed in `a26797b53`.
+
+### 3. A test that pinned the bug
+
+`TabletAppShellFeatureGateRoute.test.tsx` asserted "ignores `location.hash` entirely — the
+desktop direct-entry vector does not exist here". That was a *true reading of the code*,
+and it was the bug. The header's "NO HASH ROUTING … zero hits" bullet now describes the
+listener that was added, and the case is inverted rather than deleted (the file's own
+rule: *invert, never delete*). The feature gate is still the subject — now reached
+through a route source that exists on this shell.
+
+### 4. One defect class, three surfaces, one shape
+
+The fixed memo banner is `pointer-events: none`, but `.memo-banner-open` re-enables it
+(`MemoBanner.css:247-266`) — the bubble's whole body *is* that one button. So only its
+padding was click-through, and each bubble the body was hit-testable over whatever it
+overlapped. Three surfaces, all measured with `elementFromPoint` at the target's centre:
+
+| Surface | Occluded | Hit test returned |
+|---|---|---|
+| Workspace picker (`WorkspaceHome.css`) | the Settings tool card — the ONLY route into the admin workspace | `P.memo-banner-text` |
+| Settings sidebar (`SettingsNavTree.css`) | the "System Diagnostics" nav row | `STRONG.memo-banner-title` |
+| Staff roster | already banded (`StaffManagementScreen.css`) | — |
+
+Both new bands reserve the stack's height in the region's own scroller — **not** another
+`--memo-bottom-inset` override, which every existing site rejects because the
+occluder is a page row, not a pinned footer.
+
+**CORRECTION (later the same day) — the causal claim this section first made is withdrawn.**
+It originally read "Each was a 90-second Playwright refusal". Re-measured in isolation,
+`admin-workflows.spec.ts:95` — the spec the settings failure came from — **passes with and
+without the band**. What was measured is real: at the default scroll position two of the
+fourteen nav rows sat under the bubble (`elementFromPoint` → `STRONG.memo-banner-title`),
+and the band removes that. But Playwright's click retries past an intercept, so the spec
+only ever failed under 4-worker load, and that failure is not reproduced without the
+band either. So the band is a **measured removal of a real occlusion**, not a demonstrated
+repair of a failing test. The full suite did go 7 failed → 0 failed, but that is equally
+consistent with load variance and **must not be cited as proof**.
+
+**One measurement killed the obvious fix.** The settings band was first written on
+`.settings-sidebar`; it computed to 236px of padding and moved nothing, because that
+element is `overflow: hidden` with `scrollHeight == clientHeight` (676 == 676) — not a
+scroll container. `.settings-sidebar-nav` is `flex: 1; overflow-y: auto`, and the band
+belongs there; the region now measures 791 > 623 and the row is reachable.
+
+**Not proven closed, and not gateable as measured.** A whole-app interception census
+timed out partway through the route list, so warehouse/products/locations were never
+reached. Worse, four attempts to turn the census into a gate all failed the only test that
+matters — *does it fail without the fix?* Screen-wide sampling with no scroll is too strict
+(it calls every below-the-fold control occluded); per-element with Playwright's minimum
+scroll is too strict even WITH the band; per-element with `block: 'center'` is vacuous (it
+passes with the band removed); a 3s click timeout is vacuous on the picker. **No walker was
+committed.** The measurement is the finding; the gate would have been a false assurance,
+which is the specific thing this audit keeps warning about.
+
+### 5. Four stale specs, each for a different reason
+
+`staff-trash` asserted `staff-delete-staff-5` on the roster, where it cannot exist — the
+controls moved into the detail drawer in `d52298f0f` (2026-09-26) and the spec predates it
+(`23d629649`, 2026-09-23). `adr22` expected a staff session to be *redirected* off
+`#/settings`; the shell refuses it **in place**, naming the missing registry key
+(`a25f31fbb`), and asserting the denial is the stronger claim — "the sidebar is absent"
+is also true of a blank page. Both KDS specs read `.kds-tab-count` while the loading
+skeleton was still up: `initialLoading` gates only `KdsMainContent`, so the header paints
+with `orders` still `[]` and the count is `filteredOrders.length` — 0 for exactly that
+window.
+
+### 6. The audit's last open recommendation, closed (`293f6ed0f`)
+
+Recommendation 2 said to purge the `setup-*` namespace down to what `ProvisioningFlow`
+reads. Measured: 102 keys, **4 orphans**, all from the retired wizard's account step
+(`setup-account-title` / `-desc` / `-sent` / `-optional`), referenced nowhere in `ui/src`—
+tests included. Removed from both bundles with the reason recorded in place; 98 keys
+remain and every one is referenced. The census now reports zero `setup-*` candidates.
+
+**Why they survived four rounds:** `verify-ftl-orphans.py` gates what a *commit* can be
+held to, and it is **staged-only** — it never ran on the commit that deleted the wizard,
+because that commit staged no locale file. The gate is precise about the two directions it
+does check and says nothing about inherited debt; `--census` is the whole-tree view and is
+advisory by design.
+
+### The method note this round earned
+
+Component audits cannot see a deployment, a hash listener, or an overlay. Three of the
+defects above were found by *running* the thing, and one by asking the browser what it
+would actually receive a click — a question no reading of the source can answer.
+
+> **Round 36 ·** the dead ends the audit could not see.
+> last audited 30-09-26 by DSH

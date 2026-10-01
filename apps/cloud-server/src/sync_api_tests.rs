@@ -920,6 +920,7 @@ async fn snapshot_cache_tenant_isolation() {
 /// The raw-bytes snapshot cache must behave identically against live
 /// PostgreSQL: first request queries + caches, second request is a hit
 /// serving identical JSON with the same content-type.
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 async fn pg_integration_snapshot_cache_roundtrip() {
     let url = std::env::var("OZ_TEST_PG_URL")
@@ -929,7 +930,10 @@ async fn pg_integration_snapshot_cache_roundtrip() {
         Ok(_) => unreachable!("connect_postgres with a postgres:// URL returns Postgres"),
         Err(e) => {
             eprintln!("PG snapshot-cache integration test skipped: {e}");
+            #[cfg(not(feature = "pg-tests"))]
             return;
+            #[cfg(feature = "pg-tests")]
+            panic!("PG test enabled but the resource is unreachable - see the skip message above");
         }
     };
     let tenant = format!("pg-snap-{}", uuid::Uuid::now_v7());
@@ -1819,6 +1823,7 @@ async fn tenant_count_cache_refreshes_after_expiry() {
 /// global aggregate over the whole `offline_queue`, so sharing the dev DB
 /// with parallel PG tests (which write their own rows) makes the count
 /// non-deterministic. The temp DB is process-unique and dropped after.
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 async fn pg_integration_tenant_count_cache() {
     let url = std::env::var("OZ_TEST_PG_URL")
@@ -1829,7 +1834,10 @@ async fn pg_integration_tenant_count_cache() {
         Ok(_) => unreachable!("connect_postgres with a postgres:// URL returns Postgres"),
         Err(e) => {
             eprintln!("PG tenant-count cache integration test skipped: {e}");
+            #[cfg(not(feature = "pg-tests"))]
             return;
+            #[cfg(feature = "pg-tests")]
+            panic!("PG test enabled but the resource is unreachable - see the skip message above");
         }
     };
     let admin = admin_pool.get().await.expect("admin client");
@@ -1843,7 +1851,10 @@ async fn pg_integration_tenant_count_cache() {
         .await
     {
         eprintln!("PG tenant-count cache test skipped: cannot CREATE DATABASE ({e})");
+        #[cfg(not(feature = "pg-tests"))]
         return;
+        #[cfg(feature = "pg-tests")]
+        panic!("PG test enabled but the resource is unreachable - see the skip message above");
     }
     let (base, query) = match url.split_once('?') {
         Some((b, q)) => (b, Some(q)),
@@ -1864,7 +1875,10 @@ async fn pg_integration_tenant_count_cache() {
         Ok(_) => unreachable!("connect_postgres with a postgres:// URL returns Postgres"),
         Err(e) => {
             eprintln!("PG tenant-count cache integration test skipped: {e}");
+            #[cfg(not(feature = "pg-tests"))]
             return;
+            #[cfg(feature = "pg-tests")]
+            panic!("PG test enabled but the resource is unreachable - see the skip message above");
         }
     };
     let tenant = format!("pg-cache-{}", uuid::Uuid::now_v7());
@@ -2380,6 +2394,7 @@ async fn rate_limit_burst_allowance() {
     assert_eq!(codes3[0], StatusCode::TOO_MANY_REQUESTS);
 }
 
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 async fn rate_limit_status_endpoint_within_burst_limit() {
     let state = shared_state();
@@ -2417,7 +2432,10 @@ async fn pg_router_with_pool_size(
         Ok(_) => unreachable!("connect_postgres with a postgres:// URL returns Postgres"),
         Err(e) => {
             eprintln!("PG pool-bound integration test skipped: {e}");
+            #[cfg(not(feature = "pg-tests"))]
             return None;
+            #[cfg(feature = "pg-tests")]
+            panic!("PG test enabled but the resource is unreachable - see the skip message above");
         }
     };
     let state = SyncState {
@@ -2436,6 +2454,7 @@ async fn pg_router_with_pool_size(
 /// PG pool (max_size(1), connection held), a real push request must
 /// complete with a 500 within ~5s — NOT hang indefinitely. This is the
 /// doc §7.2 scenario through the full handler → store → pool stack.
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 async fn pg_integration_push_returns_500_when_pool_exhausted() {
     let url = std::env::var("OZ_TEST_PG_URL")
@@ -2472,6 +2491,7 @@ async fn pg_integration_push_returns_500_when_pool_exhausted() {
 /// After the held connection is dropped, the same router must serve
 /// requests again — the pool must not be permanently poisoned by the
 /// timeout path.
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 async fn pg_integration_pool_recovers_after_exhaustion() {
     let url = std::env::var("OZ_TEST_PG_URL")
@@ -2623,20 +2643,118 @@ fn metric_classifier_shares_the_client_predicate() {
         "the hand-written prefix literal must not come back"
     );
 
-    // The PRODUCER side cannot call the constant: both store arms build the
-    // reason with a literal (`format!("duplicate id: {}", item.id)`), and
-    // C50's fence forbids changing them. So pin the two ends by requiring
-    // each producer's source to contain the CONSTANT'S VALUE verbatim:
-    // a reword of `DUPLICATE_ID_REJECTION_PREFIX` fails HERE, naming the
-    // files that must move with it, instead of silently splitting the metric
-    // from the thing it measures.
+    // The PRODUCER side: C50 pinned these by VALUE ("the fence forbids changing
+    // them"), which caught a one-sided reword but could not stop a producer from
+    // re-typing the literal. C50b lifted that fence so every site calls the
+    // constant, which SUBSUMES the value check: a source naming the constant
+    // necessarily contains its value, and one that copies the value without
+    // naming it is caught by `every_duplicate_id_producer_calls_the_shared_constant`.
+    // Kept as the weaker belt-and-braces assertion rather than deleted, because it
+    // still fails loudly and by name if a producer is reverted to a literal.
     for (name, producer) in [
         ("sync_store/sqlite.rs", include_str!("sync_store/sqlite.rs")),
         ("sync_store/pg.rs", include_str!("sync_store/pg.rs")),
+        ("sync_store.rs", include_str!("sync_store.rs")),
     ] {
         assert!(
-            producer.contains(kasirmu_core::sync_client::DUPLICATE_ID_REJECTION_PREFIX),
-            "{name} must format its reason with the shared prefix value; if it was reworded, reword it there too"
+            producer.contains("DUPLICATE_ID_REJECTION_PREFIX")
+                || producer.contains(kasirmu_core::sync_client::DUPLICATE_ID_REJECTION_PREFIX),
+            "{name} must take its prefix from the shared constant, by name or by value; if it was reworded, reword it there too"
         );
     }
+}
+
+/// C50b: the producers must CALL the constant, not merely contain its value.
+///
+/// The pin above is honest about its own limit -- it checks that each producer's
+/// source contains the constant's VALUE verbatim, which catches a reword moving
+/// one side only, but cannot stop a producer from re-typing the literal. C50's
+/// fence forbade changing those files; that fence is now lifted, so this asserts
+/// the stronger property: one constant PRODUCES and CLASSIFIES the reason, so a
+/// change moves both ends by construction rather than by agreement.
+///
+/// Why an `include_str!` assertion and not a behavioural one: the coupling is a
+/// compile-time fact. Two independent literals that happen to be equal today
+/// produce byte-identical reasons at runtime and diverge tomorrow, so no
+/// assertion on the OUTPUT can distinguish the shapes this test must tell apart.
+#[test]
+fn every_duplicate_id_producer_calls_the_shared_constant() {
+    // Every site that builds a duplicate-id reason, by file. `sync_store.rs` was
+    // missed by the original item, which named only the two backend modules --
+    // it holds two more arms of the same shape.
+    for (name, producer) in [
+        ("sync_store/sqlite.rs", include_str!("sync_store/sqlite.rs")),
+        ("sync_store/pg.rs", include_str!("sync_store/pg.rs")),
+        ("sync_store.rs", include_str!("sync_store.rs")),
+    ] {
+        assert!(
+            producer.contains("DUPLICATE_ID_REJECTION_PREFIX"),
+            "{name} must build its reason FROM the shared constant, not a copy of its value"
+        );
+        assert!(
+            !producer.contains("\"duplicate id:\""),
+            "{name} still types the literal; the constant must be the only author of the prefix"
+        );
+    }
+    // And the classifier side, so both halves of C50/C50b are covered by one leg.
+    // Scoped to the FUNCTION, not the file: `sync_api.rs` quotes the old literal in
+    // the doc comment that explains the C50 fix, and a file-wide assertion would
+    // forbid the comment that records why the code changed. The sibling pin below
+    // scopes the same way for the same reason.
+    let api = include_str!("sync_api.rs");
+    let classifier = api
+        .split("fn push_outcome_label(")
+        .nth(1)
+        .expect("push_outcome_label must exist in sync_api.rs");
+    assert!(
+        !classifier.contains("starts_with(\"duplicate id:\")"),
+        "the classifier must not re-type the prefix either"
+    );
+}
+
+// ── Conflict review routes (ADR #43 conflict surface) ─────────────────────
+
+/// `GET /api/sync/conflicts` is registered and tenant-scoped: an empty
+/// tenant yields a well-formed list with count 0. This is the HTTP half of
+/// the conflict surface pinning that the persistence + endpoint pair the
+/// `conflict_resolution.rs` `next:` note used to ask for is actually wired.
+#[tokio::test]
+async fn list_conflicts_route_is_registered_and_empty_by_default() {
+    let app = test_router();
+    let req = authed(
+        axum::http::Method::GET,
+        "/api/sync/conflicts",
+        Some("tenant-a"),
+    );
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = resp.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(json["count"], 0, "a fresh tenant has no flagged conflicts");
+    assert!(
+        json["conflicts"]
+            .as_array()
+            .expect("conflicts is an array")
+            .is_empty(),
+        "the list must be present and empty, not absent"
+    );
+}
+
+/// `POST /api/sync/conflicts/:id/resolve` reports 404 for an id that does
+/// not exist rather than 500 or a silent success. The route must be
+/// registered for the resolve half of the surface to be reachable at all.
+#[tokio::test]
+async fn resolve_conflict_route_reports_404_for_an_unknown_id() {
+    let app = test_router();
+    let req = authed_post(
+        "/api/sync/conflicts/does-not-exist/resolve",
+        r#"{"resolution":"keep-local"}"#,
+        Some("tenant-a"),
+    );
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(
+        resp.status(),
+        StatusCode::NOT_FOUND,
+        "an unknown conflict id is a 404, not a server error"
+    );
 }

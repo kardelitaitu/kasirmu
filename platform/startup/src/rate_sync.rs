@@ -9,6 +9,35 @@ next: none | perf: blocking DB work off the async runtime
 //! A background task that periodically fetches exchange rates from the
 //! Frankfurter public API (`https://api.frankfurter.app`) and stores them
 //! in the `exchange_rates` table using [`modules_currency::repository::CurrencyRepository::upsert_exchange_rate`].
+//!
+//! # Wiring status: started by both shells (2026-09-29)
+//!
+//! **The daemon now has callers.** Before this, `grep -rn init_rate_sync` over
+//! every `*.rs` in the tree returned exactly one hit — its own definition — and
+//! `ui/src` had zero hits for any rate-sync control, so it was unreachable from
+//! both ends: nothing started it and nothing configured it. As of 2026-09-29:
+//!
+//! - **Backend:** each Tauri shell's `setup` closure starts it via
+//!   `platform_startup::spawn_once("rate-sync", …)` → [`init_rate_sync_at`](crate::init_rate_sync_at) with
+//!   the shared `AppState` connection (`apps/desktop-tauri/src/lib.rs`,
+//!   `apps/mobile-tauri/src/lib.rs`). The cloud server deliberately does not:
+//!   rates are a per-store client concern. (The wrapper takes a
+//!   `&Path` and opens its own connection, which is the only call shape
+//!   the shells can build from a `setup` closure.)
+//! - **Frontend:** the currency screen's auto-sync toggle writes
+//!   `rate_sync.enabled`.
+//! - **Cycle order changed with the wiring:** the daemon now TICKS FIRST and
+//!   sleeps after, and re-reads `rate_sync.enabled` + `rate_sync.interval` every
+//!   cycle, so enabling takes effect on the next round (≤ 5 min while disabled)
+//!   instead of never / after a full interval.
+//!
+//! Starting it is still inert until `rate_sync.enabled` is on: the default is
+//! `"0"`, and `run_tick` re-checks the setting before any network call, so an
+//! install that never touches the toggle never fetches anything.
+//!
+//! Retiring rate-sync would still not be a deletion of dead code — it would
+//! take this module, four settings keys, eight typed accessors and roughly
+//! fourteen test functions together.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -79,6 +108,24 @@ struct FrankfurterResponse {
 
 /// Default interval between sync cycles (6 hours).
 const DEFAULT_SYNC_INTERVAL_MINUTES: u64 = 360;
+
+/// Delay between cycles while `rate_sync.enabled` is off.
+///
+/// The daemon runs even when disabled so an operator who flips the toggle in
+/// the UI gets their first sync within minutes — but it polls cheaply: one
+/// settings read, no network call (`run_tick` returns before fetching).
+const DISABLED_POLL_INTERVAL: Duration = Duration::from_secs(5 * 60);
+
+/// Lower clamp for `rate_sync.interval` (minutes).
+///
+/// The value is an operator-editable settings row, so it is untrusted input:
+/// a `0` would turn the loop into a hot fetch loop against a third-party API,
+/// and a negative cannot be parsed. Clamped rather than rejected — a too-small
+/// setting still syncs, just at the floor.
+const MIN_SYNC_INTERVAL_MINUTES: u64 = 5;
+
+/// Upper clamp for `rate_sync.interval` (minutes) — one day.
+const MAX_SYNC_INTERVAL_MINUTES: u64 = 24 * 60;
 
 /// A background task that periodically fetches exchange rates from the
 /// Frankfurter public API and stores them in the database.
@@ -153,18 +200,27 @@ impl RateSyncDaemon {
                 );
                 reqwest::Client::new()
             });
-        let interval = self.interval;
+        let fallback_interval = self.interval;
 
         tokio::spawn(async move {
             let mut rx = rx;
 
             tracing::info!("rate sync daemon started");
 
+            // TICK FIRST, THEN SLEEP — and re-read the cycle delay every round.
+            // The old order slept a full interval before the first tick, so an
+            // install that had just enabled the setting waited six hours (the
+            // default) for its first fetch, and `rate_sync.interval` was read
+            // inside `run_tick` and then discarded. `next_cycle_delay` does the
+            // read now: disabled → the short poll above, enabled → the configured
+            // interval, unreadable → the constructor's interval. Enabling,
+            // disabling and retuning therefore all take effect without a restart.
             loop {
+                Self::run_tick(&db, &daemon_status, &http_client).await;
+
+                let delay = Self::next_cycle_delay(&db, fallback_interval).await;
                 tokio::select! {
-                    _ = tokio::time::sleep(interval) => {
-                        Self::run_tick(&db, &daemon_status, &http_client).await;
-                    }
+                    _ = tokio::time::sleep(delay) => {}
                     res = rx.changed() => {
                         if res.is_err() || *rx.borrow() {
                             tracing::info!("rate sync daemon shutting down");
@@ -179,40 +235,73 @@ impl RateSyncDaemon {
         });
     }
 
+    /// How long to wait before the next cycle, read fresh from settings each round.
+    ///
+    /// See the note at the call site: this is where `rate_sync.enabled` and
+    /// `rate_sync.interval` are honoured. `fallback` is the interval the daemon
+    /// was constructed with, used when the row is absent, unparsable, or when
+    /// the settings read itself panics (recovered via `spawn_blocking`'s join
+    /// error — a daemon that cannot read its own config must keep its last
+    /// known cadence, not stop syncing or spin).
+    async fn next_cycle_delay(db: &DbConnection, fallback: Duration) -> Duration {
+        let db_clone = db.clone();
+        match tokio::task::spawn_blocking(move || {
+            // RUST-07: recover from a poisoned lock by reusing the guard.
+            let conn = db_clone.lock().unwrap_or_else(|e| e.into_inner());
+            let enabled =
+                kasirmu_core::settings::Settings::is_rate_sync_enabled(&conn).unwrap_or(false);
+            let minutes = kasirmu_core::settings::Settings::get_rate_sync_interval(&conn)
+                .ok()
+                .and_then(|raw| raw.parse::<u64>().ok());
+            (enabled, minutes)
+        })
+        .await
+        {
+            Ok((false, _)) => DISABLED_POLL_INTERVAL,
+            Ok((true, Some(minutes))) => Duration::from_secs(
+                minutes.clamp(MIN_SYNC_INTERVAL_MINUTES, MAX_SYNC_INTERVAL_MINUTES) * 60,
+            ),
+            Ok((true, None)) => fallback,
+            Err(join_err) => {
+                tracing::error!(
+                    error = %join_err,
+                    "rate sync: cycle-delay settings read panicked; keeping the built-in interval"
+                );
+                fallback
+            }
+        }
+    }
+
     async fn run_tick(
         db: &DbConnection,
         daemon_status: &Arc<RwLock<RateSyncStatus>>,
         client: &reqwest::Client,
     ) {
         let db_clone = db.clone();
-        let (enabled, base_currency, interval_minutes) =
-            match tokio::task::spawn_blocking(move || {
-                // RUST-07: recover from a poisoned lock by reusing the guard
-                // (the Connection itself is still usable) instead of panicking.
-                let conn = db_clone.lock().unwrap_or_else(|e| e.into_inner());
-                let enabled =
-                    kasirmu_core::settings::Settings::is_rate_sync_enabled(&conn).unwrap_or(false);
-                let base = kasirmu_core::settings::Settings::get_rate_sync_base_currency(&conn)
-                    .unwrap_or_else(|_| "USD".into());
-                let interval = kasirmu_core::settings::Settings::get_rate_sync_interval(&conn)
-                    .unwrap_or_else(|_| "360".into());
-                (enabled, base, interval)
-            })
-            .await
-            {
-                Ok(v) => v,
-                Err(join_err) => {
-                    let msg = format!("rate sync settings read panicked: {join_err}");
-                    tracing::error!(error = %msg, "rate sync read phase failed");
-                    let mut s = daemon_status.write().await;
-                    s.last_sync_at = Some(
-                        chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
-                    );
-                    s.last_error = Some(msg);
-                    s.rates_updated = 0;
-                    return;
-                }
-            };
+        let (enabled, base_currency) = match tokio::task::spawn_blocking(move || {
+            // RUST-07: recover from a poisoned lock by reusing the guard
+            // (the Connection itself is still usable) instead of panicking.
+            let conn = db_clone.lock().unwrap_or_else(|e| e.into_inner());
+            let enabled =
+                kasirmu_core::settings::Settings::is_rate_sync_enabled(&conn).unwrap_or(false);
+            let base = kasirmu_core::settings::Settings::get_rate_sync_base_currency(&conn)
+                .unwrap_or_else(|_| "USD".into());
+            (enabled, base)
+        })
+        .await
+        {
+            Ok(v) => v,
+            Err(join_err) => {
+                let msg = format!("rate sync settings read panicked: {join_err}");
+                tracing::error!(error = %msg, "rate sync read phase failed");
+                let mut s = daemon_status.write().await;
+                s.last_sync_at =
+                    Some(chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true));
+                s.last_error = Some(msg);
+                s.rates_updated = 0;
+                return;
+            }
+        };
 
         // Update status with base currency
         {
@@ -224,8 +313,6 @@ impl RateSyncDaemon {
             tracing::debug!("rate sync is disabled, skipping cycle");
             return;
         }
-
-        let _ = interval_minutes; // used for logging if needed
 
         // Fetch rates from the Frankfurter API
         let url = format!("https://api.frankfurter.app/latest?from={base_currency}");
@@ -369,94 +456,8 @@ impl Default for RateSyncDaemon {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[tokio::test]
-    async fn daemon_starts_stopped() {
-        let daemon = RateSyncDaemon::new();
-        assert!(!daemon.is_running().await);
-    }
-
-    #[tokio::test]
-    async fn daemon_start_and_stop() {
-        let conn = kasirmu_core::migrations::fresh_db();
-        let db = Arc::new(std::sync::Mutex::new(conn));
-        let daemon = RateSyncDaemon::new();
-        daemon.start(db).await;
-        assert!(daemon.is_running().await);
-        daemon.stop().await;
-        tokio::time::sleep(Duration::from_millis(200)).await;
-        assert!(!daemon.is_running().await);
-    }
-
-    #[tokio::test]
-    async fn daemon_status_defaults() {
-        let daemon = RateSyncDaemon::new();
-        let status = daemon.status().await;
-        assert!(!status.running);
-        assert!(status.last_sync_at.is_none());
-        assert_eq!(status.rates_updated, 0);
-        assert!(status.last_error.is_none());
-    }
-
-    #[tokio::test]
-    async fn daemon_custom_interval() {
-        let daemon = RateSyncDaemon::with_interval(Duration::from_millis(50));
-        assert_eq!(daemon.interval(), Duration::from_millis(50));
-    }
-
-    #[tokio::test]
-    async fn daemon_set_interval() {
-        let mut daemon = RateSyncDaemon::new();
-        daemon.set_interval(Duration::from_secs(10));
-        assert_eq!(daemon.interval(), Duration::from_secs(10));
-    }
-
-    #[tokio::test]
-    async fn daemon_stop_when_not_running_is_noop() {
-        let daemon = RateSyncDaemon::new();
-        daemon.stop().await;
-        assert!(!daemon.is_running().await);
-    }
-
-    #[tokio::test]
-    async fn daemon_double_start_is_noop() {
-        let conn = kasirmu_core::migrations::fresh_db();
-        let db = Arc::new(std::sync::Mutex::new(conn));
-        let daemon = RateSyncDaemon::new();
-        daemon.start(db.clone()).await;
-        assert!(daemon.is_running().await);
-        daemon.start(db).await;
-        assert!(daemon.is_running().await);
-        daemon.stop().await;
-        tokio::time::sleep(Duration::from_millis(200)).await;
-        assert!(!daemon.is_running().await);
-    }
-
-    #[tokio::test]
-    async fn frankfurter_response_deserialization() {
-        let json = r#"{
-            "amount": 1.0,
-            "base": "USD",
-            "date": "2026-06-30",
-            "rates": {
-                "EUR": 0.9234,
-                "GBP": 0.7932,
-                "JPY": 149.85
-            }
-        }"#;
-        let resp: FrankfurterResponse = serde_json::from_str(json).unwrap();
-        assert_eq!(resp.base, "USD");
-        assert_eq!(resp.date, "2026-06-30");
-        assert!((resp.rates["EUR"] - 0.9234).abs() < 0.0001);
-        assert!((resp.rates["GBP"] - 0.7932).abs() < 0.0001);
-        assert!((resp.rates["JPY"] - 149.85).abs() < 0.01);
-        assert_eq!(resp.rates.len(), 3);
-    }
-}
-
+// Unit tests live in a sibling file per AGENTS.md ("never put unit tests
+// inside production .rs files").
 #[cfg(test)]
 #[path = "rate_sync_tests.rs"]
 mod conversion_tests;

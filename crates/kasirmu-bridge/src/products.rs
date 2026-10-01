@@ -1,21 +1,22 @@
 //! Product catalog command bodies (Wave A / S9) — the tauri-free half of
 //! `apps/desktop-tauri/src/commands/products.rs`.
 //!
-//! S9a landed the read half: [`list_scoped`],
-//! [`list_warehouse_products_at_location`], [`lookup_by_barcode`],
-//! [`lookup_product_by_sku`], [`get_product_track_serial`],
-//! [`get_product_track_serial_batch`], plus the pure `&Connection` /
+//! S9a landed the read half: [`list_scoped`](crate::products::list_scoped),
+//! [`list_warehouse_products_at_location`](crate::products::list_warehouse_products_at_location), [`lookup_by_barcode`](crate::products::lookup_by_barcode),
+//! [`lookup_product_by_sku`](crate::products::lookup_product_by_sku), [`get_product_track_serial`](crate::products::get_product_track_serial),
+//! [`get_product_track_serial_batch`](crate::products::get_product_track_serial_batch), plus the pure `&Connection` /
 //! `&Store` bodies behind the command file's `run_*` test adapters
-//! ([`run_list_products`], [`run_lookup_by_barcode`],
-//! [`run_lookup_product_by_sku`], [`run_get_product_track_serial_batch`]).
-//! S9b landed the write half: [`create_scoped`], [`update_scoped`],
-//! [`delete_scoped`], [`adjust_stock_scoped`] (one `unchecked_transaction`
-//! + the [`StockAdjusted`] event published via `ctx.publish_event` only
-//! AFTER `tx.commit`) and [`record_product_search`].
+//! ([`run_list_products`](crate::products::run_list_products), [`run_lookup_by_barcode`](crate::products::run_lookup_by_barcode),
+//! [`run_lookup_product_by_sku`](crate::products::run_lookup_product_by_sku), [`run_get_product_track_serial_batch`](crate::products::run_get_product_track_serial_batch)).
+//! S9b landed the write half: [`create_scoped`](crate::products::create_scoped), [`update_scoped`](crate::products::update_scoped),
+//! [`delete_scoped`](crate::products::delete_scoped), [`adjust_stock_scoped`](crate::products::adjust_stock_scoped) (one `unchecked_transaction`
+//! + the [`StockAdjusted`](kasirmu_core::events::StockAdjusted) event published
+//! via `ctx.publish_event` only
+//! AFTER `tx.commit`) and [`record_product_search`](crate::products::record_product_search).
 //!
 //! Gate order, store construction (`Store::new`, cache-free — as the shell
 //! used) and error paths are verbatim ports of the command bodies: a shim
-//! builds the context, calls one function here, and maps [`BridgeError`]
+//! builds the context, calls one function here, and maps [`BridgeError`](crate::error::BridgeError)
 //! back to `AppError` so the wire shape never moves.
 
 use serde::{Deserialize, Serialize};
@@ -25,99 +26,15 @@ use kasirmu_core::Money;
 use kasirmu_core::availability::UsageCounts;
 use kasirmu_core::db::Store;
 use kasirmu_core::entitlements::Entitlements;
-use kasirmu_core::events::{ProductCreated, StockAdjusted};
-use kasirmu_core::inventory::{CANONICAL_DEFAULT_LOCATION_UUID, LocationId};
-use kasirmu_core::inventory_transaction::InventoryTransactionId;
+use kasirmu_core::events::ProductCreated;
 use kasirmu_core::permissions;
 use rusqlite::Connection;
 
 use crate::ctx::BridgeCtx;
 use crate::error::BridgeError;
 
-/// A product-image assignment mirrored from the product-image command
-/// module (spec 0046b).
-///
-/// The bridge crate cannot depend on the desktop shell, so `ProductDto`
-/// carries this mirror instead of `commands::products_images::ProductImageDto`;
-/// both serialize to the same `{slot, hash, position}` JSON shape, so the
-/// wire contract is unchanged.
-#[derive(Debug, Serialize)]
-pub struct ProductImageDto {
-    /// Slot 1 = primary; slots 2..5 = alternatives.
-    pub slot: i32,
-    /// Content-addressed hash (first 16 hex chars of sha-256).
-    pub hash: String,
-    /// Display order of alternatives (0-based).
-    pub position: i32,
-}
-
-/// A product DTO for the front-end, mapped from `ProductWithDetails`.
-#[derive(Debug, Serialize)]
-pub struct ProductDto {
-    /// Internal product ID (UUID) — used by image commands (spec 0046b).
-    pub id: String,
-    /// Stock-keeping unit — the human-readable product code.
-    pub sku: String,
-    /// Display name shown on receipts and the POS UI.
-    pub name: String,
-    /// Category display name, if the product is linked to a category.
-    pub category: Option<String>,
-    /// Sale price with currency.
-    pub price: MoneyDto,
-    /// Machine-readable barcode (EAN-13, UPC-A, etc.) if available.
-    pub barcode: Option<String>,
-    /// Whether the product is in stock (stock_qty > 0 or null = false).
-    pub in_stock: bool,
-    /// Current stock quantity, or `null` if tracking is disabled.
-    pub stock_qty: Option<i64>,
-    /// Tax rate IDs assigned to this product.
-    pub tax_rate_ids: Vec<String>,
-    /// ISO-8601 creation timestamp.
-    pub created_at: String,
-    /// ISO-8601 timestamp of the last price change.
-    pub price_updated_at: String,
-    /// Product type: "retail", "restaurant", or "both".
-    pub product_type: String,
-    /// Cost price in minor units (local-only, ADR #36).
-    pub cost_minor: i64,
-    /// Brand (free text).
-    pub brand: Option<String>,
-    /// Rack position code.
-    pub rack_location: Option<String>,
-    /// Free-text notes.
-    pub notes: Option<String>,
-    /// Unit of measure.
-    pub unit: Option<String>,
-    /// Active/sellable status.
-    pub is_active: bool,
-    /// Default supplier FK (local-only).
-    pub default_supplier_id: Option<String>,
-    /// Materialized popularity score (ADR #37) — retail grid sort key.
-    pub popularity_score: f64,
-    /// Slot-1 primary image content hash (spec 0046b); `None` = no image.
-    pub image_hash: Option<String>,
-    /// Content-addressed image assignments (slots 1..5) from the snapshot.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub images: Option<Vec<ProductImageDto>>,
-}
-
-/// Money DTO matching the front-end `Money` type (snake_case keys).
-#[derive(Debug, Serialize)]
-pub struct MoneyDto {
-    /// Minor Units.
-    pub minor_units: i64,
-    /// ISO-4217 currency code.
-    pub currency: String,
-}
-
-/// A single serial-tracking flag keyed by SKU (batch response row).
-#[derive(Debug, Serialize)]
-pub struct SerialTrackRow {
-    /// Stock-keeping unit.
-    pub sku: String,
-    /// Whether the product is configured for serial tracking.
-    pub track_serial: bool,
-}
+pub mod dto;
+pub use dto::{MoneyDto, ProductDto, ProductImageDto, SerialTrackRow};
 
 /// Business logic for listing products over a locked store connection.
 ///
@@ -447,92 +364,8 @@ pub async fn get_product_track_serial_batch(
 }
 
 // ── Stock adjustment (transaction + domain event) ───────────────────
-
-/// Arguments for a stock adjustment.
-#[derive(Debug, Deserialize)]
-pub struct AdjustStockArgs {
-    /// SKU of the product to adjust.
-    pub sku: String,
-    /// Quantity change (positive = restock, negative = removal).
-    pub delta: i64,
-    /// Reason for the adjustment (e.g. "stock-take", "damaged", "return").
-    pub reason: String,
-}
-
-/// Adjust stock for the store resolved from a session token.
-///
-/// ADR #7: Scoped variant of the global `adjust_stock`. Resolves the
-/// token to a `SessionContext`, opens the store-scoped database, and
-/// adjusts stock within that store only. The write runs in a single
-/// `unchecked_transaction` and the `StockAdjusted` domain event is
-/// published only AFTER the transaction commits.
-///
-/// # Errors
-///
-/// Returns [`BridgeError::InvalidSession`],
-/// [`BridgeError::PermissionDenied`] without `inventory:adjust`,
-/// [`BridgeError::Invalid`] for empty sku/reason or a zero delta, and
-/// [`BridgeError::Internal`]/[`BridgeError::Core`] on DB failures.
-pub async fn adjust_stock_scoped(
-    ctx: &BridgeCtx<'_>,
-    session_token: &str,
-    args: &AdjustStockArgs,
-) -> Result<i64, BridgeError> {
-    // F-017: enforce per-domain permission on this scoped command.
-    let session = ctx.resolve_session(session_token)?;
-    ctx.require_session_permission(&session, permissions::INVENTORY_ADJUST)
-        .await?;
-    validate_not_empty("sku", &args.sku).map_err(|e| BridgeError::Invalid(e.to_string()))?;
-    validate_not_empty("reason", &args.reason).map_err(|e| BridgeError::Invalid(e.to_string()))?;
-    if args.delta == 0 {
-        return Err(BridgeError::Invalid("delta must be non-zero".into()));
-    }
-
-    let conn = ctx
-        .db_manager
-        .open_store(&session.store_id)
-        .map_err(|e| BridgeError::Internal(format!("opening store db: {e}")))?;
-
-    let new_qty = {
-        let tid = ctx.terminal_id().await;
-        let db = conn
-            .lock()
-            .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
-        let store = ctx.store_with_tid(&db, tid);
-        let tx = db
-            .unchecked_transaction()
-            .map_err(|e| BridgeError::Internal(format!("starting tx: {e}")))?;
-        let loc = LocationId::from(CANONICAL_DEFAULT_LOCATION_UUID);
-        let new_qty = store.adjust_stock_at_location_with_reason(
-            &tx,
-            &args.sku,
-            args.delta,
-            &loc,
-            Some(&args.reason),
-            Some(&InventoryTransactionId::new()),
-            Some(&kasirmu_core::terminal::TerminalId::from(
-                session.terminal_id.as_str(),
-            )),
-            Some(&kasirmu_core::user::UserId::from(session.user_id.clone())),
-        )?;
-        tx.commit()
-            .map_err(|e| BridgeError::Internal(format!("commit tx: {e}")))?;
-        new_qty
-    };
-
-    // Publish the StockAdjusted domain event — AFTER the transaction has
-    // committed, so a bus failure can never orphan or undo the write.
-    ctx.publish_event(&StockAdjusted {
-        sku: args.sku.clone(),
-        delta: args.delta,
-        new_qty,
-        reason: args.reason.clone(),
-    })
-    .await;
-
-    tracing::info!(sku = %args.sku, delta = %args.delta, reason = %args.reason, new_qty, "stock adjusted (scoped)");
-    Ok(new_qty)
-}
+pub mod stock;
+pub use stock::{AdjustStockArgs, adjust_stock_scoped};
 
 // ── Create product ──────────────────────────────────────────────────
 

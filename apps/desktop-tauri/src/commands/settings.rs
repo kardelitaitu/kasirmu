@@ -138,10 +138,11 @@ fn app_data_dir(state: &AppState) -> Result<std::path::PathBuf, AppError> {
 #[tauri::command]
 /// Get hardware settings for the current terminal from the DB.
 ///
-/// Read order:
-/// 1. DB (`hardware_profiles` table) — canonical store (TODO 4e)
-/// 2. JSON file (`terminal_profiles/<id>.json`) — fallback
-/// 3. Old SQLite settings — legacy fallback
+/// Read order (the `hardware_profiles` DB row is the authoritative store):
+/// 1. DB (`hardware_profiles` table) — canonical store.
+/// 2. JSON file (`terminal_profiles/<id>.json`) — one-time seed, read only when
+///    no row exists; the row it writes then wins on every later read.
+/// 3. Old SQLite settings — legacy seed, reached only under that same condition.
 ///
 /// Returns defaults only when none of the above have saved values.
 pub async fn get_hardware_settings(

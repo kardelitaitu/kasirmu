@@ -686,6 +686,63 @@ impl Settings {
             .map_err(|e| PlatformError::Internal(e.to_string()))?;
         Self::set(conn, keys::LAN_SERVER_PSK, &encrypted)
     }
+
+    // ── Local API signing secret (secret — encrypted at rest) ────
+
+    /// Get the local REST API's per-install signing secret (transparently
+    /// decrypted). `None` when the operator has never enabled the API.
+    ///
+    /// **This family cannot use [`decrypt_or_fail_closed`], and the reason is
+    /// specific.** That helper passes a value through when it fails to decrypt
+    /// *and* lacks ciphertext shape — but this family's pre-encryption value, 64
+    /// lowercase hex characters, HAS ciphertext shape: hex is valid base64 and
+    /// 64 chars decode to 48 bytes, well past the 12 + 16 bar. Gated on that
+    /// predicate the fallback would never fire and every existing install would
+    /// get an error where its secret used to be, bricking the local API. So the
+    /// discriminator is stated **positively** here instead: a value that fails
+    /// to decrypt and is exactly the legacy shape is pre-encryption plaintext
+    /// and is returned unchanged. A real ciphertext is 92 bytes → 124 base64url
+    /// chars, so the two shapes cannot collide.
+    pub fn get_local_api_secret(conn: &Connection) -> Result<Option<String>, PlatformError> {
+        let raw = Self::get(conn, keys::LOCAL_API_SECRET)?;
+        raw.filter(|s| !s.trim().is_empty())
+            .map(|v| decrypt_local_api_secret_or_legacy(keys::LOCAL_API_SECRET, &v))
+            .transpose()
+    }
+
+    /// Set the local REST API's per-install signing secret (transparently
+    /// encrypted at rest). C14(a): before this, the secret was written by a bare
+    /// `Settings::set`, so it was cleartext in `settings.value` and in every
+    /// unfiltered `.db` / `.backup.db` snapshot.
+    pub fn set_local_api_secret(conn: &Connection, secret: &str) -> Result<(), PlatformError> {
+        let encrypted = kasirmu_crypto::encrypt_local_api_secret(secret)
+            .map_err(|e| PlatformError::Internal(e.to_string()))?;
+        Self::set(conn, keys::LOCAL_API_SECRET, &encrypted)
+    }
+
+    /// Re-persist a legacy **plaintext** `local_api.secret` in encrypted form.
+    /// Returns `true` when a row was migrated.
+    ///
+    /// Idempotent, and safe to call on every boot: a row that is already
+    /// ciphertext is left untouched (a 124-char base64url envelope can never
+    /// match the 64-char legacy shape, so the test cannot misfire), a missing
+    /// row is a no-op, and a row that is neither shape is left for
+    /// [`Self::get_local_api_secret`] to refuse. Without this, C14(a) would only
+    /// protect *new* installs — every existing one would keep its cleartext
+    /// secret in `settings.value` and in every `.db` / `.backup.db` snapshot
+    /// until an operator happened to rotate.
+    pub fn migrate_local_api_secret(conn: &Connection) -> Result<bool, PlatformError> {
+        let Some(raw) = Self::get(conn, keys::LOCAL_API_SECRET)? else {
+            return Ok(false);
+        };
+        if !is_legacy_local_api_secret_shape(&raw) {
+            return Ok(false);
+        }
+        let encrypted = kasirmu_crypto::encrypt_local_api_secret(&raw)
+            .map_err(|e| PlatformError::Internal(e.to_string()))?;
+        Self::set(conn, keys::LOCAL_API_SECRET, &encrypted)?;
+        Ok(true)
+    }
 }
 
 // ── Fail-closed decrypt ──────────────────────────────────────────────
@@ -728,6 +785,42 @@ fn decrypt_or_fail_closed(
             "stored setting `{key}` has ciphertext shape but could not be decrypted under any \
              known key derivation — it is corrupt or was written by another install; refusing \
              to return it as a credential"
+        ))),
+    }
+}
+
+/// The pre-encryption shape of `local_api.secret`: exactly 64 lowercase hex
+/// characters — 32 CSPRNG bytes, hex-encoded, which is what every shipped
+/// build's secret generator produced.
+///
+/// Stated as a whitelist rather than inferred from [`has_ciphertext_shape`],
+/// because that predicate returns **true** for this value: 64 hex chars are
+/// valid base64 and decode to 48 bytes. See [`Settings::get_local_api_secret`]
+/// for why that inverts the usual fallback.
+fn is_legacy_local_api_secret_shape(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+}
+
+/// Read the local-API secret: decrypt it, pass the **legacy plaintext shape**
+/// through, and fail closed on anything else that will not decrypt (C14(a)).
+///
+/// The family-specific sibling of [`decrypt_or_fail_closed`]. It exists because
+/// that helper's gate is inverted for this value — the legacy plaintext IS
+/// ciphertext-shaped, so gating on shape would error on every existing install
+/// rather than pass the value through. Here the shape that is *explicitly*
+/// allowed to be plaintext is named, and everything else that fails to decrypt
+/// is still refused.
+fn decrypt_local_api_secret_or_legacy(key: &str, value: &str) -> Result<String, PlatformError> {
+    match kasirmu_crypto::decrypt_local_api_secret(value) {
+        Ok(plaintext) => Ok(plaintext),
+        Err(_) if is_legacy_local_api_secret_shape(value) => Ok(value.to_string()),
+        Err(_) => Err(PlatformError::Internal(format!(
+            "stored setting `{key}` could not be decrypted under any known key derivation and is \
+             not the legacy plaintext shape — it is corrupt or was written by another install; \
+             refusing to return it as a credential"
         ))),
     }
 }

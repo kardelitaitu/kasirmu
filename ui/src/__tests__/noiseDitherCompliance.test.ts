@@ -40,6 +40,7 @@ const KNOWN_NOISE_SELECTORS = [
   '.modal-panel',
   '.staff-login-card',
   '.workspace-card',
+  '.staff-mgmt-card',
   // Emergency fallback card — elevated surface (ERR-02)
   '.error-boundary__card',
   // Reusable utility class (recommended for NEW components)
@@ -52,6 +53,16 @@ const KNOWN_NOISE_SELECTORS = [
   // Topology deploy-history browser (ADR #46 §2) — also carries the
   // .noise-dither utility; listed explicitly for the shadow-coverage check.
   '.topology-rev-browser',
+  // Restaurant receipt print preview (C8) — the same shape as
+  // .topology-rev-browser above: the element carries className="noise-dither"
+  // in RestaurantReceiptsScreen.tsx, but the coverage walk reads CSS selectors,
+  // so this needs naming on both sides (here and the ::after list in
+  // ui/src/theme/components.css). A large soft --shadow-sm pane in the preview
+  // rail: it takes the overlay rather than a small-control exemption.
+  '.restaurant-preview-card',
+  // The mat the thermal roll sits on — same shape as the two above: a
+  // full-width stage carrying inset --shadow-inner, named on both sides.
+  '.resto-receipt-paper-wrapper',
   // Memo chat-bubble stack and its enlarged reading card — the two elevated
   // memo surfaces. Both are wired to ::after in components.css (main list +
   // both @media parity blocks). The close chips are NOT here: they are
@@ -254,6 +265,15 @@ const EXEMPT_SELECTOR_PREFIXES = [
   // as dirt, not depth.
   '.memo-banner-close',
   '.memo-expanded-close',
+  // Restaurant receipt preview: the two small controls that gained a --shadow-*
+  // when the sheet's hardcoded shadows were tokenised (2026-09-29). Both are the
+  // '.btn' case the list already reasons about — a thin 1px shadow on a control
+  // with no large soft gradient to band — plus the '.kds-slider-knob' precedent
+  // for a small disc: the toggle knob is a 20px circle whose shadow is the only
+  // thing separating it from a track one shade away, and texturing it reads as
+  // dirt rather than depth.
+  '.resto-segmented-btn--active',
+  '.resto-switch-handle',
 ];
 
 /* ── Helpers ─────────────────────────────────────────────────── */
@@ -740,7 +760,15 @@ describe('Noise-dither overlay coverage (P11-5)', () => {
     // them. Adding an exempt family legitimately means editing this list and saying
     // which element it waives -- which is the point of naming it.
     expect([...waivedByPrefixNames].sort(), 'the exempt-prefix door excuses a different SET than measured on 2026-09-15 (counts alone cannot catch a widened matcher -- see this comment)').toEqual([
+      // Added 2026-09-29 with the two receipt-preview controls below them in
+      // EXEMPT_SELECTOR_PREFIXES: tokenising RestaurantSettingsScreens.css's
+      // hardcoded shadows turned .resto-segmented-btn--active and
+      // .resto-switch-handle into --shadow-* surfaces for the first time. Both are
+      // the '.btn' case (a thin 1px shadow on a control with no large soft
+      // gradient to band); naming them here is the "say which element it waives"
+      // step the comment above asks for, not a silenced count.
       '.kds-slider-knob', '.memo-banner-close', '.memo-expanded-close', '.payment-customer-search-modal',
+      '.resto-segmented-btn--active', '.resto-switch-handle',
     ]);
     expect(sheetsRefused, 'the walk refuses ' + sheetsRefused + ' sheet(s) by basename -- if that number moved, the exclusion at the top of the loop changed scope').toBe(2);
   });

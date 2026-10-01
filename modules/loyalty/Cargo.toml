@@ -5,7 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
-description = "OZ-POS Loyalty Module: customer loyalty program, tier-based earning multipliers, point redemption."
+description = "kasir.mu Loyalty Module: customer loyalty program, tier-based earning multipliers, point redemption."
 
 # Inherits [workspace.lints] from the root Cargo.toml (missing_docs = warn).
 [lints]
@@ -15,6 +15,9 @@ workspace = true
 anyhow = { workspace = true }
 thiserror = { workspace = true }
 foundation = { workspace = true }
+# Phase 3 P3.2/P3.3: the repository reaches the DB through
+# kasirmu_core::db::namespaced, so core is a normal dependency.
+kasirmu-core = { workspace = true }
 rusqlite = { workspace = true }
 chrono = { workspace = true }
 uuid = { workspace = true }
@@ -24,4 +27,3 @@ tracing = { workspace = true }
 
 [dev-dependencies]
 platform-kernel = { workspace = true }
-kasirmu-core = { workspace = true }

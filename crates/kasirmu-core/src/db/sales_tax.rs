@@ -23,6 +23,7 @@ use super::*;
 use crate::db::tax::MAX_TAX_RATE_BPS;
 use crate::db::tax::TaxSaleScope;
 use crate::tax_rate::{RoundingMode, TaxRate};
+use rusqlite::OptionalExtension;
 
 impl Store<'_> {
     /// E1: the mode that rounds THIS rate's contribution — the row's
@@ -317,6 +318,55 @@ impl Store<'_> {
                 })?;
         }
 
+        // C15: the SAME correction is owed to tip and service charge, and it
+        // was left unfinished by migration 20260822_sale_charges.sql. That
+        // migration added the two columns with the stated purpose that "the
+        // recorded sale.total understated collected revenue" -- but the term
+        // was never added to `total`, so the understatement it names is still
+        // live. The POS collects both IN the payment total
+        // (usePosState.ts `total` = discounted + service + tip), and it is that
+        // total which drives the payment splits, so `payments.amount_minor`
+        // already carries the charges while `sales.total_minor` did not.
+        //
+        // Adding them here is what makes the two stored numbers agree, and it
+        // is the same rule TAX-06 applied one paragraph up: `sales.total_minor`
+        // is the true collectible amount. Without it, loyalty accrual, revenue
+        // reporting and the drawer expectation all read the tip-exclusive total
+        // while the same shift's payment breakdown reads the tip-inclusive one.
+        //
+        // NOT part of the tax basis: tip and service are added AFTER tax is
+        // computed and are deliberately absent from `subtotal` and `tax_total`,
+        // so a taxable-service-charge regime would need its own decision.
+        //
+        // Contract, stated because it is load-bearing rather than obvious: the
+        // charges are read from `tip_minor`/`service_charge_minor`, never from
+        // the running `total`, so calling this twice on one sale adds them
+        // TWICE. That is safe only because every caller passes a sale whose
+        // `total` is still the charge-free cart total (freshly built by
+        // `Sale::from_cart`). The doubled result is pinned by
+        // `compute_tax_reads_charges_from_the_sale_not_from_its_own_output` in
+        // `sales_tests.rs`, so a future caller that feeds back an
+        // already-adjusted sale goes red there.
+        let charges = sale
+            .tip_minor
+            .checked_add(sale.service_charge_minor)
+            .ok_or_else(|| CoreError::Validation {
+                field: "total",
+                message: "tip + service charge overflow".into(),
+            })?;
+        if charges != 0 {
+            sale.total = sale
+                .total
+                .checked_add(Money {
+                    minor_units: charges,
+                    currency,
+                })
+                .ok_or_else(|| CoreError::Validation {
+                    field: "total",
+                    message: "sale total overflow from tip + service charge".into(),
+                })?;
+        }
+
         Ok(())
     }
 
@@ -494,10 +544,16 @@ impl Store<'_> {
                 .query_row(
                     "SELECT category_id FROM products WHERE id = ?1",
                     params![pid],
-                    |row| row.get(0),
+                    // The COLUMN is nullable, so the getter must say so: with
+                    // a bare `row.get(0)` the `optional()?` below infers
+                    // `String`, and a product with NO category (NULL) then
+                    // errors with InvalidColumnType instead of resolving to
+                    // "uncategorized". `flatten()` collapses the row-missing
+                    // and column-NULL cases into the same `None`.
+                    |row| row.get::<_, Option<String>>(0),
                 )
-                .ok()
-                .and_then(|v| v);
+                .optional()?
+                .flatten();
 
             if let Some(cid) = category_id {
                 let cat_rate_ids = self.get_category_tax_rates(&cid)?;

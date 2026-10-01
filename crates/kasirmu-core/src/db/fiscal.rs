@@ -2,15 +2,16 @@
 //!
 //! Owns the two legal-entity-scoped tables from `20260923_fiscal_numbering.sql`:
 //!
-//! * [`FiscalScheme`] — `fiscal_schemes`, the entity's statutory-configuration
+//! * [`FiscalScheme`](crate::db::fiscal::FiscalScheme) — `fiscal_schemes`, the entity's statutory-configuration
 //!   anchor (multi-row-per-entity; one row per market/document regime). The
 //!   `parameters` JSON is a bag: statutory parameters land with the consumer
 //!   slices that read them, and no tax math lives here (the tax box owns it).
-//! * [`DocumentNumberSequence`] — `document_number_sequences`, the statutory
+//! * [`DocumentNumberSequence`](crate::db::fiscal::DocumentNumberSequence) — `document_number_sequences`, the statutory
 //!   series (ONE per entity per document kind, UNIQUE-guarded): prefix +
 //!   counter + optional period reset + zero-padding.
 //!
-//! The counter only ever moves through [`Store::claim_document_number_in_tx`],
+//! The counter only ever moves through
+//! [`Store::claim_statutory_number_for_sale`](crate::db::Store::claim_statutory_number_for_sale),
 //! whose single `UPDATE … RETURNING` statement is the whole concurrency
 //! story: there is no SELECT-then-UPDATE anywhere on the path, so two
 //! concurrent claims can never observe the same number, and a claim made
@@ -459,14 +460,21 @@ impl crate::db::Store<'_> {
         // Issue format: prefix + optional period bucket + zero-padded
         // ordinal. `never` series carry no bucket segment; a 0 padding means
         // the ordinal prints bare.
+        //
+        // `usize::try_from` rather than `as usize`: `padding` is validated
+        // non-negative on the way in (`set_*` refuses `padding < 0`), but that
+        // guard lives in a DIFFERENT function, so the conversion here should
+        // still state its own precondition rather than inherit one. `as usize`
+        // would turn a negative into a huge width and the format machinery
+        // would try to allocate it.
+        let width = usize::try_from(padding).map_err(|_| CoreError::Validation {
+            field: "padding",
+            message: format!("padding must not be negative, got {padding}"),
+        })?;
         let number = if reset == ResetPeriod::Never {
-            format!("{prefix}{:0>width$}", value, width = padding as usize)
+            format!("{prefix}{value:0>width$}")
         } else {
-            format!(
-                "{prefix}{bucket}/{:0>width$}",
-                value,
-                width = padding as usize
-            )
+            format!("{prefix}{bucket}/{value:0>width$}")
         };
 
         tx.execute(

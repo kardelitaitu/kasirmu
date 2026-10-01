@@ -48,6 +48,7 @@ import { requiredLocalized } from '@/components';
 import { l10nErrorMessage } from '@/utils/app-error';
 import { useToast } from '@/components/Toast';
 import { hasGrantedPermission, passesGate } from '@/registries/page-registry';
+import { animDuration } from '@/utils/animation';
 import { EmptyState } from '@/components';
 import { NoStaffIcon } from '@/components/EmptyStateIllustrations';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
@@ -85,6 +86,31 @@ export default function StaffManagementScreen() {
   const atProStaffCap = caps?.tier === 'pro' && (caps.staffCount ?? 0) >= 16;
   const { sessionToken } = useWorkspace();
   const { goToWorkspacePicker } = useWorkspaceNav();
+
+  // ── Exit animation orchestration for smooth page transitions ────
+  const [isExiting, setIsExiting] = useState(false);
+  const exitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (exitTimerRef.current !== null) {
+        clearTimeout(exitTimerRef.current);
+      }
+    };
+  }, []);
+
+  const handleBack = useCallback(() => {
+    if (isExiting) return;
+    setIsExiting(true);
+    const delay = animDuration(150);
+    if (delay === 0) {
+      goToWorkspacePicker();
+      return;
+    }
+    exitTimerRef.current = setTimeout(() => {
+      goToWorkspacePicker();
+    }, delay);
+  }, [goToWorkspacePicker, isExiting]);
   const { session } = useAuth();
   const { addToast } = useToast();
   const { start: startImpersonation } = useImpersonation();
@@ -455,8 +481,11 @@ export default function StaffManagementScreen() {
   const panelClass = slideFrom ? `staff-mgmt-tabpanel ${PANEL_SLIDE_CLASS[slideFrom]}` : 'staff-mgmt-tabpanel';
 
   return (
-    <div className="staff-mgmt" onContextMenu={(e) => e.preventDefault()}>
-      <div className="staff-mgmt-header">
+    <div
+      className={`staff-mgmt${isExiting ? ' staff-mgmt--exiting' : ''}`}
+      onContextMenu={(e) => e.preventDefault()}
+    >
+      <div className="staff-mgmt-header" data-testid="staff-mgmt-header">
         <div className="staff-mgmt-header-lead">
           {/* This screen is registered `fullscreen`, so AppLayout — and with it
               the sidebar and topbar — never renders around it. The back
@@ -466,7 +495,7 @@ export default function StaffManagementScreen() {
           <Button
             unstyled
             className="staff-mgmt-back-btn"
-            onClick={goToWorkspacePicker}
+            onClick={handleBack}
             aria-label={l10n.getString('staff-back-aria')}
             data-testid="staff-back-btn"
           >
@@ -475,11 +504,28 @@ export default function StaffManagementScreen() {
               <polyline points="12 19 5 12 12 5" />
             </svg>
           </Button>
+
+          <div className="staff-mgmt-header-title-group">
+            <span
+              className="staff-mgmt-header-icon"
+              data-testid="staff-management-icon"
+              aria-hidden="true"
+            >
+              <svg viewBox="0 0 16 16" fill="currentColor" width="18" height="18" aria-hidden="true">
+                <path d="M7 14s-1 0-1-1 1-4 5-4 5 3 5 4-1 1-1 1H7zm4-6a3 3 0 1 0 0-6 3 3 0 0 0 0 6z" />
+                <path fillRule="evenodd" d="M5.216 14A2.238 2.238 0 0 1 5 13c0-1.355.68-2.75 1.936-3.72A6.325 6.325 0 0 0 5 9c-4 0-5 3-5 4s1 1 1 1h4.216z" />
+                <path d="M4.5 8a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z" />
+              </svg>
+            </span>
+            <Localized id="staff-management-title">
+              <h1 className="staff-mgmt-header-title" data-testid="staff-management-title">
+                Staff Management
+              </h1>
+            </Localized>
+          </div>
         </div>
 
-        {/* Centre column, KDS-header style. No h1: the tab names the view, and
-            a heading repeating the active tab is noise — the panel is
-            announced through aria-labelledby instead. */}
+        {/* Centre column: tab strip for Staff, Roles, and Trash. */}
         <StaffTabs
           activeTab={activeTab}
           onSelectTab={selectTab}
@@ -549,20 +595,20 @@ export default function StaffManagementScreen() {
                 </Button>
               </div>
             </Card>
-          ) : loading ? (
+          ) : loading && loadedAt === null ? (
             <div className="staff-mgmt-loading-skeleton" aria-hidden="true">
               {/* No header mimic here: the real header is rendered above for
                   every branch, so a second one would duplicate the tab strip
                   and the actions while the list loads. */}
-              {/* The shapes mirror the roster it stands in for — stat tiles, the
-                  toolbar, then the cards — so the swap from skeleton to data
-                  does not jump. */}
-              <div className="staff-mgmt-stats">
-                {Array.from({ length: 4 }).map((_, i) => (
-                  <Skeleton key={i} variant="block" width="100%" height="4.5rem" style={{ borderRadius: 'var(--radius-lg)' }} />
-                ))}
+              {/* The shapes mirror the roster it stands in for — unified toolbar,
+                  then the cards — so the swap from skeleton to data does not jump. */}
+              <div className="staff-mgmt-toolbar-skeleton" aria-hidden="true">
+                <Skeleton variant="block" width="18rem" height="2.25rem" style={{ borderRadius: 'var(--radius-lg)' }} />
+                <div className="staff-mgmt-toolbar-skeleton-right">
+                  <Skeleton variant="block" width="14rem" height="2.25rem" style={{ borderRadius: 'var(--radius-md)' }} />
+                  <Skeleton variant="block" width="7rem" height="2.25rem" style={{ borderRadius: 'var(--radius-md)' }} />
+                </div>
               </div>
-              <Skeleton variant="block" width="100%" height="2.25rem" style={{ borderRadius: 'var(--radius-md)' }} />
               <div className="staff-mgmt-grid">
                 {Array.from({ length: 4 }).map((_, i) => (
                   <Skeleton key={i} variant="block" width="100%" height="11rem" style={{ borderRadius: 'var(--radius-xl)' }} />
@@ -585,11 +631,7 @@ export default function StaffManagementScreen() {
               roleCount={roles.length}
               workspaceNameMap={workspaceNameMap}
               workspacesUnavailable={workspacesUnavailable}
-              canImpersonate={canImpersonate}
               onEdit={openEdit}
-              onToggleActive={toggleActive}
-              onDelete={canDeleteStaff ? setDeleteTarget : undefined}
-              onImpersonate={handleImpersonate}
             />
           )}
         </div>
@@ -640,7 +682,12 @@ export default function StaffManagementScreen() {
       {/* ── Status footer ───────────────────────────────────────────
           Fullscreen routes lose the app's own StatusBar (AppLayout mounts
           it), so the page carries its own. */}
-      <StaffManagementFooter loadedAt={loadedAt} />
+      <StaffManagementFooter
+        loadedAt={loadedAt}
+        loading={loading}
+        loadError={loadError}
+        onRefresh={refreshLiveLists}
+      />
 
       {/* ── Add/Edit Drawer ─────────────────────────────────────── */}
       <StaffDetailDrawer
@@ -649,6 +696,9 @@ export default function StaffManagementScreen() {
         roles={roles}
         onClose={closeModal}
         onSaved={refreshLiveLists}
+        onToggleActive={toggleActive}
+        onDelete={canDeleteStaff ? setDeleteTarget : undefined}
+        onImpersonate={canImpersonate ? handleImpersonate : undefined}
       />
 
       {/* ── Deactivate Confirmation (STAFF-10) ─────────────────── */}

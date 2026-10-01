@@ -47,10 +47,23 @@ impl PluginRegistry {
 
 /// Content hash of a loaded plugin set (C2).
 ///
-/// Covers every byte that determines behaviour: each plugin's id and declared
-/// version, and the contents of each script it resolved. Recorded beside the
-/// runtime at load time so a later on-disk change is detectable — see
-/// [`crate::manager::PluginManager::content_hash`].
+/// Covers the fields that determine behaviour: each plugin's id and declared
+/// version, the granted permission set, and the contents of each script it
+/// resolved. Recorded beside the runtime at load time so a later on-disk change
+/// is detectable — see [`crate::manager::PluginManager::content_hash`].
+///
+/// The permission set is part of the fingerprint because it is the one field
+/// that decides which `oz` bindings exist: `PluginManager::new` builds each
+/// plugin's capability-gated `oz` table from exactly this list, so widening
+/// `log:write` to `cart:write` changes what the plugin can do while leaving the
+/// id, the version and every script byte identical. Hashing only the latter
+/// three would report that escalation as an unchanged set.
+///
+/// It is hashed as a canonical **set** — sorted and deduplicated — because the
+/// manager tests each permission independently, so the declared order and any
+/// duplicate cannot change the granted bindings. Hashing the declared order
+/// would report a behaviour-identical reorder as a change, the same false
+/// positive the id-sort below exists to prevent.
 ///
 /// Deliberately a non-cryptographic fingerprint, not a digest: its only job is
 /// to detect that the bytes changed, never to authenticate them (signature
@@ -67,6 +80,19 @@ pub fn hash_plugin_set(registry: &PluginRegistry) -> u64 {
     for plugin in &registry.plugins {
         plugin.manifest.plugin.name.hash(&mut hasher);
         plugin.manifest.plugin.version.hash(&mut hasher);
+
+        // The granted permission set, canonicalised (see the doc comment).
+        let mut granted: Vec<String> = plugin
+            .manifest
+            .permissions
+            .required_permissions
+            .iter()
+            .map(ToString::to_string)
+            .collect();
+        granted.sort();
+        granted.dedup();
+        granted.hash(&mut hasher);
+
         for script in &plugin.scripts {
             script.hash(&mut hasher);
             // An unreadable script still contributes a stable marker, so a

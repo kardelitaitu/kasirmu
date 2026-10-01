@@ -48,6 +48,8 @@ pub mod local_api;
 /// database — the only moment a restore swap is safe, because nothing has yet
 /// cloned the connection into the detached daemons that cannot be forced closed.
 mod recovery;
+// The young-instance guard lives in platform-instance-guard now: the tablet shell calls
+// the same implementation from its own entry point.
 /// Global application state (DB, kernel, sync daemon, registry).
 pub mod state;
 
@@ -80,6 +82,11 @@ mod sync_bootstrap;
 /// **NOTE:** If you modify the byte string below, update the array size
 /// (currently 168).  The compiler error message will report the exact
 /// expected size if there's a mismatch.
+// SAFETY: `link_section = ".drectve"` is a Windows-MSVC linker directive
+// section. `unsafe` is required only because the attribute names a raw
+// section; nothing here dereferences a pointer or crosses an FFI boundary.
+// The static is `#[used]`, `#[cfg(test)]`-gated and never read by Rust code —
+// it exists so the test binary links the Common-Controls v6 manifest.
 #[cfg(all(test, windows, target_env = "msvc"))]
 #[used]
 #[unsafe(link_section = ".drectve")]
@@ -99,21 +106,61 @@ use tauri::{Emitter, Manager};
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 #[allow(deprecated)]
 pub fn run() {
+    // Claim the process-level instance guard before the Tauri runtime, the WebView or the
+    // store open, so a second launch exits instead of racing for the same EBWebView profile
+    // and the same kasir.db.
+    let _instance_guard = match platform_instance_guard::acquire() {
+        platform_instance_guard::Acquisition::Acquired(guard) => guard,
+        platform_instance_guard::Acquisition::AlreadyRunning => {
+            std::process::exit(0);
+        }
+    };
+
     // Initialise tokio-console before any other tracing setup.
     platform_startup::console::init_console_subscriber();
 
-    // Initialise structured logging early so the very first line of Tauri
-    // output is captured. Uses try_init so a second invocation (e.g.
-    // by a plugin or test harness) does not panic.
-    let _ = kasirmu_logging::try_init();
+    // Structured logging is initialised in the `setup` closure below — see
+    // the note there. It used to live here, as `kasirmu_logging::try_init()`,
+    // which writes to stdout only: captured nowhere on a double-clicked
+    // install. The file sink needs a writable per-install directory, and the
+    // only resolver that knows the right path on every platform needs an
+    // `AppHandle`, which does not exist until `setup`. Nothing logs between
+    // here and there.
 
     let result: Result<(), AppError> = tauri::Builder::default()
+        // NOTE: the single-instance guard is NOT a plugin. `single_instance::acquire()` above runs
+        // before the runtime exists, which is the only place it can be reliable: the plugin checked
+        // `GetLastError()` and then guarded its own exit on `FindWindowW` finding a window, so during
+        // a fast reload it fell through and the second process went on to race for `EBWebView` and
+        // `kasir.db` (journal, 2026-09-28). Keeping both would leave the unreliable one in the tree.
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
+            // ── Structured logging: file sink first, stdout fallback ──────
+            // Wiring landed 2026-09-29. `try_init_with_file_or_stdout` runs
+            // the LOG-2 directory pre-flight and keeps the first working sink:
+            // the platform-resolved log dir (rolling hourly files, 30-day
+            // retention) when it is writable, stdout when it is not. This is
+            // the first statement so every later log line in `setup` — recovery,
+            // at-rest key, migrations — reaches the file.
+            let log_dir = match app.path().app_log_dir() {
+                Ok(dir) => Some(dir),
+                Err(error) => {
+                    eprintln!(
+                        "[kasirmu] app log dir unavailable ({error}); logging to stdout only"
+                    );
+                    None
+                }
+            };
+            let _ = kasirmu_logging::try_init_with_file_or_stdout(
+                log_dir.as_deref(),
+                "kasirmu",
+                30,
+            );
+
             // ── Pending restore request (C8, slice S4a) ───────────────────
             // Consumed BEFORE `AppState::new` below, which opens the database
             // and runs migrations. This is the only moment the swap is safe:
@@ -158,11 +205,77 @@ pub fn run() {
                 }
             }
 
+            // ── Per-install at-rest key (C1, slice S2b-2b) ────────────────
+            // Installed BEFORE `AppState::new` below, which opens the database
+            // and is followed by the daemons that decrypt portable credentials
+            // (sync API key, terminal secret, PG password, rate key, LAN PSK,
+            // SMTP password, and the two PII columns).
+            //
+            // ORDER IS LOAD-BEARING. `portable_key` selects the derivation at
+            // call time, so a read that happens before this line uses the legacy
+            // derivation; on an install that already has rows written under the
+            // per-install key, that read FAILS for data which is perfectly
+            // intact. Installing late is worse than not installing at all.
+            //
+            // Synchronous, and every outcome is logged rather than propagated: a
+            // machine with no usable keychain must still start, because with no
+            // key installed the at-rest families derive exactly as they did
+            // before this seam existed. See `kasirmu_bridge::security`.
+            match kasirmu_bridge::security::install_at_rest_key() {
+                kasirmu_bridge::security::InstallKeyOutcome::Ready { installed_now, source } => {
+                    tracing::info!(
+                        installed_now,
+                        source = ?source,
+                        "per-install at-rest key installed"
+                    );
+                }
+                kasirmu_bridge::security::InstallKeyOutcome::RefusedNonDurableKeyring => {
+                    // Hazard H3. Not an error: the keyring on this machine
+                    // cannot hold a key across a restart, so generating one
+                    // would orphan every row written under it — including two
+                    // families that have no production setter to re-enter.
+                    tracing::warn!(
+                        "the OS keychain is not durable on this machine, so no \
+                         per-install at-rest key was created; at-rest values keep \
+                         using the previous derivation"
+                    );
+                }
+                kasirmu_bridge::security::InstallKeyOutcome::Unavailable(reason) => {
+                    tracing::warn!(
+                        reason = %reason,
+                        "could not reach the OS keychain for the per-install at-rest \
+                         key; at-rest values keep using the previous derivation"
+                    );
+                }
+                // `InstallKeyOutcome` is `#[non_exhaustive]`, so a future variant
+                // must not break this build. Nothing here is fatal by design, so
+                // an unknown arm degrades to the same safe statement as the two
+                // above rather than aborting a boot it cannot classify.
+                other => {
+                    tracing::warn!(
+                        outcome = ?other,
+                        "unrecognised per-install at-rest key outcome; at-rest values \
+                         keep using the previous derivation"
+                    );
+                }
+            }
+
             let state = AppState::new(app.handle())
                 .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
 
             // ── Module system lifecycle (shared startup) ──────────────
             platform_startup::init_module_system(&state.kernel, &state.db_path)?;
+
+            // ── Exchange-rate auto-sync daemon (started for the first time) ─
+            // Landed 2026-09-29: `init_rate_sync` had zero callers in every
+            // shell, so the daemon existed, was audited, and never ran. It is
+            // inert until `rate_sync.enabled` is on (default "0", so no
+            // network call on an untouched install), re-reads that setting and
+            // `rate_sync.interval` every cycle, and ticks before sleeping —
+            // details in `platform/startup/src/rate_sync.rs`. Opening its own
+            // WAL connection rather than sharing `AppState.db`: see
+            // `platform_startup::init_rate_sync_at`.
+            platform_startup::init_rate_sync_at(&state.db_path);
 
             // ── settings_updated → Tauri event bridge (ADR #22 Phase 0e) ─
             // The frontend SettingsContext subscribes to `settings_updated`
@@ -298,6 +411,9 @@ pub fn run() {
             // Fire-and-forget on purpose: boot is never blocked on a probe, and an
             // unreachable MAIN degrades to the canonical default exactly as it does
             // today until the cascade resolves to the fallback.
+            // Captured by the attestation coroutine below; cloned here because
+            // `app` is still borrowed by later closures in this block.
+            let derive_db = app.state::<AppState>().db.clone();
             platform_startup::spawn_once("server origin attestation", async move {
                 let nonce = kasirmu_core::attestation::generate_nonce();
                 match kasirmu_core::attestation::resolve_attested_origin(&nonce).await {
@@ -310,6 +426,24 @@ pub fn run() {
                         "no server origin could be attested; staying on the compiled default"
                     ),
                 }
+                // ── Point sync at the origin we just resolved ─────────
+                // Auth and sync are one host (ADR #55), so the sync URL is a
+                // fact this device already holds. This is NOT the debug-only
+                // `sync auto-provision` above: that one writes a loopback URL
+                // and a token, and is gated off in release. This writes the
+                // real attested origin and nothing else — no credential, and
+                // deliberately not `enabled`, because the status probe asks a
+                // public endpoint and enabling sync without a working
+                // credential would draw a green pill over failing pushes.
+                // `derive_sync_url_if_unset` leaves an operator's URL alone.
+                let conn = derive_db.lock().await;
+                let origin = kasirmu_core::attestation::resolved_origin().url;
+                if let Err(e) = kasirmu_core::derive_sync_url_if_unset(&conn, &origin) {
+                    tracing::warn!(
+                        error = %e,
+                        "could not derive the sync server URL from the attested origin;                          sync settings left untouched"
+                    );
+                }
             });
             // ── Background sync daemon ────────────────────────────────
             let db = app.state::<AppState>().db.clone();
@@ -321,7 +455,11 @@ pub fn run() {
             // saves already publish the domain event; this closes the loop
             // for the sync-applied path. The sink is shared by the SQLite
             // and PostgreSQL daemons.
-            let settings_sink = commands::sync::settings_changed_sink(&app_handle);
+            // R10 #3: the sink emits through the bridge's EventSink seam, built
+            // from the running AppState's BridgeCtx, not a raw handle.
+            let settings_sink = commands::sync::settings_changed_sink(
+                app.state::<AppState>().bridge_ctx().emitter.clone(),
+            );
             let sqlite_sink = settings_sink.clone();
             let pg_sink = settings_sink.clone();
             platform_startup::spawn_daemon("sync daemon", async move {
@@ -750,9 +888,25 @@ pub fn run() {
                 // encrypted. A plaintext credential stays readable as
                 // plaintext here, indefinitely and silently; do not read this
                 // call as an at-rest guarantee for this key.
-                let psk = platform_core::settings::Settings::get_lan_server_psk(&db)
-                    .unwrap_or(None)
-                    .filter(|s| !s.is_empty());
+                // A decrypt failure is NOT the same as "no PSK set": the first
+                // means the stored value is corrupt or written by another
+                // install, and `decrypt_or_fail_closed` refuses to hand it back
+                // as a credential. Swallowing that Err into `None` would degrade
+                // an integrity failure into "unconfigured", which is the silent
+                // path the fail-closed getter exists to prevent. Treated the same
+                // way as an absent PSK -- external bind refused -- but LOUDLY,
+                // because the operator must know the value is unreadable rather
+                // than simply unset.
+                let psk = match platform_core::settings::Settings::get_lan_server_psk(&db) {
+                    Ok(v) => v.filter(|s| !s.is_empty()),
+                    Err(e) => {
+                        tracing::error!(
+                            error = %e,
+                            "lan_server.psk could not be decrypted; treating it as unset and refusing any external bind"
+                        );
+                        None
+                    }
+                };
                 // Reject external bind without a PSK.
                 let bind = if bind == "0.0.0.0" && psk.is_none() {
                     tracing::warn!(
@@ -863,7 +1017,10 @@ pub fn run() {
                 let enabled_at_boot = {
                     let state = app.state::<AppState>();
                     let db_guard = state.db.blocking_lock();
-                    crate::local_api::is_enabled(&db_guard)
+                    crate::local_api::is_enabled(&db_guard).unwrap_or_else(|e| {
+                        tracing::warn!(error = %e, "local API auto-start: cannot read {}", "local_api.enabled");
+                        false
+                    })
                 };
                 if enabled_at_boot {
                     let app_handle = app.handle().clone();
@@ -880,7 +1037,13 @@ pub fn run() {
                         }
                         let still_enabled = {
                             let db = state.db.lock().await;
-                            crate::local_api::is_enabled(&db)
+                            crate::local_api::is_enabled(&db).unwrap_or_else(|e| {
+                                tracing::warn!(
+                                    error = %e,
+                                    "local API auto-start: cannot re-read the enabled flag"
+                                );
+                                false
+                            })
                         };
                         if !still_enabled {
                             return; // disabled while we queued for the lock
@@ -980,6 +1143,10 @@ pub fn run() {
             commands::edc::edc_sale,
             commands::edc::edc_refund,
             commands::edc::edc_void,
+            commands::edc::list_edc_terminals_scoped,
+            commands::edc::create_edc_terminal_scoped,
+            commands::edc::update_edc_terminal_scoped,
+            commands::edc::delete_edc_terminal_scoped,
             commands::data::import_data,
             commands::staff::list_staff_scoped,
             commands::staff::list_roles_scoped,
@@ -1116,6 +1283,8 @@ pub fn run() {
             commands::kds_routing::save_kds_routing_rules_scoped,
             commands::history::list_sales_scoped,
             commands::history::get_sale_scoped,
+            commands::history::stamp_faktur_pajak_scoped,
+            commands::history::create_faktur_pengganti_scoped,
             commands::history::export_daily_summary_scoped,
             commands::history::export_sales_by_hour_scoped,
             commands::history::export_eod_report_scoped,
@@ -1437,7 +1606,7 @@ pub fn run() {
     // Kernel shutdown happens in AppState::drop() — see state.rs.
 
     if let Err(e) = result {
-        tracing::error!(error = %e, "OZ-POS exited with error");
+        tracing::error!(error = %e, "kasir.mu exited with error");
         std::process::exit(1);
     }
 }

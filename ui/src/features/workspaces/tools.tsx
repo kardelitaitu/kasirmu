@@ -27,7 +27,7 @@
 // 2026-09-16, six of these 17 tools do differ: `staff` `shifts` `analytics`
 // `reports` `audit` `settings`, and in five of the six the role that would gain
 // the card is `auditor`, which holds the read keys but ranks below the home
-// floor. RULED 2026-09-20 (`todo-owner-rulings.md` R20): the rank stays
+// floor. RULED 2026-09-20 (`done-todo-owner-rulings.md` R20): the rank stays
 // authoritative for the home grid, and 3a.2 is narrowed to the gates that
 // have no route twin. The permission-vocabulary alternative was refused — it
 // would have handed five admin-surface cards to a read-only role under a

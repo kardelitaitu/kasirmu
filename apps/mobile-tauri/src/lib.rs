@@ -4,7 +4,7 @@ crate: kasirmu-mobile | status: SAFE | lint: CLEAN
 findings: clean — matches desktop-tauri guarded patterns. Coverage note: verified under the risk-ranked sampling protocol (global sweep clean), not line-by-line deep read
 next: none | perf: N/A
 */
-//! OZ-POS tablet shell (Tauri v2 mobile).
+//! kasir.mu tablet shell (Tauri v2 mobile).
 //!
 //! Registers the same business modules as the desktop client but
 //! with a mobile-optimised Tauri configuration (no window, touch
@@ -53,6 +53,11 @@ pub mod state;
 /// **NOTE:** If you modify the byte string below, update the array size
 /// (currently 168).  The compiler error message will report the exact
 /// expected size if there's a mismatch.
+// SAFETY: `link_section = ".drectve"` is a Windows-MSVC linker directive
+// section. `unsafe` is required only because the attribute names a raw
+// section; nothing here dereferences a pointer or crosses an FFI boundary.
+// The static is `#[used]`, `#[cfg(test)]`-gated and never read by Rust code —
+// it exists so the test binary links the Common-Controls v6 manifest.
 #[cfg(all(test, windows, target_env = "msvc"))]
 #[used]
 #[unsafe(link_section = ".drectve")]
@@ -74,11 +79,27 @@ use tauri::Manager;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 #[allow(deprecated)]
 pub fn run() {
+    // Claim the process-level instance guard before the runtime, the WebView or the store
+    // open. On Android the OS already enforces one instance, so this returns Acquired
+    // without doing anything; on a dev machine running the tablet shell twice it is the same
+    // race the desktop shell guards against (see platform_instance_guard).
+    let _instance_guard = match platform_instance_guard::acquire() {
+        platform_instance_guard::Acquisition::Acquired(guard) => guard,
+        platform_instance_guard::Acquisition::AlreadyRunning => {
+            std::process::exit(0);
+        }
+    };
+
     // Initialise tokio-console before any other tracing setup.
     platform_startup::console::init_console_subscriber();
 
-    // Use try_init so test builds that lack WebView2Loader.dll don't
-    // panic when logging is already initialised by the test harness.
+    // Structured logging is initialised in the `setup` closure below (see the
+    // note there): the file sink needs the platform-resolved log directory, so
+    // it cannot run here. Test builds compile that closure out under
+    // #[cfg(not(test))], so the stdout initialiser is kept for this path only —
+    // and it is `try_`, not `init`, so a test harness that already set a
+    // subscriber cannot make run() panic.
+    #[cfg(test)]
     let _ = kasirmu_logging::try_init();
     #[cfg(not(test))]
     {
@@ -96,6 +117,29 @@ pub fn run() {
             // a real cache path first. See the module note in Cargo.toml.
             .plugin(tauri_plugin_fs::init())
             .setup(|app| {
+                // ── Structured logging: file sink first, stdout fallback ──────
+                // Wiring landed 2026-09-29. On Android the resolved directory is
+                // the platform config dir + `/logs`, i.e. app-private storage —
+                // which is what finally makes a tablet field issue diagnosable:
+                // before this, the tablet was unobservable by construction (no
+                // stdout capture, no logcat persistence, no log pull). LOG-2's
+                // pre-flight decides, and stdout is the fallback rather than
+                // silence.
+                let log_dir = match app.path().app_log_dir() {
+                    Ok(dir) => Some(dir),
+                    Err(error) => {
+                        eprintln!(
+                            "[kasirmu] app log dir unavailable ({error}); logging to stdout only"
+                        );
+                        None
+                    }
+                };
+                let _ = kasirmu_logging::try_init_with_file_or_stdout(
+                    log_dir.as_deref(),
+                    "kasirmu",
+                    30,
+                );
+
                 // ── Pending restore request (C8, slice S4b) ───────────────────
                 // Consumed BEFORE `AppState::new` below, which opens the database
                 // and runs migrations. This is the only moment the swap is safe:
@@ -140,11 +184,74 @@ pub fn run() {
                     }
                 }
 
+                // ── Per-install at-rest key (C1, slice S2b-2b) ────────────
+                // Installed BEFORE `AppState::new` below, which opens the
+                // database and is followed by the daemons that decrypt portable
+                // credentials (sync API key, terminal secret, PG password, rate
+                // key, LAN PSK, SMTP password, and the two PII columns).
+                //
+                // ORDER IS LOAD-BEARING. `portable_key` selects the derivation
+                // at call time, so a read that happens before this line uses the
+                // legacy derivation; on an install that already has rows written
+                // under the per-install key, that read FAILS for data which is
+                // perfectly intact. Installing late is worse than not installing
+                // at all.
+                //
+                // On Android the resolved keyring is the platform backend, not
+                // the in-memory fallback, so a key is normally generated once
+                // and read back thereafter. Every outcome is logged rather than
+                // propagated: a machine with no usable keychain must still
+                // start, because with no key installed the at-rest families
+                // derive exactly as they did before this seam existed.
+                match kasirmu_bridge::security::install_at_rest_key() {
+                    kasirmu_bridge::security::InstallKeyOutcome::Ready { installed_now, source } => {
+                        tracing::info!(
+                            installed_now,
+                            source = ?source,
+                            "per-install at-rest key installed"
+                        );
+                    }
+                    kasirmu_bridge::security::InstallKeyOutcome::RefusedNonDurableKeyring => {
+                        // Hazard H3: generating here would orphan every row
+                        // written under a key that does not survive a restart.
+                        tracing::warn!(
+                            "the OS keychain is not durable on this device, so no \
+                             per-install at-rest key was created; at-rest values keep \
+                             using the previous derivation"
+                        );
+                    }
+                    kasirmu_bridge::security::InstallKeyOutcome::Unavailable(reason) => {
+                        tracing::warn!(
+                            reason = %reason,
+                            "could not reach the OS keychain for the per-install at-rest \
+                             key; at-rest values keep using the previous derivation"
+                        );
+                    }
+                    // `InstallKeyOutcome` is `#[non_exhaustive]`, so a future
+                    // variant must not break this build. Nothing here is fatal
+                    // by design, so an unknown arm degrades to the same safe
+                    // statement rather than aborting a boot it cannot classify.
+                    other => {
+                        tracing::warn!(
+                            outcome = ?other,
+                            "unrecognised per-install at-rest key outcome; at-rest values \
+                             keep using the previous derivation"
+                        );
+                    }
+                }
+
                 let state = AppState::new(app.handle())
                     .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
 
                 // ── Module system lifecycle (shared startup) ──────────────
                 platform_startup::init_module_system(&state.kernel, &state.db_path)?;
+
+                // ── Exchange-rate auto-sync daemon (started for the first time) ─
+                // Landed 2026-09-29 — see the same block in the desktop shell
+                // (`apps/desktop-tauri/src/lib.rs`) for why it is inert until
+                // `rate_sync.enabled` is on, and `init_rate_sync_at` for why it
+                // opens its own WAL connection.
+                platform_startup::init_rate_sync_at(&state.db_path);
 
                 // ── Manage state BEFORE spawning background daemons ───────
                 // Daemons access AppState via try_state(), which only works
@@ -170,6 +277,9 @@ pub fn run() {
         // Fire-and-forget on purpose: boot is never blocked on a probe, and an
         // unreachable MAIN degrades to the canonical default exactly as it does
         // today until the cascade resolves to the fallback.
+        // Captured by the attestation coroutine below; cloned here because
+        // `app_handle` is still used by later closures in this block.
+        let derive_app_handle = app_handle.clone();
         platform_startup::spawn_once("server origin attestation", async move {
             let nonce = kasirmu_core::attestation::generate_nonce();
             match kasirmu_core::attestation::resolve_attested_origin(&nonce).await {
@@ -181,6 +291,29 @@ pub fn run() {
                 None => tracing::warn!(
                     "no server origin could be attested; staying on the compiled default"
                 ),
+            }
+            // ── Point sync at the origin we just resolved ─────────────
+            // Auth and sync are one host (ADR #55), so the sync URL is a fact
+            // this device already holds — asking an operator to retype it is
+            // asking for a value we resolved ourselves.
+            //
+            // Runs AFTER the cascade so it stores the attested winner rather
+            // than the compiled default, and writes only when nothing is
+            // configured: an explicit operator URL always wins. It does NOT
+            // enable sync and does NOT mint a credential, so sync still will
+            // not start — the pill keeps saying "Not configured" until a
+            // credential arrives. Enabling it here would draw a green dot over
+            // 401s, because the status probe asks a public endpoint.
+            {
+                let state = derive_app_handle.state::<AppState>();
+                let conn = state.db.lock().await;
+                let origin = kasirmu_core::attestation::resolved_origin().url;
+                if let Err(e) = kasirmu_core::derive_sync_url_if_unset(&conn, &origin) {
+                    tracing::warn!(
+                        error = %e,
+                        "could not derive the sync server URL from the attested origin;                          sync settings left untouched"
+                    );
+                }
             }
         });
                     platform_startup::spawn_once("hardware bootstrap", async move {
@@ -730,6 +863,7 @@ pub fn run() {
                 commands::setup::get_preset_features,
                 commands::setup::get_first_run_state,
                 commands::setup::provision_device,
+                commands::setup::seed_default_roles_scoped,
                 commands::desktop_link::link_device_google,
         commands::desktop_link::link_device_email_request,
         commands::desktop_link::link_device_email_consume,
@@ -747,7 +881,12 @@ pub fn run() {
                 commands::tax::get_tax_rate_dependency_counts_scoped,
                 commands::tax::list_category_tax_rates_scoped,
                 commands::tax::set_category_tax_rates_scoped,
-                // TODO(L-1): these unscoped terminal commands are spoofable
+                // L-1 RESOLVED (2026-10-04): the legacy unscoped terminal commands
+                // are no longer registered in any client — both shells register only
+                // the session-scoped *_scoped variants (see desktop-tauri/src/lib.rs
+                // and the sorted block below). Only set_device_binding_scoped remains
+                // here, and it is scoped; the L-1 finding in
+                // docs/archived/tauri-security-audit.md:162 is satisfied.
                 commands::terminals::set_device_binding_scoped,
                 commands::workspaces::list_workspaces,
                 commands::workspaces::list_workspace_screens,
@@ -818,6 +957,8 @@ pub fn run() {
                 commands::history::export_sales_by_hour_scoped,
                 commands::history::get_sale_scoped,
                 commands::history::list_sales_scoped,
+                commands::history::stamp_faktur_pajak_scoped,
+                commands::history::create_faktur_pengganti_scoped,
                 commands::kds::create_kds_order_from_sale_scoped,
                 commands::kds::get_kds_order_scoped,
                 commands::kds::get_kds_queue_scoped,
@@ -950,7 +1091,7 @@ pub fn run() {
         // Kernel shutdown happens in AppState::drop() — see state.rs.
 
         if let Err(e) = result {
-            tracing::error!(error = %e, "OZ-POS tablet exited with error");
+            tracing::error!(error = %e, "kasir.mu tablet exited with error");
             std::process::exit(1);
         }
     }

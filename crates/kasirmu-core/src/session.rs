@@ -78,7 +78,7 @@ impl SessionContext {
     /// Create a new session context (legacy 8-field constructor).
     ///
     /// Sets `restaurant_pos_id` to `None` (default for all current sessions).
-    /// For multi-KDS sessions, use [`new_with_restaurant_pos`] instead.
+    /// For multi-KDS sessions, use [`new_with_restaurant_pos`](crate::session::SessionContext::new_with_restaurant_pos) instead.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         user_id: String,
@@ -106,7 +106,7 @@ impl SessionContext {
     /// Create a session context scoped to a specific Restaurant POS.
     ///
     /// Used by KDS devices that need to be isolated to a single Restaurant POS.
-    /// When `restaurant_pos_id` is `None`, behaves identically to [`new`].
+    /// When `restaurant_pos_id` is `None`, behaves identically to [`new`](crate::session::SessionContext::new).
     #[allow(clippy::too_many_arguments)]
     pub fn new_with_restaurant_pos(
         user_id: String,
@@ -137,15 +137,20 @@ impl SessionContext {
     ///
     /// A session with `expires_at: None` is never considered expired.
     pub fn is_expired(&self) -> bool {
-        self.expires_at
-            .map(|ts| {
-                let now = SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_secs() as i64;
-                now >= ts
-            })
-            .unwrap_or(false)
+        self.expires_at.is_some_and(|ts| {
+            // `as_secs()` is u64; `i64::try_from` rather than `as i64` so a
+            // clock past 2262 (where u64 seconds exceed i64) fails the
+            // comparison as expired-true rather than wrapping negative and
+            // reporting a long-dead session as live. `unwrap_or_default()`
+            // below already covers the pre-epoch case, so this only has to
+            // be honest about the far future.
+            let now = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs();
+            let now = i64::try_from(now).unwrap_or(i64::MAX);
+            now >= ts
+        })
     }
 }
 

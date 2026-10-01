@@ -51,22 +51,25 @@ export const INITIAL_RESULTS = 8;
  */
 export const DOC_KEYWORDS: Record<string, string> = {
   // gettingStarted
+  quickstart: 'quickstart quick start walkthrough setup wizard getting started fast fast start first run',
   welcome: 'getting started overview introduction architecture what is',
   installation: 'install install desktop windows linux macos build setup download',
   'first-sale': 'pos checkout sale cash card barcode print receipt ring up',
   activation: 'activate license key register machine offline token devices',
+  'setup-wizard': 'setup wizard provisioning provision first run offline only owner pin shop type retail restaurant idr',
   'user-roles': 'roles permissions staff cashier manager admin supervisor access presets accounts',
   // guides
   'offline-mode': 'offline local first no internet connectivity queue sync later',
-  'cloud-sync': 'cloud sync peer to peer local first backup across stores registers',
+  'cloud-sync': 'cloud sync peer to peer local first backup across locations registers',
   payments: 'midtrans paddle qris qr card edc cash payments ewallet',
   shifts: 'shift cash in cash out cash drawer float reconciliation open close audit trail',
   inventory: 'stock items inventory variants low stock alert sku warehouse movement history',
-  stores: 'store stores branch branches outlet outlets register registers warehouse topology multi store',
+  location: 'location locations store stores branch branches outlet outlets register registers warehouse topology multi lokasi cabang',
   terminals: 'terminal terminals device devices register configure machine onboarding',
   workspaces: 'workspace workspaces layout screen retail restaurant service kitchen back office modes',
   // reference
   licensing: 'license licensing plan plans tier expiry expired grace period trial billing free forever upgrade',
+  'first-day': 'go live opening day first day checklist launch cash drawer float staff handover offline drill test print',
   settings: 'settings branding receipts receipt currency tax taxes locale local data backup restore',
   'api-read-tiers': 'jwt permissions read tier scoped token insufficient scope audit dashboard api get',
   'docs-authoring': 'docs documentation style guide callouts tables code charts authoring writing',
@@ -84,6 +87,13 @@ function pageItems(locale: string): SearchItem[] {
     { id: 'support', title: id ? 'Bantuan & Kontak' : 'Support & Contact', category: 'pages', url: `/${locale}/support`, keywords: 'faq contact discord email help' },
     { id: 'cara', title: id ? 'Cara Pakai kasir.mu' : 'How to Use kasir.mu', category: 'pages', url: `/${locale}/cara`, keywords: 'cara pakai install jualan qris stok offline shift how to guide tutorial' },
     { id: 'perbandingan', title: id ? 'Perbandingan kasir.mu vs Lainnya' : 'kasir.mu vs Others Compared', category: 'pages', url: `/${locale}/perbandingan`, keywords: 'perbandingan vs moka majoo olsera qasir pawoon compare alternatif murah' },
+
+    // Company pages. "about" is keyword-heavy on purpose: a visitor looking for
+    // why the app is native searches for the symptoms (offline, lag, hardware,
+    // memory) rather than for the company.
+    { id: 'about', title: id ? 'Tentang kasir.mu' : 'About kasir.mu', category: 'pages', url: `/${locale}/about`, keywords: 'about rust native offline arsitektur architecture lag memory hardware perusahaan why built lean tidak berat' },
+    { id: 'media-kit', title: id ? 'Media Kit' : 'Media Kit', category: 'pages', url: `/${locale}/media-kit`, keywords: 'media kit press logo brand aset assets warna colour typography boilerplate jurnalis pers' },
+    { id: 'contact', title: id ? 'Kontak' : 'Contact', category: 'pages', url: `/${locale}/contact`, keywords: 'contact hubungi kontak email sales support discord enterprise penawaran quote invoice faktur' },
 
     // Vertical solutions
     { id: 'kasir-gratis', title: id ? 'Kasir Gratis Selamanya' : 'Free POS Forever', category: 'pages', url: `/${locale}/kasir-gratis`, keywords: 'kasir gratis free umkm warung murah mudah ringan offline' },

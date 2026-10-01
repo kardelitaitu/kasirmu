@@ -39,31 +39,73 @@ and speaks both English and Bahasa Indonesia out of the box.
 - **Decide with data** — a daily sales dashboard, sales reports, menu
   engineering, and analytics.
 - **Grow** — loyalty, gift cards, promotions, self-service kiosks, and
-  multi-store topology.
+  multi-location topology.
 
 ## Hardware & devices
 
 kasir.mu works with the hardware a counter already has: barcode scanners,
 receipt printers, cash drawers, customer displays, and NFC readers. Devices
-are managed as terminals — register them, bind them to a store and a
+are managed as terminals — register them, bind them to a location and a
 workspace, and tune features per device. See [Terminals](../terminals/) and
-[Stores & Topology](../stores/).
+[Locations & Topology](../location/).
 
 ## Plans & pricing
 
-kasir.mu is **free forever** to get started — one store, one register, one
-warehouse, and 3 months of sales history. Paid plans add more stores,
-registers, and warehouses, plus QRIS payments, cloud sync, and automation.
+kasir.mu is **free forever** to get started — one location, one register, and
+3 months of sales history. Paid plans add more locations and registers, plus QRIS
+payments, cloud sync, and automation; warehouse workspaces come with Premium.
 See [Licensing & Plans](../licensing/).
+
+## Pick your starting point
+
+The setup wizard and workspace picker are built around a handful of shop
+shapes. Pick yours and the docs line up with the screens you will actually
+see:
+
+- **A retail shop or warung** — product grid, barcodes, stock. Provision
+  as 🛒 **Shop**; work in **Retail POS**. Start with
+  [Your First Sale](../first-sale/) and [Inventory & Warehouses](../inventory/).
+- **A restaurant or cafe** — menu categories, tables, kitchen.
+  Provision as 🍽️ **Restaurant or cafe**; work in **Restaurant POS**, and
+  add a **Kitchen Display** when cooks need a ticket queue. Start with
+  [Your First Sale](../first-sale/) and [Workspaces](../workspaces/).
+- **A warehouse or back office** — inward/outward stock and reports. The
+  **Warehouse** workspace covers products, stock levels, bundles, and
+  inventory reports; managers work from **Admin**. Start with
+  [Inventory & Warehouses](../inventory/).
+
+Not sure? The [Quickstart](../quickstart/) path works for every shape —
+it provisions one of the above, adds a test product, and rings a test sale
+regardless of which you picked.
+
+### Just evaluating?
+
+Downloading to kick the tyres, with no real counter to put it on yet — that
+is the [Quickstart](../quickstart/) path, and it commits nothing: the free
+plan starts on first launch with no account, no card, and no setup you
+cannot clear later. Pick **Offline only** in the wizard, add two test
+products, ring one test sale, and you have seen the whole loop — sales,
+receipt, and shift counting all work as they would for real. When you are
+ready, [Activation](../activation/) and cloud sync turn it into a live
+register.
 
 ## Where to start
 
+In a hurry? [Quickstart](../quickstart/) takes you from download to a
+working counter in about 15 minutes.
+
 1. [Install kasir.mu](../installation/) on Windows — the free plan starts on
    first launch, no account required. Other platforms are coming soon.
-2. Complete the setup wizard — business name and default currency.
-3. [Ring up your first sale](../first-sale/) — even without internet.
-4. [Activate a license key](../activation/) when you're ready to unlock more
-   stores, QRIS payments, and cloud sync.
+2. Run the [Setup Wizard](../setup-wizard/) — account (or offline only),
+   shop type, owner login.
+3. [Activate a license key](../activation/) when you're ready to unlock more
+   locations, QRIS payments, and cloud sync.
+4. [Ring up your first sale](../first-sale/) from the workspace you need —
+   [Workspaces](../workspaces/) covers Retail POS, Restaurant POS, Kitchen
+   Display, and Warehouse — even without internet.
+
+Going live today? The [First Day Live](../first-day/) checklist covers
+hardware verification, an opening shift, and handing the counter to staff.
 
 ## Reinstalling or locked out?
 
@@ -75,12 +117,17 @@ management. Every key rotation also emails you a notice, at most once per
 
 ## How the docs are organized
 
-- **Getting Started** — install, activate, and ring up your first sale.
-- **Guides** — day-to-day workflows: sync, payments, shifts, inventory,
-  workspaces, and terminals.
+- **Getting Started** — install, activate, ring up your first sale, and pick
+  a workspace to work in.
+- **Guides** — day-to-day workflows: payments, shifts, inventory,
+  locations, terminals, and how offline mode and cloud sync keep you running.
 - **Reference** — licensing, plans, and settings.
 
 ## Getting help
 
 Stuck? The [support page](../../support/) reaches the team, and the rest of
 these docs cover activation, payments, sync, and more.
+
+---
+
+Keep reading · **Next:** [Quickstart](../quickstart/) — the 15-minute path to a working counter.

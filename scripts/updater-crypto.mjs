@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// ── OZ-POS Updater Crypto (minisign-format, client-compatible) ──────────
+// ── kasir.mu Updater Crypto (minisign-format, client-compatible) ──────────
 //
 // Shared Ed25519/minisign helpers used by `generate-latest-json.mjs` and
 // `verify-updater-signature.mjs`.

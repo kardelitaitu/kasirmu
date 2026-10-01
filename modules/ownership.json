@@ -1,0 +1,64 @@
+{
+  "$comment": "Single source of truth for table ownership (plan §7). Consumed by scripts/generate-ownership-map.mjs (-> Rust const in crates/kasirmu-core/src/db/ownership.rs) and by scripts/verify-namespace-governance.py. Do NOT hand-edit the generated copies; run `node scripts/generate-ownership-map.mjs`.",
+  "schema_version": 1,
+  "owners": {
+    "sales": [
+      "sales",
+      "sale_lines",
+      "payments"
+    ],
+    "inventory": [
+      "products",
+      "product_recipes",
+      "inventory",
+      "stock_summary"
+    ],
+    "crm": [
+      "customers"
+    ],
+    "settings": [
+      "settings"
+    ],
+    "currency": [
+      "currencies",
+      "exchange_rates"
+    ],
+    "loyalty": [
+      "loyalty_accounts",
+      "loyalty_tiers",
+      "loyalty_transactions"
+    ],
+    "staff": [
+      "users",
+      "roles"
+    ],
+    "tax": [
+      "tax_rates",
+      "category_taxes",
+      "product_taxes"
+    ],
+    "terminal": [
+      "terminals",
+      "terminal_profiles",
+      "terminal_feature_overrides"
+    ],
+    "giftcards": [
+      "gift_cards",
+      "gift_card_transactions"
+    ],
+    "kitchen": [
+      "kds_daily_counters",
+      "kds_line_items",
+      "kds_order_targets"
+    ],
+    "promotions": [
+      "promotions",
+      "promotion_applications"
+    ],
+    "purchasing": [
+      "purchase_orders",
+      "purchase_order_lines"
+    ],
+    "reporting": []
+  }
+}

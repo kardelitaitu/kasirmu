@@ -44,7 +44,7 @@
 
 use std::sync::Arc;
 
-use foundation::contracts::{DomainEvent, EventHandler, ModuleResult};
+use foundation::contracts::{DomainEvent, EventHandler, HandlerType, ModuleResult};
 use kasirmu_core::kds::{KdsLineItem, KdsOrder};
 use serde::{Deserialize, Serialize};
 use tokio::sync::broadcast;
@@ -64,7 +64,7 @@ pub const EVENT_ORDER_PLACED: &str = "kds.order_placed";
 pub const EVENT_LINE_ITEM_BUMPED: &str = "kds.line_item_bumped";
 /// Tag value for [`KdsSyncEvent::OrderReady`] on the wire.
 pub const EVENT_ORDER_READY: &str = "kds.order_ready";
-/// Tag value for [`KdsSyncEvent::OrderRecalled`] on the wire.
+/// Tag value for [`KdsSyncEvent::Recalled`] on the wire.
 pub const EVENT_ORDER_RECALLED: &str = "kds.order_recalled";
 
 // ── Event payloads ───────────────────────────────────────────────────
@@ -243,6 +243,10 @@ pub struct KdsSyncHandler {
 }
 
 impl EventHandler<KdsSyncEvent> for KdsSyncHandler {
+    fn handler_type(&self) -> HandlerType {
+        HandlerType::PluginBridge
+    }
+
     fn handle(&self, event: &KdsSyncEvent) -> ModuleResult {
         let json = serde_json::to_string(event)
             .map_err(|e| anyhow::anyhow!("serialising KdsSyncEvent: {e}"))?;

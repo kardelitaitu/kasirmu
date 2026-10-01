@@ -786,7 +786,7 @@ function TopologyScreenContent({ initialBranchId, openCreateOnMount }: TopologyS
                     setSelectedBranchId(id);
                   }
                 }}
-                options={stores.map((s) => ({ value: s.id, label: s.name }))}
+                options={stores.map((s) => ({ value: s.id, label: s.code ? `[${s.code}] ${s.name}` : s.name }))}
                 ariaLabel={l10n.getString('topology-branch-selector-aria')}
                 /* With branches present a branch is always auto-selected, so
                    the placeholder never shows — it only surfaces when the

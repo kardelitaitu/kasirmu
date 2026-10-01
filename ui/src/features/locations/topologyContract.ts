@@ -534,20 +534,19 @@ export function validateTopologyGraph(
   tier?: string,
 ): TopologyValidationError[] {
   const errors: TopologyValidationError[] = [];
-  // The warehouse capacity guards AND the multi-warehouse cap are Pro-tier
-  // business features. `tier` is optional so the pure contract stays strict
-  // by default (no tier context => enforced); the UI gates pass their
-  // license tier so standard/free/one_time installs skip the capacity
-  // checks and hit the warehouse-tier-limit cap instead. One source of
-  // truth for both, so the editor's live gate and the screen's Apply
-  // boundary can never disagree (round 87).
-  // Pro, Premium, and Enterprise are the capacity-aware tiers — the backend
-  // treats Premium as Pro-equivalent (SubscriptionTier::max_warehouses /
-  // validate_warehouse_capacity both include it), so the contract must too,
-  // or a Premium install would flag its second Stock Room and skip the
-  // capacity guards while the backend accepted the diagram.
-  const capacityEnforced = tier === undefined || ['pro', 'premium', 'enterprise'].includes(tier);
-  const tierLimitEnforced = tier === undefined || !['pro', 'premium', 'enterprise'].includes(tier);
+  // The warehouse capacity guards AND the warehouse tier cap are PREMIUM-AND-UP
+  // business features (owner ruling 2026-09-29: the warehouse workspace is
+  // Premium-only, so `max_warehouses()` is 0 on Free/Plus/Pro — the same zeros
+  // the website's pricing row publishes). `tier` is optional so the pure
+  // contract stays strict by default: with no tier context the CAPACITY guards
+  // are enforced (a capacity number that lies about a full warehouse is wrong
+  // on any tier) but the tier cap is NOT, because an absent tier cannot be read
+  // as "below Premium". The UI gates pass their license tier, so free/plus/pro
+  // installs hit the warehouse-tier-limit cap instead of the capacity checks.
+  // One source of truth for both, so the editor's live gate and the screen's
+  // Apply boundary can never disagree (round 87).
+  const capacityEnforced = tier === undefined || ['premium', 'enterprise'].includes(tier);
+  const tierLimitEnforced = tier !== undefined && !['premium', 'enterprise'].includes(tier);
   if (graph.schemaVersion !== TOPOLOGY_SCHEMA_VERSION) {
     errors.push({
       code: 'unsupported-schema-version',
@@ -958,18 +957,18 @@ export function validateTopologyGraph(
     }
   }
 
-  // Multi-warehouse tier cap (round 87): below Pro, a diagram may carry at
-  // most one Stock Room. Appended LAST so semantic/integrity errors keep
-  // their precedence — a broken diagram reports the break first, the
-  // license cap only after the graph itself is sound. Round 87 follow-up:
-  // the error is scoped per excess node — the FIRST Stock Room is the
-  // allowed one, every warehouse after it (slice(1)) is flagged, one
-  // jumpable error each — so a downgraded diagram with several Stock
-  // Rooms reports each one in the panel instead of a single banner with
-  // nowhere to go. Deterministic by node order.
+  // Warehouse tier cap (round 87). Below Premium the cap is ZERO — not one —
+  // since the workspace moved to Premium+ on 2026-09-29, so EVERY Stock Room is
+  // excess, exactly as `validate_warehouse_quota` refuses any warehouse count
+  // above `max_warehouses()`. Appended LAST so semantic/integrity errors keep
+  // their precedence — a broken diagram reports the break first, the license
+  // cap only after the graph itself is sound. Scoped per excess node: one
+  // jumpable error each, so a downgraded diagram with several Stock Rooms
+  // reports each one in the panel instead of a single banner with nowhere to
+  // go. Deterministic by node order.
   if (tierLimitEnforced) {
     const warehouses = graph.nodes.filter((node) => node.kind === 'warehouse');
-    for (const excess of warehouses.slice(1)) {
+    for (const excess of warehouses) {
       errors.push({
         code: 'warehouse-tier-limit',
         messageId: 'topology-toast-multi-warehouse',

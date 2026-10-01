@@ -16,8 +16,6 @@ gift-cards-issue-amount-aria = Jumlah awal
 gift-cards-issue-invalid-amount = Jumlah harus positif
 gift-cards-issue-to-label = Diterbitkan Kepada (opsional)
 gift-cards-issue-to-aria = Diterbitkan kepada
-gift-cards-issue-pin-label = PIN (opsional)
-gift-cards-issue-pin-aria = PIN
 gift-cards-issue-confirm = Terbitkan Kartu
 
 gift-cards-topup-invalid = Jumlah top-up harus positif
@@ -49,7 +47,6 @@ gift-cards-error-issue = Gagal menerbitkan kartu hadiah
 gift-cards-topup-placeholder = Jumlah (unit minor)
 gift-cards-topup-aria = Jumlah top-up
 gift-cards-issue-to-placeholder = Nama pelanggan
-gift-cards-issue-pin-placeholder = Untuk pengecekan saldo
 
 # Transaction type labels (backend values: issue/redeem/topup/refund)
 gift-cards-txn-issue = Diterbitkan

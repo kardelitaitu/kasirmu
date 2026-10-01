@@ -263,6 +263,28 @@ fn selection_reports_only_usable_master_values() {
     );
 }
 
+/// The preferred name wins over the legacy alias, and the alias keeps working on
+/// its own. Split from the environment read so the precedence is testable without
+/// a `set_var`, which would race every other case in this binary.
+#[test]
+fn master_key_prefers_the_new_name_and_still_reads_the_legacy_alias() {
+    assert_eq!(
+        master_key_raw_from(Some("new".into()), Some("legacy".into())),
+        Some("new".to_string()),
+        "the documented name must win when both are set"
+    );
+    assert_eq!(
+        master_key_raw_from(None, Some("legacy".into())),
+        Some("legacy".to_string()),
+        "the legacy alias keeps working: retiring it outright would orphan stored rows"
+    );
+    assert_eq!(
+        master_key_raw_from(Some("new".into()), None),
+        Some("new".to_string())
+    );
+    assert_eq!(master_key_raw_from(None, None), None);
+}
+
 /// The report and the derivation must never disagree: the accessor calls the
 /// very reader `portable_key` branches on, so drift is a test failure rather
 /// than an operator misdiagnosis.
@@ -275,7 +297,10 @@ fn accessor_agrees_with_the_reader_the_derivation_uses() {
     );
     assert_eq!(
         master_key_derivation_active(),
-        selection_from_raw(std::env::var("OZ_MASTER_KEY").ok()),
+        selection_from_raw(master_key_raw_from(
+            std::env::var(MASTER_KEY_ENV).ok(),
+            std::env::var(MASTER_KEY_ENV_LEGACY).ok(),
+        )),
         "the selection report must match the value it describes"
     );
 }
@@ -311,6 +336,52 @@ fn decrypt_with_candidates_accepts_any_authenticating_key() {
     );
 }
 
+/// The SMTP at-rest family must read through the SAME branch-tolerant path as
+/// every other portable family.
+///
+/// `decrypt_smtp_at_rest` was the one reader still calling the single-key
+/// `portable_key`, so a row written while `OZ_MASTER_KEY` was set could not be
+/// opened once the master branch was in use -- the exact orphaning the
+/// branch-tolerant reader exists to prevent, and one of the blast-radius
+/// locations review C1/D1 enumerates.
+///
+/// Exercised with explicit key lists (like the `decrypt_with_candidates` case
+/// above) rather than by setting `OZ_MASTER_KEY`, which other cases in this
+/// binary read and which a `set_var` here would race.
+#[test]
+fn smtp_at_rest_reads_are_branch_tolerant() {
+    let legacy = derive_static_key(SMTP_AT_REST_DOMAIN);
+    let master = hmac_key(&[0x33u8; 32], SMTP_AT_REST_DOMAIN);
+    // A row the MASTER branch wrote -- unreachable for the old single-key reader.
+    let row = encrypt("smtp-secret", &master).unwrap();
+
+    // The property that matters: a master-written row opens when the master key
+    // is among the candidates, in either position. `decrypt_smtp_at_rest_under`
+    // is the PRODUCTION reader with its key list injected, so this asserts the
+    // real path rather than a reimplementation of it.
+    assert_eq!(
+        decrypt_smtp_at_rest_under(&row, &[legacy, master]).unwrap(),
+        "smtp-secret"
+    );
+    assert_eq!(
+        decrypt_smtp_at_rest_under(&row, &[master, legacy]).unwrap(),
+        "smtp-secret"
+    );
+
+    // Tolerance is not "any key works": without the key that wrote the row the
+    // reader still fails, and it fails CLOSED rather than returning ciphertext.
+    assert!(
+        decrypt_smtp_at_rest_under(&row, &[hmac_key(&[0x44u8; 32], SMTP_AT_REST_DOMAIN)]).is_err()
+    );
+
+    // The legacy arm is unchanged: a value that is not ciphertext still passes
+    // through byte for byte, which is the compatibility the doc promises.
+    assert_eq!(
+        decrypt_smtp_at_rest_under("plaintext-legacy", &[legacy]).unwrap(),
+        "plaintext-legacy"
+    );
+}
+
 /// With no usable `OZ_MASTER_KEY` there is exactly one candidate, so a
 /// read stays byte-for-byte the single-key decrypt it was.
 #[test]
@@ -336,5 +407,632 @@ fn selection_flag_tracks_the_derived_key() {
         active,
         selected != legacy_key,
         "the flag must be true exactly when the derived key is not the legacy one"
+    );
+}
+
+// ── The static fallback and C1's release clause (review C1, plan §10) ─
+
+/// The scope's other edge: with NO install key, the static fallback IS still the
+/// writer.
+///
+/// **This test began as a tripwire and is now a positive pin.** Its original doc
+/// said the release gate "must go red when this lands". The gate landed on
+/// 2026-09-29 as plan §10 **option (a)** — a RE-SCOPED behavioural clause, not the
+/// hard-error reading of §8.4 — so the tripwire is **discharged rather than
+/// tripped**: the assertion below is still correct, and it is correct *because*
+/// the clause is scoped. What it now pins is the edge the scope allows:
+///
+/// > in a release build the static fallback is never the WRITER **whenever a
+/// > durable keychain exists**.
+///
+/// "Whenever a durable keychain exists" is doing real work. Every shipped install
+/// is in the *other* case — NOTHING in the repository sets `OZ_MASTER_KEY` (zero
+/// occurrences in `ops/`, `scripts/`, `.github/`, `.env.example`, any compose file
+/// or Dockerfile), and a host with no usable keychain cannot resolve an install key
+/// either — so this is the state a release build actually boots into. §10 refused
+/// option (b) precisely because a hard error here would stop those installs
+/// booting. The clause's affirmative half is pinned by
+/// [`the_static_fallback_is_never_the_writer_when_an_install_key_exists`].
+#[test]
+fn the_static_fallback_is_the_default_derivation_and_is_pinned_as_reachable() {
+    if master_key_from_env().is_some() {
+        // Ambient master key: the fallback is not the selected branch here, and
+        // this case is about the default. Covered by the branch-tolerant cases.
+        return;
+    }
+    // `portable_key` is the PRODUCTION selector -- every at-rest write and every
+    // single-key read calls it. Asserting on it, rather than on the parameterised
+    // `portable_key_with` (which takes the master key as an argument and therefore
+    // cannot observe this branch at all), is what makes this pin non-vacuous. The
+    // first version of this test used the helper and PASSED with the production
+    // selector deliberately broken -- the falsification caught it.
+    let selected = portable_key(SMTP_AT_REST_DOMAIN, derive_static_key);
+    assert_eq!(
+        selected,
+        derive_static_key(SMTP_AT_REST_DOMAIN),
+        "with no master key the static derivation is selected -- if this fails, a \
+         release gate was added and C1's decision was taken; invert this test \
+         deliberately in the same change"
+    );
+}
+
+/// **C1's release clause, re-scoped 2026-09-29 (plan §10, option (a)).**
+///
+/// The clause: *in a release build the static fallback is never the WRITER
+/// whenever a durable keychain exists.* It survives only as a **read candidate**
+/// for rows written before the upgrade — which hazard H4 requires, and which is
+/// why the clause cannot be a `compile_error!` build gate: `derive_static_key`
+/// must stay **compiled** for that legacy read path. The only honest assertion is
+/// behavioural, and this is it.
+///
+/// **Both halves are asserted, because asserting only the first would also be
+/// satisfied by the wrong fix** — deleting the static derivation from the
+/// candidate list, which would orphan every pre-upgrade row:
+///
+/// 1. an install key wins the **write** arm (the clause), and
+/// 2. the static derivation is **still a read candidate** (H4's requirement).
+#[test]
+fn the_static_fallback_is_never_the_writer_when_an_install_key_exists() {
+    let install = [0x0Au8; 32];
+
+    // 1. The clause: the install key is the writer; the static derivation is not.
+    let written = portable_key_from(SMTP_AT_REST_DOMAIN, Some(&install), None, derive_static_key);
+    assert_eq!(
+        written,
+        install_key(SMTP_AT_REST_DOMAIN, &install),
+        "an install key must win the write arm"
+    );
+    assert_ne!(
+        written,
+        derive_static_key(SMTP_AT_REST_DOMAIN),
+        "the static fallback must not be the writer when a durable keychain exists"
+    );
+
+    // 2. H4's requirement: the static derivation stays readable for rows written
+    //    before the upgrade. This is the half that makes the clause a SCOPE and
+    //    not a deletion.
+    let candidates = candidate_keys_from(
+        SMTP_AT_REST_DOMAIN,
+        Some(&install),
+        None,
+        None,
+        derive_static_key,
+    );
+    assert!(
+        candidates.contains(&derive_static_key(SMTP_AT_REST_DOMAIN)),
+        "the static derivation must remain a READ candidate (H4) -- a fix that \
+         removed it would orphan every pre-upgrade row"
+    );
+    assert!(
+        candidates.contains(&install_key(SMTP_AT_REST_DOMAIN, &install)),
+        "the install derivation must be readable by the process that wrote it (H1)"
+    );
+    assert_ne!(
+        candidates.first(),
+        Some(&derive_static_key(SMTP_AT_REST_DOMAIN)),
+        "the static derivation must not be the FIRST candidate while an install \
+         key exists -- it is a fallback for old rows, not the primary"
+    );
+}
+
+// ── C1 slices S2a + S2b-1: the per-install key seam ──────────────────
+
+/// The install-key derivation is HMAC-SHA256(install_secret, domain) --
+/// domain separation identical in shape to the master-key derivation, so a
+/// row written under a per-install key is a DIFFERENT ciphertext from one
+/// written under the master key for the same domain.
+#[test]
+fn install_key_is_domain_separated_and_deterministic() {
+    let secret = [7u8; 32];
+    let a = install_key(SMTP_AT_REST_DOMAIN, &secret);
+    let b = install_key(SMTP_AT_REST_DOMAIN, &secret);
+    let other_domain = install_key(PROFILE_AT_REST_DOMAIN, &secret);
+    let other_secret = install_key(SMTP_AT_REST_DOMAIN, &[8u8; 32]);
+
+    assert_eq!(a, b, "same secret + same domain must derive the same key");
+    assert_ne!(a, other_domain, "domains must not share a key");
+    assert_ne!(a, other_secret, "different secrets must not share a key");
+}
+
+/// The install branch enters the reader's candidate list ONLY when a key is
+/// installed, and it is tried FIRST.
+///
+/// This REPLACES the S2a-era pin that asserted the derivation could never appear
+/// in `candidate_keys`. S2b-1 changes that deliberately: hazard H1 is a writer
+/// using a derivation no reader tries, which bricks the install on its own rows
+/// immediately, so the candidate branch ships in the same slice as the write arm.
+/// What must stay true is the CONDITION — with no key installed the list is
+/// byte-identical to the pre-seam list, so no existing row gains a derivation its
+/// writer never used.
+#[test]
+fn install_key_enters_the_candidate_list_only_when_installed_and_goes_first() {
+    let secret = [7u8; 32];
+    let derived = install_key(SMTP_AT_REST_DOMAIN, &secret);
+
+    // Not installed: the pre-seam list, in the pre-seam order.
+    let without = candidate_keys_from(SMTP_AT_REST_DOMAIN, None, None, None, derive_static_key);
+    assert_eq!(
+        without,
+        vec![derive_static_key(SMTP_AT_REST_DOMAIN)],
+        "with no install key the candidate list must be the pre-S2b-1 list"
+    );
+    assert!(
+        !without.contains(&derived),
+        "an uninstalled derivation must never be a read candidate -- adding it \
+         would widen READ acceptance for every family without any writer using it"
+    );
+
+    // Installed: present, first, and without dropping the legacy branch.
+    let with = candidate_keys_from(
+        SMTP_AT_REST_DOMAIN,
+        Some(&secret),
+        None,
+        None,
+        derive_static_key,
+    );
+    assert_eq!(
+        with.first(),
+        Some(&derived),
+        "the newest derivation is the likeliest writer, so it is tried first"
+    );
+    assert!(
+        with.contains(&derive_static_key(SMTP_AT_REST_DOMAIN)),
+        "widening for reading must not drop the legacy branch"
+    );
+}
+
+/// The previous-key slot is a READ candidate and never a writer (C1 slice S2c).
+///
+/// A rotation promotes the NEW key and parks the OLD one in the previous slot, so
+/// mid-sweep a row exists under either. This pins the two halves that make that
+/// safe, and the reason a partial sweep is a brick rather than a warning.
+#[test]
+fn a_previous_install_key_is_a_read_candidate_and_never_a_writer() {
+    let old = [1u8; 32];
+    let new = [2u8; 32];
+    let old_derived = install_key(SMTP_AT_REST_DOMAIN, &old);
+    let new_derived = install_key(SMTP_AT_REST_DOMAIN, &new);
+
+    // Reading mid-rotation: current first, previous second, legacy still present.
+    let keys = candidate_keys_from(
+        SMTP_AT_REST_DOMAIN,
+        Some(&new),
+        Some(&old),
+        None,
+        derive_static_key,
+    );
+    assert_eq!(
+        keys.first(),
+        Some(&new_derived),
+        "the current key is tried before the outgoing one"
+    );
+    assert_eq!(
+        keys.get(1),
+        Some(&old_derived),
+        "the outgoing key is the other key a mid-sweep row can be under, so it is tried second"
+    );
+    assert!(
+        keys.contains(&derive_static_key(SMTP_AT_REST_DOMAIN)),
+        "adding the previous branch must not drop the legacy branch (hazard H4)"
+    );
+
+    // A write must use the CURRENT key. `portable_key_from` has no previous slot
+    // to consult at all, which is the structural half of this guarantee; the
+    // behavioural half is that the outgoing derivation cannot be produced here.
+    let written = portable_key_from(SMTP_AT_REST_DOMAIN, Some(&new), None, derive_static_key);
+    assert_eq!(written, new_derived, "a write uses the current key");
+    assert_ne!(
+        written, old_derived,
+        "the outgoing key must never win a write, or a rekey that died half way \
+         would leave the survivors split across two writers"
+    );
+
+    // The point of the slot, end to end: a row written under the outgoing key must
+    // still open mid-rotation, and must NOT open once that key is retired.
+    let row = encrypt("legacy-row", &old_derived).expect("encrypt under the outgoing key");
+    assert_eq!(
+        decrypt_with_candidates(&row, &keys).expect("the mid-rotation reader opens it"),
+        "legacy-row",
+        "a row still under the outgoing key must read while the rotation is in flight"
+    );
+    assert!(
+        decrypt_with_candidates(&row, &[new_derived, derive_static_key(SMTP_AT_REST_DOMAIN)])
+            .is_err(),
+        "and it must FAIL once the outgoing key is retired — which is exactly why \
+         `oz rekey` must sweep every install-key-derived row before retiring it"
+    );
+}
+
+/// Outside a rotation the previous slot is absent, so the candidate list is
+/// byte-identical to the pre-S2c list and no family gains a derivation its writer
+/// never used.
+#[test]
+fn the_previous_branch_adds_nothing_outside_a_rotation() {
+    let current = [3u8; 32];
+    let steady = candidate_keys_from(
+        SMTP_AT_REST_DOMAIN,
+        Some(&current),
+        None,
+        None,
+        derive_static_key,
+    );
+    assert_eq!(
+        steady,
+        vec![
+            install_key(SMTP_AT_REST_DOMAIN, &current),
+            derive_static_key(SMTP_AT_REST_DOMAIN),
+        ],
+        "with no previous key the list must be exactly [install, legacy]; the new \
+         branch must not perturb the steady state"
+    );
+    assert!(
+        !previous_install_key_derivation_active(),
+        "nothing installs a previous key in the unit-test binary; if this is now \
+         true, a case primed the process global and poisoned its siblings"
+    );
+}
+
+/// Every family carries its OWN domain and its OWN legacy closure (hazard H5).
+///
+/// Eight families, eight distinct domains, and rows 7–8 on `derive_static_key`
+/// while rows 1–6 use `derive_key(d, "static")`. Unifying the two closures — the
+/// "tidy" refactor — would silently change what existing ciphertext means for one
+/// group, so the difference is pinned rather than left to a comment.
+#[test]
+fn every_at_rest_family_has_its_own_domain_and_legacy_closure() {
+    use AtRestFamily::{
+        LanPsk, LocalApiSecret, PgSyncPassword, ProfileAtRest, RateApiKey, SmtpAtRest, SyncApiKey,
+        SyncTerminalSecret,
+    };
+
+    let families = [
+        SyncApiKey,
+        SyncTerminalSecret,
+        PgSyncPassword,
+        RateApiKey,
+        LanPsk,
+        LocalApiSecret,
+        SmtpAtRest,
+        ProfileAtRest,
+    ];
+    let mut seen = std::collections::HashSet::new();
+    for family in families {
+        let (domain, legacy) = family.derivation();
+        assert!(
+            seen.insert(domain),
+            "two families share a domain, so one key would open the other's rows: {family:?}"
+        );
+        let uses_static = matches!(family, SmtpAtRest | ProfileAtRest);
+        assert_eq!(
+            legacy(domain) == derive_static_key(domain),
+            uses_static,
+            "the wrong legacy closure is attached to {family:?} (hazard H5)"
+        );
+    }
+    assert_eq!(seen.len(), 8, "all eight families must be distinct");
+}
+
+/// A legacy plaintext row is re-encrypted for every family, and the result opens
+/// under the current key alone — which is the whole job of a rotation sweep.
+///
+/// The fixture differs for `LocalApiSecret` on purpose: that family accepts only its
+/// real pre-encryption shape (64 lowercase hex), because its legacy form is
+/// base64-shaped and the shared gate cannot tell it from ciphertext. So "a legacy
+/// row" is not one string across the eight families, and a test that used one would
+/// be asserting the wrong contract for the eighth.
+#[test]
+fn rewrap_converts_a_legacy_plaintext_row_into_ciphertext_for_every_family() {
+    use AtRestFamily::*;
+
+    for family in [
+        SyncApiKey,
+        SyncTerminalSecret,
+        PgSyncPassword,
+        RateApiKey,
+        LanPsk,
+        LocalApiSecret,
+        SmtpAtRest,
+        ProfileAtRest,
+    ] {
+        let plaintext = match family {
+            LocalApiSecret => "3f2a91c4e07b5d6812ab34cd56ef7890a1b2c3d4e5f60718293a4b5c6d7e8f90",
+            _ => "kafe-lima-0725",
+        };
+        let rewritten = rewrap(family, plaintext)
+            .unwrap_or_else(|e| panic!("{family:?} rewrap failed: {e}"))
+            .unwrap_or_else(|| panic!("{family:?} refused a plaintext legacy row"));
+        assert_ne!(rewritten, plaintext, "{family:?} did not encrypt");
+        assert!(
+            looks_like_ciphertext(&rewritten),
+            "{family:?} produced something that is not ciphertext-shaped"
+        );
+        assert!(
+            opens_under_current_key_only(family, &rewritten),
+            "{family:?}: a rewritten row must open under the current key alone, or \
+             retiring the outgoing key would orphan it"
+        );
+        assert!(
+            !opens_under_current_key_only(family, plaintext),
+            "{family:?}: the legacy plaintext must NOT pass the verification — it is \
+             exactly the row the sweep exists to convert"
+        );
+    }
+}
+
+/// `local_api.secret` is the one family whose legacy plaintext is base64-SHAPED, so
+/// it uses a positive discriminator instead of the shared shape gate. This pins
+/// both halves: the collision that makes the gate unusable, and the refusal that
+/// the positive test buys (a shape-gated family would happily "migrate" junk).
+#[test]
+fn the_local_api_family_uses_a_positive_legacy_test_not_the_shape_gate() {
+    use AtRestFamily::{LocalApiSecret, SyncApiKey};
+
+    let legacy = "3f2a91c4e07b5d6812ab34cd56ef7890a1b2c3d4e5f60718293a4b5c6d7e8f90";
+    assert_eq!(legacy.len(), 64);
+    assert!(
+        is_legacy_local_api_secret(legacy),
+        "the shipped generator's shape must be recognised"
+    );
+    assert!(
+        looks_like_ciphertext(legacy),
+        "THE COLLISION: the legacy value passes the crate's own ciphertext shape \
+         test, which is why this family cannot use the shared gate"
+    );
+
+    assert!(
+        rewrap(LocalApiSecret, legacy).unwrap().is_some(),
+        "the real legacy shape must be migrated, not refused"
+    );
+
+    // The discriminator's value: short junk is NOT the legacy shape, so the positive
+    // test refuses it. A family using `!looks_like_ciphertext` would have encrypted
+    // it — turning a corrupt row into a confident-looking ciphertext row.
+    assert!(
+        !is_legacy_local_api_secret("short-junk"),
+        "the positive test must not accept arbitrary junk"
+    );
+    assert_eq!(
+        rewrap(LocalApiSecret, "short-junk").unwrap(),
+        None,
+        "local_api.secret must refuse a value that is neither readable nor the legacy shape"
+    );
+    assert!(
+        rewrap(SyncApiKey, "short-junk").unwrap().is_some(),
+        "and the contrast: a shape-gated family DOES migrate it, which is the \
+         behaviour the positive test deliberately does not copy"
+    );
+}
+
+/// A value we cannot read is left ALONE. Overwriting it would destroy whatever a
+/// key restore could still open — the one outcome a sweep must never produce.
+#[test]
+fn rewrap_leaves_a_foreign_or_corrupt_value_untouched() {
+    // Ciphertext-shaped, but written under a key no candidate list contains.
+    let foreign = encrypt("someone-elses-row", &[0x99u8; 32]).unwrap();
+    assert!(looks_like_ciphertext(&foreign));
+    assert_eq!(
+        rewrap(AtRestFamily::SyncApiKey, &foreign).unwrap(),
+        None,
+        "an unreadable ciphertext-shaped row must be skipped, not re-encrypted over"
+    );
+}
+
+/// With no key installed the derivation reports inactive — hazard H2's guard.
+///
+/// This REPLACES the S2a-era pin that asserted the seam was dormant *by
+/// construction*. S2b-1 makes the mechanism real, so what is pinned now is the
+/// behaviour that matters: a process that installs no key — which is every
+/// process until S2b-2 wires the keychain read at boot — must report inactive and
+/// derive exactly as before.
+///
+/// Nothing in this binary calls `set_install_key`, and that is deliberate: the
+/// global cannot be un-set, so installing one here would change the derivation
+/// for every other case in this file. The real global is driven in
+/// `tests/at_rest_key_lifecycle.rs`, which runs as its own process.
+#[test]
+fn install_key_derivation_is_inactive_until_a_key_is_installed() {
+    assert!(
+        !install_key_derivation_active(),
+        "no key is installed in the unit-test binary; if this now returns true, a \
+         case installed one into the process global and poisoned its siblings"
+    );
+}
+
+/// Precedence is install > master > legacy (D1, answered 2026-09-29).
+///
+/// Exercised through `portable_key_from` with every source injected, because the
+/// process global cannot be un-set and a `set_var` for the master key would race
+/// every other case in this binary.
+#[test]
+fn install_key_wins_over_master_and_legacy() {
+    let install = [0x07u8; 32];
+    let master = [0x42u8; 32];
+
+    let all_three = portable_key_from(
+        SMTP_AT_REST_DOMAIN,
+        Some(&install),
+        Some(&master),
+        derive_static_key,
+    );
+    assert_eq!(
+        all_three,
+        hmac_key(&install, SMTP_AT_REST_DOMAIN),
+        "the per-install key is the real key once it exists, so it must win"
+    );
+    assert_ne!(all_three, hmac_key(&master, SMTP_AT_REST_DOMAIN));
+    assert_ne!(all_three, derive_static_key(SMTP_AT_REST_DOMAIN));
+
+    // Without an install key the master override still beats legacy...
+    assert_eq!(
+        portable_key_from(SMTP_AT_REST_DOMAIN, None, Some(&master), derive_static_key),
+        hmac_key(&master, SMTP_AT_REST_DOMAIN)
+    );
+    // ...and with neither source the family's legacy derivation runs, unchanged.
+    assert_eq!(
+        portable_key_from(SMTP_AT_REST_DOMAIN, None, None, derive_static_key),
+        derive_static_key(SMTP_AT_REST_DOMAIN)
+    );
+}
+
+/// Hazards H1 and H4 together, through the PRODUCTION reader.
+///
+/// H1: a row written under an installed key is readable while that key is a
+/// candidate — the self-brick the slice exists to prevent.
+/// H4: a row written under the legacy derivation still reads once a key exists.
+///
+/// Driven through `decrypt_smtp_at_rest_under`, the production read with its key
+/// list injected, so this asserts the real path rather than a reimplementation.
+#[test]
+fn install_key_rows_read_and_legacy_rows_survive_the_upgrade() {
+    let install = [0x09u8; 32];
+    let derived = install_key(SMTP_AT_REST_DOMAIN, &install);
+
+    // H4: written BEFORE the key existed, under the legacy derivation.
+    let legacy_row = encrypt(
+        "written-before-upgrade",
+        &derive_static_key(SMTP_AT_REST_DOMAIN),
+    )
+    .unwrap();
+    // H1: written AFTER, under the installed key.
+    let install_row = encrypt("written-after-upgrade", &derived).unwrap();
+
+    let candidates = candidate_keys_from(
+        SMTP_AT_REST_DOMAIN,
+        Some(&install),
+        None,
+        None,
+        derive_static_key,
+    );
+    assert_eq!(
+        decrypt_smtp_at_rest_under(&legacy_row, &candidates).expect("legacy row must still read"),
+        "written-before-upgrade",
+        "H4: the upgrade must not orphan rows written under the legacy derivation"
+    );
+    assert_eq!(
+        decrypt_smtp_at_rest_under(&install_row, &candidates).expect("install row must read"),
+        "written-after-upgrade",
+        "H1: a writer's own rows must be readable by the same process"
+    );
+
+    // The pre-upgrade reader CANNOT open the new row — which is exactly why the
+    // candidate branch had to ship in the same slice as the write arm.
+    assert!(
+        decrypt_smtp_at_rest_under(&install_row, &[derive_static_key(SMTP_AT_REST_DOMAIN)])
+            .is_err(),
+        "an install-key row is unreadable without the install branch: H1's failure mode"
+    );
+}
+
+/// S2b-1's own gate: with no key installed, nothing on the production path moved.
+///
+/// Asserts the PRODUCTION selector and the production candidate list rather than
+/// the injectable helpers, so the pin cannot pass while the real path is broken.
+#[test]
+fn no_install_key_leaves_the_production_path_unchanged() {
+    assert!(
+        !install_key_derivation_active(),
+        "a case installed a key into the process global and poisoned this one"
+    );
+    let ambient_master = master_key_from_env();
+
+    // `portable_key` is what every at-rest write calls.
+    let expected = match ambient_master {
+        Some(m) => hmac_key(&m, SMTP_AT_REST_DOMAIN),
+        None => derive_static_key(SMTP_AT_REST_DOMAIN),
+    };
+    assert_eq!(
+        portable_key(SMTP_AT_REST_DOMAIN, derive_static_key),
+        expected,
+        "with no install key the selection must be the pre-S2b-1 selection"
+    );
+
+    // The candidate list must not have gained an arm.
+    assert_eq!(
+        candidate_keys(SMTP_AT_REST_DOMAIN, derive_static_key).len(),
+        if ambient_master.is_some() { 2 } else { 1 },
+        "an uninstalled derivation must not widen the read candidate list"
+    );
+}
+
+/// A row written under the install key round-trips through it, and fails
+/// under the legacy and master derivations -- the property S2c will rely on.
+#[test]
+fn install_key_round_trips_and_is_not_interchangeable() {
+    let secret = [7u8; 32];
+    let key = install_key(SMTP_AT_REST_DOMAIN, &secret);
+    let ciphertext = encrypt("sk-install-secret", &key).expect("encrypt under install key");
+
+    assert_eq!(
+        decrypt(&ciphertext, &key).expect("decrypt under the same key"),
+        "sk-install-secret"
+    );
+    assert!(
+        decrypt(&ciphertext, &derive_static_key(SMTP_AT_REST_DOMAIN)).is_err(),
+        "the public-constant derivation must not open an install-key row"
+    );
+}
+
+// ── C14(a): the local-API secret family ──────────────────────────────
+
+/// The new family round-trips and is not interchangeable with its siblings.
+#[test]
+fn local_api_secret_round_trips_and_is_not_interchangeable() {
+    let secret = "0123456789abcdef".repeat(4); // the exact legacy shape, 64 hex
+    let ciphertext = encrypt_local_api_secret(&secret).expect("encrypt");
+
+    assert_ne!(ciphertext, secret, "the stored form must not be the secret");
+    assert_eq!(
+        decrypt_local_api_secret(&ciphertext).expect("decrypt"),
+        secret
+    );
+
+    // Domain separation: a sibling reader must not open this family's row.
+    assert!(decrypt_lan_psk(&ciphertext).is_err());
+    assert!(decrypt_sync_api_key(&ciphertext).is_err());
+    assert!(decrypt_smtp_at_rest(&ciphertext).is_err());
+}
+
+/// **The C14(a) hazard, pinned.** The legacy plaintext shape PASSES the crate's
+/// only shape test, so a passthrough gated on it would never fire — every
+/// pre-upgrade row would surface as a decrypt ERROR instead of reading. This
+/// asserts the collision, asserts the resulting failure, and asserts that the
+/// ciphertext this family writes can never be mistaken for the legacy shape
+/// (which is what lets the caller discriminate *positively*).
+#[test]
+fn local_api_secret_legacy_shape_collides_with_the_shape_test() {
+    let legacy = "0123456789abcdef".repeat(4);
+    assert_eq!(legacy.len(), 64);
+
+    // 1. The collision: the legacy value IS "ciphertext-shaped" to the repo's
+    //    only predicate, because 64 hex chars are valid base64 and decode to 48
+    //    bytes — past the 12 nonce + 16 tag bar. This is exactly why the generic
+    //    fail-closed reader cannot serve this family.
+    assert!(
+        looks_like_ciphertext(&legacy),
+        "a 64-char hex secret passes looks_like_ciphertext; if this ever goes \
+         false, the generic reader would still be the wrong design here"
+    );
+
+    // 2. And it genuinely does NOT decrypt under this family's key — so the
+    //    generic reader would have failed closed on every existing install.
+    assert!(
+        decrypt_local_api_secret(&legacy).is_err(),
+        "the legacy plaintext must not decrypt; this error is what the generic \
+         reader would have surfaced as a bricked local API"
+    );
+
+    // 3. The ciphertext is 12 + 64 + 16 = 92 bytes -> 124 base64url chars, so it
+    //    is disjoint from the 64-char legacy shape on BOTH length and alphabet.
+    let ciphertext = encrypt_local_api_secret(&legacy).expect("encrypt");
+    assert_ne!(
+        ciphertext.len(),
+        64,
+        "ciphertext length must be disjoint from the legacy shape"
+    );
+    assert!(
+        !ciphertext
+            .chars()
+            .all(|c| c.is_ascii_digit() || ('a'..='f').contains(&c)),
+        "ciphertext must never look like lowercase hex"
     );
 }

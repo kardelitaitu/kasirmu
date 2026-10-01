@@ -248,7 +248,7 @@ fn shift_neq_when_field_differs() {
 #[test]
 fn shift_debug_output() {
     let s = Shift::new("user-1", None::<String>, 500);
-    let debug = format!("{:?}", s);
+    let debug = format!("{s:?}");
     assert!(debug.contains("user-1"));
     assert!(debug.contains("500"));
 }

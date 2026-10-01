@@ -123,6 +123,39 @@ describe('StatusBar degraded rendering', () => {
     expect(screen.queryByText(/Sync · Not configured/)).toBeNull();
   });
 
+  it('paints a rejected credential bad and names it, not Offline or Not configured', () => {
+    // The false green this state exists to prevent: /health is public, so a
+    // device whose stored credential the server refuses still gets ok: true
+    // from the reachability ping and used to render "Sync · Connected" while
+    // every push 401'd. It is neither an outage (the server answered) nor a
+    // configuration gap (URL and key are both stored), so it must not borrow
+    // either neighbour's wording.
+    renderBar(HEALTHY, { state: 'unauthorized', latencyMs: null, cause: null });
+    const sync = screen.getByLabelText('Sync');
+    expect(sync.className).toContain('statusbar-tone--bad');
+    expect(screen.getByText(/Sync · Credential rejected/)).toBeInTheDocument();
+    expect(screen.queryByText(/Sync · Offline/)).toBeNull();
+    expect(screen.queryByText(/Sync · Not configured/)).toBeNull();
+  });
+
+  it('keeps an unconfigured sync pill warn while the rejected one is bad', () => {
+    // The two states sit one step apart in the operator's mental model — "set
+    // this up" versus "this setup is refused" — and collapsing them into one
+    // tone would restore the original misdiagnosis in a new shape. Rendered
+    // in two separate mounts: rendering twice in one test stacks two pills in
+    // the same DOM, and getByLabelText then matches both.
+    const { unmount } = renderBar(HEALTHY, {
+      state: 'unconfigured',
+      latencyMs: null,
+      cause: null,
+    });
+    expect(screen.getByLabelText('Sync').className).toContain('statusbar-tone--warn');
+    unmount();
+
+    renderBar(HEALTHY, { state: 'unauthorized', latencyMs: null, cause: null });
+    expect(screen.getByLabelText('Sync').className).toContain('statusbar-tone--bad');
+  });
+
   it('applies the same mapping to the sync pill', () => {
     // Both indicators read one tone function, so a state handled in one
     // cannot be missed in the other — the failure mode the three duplicated

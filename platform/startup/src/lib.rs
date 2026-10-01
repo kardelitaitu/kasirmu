@@ -18,7 +18,7 @@ findings: clean shared startup — module set pinned by parity test against the 
 next: none | perf: N/A
 */
 
-//! Shared application startup for OZ-POS desktop and tablet clients.
+//! Shared application startup for kasir.mu desktop and tablet clients.
 //!
 //! Both `apps/desktop-tauri` and `apps/mobile-tauri` call this crate
 //! to avoid duplicating module registration and event handler wiring.
@@ -40,11 +40,18 @@ next: none | perf: N/A
 //! # }
 //! ```
 
+#![deny(unsafe_code)]
+
 pub mod console;
+pub mod daemon_health;
 pub mod event_handlers;
 /// Startup hardware registration from the saved terminal profile.
 pub mod hardware;
 pub mod rate_sync;
+
+pub use daemon_health::{DaemonHealth, DaemonRegistry, DaemonState};
+
+use daemon_health::DaemonKind;
 
 use std::sync::{Arc, Mutex};
 
@@ -63,6 +70,29 @@ fn open_handler_connection(
     conn.pragma_update(None, "journal_mode", "WAL")?;
     Ok(Arc::new(Mutex::new(conn)))
 }
+
+/// The capability owner for the event-handler wiring that lives in this
+/// crate rather than in a vertical module.
+///
+/// The handlers in `event_handlers.rs` are startup-owned plumbing (sync
+/// outbox, audit log, loyalty award, settings relay), not part of any single
+/// vertical's lifecycle. Phase 2 P3 routes their subscriptions through the
+/// kernel's capability gate under this identity, so "which foreign topics may
+/// this wiring listen on?" is declared in one place instead of being implicit
+/// in the call sites.
+const STARTUP_WIRING_OWNER: &str = "startup";
+
+/// The topics the startup wiring is permitted to subscribe to.
+///
+/// Each entry is a `subscribe:<event>` capability from the plan's vocabulary
+/// (`todo-modular-scaffolding.md` §11.4). A handler for a topic not listed
+/// here is refused by `Kernel::subscribe_gated` before it can be registered.
+pub const STARTUP_WIRING_CAPABILITIES: &[&str] = &[
+    "subscribe:sale.completed",
+    "subscribe:product.created",
+    "subscribe:stock.adjusted",
+    "subscribe:settings.updated",
+];
 
 /// Initialise the caching layer.
 ///
@@ -113,6 +143,25 @@ pub fn init_module_system(
         k.register(Box::new(modules_promotions::PromotionsModule::new()))?;
         k.register(Box::new(modules_giftcards::GiftCardsModule::new()))?;
         k.register(Box::new(modules_kitchen::KitchenModule::new()))?;
+
+        // ── Phase 2 P3: declare the wiring owner's capabilities ──────────
+        //
+        // The event handlers below are startup plumbing, not a vertical
+        // module, so they declare under a dedicated owner id. Each topic the
+        // wiring subscribes to is asserted as both required and granted; a
+        // subscription to a topic not in the list is refused by
+        // `Kernel::subscribe_gated` before the handler is registered, and a
+        // malformed entry fails boot at parse time.
+        {
+            use platform_kernel::ModuleCapabilities;
+            let mut declared = ModuleCapabilities::none();
+            for raw in STARTUP_WIRING_CAPABILITIES {
+                let cap = platform_kernel::Capability::parse(raw)?;
+                declared = declared.require(cap.clone()).grant(cap);
+            }
+            k.declare_capabilities(STARTUP_WIRING_OWNER, declared);
+        }
+
         k.load_all()?;
         k.start_all()?;
         drop(k);
@@ -120,16 +169,18 @@ pub fn init_module_system(
         // Open a second connection for event handlers (WAL allows concurrent readers).
         let handler_conn = open_handler_connection(db_path)?;
 
-        // Wire event handlers on the bus.
+        // Wire event handlers on the bus, gated on the wiring owner's
+        // declared capabilities (Phase 2 P3).
         let k = kernel.blocking_lock();
-        let bus = k.event_bus();
 
-        bus.subscribe::<kasirmu_core::events::SaleCompleted>(
+        k.subscribe_gated::<kasirmu_core::events::SaleCompleted>(
+            STARTUP_WIRING_OWNER,
             "sale.completed",
+            "subscribe:sale.completed",
             Box::new(crate::event_handlers::SaleSyncEnqueuer::new(
                 handler_conn.clone(),
             )),
-        );
+        )?;
         // CRM-06: the CrmHistoryHandler subscription was REMOVED. Its
         // projection (customers.total_spent_minor) moved into the
         // completion transaction itself (Store::finalize_sale →
@@ -139,52 +190,68 @@ pub fn init_module_system(
         // and no currency validation (foreign-currency sales were
         // added raw); leaving it subscribed alongside the transactional
         // hook would double-count every sale.
-        bus.subscribe::<kasirmu_core::events::SaleCompleted>(
+        k.subscribe_gated::<kasirmu_core::events::SaleCompleted>(
+            STARTUP_WIRING_OWNER,
             "sale.completed",
+            "subscribe:sale.completed",
             Box::new(crate::event_handlers::AuditLogHandler::new(
                 handler_conn.clone(),
             )),
-        );
-        bus.subscribe::<kasirmu_core::events::ProductCreated>(
+        )?;
+        k.subscribe_gated::<kasirmu_core::events::ProductCreated>(
+            STARTUP_WIRING_OWNER,
             "product.created",
+            "subscribe:product.created",
             Box::new(crate::event_handlers::AuditLogHandler::new(
                 handler_conn.clone(),
             )),
-        );
-        bus.subscribe::<kasirmu_core::events::ProductCreated>(
+        )?;
+        k.subscribe_gated::<kasirmu_core::events::ProductCreated>(
+            STARTUP_WIRING_OWNER,
             "product.created",
+            "subscribe:product.created",
             Box::new(crate::event_handlers::InventorySyncEnqueuer::new(
                 handler_conn.clone(),
             )),
-        );
-        bus.subscribe::<kasirmu_core::events::StockAdjusted>(
+        )?;
+        k.subscribe_gated::<kasirmu_core::events::StockAdjusted>(
+            STARTUP_WIRING_OWNER,
             "stock.adjusted",
+            "subscribe:stock.adjusted",
             Box::new(crate::event_handlers::AuditLogHandler::new(
                 handler_conn.clone(),
             )),
-        );
-        bus.subscribe::<kasirmu_core::events::StockAdjusted>(
+        )?;
+        k.subscribe_gated::<kasirmu_core::events::StockAdjusted>(
+            STARTUP_WIRING_OWNER,
             "stock.adjusted",
+            "subscribe:stock.adjusted",
             Box::new(crate::event_handlers::InventorySyncEnqueuer::new(
                 handler_conn.clone(),
             )),
-        );
-        bus.subscribe::<kasirmu_core::events::SaleCompleted>(
+        )?;
+        // MSL-11: the `report_sales` projection handler was REMOVED. It wrote
+        // every completed sale into a table with no reader anywhere in the tree
+        // (no Rust, UI, or export path) while paying a lazy `CREATE TABLE` per
+        // sale, and it dropped `event.store_id` so multi-store deployments lost
+        // the store attribution. The aggregates it was meant to serve are
+        // computed directly from `sales`/`refunds` by
+        // `kasirmu_core::db::reports` (currency-grouped, store-offset aware,
+        // refund-aware).
+        k.subscribe_gated::<kasirmu_core::events::SaleCompleted>(
+            STARTUP_WIRING_OWNER,
             "sale.completed",
-            Box::new(modules_reporting::handlers::SaleCompletedReporter::new(
-                handler_conn.clone(),
-            )),
-        );
-        bus.subscribe::<kasirmu_core::events::SaleCompleted>(
-            "sale.completed",
+            "subscribe:sale.completed",
             Box::new(crate::event_handlers::LoyaltyEarnHandler::new(handler_conn)),
-        );
+        )?;
 
         // ── ADR #22 Phase 0e: SettingsUpdated handler (non-blocking) ──
-        bus.subscribe::<kasirmu_core::events::SettingsUpdated>(
+        k.subscribe_gated::<kasirmu_core::events::SettingsUpdated>(
+            STARTUP_WIRING_OWNER,
             "settings.updated",
+            "subscribe:settings.updated",
             Box::new(crate::event_handlers::SettingsUpdatedHandler::new()),
-        );
+        )?;
 
         // ── WhatsApp notification handlers (opt-in via feature flag + env vars) ─
         #[cfg(feature = "whatsapp-notifications")]
@@ -196,41 +263,69 @@ pub fn init_module_system(
                     let client: std::sync::Arc<dyn NotificationClient> =
                         std::sync::Arc::new(whatsapp);
 
-                    bus.subscribe::<kasirmu_core::events::SaleCompleted>(
+                    k.subscribe_gated::<kasirmu_core::events::SaleCompleted>(
+                        STARTUP_WIRING_OWNER,
                         "sale.completed",
+                        "subscribe:sale.completed",
                         Box::new(
                             kasirmu_notification::handlers::OrderConfirmationHandler::new(
                                 client.clone(),
                                 std::env::var("WHATSAPP_STORE_PHONE").ok(),
                             ),
                         ),
-                    );
-                    bus.subscribe::<kasirmu_core::events::SaleCompleted>(
-                        "sale.completed",
-                        Box::new(kasirmu_notification::handlers::PaymentReceiptHandler::new(
-                            client.clone(),
-                            std::env::var("WHATSAPP_RECEIPT_PHONE")
-                                .unwrap_or_else(|_| "+15550000000".into()),
-                        )),
-                    );
+                    )?;
+                    // NOT-B: register the receipt handler ONLY when a recipient
+                    // is configured. It used to default to a hard-coded
+                    // "+15550000000", so an install that enabled the feature
+                    // without setting the var built messages addressed to a
+                    // dummy US number and tried to send them. Skipping is the
+                    // same fail-closed shape OrderConfirmationHandler uses when
+                    // its store phone is absent.
+                    match std::env::var("WHATSAPP_RECEIPT_PHONE") {
+                        Ok(phone) if !phone.trim().is_empty() => {
+                            k.subscribe_gated::<kasirmu_core::events::SaleCompleted>(
+                                STARTUP_WIRING_OWNER,
+                                "sale.completed",
+                                "subscribe:sale.completed",
+                                Box::new(
+                                    kasirmu_notification::handlers::PaymentReceiptHandler::new(
+                                        client.clone(),
+                                        phone,
+                                    ),
+                                ),
+                            )?;
+                        }
+                        _ => tracing::warn!(
+                            "WHATSAPP_RECEIPT_PHONE not set — payment-receipt handler skipped"
+                        ),
+                    }
                     // Default threshold: alert when ≤ 5 items remaining.
                     let threshold: i64 = std::env::var("WHATSAPP_STOCK_ALERT_THRESHOLD")
                         .ok()
                         .and_then(|v| v.parse().ok())
                         .unwrap_or(5);
-                    let manager_phone = std::env::var("WHATSAPP_MANAGER_PHONE")
-                        .unwrap_or_else(|_| "+15550000000".into());
-                    bus.subscribe::<kasirmu_core::events::StockAdjusted>(
-                        "stock.adjusted",
-                        Box::new(kasirmu_notification::handlers::StockLowAlertHandler::new(
-                            client,
-                            threshold,
-                            manager_phone,
-                        )),
-                    );
+                    // NOT-B: same rule for the manager alert — no phone, no
+                    // handler, rather than a message to a placeholder.
+                    match std::env::var("WHATSAPP_MANAGER_PHONE") {
+                        Ok(phone) if !phone.trim().is_empty() => {
+                            k.subscribe_gated::<kasirmu_core::events::StockAdjusted>(
+                                STARTUP_WIRING_OWNER,
+                                "stock.adjusted",
+                                "subscribe:stock.adjusted",
+                                Box::new(
+                                    kasirmu_notification::handlers::StockLowAlertHandler::new(
+                                        client, threshold, phone,
+                                    ),
+                                ),
+                            )?;
+                        }
+                        _ => tracing::warn!(
+                            "WHATSAPP_MANAGER_PHONE not set — low-stock alert handler skipped"
+                        ),
+                    }
 
                     tracing::info!(
-                        "WhatsApp notification handlers wired (3 handlers on sale.completed + stock.adjusted)"
+                        "WhatsApp notification handlers wired (opt-in per configured phone number)"
                     );
                 }
                 Err(e) => {
@@ -343,16 +438,60 @@ fn spawn_watched(
     fut: impl std::future::Future<Output = ()> + Send + 'static,
     announce_exit: bool,
 ) {
+    spawn_watched_registered(daemon_registry(), name, fut, announce_exit);
+}
+
+/// The process-wide daemon registry (C23).
+///
+/// A background task's liveness is a property of the process, not of any one
+/// shell object, so the registry is a process global rather than a field on
+/// each shell's `AppState`. That is what lets every existing `spawn_daemon`
+/// call — 12 in the desktop shell, 5 in the tablet — be observed without
+/// touching a single call site, and it mirrors the `static RUNTIME` used a few
+/// lines above for the same reason.
+///
+/// Reads and writes go through the returned registry; see [`daemon_health`].
+pub fn daemon_registry() -> &'static DaemonRegistry {
+    static REGISTRY: std::sync::OnceLock<DaemonRegistry> = std::sync::OnceLock::new();
+    REGISTRY.get_or_init(DaemonRegistry::new)
+}
+
+/// Shared body of `spawn_daemon` and `spawn_once`, recording into a registry.
+///
+/// C23: the state the watchdog observes is written to `registry` as well as
+/// logged, so a daemon that dies stops being invisible. See
+/// [`daemon_health`] for why nothing restarts automatically.
+fn spawn_watched_registered(
+    registry: &DaemonRegistry,
+    name: &'static str,
+    fut: impl std::future::Future<Output = ()> + Send + 'static,
+    announce_exit: bool,
+) {
+    let kind = if announce_exit {
+        DaemonKind::Daemon
+    } else {
+        DaemonKind::OneShot
+    };
+    registry.register_named(name, kind);
+
+    let registry = registry.clone();
     spawn_detached(async move {
         let (tx, rx) = tokio::sync::oneshot::channel();
 
         // Watchdog: fired when the task future resolves or panics.
         spawn_detached(async move {
-            match rx.await {
-                Ok(()) if announce_exit => tracing::warn!("{name} exited unexpectedly"),
-                Ok(()) => {}
-                Err(_) => tracing::error!("{name} panicked"),
-            }
+            let state = match rx.await {
+                Ok(()) if announce_exit => {
+                    tracing::warn!("{name} exited unexpectedly");
+                    DaemonState::ExitedUnexpectedly
+                }
+                Ok(()) => DaemonState::Completed,
+                Err(_) => {
+                    tracing::error!("{name} panicked");
+                    DaemonState::Panicked
+                }
+            };
+            registry.record(name, state);
         });
 
         // Run the task.  If it panics, the `tx` drop during unwind
@@ -360,6 +499,31 @@ fn spawn_watched(
         fut.await;
         let _ = tx.send(());
     });
+}
+
+/// Spawn a daemon that records its health into `registry` (C23).
+///
+/// Identical to [`spawn_daemon`] except that the observed state is written to
+/// the caller's registry, so the shell can ask which daemons have died.
+pub fn spawn_daemon_registered(
+    registry: &DaemonRegistry,
+    name: &'static str,
+    fut: impl std::future::Future<Output = ()> + Send + 'static,
+) {
+    spawn_watched_registered(registry, name, fut, true);
+}
+
+/// Spawn a one-shot that records its health into `registry` (C23).
+///
+/// Identical to [`spawn_once`] except for the registry. A one-shot that
+/// finishes is recorded as [`DaemonState::Completed`], which
+/// [`DaemonRegistry::dead`] deliberately does not report as a failure.
+pub fn spawn_once_registered(
+    registry: &DaemonRegistry,
+    name: &'static str,
+    fut: impl std::future::Future<Output = ()> + Send + 'static,
+) {
+    spawn_watched_registered(registry, name, fut, false);
 }
 
 /// Open a dedicated WAL-mode connection for the pending-sale reaper.
@@ -426,10 +590,48 @@ pub fn init_pending_sale_reaper(db_path: &std::path::Path) {
 /// from the public Frankfurter API and stores them in the database.
 /// Returns the daemon handle so callers can inspect status or shut it
 /// down.
+///
+/// The shells do not call this directly — they call [`init_rate_sync_at`],
+/// which opens the connection this signature requires. Kept public because
+/// the daemon handle it returns is the only way to observe or stop an
+/// already-running instance.
 pub async fn init_rate_sync(db: rate_sync::DbConnection) -> rate_sync::RateSyncDaemon {
     let daemon = rate_sync::RateSyncDaemon::new();
     daemon.start(db).await;
     daemon
+}
+
+/// Spawn the exchange-rate auto-sync daemon on its own database connection.
+///
+/// This is the wiring both Tauri shells call from their `setup` closure
+/// (desktop `apps/desktop-tauri/src/lib.rs`, tablet
+/// `apps/mobile-tauri/src/lib.rs`). Two reasons it opens its own connection
+/// instead of borrowing `AppState.db`:
+///
+/// 1. **Type:** `rate_sync::DbConnection` is a `std::sync::Mutex` connection
+///    because its ticks run inside `spawn_blocking`, while the shells' shared
+///    `AppState.db` is a `tokio::sync::Mutex` (blocking on it from
+///    `spawn_blocking` would be a lock-ordering hazard, not just slow).
+/// 2. **Pattern:** it is the same shape as [`init_pending_sale_reaper`] — a
+///    background daemon on a dedicated WAL connection, so neither the main
+///    connection nor the daemon blocks the other.
+///
+/// Uses [`spawn_once`], not [`spawn_daemon`]: the future's job is to START the
+/// daemon's own task, so a clean return is success. A panic is still reported
+/// by the watchdog. If the database cannot be opened, the daemon is skipped
+/// with an error log — a missing rate feed must never stop a POS from booting.
+pub fn init_rate_sync_at(db_path: &std::path::Path) {
+    let path = db_path.to_owned();
+    spawn_once("rate-sync", async move {
+        let conn = match open_handler_connection(&path) {
+            Ok(conn) => conn,
+            Err(e) => {
+                tracing::error!(?e, "rate sync: failed to open DB — daemon not started");
+                return;
+            }
+        };
+        init_rate_sync(conn).await;
+    });
 }
 
 #[cfg(test)]

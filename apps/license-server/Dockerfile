@@ -1,4 +1,4 @@
-# Dockerfile — OZ-POS License Server (PocketBase + Custom Go Hooks)
+# Dockerfile — kasir.mu License Server (PocketBase + Custom Go Hooks)
 # ADR #9 Phase 3: Northflank deployment artifact
 #
 # Build:  docker build -t oz-pos/license-server apps/license-server

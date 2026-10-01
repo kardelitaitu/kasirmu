@@ -7,12 +7,13 @@ next: implement HID POS reads in drivers/scale.rs, then add vid/pid to TerminalP
 //! Registry bootstrap — turning saved hardware configuration into drivers.
 //!
 //! [`HardwareConfig`] is the HAL's own description of what an operator
-//! configured. An app reads its persistence layer (for OZ-POS that is
+//! configured. An app reads its persistence layer (for kasir.mu that is
 //! `platform_core::terminal_profile::TerminalProfile`) and maps it here;
 //! the HAL never reaches into a settings table.
 //!
-//! [`DriverRegistry::apply_config`] then registers each entry and returns a
-//! [`BootstrapReport`] naming what was registered, skipped, or rejected.
+//! [`apply_config`] then registers each entry into the
+//! [`DriverRegistry`] and returns a [`BootstrapReport`] naming what was
+//! registered, skipped, or rejected.
 //! Addressed transports are constructed without touching the device; only a
 //! `"usb"` printer enumerates the bus, because it names no address to bind.
 
@@ -53,7 +54,8 @@ pub enum Connection {
         /// The COM/port name the stack bound the device to.
         port: String,
     },
-    /// Host[:port] socket.
+    /// `Host[:port]` socket. Escaped so rustdoc does not read `[:port]` as a
+    /// link named `:port`.
     Network {
         /// Address, e.g. `192.168.1.50:9100`.
         addr: String,
@@ -161,6 +163,11 @@ pub enum TerminalConnection {
         /// The HAL wireless target.
         target: WirelessTarget,
     },
+    /// Loopback / simulator terminal.
+    Loopback {
+        /// Simulator configuration URI or address (e.g. "loopback", "loopback://decline").
+        address: String,
+    },
 }
 
 /// Everything the operator configured on this terminal, in the HAL's own
@@ -224,7 +231,7 @@ impl HardwareConfig {
     }
 }
 
-/// What happened during [`DriverRegistry::apply_config`].
+/// What happened during [`apply_config`].
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct BootstrapReport {
     /// `"<category>:<id>"` for each driver registered.
@@ -389,6 +396,15 @@ pub async fn apply_config(registry: &DriverRegistry, config: &HardwareConfig) ->
                     .await;
                 report.registered.push(key);
             }
+            TerminalConnection::Loopback { address } => {
+                let sim = Arc::new(crate::drivers::edc::LoopbackEdcTerminal::from_address(
+                    address,
+                ));
+                registry
+                    .register_loopback_terminal_with(&terminal.id, sim)
+                    .await;
+                report.registered.push(key);
+            }
             _ => report.skipped.push(key),
         }
     }
@@ -439,6 +455,7 @@ pub fn claimed_ports(config: &HardwareConfig) -> Vec<String> {
         match &terminal.connection {
             TerminalConnection::Wired { port, .. } => claimed.push(port.clone()),
             TerminalConnection::Wireless { target } => claimed.push(target.address().to_owned()),
+            TerminalConnection::Loopback { .. } => {}
         }
     }
 

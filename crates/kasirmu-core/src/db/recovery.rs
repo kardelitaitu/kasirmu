@@ -127,14 +127,27 @@ fn build_schema() -> Option<String> {
 
 /// The migration ids a candidate has applied; empty when it has no
 /// `schema_migrations` table (an un-migrated or non-kasir.mu file).
-fn applied_migration_ids(conn: &Connection) -> Vec<String> {
-    let Ok(mut stmt) = conn.prepare("SELECT id FROM schema_migrations") else {
-        return Vec::new();
-    };
-    let Ok(rows) = stmt.query_map([], |row| row.get::<_, String>(0)) else {
-        return Vec::new();
-    };
-    rows.filter_map(Result::ok).collect()
+///
+/// An ABSENT table and an UNREADABLE one are different verdicts. The absent
+/// table is the documented oldest state and stays restorable; a table whose
+/// rows cannot decode is a candidate this build cannot judge, so the error
+/// propagates and `validate_candidate` refuses it. Collapsing the two here
+/// let an undecodable id read as "no migrations applied" — the oldest,
+/// restorable state — and a newer candidate could be written over the live
+/// database (the boot-brick path the gate exists to close).
+fn applied_migration_ids(conn: &Connection) -> Result<Vec<String>, CoreError> {
+    let has_table: bool = conn.query_row(
+        "SELECT COUNT(*) > 0 FROM sqlite_master WHERE type = 'table' AND name = 'schema_migrations'",
+        [],
+        |row| row.get(0),
+    )?;
+    if !has_table {
+        return Ok(Vec::new());
+    }
+
+    let mut stmt = conn.prepare("SELECT id FROM schema_migrations")?;
+    let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
+    rows.collect::<Result<Vec<_>, _>>().map_err(CoreError::from)
 }
 
 /// Open `path` read-only and run `PRAGMA integrity_check` on it.
@@ -189,7 +202,16 @@ pub fn validate_candidate(path: &Path) -> CandidateReport {
                 None,
             );
         }
-        applied_migration_ids(&conn)
+        match applied_migration_ids(&conn) {
+            Ok(ids) => ids,
+            Err(e) => {
+                return report(
+                    CandidateVerdict::Corrupt,
+                    format!("cannot read '{}' schema_migrations: {e}", path.display()),
+                    None,
+                );
+            }
+        }
     };
 
     let candidate = newest_dated_id(ids.iter().map(String::as_str)).map(str::to_string);
@@ -270,9 +292,16 @@ fn sidecar_path(db_path: &Path, extension: &str) -> PathBuf {
 /// 5. that temporary file is renamed over the live path — same-filesystem and
 ///    atomic — and the result is re-verified.
 ///
-/// Any failure from step 4 on restores the live path from the snapshot (or
-/// removes it, when there was no live database to begin with) and returns the
-/// error.
+/// Any failure from step 4 on ATTEMPTS to restore the live path from the
+/// snapshot (or removes it, when there was no live database to begin with) and
+/// returns the error.
+///
+/// MSL-25: the rollback is an attempt, and the returned message says which
+/// outcome it had. It previously discarded the copy's `Result` and always
+/// claimed "left intact", so an operator whose rollback failed was told their
+/// data was safe while it was not. The failure message now names the
+/// pre-restore snapshot, because restoring it by hand is the caller's next
+/// step.
 ///
 /// # Errors
 ///
@@ -362,220 +391,68 @@ pub fn restore_from(candidate: &Path, db_path: &Path) -> Result<CandidateReport,
         Ok(()) => Ok(report),
         Err(e) => {
             let _ = std::fs::remove_file(&temporary);
-            if had_live {
-                let _ = std::fs::copy(&snapshot, db_path);
+
+            // MSL-25: the rollback's OUTCOME decides the MESSAGE, not just the
+            // state. This used to discard the copy's Result and always report
+            // "restore rolled back, ... left intact", so a failed rollback told
+            // the operator their data was safe at the exact moment it was not --
+            // the worst untruth available during a restore, because it stops them
+            // reaching for the snapshot they would need.
+            let rollback: Result<(), String> = if had_live {
+                std::fs::copy(&snapshot, db_path)
+                    .map(|_| ())
+                    .map_err(|copy_err| {
+                        format!(
+                            "the pre-restore snapshot '{}' could NOT be put back ({copy_err})",
+                            snapshot.display()
+                        )
+                    })
             } else {
-                let _ = std::fs::remove_file(db_path);
-            }
-            Err(CoreError::Internal(format!(
-                "restore rolled back, '{}' left intact: {e}",
-                db_path.display()
-            )))
+                // No live database existed, so removing the half-swapped file
+                // restores the absent state. `NotFound` IS success here: the goal
+                // was "not there".
+                std::fs::remove_file(db_path)
+                    .or_else(|remove_err| {
+                        if remove_err.kind() == std::io::ErrorKind::NotFound {
+                            Ok(())
+                        } else {
+                            Err(remove_err)
+                        }
+                    })
+                    .map_err(|remove_err| {
+                        format!(
+                            "the partially-written database at '{}' could NOT be removed ({remove_err})",
+                            db_path.display()
+                        )
+                    })
+            };
+
+            Err(CoreError::Internal(match rollback {
+                Ok(()) if had_live => format!(
+                    "restore rolled back, '{}' left intact: {e}",
+                    db_path.display()
+                ),
+                Ok(()) => format!(
+                    "restore rolled back, '{}' removed as it was before: {e}",
+                    db_path.display()
+                ),
+                // Fail LOUDLY and name the snapshot: the operator's next step is
+                // to restore it by hand, so the message must say so.
+                Err(rollback_err) => format!(
+                    "restore FAILED and the automatic rollback ALSO failed; '{}' is NOT \
+                     intact. {rollback_err}. The original content is in the pre-restore \
+                     snapshot. Original error: {e}",
+                    db_path.display()
+                ),
+            }))
         }
     }
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
+#[path = "recovery_inline_tests.rs"]
+mod tests;
 
-    /// A scratch directory removed when the guard drops.
-    struct Scratch(PathBuf);
-
-    impl Scratch {
-        fn new(label: &str) -> Self {
-            let dir =
-                std::env::temp_dir().join(format!("oz_restore_{label}_{}", uuid::Uuid::now_v7()));
-            std::fs::create_dir_all(&dir).unwrap();
-            Self(dir)
-        }
-
-        fn join(&self, name: &str) -> PathBuf {
-            self.0.join(name)
-        }
-    }
-
-    impl Drop for Scratch {
-        fn drop(&mut self) {
-            let _ = std::fs::remove_dir_all(&self.0);
-        }
-    }
-
-    fn sha256(path: &Path) -> String {
-        use sha2::{Digest, Sha256};
-        let mut hasher = Sha256::new();
-        hasher.update(std::fs::read(path).unwrap());
-        hex::encode(hasher.finalize())
-    }
-
-    /// A migrated file-backed database carrying one marker row.
-    fn live_db(path: &Path, marker: &str) {
-        let mut conn = Connection::open(path).unwrap();
-        migrations::run(&mut conn).unwrap();
-        Store::new(&conn)
-            .set_setting("restore.marker", marker)
-            .unwrap();
-    }
-
-    fn marker(path: &Path) -> String {
-        let conn = Connection::open(path).unwrap();
-        conn.query_row(
-            "SELECT value FROM settings WHERE key = 'restore.marker'",
-            [],
-            |r| r.get(0),
-        )
-        .unwrap()
-    }
-
-    fn hot_sidecars(db_path: &Path) {
-        std::fs::write(sidecar_path(db_path, "-wal"), b"hot wal frames").unwrap();
-        std::fs::write(sidecar_path(db_path, "-shm"), b"hot shm").unwrap();
-    }
-
-    #[test]
-    fn recovery_valid_candidate_is_accepted_and_restored() {
-        let scratch = Scratch::new("accept");
-        let live = scratch.join("live.db");
-        let candidate = scratch.join("candidate.db");
-        live_db(&live, "live");
-        live_db(&candidate, "candidate");
-
-        let report = validate_candidate(&candidate);
-        assert_eq!(
-            report.verdict,
-            CandidateVerdict::Acceptable,
-            "{}",
-            report.reason
-        );
-        assert!(report.verdict.is_restorable());
-
-        let outcome = restore_from(&candidate, &live).unwrap();
-        assert!(outcome.verdict.is_restorable());
-        assert_eq!(
-            marker(&live),
-            "candidate",
-            "the live database must be the candidate's"
-        );
-
-        // The pre-restore snapshot survives and holds the pre-restore content.
-        let snapshot = pre_restore_snapshot_path(&live);
-        assert!(
-            snapshot.exists(),
-            "the pre-restore snapshot must be present"
-        );
-        assert_eq!(marker(&snapshot), "live");
-
-        // The restored database is integrity-clean.
-        verify_file(&live).unwrap();
-    }
-
-    #[test]
-    fn recovery_corrupt_candidate_is_refused_and_leaves_live_db_and_sidecars_untouched() {
-        let scratch = Scratch::new("corrupt");
-        let live = scratch.join("live.db");
-        let candidate = scratch.join("corrupt.db");
-        live_db(&live, "live");
-        hot_sidecars(&live);
-        std::fs::write(&candidate, b"not a sqlite database, deliberately").unwrap();
-
-        let report = validate_candidate(&candidate);
-        assert_eq!(
-            report.verdict,
-            CandidateVerdict::Corrupt,
-            "{}",
-            report.reason
-        );
-        assert!(!report.verdict.is_restorable());
-
-        let before = sha256(&live);
-        let err = restore_from(&candidate, &live).unwrap_err().to_string();
-        assert!(
-            err.contains("refusing"),
-            "error must name the refusal: {err}"
-        );
-
-        assert_eq!(
-            sha256(&live),
-            before,
-            "a refused restore must not touch the live database"
-        );
-        // Assert the sidecars BEFORE opening the live database: SQLite
-        // recovers (and removes) a hot WAL as a side effect of opening it.
-        for extension in ["-wal", "-shm"] {
-            let sidecar = sidecar_path(&live, extension);
-            assert!(
-                sidecar.exists(),
-                "sidecar {extension} must survive a refused restore"
-            );
-        }
-        assert_eq!(marker(&live), "live");
-        assert!(
-            !pre_restore_snapshot_path(&live).exists(),
-            "a refused restore must not even snapshot"
-        );
-    }
-
-    #[test]
-    fn recovery_newer_than_build_candidate_is_refused_with_the_newer_reason() {
-        let scratch = Scratch::new("newer");
-        let live = scratch.join("live.db");
-        let candidate = scratch.join("from-the-future.db");
-        live_db(&live, "live");
-        live_db(&candidate, "future");
-        {
-            let conn = Connection::open(&candidate).unwrap();
-            conn.execute(
-                "INSERT INTO schema_migrations (id) VALUES ('29990101_from_the_future.sql')",
-                [],
-            )
-            .unwrap();
-        }
-
-        let report = validate_candidate(&candidate);
-        assert_eq!(
-            report.verdict,
-            CandidateVerdict::NewerThanThisBuild,
-            "{}",
-            report.reason
-        );
-        assert!(
-            report.reason.contains("newer than this build"),
-            "reason must say why: {}",
-            report.reason
-        );
-        assert_eq!(
-            report.candidate_schema.as_deref(),
-            Some("29990101_from_the_future.sql")
-        );
-
-        let before = sha256(&live);
-        assert!(
-            restore_from(&candidate, &live).is_err(),
-            "a newer candidate must never reach the live database"
-        );
-        assert_eq!(
-            sha256(&live),
-            before,
-            "the live database must be byte-identical"
-        );
-    }
-
-    #[test]
-    fn recovery_older_candidate_is_acceptable() {
-        let scratch = Scratch::new("older");
-        let candidate = scratch.join("older.db");
-        live_db(&candidate, "older");
-        {
-            let conn = Connection::open(&candidate).unwrap();
-            conn.execute_batch("DELETE FROM schema_migrations").unwrap();
-        }
-
-        let report = validate_candidate(&candidate);
-        assert_eq!(
-            report.verdict,
-            CandidateVerdict::OlderButAcceptable,
-            "{}",
-            report.reason
-        );
-    }
-}
+#[cfg(test)]
+#[path = "recovery_gate_tests.rs"]
+mod gate_tests;

@@ -683,7 +683,9 @@ struct ParsedResponse {
 
 impl ParsedResponse {
     fn from_payload(payload: QrisPayload) -> Result<Self, String> {
-        let raw = payload.to_qris_string();
+        let raw = payload
+            .to_qris_string()
+            .map_err(|e| format!("Failed to serialise QRIS: {e}"))?;
         let png_bytes = payload
             .to_qr_png(300)
             .map_err(|e| format!("Failed to render QR PNG: {e}"))?;

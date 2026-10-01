@@ -9,6 +9,15 @@
 //! Split from `db/reports.rs` 13-09-26, behaviour unchanged — pure module
 //! decomposition, no logic edits.
 
+// P2-5: every cast here converts EXACT integer minor units to `f64` for one
+// division whose result is a PERCENTAGE (`part as f64 / whole as f64 * 100.0`).
+// A percentage is a ratio, not money — no monetary value is stored or summed in
+// floating point, and the i64 minor-unit totals remain the source of truth that
+// the ratio is derived FROM. `cast_precision_loss` is unactionable here for the
+// same reason it exists: it is warning that a 53-bit mantissa cannot hold every
+// i64, which is true and irrelevant to a two-significant-figure display value.
+#![allow(clippy::cast_precision_loss)]
+
 use rusqlite::params;
 
 use crate::db::Store;
@@ -47,7 +56,8 @@ pub struct DailyRevenueRow {
 /// Weekly revenue aggregation.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct WeeklyRevenueRow {
-    /// ISO date of the week start (Sunday).
+    /// ISO date of the week's Monday (Monday-first buckets, matching the UI's
+    /// `weekStartKey`).
     pub week_start: String,
     /// Total revenue in minor units.
     pub total_minor: i64,
@@ -97,9 +107,17 @@ impl Store<'_> {
     fn revenue_profit_fields(row: &rusqlite::Row<'_>) -> rusqlite::Result<(i64, i64, i64, f64)> {
         let total_minor: i64 = row.get("total_minor")?;
         let cogs_minor: i64 = row.get("cogs_minor")?;
-        let gross_profit_minor = total_minor - cogs_minor;
-        let gross_margin_percent = if total_minor > 0 {
-            gross_profit_minor as f64 / total_minor as f64 * 100.0
+        // REP-08: profit is measured against NET revenue, not gross. Both terms
+        // are already refund-adjusted -- `cogs_minor` has the returned goods'
+        // cost removed by the query, and `refund_minor` is their revenue -- so
+        // using the gross total here would add the refund back exactly once and
+        // overstate profit on any day containing a refund. Net revenue is
+        // gross - refunds, and the margin denominator matches the numerator.
+        let refund_minor: i64 = row.get("refund_minor")?;
+        let net_revenue_minor = total_minor - refund_minor;
+        let gross_profit_minor = net_revenue_minor - cogs_minor;
+        let gross_margin_percent = if net_revenue_minor > 0 {
+            gross_profit_minor as f64 / net_revenue_minor as f64 * 100.0
         } else {
             0.0
         };
@@ -144,16 +162,24 @@ impl Store<'_> {
                  GROUP BY DATE(s1.created_at, ?3), s1.currency
              ),
              r AS (
-                 SELECT DATE(created_at, ?3) AS d, currency AS c, SUM(total_minor) AS rf
-                 FROM refunds
-                 WHERE DATE(created_at, ?3) BETWEEN ?1 AND ?2
-                 GROUP BY DATE(created_at, ?3), currency
+                 SELECT DATE(rf1.created_at, ?3) AS d, rf1.currency AS c,
+                        SUM(rf1.total_minor) AS rf,
+                        (SELECT COALESCE(SUM(COALESCE(sl3.cost_minor, p3.cost_minor, 0) * rl3.qty), 0)
+                         FROM refund_lines rl3
+                         JOIN refunds rf3 ON rf3.id = rl3.refund_id
+                         LEFT JOIN sale_lines sl3 ON sl3.id = rl3.sale_line_id
+                         LEFT JOIN products p3 ON sl3.sku = p3.sku
+                         WHERE DATE(rf3.created_at, ?3) = DATE(rf1.created_at, ?3)
+                           AND rf3.currency = rf1.currency) AS rcost
+                 FROM refunds rf1
+                 WHERE DATE(rf1.created_at, ?3) BETWEEN ?1 AND ?2
+                 GROUP BY DATE(rf1.created_at, ?3), rf1.currency
              )
              SELECT COALESCE(s.d, r.d) AS date,
                     COALESCE(s.c, r.c) AS currency,
                     COALESCE(s.t, 0) AS total_minor,
                     COALESCE(s.n, 0) AS sale_count,
-                    COALESCE(s.cogs, 0) AS cogs_minor,
+                    COALESCE(s.cogs, 0) - COALESCE(r.rcost, 0) AS cogs_minor,
                     COALESCE(r.rf, 0) AS refund_minor,
                     COALESCE(s.t, 0) - COALESCE(r.rf, 0) AS net_revenue_minor
              FROM s FULL OUTER JOIN r ON s.d = r.d AND s.c = r.c
@@ -210,17 +236,25 @@ impl Store<'_> {
                  GROUP BY DATE(s1.created_at, ?3, '-6 days', 'weekday 1'), s1.currency
              ),
              r AS (
-                 SELECT DATE(created_at, ?3, '-6 days', 'weekday 1') AS d, currency AS c,
-                        SUM(total_minor) AS rf
-                 FROM refunds
-                 WHERE DATE(created_at, ?3) BETWEEN ?1 AND ?2
-                 GROUP BY DATE(created_at, ?3, '-6 days', 'weekday 1'), currency
+                 SELECT DATE(rf1.created_at, ?3, '-6 days', 'weekday 1') AS d, rf1.currency AS c,
+                        SUM(rf1.total_minor) AS rf,
+                        (SELECT COALESCE(SUM(COALESCE(sl3.cost_minor, p3.cost_minor, 0) * rl3.qty), 0)
+                         FROM refund_lines rl3
+                         JOIN refunds rf3 ON rf3.id = rl3.refund_id
+                         LEFT JOIN sale_lines sl3 ON sl3.id = rl3.sale_line_id
+                         LEFT JOIN products p3 ON sl3.sku = p3.sku
+                         WHERE DATE(rf3.created_at, ?3, '-6 days', 'weekday 1')
+                               = DATE(rf1.created_at, ?3, '-6 days', 'weekday 1')
+                           AND rf3.currency = rf1.currency) AS rcost
+                 FROM refunds rf1
+                 WHERE DATE(rf1.created_at, ?3) BETWEEN ?1 AND ?2
+                 GROUP BY DATE(rf1.created_at, ?3, '-6 days', 'weekday 1'), rf1.currency
              )
              SELECT COALESCE(s.d, r.d) AS week_start,
                     COALESCE(s.c, r.c) AS currency,
                     COALESCE(s.t, 0) AS total_minor,
                     COALESCE(s.n, 0) AS sale_count,
-                    COALESCE(s.cogs, 0) AS cogs_minor,
+                    COALESCE(s.cogs, 0) - COALESCE(r.rcost, 0) AS cogs_minor,
                     COALESCE(r.rf, 0) AS refund_minor,
                     COALESCE(s.t, 0) - COALESCE(r.rf, 0) AS net_revenue_minor
              FROM s FULL OUTER JOIN r ON s.d = r.d AND s.c = r.c
@@ -273,16 +307,25 @@ impl Store<'_> {
                  GROUP BY strftime('%Y-%m', s1.created_at, ?3), s1.currency
              ),
              r AS (
-                 SELECT strftime('%Y-%m', created_at, ?3) AS d, currency AS c, SUM(total_minor) AS rf
-                 FROM refunds
-                 WHERE DATE(created_at, ?3) BETWEEN ?1 AND ?2
-                 GROUP BY strftime('%Y-%m', created_at, ?3), currency
+                 SELECT strftime('%Y-%m', rf1.created_at, ?3) AS d, rf1.currency AS c,
+                        SUM(rf1.total_minor) AS rf,
+                        (SELECT COALESCE(SUM(COALESCE(sl3.cost_minor, p3.cost_minor, 0) * rl3.qty), 0)
+                         FROM refund_lines rl3
+                         JOIN refunds rf3 ON rf3.id = rl3.refund_id
+                         LEFT JOIN sale_lines sl3 ON sl3.id = rl3.sale_line_id
+                         LEFT JOIN products p3 ON sl3.sku = p3.sku
+                         WHERE strftime('%Y-%m', rf3.created_at, ?3)
+                               = strftime('%Y-%m', rf1.created_at, ?3)
+                           AND rf3.currency = rf1.currency) AS rcost
+                 FROM refunds rf1
+                 WHERE DATE(rf1.created_at, ?3) BETWEEN ?1 AND ?2
+                 GROUP BY strftime('%Y-%m', rf1.created_at, ?3), rf1.currency
              )
              SELECT COALESCE(s.d, r.d) AS month,
                     COALESCE(s.c, r.c) AS currency,
                     COALESCE(s.t, 0) AS total_minor,
                     COALESCE(s.n, 0) AS sale_count,
-                    COALESCE(s.cogs, 0) AS cogs_minor,
+                    COALESCE(s.cogs, 0) - COALESCE(r.rcost, 0) AS cogs_minor,
                     COALESCE(r.rf, 0) AS refund_minor,
                     COALESCE(s.t, 0) - COALESCE(r.rf, 0) AS net_revenue_minor
              FROM s FULL OUTER JOIN r ON s.d = r.d AND s.c = r.c

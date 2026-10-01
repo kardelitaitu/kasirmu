@@ -1,3 +1,5 @@
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: ACCURATE and FULLY IMPLEMENTED — 0 findings, no repairs needed · Audited on branch 0.0.40. This is the most completely realised plan audited so far: every one of its four phases landed, and every file it names exists. Phase A — `revenue_events` in `apps/license-server/pb_schema.json`, the `revenue_events.go` helper, and the test collections in `handler_test.go` / `dashboard_api_test.go` — all four files are present. Phases B and C — `paddle_webhook.go` and `midtrans_webhook.go` — both exist. Phase D — the stats endpoint summing `revenue_events` — is `apps/license-server/admin_stats.go`, wired through `apps/license-server/main.go` and covered by `apps/license-server/admin_stats_test.go` and `admin_auth_session_test.go:64`. The sibling plan this one completes, `docs/specs/admin-dashboard-plan.md`, is audited in the same pass and confirms the same endpoint. · The schema table's `event_id` dedup rationale is sound on its own terms and matches the Notes: Paddle retries and Midtrans resends are both real, which is why the field exists. · NOT re-measured: the exact FX conversion path and the monthly bucketing, which are behaviour inside `admin_stats.go` rather than anything this document asserts about file layout. · No repair was needed, which is worth stating plainly: a plan whose filenames have all survived the workspace restructure is the useful control case in this audit, and it is the reason the other plan documents get rewritten with confidence rather than suspicion. · No stamp or footer existed on this file before this pass. -->
+
 # Revenue Data Pipeline — Paddle + Midtrans
 
 **Goal:** Replace the admin dashboard's price-map MRR estimation with real transaction amounts from Paddle (USD) and Midtrans (IDR).
@@ -56,3 +58,5 @@ Paddle webhook (transaction.completed)   Midtrans webhook (settlement)
 - The `event_id` is used for dedup (Paddle retries, Midtrans may resend)
 - FX conversion: Paddle USD → IDR uses the server-side cached FX rate
 - The stats endpoint should sum revenue_events by month, provider-aware
+
+> last audited 29-09-26 by docs-auditor

@@ -132,7 +132,7 @@ describe('LicenseActivationScreen - Exhaustive Suite', () => {
   });
 
   beforeEach(() => {
-    vi.mocked(getVersion).mockResolvedValue({ version: '1.0.0', name: 'oz-pos', rustVersion: '1.70', target: 'windows' });
+    vi.mocked(getVersion).mockResolvedValue({ version: '1.0.0', name: 'kasirmu-app', rustVersion: '1.70', target: 'windows' });
     vi.mocked(getLocalIp).mockResolvedValue('192.168.1.100');
     vi.mocked(getMachineId).mockResolvedValue('test-machine-id');
     vi.mocked(getHardwareFingerprint).mockResolvedValue('hw_0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef');
@@ -240,7 +240,7 @@ describe('LicenseActivationScreen - Exhaustive Suite', () => {
     it('4. getVersion rejects gracefully without crashing the app', async () => {
       vi.mocked(getVersion).mockRejectedValue(new Error('Version Fail'));
       renderOnForm();
-      await waitFor(() => expect(screen.getByText('Version 0.0.39')).toBeInTheDocument(), FAST_WAIT);
+      await waitFor(() => expect(screen.getByText('Version 0.0.40')).toBeInTheDocument(), FAST_WAIT);
     });
 
     it('5. Component unmounting during getVersion fetch prevents state updates', () => {
@@ -250,7 +250,7 @@ describe('LicenseActivationScreen - Exhaustive Suite', () => {
       
       const { unmount } = render(<LicenseActivationScreen onActivated={mockOnActivated} />);
       unmount();
-      expect(() => resolveVersion({ name: 'oz-pos', version: '9.9.9', rustVersion: '1.75', target: 'x86' })).not.toThrow();
+      expect(() => resolveVersion({ name: 'kasirmu-app', version: '9.9.9', rustVersion: '1.75', target: 'x86' })).not.toThrow();
     });
 
     it('6. Component unmounting during getLocalIp fetch prevents state updates', () => {

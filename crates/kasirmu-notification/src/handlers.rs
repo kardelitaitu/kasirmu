@@ -37,7 +37,7 @@ next: none | perf: N/A
 
 use std::sync::Arc;
 
-use foundation::contracts::{EventHandler, ModuleResult};
+use foundation::contracts::{EventHandler, HandlerType, ModuleResult};
 use kasirmu_core::events::{SaleCompleted, StockAdjusted};
 use tracing::{error, info, warn};
 
@@ -45,9 +45,14 @@ use crate::{NotificationClient, TemplateParameter};
 
 /// Handler that sends an order confirmation via WhatsApp when a sale completes.
 ///
-/// Uses the `order_confirmed` WhatsApp template. If the sale has a
-/// `customer_id`, the handler looks it up via a phone number resolver.
-/// Otherwise it uses the `store_phone` fallback or skips.
+/// Uses the `order_confirmed` WhatsApp template, sent to `store_phone`.
+///
+/// NOT-A: the doc used to claim "If the sale has a `customer_id`, the handler
+/// looks it up via a phone number resolver. Otherwise it uses the
+/// `store_phone` fallback or skips." There is no resolver and `customer_id` is
+/// never read — the handler sends to `store_phone` or skips. The wiring
+/// confirms the actual behaviour: `platform/startup` passes
+/// `WHATSAPP_STORE_PHONE`, so every confirmation goes to the store.
 #[derive(Debug)]
 pub struct OrderConfirmationHandler {
     /// The notification client (WhatsApp or mock).
@@ -73,6 +78,10 @@ impl OrderConfirmationHandler {
 }
 
 impl EventHandler<SaleCompleted> for OrderConfirmationHandler {
+    fn handler_type(&self) -> HandlerType {
+        HandlerType::CommandContributor
+    }
+
     fn handle(&self, event: &SaleCompleted) -> ModuleResult {
         let to = if let Some(ref phone) = self.store_phone {
             phone.clone()
@@ -159,6 +168,10 @@ impl StockLowAlertHandler {
 }
 
 impl EventHandler<StockAdjusted> for StockLowAlertHandler {
+    fn handler_type(&self) -> HandlerType {
+        HandlerType::CommandContributor
+    }
+
     fn handle(&self, event: &StockAdjusted) -> ModuleResult {
         if event.new_qty > self.threshold {
             return Ok(()); // stock is above threshold, no alert needed
@@ -234,6 +247,10 @@ impl PaymentReceiptHandler {
 }
 
 impl EventHandler<SaleCompleted> for PaymentReceiptHandler {
+    fn handler_type(&self) -> HandlerType {
+        HandlerType::CommandContributor
+    }
+
     fn handle(&self, event: &SaleCompleted) -> ModuleResult {
         let client = Arc::clone(&self.client);
         let to = self.recipient_phone.clone();

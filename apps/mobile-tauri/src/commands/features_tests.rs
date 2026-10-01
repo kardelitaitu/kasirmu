@@ -11,7 +11,7 @@ fn feature_dto_debug_output() {
         enabled: true,
         dependencies: vec![],
     };
-    let debug = format!("{:?}", dto);
+    let debug = format!("{dto:?}");
     assert!(debug.contains("Cash Payment"));
 }
 
@@ -46,7 +46,7 @@ fn set_feature_args_debug() {
         key: "tax-engine".into(),
         enabled: false,
     };
-    let debug = format!("{:?}", args);
+    let debug = format!("{args:?}");
     assert!(debug.contains("tax-engine"));
 }
 
@@ -85,7 +85,7 @@ fn set_features_bulk_args_debug() {
         keys: vec!["hardware".into()],
         enabled: false,
     };
-    let debug = format!("{:?}", args);
+    let debug = format!("{args:?}");
     assert!(debug.contains("hardware"));
     assert!(debug.contains("false"));
 }
@@ -97,7 +97,7 @@ fn set_feature_result_debug() {
         features: vec![],
         auto_enabled: vec![],
     };
-    let debug = format!("{:?}", result);
+    let debug = format!("{result:?}");
     assert!(debug.contains("true"));
 }
 

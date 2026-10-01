@@ -7,7 +7,7 @@
 //! already have a storage home — locale, timezone, currency. Fiscalization,
 //! numbering, receipt format and local payment settings join the same chain in
 //! later slices; tax regime joins as a DERIVED seam
-//! ([`RegionalConfig::tax_regime`]) rather than a stored axis — it composes
+//! ([`RegionalConfig::tax_regime`](crate::regional::RegionalConfig::tax_regime)) rather than a stored axis — it composes
 //! the entity market anchor with the landed tax resolver's winning row, so
 //! the two configurations cannot drift into two stored truths.
 //!
@@ -73,7 +73,7 @@ pub fn is_valid_bcp47_locale(tag: &str) -> bool {
     let mut segments = tag.split('-');
     let language = segments.next().unwrap_or("");
     let lang = language.as_bytes();
-    if !(lang.len() == 2 || lang.len() == 3) || !lang.iter().all(|b| b.is_ascii_alphabetic()) {
+    if !(lang.len() == 2 || lang.len() == 3) || !lang.iter().all(u8::is_ascii_alphabetic) {
         return false;
     }
     segments.all(|segment| {
@@ -88,7 +88,7 @@ pub fn is_valid_bcp47_locale(tag: &str) -> bool {
 #[must_use]
 pub fn is_valid_iso3166_alpha2(code: &str) -> bool {
     let b = code.as_bytes();
-    b.len() == 2 && b.iter().all(|byte| byte.is_ascii_alphabetic())
+    b.len() == 2 && b.iter().all(u8::is_ascii_alphabetic)
 }
 
 /// The canonical residency vocabulary — which deployment a tenant's data lives
@@ -272,7 +272,7 @@ pub struct RegionalLayer {
     /// BCP-47 language tag, if set here.
     pub locale: Option<String>,
     /// Timezone (a fixed UTC offset or an IANA name — see
-    /// [`RegionalConfig::timezone`] for the contract question), if set here.
+    /// [`RegionalConfig::timezone`](crate::regional::RegionalConfig::timezone) for the contract question), if set here.
     pub timezone: Option<String>,
     /// ISO-4217 currency code, if set here.
     pub currency: Option<String>,
@@ -327,7 +327,7 @@ fn blank_to_none(raw: &str) -> Option<String> {
 
 /// The effective regional configuration for one location.
 ///
-/// Built by [`RegionalConfig::resolve`] (pure) or
+/// Built by [`RegionalConfig::resolve`](crate::regional::RegionalConfig::resolve) (pure) or
 /// [`crate::Store::regional_config_for_location`] (against the database).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RegionalConfig {
@@ -378,7 +378,16 @@ impl RegionalConfig {
             !layers.is_empty(),
             "regional resolution needs at least one layer"
         );
-        let country_code = layers.iter().find_map(|layer| layer.country_code.clone());
+        // MSL-34: the market axis reuses `pick`'s per-layer blank rule rather
+        // than a bare `find_map`. `country_code` is the one axis with no
+        // built-in default (see the field doc), so it cannot call `pick` for
+        // the fallback -- but it must share the blankness rule, or a blank
+        // value on a narrow layer shadows a real market declared above it.
+        // `RegionalLayer`'s fields are public, so a directly-built layer can
+        // carry `Some("")`; `pick` would skip it and `find_map` stopped on it.
+        let country_code = layers
+            .iter()
+            .find_map(|layer| layer.country_code.as_deref().and_then(blank_to_none));
         Self {
             location_id: location_id.into(),
             legal_entity_id: legal_entity_id.and_then(|id| blank_to_none(&id)),
@@ -458,7 +467,7 @@ impl RegionalConfig {
 
 /// The derived tax regime for one location: the market it trades under and
 /// the tax rate the resolver currently picks, with the provenance of the
-/// rate. Composed by [`RegionalConfig::tax_regime`] from the landed
+/// rate. Composed by [`RegionalConfig::tax_regime`](crate::regional::RegionalConfig::tax_regime) from the landed
 /// regional chain and the landed tax resolver — never stored, so it cannot
 /// drift from either source.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -466,7 +475,7 @@ pub struct TaxRegime {
     /// ISO-3166 alpha-2 market code the location trades under, from the
     /// legal-entity layer of the regional chain. `None` when no entity
     /// declares a market — the same honesty rule as
-    /// [`RegionalConfig::country_code`]: guessing a country would silently
+    /// [`RegionalConfig::country_code`](crate::regional::RegionalConfig::country_code): guessing a country would silently
     /// apply its fiscal expectations to a tenant that never chose one.
     pub country_code: Option<String>,
     /// The winning tax rate and where it came from. `None` when no active

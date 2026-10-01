@@ -29,9 +29,8 @@ export const pricing: PricingTier[] = [
     features: [
       { label: '1 location', included: true },
       { label: '1 register', included: true },
-      { label: '1 warehouse workspace', included: true },
       { label: '3-month sales history', included: true },
-      { label: 'Static + dynamic QRIS', included: true },
+      { label: 'Dynamic QRIS', included: true },
       { label: 'Cloud sync', included: false },
     ],
   },
@@ -58,8 +57,7 @@ export const pricing: PricingTier[] = [
     features: [
       { label: '1 location', included: true },
       { label: '2 registers', included: true },
-      { label: '2 warehouse workspaces', included: true },
-      { label: 'Static + dynamic QRIS', included: true },
+      { label: 'e-wallet, cards by Midtrans', included: true },
       { label: 'Daily Sales Dashboard', included: true },
       { label: 'Cloud sync', included: true },
     ],
@@ -90,7 +88,7 @@ export const pricing: PricingTier[] = [
       { label: '2 Kitchen Display', included: true },
       { label: 'Reports & analytics', included: true },
       { label: 'Memo', included: true },
-      { label: 'Stripe cards', included: true },
+      { label: 'Stripe gateway', included: true },
       { label: 'Cloud sync', included: true },
     ],
   },
@@ -140,13 +138,49 @@ export const pricing: PricingTier[] = [
 export const featureRows: FeatureRow[] = [
   { label: 'Locations', values: { free: 1, plus: 1, pro: 2, premium: 5, enterprise: 'Unlimited' } },
   { label: 'Terminals (registers) per location', values: { free: 1, plus: 2, pro: 5, premium: 'Unlimited', enterprise: 'Unlimited' } },
-  { label: 'Warehouse workspaces', values: { free: 1, plus: 2, pro: 3, premium: 'Unlimited', enterprise: 'Unlimited' } },
+  // Warehouse workspaces became a PREMIUM-ONLY feature by the owner's ruling of
+  // 2026-09-29 — zeros rather than a shrinking quota, using the same convention
+  // as the Kitchen Display row below (0 = this tier cannot open one). The
+  // enforcement layer moved with it: `max_warehouses()` returns 0 below Premium
+  // and `allows_workspace_type("warehouse")` is false there, the Go `tierQuotas`
+  // `allowed_types` list and the doc matrices carry the same zeros, and
+  // pricing-tier-parity.test.ts parses those Rust accessors and fails if this
+  // row drifts from them.
+  { label: 'Warehouse workspaces', values: { free: 0, plus: 0, pro: 0, premium: 'Unlimited', enterprise: 'Unlimited' } },
   { label: 'Kitchen Display screens', values: { free: 0, plus: 0, pro: 2, premium: 'Unlimited', enterprise: 'Unlimited' } },
   { label: 'Max products/menu', values: { free: 200, plus: 500, pro: 1000, premium: 10000, enterprise: 'Unlimited' } },
   { label: 'Staff users', values: { free: 1, plus: 5, pro: 20, premium: 50, enterprise: 'Unlimited' } },
   { label: 'Sales history', values: { free: '3 months', plus: '1 year', pro: '5 years', premium: 'Unlimited', enterprise: 'Unlimited' } },
-  { label: 'Static + dynamic QRIS', values: { free: true, plus: true, pro: true, premium: true, enterprise: true } },
-  { label: 'Stripe cards', values: { free: false, plus: false, pro: true, premium: true, enterprise: true } },
+  // Payment rails. Authority: subscription-tiers.md §3 "Payments" and
+  // SubscriptionTier::supports_qris / supports_stripe in
+  // crates/kasirmu-core/src/subscription/tier.rs — Stripe opens at Pro, and the
+  // Midtrans wallet/card gateway at Plus. Dynamic amount QRIS is the deliberate
+  // exception: the owner's ruling of 2026-09-29 makes it available on Free,
+  // which is what the QRIS landing page ("Both ship on every plan, including
+  // Free") and the docs' licensing matrix ("QRIS: ✓ (static + dynamic)" on the
+  // Free column) already said. The pricing table was the outlier, not this row.
+  //
+  // ⚠️ THE ENFORCEMENT LAYER HAS NOT MOVED. `supports_qris()` is still false for
+  // Free/OneTime and the POS still gates the QRIS tender behind an upgrade
+  // prompt, so until that lands this ✓ advertises a rail the app refuses at
+  // checkout. The change was ordered website-first; do not read it as proof the
+  // entitlement exists, and do not flip it back without the same ruling.
+  // Static (printed) QRIS needs no entitlement and rides every plan, so it is
+  // deliberately NOT a gated row — and no longer a card bullet either: the card
+  // carries the dynamic-QRIS line, the table carries the gates, and a row spent
+  // on something every plan includes told the reader nothing. Every row here
+  // carries a `*` that
+  // resolves to one of the three legend lines the table renders under itself
+  // (pricingPage.qrisNote, .midtransNote, .stripeNote, in this order) — a marker
+  // with no legend is worse than no marker, so the three are added and removed
+  // together.
+  //
+  // Stripe additionally carries WIP: the gateway is advertised on Pro+ but the
+  // integration is not shippable yet, and `stripeNote` says so rather than
+  // letting a ✓ read as "available today".
+  { label: 'Dynamic amount QRIS*', values: { free: true, plus: true, pro: true, premium: true, enterprise: true } },
+  { label: 'Midtrans Gateway (e-wallet, debit/credit cards)*', values: { free: false, plus: true, pro: true, premium: true, enterprise: true } },
+  { label: 'Stripe Gateway (WIP)*', values: { free: false, plus: false, pro: true, premium: true, enterprise: true } },
   { label: 'Cloud sync', values: { free: false, plus: true, pro: true, premium: true, enterprise: true } },
   { label: 'Daily Sales Dashboard', values: { free: false, plus: true, pro: true, premium: true, enterprise: true } },
   { label: 'Reports & analytics', values: { free: false, plus: false, pro: true, premium: true, enterprise: true } },

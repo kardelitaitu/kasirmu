@@ -5,6 +5,8 @@ import { loggedInvoke } from '@/utils/logged-invoke';
 /** A registered POS terminal. */
 export interface TerminalDto {
   id: string;
+  /** Base62 dynamic terminal code (e.g. "01", "02"). */
+  code?: string;
   name: string;
   deviceId: string;
   isActive: boolean;

@@ -10,6 +10,8 @@ import {
   printSalesReceipt,
   listRefundsScoped,
   voidSaleScoped,
+  stampFakturPajakScoped,
+  createFakturPenggantiScoped,
   type SaleListItem,
   type SaleDetail,
   type RefundDto,
@@ -25,17 +27,36 @@ import { Badge } from '@/components/Badge';
 import { Skeleton } from '@/components/Skeleton';
 import { useAuth } from '@/contexts/AuthContext';
 import { useSwipe } from '@/hooks/useSwipe';
-import { l10nErrorMessage } from '@/utils/app-error';
+import { l10nErrorMessage, plainErrorMessage } from '@/utils/app-error';
+import { settleRead, type SettledRead } from '@/utils/settle-read';
 import { usePullToRefresh } from '@/hooks/usePullToRefresh';
 import { useExitAnimation } from '@/hooks/useExitAnimation';
 import { EmptyState, ErrorState, requiredLocalized } from '@/components';
 import { useToast } from '@/components/Toast';
+import Tooltip from '@/app/Tooltip';
 import { NoSalesIcon, NotFoundIcon } from '@/components/EmptyStateIllustrations';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import RefundModal from './RefundModal';
 import './SalesHistoryScreen.css';
 
 const STATUS_OPTIONS = ['All', 'Completed', 'Pending', 'Voided'] as const;
+
+/**
+ * R3: the ceiling on how many sale rows this screen fetches in one call.
+ *
+ * Deliberately a COUNT ceiling, NOT an `(offset, limit)` page window. Every
+ * filter here — search, status, cashier, date range — and the column sort
+ * run client-side over the fetched array: `filteredSales` derives from the
+ * whole set, and only then does `paginatedSales` slice it. A server-side
+ * offset would hand those filters a single page to work on, so searching for
+ * a sale would only ever search the page the cashier is currently looking
+ * at. The ceiling bounds the IPC payload and the renderer's copy — which is
+ * what R3 asks for — without moving the filter/sort boundary.
+ *
+ * The tier's history window (`sales_history_days`, surfaced as
+ * `salesHistoryCapped`) still caps by date underneath this.
+ */
+const SALES_FETCH_LIMIT = 500;
 
 function statusBadgeVariant(status: string): 'success' | 'warning' | 'danger' | 'info' {
   switch (status) {
@@ -94,9 +115,25 @@ function SwipeableOrderRow({ sale, isManager, onView, onVoid, cashierName }: Swi
       {...swipe}
     >
       <td className="sales-history-cell-id">{sale.id.slice(0, 8)}&hellip;</td>
-      {/* Phase 4: the frozen receipt hierarchy code; dash when the sale
-          predates the code / had no known terminal. */}
-      <td className="sales-history-cell-receipt">{sale.displayCode ?? '\u2014'}</td>
+      <td className="sales-history-cell-receipt">
+        <div>{sale.displayCode ?? '\u2014'}</div>
+        {sale.fakturPajak && (
+          // The native `title=` that used to sit on this span was a real a11y
+          // defect, not just a lint hit: a browser tooltip is mouse-only, so the
+          // NSFP it carried was unreachable by keyboard and invisible to screen
+          // readers. The shared Tooltip + an explicit aria-label is what the rest
+          // of the app uses for the same job (SettingsNavTree.tsx:625,
+          // EmailReportSettings.tsx:451) and what the guard exists to enforce.
+          <Tooltip content={`Faktur Pajak: ${sale.fakturPajak}`}>
+            <span
+              className="sales-history-faktur-badge"
+              aria-label={`Faktur Pajak: ${sale.fakturPajak}`}
+            >
+              <Badge variant="info" size="sm">e-Faktur</Badge>
+            </span>
+          </Tooltip>
+        )}
+      </td>
       <td>{new Date(sale.createdAt).toLocaleString()}</td>
       <td className="sales-history-cell-total">{formatMoney(sale.total)}</td>
       <td>{sale.lineCount}</td>
@@ -178,16 +215,50 @@ export default function SalesHistoryScreen() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [staff, setStaff] = useState<StaffMemberDto[]>([]);
+  // `[]` answers two questions here: 'this store has no other cashiers' and
+  // 'we could not ask'. The second is an EXPECTED outcome, not an exceptional
+  // one: list_staff_scoped requires permissions::STAFF_READ
+  // (crates/kasirmu-bridge/src/staff.rs:349), so a cashier-role session that may
+  // legitimately read sales history is refused this list. A silent `[]` leaves the
+  // Cashier filter offering only 'All Cashiers' -- a roster claim -- and degrades
+  // every cashier name in the table AND in the CSV export (cashierName falls back
+  // to userId.slice(0, 8)) to a truncated id, with nothing on screen to say so.
+  const [staffUnknown, setStaffUnknown] = useState(false);
   const [detail, setDetail] = useState<SaleDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [printing, setPrinting] = useState(false);
   const [refundSaleId, setRefundSaleId] = useState<string | null>(null);
   const [refunds, setRefunds] = useState<RefundDto[]>([]);
+  // `[]` answers two questions here: 'this sale was never refunded' and 'we
+  // could not ask'. Those are not the same claim, and the difference is money:
+  // the Refund button is offered off the back of this list, and
+  // `create_refund` bounds a refund by the CUMULATIVE total already refunded
+  // (crates/kasirmu-core/src/db/refunds.rs:119-143), so a cashier acting on a
+  // failed read tries a refund the database will refuse for a reason the screen
+  // has hidden. `refundsUnknown` keeps the three states apart.
+  const [refundsUnknown, setRefundsUnknown] = useState(false);
   const [_refundsLoading, setRefundsLoading] = useState(false);
   const { session, isManager } = useAuth();
   const { sessionToken } = useWorkspace();
   // ── Per-line cost / margin (HPP) for the open sale detail ──
   const [lineMargins, setLineMargins] = useState<SaleLineMarginDto[]>([]);
+  // The same three-way split `refundsUnknown` makes above, and the same reason it
+  // matters more here. `[]` answers 'this sale has no line costs' and 'we could
+  // not ask', and the Cost / Margin / Margin % columns are gated on the LENGTH
+  // of this list, so a failed read removes three columns of a manager's
+  // profitability read without a word. Nothing downstream treats a missing
+  // margin as zero -- the report layer prefers the per-line snapshot and falls
+  // back to the product's CURRENT cost, and then to 0
+  // (crates/kasirmu-reporting/src/margin.rs:93, `COALESCE(sl.cost_minor, p.cost_minor, 0)`),
+  // so a genuinely-unknown cost is itself a number that reads as a real one.
+  const [marginsUnknown, setMarginsUnknown] = useState(false);
+  // ── e-Faktur state (DJP Coretax) ───────────────────────────────────
+  const [showStampModal, setShowStampModal] = useState(false);
+  const [stampNsfp, setStampNsfp] = useState('');
+  const [stampKodeTransaksi, setStampKodeTransaksi] = useState('01');
+  const [stamping, setStamping] = useState(false);
+  const [stampError, setStampError] = useState<string | null>(null);
+  const [penggantiLoading, setPenggantiLoading] = useState(false);
 
   // P2-4: Sale detail cache — avoids re-fetching the same sale on modal re-open.
   // Invalidated when a sale is voided or refunded (status-changing events).
@@ -232,18 +303,29 @@ export default function SalesHistoryScreen() {
     setLoading(true);
     setLoadError(null);
     try {
-      const [response, staffList] = await Promise.all([
-        // ADR #7, matching the listStaffScoped call immediately below -- which already had the
-        // conditional. Reading the ambient list here meant the cashier's own sales history could
-        // come from a different store than the staff list rendered beside it.
-        sessionToken ? listSalesScoped(sessionToken) : listSales(),
-        sessionToken
-          ? listStaffScoped(sessionToken).catch(() => [] as StaffMemberDto[])
-          : Promise.resolve([] as StaffMemberDto[]),
-      ]);
-      setSales(response.sales);
-      setSalesHistoryCapped(response.salesHistoryCapped);
-      setStaff(staffList);
+      // The staff list is settled separately from the sales list on purpose.
+      // `Promise.all` would let one refused read discard the other arm, and the
+      // outer catch below stands the WHOLE screen down -- reporting a missing
+      // roster by hiding sales that loaded perfectly well.
+      //
+      // ADR #7, matching the listStaffScoped call immediately below -- which already had the
+      // conditional. Reading the ambient list here meant the cashier's own sales history could
+      // come from a different store than the staff list rendered beside it.
+      // R3: bounded. `SALES_FETCH_LIMIT` is a count ceiling rather than a
+      // page window — see the constant for why an offset would break the
+      // filters above. The unscoped `listSales` fallback declares no bounds
+      // of its own (`history.rs:61`), so it is left exactly as it was; it
+      // is the no-session path.
+      const response = await (sessionToken
+        ? listSalesScoped(sessionToken, SALES_FETCH_LIMIT)
+        : listSales());
+      const staffRead = await (sessionToken
+        ? settleRead('staff', listStaffScoped(sessionToken))
+        : Promise.resolve({ ok: true, value: [] } as const satisfies SettledRead<StaffMemberDto[]>));
+    setSales(response.sales);
+    setSalesHistoryCapped(response.salesHistoryCapped);
+    setStaff(staffRead.ok ? staffRead.value : []);
+    setStaffUnknown(!staffRead.ok);
     } catch {
       // LOAD-02: an initial load failure must not look like an empty
       // database — surface the error and offer Retry instead.
@@ -312,13 +394,15 @@ export default function SalesHistoryScreen() {
   // ── Client-side filtering + sorting ────────────────────────────
   const filteredSales = useMemo(() => {
     const filtered = sales.filter((s) => {
-      // Text search: match against sale ID, payment method, or user_id.
+      // Text search: match against sale ID, displayCode, payment method, or user_id.
       if (searchQuery) {
         const q = searchQuery.toLowerCase();
         const idMatch = s.id.toLowerCase().includes(q);
+        const codeMatch = (s.displayCode ?? '').toLowerCase().includes(q);
+        const fpMatch = (s.fakturPajak ?? '').toLowerCase().includes(q);
         const pmMatch = (s.paymentMethod ?? '').toLowerCase().includes(q);
         const uidMatch = (s.userId ?? '').toLowerCase().includes(q);
-        if (!idMatch && !pmMatch && !uidMatch) return false;
+        if (!idMatch && !codeMatch && !fpMatch && !pmMatch && !uidMatch) return false;
       }
 
       // Status filter.
@@ -377,45 +461,47 @@ export default function SalesHistoryScreen() {
       setDetail(cached);
       setDetailLoading(false);
       // Still fetch refunds (they may have changed)
-      try {
-        const refundData = await listRefundsScoped(sessionToken!, id).catch(() => [] as RefundDto[]);
-        setRefunds(refundData);
-      } catch {
-        setRefunds([]);
-      }
+      const refundData = await settleRead('refunds', listRefundsScoped(sessionToken!, id));
+      setRefundsUnknown(!refundData.ok);
+      setRefunds(refundData.ok ? refundData.value : []);
       // Margin is a live report (costs can change) — always refresh.
-      try {
-        const margins = sessionToken
-          ? await getSaleLineMarginsScoped(sessionToken, id)
-          : [];
-        setLineMargins(margins);
-      } catch {
-        setLineMargins([]);
-      }
+      const marginData = await settleRead(
+        'sale_line_margins',
+        sessionToken ? getSaleLineMarginsScoped(sessionToken, id) : Promise.resolve([]),
+      );
+      setMarginsUnknown(!marginData.ok);
+      setLineMargins(marginData.ok ? marginData.value : []);
       return;
     }
 
     setDetailLoading(true);
     setRefunds([]);
+    setRefundsUnknown(false);
     setLineMargins([]);
+    setMarginsUnknown(false);
     try {
-      const [sale, refundData, margins] = await Promise.all([
+      const [sale, refundData, marginData] = await Promise.all([
         // Three calls, three different scoping treatments in one expression: this one was
         // ambient, the next asserts a token with `!`, the third uses the ADR #7 conditional.
         // Now all three resolve from the session when one exists.
         sessionToken ? getSaleScoped(sessionToken, id) : getSale(id),
-        listRefundsScoped(sessionToken!, id).catch(() => [] as RefundDto[]),
-        sessionToken
-          ? getSaleLineMarginsScoped(sessionToken, id).catch(() => [] as SaleLineMarginDto[])
-          : Promise.resolve([] as SaleLineMarginDto[]),
+        settleRead('refunds', listRefundsScoped(sessionToken!, id)),
+        settleRead(
+          'sale_line_margins',
+          sessionToken
+            ? getSaleLineMarginsScoped(sessionToken, id)
+            : Promise.resolve([] as SaleLineMarginDto[]),
+        ),
       ]);
       // Cache the result for future re-opens (null-safe: getSale can return null)
       if (sale) {
         detailCacheRef.current.set(id, sale);
       }
       setDetail(sale);
-      setRefunds(refundData);
-      setLineMargins(margins);
+      setRefundsUnknown(!refundData.ok);
+      setRefunds(refundData.ok ? refundData.value : []);
+      setMarginsUnknown(!marginData.ok);
+      setLineMargins(marginData.ok ? marginData.value : []);
     } catch {
       // IPC unavailable.
     } finally {
@@ -466,6 +552,7 @@ export default function SalesHistoryScreen() {
               : null,
           },
         ],
+        fakturPajak: detail.fakturPajak?.formatted ?? null,
       });
     } catch (printErr) {
       // Was `catch { /* Ignore print errors. */ }` — the quietest failure on this
@@ -488,6 +575,80 @@ export default function SalesHistoryScreen() {
     // a live one.
   }, [detail, l10n, sessionToken, addToast]);
 
+  // ── e-Faktur handlers (DJP Coretax / PER-11/PJ/2025) ──────────────
+  const handleOpenStamp = useCallback(() => {
+    setStampNsfp('');
+    setStampKodeTransaksi('01');
+    setStampError(null);
+    setShowStampModal(true);
+  }, []);
+
+  const handleCloseStamp = useCallback(() => {
+    setShowStampModal(false);
+    setStampError(null);
+  }, []);
+
+  const handleConfirmStamp = useCallback(async () => {
+    if (!detail || !sessionToken) return;
+    const cleanNsfp = stampNsfp.replace(/\D/g, '');
+    if (cleanNsfp.length !== 13) {
+      setStampError('NSFP must be exactly 13 digits (PER-11/PJ/2025)');
+      return;
+    }
+    setStamping(true);
+    setStampError(null);
+    try {
+      const updated = await stampFakturPajakScoped(sessionToken, {
+        saleId: detail.id,
+        nsfp: cleanNsfp,
+        kodeTransaksi: stampKodeTransaksi,
+      });
+      setDetail((prev) => (prev ? { ...prev, fakturPajak: updated } : null));
+      invalidateCache(detail.id);
+      load();
+      setShowStampModal(false);
+      addToast({
+        message: 'e-Faktur NSFP successfully stamped',
+        type: 'success',
+      });
+    } catch (err) {
+      // ERR-10: the raw backend message used to go straight into this state and
+      // was then rendered inside the stamp modal, so a failed stamp showed the
+      // operator backend text instead of a mapped, localized sentence. The
+      // void path twelve lines up (:349) already used l10nErrorMessage; this
+      // arm and the pengganti toast below were the two that missed the sweep.
+      setStampError(l10nErrorMessage(err, l10n, 'sales-history-stamp-error'));
+    } finally {
+      setStamping(false);
+    }
+  }, [detail, sessionToken, stampNsfp, stampKodeTransaksi, invalidateCache, load, addToast, l10n]);
+
+  const handleCreatePengganti = useCallback(async () => {
+    if (!detail || !sessionToken || !detail.fakturPajak) return;
+    setPenggantiLoading(true);
+    try {
+      const updated = await createFakturPenggantiScoped(sessionToken, detail.id);
+      setDetail((prev) => (prev ? { ...prev, fakturPajak: updated } : null));
+      invalidateCache(detail.id);
+      load();
+      addToast({
+        message: `Faktur Pengganti created (${updated.formatted})`,
+        type: 'success',
+      });
+    } catch (err) {
+      addToast({
+        // ERR-10: this arm used to interpolate the raw thrown message into the
+        // toast, putting backend text in front of the operator. plainErrorMessage
+        // maps a typed AppError to its user-safe sentence and falls back
+        // otherwise — the same normalizer the rest of the swept screens use.
+        message: plainErrorMessage(err, l10n.getString('sales-history-pengganti-error')),
+        type: 'error',
+      });
+    } finally {
+      setPenggantiLoading(false);
+    }
+  }, [detail, sessionToken, invalidateCache, load, addToast, l10n]);
+
   // ── Refund handlers ──────────────────────────────────────────
   const openRefund = useCallback(() => {
     if (!detail) return;
@@ -500,19 +661,29 @@ export default function SalesHistoryScreen() {
 
   const loadRefunds = useCallback(async (saleId: string) => {
     setRefundsLoading(true);
-    try {
-      const data = await listRefundsScoped(sessionToken!, saleId);
-      setRefunds(data);
-    } catch {
-      setRefunds([]);
-    } finally {
-      setRefundsLoading(false);
-    }
+    const data = await settleRead('refunds', listRefundsScoped(sessionToken!, saleId));
+    setRefundsUnknown(!data.ok);
+    setRefunds(data.ok ? data.value : []);
+    setRefundsLoading(false);
     // sessionToken is a free variable from useWorkspace() at :164, read at :451. The sibling
     // effect above already lists [sessionToken, l10n] at :227, so the token was understood to
     // change -- this array just omitted it. With [] the callback kept the mount-time token, and
     // because :467 lists loadRefunds in its own deps, the refund list for an opened sale was
     // fetched against whatever session was active when the screen mounted.
+  }, [sessionToken]);
+
+  // The margin read's own retry, deliberately NOT openDetail: the sale itself is
+  // cached and unchanged, and re-opening it would also clear the refund state
+  // the operator may still be reading next to this alert.
+  const loadMargins = useCallback(async (saleId: string) => {
+    const data = await settleRead(
+      'sale_line_margins',
+      sessionToken
+        ? getSaleLineMarginsScoped(sessionToken, saleId)
+        : Promise.resolve([] as SaleLineMarginDto[]),
+    );
+    setMarginsUnknown(!data.ok);
+    setLineMargins(data.ok ? data.value : []);
   }, [sessionToken]);
 
   const handleRefunded = useCallback(() => {
@@ -525,11 +696,17 @@ export default function SalesHistoryScreen() {
   }, [closeRefund, detail, loadRefunds, load, invalidateCache]);
 
   // ── Cashier display helper ─────────────────────────────────────
+  // The em dash is reserved for the one claim we can actually make: the sale
+  // records no cashier. When the roster did not load, `staff` is empty, and the
+  // `userId.slice(0, 8)` fallback would then print a truncated id for EVERY
+  // row -- a different name that looks like a real one, and it reaches the CSV
+  // export too. The dash is a visible gap instead.
   const cashierName = useCallback((userId: string | null): string => {
     if (!userId) return '—';
     const s = staff.find((m) => m.id === userId);
-    return s ? s.display_name : userId.slice(0, 8);
-  }, [staff]);
+    if (s) return s.display_name;
+    return staffUnknown ? '—' : userId.slice(0, 8);
+  }, [staff, staffUnknown]);
 
   const [csvExporting, setCsvExporting] = useState(false);
 
@@ -555,16 +732,38 @@ export default function SalesHistoryScreen() {
       ];
       // Export ALL filtered results, not just current page — one CSV row per
       // sale line, with per-line cost (HPP) and margin from the report layer.
+      //
+      // A sale whose margin read FAILED is exported with its per-line cells
+      // blank, the same shape as a sale with no line data -- and the file that
+      // leaves the machine then reads as though those costs were zero. So the
+      // operator is told, by count, once for the whole file: the summary rows are
+      // still worth having and the gap is still visible on the way out.
       const withLines = await Promise.all(
         filteredSales.map(async (s) => {
-          const margins = sessionToken
-            ? await getSaleLineMarginsScoped(sessionToken, s.id).catch(() => [] as SaleLineMarginDto[])
-            : [];
-          return { sale: s, margins };
+          const marginData = await settleRead(
+            'sale_line_margins',
+            sessionToken
+              ? getSaleLineMarginsScoped(sessionToken, s.id)
+              : Promise.resolve([] as SaleLineMarginDto[]),
+          );
+          return { sale: s, marginData };
         }),
       );
+      const unanswered = withLines.filter((w) => !w.marginData.ok);
+      if (unanswered.length > 0) {
+        addToast({
+          message: requiredLocalized(l10n, 'sales-history-export-margins-unknown', {
+            count: String(unanswered.length),
+          }),
+          type: 'warning',
+        });
+      }
+      // The count names SALES whose margins are missing, not lines: one sale can
+      // carry many lines, and the operator needs to know how much of the file to
+      // distrust before it leaves the machine.
       const rows: string[][] = [];
-      for (const { sale: s, margins } of withLines) {
+      for (const { sale: s, marginData } of withLines) {
+        const margins = marginData.ok ? marginData.value : [];
         const context = [
           s.id,
           new Date(s.createdAt).toLocaleString(),
@@ -575,7 +774,8 @@ export default function SalesHistoryScreen() {
           cashierName(s.userId),
         ];
         if (margins.length === 0) {
-          // Margins unavailable (e.g. IPC down) — emit the summary row alone.
+          // No per-line data: either the sale genuinely has none, or the read did
+          // not answer (warned above). Either way the summary row stands alone.
           rows.push([...context, '', '', '', '', '', '', '']);
           continue;
         }
@@ -605,7 +805,7 @@ export default function SalesHistoryScreen() {
     } finally {
       setCsvExporting(false);
     }
-  }, [filteredSales, cashierName, l10n, sessionToken, csvExporting]);
+  }, [filteredSales, cashierName, l10n, sessionToken, csvExporting, addToast]);
 
   // ── Focus trap refs ───────────────────────────────
   const voidPanelRef = useRef<HTMLDivElement>(null);
@@ -773,6 +973,10 @@ export default function SalesHistoryScreen() {
             <Localized id="sales-history-cashier-all">
               <option value=""><span>All Cashiers</span></option>
             </Localized>
+            {/* No `staffUnknown` guard here, and deliberately: the map is already
+                empty when the read failed, so a guard would be a dead condition. The
+                alert below the filters is the load-bearing part -- an option list of
+                only 'All Cashiers' is the claim being made wrong. */}
             {staff.map((m) => (
               <option key={m.id} value={m.id}>{m.display_name}</option>
             ))}
@@ -781,6 +985,25 @@ export default function SalesHistoryScreen() {
         </div>
       </div>
       </Localized>
+
+      {/* ── The roster read that did not answer ────────────── */}
+      {/* The Cashier filter and every cashier name on this screen are built from
+           one list. A failed read emptied it silently, so the filter offered only
+           'All Cashiers' -- a claim about the store's roster rather than about
+           this screen's knowledge -- and the table fell back to truncated ids.
+           list_staff_scoped requires STAFF_READ (crates/kasirmu-bridge/src/staff.rs:349),
+           so a refused read is an expected outcome for a session that may still
+           read sales history; it is not a malfunction to be papered over. */}
+      {staffUnknown && (
+        <div className="sales-history-staff-unknown" role="alert">
+          <Localized id="sales-history-staff-unknown">
+            <span>Cashier names could not be loaded</span>
+          </Localized>
+          <Button variant="secondary" size="sm" onClick={() => { void load(); }}>
+            <Localized id="retry"><span>Retry</span></Localized>
+          </Button>
+        </div>
+      )}
 
       {/* ── Table ───────────────────────────────────────────────── */}
       {loading ? (
@@ -1108,6 +1331,91 @@ export default function SalesHistoryScreen() {
         </Localized>
       )}
 
+      {/* ── Stamp e-Faktur Modal (PER-11/PJ/2025) ──────────────────── */}
+      {showStampModal && (
+        <div className="sales-history-overlay" role="dialog" aria-modal="true" aria-label="Stamp e-Faktur NSFP">
+          <div className="sales-history-modal sales-history-stamp-modal" style={{ maxWidth: '460px' }}>
+            <div className="sales-history-modal-header">
+              <h2><span>Input e-Faktur NSFP (DJP Coretax)</span></h2>
+              <button
+                type="button"
+                className="sales-history-modal-close"
+                onClick={handleCloseStamp}
+                aria-label="Close"
+              >
+                &times;
+              </button>
+            </div>
+            <div className="sales-history-modal-body">
+              <p style={{ fontSize: '0.875rem', color: 'var(--text-muted, #64748b)', marginBottom: '1rem' }}>
+                Masukkan 13-digit Nomor Seri Faktur Pajak (NSFP) yang diterbitkan oleh DJP Coretax untuk transaksi ini.
+              </p>
+
+              <div style={{ marginBottom: '1rem' }}>
+                <label htmlFor="stamp-kode-transaksi" style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600, marginBottom: '0.25rem' }}>
+                  Kode Transaksi (PER-11/PJ/2025)
+                </label>
+                <select
+                  id="stamp-kode-transaksi"
+                  value={stampKodeTransaksi}
+                  onChange={(e) => setStampKodeTransaksi(e.target.value)}
+                  style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid var(--border-color, #cbd5e1)' }}
+                >
+                  <option value="01">01 - Penyerahan BKP/JKP kepada selain Pemungut PPN</option>
+                  <option value="02">02 - Penyerahan BKP/JKP kepada Pemungut Bendaharawan Pemerintah</option>
+                  <option value="03">03 - Penyerahan BKP/JKP kepada Pemungut selain Bendaharawan</option>
+                  <option value="04">04 - Penyerahan BKP/JKP yang PPN-nya Dipungut dengan Besaran Tertentu</option>
+                  <option value="05">05 - Penyerahan BKP/JKP Tertentu</option>
+                  <option value="06">06 - Penyerahan Lainnya</option>
+                  <option value="07">07 - Penyerahan BKP/JKP yang PPN-nya Tidak Dipungut</option>
+                  <option value="08">08 - Penyerahan BKP/JKP yang Dibebaskan dari Pengenaan PPN</option>
+                  <option value="09">09 - Penyerahan BKP berupa Aktiva (Pasal 16D UU PPN)</option>
+                  <option value="10">10 - Penyerahan BKP/JKP dengan PPN Ditanggung Pemerintah (DTP)</option>
+                </select>
+              </div>
+
+              <div style={{ marginBottom: '1rem' }}>
+                <label htmlFor="stamp-nsfp" style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600, marginBottom: '0.25rem' }}>
+                  13-Digit NSFP
+                </label>
+                <input
+                  id="stamp-nsfp"
+                  type="text"
+                  maxLength={13}
+                  placeholder="e.g. 2600000000123"
+                  value={stampNsfp}
+                  onChange={(e) => setStampNsfp(e.target.value.replace(/\D/g, ''))}
+                  style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid var(--border-color, #cbd5e1)', fontFamily: 'monospace' }}
+                />
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted, #64748b)', marginTop: '0.25rem' }}>
+                  Format Faktur Pajak: <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>{stampKodeTransaksi}00{stampNsfp.padEnd(13, '·')}</span>
+                </div>
+              </div>
+
+              {stampError && (
+                <div className="sales-history-void-error" role="alert" style={{ marginBottom: '1rem' }}>
+                  {stampError}
+                </div>
+              )}
+
+              <div className="sales-history-modal-actions">
+                <Button variant="ghost" onClick={handleCloseStamp} disabled={stamping}>
+                  Cancel
+                </Button>
+                <Button
+                  variant="primary"
+                  onClick={handleConfirmStamp}
+                  loading={stamping}
+                  disabled={stampNsfp.length !== 13}
+                >
+                  Stamp e-Faktur
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Detail modal ────────────────────────────────────────── */}
       {detailExit.shouldRender && detail && (
         <Localized id="sales-history-detail-overlay-aria" attrs={{ 'aria-label': true }}>
@@ -1229,12 +1537,70 @@ export default function SalesHistoryScreen() {
                       <strong><span>Total:</span></strong>
                     </Localized>
                     {' '}{formatMoney(detail.total)}
+                    {/* Same as the Previous Refunds gate below: a failed read clears
+                        the list, so `refunds.length > 0` is already false. The flag is
+                        not repeated here. */}
                     {refunds.length > 0 && (
                       <Badge variant="warning" style={{ marginLeft: 8 }}>
                         <Localized id="refund-status-refunded">
                           <span>Refunded</span>
                         </Localized>
                       </Badge>
+                    )}
+                  </div>
+                </div>
+
+                {/* ── e-Faktur Section (DJP Coretax / PER-11/PJ/2025) ── */}
+                <div
+                  className="sales-history-efaktur-section"
+                  style={{
+                    margin: '1rem 0',
+                    padding: '0.75rem 1rem',
+                    background: 'var(--bg-subtle, #f8f9fa)',
+                    borderRadius: '6px',
+                    border: '1px solid var(--border-color, #e2e8f0)',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>e-Faktur (DJP Coretax)</div>
+                      {detail.fakturPajak ? (
+                        <div style={{ fontSize: '0.8125rem', marginTop: '0.25rem', display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                          <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>{detail.fakturPajak.formatted}</span>
+                          <Badge variant="success">
+                            {detail.fakturPajak.status === '00' ? 'Normal' : `Pengganti (${detail.fakturPajak.status})`}
+                          </Badge>
+                          <span style={{ color: 'var(--text-muted, #64748b)' }}>
+                            NSFP: {detail.fakturPajak.nsfp} | Kode: {detail.fakturPajak.kodeTransaksi}
+                          </span>
+                        </div>
+                      ) : (
+                        <div style={{ fontSize: '0.8125rem', color: 'var(--text-muted, #64748b)', marginTop: '0.25rem' }}>
+                          Belum ada e-Faktur (Unstamped)
+                        </div>
+                      )}
+                    </div>
+                    {session && isManager && (
+                      <div>
+                        {detail.fakturPajak ? (
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={handleCreatePengganti}
+                            loading={penggantiLoading}
+                          >
+                            Create Faktur Pengganti
+                          </Button>
+                        ) : (
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={handleOpenStamp}
+                          >
+                            Input e-Faktur NSFP
+                          </Button>
+                        )}
+                      </div>
                     )}
                   </div>
                 </div>
@@ -1251,6 +1617,12 @@ export default function SalesHistoryScreen() {
                       <Localized id="sales-history-line-qty"><th><span>Qty</span></th></Localized>
                       <Localized id="sales-history-line-unit-price"><th><span>Unit Price</span></th></Localized>
                       <Localized id="sales-history-line-total"><th><span>Total</span></th></Localized>
+                      {/* No `!marginsUnknown` guard on the two column gates, and
+                          deliberately: a failed read already clears `lineMargins`, so
+                          `lineMargins.length > 0` is false on its own. Mutations that
+                          added the flag to either gate passed every test, so it was a dead
+                          condition. The load-bearing gate is the alert below, which is
+                          what makes the absence visible. */}
                       {lineMargins.length > 0 && (
                         <>
                           <Localized id="sales-history-line-cost"><th><span>Cost</span></th></Localized>
@@ -1290,7 +1662,52 @@ export default function SalesHistoryScreen() {
                 </table>
                 </Localized>
 
+                {/* ── Margin read did not answer ──────────────── */}
+                {marginsUnknown && (
+                  /* The Cost / Margin / Margin % columns are gated on the LENGTH
+                     of this read, so a failed read removed three columns of a
+                     manager's profitability read and said nothing about it. The
+                     columns stay hidden -- a dash in a cost column is not a
+                     cheaper line -- and this is the only place the gap is named. */
+                  <div className="sales-history-margins-unknown" role="alert">
+                    <Localized id="margin-history-unknown">
+                      <span>Cost and margin for this sale could not be loaded</span>
+                    </Localized>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => detail && loadMargins(detail.id)}
+                    >
+                      <Localized id="retry"><span>Retry</span></Localized>
+                    </Button>
+                  </div>
+                )}
+
+                {/* ── Refund read did not answer ──────────────── */}
+                {refundsUnknown && (
+                  /* An unanswered read is not "no refunds". Rendering it as the
+                     empty case would erase the evidence AND leave the Refund
+                     button below enabled against a sale whose refund total is
+                     unknown -- and `create_refund` bounds a refund by that
+                     cumulative total, so the attempt ends in a validation error
+                     the operator cannot predict from what is on screen. Reload
+                     is the only action that can change the answer. */
+                  <div className="sales-history-refunds-unknown" role="alert">
+                    <Localized id="refund-history-unknown">
+                      <span>Refunds for this sale could not be loaded</span>
+                    </Localized>
+                    <Button variant="secondary" size="sm" onClick={() => detail && loadRefunds(detail.id)}>
+                      <Localized id="retry"><span>Retry</span></Localized>
+                    </Button>
+                  </div>
+                )}
+
                 {/* ── Previous Refunds ──────────────────────── */}
+                {/* No `!refundsUnknown` guard here, and deliberately: a failed read clears
+                    the list, so `refunds.length > 0` is already false. Adding the flag
+                    would be a dead condition -- mutations that removed it passed every
+                    test. The one gate that IS load-bearing is on the Refund button below,
+                    which is what the failed read would otherwise leave armed. */}
                 {refunds.length > 0 && (
                   <div className="sales-history-refunds">
                     <Localized id="refund-previous-refunds">
@@ -1332,7 +1749,11 @@ export default function SalesHistoryScreen() {
                   <Localized id="sales-history-detail-close">
                     <Button variant="ghost" onClick={detailExit.requestClose}>Close</Button>
                   </Localized>
-                  {detail.status === 'Completed' && session && (
+                  {/* Gated on the refund read having ANSWERED, not merely on the
+                      sale being completed: an unanswered read leaves the refunded
+                      total unknown, and offering the action is what turns a display
+                      gap into a wrong-reason refund rejection. */}
+                  {detail.status === 'Completed' && session && !refundsUnknown && (
                     <Localized id="refund-action-refund">
                       <Button variant="secondary" onClick={openRefund}>Refund</Button>
                     </Localized>

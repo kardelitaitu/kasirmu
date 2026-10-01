@@ -37,9 +37,9 @@ fn bench_cart_calculate_total(c: &mut Criterion) {
     let mut cart = Cart::new(usd());
     for i in 0..20 {
         cart.add_line(CartLine::new(
-            Sku::new(format!("SKU-{:03}", i)),
+            Sku::new(format!("SKU-{i:03}")),
             1,
-            m(500 + i as i64 * 100),
+            m(500 + i64::from(i) * 100),
         ))
         .unwrap();
     }

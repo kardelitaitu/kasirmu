@@ -5,8 +5,8 @@
 // navigation returning to the correct landing route.
 
 import { describe, expect, it, vi, beforeEach, afterEach, type Mock } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
-import { act } from 'react';
+import { screen, waitFor, fireEvent } from '@testing-library/react';
+import { act, useState } from 'react';
 import type { ReactNode } from 'react';
 import userEvent from '@testing-library/user-event';
 import { renderWithProviders } from '@/__tests__/test-utils/render';
@@ -61,6 +61,7 @@ vi.mock('@/features/memo/MemoBanner', () => ({
     return <div data-testid="memo-banner-mount" />;
   },
 }));
+
 
 // ── Mock API modules used by AppShell ────────────────────────────
 
@@ -1137,6 +1138,72 @@ describe('AppShell — KDS workspace navigation', () => {
       });
       expect(screen.queryByText('Access Denied')).not.toBeInTheDocument();
     });
+
+    it('preserves the fullscreen wrapper DOM element and component state when navigating between routes in the same screenGroup', async () => {
+      sessionFor('owner', []);
+      const SharedScreen = () => {
+        const [counter, setCounter] = useState(10);
+        return (
+          <div data-testid="shared-group-screen">
+            <span data-testid="shared-counter">{counter}</span>
+            <button data-testid="increment-btn" onClick={() => setCounter((c) => c + 1)}>
+              Inc
+            </button>
+          </div>
+        );
+      };
+
+      registerPage({
+        route: 'test-group-a',
+        component: SharedScreen,
+        label: 'Group A',
+        fullscreen: true,
+        screenGroup: 'test-screen-group',
+      });
+      registerPage({
+        route: 'test-group-b',
+        component: SharedScreen,
+        label: 'Group B',
+        fullscreen: true,
+        screenGroup: 'test-screen-group',
+      });
+
+      window.location.hash = '#/test-group-a';
+      await renderWithProviders(<AppShell />, staffFtl);
+      await act(async () => {});
+
+      await waitFor(() => {
+        expect(screen.getByTestId('shared-group-screen')).toBeInTheDocument();
+      });
+
+      // Increment local state from 10 to 11
+      fireEvent.click(screen.getByTestId('increment-btn'));
+      expect(screen.getByTestId('shared-counter').textContent).toBe('11');
+
+      const wrapperBefore = document.querySelector('.workspace-fullscreen');
+      const screenBefore = screen.getByTestId('shared-group-screen');
+      expect(wrapperBefore).not.toBeNull();
+
+      // Navigate to the other route in the same screenGroup
+      await act(async () => {
+        window.location.hash = '#/test-group-b';
+        window.dispatchEvent(new HashChangeEvent('hashchange'));
+      });
+
+      await waitFor(() => {
+        expect(screen.getByTestId('shared-group-screen')).toBeInTheDocument();
+      });
+
+      const wrapperAfter = document.querySelector('.workspace-fullscreen');
+      const screenAfter = screen.getByTestId('shared-group-screen');
+
+      // Strict reference equality: DOM nodes were NEVER destroyed
+      expect(wrapperAfter).toBe(wrapperBefore);
+      expect(screenAfter).toBe(screenBefore);
+
+      // State retention: counter is still 11, proving zero state wipe or unmount
+      expect(screen.getByTestId('shared-counter').textContent).toBe('11');
+    });
   });
 
   describe('ADR #58 §2.6 — Revoked tenant gate', () => {
@@ -1146,6 +1213,115 @@ describe('AppShell — KDS workspace navigation', () => {
       await waitFor(() => {
         expect(screen.getByTestId('revoked-screen')).toBeInTheDocument();
       });
+    });
+  });
+
+  describe('fullscreen exit to workspace picker regression', () => {
+    function setTestSession(roleName: string, permissions: string[]) {
+      mockAuthSession.mockReturnValue({
+        session: {
+          user_id: 'user-1',
+          role_name: roleName,
+          role_id: 'role-1',
+          display_name: 'Test User',
+          permissions,
+        },
+        loading: false,
+        error: null,
+        login: vi.fn(),
+        logout: vi.fn(),
+        clearError: vi.fn(),
+        swapSession: vi.fn(),
+        pickerTicket: null,
+        isManager: roleName === 'manager' || roleName === 'owner',
+        isOwner: roleName === 'owner',
+      });
+    }
+
+    it('exits a fullscreen page to WorkspaceHome when hash is cleared without an active workspace', async () => {
+      setTestSession('owner', ['*']);
+      registerPage({
+        route: 'test-fullscreen-exit',
+        component: () => <div data-testid="test-fullscreen-screen">Fullscreen Content</div>,
+        label: 'Fullscreen Test',
+        fullscreen: true,
+      });
+
+      mockWorkspace.mockReturnValue({
+        activeWorkspace: null,
+        setActiveWorkspace: vi.fn(),
+        availableWorkspaces: [],
+        workspaceScreens: [],
+        loading: false,
+      });
+
+      window.location.hash = '#/test-fullscreen-exit';
+      await renderWithProviders(<AppShell />, staffFtl);
+      await act(async () => {});
+
+      await waitFor(() => {
+        expect(screen.getByTestId('test-fullscreen-screen')).toBeInTheDocument();
+      });
+
+      // Clear the hash (as done when exiting to workspace picker)
+      await act(async () => {
+        window.location.hash = '';
+        window.dispatchEvent(new HashChangeEvent('hashchange'));
+      });
+
+      await waitFor(() => {
+        expect(document.querySelector('.workspace-home-wrapper')).toBeInTheDocument();
+        expect(screen.getByTestId('workspace-card-add')).toBeInTheDocument();
+      });
+      expect(screen.queryByTestId('test-fullscreen-screen')).not.toBeInTheDocument();
+    });
+
+    it('resets route and clears hash when activeWorkspace becomes null from inside a fullscreen page', async () => {
+      setTestSession('owner', ['*']);
+      registerPage({
+        route: 'test-fullscreen-exit-ws',
+        component: () => <div data-testid="test-fullscreen-ws-screen">Fullscreen Content</div>,
+        label: 'Fullscreen Test WS',
+        fullscreen: true,
+      });
+
+      function Harness() {
+        const [ws, setWs] = useState<string | null>('admin');
+        mockWorkspace.mockImplementation(() => ({
+          activeWorkspace: ws,
+          setActiveWorkspace: setWs,
+          availableWorkspaces: [],
+          workspaceScreens: [],
+          loading: false,
+        }));
+        return (
+          <>
+            <button data-testid="exit-ws-btn" onClick={() => setWs(null)}>
+              Exit Workspace
+            </button>
+            <AppShell />
+          </>
+        );
+      }
+
+      window.location.hash = '#/test-fullscreen-exit-ws';
+      await renderWithProviders(<Harness />, staffFtl);
+      await act(async () => {});
+
+      await waitFor(() => {
+        expect(screen.getByTestId('test-fullscreen-ws-screen')).toBeInTheDocument();
+      });
+
+      // Workspace becomes null (e.g. back button sets activeWorkspace = null)
+      fireEvent.click(screen.getByTestId('exit-ws-btn'));
+      await act(async () => {});
+
+      await waitFor(() => {
+        expect(document.querySelector('.workspace-home-wrapper')).toBeInTheDocument();
+        expect(screen.getByTestId('workspace-card-add')).toBeInTheDocument();
+      });
+      expect(screen.queryByTestId('test-fullscreen-ws-screen')).not.toBeInTheDocument();
+      expect(window.location.hash).toBe('');
     });
   });
 });

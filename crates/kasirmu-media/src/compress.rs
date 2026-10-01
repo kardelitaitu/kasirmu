@@ -122,8 +122,11 @@ pub fn compress_img(
 ///
 /// Returns a heuristic based on the target format; JPEG output is the
 /// most compact for photographic input.
-pub fn expected_ratio(target_format: ImageFormat, quality: Quality) -> f64 {
-    let _ = quality;
+///
+/// MED-E: `quality` is accepted for call-site symmetry with [`compress`] but
+/// does NOT affect the result — the returned figure is a per-format constant.
+/// It is `_`-named below so that is explicit rather than looking like a bug.
+pub fn expected_ratio(target_format: ImageFormat, _quality: Quality) -> f64 {
     match target_format {
         ImageFormat::Jpeg => 0.20,
         ImageFormat::Png => 0.60,

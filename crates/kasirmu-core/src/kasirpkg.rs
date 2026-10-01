@@ -1,4 +1,4 @@
-//! Encrypted OZ-POS data export/import format (`.kasirpkg`).
+//! Encrypted kasir.mu data export/import format (`.kasirpkg`).
 //!
 //! # Format
 //!
@@ -81,7 +81,7 @@ pub struct KasirpkgHeader {
     pub version: u32,
     /// Store name (from settings).
     pub store_name: String,
-    /// OZ-POS version that created this export.
+    /// kasir.mu version that created this export.
     pub app_version: String,
     /// ISO-8601 creation timestamp.
     pub created_at: String,
@@ -97,7 +97,7 @@ pub struct KasirpkgHeader {
 
 // ── Payload types ─────────────────────────────────────────────────────
 
-/// All data that can be exported from an OZ-POS store.
+/// All data that can be exported from a kasir.mu store.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct KasirpkgPayload {
     /// Product records.
@@ -110,7 +110,16 @@ pub struct KasirpkgPayload {
     /// Customer records.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub customers: Option<Vec<serde_json::Value>>,
-    /// User records (no PIN hashes).
+    /// User records, exactly as the caller serialized them.
+    ///
+    /// This field is an opaque pass-through — `kasirmu-core` neither projects nor
+    /// strips it. Both callers serialize `Store::list_users()` wholesale, whose
+    /// SELECT includes `pin_hash` (`db/staff.rs:219`), so a package written by
+    /// either lane DOES carry the staff PIN hashes. A previous comment here read
+    /// "User records (no PIN hashes)"; that was false. Only the columns added by
+    /// migration 130 (`national_id`, `national_id_hash`, `monthly_take_home_minor`,
+    /// `tax_id`) are absent, because `list_users` never selects them — the pin is
+    /// NOT in that group. Both import arms ignore the field and write `''`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub users: Option<Vec<serde_json::Value>>,
     /// Settings rows.
@@ -269,8 +278,7 @@ pub fn import_kasirpkg(
     let trimmed_len = header_bytes
         .iter()
         .rposition(|&b| b != b' ')
-        .map(|pos| pos + 1)
-        .unwrap_or(0);
+        .map_or(0, |pos| pos + 1);
     let header: KasirpkgHeader = serde_json::from_slice(&header_bytes[..trimmed_len])
         .map_err(|e| CoreError::Internal(format!("invalid header: {e}")))?;
 

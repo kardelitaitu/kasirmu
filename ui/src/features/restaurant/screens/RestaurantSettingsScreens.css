@@ -1,0 +1,1446 @@
+/* ============================================================
+ * Restaurant Settings Screens (Receipts & Payments)
+ * ============================================================ */
+
+.restaurant-settings-screen {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  box-sizing: border-box;
+  font-family: var(--font-sans, system-ui, -apple-system, sans-serif);
+  color: var(--color-fg);
+  background: var(--color-bg);
+}
+
+.restaurant-settings-header {
+  flex: 0 0 auto;
+  min-height: var(--topbar-height);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-8);
+  background: var(--color-bg-surface);
+  border-bottom: 1px solid var(--color-border);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.restaurant-settings-header-lead {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.restaurant-settings-header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-shrink: 0;
+}
+
+.restaurant-settings-header-dirty {
+  font-size: var(--text-xs);
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.restaurant-settings-back-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--touch-target-min);
+  height: var(--touch-target-min);
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-fg-secondary);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background var(--duration-150), color var(--duration-150);
+}
+
+.restaurant-settings-back-btn:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-fg);
+}
+
+.restaurant-settings-back-btn:focus-visible {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 2px;
+}
+
+.restaurant-settings-header-title-group {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.restaurant-settings-header-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-fg);
+  flex-shrink: 0;
+}
+
+.restaurant-settings-header-icon svg {
+  width: var(--text-lg);
+  height: var(--text-lg);
+  display: block;
+}
+
+.restaurant-settings-title {
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-fg);
+  line-height: var(--leading-condensed);
+  transform: translateY(1px);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Scrollable Body ───────────────────────────────────────── */
+
+.restaurant-settings-main {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: var(--space-6) var(--space-8);
+}
+
+/* ── 2-Column Responsive Layout ───────────────────────────── */
+
+.restaurant-settings-layout {
+  display: grid;
+  grid-template-columns: minmax(320px, 380px) 1fr;
+  gap: var(--space-6);
+  align-items: start;
+  width: 100%;
+}
+
+/* Collapse to one column when the pane is too narrow for the preview rail.
+ *
+ * WIDTH ONLY, deliberately: ADR-0001 Slice 3 / T1 makes orientation the SHELL's
+ * decision and licenses `@media (orientation: …)` in exactly two sheets
+ * (ui/src/app/AppLayout.css, ui/src/app/tablet/tablet.css) — see
+ * ui/src/__tests__/orientationAdaptiveWalker.test.ts. A feature sheet declaring
+ * its own orientation branch is the competing-threshold shape that rule exists to
+ * prevent: the shell already rotates at
+ * `(orientation: portrait) and (max-width: 1023px)`, so a second orientation query
+ * here would collapse this grid at a geometry the shell has not adopted. Width
+ * alone is sufficient and is the honest condition — the two-column grid needs
+ * ~700px (320px floor + gap + preview card), so 960px is where the rail stops
+ * fitting no matter which way the device is held. */
+@media (max-width: 960px) {
+  .restaurant-settings-layout {
+    grid-template-columns: 1fr;
+    gap: var(--space-4);
+  }
+}
+
+/* ── Left Column: Live Receipt Preview ─────────────────────── */
+
+.restaurant-preview-column {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  position: sticky;
+  top: 0;
+}
+
+/* Same width-only reasoning as the grid collapse above: unstick the rail and
+   lead with the preview once the layout is single-column. */
+@media (max-width: 960px) {
+  .restaurant-preview-column {
+    position: static;
+    order: -1;
+    align-items: center;
+  }
+}
+
+/* Noise-dither coverage (P11-5) is applied by the `noise-dither` CLASS on the
+   element in RestaurantReceiptsScreen.tsx, not by a ::after rule here — see the
+   "USAGE (recommended for NEW components)" block in ui/src/theme/components.css.
+   The legacy per-selector ::after list is deprecated for new surfaces. That class
+   needs `position: relative` on this element so its ::after can anchor. */
+.restaurant-preview-card {
+  position: relative;
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  padding: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  box-shadow: var(--shadow-sm);
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.restaurant-preview-header-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.restaurant-preview-title {
+  font-size: var(--text-base);
+  font-weight: 600;
+  color: var(--color-fg);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.restaurant-preview-badge {
+  font-size: var(--text-xs);
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  background: var(--color-bg-subtle);
+  color: var(--color-fg-secondary);
+  font-weight: 500;
+}
+
+/* Thermal Paper Roll Simulation */
+
+.resto-receipt-paper-wrapper {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+  background: var(--receipt-paper-scrim);
+  padding: var(--space-5) var(--space-3);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-inner);
+  overflow-x: auto;
+}
+
+[data-theme='light'] .resto-receipt-paper-wrapper {
+  background: var(--receipt-paper-scrim);
+}
+
+.resto-receipt-paper {
+  background: var(--receipt-paper);
+  color: var(--receipt-paper-ink);
+  font-family: var(--font-mono);
+  font-size: var(--rcpt-size-base, var(--text-sm));
+  /* Was the literal 1.35. The --leading-* scale has no 1.35 step (condensed
+     1.2 / tight 1.25 / snug 1.4 / normal 1.5), and the line-height freeze test
+     asks a human to pick a step rather than invent one: snug (1.4) is the
+     nearest and stays legible at this size in monospace, which is the property
+     that mattered for the thermal-paper line stack. */
+  line-height: var(--leading-snug);
+  box-shadow: var(--receipt-paper-shadow);
+  border-radius: 2px;
+  box-sizing: border-box;
+  user-select: none;
+  font-variant-numeric: tabular-nums;
+  position: relative;
+}
+
+.resto-receipt-paper--80mm {
+  width: 80mm;
+  max-width: 100%;
+  min-width: 290px;
+}
+
+.resto-receipt-paper--58mm {
+  width: 58mm;
+  max-width: 100%;
+  min-width: 220px;
+  font-size: var(--rcpt-size-base, 10px);
+}
+
+/* Font Size Variations (80mm standard paper) */
+.resto-receipt-paper--font-very-small {
+  --rcpt-size-base: 10px;
+  --rcpt-size-title: 12px;
+  --rcpt-size-meta: 8.5px;
+  --rcpt-size-total: 12px;
+}
+
+.resto-receipt-paper--font-small {
+  --rcpt-size-base: 11px;
+  --rcpt-size-title: 13px;
+  --rcpt-size-meta: 9px;
+  --rcpt-size-total: 13px;
+}
+
+.resto-receipt-paper--font-medium {
+  --rcpt-size-base: 12.5px;
+  --rcpt-size-title: 14.5px;
+  --rcpt-size-meta: 10px;
+  --rcpt-size-total: 14.5px;
+}
+
+.resto-receipt-paper--font-large {
+  --rcpt-size-base: 14px;
+  --rcpt-size-title: 16px;
+  --rcpt-size-meta: 11px;
+  --rcpt-size-total: 16px;
+}
+
+/* Font Size Variations (58mm compact paper) */
+.resto-receipt-paper--58mm.resto-receipt-paper--font-very-small {
+  --rcpt-size-base: 8.5px;
+  --rcpt-size-title: 10.5px;
+  --rcpt-size-meta: 7.5px;
+  --rcpt-size-total: 10.5px;
+}
+
+.resto-receipt-paper--58mm.resto-receipt-paper--font-small {
+  --rcpt-size-base: 9.5px;
+  --rcpt-size-title: 11.5px;
+  --rcpt-size-meta: 8px;
+  --rcpt-size-total: 11.5px;
+}
+
+.resto-receipt-paper--58mm.resto-receipt-paper--font-medium {
+  --rcpt-size-base: 10.5px;
+  --rcpt-size-title: 12.5px;
+  --rcpt-size-meta: 9px;
+  --rcpt-size-total: 12.5px;
+}
+
+.resto-receipt-paper--58mm.resto-receipt-paper--font-large {
+  --rcpt-size-base: 12px;
+  --rcpt-size-title: 14px;
+  --rcpt-size-meta: 9.5px;
+  --rcpt-size-total: 14px;
+}
+
+.resto-kitchen-printer--disabled {
+  opacity: 0.6;
+}
+
+/* Printable content boundary guide (subtle dashed border on preview) */
+.resto-receipt-printable-area {
+  outline: var(--receipt-paper-guide);
+  outline-offset: -1px;
+}
+
+.resto-receipt-printable-area > *:last-child {
+  margin-bottom: 0;
+}
+
+.resto-receipt-center {
+  text-align: center;
+}
+
+/* Receipt Header (Adaptive 2-column: 35% logo / 65% text) */
+.resto-receipt-header-row {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  margin-bottom: 6px;
+  box-sizing: border-box;
+}
+
+.resto-receipt-header-row--right {
+  flex-direction: row-reverse;
+}
+
+.resto-receipt-header-logo-col {
+  flex: 0 0 35%;
+  width: 35%;
+  max-width: 35%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 0 2px 4px;
+  box-sizing: border-box;
+}
+
+.resto-receipt-header-row--right .resto-receipt-header-logo-col {
+  padding: 2px 4px 2px 0;
+}
+
+.resto-receipt-header-logo-col .resto-receipt-logo {
+  max-width: 100%;
+  max-height: 48px;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  filter: grayscale(100%) contrast(150%);
+  display: block;
+}
+
+.resto-receipt-paper--58mm .resto-receipt-header-logo-col .resto-receipt-logo {
+  max-height: 38px;
+}
+
+.resto-receipt-header-text-col {
+  flex: 0 0 65%;
+  width: 65%;
+  max-width: 65%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  padding: 2px 4px;
+  box-sizing: border-box;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+.resto-receipt-header-line {
+  font-size: calc(var(--rcpt-size-meta, 10px) * 0.85);
+  color: var(--receipt-paper-ink-soft);
+  line-height: var(--leading-condensed);
+  word-break: break-word;
+  overflow-wrap: break-word;
+  text-align: center;
+  width: 100%;
+  margin-bottom: 0;
+}
+
+.resto-receipt-store-title {
+  font-size: var(--rcpt-size-title, var(--text-base));
+  font-weight: bold;
+  letter-spacing: 0.5px;
+  line-height: var(--leading-condensed);
+  margin-bottom: 1px;
+  text-align: center;
+  width: 100%;
+  word-break: break-word;
+  overflow-wrap: break-word;
+}
+
+.resto-receipt-meta {
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--rcpt-size-meta, 10px);
+  color: var(--receipt-paper-ink-soft);
+  margin-top: 4px;
+}
+
+.resto-receipt-table-pill {
+  display: inline-block;
+  padding: 1px 6px;
+  background: var(--receipt-paper-pill-bg);
+  color: var(--receipt-paper-pill-ink);
+  border-radius: 3px;
+  font-weight: bold;
+  font-size: var(--rcpt-size-meta, 10px);
+  margin-top: 4px;
+}
+
+.resto-receipt-divider {
+  border-top: 1px dashed var(--receipt-paper-rule);
+  margin: 6px 0;
+  width: 100%;
+}
+
+.resto-receipt-item-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  margin: 2px 0;
+}
+
+.resto-receipt-item-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.resto-receipt-item-price {
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.resto-receipt-item-note {
+  font-size: var(--rcpt-size-meta, 10px);
+  color: var(--receipt-paper-ink-soft);
+  font-style: italic;
+  padding-left: 10px;
+  margin: -1px 0 2px 0;
+  word-break: break-word;
+}
+
+.resto-receipt-totals-block {
+  margin-top: 4px;
+}
+
+.resto-receipt-total-row {
+  display: flex;
+  justify-content: space-between;
+  margin: 1px 0;
+}
+
+.resto-receipt-grand-total {
+  font-size: var(--rcpt-size-total, var(--text-base));
+  font-weight: bold;
+  margin: 4px 0;
+}
+
+.resto-receipt-footer-text {
+  text-align: center;
+  font-style: italic;
+  font-size: var(--rcpt-size-meta, 10px);
+  color: var(--receipt-paper-rule);
+  margin-top: 6px;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+.resto-receipt-footer-text--placeholder {
+  opacity: 0.65;
+}
+
+/* Printable Dimension HUD */
+
+.resto-preview-hud {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: var(--text-xs);
+  color: var(--color-fg-muted);
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-2_5) var(--space-3);
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.resto-preview-hud-tag {
+  font-weight: 600;
+  color: var(--color-fg);
+}
+
+/* Animated Action Buttons — Centered cross-fade loading animation */
+
+.resto-anim-btn {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  grid-template-areas: "content";
+  user-select: none;
+  overflow: hidden;
+}
+
+.resto-anim-btn__content {
+  grid-area: content;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  white-space: nowrap;
+  transition: opacity var(--duration-200) var(--ease-out),
+              transform var(--duration-200) var(--ease-out);
+}
+
+/* The stationary label inside the Test Print button. It shares the anim-btn
+   content geometry; the distinct name exists so the loading swap keeps the
+   label element stable for tests and for the fade/scale transition above. */
+.resto-test-print-label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  white-space: nowrap;
+}
+
+.resto-anim-btn__spinner-wrap {
+  grid-area: content;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  transition: opacity var(--duration-200) var(--ease-out),
+              transform var(--duration-200) var(--ease-out);
+}
+
+.resto-anim-btn:not(.resto-anim-btn--loading) .resto-anim-btn__content {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.resto-anim-btn:not(.resto-anim-btn--loading) .resto-anim-btn__spinner-wrap {
+  opacity: 0;
+  transform: scale(0.6);
+  visibility: hidden;
+}
+
+.resto-anim-btn--loading .resto-anim-btn__content {
+  opacity: 0;
+  transform: scale(0.85);
+  visibility: hidden;
+}
+
+.resto-anim-btn--loading .resto-anim-btn__spinner-wrap {
+  opacity: 1;
+  transform: scale(1);
+  visibility: visible;
+}
+
+.resto-anim-btn__spinner {
+  width: 1.15em;
+  height: 1.15em;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: var(--radius-full);
+  animation: btn-spin var(--duration-600) var(--ease-linear) infinite;
+}
+
+/* Test Print Button */
+
+.resto-test-print-btn {
+  width: 100%;
+  min-height: var(--touch-target-min);
+  padding: var(--space-2_5) var(--space-4);
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-semibold);
+  font-family: var(--font-sans);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-surface);
+  color: var(--color-fg);
+  cursor: pointer;
+  transition: background var(--duration-150) var(--ease-out), border-color var(--duration-150) var(--ease-out), color var(--duration-150) var(--ease-out);
+  box-sizing: border-box;
+}
+
+.resto-test-print-btn:hover:not(:disabled) {
+  background: var(--color-bg-hover);
+  border-color: var(--color-accent);
+  color: var(--color-fg-primary);
+}
+
+.resto-test-print-btn:focus-visible {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 2px;
+}
+
+.resto-test-print-btn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+/* Test Print Result Status Card */
+
+.resto-test-print-status {
+  width: 100%;
+  box-sizing: border-box;
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  font-family: var(--font-sans);
+}
+
+.resto-test-print-status--success {
+  background: var(--color-success-bg);
+  border-color: var(--color-success);
+}
+
+.resto-test-print-status--error {
+  background: var(--color-danger-bg);
+  border-color: var(--color-danger);
+}
+
+.resto-test-print-status__badge-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.resto-test-print-status__badge {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-weight: var(--font-weight-bold);
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border);
+  letter-spacing: 0.02em;
+}
+
+.resto-test-print-status--success .resto-test-print-status__badge {
+  color: var(--color-success);
+  border-color: var(--color-success);
+}
+
+.resto-test-print-status--error .resto-test-print-status__badge {
+  color: var(--color-danger);
+  border-color: var(--color-danger);
+}
+
+.resto-test-print-status__label {
+  font-size: var(--text-xs);
+  font-weight: var(--font-weight-bold);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.resto-test-print-status--success .resto-test-print-status__label {
+  color: var(--color-success);
+}
+
+.resto-test-print-status--error .resto-test-print-status__label {
+  color: var(--color-danger);
+}
+
+.resto-test-print-status__msg {
+  font-size: var(--text-xs);
+  line-height: var(--leading-normal);
+  margin: 0;
+  color: var(--color-fg);
+  word-break: break-word;
+}
+
+/* ── Right Column: Settings Form Controls ─────────────────── */
+
+.restaurant-settings-column {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  width: 100%;
+}
+
+.restaurant-settings-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+  align-items: start;
+  width: 100%;
+}
+
+.restaurant-settings-grid-col {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+@media (max-width: 1200px) {
+  .restaurant-settings-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.restaurant-settings-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.restaurant-settings-card-header h2 {
+  margin: 0;
+  font-size: var(--text-base);
+  font-weight: 600;
+  color: var(--color-fg);
+}
+
+.restaurant-settings-card-header p {
+  margin: 2px 0 0;
+  font-size: var(--text-xs);
+  color: var(--color-fg-muted);
+}
+
+/* Standard Form Text Input */
+
+.resto-text-input {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--color-bg-input);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  color: var(--color-fg);
+  padding: var(--space-2_5) var(--space-3);
+  font-size: var(--text-sm);
+  font-family: var(--font-sans);
+  min-height: 40px;
+  transition: border-color var(--duration-150) var(--ease-out), box-shadow var(--duration-150) var(--ease-out);
+}
+
+.resto-text-input:focus {
+  outline: none;
+  border-color: var(--color-border-focus);
+}
+
+.resto-text-input::placeholder {
+  color: var(--color-fg-muted);
+}
+
+/* Segmented Control for Paper Width & Settings Options */
+
+.resto-segmented-group {
+  display: flex;
+  background: var(--color-bg-input);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: 3px;
+  gap: 4px;
+  width: 100%;
+  box-sizing: border-box;
+  margin-bottom: var(--space-4);
+}
+
+.resto-segmented-btn {
+  flex: 1;
+  padding: var(--space-2_5) var(--space-3);
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-medium);
+  background: transparent;
+  border: none;
+  border-radius: calc(var(--radius-lg) - 2px);
+  color: var(--color-fg);
+  cursor: pointer;
+  transition: background var(--duration-150) var(--ease-out), color var(--duration-150) var(--ease-out);
+  text-align: center;
+  min-height: var(--touch-target-min);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.resto-segmented-btn:hover:not(.resto-segmented-btn--active) {
+  background: var(--color-bg-hover);
+  color: var(--color-fg-primary);
+}
+
+.resto-segmented-btn:focus-visible {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 1px;
+}
+
+.resto-segmented-btn--active {
+  background: var(--color-primary);
+  color: var(--color-pos-on-primary);
+  font-weight: var(--font-weight-semibold);
+  box-shadow: var(--shadow-sm);
+  border-radius: calc(var(--radius-lg) - 2px);
+}
+
+.resto-segmented-group--4 .resto-segmented-btn {
+  padding: var(--space-2_5) var(--space-1);
+  font-size: var(--text-xs);
+  font-weight: var(--font-weight-medium);
+}
+
+/* 2x2 Paper Margins Grid */
+
+.resto-margins-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3);
+  margin: var(--space-2) 0 var(--space-4);
+}
+
+.resto-margin-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+}
+
+.resto-margin-card:focus-within {
+  border-color: var(--color-primary);
+}
+
+.resto-margin-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.resto-margin-label {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--color-fg);
+}
+
+.resto-margin-range {
+  font-size: 10px;
+  color: var(--color-fg-muted);
+}
+
+.resto-margin-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.resto-margin-input {
+  flex: 1;
+  min-width: 0;
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-fg);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-sm);
+  font-family: var(--font-mono, monospace);
+  font-weight: 600;
+  min-height: 36px;
+}
+
+.resto-margin-input:focus {
+  outline: none;
+  border-color: var(--color-primary);
+}
+
+.resto-margin-unit {
+  font-size: var(--text-xs);
+  color: var(--color-fg-muted);
+  font-weight: 500;
+}
+
+/* Modern Sliding Switch Toggles */
+
+.resto-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  gap: var(--space-3);
+  margin-bottom: var(--space-2_5);
+}
+
+.resto-toggle-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+}
+
+.resto-toggle-title {
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--color-fg);
+}
+
+.resto-toggle-desc {
+  font-size: var(--text-xs);
+  color: var(--color-fg-muted);
+}
+
+.resto-switch-btn {
+  position: relative;
+  width: 44px;
+  height: 24px;
+  background: var(--color-bg-elevated);
+  border-radius: var(--radius-full);
+  border: 1px solid var(--color-border);
+  cursor: pointer;
+  transition: background-color 0.2s ease, border-color 0.2s ease;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.resto-switch-btn[aria-checked="true"] {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+}
+
+.resto-switch-handle {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--receipt-paper);
+  transition: transform 0.2s ease;
+  box-shadow: var(--shadow-sm);
+}
+
+.resto-switch-btn[aria-checked="true"] .resto-switch-handle {
+  transform: translateX(20px);
+}
+
+/* Textarea for Receipt Footer */
+
+.resto-textarea {
+  width: 100%;
+  min-height: 84px;
+  padding: var(--space-2_5) var(--space-3);
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  color: var(--color-fg);
+  font-family: var(--font-sans, inherit);
+  font-size: var(--text-sm);
+  line-height: var(--leading-snug);
+  resize: vertical;
+  box-sizing: border-box;
+}
+
+.resto-textarea:focus {
+  outline: none;
+  border-color: var(--color-primary);
+}
+
+/* Loading & Payment Screen Elements */
+
+.restaurant-settings-loading {
+  padding: var(--space-4);
+  color: var(--color-fg-muted);
+  font-size: var(--text-sm);
+}
+
+.restaurant-rails-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.restaurant-rail-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  gap: var(--space-2);
+}
+
+.restaurant-rail-info {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.restaurant-rail-label {
+  font-weight: 500;
+  font-size: var(--text-sm);
+}
+
+.restaurant-rail-code {
+  font-size: var(--text-xs);
+  color: var(--color-fg-muted);
+  font-family: var(--font-mono, monospace);
+  background: var(--color-bg-subtle);
+  padding: 1px 5px;
+  border-radius: var(--radius-sm);
+}
+
+.restaurant-rail-add {
+  display: flex;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+  align-items: center;
+}
+
+.restaurant-rail-add input {
+  flex: 1;
+}
+
+.restaurant-rail-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.restaurant-rail-remove {
+  padding: 2px 8px;
+  font-size: var(--text-xs);
+  color: var(--color-danger);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.restaurant-rail-remove:hover {
+  color: var(--color-fg);
+}
+
+.restaurant-static-qr-box {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin-top: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-bg-subtle);
+  border-radius: var(--radius-md);
+}
+
+/* Business Logo in Preview & Settings */
+.resto-receipt-logo-wrap {
+  display: flex;
+  justify-content: center;
+  padding: 4px 0;
+  margin-bottom: 4px;
+}
+
+.resto-receipt-logo {
+  max-width: 56px;
+  max-height: 56px;
+  object-fit: contain;
+  filter: grayscale(100%) contrast(150%);
+  display: block;
+}
+
+.resto-receipt-watermark {
+  margin-top: 8px;
+  padding-top: 4px;
+  border-top: 1px dotted var(--receipt-paper-rule);
+  text-align: center;
+  font-size: var(--rcpt-size-meta, 10px);
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: var(--receipt-paper-ink-soft);
+}
+
+.resto-logo-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  margin-bottom: var(--space-4);
+}
+
+.resto-logo-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.resto-logo-thumb-box {
+  width: 60px;
+  height: 60px;
+  border-radius: var(--radius-lg);
+  border: 1px dashed var(--color-border);
+  background: var(--color-bg-elevated);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+[data-theme='dark'] .resto-logo-thumb-box {
+  background: #e8e8e8;
+}
+
+.resto-logo-thumb {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.resto-logo-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  flex: 1;
+}
+
+.resto-tax-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+  padding: var(--space-2_5) var(--space-3);
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+}
+
+.resto-tier-notice {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-lg);
+  font-size: var(--text-xs);
+  margin-top: var(--space-4);
+}
+
+.resto-tier-notice--free {
+  background: var(--color-warning-bg);
+  border: 1px solid var(--color-warning-border);
+  color: var(--color-warning);
+}
+
+.resto-tier-notice--paid {
+  background: var(--color-success-bg);
+  border: 1px solid var(--color-success);
+  color: var(--color-success);
+}
+
+/* ── Readable Button Overrides for Receipts Screen ─────────── */
+
+.resto-logo-upload-btn {
+  background: var(--color-bg-surface);
+  border-color: var(--color-border-strong);
+  color: var(--color-fg);
+  font-weight: var(--font-weight-medium);
+}
+
+.resto-logo-upload-btn:hover:not(:disabled) {
+  background: var(--color-bg-hover);
+  border-color: var(--color-accent);
+  color: var(--color-fg-primary);
+}
+
+.resto-logo-remove-btn {
+  color: var(--color-danger);
+}
+
+.resto-logo-remove-btn:hover:not(:disabled) {
+  background: var(--color-danger-bg);
+  color: var(--color-danger-hover);
+}
+
+/* ── Expandable Payment Method Cards Template ──────────────── */
+
+.resto-payment-cards-list {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-4);
+  width: 100%;
+  align-items: start;
+}
+
+/* On landscape / desktop view: 3 columns */
+@media (min-width: 960px) {
+  .resto-payment-cards-list {
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--space-4);
+  }
+}
+
+.resto-payment-card-wrapper {
+  transition: all 0.2s ease;
+  border-radius: var(--radius-lg, 12px);
+}
+
+.resto-payment-card {
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg, 12px);
+  overflow: hidden;
+  padding: 0;
+  transition: border-color 0.2s ease;
+}
+
+.resto-payment-card .card-header {
+  padding: 0;
+  margin: 0;
+  border-bottom: none;
+}
+
+.resto-payment-card:hover {
+  border-color: var(--color-border-strong);
+}
+
+.resto-payment-card-header.restaurant-rail-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  min-height: 48px;
+  width: 100%;
+  box-sizing: border-box;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  margin: 0;
+}
+
+.resto-payment-card-title-group {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  flex: 1;
+}
+
+.resto-payment-card-title {
+  margin: 0;
+  font-size: var(--text-sm, 14px);
+  font-weight: var(--font-weight-medium, 500);
+  color: var(--color-fg);
+  cursor: pointer;
+  user-select: none;
+}
+
+.resto-payment-card-header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+/* Collapsed card: small, compact bar matching user drawing */
+.resto-payment-card-wrapper--collapsed .card-header {
+  padding: 0;
+}
+
+.resto-payment-card-wrapper--collapsed .card-body {
+  display: none;
+}
+
+/* Expanded card: reveals properties inside */
+.resto-payment-card-wrapper--expanded .card-header {
+  padding: 0;
+  border-bottom: 1px solid var(--color-border-subtle, rgba(255, 255, 255, 0.08));
+}
+
+.resto-payment-card-body {
+  padding: 14px 16px;
+  background: var(--color-bg-subtle);
+  animation: restoCardExpand 0.2s ease-out;
+}
+
+.resto-payment-card-add-rail {
+  grid-column: 1 / -1;
+}
+
+/* ── Sliding Pill Toggle Switch (Matching user mockup) ───────── */
+
+.settings-toggle-switch {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  width: 44px;
+  height: 24px;
+  flex-shrink: 0;
+  cursor: pointer;
+  vertical-align: middle;
+}
+
+.settings-toggle-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+  position: absolute;
+  margin: 0;
+}
+
+.settings-toggle-slider {
+  position: absolute;
+  inset: 0;
+  background: var(--color-border-strong, #555558);
+  border-radius: 9999px;
+  pointer-events: none;
+  transition: background-color 0.22s ease;
+}
+
+.settings-toggle-slider::before {
+  content: '';
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  left: 3px;
+  top: 3px;
+  background: var(--color-accent, #147efb);
+  border-radius: 50%;
+  transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+}
+
+.settings-toggle-switch input:checked + .settings-toggle-slider {
+  background: var(--color-accent-subtle, rgba(20, 126, 251, 0.25));
+}
+
+.settings-toggle-switch input:checked + .settings-toggle-slider::before {
+  transform: translateX(20px);
+  background: var(--color-accent, #147efb);
+}
+
+.settings-toggle-switch input:focus-visible + .settings-toggle-slider {
+  outline: 2px solid var(--color-accent, #147efb);
+  outline-offset: 2px;
+}
+
+.resto-payment-card-body {
+  padding-top: var(--space-2);
+  animation: restoCardExpand 0.2s ease-out;
+}
+
+@keyframes restoCardExpand {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.resto-payment-chips-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+}
+
+.resto-payment-chip {
+  padding: 4px 12px;
+  border-radius: var(--radius-md);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-subtle);
+  color: var(--color-fg);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.resto-payment-chip--active {
+  background: var(--color-primary);
+  color: var(--color-white, #fff);
+  border-color: var(--color-primary);
+}
+
+.resto-payment-checkbox-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.resto-payment-checkbox-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  color: var(--color-fg);
+  cursor: pointer;
+}
+

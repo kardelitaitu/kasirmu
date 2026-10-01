@@ -11,7 +11,7 @@
 //! guard-before-kernel-before-DB order including `drop(kernel)` before the DB
 //! lock, and `device_hostname` still reads `COMPUTERNAME`/`HOSTNAME` from the
 //! environment unchanged. The terminal identity is taken through the borrowed
-//! [`BridgeCtx::terminal_id`] FIELD, never the async accessor, so no await point
+//! [`BridgeCtx::terminal_id`](crate::ctx::BridgeCtx::terminal_id) FIELD, never the async accessor, so no await point
 //! appears where the original had none.
 
 use serde::{Deserialize, Serialize};
@@ -319,7 +319,7 @@ pub async fn set_feature(
     if args.enabled && feature == Feature::MultiTerminal {
         let device_id = device_hostname();
         if store.get_terminal_by_device_id(&device_id)?.is_none() {
-            let name = format!("{} (auto)", device_id);
+            let name = format!("{device_id} (auto)");
             let terminal = Terminal::new(&name, &device_id);
             store.create_terminal(&terminal)?;
             *tid = Some(terminal.id.clone());
@@ -626,6 +626,7 @@ pub async fn list_all_features_scoped(
     ctx: &BridgeCtx<'_>,
     session_token: &str,
 ) -> Result<ListAllFeaturesResult, BridgeError> {
+    // ungated-ok: enumerates the compiled feature registry; discloses no tenant data
     let (_session, conn) = ctx.resolve_scope(session_token)?;
     let db = conn
         .lock()

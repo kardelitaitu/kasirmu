@@ -206,6 +206,92 @@ fn supplier_update_status_to_inactive() {
     assert_eq!(updated.status, "inactive");
 }
 
+/// MSL-40: `status` is the one updatable field with no vocabulary check in the
+/// store, and the schema enforces it with `CHECK(status IN ('active','inactive'))`.
+///
+/// `name` and `code` are validated here for emptiness AND length before the
+/// write, so a bad value is a typed `CoreError::Validation` the command layer
+/// can render. `status` is passed straight through, so an out-of-vocabulary
+/// value reaches SQLite as a raw constraint failure — a DB error for a
+/// validation mistake, which the UI cannot explain and which reads like a
+/// storage fault rather than "pick active or inactive".
+///
+/// The bridge hands this column a free `Option<String>` from the client
+/// (`UpdateSupplierArgs.status`), and the Suppliers screen renders it into a
+/// CSS class (`suppliers-badge--${s.status}`), so the vocabulary is the
+/// contract on both sides and belongs at this boundary.
+#[test]
+fn supplier_update_rejects_a_status_outside_the_vocabulary() {
+    let conn = fresh();
+    let s = store(&conn);
+
+    let created = s
+        .create_supplier("SUP201", "Vocab Co", "", "", "", "", "", "", "")
+        .unwrap();
+
+    let err = s
+        .update_supplier(
+            &created.id,
+            "SUP201",
+            "Vocab Co",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "archived", // not in the schema CHECK
+        )
+        .expect_err("an out-of-vocabulary status must be refused");
+
+    assert!(
+        matches!(
+            err,
+            CoreError::Validation {
+                field: "status",
+                ..
+            }
+        ),
+        "a bad status is a VALIDATION error, not a raw DB constraint failure; got {err:?}"
+    );
+
+    // And the row must be untouched — a rejected update leaves it as it was.
+    assert_eq!(
+        s.get_supplier(&created.id).unwrap().unwrap().status,
+        "active"
+    );
+}
+
+/// The vocabulary check accepts exactly what the schema accepts.
+#[test]
+fn supplier_update_accepts_both_valid_statuses() {
+    let conn = fresh();
+    let s = store(&conn);
+    let created = s
+        .create_supplier("SUP202", "Both Co", "", "", "", "", "", "", "")
+        .unwrap();
+
+    for status in ["active", "inactive"] {
+        let updated = s
+            .update_supplier(
+                &created.id,
+                "SUP202",
+                "Both Co",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                status,
+            )
+            .unwrap();
+        assert_eq!(updated.status, status);
+    }
+}
+
 #[test]
 fn supplier_create_with_all_fields() {
     let conn = fresh();

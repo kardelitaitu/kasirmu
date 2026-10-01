@@ -50,6 +50,16 @@ interface Props {
   ogType?: 'website' | 'article';
   /** ISO date for `article:modified_time`; only emitted when ogType==='article'. */
   articleUpdatedAt?: string;
+  /**
+   * Per-locale counterpart paths for the hreflang arm, keyed by locale code,
+   * for the one case where the two locales do NOT share a path: the guides
+   * layer serves `/id/panduan/x/` and `/en/guides/x/`. Stripping the locale
+   * prefix and re-prefixing would point an Indonesian guide at `/en/panduan/x/`
+   * — a page that does not exist — and a non-reciprocal hreflang is worse than
+   * none. Omit it (as every other page does) and the stripped path is reused
+   * for both locales, which is what they already have in common.
+   */
+  alternatePaths?: Record<string, string>;
 }
 
 const {
@@ -61,6 +71,7 @@ const {
   runtimeConfig = true,
   ogType = 'website',
   articleUpdatedAt,
+  alternatePaths,
 } = Astro.props;
 // Both titles pass through the shared budget (src/lib/seo.ts): a title long
 // enough to be truncated in a SERP loses its brand prefix rather than its page
@@ -128,10 +139,17 @@ const path = !rawPath || rawPath.replace(/^\/+/, '').startsWith('404') ? '/' : r
      block the critical path while waiting for a cold connection. -->
 <link rel="preconnect" href="https://static.cloudflareinsights.com" crossorigin />
 <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+{/* The counterpart URL per locale. `path` is the locale-less path this page
+    computed for itself; a guide passes the translated segment instead, because
+    its counterpart lives under a different word. */}
 {locales.map((code) => (
-  <link rel="alternate" hreflang={code} href={getAbsoluteLocaleUrl(code, path)} />
+  <link
+    rel="alternate"
+    hreflang={code}
+    href={getAbsoluteLocaleUrl(code, alternatePaths?.[code] ?? path)}
+  />
 ))}
-<link rel="alternate" hreflang="x-default" href={getAbsoluteLocaleUrl('id', path)} />
+<link rel="alternate" hreflang="x-default" href={getAbsoluteLocaleUrl('id', alternatePaths?.id ?? path)} />
 <meta property="og:type" content={ogType} />
 {ogType === 'article' && articleUpdatedAt && (
   <meta property="article:modified_time" content={articleUpdatedAt} />

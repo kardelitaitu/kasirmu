@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// ── OZ-POS Release Version Gate (AUDIT-28 RELEASE-05) ──────────────────
+// ── kasir.mu Release Version Gate (AUDIT-28 RELEASE-05) ──────────────────
 //
 // Validates that a release tag matches every shipping application's version
 // source AND that the canonical CHANGELOG.md carries the version heading.

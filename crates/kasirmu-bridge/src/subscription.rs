@@ -23,7 +23,7 @@ use kasirmu_core::availability::{AvailabilityFeature, FeatureVerdict, UsageCount
 use kasirmu_core::db::Store;
 use kasirmu_core::db::assignments::ScopeType;
 use kasirmu_core::downgrade::{
-    OverQuotaMarker, OverQuotaReport, OverQuotaSeverity, QuotaDimension,
+    OverQuotaMarker, OverQuotaReport, OverQuotaSeverity, QuotaDimension, QuotaUsage,
 };
 use kasirmu_core::entitlements::{Entitlements, SubscriptionLoader, build_entitlements};
 use kasirmu_core::permissions;
@@ -723,6 +723,11 @@ pub fn per_location_over_quota_rows(
 /// cap while the suspended instances stay parked until restored). Shared by
 /// all three dims so the over/at/none decision exists once; the KDS and
 /// warehouse rows have no suspension semantics of their own and pass 0.
+///
+/// A zero cap with nothing in it is NOT a row: that is a dimension the tier
+/// does not include at all (warehouses below Premium, KDS below Pro), and an
+/// empty category is nothing to remediate. The rule lives once on
+/// `QuotaUsage::is_unincluded_dimension`, shared with the tenant-global writer.
 #[allow(clippy::too_many_arguments)]
 pub fn push_dim_row(
     rows: &mut Vec<OverQuotaMarker>,
@@ -735,6 +740,16 @@ pub fn push_dim_row(
     suspended: i64,
 ) {
     let Some(limit) = limit else { return };
+    let usage = QuotaUsage {
+        dimension,
+        limit: Some(limit),
+        current,
+    };
+    // A suspension outvotes the zero-cap skip: parked instances are real work
+    // waiting to be restored, whatever the cap now says.
+    if suspended == 0 && usage.is_unincluded_dimension() {
+        return;
+    }
     let severity = if suspended > 0 || current > limit {
         OverQuotaSeverity::Over
     } else if current == limit {

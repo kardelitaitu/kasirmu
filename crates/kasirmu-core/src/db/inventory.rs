@@ -1,8 +1,8 @@
 //! Inventory management DB methods — locations CRUD, shifts, transaction logs, thresholds.
 /*
-last audited DD-MM-YY by DSH-Agent
+last audited (date unknown) by DSH-Agent
 crate: kasirmu-core (inventory) | status: SAFE | lint: CLEAN
-findings: COR-11 FIXED DD-MM-YY — deactivate_inventory_location + shift-start guard queries now propagate DB errors (?) instead of unwrap_or(0), so a read error fails closed instead of satisfying the zero-stock/zero-transfer constraint. COR-13 INFO: read mappers coerce unknown stored enum values via from_stored_str().unwrap_or(ManualAdjustment) at 3 sites — misclassification risk for reports; positives: create_inventory_transaction writes header+lines+adjustments in ONE tx via the canonical adjust_stock_at_location_with_reason; set_stock_threshold distinguishes NoRows from real DB errors
+findings: COR-11 FIXED (date unknown) — deactivate_inventory_location + shift-start guard queries now propagate DB errors (?) instead of unwrap_or(0), so a read error fails closed instead of satisfying the zero-stock/zero-transfer constraint. COR-13 FIXED 2026-10-04 — the 3 read mappers (list_inventory_transactions :577, get_inventory_transaction :611, and the staff/location/shift-window list at :782) previously coerced an unknown stored `type` via from_stored_str().unwrap_or(ManualAdjustment), relabelling a future-migration row as a manager override; they now surface inventory_transaction::ParseError, honouring the enum's documented 'fails LOUDLY' contract; positives: create_inventory_transaction writes header+lines+adjustments in ONE tx via the canonical adjust_stock_at_location_with_reason; set_stock_threshold distinguishes NoRows from real DB errors
 next: none | perf: N/A
 */
 
@@ -72,8 +72,13 @@ impl Store<'_> {
         let id = uuid::Uuid::now_v7().to_string();
         let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
 
-        // Validate name is not empty
-        if name.trim().is_empty() {
+        // MSL-46: trim before the check AND the bind. The column carries
+        // `idx_inventory_locations_name_unique … WHERE is_active = 1`, so storing
+        // an untrimmed name let "Back Room", "Back Room " and "  Back Room" be
+        // three active rows — the duplicate the index exists to prevent, and the
+        // three render identically in the cashier's LocationPicker and ShiftBar.
+        let name = name.trim();
+        if name.is_empty() {
             return Err(CoreError::Validation {
                 field: "name",
                 message: "location name must not be empty".into(),
@@ -86,17 +91,31 @@ impl Store<'_> {
             other => {
                 return Err(CoreError::Validation {
                     field: "type",
-                    message: format!("invalid location type: {}", other),
+                    message: format!("invalid location type: {other}"),
                 });
             }
         }
 
         let tx = self.conn.unchecked_transaction()?;
-        tx.execute(
+        // MSL-46: a duplicate name is a VALIDATION outcome, not a storage fault —
+        // the same mapping `create_product` applies to its own UNIQUE columns
+        // (`products_crud.rs:366-374`). `idx_inventory_locations_name_unique`
+        // raises `ConstraintViolation`, which would otherwise reach the caller as
+        // an opaque `Db(SqliteFailure(…))` that names no field.
+        let inserted = tx.execute(
             "INSERT INTO inventory_locations (id, name, type, description, is_active, created_at, updated_at) \
              VALUES (?1, ?2, ?3, ?4, 1, ?5, ?5)",
             params![id, name, location_type, description, now],
-        )?;
+        );
+        if let Err(rusqlite::Error::SqliteFailure(e, _)) = &inserted
+            && e.code == rusqlite::ErrorCode::ConstraintViolation
+        {
+            return Err(CoreError::Conflict {
+                entity: "inventory_location",
+                field: "name",
+            });
+        }
+        inserted?;
         // W7-B: mirror of the locations/products/staff veto (9264b8f67) —
         // post-insert, in-tx, on the same predicate the gate that armed it uses
         // (type = warehouse AND is_active = 1). Only a warehouse row may consume
@@ -167,8 +186,10 @@ impl Store<'_> {
         location_type: &str,
         description: &str,
     ) -> Result<(), CoreError> {
-        // Validate name is not empty
-        if name.trim().is_empty() {
+        // MSL-46: trim here too, so an update cannot install the padded name the
+        // create path now refuses (same UNIQUE index, same rendering problem).
+        let name = name.trim();
+        if name.is_empty() {
             return Err(CoreError::Validation {
                 field: "name",
                 message: "location name must not be empty".into(),
@@ -181,18 +202,28 @@ impl Store<'_> {
             other => {
                 return Err(CoreError::Validation {
                     field: "type",
-                    message: format!("invalid location type: {}", other),
+                    message: format!("invalid location type: {other}"),
                 });
             }
         }
 
         let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
         let tx = self.conn.unchecked_transaction()?;
+        // MSL-46: same Conflict mapping as the create path above.
         let updated = tx.execute(
             "UPDATE inventory_locations SET name = ?1, type = ?2, description = ?3, updated_at = ?4 \
              WHERE id = ?5",
             params![name, location_type, description, now, id],
-        )?;
+        );
+        if let Err(rusqlite::Error::SqliteFailure(e, _)) = &updated
+            && e.code == rusqlite::ErrorCode::ConstraintViolation
+        {
+            return Err(CoreError::Conflict {
+                entity: "inventory_location",
+                field: "name",
+            });
+        }
+        let updated = updated?;
         if updated == 0 {
             return Err(CoreError::NotFound {
                 entity: "inventory_location",
@@ -304,14 +335,16 @@ impl Store<'_> {
                     id,
                     instance_id,
                     loc.location_id,
-                    if loc.is_primary { 1 } else { 0 },
-                    if loc.allow_negative_stock { 1 } else { 0 },
+                    i32::from(loc.is_primary),
+                    i32::from(loc.allow_negative_stock),
                     loc.sort_order
                 ],
             )?;
         }
 
         tx.commit()?;
+        // COR-32: drop the cached binding so the next resolve re-reads it.
+        crate::location_resolver::invalidate_location_cache();
         Ok(())
     }
 
@@ -506,7 +539,14 @@ impl Store<'_> {
         // Insert lines and adjust stock
         for (i, line) in lines.iter().enumerate() {
             let line_id = uuid::Uuid::now_v7().to_string();
-            let sort_order = (i + 1) as i64;
+            // `try_from` rather than `as i64`: a line index cannot realistically
+            // exceed `i64`, but saying so explicitly keeps the narrowing honest
+            // and turns an impossible overflow into a named error instead of a
+            // wrapped sort_order.
+            let sort_order = i64::try_from(i + 1).map_err(|_| CoreError::Validation {
+                field: "sort_order",
+                message: format!("line index {} exceeds i64", i + 1),
+            })?;
 
             tx.execute(
                 "INSERT INTO inventory_transaction_lines (id, transaction_id, sku, product_name, qty, barcode_scanned, sort_order) \
@@ -543,9 +583,13 @@ impl Store<'_> {
             let type_str: String = row.get(1)?;
             let ttype =
                 crate::inventory_transaction::InventoryTransactionType::from_stored_str(&type_str)
-                    .unwrap_or(
-                        crate::inventory_transaction::InventoryTransactionType::ManualAdjustment,
-                    );
+                    .ok_or_else(|| {
+                        rusqlite::Error::FromSqlConversionFailure(
+                            1,
+                            rusqlite::types::Type::Text,
+                            Box::new(crate::inventory_transaction::ParseError(type_str.clone())),
+                        )
+                    })?;
             Ok(InventoryTransaction {
                 id: crate::inventory_transaction::InventoryTransactionId::from(
                     row.get::<_, String>(0)?,
@@ -555,7 +599,7 @@ impl Store<'_> {
                 staff_id: row.get(3)?,
                 transfer_id: row.get(4)?,
                 purchase_order_id: row.get(5)?,
-                notes: row.get(6).unwrap_or_default(),
+                notes: row.get(6)?,
                 created_at: row.get(7)?,
             })
         })?;
@@ -579,7 +623,13 @@ impl Store<'_> {
             |row| {
                 let type_str: String = row.get(1)?;
                 let ttype = crate::inventory_transaction::InventoryTransactionType::from_stored_str(&type_str)
-                    .unwrap_or(crate::inventory_transaction::InventoryTransactionType::ManualAdjustment);
+                    .ok_or_else(|| {
+                        rusqlite::Error::FromSqlConversionFailure(
+                            1,
+                            rusqlite::types::Type::Text,
+                            Box::new(crate::inventory_transaction::ParseError(type_str.clone())),
+                        )
+                    })?;
                 Ok(InventoryTransaction {
                     id: crate::inventory_transaction::InventoryTransactionId::from(row.get::<_, String>(0)?),
                     transaction_type: ttype,
@@ -587,7 +637,7 @@ impl Store<'_> {
                     staff_id: row.get(3)?,
                     transfer_id: row.get(4)?,
                     purchase_order_id: row.get(5)?,
-                    notes: row.get(6).unwrap_or_default(),
+                    notes: row.get(6)?,
                     created_at: row.get(7)?,
                 })
             },
@@ -664,14 +714,14 @@ impl Store<'_> {
         if let Some(id) = existing_id {
             tx.execute(
                 "UPDATE stock_thresholds SET threshold = ?1, enabled = ?2, updated_at = ?3 WHERE id = ?4",
-                params![threshold, if enabled { 1 } else { 0 }, now, id],
+                params![threshold, i32::from(enabled), now, id],
             )?;
         } else {
             let new_id = uuid::Uuid::now_v7().to_string();
             tx.execute(
                 "INSERT INTO stock_thresholds (id, product_id, location_id, threshold, enabled, created_at, updated_at) \
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)",
-                params![new_id, product_id, location_id, threshold, if enabled { 1 } else { 0 }, now],
+                params![new_id, product_id, location_id, threshold, i32::from(enabled), now],
             )?;
         }
 
@@ -743,9 +793,13 @@ impl Store<'_> {
             let type_str: String = row.get(1)?;
             let ttype =
                 crate::inventory_transaction::InventoryTransactionType::from_stored_str(&type_str)
-                    .unwrap_or(
-                        crate::inventory_transaction::InventoryTransactionType::ManualAdjustment,
-                    );
+                    .ok_or_else(|| {
+                        rusqlite::Error::FromSqlConversionFailure(
+                            1,
+                            rusqlite::types::Type::Text,
+                            Box::new(crate::inventory_transaction::ParseError(type_str.clone())),
+                        )
+                    })?;
             Ok(InventoryTransaction {
                 id: crate::inventory_transaction::InventoryTransactionId::from(
                     row.get::<_, String>(0)?,
@@ -755,7 +809,7 @@ impl Store<'_> {
                 staff_id: row.get(3)?,
                 transfer_id: row.get(4)?,
                 purchase_order_id: row.get(5)?,
-                notes: row.get(6).unwrap_or_default(),
+                notes: row.get(6)?,
                 created_at: row.get(7)?,
             })
         })?;

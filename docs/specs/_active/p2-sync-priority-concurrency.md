@@ -1,8 +1,9 @@
-<!-- Audit stamp: 2026-07-22 · Hermes-Agent · status: STALE (1 finding — status outdated) · Finding: card is marked "PENDING" but the implementation has LANDed. Verified: SyncPriority enum (Critical=0/Normal=1/Low=2) at crates/oz-core/src/offline.rs:12 with priority field on OfflineQueueItem (offline.rs:61) + default_priority(); per-route ConcurrencyLimitLayer::new(10) API + ::new(40) sync at apps/cloud-server/src/main.rs:343-344; #[tokio::main(flavor="multi_thread", worker_threads=2)] at main.rs:65; event handlers enqueue priorities (platform/startup/src/event_handlers.rs). Status "PENDING" understates reality. Baseline/file references accurate. -->
+<!-- Superseded audit marker (2026-07-22, body kept verbatim) · Hermes-Agent · status: STALE (1 finding — status outdated) · Finding: card is marked "PENDING" but the implementation has LANDed. Verified: SyncPriority enum (Critical=0/Normal=1/Low=2) at crates/oz-core/src/offline.rs:12 with priority field on OfflineQueueItem (offline.rs:61) + default_priority(); per-route ConcurrencyLimitLayer::new(10) API + ::new(40) sync at apps/cloud-server/src/main.rs:343-344; #[tokio::main(flavor="multi_thread", worker_threads=2)] at main.rs:65; event handlers enqueue priorities (platform/startup/src/event_handlers.rs). Status "PENDING" understates reality. Baseline/file references accurate. -->
 
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · REPAIRED — a card whose status line understated what has shipped, and whose fix is to add the current coordinates rather than to assert a status. · THE FINDING IS NOT MINE, IT IS THE PRIOR MARKER'S, AND IT WAS RIGHT. The 2026-07-22 stamp says STALE for exactly one reason: the card is marked PENDING but the implementation has landed. This pass re-verified that independently, which is worth doing precisely because the marker cited PRE-RESTRUCTURE paths that no longer resolve — so the claim could not simply be taken on authority. All four symbols it named are present: the priority enum and its Postgres variant now live in the cloud server's sync-store module, the default-priority helper is in the core crate's offline module — the same file the old citation named, under the renamed crate — and the per-route concurrency limiter is still constructed in the server's main entry point at the line the earlier audit recorded. The one that moved furthest is the enum itself, which has left the core crate entirely. · WHY THE CORRECTION IS WRITTEN AS COORDINATES RATHER THAN A NEW STATUS WORD. A card that says DONE and names no symbols is worth less than a card that says PENDING and does, because the next reader still has to go looking. The correction therefore records where each piece lives today, and leaves the authoritative status word to whoever owns the series — which is the same convention this campaign has applied to the Android artefact name and the Windows executable, where guessing a generated name would have been worse than saying so. · THE DIRECTION OF THE DRIFT, which continues the pattern this campaign has been tracking: the card says LESS is true than actually is. That is the same optimistic direction as the licence-plaintext baseline, the archived CI dashboard and the payment-resilience design, and it has now recurred four times. For a work-tracking card the practical cost is a reader re-implementing something that already exists, which is expensive and entirely avoidable. · NOT re-measured: the tiering semantics themselves or the concurrency limits in operation. The priority semantics are documented in the sync crate's own public interface, which is how this pass confirmed the tier concept is real rather than only the type name. · Prior marker retained; footer re-dated to match the new stamp. -->
 # P-2 — Sync priority tiers & concurrency limits
 
-- **Status:** PENDING
+- **Status:** PENDING — **CORRECTION (2026-09-29, re-audited): the implementation HAS landed.** A 2026-07-22 audit already flagged this status as outdated; re-verified this round against current paths, since the symbols have moved out of the pre-restructure crate this card's history names. `SyncPriority` now lives in the cloud server's sync-store module and its Postgres variant; `default_priority` is in the core crate's offline module — the same file under the renamed crate; and the per-route concurrency limiter is still constructed in the server's main entry point at the line the earlier audit recorded. All four symbols that audit named are present. The card's PENDING line is the stale part, not the implementation.
 - **Phase:** 2 of 3 (Sync Performance Strategy — ADR #10)
 - **Parent:** `docs/decisions/2026-07-13-sync-performance-compression-batching.md`
 - **Severity:** MEDIUM
@@ -45,7 +46,7 @@ Ensure critical sale records propagate before inventory syncs by introducing pri
 
 ## Plan
 
-1. **Priority type**: Add `SyncPriority` enum to `crates/oz-core/src/offline.rs` (or a new `sync.rs` module). Derive required traits. Add `priority` field to `OfflineQueueItem` struct.
+1. **Priority type**: Add `SyncPriority` enum to `crates/kasirmu-core/src/offline.rs` (or a new `sync.rs` module). Derive required traits. Add `priority` field to `OfflineQueueItem` struct.
 2. **Migration**: Create `crates/oz-core/migrations/XXX_offline_queue_priority.sql`: `ALTER TABLE offline_queue ADD COLUMN priority INTEGER NOT NULL DEFAULT 1;`. Register in `migrations.rs`. Update DDL in `018_offline_queue.sql` for new installs.
 3. **Event handlers**: Update `platform/startup/src/event_handlers.rs`: enqueue `SaleCompleted` with `Critical`, inventory events with `Normal`, settings with `Low`.
 4. **Batching**: Modify `build_batches()` in `platform/sync/src/lib.rs` to sort pending items by priority before the existing byte-size chunking loop.
@@ -75,10 +76,10 @@ Ensure critical sale records propagate before inventory syncs by introducing pri
 
 - `docs/decisions/2026-07-13-sync-performance-compression-batching.md` (Strategy overview — priority tiers and concurrency limits)
 - `docs/specs/_active/p1-sync-batching-compression-retention.md`
-- `crates/oz-core/src/offline.rs`
-- `crates/oz-core/migrations/20260813_init.sql`
+- `crates/kasirmu-core/src/offline.rs`
+- `crates/kasirmu-core/migrations/20260813_init.sql`
 - `platform/startup/src/event_handlers.rs`
 - `apps/cloud-server/src/main.rs`
 - `apps/cloud-server/src/sync_api.rs`
 
-> last audited 22-07-26 by Hermes-Agent
+> last audited 29-09-26 by docs-auditor

@@ -1,0 +1,327 @@
+---
+export function getStaticPaths() {
+  return [{ params: { locale: 'en' } }, { params: { locale: 'id' } }];
+}
+/**
+ * About — who kasir.mu is, what it exists to fix, and what it commits to.
+ *
+ * LAYOUT. The page reads as alternating full-bleed bands on a 1152px canvas
+ * (`max-w-6xl`) with prose held to `max-w-3xl`, rather than as one 896px column
+ * of same-looking bordered cards. The bands are what give the page its rhythm:
+ * plain background → tinted story band → plain problem list → tinted solution
+ * grid → plain table → tinted goal band → plain promise grid → CTA. Within a
+ * band, the treatments differ on purpose — a definition grid, a hairline list,
+ * a card grid, a table, a pull-quote — so no two consecutive sections read the
+ * same. Body copy is `text-base` with `leading-relaxed` and section gaps are
+ * `py-16 sm:py-20`: the previous version set everything in `text-sm` inside
+ * bordered boxes stacked 64px apart, which is what made it feel cramped.
+ *
+ * CONTENT. The order is the one a reader evaluates a company in: the FACTS
+ * (`about.facts`), the story, the PROBLEM in the market, what we built instead,
+ * the summary table, the GOAL, and the PROMISES — each promise worded so it can
+ * be checked on the reader's own machine, which is what separates a promise
+ * from a slogan.
+ *
+ * The founding year in `about.facts` is the owner's own statement (2025) and is
+ * the only fact here that does not come from the product itself. Everything
+ * else is verifiable from the site: the platforms are the ones `Base.astro`
+ * already advertises, the pricing line restates the free plan without naming a
+ * figure that would rot at the next price change, and the support line matches
+ * /contact. Deliberately absent: team names, headcount, funding, and customer
+ * counts — a page that claims none of them cannot be caught having invented one.
+ *
+ * Copy lives in the dictionaries (`about.*`) in both locales. Scalars resolve
+ * through `t(locale, …)` inline, as the other pages read theirs; the structured
+ * blocks are read with `dict()` and named back through `t()` in a
+ * `data-i18n-key` attribute, which is what keeps them visible to
+ * `scripts/audit-i18n.mjs` (it collects literals inside `t(…)`, and a key read
+ * only through `dict()` is invisible to it).
+ */
+import Base from '../../layouts/Base.astro';
+import { getRelativeLocaleUrl } from 'astro:i18n';
+import { t, dict } from '../../i18n';
+
+const locale = Astro.currentLocale ?? 'en';
+// The whole document title. Composing `kasir.mu — ` on top of it would name the
+// brand twice (the title already says "…built kasir.mu"), which reads as a
+// mistake in a search result and spends characters of the ~60 a SERP shows.
+const pageTitle = t(locale, 'about.title');
+
+interface Differentiator {
+  title: string;
+  body: string;
+  value: string;
+}
+
+interface AboutCopy {
+  facts: { label: string; value: string }[];
+  story: string[];
+  problems: string[];
+  items: Differentiator[];
+  table: { feature: string; value: string }[];
+  promises: { title: string; body: string }[];
+}
+
+const about = dict(locale).about as AboutCopy;
+// Array order is the argument's order — storage → sync → hardware → footprint →
+// server, each building on the previous. It is authoring order in the
+// dictionary, so both locales render the same sequence.
+const { facts, story, problems, items, table, promises } = about;
+
+/**
+ * One icon per differentiator, in the same order as `about.items`.
+ *
+ * Decorative: every card already names its own subject in the heading below, so
+ * each glyph is `aria-hidden` rather than described. Kept as markup in a local
+ * array, like `featureIcons` in features.astro, so the copy stays in the
+ * dictionary and only the art lives here.
+ */
+const itemIcons = [
+  // Storage engine — stacked platters.
+  `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v7c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 12v7c0 1.7 3.6 3 8 3s8-1.3 8-3v-7"/></svg>`,
+  // Deterministic sync — cyclic arrows.
+  `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 0 1 15.5-6.2M21 12a9 9 0 0 1-15.5 6.2"/><path d="M18 3v3h-3M6 21v-3h3"/></svg>`,
+  // Direct hardware — receipt printer.
+  `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9V3h12v6"/><path d="M6 18H5a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-1"/><path d="M6 14h12v7H6z"/></svg>`,
+  // Light footprint — feather.
+  `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.2 3.8a6 6 0 0 0-8.5 0L7 8.5V17h8.5l4.7-4.7a6 6 0 0 0 0-8.5z"/><path d="M7 17l-3.5 3.5M12 8.5l-4 4"/></svg>`,
+  // Predictable performance — speed gauge.
+  `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21a9 9 0 1 1 9-9"/><path d="M12 12l4-4"/><circle cx="12" cy="12" r="1.5"/></svg>`,
+];
+
+const downloadHref = getRelativeLocaleUrl(locale, 'download');
+const pricingHref = getRelativeLocaleUrl(locale, 'pricing');
+const contactHref = getRelativeLocaleUrl(locale, 'contact');
+---
+
+<Base title={pageTitle} description={t(locale, 'pageDesc.about')}>
+  <!-- Hero. Its own band, so the facts grid below starts on a clean edge
+       instead of crowding the subtitle. -->
+  <section class="relative overflow-hidden border-b border-ink/5">
+    <div
+      class="pointer-events-none absolute inset-x-0 -top-32 h-72 bg-gradient-to-b from-primary/[0.07] to-transparent"
+      aria-hidden="true"
+    >
+    </div>
+    <div data-reveal class="relative mx-auto max-w-3xl px-4 py-20 text-center sm:py-24">
+      <p class="text-xs font-semibold uppercase tracking-[0.22em] text-primary">
+        {t(locale, 'about.eyebrow')}
+      </p>
+      <h1 class="mt-5 text-4xl font-bold tracking-tight sm:text-5xl">{pageTitle}</h1>
+      <p class="mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-muted">
+        {t(locale, 'about.subtitle')}
+      </p>
+    </div>
+  </section>
+
+  <!-- Facts: a definition grid on hairlines. No box — a bordered card here made
+       five short facts read as a form. -->
+  <section class="mx-auto max-w-6xl px-4 py-16 sm:py-20">
+    <div data-reveal data-i18n-key={t(locale, 'about.facts')}>
+      <h2 class="text-2xl font-bold tracking-tight sm:text-3xl">{t(locale, 'about.factsTitle')}</h2>
+      <dl
+        class="mt-10 grid gap-x-12 gap-y-9 border-t border-ink/10 pt-10 sm:grid-cols-2 lg:grid-cols-3"
+      >
+        {
+          facts.map((fact) => (
+            <div>
+              <dt class="text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+                {fact.label}
+              </dt>
+              <dd class="mt-2 text-base font-medium leading-relaxed text-ink">{fact.value}</dd>
+            </div>
+          ))
+        }
+      </dl>
+    </div>
+  </section>
+
+  <!-- Story: heading in a narrow left column, prose on the right, on the first
+       tinted band. -->
+  <section class="border-y border-ink/5 bg-surface/30">
+    <div class="mx-auto max-w-6xl px-4 py-16 sm:py-20">
+      <div data-reveal class="grid gap-8 lg:grid-cols-[1fr_2fr] lg:gap-16" data-i18n-key={t(locale, 'about.story')}>
+        <h2 class="text-2xl font-bold tracking-tight sm:text-3xl">{t(locale, 'about.storyTitle')}</h2>
+        <div class="space-y-5 text-base leading-relaxed text-muted">
+          {story.map((paragraph) => <p>{paragraph}</p>)}
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Problem: a hairline list, deliberately NOT five bordered cards — that was
+       the densest block on the page, and the items are one argument, not five
+       separate claims. -->
+  <section class="mx-auto max-w-6xl px-4 py-16 sm:py-20">
+    <div data-reveal class="max-w-3xl" data-i18n-key={t(locale, 'about.problems')}>
+      <h2 class="text-2xl font-bold tracking-tight sm:text-3xl">{t(locale, 'about.problemTitle')}</h2>
+      <p class="mt-4 text-base leading-relaxed text-muted">{t(locale, 'about.problemIntro')}</p>
+    </div>
+    <ul class="mt-10 max-w-4xl divide-y divide-ink/5">
+      {
+        problems.map((problem) => (
+          <li data-reveal class="flex gap-5 py-7">
+            <span
+              aria-hidden="true"
+              class="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-danger/10 text-xs font-bold text-danger"
+            >
+              ✗
+            </span>
+            <p class="text-base leading-relaxed text-muted">{problem}</p>
+          </li>
+        ))
+      }
+    </ul>
+  </section>
+
+  <!-- Solution: the one card grid, on the second tinted band, with a taller
+       padding and an icon so it does not read as the same block as the list
+       above it. -->
+  <section class="border-y border-ink/5 bg-surface/30">
+    <div class="mx-auto max-w-6xl px-4 py-16 sm:py-20">
+      <div data-reveal class="max-w-3xl" data-i18n-key={t(locale, 'about.items')}>
+        <h2 class="text-2xl font-bold tracking-tight sm:text-3xl">{t(locale, 'about.approachTitle')}</h2>
+        <p class="mt-4 text-base leading-relaxed text-muted">{t(locale, 'about.approachIntro')}</p>
+      </div>
+      <div class="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+        {
+          items.map((item, i) => (
+            <article
+              data-reveal
+              style={`transition-delay: ${i * 60}ms`}
+              class="flex flex-col rounded-2xl border border-ink/10 bg-surface p-8 transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] hover:-translate-y-1 hover:border-primary/30 hover:shadow-lg hover:shadow-primary/5"
+            >
+              <div
+                class="inline-flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary"
+                aria-hidden="true"
+              >
+                <Fragment set:html={itemIcons[i]} />
+              </div>
+              <h3 class="mt-6 text-lg font-semibold tracking-tight text-ink">{item.title}</h3>
+              <p class="mt-3 text-sm leading-relaxed text-muted">{item.body}</p>
+              <p class="mt-7 flex gap-2.5 border-t border-ink/10 pt-5 text-sm font-medium leading-relaxed text-ink">
+                <span aria-hidden="true" class="text-success">
+                  ✓
+                </span>
+                <span>{item.value}</span>
+              </p>
+            </article>
+          ))
+        }
+      </div>
+    </div>
+  </section>
+
+  <!-- Summary table: scoped headers, so a screen reader announces each pair
+       instead of reading eleven loose cells. -->
+  <section class="mx-auto max-w-6xl px-4 py-16 sm:py-20">
+    <div data-reveal class="max-w-3xl" data-i18n-key={t(locale, 'about.table')}>
+      <h2 class="text-2xl font-bold tracking-tight sm:text-3xl">{t(locale, 'about.tableTitle')}</h2>
+      <p class="mt-4 text-base leading-relaxed text-muted">{t(locale, 'about.tableIntro')}</p>
+    </div>
+    <div data-reveal class="mt-12 overflow-x-auto rounded-2xl border border-ink/10 bg-surface">
+      <table class="w-full min-w-[560px] border-collapse text-left">
+        <thead>
+          <tr class="border-b border-ink/10 bg-ink/[0.03]">
+            <th scope="col" class="px-6 py-5 text-sm font-semibold">
+              {t(locale, 'about.tableFeature')}
+            </th>
+            <th scope="col" class="px-6 py-5 text-sm font-semibold">
+              {t(locale, 'about.tableValue')}
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {
+            table.map((row) => (
+              <tr class="border-b border-ink/5 last:border-0">
+                <th scope="row" class="px-6 py-5 text-sm font-normal leading-relaxed text-muted">
+                  {row.feature}
+                </th>
+                <td class="px-6 py-5 text-base font-medium leading-relaxed text-ink">{row.value}</td>
+              </tr>
+            ))
+          }
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- Goal: the page's one moment of emphasis — centered, on the accent band,
+       with the statement set larger than any other paragraph on the page. -->
+  <section class="border-y border-primary/20 bg-primary/[0.05]">
+    <div class="mx-auto max-w-4xl px-4 py-16 text-center sm:py-20">
+      <h2 data-reveal class="text-2xl font-bold tracking-tight sm:text-3xl">
+        {t(locale, 'about.goalTitle')}
+      </h2>
+      <p
+        data-reveal
+        class="mx-auto mt-7 max-w-3xl text-2xl font-semibold leading-snug tracking-tight text-ink sm:text-3xl"
+      >
+        {t(locale, 'about.goalStatement')}
+      </p>
+      <p data-reveal class="mx-auto mt-7 max-w-2xl text-base leading-relaxed text-muted">
+        {t(locale, 'about.goalBody')}
+      </p>
+    </div>
+  </section>
+
+  <!-- Promises: an open two-column list rather than a card grid — the fourth
+       bordered box in a row is what made this page feel like a form. -->
+  <section class="mx-auto max-w-6xl px-4 py-16 sm:py-20">
+    <div data-reveal class="max-w-3xl" data-i18n-key={t(locale, 'about.promises')}>
+      <h2 class="text-2xl font-bold tracking-tight sm:text-3xl">{t(locale, 'about.promisesTitle')}</h2>
+      <p class="mt-4 text-base leading-relaxed text-muted">{t(locale, 'about.promisesIntro')}</p>
+    </div>
+    <div class="mt-12 grid gap-x-16 gap-y-10 sm:grid-cols-2">
+      {
+        promises.map((promise) => (
+          <div data-reveal class="flex gap-5">
+            <span
+              aria-hidden="true"
+              class="mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-success/10 text-sm font-bold text-success"
+            >
+              ✓
+            </span>
+            <div>
+              <h3 class="text-base font-semibold tracking-tight text-ink">{promise.title}</h3>
+              <p class="mt-2 text-sm leading-relaxed text-muted">{promise.body}</p>
+            </div>
+          </div>
+        ))
+      }
+    </div>
+  </section>
+
+  <section class="mx-auto max-w-6xl px-4 pb-20 sm:pb-24">
+    <div
+      data-reveal
+      class="rounded-3xl border border-ink/10 bg-surface/60 px-6 py-14 text-center sm:px-14 sm:py-16"
+    >
+      <h2 class="text-2xl font-bold tracking-tight sm:text-3xl">{t(locale, 'about.closingTitle')}</h2>
+      <p class="mx-auto mt-4 max-w-2xl text-base leading-relaxed text-muted">
+        {t(locale, 'about.closingBody')}
+      </p>
+      <div class="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
+        <a
+          href={downloadHref}
+          class="rounded-md bg-primary px-6 py-3 font-semibold text-on-primary transition-all duration-[120ms] ease-[cubic-bezier(0.2,0,0,1)] hover:opacity-90 hover:scale-[1.03] active:scale-[0.97]"
+        >
+          {t(locale, 'hero.ctaPrimary')}
+        </a>
+        <a
+          href={pricingHref}
+          class="rounded-md border border-ink/15 px-6 py-3 font-semibold text-ink transition-all duration-[120ms] ease-[cubic-bezier(0.2,0,0,1)] hover:bg-ink/5 hover:scale-[1.03] active:scale-[0.97]"
+        >
+          {t(locale, 'hero.ctaSecondary')}
+        </a>
+        <a
+          href={contactHref}
+          class="rounded-md border border-ink/15 px-6 py-3 font-semibold text-ink transition-all duration-[120ms] ease-[cubic-bezier(0.2,0,0,1)] hover:bg-ink/5 hover:scale-[1.03] active:scale-[0.97]"
+        >
+          {t(locale, 'about.contactCta')}
+        </a>
+      </div>
+    </div>
+  </section>
+</Base>

@@ -3,13 +3,13 @@
 //! Three commands remain, and the retired ones are named below rather than
 //! silently dropped, because three separate decisions removed them:
 //!
-//! - [`get_enabled_features`] — unchanged. The feature read the shell makes on
+//! - [`get_enabled_features`](kasirmu_bridge::setup::get_enabled_features) — unchanged. The feature read the shell makes on
 //!   mount to decide which nav items to show.
-//! - [`get_first_run_state`] — replaces `get_setup_status` (ADR #56 §2.1). It
+//! - [`get_first_run_state`](kasirmu_bridge::setup::get_first_run_state) — replaces `get_setup_status` (ADR #56 §2.1). It
 //!   returns the provisioning ROW rather than a boolean derived from the
 //!   `show_setup_wizard` key, so an unreadable database yields
 //!   `unprovisioned` instead of forging a verdict.
-//! - [`provision_device`] — replaces `complete_setup` and `bootstrap_owner` on
+//! - [`provision_device`](kasirmu_bridge::setup::provision_device) — replaces `complete_setup` and `bootstrap_owner` on
 //!   the fresh-install path (ADR #56 §2.2). One idempotent transaction creates
 //!   the location, the workspaces, the owner, the features and the marker.
 //!
@@ -125,7 +125,9 @@ pub async fn get_preset_features(
 
 /// The first-run state for one terminal (ADR #56 §2.1).
 ///
-/// Replaces [`get_setup_status`]'s boolean. The shell calls this on mount and
+/// Replaces the retired `get_setup_status` boolean (removed with
+/// `dismiss_setup_wizard` when the first-run path moved to
+/// `provision_device`). The shell calls this on mount and
 /// renders the provisioning flow when `state` is `unprovisioned`.
 #[command]
 pub async fn get_first_run_state(
@@ -150,6 +152,34 @@ pub async fn provision_device(
 ) -> Result<kasirmu_bridge::setup::ProvisionDeviceResultDto, AppError> {
     let ctx = state.bridge_ctx();
     kasirmu_bridge::setup::provision_device(&ctx, args)
+        .await
+        .map_err(Into::into)
+}
+
+/// Re-seed the default role presets for this session's store.
+///
+/// **Registered here under R3 (owner, 2026-09-20; `done-todo-owner-rulings.md:100`),
+/// option (ii).** R3's option (i) — seeding as part of the setup completion path —
+/// is satisfied already and by a later design than the ruling assumed: ADR #56
+/// §2.2/§2.3 retired `complete_setup`/`write_setup` outright, and the replacement
+/// `provision_device` seeds inside its own transaction
+/// (`kasirmu-core/src/db/provisioning.rs:443`, step 2, before the owner that
+/// references them). So the fresh-install hole R3 measured is closed.
+///
+/// What remained is R3's own reachability gap: the desktop registered this command
+/// (`apps/desktop-tauri/src/lib.rs:1196`) and the tablet did not, so a tablet had no
+/// path to re-seed on demand. This is that path, and it is a shim over the one bridge
+/// implementation, so both shells now offer the same surface.
+///
+/// **Requires `staff:manage_roles`**, enforced in the bridge against the global
+/// identity db before the store is opened.
+#[command]
+pub async fn seed_default_roles_scoped(
+    session_token: String,
+    state: State<'_, AppState>,
+) -> Result<usize, AppError> {
+    let ctx = state.bridge_ctx();
+    kasirmu_bridge::setup::seed_default_roles_scoped(&ctx, &session_token)
         .await
         .map_err(Into::into)
 }

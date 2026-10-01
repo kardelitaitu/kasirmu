@@ -1,4 +1,4 @@
-//! Integration tests for the OZ-POS API client SDK.
+//! Integration tests for the kasir.mu API client SDK.
 //!
 //! Uses MSW (Mock Service Worker) to intercept HTTP requests and
 //! verify typed request/response contracts for all 20+ endpoints.
@@ -6,7 +6,7 @@
 import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
 import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
-import { OZPosClient, ApiError } from '@/api/client';
+import { KasirMuClient, ApiError } from '@/api/client';
 
 const BASE_URL = 'http://test-server';
 
@@ -16,8 +16,8 @@ beforeAll(() => server.listen({ onUnhandledRequest: 'warn' }));
 afterEach(() => server.resetHandlers());
 afterAll(() => server.close());
 
-function createClient(): OZPosClient {
-  return new OZPosClient({ baseUrl: BASE_URL });
+function createClient(): KasirMuClient {
+  return new KasirMuClient({ baseUrl: BASE_URL });
 }
 
 // ── Health ─────────────────────────────────────────────────────────
@@ -67,15 +67,24 @@ describe('HealthClient', () => {
 // ── Auth ──────────────────────────────────────────────────────────
 
 describe('AuthClient', () => {
-  it('createToken() returns token', async () => {
+  it('createToken() unwraps the { token: {...} } envelope', async () => {
     server.use(
       http.post(`${BASE_URL}/api/v1/tokens`, async ({ request }) => {
         const body = (await request.json()) as Record<string, unknown>;
         expect(body['label']).toBe('test-token');
 
+        // The handler answers `Json(CreateTokenResponse { token: resp })`
+        // (crates/kasirmu-api/src/routes/tokens.rs), so the details arrive one
+        // level down, inside an envelope. This mock used to answer un-enveloped,
+        // which is how the client could hand callers an envelope typed as the
+        // details: every `Authorization: Bearer` built from it then carried
+        // `[object Object]`, and `expires_at` read undefined rather than absent.
         return HttpResponse.json({
-          token: 'eyJhbGciOi...',
-          expires_at: '2026-07-23T10:00:00Z',
+          token: {
+            token: 'eyJhbGciOi...',
+            expires_at: '2026-07-23T10:00:00Z',
+            token_id: '0190a4b2-7c1e-7a33-9df2-9f2f1b2c3d4e',
+          },
         });
       }),
     );
@@ -86,8 +95,11 @@ describe('AuthClient', () => {
       expiry_hours: 24,
     });
 
-    expect(result.token).toBeTruthy();
-    expect(result.expires_at).toBeTruthy();
+    // The JWT string itself, not the envelope that carried it — this is the
+    // value every authenticated request puts in its `Authorization` header.
+    expect(result.token).toBe('eyJhbGciOi...');
+    expect(result.expires_at).toBe('2026-07-23T10:00:00Z');
+    expect(result.token_id).toBe('0190a4b2-7c1e-7a33-9df2-9f2f1b2c3d4e');
   });
 });
 
@@ -302,12 +314,15 @@ describe('CategoriesClient', () => {
       http.post(`${BASE_URL}/api/v1/categories`, async ({ request }) => {
         const body = (await request.json()) as Record<string, unknown>;
         expect(body['name']).toBe('New');
-        return HttpResponse.json({ id: 'c-new', name: 'New', colour: '#f97316', created_at: '2026-07-22T00:00:00Z' }, { status: 201 });
+        return HttpResponse.json({ id: 'c-new', name: 'New', colour: '#f97316', icon: 'cup' }, { status: 201 });
       }),
     );
 
     const client = createClient();
-    const cat = await client.categories.create({ name: 'New', colour: '#f97316', created_at: '2026-07-22T00:00:00Z' });
+    // The body carries `icon`, not `created_at`: the server row is
+    // `SELECT id, name, colour, icon FROM categories` and the struct has no
+    // timestamp member, so `created_at` was a field this wire never carried.
+    const cat = await client.categories.create({ name: 'New', colour: '#f97316', icon: 'cup' });
     expect(cat.id).toBe('c-new');
   });
 
@@ -389,9 +404,10 @@ describe('SyncClient', () => {
     server.use(
       http.get(`${BASE_URL}/api/sync/status`, () =>
         HttpResponse.json({
+          status: 'ok',
+          version: '0.0.40',
           pending_count: 5,
-          conflict_count: 1,
-          total_items: 42,
+          heartbeat_interval_secs: 120,
         }),
       ),
     );
@@ -400,7 +416,29 @@ describe('SyncClient', () => {
     const status = await client.sync.status();
 
     expect(status.pending_count).toBe(5);
-    expect(status.conflict_count).toBe(1);
+    expect(status.heartbeat_interval_secs).toBe(120);
+  });
+
+  // The -1 case is the one worth pinning: `pending_count` is what a terminal
+  // polls to decide whether its backlog is draining, so a client that reads
+  // -1 as 0 stops retrying while the work is still queued. See the server field
+  // doc in sync_api.rs and the published OpenAPI description.
+  it('status() carries an unreadable queue depth through as -1, not as 0', async () => {
+    server.use(
+      http.get(`${BASE_URL}/api/sync/status`, () =>
+        HttpResponse.json({
+          status: 'ok',
+          version: '0.0.40',
+          pending_count: -1,
+          heartbeat_interval_secs: 120,
+        }),
+      ),
+    );
+
+    const client = createClient();
+    const status = await client.sync.status();
+
+    expect(status.pending_count).toBe(-1);
   });
 
   it('push() sends items array', async () => {

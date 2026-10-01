@@ -1,7 +1,7 @@
 /*
 last audited 25-07-26 by RSA-Agent (kasirmu-notification slice A: verified)
 crate: kasirmu-notification | status: SAFE | lint: CLEAN
-findings: clean — mock unwraps are test-support locks only
+findings: clean — mock unwraps are test-support locks only. SAFETY-hygiene fix 2026-10-04 (PAY-10 class): the 13 `// SAFETY:` comments here annotated SAFE `.lock().unwrap()` calls on a Mutex, not `unsafe` blocks — `SAFETY` is the convention for `unsafe`, so they polluted the `grep SAFETY` unsafe audit. Reworded to `// INVARIANT: lock poison is the intended failure signal in a test double.` — `INVARIANT` is an accepted marker for scripts/scan-unwrap-panic.py (ADR #33), so the panic inventory stays documented while `grep SAFETY` finds only real unsafe. (The sibling kasirmu-payment reword dropped the marker word entirely and reddened that gate; repaired there too.)
 next: none | perf: N/A
 */
 //! Mock notification client for testing.
@@ -59,31 +59,31 @@ impl MockNotificationClient {
 
     /// Set whether subsequent sends should fail.
     pub fn set_should_fail(&self, fail: bool) {
-        // SAFETY: mock client — lock poison is the intended failure signal in a test double.
+        // INVARIANT: lock poison is the intended failure signal in a test double.
         *self.should_fail.lock().unwrap() = fail;
     }
 
     /// Set the error message returned when sends fail.
     pub fn set_fail_message(&self, msg: impl Into<String>) {
-        // SAFETY: mock client — lock poison is the intended failure signal in a test double.
+        // INVARIANT: lock poison is the intended failure signal in a test double.
         *self.fail_message.lock().unwrap() = msg.into();
     }
 
     /// Get all recorded sent messages.
     pub fn sent_messages(&self) -> Vec<MockNotification> {
-        // SAFETY: mock client — lock poison is the intended failure signal in a test double.
+        // INVARIANT: lock poison is the intended failure signal in a test double.
         self.messages.lock().unwrap().clone()
     }
 
     /// Get the count of sent messages.
     pub fn sent_count(&self) -> usize {
-        // SAFETY: mock client — lock poison is the intended failure signal in a test double.
+        // INVARIANT: lock poison is the intended failure signal in a test double.
         self.messages.lock().unwrap().len()
     }
 
     /// Clear all recorded messages.
     pub fn clear(&self) {
-        // SAFETY: mock client — lock poison is the intended failure signal in a test double.
+        // INVARIANT: lock poison is the intended failure signal in a test double.
         self.messages.lock().unwrap().clear();
     }
 }
@@ -103,18 +103,18 @@ impl NotificationClient for MockNotificationClient {
         parameters: &[TemplateParameter],
         language: Option<&str>,
     ) -> NotificationResult<NotificationStatus> {
-        // SAFETY: mock client — lock poison is the intended failure signal in a test double.
+        // INVARIANT: lock poison is the intended failure signal in a test double.
         if *self.should_fail.lock().unwrap() {
-            // SAFETY: mock client — lock poison is the intended failure signal in a test double.
+            // INVARIANT: lock poison is the intended failure signal in a test double.
             return Err(NotificationError::Api(
-                // SAFETY: mock client — lock poison is the intended failure signal in a test double.
+                // INVARIANT: lock poison is the intended failure signal in a test double.
                 self.fail_message.lock().unwrap().clone(),
             ));
         }
 
         let params_json = serde_json::to_string(parameters).unwrap_or_default();
 
-        // SAFETY: mock client — lock poison is the intended failure signal in a test double.
+        // INVARIANT: lock poison is the intended failure signal in a test double.
         self.messages.lock().unwrap().push(MockNotification {
             to: to.to_string(),
             template_name: template_name.to_string(),
@@ -131,16 +131,16 @@ impl NotificationClient for MockNotificationClient {
     }
 
     async fn send_text(&self, to: &str, body: &str) -> NotificationResult<NotificationStatus> {
-        // SAFETY: mock client — lock poison is the intended failure signal in a test double.
+        // INVARIANT: lock poison is the intended failure signal in a test double.
         if *self.should_fail.lock().unwrap() {
-            // SAFETY: mock client — lock poison is the intended failure signal in a test double.
+            // INVARIANT: lock poison is the intended failure signal in a test double.
             return Err(NotificationError::Api(
-                // SAFETY: mock client — lock poison is the intended failure signal in a test double.
+                // INVARIANT: lock poison is the intended failure signal in a test double.
                 self.fail_message.lock().unwrap().clone(),
             ));
         }
 
-        // SAFETY: mock client — lock poison is the intended failure signal in a test double.
+        // INVARIANT: lock poison is the intended failure signal in a test double.
         self.messages.lock().unwrap().push(MockNotification {
             to: to.to_string(),
             template_name: "text".into(),

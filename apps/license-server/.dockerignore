@@ -1,4 +1,4 @@
-# OZ-POS License Server .dockerignore
+# kasir.mu License Server .dockerignore
 # Excludes files that should not be copied into the Docker build context.
 
 # Go build artifacts

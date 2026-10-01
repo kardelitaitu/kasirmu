@@ -28,6 +28,7 @@
  */
 
 import type { MockHandler } from '../core/mockDispatcher';
+import { getMockTier, getMockTierCaps, MOCK_TIER_NAMES } from '../core/mockTier';
 
 /**
  * True when the page was opened with `?license=inactive`.
@@ -51,15 +52,22 @@ function inactiveLicenceRequested(): boolean {
 // ═══════════════════════════════════════════════════════════════
 
 export const licenseHandlers: Record<string, MockHandler> = {
+  // The tier is read from the one mock tier model, not a literal: this handler
+  // used to answer a hardcoded 'pro' while the caps block answered 'premium',
+  // so Settings and every gate behind it contradicted each other.
   'get_license_status': () => inactiveLicenceRequested()
     ? { isActive: false, status: 'inactive', tier: null, payload: null, message: 'No licence is activated on this device.' }
-    : { isActive: true, status: 'valid', tier: 'pro', payload: null, message: null },
+    : { isActive: true, status: 'valid', tier: getMockTier(), payload: null, message: null },
   // Field-for-field with `ServerLicenseStatus` (api/license.ts): tenantId, status,
   // tier, active, deviceRevoked, expiresAt, graceUntil, maxLocations. `deviceRevoked`
   // was absent, so this DTO did not actually match its declared type — nothing reads
   // it yet, but a missing field on a registry typed `(args) => unknown` is exactly
   // the drift that produced the `qr_url` defect (round 26).
-  'check_license_status': () => ({ tenantId: 'tenant-1', status: 'active', tier: 'Pro', active: true, deviceRevoked: false, expiresAt: null, graceUntil: null, maxLocations: 5 }),
+  // NOTE the capitalised tier: this DTO reports the SERVER's tier label (the
+  // real command echoes SubscriptionTier::name()), unlike get_license_status
+  // which reports the lowercase key. maxLocations follows the selected tier so
+  // the row cannot claim Pro while the caps block reports Free.
+  'check_license_status': () => ({ tenantId: 'tenant-1', status: 'active', tier: MOCK_TIER_NAMES[getMockTier()], active: true, deviceRevoked: false, expiresAt: null, graceUntil: null, maxLocations: getMockTierCaps().maxLocations }),
   'get_device_id': () => 'mock-device-id-001',
   'activate_license': () => true,
   'renew_license': () => true,

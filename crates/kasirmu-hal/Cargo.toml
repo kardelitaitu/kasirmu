@@ -11,6 +11,18 @@ description = "Hardware Abstraction Layer for kasir.mu: barcode scanners, receip
 [lints]
 workspace = true
 
+# `test-support` exposes fixture-writing helpers that are otherwise removed
+# from the shipped binary. `register_scale` is the only member today: the
+# production scale writer was deliberately deleted on 2026-09-27 (zero
+# callers tree-wide) so the registry's scales map is readable-only, but a
+# downstream crate's tests still need to bind a scale to exercise the code
+# that lists one. A plain `#[cfg(test)]` gate cannot serve them — cargo
+# compiles this crate WITHOUT `cfg(test)` when it is a dependency of another
+# crate's test build — so the capability is a feature the consuming
+# dev-dependency turns on, which leaves the release build untouched.
+[features]
+test-support = []
+
 [dependencies]
 kasirmu-core = { workspace = true }
 async-trait = { workspace = true }
@@ -36,3 +48,15 @@ sha2 = { workspace = true }
 
 [dev-dependencies]
 serde_json = { workspace = true }
+
+# Declared explicitly (rather than auto-discovered) so the example's inline
+# `#[cfg(test)] mod tests` block stays inside the example target. The AGENTS.md
+# rule against inline tests exists so production library code does not carry its
+# tests; an `examples/*.rs` file is a standalone demonstration with its own local
+# struct, so a sibling `*_tests.rs` cannot be used here — Cargo auto-discovers
+# every `.rs` under `examples/` as its own target, and the sibling would then
+# fail to compile with `too many leading super keywords` and no `main`.
+[[example]]
+name = "custom_barcode_scanner"
+test = true
+

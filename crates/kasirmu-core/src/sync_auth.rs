@@ -398,10 +398,10 @@ pub async fn request_token(url: &str, admin_key: Option<&str>) -> TokenResult {
                         let expires = tr.token.expires_at.clone();
                         TokenResult {
                             ok: true,
-                            status: expires
-                                .as_ref()
-                                .map(|e| format!("Token obtained — {}", format_expiry(e)))
-                                .unwrap_or_else(|| "Token obtained".into()),
+                            status: expires.as_ref().map_or_else(
+                                || "Token obtained".into(),
+                                |e| format!("Token obtained — {}", format_expiry(e)),
+                            ),
                             token: Some(tr.token.token),
                             expires_at: tr.token.expires_at,
                         }
@@ -474,6 +474,67 @@ pub fn persist_refreshed_api_key(conn: &Connection, key: &str) -> Result<(), Cor
     Ok(())
 }
 
+/// The authenticated half of a sync probe's answer.
+///
+/// `/health` is PUBLIC (`apps/unified/Caddyfile` routes it, and
+/// `kasirmu-api`'s `/api/v1/health` is exempt from the read gate), so a
+/// `ping_server` success proves only that a socket answered. It cannot
+/// distinguish "sync will work" from "the credential is missing or dead" —
+/// and that gap is exactly what let an enabled-but-unauthorised install draw
+/// a green dot while every push 401'd.
+///
+/// This carries the *second*, credential-bearing question so the two can be
+/// rendered as the different things they are.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum SyncAuthHealth {
+    /// No credential is stored — the device was never linked.
+    Unauthenticated,
+    /// A credential is stored and the server accepted it.
+    Authorized,
+    /// A credential is stored and the server rejected it (401/403), so the
+    /// device is linked but its link is dead.
+    Rejected,
+    /// The credential check could not be completed (transport error, or the
+    /// `sync-http` feature is off). Distinct from `Rejected`: nothing was
+    /// refused, so nothing should be reported as refused.
+    Unknown,
+}
+
+/// Ask the server an authenticated question, to learn whether the stored
+/// credential actually works.
+///
+/// Reuses `fetch_tenant_plan` rather than adding a request: `GET
+/// /api/v1/tenants/me/plan` is already (a) authenticated by the JWT, (b) in
+/// the `terminal` read preset (`read_tiers.rs:131-136`), and (c) cheap and
+/// read-only. So a probe that succeeds proves the token is accepted *and*
+/// carries the scope a terminal was minted with, which is strictly more than
+/// a reachability ping can say.
+///
+/// Classifying on the server's status, not on `ok` alone: a 401/403 is the
+/// credential being refused, while a transport failure is the server being
+/// unreachable — conflating them would revive the very confusion this
+/// function exists to remove.
+pub async fn probe_sync_auth(url: &str, api_key: Option<&str>) -> SyncAuthHealth {
+    let Some(api_key) = api_key.filter(|k| !k.is_empty()) else {
+        return SyncAuthHealth::Unauthenticated;
+    };
+
+    let result = fetch_tenant_plan(url, api_key).await;
+    if result.ok {
+        return SyncAuthHealth::Authorized;
+    }
+
+    // The status text is the only channel `fetch_tenant_plan` reports on.
+    // A refused credential answers with the HTTP status; anything else is a
+    // transport or parse failure that proves nothing about the credential.
+    if result.status.contains("401") || result.status.contains("403") {
+        SyncAuthHealth::Rejected
+    } else {
+        SyncAuthHealth::Unknown
+    }
+}
+
 /// Ping the cloud server's `/health` endpoint to verify connectivity
 /// (async — safe to call from Tauri async command handlers).
 #[cfg(feature = "sync-http")]
@@ -486,12 +547,17 @@ pub async fn ping_server(url: &str) -> PingResult {
     {
         Ok(client) => match client.get(&health_url).send().await {
             Ok(resp) => {
-                let latency = start.elapsed().as_millis() as u64;
+                // `try_from` rather than `as u64`: a health-check latency
+                // cannot exceed u64 milliseconds, but saturating states that
+                // explicitly and keeps the value monotone instead of wrapping
+                // to ~0 on an absurd clock jump.
+                let latency = u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
                 if resp.status().is_success() {
                     PingResult {
                         ok: true,
                         status: format!("Connected ({latency}ms)"),
                         latency_ms: Some(latency),
+                        auth: None,
                     }
                 } else {
                     let status = resp.status();
@@ -499,6 +565,7 @@ pub async fn ping_server(url: &str) -> PingResult {
                         ok: false,
                         status: format!("Server returned {status}"),
                         latency_ms: Some(latency),
+                        auth: None,
                     }
                 }
             }
@@ -506,14 +573,106 @@ pub async fn ping_server(url: &str) -> PingResult {
                 ok: false,
                 status: format!("Connection failed: {e}"),
                 latency_ms: None,
+                auth: None,
             },
         },
         Err(e) => PingResult {
             ok: false,
             status: format!("Failed to build HTTP client: {e}"),
             latency_ms: None,
+            auth: None,
         },
     }
+}
+
+/** The full two-part sync answer: reachability *and* credential health.
+ *
+ * The status bar needs both halves and must not be given one dressed as the
+ * other. `/health` is public, so a successful `ping_server` reports
+ * reachability only; this adds the credential verdict from `probe_sync_auth`
+ * on top, and is the single place both shells compose them — so desktop and
+ * tablet cannot drift into different answers to the same question.
+ *
+ * When a stored key is present the credential question is always asked, even
+ * if the ping failed: "the server is down" and "your credential is refused"
+ * are different operator problems, and a transport failure should not
+ * silently erase a rejection we could have seen.
+ */
+/// Whether the device should derive its sync URL from the attested origin.
+///
+/// The rule is the one the existing bootstrap already encoded, restated for a
+/// release build: **only when nothing is configured**. A missing row or an
+/// empty value is unconfigured; any real operator value wins forever, so
+/// derivation can never overwrite a deliberate setting.
+///
+/// Deliberately does NOT consider the enabled flag or a retained API key. A
+/// leftover key with no URL is still unconfigured (it is the state a wiped
+/// settings row leaves behind), and the enabled flag is what derivation is
+/// careful *not* to set.
+pub fn should_derive_sync_url(configured_url: Option<&str>) -> bool {
+    match configured_url {
+        None => true,
+        Some(url) => url.trim().is_empty(),
+    }
+}
+
+/// Point this device at the origin it already resolved (ADR #55).
+///
+/// The unified deployment serves auth and sync from one host
+/// (`apps/unified/Caddyfile`: `/api/v1/license/*` and `/api/sync/*` share a
+/// port and certificate), and the device already resolves that host at boot
+/// via the attestation cascade. So the sync endpoint needs no new setting, no
+/// new transport, and no operator typing: it is a fact the device holds.
+///
+/// **What this deliberately does NOT do: enable sync, or invent a
+/// credential.** `SyncConfig::from_settings` requires both `enabled` and a
+/// non-empty URL, and sync still will not start after this write — the pill
+/// will honestly read "Not configured" until `enabled` is set and a
+/// credential arrives through the linking path. Writing `enabled = true` here
+/// is the §4 trap: the status probe asks a *public* endpoint, so an install
+/// with a URL but no working credential would draw a green dot while every
+/// push 401'd. Storing the URL is safe precisely because it alone starts
+/// nothing.
+///
+/// Returns `true` when a row was written. Idempotent: a second call with the
+/// URL already stored writes nothing and reports `false`.
+pub fn derive_sync_url_if_unset(
+    conn: &rusqlite::Connection,
+    origin: &str,
+) -> Result<bool, CoreError> {
+    if origin.trim().is_empty() {
+        return Ok(false);
+    }
+    if !should_derive_sync_url(crate::settings::Settings::get_sync_server_url(conn)?.as_deref()) {
+        return Ok(false);
+    }
+    crate::settings::Settings::set_sync_server_url(conn, origin.trim())?;
+    tracing::info!(
+        origin = %origin,
+        "derived sync server URL from the attested server origin (sync left disabled)"
+    );
+    Ok(true)
+}
+
+/// The full two-part sync answer: reachability *and* credential health.
+///
+/// The status bar needs both halves and must not be given one dressed as the
+/// other. `/health` is public, so a successful `ping_server` reports
+/// reachability only; this adds the credential verdict from
+/// `probe_sync_auth` on top, and is the single place both shells compose
+/// them — so desktop and tablet cannot drift into different answers to the
+/// same question.
+///
+/// When a stored key is present the credential question is always asked, even
+/// if the ping failed: "the server is down" and "your credential is refused"
+/// are different operator problems, and a transport failure should not
+/// silently erase a rejection we could have seen.
+pub async fn probe_sync_connection(url: &str, api_key: Option<&str>) -> PingResult {
+    let mut ping = ping_server(url).await;
+    if api_key.is_some_and(|k| !k.is_empty()) {
+        ping.auth = Some(probe_sync_auth(url, api_key).await);
+    }
+    ping
 }
 
 /// Stub when sync-http is disabled.
@@ -523,5 +682,16 @@ pub async fn ping_server(_url: &str) -> PingResult {
         ok: false,
         status: "sync-http feature is disabled".into(),
         latency_ms: None,
+        auth: None,
     }
+}
+
+/// Stub when sync-http is disabled.
+///
+/// Answers `Unknown` and not `Rejected`: with the feature compiled out no
+/// request was made, so no credential was refused. Reporting a rejection we
+/// never observed would be the same class of invention this probe removes.
+#[cfg(not(feature = "sync-http"))]
+pub async fn probe_sync_auth(_url: &str, _api_key: Option<&str>) -> SyncAuthHealth {
+    SyncAuthHealth::Unknown
 }

@@ -323,7 +323,7 @@ describe('DevToolbar', () => {
   // position from a larger window still comes back. Key mirrors
   // STORAGE_POS in DevToolbar.tsx.
   describe('drag position persistence', () => {
-    const STORAGE_POS = 'oz-pos-dev-toolbar-pos';
+    const STORAGE_POS = 'kasirmu-dev-toolbar-pos';
 
     afterEach(() => {
       localStorage.removeItem(STORAGE_POS);

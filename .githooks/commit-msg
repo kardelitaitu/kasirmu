@@ -50,7 +50,12 @@ if [ -z "${SUBJECT//[[:space:]]/}" ]; then
     exit 0
 fi
 
-TYPES='feat|fix|docs|style|refactor|perf|test|ci|chore|audit'
+# `build` joined 2026-10-01: `c5fee807 "build(docker): add the instance-guard crate
+# to both cache-priming stages"` was already landed and cannot be amended, and
+# `build` is in both the Angular convention and conventionalcommits.org -- the list
+# was the outlier, not the commit. Same correction this file records for `style`
+# above: the list follows established practice rather than the gate rejecting it.
+TYPES='feat|fix|docs|style|refactor|perf|test|ci|chore|audit|build'
 # Optional scope, optional `!` breaking-change marker, non-empty description.
 PATTERN="^($TYPES)(\([^()]+\))?!?: .+"
 
@@ -69,7 +74,7 @@ cat >&2 <<EOF
     <type>(<area>): <description>
 
   <type> must be one of:
-    feat fix docs style refactor perf test ci chore audit
+    feat fix docs style refactor perf test ci chore audit build
 
   examples:
     fix(sales): resolve modal overflow on tablet

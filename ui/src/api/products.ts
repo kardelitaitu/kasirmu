@@ -56,8 +56,12 @@ export interface ProductDto {
  * -- neither shell registers it, and the desktop has no body for it at all, so "prefer this" was
  * describing a choice between one working call and one that cannot.
  */
-export const listProductsScoped = (sessionToken: string): Promise<ProductDto[]> =>
-  loggedInvoke<ProductDto[]>('list_products_scoped', { sessionToken });
+export const listProductsScoped = (
+  sessionToken: string,
+  limit?: number,
+  offset?: number,
+): Promise<ProductDto[]> =>
+  loggedInvoke<ProductDto[]>('list_products_scoped', { sessionToken, limit, offset });
 
 /**
  * List inventory-tracked products with stock at a specific warehouse location.

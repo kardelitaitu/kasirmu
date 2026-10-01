@@ -299,7 +299,7 @@ impl Store<'_> {
     /// directive, the store preference applies.
     pub fn tax_rate_rounding_mode(&self, rate_id: &str) -> Result<Option<RoundingMode>, CoreError> {
         self.list_tax_rate_rounding_modes(std::slice::from_ref(&rate_id))
-            .map(|modes| modes.get(rate_id).cloned().flatten())
+            .map(|modes| modes.get(rate_id).copied().flatten())
     }
 
     /// Count every reference to a tax rate (TAX-03).
@@ -349,7 +349,7 @@ impl Store<'_> {
     /// coverage hears the history reason, which is the permanent one.
     ///
     /// A rate that is the last row covering a scoped location is blocked too
-    /// — see [`Self::ensure_scoped_coverage_survives`]. The check runs inside
+    /// — see `Self::ensure_scoped_coverage_survives`. The check runs inside
     /// this transaction, so the coverage it judged is the coverage the archive
     /// changes; the tenant-global tier is deliberately exempt there, which is
     /// also why a single-rate tenant can still turn its tax off.

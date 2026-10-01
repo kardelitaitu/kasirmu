@@ -6,7 +6,8 @@ findings: lamport + version vector + typed delta merge + settings-backed clock
 persistence; no migration added (the counter lives in the existing `settings`
 key/value table), so no shared migration surface is touched. Stock additive
 merge itself already exists in conflict.rs and is untouched.
-next: Agent 2 consumes VersionVector/CausalOrder | perf: N/A
+next: none | perf: N/A
+CONSUMED 2026-10-04: the cloud conflict detector consumes these - apps/cloud-server/src/conflict_resolution.rs (extract_vector, CausalOrder match) and apps/cloud-server/src/sync_store/conflicts.rs. The 'Agent 2' note was a plan, not an outstanding item.
 */
 //!
 //! Scope note: gift card balances and loyalty points are deliberately **not**

@@ -6,6 +6,7 @@ next: none | perf: N/A
 */
 //! Error type for the sales domain.
 
+use kasirmu_core::db::namespaced::NamespaceError;
 use thiserror::Error;
 
 /// Errors that can originate in the sales domain.
@@ -14,6 +15,10 @@ pub enum SalesError {
     /// A database operation failed.
     #[error("database error: {0}")]
     Db(#[from] rusqlite::Error),
+
+    /// A namespace check rejected the statement (Phase 3 P3.2).
+    #[error("namespace error: {0}")]
+    Namespace(#[from] NamespaceError),
 
     /// A serialization error.
     #[error("serialization error: {0}")]

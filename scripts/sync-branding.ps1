@@ -80,7 +80,7 @@ function New-IcnsFromPng {
         @{code="ic09"; size=512}
     )
 
-    $tempDir = Join-Path ([System.IO.Path]::GetTempPath()) "oz-icns-$([System.Guid]::NewGuid().ToString())"
+    $tempDir = Join-Path ([System.IO.Path]::GetTempPath()) "kasir-icns-$([System.Guid]::NewGuid().ToString())"
     New-Item -ItemType Directory -Force -Path $tempDir | Out-Null
 
     try {
@@ -176,7 +176,7 @@ $tokens     = $manifest.themeTokens
 $assets     = $manifest.assets
 
 Write-Host "+------------------------------------------------+" -ForegroundColor Cyan
-Write-Host "| OZ-POS Brand Sync: $($brandId.PadRight(32))|" -ForegroundColor Cyan
+Write-Host "| kasir.mu Brand Sync: $($brandId.PadRight(32))|" -ForegroundColor Cyan
 Write-Host "| App: $($appName.PadRight(41))|" -ForegroundColor Cyan
 Write-Host "+------------------------------------------------+" -ForegroundColor Cyan
 Write-Host ""
@@ -402,22 +402,37 @@ Write-Host "  [OK]   Generated $brandCssTarget" -ForegroundColor Green
 Write-Host ""
 Write-Host "-- Hardware assets --" -ForegroundColor White
 $hardwareReadmePath = "assets/branding/$brandId/hardware/README.md"
-if (-not (Test-Path $hardwareReadmePath) -and -not $DryRun) {
-    # The closing fence of the fenced block below is written with SIX backticks on
-    # purpose. Inside a double-quoted here-string a backtick is the escape
-    # character, so a fence of three backticks immediately followed by a newline
-    # escapes that newline as a line continuation. The `"@` terminator then no
-    # longer sits at the start of a line and the ENTIRE SCRIPT fails to parse with
-    # TerminatorExpectedAtEndOfString -- which is what happened between this block
-    # landing and 2026-09-19, while `.gitattributes` pins the working tree to LF.
-    # Six backticks emit three literal backticks and leave the newline intact, so
-    # the generated README is byte-identical. Do not "tidy" this back to three.
-    $readmeContent = @"
+
+# This README is GENERATED, and it is rewritten whenever its content differs —
+# not only when it is missing. That distinction is the whole point: the three
+# shipped copies had drifted (every one had lost the `a` from `assets/`, and
+# default/hardware had additionally turned `receipt` into `eceipt`), and a
+# write-if-absent guard could never repair them. Re-running the sync silently
+# reported "already exists" over a corrupted file.
+#
+# The corruption is worth understanding because it is the failure mode this
+# block now prevents: a `-replace` treating `\\r` as a literal `r` stripped the
+# letter from any word containing it. Nothing compared the file to the template,
+# so it stayed wrong for months.
+# Fences are built from a VARIABLE, never typed literally, and the reason is
+# measured rather than assumed. In a double-quoted here-string a backtick is an
+# escape character, so these three spellings do NOT agree:
+#
+#   ```powershell      -> the backtick-newline is an escape, so the fence
+#                         collapses and the line renders as '`powershell'
+#   `` ``` ```        -> same collapse; this produced a one-backtick fence in
+#                         every generated README for months, and the earlier
+#                         six-backtick comment claiming byte-identity was wrong
+#   $fence              -> exactly three backticks, verified by byte dump
+#
+# The header fence below has no trailing newline to swallow it, but the CLOSING
+# fence does, and both are spelled from the same variable so they cannot diverge.
+$fence = [string]([char]0x60) * 3
+$readmeContent = @"
 # Hardware Assets - $appName ($brandId)
 
-This directory holds specialized bitmap assets for thermal receipt printers
-and invoice watermarks. These are generated from the master source icon
-(assets/source-icon.png) via the whitelabel pipeline.
+This directory holds the brand's print assets. The receipts and invoices are
+produced by the app; these files are the artwork that goes on them.
 
 ## Expected files
 
@@ -431,19 +446,40 @@ and invoice watermarks. These are generated from the master source icon
 
 To generate receipt bitmaps from the master source icon:
 
-```powershell
+$fence`powershell
 # Requires ImageMagick
-magick convert assets/source-icon.png -resize 384x100! -threshold 50% assets/branding/%brandId%/hardware/receipt-logo-58mm.png
-magick convert assets/source-icon.png -resize 576x150! -threshold 50% assets/branding/%brandId%/hardware/receipt-logo-80mm.png
-``````
+magick convert assets/source-icon.png -resize 384x100! -threshold 50% assets/branding/$brandId/hardware/receipt-logo-58mm.png
+magick convert assets/source-icon.png -resize 576x150! -threshold 50% assets/branding/$brandId/hardware/receipt-logo-80mm.png
+$fence
 "@
-    New-Item -ItemType Directory -Force -Path (Split-Path $hardwareReadmePath -Parent) | Out-Null
-    Set-Content -Path $hardwareReadmePath -Value $readmeContent -Encoding UTF8
-    Write-Host "  [OK]   Created hardware/README.md with generation instructions" -ForegroundColor Green
-} elseif (Test-Path $hardwareReadmePath) {
-    Write-Host "  [OK]   hardware/README.md already exists" -ForegroundColor Green
+
+# Rewrite whenever the CONTENT differs, not only when the file is absent.
+# #
+# This block used to guard on `-not (Test-Path ...)`, which is why the three
+# shipped copies stayed wrong: each had lost the `a` from `assets/`, and
+# default/hardware had additionally turned `receipt` into `eceipt` (a `-replace`
+# that treated `\r` as a literal `r`). Re-running the sync reported "already
+# exists" over the corrupted file, so nothing could ever repair it. Comparing
+# content makes that class of rot self-healing.
+$readmeNormalised = $readmeContent -replace "`r`n", "`n"
+
+if ($DryRun) {
+    Write-Host "  [DRY]  would write hardware/README.md" -ForegroundColor Magenta
 } else {
-    Write-Host "  [SKIP] Dry run - would create hardware/README.md" -ForegroundColor Yellow
+    New-Item -ItemType Directory -Force -Path (Split-Path $hardwareReadmePath -Parent) | Out-Null
+    $existing = if (Test-Path $hardwareReadmePath) {
+        (Get-Content $hardwareReadmePath -Raw) -replace "`r`n", "`n"
+    } else { $null }
+
+    if ($null -eq $existing) {
+        [IO.File]::WriteAllText((Resolve-Path -LiteralPath (Split-Path $hardwareReadmePath -Parent)).Path + "/README.md", $readmeNormalised)
+        Write-Host "  [OK]   Created hardware/README.md with generation instructions" -ForegroundColor Green
+    } elseif ($existing.TrimEnd() -ne $readmeNormalised.TrimEnd()) {
+        [IO.File]::WriteAllText($hardwareReadmePath, $readmeNormalised)
+        Write-Host "  [FIX]  hardware/README.md had drifted from the template - rewrote it" -ForegroundColor Yellow
+    } else {
+        Write-Host "  [OK]   hardware/README.md matches the template" -ForegroundColor Green
+    }
 }
 
 # -- Summary -----------------------------------------------------------------

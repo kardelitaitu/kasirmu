@@ -7,7 +7,7 @@ fn balance_result_debug() {
         currency: "IDR".into(),
         status: "active".into(),
     };
-    let debug = format!("{:?}", r);
+    let debug = format!("{r:?}");
     assert!(debug.contains("50000"));
 }
 

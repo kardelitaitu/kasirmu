@@ -6,9 +6,8 @@ use super::{CLOCK_KEY, ClockStore, InMemoryClockStore, SettingsClockStore, parse
 
 /// A migrated in-memory database, so the `settings` table exists.
 fn migrated_connection() -> Connection {
-    let mut conn = Connection::open_in_memory().expect("in-memory db");
-    kasirmu_core::migrations::run(&mut conn).expect("migrations must apply");
-    conn
+    // O-T01: snapshot clone (~3 ms) rather than a 68-migration replay (~305 ms).
+    kasirmu_core::migrations::fresh_db()
 }
 
 #[test]

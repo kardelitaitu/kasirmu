@@ -1,3 +1,7 @@
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · ACCURATE with one location divergence recorded. The `SettingsContext` shipped: `ui/src/contexts/SettingsContext.tsx` exists and exports both halves of the contract this spec defines — `SettingsState`/`SettingsBrandState`/`SettingsPreferencesState` interfaces, a `SettingsContextValue` shape, and `export function useSettings(): SettingsContextValue` at line 550. The DIVERGENCE is that the Plan step said to create a separate `ui/src/hooks/useSettings.ts`, and that file does not exist; the hook was exported from the context file itself instead. That is a strictly reasonable implementation choice — co-locating the hook with its provider is the common React pattern and avoids a one-line re-export module — so this is recorded as a path note, NOT a missing deliverable, and the substance of the spec is satisfied. · `platform/kernel/src/event_bus.rs` (cited in References) and `ui/src/contexts/AuthContext.tsx` (the pattern to follow) both still exist. · The Baseline section is a pre-fix record and is left as written, including the two "does not exist" lines that are now false — that is what a Baseline is for. · Same unchecked-criteria note as the sibling 0-phase files: Status says IMPLEMENTED while the boxes are open. The boxes are the plan-as-approved and I did not tick them, because confirming the artifacts exist is not the same as confirming the debounce/scoped-refetch unit tests pass. · `crates/oz-bus` is named in the Summary as the event source; that crate name is pre-restructure and the event bus now lives in `platform/kernel`, so the reference is historical. · No house stamp existed at the top of this file before this pass. -->
+<!-- dead-ref-prefix-ok: crates/oz-bus -->
+<!-- dead-ref-prefix-ok: ui/src/hooks/useSettings.ts -->
+<!-- Pre-restructure crate name, and the separate hook file: useSettings() shipped from SettingsContext.tsx:550 instead. Both recorded in the stamp above. -->
 # Phase 0b — SettingsContext (React Context Provider)
 
 - **Status:** IMPLEMENTED (ADR #22 unified workspace settings shipped in 0.0.19; re-audited 2026-08-08 by docs-auditor)
@@ -87,4 +91,4 @@ Build a React context (`SettingsContext`) that acts as the single source of trut
 
 > (status corrected to IMPLEMENTED).
 >
-> last audited 08-08-26 by docs-auditor
+> last audited 29-09-26 by docs-auditor

@@ -298,8 +298,8 @@ fn get_product_tax_rates_batch_returns_all_skus() {
     let map = s
         .get_product_tax_rates_batch(&["A".into(), "B".into(), "NOPE".into()])
         .unwrap();
-    assert_eq!(map.get("A").map(|v| v.len()), Some(2));
-    assert_eq!(map.get("B").map(|v| v.len()), Some(1));
+    assert_eq!(map.get("A").map(std::vec::Vec::len), Some(2));
+    assert_eq!(map.get("B").map(std::vec::Vec::len), Some(1));
     assert!(!map.contains_key("NOPE"));
 }
 
@@ -2098,5 +2098,162 @@ fn list_tax_rate_rounding_modes_ignores_archived_rows() {
         modes["r-arch"], None,
         "an archived row's directive must not steer a computation that no \
          longer resolves it"
+    );
+}
+#[test]
+fn a_db_failure_in_the_rate_probe_is_not_reported_as_not_found() {
+    let conn = fresh();
+    let s = store(&conn);
+    seed_topology(&conn, "ent-a", "loc-a");
+    let rate = s
+        .create_tax_rate_scoped(
+            "Rate",
+            1000,
+            true,
+            false,
+            &TaxRateScope::Location("loc-a".into()),
+            &TaxRateWindow::default(),
+        )
+        .unwrap();
+
+    // Force a REAL database error in the existence probe: rename the table the
+    // probe reads, so the query fails for a reason that is not "no such row".
+    //
+    // Under the old `.ok()` this collapsed to `None` and the caller was told
+    // `NotFound { entity: "tax_rate" }` -- "this rate does not exist" while the
+    // row was present and the database was failing. The assertion is that the
+    // failure surfaces as a DB error, NOT as NotFound.
+    conn.execute_batch("ALTER TABLE tax_rates RENAME TO tax_rates_hidden;")
+        .unwrap();
+
+    let err = s
+        .update_tax_rate_scoped(
+            &rate.id,
+            "Renamed",
+            1200,
+            false,
+            false,
+            &TaxRateScope::Global,
+            &TaxRateWindow::default(),
+        )
+        .unwrap_err();
+
+    assert!(
+        !matches!(err, CoreError::NotFound { .. }),
+        "a DB failure must not be reported as NotFound: that is a wrong diagnosis \
+         which also hides the real fault; got {err:?}"
+    );
+}
+
+#[test]
+fn a_db_failure_in_the_scope_and_window_probes_is_not_reported_as_no_such_rate() {
+    let conn = fresh();
+    let s = store(&conn);
+    seed_topology(&conn, "ent-a", "loc-a");
+    let rate = s
+        .create_tax_rate_scoped(
+            "Rate",
+            1000,
+            true,
+            false,
+            &TaxRateScope::Location("loc-a".into()),
+            &TaxRateWindow {
+                effective_from: Some("2026-01-01".into()),
+                effective_to: None,
+            },
+        )
+        .unwrap();
+
+    // Force a REAL database error in both one-row probes: rename the table they
+    // read, so the query fails for a reason that is not "no such row".
+    //
+    // Under the old `.ok()` each probe collapsed to `None`, and `None` is
+    // defined as "no such active row". So a failing database was reported as
+    // "this rate has no scope" and "this rate has no window" -- both wrong
+    // diagnoses, and both of them consume the money path: the authoring screen
+    // (`list_tax_rate_scopes`) and the sale resolver read them.
+    conn.execute_batch("ALTER TABLE tax_rates RENAME TO tax_rates_hidden;")
+        .unwrap();
+
+    let scope_err = s
+        .tax_rate_scope(&rate.id)
+        .expect_err("a DB failure must not read as 'no such rate'");
+    assert!(
+        matches!(scope_err, CoreError::Db(_)),
+        "tax_rate_scope must surface the DB fault, got {scope_err:?}"
+    );
+
+    let window_err = s
+        .tax_rate_window(&rate.id)
+        .expect_err("a DB failure must not read as 'no such window'");
+    assert!(
+        matches!(window_err, CoreError::Db(_)),
+        "tax_rate_window must surface the DB fault, got {window_err:?}"
+    );
+}
+
+#[test]
+fn a_db_failure_in_the_entity_probe_is_not_reported_as_no_entity_assigned() {
+    let conn = fresh();
+    let s = store(&conn);
+    seed_topology(&conn, "ent-a", "loc-a");
+
+    // Same forced-fault idiom as the sibling above. `None` from
+    // `location_legal_entity` means "this location has no legal entity
+    // assigned", and that answer SKIPS level 2 of the resolver walk
+    // (`resolve_tax_rate_for_location`) and the assignment filter
+    // (`db/sales_tax.rs`). A database that cannot answer must not be handed
+    // back as "the entity level does not apply".
+    conn.execute_batch("ALTER TABLE locations RENAME TO locations_hidden;")
+        .unwrap();
+
+    let err = s
+        .location_legal_entity("loc-a")
+        .expect_err("a DB failure must not read as 'no entity assigned'");
+    assert!(
+        matches!(err, CoreError::Db(_)),
+        "location_legal_entity must surface the DB fault, got {err:?}"
+    );
+}
+
+#[test]
+fn a_db_failure_in_the_coverage_probe_does_not_silently_allow_the_last_scoped_archive() {
+    let conn = fresh();
+    let s = store(&conn);
+    seed_topology(&conn, "ent-a", "loc-a");
+    // A single location-scoped row: the guard exists precisely to REFUSE this
+    // archive, because no other row covers loc-a at any tier.
+    let only = s
+        .create_tax_rate_scoped(
+            "Only loc-a rate",
+            1000,
+            false,
+            false,
+            &TaxRateScope::Location("loc-a".into()),
+            &TaxRateWindow::default(),
+        )
+        .unwrap();
+
+    // Force a REAL fault in the guard's own read of the row being archived.
+    //
+    // Under the old `.ok()` the failure collapsed to `None`, and `None` is
+    // defined at `ensure_scoped_coverage_survives` as "no such active row --
+    // nothing scoped is being erased", so the guard returned `Ok(())` and
+    // ALLOWED the archive it exists to refuse. A guard that fails OPEN is worse
+    // than no guard: the operator is told nothing while the branch silently
+    // relocates onto whatever the fallback tiers happen to hold -- or onto
+    // nothing at all.
+    //
+    // The fault is injected by renaming only the column the guard's first read
+    // touches, so the failure is the guard's, not some later statement's.
+    conn.execute_batch("ALTER TABLE tax_rates RENAME COLUMN location_id TO location_id_hidden;")
+        .unwrap();
+
+    let err = s
+        .delete_tax_rate(&only.id)
+        .expect_err("a DB failure must not let the last scoped rate be archived");
+    assert!(
+        matches!(err, CoreError::Db(_)),
+        "the coverage guard must surface the DB fault, got {err:?}"
     );
 }

@@ -15,6 +15,31 @@ use rusqlite::{Transaction, TransactionBehavior};
 use crate::downgrade::QuotaDimension;
 use crate::subscription::SubscriptionTier;
 
+/// Normalise an optional barcode to what the API reports (MSL-45).
+///
+/// `Barcode::new` rejects only empty/whitespace, and until this helper the
+/// write path bound the caller's raw string while the return/read paths applied
+/// `Barcode::new(..).ok()`. A whitespace-only barcode therefore landed in the
+/// column (trimmed by nothing), was reported as `None` by every surface, and —
+/// because `uq_products_barcode` is UNIQUE — consumed the one NULL-free slot,
+/// so the NEXT blank-barcode product was refused with
+/// `Conflict { field: "sku or barcode" }` even when its SKU was unique.
+///
+/// Reachable from the product screen (its variant-management view binds the
+/// raw field and passes `form.barcode || null`, where a spaces-only string is
+/// truthy) and unvalidated by the bridge's write path.
+///
+/// Returning `None` for a blank value makes the column agree with the API and
+/// releases the unique slot; a real barcode still stores trimmed, which is the
+/// same normalisation `Barcode::new` performs internally.
+fn normalise_barcode(barcode: Option<&str>) -> Option<String> {
+    let trimmed = barcode?.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    Some(trimmed.to_owned())
+}
+
 // ── Product CRUD ─────────────────────────────────────────────────────
 
 impl Store<'_> {
@@ -102,7 +127,7 @@ impl Store<'_> {
 
     /// List inventory-tracked products with stock at a specific location.
     ///
-    /// Like [`list_warehouse_products`] but reads `stock_summary.qty` for
+    /// Like [`list_warehouse_products`](Self::list_warehouse_products) but reads `stock_summary.qty` for
     /// the given `location_id` instead of summing across all locations.
     /// Returns 0 for products with no stock row at this location.
     pub fn list_warehouse_products_at_location(
@@ -208,7 +233,7 @@ impl Store<'_> {
     /// database this [`Store`] wraps (per-location catalog).
     ///
     /// When the tier's `max_products()` cap is reached, returns
-    /// [`QuotaError::ProductLimit`] (surfaced as
+    /// [`QuotaError::ProductLimit`](crate::subscription::QuotaError::ProductLimit) (surfaced as
     /// `SubscriptionLimitExceeded`, which the UI maps to an upgrade CTA).
     /// Unlimited tiers (`None`) pass.
     pub fn enforce_product_quota(&self, tier: &SubscriptionTier) -> Result<(), CoreError> {
@@ -306,6 +331,10 @@ impl Store<'_> {
             })?
             .to_owned();
 
+        // MSL-45: bind what the API reports, so a blank value cannot occupy the
+        // UNIQUE barcode slot while reading back as absent.
+        let barcode = normalise_barcode(barcode);
+
         let tx = self.conn.unchecked_transaction()?;
 
         let result = tx.execute(
@@ -329,7 +358,7 @@ impl Store<'_> {
                 attrs.rack_location,
                 attrs.notes,
                 attrs.unit,
-                attrs.is_active as i64,
+                i64::from(attrs.is_active),
                 attrs.default_supplier_id,
             ],
         );
@@ -417,7 +446,7 @@ impl Store<'_> {
             sku: Sku::new(sku.trim()),
             name: name.trim().to_owned(),
             price,
-            category_id: category_id.map(|s| s.to_owned()),
+            category_id: category_id.map(std::borrow::ToOwned::to_owned),
             barcode: barcode.and_then(|s| foundation::Barcode::new(s).ok()),
             created_at: now.clone(),
             updated_at: now.clone(),
@@ -475,7 +504,7 @@ impl Store<'_> {
         set_clearable!("default_supplier_id", attrs.default_supplier_id);
         if let Some(active) = attrs.is_active {
             sets.push("is_active = ?".into());
-            values.push(Box::new(active as i64));
+            values.push(Box::new(i64::from(active)));
         }
 
         if sets.is_empty() {
@@ -538,6 +567,24 @@ impl Store<'_> {
                 message: "name must not be empty".into(),
             });
         }
+        // COR-12: the SAME 255-char ceiling `create_product_with_attributes`
+        // applies, and the one every sibling module already applies on both
+        // doors (customers, suppliers, staff, promotions). Without it the
+        // create path refused a long name that the update path then accepted,
+        // so the rule held only on the way in. The column is plain TEXT with no
+        // CHECK, so this guard is the whole rule.
+        // COR-12: the SAME 255-char ceiling `create_product_with_attributes`
+        // applies, and the one every sibling module already applies on both
+        // doors (customers, suppliers, staff, promotions). Without it the
+        // create path refused a long name that the update path then accepted,
+        // so the rule held only on the way in. The column is plain TEXT with no
+        // CHECK, so this guard is the whole rule.
+        if name.len() > 255 {
+            return Err(CoreError::Validation {
+                field: "name",
+                message: format!("name must not exceed 255 characters, got {}", name.len()),
+            });
+        }
         if price.minor_units < 0 {
             return Err(CoreError::Validation {
                 field: "price",
@@ -562,6 +609,11 @@ impl Store<'_> {
         // window, and the row left behind is always one caller's intent in
         // full — never a blend of two.
         let tx = Transaction::new_unchecked(self.conn, TransactionBehavior::Immediate)?;
+
+        // MSL-45: same normalisation as the create path (see `normalise_barcode`),
+        // so an update cannot install the blank value the create path now refuses
+        // to leave behind.
+        let barcode = normalise_barcode(barcode);
 
         // One statement, not two mutually exclusive arms: a NULL
         // `expected_version` disables the CAS predicate, a value turns it into
@@ -653,7 +705,7 @@ impl Store<'_> {
     pub fn set_product_track_serial(&self, sku: &str, track_serial: bool) -> Result<(), CoreError> {
         let rows = self.conn.execute(
             "UPDATE products SET track_serial = ?1 WHERE sku = ?2",
-            params![track_serial as i64, sku],
+            params![i64::from(track_serial), sku],
         )?;
         if rows == 0 {
             return Err(CoreError::NotFound {

@@ -12,6 +12,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::error::CoreError;
 use crate::inventory::LocationId;
 use crate::inventory_transaction::InventoryTransactionId;
 use foundation::SaleStatus;
@@ -187,6 +188,56 @@ pub fn allocate_stock_in_route_order(
     }
 
     (remaining == 0).then_some(allocations)
+}
+
+/// Plan the per-location deductions for one cashier-resolved shortfall (P5.2).
+///
+/// Pure: validates the allocation sum, skips non-positive entries, and refuses with
+/// [`CoreError::InsufficientStockAtLocation`] when a location cannot cover its share and
+/// negative stock is not allowed there. The two closures supply the DB reads, so the
+/// decision logic is unit-testable without a connection.
+pub fn plan_resolution_deductions<A, N>(
+    sku: &str,
+    requested_qty: i64,
+    resolution: &ResolvedShortfall,
+    mut available_at: A,
+    mut allow_negative_at: N,
+) -> Result<Vec<StockDeduction>, CoreError>
+where
+    A: FnMut(&LocationId) -> Result<i64, CoreError>,
+    N: FnMut(&LocationId) -> Result<bool, CoreError>,
+{
+    let alloc_sum: i64 = resolution.allocations.iter().map(|a| a.qty).sum();
+    if alloc_sum != requested_qty {
+        return Err(CoreError::Validation {
+            field: "resolutions",
+            message: format!(
+                "SKU {sku}: allocation sum {alloc_sum} does not match requested qty {requested_qty}"
+            ),
+        });
+    }
+
+    let mut deductions = Vec::new();
+    for alloc in &resolution.allocations {
+        if alloc.qty <= 0 {
+            continue;
+        }
+        let available = available_at(&alloc.location_id)?;
+        if available < alloc.qty && !allow_negative_at(&alloc.location_id)? {
+            return Err(CoreError::InsufficientStockAtLocation {
+                sku: sku.to_owned(),
+                location_id: alloc.location_id.clone(),
+                requested_delta: alloc.qty,
+                available_qty: available,
+            });
+        }
+        deductions.push(StockDeduction {
+            sku: sku.to_owned(),
+            location_id: alloc.location_id.clone(),
+            delta: -alloc.qty,
+        });
+    }
+    Ok(deductions)
 }
 
 #[cfg(test)]

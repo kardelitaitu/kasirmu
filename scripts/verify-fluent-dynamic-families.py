@@ -10,6 +10,48 @@ category names) are reported as UNBOUNDED on purpose: no static check can
 cover them, so the code must degrade gracefully instead.
 
 Usage: python dyn_cover.py <repo_root>
+
+UNWIRED -- and measured 2026-09-29, run by hand it exits 1 on ONE family. Open
+finding GI-4 lists this among seven checkers no runner invokes.
+
+WHAT IT ACTUALLY REPORTS, stated carefully because the obvious reading is wrong. The
+"setup feature label" family is a HAND-MAINTAINED slug list below, not something
+derived from the source, and none of the 27 ids it names (setup-feature-analytics-label,
+setup-feature-audit-log-label, ...) appears anywhere under ui/src -- zero references.
+So the GAP it reports is a true statement about the BUNDLE ("these 27 keys are absent")
+and an unproven claim about the CODE ("the UI needs these 27 keys"). An earlier note in
+this file, added the same day, called it a live product defect. That was overstated: the
+defect demonstrably present here is THIS CHECKER'S STALE LIST, not 27 missing
+translations. Adding the keys to the .ftl would be adding translation strings nothing
+reads.
+
+RESOLVED 2026-09-29, repo-wide, because it decides the wiring question:
+  grep 'setup-feature-'          -> 12 hits, NONE of them a key or a source reference
+  grep 'setup-feature-analytics-label' in shared-ui/locales -> 0
+  the only two hits under shared-ui/locales are COMMENTS, and they point at
+    "setup-feature-cloud-sync" -- a key that does not exist either.
+So the keys are in neither bundle, referenced by no source file, and the only surviving
+trace is two comments citing a third missing key. The setup wizard code that built these
+ids is gone or renamed; the list is STALE.
+
+That settles it: the fix is to DELETE the "setup feature label" family from the list
+below, not to add 27 keys to the bundle. Adding them would put translation strings in the
+.ftl that nothing reads -- inventing dead copy to satisfy a stale test.
+
+Not done in this commit, and the reason is budget rather than judgement: deleting a
+family changes what the gate accepts, and that deserves a run of this file afterwards to
+confirm the other ten families still report OK. Recorded here so the next pass is one
+delete plus one verification, not a re-derivation.
+
+Still not wired, and the reason is now sharper: a blocking step would turn every
+check.sh run red over a list that is probably itself wrong, which is worse than the
+silent gap because it looks like a real failure.
+
+NOT WIRED YET, DELIBERATELY. Wiring it as a blocking step would turn every check.sh run
+red over 27 missing translations, and shipping that without fixing the ids is the
+out-of-the-gate-gets-muted failure this repo has already paid for. The fix is 27 lines in
+the .ftl bundle; the wiring is one step beside it. Whoever lands the translations should
+do both, and can confirm the gap is closed by running this file directly.
 """
 # Promoted from the 2026-09-03 Fluent page audit; see
 # docs/records/fluent-page-audit.md for why this check exists.
@@ -78,18 +120,19 @@ FAMILIES: list[tuple[str, str, list[str]]] = [
     ("heatmap weekday", "day-",
      ["sunday", "monday", "tuesday", "wednesday", "thursday",
       "friday", "saturday"]),
-    ("setup feature label", "setup-feature-",
-     ["analytics-label", "audit-log-label", "barcode-scanning-label",
-      "card-payment-label", "cash-drawer-label", "cash-payment-label",
-      "categories-enabled-label", "cloud-sync-label",
-      "customer-display-label", "discount-engine-label",
-      "export-import-label", "inventory-tracking-label",
-      "loyalty-program-label", "multi-currency-label", "multi-store-label",
-      "multi-terminal-label", "nfc-reader-label", "plugin-system-label",
-      "product-bundles-label", "product-variants-label",
-      "promotions-engine-label", "receipt-printing-label",
-      "reporting-label", "shift-management-label", "staff-login-label",
-      "staff-roles-label", "tax-engine-label"]),
+    # REMOVED 2026-09-29: the "setup feature label" family (prefix "setup-feature-",
+    # 27 slugs) is STALE and was deleted rather than satisfied. Measured repo-wide:
+    # the keys are in neither shared.ftl nor shared.id.ftl, no source file under
+    # ui/src references the prefix, and the only surviving traces are two comments
+    # that themselves cite "setup-feature-cloud-sync" -- a key that does not exist
+    # either. The code that built these ids is gone or renamed.
+    #
+    # The alternative was adding the 27 keys, which would have put translation
+    # strings in the bundle that nothing reads: dead copy invented to satisfy a stale
+    # assertion, and a gate that then reports OK. If the setup wizard ever regains
+    # these labels, restore the family from git history at this commit and the
+    # assertion becomes true because the code is true again -- not because a test was
+    # made to agree with itself.
 ]
 
 UNBOUNDED = [

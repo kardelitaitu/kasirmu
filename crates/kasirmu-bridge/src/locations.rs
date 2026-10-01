@@ -3,15 +3,15 @@
 //!
 //! Every operation talks to the [`kasirmu_core::Store`] facade over the session's
 //! store-scoped connection, exactly as the shell did: the store DB is opened
-//! through [`BridgeCtx::resolve_scope`] and wrapped with `Store::new`
+//! through [`BridgeCtx::resolve_scope`](crate::ctx::BridgeCtx::resolve_scope) and wrapped with `Store::new`
 //! (cache-free), so location-row cache invalidation and location-scoped store
-//! opening stay on the original code path. The unscoped [`get_primary_location`]
+//! opening stay on the original code path. The unscoped [`get_primary_location`](crate::locations::get_primary_location)
 //! still reads the GLOBAL database, unchanged.
 //!
 //! Gate order is verbatim: resolve the session scope, authorize
 //! `settings:read` / `settings:edit` against the GLOBAL identity DB (ADR #4/#7),
 //! and — on the four location-named writes — the ADR #47 hierarchical
-//! location-resource gate ([`BridgeCtx::require_permission_for_session_resource`],
+//! location-resource gate ([`BridgeCtx::require_permission_for_session_resource`](crate::ctx::BridgeCtx::require_permission_for_session_resource),
 //! the ctx port of `commands/authz.rs::require_permission_for_session_resource`)
 //! before the store connection is locked. The create path keeps its C1.2
 //! subscription-quota gate (including the debug Free -> Premium shim) and the
@@ -25,13 +25,13 @@
 
 use serde::{Deserialize, Serialize};
 
-use kasirmu_core::LocationProfile;
 use kasirmu_core::availability::UsageCounts;
 use kasirmu_core::db::Store;
 use kasirmu_core::db::assignments::ScopeType;
 use kasirmu_core::entitlements::Entitlements;
 use kasirmu_core::permissions;
 use kasirmu_core::subscription::TenantSubscription;
+use kasirmu_core::{CoreError, LocationProfile};
 // The debug-only Free->Premium shim below (`#[cfg(debug_assertions)]`) is the only
 // consumer of `SubscriptionTier` in this file, so the name is imported only where
 // it is used; release would otherwise see an unused import under `-D warnings`.
@@ -48,6 +48,9 @@ use crate::error::BridgeError;
 pub struct LocationProfileDto {
     /// Unique identifier.
     pub id: String,
+    /// Base62 dynamic branch/location code (e.g. "01", "02").
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub code: Option<String>,
     /// Display name.
     pub name: String,
     /// Street address.
@@ -70,6 +73,7 @@ impl From<LocationProfile> for LocationProfileDto {
     fn from(p: LocationProfile) -> Self {
         Self {
             id: p.id,
+            code: None,
             name: p.name,
             address: p.address,
             tax_id: p.tax_id,
@@ -80,6 +84,20 @@ impl From<LocationProfile> for LocationProfileDto {
             updated_at: p.updated_at,
         }
     }
+}
+
+/// Helper to enrich a [`LocationProfileDto`] with its Base62 code.
+pub fn to_location_dto(
+    store: &Store<'_>,
+    profile: LocationProfile,
+) -> Result<LocationProfileDto, CoreError> {
+    // Propagates: a code that cannot be READ is not a location without one, and
+    // a blank `code` in a DTO is indistinguishable from a location whose code
+    // was never assigned.
+    let code = store.get_location_code(&profile.id)?;
+    let mut dto = LocationProfileDto::from(profile);
+    dto.code = code;
+    Ok(dto)
 }
 
 /// Arguments for creating a location profile.
@@ -129,7 +147,7 @@ pub async fn get_primary_location(
     let conn = ctx.lock_global().await;
     let store = Store::new(&conn);
     let profile = store.get_primary_location()?;
-    Ok(profile.map(LocationProfileDto::from))
+    Ok(profile.map(|p| to_location_dto(&store, p)).transpose()?)
 }
 
 /// List location profiles for the session's tenant (ADR #7).
@@ -152,7 +170,10 @@ pub async fn list_locations_scoped(
         .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
     let store = Store::new(&conn);
     let profiles = store.list_locations()?;
-    Ok(profiles.into_iter().map(LocationProfileDto::from).collect())
+    Ok(profiles
+        .into_iter()
+        .map(|p| to_location_dto(&store, p))
+        .collect::<Result<Vec<_>, _>>()?)
 }
 
 /// Get a location profile for the session's tenant (ADR #7).
@@ -176,7 +197,7 @@ pub async fn get_location_profile_scoped(
         .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
     let store = Store::new(&conn);
     let profile = store.get_location_profile(id)?;
-    Ok(profile.map(LocationProfileDto::from))
+    Ok(profile.map(|p| to_location_dto(&store, p)).transpose()?)
 }
 
 /// Get the primary location for the session's tenant (ADR #7).
@@ -199,7 +220,7 @@ pub async fn get_primary_location_scoped(
         .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
     let store = Store::new(&conn);
     let profile = store.get_primary_location()?;
-    Ok(profile.map(LocationProfileDto::from))
+    Ok(profile.map(|p| to_location_dto(&store, p)).transpose()?)
 }
 
 /// Create a location profile for the session's tenant (ADR #7).
@@ -232,7 +253,13 @@ pub async fn create_location_profile_scoped(
     sub.verify_signature()?;
     // Quota tier now flows from the entitlements read model (Phase B one
     // limit table), so the gate and the caps projection share one source.
-    let tier = Entitlements::from_subscription(&sub, UsageCounts::default()).tier;
+    //
+    // MSL-36: the LEDGER-aware constructor. This door grants a capability, and
+    // nothing on its path calls `validate_clock_rollback`, so the wall-clock
+    // reader would hand the paid cap to a subscription whose grace window had
+    // genuinely lapsed when the OS clock was rolled back.
+    let tier =
+        Entitlements::from_subscription_for_connection(&sub, &conn, UsageCounts::default()).tier;
     // Dev shim, and a deliberately PARKED release arm
     // (`todo-open-debt-program.md:109`). Debug upgrades bootstrap-Free to
     // Premium so a fresh install is not dead-ended by a 1-location quota the
@@ -275,7 +302,7 @@ pub async fn create_location_profile_scoped(
         updated_at: now,
     };
     let created = store.create_location_profile(&profile)?;
-    Ok(LocationProfileDto::from(created))
+    Ok(to_location_dto(&store, created)?)
 }
 
 /// Update a location profile for the session's tenant (ADR #7).
@@ -331,7 +358,7 @@ pub async fn update_location_profile_scoped(
         &args.currency,
         &args.timezone,
     )?;
-    Ok(LocationProfileDto::from(updated))
+    Ok(to_location_dto(&store, updated)?)
 }
 
 /// Set a location as primary for the session's tenant (ADR #7).
@@ -365,7 +392,7 @@ pub async fn set_primary_location_scoped(
         .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
     let store = Store::new(&conn);
     let profile = store.set_primary_location(id)?;
-    Ok(LocationProfileDto::from(profile))
+    Ok(to_location_dto(&store, profile)?)
 }
 
 /// Delete a location profile for the session's tenant (ADR #7).

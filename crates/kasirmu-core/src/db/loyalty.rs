@@ -6,7 +6,7 @@ findings: MSL-4 FIXED here — earn_points and redeem_points now maintain custom
 next: none | perf: projection UPDATE is one indexed row per mutation
 */
 
-use rusqlite::{Transaction, TransactionBehavior, params};
+use rusqlite::{OptionalExtension, Transaction, TransactionBehavior, params};
 
 use crate::error::CoreError;
 use crate::loyalty::{LoyaltyAccount, LoyaltyAccountWithDetails, LoyaltyTier, LoyaltyTransaction};
@@ -33,6 +33,29 @@ const POINTS_TO_MINOR_RATIO: i64 = 1;
 /// `refunds.rs` (CRM-06). Inputs are non-negative in practice (sale
 /// totals × positive points_per_unit); the floor-division normalization
 /// keeps the rule uniform for any sign.
+///
+/// SATURATION is deliberate, and `compute_points_extremes_do_not_overflow`
+/// (loyalty_tests.rs) pins it: an out-of-range result becomes the largest
+/// possible award rather than wrapping. Saturating is the right choice for a
+/// LADDER -- wrapping would hand a customer a top tier after an enormous
+/// purchase, which is the same wrong answer by a different route.
+///
+/// What the saturation inherits, though, is the trustworthiness of `base`.
+/// That is not always a server-computed total: it arrives as
+/// `total_minor.saturating_mul(points_per_unit)` at earn_points_with_conn
+/// (:677), and that `total_minor` is the earn basis chosen at
+/// sales_lifecycle.rs:58 as `base_total_minor.unwrap_or(total)` -- where
+/// `base_total_minor` is CLIENT-SUPPLIED (pos/checkout.rs:427) and re-derived
+/// by no server read. A client claiming a `base_total_minor` near i64::MAX
+/// therefore saturates at the multiplication AND at the narrowing.
+///
+/// So the saturation is correct and the INPUT is the open question, and
+/// bounding the input needs a real sale ceiling that is defined nowhere --
+/// so it is not guessed here. The sibling consumer of the same value behaves
+/// differently by design rather than by weakness:
+/// `accrue_lifetime_spend_in_tx` (customers.rs) is a plain SQL
+/// `total_spent_minor + ?1`, so SQLite RAISES on overflow and
+/// sales_lifecycle.rs logs it non-fatally. Points saturate, spend refuses.
 pub(crate) fn compute_points(base: i64, multiplier_millionths: i64) -> i64 {
     const DEN: i128 = 100 * 1_000_000;
     let num = i128::from(base) * i128::from(multiplier_millionths);
@@ -48,7 +71,7 @@ pub(crate) fn compute_points(base: i64, multiplier_millionths: i64) -> i64 {
     i64::try_from(q).unwrap_or(i64::MAX)
 }
 
-fn validate_tier_config(
+pub(super) fn validate_tier_config(
     name: &str,
     min_points: i64,
     points_per_unit: i64,
@@ -109,6 +132,7 @@ impl Store<'_> {
                 params![customer_id],
                 |_| Ok(true),
             )
+            .optional()?
             .unwrap_or(false);
 
         if !customer_exists {
@@ -196,9 +220,8 @@ impl Store<'_> {
         &self,
         customer_id: &str,
     ) -> Result<Option<LoyaltyAccountWithDetails>, CoreError> {
-        let account = match self.get_loyalty_account_raw(customer_id)? {
-            Some(a) => a,
-            None => return Ok(None),
+        let Some(account) = self.get_loyalty_account_raw(customer_id)? else {
+            return Ok(None);
         };
 
         let tier = if let Some(ref tid) = account.tier_id {
@@ -216,8 +239,7 @@ impl Store<'_> {
 
         let points_to_next_tier = next_tier
             .as_ref()
-            .map(|t| t.min_points - account.lifetime_points)
-            .unwrap_or(0);
+            .map_or(0, |t| t.min_points - account.lifetime_points);
 
         let mut stmt = self.conn.prepare(
             "SELECT id, account_id, sale_id, points, txn_type, description, created_at
@@ -289,8 +311,7 @@ impl Store<'_> {
 
             let points_to_next_tier = next_tier
                 .as_ref()
-                .map(|t| t.min_points - account.lifetime_points)
-                .unwrap_or(0);
+                .map_or(0, |t| t.min_points - account.lifetime_points);
 
             let mut txn_stmt = self.conn.prepare(
                 "SELECT id, account_id, sale_id, points, txn_type, description, created_at
@@ -329,7 +350,7 @@ impl Store<'_> {
     ///                               × tier.earn_multiplier_millionths
     ///                               / (100 × 1_000_000))   — exact i128
     ///
-    /// Thin transactional wrapper over [`earn_points_with_conn`]; kept for
+    /// Thin transactional wrapper over `earn_points_with_conn`; kept for
     /// the standalone IPC path. `Ok(None)` (total too small) maps to the
     /// historical `Validation` error for this public entry point.
     pub fn earn_points(
@@ -367,14 +388,11 @@ impl Store<'_> {
         points: i64,
         sale_id: &str,
     ) -> Result<(LoyaltyTransaction, i64), CoreError> {
-        let account = match self.get_loyalty_account_raw(customer_id)? {
-            Some(a) => a,
-            None => {
-                return Err(CoreError::NotFound {
-                    entity: "loyalty_account",
-                    id: customer_id.to_owned(),
-                });
-            }
+        let Some(account) = self.get_loyalty_account_raw(customer_id)? else {
+            return Err(CoreError::NotFound {
+                entity: "loyalty_account",
+                id: customer_id.to_owned(),
+            });
         };
 
         if points <= 0 {
@@ -510,13 +528,10 @@ impl Store<'_> {
         }
 
         // MSL-4 fix: mirror the redemption into the customers.loyalty_points
-        // projection inside the same transaction (see earn_points).
-        tx.execute(
-            "UPDATE customers SET loyalty_points =
-                (SELECT points FROM loyalty_accounts WHERE customer_id = ?1),
-             updated_at = ?2 WHERE id = ?1",
-            params![customer_id, now],
-        )?;
+        // projection inside the same transaction (see earn_points). Phase 5 P5.3:
+        // routed through the core-owned crm surface so the projection has one
+        // writer.
+        crate::db::Store::project_loyalty_points_in_tx(&tx, customer_id)?;
 
         tx.commit()?;
 
@@ -537,144 +552,11 @@ impl Store<'_> {
             discount_minor,
         ))
     }
+}
 
-    /// List all loyalty tiers.
-    pub fn list_tiers(&self) -> Result<Vec<LoyaltyTier>, CoreError> {
-        let mut stmt = self.conn.prepare(
-            "SELECT id, name, min_points, points_per_unit, earn_multiplier_millionths, colour, sort_order, created_at
-             FROM loyalty_tiers ORDER BY sort_order",
-        )?;
-        let rows = stmt.query_map([], |row| {
-            Ok(LoyaltyTier {
-                id: row.get("id")?,
-                name: row.get("name")?,
-                min_points: row.get("min_points")?,
-                points_per_unit: row.get("points_per_unit")?,
-                earn_multiplier_millionths: row.get("earn_multiplier_millionths")?,
-                colour: row.get("colour")?,
-                sort_order: row.get("sort_order")?,
-                created_at: row.get("created_at")?,
-            })
-        })?;
-        rows.map(|r| Ok(r?)).collect()
-    }
+pub mod tier;
 
-    fn get_loyalty_tier(&self, id: &str) -> Result<Option<LoyaltyTier>, CoreError> {
-        let mut stmt = self.conn.prepare(
-            "SELECT id, name, min_points, points_per_unit, earn_multiplier_millionths, colour, sort_order, created_at
-             FROM loyalty_tiers WHERE id = ?1",
-        )?;
-        let result = stmt.query_row(params![id], |row| {
-            Ok(LoyaltyTier {
-                id: row.get("id")?,
-                name: row.get("name")?,
-                min_points: row.get("min_points")?,
-                points_per_unit: row.get("points_per_unit")?,
-                earn_multiplier_millionths: row.get("earn_multiplier_millionths")?,
-                colour: row.get("colour")?,
-                sort_order: row.get("sort_order")?,
-                created_at: row.get("created_at")?,
-            })
-        });
-        match result {
-            Ok(t) => Ok(Some(t)),
-            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-            Err(e) => Err(e.into()),
-        }
-    }
-
-    /// Update a loyalty tier.
-    pub fn update_tier(
-        &self,
-        id: &str,
-        name: &str,
-        min_points: i64,
-        points_per_unit: i64,
-        earn_multiplier_millionths: i64,
-        colour: &str,
-    ) -> Result<LoyaltyTier, CoreError> {
-        let tier_exists: bool = self
-            .conn
-            .query_row(
-                "SELECT 1 FROM loyalty_tiers WHERE id = ?1",
-                params![id],
-                |_| Ok(true),
-            )
-            .unwrap_or(false);
-        if !tier_exists {
-            return Err(CoreError::NotFound {
-                entity: "loyalty_tier",
-                id: id.to_owned(),
-            });
-        }
-
-        validate_tier_config(
-            name,
-            min_points,
-            points_per_unit,
-            earn_multiplier_millionths,
-            colour,
-        )?;
-
-        let duplicate_threshold: bool = self.conn.query_row(
-            "SELECT EXISTS(
-                    SELECT 1 FROM loyalty_tiers
-                    WHERE id <> ?1 AND min_points = ?2
-                )",
-            params![id, min_points],
-            |row| row.get(0),
-        )?;
-        if duplicate_threshold {
-            return Err(CoreError::Validation {
-                field: "min_points",
-                message: "tier thresholds must be unique".into(),
-            });
-        }
-
-        if min_points > 0 {
-            let has_zero_threshold: bool = self.conn.query_row(
-                "SELECT EXISTS(
-                        SELECT 1 FROM loyalty_tiers
-                        WHERE id <> ?1 AND min_points = 0
-                    )",
-                params![id],
-                |row| row.get(0),
-            )?;
-            if !has_zero_threshold {
-                return Err(CoreError::Validation {
-                    field: "min_points",
-                    message: "at least one tier must start at zero points".into(),
-                });
-            }
-        }
-
-        let rows = self.conn.execute(
-            "UPDATE loyalty_tiers SET name = ?1, min_points = ?2, points_per_unit = ?3,
-             earn_multiplier_millionths = ?4, colour = ?5 WHERE id = ?6",
-            params![
-                name,
-                min_points,
-                points_per_unit,
-                earn_multiplier_millionths,
-                colour,
-                id
-            ],
-        )?;
-
-        if rows == 0 {
-            return Err(CoreError::NotFound {
-                entity: "loyalty_tier",
-                id: id.to_owned(),
-            });
-        }
-
-        self.get_loyalty_tier(id)?
-            .ok_or_else(|| CoreError::NotFound {
-                entity: "loyalty_tier",
-                id: id.to_owned(),
-            })
-    }
-
+impl Store<'_> {
     /// Convert points to monetary value (minor units).
     pub fn get_points_value(&self, points: i64) -> Result<i64, CoreError> {
         if points < 0 {
@@ -752,6 +634,7 @@ pub(crate) fn earn_points_with_conn(
             params![customer_id],
             |_| Ok(true),
         )
+        .optional()?
         .unwrap_or(false);
     if !customer_exists {
         return Err(CoreError::NotFound {
@@ -795,18 +678,25 @@ pub(crate) fn earn_points_with_conn(
     // [`compute_points`] — the multiplier is fixed-point millionths, so
     // no float ever touches points. (The old f64 path mis-rounded every
     // exact .5 boundary.)
-    let tier = account
-        .tier_id
-        .as_deref()
-        .and_then(|tid| {
-            conn.query_row(
+    // Resolve the rate from the tier the account carries.
+    //
+    // A MISSING tier (or a NULL `tier_id`) is the documented fallback: the
+    // default rate, which is what the bootstrap account's `tier-bronze` row
+    // carries anyway. A DB FAILURE is not a fallback -- under the old `.ok()`
+    // it collapsed to `None` and the award went out at a hardcoded default
+    // rate the operator never configured, silently, on a ladder whose whole
+    // purpose is that the tier decides the rate.
+    let tier = match account.tier_id.as_deref() {
+        Some(tid) => conn
+            .query_row(
                 "SELECT points_per_unit, earn_multiplier_millionths FROM loyalty_tiers WHERE id = ?1",
                 params![tid],
                 |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)),
             )
-            .ok()
-        })
-        .unwrap_or((10, 1_000_000));
+            .optional()?
+            .unwrap_or((10, 1_000_000)),
+        None => (10, 1_000_000),
+    };
     let base = total_minor.saturating_mul(tier.0);
     let points = compute_points(base, tier.1);
     if points <= 0 {
@@ -846,13 +736,10 @@ pub(crate) fn earn_points_with_conn(
     )?;
 
     // MSL-4: maintain `customers.loyalty_points` as a projection of the
-    // authoritative ledger balance, inside the same transaction.
-    conn.execute(
-        "UPDATE customers SET loyalty_points =
-            (SELECT points FROM loyalty_accounts WHERE customer_id = ?1),
-         updated_at = ?2 WHERE id = ?1",
-        params![customer_id, now],
-    )?;
+    // authoritative ledger balance, inside the same transaction. Phase 5 P5.3:
+    // the write goes through the core-owned crm surface (`db/customers.rs`),
+    // which is the only place core touches a `customers` column.
+    crate::db::Store::project_loyalty_points_in_tx(conn, customer_id)?;
 
     Ok(Some(LoyaltyTransaction {
         id: txn_id,
@@ -880,7 +767,7 @@ pub(crate) fn earn_points_with_conn(
 /// (`loyalty-reversal-<refund_id>`) turns a retry into a no-op.
 ///
 /// Runs on the CALLER's connection/transaction — like
-/// [`earn_points_with_conn`] this must commit or roll back atomically
+/// `earn_points_with_conn` this must commit or roll back atomically
 /// with the refund row itself.
 ///
 /// C18 P3 verdict: NOT wrapped, and deliberately so. It is a free function on
@@ -915,7 +802,7 @@ pub fn reverse_loyalty_on_refund(
             params![sale_id],
             |row| Ok((row.get(0)?, row.get(1)?)),
         )
-        .ok();
+        .optional()?;
     let Some((account_id, earned_points)) = earn else {
         // Legacy sale predating LOY-06 awarding, or a sale that earned nothing.
         return Ok(None);
@@ -938,7 +825,18 @@ pub fn reverse_loyalty_on_refund(
     let proportional = if sale_total_minor > 0 && refund_total_minor > 0 {
         let num = i128::from(earned_points) * i128::from(refund_total_minor);
         let den = i128::from(sale_total_minor);
-        ((num * 2 + den) / (den * 2)) as i64
+        // `try_from` rather than `as i64`: the i128 intermediate is wider than
+        // the result ON PURPOSE (the comment above says why money never touches
+        // a float), so the narrowing back is exactly the step that could lose
+        // data. The quotient is bounded by `earned_points` in practice, but
+        // making the conversion checked means an out-of-range value surfaces as
+        // an error rather than as a silently truncated points grant.
+        i64::try_from((num * 2 + den) / (den * 2)).map_err(|_| CoreError::Validation {
+            field: "proportional_points",
+            message: format!(
+                "reversal of {earned_points} points on sale {sale_total_minor} minor units does not fit i64"
+            ),
+        })?
     } else {
         0
     };
@@ -978,13 +876,9 @@ pub fn reverse_loyalty_on_refund(
         params![deduct, now, account_id],
     )?;
 
-    // MSL-4: keep the customers.loyalty_points projection in step.
-    conn.execute(
-        "UPDATE customers SET loyalty_points =
-            (SELECT points FROM loyalty_accounts WHERE id = ?1),
-         updated_at = ?2 WHERE id = (SELECT customer_id FROM loyalty_accounts WHERE id = ?1)",
-        params![account_id, now],
-    )?;
+    // MSL-4: keep the customers.loyalty_points projection in step. Phase 5 P5.3:
+    // through the core-owned crm surface (the account-keyed shape).
+    crate::db::Store::project_loyalty_points_for_account_in_tx(conn, &account_id)?;
 
     Ok(Some(LoyaltyTransaction {
         id: txn_id,

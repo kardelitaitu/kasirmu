@@ -1,8 +1,8 @@
 //! Barcode — a validated product barcode string.
 /*
-last audited DD-MM-YY by DSH-Agent
+last audited (date unknown) by DSH-Agent
 crate: foundation | status: SAFE | lint: CLEAN
-findings: clean validated newtype — format-agnostic non-empty, serde validated. COR-33 FIXED DD-MM-YY — inline tests moved to sibling barcode_tests.rs.
+findings: clean validated newtype — format-agnostic non-empty, serde validated. COR-33 FIXED (date unknown) — inline tests moved to sibling barcode_tests.rs.
 next: none | perf: N/A
 */
 //!

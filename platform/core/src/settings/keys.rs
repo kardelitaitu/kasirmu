@@ -1,6 +1,6 @@
 //! Well-known settings keys.
 
-/// Store display name. Default: `"OZ-POS Store"`.
+/// Store display name. Default: `"kasir.mu Store"`.
 pub const STORE_NAME: &str = "store.name";
 /// Store street address (printed on receipts).
 pub const STORE_ADDRESS: &str = "store.address";
@@ -21,6 +21,20 @@ pub const SETUP_COMPLETE: &str = "store.setup_complete";
 /// Whether to show the Setup Wizard. `"true"` by default (absent).
 /// Set to `"false"` when the user completes or skips the wizard.
 pub const SHOW_SETUP_WIZARD: &str = "store.show_setup_wizard";
+
+/// The application-owned marker the audit-retention sweep sets while it deletes
+/// expired rows (MSL-17).
+///
+/// The audit-log immutability trigger (`audit_log_immutable_delete`, migration
+/// 20260920) raises UNLESS this row exists, so it is a SECURITY-relevant key:
+/// whoever can write it can delete the audit trail. It is therefore refused by
+/// both untrusted ingest lanes (`is_manager_owned_key`), while `TrustedLocal`
+/// keeps admitting it because the sweep writes it on the local connection.
+///
+/// `crates/kasirmu-core/src/db/audit.rs` carries the same string as
+/// `Store::SWEEP_MARKER_KEY` and cannot import this constant (that crate depends
+/// on this one, so the reverse edge would be a cycle).
+pub const AUDIT_SWEEP_MARKER_KEY: &str = "audit.retention_sweep_active";
 
 // ── Receipt display settings ───────────────────────────────────
 /// Show currency symbol prefix on amounts. `"1"` or `"0"`. Default `"0"`.
@@ -332,10 +346,11 @@ pub const NON_EXPORTABLE_DEVICE_KEYS: &[&str] =
 /// daemon_tick.rs:292). Nothing signs or MACs an item (queue.rs:10-12: the
 /// sender is not an authority), so any peer in the tenant, or the server
 /// operator, can name these six today. The sharpest is not spelled like a
-/// secret at all: crates/kasirmu-core/src/sync_auth.rs:72 sends Authorization:
-/// Bearer <sync api key> to whatever `sync_server_url` currently holds, so
-/// planting that one name exfiltrates a credential without ever naming a
-/// credential key. The rest switch or repoint the transport tenant-wide.
+/// secret at all: crates/kasirmu-core/src/sync_auth.rs:72 sends
+/// `Authorization: Bearer <sync api key>` to whatever `sync_server_url`
+/// currently holds, so planting that one name exfiltrates a credential
+/// without ever naming a credential key. The rest switch or repoint the
+/// transport tenant-wide.
 ///
 /// WHY A SEPARATE LIST, the part a reader must not miss. The two lists above
 /// are shared by BOTH untrusted directions and they stay shared. This one is

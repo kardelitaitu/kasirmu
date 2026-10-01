@@ -95,7 +95,7 @@ impl tracing::Subscriber for Capture {
                 self.0.push((f.name().to_string(), val.to_string()));
             }
             fn record_debug(&mut self, f: &tracing::field::Field, val: &dyn std::fmt::Debug) {
-                self.0.push((f.name().to_string(), format!("{:?}", val)));
+                self.0.push((f.name().to_string(), format!("{val:?}")));
             }
         }
         let mut v = V(Vec::new());
@@ -152,17 +152,14 @@ fn assert_event_shape(ev: &Fields, expected_operation: &str, dir: &std::path::Pa
     for (k, v) in &ev.0 {
         assert!(
             !PAYLOAD_NAMES.contains(&k.as_str()),
-            "field {} is payload-shaped; this event must be pastable into a ticket, so it carries none",
-            k
+            "field {k} is payload-shaped; this event must be pastable into a ticket, so it carries none"
         );
         assert!(
             !v.contains("store.db")
                 && !v.contains(".db")
                 && !dir.to_string_lossy().is_empty()
                 && !v.contains(&dir.to_string_lossy().to_string()),
-            "field {} carries a filesystem path or backup file name: {}",
-            k,
-            v
+            "field {k} carries a filesystem path or backup file name: {v}"
         );
     }
 }
@@ -568,6 +565,59 @@ fn catalog_count(conn: &rusqlite::Connection) -> i64 {
         .unwrap()
 }
 
+/// The import counters must not claim rows the database refused.
+///
+/// Every per-row write in `import_data` used to be `let _ = tx.execute(...)`
+/// for categories, customers and users — the error was discarded and the
+/// counter still incremented, so the result reported records that were never
+/// written. The products arm already propagated with `?`; this pins the other
+/// three so the asymmetry cannot come back.
+///
+/// The check is a SOURCE pin rather than a behavioural one because forcing a
+/// mid-batch write failure needs a constraint the schema does not expose
+/// without dropping a table, and the defect is exactly the discarded result.
+#[test]
+fn import_data_propagates_every_row_write() {
+    let src = include_str!("data.rs");
+    // WHITESPACE-NORMALISED, for the reason the sibling `pos_tests.rs` scan
+    // records: a line-based scan is evaded by FORMATTING ALONE. This one tested
+    // `t.starts_with("let _ = tx.execute(")` line by line, so writing the
+    // discarded result as
+    //
+    //     let _ =
+    //     tx.execute(
+    //
+    // restored BRIDGE-1 in full — every row-write error discarded while the
+    // counter still incremented — and this test PASSED. Verified by doing exactly
+    // that. Collapsing whitespace first makes the scan independent of wrapping.
+    let flat: String = src.split_whitespace().collect::<Vec<_>>().join(" ");
+
+    // A FLOOR so it cannot pass by finding nothing: the nine import arms each
+    // write inside this transaction, so a healthy tree must show several calls.
+    // Without it, a rename that stops the pattern matching reads as a clean
+    // sweep — the "decoration wearing a drift pin" failure mode.
+    let call_sites = flat.matches("tx.execute(").count();
+    assert!(
+        call_sites >= 5,
+        "expected several tx.execute() calls in data.rs, found {call_sites} - the scan is reading a file that no longer spells them, so this test would pass vacuously"
+    );
+
+    let mut offenders: Vec<&str> = Vec::new();
+    for needle in [
+        "let _ = tx.execute(",
+        "let _ = tx.execute (",
+        "let _ =tx.execute(",
+    ] {
+        if flat.contains(needle) {
+            offenders.push(needle);
+        }
+    }
+    assert!(
+        offenders.is_empty(),
+        "a discarded tx.execute() in import_data reports rows the database refused as imported; propagate with '?' instead: {offenders:?}"
+    );
+}
+
 #[test]
 fn import_gate_counts_only_unseen_skus() {
     // Batch arithmetic: existing-SKU rows are updates/merges, not new
@@ -795,6 +845,84 @@ async fn settings_editor() -> (crate::testing::TestBridge, String) {
     let bridge = TestBridge::new();
     let token = bridge.token_granting(permissions::SETTINGS_EDIT).await;
     (bridge, token)
+}
+
+/// C8 / S6: the pre-update backup becomes a restore the boot path can consume.
+///
+/// Review 14.1 called the updater's safety net decorative: it takes a backup and
+/// records the path in a setting NOBODY reads, so nothing would ever offer that
+/// backup for restore. `queue_pre_update_restore_candidate` writes the SAME
+/// request file `restore_prepare` writes, so the boot consumer picks it up.
+///
+/// This asserts the two halves that make it real: a request file appears, and it
+/// names the backup in the field the boot reader requires.
+#[tokio::test]
+async fn queue_pre_update_restore_candidate_writes_a_consumable_request() {
+    let scratch = RestoreScratch::new("queue-pre-update");
+    let live = scratch.live();
+    scratch.write_db(&live, "Kopi Senja");
+    // The pre-update backup the updater would have taken.
+    scratch.write_db(&scratch.generation0(), "Kopi Senja");
+
+    let result = super::queue_pre_update_restore_candidate(&live)
+        .await
+        .expect("a valid backup must be queueable");
+
+    // The request file the boot consumer looks for.
+    let request_path = std::path::Path::new(&result.request_path);
+    assert!(
+        request_path.is_file(),
+        "the boot path only acts on a request file: {}",
+        request_path.display()
+    );
+    assert_eq!(
+        request_path.file_name().and_then(|n| n.to_str()),
+        Some("store.db.restore-request.json"),
+        "the suffix must be the one the shell's reader derives"
+    );
+
+    // The field the shell deserializes (`recovery.rs` `RestoreRequest`).
+    let raw = std::fs::read_to_string(request_path).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&raw).unwrap();
+    assert_eq!(
+        parsed["candidate_path"].as_str(),
+        Some(result.candidate_path.as_str()),
+        "the request must name the backup as the candidate"
+    );
+    assert_eq!(
+        parsed["confirmed_store_name"].as_str(),
+        Some("Kopi Senja"),
+        "the store name is read from the candidate, as restore_prepare does"
+    );
+}
+
+/// The refusal half: a candidate the boot path would reject must leave NO request.
+///
+/// A failed update that queued an unrestorable restore would refuse at the next boot
+/// and look to the operator like a broken recovery rather than a bad backup.
+#[tokio::test]
+async fn queue_pre_update_restore_candidate_writes_nothing_for_a_corrupt_backup() {
+    let scratch = RestoreScratch::new("queue-corrupt");
+    let live = scratch.live();
+    scratch.write_db(&live, "Kopi Senja");
+    // A "backup" that is present and is NOT a database.
+    std::fs::write(scratch.generation0(), b"not a database").unwrap();
+
+    let err = super::queue_pre_update_restore_candidate(&live)
+        .await
+        .expect_err("a corrupt candidate must be refused");
+    let message = err.to_string();
+    assert!(
+        !message.is_empty(),
+        "the refusal must name a cause, never fail silently"
+    );
+
+    let mut request = live.clone();
+    request.set_file_name("store.db.restore-request.json");
+    assert!(
+        !request.exists(),
+        "a refused candidate must leave no request for the next boot"
+    );
 }
 
 #[tokio::test]

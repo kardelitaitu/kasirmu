@@ -5,22 +5,22 @@ findings: clean — clap definitions / error taxonomy / deny(unsafe_code) crate 
 next: none | perf: N/A
 */
 #![allow(missing_docs)]
-//! `oz` — OZ-POS command-line tool.
+//! `kasir` — kasir.mu command-line tool.
 //!
 //! Subcommands:
-//! - `oz migrate` — apply pending SQL migrations
-//! - `oz init-db` — seed the database with default settings + feature preset
-//! - `oz product list` — list all products
-//! - `oz product get <sku>` — show a product by SKU
-//! - `oz product create <sku> <name> <price>` — create a new product
-//! - `oz product update <sku> <name> <price>` — update an existing product
-//! - `oz product delete <sku>` — delete a product
-//! - `oz backup` — snapshot the local SQLite store (scaffold)
-//! - `oz export` — write a CSV report (scaffold)
+//! - `kasir migrate` — apply pending SQL migrations
+//! - `kasir init-db` — seed the database with default settings + feature preset
+//! - `kasir product list` — list all products
+//! - `kasir product get <sku>` — show a product by SKU
+//! - `kasir product create <sku> <name> <price>` — create a new product
+//! - `kasir product update <sku> <name> <price>` — update an existing product
+//! - `kasir product delete <sku>` — delete a product
+//! - `kasir backup` — snapshot the local SQLite store (scaffold)
+//! - `kasir export` — write a CSV report (scaffold)
 
 use clap::{Args, Parser, Subcommand};
 
-/// OZ-POS command-line tool.
+/// kasir.mu command-line tool.
 #[derive(Debug, Parser)]
 #[command(
     name = "kasir",
@@ -28,8 +28,8 @@ use clap::{Args, Parser, Subcommand};
     about = "kasir.mu maintenance and migration CLI"
 )]
 pub struct Cli {
-    /// Path to the SQLite database (default: ./kasir.db).
-    #[arg(short, long, global = true, default_value = "kasir.db")]
+    /// Path to the SQLite database (default: ./var/kasir.db).
+    #[arg(short, long, global = true, default_value = "var/kasir.db")]
     pub db: String,
 
     #[command(subcommand)]
@@ -103,6 +103,9 @@ pub enum Command {
     /// Report (read-only) where stock_summary disagrees with the stock_movements ledger.
     #[command(long_about = crate::commands::stock_variance::LONG_HELP)]
     StockVariance(StockVarianceArgs),
+    /// Rotate the per-install at-rest key and re-encrypt every row sealed under it.
+    #[command(long_about = crate::commands::rekey::LONG_HELP.as_str())]
+    Rekey(RekeyArgs),
 }
 
 #[derive(Debug, Args)]
@@ -137,6 +140,14 @@ pub struct StockVarianceArgs {
     /// Maximum rows to return. The report's hard ceiling is 1000.
     #[arg(long, default_value = "100")]
     pub limit: i64,
+}
+
+#[derive(Debug, Args)]
+pub struct RekeyArgs {
+    /// Perform the rotation. Without this flag the command only reports what is
+    /// in scope and touches neither the keychain nor a row.
+    #[arg(long)]
+    pub confirm: bool,
 }
 
 #[derive(Debug, Args)]

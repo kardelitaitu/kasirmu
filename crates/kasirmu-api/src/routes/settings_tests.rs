@@ -392,7 +392,7 @@ async fn put_supplying_smtp_password_still_overwrites_it() {
     let state = state_with(None);
     put_raw(&state, &format!(r#"{{"smtp_config":{}}}"#, smtp_json())).await;
     let rotated = smtp_blob("smtp.example.com", 587, Some("u"), Some("rotated"));
-    let body = format!(r#"{{"smtp_config":{}}}"#, rotated);
+    let body = format!(r#"{{"smtp_config":{rotated}}}"#);
     let resp = put_raw(&state, &body).await;
     assert_eq!(resp.status(), StatusCode::OK);
     let json = body_json(resp).await;
@@ -412,7 +412,7 @@ async fn put_empty_smtp_password_clears_it() {
     let state = state_with(None);
     put_raw(&state, &format!(r#"{{"smtp_config":{}}}"#, smtp_json())).await;
     let clearing = smtp_blob("smtp.example.com", 587, Some("u"), Some(""));
-    let resp = put_raw(&state, &format!(r#"{{"smtp_config":{}}}"#, clearing)).await;
+    let resp = put_raw(&state, &format!(r#"{{"smtp_config":{clearing}}}"#)).await;
     assert_eq!(resp.status(), StatusCode::OK);
     let raw = raw_smtp_row(&state, "smtp_config:default").await.unwrap();
     assert_eq!(
@@ -628,11 +628,15 @@ async fn test_pool() -> Option<deadpool_postgres::Pool> {
 /// PG round-trip: PUT writes `{base}:{tenant}` keys that the cloud
 /// report loop's scoped reads resolve, per tenant, with the SMTP
 /// password encrypted at rest.
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 async fn pg_integration_settings_provision_per_tenant() {
     let Some(pool) = test_pool().await else {
         eprintln!("PG settings integration test skipped: no Postgres");
+        #[cfg(not(feature = "pg-tests"))]
         return;
+        #[cfg(feature = "pg-tests")]
+        panic!("PG test enabled but the resource is unreachable - see the skip message above");
     };
     let ns = format!("pg-settings-test-{}", uuid::Uuid::now_v7());
     // Clean any leftovers from a crashed previous run (namespaced).

@@ -4,8 +4,9 @@ area: subscription
 title: ADR #5: Subscription Tier & Entitlement Architecture
 status: Superseded (2026-07-10) — tier lineup & quotas superseded by `subscription-tiers.md` (FINAL, approved 2026-08-17)
 ---
-<!-- Audit stamp: 2026-07-22 · Hermes-Agent · status: ACCURATE (0 findings) · tenant_subscription migration (061) verified; SubscriptionTier with max_stores()/max_pos_instances()/allows_workspace_type() present in crates/oz-core/src/subscription.rs (lines 113/122/185); InstanceStatus enum (Active/QuotaSuspended/Archived) at subscription.rs:33; crates/oz-core/src/license_verification.rs embeds ../oz-license.key.pub (file exists at crates/oz-core/oz-license.key.pub — distinct from root oz-pos-updater.key.pub named by ADR #9; both real); crates/oz-core/src/db/workspaces.rs + platform/core StoreDatabaseManager present; grace/clock-rollback logic present · Status "Implemented (2026-07-10)" consistent -->
+<!-- Superseded audit marker (2026-07-22, body kept verbatim) · Hermes-Agent · status: ACCURATE (0 findings) · tenant_subscription migration (061) verified; SubscriptionTier with max_stores()/max_pos_instances()/allows_workspace_type() present in crates/oz-core/src/subscription.rs (lines 113/122/185); InstanceStatus enum (Active/QuotaSuspended/Archived) at subscription.rs:33; crates/oz-core/src/license_verification.rs embeds ../oz-license.key.pub (file exists at crates/oz-core/oz-license.key.pub — distinct from root oz-pos-updater.key.pub named by ADR #9; both real); crates/oz-core/src/db/workspaces.rs + platform/core StoreDatabaseManager present; grace/clock-rollback logic present · Status "Implemented (2026-07-10)" consistent -->
 
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · ACCURATE, and correctly filed as superseded. The front matter is explicit: Superseded (2026-07-10), with the tier lineup and quotas superseded by `subscription-tiers.md` (FINAL, approved 2026-08-17). The supersession target exists and is substantial — `docs/guides/user/subscription-tiers.md` is 895 lines and is itself later in this audit queue, so the chain will be verifiable end to end when it is reached. What makes this filing correct rather than lazy is that the supersession is stated in the front matter and again near the title, so a reader arriving from the ADR index learns the document is historical before reading a word of its body. That is the outcome the archiving convention is for. · The prior stamp on this file is retained below, re-labelled rather than superseded. · Left entirely as written. A superseded decision record is not a document with drift — it is a document that did its job and was replaced, and rewriting its tier lineup to match a document that did not exist when it was written would be exactly the wrong operation. The one thing a reader must not do is take its quotas as current, and the front matter prevents that. · Status checker reports no drift for this row, which is worth noting because the index and the front matter agree that this ADR is superseded — a consistency the checker verifies across all 55 rows. -->
 # ADR #5: Subscription Tier & Entitlement Architecture
 
 **Status:** Superseded (2026-07-10) — tier lineup & quotas superseded by `subscription-tiers.md` (FINAL, approved 2026-08-17)
@@ -216,7 +217,4 @@ pub enum InstanceStatus {
 - `platform/core/` — `StoreDatabaseManager` (cross-DB coordination)
 - `apps/cloud-server/` (subscription signing service)
 
-> last audited 09-08-26 by buffy
-> audit: Phase 1 Core Architecture & API Docs Audit; Phase 4 ADR Deep Audit
-> status: ACCURATE (0 findings) · verified accurate: cargo check passed, no structural orphans, no stale version headers
-> status: ACCURATE (verified against actual codebase)
+> last audited 29-09-26 by docs-auditor

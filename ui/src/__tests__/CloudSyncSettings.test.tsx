@@ -142,7 +142,7 @@ const { invokeMock, defaultImpl, failCommands, lastCallArgs } = vi.hoisted(() =>
       return Promise.resolve({ primary_colour: '#4f46e5', logo_path: null, store_name: '' });
     }
     if (cmd === 'version_scoped') {
-      return Promise.resolve({ name: 'oz-pos', version: '0.0.9', rustVersion: '1.80', target: 'x86_64' });
+      return Promise.resolve({ name: 'kasirmu-app', version: '0.0.9', rustVersion: '1.80', target: 'x86_64' });
     }
     // Support unscoped legacy commands for backward compat
     if (cmd === 'get_store_settings') {
@@ -168,7 +168,7 @@ const { invokeMock, defaultImpl, failCommands, lastCallArgs } = vi.hoisted(() =>
       return Promise.resolve({ primary_colour: '#4f46e5', logo_path: null, store_name: '' });
     }
     if (cmd === 'version') {
-      return Promise.resolve({ name: 'oz-pos', version: '0.0.9', rustVersion: '1.80', target: 'x86_64' });
+      return Promise.resolve({ name: 'kasirmu-app', version: '0.0.9', rustVersion: '1.80', target: 'x86_64' });
     }
     if (
       cmd === 'set_receipt_settings' || cmd === 'set_store_settings' ||

@@ -2,7 +2,10 @@
 last audited 2026-09-02 by Architecture Team
 crate: cloud-server | status: PROPOSED | lint: CLEAN
 findings: D4 — Redis/Valkey cross-instance snapshot cache + shared rate limiter
-next: integration with in-process fallback on Redis error
+next: none
+DONE 2026-10-04: both consumers handle a Redis error by falling back to
+in-process - sync_api.rs:584 (snapshot cache, Err -> in-process path) and
+the rate limiter (rate_limit.rs:183 holds Option<RedisBackend>).
 */
 
 //! Optional Redis backend for the cloud sync server (ADR #43 D4).
@@ -20,8 +23,8 @@ next: integration with in-process fallback on Redis error
 //!   TTL so they expire together.  On a cache hit the handler serves the
 //!   bytes directly; on a miss it recomputes and stores.
 //! - **Rate limiter** — a Lua script (`TOKEN_BUCKET_LUA`) implements a
-//!   token bucket identical in semantics to the in-process
-//!   [`TokenBucket`](crate::rate_limit::TokenBucket).  Redis’s single-
+//!   token bucket identical in semantics to the in-process `TokenBucket`
+//!   (`rate_limit.rs`, private).  Redis’s single-
 //!   threaded execution makes the Lua script atomic across all instances.
 //! - **Fallback** — every public method (`snapshot_get`, `snapshot_set`,
 //!   `check_rate_limit`) returns `Err` on Redis failure; the caller
@@ -36,11 +39,11 @@ const RATE_LIMIT_KEY_PREFIX: &str = "oz:rate_limit";
 
 /// Lua token-bucket script, loaded once and executed via `EVALSHA`.
 ///
-/// KEYS[1] = `oz:rate_limit:{key}` (Redis Hash: `tokens`, `last_refill`)
-/// ARGV[1] = capacity (u32)
-/// ARGV[2] = refill_per_sec (f64)
-/// ARGV[3] = now (unix seconds as f64)
-/// ARGV[4] = window_seconds (u32 — TTL for the key)
+/// `KEYS[1]` = `oz:rate_limit:{key}` (Redis Hash: `tokens`, `last_refill`)
+/// `ARGV[1]` = capacity (u32)
+/// `ARGV[2]` = refill_per_sec (f64)
+/// `ARGV[3]` = now (unix seconds as f64)
+/// `ARGV[4]` = window_seconds (u32 — TTL for the key)
 ///
 /// Returns:
 ///   `{1, 0}` — allowed (consumed one token)

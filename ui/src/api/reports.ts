@@ -507,6 +507,14 @@ export interface MenuEngineeringRow {
   product_id: string;
   sku: string;
   name: string;
+  /**
+   * ISO-4217 code the money fields below are denominated in (C22).
+   *
+   * Rows are grouped per (product, currency), so the same SKU can appear more
+   * than once in one report. Format with THIS code, never the workspace
+   * default — that is what previously labelled a USD row as Rp.
+   */
+  currency: string;
   total_volume: number;
   unit_price_minor: number;
   unit_cost_minor: number;

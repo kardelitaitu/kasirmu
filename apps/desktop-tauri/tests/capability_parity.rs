@@ -57,9 +57,9 @@ fn desktop_gen_schema_matches_capabilities() {
     let cap_path = manifest_dir().join("capabilities/default.json");
 
     let gen_json = fs::read_to_string(&gen_path)
-        .unwrap_or_else(|e| panic!("failed to read gen schema at {:?}: {}", gen_path, e));
+        .unwrap_or_else(|e| panic!("failed to read gen schema at {gen_path:?}: {e}"));
     let cap_json = fs::read_to_string(&cap_path)
-        .unwrap_or_else(|e| panic!("failed to read capabilities at {:?}: {}", cap_path, e));
+        .unwrap_or_else(|e| panic!("failed to read capabilities at {cap_path:?}: {e}"));
 
     let gen_perms = extract_permissions(&gen_json);
     let cap_perms = extract_permissions_from_file(&cap_json);
@@ -69,14 +69,12 @@ fn desktop_gen_schema_matches_capabilities() {
 
     assert!(
         in_gen_not_cap.is_empty(),
-        "Desktop gen/schemas/capabilities.json has permissions not in capabilities/default.json: {:?}",
-        in_gen_not_cap
+        "Desktop gen/schemas/capabilities.json has permissions not in capabilities/default.json: {in_gen_not_cap:?}"
     );
     assert!(
         in_cap_not_gen.is_empty(),
-        "Desktop capabilities/default.json has permissions not in gen/schemas/capabilities.json: {:?}\n\
-         Run `cargo tauri build` or regenerate schemas to fix.",
-        in_cap_not_gen
+        "Desktop capabilities/default.json has permissions not in gen/schemas/capabilities.json: {in_cap_not_gen:?}\n\
+         Run `cargo tauri build` or regenerate schemas to fix."
     );
 }
 
@@ -96,9 +94,9 @@ fn tablet_gen_schema_matches_capabilities() {
         .join("mobile-tauri/capabilities/mobile.json");
 
     let gen_json = fs::read_to_string(&gen_path)
-        .unwrap_or_else(|e| panic!("failed to read gen schema at {:?}: {}", gen_path, e));
+        .unwrap_or_else(|e| panic!("failed to read gen schema at {gen_path:?}: {e}"));
     let default_json = fs::read_to_string(&cap_default)
-        .unwrap_or_else(|e| panic!("failed to read capabilities at {:?}: {}", cap_default, e));
+        .unwrap_or_else(|e| panic!("failed to read capabilities at {cap_default:?}: {e}"));
     let mobile_json = if cap_mobile.exists() {
         fs::read_to_string(&cap_mobile).unwrap_or_default()
     } else {
@@ -119,14 +117,12 @@ fn tablet_gen_schema_matches_capabilities() {
 
     assert!(
         in_gen_not_cap.is_empty(),
-        "Tablet gen/schemas/capabilities.json has permissions not in any capabilities/*.json: {:?}",
-        in_gen_not_cap
+        "Tablet gen/schemas/capabilities.json has permissions not in any capabilities/*.json: {in_gen_not_cap:?}"
     );
     assert!(
         in_cap_not_gen.is_empty(),
-        "Tablet capabilities/*.json has permissions not in gen/schemas/capabilities.json: {:?}\n\
-         Run `cargo tauri build` or regenerate schemas to fix.",
-        in_cap_not_gen
+        "Tablet capabilities/*.json has permissions not in gen/schemas/capabilities.json: {in_cap_not_gen:?}\n\
+         Run `cargo tauri build` or regenerate schemas to fix."
     );
 }
 
@@ -152,13 +148,11 @@ fn desktop_and_tablet_share_core_permissions() {
     for perm in &required_core {
         assert!(
             desktop_perms.contains(*perm),
-            "Desktop missing required core permission: {}",
-            perm
+            "Desktop missing required core permission: {perm}"
         );
         assert!(
             tablet_perms.contains(*perm),
-            "Tablet missing required core permission: {}",
-            perm
+            "Tablet missing required core permission: {perm}"
         );
     }
 }

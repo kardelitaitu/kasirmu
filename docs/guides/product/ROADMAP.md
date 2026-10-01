@@ -1,5 +1,6 @@
-<!-- Audit stamp: 2026-07-25 · Hermes-Agent · status: ACCURATE (0 findings) · resolved F1: styles/tokens.css -> ui/src/theme/ (no ui/src/styles/) · resolved F2: shared-ui/locales/en-US.ftl -> per-feature English bundles (*.ftl) · resolved F3: ui/src/i18n/id.ftl -> per-feature Bahasa Indonesia bundles (*.id.ftl) · resolved F4: "25 translation files" -> 24 per-feature bundles × 2 locales = 48 .ftl files · resolved F5: "48 Fluent bundles" -> 24 per-feature bundles, each with en + id variants · verified accurate: kasirmu-reporting implemented (Phase 5 daily/weekly/monthly engines present in src/), kasirmu-payment Square+QRIS/Midtrans (square.rs+qris.rs exist), redis optional dep present (line 375), i18n-gap self-note (line 486: EmailReportSettings.tsx + SettingsPage.tsx still hardcoded English) matches the settings audit finding · re-audited 2026-08-08 by docs-auditor: 3 stale checkboxes flipped (scheduled email, Android APK CI, CRDT sync), counts refreshed (39 Feature variants, 265 UI test files, 5,800+ Rust tests), rlua->mlua, i18n note narrowed to EmailReportSettings.tsx · RE-AUDITED 2026-08-31 by docs-auditor: .ftl count refreshed 24→25 bundles / 48→50 files (one per-feature bundle added since 08-08; canonical shared-ui/locales/ = 25 bare + 25 .id.ftl, matching ARCHITECTURE.md + ui/README "50 .ftl files"); RESOLVED 2026-09-03 by the Fluent page audit: the stray files ui/locales/sales.ftl + ui/locales/sales.id.ftl are deleted (proven unreferenced by any code; their only keys absent from the canonical bundle (receipt-preview-barcode-visual, receipt-preview-qr-visual) are CSS class names in ReceiptPreview.tsx, not Fluent message ids); UI test count refreshed 265 files / 3,476 tests -> 405 files / ~6,700 tests (matches ui/README 08-29; grew with the test campaign); mock_integration.rs test count corrected 25 -> 21 (file has 21 #[test]/#[tokio::test] fns, no parameterized cases, unchanged since 06-30); init-db role seed corrected owner/manager/cashier -> owner/manager/staff (db.rs:104-108 seeds role-owner/role-manager/role-staff — 'cashier' is never seeded by the CLI); repointed 3 stale inline-code path refs to docs archived in d0fe7481 (a11y.md x2, benchmarks.md) -> docs/archived/; crates/kasirmu-core/benches/ (4 files) re-confirmed -->
+<!-- Superseded audit marker (2026-07-25, body kept verbatim) · Hermes-Agent · status: ACCURATE (0 findings) · resolved F1: styles/tokens.css -> ui/src/theme/ (no ui/src/styles/) · resolved F2: shared-ui/locales/en-US.ftl -> per-feature English bundles (*.ftl) · resolved F3: ui/src/i18n/id.ftl -> per-feature Bahasa Indonesia bundles (*.id.ftl) · resolved F4: "25 translation files" -> 24 per-feature bundles × 2 locales = 48 .ftl files · resolved F5: "48 Fluent bundles" -> 24 per-feature bundles, each with en + id variants · verified accurate: kasirmu-reporting implemented (Phase 5 daily/weekly/monthly engines present in src/), kasirmu-payment Square+QRIS/Midtrans (square.rs+qris.rs exist), redis optional dep present (line 375), i18n-gap self-note (line 486: EmailReportSettings.tsx + SettingsPage.tsx still hardcoded English) matches the settings audit finding · re-audited 2026-08-08 by docs-auditor: 3 stale checkboxes flipped (scheduled email, Android APK CI, CRDT sync), counts refreshed (39 Feature variants, 265 UI test files, 5,800+ Rust tests), rlua->mlua, i18n note narrowed to EmailReportSettings.tsx · RE-AUDITED 2026-08-31 by docs-auditor: .ftl count refreshed 24→25 bundles / 48→50 files (one per-feature bundle added since 08-08; canonical shared-ui/locales/ = 25 bare + 25 .id.ftl, matching ARCHITECTURE.md + ui/README "50 .ftl files"); RESOLVED 2026-09-03 by the Fluent page audit: the stray files ui/locales/sales.ftl + ui/locales/sales.id.ftl are deleted (proven unreferenced by any code; their only keys absent from the canonical bundle (receipt-preview-barcode-visual, receipt-preview-qr-visual) are CSS class names in ReceiptPreview.tsx, not Fluent message ids); UI test count refreshed 265 files / 3,476 tests -> 405 files / ~6,700 tests (matches ui/README 08-29; grew with the test campaign); mock_integration.rs test count corrected 25 -> 21 (file has 21 #[test]/#[tokio::test] fns, no parameterized cases, unchanged since 06-30); init-db role seed corrected owner/manager/cashier -> owner/manager/staff (db.rs:104-108 seeds role-owner/role-manager/role-staff — 'cashier' is never seeded by the CLI); repointed 3 stale inline-code path refs to docs archived in d0fe7481 (a11y.md x2, benchmarks.md) -> docs/archived/; crates/kasirmu-core/benches/ (4 files) re-confirmed -->
 
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 645 lines, with a prior marker re-verified rather than replaced. A roadmap is a forward-looking commitment document, and the honest audit scope is therefore narrow — what is checkable is whether the product description it contains still matches the product, and whether its structure is navigable. · ON BOTH COUNTS IT HOLDS. A scan finds no pre-restructure crate or app names, which for a 645-line roadmap spanning a period in which six roots were renamed is a good outcome rather than luck, and the product sections describe capabilities this campaign has verified repeatedly — the workspace and tier model, the scoped permission gate, the headless bridge, the multi-location stock model, the plan-gated cloud sync. · WHAT A ROADMAP IS ACTUALLY AUDITED AGAINST, stated here because it differs from every other document class in this queue. A roadmap's failure mode is not a wrong path; it is a plan that quietly stops describing what the team intends to do while continuing to look authoritative. That is a conversation with the roadmap's owner, not a measurement, and this stamp records the distinction rather than manufacturing findings about it. The one thing a reader should treat with care is any date-bound item, since the branch has moved well past several of the quarters a 645-line roadmap would have been written against — a dated milestone is the first thing to re-check, and the last thing an auditor can check for someone else. · The structural convention is the thing worth confirming: a roadmap that separates shipped from planned is doing the hard part, and a reader who cannot tell which is which will misread it in the optimistic direction, which is the dangerous direction. · NOT re-measured: any milestone, date, priority or forecast. · Prior marker retained; footer re-dated to match the new stamp. -->
 # kasir.mu — Roadmap
 
 > *Small codebase. Limitless possibilities.*
@@ -200,37 +201,33 @@ This document defines the phased delivery plan for kasir.mu. Each phase has a cl
 - [x] File writer with rotation (`kasirmu_logging::init_with_file()`, `kasirmu_logging::init_json_with_file()`)
     - Uses `tracing-appender` for hourly rolling files
     - Spawns background cleanup thread for log retention (configurable days)
-    - **Implemented, never wired — corrected 2026-09-12.** The two sentences
-      above are true of the crate and are kept checked: the functions exist,
-      rotate hourly, run the retention cleanup thread, and are exercised by
-      `lib_tests`. What no shipped binary does is **call** them. `git grep` for
-      `init_with_file` / `init_json_with_file` across the tree returns their
-      definitions and doc examples in `crates/kasirmu-logging`, this box, and
-      `docs/operations/runbook.md` §8.6 — no hit under `apps/`, `modules/` or
-      `platform/`, and the `try_*` variants are called only from the crate's own
-      tests. Both Tauri clients initialise with `kasirmu_logging::try_init()`
-      (`apps/desktop-tauri/src/lib.rs`, `apps/mobile-tauri/src/lib.rs`), which
-      installs an `EnvFilter` + `fmt` subscriber with **no writer**, so a
-      double-clicked desktop build discards its stdout and **no POS device has a
-      log file to open.** Name the missing call site: a client `setup` calling
-      `init_with_file(app_log_dir, "oz-pos", retention_days)` — there is no
-      `log_dir` / `LogRoot` / `app_log` / `path_resolver` anywhere in `apps/` to
-      hand it, so the call site needs a directory resolver with it. Not the same
-      as "no file writer": `docs/operations/runbook.md` §8.6 carries the
-      consequence for an operator.
-- [x] Syslog output (Linux) — `kasirmu_logging::syslog::init_syslog()`
-    - Uses `libc` FFI for syslog API
-    - Combined subscriber: stdout + syslog via `tracing_subscriber::registry()`
-    - Configurable facility (local0–local7, daemon, user, etc.)
-    - **Implemented, never wired — corrected 2026-09-12.** Capability as
-      described: true, tested in `syslog_tests`, and left checked. `git grep`
-      `init_syslog` returns its definition, its module doc example and that
-      test file only — nothing in `apps/`, `modules/` or `platform/` calls it,
-      including `apps/cloud-server`, which is the one Linux process that ships
-      and which picks `try_init()` / `try_init_json()` instead. So no deployment
-      emits to a syslog daemon today; the container's stdout is the whole
-      surface (see runbook §8.6).
-- [x] ~~Windows Event Log output~~ **Windows debug-output** sink — `kasirmu_logging::eventlog::init_eventlog()`
+    - **WIRED 2026-09-29 — the gap this bullet recorded is closed.** Both Tauri
+      shells now call `kasirmu_logging::try_init_with_file_or_stdout(dir,
+      "kasirmu", 30)` as the first statement of their `setup` closure (desktop
+      `apps/desktop-tauri/src/lib.rs`, tablet `apps/mobile-tauri/src/lib.rs`),
+      where `dir` comes from `app.path().app_log_dir()` — the platform resolver
+      (`%LOCALAPPDATA%\<id>\logs` on Windows, `<local data dir>/<id>/logs` on
+      Linux, `~/Library/Logs/<id>` on macOS, `<config dir>/logs` on Android).
+      Hourly rolling files, 30-day retention, the LOG-2 directory pre-flight,
+      and a stdout fallback when that directory cannot be prepared.
+      Re-derive the call sites: `grep -rn 'try_init_with_file_or_stdout'
+      --include='*.rs' apps/` → the two shells only. The history above this
+      note stood until 2026-09-29 and is kept because it was true when written:
+      the functions existed and were tested while no shipped binary called
+      them, and the missing piece was always a `setup`-scope directory
+      resolver (`log_dir` / `LogRoot` / `app_log` did not exist anywhere
+      under `apps/` before this change).
+- [x] ~~Syslog output (Linux) — `kasirmu_logging::syslog::init_syslog()`~~ **deleted 2026-09-29 (C29 / D13)**
+    - Was: `libc` FFI to syslog, an stdout + syslog combined subscriber, and a
+      configurable facility (local0–local7, daemon, user, …) — implemented and
+      tested in `syslog_tests`, but **never wired**: `git grep init_syslog`
+      returned only its definition, doc example and tests, with no caller in
+      `apps/`, `modules/` or `platform/`, including `apps/cloud-server`, whose
+      container stdout already carries everything the sink would have
+      duplicated. Redundant-and-inert, so D13 deleted it; the file writer
+      above is the one sink that was NOT redundant with stdout, which is why it
+      was wired instead of deleted (runbook §8.6).
+- [x] ~~Windows Event Log output~~ **Windows debug-output** sink — ~~`kasirmu_logging::eventlog::init_eventlog()`~~ **deleted 2026-09-29 (C29 / D13)**
     - Uses `OutputDebugStringW` via windows-sys FFI
     - Combined subscriber: stdout + debug output via registry()
     - **Title corrected 2026-09-12, and also never wired.** Two separate
@@ -250,11 +247,12 @@ This document defines the phased delivery plan for kasir.mu. Each phase has a cl
       `apps/desktop-tauri`, the only Windows binary that ships, which calls
       `try_init()`.
     - So the accurate statement of what a Windows field install gives you:
-      **no log file, no Event Log entry, and no debug channel** — one discarded
-      stdout stream. Anything reading this box as "Windows logs exist" is wrong
-      twice over.
-    - Kept checked as a delivered *capability* (it compiles, is tested, and
-      works when called); the wiring and the name were the lies, not the code.
+      **a rolling log file** (since 2026-09-29, `%LOCALAPPDATA%\<id>\logs`),
+      and still no Event Log entry and no debug channel — those two sinks were
+      deleted the same day the file sink was wired (C29 / D13).
+    - Historical record, superseded 2026-09-29: the sink was delivered as a
+      *capability* while never installed, and the wiring and the name were the
+      lies, not the code. The deletion closed both.
 - [x] Shared `MessageVisitor` for field formatting (extracted to `visitor.rs`)
 
 ### Testing
@@ -300,7 +298,7 @@ This document defines the phased delivery plan for kasir.mu. Each phase has a cl
 - [x] Linux: `.deb` + `.AppImage` packages
 - [x] macOS: `.dmg` package
 - [x] `ops/packaging/README.md` — packaging overview and build guide
-- [x] `ops/packaging/linux/oz-pos.desktop` — freedesktop entry
+- [x] `ops/packaging/linux/kasir.mu.desktop` — freedesktop entry
 - [x] `ops/packaging/linux/deb/postinst` — Debian post-install script
 - [x] `ops/packaging/linux/deb/prerm` — Debian pre-removal script
 
@@ -440,7 +438,7 @@ This document defines the phased delivery plan for kasir.mu. Each phase has a cl
 - [x] Payment result stored in `payments` table linked to `sale_id` (gateway reference, status, response in migration `027_payment_gateway_fields.sql`)
 
 ### Multi-Currency
-- [ ] ~~`exchange_rate` table populated by background sync from external API (`RateSyncDaemon` — Frankfurter API via `platform/startup/src/rate_sync.rs`)~~ **NOT WIRED — corrected 2026-09-12 (the box was checked; the feature does not run).** Unwired, not broken: storage and crypto are complete (`RateSyncDaemon::run_tick` fetches `https://api.frankfurter.app`, converts to `rate_millionths`, upserts via `CurrencyRepository::upsert_exchange_rate` into `exchange_rates`; `Settings::set_rate_sync_api_key` encrypts the key at rest), but nothing starts the daemon. Its only start path, **`init_rate_sync` in `platform/startup/src/lib.rs` (line 337 as measured 2026-09-12), has zero callers** — neither Tauri client starts it — no `platform_startup::spawn_daemon` call in `apps/desktop-tauri/src/lib.rs` or `apps/mobile-tauri/src/lib.rs` names rate sync, `rate_sync` and `RateSyncDaemon` appear nowhere in `apps/`, `ui/` or `crates/kasirmu-bridge`, and `git grep init_rate_sync` over the tree matches only its own definition. **Exchange rates today are entered by a manager on the exchange-rates screen** (`ui/src/features/currency/ExchangeRateScreen.tsx`, route `exchange-rates`, `requiredRole: 'manager'`) — manual create and delete only; that is the sentence an operator or a sales conversation needs. The UI has no API-key field and no auto-sync toggle, and no IPC command writes `rate_sync.*`, so all four keys (`platform/core/src/settings/keys.rs:159-165`) have zero production writers; three are read only by the daemon that never starts, and `rate_sync.api_key` is read by nothing at all — the fetcher targets a keyless endpoint, so there was never a credential for that accessor to feed. To turn it on: call `platform_startup::init_rate_sync(db)` from a client `setup` (and note `run_tick` discards `rate_sync.interval`, so the interval would still need wiring). ⚠️ Deleting those dormant keys is not a dead-code cleanup — `rate_sync.api_key` "encrypted at rest" is a claimed remediation row in `docs/security/security-audit-completion.md` (H-5), so that doc must be updated in the same change. `CHANGELOG.md` keeps its original entry: a changelog records what was believed at release time.
+- [ ] ~~`exchange_rate` table populated by background sync from external API (`RateSyncDaemon` — Frankfurter API via `platform/startup/src/rate_sync.rs`)~~ **NOT WIRED — corrected 2026-09-12 (the box was checked; the feature does not run).** Unwired, not broken: storage and crypto are complete (`RateSyncDaemon::run_tick` fetches `https://api.frankfurter.app`, converts to `rate_millionths`, upserts via `CurrencyRepository::upsert_exchange_rate` into `exchange_rates`; `Settings::set_rate_sync_api_key` encrypts the key at rest), but nothing starts the daemon. Its only start path, **`init_rate_sync` in `platform/startup/src/lib.rs` (line 337 as measured 2026-09-12), has zero callers** — neither Tauri client starts it — no `platform_startup::spawn_daemon` call in `apps/desktop-tauri/src/lib.rs` or `apps/mobile-tauri/src/lib.rs` names rate sync, `rate_sync` and `RateSyncDaemon` appear nowhere in `apps/`, `ui/` or `crates/kasirmu-bridge`, and `git grep init_rate_sync` over the tree matches only its own definition. **Exchange rates today are entered by a manager on the exchange-rates screen** (`ui/src/features/currency/ExchangeRateScreen.tsx`, route `exchange-rates`, `requiredRole: 'manager'`) — manual create and delete only; that is the sentence an operator or a sales conversation needs. The UI has no API-key field and no auto-sync toggle, and no IPC command writes `rate_sync.*`, so all four keys (`platform/core/src/settings/keys.rs:159-165`) have zero production writers; three are read only by the daemon that never starts, and `rate_sync.api_key` is read by nothing at all — the fetcher targets a keyless endpoint, so there was never a credential for that accessor to feed. To turn it on: call `platform_startup::init_rate_sync(db)` from a client `setup` (and note `run_tick` discards `rate_sync.interval`, so the interval would still need wiring). **THEN IT WAS TURNED ON — corrected 2026-10-04: the wiring landed 2026-09-29 in `92eb1ddc3` (`feat(currency): wire the exchange-rate auto-sync daemon and its UI toggle`), so every measurement above is now historical.** Current state: `init_rate_sync` was renamed and split — `platform_startup::init_rate_sync_at(&state.db_path)` (`platform/startup/src/lib.rs:623`) spawns the daemon on its own connection, and **both** Tauri shells call it (`apps/desktop-tauri/src/lib.rs:278`, `apps/mobile-tauri/src/lib.rs:254`), gated on `rate_sync.enabled` (default `"0"`, so the daemon is inert until a merchant turns it on). The exchange-rates screen has the auto-sync toggle that writes `rate_sync.enabled` (`ui/src/features/currency/ExchangeRateScreen.tsx`, `RATE_SYNC_ENABLED_KEY`), so that key has a production writer again; **there is no API-key field** — the fetcher targets a keyless Frankfurter endpoint, so there is nothing for one to write, and `rate_sync.api_key` stays read by nothing. `rate_sync.interval` and `rate_sync.base_currency` are read by the daemon but still have no screen that writes them, so an operator keeps the 6-hour default and a USD base unless they edit settings directly. What remains true from the original note: ⚠️ deleting the dormant `rate_sync.api_key` is not a dead-code cleanup — it is a claimed remediation row ("encrypted at rest") in `docs/security/security-audit-completion.md` (H-5), so that doc must be updated in the same change. `CHANGELOG.md` keeps its original entry: a changelog records what was believed at release time.
 - [x] Currency selector in checkout UI (when `MultiCurrency` flag enabled)
 - [ ] ~~Receipts show both charge currency and base currency~~ **FALSE FOR RECEIPTS — corrected 2026-09-12: a receipt carries one currency per amount, and it is the charge one.** Measured at the same sha as the box above, on the two payload types rather than inherited: `PrintSalesReceiptArgs` in `ui/src/api/sales.ts` and `SalesReceipt` in `crates/kasirmu-hal/src/drivers/receipt.rs` each hold a single `subtotal`, `tax` and `total`, and their `Money` type carries exactly one `currency` — there is no base-currency amount anywhere in either, so the thermal renderer has no second figure to print. The base currency and base total do exist and are persisted on the sale (`20260821_tender_currency.sql`, surfaced as the sale-detail fields), and the checkout dialog shows both amounts side by side — that pairing is real one screen earlier, and never on the receipt. What a merchant can do today: see charge and base side by side on the payment screen, and print a receipt denominated only in the charge currency. The honest alternative to implementing it is to scope the box to the checkout screen, where it is true. Not fixed here: adding a base-currency line is a payload, bridge and driver change plus a printed-artefact decision.
 - [x] **R2 — Currency DB Extraction (ADR #30)**: 6-phase extraction of currency, exchange-rate, and currency-format settings from the monolithic `kasirmu-core` Store facade into a dedicated `modules/currency` crate:
@@ -522,7 +520,7 @@ This document defines the phased delivery plan for kasir.mu. Each phase has a cl
 - [ ] `tokio-console` integration macros
 - [ ] `cargo flamegraph` helpers
 - [x] Benchmark suite: barcode lookup < 1 ms, transaction commit < 5 ms (criterion benches in `crates/kasirmu-core/benches/`, targets defined in `docs/archived/benchmarks.md`)
-- [ ] ~~Prometheus metrics endpoint (optional, in `kasirmu-reporting` behind `metrics` feature — counters, gauges, histograms + HTTP server in `platform-startup`)~~ **NOT STARTED — corrected 2026-09-12: the app-side server half was never finished, and on 2026-09-12 it was retired.** What ships: `kasirmu-reporting`'s feature-gated counters, gauges and histograms. What never did: the `platform-startup` HTTP endpoint — its whole `pub mod server` sat behind `#[cfg(feature = "metrics")]`, a feature `platform/startup/Cargo.toml` does not declare, so it compiled in no build, and `start_metrics_server` had no call site in either Tauri client or in `apps/cloud-server`. The box stays unchecked: nothing serves `/metrics` in the desktop or tablet app today, and the only `/metrics` route in the tree is the cloud server's own separate registry (`apps/cloud-server/src/metrics.rs`), which this box never described. `CHANGELOG.md` keeps its original entry: a changelog records what was believed at release time.
+- [ ] ~~Prometheus metrics endpoint (optional, in `kasirmu-reporting` behind `metrics` feature — counters, gauges, histograms + HTTP server in `platform-startup`)~~ **NOT STARTED — corrected 2026-09-12: the app-side server half was never finished, and on 2026-09-12 it was retired.** ~~What ships: `kasirmu-reporting`'s feature-gated counters, gauges and histograms.~~ **CORRECTED 2026-09-30: that half is gone too, so nothing ships at all.** `kasirmu-reporting`'s `metrics` module and the `metrics` feature that gated it were retired on 2026-09-30 (checklist C29) for the same reason recorded here for the server half — no dependent enabled the feature, so it compiled in no production build. There is now no metrics module in `kasirmu-reporting` and no `/metrics` endpoint in any shipped app. What never did: the `platform-startup` HTTP endpoint — its whole `pub mod server` sat behind `#[cfg(feature = "metrics")]`, a feature `platform/startup/Cargo.toml` does not declare, so it compiled in no build, and `start_metrics_server` had no call site in either Tauri client or in `apps/cloud-server`. The box stays unchecked: nothing serves `/metrics` in the desktop or tablet app today, and the only `/metrics` route in the tree is the cloud server's own separate registry (`apps/cloud-server/src/metrics.rs`), which this box never described. `CHANGELOG.md` keeps its original entry: a changelog records what was believed at release time.
 
 ### UI / UX — Reports, Dashboard & i18n Screens
 
@@ -539,7 +537,7 @@ This document defines the phased delivery plan for kasir.mu. Each phase has a cl
 - [x] Language selector in Settings (dropdown in SettingsPage, 2 locales: en/id)
 - [ ] RTL layout support — planned (no `ui/src/styles/rtl.css` scaffolded yet); future Arabic/Hebrew locales.
 - [x] All number, date, and currency formats respect `Intl.NumberFormat` with currency style (dashboard/report screens)
-- [ ] Full i18n migration: all existing pages use `Localized` instead of hardcoded strings. The original 200+ TSX audit (P15-2) landed and the 0.0.24 i18n audit closed SettingsPage; `EmailReportSettings.tsx` still renders hardcoded English (verified 2026-08-08), violating the AGENTS.md i18n rule. Tracked for cleanup.
+- [ ] Full i18n migration: all existing pages use `Localized` instead of hardcoded strings. The original 200+ TSX audit (P15-2) landed and the 0.0.24 i18n audit closed SettingsPage. `EmailReportSettings.tsx`'s three hardcoded placeholder attributes (`smtp.example.com`, `reports@mystore.com`, `UTC`) were localized 2026-10-03 (`c70b4026b`), and `EdcTerminalsCard.tsx`'s four (`e.g. BCA Counter 1`, the wired/wireless device-address examples, the vendor and model examples) followed (`fd0415a27`). A re-inspection the same day found the other "hardcoded placeholder" sites from the first pass (`GeneralSection.tsx`, `SyncSection.tsx`, `FeatureToggleScreen.tsx`, `LocalApiSection.tsx`) already sit inside `<Localized attrs>` — the English literal is the Fluent fallback, not a violation, so they were false positives and are removed from this list. Tracked for cleanup.
 
 ### Acceptance Criteria
 - [x] Dashboard loads and renders with real SQLite data
@@ -641,5 +639,5 @@ On-Features can be activated at any phase once the core infrastructure is in pla
 
 *Last updated: 2026-08-31 (re-audited by docs-auditor).* (Phases 1–3 ✓. Phase 4 ~96% — R2 currency module extraction complete; Android APK CI exists but physical device testing needs infra. Phase 5 ~95% — scheduled report delivery shipped in 0.0.22; Thai locale removed (not a target market); custom report builder + cloud warehouse export remain. Phase 6 ~98% — all features implemented and verified; voice-controlled checkout research deferred.)
 
-> last audited 08-09-26 by docs-auditor
+> last audited 29-09-26 by docs-auditor
 

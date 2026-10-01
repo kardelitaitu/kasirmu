@@ -463,3 +463,106 @@ async fn update_tax_rate_carries_rounding_mode() {
     assert_eq!(mode, "truncate");
     assert_eq!(rate_bps, 1100, "update rewrote the row in place");
 }
+/// MSL-30: a DB failure in the scope probe must not be reported as a
+/// tenant-mismatch validation error.
+///
+/// `check_scope_target_sqlite` read the owner with `.unwrap_or(None)`, which
+/// maps EVERY `rusqlite::Error` to `None` -- so a broken query failed the
+/// tenant comparison and the caller got
+/// "legal_entity_id '...' does not reference an existing legal_entities of this
+/// tenant". A wrong diagnosis that also hides the fault. The Postgres twin
+/// (`pg::scope_target_exists`) propagates with `.map_err(PgError::Db)?`.
+#[tokio::test]
+async fn a_db_failure_in_the_scope_probe_is_not_reported_as_a_tenant_mismatch() {
+    let state = state();
+    {
+        let db = state.db.lock().await;
+        // The scope id EXISTS for this tenant...
+        db.execute(
+            "INSERT INTO legal_entities (id, tenant_id, name) VALUES ('le-1', 'default', 'Entity One')",
+            [],
+        )
+        .unwrap();
+        // ...but the probe's own READ will fail.
+        db.execute_batch("ALTER TABLE legal_entities RENAME TO legal_entities_hidden;")
+            .unwrap();
+    }
+
+    let mut req = body();
+    req.legal_entity_id = Some("le-1".into());
+    let resp = create_tax_rate(
+        State(state),
+        HeaderMap::new(),
+        Extension(claims(None)),
+        Json(req),
+    )
+    .await
+    .into_response();
+
+    let status = resp.status();
+    let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let text = String::from_utf8_lossy(&bytes).to_string();
+
+    assert!(
+        !text.contains("does not reference an existing"),
+        "a DB failure must not be reported as a scope/tenant validation error; got {status} {text}"
+    );
+}
+/// MSL-31: the update path's tenant-ownership probe has the same shape MSL-30
+/// fixed on the create path.
+///
+/// `update_tax_rate` reads the row's `tenant_id` to prove the rate belongs to the
+/// caller's tenant before core's tenant-blind update runs. It used
+/// `.unwrap_or(None)`, so a `rusqlite::Error` became `None`, failed the comparison,
+/// and was answered with `NotFound { entity: "tax_rate" }` -- "no such rate" while
+/// the rate exists and the database is the thing failing.
+#[tokio::test]
+async fn a_db_failure_in_the_update_owner_probe_is_not_reported_as_not_found() {
+    let app_state = state();
+    let created = create_tax_rate(
+        State(app_state.clone()),
+        HeaderMap::new(),
+        Extension(claims(None)),
+        Json(body()),
+    )
+    .await
+    .into_response();
+    assert_eq!(created.status(), StatusCode::CREATED);
+    let bytes = to_bytes(created.into_body(), 4096).await.unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    let id = json["id"].as_str().expect("created id").to_owned();
+
+    // Force the ownership probe's own READ to fail, while the row stays present.
+    {
+        let db = app_state.db.lock().await;
+        db.execute_batch("ALTER TABLE tax_rates RENAME TO tax_rates_hidden;")
+            .unwrap();
+    }
+
+    let update = UpdateTaxRateRequest {
+        name: "Renamed".into(),
+        rate_bps: 1200,
+        is_default: true,
+        is_inclusive: false,
+        legal_entity_id: None,
+        location_id: None,
+        effective_from: None,
+        effective_to: None,
+        rounding_mode: None,
+    };
+    let response = update_tax_rate(
+        State(app_state.clone()),
+        HeaderMap::new(),
+        Extension(claims(None)),
+        axum::extract::Path(id),
+        Json(update),
+    )
+    .await
+    .into_response();
+
+    assert_ne!(
+        response.status(),
+        StatusCode::NOT_FOUND,
+        "a DB failure must not be answered as NotFound -- the rate exists"
+    );
+}

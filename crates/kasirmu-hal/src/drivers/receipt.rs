@@ -159,6 +159,8 @@ pub struct LineItem {
     pub total_price: Money,
     /// Tax amount for this line (None if tax is not itemised).
     pub tax_amount: Option<Money>,
+    /// Optional menu order note (e.g. "pedas", "less ice").
+    pub note: Option<String>,
 }
 
 // ── Payment info ─────────────────────────────────────────
@@ -200,6 +202,8 @@ pub struct SalesReceipt {
     pub total: Money,
     /// Payments tendered.
     pub payments: Vec<PaymentInfo>,
+    /// Optional 17-digit DJP Faktur Pajak string (e-Faktur Coretax PER-11/PJ/2025).
+    pub faktur_pajak: Option<String>,
 }
 
 // ── Helpers ──────────────────────────────────────────────
@@ -420,6 +424,9 @@ pub fn format_sales_receipt(r: &SalesReceipt, config: &ReceiptConfig) -> Vec<u8>
     if let Some(ref tax_id) = r.store.tax_id {
         b.center(&format!("NPWP: {tax_id}"));
     }
+    if let Some(ref fp) = r.faktur_pajak {
+        b.center(&format!("Faktur Pajak: {fp}"));
+    }
     b.blank();
     b.separator();
 
@@ -479,6 +486,12 @@ pub fn format_sales_receipt(r: &SalesReceipt, config: &ReceiptConfig) -> Vec<u8>
             total_pad = total_pad,
         );
         b.text(&line);
+        if let Some(ref note) = item.note {
+            let trimmed = note.trim();
+            if !trimmed.is_empty() {
+                b.text(&format!("  {trimmed}"));
+            }
+        }
         if config.show_tax
             && let Some(ref tax) = item.tax_amount
         {
@@ -562,7 +575,7 @@ fn right_pad(s: &str, width: usize) -> String {
     if cell_width(s) >= width {
         s.to_owned()
     } else {
-        format!("{:>width$}", s, width = width)
+        format!("{s:>width$}")
     }
 }
 

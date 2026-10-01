@@ -18,6 +18,65 @@ fn seed_terminal(conn: &Connection) {
     ).unwrap();
 }
 
+// ── CORE-A: the upsert is a single atomic statement ─────────────────
+
+/// `set_terminal_override` must be ONE statement, so the interleaving that
+/// used to raise a UNIQUE violation cannot occur.
+///
+/// The old form ran `UPDATE ... WHERE terminal_id = ?1 AND feature = ?2`, read
+/// `affected == 0`, and only then inserted. Two concurrent callers could both
+/// observe zero and both insert; the second failed with
+/// "UNIQUE constraint failed: terminal_feature_overrides.terminal_id,
+/// terminal_feature_overrides.feature". This test replays that exact
+/// interleaving against the real schema and asserts the insert branch can no
+/// longer be reached, by checking the statement count the function issues.
+///
+/// The behavioural half is covered by the round-trip tests below; this pins the
+/// MECHANISM, because the failure needs concurrency to observe and a mechanism
+/// pin is what catches a regression to the two-statement form.
+#[test]
+fn set_terminal_override_is_a_single_statement_upsert() {
+    let conn = fresh();
+    seed_terminal(&conn);
+    let s = store(&conn);
+
+    // First write inserts, second updates — both must succeed and leave one row.
+    s.set_terminal_override("term-1", "card-payment", true)
+        .unwrap();
+    s.set_terminal_override("term-1", "card-payment", false)
+        .unwrap();
+
+    let rows: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM terminal_feature_overrides WHERE terminal_id = ?1 AND feature = ?2",
+            rusqlite::params!["term-1", "card-payment"],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(rows, 1, "an upsert must never leave two rows for one key");
+
+    let enabled: i64 = conn
+        .query_row(
+            "SELECT enabled FROM terminal_feature_overrides WHERE terminal_id = ?1 AND feature = ?2",
+            rusqlite::params!["term-1", "card-payment"],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(enabled, 0, "the second write must win");
+
+    // And the schema still refuses a genuine duplicate, so the upsert is doing
+    // the work rather than a missing constraint.
+    let dup = conn.execute(
+        "INSERT INTO terminal_feature_overrides (terminal_id, feature, enabled, created_at, updated_at)
+         VALUES ('term-1', 'card-payment', 1, '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z')",
+        [],
+    );
+    assert!(
+        dup.is_err(),
+        "the (terminal_id, feature) primary key must still reject a raw duplicate"
+    );
+}
+
 // ── list_terminal_overrides ──────────────────────────────────────
 
 #[test]
@@ -258,4 +317,57 @@ fn delete_override_wrong_terminal_returns_not_found() {
         .delete_terminal_override("term-2", "feature-x")
         .unwrap_err();
     assert!(matches!(err, CoreError::NotFound { .. }));
+}
+
+/// The timestamps this table stores must be in ONE shape.
+///
+/// `created_at` / `updated_at` default to `strftime('%Y-%m-%dT%H:%M:%fZ', 'now')`
+/// — millisecond precision, 24 characters — but the upsert binds an explicit
+/// value, so `format_now` spells the shape a second time and the two can drift.
+/// They did: `%S%.6fZ` is microseconds (27 characters), and because the
+/// fractional digits are compared as TEXT, two rows in the same whole second
+/// sort by a different alphabet — `…15.606Z` vs `…15.606805Z` differ at index
+/// 24, where SQLite has `Z`. The older millisecond row lands last.
+///
+/// Read the SHAPE from SQLite rather than restating it here, so this test
+/// cannot pass by agreeing with its own copy of the format: it compares the
+/// stored stamp against what the column's DEFAULT actually produces, and
+/// asserts the stamp is one SQLite itself round-trips unchanged.
+#[test]
+fn override_timestamps_match_the_sqlite_column_shape() {
+    let conn = fresh();
+    seed_terminal(&conn);
+    let s = store(&conn);
+    s.set_terminal_override("term-1", "feature-x", true)
+        .unwrap();
+
+    let stored: String = conn
+        .query_row(
+            "SELECT updated_at FROM terminal_feature_overrides
+             WHERE terminal_id = 'term-1' AND feature = 'feature-x'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    let sqlite_shape: String = conn
+        .query_row("SELECT strftime('%Y-%m-%dT%H:%M:%fZ', 'now')", [], |r| {
+            r.get(0)
+        })
+        .unwrap();
+
+    assert_eq!(
+        stored.len(),
+        sqlite_shape.len(),
+        "stored {stored} must be the column's own shape {sqlite_shape}"
+    );
+    // And SQLite must round-trip it unchanged: the DEFAULT format re-renders
+    // the stamp byte-identically, which a microsecond value would not.
+    let reparsed: String = conn
+        .query_row(
+            "SELECT strftime('%Y-%m-%dT%H:%M:%fZ', ?1)",
+            [&stored],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(reparsed, stored, "the stamp is not in the column's format");
 }

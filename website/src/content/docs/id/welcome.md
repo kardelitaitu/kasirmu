@@ -40,31 +40,75 @@ perjalanan, dan langsung mendukung bahasa Inggris dan Bahasa Indonesia.
 - **Memutuskan dengan data** — dasbor penjualan harian, laporan penjualan,
   menu engineering, dan analitik.
 - **Berkembang** — loyalitas, kartu hadiah, promosi, kiosk layanan mandiri,
-  dan topologi multi-toko.
+  dan topologi multi-lokasi.
 
 ## Perangkat keras & perangkat
 
 kasir.mu bekerja dengan perangkat keras yang sudah ada di kasir: pemindai
 barcode, printer struk, laci kas, layar pelanggan, dan pembaca NFC. Perangkat
-dikelola sebagai terminal — daftarkan, ikat ke toko dan ruang kerja, lalu
+dikelola sebagai terminal — daftarkan, ikat ke lokasi dan ruang kerja, lalu
 sesuaikan fitur per perangkat. Lihat [Terminal](../terminals/) dan
-[Toko & Topologi](../stores/).
+[Lokasi & Topologi](../location/).
 
 ## Paket & harga
 
-kasir.mu **gratis selamanya** untuk memulai — satu toko, satu register, satu
-gudang, dan riwayat penjualan 3 bulan. Paket berbayar menambahkan lebih
-banyak toko, register, dan gudang, plus pembayaran QRIS, sinkron cloud, dan
-otomasi. Lihat [Lisensi & Paket](../licensing/).
+kasir.mu **gratis selamanya** untuk memulai — satu lokasi, satu register, dan
+riwayat penjualan 3 bulan. Paket berbayar menambahkan lebih banyak lokasi dan
+register, plus pembayaran QRIS, sinkron cloud, dan otomasi; ruang kerja gudang
+mulai paket Premium. Lihat [Lisensi & Paket](../licensing/).
+
+## Pilih titik awal Anda
+
+Wizard pengaturan dan pemilih ruang kerja dibangun di sekitar beberapa bentuk
+toko. Pilih milik Anda dan dokumentasi sejajar dengan layar yang benar-benar
+akan Anda lihat:
+
+- **Toko ritel atau warung** — kisi produk, barcode, stok. Provisi sebagai
+  🛒 **Toko**; bekerja di **POS Ritel**. Mulai dari
+  [Transaksi Pertama Anda](../first-sale/) dan
+  [Inventaris & Gudang](../inventory/).
+- **Restoran atau kafe** — kategori menu, meja, dapur. Provisi sebagai
+  🍽️ **Restoran atau kafe**; bekerja di **POS Restoran**, dan tambahkan
+  **Layar Dapur** saat juru masak butuh antrean tiket. Mulai dari
+  [Transaksi Pertama Anda](../first-sale/) dan [Ruang Kerja](../workspaces/).
+- **Gudang atau back office** — stok masuk/keluar dan laporan. Ruang kerja
+  **Gudang** mencakup produk, level stok, bundel, dan laporan inventaris;
+  manajer bekerja dari **Admin**. Mulai dari
+  [Inventaris & Gudang](../inventory/).
+
+Tidak yakin? Jalur [Mulai Cepat](../quickstart/) berlaku untuk semua bentuk
+— jalur ini memprovisi salah satu di atas, menambah produk uji, dan menghitung
+transaksi uji terlepas dari pilihan Anda.
+
+### Hanya mencoba-coba?
+
+Mengunduh untuk mencoba, tanpa konter sungguhan untuk dipakai — itulah jalur
+[Mulai Cepat](../quickstart/), dan jalur ini tidak mengikat apa pun: paket
+gratis dimulai saat peluncuran tanpa akun, tanpa kartu, dan tanpa pengaturan
+yang tidak bisa Anda bersihkan nanti. Pilih **Offline saja** di wizard,
+tambahkan dua produk uji, hitung satu transaksi uji, dan Anda sudah melihat
+seluruh putarannya — penjualan, struk, dan penghitungan shift semuanya
+berjalan seperti sungguhan. Saat siap, [Aktivasi](../activation/) dan
+sinkron cloud mengubahnya menjadi register yang hidup.
 
 ## Mulai dari sini
 
+Terburu-buru? [Mulai Cepat](../quickstart/) membawa Anda dari unduhan ke
+kasir yang siap dihitung dalam sekitar 15 menit.
+
 1. [Pasang kasir.mu](../installation/) di Windows — paket gratis dimulai saat
    peluncuran pertama, tanpa perlu akun. Platform lain segera hadir.
-2. Selesaikan wizard pengaturan — nama usaha dan mata uang bawaan.
-3. [Transaksi pertama Anda](../first-sale/) — bahkan tanpa internet.
-4. [Aktifkan kunci lisensi](../activation/) saat siap membuka lebih banyak
-   toko, pembayaran QRIS, dan sinkron cloud.
+2. Jalankan [Wizard Pengaturan](../setup-wizard/) — akun (atau offline
+   saja), jenis toko, login owner.
+3. [Aktifkan kunci lisensi](../activation/) saat siap membuka lebih banyak
+   lokasi, pembayaran QRIS, dan sinkron cloud.
+4. [Transaksi pertama Anda](../first-sale/) dari ruang kerja yang Anda
+   butuhkan — [Ruang Kerja](../workspaces/) mencakup POS Ritel, POS
+   Restoran, Layar Dapur, dan Gudang — bahkan tanpa internet.
+
+Akan buka hari ini? Daftar periksa [Hari Pertama Beroperasi](../first-day/)
+mencakup verifikasi perangkat, pembukaan shift, dan penyerahan konter
+kepada staf.
 
 ## Instal ulang atau terkunci?
 
@@ -76,12 +120,18 @@ sekali per 24 jam. Lihat [Instal ulang atau pemulihan lisensi](../activation/#in
 
 ## Cara dokumentasi disusun
 
-- **Memulai** — instal, aktivasi, dan transaksi pertama Anda.
-- **Panduan** — alur kerja harian: sinkron, pembayaran, shift, inventaris,
-  ruang kerja, dan terminal.
+- **Memulai** — instal, aktivasi, transaksi pertama Anda, dan pilih ruang
+  kerja tempat Anda bekerja.
+- **Panduan** — alur kerja harian: pembayaran, shift, inventaris, lokasi,
+  terminal, dan cara mode offline serta sinkron cloud menjaga Anda tetap
+  berjalan.
 - **Referensi** — lisensi, paket, dan pengaturan.
 
 ## Mendapatkan bantuan
 
 Buntu? Halaman [dukungan](../../support/) menghubungkan Anda ke tim, dan
 dokumentasi lainnya mencakup aktivasi, pembayaran, sinkron, dan lainnya.
+
+---
+
+Lanjut membaca · **Berikutnya:** [Mulai Cepat](../quickstart/) — jalur 15 menit menuju konter siap pakai.

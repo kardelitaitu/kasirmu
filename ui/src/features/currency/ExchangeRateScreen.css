@@ -9,6 +9,93 @@
   margin-bottom: var(--space-4);
 }
 
+/* ── Auto-sync switch ──────────────────────────────────────────────
+   Text left, control right; the switch keeps a 44px-wide touch target
+   (>= the 44px coarse-pointer minimum) with a 24px visual track. */
+.exchange-rate-autosync {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.exchange-rate-autosync-text {
+  min-width: 0;
+}
+
+.exchange-rate-autosync-label {
+  display: block;
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-semibold);
+}
+
+.exchange-rate-autosync-hint {
+  margin: var(--space-1) 0 0;
+  font-size: var(--text-xs);
+  color: var(--color-fg-secondary);
+}
+
+.exchange-rate-switch {
+  position: relative;
+  display: inline-block;
+  width: 44px;
+  height: 24px;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.exchange-rate-switch input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.exchange-rate-switch input:disabled {
+  cursor: default;
+}
+
+.exchange-rate-switch-slider {
+  position: absolute;
+  inset: 0;
+  background: var(--color-border);
+  border-radius: var(--radius-full);
+  transition: background var(--duration-150) ease;
+  pointer-events: none;
+}
+
+.exchange-rate-switch-slider::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--color-bg);
+  transition: transform var(--duration-150) ease;
+}
+
+.exchange-rate-switch input:checked + .exchange-rate-switch-slider {
+  background: var(--color-accent);
+}
+
+.exchange-rate-switch input:checked + .exchange-rate-switch-slider::after {
+  transform: translateX(20px);
+}
+
+.exchange-rate-switch input:disabled + .exchange-rate-switch-slider {
+  opacity: 0.6;
+}
+
+.exchange-rate-switch input:focus-visible + .exchange-rate-switch-slider {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
 .exchange-rate-title {
   margin: 0;
   font-size: var(--text-2xl);

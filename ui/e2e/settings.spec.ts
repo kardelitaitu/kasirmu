@@ -117,10 +117,10 @@ test.describe('Settings Change', () => {
     await firstInput.fill('');
 
     // Type new value to trigger dirty state.
-    await firstInput.fill('OZ-POS E2E Test');
+    await firstInput.fill('kasir.mu E2E Test');
 
     // Verify the value was set (dirty state is now active in the React component).
     const value = await firstInput.inputValue();
-    expect(value).toBe('OZ-POS E2E Test');
+    expect(value).toBe('kasir.mu E2E Test');
   });
 });

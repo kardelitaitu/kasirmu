@@ -1,3 +1,9 @@
+// P2-6: `std::env::set_var` / `remove_var` are `unsafe` as of Rust 2024
+// because mutating the environment is unsound against concurrent readers.
+// TEST-ONLY and `serial_test`-gated, so the crate-level
+// `#![deny(unsafe_code)]` in `main.rs` holds for every shipping path.
+#![allow(unsafe_code)]
+
 use super::*;
 use serial_test::serial;
 

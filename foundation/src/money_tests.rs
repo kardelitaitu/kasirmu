@@ -270,7 +270,10 @@ fn checked_negate_i64_min_returns_none() {
 #[test]
 fn checked_negate_twice_is_identity() {
     let m = Money::from_major(5, usd()).unwrap();
-    assert_eq!(m.checked_negate().and_then(|n| n.checked_negate()), Some(m));
+    assert_eq!(
+        m.checked_negate().and_then(super::Money::checked_negate),
+        Some(m)
+    );
 }
 
 // ── checked_abs ────────────────────────────────────────────

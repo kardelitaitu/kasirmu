@@ -7,7 +7,7 @@ next: none | perf: N/A
 
 //! Sales Module — core point-of-sale functionality.
 //!
-//! This is the first real module in the OZ-POS module system. It owns
+//! This is the first real module in the kasir.mu module system. It owns
 //! the entire sales vertical: cart management, checkout, payment
 //! processing, sales history, void/refund, held orders, and
 //! end-of-day reports.
@@ -29,6 +29,8 @@ next: none | perf: N/A
 //! ## Module manifest
 //!
 //! See `modules/sales/manifest.json` for the module metadata.
+
+#![deny(unsafe_code)]
 
 pub mod error;
 pub mod models;

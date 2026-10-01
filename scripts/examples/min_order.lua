@@ -1,4 +1,4 @@
--- Minimum Order Enforcement Script for OZ-POS Lua Engine
+-- Minimum Order Enforcement Script for kasir.mu Lua Engine
 -- Example: Reject any transaction where the total is less than
 -- 25,000 minor units (e.g. $25.00 in USD). Returns a user-facing
 -- error message explaining the minimum-order policy.

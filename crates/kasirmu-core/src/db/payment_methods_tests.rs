@@ -5,10 +5,10 @@ use crate::db::Store;
 use crate::migrations;
 use crate::regional::ConfigScope;
 
-fn store() -> Store<'static> {
-    let conn = migrations::fresh_db();
-    let conn: &'static rusqlite::Connection = Box::leak(Box::new(conn));
-    Store::new(conn)
+/// The caller owns the connection, so this no longer `Box::leak`s a
+/// database per test to manufacture a `'static` (O-T03).
+fn store(db: &rusqlite::Connection) -> Store<'_> {
+    Store::new(db)
 }
 
 const NOW: &str = "2026-09-26T11:00:00.000Z";
@@ -53,7 +53,8 @@ fn rail(code: &str, label: &str, enabled: bool) -> NewPaymentRail {
 
 #[test]
 fn replace_set_writes_the_full_rail_list() {
-    let store = store();
+    let store_db = migrations::fresh_db();
+    let store = store(&store_db);
     store
         .replace_local_payment_methods(
             "legal_entity",
@@ -79,7 +80,8 @@ fn replace_set_writes_the_full_rail_list() {
 
 #[test]
 fn replace_set_removes_omitted_rails() {
-    let store = store();
+    let store_db = migrations::fresh_db();
+    let store = store(&store_db);
     store
         .replace_local_payment_methods(
             "legal_entity",
@@ -107,7 +109,8 @@ fn replace_set_removes_omitted_rails() {
 fn write_rejects_credential_shaped_parameter_keys() {
     // Supervisor addition 2, as a test: the parameters bag must never carry
     // gateway credentials — documentation-as-test at the write boundary.
-    let store = store();
+    let store_db = migrations::fresh_db();
+    let store = store(&store_db);
     let mut r = rail("qris", "QRIS", true);
     r.parameters = r#"{"gateway_credential": "sk_live_steal_me"}"#.into();
     let err = store
@@ -158,7 +161,8 @@ fn write_rejects_credential_shaped_parameter_keys() {
 
 #[test]
 fn write_rejects_blank_codes_labels_duplicates_and_bad_scope() {
-    let store = store();
+    let store_db = migrations::fresh_db();
+    let store = store(&store_db);
     let mut r = rail(" ", "QRIS", true);
     assert!(
         store
@@ -166,7 +170,7 @@ fn write_rejects_blank_codes_labels_duplicates_and_bad_scope() {
             .is_err()
     );
     r.rail_code = "qris".into();
-    r.label = "".into();
+    r.label = String::new();
     assert!(
         store
             .replace_local_payment_methods("legal_entity", "ent-1", &[r], NOW)
@@ -190,7 +194,8 @@ fn write_rejects_blank_codes_labels_duplicates_and_bad_scope() {
 
 #[test]
 fn entity_rows_are_the_market_default_with_legal_entity_provenance() {
-    let store = store();
+    let store_db = migrations::fresh_db();
+    let store = store(&store_db);
     seed_entity(&store, "ent-1");
     seed_location(&store, "loc-1", Some("ent-1"));
     store
@@ -209,7 +214,8 @@ fn entity_rows_are_the_market_default_with_legal_entity_provenance() {
 
 #[test]
 fn location_override_wins_per_rail_with_location_provenance() {
-    let store = store();
+    let store_db = migrations::fresh_db();
+    let store = store(&store_db);
     seed_entity(&store, "ent-1");
     seed_location(&store, "loc-1", Some("ent-1"));
     store
@@ -244,7 +250,8 @@ fn location_disable_survives_entity_reenable() {
     // disable survives when the entity row later re-enables — the location
     // row wins until the LOCATION row is cleared, not until the entity
     // changes.
-    let store = store();
+    let store_db = migrations::fresh_db();
+    let store = store(&store_db);
     seed_entity(&store, "ent-1");
     seed_location(&store, "loc-1", Some("ent-1"));
 
@@ -281,7 +288,8 @@ fn location_disable_survives_entity_reenable() {
 
 #[test]
 fn site_local_rails_pass_through_with_location_provenance() {
-    let store = store();
+    let store_db = migrations::fresh_db();
+    let store = store(&store_db);
     seed_entity(&store, "ent-1");
     seed_location(&store, "loc-1", Some("ent-1"));
     store
@@ -299,7 +307,8 @@ fn site_local_rails_pass_through_with_location_provenance() {
 
 #[test]
 fn unlinked_location_answers_an_empty_list() {
-    let store = store();
+    let store_db = migrations::fresh_db();
+    let store = store(&store_db);
     seed_location(&store, "loc-solo", None);
     assert!(
         store
@@ -323,7 +332,8 @@ fn payment_settings_carry_no_tier_answer() {
     // imports an entitlement — the effective rail DTO exposes only market
     // facts. Compile-time by shape; runtime-pinned by asserting the whole
     // DTO surface contains nothing entitlement-shaped.
-    let store = store();
+    let store_db = migrations::fresh_db();
+    let store = store(&store_db);
     seed_entity(&store, "ent-1");
     seed_location(&store, "loc-1", Some("ent-1"));
     store
@@ -357,7 +367,8 @@ fn tier_capability_is_not_inferable_from_payment_settings() {
     // invisible to anything reading the tier, and no rail write can
     // manufacture one — pinned structurally: the store DB cannot answer the
     // tier question because the table is not there.
-    let store = store();
+    let store_db = migrations::fresh_db();
+    let store = store(&store_db);
     let has_entitlements_table: i64 = store
         .conn
         .query_row(

@@ -1,5 +1,5 @@
 /*
-last audited DD-MM-YY by DSH-Agent
+last audited (date unknown) by DSH-Agent
 crate: platform-kernel | status: SAFE | lint: CLEAN
 findings: 0 unsafe blocks, 0 production unwrap/expect. Event bus reentrant-deadlock prevention (handler list snapshotted under short-lived read lock); handler panics isolated via catch_unwind; poison recovery via into_inner; lifecycle exemplary (only started services receive stop, partial-start tracked, topological load with MissingDependency fail). Manifest parsing/validation mirrors JSON Schema. Kernel/lifecycle/exemplary. All unwrap/expect in test blocks.
 next: none | perf: N/A
@@ -32,11 +32,17 @@ next: none | perf: N/A
 //! kernel.stop_all()?;
 //! ```
 
+#![deny(unsafe_code)]
+
+pub mod capability;
+pub mod context;
 pub mod error;
 pub mod event_bus;
 pub mod kernel;
 pub mod manifest;
 
+pub use capability::{Capability, CapabilityRegistry, ModuleCapabilities};
+pub use context::KernelContext;
 pub use error::KernelError;
 pub use event_bus::EventBus;
 pub use kernel::{Kernel, ModuleStatus};

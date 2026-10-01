@@ -13,7 +13,14 @@
 use super::*;
 use crate::AuditEntry;
 use crate::SaleStatus;
-use rusqlite::{Transaction, TransactionBehavior};
+use rusqlite::{OptionalExtension, Transaction, TransactionBehavior};
+
+// Cross-vertical write contract for this core-owned path: Phase 5 P5.1, checked by
+// `the_foreign_writes_name_owners_that_sales_declares` in `sales_lifecycle_tests.rs`.
+// `payments` became sales-owned in P5.4 (modules/ownership.json). P5.3 removed the
+// last `customers` write from this file: the accrual now goes through
+// `Store::accrue_lifetime_spend_in_tx` in `db/customers.rs`, the single core writer
+// of that crm-owned table.
 
 /// LOY-06: award loyalty points at the moment a sale reaches `completed`.
 ///
@@ -27,8 +34,36 @@ use rusqlite::{Transaction, TransactionBehavior};
 /// points formula is currency-naive (`total_minor * points_per_unit /
 /// 100`), so charging in a low-exponent currency would otherwise
 /// multiply the reward by the exchange rate.
-fn apply_customer_stats_on_completion(conn: &rusqlite::Connection, sale_id: &str) {
-    let sale_row = conn.query_row(
+///
+/// WHAT "BASE TOTAL" COSTS, since the reason above is about currency and the
+/// consequence is about trust. `base_total_minor` is CLIENT-SUPPLIED
+/// (`CompleteSaleWithResolvedShortfallsArgs.base_total_minor`, copied straight
+/// in pos/checkout.rs:427) and no server read re-derives it -- the server
+/// re-derives `sale.total` but not this. It is also stored faithfully: SQLite
+/// `INTEGER` is an AFFINITY, not a 32-bit cap, so an i64 round-trips exactly
+/// (verified against the real schema). So the earn basis is exactly what the
+/// client asked for.
+///
+/// That feeds the POINTS ladder, which SATURATES rather than wrapping on
+/// overflow -- deliberately, and pinned by
+/// `compute_points_extremes_do_not_overflow` in loyalty_tests.rs. Saturating
+/// is the right call for a ladder, so the open question is the INPUT, not
+/// the arithmetic: bounding `base_total_minor` needs a real sale ceiling, and
+/// none is defined in the schema or the engine. Guessing one would refuse
+/// legitimate large sales, which is worse than an over-large award.
+///
+/// The sibling use of the same value REFUSES instead of saturating, because
+/// `accrue_lifetime_spend_in_tx` is a plain SQL `total_spent_minor + ?1` and
+/// SQLite RAISES on overflow, logged by the `tracing::warn!` below. Points
+/// saturate, spend refuses: deliberate on the ladder, incidental on the
+/// balance, and both visible rather than silent.
+///
+/// Covered by loyalty_integration.rs: `earn_basis_prefers_base_total_over_
+/// the_charged_total`, `earn_basis_falls_back_to_the_sale_total_without_the_
+/// snapshot`, and `base_total_minor_is_believed_without_re_derivation` --
+/// delete that last one when the value is bounded.
+fn apply_customer_stats_on_completion(tx: &rusqlite::Transaction<'_>, sale_id: &str) {
+    let sale_row = tx.query_row(
         "SELECT customer_id, base_total_minor, total_minor FROM sales WHERE id = ?1",
         rusqlite::params![sale_id],
         |row| {
@@ -50,22 +85,18 @@ fn apply_customer_stats_on_completion(conn: &rusqlite::Connection, sale_id: &str
     };
     let earn_total = base_total_minor.unwrap_or(total_minor);
     // CRM-06: accrue lifetime spend in the SAME base-currency amount the
-    // award uses. Statement-level atomic increment (no read-modify-write
-    // race); SQLite raises on i64 overflow, which is logged non-fatal
-    // below. The old owner — the event-bus CrmHistoryHandler — had no
+    // award uses, through the core-owned crm surface (Phase 5 P5.3):
+    // `Store::accrue_lifetime_spend_in_tx` in `db/customers.rs` is the single
+    // writer of `total_spent_minor`, so the sale lifecycle never issues the
+    // `UPDATE customers` itself. Statement-level atomic increment (no
+    // read-modify-write race); SQLite raises on i64 overflow, which is logged
+    // non-fatal below. The old owner — the event-bus CrmHistoryHandler — had no
     // idempotency guard and no currency validation; its subscription
     // was removed in platform/startup so this is the single writer.
-    if let Err(e) = conn.execute(
-        "UPDATE customers SET total_spent_minor = total_spent_minor + ?1, updated_at = ?2 WHERE id = ?3",
-        rusqlite::params![
-            earn_total,
-            chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
-            customer_id
-        ],
-    ) {
+    if let Err(e) = Store::accrue_lifetime_spend_in_tx(tx, &customer_id, earn_total) {
         tracing::warn!(error = %e, sale_id, "customer spend accrual failed (non-fatal)");
     }
-    match crate::db::loyalty::earn_points_with_conn(conn, &customer_id, sale_id, earn_total) {
+    match crate::db::loyalty::earn_points_with_conn(tx, &customer_id, sale_id, earn_total) {
         Ok(Some(t)) => {
             tracing::debug!(
                 sale_id,
@@ -197,35 +228,39 @@ impl Store<'_> {
         .unwrap_or_else(|_| crate::location_resolver::get_default_location_id());
 
         for line in &sale.lines {
-            // Check product info to determine if this line tracks inventory
-            let product_info: Option<(String, String)> = match tx.query_row(
-                "SELECT id, product_type FROM products WHERE sku = ?1",
-                rusqlite::params![line.sku],
-                |row| Ok((row.get(0)?, row.get(1)?)),
-            ) {
-                Ok(val) => Some(val),
-                Err(rusqlite::Error::QueryReturnedNoRows) => None,
-                Err(e) => return Err(CoreError::Db(e)),
-            };
+            // Check product info to determine if this line tracks inventory.
+            // Phase 5 P5.2: the `products` read lives in `db::inventory_seam`.
+            let product_info =
+                crate::db::inventory_seam::product_info_by_sku_in_tx(&tx, &line.sku)?
+                    .map(|info| (info.product_id, info.product_type));
 
             // Same contract as the checkout path: this verdict decides whether
             // the line is deducted at all, and the fallback (Retail) tracks
             // inventory. The fallback stays so one bad row never fails the sale;
             // the helper warns.
-            let tracks_inventory = product_info
-                .as_ref()
-                .map(|(_, pt)| {
-                    crate::product::ProductType::parse_stored_or_default(
-                        Some(pt.as_str()),
-                        line.sku.as_str(),
-                        "Store::complete_sale_with_resolved_shortfalls:sale_line",
-                    )
-                    .tracks_inventory()
-                })
-                .unwrap_or(false);
+            let tracks_inventory = product_info.as_ref().is_some_and(|(_, pt)| {
+                crate::product::ProductType::parse_stored_or_default(
+                    Some(pt.as_str()),
+                    line.sku.as_str(),
+                    "Store::complete_sale_with_resolved_shortfalls:sale_line",
+                )
+                .tracks_inventory()
+            });
 
+            // MSL-28: `?`, not `.unwrap_or_default()`. The recipe read decides
+            // whether this line is stock-checked at all (`has_recipe` feeds
+            // `needs_stock` below), so a FAILED read must not be reported as "this
+            // product has no recipe": that quietly flips `needs_stock` false and
+            // the line is never deducted. The product that exposes it is a SERVICE
+            // item whose stock comes solely from its recipe — `tracks_inventory` is
+            // false for `service`, so `has_recipe` is the only thing making the
+            // line deduct at all. The sale then settles with inventory
+            // under-reported and no error anywhere.
+            //
+            // `sales_checkout.rs:259` reads the SAME function and propagates; two
+            // doors, one read, and this was the one that disagreed.
             let recipe = match product_info.as_ref() {
-                Some((pid, _)) => self.get_recipe_ingredients(pid).unwrap_or_default(),
+                Some((pid, _)) => self.get_recipe_ingredients(pid)?,
                 None => vec![],
             };
             let has_recipe = !recipe.is_empty();
@@ -235,80 +270,32 @@ impl Store<'_> {
             // If this line has a resolution, use the resolved allocations.
             // Otherwise, for tracked lines, deduct from the primary location.
             if let Some(resolution) = resolutions_by_sku.get(line.sku.as_str()) {
-                // Validate allocation sums match requested qty
-                let alloc_sum: i64 = resolution.allocations.iter().map(|a| a.qty).sum();
-                if alloc_sum != line.qty {
-                    tx.rollback()?;
-                    return Err(CoreError::Validation {
-                        field: "resolutions",
-                        message: format!(
-                            "SKU {}: allocation sum {} does not match requested qty {}",
-                            line.sku, alloc_sum, line.qty
+                // Phase 5 P5.2: logic in `plan_resolution_deductions`; reads stay here.
+                let planned = crate::sale_deduction::plan_resolution_deductions(
+                    &line.sku,
+                    line.qty,
+                    resolution,
+                    |location| {
+                        let product_id =
+                            crate::db::inventory_seam::require_product_id_by_sku_in_tx(
+                                &tx, &line.sku,
+                            )?;
+                        crate::db::inventory_seam::location_qty_in_tx(
+                            &tx,
+                            &product_id,
+                            location.as_str(),
+                        )
+                    },
+                    |location| match workspace_instance_id {
+                        Some(ws_id) => crate::db::inventory_seam::allow_negative_at_in_tx(
+                            &tx,
+                            ws_id,
+                            location.as_str(),
                         ),
-                    });
-                }
-
-                // Check stock at each location and build deduction entries
-                for alloc in &resolution.allocations {
-                    if alloc.qty <= 0 {
-                        continue;
-                    }
-
-                    // Resolve product_id from SKU
-                    let product_id: String = tx
-                        .query_row(
-                            "SELECT id FROM products WHERE sku = ?1",
-                            rusqlite::params![line.sku],
-                            |row| row.get(0),
-                        )
-                        .map_err(|_| CoreError::NotFound {
-                            entity: "product",
-                            id: line.sku.clone(),
-                        })?;
-
-                    // Re-check availability at this location
-                    let available: i64 = tx
-                        .query_row(
-                            "SELECT COALESCE(qty, 0) FROM stock_summary \
-                             WHERE item_id = ?1 AND location_id = ?2",
-                            rusqlite::params![product_id, alloc.location_id.as_str()],
-                            |row| row.get(0),
-                        )
-                        .unwrap_or(0);
-
-                    if available < alloc.qty {
-                        // Allow negative stock check: does this binding allow it?
-                        let allow_neg = if let Some(ws_id) = workspace_instance_id {
-                            tx.query_row(
-                                "SELECT COALESCE(allow_negative_stock, 0) \
-                                 FROM workspace_inventory_locations \
-                                 WHERE instance_id = ?1 AND location_id = ?2",
-                                rusqlite::params![ws_id, alloc.location_id.as_str()],
-                                |row| row.get::<_, i64>(0),
-                            )
-                            .unwrap_or(0)
-                                == 1
-                        } else {
-                            false
-                        };
-
-                        if !allow_neg {
-                            tx.rollback()?;
-                            return Err(CoreError::InsufficientStockAtLocation {
-                                sku: line.sku.clone(),
-                                location_id: alloc.location_id.clone(),
-                                requested_delta: alloc.qty,
-                                available_qty: available,
-                            });
-                        }
-                    }
-
-                    deductions.push(crate::sale_deduction::StockDeduction {
-                        sku: line.sku.clone(),
-                        location_id: alloc.location_id.clone(),
-                        delta: -alloc.qty,
-                    });
-                }
+                        None => Ok(false),
+                    },
+                )?;
+                deductions.extend(planned);
             } else if needs_stock {
                 // Lines NOT in resolutions but that track inventory still need
                 // stock deduction because the entire first sale transaction was
@@ -324,17 +311,15 @@ impl Store<'_> {
                 // BOM ingredients for non-resolution lines
                 if has_recipe {
                     for ingredient in recipe {
-                        let ing_info: Option<(String, String)> = match tx.query_row(
-                            "SELECT sku, product_type FROM products WHERE id = ?1",
-                            rusqlite::params![ingredient.ingredient_product_id],
-                            |row| Ok((row.get(0)?, row.get(1)?)),
-                        ) {
-                            Ok(val) => Some(val),
-                            Err(rusqlite::Error::QueryReturnedNoRows) => None,
-                            Err(e) => return Err(CoreError::Db(e)),
-                        };
+                        // Phase 5 P5.2: the `products` read lives in `db::inventory_seam`.
+                        let ing_info = crate::db::inventory_seam::ingredient_info_by_id_in_tx(
+                            &tx,
+                            &ingredient.ingredient_product_id,
+                        )?;
 
-                        if let Some((ing_sku, ing_ptype_str)) = ing_info {
+                        if let Some(info) = ing_info {
+                            let ing_sku = info.product_id;
+                            let ing_ptype_str = info.product_type;
                             // Same contract as the sale-line parse above: an
                             // unmapped ingredient type deducts stock a Service
                             // ingredient does not keep.
@@ -640,7 +625,7 @@ impl Store<'_> {
             })?;
 
         match deduction_locations_json.as_deref() {
-            None | Some("") | Some("null") => {
+            None | Some("" | "null") => {
                 tracing::info!(
                     sale_id,
                     "voiding pending sale without deduction_locations — no location credits to restore"
@@ -710,6 +695,41 @@ impl Store<'_> {
         // voided sale never leaves a ghost ticket on the kitchen board.
         self.cancel_kds_orders_for_sale_in_tx(&tx, sale_id)?;
 
+        // MSL-18: this reversal used to write NO audit row, which contradicted
+        // the module invariant one line above it ("voids write audit entries")
+        // and its own sibling `void_sale`, which records `sale.void` with the
+        // reason, user and total. A pending void reverses every stock deduction
+        // the sale made and flips the row to `voided`, and it is reachable from
+        // the register UI, so an operator asking who voided a sale got an answer
+        // for a completed one and silence for a pending one.
+        //
+        // Written through `log_audit`, which JOINS this transaction rather than
+        // opening its own, so the row commits or dies with the void. The reason
+        // is recorded as a marker rather than a field: `void_pending_sale`'s
+        // callers (the UI's failure path and the stale-pending reaper) pass no
+        // user-supplied reason, and the reaper is not a user at all.
+        let total_minor: Option<i64> = tx
+            .query_row(
+                "SELECT total_minor FROM sales WHERE id = ?1",
+                rusqlite::params![sale_id],
+                |row| row.get(0),
+            )
+            .optional()?;
+        let details = serde_json::json!({
+            "total_minor": total_minor,
+            "reversal": "pending_sale_void",
+        })
+        .to_string();
+        let audit = AuditEntry::new(
+            "system",
+            "sale.void",
+            Some("sale"),
+            Some(sale_id),
+            Some(details),
+            "success",
+        );
+        self.log_audit(&audit)?;
+
         tx.commit()?;
         Ok(())
     }
@@ -718,18 +738,16 @@ impl Store<'_> {
     ///
     /// ADR-20 §6: uses the partial index `idx_sales_pending_expires` (created
     /// by migration 096) for efficient lookups. A sale is considered "stale"
-    /// when `pending_expires_at < datetime('now')` — the 30-min expiry window
-    /// was set at creation time in `complete_sale_deduction`.
-    /// Find all pending sales whose `pending_expires_at` is in the past.
+    /// when `pending_expires_at < <now>`, where the 30-min expiry window was set
+    /// at creation time in `complete_sale_deduction`.
     ///
-    /// ADR-20 §6: uses the partial index `idx_sales_pending_expires` (created
-    /// by migration 096) for efficient lookups. A sale is considered "stale"
-    /// when `pending_expires_at < NOW` — the 30-min expiry window was set at
-    /// creation time in `complete_sale_deduction`.
-    ///
-    /// The threshold is computed in Rust using the exact same format
-    /// (`chrono::SecondsFormat::Millis`) as the stored `pending_expires_at`
-    /// values, avoiding format mismatches with SQLite's `strftime`.
+    /// The threshold is computed in Rust with `chrono::SecondsFormat::Millis` —
+    /// the same shape the column stores — and passed as a bound, so the
+    /// comparison is text-to-text in one format. An earlier form compared against
+    /// SQL-side `datetime('now')`, whose output is `YYYY-MM-DD HH:MM:SS` (a space
+    /// at index 10) while the column is `…T…Z`; `' '` sorts below `'T'`, so the
+    /// two shapes did not compare like for like. The Rust threshold is what keeps
+    /// that from coming back.
     pub fn find_stale_pending_sales(&self) -> Result<Vec<String>, CoreError> {
         let now_rfc = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
         let mut stmt = self.conn.prepare(

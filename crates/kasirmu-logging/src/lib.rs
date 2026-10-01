@@ -1,14 +1,13 @@
 /*
-last audited DD-MM-YY by DSH-Agent
+last audited 29-09-26 by DSH-Agent
 crate: kasirmu-logging | status: SAFE | lint: CLEAN
-findings: 3 actual unsafe blocks verified (syslog: openlog + syslog; eventlog: OutputDebugStringW) — all with SAFETY comments and valid CString/wide-string guards. .expect() calls only in documented-panic wrapper functions (init/init_json/init_with_file/init_json_with_file — mirrored by try_* non-panicking variants). Error type #[non_exhaustive]. File logger guard retention fix (L-1) verified. No defects found.
+findings: 0 unsafe blocks — the syslog/eventlog FFI modules (3 unsafe blocks: openlog + syslog, OutputDebugStringW) were DELETED 2026-09-29 under C29 / decision D13, so this crate is now entirely safe Rust and the crate-level `#![deny(unsafe_code)]` below makes that structural. .expect() calls only in documented-panic wrapper functions (init/init_json/init_with_file/init_json_with_file — mirrored by try_* non-panicking variants). Error type #[non_exhaustive]. File logger guard retention fix (L-1) verified. No defects found.
 next: none | perf: N/A
 */
-//! Structured logging facade for OZ-POS.
+//! Structured logging facade for kasir.mu.
 //!
 //! `kasirmu-logging` wraps the `tracing` ecosystem with context-tagged
-//! record format, file + stdout writers, log rotation, and platform-
-//! specific outputs (syslog on Linux, Event Log on Windows).
+//! record format, file + stdout writers, and log rotation.
 //!
 //! # Initialisers
 //!
@@ -17,20 +16,44 @@ next: none | perf: N/A
 //!   production environments where logs are shipped to ELK/Loki.
 //! - [`init_with_file`] — human-readable text + rolling file writer.
 //! - [`init_json_with_file`] — JSON + rolling file writer.
+//! - [`try_init_with_file_or_stdout`] — what the shells actually call:
+//!   file sink when the log directory resolves, stdout otherwise.
 //!
-//! # Platform outputs
+//! # Which initialisers are actually wired, stated because it is not obvious
 //!
-//! - **Linux**: Syslog output is available via the `syslog` module.
-//! - **Windows**: Event Log output is available via the `eventlog` module.
+//! **Both Tauri shells call [`try_init_with_file_or_stdout`] from their `setup`
+//! closure** (desktop `apps/desktop-tauri/src/lib.rs`, tablet
+//! `apps/mobile-tauri/src/lib.rs`): the rolling file sink when the platform
+//! resolves a writable per-install log directory (`app.path().app_log_dir()` →
+//! `%LOCALAPPDATA%\<id>\logs` on Windows, `<local data dir>/\<id>\logs` on
+//! Linux, `~/Library/Logs/<id>` on macOS, `<config dir>/logs` on Android), and [`try_init`] (stdout) whenever it
+//! cannot. `apps/cloud-server` keeps [`try_init_json`] (stdout) deliberately — a
+//! container's stdout is already collected by supervisord/Northflank, and a file
+//! written inside the container would die with it.
+//!
+//! The wiring landed 2026-09-29. Before it, both shells called [`try_init`] in
+//! `run()` before the Tauri builder, which writes to **stdout only** — captured
+//! nowhere on a double-clicked desktop build, so a field incident left no log
+//! file to open. The file sink could not simply stay in `run()`: it needs a
+//! writable per-install directory, and the only resolver that knows the right
+//! path on every platform needs an `AppHandle`, which does not exist until
+//! `setup`. Hence the combined initialiser, which keeps the good half of the old
+//! ordering — logging is initialised once, early, and a directory that cannot be
+//! prepared falls back to stdout (LOG-2) instead of going silent.
+//!
+//! # No platform-specific sinks
+//!
+//! The `syslog` (Linux) and `eventlog` (Windows) modules were **deleted
+//! 2026-09-29** (C29 / decision D13). Both were unwired — zero callers
+//! anywhere in the tree — and both were redundant with the stdout
+//! initialisers above, which the container and the host already capture.
+//! They also carried a `no_run` doctest advertising a usage that did not
+//! exist, which is the defect class the deletion closes. There is
+//! deliberately no FFI and no `unsafe` in this crate.
 
-// Note: unsafe blocks are permitted for platform-specific FFI
-// calls (libc syslog, Windows Event Log).
+#![deny(unsafe_code)]
 
 pub mod error;
-#[cfg(target_os = "windows")]
-pub mod eventlog;
-#[cfg(target_os = "linux")]
-pub mod syslog;
 pub mod visitor;
 
 pub use error::LoggingError;
@@ -115,6 +138,46 @@ pub fn try_init() -> Result<(), LoggingError> {
     Ok(())
 }
 
+/// Initialise client logging: the rolling file sink when `log_dir` is usable,
+/// stdout when it is not.
+///
+/// This is the entry point both Tauri shells call from their `setup` closure,
+/// where the platform log directory can be resolved (`app.path().app_log_dir()`).
+/// The policy it encodes is *a working log beats the ideal log*:
+///
+/// 1. `log_dir` is `None` (the resolver failed) → [`try_init`], stdout only.
+/// 2. `Some(dir)` but the directory cannot be prepared
+///    ([`LoggingError::LogDirUnusable`]) → report it on stderr, then fall back
+///    to [`try_init`]. The LOG-2 pre-flight exists precisely so this failure is
+///    observable, so it is printed rather than swallowed; stderr, not
+///    `tracing::warn!`, because the subscriber is not installed yet and an
+///    event here would be dropped — the exact failure this function prevents.
+/// 3. Any other error (the global subscriber is already set) is passed through
+///    untouched: a second initialiser cannot improve the situation, and
+///    reporting a duplicate as a directory problem would misdirect the reader.
+///
+/// Returns `Err` only for case 3 (and for case 2 when stdout is also taken).
+pub fn try_init_with_file_or_stdout(
+    log_dir: Option<&std::path::Path>,
+    file_prefix: &str,
+    retention_days: u32,
+) -> Result<(), LoggingError> {
+    if let Some(dir) = log_dir {
+        let dir_str = dir.to_string_lossy();
+        match try_init_with_file(&dir_str, file_prefix, retention_days) {
+            Ok(()) => return Ok(()),
+            Err(LoggingError::LogDirUnusable(e)) => {
+                eprintln!(
+                    "[kasirmu-logging] log dir {} unusable ({e}); falling back to stdout",
+                    dir.display()
+                );
+            }
+            Err(e) => return Err(e),
+        }
+    }
+    try_init()
+}
+
 /// Non-panicking variant of [`init_json`].
 ///
 /// Returns `Err` (instead of panicking) if the global subscriber has
@@ -169,6 +232,24 @@ pub fn init_json() {
     try_init_json().expect("logging init_json failed");
 }
 
+/// Prepare `dir` for the rolling file writer, failing loudly if it cannot be
+/// used (LOG-2).
+///
+/// Creates the directory when missing (matching what
+/// `tracing_appender::rolling` would do) and then opens and removes a probe
+/// file, so a directory that exists but is not writable — a read-only mount,
+/// a permissions mistake — is reported to the caller instead of being
+/// discovered as silently missing log lines.
+fn ensure_log_dir_writable(dir: &str) -> Result<(), LoggingError> {
+    std::fs::create_dir_all(dir)?;
+    let probe = std::path::Path::new(dir).join(".kasirmu-logging-write-probe");
+    std::fs::write(&probe, b"")?;
+    // Best-effort removal; a failure here does not mean the directory is
+    // unusable, only that we left a zero-byte probe behind.
+    let _ = std::fs::remove_file(&probe);
+    Ok(())
+}
+
 /// Remove log files in `dir` that start with `file_prefix` and whose
 /// modification time is older than `retention_days`.
 fn cleanup_old_log_files(dir: &str, file_prefix: &str, retention_days: u32) {
@@ -207,7 +288,7 @@ fn cleanup_old_log_files(dir: &str, file_prefix: &str, retention_days: u32) {
 /// # Example
 ///
 /// ```no_run
-/// kasirmu_logging::init_with_file("logs", "oz-pos", 30);
+/// kasirmu_logging::init_with_file("logs", "kasirmu", 30);
 /// ```
 pub fn init_with_file(log_dir: &str, file_prefix: &str, retention_days: u32) {
     try_init_with_file(log_dir, file_prefix, retention_days)
@@ -231,6 +312,15 @@ pub fn try_init_with_file(
     if let Some(warning) = filter_warning {
         eprintln!("{warning}");
     }
+
+    // LOG-2: prove the directory is writable BEFORE the subscriber is set.
+    // `try_init` below returns Err only when the global subscriber was already
+    // set, so an unwritable path used to yield a non-blocking writer whose
+    // writes are silently dropped and an `Ok(())` to the caller — the process
+    // believed file logging was on. This pre-flight is the only place the
+    // failure is observable, so it is also the only thing that constructs
+    // `LoggingError::LogDirUnusable`.
+    ensure_log_dir_writable(log_dir)?;
 
     let file_appender = tracing_appender::rolling::hourly(log_dir, file_prefix);
     // L-1 fix: the guard is retained process-wide (see FILE_LOG_GUARDS);

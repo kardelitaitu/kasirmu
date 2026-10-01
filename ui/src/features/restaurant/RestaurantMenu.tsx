@@ -1,10 +1,12 @@
 import { useState, useMemo, useCallback, useEffect, useLayoutEffect, useRef } from 'react';
-import { type Product } from '@/types/domain';
+import { type CourseId, type ModifierSelection, type Product } from '@/types/domain';
 import { useLocalization } from '@fluent/react';
 import { useProducts } from '@/features/products/useProducts';
 import { useAuth } from '@/contexts/AuthContext';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
-import { getUserPreferencesScoped, setUserPreferencesScoped } from '@/api/settings';
+import * as locationsApi from '@/api/locations';
+import * as settingsApi from '@/api/settings';
+import ItemModifierModal, { type ModifierGroup } from '@/features/sales/components/ItemModifierModal';
 import { MenuCategoryTabBar } from './components/MenuCategoryTabBar';
 import { MenuItemGrid } from './components/MenuItemGrid';
 import { MenuItemContextMenu, type RestaurantContextMenuState } from './components/MenuItemContextMenu';
@@ -17,7 +19,7 @@ import './RestaurantMenu.css';
 
 export interface RestaurantMenuProps {
   /** Called when the user clicks "Add" on a product. */
-  onAddProduct?: (product: Product) => void;
+  onAddProduct?: (product: Product, meta?: { courseId?: CourseId; modifiers?: ModifierSelection[] }) => void;
   /** Controlled sidebar open state (synced with PosScreen to hide cart). */
   sidebarOpen?: boolean;
   /** Callback when sidebar open state changes. */
@@ -38,6 +40,8 @@ export interface RestaurantMenuProps {
   onChangePhoto?: (() => void) | undefined;
   /** Request exit from workspace; handled by host to check shifts. */
   onRequestExit?: () => void;
+  /** Override manager status for sidebar permissions. */
+  isManager?: boolean | undefined;
 }
 
 // ── Helpers ────────────────────────────────────────────────────────
@@ -118,16 +122,43 @@ function savePop(pop: Record<string, number>, uid: string) {
   try { localStorage.setItem(key(uid, 'pop'), JSON.stringify(pop)); } catch { /* quota */ }
 }
 
-function loadUnavailable(uid: string): Set<string> {
+function unavailableKey(uid: string, locId?: string | null): string {
+  return locId ? `restaurant-loc-${locId}-unavail` : key(uid, 'unavail');
+}
+
+function loadUnavailable(uid: string, locId?: string | null): Set<string> {
   try {
-    const raw = localStorage.getItem(key(uid, 'unavail'));
+    const raw = (locId ? localStorage.getItem(unavailableKey(uid, locId)) : null) ?? localStorage.getItem(key(uid, 'unavail'));
     return new Set<string>(raw ? JSON.parse(raw) : []);
   } catch {
     return new Set();
   }
 }
-function saveUnavailable(unavail: Set<string>, uid: string) {
-  try { localStorage.setItem(key(uid, 'unavail'), JSON.stringify([...unavail])); } catch { /* storage unavailable */ }
+
+function saveUnavailable(unavail: Set<string>, uid: string, locId?: string | null) {
+  try {
+    const serialized = JSON.stringify([...unavail]);
+    if (locId) {
+      localStorage.setItem(unavailableKey(uid, locId), serialized);
+    }
+    localStorage.setItem(key(uid, 'unavail'), serialized);
+  } catch { /* storage unavailable */ }
+}
+
+/** Extract configured modifier groups from a product or its serialized metadata. */
+function getProductModifierGroups(product: Product): ModifierGroup[] {
+  if (product.modifierGroups && product.modifierGroups.length > 0) {
+    return product.modifierGroups;
+  }
+  if (product.notes && product.notes.startsWith('[')) {
+    try {
+      const parsed = JSON.parse(product.notes);
+      if (Array.isArray(parsed) && parsed.length > 0 && parsed[0].modifiers) {
+        return parsed as ModifierGroup[];
+      }
+    } catch { /* malformed notes */ }
+  }
+  return [];
 }
 
 /** Sort so pinned items appear first, preserving original order within each group. */
@@ -158,6 +189,7 @@ export default function RestaurantMenu({
   profile,
   onChangePhoto,
   onRequestExit,
+  isManager,
 }: RestaurantMenuProps) {
   const { l10n } = useLocalization();
   const { sessionToken } = useWorkspace();
@@ -185,22 +217,128 @@ export default function RestaurantMenu({
   const [addedSku, setAddedSku] = useState<string | null>(null);
   const addedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const handleAddProduct = useCallback((product: Product) => {
+  const [locationId, setLocationId] = useState<string | null>(null);
+  const unavailableLoadedRef = useRef(false);
+  const [customizingProduct, setCustomizingProduct] = useState<Product | null>(null);
+
+  useEffect(() => {
+    if (!sessionToken || typeof locationsApi.getPrimaryLocationScoped !== 'function') return;
+    let cancelled = false;
+    locationsApi.getPrimaryLocationScoped(sessionToken)
+      .then((loc) => {
+        if (!cancelled && loc?.id) {
+          setLocationId(loc.id);
+        }
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [sessionToken]);
+
+  const unavailableSettingKey = locationId ? `restaurant.unavailable.${locationId}` : 'restaurant.unavailable';
+
+  const handleAddProduct = useCallback((product: Product, meta?: { courseId?: CourseId; modifiers?: ModifierSelection[] }) => {
     const nextCounts = { ...addCountRef.current, [product.sku]: (addCountRef.current[product.sku] ?? 0) + 1 };
     addCountRef.current = nextCounts;
     setPopularityCounts(nextCounts);
     savePop(nextCounts, userId);
-    onAddProduct?.(product);
+    if (meta) {
+      onAddProduct?.(product, meta);
+    } else {
+      onAddProduct?.(product);
+    }
     setAddedSku(product.sku);
     if (addedTimerRef.current) clearTimeout(addedTimerRef.current);
     addedTimerRef.current = setTimeout(() => setAddedSku(null), 400);
   }, [onAddProduct, userId]);
 
+  const handleItemAdd = useCallback((product: Product) => {
+    const groups = getProductModifierGroups(product);
+    if (groups.length > 0) {
+      setCustomizingProduct(product);
+      return;
+    }
+    handleAddProduct(product);
+  }, [handleAddProduct]);
+
+  const handleConfirmModifiers = useCallback((selections: ModifierSelection[], totalPriceMinor: number) => {
+    if (!customizingProduct) return;
+    const prod = customizingProduct;
+    setCustomizingProduct(null);
+    const customizedProduct: Product = {
+      ...prod,
+      price: {
+        ...prod.price,
+        minor_units: totalPriceMinor,
+      },
+    };
+    handleAddProduct(customizedProduct, { modifiers: selections });
+  }, [customizingProduct, handleAddProduct]);
+
   const [activeCategory, setActiveCategory] = useState<Category>('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [pinned, setPinned] = useState<Set<string>>(loadPinned(userId));
   const [colors, setColors] = useState<Record<string, string>>(loadColors(userId));
-  const [unavailable, setUnavailable] = useState<Set<string>>(loadUnavailable(userId));
+  const [unavailable, setUnavailable] = useState<Set<string>>(loadUnavailable(userId, locationId));
+
+  // Rehydrate unavailable items from backend when sessionToken or locationId resolves.
+  useEffect(() => {
+    if (!sessionToken || typeof settingsApi.getSettingScoped !== 'function') {
+      unavailableLoadedRef.current = true;
+      return;
+    }
+    let cancelled = false;
+    settingsApi.getSettingScoped(sessionToken, unavailableSettingKey)
+      .then((raw) => {
+        if (cancelled) return;
+        unavailableLoadedRef.current = true;
+        if (raw) {
+          try {
+            const arr = JSON.parse(raw);
+            if (Array.isArray(arr)) {
+              const remoteSet = new Set<string>(arr);
+              setUnavailable(remoteSet);
+              saveUnavailable(remoteSet, userId, locationId);
+            }
+          } catch { /* malformed backend setting */ }
+        }
+      })
+      .catch(() => {
+        unavailableLoadedRef.current = true;
+      });
+    return () => { cancelled = true; };
+  }, [sessionToken, unavailableSettingKey, userId, locationId]);
+
+  // Re-poll unavailable items from the backend when the tab regains visibility.
+  // This ensures that 86'd items from another terminal appear within seconds of
+  // refocusing, without a full page reload. (Cross-terminal awareness gap — §F5.)
+  const refetchUnavailable = useCallback(() => {
+    if (!sessionToken || typeof settingsApi.getSettingScoped !== 'function') return;
+    settingsApi.getSettingScoped(sessionToken, unavailableSettingKey)
+      .then((raw) => {
+        if (!raw) return;
+        try {
+          const arr = JSON.parse(raw);
+          if (Array.isArray(arr)) {
+            const remoteSet = new Set<string>(arr);
+            setUnavailable(prev => {
+              // Only update state (and trigger a re-render) when the set differs.
+              const prevStr = [...prev].sort().join(',');
+              const nextStr = [...remoteSet].sort().join(',');
+              if (prevStr === nextStr) return prev;
+              saveUnavailable(remoteSet, userId, locationId);
+              return remoteSet;
+            });
+          }
+        } catch { /* malformed */ }
+      })
+      .catch(() => {});
+  }, [sessionToken, unavailableSettingKey, userId, locationId]);
+
+  useEffect(() => {
+    const onVisible = () => { if (document.visibilityState === 'visible') refetchUnavailable(); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [refetchUnavailable]);
   const addCountRef = useRef<Record<string, number>>(loadPop(userId));
   const [popularityCounts, setPopularityCounts] = useState<Record<string, number>>(() => loadPop(userId));
   const [sortMode, setSortMode] = useState<SortMode>(() => {
@@ -236,7 +374,7 @@ export default function RestaurantMenu({
     setAddedSku(null);
     setPinned(loadPinned(userId));
     setColors(loadColors(userId));
-    setUnavailable(loadUnavailable(userId));
+    setUnavailable(loadUnavailable(userId, locationId));
     addCountRef.current = loadPop(userId);
     setPopularityCounts(addCountRef.current);
     try {
@@ -249,7 +387,7 @@ export default function RestaurantMenu({
       setCardSize(0);
       setFontSize(0);
     }
-  }, [userId]);
+  }, [userId, locationId]);
 
   // Clean up add-to-cart animation timer on unmount
   useEffect(() => {
@@ -261,8 +399,8 @@ export default function RestaurantMenu({
   const persistMenuPreference = useCallback((preferenceKey: string, value: string) => {
     locallyModifiedPreferencesRef.current.add(preferenceKey);
     try { localStorage.setItem(key(userId, preferenceKey), value); } catch { /* offline / quota */ }
-    if (!sessionToken) return;
-    void setUserPreferencesScoped(sessionToken, [{ key: preferenceKey, value }]).catch(() => {
+    if (!sessionToken || typeof settingsApi.setUserPreferencesScoped !== 'function') return;
+    void settingsApi.setUserPreferencesScoped(sessionToken, [{ key: preferenceKey, value }]).catch(() => {
       // Keep the local preference when the scoped backend is temporarily offline.
     });
   }, [sessionToken, userId]);
@@ -284,14 +422,14 @@ export default function RestaurantMenu({
   // Load preferences from backend on mount, syncing to localStorage. Ignore
   // late responses when the active user or store session changes.
   useEffect(() => {
-    if (!sessionToken) return;
+    if (!sessionToken || typeof settingsApi.getUserPreferencesScoped !== 'function') return;
     // A fresh session (new token) is authoritative: drop the locally-armed
     // guards carried over from the previous session so the backend
     // rehydrates this session's display preferences (sort / card / font
     // size). Same-token late responses are still guarded below.
     locallyModifiedPreferencesRef.current.clear();
     let cancelled = false;
-    getUserPreferencesScoped(sessionToken).then((prefs) => {
+    settingsApi.getUserPreferencesScoped(sessionToken).then((prefs) => {
       if (cancelled) return;
       const cs = prefs['cardsize'];
       if (cs !== undefined && !locallyModifiedPreferencesRef.current.has('cardsize')) {
@@ -330,8 +468,11 @@ export default function RestaurantMenu({
     }
     savePinned(pinned, userId);
     saveColors(colors, userId);
-    saveUnavailable(unavailable, userId);
-  }, [pinned, colors, unavailable, userId]);
+    saveUnavailable(unavailable, userId, locationId);
+    if (sessionToken && unavailableLoadedRef.current && typeof settingsApi.setSettingScoped === 'function') {
+      void settingsApi.setSettingScoped(sessionToken, unavailableSettingKey, JSON.stringify([...unavailable])).catch(() => {});
+    }
+  }, [pinned, colors, unavailable, userId, locationId, sessionToken, unavailableSettingKey]);
 
   // ── Context menu state ──────────────────────────────
   // The open/closed descriptor and the trigger bookkeeping stay here: the
@@ -484,6 +625,7 @@ export default function RestaurantMenu({
         profile={profile}
         onChangePhoto={onChangePhoto}
         onRequestExit={onRequestExit}
+        isManager={isManager}
       />
 
       {/* ── Category pills ─────────────────────────── */}
@@ -507,7 +649,7 @@ export default function RestaurantMenu({
         colors={colors}
         catMetaMap={catMetaMap}
         addedSku={addedSku}
-        onAdd={handleAddProduct}
+        onAdd={handleItemAdd}
         onContextMenu={handleContextMenu}
       />
 
@@ -519,6 +661,19 @@ export default function RestaurantMenu({
           setUnavailable={setUnavailable}
           setColors={setColors}
           onClose={closeContextMenu}
+        />
+      )}
+
+      {/* ── Item modifier modal ───────────────────────── */}
+      {customizingProduct && (
+        <ItemModifierModal
+          open={Boolean(customizingProduct)}
+          productName={customizingProduct.name}
+          basePriceMinor={customizingProduct.price.minor_units}
+          currency={customizingProduct.price.currency}
+          groups={getProductModifierGroups(customizingProduct)}
+          onConfirm={handleConfirmModifiers}
+          onClose={() => setCustomizingProduct(null)}
         />
       )}
     </div>

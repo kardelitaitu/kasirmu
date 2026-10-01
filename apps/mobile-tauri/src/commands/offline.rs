@@ -14,7 +14,7 @@
 //! door flips it to `Gated` and **erases debt**, so those stay put even though
 //! their bodies already match the twin.
 //!
-//! **One door is ported.** [`list_all_offline_scoped`] is the only door that is
+//! **One door is ported.** [`list_all_offline_scoped`](kasirmu_bridge::offline::list_all_offline_scoped) is the only door that is
 //! both body-identical *and* gated — it enforces `SYNC_MANAGE`
 //! (`crates/kasirmu-bridge/src/offline.rs:266-268`), which is what makes the
 //! delegation ledger-neutral. `OfflineQueueItemDto` crossed the boundary with it.
@@ -22,29 +22,36 @@
 //! **Seven doors are REFUSED, on four separate grounds.** This module is the
 //! campaign's clearest evidence that §4's pinned surfaces are not only the SQL:
 //!
-//! - **Case 2, debt erasure** — [`enqueue_offline_scoped`],
-//!   [`list_pending_offline_scoped`], [`pending_offline_count_scoped`] and
-//!   [`list_remote_failures_scoped`]. Each resolves a session via
+//! - **Case 2, debt erasure** — [`enqueue_offline_scoped`](kasirmu_bridge::offline::enqueue_offline_scoped),
+//!   [`list_pending_offline_scoped`](kasirmu_bridge::offline::list_pending_offline_scoped), [`pending_offline_count_scoped`](kasirmu_bridge::offline::pending_offline_count_scoped) and
+//!   [`list_remote_failures_scoped`](kasirmu_bridge::offline::list_remote_failures_scoped). Each resolves a session via
 //!   `resolve_scope` and enforces nothing, so a delegation would silently
 //!   retire a real ledger row. Gating them is an owner ruling, not part of an
 //!   extraction.
-//! - **Added statements** — [`enqueue_offline_scoped`] on a second, independent
+//! - **Added statements** — [`enqueue_offline_scoped`](kasirmu_bridge::offline::enqueue_offline_scoped) on a second, independent
 //!   ground: the bridge runs three statements this shell never has,
 //!   `TenantSubscription::load` against the global db then `verify_signature()`
 //!   and `enforce_pos_writable()` (`crates/kasirmu-bridge/src/offline.rs:233-236`).
-//! - **Storage source** — [`retry_offline_sync_scoped`]. Phase 1 reads the
-//!   pending rows from the store database on both sides, but Phase 3 writes the
-//!   outcomes to `state.db`, and on this shell `state.db` is the **global
-//!   identity** database (`<app_data_dir>/kasir.db`), while the bridge
-//!   re-resolves the session and writes to the store database
+//! - **Storage source** — [`retry_offline_sync_scoped`](kasirmu_bridge::offline::retry_offline_sync_scoped). **FIXED under C59; this
+//!   entry described a live defect until 2026-09-25 and no longer does.** Phase 3
+//!   used to write the outcomes to `state.db`, which on this shell is the **global
+//!   identity** database (`<app_data_dir>/kasir.db`), while the bridge re-resolves
+//!   the session and writes to the store database
 //!   (`<data_dir>/store-<id>.sqlite`, `platform/core/src/database/manager.rs:167`).
-//!   Two different files — the `branding::get_brand_settings` refusal class.
-//!   **It is also a defect**, filed in `docs/records/audit-open-findings.md`.
-//! - **Log text** — [`delete_offline_item_scoped`] and
-//!   [`requeue_remote_failure_scoped`], and *nothing else* differs. The bridge
+//!   Two different files, so the ids Phase 1 read did not exist in the file Phase 3
+//!   wrote: `mark_offline_synced` returned `NotFound` and the `?` inside
+//!   `apply_sync_outcomes` aborted the command AFTER the push had reached the
+//!   server, leaving the store's rows `pending` so **every retry re-sent them — a
+//!   permanent duplicate-push loop**. Phase 3 now re-resolves the scope and writes
+//!   to the same store database Phase 1 read (`:363-381`). The `?` is still there
+//!   and is still correct: now that both phases address one file, a `NotFound` means
+//!   the row genuinely vanished and aborting is right.
+//! - **Log text** — [`delete_offline_item_scoped`](kasirmu_bridge::offline::delete_offline_item_scoped) and
+//!   [`requeue_remote_failure_scoped`](kasirmu_bridge::offline::requeue_remote_failure_scoped), and *nothing else* differs. The bridge
 //!   appends `" (scoped)"` where this shell says `"offline queue item deleted"`
-//!   (`:359` vs `:403`) and `"dead-lettered remote item requeued for sync
-//!   retry"` (`:382` vs `:425`). §4 pins log text byte-identical — the
+//!   (`:446` vs bridge `:417`) and `"dead-lettered remote item requeued for sync
+//!   retry"` (`:479` vs bridge `:439`) — both re-measured 2026-09-25, because the
+//!   pointers here had rotted by ~40 lines each. §4 pins log text byte-identical — the
 //!   `resolve_boot_store` refusal set that precedent — so these two are a
 //!   **decision rather than work**: reconcile the suffix and both doors become
 //!   portable with no body left to change.
@@ -310,8 +317,9 @@ pub async fn retry_offline_sync_scoped(
 ) -> Result<SyncResult, AppError> {
     // Phase 1: Read pending items and config from DB (brief lock).
     let (pending_items, config_opt) = {
-        let (session, conn_arc) = state.resolve_scope(&session_token)?;
+        let session = state.resolve_session(&session_token)?;
         require_permission_for_session(&state, &session, permissions::SYNC_MANAGE).await?;
+        let conn_arc = state.resolve_store(&session_token)?;
         let db_guard = conn_arc
             .lock()
             .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
@@ -389,7 +397,9 @@ pub async fn retry_offline_sync_scoped(
             error: Some("cloud sync requires a paid plan".into()),
             plan_required: true,
         },
-        Err(e) => sync_client::mark_all_failed(&store, &pending_items, &e.to_string())?,
+        // A batch the server never saw is retried, not condemned: `failed` is
+        // terminal for a push item. See `sync_client::undelivered_batch`.
+        Err(e) => sync_client::undelivered_batch(&e),
     };
 
     Ok(SyncResult {
@@ -407,9 +417,9 @@ pub async fn retry_offline_sync_scoped(
 /// Refused 2026-09-16. The body is otherwise statement-identical to
 /// [`kasirmu_bridge::offline::delete_offline_item_scoped`]: same gate
 /// (`SYNC_MANAGE`), same order, same SQL. The one delta is the log text — this
-/// shell logs `"offline queue item deleted"` (`:359`) where the bridge logs
+/// shell logs `"offline queue item deleted"` (line 446 here) where the bridge logs
 /// `"offline queue item deleted (scoped)"`
-/// (`crates/kasirmu-bridge/src/offline.rs:403`). §4 pins log text byte-identical, and
+/// (`crates/kasirmu-bridge/src/offline.rs:417`). §4 pins log text byte-identical, and
 /// the `resolve_boot_store` refusal set that precedent.
 ///
 /// This is a **decision rather than work**: reconcile the `(scoped)` suffix on
@@ -423,8 +433,9 @@ pub async fn delete_offline_item_scoped(
 ) -> Result<(), AppError> {
     validate_not_empty("id", &id).map_err(|e| AppError::Invalid(e.to_string()))?;
 
-    let (session, conn_arc) = state.resolve_scope(&session_token)?;
+    let session = state.resolve_session(&session_token)?;
     require_permission_for_session(&state, &session, permissions::SYNC_MANAGE).await?;
+    let conn_arc = state.resolve_store(&session_token)?;
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
@@ -444,9 +455,9 @@ pub async fn delete_offline_item_scoped(
 /// Refused 2026-09-16 on the same ground as [`delete_offline_item_scoped`]. The
 /// SQL is already shared — this door calls `run_requeue_remote_failure`, the
 /// bridge's own helper — and the gate matches, so nothing but the log text
-/// differs: `"dead-lettered remote item requeued for sync retry"` here (`:382`)
+/// differs: `"dead-lettered remote item requeued for sync retry"` here (line 479)
 /// against `"dead-lettered remote item requeued (scoped)"` in the twin
-/// (`crates/kasirmu-bridge/src/offline.rs:425`). §4 pins log text byte-identical.
+/// (`crates/kasirmu-bridge/src/offline.rs:439`). §4 pins log text byte-identical.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn requeue_remote_failure_scoped(
@@ -456,8 +467,9 @@ pub async fn requeue_remote_failure_scoped(
 ) -> Result<(), AppError> {
     validate_not_empty("itemId", &args.item_id).map_err(|e| AppError::Invalid(e.to_string()))?;
 
-    let (session, conn_arc) = state.resolve_scope(&session_token)?;
+    let session = state.resolve_session(&session_token)?;
     require_permission_for_session(&state, &session, permissions::SYNC_MANAGE).await?;
+    let conn_arc = state.resolve_store(&session_token)?;
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;

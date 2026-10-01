@@ -1,3 +1,4 @@
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file, with a prior marker re-verified rather than replaced. It is the index of the decision directory, and the count in it matters more than the layout: twenty-eight distinct decision references were resolved against the tree this pass, and all twenty-eight correspond to real files. An index listing decisions that do not exist sends a reader looking for an argument never written, and that failure is absent here. · THE KNOWN DUPLICATE IS ITS MOST INTERESTING PROPERTY, because it is a number that appears twice and the tree says so rather than hiding it. Numbering has collided before in this directory — a companion record audited earlier in this campaign cited the collision explicitly and instructed readers to cite decisions by FILENAME rather than by number, and the top-level documentation index independently records the same collision producing a duplicate row. Three documents agreeing on one known defect is healthy redundancy: the number is ambiguous, everyone says so, and the workaround is written down. A repository that renumbered to hide this would have produced a cleaner index and a worse record. · WHAT THE INDEX IS FOR, given the volume: fifty-plus decisions is past the point where a reader browses. Its job is to let someone find the decision governing a specific question without reading all of them — a lookup problem rather than a reading problem. The companion architecture-boundary decision and the headless bridge decision are both findable here, which is how this campaign reached them. · NOT re-measured: whether each decision's own status line is accurate, beyond the automated drift check this campaign has run every round and which reports no drift across the hand-maintained table. Whether the CODE matches each decision is the per-decision question those documents now carry stamps for. · Prior marker retained; footer re-dated to match the new stamp. -->
 # Architectural Decision Records
 
 Every significant architectural decision in the POS framework is recorded as
@@ -6,9 +7,9 @@ an ADR in this directory (`docs/decisions/`). Each ADR follows the
 its header. Some ADRs have a companion `*.status.md` file with a fuller
 implementation-status walkthrough.
 
-- Numbered ADRs run **#1–#60** and are the primary record. Re-derive the ceiling rather than
+- Numbered ADRs run **#1–#61** and are the primary record. Re-derive the ceiling rather than
   trusting it: `ls docs/decisions/*adr*.md | sed 's/.*adr\([0-9]*\).*/\1/' | sort -n | tail -1`
-  → `60` (measured 2026-09-23; the ceiling was 52 when this line was written, which is exactly
+  → `61` (measured 2026-09-28; the ceiling was 52 when this line was written, which is exactly
   how a range claim rots — it grows by one per ADR and nothing re-derives it).
 - **Seven numbers are unused** — #16 and #24–#29 are claimed by no file. `ADR #16` and
   `ADR #24`–`#29` are cited by nothing anywhere in the repo
@@ -20,6 +21,12 @@ implementation-status walkthrough.
   2026-09-23; as of 2026-09-24 every numbered ADR file has exactly one row (re-derive:
   match frontmatter `num:` files against the `^| N |` rows below; measured 54/54).
   Find a missing row the same way. The generated index still wins where they disagree.
+  **Re-measured 2026-09-28 and this bullet's stated method does not reproduce its own number:**
+  `Select-String -Path 'docs/decisions/*adr*.md' -Pattern '^num:'` returns **28** files against the
+  **55** rows the table now holds, while `check-adr-status.py` reports **0 status drift across those
+  55 rows** — so every row resolves to a file and every verdict matches, but `num:`-matching is not
+  the method that produced "54/54". Recorded rather than swapped: a count whose stated method cannot
+  reproduce it is a finding for a docs-auditor pass, not a number to edit.
 - **`#43` is ambiguous and has been since 2026-09-02.** Two files claim it:
   `2026-07-24-react-only-decision.md` (ADR #43 – React-only UI decision) and
   `2026-09-02-adr43-cloud-sync-performance-scaleout-roadmap.md` (ADR #43: Cloud Sync
@@ -74,7 +81,7 @@ implementation-status walkthrough.
 | 36 | [Retail POS Product Attributes — Cost, Brand, Rack, Notes + Configurable Columns](./2026-08-11-adr36-retail-product-attributes.md) | Implemented (2026-08-12) |
 | 37 | [Product Popularity Index — Weighted Activity Score for Retail Sorting](./2026-08-11-adr37-product-popularity-index.md) | Implemented (2026-08-12) |
 | 38 | [Retail POS Row Context Menu — View Product Images in Browser](./2026-08-11-adr38-retail-row-context-menu-browser-images.md) | Implemented (2026-08-12) |
-| 39 | [Midtrans QRIS Subscription Payments (Phase 2)](./2026-08-18-adr39-midtrans-subscription-payments.md) | Implemented (2026-08-18) — `docs/plans/todo.md` C3.1 |
+| 39 | [Midtrans QRIS Subscription Payments (Phase 2)](./2026-08-18-adr39-midtrans-subscription-payments.md) | Implemented (2026-08-18) — `docs/plans/_active/todo.md` C3.1 |
 | 40 | [Multi-Terminal Peer Model](./2026-08-20-adr40-multi-terminal-peer-model.md) | Implemented (2026-08-20) |
 | 41 | [App Lifecycle, Device Onboarding, Dynamic Topology Workspaces, and Two-Layer Gated Home (Tier & RBAC)](./2026-08-28-adr41-app-lifecycle-device-onboarding-topology-home-gating.md) | Accepted (2026-08-28) |
 | 42 | [Website Admin Dashboard & User Dashboard (Subdomain Architecture)](./2026-08-28-adr42-website-admin-and-user-dashboard.md) | Partially Implemented (2026-08-28) |
@@ -95,6 +102,9 @@ implementation-status walkthrough.
 | 58 | [Pre-Expiry Re-Authentication, Manual Revocation, and the Locked State](./2026-09-21-adr58-online-licence-heartbeat-and-revocation.md) | Partially implemented (2026-09-21; re-audited 2026-09-22) — Revoked state, session lock, export twin command, ride-along, per-device renewal refusal and the Rust-side pre-expiry re-auth shipped; the export twin has no UI caller, so §2.6 is unreachable |
 | 59 | [Regional Topology and Modular Delivery — market scope on the Legal Entity, residency on the Organization, and the built-vs-module seam](./2026-09-21-adr59-regional-topology-and-modular-delivery.md) | Proposed (2026-09-21) — region field, admin route and audit trail shipped; topology and modules not |
 | 60 | [Orientation & Adaptive Layout Strategy — the hybrid ladder (shell media queries, container queries, a declared escape hatch, and a walker gate)](./2026-09-21-adr60-orientation-and-adaptive-layout-strategy.md) | Implemented (2026-09-21) — all four tiers landed and gated; 7 sheets migrated |
+| 61 | [Architecture Boundary Rule Tiers — a named rule for re-export-only edges and a governed expiry](./2026-09-28-adr61-architecture-boundary-rule-tiers.md) | Implemented (2026-09-28) — the core-type-shim rule, the quarter-renewal invariant, the baseline re-tier, the currency edge closure and all seven type-shim edges closed and the baseline emptied to 0 tracked findings |
+| 62 | [Module Seam Taxonomy — command contributors, projection subscribers, and the reporting-facade exception](./2026-09-30-adr62-module-seam-taxonomy.md) | Accepted (2026-09-30) — the taxonomy is written and grounded in the Phase 0 handler census; the check that enforces it (a handler_type classification gate) is not built |
+| 63 | [The EventSink Seam — grading R10 #3 with a rule that arrived at zero](./2026-10-04-adr63-event-sink-seam.md) | Implemented (2026-10-04) — rule `event-sink-seam` landed at zero findings with no baseline; the four remaining raw-handle broadcasts were routed through BridgeCtx::emitter; R10's other three invariants disposed of by measurement (D6) |
 
 ## Research notes
 
@@ -139,7 +149,7 @@ authoritative record.
 | [#39](./2026-08-18-adr39-midtrans-subscription-payments.md) | Midtrans QRIS Subscription Payments (Phase 2) | Implemented (2026-08-18) | **Dev 1:** Signature is plain SHA-512 (not HMAC-SHA512). **Dev 2:** Midtrans custom-field contract documented (`custom_field1` tier, `custom_field2` email, `custom_field3` period, `custom_field4` bundle). **Dev 3:** `custom_field3` period cross-checked against price map. **Dev 4:** Amount-authoritative tier resolution (amount → map lookup is primary; custom_field1 cross-checked). **Dev 5:** Failed-payment grace via `calculateGraceUntil`. **Dev 6:** Dedup by `transaction_id` only. **Dev 7:** Subscription-notification canonical string not implemented (falls through default branch). **Dev 8:** Webhook-minted key activation fast-path in `activate.go`. |
 
 > The `subscription-tiers.md` source-of-truth spec (§4 trial strategy, §3
-> quota matrix) and `docs/plans/todo.md` Phase C track the implementation details.
+> quota matrix) and `docs/plans/_active/todo.md` Phase C track the implementation details.
 
 ## Conventions
 
@@ -153,7 +163,7 @@ authoritative record.
   opened its cell with "§1–§3, … Implemented (2026-09-02)" and dropped the "Accepted —"
   that begins its own frontmatter, making an accepted-with-work-remaining decision read as
   finished; and #39 said "Approved" in three places while its body lists D1–D4 all checked
-  and `docs/plans/todo.md` records "Phase C complete. All items C0–C4.3 shipped". Its
+  and `docs/plans/_active/todo.md` records "Phase C complete. All items C0–C4.3 shipped". Its
   Go files exist (`apps/license-server/midtrans_checkout.go`, `midtrans_webhook.go`,
   `midtrans_webhook_test.go`, plus a smoke-verification record), so the record was updated
   to Implemented rather than the index being made consistently wrong.
@@ -182,8 +192,9 @@ authoritative record.
   scripts") — a pure rename, content intact, so every `TODO.md` C-phase citation went dead
   at once. Nine were still live across six docs on 08-09-26 and have been repointed. If you
   are holding an old note or shell history that says `TODO.md`, the file you want is
-  `docs/plans/todo.md`.
+  `docs/plans/_active/todo.md` (it moved again when the plans were split into `_active/`,
+  `_backlog/` and `_done/`).
 
 ---
 
-> last audited 23-09-26 by docs-auditor
+> last audited 29-09-26 by docs-auditor

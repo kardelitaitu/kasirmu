@@ -7,15 +7,101 @@ use rusqlite::Connection;
 /// the baseline rows are seeded here rather than shipped by the migration
 /// (ADR #56 §2.6).
 fn fresh() -> Connection {
-    let mut conn = Connection::open_in_memory().unwrap();
-    conn.pragma_update(None, "foreign_keys", "ON").unwrap();
-    migrations::run(&mut conn).unwrap();
+    // O-T01: `fresh_db` clones a pre-migrated snapshot (~3 ms) rather than
+    // replaying all 68 migrations (~305 ms). It sets foreign_keys=ON itself.
+    let conn = migrations::fresh_db();
     migrations::seed_provisioned_baseline(&conn);
     conn
 }
 
 fn store(conn: &Connection) -> Store<'_> {
     Store::new(conn)
+}
+
+// ── MSL-46: a UNIQUE name index that whitespace defeats ─────────
+
+/// `name` is stored untrimmed, so the UNIQUE index on it treats values that
+/// render identically as distinct rows.
+///
+/// The column carries `idx_inventory_locations_name_unique ON
+/// inventory_locations(name) WHERE is_active = 1`, which exists to stop two
+/// active locations sharing a name. But both writers bind the caller's raw
+/// string, so `"Back Room"`, `"Back Room "` and `"  Back Room"` are three rows
+/// — measured, all three create successfully.
+///
+/// The impact is that the duplicate the index exists to prevent is still
+/// reachable, and it renders invisibly: `listInventoryLocations` feeds the
+/// cashier-facing `LocationPicker` and `ShiftBar`, where two entries display
+/// as the same name and the operator has no way to tell which one they chose.
+/// The same class as MSL-45, one table over — the constraint is defeated not
+/// by a bad value but by an unstripped one.
+#[test]
+fn a_location_name_is_stored_trimmed_so_the_unique_index_holds() {
+    let conn = fresh();
+    let s = store(&conn);
+
+    s.create_inventory_location("Back Room", "store", "")
+        .unwrap();
+
+    // The same display name with padding must be refused, not stored as a
+    // second row the picker renders identically.
+    for padded in ["Back Room ", "  Back Room", "\tBack Room"] {
+        let err = s
+            .create_inventory_location(padded, "store", "")
+            .expect_err("a padded duplicate must not slip past the unique index");
+        // The conflict must name the field, not surface as an opaque DB error.
+        assert!(
+            matches!(err, CoreError::Conflict { .. }),
+            "expected a Conflict for {padded:?}, got {err:?}"
+        );
+    }
+
+    // Count the NAME under test, not the table: the base migration seeds two
+    // system locations ('Default Inventory', 'In Transit', 20260813_init.sql
+    // :1525/:1531), so a bare COUNT would measure the seed.
+    let named: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM inventory_locations WHERE name LIKE 'Back Room%'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        named, 1,
+        "exactly the one location the operator named — no padded siblings"
+    );
+}
+
+/// A padded name is still a legal name once trimmed, and the update path agrees
+/// with the create path.
+#[test]
+fn a_padded_name_is_trimmed_and_stored() {
+    let conn = fresh();
+    let s = store(&conn);
+    let id = s
+        .create_inventory_location("  Front Room  ", "store", "")
+        .unwrap();
+
+    let name: String = conn
+        .query_row(
+            "SELECT name FROM inventory_locations WHERE id = ?1",
+            rusqlite::params![id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(name, "Front Room", "stored trimmed");
+
+    // And the update path is held to the same rule.
+    s.update_inventory_location(&id, "  Front Room  ", "store", "")
+        .unwrap();
+    let after: String = conn
+        .query_row(
+            "SELECT name FROM inventory_locations WHERE id = ?1",
+            rusqlite::params![id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(after, "Front Room", "an update must trim too");
 }
 
 #[test]
@@ -67,7 +153,7 @@ fn test_workspace_locations() {
         .create_inventory_location("Warehouse A", "warehouse", "")
         .unwrap();
     let bindings = vec![WorkspaceInventoryLocation {
-        id: "".to_owned(),
+        id: String::new(),
         instance_id: "ws-1".to_owned(),
         location_id: loc_id.clone(),
         is_primary: true,
@@ -222,8 +308,7 @@ fn deactivate_inventory_location_with_stock_errors() {
     ));
     assert!(
         err.to_string().contains("non-zero stock balance"),
-        "expected non-zero stock balance message, got: {}",
-        err
+        "expected non-zero stock balance message, got: {err}"
     );
 }
 
@@ -259,8 +344,7 @@ fn deactivate_inventory_location_with_negative_stock_errors() {
     ));
     assert!(
         err.to_string().contains("non-zero stock balance"),
-        "expected non-zero stock balance message, got: {}",
-        err
+        "expected non-zero stock balance message, got: {err}"
     );
     // The location must still be active afterwards.
     let active: i64 = conn
@@ -344,8 +428,7 @@ fn deactivate_inventory_location_already_inactive_errors() {
     ));
     assert!(
         err.to_string().contains("already inactive"),
-        "expected already-inactive message, got: {}",
-        err
+        "expected already-inactive message, got: {err}"
     );
 }
 
@@ -468,6 +551,55 @@ fn list_inventory_transactions_empty() {
     let s = store(&conn);
     let txns = s.list_inventory_transactions().unwrap();
     assert!(txns.is_empty());
+}
+
+/// An unknown stored `type` must FAIL the read, not be relabelled.
+///
+/// `InventoryTransactionType::from_stored_str` documents that an unknown value
+/// returns `None` "so a future migration adding a new type fails LOUDLY rather
+/// than silently truncating audit history". The read mappers used to contradict
+/// that: `.unwrap_or(ManualAdjustment)` relabelled a future-migration row as a
+/// manager override, so an audit report would show the wrong type for a real
+/// event. The mappers now surface `ParseError` instead, honouring the contract.
+#[test]
+fn an_unknown_transaction_type_fails_the_read_instead_of_relabelling_it() {
+    let conn = fresh();
+    let s = store(&conn);
+    // The shipped table has a CHECK constraint limiting `type` to the current
+    // variants, so the only way to seed a value a FUTURE migration might add is
+    // to rebuild the table without it — precisely the scenario the enum's
+    // 'fails LOUDLY' contract is written for.
+    conn.execute_batch(
+        "DROP TABLE inventory_transactions; \
+         CREATE TABLE inventory_transactions ( \
+             id TEXT PRIMARY KEY, \
+             type TEXT NOT NULL, \
+             location_id TEXT NOT NULL, \
+             staff_id TEXT NOT NULL, \
+             transfer_id TEXT, \
+             purchase_order_id TEXT, \
+             notes TEXT NOT NULL DEFAULT '', \
+             created_at TEXT NOT NULL DEFAULT '2026-01-01T00:00:00.000Z', \
+             inventory_shift_id TEXT \
+         );",
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO inventory_transactions (id, type, location_id, staff_id, notes) \
+         VALUES ('tx-future', 'layaway-hold', 'loc-x', 'staff-x', '')",
+        [],
+    )
+    .unwrap();
+
+    // Both the list mapper and the single-row mapper must fail loudly.
+    assert!(
+        s.list_inventory_transactions().is_err(),
+        "an unknown type must not be coerced to a known variant in the list"
+    );
+    assert!(
+        s.get_inventory_transaction("tx-future").is_err(),
+        "an unknown type must not be coerced to a known variant when fetched"
+    );
 }
 
 #[test]
@@ -683,6 +815,77 @@ fn set_workspace_locations_replaces_existing_bindings() {
     assert!(!retrieved[1].allow_negative_stock);
 }
 
+/// COR-32: a rebind must invalidate the 30s location cache.
+///
+/// `resolve_primary_location` caches the resolved location for 30 seconds.
+/// The write path `set_workspace_inventory_locations` replaces the bindings
+/// in one transaction, so a cached entry from before the write is stale the
+/// moment the transaction commits. If the mutation does not clear the cache,
+/// the next sale keeps deducting from the OLD location for up to 30s after
+/// the operator rebound the workspace.
+///
+/// This pins the fix: the mutator must invalidate the cache so the very next
+/// resolve sees the new binding.
+#[test]
+fn set_workspace_inventory_locations_invalidates_the_location_cache() {
+    use crate::location_resolver::{invalidate_location_cache, resolve_primary_location};
+
+    // Start from a clean cache so a leftover entry from another test cannot
+    // mask the defect (the cache is process-global).
+    invalidate_location_cache();
+
+    let conn = fresh();
+    let s = store(&conn);
+    conn.execute(
+        "INSERT OR IGNORE INTO workspace_types (key, name) VALUES ('store-pos', 'Store POS')",
+        [],
+    )
+    .unwrap();
+    // No bound_location_id: a store-pos workspace resolves through the
+    // workspace_inventory_locations rows, and a bound id would trip the
+    // split-brain guard once bindings exist.
+    conn.execute(
+        "INSERT INTO workspace_instances (id, type_key, location_id, name) \
+         VALUES ('ws-inv', 'store-pos', 'default', 'Invalidate')",
+        [],
+    )
+    .unwrap();
+
+    let loc_a = s.create_inventory_location("Loc A", "store", "").unwrap();
+    let loc_b = s
+        .create_inventory_location("Loc B", "warehouse", "")
+        .unwrap();
+
+    let bind = |loc: &str| {
+        vec![WorkspaceInventoryLocation {
+            id: String::new(),
+            instance_id: "ws-inv".into(),
+            location_id: loc.to_owned(),
+            is_primary: true,
+            allow_negative_stock: false,
+            sort_order: 0,
+        }]
+    };
+
+    // Bind A, then resolve: this populates the 30s cache with A.
+    s.set_workspace_inventory_locations("ws-inv", &bind(&loc_a))
+        .unwrap();
+    let resolved = resolve_primary_location(&conn, "ws-inv", None).unwrap();
+    assert_eq!(resolved.as_str(), loc_a);
+
+    // Rebind to B. The write path must drop the cached A.
+    s.set_workspace_inventory_locations("ws-inv", &bind(&loc_b))
+        .unwrap();
+    let resolved_after = resolve_primary_location(&conn, "ws-inv", None).unwrap();
+    assert_eq!(
+        resolved_after.as_str(),
+        loc_b,
+        "a rebind must invalidate the location cache, not serve the stale binding"
+    );
+
+    invalidate_location_cache();
+}
+
 #[test]
 fn update_inventory_location_invalid_type_errors() {
     let conn = fresh();
@@ -874,8 +1077,7 @@ fn deactivate_location_with_pending_transfers_errors() {
     let err = s.deactivate_inventory_location(&loc_id).unwrap_err();
     assert!(
         err.to_string().contains("pending stock transfers"),
-        "expected pending transfer message, got: {}",
-        err
+        "expected pending transfer message, got: {err}"
     );
 }
 
@@ -1206,25 +1408,24 @@ fn enforce_warehouse_quota_blocks_free_at_limit() {
 }
 
 #[test]
-fn enforce_warehouse_quota_allows_plus_two() {
+fn enforce_warehouse_quota_blocks_plus_at_zero() {
     let conn = fresh();
     let s = store(&conn);
-    s.create_inventory_location("WH A", "warehouse", "")
-        .unwrap();
-    // Plus allows 2 warehouses; we have 1 → OK.
-    assert!(
-        s.enforce_warehouse_quota(&SubscriptionTier::Plus, "warehouse")
-            .is_ok()
-    );
-    s.create_inventory_location("WH B", "warehouse", "")
-        .unwrap();
-    // Now at 2 → Plus must be blocked.
+    // Plus has had no warehouse entitlement since 2026-09-29 (Premium+), so the
+    // FIRST warehouse is refused — this test used to fill up to two first.
     let err = s
         .enforce_warehouse_quota(&SubscriptionTier::Plus, "warehouse")
         .unwrap_err();
     assert!(
         matches!(err, CoreError::SubscriptionLimitExceeded(_)),
-        "Plus with 2 warehouses must be blocked: {err:?}"
+        "Plus at zero warehouses must be blocked: {err:?}"
+    );
+    // A legacy tenant that already holds one is OVER the moved cap, not under it.
+    s.create_inventory_location("WH A", "warehouse", "")
+        .unwrap();
+    assert!(
+        s.enforce_warehouse_quota(&SubscriptionTier::Plus, "warehouse")
+            .is_err()
     );
 }
 
@@ -1242,27 +1443,17 @@ fn enforce_warehouse_quota_error_message_includes_tier() {
 }
 
 #[test]
-fn enforce_warehouse_quota_pro_allows_three() {
+fn enforce_warehouse_quota_blocks_pro_at_zero() {
     let conn = fresh();
     let s = store(&conn);
-    s.create_inventory_location("WH A", "warehouse", "")
-        .unwrap();
-    s.create_inventory_location("WH B", "warehouse", "")
-        .unwrap();
-    // Pro allows 3 warehouses; we have 2 → OK.
-    assert!(
-        s.enforce_warehouse_quota(&SubscriptionTier::Pro, "warehouse")
-            .is_ok()
-    );
-    s.create_inventory_location("WH C", "warehouse", "")
-        .unwrap();
-    // Now at 3 → Pro must be blocked.
+    // Pro moved with Plus: the warehouse workspace is Premium+, so Pro is refused
+    // at zero and the entitlement test is the PREMIUM one below.
     let err = s
         .enforce_warehouse_quota(&SubscriptionTier::Pro, "warehouse")
         .unwrap_err();
     assert!(
         matches!(err, CoreError::SubscriptionLimitExceeded(_)),
-        "Pro with 3 warehouses must be blocked: {err:?}"
+        "Pro at zero warehouses must be blocked: {err:?}"
     );
 }
 
@@ -1298,11 +1489,12 @@ fn enforce_warehouse_quota_enterprise_unlimited() {
 
 #[test]
 fn warehouse_tx_veto_closes_limit_race_and_ignores_other_types() {
-    // W7-B: the warehouse door. Two things are pinned: an armed warehouse
-    // create at the cap is refused in-tx and does not persist; and a
-    // NON-warehouse location neither consumes nor honours the arm, because
-    // stores are not counted by this dimension — vetoing one would refuse a
-    // row the cap never measured.
+    // W7-B: the warehouse door. Two things are pinned: an armed warehouse create
+    // OVER the cap is refused in-tx and does not persist; and a NON-warehouse
+    // location neither consumes nor honours the arm, because stores are not
+    // counted by this dimension — vetoing one would refuse a row the cap never
+    // measured. The body explains why the fixture starts over the cap instead of
+    // filling up to it.
     let conn = fresh();
     let s = store(&conn);
     let tier = SubscriptionTier::Free;
@@ -1315,27 +1507,34 @@ fn warehouse_tx_veto_closes_limit_race_and_ignores_other_types() {
         )
         .unwrap()
     };
+    // The warehouse dimension caps at ZERO below Premium since the 2026-09-29
+    // ruling, so no tier can "fill up to the cap" and then arm: Premium and
+    // Enterprise are unlimited (`None`) and cannot arm at all. The surviving
+    // shape is the one that matters in production — a LEGACY tenant whose rows
+    // predate the move, already over the cap, meeting an armed downgrade.
+    // `create_inventory_location` is tier-blind (only the arm makes the cap live
+    // in-tx), so the fixture can build that tenant directly.
+    assert_eq!(limit, 0, "no tier below Premium may open a warehouse");
+    s.create_inventory_location("WH A", "warehouse", "")
+        .unwrap();
+    s.create_inventory_location("WH B", "warehouse", "")
+        .unwrap();
     let baseline = warehouses(&conn);
     assert!(
-        baseline < limit,
-        "the fixture must start under the cap (baseline {baseline}, limit {limit})"
+        baseline > limit,
+        "the fixture is over the moved cap (baseline {baseline}, limit {limit})"
     );
-    for n in baseline..limit {
-        s.create_inventory_location(&format!("WH {n}"), "warehouse", "")
-            .unwrap();
-    }
-    assert_eq!(warehouses(&conn), limit);
     s.arm_creation_quota(QuotaDimension::Warehouses, tier.clone());
     let err = s
         .create_inventory_location("WH over", "warehouse", "")
         .unwrap_err();
     assert!(
         matches!(err, CoreError::SubscriptionLimitExceeded(_)),
-        "Free at the warehouse cap must be refused in-tx: {err:?}"
+        "an over-cap warehouse create must be refused in-tx: {err:?}"
     );
     assert_eq!(
         warehouses(&conn),
-        limit,
+        baseline,
         "the over-cap warehouse must not persist"
     );
     s.arm_creation_quota(QuotaDimension::Warehouses, tier.clone());
@@ -1343,7 +1542,7 @@ fn warehouse_tx_veto_closes_limit_race_and_ignores_other_types() {
         .unwrap();
     assert_eq!(
         warehouses(&conn),
-        limit,
+        baseline,
         "a store row must not move the warehouse count"
     );
 }

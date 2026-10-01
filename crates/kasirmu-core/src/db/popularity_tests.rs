@@ -1,3 +1,11 @@
+// P2-5: `float_cmp` assertions on exact values the code produces by
+// construction — a fully-attributed percentile is exactly 1.0, a zero trend
+// is exactly 0.0, a 100% margin is exactly 100.0, and a parsed coordinate is
+// the literal it was written as. These are equality assertions, not
+// approximate comparisons: an epsilon would make each one WEAKER by accepting
+// values it should reject.
+#![allow(clippy::float_cmp)]
+
 use super::*;
 use crate::migrations;
 use chrono::Datelike;
@@ -317,6 +325,179 @@ fn single_sku_recompute_uses_cached_category_means() {
 }
 
 #[test]
+fn a_db_failure_in_the_category_probe_does_not_score_against_the_global_mean() {
+    let conn = fresh();
+    seed_category(&conn, "cat-hot", "Hot");
+    seed_category(&conn, "cat-quiet", "Quiet");
+    for i in 0..5 {
+        seed_sold_in_category(&conn, &format!("HOT-{i}"), Some("cat-hot"), 100);
+    }
+    seed_sold_in_category(&conn, "QUIET-1", Some("cat-quiet"), 2);
+
+    let store = Store::new(&conn);
+    store.recompute_all_popularity().unwrap();
+    let full_pass_score: f64 = conn
+        .query_row(
+            "SELECT popularity_score FROM products WHERE sku = 'QUIET-1'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+
+    // Pin the healthy path first: the category cache exists and a single-SKU
+    // recompute reproduces the full-pass score. If the cache were absent the
+    // fault test below would "pass" for the wrong reason (global mean either
+    // way), so this guard makes the pin explicit.
+    store.recompute_popularity("QUIET-1").unwrap();
+
+    // Force a REAL fault in sku_means' category probe. Under the old
+    // `.ok().flatten()` the failure collapsed to `None` — "this product has
+    // no category" — so the SKU was silently scored against the GLOBAL mean
+    // instead of its category's, and `recompute_popularity` reported success
+    // with a different score. Renaming only the column the probe reads keeps
+    // the failure the probe's own rather than a later statement's.
+    conn.execute_batch("ALTER TABLE products RENAME COLUMN category_id TO category_id_hidden;")
+        .unwrap();
+
+    let err = store
+        .recompute_popularity("QUIET-1")
+        .expect_err("a DB failure must not silently score against the global mean");
+    assert!(
+        matches!(err, CoreError::Db(_)),
+        "the category probe must surface the DB fault, got {err:?}"
+    );
+
+    // And the stored score must be untouched: the failed recompute must not
+    // have written a global-mean score over the category-mean one.
+    let after: f64 = conn
+        .query_row(
+            "SELECT popularity_score FROM products WHERE sku = 'QUIET-1'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert!(
+        (full_pass_score - after).abs() < 1e-9,
+        "the failed recompute must leave the category-mean score in place \
+         (stored={after}, full-pass={full_pass_score})"
+    );
+}
+
+#[test]
+fn a_db_failure_reading_the_means_cache_does_not_score_against_zero_means() {
+    let conn = fresh();
+    seed_category(&conn, "cat-quiet", "Quiet");
+    seed_sold_in_category(&conn, "QUIET-1", Some("cat-quiet"), 2);
+
+    let store = Store::new(&conn);
+    store.recompute_all_popularity().unwrap();
+    let full_pass_score: f64 = conn
+        .query_row(
+            "SELECT popularity_score FROM products WHERE sku = 'QUIET-1'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+
+    // Pin the healthy path first: with the cache intact the single-SKU
+    // recompute reproduces the full-pass score, so a later mismatch is the
+    // fault's doing rather than a pre-existing divergence.
+    store.recompute_popularity("QUIET-1").unwrap();
+
+    // Fault the settings read that supplies EVERY smoothing mean. Under the
+    // current `.ok()` the failure collapses to `None`, which is
+    // indistinguishable from "this cache key was never written": the SKU is
+    // scored against 0.0 means — the fresh-DB path — and the recompute
+    // reports `Ok(())`. Renaming only the column the read touches keeps the
+    // failure the read's own rather than a later statement's.
+    conn.execute_batch("ALTER TABLE settings RENAME COLUMN value TO value_hidden;")
+        .unwrap();
+
+    let err = store
+        .recompute_popularity("QUIET-1")
+        .expect_err("a settings-read fault must not silently score against zero means");
+    assert!(
+        matches!(err, CoreError::Db(_)),
+        "the means-cache read must surface the DB fault, got {err:?}"
+    );
+
+    // And the stored score must be untouched: the failed recompute must not
+    // have written a zero-mean score over the cached-mean one.
+    let after: f64 = conn
+        .query_row(
+            "SELECT popularity_score FROM products WHERE sku = 'QUIET-1'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert!(
+        (full_pass_score - after).abs() < 1e-9,
+        "the failed recompute must leave the cached-mean score in place \
+         (stored={after}, full-pass={full_pass_score})"
+    );
+}
+
+#[test]
+fn a_failed_full_pass_does_not_advance_the_means_cache() {
+    // The full pass refreshes the cached smoothing means and the materialized
+    // scores together — they are two views of one pass. Persisting the means
+    // before the score write means a mid-pass failure leaves the cache ahead
+    // of the catalog: every later single-SKU recompute would smooth against
+    // means that no stored score was built from, until the next full pass
+    // happens to succeed. AGENTS.md puts SQLite writes in one transaction;
+    // this pass is the case that needs it.
+    let conn = fresh();
+    seed_category(&conn, "cat-a", "A");
+    seed_category(&conn, "cat-b", "B");
+    seed_sold_in_category(&conn, "A-1", Some("cat-a"), 2);
+    seed_sold_in_category(&conn, "B-1", Some("cat-b"), 100);
+
+    let store = Store::new(&conn);
+    store.recompute_all_popularity().unwrap();
+    let mean_before: String = conn
+        .query_row(
+            "SELECT value FROM settings WHERE key = 'popularity.mean.sales'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+
+    // Change the catalog so the next pass WOULD cache a different mean.
+    let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+    conn.execute_batch(&format!(
+        "INSERT INTO sales (id, total_minor, currency, line_count, status, created_at, updated_at) VALUES
+         ('s-late', 200000, 'USD', 1, 'completed', '{now}', '{now}');
+         INSERT INTO sale_lines (id, sale_id, sku, qty, unit_minor, line_minor, currency, line_position) VALUES
+         ('sl-late', 's-late', 'A-1', 200, 1000, 200000, 'USD', 1);"
+    ))
+    .unwrap();
+
+    // Make the score write fail and only the score write: a trigger on the
+    // UPDATE the pass performs inside its transaction.
+    conn.execute_batch(
+        "CREATE TRIGGER fail_score_update BEFORE UPDATE ON products
+         BEGIN SELECT RAISE(ABORT, 'score write blocked'); END;",
+    )
+    .unwrap();
+
+    store
+        .recompute_all_popularity()
+        .expect_err("the blocked score write must fail the pass");
+
+    let mean_after: String = conn
+        .query_row(
+            "SELECT value FROM settings WHERE key = 'popularity.mean.sales'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        mean_after, mean_before,
+        "a failed pass must not persist means that no stored score was built from"
+    );
+}
+
+#[test]
 fn category_popularity_ranks_categories_and_top_products() {
     let conn = fresh();
     seed_category(&conn, "cat-hot", "Hot");
@@ -510,6 +691,65 @@ fn category_popularity_trend_monthly_and_top_limit() {
 }
 
 #[test]
+fn weekly_trend_buckets_a_sunday_with_the_week_it_starts() {
+    // Weekly trend buckets are Sunday-start, so the Sunday at a week boundary
+    // belongs to the week it OPENS, not to the one that just ended. The idiom
+    // `'weekday 0', '-7 days'` puts the boundary day itself in the previous
+    // week — the same defect `weekly_revenue` documents for its own
+    // `'weekday 1', '-7 days'` form and fixes by shifting first
+    // (`'-6 days', 'weekday 1'`). A Sunday sale is therefore reported a week
+    // early, on its own week's chart, and the two implementations agree on the
+    // wrong answer (the Postgres twin mirrors this idiom).
+    let conn = fresh();
+    seed_category(&conn, "cat-a", "A");
+    let id = uuid::Uuid::now_v7().to_string();
+    conn.execute(
+        "INSERT INTO products (id, sku, name, price_minor, currency, category_id, created_at, updated_at) \
+         VALUES (?1, 'A-1', 'A one', 1000, 'USD', 'cat-a', '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z')",
+        params![id],
+    )
+    .unwrap();
+    // 2026-08-09 is a Sunday; 2026-08-10 is the Monday that follows it, so
+    // both sales are inside the single week that Sunday opens.
+    for (i, (day, units)) in [("2026-08-09", 3_i64), ("2026-08-10", 4)]
+        .iter()
+        .enumerate()
+    {
+        let ts = chrono::NaiveDate::parse_from_str(day, "%Y-%m-%d")
+            .unwrap()
+            .and_hms_opt(12, 0, 0)
+            .unwrap()
+            .and_utc()
+            .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+        conn.execute(
+            "INSERT INTO sales (id, total_minor, currency, line_count, status, created_at, updated_at) VALUES
+             (?1, ?2, 'USD', 1, 'completed', ?3, ?3)",
+            params![format!("sale-{i}"), units * 1000, ts],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO sale_lines (id, sale_id, sku, qty, unit_minor, line_minor, currency, line_position) VALUES
+             (?1, ?2, 'A-1', ?3, 1000, ?4, 'USD', 1)",
+            params![format!("sl-{i}"), format!("sale-{i}"), units, units * 1000],
+        )
+        .unwrap();
+    }
+
+    let store = Store::new(&conn);
+    let points = store
+        .category_popularity_trend("2000-01-01", "2099-12-31", "weekly", 5)
+        .unwrap();
+
+    let keys: Vec<&str> = points.iter().map(|p| p.period_start.as_str()).collect();
+    assert_eq!(
+        keys,
+        vec!["2026-08-09"],
+        "the Sunday and the Monday after it are one week, labelled by its Sunday"
+    );
+    assert_eq!(points[0].units_sold, 7);
+}
+
+#[test]
 fn category_forecast_projects_next_period_from_trend_series() {
     let conn = fresh();
     seed_category(&conn, "cat-a", "A");
@@ -567,6 +807,62 @@ fn category_forecast_projects_next_period_from_trend_series() {
     // Sorted by forecast descending: cat-a (18) before cat-b (5).
     assert_eq!(rows[0].category_id, "cat-a");
     assert_eq!(rows[1].category_id, "cat-b");
+}
+
+#[test]
+fn category_forecast_monthly_series_projects_next_month() {
+    // The forecast is reachable at every granularity the trend accepts:
+    // the bridge's `validate_trend_args` admits `daily`/`weekly`/`monthly`
+    // (`TREND_GRANULARITIES`) and `ui/src/api/reports.ts` types the arg the
+    // same way, so a monthly series must project a next-month figure like
+    // the others. The month keys come from the trend bucket — `YYYY-MM` for
+    // monthly, not the `YYYY-MM-DD` the daily/weekly buckets emit — so the
+    // series builder must understand both shapes.
+    let conn = fresh();
+    seed_category(&conn, "cat-a", "A");
+    let id = uuid::Uuid::now_v7().to_string();
+    conn.execute(
+        "INSERT INTO products (id, sku, name, price_minor, currency, category_id, created_at, updated_at) \
+         VALUES (?1, 'A-1', 'A one', 1000, 'USD', 'cat-a', '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z')",
+        params![id],
+    )
+    .unwrap();
+    // 10 → 12 → 14 units in three consecutive months (slope 2/period).
+    for (i, units) in [10_i64, 12, 14].iter().enumerate() {
+        let ts = chrono::NaiveDate::from_ymd_opt(2026, 5 + i as u32, 15)
+            .unwrap()
+            .and_hms_opt(12, 0, 0)
+            .unwrap()
+            .and_utc()
+            .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+        conn.execute(
+            "INSERT INTO sales (id, total_minor, currency, line_count, status, created_at, updated_at) VALUES
+             (?1, ?2, 'USD', 1, 'completed', ?3, ?3)",
+            params![format!("sale-{i}"), units * 1000, ts],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO sale_lines (id, sale_id, sku, qty, unit_minor, line_minor, currency, line_position) VALUES
+             (?1, ?2, 'A-1', ?3, 1000, ?4, 'USD', 1)",
+            params![format!("sl-{i}"), format!("sale-{i}"), units, units * 1000],
+        )
+        .unwrap();
+    }
+
+    let store = Store::new(&conn);
+    let rows = store
+        .category_forecast("2000-01-01", "2099-12-31", "monthly", 5)
+        .unwrap();
+
+    assert_eq!(rows.len(), 1, "one category with sales history");
+    let a = &rows[0];
+    assert_eq!(a.category_id, "cat-a");
+    assert_eq!(
+        a.forecast_units, 16,
+        "10 → 12 → 14 units per month must project 16 for the next month"
+    );
+    assert!((a.trend_per_period - 2.0).abs() < 1e-9);
+    assert!((a.recent_avg_units - 12.0).abs() < 1e-9);
 }
 
 #[test]

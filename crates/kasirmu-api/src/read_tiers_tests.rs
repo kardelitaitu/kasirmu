@@ -230,28 +230,69 @@ fn dashboard_preset_disjoint_from_pii_routes() {
 
 #[test]
 fn read_key_map_covers_all_protected_get_routes() {
-    // Every image + product + reference GET route in the router must have
-    // a read-key entry. This mirrors the OpenAPI drift-guard assertion.
-    let expected_paths = [
-        "/api/v1/products",
-        "/api/v1/products/{sku}",
-        "/api/v1/categories",
-        "/api/v1/exchange-rates",
-        "/api/v1/exchange-rates/latest",
-        "/api/v1/exchange-rates/latest/{from}/{to}",
-        "/api/v1/tenants/me/plan",
-        "/api/v1/sales/{id}",
-        "/api/v1/images:pack",
-        "/api/v1/images:missing",
-        "/api/v1/images/{hash16}",
+    // API-B: this test used to assert against a HAND-TYPED list of paths, so
+    // adding a route to the router without adding it to READ_KEY_MAP changed
+    // nothing and the suite stayed green — which is how GET /api/v1/memos/active
+    // came to be unmapped while the gate passed it through unchecked. It now
+    // reads the ROUTER SOURCE and derives the route set from it.
+    //
+    // Parsing source is the available option: axum does not expose route
+    // enumeration on `Router`. The parse is deliberately dumb (find `.route(`,
+    // take the quoted path, look for a `get(` in the same call) and its failure
+    // mode is a MISSED route, not a false alarm — so it can only under-report,
+    // never wrongly fail.
+    let src = include_str!("lib.rs");
+
+    // Routes that are intentionally NOT in READ_KEY_MAP: public (no auth), or
+    // GET-with-no-read-key because the handler does its own gate.
+    let exempt: &[&str] = &[
+        "/api/v1/health",    // public
+        "/api/v1/settings",  // admin-key gated in the handler
+        "/api/openapi.json", // public document
+        "/api/v1/terminals", // POST-only registration
+        "/api/v1/tokens",    // POST-only mint
     ];
-    for p in &expected_paths {
-        assert!(
-            READ_KEY_MAP.iter().any(|e| e.path == *p),
-            "READ_KEY_MAP missing route {}",
-            p
-        );
+
+    let mut get_routes: Vec<String> = Vec::new();
+    for chunk in src.split(".route(").skip(1) {
+        // The path is the first quoted literal in the call.
+        let Some(open) = chunk.find('"') else {
+            continue;
+        };
+        let rest = &chunk[open + 1..];
+        let Some(close) = rest.find('"') else {
+            continue;
+        };
+        let path = &rest[..close];
+        // Only GET routes are read-gated. The call's own text runs to the next
+        // `.route(` boundary; look for a `get(` there.
+        if chunk.contains("get(") {
+            get_routes.push(path.to_string());
+        }
     }
+
+    assert!(
+        get_routes.len() >= 10,
+        "the router parse found only {} GET routes — the parse itself broke,          so this test would pass vacuously: {get_routes:?}",
+        get_routes.len()
+    );
+
+    let mut missing: Vec<&String> = Vec::new();
+    for path in &get_routes {
+        if exempt.contains(&path.as_str()) {
+            continue;
+        }
+        if !READ_KEY_MAP.iter().any(|e| e.path == path) {
+            missing.push(path);
+        }
+    }
+
+    assert!(
+        missing.is_empty(),
+        "READ_KEY_MAP is missing GET route(s) that the router registers, so the \
+         read gate would pass them through unchecked (API-A): {missing:?}. Add a \
+         ReadKeyEntry for each, or add it to the `exempt` list with a reason."
+    );
 }
 
 // ── Tier matrix (spec 0047 F3) ──────────────────────────────────────
@@ -405,4 +446,81 @@ async fn tier_matrix_audit_preset_only_reads_audit_and_reports() {
         };
         assert_eq!(resp.status(), expected_status, "audit preset on {template}");
     }
+}
+/// Every `key` in [`READ_KEY_MAP`] must be a REGISTERED permission.
+///
+/// The map's keys are hand-typed literals, and the gate resolves them through
+/// the registry, which fails CLOSED: an unregistered key denies. So a typo here
+/// is not a crash — it is a route that silently 403s for every token, with
+/// nothing in the failure naming the cause.
+///
+/// `validate_keys` cannot catch it: that function validates a TOKEN's claims at
+/// mint time (`routes/tokens.rs:363`) and never sees this table. And
+/// `permission_registry_tests` covers the permission CONSTANTS and the role
+/// PRESETS — not the read-key map. So the one table deciding which key gates
+/// which route was the only one of the three never checked against the registry.
+#[test]
+fn every_read_key_map_entry_names_a_registered_permission() {
+    let mut unregistered: Vec<(&str, &str)> = Vec::new();
+    for entry in READ_KEY_MAP {
+        if !kasirmu_core::permission_registry::is_registered(entry.key) {
+            unregistered.push((entry.path, entry.key));
+        }
+    }
+    assert!(
+        unregistered.is_empty(),
+        "READ_KEY_MAP gates these routes with a permission the registry does not know, so \
+         they 403 for every token: {unregistered:?}"
+    );
+
+    // Floor: a broken walk would make the assertion above vacuous.
+    assert!(
+        READ_KEY_MAP.len() >= 5,
+        "the map must be walked in full, found {} entries",
+        READ_KEY_MAP.len()
+    );
+}
+
+/// Every key a preset grants must gate at least one route in [`READ_KEY_MAP`].
+///
+/// A preset key with no map entry is a DEAD GRANT: the token is minted carrying a
+/// permission that opens nothing, so an operator who mints an `audit` token gets
+/// one that can read no route at all. It is not a security hole — over-narrow,
+/// never over-broad — but it is a contract the presets' own tests never checked,
+/// because they assert the key LISTS and not what the keys reach.
+///
+/// The three keys this currently excludes are pinned explicitly below rather than
+/// silently allowed, so that WIRING a reports route is a deliberate edit here:
+/// when `/api/v1/reports*` lands and gains map entries, this list must shrink, and
+/// the assertion makes that visible instead of letting a real grant stay unusable.
+#[test]
+fn preset_keys_that_gate_no_route_are_pinned_explicitly() {
+    // Grants that reach no route YET. Every one is a read key for a surface the
+    // API does not serve (reports, analytics and the audit trail are produced by
+    // the cloud server's email bundle, not exposed as read-tier GETs).
+    const NOT_YET_ROUTED: &[&str] = &["reports:view", "analytics:view", "audit:view"];
+
+    let mut dead: Vec<&str> = Vec::new();
+    for preset in [TERMINAL_PRESET, DASHBOARD_PRESET, AUDIT_PRESET] {
+        for key in preset {
+            if READ_KEY_MAP.iter().any(|e| e.key == *key) {
+                continue;
+            }
+            if !dead.contains(key) {
+                dead.push(key);
+            }
+        }
+    }
+    dead.sort_unstable();
+    let mut expected = NOT_YET_ROUTED.to_vec();
+    expected.sort_unstable();
+    assert_eq!(
+        dead, expected,
+        "the set of preset grants that open no route changed: a key here that is now \
+         routed should be removed from NOT_YET_ROUTED (it works!), and a NEW key here \
+         means a preset grants something unusable"
+    );
+
+    // Floor: the presets must actually have been walked.
+    assert!(TERMINAL_PRESET.len() >= 4 && DASHBOARD_PRESET.len() >= 3);
 }

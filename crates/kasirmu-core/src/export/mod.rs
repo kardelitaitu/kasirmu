@@ -91,7 +91,7 @@ pub struct ExportMetadata {
     pub tenant_id: String,
     /// Store profile name.
     pub store_name: String,
-    /// Version of OZ-POS that generated this export.
+    /// Version of kasir.mu that generated this export.
     pub version: String,
 }
 
@@ -531,11 +531,20 @@ impl Store<'_> {
     }
 
     /// Save the cloud export configuration to the settings table.
+    ///
+    /// The two credential FIELDS -- the BigQuery service-account key and the
+    /// Snowflake password -- are sealed with [`crate::crypto`] before the JSON is
+    /// written. Base64 is an encoding, not encryption, so without this the keys
+    /// rode every `.db` / `.backup.db` snapshot in the clear (COR-17/30). The
+    /// remaining fields (project/dataset/table/username/host) are identifiers, not
+    /// secrets, and stay legible for operator debugging, exactly as
+    /// `smtp_config` seals only its password field.
     pub fn save_cloud_export_config(
         &self,
         config: &cloud_destination::CloudExportConfig,
     ) -> Result<(), CoreError> {
-        let json = serde_json::to_string(config).map_err(|e| {
+        let sealed = cloud_destination::seal_cloud_export_credentials(config)?;
+        let json = serde_json::to_string(&sealed).map_err(|e| {
             CoreError::Internal(format!("failed to serialize cloud export config: {e}"))
         })?;
         self.set_setting(CLOUD_EXPORT_SETTINGS_KEY, &json)
@@ -543,26 +552,31 @@ impl Store<'_> {
 
     /// Load the cloud export configuration from the settings table.
     /// Returns `None` if no config has been saved yet.
+    ///
+    /// Unseals the credential fields sealed by [`Self::save_cloud_export_config`];
+    /// a value saved before sealing was introduced is passed through as legacy
+    /// plaintext, so an upgraded install keeps working and is re-sealed on its next
+    /// save.
     pub fn get_cloud_export_config(
         &self,
     ) -> Result<Option<cloud_destination::CloudExportConfig>, CoreError> {
-        let raw = match self.get_setting(CLOUD_EXPORT_SETTINGS_KEY)? {
-            Some(v) => v,
-            None => return Ok(None),
+        let Some(raw) = self.get_setting(CLOUD_EXPORT_SETTINGS_KEY)? else {
+            return Ok(None);
         };
         let config: cloud_destination::CloudExportConfig =
             serde_json::from_str(&raw).map_err(|e| {
                 CoreError::Internal(format!("failed to deserialize cloud export config: {e}"))
             })?;
-        Ok(Some(config))
+        Ok(Some(cloud_destination::unseal_cloud_export_credentials(
+            config,
+        )?))
     }
 
     /// Load the report schedule configuration from the settings table.
     /// Returns `None` if no schedule has been saved yet.
     pub fn get_report_schedule(&self) -> Result<Option<ReportScheduleConfig>, CoreError> {
-        let raw = match self.get_setting(REPORT_SCHEDULE_SETTINGS_KEY)? {
-            Some(v) => v,
-            None => return Ok(None),
+        let Some(raw) = self.get_setting(REPORT_SCHEDULE_SETTINGS_KEY)? else {
+            return Ok(None);
         };
         let config: ReportScheduleConfig = serde_json::from_str(&raw).map_err(|e| {
             CoreError::Internal(format!("failed to deserialize report schedule: {e}"))
@@ -623,7 +637,7 @@ impl Store<'_> {
         }
 
         // Apply limit and offset (clamped to MAX_LIMIT)
-        let limit = req.limit.map(|l| l.min(MAX_LIMIT)).unwrap_or(MAX_LIMIT);
+        let limit = req.limit.map_or(MAX_LIMIT, |l| l.min(MAX_LIMIT));
         let offset = req.offset.unwrap_or(0);
 
         // Build safe SQL — column names come from our whitelist, table name
@@ -635,24 +649,65 @@ impl Store<'_> {
 
         if dataset.has_date_filter {
             let date_col = dataset.date_column;
-            if let Some(ref start_date) = req.start_date {
-                sql.push_str(&format!(" WHERE {} >= ?1", date_col));
-                params.push(start_date.clone());
+            // Validate the bounds at the door, as every other date-bounded
+            // report does (REP-03). `DATE(col, tz) BETWEEN ?2 AND ?3` compares
+            // the converted day as a plain string, so a mistyped bound matches
+            // nothing: the report would come back empty with no error, which
+            // is precisely why `check_date_bound` exists.
+            if let Some(start) = req.start_date.as_deref() {
+                crate::db::reports::check_date_bound("start_date", start)?;
             }
-            if let Some(ref end_date) = req.end_date {
-                let param_idx = params.len() + 1;
-                let where_clause = if req.start_date.is_some() {
-                    " AND"
-                } else {
-                    " WHERE"
-                };
-                sql.push_str(&format!("{} {} <= ?{}", where_clause, date_col, param_idx));
-                params.push(format!("{} 23:59:59", end_date));
+            if let Some(end) = req.end_date.as_deref() {
+                crate::db::reports::check_date_bound("end_date", end)?;
             }
+            let start = req
+                .start_date
+                .clone()
+                .unwrap_or_else(|| "0000-01-01".into());
+            let end = req.end_date.clone().unwrap_or_else(|| "9999-12-31".into());
+            // REP-03: the range is in STORE-LOCAL days, exactly as every
+            // date-bucketed report is, and this is that idiom —
+            // `DATE(col, tz) BETWEEN start AND end`, the same shape
+            // `db/reports/` uses at all 37 of its range predicates.
+            //
+            // It replaced a raw comparison against the column (`created_at >=
+            // ?1`, and an exclusive next-day bound for the end). Two things
+            // were wrong with that. The bound was once
+            // `"{date} 23:59:59"` — a SPACE at index 10 where the column
+            // (`strftime('%Y-%m-%dT%H:%M:%fZ', 'now')`) has `T`, and
+            // `' '` (0x20) sorts BELOW `'T'` (0x54), so a row stamped on the
+            // end date itself compared GREATER than the bound and a single-day
+            // report came back empty while its rows plainly existed.
+            //
+            // Fixing that left the deeper half: the column was still compared in
+            // UTC while the user picks a LOCAL day. Measured on an
+            // `Asia/Jakarta` store, a sale at `2026-07-31T20:00:00.000Z` is
+            // 1 August locally — the reports path says August, this filter said
+            // July. `DATE(col, tz)` removes both problems at once: the column is
+            // converted to the store day before comparison, so the sub-second
+            // shape stops mattering and the day means the operator's day.
+            //
+            // `tz` is `±HH:MM` from the single REP-03 resolver and is embedded
+            // after that validation, so it can inject nothing beyond a date
+            // modifier. An absent bound widens to an open end rather than
+            // narrowing the range.
+            let tz = self.tz_modifier();
+            let param_idx = params.len() + 1;
+            sql.push_str(&format!(
+                " WHERE DATE({date_col}, ?{param_idx}) BETWEEN ?{} AND ?{}",
+                param_idx + 1,
+                param_idx + 2
+            ));
+            params.push(tz);
+            params.push(start);
+            params.push(end);
         }
 
-        // Add LIMIT and OFFSET
-        sql.push_str(&format!(" LIMIT {} OFFSET {}", limit, offset));
+        // Ask for one row past the page: with only `limit` rows fetched,
+        // "everything was returned" and "there is more" are the same
+        // observation, so `truncated` could not be decided from the result.
+        let fetch = limit.saturating_add(1);
+        sql.push_str(&format!(" LIMIT {fetch} OFFSET {offset}"));
 
         let mut stmt = self.conn.prepare(&sql).map_err(|e| {
             CoreError::Internal(format!("failed to prepare custom report query: {e}"))
@@ -666,7 +721,7 @@ impl Store<'_> {
             .map(|s| s as &dyn rusqlite::types::ToSql)
             .collect();
 
-        let rows = stmt
+        let mut rows = stmt
             .query_map(param_refs.as_slice(), |row| {
                 let mut row_data = Vec::with_capacity(col_count);
                 for i in 0..col_count {
@@ -681,7 +736,10 @@ impl Store<'_> {
                 CoreError::Internal(format!("failed to collect custom report rows: {e}"))
             })?;
 
-        let truncated = rows.len() >= limit as usize;
+        // The extra row exists only to answer the flag; it is not part of the
+        // page, and a page that exactly fills the limit withheld nothing.
+        let truncated = rows.len() > limit as usize;
+        rows.truncate(limit as usize);
 
         Ok(CustomReportResponse {
             columns: safe_cols.iter().map(|&s| s.to_string()).collect(),

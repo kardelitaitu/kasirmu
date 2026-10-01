@@ -3,8 +3,8 @@
 //!
 //! Delegates to `Store::void_sale` which handles the status transition,
 //! stock restoration, and audit logging inside a single transaction. The
-//! shim builds the context, calls [`void_sale_scoped`], and maps
-//! [`BridgeError`] back to `AppError` so the wire shape never moves.
+//! shim builds the context, calls [`void_sale_scoped`](crate::void::void_sale_scoped), and maps
+//! [`BridgeError`](crate::error::BridgeError) back to `AppError` so the wire shape never moves.
 
 use serde::Deserialize;
 

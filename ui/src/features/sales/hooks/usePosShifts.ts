@@ -8,7 +8,7 @@ import {
   closeShiftScoped,
   type ShiftDto,
 } from '@/api/shifts';
-import type { CartLine } from '@/types/domain';
+import { type CartLine, parseBalanceInput } from '@/types/domain';
 
 /** Structural twin of the caller's useRef(l10n) result — non-null current, same bundle type. */
 type L10nRef = { current: ReturnType<typeof useLocalization>['l10n'] };
@@ -20,6 +20,8 @@ export interface UsePosShiftsParams {
   lines: CartLine[];
   /** Bundle ref, threaded in so the callbacks keep their stable dep chain. */
   l10nRef: L10nRef;
+  /** Active store currency code (e.g. 'IDR', 'USD'). Defaults to 'IDR'. */
+  currency?: string;
 }
 
 /**
@@ -32,11 +34,28 @@ export interface UsePosShiftsParams {
  * Moved verbatim out of PosScreen.tsx — same names, same logic, same memo
  * dependencies, same 60s tick interval, same error text.
  */
-export function usePosShifts({ sessionToken, userId, lines, l10nRef }: UsePosShiftsParams) {
+export function usePosShifts({ sessionToken, userId, lines, l10nRef, currency = 'IDR' }: UsePosShiftsParams) {
   const [activeShift, setActiveShift] = useState<ShiftDto | null>(null);
   const activeShiftRef = useRef(activeShift);
   activeShiftRef.current = activeShift;
   const [shiftLoading, setShiftLoading] = useState(true);
+  // -- Shift-service availability ------------------------------------
+  // Whether the shift feature is reachable AT ALL on this shell. Shifts are
+  // INFORMATIONAL (cash reconciliation + the weekly reporting chart), and
+  // open_shift_scoped / get_active_shift_scoped / close_shift_scoped are
+  // registered on the desktop client only: the tablet's generate_handler!
+  // carries none of them. The load below used to collapse every failure into
+  // `activeShift = null`, which made "the command does not exist here"
+  // indistinguishable from "no shift is open". That mattered because the POS
+  // guards (add-to-cart, pay, barcode) read `activeShiftRef.current` and REFUSE
+  // when it is null, so on a shell without the commands `activeShift` could
+  // never become non-null and an informational feature silently blocked every
+  // sale behind the misleading toast "Open a shift first". Tracking the
+  // failure and making the guards feature-aware is what stops an unreachable
+  // reporting feature from gating the till.
+  const [shiftUnavailable, setShiftUnavailable] = useState(false);
+  const shiftUnavailableRef = useRef(shiftUnavailable);
+  shiftUnavailableRef.current = shiftUnavailable;
   // Live elapsed-shift clock: while a shift is open, tick every minute so
   // the header can show a running "2h 15m" instead of the bare opening
   // time (which read like a wall clock). The interval stops when the
@@ -100,16 +119,36 @@ export function usePosShifts({ sessionToken, userId, lines, l10nRef }: UsePosShi
   );
 
   // Load active shift on mount and when session changes.
+  //
+  // A rejection here is NOT the same as "no shift is open", and the two used
+  // to be collapsed by a bare .catch(() => setActiveShift(null)). The
+  // distinction is load-bearing: on a shell whose generate_handler! does not
+  // carry the shift commands, every load rejects, and the swallowed rejection
+  // left activeShift permanently null — indistinguishable from a store where
+  // nobody had opened a shift. The guards then refused every sale. Setting
+  // shiftUnavailable makes the failure observable, lets the guards stand down,
+  // and keeps a genuine no-shift-open store on the original path.
   useEffect(() => {
     if (!userId) {
       setActiveShift(null);
+      setShiftUnavailable(false);
       setShiftLoading(false);
       return;
     }
     setShiftLoading(true);
     getActiveShiftScoped(sessionToken)
-      .then((shift) => { setActiveShift(shift); })
-      .catch(() => { setActiveShift(null); })
+      .then((shift) => {
+        setActiveShift(shift);
+        setShiftUnavailable(false);
+      })
+      .catch(() => {
+        // The shift service could not be reached. We cannot tell a missing
+        // command from a transport failure here, and refusing to sell on
+        // either would gate the till on an informational feature — so the
+        // shift UI stands down and the POS keeps working.
+        setActiveShift(null);
+        setShiftUnavailable(true);
+      })
       .finally(() => setShiftLoading(false));
   }, [userId, sessionToken]);
 
@@ -128,10 +167,9 @@ export function usePosShifts({ sessionToken, userId, lines, l10nRef }: UsePosShi
 
   const handleConfirmCloseShift = useCallback(async () => {
     if (!activeShift) return;
-    // Whole-number minor units — reject fractional input instead of
-    // silently truncating it via parseInt.
-    const balance = Number(closingBalance);
-    if (!Number.isInteger(balance) || balance < 0) return;
+    // MONEY-02 + MONEY-05: exact decimal parse scaled to currency exponent
+    const balance = closingBalance.trim() === '' ? null : parseBalanceInput(closingBalance, currency);
+    if (balance === null || balance < 0) return;
 
     setClosingShift(true);
     setCloseShiftError(null);
@@ -145,7 +183,7 @@ export function usePosShifts({ sessionToken, userId, lines, l10nRef }: UsePosShi
     } finally {
       setClosingShift(false);
     }
-  }, [activeShift, closingBalance, shiftNotes, sessionToken, l10nRef]); // l10n via ref - stable dep, see above
+  }, [activeShift, closingBalance, shiftNotes, sessionToken, l10nRef, currency]); // l10n via ref - stable dep, see above
 
   const handleOpenShiftClick = useCallback(() => {
     setOpeningBalance('');
@@ -153,12 +191,13 @@ export function usePosShifts({ sessionToken, userId, lines, l10nRef }: UsePosShi
   }, []);
 
   const handleConfirmOpenShift = useCallback(async () => {
-    const balance = Number(openingBalance);
-    const safeBalance = !Number.isNaN(balance) && Number.isInteger(balance) && balance >= 0 ? balance : 0;
+    // MONEY-02 + MONEY-05: exact decimal parse scaled to currency exponent
+    const balance = parseBalanceInput(openingBalance, currency);
+    if (balance === null || balance < 0) return;
 
     setOpeningShift(true);
     try {
-      const shift = await openShiftScoped(sessionToken, safeBalance);
+      const shift = await openShiftScoped(sessionToken, balance);
       setActiveShift(shift);
       openShiftExit.requestClose();
     } catch (err) {
@@ -175,11 +214,13 @@ export function usePosShifts({ sessionToken, userId, lines, l10nRef }: UsePosShi
     } finally {
       setOpeningShift(false);
     }
-  }, [openingBalance, openShiftExit, sessionToken, l10nRef, setCloseShiftError]);
+  }, [openingBalance, openShiftExit, sessionToken, l10nRef, setCloseShiftError, currency]);
 
   return {
     activeShift,
     activeShiftRef,
+    shiftUnavailable,
+    shiftUnavailableRef,
     shiftLoading,
     shiftNow,
     setShowCloseShift,

@@ -63,17 +63,22 @@ impl Store<'_> {
             id: sale_id.to_owned(),
         })?;
 
-        // Keep only lines whose product is restaurant or both.
-        let kds_lines: Vec<_> = sale
-            .lines
-            .iter()
-            .filter(|l| {
-                self.product_type_by_sku(&l.sku)
-                    .ok()
-                    .flatten()
-                    .is_some_and(|pt| pt == "restaurant" || pt == "both")
-            })
-            .collect();
+        // Keep only lines whose product is restaurant or both. The eligibility
+        // read has two different absences and they must not be conflated:
+        // `Ok(None)` = the SKU has no product row (a legitimate "not a kitchen
+        // item" — skipped), `Err` = the read itself failed. Collapsing them
+        // with `.ok().flatten()` made a PAID line ineligible on a transient
+        // error, so it vanished from every ticket with no ticket and no error.
+        // Only the error may abort — and it now does.
+        let mut kds_lines: Vec<&crate::SaleLine> = Vec::new();
+        for line in &sale.lines {
+            match self.product_type_by_sku(&line.sku)? {
+                Some(product_type) if product_type == "restaurant" || product_type == "both" => {
+                    kds_lines.push(line);
+                }
+                _ => {}
+            }
+        }
 
         if kds_lines.is_empty() {
             return Ok(vec![]);
@@ -99,15 +104,23 @@ impl Store<'_> {
         let mut by_zone: std::collections::BTreeMap<Option<String>, Vec<&crate::SaleLine>> =
             std::collections::BTreeMap::new();
         for line in &kds_lines {
-            let zone = self
-                .product_kitchen_zone_by_sku(&line.sku)
-                .ok()
-                .flatten()
-                .filter(|z| !z.is_empty());
+            // Two different absences again, and they must not be conflated:
+            // `Ok(None)` (no product row / NULL zone) and an explicitly empty
+            // zone both legitimately mean "unzoned", but `Err` is a failed
+            // read. Collapsing them with `.ok()` silently mis-routed a line to
+            // the unzoned ticket instead of its real zone, so the station
+            // screen that should have cooked it never saw the line. Only the
+            // error aborts.
+            let zone = match self.product_kitchen_zone_by_sku(&line.sku)? {
+                Some(zone) if !zone.is_empty() => Some(zone),
+                _ => None,
+            };
             by_zone.entry(zone).or_default().push(line);
         }
 
-        // Look up the table name assigned to this sale (TODO 1b).
+        // Look up the table name assigned to this sale, so each zoned ticket can show
+        // "Table 4" instead of a bare ticket id. A sale with no table bound keeps None
+        // rather than failing the fanout.
         let table_number: Option<String> = {
             let mut stmt = self
                 .conn
@@ -134,33 +147,43 @@ impl Store<'_> {
         // created so far, so the kitchen never sees a partial set.
         let tx = self.conn.unchecked_transaction()?;
         for (zone, lines) in by_zone {
-            // Build structured line items with course + modifier data (TODO 2a).
+            // Build structured line items with course + modifier data.
             let structured_items: Vec<CreateKdsLineItemInput> = lines
                 .iter()
                 .map(|l| {
                     let display_name = self
-                        .product_name_by_sku(&l.sku)
-                        .ok()
-                        .flatten()
+                        .product_name_by_sku(&l.sku)?
                         .unwrap_or_else(|| l.sku.clone());
 
-                    // Parse modifiers_json from the sale line.
-                    let modifiers: Vec<KdsModifier> = l
-                        .modifiers_json
-                        .as_deref()
-                        .filter(|j| !j.is_empty())
-                        .and_then(|j| serde_json::from_str(j).ok())
-                        .unwrap_or_default();
+                    // Parse modifiers_json from the sale line. An unreadable
+                    // blob is NOT "no modifiers": silently defaulting it to
+                    // `[]` wrote a plain item into the ticket — the loss happens
+                    // HERE, before any ticket row is read, so the read-side
+                    // guard in `row_to_kds_line_item` (db/kds.rs) cannot see it.
+                    // Surface the decode failure and let this fanout's single
+                    // transaction roll every zone back.
+                    let modifiers: Vec<KdsModifier> = match l.modifiers_json.as_deref() {
+                        Some(json) if !json.is_empty() => {
+                            serde_json::from_str(json).map_err(|e| CoreError::Validation {
+                                field: "modifiers",
+                                message: format!(
+                                    "sale line {} has unreadable modifiers_json: {e}",
+                                    l.id
+                                ),
+                            })?
+                        }
+                        _ => vec![],
+                    };
 
-                    CreateKdsLineItemInput {
+                    Ok(CreateKdsLineItemInput {
                         sku: l.sku.clone(),
                         display_name,
                         qty: l.qty,
                         course: l.course.clone(),
                         modifiers,
-                    }
+                    })
                 })
-                .collect();
+                .collect::<Result<Vec<_>, CoreError>>()?;
 
             let (items_summary, item_count) = Store::derive_kds_summary(&structured_items);
 
@@ -168,7 +191,7 @@ impl Store<'_> {
                 &tx,
                 CreateKdsOrderInput {
                     sale_id: sale_id.to_owned(),
-                    store_id: store_id.map(|s| s.to_owned()),
+                    store_id: store_id.map(std::borrow::ToOwned::to_owned),
                     items_summary,
                     item_count,
                     kitchen_zone: zone,
@@ -180,7 +203,7 @@ impl Store<'_> {
             )?;
 
             // Create the structured line items in the new kds_line_items table.
-            self.create_kds_line_items_in_tx(&tx, &order.id, &structured_items)?;
+            Self::create_kds_line_items_in_tx(&tx, &order.id, &structured_items)?;
 
             orders.push(order);
         }
@@ -229,7 +252,7 @@ impl Store<'_> {
         }
     }
 
-    // ── KDS line items (TODO 2a) ────────────────────────────────────
+    // ── KDS line items ──────────────────────────────────────────────
 
     /// Create KDS line items for an order.
     pub fn create_kds_line_items(
@@ -241,7 +264,7 @@ impl Store<'_> {
             return Ok(vec![]);
         }
         let tx = self.conn.unchecked_transaction()?;
-        let result = self.create_kds_line_items_in_tx(&tx, order_id, items)?;
+        let result = Self::create_kds_line_items_in_tx(&tx, order_id, items)?;
         tx.commit()?;
         Ok(result)
     }
@@ -355,7 +378,7 @@ impl Store<'_> {
             })?;
         let allowed = |from: &str, to: &str| match (from, to) {
             ("pending", "preparing") | ("preparing", "ready") | ("ready", "served") => true,
-            ("pending", "cancelled") | ("preparing", "cancelled") | ("ready", "cancelled") => true,
+            ("pending" | "preparing" | "ready", "cancelled") => true,
             (from, to) if from == to => true,
             _ => false,
         };

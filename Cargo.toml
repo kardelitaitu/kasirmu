@@ -34,14 +34,14 @@ exclude = [
 ]
 
 [workspace.package]
-version = "0.0.39"
+version = "0.0.40"
 edition = "2024"
 rust-version = "1.88"   # axum/tower-http deps (time 0.3.47+) require ≥ 1.88
 license = "SEE LICENSE IN LICENSE"
 license-file = "LICENSE"
 publish = false
 authors = ["kasir.mu contributors"]
-repository = "https://github.com/kardelitaitu/oz-pos"  # TODO: update after repo rename
+repository = "https://github.com/kardelitaitu/kasirmu"
 readme = "README.md"
 
 [workspace.dependencies]
@@ -86,9 +86,26 @@ modules-promotions = { path = "modules/promotions" }
 modules-giftcards = { path = "modules/giftcards" }
 modules-kitchen = { path = "modules/kitchen" }
 platform-startup = { path = "platform/startup" }
+platform-instance-guard = { path = "platform/instance-guard" }
 platform-sync = { path = "platform/sync" }
 tauri = { version = "2", features = [] }
 tauri-build = { version = "2", features = [] }
+# ── Build-graph feature fix, not a runtime dependency ─────────────────
+# `schemars 0.8.22` is pulled in by `tauri-build` with the `preserve_order`
+# feature, which enables its optional `indexmap` v1 dependency. schemars then
+# writes `pub type Map<K, V> = indexmap::IndexMap<K, V>;`, and that alias only
+# compiles when indexmap's `std` feature supplies the `S = RandomState`
+# default. indexmap 1.9.x declares NO `default` feature, so `std` is off and
+# schemars dies with E0107 on any clean build of a Tauri app crate.
+#
+# Nothing else in the graph turns `std` on, and `resolver = "2"` keeps
+# build-dependency features separate from normal ones, so it has to be turned
+# on explicitly. Verified 2026-09-29 in a scratch crate: `schemars` +
+# `preserve_order` reproduces E0107, and adding this makes it compile.
+#
+# Do NOT remove. The symptom is a schemars compile error, not an indexmap one,
+# so nothing here will look related to the failure it prevents.
+indexmap = { version = "1", features = ["std"] }
 
 # Ecosystem deps
 serde = { version = "1", features = ["derive"] }
@@ -192,10 +209,12 @@ wiremock = "0.6.5"
 # in `lints`"), so a crate cannot relax a workspace lint from its manifest.
 #
 # Second, and decisively: `unsafe_code` is not uniformly deniable here.
-# `kasirmu-logging` calls syslog/eventlog through FFI (`syslog.rs`,
-# `eventlog.rs`) and `kasirmu-notification` uses `unsafe` in its tests, and
-# neither currently carries a crate-level opt-out — adding a workspace-wide
-# deny would break both builds, which is out of scope for a plumbing change.
+# `kasirmu-notification` uses `unsafe` in its tests and does not carry a
+# crate-level opt-out — adding a workspace-wide deny would break that build,
+# which is out of scope for a plumbing change. (This note previously also
+# named `kasirmu-logging`'s syslog/eventlog FFI; those modules were deleted
+# 2026-09-29 under C29 / D13, and `kasirmu-logging` now denies the lint
+# itself with a file-local `#![deny(unsafe_code)]`.)
 #
 # The crates that DO deny it keep the file-local `#![deny(unsafe_code)]`
 # inner attribute, which stays the reviewable place for an exception:

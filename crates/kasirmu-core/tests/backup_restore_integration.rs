@@ -47,11 +47,32 @@ fn run_migrations(conn: &mut Connection) {
 
 // ── Backup via sqlite3 CLI ────────────────────────────────────────────
 
+/// Is the sqlite3 CLI installed at all?
+///
+/// A missing CLI and a FAILED `.backup` are different problems, and the caller
+/// may only fall back on the first: a path the dot-command cannot open, a
+/// permission error or a corrupt source means the consistent online backup did
+/// not happen, and silently substituting a raw file copy reports success for a
+/// weaker operation.
+fn sqlite3_cli_available() -> bool {
+    Command::new("sqlite3")
+        .arg("-version")
+        .output()
+        .is_ok_and(|o| o.status.success())
+}
+
 /// Create a backup of `source_path` to `backup_path` using sqlite3 `.backup`.
+///
+/// The destination is embedded in a DOT-COMMAND string, which MSYS/Git Bash
+/// does not path-translate (it only rewrites paths that are standalone argv
+/// elements), so a POSIX absolute path fails with a bare `cannot open
+/// "/c/..."` and no file is written. Windows callers already pass a backslash
+/// path, which sqlite3 accepts. `scripts/backup-db.sh` hit the same trap in
+/// shell form; see `sqlite3_dot_arg` there for the `cygpath` translation.
 fn sqlite3_backup(source_path: &str, backup_path: &str) -> Result<(), String> {
     let output = Command::new("sqlite3")
         .arg(source_path)
-        .arg(format!(".backup '{}'", backup_path))
+        .arg(format!(".backup '{backup_path}'"))
         .output()
         .map_err(|e| format!("failed to run sqlite3: {e}"))?;
 
@@ -136,12 +157,20 @@ fn backup_restore_preserves_products() {
     // close conn to release file lock
 
     // ── Backup ────────────────────────────────────────────────────
-    // Connection is already dropped (block scope ended), so the DB file
-    // is fully flushed and safe to copy. sqlite3 .backup is preferred for
-    // transactional consistency but fs::copy is safe in test contexts.
-    if sqlite3_backup(&db_path, &backup_path).is_err() {
-        // sqlite3 CLI not available — fall back to file copy.
+    // Connection is already dropped (block scope ended), so the main DB file
+    // is flushed — but the app runs in WAL mode, so uncheckpointed frames can
+    // still sit in the -wal sidecar, and a raw copy of the main file is exactly
+    // the staleness the .backup call exists to avoid.
+    //
+    // The fallback therefore covers ONE case: the sqlite3 CLI is not installed
+    // (the doc comment above, and every CI runner, has it). Any other failure —
+    // a path the dot-command cannot open, a permission error, a corrupt source
+    // — propagates, so a broken .backup invocation is a red test rather than a
+    // silent downgrade to a weaker backup that still reports success.
+    if !sqlite3_cli_available() {
         fs::copy(&db_path, &backup_path).expect("file copy backup");
+    } else {
+        sqlite3_backup(&db_path, &backup_path).expect("sqlite3 .backup");
     }
 
     // ── Simulate data loss: delete original, create fresh ─────────

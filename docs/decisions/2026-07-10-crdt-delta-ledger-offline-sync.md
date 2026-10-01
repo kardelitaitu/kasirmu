@@ -4,8 +4,9 @@ area: sync
 title: ADR #6: CRDT Delta Ledger & Offline Sync
 status: Implemented (2026-07-15)
 ---
-<!-- Audit stamp: 2026-07-22 · Hermes-Agent · status: ACCURATE (0 findings) · all implementation claims verified: stock_movements migration exists; adjust_stock_with_reason (products.rs:1165), get_stock_from_ledger (1250), rebuild_stock_summary (1290), list_stock_movements (1359), archive_stock_movements (1405) all present; platform/sync/src/daemon.rs (start_prune_task) + apps/cloud-server/src/prune.rs (start_prune_loop) exist; ui/src/components/FastPINOverlay.tsx + crates/oz-security/src/terminal.rs present; platform/sync/tests/integration_test.rs present; Uuid::now_v7() adopted + oz_core::new_id() (lib.rs:147) confirmed; stock_movements_archive (migration 072) + stock_summary cache match · Status "Implemented (2026-07-15)" consistent -->
+<!-- Superseded audit marker (2026-07-22, body kept verbatim) · Hermes-Agent · status: ACCURATE (0 findings) · all implementation claims verified: stock_movements migration exists; adjust_stock_with_reason (products.rs:1165), get_stock_from_ledger (1250), rebuild_stock_summary (1290), list_stock_movements (1359), archive_stock_movements (1405) all present; platform/sync/src/daemon.rs (start_prune_task) + apps/cloud-server/src/prune.rs (start_prune_loop) exist; ui/src/components/FastPINOverlay.tsx + crates/oz-security/src/terminal.rs present; platform/sync/tests/integration_test.rs present; Uuid::now_v7() adopted + oz_core::new_id() (lib.rs:147) confirmed; stock_movements_archive (migration 072) + stock_summary cache match · Status "Implemented (2026-07-15)" consistent -->
 
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · ACCURATE, with the implementation surface reorganised under it. Every claim the 2026-07-22 stamp verified still verifies in substance, though several have moved: the stock-ledger helpers that stamp located in `products.rs` at lines 1165/1250/1290/1359/1405 are now split out by concern — `adjust_stock_with_reason` in `crates/kasirmu-core/src/db/products_stock_adjust/batch.rs`, and both `get_stock_from_ledger` and `rebuild_stock_summary` in `crates/kasirmu-core/src/db/products_stock_adjust/ledger.rs`. The same reorganisation is why three separate archived documents in this campaign have cited a path that no longer resolves: `products.rs` was split, not deleted. The `stock_movements` migration, the archive table and the `stock_summary` cache are all still in the schema, and both prune tasks it names (`platform/sync/src/daemon.rs`, `apps/cloud-server/src/prune.rs`) are real. · A CROSS-DOCUMENT NOTE that came out of reading this alongside others in the same pass: this ADR is the origin of the delta-ledger work that the ADR-7 conditional-scoping record and the workspace-settings phase 0d record both build on. Phase 0d names a `write_setting_delta` API that resolves under no spelling, while this document is where the ledger was actually specified. The two records agree on the table (`setting_updated`) and its purpose, so a reader chasing that missing function should start here rather than at the phase spec. · The UUIDv7 adoption and the `new_id()` helper the stamp confirmed are still in place, and the FastPINOverlay and terminal-secret anchors resolve at their current crate paths. · Body left as written with its `crates/oz-core` and `apps/desktop-client` references intact — this is an implemented decision record, and the paths are how the decision was written down. Current equivalents: `crates/kasirmu-core/` and `apps/desktop-tauri/`. The status checker reports no drift for this row; the prior stamp is retained and the stacked footer collapsed. -->
 # ADR #6: CRDT Delta Ledger & Offline Sync
 
 **Status:** Implemented (2026-07-15)
@@ -232,7 +233,35 @@ See `docs/specs/_active/p1-sync-batching-compression-retention.md` for full acce
 - `platform/sync/tests/integration_test.rs` — 19 cross-terminal integration tests
 - `ui/src/components/FastPINOverlay.tsx` ✅
 
-> last audited 09-08-26 by buffy
-> audit: Phase 1 Core Architecture & API Docs Audit; Phase 4 ADR Deep Audit
-> status: ACCURATE (0 findings) · verified accurate: cargo check passed, no structural orphans, no stale version headers
-> status: ACCURATE (verified against actual codebase)
+> last audited 29-09-26 by docs-auditor
+
+---
+
+## Adoption status of the CRDT primitives (appended 2026-10-04)
+
+*Appended 2026-10-04. Corrects the `next:` notes in `platform/sync/src/crdt/`, which described work that had either landed elsewhere or was superseded.*
+
+Two of the four primitives are live, two are latent:
+
+- **`VersionVector` / `CausalOrder` — CONSUMED.** The cloud conflict detector imports them (`apps/cloud-server/src/conflict_resolution.rs` `extract_vector` + the four-way `CausalOrder` match) and `apps/cloud-server/src/sync_store/conflicts.rs` calls `observe`/`compare`. The old "Agent 2 consumes" note was a plan, and the plan shipped.
+- **`push_stamp` — CONSUMED.** Every HTTP push is stamped from the persisted settings counter (`crate::crdt::CLOCK_KEY`); this is the shipping conflict-detection mechanism.
+- **`LamportClock` + `ClockStore` — LATENT.** Nothing ticks a `LamportClock`. The daemon's stamping counter is a plain settings value (`daemon_tick::persist_stamped_counter`), not a clock-store read; the store's `load_clock` has no production caller. The primitive is the total-order building block a typed-merge adoption would need, not an outstanding wiring item.
+- **`delta_mutation` — LATENT, and the reason changed.** The `crdt_delta` blob was **not** retired. Instead the blob was made safe (content dedupe, idempotence, null-side skip, self-merge collapse; commits 5ac248e75 through 36127a9c4) and the four queue arms were routed through `appliers::envelope_deltas`. Swapping in the typed merge is a redesign of those arms, not a pending cleanup.
+
+The `next:` notes in `lamport.rs`, `clock_store.rs`, `delta_mutation.rs`, `mod.rs` and `version_vector.rs` now read `next: none` with the disposition above. `version_vector_tests.rs` pins that all four orderings the detector matches on are reachable, so a future change cannot silently make the detector's flag-for-review arm dead code.
+
+<!-- Audit stamp: 2026-10-04 · CRDT primitive adoption status recorded. -->
+
+---
+
+## The length validators count characters, not bytes (COR-36, fixed 2026-10-04)
+
+`foundation::validation`'s `validate_min_length`, `validate_max_length`, `validate_non_empty_bounded` and `validate_sku` measured input with `str::len()` — the UTF-8 **byte** length — while every error message said `characters`. For multi-byte input the two disagreed: a 20-character cap rejected 20 CJK characters (60 bytes) and reported `got 60`, and a 10-character minimum accepted a 5-character input. Display-name fields were the intended audience, exactly the place where CJK and accented text is normal.
+
+All four now measure `chars().count()`. The ASCII-only SKU path is unaffected in behaviour, but its reported count is now honest too.
+
+Four pins in `foundation/src/validation_tests.rs` hold the contract: `max_length_counts_characters_not_bytes` (20 CJK chars pass a 20-character cap and the message says `got 20`), `min_length_counts_characters_not_bytes`, `non_empty_bounded_counts_characters_not_bytes`, and `validate_sku_counts_characters_not_bytes`.
+
+Reachability: only `validate_min_length` has production callers today, and all four of them pass a staff PIN (min 4, ASCII digits), so no live data was mis-validated — the defect was latent in the shared API. The fix is still the right one for the intended display-name use.
+
+<!-- Audit stamp: 2026-10-04 · COR-36 byte-vs-char length counting fixed. -->

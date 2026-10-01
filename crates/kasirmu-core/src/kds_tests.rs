@@ -362,8 +362,6 @@ fn register_input_serde_roundtrip() {
         name: "Bar Display".into(),
         restaurant_pos_id: "resto-1".into(),
         station_ids: vec!["bar".into()],
-        pairing_token_hash: "abc123".into(),
-        pairing_expires_at: "2099-12-31T23:59:59Z".into(),
     };
     let json = serde_json::to_string(&input).unwrap();
     let back: RegisterKdsDeviceInput = serde_json::from_str(&json).unwrap();

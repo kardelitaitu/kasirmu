@@ -155,7 +155,7 @@ fn product_bundle_debug() {
         created_at: "2026-01-01T00:00:00Z".into(),
         updated_at: "2026-01-01T00:00:00Z".into(),
     };
-    let debug = format!("{:?}", pb);
+    let debug = format!("{pb:?}");
     assert!(debug.contains("GIFT-BOX"));
     assert!(debug.contains("Gift Box"));
 }
@@ -169,9 +169,9 @@ fn bundle_item_debug() {
         qty: 5,
         unit_price_minor: Some(999),
     };
-    let debug = format!("{:?}", item);
+    let debug = format!("{item:?}");
     assert!(debug.contains("SKU-001"));
-    assert!(debug.contains("5"));
+    assert!(debug.contains('5'));
 }
 
 #[test]
@@ -191,7 +191,7 @@ fn bundle_with_items_debug() {
         bundle,
         items: vec![],
     };
-    let debug = format!("{:?}", bwi);
+    let debug = format!("{bwi:?}");
     assert!(debug.contains("Debug Bundle"));
 }
 

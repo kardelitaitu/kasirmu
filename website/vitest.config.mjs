@@ -32,6 +32,10 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['src/**/*.test.{ts,tsx}'],
+    // Runs for every file, but the setup itself is a no-op outside jsdom:
+    // it stubs window.location so a redirect cannot reach jsdom's
+    // "Not implemented: navigation" handler and fail the suite.
+    setupFiles: ['./src/test-setup-jsdom.ts'],
     pool: 'threads',
     maxThreads: parseInt(process.env.VITEST_MAX_THREADS ?? '24', 10),
     minThreads: parseInt(process.env.VITEST_MIN_THREADS ?? '4', 10),

@@ -160,8 +160,14 @@ OG_EOF
 
 @test "structure: every declared check category has an implementation block" {
   script="$PROJECT_ROOT/.agents/skills/skill-drift-guard/scripts/detect.sh"
+  # The full category set, not just the original ten. This list had drifted:
+  # it named 10 while the script declared 15, so the five added on 18-09-26
+  # (version-lock, crate-prefix, ci-jobs, workflow-claims, git-policy) and
+  # Check 16 (rs-audit-stamp) were never covered by their own invariant —
+  # exactly the "declared but unchecked" class this suite exists to stop.
   for cat in paths crates api versions golden refs fluent audit-date \
-             audit-format doc-audit; do
+             audit-format doc-audit version-lock crate-prefix ci-jobs \
+             workflow-claims git-policy rs-audit-stamp; do
     run grep -q "should_run ${cat};" "$script"
     [ "$status" -eq 0 ]
   done

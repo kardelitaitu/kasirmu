@@ -2,27 +2,27 @@
 //! of `apps/desktop-tauri/src/commands/hardware.rs`.
 //!
 //! Key functions: the cash-drawer, receipt-printing, barcode-scanner and
-//! pole-display operations, each consuming a [`BridgeCtx`]. Device access
-//! goes through [`BridgeCtx::registry`] (`kasirmu_hal` mock drivers per the repo
+//! pole-display operations, each consuming a [`BridgeCtx`](crate::ctx::BridgeCtx). Device access
+//! goes through [`BridgeCtx::registry`](crate::ctx::BridgeCtx::registry) (`kasirmu_hal` mock drivers per the repo
 //! rule) — this module never constructs a concrete driver, exactly like the
 //! shell it was extracted from.
 //!
 //! Two shell behaviours are re-created without tauri types:
 //!
 //! * UI events (`receipt:printed`, `barcode:scanned`, `barcode:error`) go
-//!   through the injected [`EventSink`]. A `None` sink is a silent no-op,
+//!   through the injected [`EventSink`](crate::ctx::EventSink). A `None` sink is a silent no-op,
 //!   matching the shell's `if let Some(app) = state.app` pattern; a lost UI
 //!   event is never a command failure.
-//! * [`start_scanner_scoped`] spawns its own poll task (the shell spawned one
+//! * [`start_scanner_scoped`](crate::hardware::start_scanner_scoped) spawns its own poll task (the shell spawned one
 //!   over `state.app`). The sink Arc is cloned OUT of the context before the
 //!   spawn (it is `'static`), so the task holds no borrow of the per-call
-//!   context; cancellation rides [`BridgeCtx::scanner_cancel`], the same
+//!   context; cancellation rides [`BridgeCtx::scanner_cancel`](crate::ctx::BridgeCtx::scanner_cancel), the same
 //!   `oneshot` slot `state.scanner_cancel` exposes.
 //!
 //! Gate order, store construction, guard-drop placement (the
 //! `MutexGuard dropped here before any .await` blocks) and error paths are
 //! verbatim ports of the command bodies: a shim builds the context, calls one
-//! function here, and maps [`BridgeError`] back to `AppError` so the wire
+//! function here, and maps [`BridgeError`](crate::error::BridgeError) back to `AppError` so the wire
 //! shape never moves.
 
 use std::sync::Arc;
@@ -36,6 +36,8 @@ use kasirmu_hal::drivers::receipt;
 use kasirmu_hal::transport::usb::{UsbDeviceInfo, probe_all};
 use kasirmu_hal::{BarcodeScanner, DisplayContent, HalErrorKind};
 use platform_core::terminal_profile::TerminalProfile;
+
+use rusqlite::OptionalExtension;
 
 use crate::ctx::BridgeCtx;
 use crate::error::BridgeError;
@@ -160,6 +162,9 @@ pub struct PrintSalesReceiptArgs {
     #[serde(default)]
     /// Table Number.
     pub table_number: Option<String>,
+    #[serde(default)]
+    /// Optional 17-digit DJP Faktur Pajak string.
+    pub faktur_pajak: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -177,6 +182,9 @@ pub struct LineItemDto {
     #[serde(default)]
     /// Tax Amount.
     pub tax_amount: Option<MoneyDto>,
+    #[serde(default)]
+    /// Optional menu order note (e.g. "pedas").
+    pub note: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -193,9 +201,11 @@ pub struct PaymentDto {
 
 /// Flat serialisable representation of Money — the front-end sends
 /// these instead of a nested Money object for simplicity.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct MoneyDto {
     /// Minor Units.
+    #[serde(alias = "minor_units")]
     pub minor_units: i64,
     /// ISO-4217 currency code.
     pub currency: String,
@@ -258,43 +268,121 @@ pub async fn print_sales_receipt_scoped(
     session_token: &str,
     args: PrintSalesReceiptArgs,
 ) -> Result<PrintSalesReceiptResult, BridgeError> {
+    // ungated-ok: KNOWN GAP (BRIDGE-7) - device access is currently open to any
+    // authenticated operator. Gating it is a product ruling, not a repair.
+    // The terminal id is read OUTSIDE the db lock so the guard never crosses
+    // an await point — it selects the terminal-scoped layout row that has the
+    // highest precedence in `effective_receipt_format`.
+    let terminal_id = ctx.terminal_id().await;
     let (config, store_info) = {
         let conn = ctx.resolve_store(session_token)?;
         let db = conn
             .lock()
             .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
-        read_receipt_config(&db)?
+        read_receipt_config_for_scope(&db, terminal_id.as_deref())?
     }; // MutexGuard dropped here before any .await
     run_print_receipt_inner(ctx, args, config, store_info).await
 }
 
 /// Read receipt configuration and store info from the DB (synchronous — no async).
+///
+/// The display options resolve through [`Store::effective_receipt_format`], the
+/// single source of truth for receipt config: the scoped `receipt_formats`
+/// rows (entity content + terminal/workspace layout) win, and the ten pinned
+/// org-global legacy `receipt.*` settings keys fill whatever no scoped row
+/// supplied. A store that has only ever written legacy keys therefore prints
+/// exactly as it did before this resolution was introduced — the legacy values
+/// come back through the same fallback path the resolver already used.
 fn read_receipt_config(
     conn: &rusqlite::Connection,
 ) -> Result<(receipt::ReceiptConfig, receipt::StoreInfo), BridgeError> {
-    let store_name = Settings::get_store_name(conn)?.unwrap_or_else(|| "OZ-POS Store".into());
+    read_receipt_config_for_scope(conn, None)
+}
+
+/// Resolve receipt configuration for a specific terminal (and the workspace it
+/// resolves to) through [`Store::effective_receipt_format`].
+///
+/// `terminal_id` is the terminal whose scoped layout row has the highest
+/// precedence; `None` skips the terminal layer and falls straight through to
+/// the workspace/legacy layers (the unscoped print path).
+fn read_receipt_config_for_scope(
+    conn: &rusqlite::Connection,
+    terminal_id: Option<&str>,
+) -> Result<(receipt::ReceiptConfig, receipt::StoreInfo), BridgeError> {
+    let store_name = Settings::get_store_name(conn)?.unwrap_or_else(|| "kasir.mu Store".into());
     let store_address = Settings::get_store_address(conn)?.unwrap_or_default();
     let store_tax_id = Settings::get_store_tax_id(conn)?;
-    let decimals = Settings::get_receipt_decimal_separator(conn)?;
-    let decimal_separator = match decimals.as_str() {
+
+    // Single source of truth: scoped rows first, legacy keys as the fallback.
+    // A core error here is a real corruption/lookup failure, so it propagates
+    // rather than silently downgrading an operator's configured paper width.
+    let store = kasirmu_core::Store::new(conn);
+    let effective = store.effective_receipt_format(terminal_id, None)?;
+
+    let decimal_separator = match effective
+        .content
+        .as_ref()
+        .map(|c| c.decimal_separator.as_str())
+        .unwrap_or("dot")
+    {
         "comma" => receipt::DecimalSeparator::Comma,
         "none" => receipt::DecimalSeparator::None,
         _ => receipt::DecimalSeparator::Dot,
     };
-    let paper_width = match Settings::get_receipt_paper_width(conn)?.as_str() {
-        "narrow" => receipt::PaperWidth::Narrow,
+    let paper_width = match effective.layout.paper_width_mm {
+        Some(58) => receipt::PaperWidth::Narrow,
         _ => receipt::PaperWidth::Standard,
     };
+    // Content is the statutory layer (entity) when present; when it is absent
+    // the resolver's legacy fallback may still have supplied it, so read the
+    // legacy keys directly to preserve the pre-existing behaviour exactly.
+    let (show_tax, show_currency) = effective
+        .content
+        .as_ref()
+        .map(|c| (c.show_tax, c.show_currency))
+        .unwrap_or((
+            Settings::get_receipt_show_tax(conn)?,
+            Settings::get_receipt_show_currency(conn)?,
+        ));
+    // Footer precedence: entity footer text, else the scoped layout note, else
+    // the legacy footer — the same order the resolver documents.
+    //
+    // The legacy read propagates its error rather than swallowing it with
+    // `.ok()`. It is the LAST resort: reaching it means the entity and layout
+    // layers carried no footer, so the legacy key is the only thing standing
+    // between the operator's configured footer and a blank one. A failed read
+    // here (SQLITE_BUSY, a corrupt or locked settings table) used to become
+    // `None`, which is indistinguishable from "no footer configured" — the
+    // receipt printed without the footer the operator set, and nothing logged
+    // it. This is the same reason every other settings read in this function
+    // uses `?`: a core error is a real failure, not an absence.
+    // Read BEFORE the chain so the error can be propagated with `?`; a
+    // closure cannot carry `?` out to the function. Empty means "no footer"
+    // and is mapped to `None` so the chain treats it as absent.
+    let legacy_footer = {
+        let raw = Settings::get_receipt_footer(conn)?;
+        if raw.is_empty() { None } else { Some(raw) }
+    };
+    let footer = effective
+        .content
+        .as_ref()
+        .map(|c| c.footer_text.clone())
+        .filter(|f| !f.is_empty())
+        .or_else(|| {
+            effective
+                .layout
+                .footer_note
+                .clone()
+                .filter(|f| !f.is_empty())
+        })
+        .or_else(|| legacy_footer.clone());
     let config = receipt::ReceiptConfig {
         paper_width,
-        show_currency: Settings::get_receipt_show_currency(conn)?,
+        show_currency,
         decimal_separator,
-        show_tax: Settings::get_receipt_show_tax(conn)?,
-        footer: {
-            let f = Settings::get_receipt_footer(conn)?;
-            if f.is_empty() { None } else { Some(f) }
-        },
-        show_table_number: Settings::get_receipt_show_table_number(conn)?,
+        show_tax,
+        footer,
+        show_table_number: effective.layout.show_table_number.unwrap_or(false),
         barcode_enabled: false,
         payment_link_template: None,
     };
@@ -348,6 +436,7 @@ pub async fn run_print_receipt_inner(
                     unit_price: i.unit_price.to_money()?,
                     total_price: i.total_price.to_money()?,
                     tax_amount: i.tax_amount.map(|t| t.to_money()).transpose()?,
+                    note: i.note,
                 })
             })
             .collect::<Result<Vec<_>, _>>()?,
@@ -365,6 +454,7 @@ pub async fn run_print_receipt_inner(
                 })
             })
             .collect::<Result<Vec<_>, _>>()?,
+        faktur_pajak: args.faktur_pajak,
     };
 
     let data = receipt::format_sales_receipt(&receipt, &config);
@@ -446,6 +536,8 @@ pub async fn print_receipt_scoped(
     args: PrintReceiptArgs,
     session_token: &str,
 ) -> Result<PrintReceiptResult, BridgeError> {
+    // ungated-ok: KNOWN GAP (BRIDGE-7) - device access is currently open to any
+    // authenticated operator. Gating it is a product ruling, not a repair.
     ctx.resolve_scope(session_token)?;
     let printer = ctx
         .registry
@@ -494,7 +586,7 @@ pub fn prefer_first(mut scanners: Vec<ScannerInfo>, preferred: &str) -> Vec<Scan
 /// the workspace settings card was saved and then never consulted again —
 /// [`prefer_first`] could never move anything. The profile is canonical;
 /// the legacy keys cover terminals whose profile was written before it.
-async fn saved_scanner_prefs(ctx: &BridgeCtx<'_>) -> (String, String) {
+async fn saved_scanner_prefs(ctx: &BridgeCtx<'_>) -> Result<(String, String), BridgeError> {
     let terminal_id = ctx
         .terminal_id
         .lock()
@@ -518,24 +610,48 @@ async fn saved_scanner_prefs(ctx: &BridgeCtx<'_>) -> (String, String) {
 /// Exposed as a plain DB read so the shell that has not delegated
 /// `list_scanners_scoped` yet can share it instead of growing a second
 /// copy of the query.
-pub fn scanner_prefs(conn: &rusqlite::Connection, terminal_id: &str) -> (String, String) {
+///
+/// # Errors
+///
+/// Every failure here PROPAGATES. This used to return a bare `(String, String)`
+/// and fold each of its three reads into a default — a missing profile row fell
+/// through via `.ok()`, and both legacy keys via `unwrap_or_default()`. An
+/// unreadable `hardware_profiles` or `settings` table therefore produced
+/// `("", "")`, which is byte-identical to the answer for a terminal that has
+/// never been configured: the saved Device ID stopped being fronted, and an
+/// empty mode falls to the `_ => ids` arm of [`ids_for_mode`], so a
+/// `keyboard`-wedge terminal would silently open COM ports and a serial-only one
+/// would be handed a HID device. `None` from the profile lookup is the ONE
+/// legitimate absence (no row yet) and still falls through to the legacy keys.
+pub fn scanner_prefs(
+    conn: &rusqlite::Connection,
+    terminal_id: &str,
+) -> Result<(String, String), BridgeError> {
     let from_profile = conn
         .query_row(
             "SELECT profile_json FROM hardware_profiles WHERE terminal_id = ?1",
             rusqlite::params![&terminal_id],
             |row| row.get::<_, String>(0),
         )
-        .ok()
-        .and_then(|json| serde_json::from_str::<TerminalProfile>(&json).ok());
+        .optional()
+        .map_err(BridgeError::from)?;
 
-    if let Some(profile) = from_profile {
-        return (profile.scanner_device_id, profile.scanner_input_mode);
+    if let Some(json) = from_profile {
+        // A stored profile that does not parse is corruption, not an absence:
+        // falling through would silently ignore a configuration the operator
+        // did save.
+        let profile: TerminalProfile = serde_json::from_str(&json).map_err(|e| {
+            BridgeError::Internal(format!(
+                "terminal profile for '{terminal_id}' is not readable: {e}"
+            ))
+        })?;
+        return Ok((profile.scanner_device_id, profile.scanner_input_mode));
     }
 
-    (
-        Settings::get_scanner_device_id(conn).unwrap_or_default(),
-        Settings::get_scanner_input_mode(conn).unwrap_or_default(),
-    )
+    Ok((
+        Settings::get_scanner_device_id(conn)?,
+        Settings::get_scanner_input_mode(conn)?,
+    ))
 }
 
 /// Which registered scanners the saved input mode allows.
@@ -577,9 +693,11 @@ pub async fn list_scanners_scoped(
     ctx: &BridgeCtx<'_>,
     session_token: &str,
 ) -> Result<Vec<ScannerInfo>, BridgeError> {
+    // ungated-ok: KNOWN GAP (BRIDGE-7) - device access is currently open to any
+    // authenticated operator. Gating it is a product ruling, not a repair.
     ctx.resolve_scope(session_token)?;
     let ids = ctx.registry.scanner_ids_ranked().await;
-    let (preferred, mode) = saved_scanner_prefs(ctx).await;
+    let (preferred, mode) = saved_scanner_prefs(ctx).await?;
     Ok(prefer_first(
         ids_for_mode(ids, &mode)
             .into_iter()
@@ -594,8 +712,8 @@ pub async fn list_scanners_scoped(
 /// Takes over the shell's scanner lifecycle: any running scanner is cancelled
 /// first, the driver is resolved from the registry, and a poll task is spawned
 /// that broadcasts `barcode:scanned` / `barcode:error` through the injected
-/// [`EventSink`]. The cancel handle is stored in
-/// [`BridgeCtx::scanner_cancel`] for [`stop_scanner_scoped`].
+/// [`EventSink`](crate::ctx::EventSink). The cancel handle is stored in
+/// [`BridgeCtx::scanner_cancel`](crate::ctx::BridgeCtx::scanner_cancel) for [`stop_scanner_scoped`].
 ///
 /// A connect failure is retried with backoff rather than ending the task,
 /// and a `NotFound` failure — no scanner reachable — is logged, not
@@ -614,6 +732,8 @@ pub async fn start_scanner_scoped(
     scanner_id: &str,
     session_token: &str,
 ) -> Result<(), BridgeError> {
+    // ungated-ok: KNOWN GAP (BRIDGE-7) - device access is currently open to any
+    // authenticated operator. Gating it is a product ruling, not a repair.
     ctx.resolve_scope(session_token)?;
     {
         let mut cancel = ctx.scanner_cancel.lock().await;
@@ -721,6 +841,8 @@ pub async fn stop_scanner_scoped(
     ctx: &BridgeCtx<'_>,
     session_token: &str,
 ) -> Result<(), BridgeError> {
+    // ungated-ok: KNOWN GAP (BRIDGE-7) - device access is currently open to any
+    // authenticated operator. Gating it is a product ruling, not a repair.
     ctx.resolve_scope(session_token)?;
     let mut cancel = ctx.scanner_cancel.lock().await;
     if let Some(sender) = cancel.take() {
@@ -738,6 +860,8 @@ pub async fn list_displays_scoped(
     ctx: &BridgeCtx<'_>,
     session_token: &str,
 ) -> Result<Vec<String>, BridgeError> {
+    // ungated-ok: KNOWN GAP (BRIDGE-7) - device access is currently open to any
+    // authenticated operator. Gating it is a product ruling, not a repair.
     ctx.resolve_scope(session_token)?;
     Ok(ctx.registry.display_ids().await)
 }
@@ -754,6 +878,8 @@ pub async fn display_show_scoped(
     args: DisplayShowArgs,
     session_token: &str,
 ) -> Result<(), BridgeError> {
+    // ungated-ok: KNOWN GAP (BRIDGE-7) - device access is currently open to any
+    // authenticated operator. Gating it is a product ruling, not a repair.
     ctx.resolve_scope(session_token)?;
     let display = ctx
         .registry
@@ -781,6 +907,8 @@ pub async fn discover_hardware_scoped(
     ctx: &BridgeCtx<'_>,
     session_token: &str,
 ) -> Result<Vec<UsbDeviceInfo>, BridgeError> {
+    // ungated-ok: KNOWN GAP (BRIDGE-7) - device access is currently open to any
+    // authenticated operator. Gating it is a product ruling, not a repair.
     ctx.resolve_scope(session_token)?;
     match probe_all() {
         Ok(devices) => Ok(devices),
@@ -802,6 +930,8 @@ pub async fn display_clear_scoped(
     display_id: &str,
     session_token: &str,
 ) -> Result<(), BridgeError> {
+    // ungated-ok: KNOWN GAP (BRIDGE-7) - device access is currently open to any
+    // authenticated operator. Gating it is a product ruling, not a repair.
     ctx.resolve_scope(session_token)?;
     let display =
         ctx.registry.display(display_id).await.ok_or_else(|| {

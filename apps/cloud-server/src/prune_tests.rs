@@ -16,7 +16,10 @@ async fn throwaway_pg_db(
         Ok(_) => unreachable!("connect_postgres with a postgres:// URL returns Postgres"),
         Err(e) => {
             eprintln!("PG test skipped: {e}");
+            #[cfg(not(feature = "pg-tests"))]
             return None;
+            #[cfg(feature = "pg-tests")]
+            panic!("PG test enabled but the resource is unreachable - see the skip message above");
         }
     };
     let admin = admin_pool.get().await.expect("admin client");
@@ -47,7 +50,10 @@ async fn throwaway_pg_db(
         .await
     {
         eprintln!("PG test skipped: cannot CREATE DATABASE ({e})");
+        #[cfg(not(feature = "pg-tests"))]
         return None;
+        #[cfg(feature = "pg-tests")]
+        panic!("PG test enabled but the resource is unreachable - see the skip message above");
     }
     let (base, query) = match url.split_once('?') {
         Some((b, q)) => (b, Some(q)),
@@ -99,6 +105,59 @@ fn prune_delete_treats_hostile_id_as_data() {
     assert_eq!(
         hacked, 0,
         "hostile id must never execute SQL in the prune DELETE"
+    );
+}
+
+/// A row whose id cannot be READ must abort the cycle, not vanish from it.
+///
+/// The batch select ended in `rows.filter_map(|r| r.ok())`, which silently
+/// DROPPED a row it could not read. That row is then never deleted — and the
+/// loss is invisible: every other failure in this loop logs and breaks, and the
+/// counter the code tells operators to watch (`PRUNE_QUEUE_DELETED_TOTAL`) would
+/// simply stop moving, with nothing recording why. If EVERY id in a batch failed,
+/// `ids.is_empty()` ended the cycle as though the queue were drained.
+///
+/// The trigger is a NULL id: `offline_queue.id` is `TEXT PRIMARY KEY`, and SQLite
+/// accepts NULL there (only INTEGER PRIMARY KEY implies NOT NULL), so the column
+/// reads back as `None` and `row.get::<_, String>(0)` fails with
+/// `InvalidColumnType`. The row must still be present afterwards — a cycle that
+/// aborted deleted nothing.
+#[serial(pg_rls_cutover)]
+#[test]
+fn prune_aborts_instead_of_dropping_an_unreadable_id() {
+    let conn = kasirmu_core::migrations::fresh_db();
+    conn.execute_batch(
+        "INSERT INTO offline_queue (id, action, payload, status, retry_count, last_error, created_at, synced_at, tenant_id, priority) VALUES
+         (NULL,    'act', '{}', 'synced', 0, NULL, '2025-01-01T00:00:00Z', '2025-01-02T00:00:00Z', 't1', 1),
+         ('good-1','act', '{}', 'synced', 0, NULL, '2025-01-01T00:00:00Z', '2025-01-02T00:00:00Z', 't1', 1)",
+    )
+    .unwrap();
+
+    let db = Arc::new(Mutex::new(conn));
+    tokio::runtime::Runtime::new()
+        .unwrap()
+        .block_on(run_prune_cycle(&db));
+
+    let conn = db.blocking_lock();
+    // The discriminating assertion is the READABLE row, not the unreadable one.
+    //
+    // `null_rows == 1` held either way: with the swallow restored the NULL row is
+    // dropped from the batch and simply never gets deleted, so it is still there.
+    // That made the first version of this pin a false green -- it passed against
+    // the defect. What the abort actually changes is that the cycle stops BEFORE
+    // deleting anything, so `good-1` -- a perfectly readable row in the same batch
+    // -- survives. Under the swallow it is deleted and only the unreadable row is
+    // left behind, which is the silent partial loss this pin exists to catch.
+    let good_rows: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM offline_queue WHERE id = 'good-1'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        good_rows, 1,
+        "the cycle must abort before deleting, not drop the unreadable id and carry on"
     );
 }
 /// P-1 retention must cover API-pushed rows. `push_handler` persists
@@ -174,6 +233,7 @@ fn prune_records_deleted_rows_on_retention_counter() {
 /// retention — old rows (any status) are deleted, recent rows survive.
 /// Skips when no reachable Postgres is configured, so the suite stays
 /// green on machines without one.
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 async fn pg_integration_prune_ages_out_old_rows() {
     let url = std::env::var("OZ_TEST_PG_URL")
@@ -184,7 +244,10 @@ async fn pg_integration_prune_ages_out_old_rows() {
         Ok(_) => unreachable!("connect_postgres with a postgres:// URL returns Postgres"),
         Err(e) => {
             eprintln!("PG prune integration test skipped: {e}");
+            #[cfg(not(feature = "pg-tests"))]
             return;
+            #[cfg(feature = "pg-tests")]
+            panic!("PG test enabled but the resource is unreachable - see the skip message above");
         }
     };
 
@@ -241,6 +304,7 @@ async fn pg_integration_prune_ages_out_old_rows() {
 /// handles `offline_queue`. Seed an old claim plus fresh claims for two
 /// tenants and assert only the old one is swept (fresh claims survive
 /// regardless of tenant — the sweep must not over-delete).
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 async fn pg_integration_prune_ages_out_old_sent_reports() {
     let url = std::env::var("OZ_TEST_PG_URL")
@@ -251,7 +315,10 @@ async fn pg_integration_prune_ages_out_old_sent_reports() {
         Ok(_) => unreachable!("connect_postgres with a postgres:// URL returns Postgres"),
         Err(e) => {
             eprintln!("PG prune sent_reports integration test skipped: {e}");
+            #[cfg(not(feature = "pg-tests"))]
             return;
+            #[cfg(feature = "pg-tests")]
+            panic!("PG test enabled but the resource is unreachable - see the skip message above");
         }
     };
 
@@ -312,6 +379,7 @@ async fn pg_integration_prune_ages_out_old_sent_reports() {
 /// loop silently stops aging out old data — the cloud DB grows unbounded.
 /// The cycle must scope itself to the BYPASSRLS `oz_email_discovery` role
 /// (which the cutover grants) so retention still runs.
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 #[serial(pg_rls_cutover)]
 async fn pg_integration_prune_survives_rls_cutover() {
@@ -325,7 +393,10 @@ async fn pg_integration_prune_survives_rls_cutover() {
         Ok(_) => unreachable!("connect_postgres with a postgres:// URL returns Postgres"),
         Err(e) => {
             eprintln!("PG prune RLS integration test skipped: {e}");
+            #[cfg(not(feature = "pg-tests"))]
             return;
+            #[cfg(feature = "pg-tests")]
+            panic!("PG test enabled but the resource is unreachable - see the skip message above");
         }
     };
     let mut owner = pool.get().await.expect("owner client");

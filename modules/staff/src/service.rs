@@ -8,8 +8,8 @@ next: none | perf: N/A
 //! Staff Service — user and role business workflows.
 
 use crate::error::StaffError;
-use crate::models::{Role, User};
 use crate::repository::StaffRepository;
+use platform_core::staff::{Role, User};
 use rusqlite::Connection;
 
 /// Service encapsulating staff management workflows.

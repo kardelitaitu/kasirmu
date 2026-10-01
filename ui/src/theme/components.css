@@ -1,5 +1,5 @@
 /* ============================================================
- * OZ-POS Shared Component Styles
+ * kasir.mu Shared Component Styles
  *
  * Every class references design tokens via var(--token).
  * Never hardcode colours, sizes, or shadows.
@@ -164,8 +164,20 @@
 }
 
 @media (prefers-reduced-motion: no-preference) {
+  /* Entry: rotating spin */
   .btn__spinner {
     animation: btn-spin var(--duration-600) var(--ease-linear) infinite;
+  }
+
+  /* T6: exit mirror — fade + scale down when processing ends */
+  @keyframes btn-spinner-out {
+    from { opacity: 1; transform: scale(1); }
+    to   { opacity: 0; transform: scale(0.6); }
+  }
+
+  .btn__spinner--exiting {
+    animation: btn-spinner-out var(--duration-150) var(--ease-out) both;
+    pointer-events: none;
   }
 }
 
@@ -314,6 +326,7 @@
 .modal-panel::after,
 .staff-login-card::after,
 .workspace-card::after,
+.staff-mgmt-card::after,
 /* Reusable utility class — recommended for new components */
 .noise-dither::after,
 /* Emergency fallback card — elevated surface (ERR-02) */
@@ -321,6 +334,21 @@
 /* ADR #46 §2 deploy-history browser — explicit ::after path so the
    shadow-coverage check sees it (the element also carries .noise-dither). */
 .topology-rev-browser::after,
+/* Restaurant receipt print preview (C8) — the same explicit-::after route as
+   .topology-rev-browser above: the element carries className="noise-dither" in
+   RestaurantReceiptsScreen.tsx, but noiseDitherCompliance.test.ts walks CSS
+   SELECTORS, so a shadow declared on .restaurant-preview-card is read as an
+   uncovered elevated surface unless the selector is named here too. The card is
+   a genuinely large, soft --shadow-sm pane (the preview column's own rail), so
+   it takes the overlay rather than an exemption. */
+.restaurant-preview-card::after,
+/* The mat the thermal roll sits on: the full-width stage behind the receipt
+   preview, carrying inset --shadow-inner. Large enough to band, so it takes the
+   overlay rather than an exemption. (The two other shadowed selectors this
+   sheet gained when the receipt values were tokenised — .resto-segmented-btn--active
+   and the toggle knob — are small controls and are exempted in the test
+   alongside .btn, for the thin-shadow reason recorded there.) */
+.resto-receipt-paper-wrapper::after,
 /* Memo chat-bubble stack + enlarged reading card — the two genuinely
    elevated memo surfaces (shadow-xl / shadow-2xl). Their close chips are
    exempt in noiseDitherCompliance.test.ts: small circular controls inherit
@@ -501,11 +529,14 @@
   .modal-panel::after,
   .staff-login-card::after,
   .workspace-card::after,
+  .staff-mgmt-card::after,
   .wire-rename-input::after,
   .wire-label-pill::after,
   .noise-dither::after,
   .error-boundary__card::after,
   .topology-rev-browser::after,
+  .restaurant-preview-card::after,
+  .resto-receipt-paper-wrapper::after,
   .memo-banner::after,
   .memo-expanded-card::after,
   .retail-shift-modal::after,
@@ -637,11 +668,14 @@
   .modal-panel::after,
   .staff-login-card::after,
   .workspace-card::after,
+  .staff-mgmt-card::after,
   .wire-rename-input::after,
   .wire-label-pill::after,
   .noise-dither::after,
   .error-boundary__card::after,
   .topology-rev-browser::after,
+  .restaurant-preview-card::after,
+  .resto-receipt-paper-wrapper::after,
   .memo-banner::after,
   .memo-expanded-card::after,
   .retail-shift-modal::after,
@@ -874,6 +908,49 @@
 .modal-close-btn:hover {
   background: var(--color-bg-surface);
   color: var(--color-fg);
+}
+
+.modal-close-btn--outside {
+  position: absolute;
+  top: calc(-1 * var(--space-4));
+  right: calc(-1 * var(--space-4));
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--touch-target-min);
+  height: var(--touch-target-min);
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  background: var(--color-bg-popover);
+  box-shadow: var(--shadow-lg);
+  color: var(--color-fg-tertiary);
+  cursor: pointer;
+  z-index: 10;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .modal-close-btn--outside {
+    transition:
+      background-color var(--duration-150) var(--ease-out),
+      color var(--duration-150) var(--ease-out),
+      transform var(--duration-200) var(--ease-bounce);
+  }
+
+  .modal-close-btn--outside:hover {
+    background: var(--color-bg-surface);
+    color: var(--color-fg-secondary);
+    transform: rotate(90deg);
+  }
+
+  .modal-close-btn--outside:active {
+    transform: rotate(90deg) scale(0.88);
+  }
+}
+
+.modal-close-btn--outside:focus-visible {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 2px;
 }
 
 .modal-body {
@@ -1493,6 +1570,15 @@
 .app-splash {
   position: fixed;
   inset: 0;
+  z-index: var(--z-splash);
+  background-color: var(--color-bg);
+  background:
+    radial-gradient(
+      ellipse 80% 60% at 50% 30%,
+      color-mix(in srgb, var(--color-accent) 6%, transparent),
+      transparent 70%
+    ),
+    var(--color-bg);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1505,6 +1591,28 @@
 .app-splash__label {
   font-size: var(--text-sm);
 }
+
+/* T3: Boot splash exit crossfade (fade out to reveal interactive shell underneath) */
+@keyframes app-splash-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .app-splash--exiting {
+    animation: app-splash-out var(--duration-200) var(--ease-out) both;
+    pointer-events: none;
+  }
+}
+
+.app-splash--exiting {
+  pointer-events: none;
+}
+
 /* Kept here: .lazy-boundary__spinner (below) reuses the
    app-splash-spin keyframes. */
 @keyframes app-splash-spin {
@@ -1551,6 +1659,67 @@
 }
 .tablet-shell .app-content-inner > .lazy-boundary {
   min-height: calc(100dvh - var(--tablet-bottom-nav-height, 64px));
+}
+
+/* ── Shared list pager ──────────────────────────────────────────────
+   R3: the bounded list data path's page controls, for the four screens
+   that page a table through `usePagedList`. Deliberately NEUTRAL names:
+   the two pagers that predate this block are feature-scoped
+   (.sales-history-page-btn, .retail-page-btn), so reusing either name on
+   products / customers / void orders / thresholds would have said "sales
+   history" about four screens that are not sales history — and would have
+   failed screenExtraction case 1, which resolves a screen's used names
+   against its own sheet plus an explicit parentCss cite, and neither of
+   those sheets is a legal cite for those entries. This block is the
+   shared one, cited via parentCss by the four entries that use it.
+   The existing pagers are NOT retrofitted onto it — that is a separate
+   refactor. Visual intent mirrors SalesHistoryScreen.css:504-546 and
+   RetailPosScreen.css:1478-1502, re-expressed in the tokens this sheet
+   already uses; interactive sizing reads --touch-target-min (44px), so
+   no page control can drift below the touch floor. */
+.pager-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-4);
+  padding: var(--space-4) 0;
+  margin-top: var(--space-2);
+}
+.pager-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  min-width: var(--touch-target-min);
+  min-height: var(--touch-target-min);
+  padding: var(--space-1_5) var(--space-3);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-accent);
+  background: var(--color-bg-primary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--duration-100) var(--ease-out);
+}
+.pager-btn:hover:not(:disabled) {
+  background: var(--color-accent-dim);
+  border-color: var(--color-accent);
+}
+.pager-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.pager-btn:focus-visible {
+  box-shadow: inset 0 0 0 1px var(--color-border-focus);
+}
+.pager-info,
+.pager-indicator {
+  font-size: var(--text-sm);
+  color: var(--color-fg-tertiary);
+  margin-left: var(--space-2);
+  text-align: center;
 }
 
 /* Screen reader only utility (globally accessible) */

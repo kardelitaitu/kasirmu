@@ -1,6 +1,6 @@
-//! OZ-POS Sync Engine
+//! kasir.mu Sync Engine
 /*
-last audited DD-MM-YY by DSH-Agent (re-review)
+last audited (date unknown) by DSH-Agent (re-review)
 crate: platform-sync | status: SAFE | lint: CLEAN
 findings: verified exemplary — SYNC-01 durable pull anchor with MONOTONIC advancement, replay-safe apply_remote_atomic with idempotency receipts, SYNC-02 shared conflict resolver (ADR-21: sale status DAG, version LWW, CRDT merge), SYNC-06 pin_hash never travels, RUST-04 snapshot pre-validation, per-batch independent commits. TLS verified: rustls + native roots + SslMode::Require (fail-closed, no certificate bypass). 0 unsafe blocks. 1 production expect (transport.rs new() — documented RUST-05 invariant wrapper). COR-33 already resolved: lib.rs is 648 lines with sibling lib_tests.rs (the 25-07-26 "production-after-tests" note was stale).
 next: none | perf: 64KB priority-sorted batches
@@ -31,7 +31,16 @@ next: none | perf: 64KB priority-sorted batches
 //! # }
 //! ```
 
+#![deny(unsafe_code)]
 #![allow(clippy::items_after_test_module)]
+// `rustdoc::private_intra_doc_links` is allowed crate-wide here, and ONLY
+// that lint. Several public items in this crate document their behaviour by
+// naming the private helper that enforces it — which is more useful to a
+// reader than a prose restatement, and is the reason rustdoc has a lint for
+// it rather than an error. `rustdoc::broken_intra_doc_links` is deliberately
+// NOT allowed, so a link to an item that does not exist still fails the
+// build. Precedent: `kasirmu-crypto/src/lib.rs`, `platform/core/src/lib.rs`.
+#![allow(rustdoc::private_intra_doc_links)]
 
 pub mod conflict;
 pub mod crdt;
@@ -564,6 +573,24 @@ impl SyncEngine {
     /// mutation twice.
     ///
     /// Returns a [`ReplicationResult`] with counts of pushed/pulled items.
+    ///
+    /// # Embedder API — the shipped shells use the daemon, not this
+    ///
+    /// This engine has NO caller in the shipped application. Both dependents of
+    /// this crate reach past it: `apps/desktop-tauri` drives
+    /// [`crate::daemon::SyncDaemon`] / [`crate::pg_daemon::PgSyncDaemon`], and
+    /// `apps/cloud-server` consumes only the transport and CRDT types. The
+    /// production push path is the daemon, which stamps every push and persists
+    /// the counter through `daemon_tick::persist_stamped_counter`.
+    ///
+    /// An embedder that DOES call this must stamp first. Without a
+    /// [`SyncTransport::with_vector_stamping`] seed the push carries no
+    /// `_vector`, the server cannot order it against the terminal's other
+    /// mutations, and conflict detection is silently skipped for this terminal
+    /// — exactly the failure mode described on [`SyncEngine::with_vector_stamping`].
+    /// Read [`crate::crdt::CLOCK_KEY`] and the configured terminal id, call
+    /// [`SyncEngine::with_vector_stamping`], and persist
+    /// [`SyncEngine::last_stamped_counter`] after every cycle.
     pub async fn run_sync_cycle(&self, store: &Store<'_>) -> SyncResult<ReplicationResult> {
         // Pre-sync health check — skip the full cycle if the server is unreachable.
         match self.transport.health_check().await {

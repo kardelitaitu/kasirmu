@@ -14,14 +14,6 @@ workspace = true
 [dependencies]
 foundation = { workspace = true }
 platform-core = { workspace = true }
-modules-sales = { workspace = true }
-modules-inventory = { workspace = true }
-modules-crm = { workspace = true }
-modules-loyalty = { workspace = true }
-modules-staff = { workspace = true }
-modules-terminal = { workspace = true }
-modules-currency = { workspace = true }
-modules-tax = { workspace = true }
 serde = { workspace = true }
 rusqlite = { workspace = true }
 thiserror = { workspace = true }
@@ -53,9 +45,13 @@ lan-mdns = ["dep:mdns-sd"]
 reqwest = { workspace = true, optional = true }
 
 [dev-dependencies]
+# Only the currency integration test uses this; the production dependency was retired
+# with the deprecated Store shims (ADR-61 / C26).
+modules-currency = { workspace = true }
 criterion = { workspace = true }
 proptest = { workspace = true }
 serial_test = { workspace = true }
+tempfile = { workspace = true }
 tokio = { workspace = true }
 
 [[bench]]
@@ -72,4 +68,8 @@ harness = false
 
 [[bench]]
 name = "transaction_commit"
+harness = false
+
+[[bench]]
+name = "wal_ondisk"
 harness = false

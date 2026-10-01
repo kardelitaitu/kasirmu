@@ -160,6 +160,7 @@ fn family_decrypt(key: &str, raw: &str) -> Option<String> {
         "sync_terminal_secret" => c::decrypt_sync_terminal_secret(raw).ok(),
         "pg_sync.password" => c::decrypt_pg_sync_password(raw).ok(),
         "rate_sync.api_key" => c::decrypt_rate_api_key(raw).ok(),
+        "local_api.secret" => c::decrypt_local_api_secret(raw).ok(),
         _ => None,
     }
 }
@@ -223,6 +224,9 @@ fn w_pg_sync_password(conn: &Connection, v: &str) -> Result<(), kasirmu_core::Co
 fn w_rate_sync_api_key(conn: &Connection, v: &str) -> Result<(), kasirmu_core::CoreError> {
     Settings::set_rate_sync_api_key(conn, v)
 }
+fn w_local_api_secret(conn: &Connection, v: &str) -> Result<(), kasirmu_core::CoreError> {
+    Settings::set_local_api_secret(conn, v)
+}
 fn w_redis_url(conn: &Connection, v: &str) -> Result<(), kasirmu_core::CoreError> {
     Settings::set_redis_url(conn, v)
 }
@@ -275,12 +279,16 @@ const SPEC: &[Spec] = &[
         typed: Some(w_redis_url),
         expected: Form::Plaintext,
     },
-    // NO crypto family at all
+    // typed encrypting setter EXISTS (Settings::set_local_api_secret) — the
+    // family landed with C14a. Before it this key was written by a bare
+    // `Settings::set` and sat in the clear in `settings.value` and every
+    // `.db`/`.backup.db` snapshot, while doubling as the local-API token
+    // signing key. The row moved from `Plaintext` to `Ciphertext` with it.
     Spec {
         key: "local_api.secret",
-        setter: "NO crypto family",
-        typed: None,
-        expected: Form::Plaintext,
+        setter: "typed encrypting setter EXISTS",
+        typed: Some(w_local_api_secret),
+        expected: Form::Ciphertext,
     },
     // NO crypto family at all (the bridge encrypts it machine-bound; this crate does not)
     Spec {
@@ -555,9 +563,11 @@ fn the_funnel_refuses_every_deny_listed_credential_except_smtp_config() {
 /// Keys landing as ciphertext in `settings.value` when written by their own
 /// ordinary setter. Adding a credential key to `SPEC` without giving it a
 /// crypto family moves `plaintext`, and the sum check pins the total, so the
-/// number cannot stay quietly correct by accident.
+/// number cannot stay quietly correct by accident. The fifth ciphertext
+/// lander is `local_api.secret`, which arrived with C14a; before it the
+/// count was four.
 #[test]
-fn exactly_four_keys_land_in_ciphertext_form() {
+fn exactly_five_keys_land_in_ciphertext_form() {
     let (mut ciphertext, mut plaintext, mut blob) = (0, 0, 0);
     let mut other = Vec::new();
     for spec in SPEC {
@@ -569,9 +579,9 @@ fn exactly_four_keys_land_in_ciphertext_form() {
         }
     }
     assert!(other.is_empty(), "unclassifiable storage forms: {other:?}");
-    assert_eq!(ciphertext, 4, "keys whose settings.value is ciphertext");
+    assert_eq!(ciphertext, 5, "keys whose settings.value is ciphertext");
     assert_eq!(blob, 1, "keys whose settings.value is a JSON blob");
-    assert_eq!(plaintext, 9, "keys whose settings.value is cleartext");
+    assert_eq!(plaintext, 8, "keys whose settings.value is cleartext");
     assert_eq!(
         SPEC.len(),
         ciphertext + plaintext + blob,
@@ -580,7 +590,7 @@ fn exactly_four_keys_land_in_ciphertext_form() {
 }
 
 /// The same census through the unfiltered set: zero — `Settings::set` never
-/// encrypts, whoever calls it. (The four ciphertext landers arrive only
+/// encrypts, whoever calls it. (The five ciphertext landers arrive only
 /// through their typed encrypting setters, which the count test above
 /// measures; the unfiltered writer this case uses is not one of them.)
 #[test]

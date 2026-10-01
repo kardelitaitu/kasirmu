@@ -3,7 +3,12 @@
 last audited 25-07-26 by RSA-Agent (modules-sales slice B: service deep read)
 crate: modules-sales | status: SAFE | lint: CLEAN
 findings: MSL-2 FIXED — void_sale enforces the transition matrix (Active-to-Voided only via SaleStatus::can_transition_to; Completed sales are rejected with refund-flow guidance): the guard only rejects an already-voided sale, then writes SaleStatus::Voided directly via update_sale_status, which previously let a COMPLETED sale be voided without transition_to (which forbids Completed-to-Voided); voiding also neither records a Refund nor restores stock, so the refund path (Refund model) should be the route for completed sales. Proposed: enforce the transition matrix here (Active-to-Voided only; route Completed-to-Voided to the refund flow or make the bypass an explicit policy). process_checkout is clean: cart construction validated, double transition enforces the DAG, tx-scoped insert, versioned
-next: fix MSL-2 in the fix-order phase | perf: N/A
+next: none | perf: N/A
+MSL-2 is CLOSED: void_sale enforces the transition matrix via
+SaleStatus::can_transition_to(sale.status, SaleStatus::Voided) at
+service.rs:76, so an already-voided sale is rejected and a Completed sale is
+refused with refund-flow guidance instead of being voided directly, verified
+2026-10-04.
 */
 
 use crate::error::SalesError;

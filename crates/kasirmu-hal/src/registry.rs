@@ -1,7 +1,7 @@
 /*
 last audited 25-07-26 by RSA-Agent (kasirmu-hal slice A: registry deep read)
 crate: kasirmu-hal | status: SAFE | lint: CLEAN
-findings: clean — per-category RwLock maps with documented overwrite semantics; discovery fail-open per driver (one failure never aborts the rest); deterministic device-id scheme with serial/model fallback; companion cash-drawer registration for every printer. Six categories as of 31-08-26: the EDC terminal slot arrived with the HAL unification, closing the bypass where a card terminal was reachable only through a hardcoded AppState field rather than the registry. EDC is registered by configuration (register_wired_terminal / register_wireless_terminal, the same shape register_tcp_printer uses) and is deliberately absent from discover() — auto-probing and silently binding a money device would let an unconfigured terminal show up in the tender list. That decision is pinned by discover_never_registers_a_card_terminal. GAP (open, Phase 2): discover() also never registers a WeightScale, but for the opposite reason — no discovery path exists for it yet (drivers/scale.rs HidWeightScale has no discover_all(), and no caller invokes register_scale()), so read_scale_weight_scoped always resolves to None in production even though both clients expose the command and Feature::UsbScale is declarable. register_mock_scale() was removed 31-08-26: zero callers, it injected a mock into the production registry, and it was the crate's only library-side panic path (try_write().expect())
+findings: clean — per-category RwLock maps with documented overwrite semantics; discovery fail-open per driver (one failure never aborts the rest); deterministic device-id scheme with serial/model fallback; companion cash-drawer registration for every printer. Six categories as of 31-08-26: the EDC terminal slot arrived with the HAL unification, closing the bypass where a card terminal was reachable only through a hardcoded AppState field rather than the registry. EDC is registered by configuration (register_wired_terminal / register_wireless_terminal, the same shape register_tcp_printer uses) and is deliberately absent from discover() — auto-probing and silently binding a money device would let an unconfigured terminal show up in the tender list. That decision is pinned by discover_never_registers_a_card_terminal. GAP (open, Phase 2): discover() also never registers a WeightScale, but for the opposite reason — no discovery path exists for it yet (drivers/scale.rs HidWeightScale has no discover_all()), and the write side was removed outright on 2026-09-27: register_scale() had zero callers tree-wide, so the scales map is now readable-only (scale()/scale_ids() survive and stay pinned by scale_tests.rs), and read_scale_weight_scoped always resolves to None in production even though both clients expose the command and Feature::UsbScale is declarable. register_mock_scale() was removed 31-08-26: zero callers, it injected a mock into the production registry, and it was the crate's only library-side panic path (try_write().expect())
 next: scale discovery + TCP printer discovery (Phase 2) | perf: short-lived read locks on lookup
 */
 //! `DriverRegistry` — the runtime's catalogue of available hardware.
@@ -129,12 +129,6 @@ impl DriverRegistry {
         sorted_keys(&*self.displays.read().await)
     }
 
-    /// Register a weight scale under `id`. Overwrites any previous
-    /// entry with the same id.
-    pub async fn register_scale(&self, id: &str, driver: Arc<dyn WeightScale>) {
-        self.scales.write().await.insert(id.to_owned(), driver);
-    }
-
     /// Look up a weight scale by id. Returns `None` if no scale is registered.
     pub async fn scale(&self, id: &str) -> Option<Arc<dyn WeightScale>> {
         self.scales.read().await.get(id).cloned()
@@ -145,10 +139,52 @@ impl DriverRegistry {
         sorted_keys(&*self.scales.read().await)
     }
 
+    /// Register a weight scale under `id`. Test-only.
+    ///
+    /// The production writer was removed on 2026-09-27 (zero callers
+    /// tree-wide) so the scales map is readable-only outside this crate's
+    /// tests; the `cfg(test)` gate keeps that true for the shipped binary
+    /// while letting the bridge's `list_scale_devices_scoped` and the
+    /// registry's own ordering pins construct a fixture. Registration
+    /// semantics match the other `register_*` helpers: an existing id is
+    /// overwritten.
+    #[cfg(any(test, feature = "test-support"))]
+    pub async fn register_scale(&self, id: &str, driver: Arc<dyn WeightScale>) {
+        self.scales.write().await.insert(id.to_owned(), driver);
+    }
+
+    /// Snapshot of every registered scale as `(id, driver)`, taken under one
+    /// guard.
+    ///
+    /// Exists so a caller that needs the ids *and* the drivers does not
+    /// have to look each one up again: between `scale_ids()` and a later
+    /// `scale(id)` an intervening `register_*`/removal can leave an id whose
+    /// driver is gone, and a caller that treats a missing driver as "skip"
+    /// then reports a list that is quieter than the registry's contents.
+    /// The `Option` is always `Some` today (the map holds `Arc`s and nothing
+    /// removes a scale); it is kept because the snapshot type should be able
+    /// to describe the map it was taken from without repeating the lookup.
+    pub async fn scales(&self) -> Vec<(String, Option<Arc<dyn WeightScale>>)> {
+        let mut entries: Vec<(String, Option<Arc<dyn WeightScale>>)> = self
+            .scales
+            .read()
+            .await
+            .iter()
+            .map(|(id, driver)| (id.clone(), Some(driver.clone())))
+            .collect();
+        entries.sort_by(|a, b| a.0.cmp(&b.0));
+        entries
+    }
+
     /// Register an EDC card-payment terminal under `id`. Overwrites any
     /// previous entry with the same id.
     pub async fn register_terminal(&self, id: &str, driver: Arc<dyn EdcTerminal>) {
         self.terminals.write().await.insert(id.to_owned(), driver);
+    }
+
+    /// Unregister an EDC card-payment terminal under `id`.
+    pub async fn unregister_terminal(&self, id: &str) {
+        self.terminals.write().await.remove(id);
     }
 
     /// Look up an EDC terminal by id. Returns `None` if none is registered.
@@ -189,6 +225,21 @@ impl DriverRegistry {
         info: DeviceInfo,
     ) {
         let terminal = Arc::new(crate::drivers::edc::WirelessEdcTerminal::new(target, info));
+        self.register_terminal(id, terminal).await;
+    }
+
+    /// Register a loopback (simulator) EDC terminal under the given id.
+    pub async fn register_loopback_terminal(&self, id: &str) {
+        let terminal = Arc::new(crate::drivers::edc::LoopbackEdcTerminal::new());
+        self.register_terminal(id, terminal).await;
+    }
+
+    /// Register a configured loopback EDC terminal under the given id.
+    pub async fn register_loopback_terminal_with(
+        &self,
+        id: &str,
+        terminal: Arc<crate::drivers::edc::LoopbackEdcTerminal>,
+    ) {
         self.register_terminal(id, terminal).await;
     }
 
@@ -282,7 +333,7 @@ impl DriverRegistry {
             let printer_arc = Arc::new(printer);
             self.register_printer(&id, printer_arc.clone()).await;
             // Register a companion cash drawer that kicks through this printer.
-            let drawer_id = format!("drawer:kick:{}", id);
+            let drawer_id = format!("drawer:kick:{id}");
             let drawer = Arc::new(PrinterKickCashDrawer::new_pin2(printer_arc));
             self.register_cash_drawer(&drawer_id, drawer).await;
         }
@@ -304,7 +355,7 @@ impl DriverRegistry {
             let printer_arc = Arc::new(printer);
             self.register_printer(&id, printer_arc.clone()).await;
             // Companion drawer for BT printers.
-            let drawer_id = format!("drawer:kick:{}", id);
+            let drawer_id = format!("drawer:kick:{id}");
             let drawer = Arc::new(PrinterKickCashDrawer::new_pin2(printer_arc));
             self.register_cash_drawer(&drawer_id, drawer).await;
         }

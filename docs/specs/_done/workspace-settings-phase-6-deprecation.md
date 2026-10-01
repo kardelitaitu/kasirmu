@@ -1,3 +1,7 @@
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · ACCURATE, and the Status line's hedge is warranted rather than weaselly. Every deletion this phase calls for has happened: `RetailOptionsScreen.tsx` returns no matches anywhere under `ui/src` (the file is gone, not merely unimported), and neither does any `retail-options-*` legacy CSS reference surviving as a live import. The `workspace-settings-v2` feature flag constant is also gone from `ui/src` — exactly the cleanup criterion, and the reason the Status line is hedged as "gated — must wait one full release cycle after Phase 5" is now historical rather than pending. · The status hedge is worth reading carefully rather than treating as a contradiction: the parenthetical describes the CONDITION under which the phase was allowed to run, not an outstanding blocker. The evidence that the condition held is the Phase 5 audit in the same pass — `WorkspaceSettingsModal` is mounted in both POS screens, so the flag had a full release cycle with the new path live before the legacy path was removed. That is the deprecation done in the order the plan demanded, which is rarer than it should be. · `SettingsSubScreen` references are gone from `PosScreen.tsx` apart from the explanatory comment recorded in the Phase 5 audit. · The two explicitly-retained files are correctly retained: `SettingsPopup.tsx` (still used by the Tax/Categories/Customers/Staff/Terminals/Suppliers CRUD forms) and `KdsSettingsPanel.tsx`. Same unchecked-criteria note as the sibling 0-phase files: Status says IMPLEMENTED while every acceptance box is open. I did not tick them — confirming the artifacts exist is not the same as running the typecheck/lint/unit/E2E suites the boxes assert, and a ticked box is a claim about a verification I did not perform. -->
+<!-- dead-ref-prefix-ok: ui/src/features/retail/RetailOptionsScreen -->
+<!-- dead-ref-prefix-ok: ui/src/features/retail/__tests__/RetailOptionsScreen -->
+<!-- This phase DELETES RetailOptionsScreen.tsx; naming the deleted file is the point of the spec. -->
 # Phase 6 — Deprecation
 
 - **Status:** IMPLEMENTED (ADR #22 unified workspace settings shipped in 0.0.19; re-audited 2026-08-08 by docs-auditor) (gated — must wait one full release cycle after Phase 5)
@@ -79,4 +83,4 @@ Delete the obsolete `RetailOptionsScreen.tsx` component and clean up legacy CSS 
 
 > (status corrected to IMPLEMENTED).
 >
-> last audited 08-08-26 by docs-auditor
+> last audited 29-09-26 by docs-auditor

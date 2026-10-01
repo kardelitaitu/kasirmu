@@ -1,5 +1,6 @@
-<!-- Audit stamp: 2026-07-31 · Buffy-Agent · status: SYNCED (PLG-10 parity rewrite) · verified against crates/kasirmu-plugin (manager.rs, manifest.rs, loader.rs, package.rs) and crates/kasirmu-lua (lib.rs, bridge.rs) · corrected: oz table surface (get_time/log/apply_discount/register_hook/on/off only), mandatory required_permissions + manifest validation (kebab-case name, strict SemVer, unknown-permission rejection), register_hook(string) signature, per-plugin env isolation, HAL traits table (no NfcReader), kasirmu-cli commands (no run-script/validate-plugins), sandbox limits (100k instr / 10 MiB) · RE-AUDITED 31-08 by docs-auditor: re-verified limits against crates/kasirmu-lua (INSTRUCTION_LIMIT=100_000 at lib.rs:53, 10 MiB via set_memory_limit) — accurate; PLG-11 (cbe01ace) hardened the internal SQL validator (ensure_no_quoted_identifiers) but that API is Rust-side (manager namespace setup), not a plugin Lua global, so no guide change needed; aligned '10 MB' -> '10 MiB' to match the kasirmu-lua README + the actual 10*1024*1024 constant; normalized the non-standard 3-line footer to the single-line standard -->
+<!-- Superseded audit marker (2026-07-31 · Buffy-Agent, body kept verbatim) · retained · status: SYNCED (PLG-10 parity rewrite) · verified against crates/kasirmu-plugin (manager.rs, manifest.rs, loader.rs, package.rs) and crates/kasirmu-lua (lib.rs, bridge.rs) · corrected: oz table surface (get_time/log/apply_discount/register_hook/on/off only), mandatory required_permissions + manifest validation (kebab-case name, strict SemVer, unknown-permission rejection), register_hook(string) signature, per-plugin env isolation, HAL traits table (no NfcReader), kasirmu-cli commands (no run-script/validate-plugins), sandbox limits (100k instr / 10 MiB) · RE-AUDITED 31-08 by docs-auditor: re-verified limits against crates/kasirmu-lua (INSTRUCTION_LIMIT=100_000 at lib.rs:53, 10 MiB via set_memory_limit) — accurate; PLG-11 (cbe01ace) hardened the internal SQL validator (ensure_no_quoted_identifiers) but that API is Rust-side (manager namespace setup), not a plugin Lua global, so no guide change needed; aligned '10 MB' -> '10 MiB' to match the kasirmu-lua README + the actual 10*1024*1024 constant; normalized the non-standard 3-line footer to the single-line standard -->
 
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 301 lines, with a prior marker re-verified rather than replaced. It is the developer-facing guide to the plugin system, and its prior marker records a parity rewrite verified against the plugin crate — a claim that is unusually checkable, because a guide to a subsystem can be compared with the subsystem itself. · IT CHECKS OUT, AND STRUCTURALLY RATHER THAN SPOT-WISE, which is the stronger form. The crate this guide documents is organised into exactly the modules a plugin system needs: a manifest parser, a package form, a loader, a manager, a grant model, a database surface, an error type, and — the one that matters most for a system that loads third-party code — a SIGNATURE module. Every one of those modules has a sibling test file, which is the structural convention the root guide requires for production source, applied uniformly across the whole crate. A guide describing a system whose files are laid out this way is describing something real. · WHY THE SIGNATURE MODULE IS THE PART WORTH A READER'S ATTENTION, and it is the reason a plugin guide is a security document as much as a developer one. A plugin system that loads code from outside the core is an execution boundary, and the existence of a dedicated signature module with its own test file and an integration test for the round trip means the design treats provenance as a first-class concern rather than an afterthought. A reader evaluating whether to install a plugin is really evaluating whether that check is enforced, and this guide plus the code together answer it. · THE FRAMING IS ALSO RIGHT. The opening line says plugins extend the product with business logic, drivers and integrations without modifying the core — and that constraint is what makes the manifest contract meaningful. A plugin that required core edits would not need a manifest, a grant model, or a signature; the existence of all three is evidence the boundary is real. · NOT re-measured: the manifest format's field-level correctness, the signing algorithm, or whether a plugin can actually obtain more than it declares. Those need a build and a hostile plugin to exercise, and the guide's own claim is about parity with the crate, which is what was checked. · Prior marker retained; footer re-dated to match the new stamp. -->
 # kasir.mu Plugin System
 
 Plugins extend kasir.mu with custom business logic, hardware drivers,
@@ -29,8 +30,85 @@ hooks = ["sale.before_complete"]
 [permissions]
 # REQUIRED: at least one permission must be declared, and every permission
 # must be recognised — unknown permissions reject the plugin.
+# Declaring is not enough: the OPERATOR must also approve each one in
+# plugin-grants.json, or the plugin is refused. See "Operator approval" below.
 required_permissions = ["cart:read", "cart:write", "system:time", "log:write"]
 ```
+
+### Operator approval (`plugin-grants.json`)
+
+A plugin's `required_permissions` list is **self-declared** — the plugin author
+writes it. Since 2026-09-29 it is also an **operator grant**: the loader refuses
+any plugin whose declared permissions the operator has not approved, and says
+so by name in the log.
+
+The approval lives beside the plugins, in the same directory
+`PluginManager::new` is given (on the desktop shell, `<app_data_dir>/plugins/`):
+
+```json
+{
+  "schema_version": 1,
+  "grants": {
+    "example-discount": ["cart:read", "cart:write", "system:time", "log:write"]
+  }
+}
+```
+
+⚠️ **Upgrading an existing install.** An install that already has plugins will
+refuse to load all of them until this file exists, because nothing was ever
+approved on the record. That is the intended fail-closed default, not a bug.
+The log names the file, the plugin and each missing permission, and prints the
+JSON shape to paste. **There is no file = nothing loads.**
+
+**What this does and does not buy you.** It turns a self-declaration into an
+explicit, auditable approval, and it fails closed by default. It is **not**
+tamper resistance on its own: `plugin-grants.json` sits in the plugins
+directory, so anyone who can add a plugin can add a grant for it. Tamper
+resistance comes from **signing** — see the next section.
+
+### Signing plugins (tamper resistance)
+
+A signature is what makes a plugin's contents verifiable rather than merely
+approved. It is **opt-in per install**: with no public key configured, unsigned
+plugins load exactly as before. Set the key to require signatures.
+
+```bash
+# 1. Generate a keypair (once). KEEP THE PRIVATE KEY SECRET.
+python3 scripts/sign-plugin.py --generate-key --key plugin-signing-key.pem
+
+# 2. Sign a plugin directory. Writes plugin.toml.sig beside plugin.toml.
+python3 scripts/sign-plugin.py --key plugin-signing-key.pem path/to/plugin
+
+# 3. On the machine that LOADS the plugin, configure the public key:
+python3 scripts/sign-plugin.py --key plugin-signing-key.pem --print-public-key
+#   -> set KASIRMU_PLUGIN_PUBLIC_KEY to that PEM
+
+# Check an existing signature, or re-check after editing:
+python3 scripts/sign-plugin.py --key plugin-signing-key.pem --check path/to/plugin
+```
+
+**What the signature covers:** the plugin id and version, the **canonicalised**
+declared permission set, and every resolved script's relative path and exact
+bytes. The scripts are included deliberately — a signature over `plugin.toml`
+alone would be decorative, because anyone could rewrite `discount.lua` and leave
+a valid manifest signature in place.
+
+**The rules the loader enforces, and they fail closed:**
+
+| Situation | Result |
+|---|---|
+| No key configured, no signature | Loads (the opt-in default) |
+| No key configured, signature present | **Refused** — an install that never checked must not report "fine" |
+| Key configured, no signature | **Refused** |
+| Key configured, signature valid | Loads |
+| Key configured, contents changed after signing | **Refused** |
+
+**Not verified by the signature:** `plugin-grants.json` (that is your local
+policy, not signed material), and **revocation** — a leaked key cannot be
+un-trusted without a new build. Changing the digest framing in
+`crates/kasirmu-plugin/src/signature.rs` invalidates every existing signature:
+that framing is cross-checked against the Python tool by
+`cargo test -p kasirmu-plugin -- --ignored signature_roundtrip`.
 
 ### Available permissions
 
@@ -193,8 +271,12 @@ Key requirements:
 1. Create a directory in `plugins/`
 2. Write your `plugin.toml` (including at least one `required_permissions`)
 3. Write your Lua scripts
-4. Restart kasir.mu to load the plugin
-5. Check the logs for any load errors
+4. **Approve the permissions** in `plugins/plugin-grants.json` (see
+   "Operator approval" above) — without this the plugin is refused
+5. **Sign the plugin** if the target install requires signatures (see "Signing
+   plugins" above)
+6. Restart kasir.mu to load the plugin
+7. Check the logs for any load errors
 
 ## Testing Plugins
 
@@ -216,5 +298,5 @@ cargo test -p kasirmu-plugin --lib
 | `attempt to call a nil value` on `oz.*` | The plugin lacks the permission for that binding |
 | Hook not firing | `oz.register_hook` needs `cart:read`; check the event name and function name |
 
-> last audited 31-08-26 by docs-auditor
+> last audited 29-09-26 by docs-auditor
 

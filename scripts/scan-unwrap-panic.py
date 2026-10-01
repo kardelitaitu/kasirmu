@@ -111,6 +111,27 @@ DEV_ONLY_PATHS = (
     "/benches/",  # cargo bench harnesses
     "test_helpers.rs",  # #[cfg(test)]-gated from parent mod
     "testing.rs",  # #[cfg(test)]-gated from parent mod (both copies, see above)
+    # P1-1 (2026-09-27). Property-test siblings, gated `#[cfg(test)]` in their
+    # parent exactly like the three above -- but they were NOT merely
+    # unenumerated, they were being scanned WRONGLY.
+    #
+    # A `proptest! { ... }` block contains braces that are balanced in the real
+    # token stream and NOT balanced as text, because the macro body is
+    # re-parsed by `proptest!`. `scan_file` counts braces textually to track
+    # `#[cfg(test)]` regions, so the counter desynchronises on the first
+    # `proptest!` block and every later line looks like it is still inside test
+    # code -- silenced. Measured before this entry:
+    #
+    #   file                              raw expect/unwrap   reported
+    #   foundation/src/money_proptests.rs              22          4
+    #   platform/sync/src/conflict_proptests.rs         5          0
+    #   modules/inventory/src/models_proptests.rs       1          1
+    #
+    # 27 undocumented calls the gate never saw, and the number tracks the file's
+    # shape rather than its content. Listed here so the exemption is explicit
+    # and the blindness is recorded; the alternative -- teaching the depth
+    # tracker to understand macro bodies -- is a parser, not a scanner.
+    "proptests.rs",  # #[cfg(test)]-gated property-test siblings
 )
 
 UNWRAP_RE = re.compile(r"\.unwrap\(\)")

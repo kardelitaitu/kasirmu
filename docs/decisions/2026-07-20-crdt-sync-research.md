@@ -1,3 +1,4 @@
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 175 lines, no audit stamp, no footer, no marker. "Research (evaluation only)" -- a survey of CRDT libraries with a comparison matrix and a recommendation -- and its central question is whether to replace the last-writer-wins hybrid with a CRDT layer. The checkable part is whether the thing it would replace still exists, and it does: `platform/sync/src/conflict.rs` (the entity-type conflict dispatch it names), the `platform/sync/tests/` integration suite, and the core reporting module are all present. The LWW hybrid is therefore still in place, consistent with a recommendation not to adopt. · THE RECOMMENDATION WAS NOT ADOPTED, and that is the finding. Its Related section says migrating the entire `platform/sync/` infrastructure would need a rewrite, and that infrastructure has since grown substantially rather than being replaced -- the crate now carries conflict, replication, transport, daemon, queue and image-push modules plus property-based conflict tests in `conflict_proptests.rs`. A wholesale rewrite to CRDT plainly did not happen, so this evaluation's advice was either not taken or deliberately deferred, and either way the document is a historical options survey rather than a live proposal. Worth recording explicitly, because a research document sitting in `docs/decisions/` alongside ADRs that ARE live invites being read as current intent. · Two documents audited in this campaign give the fuller picture and neither contradicts it: ADR #6 (CRDT Delta Ledger & Offline Sync, round 15) shipped a delta-ledger design that is delta-based rather than CRDT-based, and the shipped answer to how branches merge is that LWW delta ledger -- exactly what this document was weighing against. · Left as written; the `crates/oz-core` path in its Related list is the pre-restructure name for the reporting module. Stamp and footer added. -->
 # Research: CRDT-Based Conflict-Free Replication
 
 **Status:** Research (evaluation only)
@@ -168,8 +169,5 @@ adoption with a fraction of the migration effort.
 - `crates/oz-core/src/db/reports.rs` — SQL aggregation queries
 - `platform/sync/tests/` — 139 integration tests
 
-> last audited 09-08-26 by buffy
-> audit: Phase 1 Core Architecture & API Docs Audit
-
-> status: ACCURATE (0 findings) · verified accurate: cargo check passed, no structural orphans, no stale version headers
+> last audited 29-09-26 by docs-auditor
 

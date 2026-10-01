@@ -50,6 +50,9 @@ export const LLMS_PAGE_SLUGS = [
   'kasir-murah',
   'kasir-qris',
   'aplikasi-kasir-android',
+  'about',
+  'media-kit',
+  'contact',
   'legal/privacy',
   'legal/terms',
 ];
@@ -67,6 +70,9 @@ export const PAGE_LABELS: Record<string, string> = {
   support: 'Dukungan',
   cara: 'Cara Pakai',
   perbandingan: 'Perbandingan',
+  about: 'Tentang kami',
+  'media-kit': 'Media Kit',
+  contact: 'Kontak',
   'legal/privacy': 'Kebijakan Privasi',
   'legal/terms': 'Syarat & Ketentuan',
 };

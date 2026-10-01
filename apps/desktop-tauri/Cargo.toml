@@ -22,6 +22,11 @@ workspace = true
 
 [build-dependencies]
 tauri-build = { workspace = true }
+# Not used by build.rs. This exists to force indexmap's `std` feature into the
+# build-dependency graph, without which `schemars` (pulled by tauri-build with
+# `preserve_order`) fails to compile with E0107 on a clean build. See the
+# longer note beside `indexmap` in the root [workspace.dependencies].
+indexmap = { workspace = true }
 
 [dev-dependencies]
 tauri = { workspace = true, features = ["test"] }
@@ -56,6 +61,7 @@ kasirmu-reporting = { workspace = true }
 platform-core = { workspace = true }
 platform-kernel = { workspace = true }
 platform-startup = { workspace = true }
+platform-instance-guard = { workspace = true }
 platform-sync = { workspace = true }
 kasirmu-notification = { workspace = true }
 tauri = { workspace = true, features = ["protocol-asset"] }

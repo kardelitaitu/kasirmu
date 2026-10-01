@@ -1,8 +1,8 @@
 /*
 last audited 25-07-26 by RSA-Agent; PAY-2 refund key + COR-31 bounded 09-09-26 (agent-2-cargo)
-crate: kasirmu-payment | status: SAFE | lint: CLEAN
-findings: PAY-1 HIGH parse_amount unwrap_or(0) zeroes Midtrans "14500.00"-format amounts (authorize/capture/refund/receipt); PAY-2 fresh order_id per call defeats Midtrans idempotency on retry; PAY-3 refund ignores partial amount; PAY-6 sale() returns SCAN_QR protocol string in message, success = QR-issued not settled (60s poll vs 300s QR validity); PAY-7 Default constructs empty-key processor; PAY-8 expire mapped to InvalidCard
-next: fix amount parsing (PAY-1), honor idempotency (PAY-2), partial refund (PAY-3). COR-31 HELD DELIBERATELY — no HTTP timeout here, and it stays that way until PAY-2 is closed for real: order_id_for() reuses PaymentRequest.idempotency_key only WHEN THE CALLER SUPPLIES ONE and falls back to a fresh order_id otherwise, so a timeout is safe only on the subset of calls that carry a key. A timed-out QR issuance retried without a key mints a second live QR for the same basket, and PAY-6 means the first one is still scannable for its 300s validity. Either require the key or make the fallback deterministic before bounding the client. | perf: poll loop sleeps between attempts, early-exits on settled status
+crate: kasirmu-payment | status: SAFE | lint: CLEAN | stamp corrected 2026-09-25 by DSH (next: field)
+findings: PAY-1..PAY-8 ALL CLOSED — see the three "fixed" blocks below for the per-item evidence (PAY-1 parse_amount, PAY-2 order_id/idempotency, PAY-3 partial refund, PAY-6 two-phase contract documented, PAY-7 Default removed, PAY-8 Expired). The header previously led with the pre-fix severity list, which read as though the defects were still open; PAY-C. COR-31 HELD DELIBERATELY: no HTTP timeout until PAY-2 was closed for real — now closed, so the client is bounded (see below).
+next: NOTHING OUTSTANDING on PAY-1..PAY-8 or COR-31 — see the closing note below. The previous text here still instructed a reader to "fix amount parsing (PAY-1), honor idempotency (PAY-2), partial refund (PAY-3)" and argued COR-31 was deliberately unbounded. Both were true when written and false by 2026-09-25: all three are closed above, and the client is bounded at `:241-242` (10s connect / 30s total). This is the SAME defect PAY-C records for the `findings:` field — a stamp that reads as though fixed work is open — found one field further down. A reader who skims only `next:` was being sent to redo three closed items. | perf: poll loop sleeps between attempts, early-exits on settled status
 fixed 2026-07-25 (glm-5.3 review P1 pass): PAY-1 parse_amount now returns Result — decimal "14500.00" forms parse 1:1 into exp-0 IDR minor units (inverse of to_amount_string), non-zero fractions and malformed input are InvalidResponse instead of silent zeros (refund refund_amount included); PAY-2 order_id_for() reuses PaymentRequest.idempotency_key (charset-filtered, Midtrans 50-char cap) with fresh fallback when absent
 fixed 2026-07-25 (glm-5.3 review P2 pass): PAY-3 refund now honors Some(amount) — partial refunds submit the amount in whole IDR minor units, non-IDR rejected pre-flight, None keeps full-refund null; PAY-6 sale/capture docs now state the honest two-phase contract (success = QR issued; capture polls ~60s per call vs 300s QR validity, re-enter on Timeout); PAY-7 Default (empty-key processor) removed — construct via new/from_env/sandbox_from_env; PAY-8 expire maps to the new PaymentError::Expired instead of InvalidCard
 fixed 2026-09-09 (agent-2-cargo): PAY-2 refund now accepts a caller-supplied idempotency_key (honoured when present; transaction-prefixed fresh key fallback when absent); COR-31 HTTP client bounded (10s connect / 30s total) — safe because charges honour the caller key and refunds accept a caller-supplied key; the poll loop's own 60s budget sits above the per-request cap, so a stalled status call now fails fast.
@@ -216,9 +216,9 @@ impl QrisPaymentProcessor {
     /// should be directed to a mock server (e.g. `wiremock`).
     pub fn new_with_endpoint(server_key: &str, api_base: &str, sandbox: bool) -> Self {
         let mut headers = HeaderMap::new();
-        let encoded = base64_standard(&format!("{}:", server_key));
+        let encoded = base64_standard(&format!("{server_key}:"));
         let mut auth_value =
-            HeaderValue::from_str(&format!("Basic {}", encoded)).unwrap_or_else(|e| {
+            HeaderValue::from_str(&format!("Basic {encoded}")).unwrap_or_else(|e| {
                 tracing::error!(
                     error = %e,
                     "invalid Midtrans auth header — using placeholder"
@@ -432,18 +432,16 @@ impl QrisPaymentProcessor {
     fn classify_midtrans_status(status_code: &str, status_message: &str) -> PaymentError {
         match status_code {
             "402" => PaymentError::InvalidCard(format!(
-                "midtrans card error: {} (code: {})",
-                status_message, status_code
+                "midtrans card error: {status_message} (code: {status_code})"
             )),
             "406" => PaymentError::Duplicate(format!(
-                "midtrans duplicate: {} (code: {})",
-                status_message, status_code
+                "midtrans duplicate: {status_message} (code: {status_code})"
             )),
             _ => {
                 let msg = if status_message.is_empty() {
-                    format!("midtrans_error: HTTP {}", status_code)
+                    format!("midtrans_error: HTTP {status_code}")
                 } else {
-                    format!("midtrans_error: {} (code: {})", status_message, status_code)
+                    format!("midtrans_error: {status_message} (code: {status_code})")
                 };
                 PaymentError::Network(msg)
             }
@@ -455,7 +453,7 @@ impl QrisPaymentProcessor {
         if let Ok(err) = serde_json::from_str::<MidtransErrorResponse>(body) {
             Self::classify_midtrans_status(&err.status_code, &err.status_message)
         } else {
-            PaymentError::Network(format!("HTTP {}: {}", status, body))
+            PaymentError::Network(format!("HTTP {status}: {body}"))
         }
     }
 
@@ -497,8 +495,7 @@ impl QrisPaymentProcessor {
 
         serde_json::from_str(&text).map_err(|e| {
             PaymentError::InvalidResponse(format!(
-                "failed to parse QRIS charge response: {} — body: {}",
-                e, text
+                "failed to parse QRIS charge response: {e} — body: {text}"
             ))
         })
     }
@@ -506,7 +503,7 @@ impl QrisPaymentProcessor {
     /// Poll the transaction status until settlement or failure.
     async fn poll_status(&self, order_id: &str) -> Result<TransactionStatusResponse, PaymentError> {
         for attempt in 1..=MAX_POLL_ATTEMPTS {
-            let (status, text) = self.get_json(&format!("/{}/status", order_id)).await?;
+            let (status, text) = self.get_json(&format!("/{order_id}/status")).await?;
 
             if !(200..300).contains(&status) {
                 return Err(Self::parse_error(status, &text));
@@ -697,7 +694,7 @@ impl PaymentProcessor for QrisPaymentProcessor {
         });
 
         let (status, text) = self
-            .post_json(&format!("/{}/refund", transaction_id), refund_body)
+            .post_json(&format!("/{transaction_id}/refund"), refund_body)
             .await?;
 
         if !(200..300).contains(&status) {
@@ -717,7 +714,7 @@ impl PaymentProcessor for QrisPaymentProcessor {
         }
 
         let refund: RefundResponse = serde_json::from_str(&text).map_err(|e| {
-            PaymentError::InvalidResponse(format!("failed to parse refund: {} — body: {}", e, text))
+            PaymentError::InvalidResponse(format!("failed to parse refund: {e} — body: {text}"))
         })?;
 
         Ok(PaymentResult {
@@ -735,10 +732,7 @@ impl PaymentProcessor for QrisPaymentProcessor {
     /// Cancel/void a pending QRIS transaction.
     async fn void(&self, transaction_id: &str) -> Result<PaymentResult, PaymentError> {
         let (status, text) = self
-            .post_json(
-                &format!("/{}/cancel", transaction_id),
-                serde_json::json!({}),
-            )
+            .post_json(&format!("/{transaction_id}/cancel"), serde_json::json!({}))
             .await?;
 
         if !(200..300).contains(&status) {
@@ -756,7 +750,7 @@ impl PaymentProcessor for QrisPaymentProcessor {
         }
 
         let cancel: CancelResponse = serde_json::from_str(&text).map_err(|e| {
-            PaymentError::InvalidResponse(format!("failed to parse cancel: {} — body: {}", e, text))
+            PaymentError::InvalidResponse(format!("failed to parse cancel: {e} — body: {text}"))
         })?;
 
         Ok(PaymentResult {
@@ -770,9 +764,7 @@ impl PaymentProcessor for QrisPaymentProcessor {
 
     /// Return a receipt for a completed QRIS transaction.
     async fn receipt(&self, transaction_id: &str) -> Result<PaymentReceipt, PaymentError> {
-        let (status, text) = self
-            .get_json(&format!("/{}/status", transaction_id))
-            .await?;
+        let (status, text) = self.get_json(&format!("/{transaction_id}/status")).await?;
 
         if !(200..300).contains(&status) {
             return Err(Self::parse_error(status, &text));
@@ -780,8 +772,7 @@ impl PaymentProcessor for QrisPaymentProcessor {
 
         let tx: TransactionStatusResponse = serde_json::from_str(&text).map_err(|e| {
             PaymentError::InvalidResponse(format!(
-                "failed to parse transaction status: {} — body: {}",
-                e, text
+                "failed to parse transaction status: {e} — body: {text}"
             ))
         })?;
 

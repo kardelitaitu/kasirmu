@@ -47,7 +47,6 @@ export default function IssueGiftCardModal({ sessionToken, onClose, onIssued }: 
   const [cardNumber, setCardNumber] = useState(generateGiftCardNumber());
   const [amount, setAmount] = useState('');
   const [issuedTo, setIssuedTo] = useState('');
-  const [pin, setPin] = useState('');
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState('');
 
@@ -75,7 +74,6 @@ export default function IssueGiftCardModal({ sessionToken, onClose, onIssued }: 
         currency: 'IDR',
         issued_to: issuedTo.trim() || null,
         created_by: 'staff',
-        pin: pin.trim() || null,
       };
       await issueGiftCard(sessionToken, input);
       onIssued();
@@ -142,23 +140,6 @@ export default function IssueGiftCardModal({ sessionToken, onClose, onIssued }: 
               value={issuedTo}
               onChange={(e) => { setIssuedTo(e.target.value); setError(''); }}
               aria-label={l10n.getString('gift-cards-issue-to-aria')}
-            />
-          </div>
-
-          <div className="gift-cards-modal-field">
-            <Localized id="gift-cards-issue-pin-label">
-              <div className="gift-cards-modal-label">PIN (optional)</div>
-            </Localized>
-            <input
-              type="password"
-              autoComplete="new-password"
-              className="gift-cards-modal-input"
-              id="gift-card-pin"
-              name="gift-card-pin"
-              placeholder={requiredLocalized(l10n, 'gift-cards-issue-pin-placeholder')}
-              value={pin}
-              onChange={(e) => { setPin(e.target.value); setError(''); }}
-              aria-label={l10n.getString('gift-cards-issue-pin-aria')}
             />
           </div>
 

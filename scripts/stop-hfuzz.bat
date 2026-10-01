@@ -5,7 +5,7 @@ REM
 REM  Signals the campaign inside WSL (via scripts/stop-campaign.sh) and waits
 REM  for it to shut down gracefully, so the TERM trap can write a partial
 REM  report + DONE marker into crash_reports/. Then closes the minimized
-REM  "OZ-POS hfuzz overnight" console window, if it is still open.
+REM  "kasir.mu hfuzz overnight" console window, if it is still open.
 REM
 REM  Safe: only targets honggfuzz-related processes. It does NOT touch other
 REM  WSL distros/sessions (Docker Desktop, other shells) or your dev server.
@@ -35,8 +35,8 @@ if not defined WSL_ROOT (
 REM 1. Signal the campaign and wait for its TERM trap (writes DONE).
 wsl.exe %DISTRO_ARGS% bash -lc "cd '%WSL_ROOT%' && bash ./scripts/stop-campaign.sh"
 
-REM 2. Close the minimized "OZ-POS hfuzz overnight" console, if open.
-taskkill /FI "WINDOWTITLE eq OZ-POS hfuzz overnight*" >nul 2>&1
+REM 2. Close the minimized "kasir.mu hfuzz overnight" console, if open.
+taskkill /FI "WINDOWTITLE eq kasir.mu hfuzz overnight*" >nul 2>&1
 if errorlevel 1 (
     echo   [INFO] no minimized console was open (campaign may have exited already)
 ) else (

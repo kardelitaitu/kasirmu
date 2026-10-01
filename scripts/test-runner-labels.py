@@ -56,7 +56,17 @@ def checker_inputs() -> list[str]:
         parts = re.findall(r'"([^"]+)"', m.group(2))
         if parts:
             out.append("/".join(parts))
-    return out
+    # SIBLING MODULE IMPORTS, added 2026-09-29. The constant scan above only sees
+    # files named in an X = ROOT / "..." assignment, so when verify-ci-docs-drift.py
+    # started importing scripts/_live_workflows.py it gained a real input the fixture
+    # never copied -- and the control failed with ModuleNotFoundError in a temp
+    # directory, which reads as a checker defect and is not one. Same lesson as the
+    # hand-maintained list this function replaced: derive the set, never curate it.
+    for m in re.finditer(r"^from\s+(_[A-Za-z0-9_]+)\s+import\s", src, re.M):
+        sib = f"scripts/{m.group(1)}.py"
+        if (REPO / sib).is_file():
+            out.append(sib)
+    return sorted(set(out))
 
 
 def fixture(check_sh_text: str | None = None) -> Path:

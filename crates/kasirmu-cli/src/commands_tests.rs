@@ -14,7 +14,13 @@ fn make_store(conn: &Connection) -> Store<'_> {
 
 #[test]
 fn open_db_fails_on_bad_path() {
-    let result = open_db(r"\0/?:invalid\0path");
+    // A NUL byte is illegal in a path on every platform, which is what makes
+    // this case portable. The literal used to be a RAW string, so `\0` was a
+    // backslash and a zero and `?`/`:` are only illegal on Windows -- on Linux
+    // that path was a legal relative filename, `open_db` created its parent and
+    // opened it, and the assertion could not hold. It went unnoticed because the
+    // path router was skipping this job entirely until fda1412ac.
+    let result = open_db("\0/?:invalid\0path");
     assert!(result.is_err());
 }
 
@@ -25,6 +31,25 @@ fn open_db_sets_foreign_keys_pragma() {
         .pragma_query_value(None, "foreign_keys", |r| r.get(0))
         .unwrap();
     assert!(fk);
+}
+
+/// The default --db path is var/kasir.db; rusqlite will not create a missing
+/// parent, so open_db has to. A fresh clone has no var/.
+#[test]
+fn open_db_creates_a_missing_parent_directory() {
+    let dir = std::env::temp_dir().join(format!(
+        "kasirmu-cli-opendb-{}-{}",
+        std::process::id(),
+        uuid::Uuid::new_v4()
+    ));
+    let nested = dir.join("var").join("nested").join("kasir.db");
+    assert!(
+        !nested.parent().unwrap().exists(),
+        "precondition: parent is absent"
+    );
+    open_db(nested.to_str().unwrap()).unwrap();
+    assert!(nested.exists(), "database file should exist");
+    std::fs::remove_dir_all(&dir).unwrap();
 }
 
 // ── List commands on empty DB ──────────────────────────────────────

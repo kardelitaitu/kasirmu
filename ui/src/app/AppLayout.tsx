@@ -77,7 +77,7 @@ export interface AppLayoutProps {
 /**
  * Application shell with a sidebar navigation and content area.
  *
- * The sidebar shows the OZ-POS logo, navigation items from the
+ * The sidebar shows the kasir.mu logo, navigation items from the
  * menu-registry, and a theme toggle at the bottom. Nav items that
  * require a disabled feature are hidden.
  *

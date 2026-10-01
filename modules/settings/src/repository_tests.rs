@@ -147,3 +147,36 @@ fn known_hazard_set_writes_a_deny_listed_credential_in_cleartext() {
         "every key on the authoritative deny list must be walked, not a prefix of it"
     );
 }
+
+// ── P3.2/P3.5: the repository is namespace-checked ──────────────────────
+
+/// The wrap must not have widened the module's reach. The repository's own
+/// statements pass the ownership check; a statement that reached for another
+/// vertical's table through the same handle would be refused before it ran.
+#[test]
+fn the_repository_is_scoped_to_its_own_namespace() {
+    use kasirmu_core::db::Store;
+    use kasirmu_core::db::namespaced::{Grants, ModuleId, NamespaceError, NamespacedStore};
+
+    let conn = fresh();
+    let ns = NamespacedStore::new(Store::new(&conn), ModuleId("settings"), Grants::none());
+
+    // Own table: the shape `SettingsRepository` actually issues.
+    ns.own()
+        .query(
+            "SELECT value FROM settings WHERE key = ?1",
+            rusqlite::params!["k"],
+            |row| row.get::<_, String>(0),
+        )
+        .expect("settings must be allowed to read its own table");
+
+    // Foreign table through the same handle: refused.
+    let err = ns
+        .own()
+        .query("SELECT id FROM sales", [], |row| row.get::<_, String>(0))
+        .unwrap_err();
+    assert!(
+        matches!(err, NamespaceError::Foreign { ref table, .. } if table == "sales"),
+        "expected Foreign on sales, got {err:?}"
+    );
+}

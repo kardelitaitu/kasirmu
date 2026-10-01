@@ -1,5 +1,3 @@
-#![allow(deprecated)] // Deprecated currency methods tested here for DB back-compat verification
-
 use super::*;
 use crate::migrations;
 use rusqlite::Connection;
@@ -49,15 +47,6 @@ fn store_name_get_set() {
     assert_eq!(s.get_store_name().unwrap(), None);
     s.set_store_name("Acme").unwrap();
     assert_eq!(s.get_store_name().unwrap(), Some("Acme".into()));
-}
-
-#[test]
-fn store_default_currency_get_set() {
-    let conn = fresh();
-    let s = store(&conn);
-    assert_eq!(s.get_default_currency().unwrap(), None);
-    s.set_default_currency("EUR").unwrap();
-    assert_eq!(s.get_default_currency().unwrap(), Some("EUR".into()));
 }
 
 #[test]
@@ -134,182 +123,6 @@ fn store_tax_id_overwrites() {
     assert_eq!(s.get_store_tax_id().unwrap(), Some("NEW".into()));
 }
 
-// ── Exchange Rates ─────────────────────────────────────────────────
-
-fn seed_currency(
-    conn: &Connection,
-    code: &str,
-    numeric_code: &str,
-    name: &str,
-    exp: i32,
-    sym: &str,
-) {
-    conn.execute(
-        "INSERT OR IGNORE INTO currencies (code, numeric_code, name, minor_exponent, symbol) VALUES (?1, ?2, ?3, ?4, ?5)",
-        rusqlite::params![code, numeric_code, name, exp, sym],
-    ).unwrap();
-}
-
-#[test]
-fn list_exchange_rates_empty() {
-    let conn = fresh();
-    let s = store(&conn);
-    let rates = s.list_exchange_rates().unwrap();
-    assert!(rates.is_empty());
-}
-
-#[test]
-fn create_exchange_rate_and_find_in_list() {
-    let conn = fresh();
-    seed_currency(&conn, "USD", "840", "US Dollar", 2, "$");
-    seed_currency(&conn, "EUR", "978", "Euro", 2, "\u{20ac}");
-    seed_currency(&conn, "JPY", "392", "Japanese Yen", 0, "\u{a5}");
-    let s = store(&conn);
-    s.create_exchange_rate("USD", "EUR", 920_000, "ecb", "2026-06-28")
-        .unwrap();
-    s.create_exchange_rate("USD", "JPY", 149_500_000, "ecb", "2026-06-28")
-        .unwrap();
-
-    let rates = s.list_exchange_rates().unwrap();
-    assert_eq!(rates.len(), 2);
-    assert!(rates.iter().any(|r| r.to_currency == "EUR"));
-    assert!(rates.iter().any(|r| r.to_currency == "JPY"));
-}
-
-#[test]
-fn create_exchange_rate_returns_row() {
-    let conn = fresh();
-    seed_currency(&conn, "EUR", "978", "Euro", 2, "\u{20ac}");
-    seed_currency(&conn, "GBP", "826", "Pound", 2, "\u{a3}");
-    let s = store(&conn);
-    let row = s
-        .create_exchange_rate("EUR", "GBP", 860_000, "ecb", "2026-06-28")
-        .unwrap();
-    assert_eq!(row.from_currency, "EUR");
-    assert_eq!(row.to_currency, "GBP");
-    assert_eq!(row.rate_millionths, 860_000);
-}
-
-#[test]
-fn create_exchange_rate_rejects_zero_rate() {
-    // C-1 closure: zero is a domain error in the Store layer (the
-    // Tauri command layer also rejects `<= 0`, this is the
-    // defence-in-depth check).
-    let conn = fresh();
-    seed_currency(&conn, "USD", "840", "US Dollar", 2, "$");
-    seed_currency(&conn, "EUR", "978", "Euro", 2, "\u{20ac}");
-    let s = store(&conn);
-    let result = s.create_exchange_rate("USD", "EUR", 0, "manual", "2026-01-01");
-    assert!(result.is_err(), "zero rate must be rejected");
-}
-
-#[test]
-fn create_exchange_rate_rejects_negative_rate() {
-    let conn = fresh();
-    seed_currency(&conn, "USD", "840", "US Dollar", 2, "$");
-    seed_currency(&conn, "EUR", "978", "Euro", 2, "\u{20ac}");
-    let s = store(&conn);
-    let result = s.create_exchange_rate("USD", "EUR", -500_000, "manual", "2026-01-01");
-    assert!(result.is_err(), "negative rate must be rejected");
-}
-
-#[test]
-fn delete_exchange_rate_removes() {
-    let conn = fresh();
-    seed_currency(&conn, "USD", "840", "US Dollar", 2, "$");
-    seed_currency(&conn, "CAD", "124", "Canadian Dollar", 2, "CA$");
-    let s = store(&conn);
-    let row = s
-        .create_exchange_rate("USD", "CAD", 1_360_000, "manual", "2026-06-28")
-        .unwrap();
-    s.delete_exchange_rate(&row.id).unwrap();
-    let rates = s.list_exchange_rates().unwrap();
-    assert!(rates.is_empty());
-}
-
-#[test]
-fn upsert_exchange_rate_replaces_existing() {
-    let conn = fresh();
-    seed_currency(&conn, "USD", "840", "US Dollar", 2, "$");
-    seed_currency(&conn, "EUR", "978", "Euro", 2, "\u{20ac}");
-    let s = store(&conn);
-    let first = s
-        .create_exchange_rate("USD", "EUR", 900_000, "manual", "2026-07-01")
-        .unwrap();
-    let second = s
-        .upsert_exchange_rate("USD", "EUR", 920_000, "auto-sync", "2026-07-01")
-        .unwrap();
-    // Same (from, to, date) but different id and updated rate
-    assert_ne!(first.id, second.id);
-    assert_eq!(second.rate_millionths, 920_000);
-    assert_eq!(second.source, "auto-sync");
-    // Only one row in the table
-    let rates = s.list_exchange_rates().unwrap();
-    assert_eq!(rates.len(), 1);
-}
-
-#[test]
-fn delete_exchange_rate_not_found() {
-    let conn = fresh();
-    let s = store(&conn);
-    let result = s.delete_exchange_rate("bad-id");
-    assert!(matches!(result, Err(CoreError::NotFound { .. })));
-}
-
-// ── Delegation parity with CurrencyRepository ────────────────────────
-
-#[test]
-fn store_create_and_repository_list_have_same_row() {
-    let conn = fresh();
-    seed_currency(&conn, "USD", "840", "US Dollar", 2, "$");
-    seed_currency(&conn, "EUR", "978", "Euro", 2, "\u{20ac}");
-    let s = store(&conn);
-
-    let row = s
-        .create_exchange_rate("USD", "EUR", 920_000, "ecb", "2026-06-28")
-        .unwrap();
-
-    let repo = modules_currency::repository::CurrencyRepository::new(&conn);
-    let repo_rates = repo.list_exchange_rates().unwrap();
-    assert_eq!(repo_rates.len(), 1);
-    assert_eq!(repo_rates[0], row);
-}
-
-#[test]
-fn repository_create_and_store_list_have_same_row() {
-    let conn = fresh();
-    seed_currency(&conn, "USD", "840", "US Dollar", 2, "$");
-    seed_currency(&conn, "EUR", "978", "Euro", 2, "\u{20ac}");
-    let repo = modules_currency::repository::CurrencyRepository::new(&conn);
-
-    let row = repo
-        .create_exchange_rate("USD", "EUR", 920_000, "ecb", "2026-06-28")
-        .unwrap();
-
-    let s = store(&conn);
-    let store_rates = s.list_exchange_rates().unwrap();
-    assert_eq!(store_rates.len(), 1);
-    assert_eq!(store_rates[0], row);
-}
-
-#[test]
-fn store_upsert_and_repository_list_have_same_row() {
-    let conn = fresh();
-    seed_currency(&conn, "USD", "840", "US Dollar", 2, "$");
-    seed_currency(&conn, "EUR", "978", "Euro", 2, "\u{20ac}");
-    let s = store(&conn);
-
-    let row = s
-        .upsert_exchange_rate("USD", "EUR", 920_000, "auto-sync", "2026-06-28")
-        .unwrap();
-
-    let repo = modules_currency::repository::CurrencyRepository::new(&conn);
-    let repo_rates = repo.list_exchange_rates().unwrap();
-    assert_eq!(repo_rates.len(), 1);
-    assert_eq!(repo_rates[0], row);
-    assert_eq!(repo_rates[0].source, "auto-sync");
-}
-
 // ── Store Address ─────────────────────────────────────────────────
 
 #[test]
@@ -351,41 +164,6 @@ fn store_address_special_chars() {
     assert!(addr.as_deref().unwrap().contains("Español"));
 }
 
-// ── Currency Format Settings ───────────────────────────────────────
-
-#[test]
-fn currency_format_default() {
-    let conn = fresh();
-    let s = store(&conn);
-    // Default should be "symbol"
-    assert_eq!(s.get_currency_format().unwrap(), "symbol");
-}
-
-#[test]
-fn currency_format_set_and_get() {
-    let conn = fresh();
-    let s = store(&conn);
-    s.set_currency_format("code").unwrap();
-    assert_eq!(s.get_currency_format().unwrap(), "code");
-}
-
-#[test]
-fn currency_symbol_position_default() {
-    let conn = fresh();
-    let s = store(&conn);
-    assert_eq!(s.get_currency_symbol_position().unwrap(), "prefix");
-}
-
-#[test]
-fn currency_separators_roundtrip() {
-    let conn = fresh();
-    let s = store(&conn);
-    s.set_currency_decimal_separator("comma").unwrap();
-    s.set_currency_thousands_separator("space").unwrap();
-    assert_eq!(s.get_currency_decimal_separator().unwrap(), "comma");
-    assert_eq!(s.get_currency_thousands_separator().unwrap(), "space");
-}
-
 #[test]
 fn setting_overwrite_with_empty_string() {
     let conn = fresh();
@@ -394,7 +172,7 @@ fn setting_overwrite_with_empty_string() {
     s.set_setting("greeting", "").unwrap();
     assert_eq!(
         s.get_setting("greeting").unwrap(),
-        Some("".into()),
+        Some(String::new()),
         "empty string should be a valid setting value"
     );
 }

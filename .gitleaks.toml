@@ -1,11 +1,11 @@
-# Gitleaks configuration for OZ-POS
+# Gitleaks configuration for kasir.mu
 # Scans for accidentally committed secrets, API keys, and tokens.
 #
 # Usage:
 #   gitleaks detect --config .gitleaks.toml
 #   gitleaks protect --config .gitleaks.toml  # pre-commit mode
 
-title = "OZ-POS Gitleaks Config"
+title = "kasir.mu Gitleaks Config"
 
 [allowlist]
 description = "Allowed patterns — false positives from test fixtures and config files"

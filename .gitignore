@@ -40,7 +40,7 @@ lighthouse*
 .cargo_*.txt
 
 # Cargo workspaces have a single Cargo.lock at the workspace root, not
-# one per crate. OZ-POS ships binaries (kasirmu-cli, and the Tauri app in
+# one per crate. kasir.mu ships binaries (kasirmu-cli, and the Tauri app in
 # src-tauri/) so the lockfile is committed for reproducible builds.
 # Do NOT add a per-crate `Cargo.lock` line — they don't exist and the
 # pattern would never match.
@@ -62,6 +62,10 @@ lighthouse*
 *.db-journal
 *.sqlite
 *.sqlite3
+# Program-generated state lives here, not at the root: the database, its
+# WAL sidecars, and backups. One gitignored directory is what lets
+# scripts/verify-root-policy.py keep its no-patterns allowlist honest.
+/var/
 # Env files — keep the committed template trackable (negation below).
 .env
 .env.*
@@ -107,6 +111,11 @@ nul
 
 # Coverage
 /coverage/
+# The llvm-cov JSON report the coverage-floor gate grades (P1-2). Generated
+# by `cargo llvm-cov ... --json --output-path coverage-probe.json` locally and
+# in the coverage-floors CI job; the committed artifact is
+# scripts/coverage-floors.json, which holds the FLOORS, not a measurement.
+/coverage-probe.json
 /ui/coverage/
 /ui/*coverage*.txt
 /ui/new_*.txt
@@ -158,7 +167,10 @@ temp-*
 # Underscore variant: the dash-only patterns above let temp_check.ps1 through.
 temp_*
 *.tmp
-# Dot-prefixed scratch from agent runs: .tmp-build/, .tmp-apk-verify/, .tmp-28-a.txt.
+# Dot-prefixed scratch from agent runs lives in a dot-DIRECTORY: .tmp-build/, .tmp-apk-verify/.
+# Root dot-FILES (.tmp-28-a.txt and friends) are gitignored here but rejected by
+# scripts/verify-root-policy.py, which scans exactly the junk no git check can see -- so put
+# the file inside the directory rather than at the root.
 # Matches at any depth and covers files as well as directories, which is what lets
 # the one-off .tmp-28-*.txt entries below be deleted rather than kept beside it.
 .tmp-*
@@ -181,8 +193,13 @@ apps/mobile-tauri/gen/android/buildSrc/.kotlin/
 # UI  (ui/.gitignore already covers node_modules, dist*, .vite, coverage,
 #  .eslintcache — only what it misses is listed here.)
 /ui/.stylelintcache
-# ui/vite.config.js is emitted from vite.config.ts by the TS build.
+# vite.config.{js,d.ts} are emitted from vite.config.ts by the TS build
+# (`tsconfig.node.json` is `composite: true`, so `tsc -b` writes both). Both
+# are generated artefacts; the .js was ignored from the start but its .d.ts
+# sibling was tracked until 2026-09-26, which is the one build output that
+# reached version control (review C28 sub-claim A).
 ui/vite.config.js
+ui/vite.config.d.ts
 
 # Node deps, incremental-build state & local overrides — unanchored so a new
 # sub-project can't leak its node_modules the way the old /node_modules/ +
@@ -286,3 +303,5 @@ manager-journal.md
 # checker's existing git-ignored skip rather than a new rule of its own.
 /.codebuddy/
 /.tmp
+/.agent-tmp/
+/.probe/

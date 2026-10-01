@@ -1,9 +1,9 @@
-//! JSON Web Token generation and validation for the OZ-POS OpenAPI.
+//! JSON Web Token generation and validation for the kasir.mu OpenAPI.
 /*
 last audited 25-07-26 by RSA-Agent (kasirmu-api slice A: auth deep read; API-1 FIXED 25-07-26)
 crate: kasirmu-api | status: SAFE | lint: CLEAN
-findings: API-1 FIXED — serve() now refuses to boot when OZ_PRODUCTION=1 and OZ_API_SECRET (or OZ_ADMIN_KEY) is missing (validate_production_secrets, mirroring the cloud-server boot gate), so the hard-coded dev JWT signing secret is unreachable in production; the dev fallback itself remains for zero-config dev startup with a one-time loud eprintln warning (warn_dev_fallback_once); signing_secret_for_tests() exposes the resolved secret for tests. API-2 INFO unchanged — 60s JWT validation cache means an expired token passes up to 60s past exp (documented tradeoff, bounded cache); structured 401 taxonomy per P4 with WWW-Authenticate; exp validated, HS256-only validation default (no alg confusion)
-next: API-2 INFO — constant-time admin-key compare, decrypted-GET documentation | perf: N/A
+findings: (API-2 BOTH HALVES LANDED 25-07-26, marker corrected 2026-10-04: constant-time admin-key compare lives in crates/kasirmu-api/src/routes/tokens.rs:101 `admin_key_authorised` — HMAC-SHA256 digests under a fixed domain key with subtle-backed verify_slice, pinned by 4 unit tests in routes/tokens_tests.rs; the decrypted-GET tradeoff is documented at crates/kasirmu-api/src/routes/settings.rs:204 '# API-2 security note (decrypted SMTP password)'. The 'API-2 INFO unchanged' phrasing below was superseded.) API-1 FIXED — serve() now refuses to boot when OZ_PRODUCTION=1 and OZ_API_SECRET (or OZ_ADMIN_KEY) is missing (validate_production_secrets, mirroring the cloud-server boot gate), so the hard-coded dev JWT signing secret is unreachable in production; the dev fallback itself remains for zero-config dev startup with a one-time loud eprintln warning (warn_dev_fallback_once); signing_secret_for_tests() exposes the resolved secret for tests. API-2 INFO unchanged — 60s JWT validation cache means an expired token passes up to 60s past exp (documented tradeoff, bounded cache); structured 401 taxonomy per P4 with WWW-Authenticate; exp validated, HS256-only validation default (no alg confusion)
+next: none | perf: N/A (both API-2 halves landed — see note)
 */
 //!
 //! Tokens are signed with HS256 and carry an `exp` (expiration) claim.
@@ -31,6 +31,19 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 
 const DEFAULT_EXPIRY_HOURS: i64 = 24;
+
+/// Longest token lifetime this crate will mint, in hours (365 days).
+///
+/// C14: the IPC mint door (`kasirmu-local-api::mint_token`) clamped to this
+/// value while the HTTP door passed the caller's `expiry_hours` straight
+/// through, so the same request produced a bounded token on one path and a
+/// ten-year token on the other. The clamp now lives here, at the single place
+/// both doors funnel through, which is what makes them unable to disagree.
+///
+/// The bound is a security property, not a UX preference: a local API token
+/// has no revocation list (see the route's own description), so its lifetime
+/// is the only limit on a leaked credential.
+pub const MAX_TOKEN_HOURS: i64 = 8_760;
 
 /// JWT validation cache: (resolved secret, token) → (claims, cached_at).
 /// Reduces CPU by skipping HMAC + base64 decode on repeat requests.
@@ -102,13 +115,19 @@ pub struct TokenResponse {
 const DEV_FALLBACK_SECRET: &str = "oz-pos-dev-secret-change-in-production";
 
 /// Warn once when the dev fallback secret is in use (API-1).
+///
+/// MSL-24: routed through `tracing` rather than `eprintln!`, for the reason the
+/// sibling warning in `routes/tokens.rs` states — the server's subscriber writes
+/// to stdout, which the container log captures, and a security warning that only
+/// reaches stderr is not in the log an operator monitors. This one matters most:
+/// it says every token is forgeable by anyone who knows the constant.
 fn warn_dev_fallback_once() {
     static DEV_FALLBACK_WARNED: std::sync::Once = std::sync::Once::new();
     DEV_FALLBACK_WARNED.call_once(|| {
-        eprintln!(
-            "[kasirmu-api] WARNING: OZ_API_SECRET is not set — using the hard-coded \
-             dev signing secret. Tokens are forgeable by anyone who knows the \
-             constant. Set OZ_API_SECRET (required when OZ_PRODUCTION=1)."
+        tracing::warn!(
+            "OZ_API_SECRET is not set — using the hard-coded dev signing secret. \
+             Tokens are forgeable by anyone who knows the constant. Set OZ_API_SECRET \
+             (required when OZ_PRODUCTION=1)."
         );
     });
 }
@@ -180,6 +199,9 @@ pub fn create_token_scoped(
 
 /// Mint a token with optional read-tier permissions (spec 0047 Part B).
 ///
+/// `expiry_hours` is clamped to `1..=MAX_TOKEN_HOURS`; the default is
+/// `DEFAULT_EXPIRY_HOURS` when it is `None` (C14).
+///
 /// `permissions` is a list of registry keys that narrow the token's GET
 /// surface: when `Some`, reads are gated through `has_permission` and a
 /// denied key yields 403. `None` preserves the legacy full-read contract
@@ -197,7 +219,18 @@ pub fn create_token_full(
     permissions: Option<&[String]>,
     secret: Option<&str>,
 ) -> Result<TokenResponse, jsonwebtoken::errors::Error> {
-    let hours = expiry_hours.unwrap_or(DEFAULT_EXPIRY_HOURS);
+    // C14: the UPPER bound lives here, at the single funnel both mint doors
+    // pass through, so a limit applied at one call site (the IPC mint) and
+    // forgotten at another (the HTTP route) cannot happen again.
+    //
+    // Only the ceiling is enforced here, deliberately. A floor would break the
+    // legitimate use of this primitive to mint an ALREADY-EXPIRED token, which
+    // `expired_token_is_rejected` relies on -- and the floor is not the
+    // security property: an over-long token is the risk, a short one is not.
+    // That floor stays where it already was, on the operator-facing IPC door.
+    let hours = expiry_hours
+        .unwrap_or(DEFAULT_EXPIRY_HOURS)
+        .min(MAX_TOKEN_HOURS);
     let now = Utc::now();
     let exp_time = now + Duration::hours(hours);
     let token_id = uuid::Uuid::now_v7().to_string();

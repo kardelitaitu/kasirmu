@@ -627,7 +627,7 @@ fn update_terminal_empty_name_rejected() {
     let conn = fresh();
     seed_terminals(&conn);
     let mut t = store(&conn).get_terminal("term-1").unwrap().unwrap();
-    t.name = "".into();
+    t.name = String::new();
     let err = store(&conn).update_terminal(&t).unwrap_err();
     assert!(matches!(err, CoreError::Validation { field, .. } if field == "name"));
 }

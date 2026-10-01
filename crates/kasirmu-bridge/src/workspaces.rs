@@ -170,6 +170,27 @@ pub async fn list_workspaces(
 /// List screens (nav items) for a workspace type during boot/workspace
 /// selection. The store ID is explicit so the read is routed to the correct
 /// store database.
+///
+/// The ticket is verified AND the account behind it is resolved from the
+/// global identity DB, exactly as its sibling [`list_workspaces`] does. That
+/// is not belt-and-braces: a ticket is a bearer credential that outlives the
+/// account decisions made after it was minted, so verifying only the signature
+/// answered for a DEACTIVATED member, and for a store they have no
+/// relationship with. Both halves are refused here — the same two facts the
+/// sibling rejects, on the same evidence (the live row plus the
+/// `user_location_access` set the session path also honours).
+///
+/// The screens themselves are the static `workspace_type_screens` table, so
+/// this discloses layout metadata rather than business data. It is gated
+/// anyway because the sibling is, and an inconsistent pair is what lets the
+/// stricter one be relaxed later by someone who reads the looser one as
+/// precedent.
+///
+/// # Errors
+///
+/// Returns [`BridgeError::PermissionDenied`] for a forged/expired ticket, an
+/// account that is no longer live, or a store the caller may not reach, and
+/// [`BridgeError::Core`] on DB errors.
 pub async fn list_workspace_screens(
     ctx: &BridgeCtx<'_>,
     ticket: String,
@@ -180,8 +201,53 @@ pub async fn list_workspace_screens(
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs() as i64;
-    crate::picker::verify_picker_ticket(&ctx.picker_ticket_secret, &ticket, now_ts)
-        .ok_or_else(|| BridgeError::PermissionDenied("invalid or expired picker session".into()))?;
+    let user_id = crate::picker::verify_picker_ticket(&ctx.picker_ticket_secret, &ticket, now_ts)
+        .ok_or_else(|| {
+        BridgeError::PermissionDenied("invalid or expired picker session".into())
+    })?;
+
+    // Resolve the REAL user and require live access to the named store,
+    // mirroring `list_workspaces` step 2. The picker has not chosen an
+    // instance yet, so the store-level question is asked directly: the account
+    // must exist and be active, and when it carries `user_location_access`
+    // rows at all the named store must be among them — the same fail-closed
+    // rule `verify_instance_access` applies to a session.
+    {
+        let db = ctx.lock_global().await;
+        let store = Store::new(&db);
+        let user = store.get_user(&user_id)?.ok_or_else(|| {
+            BridgeError::PermissionDenied("picker session user no longer exists".into())
+        })?;
+        if !user.is_active {
+            return Err(BridgeError::PermissionDenied(
+                "picker session user is inactive".into(),
+            ));
+        }
+        let has_access_rows: bool = db.query_row(
+            "SELECT COUNT(*) > 0 FROM user_location_access WHERE user_id = ?1",
+            rusqlite::params![user.id],
+            |row| row.get(0),
+        )?;
+        if has_access_rows {
+            let allowed: bool = db.query_row(
+                "SELECT COUNT(*) > 0 FROM user_location_access \
+                 WHERE user_id = ?1 AND location_id = ?2",
+                rusqlite::params![user.id, store_id],
+                |row| row.get(0),
+            )?;
+            if !allowed {
+                tracing::warn!(
+                    user_id = %user.id,
+                    store_id = %store_id,
+                    "pre-session screen listing denied — store outside the caller access"
+                );
+                return Err(BridgeError::PermissionDenied(
+                    "store is outside the caller access".into(),
+                ));
+            }
+        }
+    }
+
     let conn = ctx
         .db_manager
         .open_store(&store_id)
@@ -210,6 +276,8 @@ pub async fn list_workspaces_scoped(
     ctx: &BridgeCtx<'_>,
     session_token: &str,
 ) -> Result<Vec<WorkspaceDto>, BridgeError> {
+    // ungated-ok: the picker itself - every authenticated role must reach it; scoped by
+    // assignment and filtered by tier entitlement below.
     let session = ctx.resolve_session(session_token)?; // ADR #5: Load subscription from global DB for entitlement filtering.
     // Also validates the system clock has not been rolled back. The user's
     // assignment (ADR #35 D5 / spec 0048) rides the same global-DB lock so
@@ -268,6 +336,8 @@ pub async fn get_workspace_instance_scoped(
     session_token: &str,
     instance_id: String,
 ) -> Result<WorkspaceDto, BridgeError> {
+    // ungated-ok: the picker itself - every authenticated role must reach it; the store
+    // comes from the SESSION, never the wire.
     let session = ctx.resolve_session(session_token)?;
     let conn = ctx
         .db_manager
@@ -556,6 +626,7 @@ pub async fn list_workspace_screens_scoped(
     session_token: &str,
     type_key: String,
 ) -> Result<Vec<WorkspaceScreenDto>, BridgeError> {
+    // ungated-ok: the picker's screen list - static layout metadata for the session store
     let conn = ctx.resolve_store(session_token)?;
     let db = conn
         .lock()
@@ -634,6 +705,8 @@ pub async fn list_workspaces_for_store_scoped(
     session_token: &str,
     store_id: String,
 ) -> Result<Vec<WorkspaceDto>, BridgeError> {
+    // ungated-ok: picker read; the named store is scope-filtered through the user's
+    // assignment before any row is returned.
     let session = ctx.resolve_session(session_token)?;
     // The user's assignment lives in the GLOBAL identity DB (ADR #35 D5 / spec
     // 0048) — load it before opening the requested store so the listing can be
@@ -790,22 +863,30 @@ pub async fn resolve_boot_store(
     let binding_info: Option<(String, String, String, String)> = {
         let db = ctx.lock_global().await;
         let store = Store::new(&db);
-        store
-            .get_terminal_by_device_id(&device_id)?
-            .and_then(|terminal| {
+        match store.get_terminal_by_device_id(&device_id)? {
+            None => None,
+            Some(terminal) => {
                 let tid = terminal.id;
-                store
-                    .get_terminal_binding(&tid)
-                    .ok()
-                    .flatten()
-                    .map(|(s, i, sig)| (tid, s, i, sig))
-            })
+                // An errored binding read is NOT "unbound": reading it as
+                // absence silently unpinned a bound terminal and booted it
+                // into the primary store. Only `Ok(None)` means no binding;
+                // every error propagates, matching the `?` on the sibling
+                // read directly above.
+                match store.get_terminal_binding(&tid) {
+                    Ok(binding) => binding.map(|(s, i, sig)| (tid, s, i, sig)),
+                    Err(e) => return Err(e.into()),
+                }
+            }
+        }
     };
 
     if let Some((terminal_id, bound_store_id, bound_instance_id, signature)) = binding_info {
         let signature_valid = {
-            let keyring = kasirmu_security::default_keyring()
-                .map_err(|e| BridgeError::Internal(format!("keyring unavailable: {e}")))?;
+            // Shared with the binding-write side (`crate::terminals`): one
+            // helper means a test can inject a single in-memory keyring into
+            // both halves of a write→boot round-trip. Production is still
+            // exactly `kasirmu_security::default_keyring()`.
+            let keyring = crate::terminals::binding_keyring()?;
             let secret = keyring
                 .get_secret(DEVICE_BINDING_KEYRING_NAME)
                 .map_err(|e| BridgeError::Internal(format!("keyring read failed: {e}")))?;
@@ -830,18 +911,25 @@ pub async fn resolve_boot_store(
             );
         } else {
             let instance_exists = {
-                ctx.db_manager
+                let db_arc = ctx
+                    .db_manager
                     .open_store(&bound_store_id)
-                    .ok()
-                    .and_then(|db_arc| {
-                        let db = db_arc.lock().ok()?;
-                        let store = Store::new(&db);
-                        store
-                            .get_workspace_instance(&bound_instance_id, None)
-                            .ok()
-                            .map(|_| true)
-                    })
-                    .unwrap_or(false)
+                    .map_err(|e| BridgeError::Internal(format!("opening store db: {e}")))?;
+                let db = db_arc
+                    .lock()
+                    .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
+                let store = Store::new(&db);
+                // Only `QueryReturnedNoRows` means the bound instance is
+                // genuinely gone (archived or absent) — that is the documented
+                // primary-store fallback. Any OTHER read failure means the
+                // bound store could not be read at all, and collapsing it into
+                // "not found" silently re-pinned the device to the primary
+                // store; it must refuse instead.
+                match store.get_workspace_instance(&bound_instance_id, None) {
+                    Ok(_) => true,
+                    Err(kasirmu_core::CoreError::Db(rusqlite::Error::QueryReturnedNoRows)) => false,
+                    Err(e) => return Err(e.into()),
+                }
             };
 
             if !instance_exists {

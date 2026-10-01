@@ -1,16 +1,28 @@
 /*
-last audited DD-MM-YY by DSH-Agent
+last audited (date unknown) by DSH-Agent
 crate: kasirmu-security | status: SAFE | lint: CLEAN
-findings: 0 unsafe blocks, 0 production unwrap/expect. Keyring trait + InMemoryKeyring + platform dispatch verified; SEC-4 rotate_key atomic (park -> archive -> promote); SEC-6 partially addressed (raw entropy zeroized, hex key in Zeroizing; SecretString for get/set deferred — OS credential stores copy internally). SSL/TLS helpers, mask, error taxonomy verified. 88 tests pass.
+findings: 0 unsafe blocks, 0 production unwrap/expect. Keyring trait + InMemoryKeyring + platform dispatch verified; SEC-4 rotate_key atomic (park -> archive -> promote); SEC-6 partially addressed (raw entropy zeroized, hex key in Zeroizing; SecretString for get/set deferred — OS credential stores copy internally). SSL/TLS helpers, mask, error taxonomy verified. 100 tests pass (+7 doctests).
 next: SEC-6 residual — SecretString for the Keyring get/set surface | perf: N/A
+
+INCREMENT 2026-09-29 (C1 slice S2b-2, keychain half — NOT a full re-audit):
+added Keyring::is_durable (fail-closed default `false`; `true` in the three platform
+backends; explicit `false` in InMemoryKeyring) and install_key::{INSTALL_KEY_ENTRY,
+resolve_install_key, InstallKeyResolution, InstallKeySource}. resolve_install_key is
+generate-once and REFUSES to generate on a non-durable store (C1 hazard H3, the D1
+answer of 2026-09-29); a malformed stored entry is an error and is NEVER regenerated.
+InstallKeyResolution::Debug is hand-written to redact the secret rather than derived —
+the C89 defect class, where a derived Debug printed credentials.
+Test count corrected from a stale 88 to the measured 100 (+7 doctests); the 88 was
+already 6 low before this change.
 */
 
 //! TLS configuration, PAN masking, and OS credential-store helpers.
 //!
 //! `kasirmu-security` owns TLS configuration ([`tls`]), sensitive-data masking
-//! including the masked-PAN display the cashier flow renders ([`mask`]), and
+//! including the masked-PAN display the cashier flow renders ([`mask`]),
 //! platform keychain storage behind the [`Keyring`] trait (with
-//! [`Keyring::rotate_key`] staging the SEC-4 rotation). It is **not** the crate
+//! [`Keyring::rotate_key`] staging the SEC-4 rotation), and resolution of the
+//! per-install at-rest key ([`install_key`]). It is **not** the crate
 //! that encrypts stored values: at-rest encryption of settings and profile
 //! credentials is the `encrypt_*` / `decrypt_*` surface in the `kasirmu-crypto`
 //! crate, applied by the typed accessors in
@@ -19,10 +31,26 @@ next: SEC-6 residual — SecretString for the Keyring get/set surface | perf: N/
 //! Those are two different mechanisms and must not be read as one story about
 //! "secrets": a keychain entry is an OS credential store addressed by name,
 //! while the settings columns are encoded by `kasirmu-crypto` under a derived key.
-//! They are not wired to each other — the entry this crate rotates is read
-//! back only to report rotation status (three functions in
-//! `crates/kasirmu-bridge/src/security.rs`), and it is NOT the key that any
-//! settings or PII ciphertext is derived from.
+//!
+//! **They are not wired to each other through `oz-pos/encryption-key`** — the
+//! entry this crate rotates is read back to report rotation status AND rotated on
+//! demand (the keyring command bodies in `crates/kasirmu-bridge/src/security.rs`),
+//! and it is NOT the key that any settings or PII ciphertext is derived from.
+//! (SEC-B: this paragraph said "read back only to report rotation status", which
+//! understated the surface — that file also drives `rotate_key`.)
+//!
+//! # A second entry, and why the sentence above is now narrower than it was
+//!
+//! C1 slice S2b added a **different** entry, `oz-pos/at-rest-key.v1`
+//! ([`install_key::INSTALL_KEY_ENTRY`]), resolved by
+//! [`install_key::resolve_install_key`]. That one **is** intended to become the key
+//! the six at-rest families derive from, once slice S2b-2 hands it to
+//! `kasirmu_crypto::set_install_key` at boot. So the honest statement is now
+//! per-entry rather than crate-wide: `oz-pos/encryption-key` is not the at-rest
+//! key, and `oz-pos/at-rest-key.v1` is. They must stay separate — reusing the
+//! rotated entry would orphan the settings ciphertext the moment an operator
+//! rotated it, because its rotation archives the old value without re-wrapping any
+//! stored row.
 //!
 //! # Keyring
 //!
@@ -32,10 +60,20 @@ next: SEC-6 residual — SecretString for the Keyring get/set surface | perf: N/
 //! - **Linux**: Secret Service (libsecret / DBus)
 //! - **macOS**: Keychain (Security framework)
 //! - **Fallback**: In-memory store (development only)
+//!
+//! Only the first three survive a restart, and [`Keyring::is_durable`] is how a
+//! caller asks. It defaults to `false` so a backend must opt in, because the cost
+//! of a wrong `true` is a generated key that is gone at the next boot (C1 hazard
+//! H3) — see [`install_key::resolve_install_key`], the caller that depends on it.
 
 #![deny(unsafe_code)]
 
 pub mod error;
+pub mod install_key;
+// Deliberately NOT platform-gated: the macOS backend that consumes this is
+// compiled only on macOS, so a predicate living beside it would be untested on
+// every other host — which is how SEC-1 shipped. See the module docs.
+pub mod keychain_status;
 #[cfg(target_os = "linux")]
 pub mod linux;
 #[cfg(target_os = "macos")]
@@ -101,6 +139,22 @@ pub trait Keyring {
     /// Delete a secret by name. Returns `true` if the secret existed
     /// and was removed.
     fn delete_secret(&self, name: &str) -> Result<bool, SecurityError>;
+
+    /// Whether this store survives a process restart.
+    ///
+    /// # Fail-closed default (C1 hazard H3)
+    ///
+    /// The default is **`false`**: an implementation must opt IN to being trusted
+    /// with a generated secret. A default of `true` would let any future
+    /// non-durable backend claim durability by omission, and the price of that
+    /// mistake is every row written under a key that is gone at the next boot.
+    ///
+    /// The three platform backends override this to `true`; [`InMemoryKeyring`]
+    /// keeps the default and states so explicitly.
+    /// [`install_key::resolve_install_key`] is the caller that depends on it.
+    fn is_durable(&self) -> bool {
+        false
+    }
 
     /// Retrieve the ISO 8601 creation timestamp for a key.
     ///
@@ -251,6 +305,12 @@ impl Keyring for InMemoryKeyring {
         Ok(map.remove(name).is_some())
     }
 
+    /// SEC-B note: this override does NOT use the staged ordering the trait
+    /// documents as the SEC-4 contract — it archives `{name}-prev` and then
+    /// overwrites `name` directly, with no staging slot. That is safe here
+    /// because the whole map sits behind one `Mutex` and no interleaving is
+    /// possible, but it is a deliberate divergence rather than an example of
+    /// the contract, and the trait doc should not be read as this method's spec.
     fn rotate_key(&self, name: &str) -> Result<RotationInfo, SecurityError> {
         let mut key_bytes = [0u8; 32];
         rand::thread_rng()
@@ -288,6 +348,16 @@ impl Keyring for InMemoryKeyring {
             .lock()
             .map_err(|e| SecurityError::KeyUnavailable(format!("lock poisoned: {e}")))?;
         Ok(map.get(&format!("{name}-created-at")).cloned())
+    }
+
+    /// Explicitly NOT durable, and stated rather than left to the trait default.
+    ///
+    /// This map is rebuilt empty on every process start, so a key generated into
+    /// it is gone at the next boot — C1 hazard H3. Saying so here means a reader of
+    /// this backend sees the consequence next to the code that causes it, rather
+    /// than having to know that the trait's default happens to be `false`.
+    fn is_durable(&self) -> bool {
+        false
     }
 }
 

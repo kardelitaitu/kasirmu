@@ -1,0 +1,358 @@
+# scripts/generate-tier-badges.ps1 - Tier badge and brand logo rasteriser.
+#
+# Usage:
+#   powershell -File scripts\generate-tier-badges.ps1                 # SVG + PNG @1x/2x/3x
+#   powershell -File scripts\generate-tier-badges.ps1 -Scales 1,2,3,4
+#   powershell -File scripts\generate-tier-badges.ps1 -SvgOnly
+#   powershell -File scripts\generate-tier-badges.ps1 -BadgesOnly      # skip the logo PNGs
+#
+# TWO asset families, because they share one rasteriser and one geometry table:
+#
+#   TIER BADGES  generated artwork. The palette and geometry below produce the
+#                SVG, then the PNG is rasterised from it.
+#   BRAND LOGOS  existing artwork. The SVGs already live in
+#                assets/branding/<brand>/vector/, hand-authored by the designer
+#                and copied by scripts/sync-branding.ps1. This script only
+#                RASTERISES them, so a checkout without ImageMagick still has
+#                the vectors. Never edit a logo PNG: regenerate it.
+#
+# The five subscription tiers are defined by TIER_LEVEL in
+# ui/src/utils/tierLevel.ts and do NOT vary per tenant, so this lives outside
+# assets/branding/ (whose every subdirectory is a whitelabel brand with a
+# manifest.json).
+#
+# One source of truth: the palettes and geometry below generate every SVG, and
+# every PNG is rasterised from that SVG. Edit here, never a copy.
+#
+# Text is emitted as OUTLINED PATHS, not <text>. That is deliberate: it bakes
+# the weight in and removes the font dependency, so a badge rasterises
+# identically on a machine with no Inter installed. The outlines come from
+# Inter Bold instantiated out of the variable font the UI already ships.
+#
+# Requirements: PowerShell 7+, Python 3 + fontTools, ImageMagick (for PNG).
+
+param(
+    [string]$OutDir = "assets/tier-badges",
+    # A [int[]] here is a trap: `-File script.ps1 -Scales 1,2,4` passes the
+    # literal string 1,2,4 which PowerShell coerces to the single int 124.
+    # Taking a string and splitting it makes the documented CLI work.
+    [string]$Scales = "1,2,3",
+    [switch]$SvgOnly,
+    # Skips the brand-logo rasterisation. The logos are already-authored vectors,
+    # so a badges-only run is the common case when iterating on tier palettes.
+    [switch]$BadgesOnly,
+    [string]$FontFile = "",
+    [int]$Weight = 700
+)
+
+$ErrorActionPreference = "Stop"
+Set-Location (Split-Path -Parent $PSCommandPath)
+Set-Location ..
+
+# -- Geometry (px, at 1x) -----------------------------------------------------
+# A ROUNDED RECTANGLE, not a pill: the radius stays well under half the height
+# so the shape never reads as a capsule.
+$Height      = 40
+$Radius      = 8
+# MEASURED, not chosen by eye. Inter Bold at this size gives a 14px cap height,
+# 35% of the badge. The size shipped before was 15px, whose 11px caps are 28% —
+# visibly undersized in the tall box, which is what prompted the change. Badge
+# typography generally sits in the 35-42% band, so treat 19 as the FLOOR; do not
+# reduce it back toward 15 without re-measuring against this ratio.
+$FontSize    = 19
+$LetterSpace = 0.9
+$PadX        = 18                             # horizontal padding either side of the ink
+$BaselineK   = 0.36                           # optical baseline offset as a fraction of font-size
+
+# -- Palette ------------------------------------------------------------------
+# Solid fills, one fixed colourway. Every ink clears WCAG AA (4.5:1) against
+# its own fill; Assert-Contrast below re-checks that on every run so a palette
+# edit that breaks AA fails the build rather than shipping.
+#
+# `pro` uses the brand blue knocked down just far enough to carry WHITE text at
+# 4.5:1: the logo blue #147EFB itself only reaches 3.88:1 with white, so the
+# fill keeps the logo hue and saturation and drops lightness to 48.1%.
+$Tiers = @(
+    @{ Key = "free";       Label = "FREE";       Fill = "#64748B"; Ink = "#FFFFFF" }
+    @{ Key = "plus";       Label = "PLUS";       Fill = "#8655F6"; Ink = "#FFFFFF" }
+    @{ Key = "pro";        Label = "PRO";        Fill = "#0471F1"; Ink = "#FFFFFF" }
+    @{ Key = "premium";    Label = "PREMIUM";    Fill = "#F5C518"; Ink = "#3F2D00" }
+    @{ Key = "enterprise"; Label = "ENTERPRISE"; Fill = "#12141A"; Ink = "#F1F5F9" }
+)
+
+# -- Normalise -Scales --------------------------------------------------------
+$ScaleList = @(
+    $Scales -split ',' |
+        ForEach-Object { $_.Trim() } |
+        Where-Object { $_ -ne '' } |
+        ForEach-Object {
+            $n = 0
+            if (-not [int]::TryParse($_, [ref]$n) -or $n -lt 1) {
+                throw "-Scales expects positive integers, got '$_'"
+            }
+            $n
+        }
+)
+if ($ScaleList.Count -eq 0) { throw "-Scales must name at least one scale" }
+
+# -- WCAG relative luminance / contrast --------------------------------------
+function Get-Luminance {
+    param([string]$Hex)
+    $h = $Hex.TrimStart('#')
+    $channels = @(
+        [Convert]::ToInt32($h.Substring(0, 2), 16),
+        [Convert]::ToInt32($h.Substring(2, 2), 16),
+        [Convert]::ToInt32($h.Substring(4, 2), 16)
+    )
+    $linear = $channels | ForEach-Object {
+        $c = $_ / 255
+        if ($c -le 0.03928) { $c / 12.92 } else { [Math]::Pow((($c + 0.055) / 1.055), 2.4) }
+    }
+    return 0.2126 * $linear[0] + 0.7152 * $linear[1] + 0.0722 * $linear[2]
+}
+
+function Get-Contrast {
+    param([string]$A, [string]$B)
+    $la = Get-Luminance $A
+    $lb = Get-Luminance $B
+    $hi = [Math]::Max($la, $lb)
+    $lo = [Math]::Min($la, $lb)
+    return ($hi + 0.05) / ($lo + 0.05)
+}
+
+# -- Inter Bold outlines ------------------------------------------------------
+# Instantiated once out of the variable font the UI ships, then cached for the
+# run. Nothing here depends on a system-installed Inter.
+if (-not $FontFile) {
+    $FontFile = Join-Path $env:TEMP "kasirmu-Inter-Bold.ttf"
+}
+
+$variableFont = "ui/node_modules/@fontsource-variable/inter/files/inter-latin-wght-normal.woff2"
+
+if (-not (Test-Path $FontFile)) {
+    if (-not (Test-Path $variableFont)) {
+        throw "Neither $FontFile nor the bundled variable font ($variableFont) is available."
+    }
+    Write-Host "-- Instantiating Inter wght=$Weight from the bundled variable font --" -ForegroundColor White
+    $py = @'
+import sys
+from fontTools.ttLib import TTFont
+from fontTools.varLib.instancer import instantiateVariableFont
+src, dst, wght = sys.argv[1], sys.argv[2], int(sys.argv[3])
+f = TTFont(src)
+instantiateVariableFont(f, {"wght": wght}, inplace=True)
+f.save(dst)
+'@
+    $pyPath = Join-Path $env:TEMP "kasirmu-instantiate-inter.py"
+    [IO.File]::WriteAllText($pyPath, $py)
+    & python $pyPath $variableFont $FontFile $Weight
+    if ($LASTEXITCODE -ne 0) { throw "Failed to instantiate Inter wght=$Weight" }
+    Write-Host "  [OK]   $FontFile" -ForegroundColor Green
+}
+
+# -- ImageMagick --------------------------------------------------------------
+$Script:MagickPath = $null
+foreach ($candidate in @("magick", "magick.exe", "$env:ProgramFiles/ImageMagick-*/magick.exe")) {
+    $resolved = Get-Command $candidate -ErrorAction SilentlyContinue
+    if ($resolved) { $Script:MagickPath = $resolved.Source; break }
+    $globbed = Get-ChildItem $candidate -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($globbed) { $Script:MagickPath = $globbed.FullName; break }
+}
+
+# -- SVG emission -------------------------------------------------------------
+function New-TierBadgeSvg {
+    param([hashtable]$Tier, [string]$PathData, [double]$Advance)
+
+    # Canvas hugs the real advance width plus symmetric padding, rounded up to
+    # an even number so 2x/3x exports land on whole pixels.
+    $width = [Math]::Ceiling(($Advance + 2 * $PadX) / 2) * 2
+    $baseline = $Height / 2 + $FontSize * $BaselineK
+    # Centre the advance box horizontally and sit the baseline on the
+    # optical centre; the glyph outlines are positioned from this origin.
+    $x = ($width - $Advance) / 2
+
+    # No border anywhere: a solid fill defines its own edge. `free` used to carry
+    # a hairline purely because a WHITE pill is invisible on a white surface;
+    # now that it is a grey fill no row needs one, so the mechanism is gone
+    # rather than left as a per-tier flag with no user.
+    $svg = @"
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 $width $Height" width="$width" height="$Height" role="img" aria-labelledby="tier-badge-title">
+  <title id="tier-badge-title">$($Tier.Label) tier badge</title>
+  <rect x="0" y="0" width="$width" height="$Height" rx="$Radius" fill="$($Tier.Fill)"/>
+  <g transform="translate($x,$baseline)"><path d="$PathData" fill="$($Tier.Ink)"/></g>
+</svg>
+"@
+    return @{ Svg = $svg; Width = $width }
+}
+
+# -- Generate -----------------------------------------------------------------
+$svgDir = Join-Path $OutDir "svg"
+$pngDir = Join-Path $OutDir "png"
+New-Item -ItemType Directory -Force -Path $svgDir | Out-Null
+if (-not $SvgOnly) { New-Item -ItemType Directory -Force -Path $pngDir | Out-Null }
+
+Write-Host "+------------------------------------------------+" -ForegroundColor Cyan
+Write-Host "| kasir.mu Tier Badge Generator                  |" -ForegroundColor Cyan
+Write-Host "+------------------------------------------------+" -ForegroundColor Cyan
+
+$manifestEntries = @()
+$failures = @()
+
+foreach ($tier in $Tiers) {
+    $contrast = Get-Contrast -A $tier.Ink -B $tier.Fill
+    $key = $tier.Key
+
+    # The AA gate. A palette edit that drops below 4.5:1 fails here.
+    if ($contrast -lt 4.5) {
+        $failures += "$key ink/fill contrast $([Math]::Round($contrast, 2)):1 is below WCAG AA (4.5:1)"
+    }
+
+    $json = & python scripts/tier-badge-text-path.py $FontFile $tier.Label $FontSize $LetterSpace $Weight
+    if ($LASTEXITCODE -ne 0) { throw "Failed to outline '$($tier.Label)'" }
+    $glyph = $json | ConvertFrom-Json
+
+    $built = New-TierBadgeSvg -Tier $tier -PathData $glyph.d -Advance $glyph.advance
+    $svgPath = Join-Path $svgDir "tier-$key.svg"
+    [IO.File]::WriteAllText($svgPath, $built.Svg)
+    Write-Host ("  [SVG]  tier-{0}.svg  {1}x{2}  contrast {3}:1" -f $key, $built.Width, $Height, [Math]::Round($contrast, 2)) -ForegroundColor Green
+
+    $manifestEntries += @{
+        key      = $key
+        label    = $tier.Label
+        svg      = "svg/tier-$key.svg"
+        width    = $built.Width
+        height   = $Height
+        fill     = $tier.Fill
+        ink      = $tier.Ink
+        contrast = [Math]::Round($contrast, 2)
+    }
+
+    if ($SvgOnly) { continue }
+
+    if (-not $Script:MagickPath) {
+        Write-Host "  [SKIP] ImageMagick not found - cannot export PNG" -ForegroundColor Yellow
+        continue
+    }
+
+    foreach ($scale in $ScaleList) {
+        $px = $built.Width * $scale
+        $pngPath = Join-Path $pngDir "tier-$key@$($scale)x.png"
+
+        # -density is load-bearing, and getting it wrong is invisible in the file
+        # METADATA: the PNG still comes out 234x120 either way. Without it,
+        # ImageMagick rasterises the SVG at its intrinsic 78x40 (the width/height
+        # attributes) and then UPSCALES that bitmap to the target, so the glyph
+        # edges are interpolated from a 1x render and the export looks like a
+        # small picture blown up. Rendering at the target density first makes the
+        # -resize a no-op that only trims rounding, and the antialiasing is done
+        # at full resolution. Measured on pro@3x: 775 unique colours vs 621, and
+        # a smaller file because the smeared upscale compresses worse.
+        #
+        # 72 is ImageMagick's default DPI, so density = 72 * scale is the exact
+        # multiplier that makes 1 SVG user unit map to `scale` device pixels.
+        #
+        # -depth 8 is the other load-bearing flag: ImageMagick Q16 writes 16-bit
+        # PNGs by default, and tauri's icon decoder panics on a 16-bit RGBA image.
+        $density = 72 * $scale
+        & $Script:MagickPath -background none -density $density "$svgPath" -resize "$($px)x" -depth 8 -strip $pngPath
+        if ($LASTEXITCODE -ne 0) { $failures += "PNG export failed for $key @$($scale)x" }
+    }
+    Write-Host "         PNG @$($ScaleList -join 'x, ')x" -ForegroundColor DarkGray
+}
+
+# -- Brand logos (rasterise existing vectors) ---------------------------------
+# These SVGs are NOT generated here. They are designer exports under
+# assets/branding/<brand>/vector/, and scripts/sync-branding.ps1 copies them to
+# ui/public/branding/ for the web. This section only turns them into PNGs, which
+# nothing else in the repo does: before it, a logo PNG had to be produced by hand
+# from the vector, so it could silently disagree with it.
+#
+# `Aspect` is the source viewBox ratio, kept so the emitted PNGs are an exact
+# integer multiple of the 1x size per scale (the same guarantee the tier badges
+# carry). `Bg` is the flatten colour: the mark and lockup arrive as TRANSPARENT
+# artwork, and a transparent PNG of a dark wordmark is invisible on a dark page,
+# so the light/dark pairs are flattened onto the surface they are meant for.
+# logo-monochrome stays on a transparent ground on purpose — it is a one-ink
+# asset for thermal/e-paper output, where the printer supplies the paper.
+$LogoDir = "assets/branding/default/vector"
+$Logos = @(
+    @{ Key = "logo-icon";            Src = "logo-mark.svg";                     Base = 512; Bg = '' }
+    @{ Key = "logo-icon-mono";       Src = "logo-mark-monochrome.svg";          Base = 512; Bg = '' }
+    @{ Key = "logo-icon-text";       Src = "logo-full.svg";                     Base = 1024; Bg = '#FFFFFF' }
+    @{ Key = "logo-icon-text-dark";  Src = "logo-full-dark.svg";                Base = 1024; Bg = '#12141A' }
+    @{ Key = "logo-icon-text-mono";  Src = "logo-monochrome.svg";               Base = 1024; Bg = '' }
+)
+
+if ($BadgesOnly) {
+    Write-Host ""
+    Write-Host "-- Brand logos skipped (-BadgesOnly) --" -ForegroundColor DarkGray
+} elseif (-not $Script:MagickPath) {
+    Write-Host ""
+    Write-Host "-- Brand logos -- SKIPPED: ImageMagick not found --" -ForegroundColor Yellow
+} else {
+    Write-Host ""
+    Write-Host "-- Brand logos --" -ForegroundColor White
+    $logoPngDir = Join-Path $OutDir "logo"
+    New-Item -ItemType Directory -Force -Path $logoPngDir | Out-Null
+
+    foreach ($logo in $Logos) {
+        $srcPath = Join-Path $LogoDir $logo.Src
+        if (-not (Test-Path $srcPath)) {
+            # A missing SOURCE is a real gap, not something to paper over: the
+            # logo-icon-mono entry depends on a file that did not exist until it
+            # was derived from logo-mark.svg, and silently skipping a missing
+            # variant is how a half-complete logo set ships.
+            $failures += "logo source not found: $srcPath"
+            Write-Host "  [MISS] $($logo.Key) - no source at $srcPath" -ForegroundColor Red
+            continue
+        }
+
+        foreach ($scale in $ScaleList) {
+            $px = $logo.Base * $scale
+            $pngPath = Join-Path $logoPngDir "$($logo.Key)@$($scale)x.png"
+            # -density renders the vector at the target resolution; see the note on
+            # the tier-badge export above for why resizing after load is wrong.
+            $density = 72 * $scale
+            # -background <colour> -flatten bakes the artwork onto its surface when
+            # Bg is set, and the empty string keeps the alpha channel otherwise.
+            if ($logo.Bg) {
+                & $Script:MagickPath -background $logo.Bg -density $density "$srcPath" -resize "$($px)x" -flatten -depth 8 -strip $pngPath
+            } else {
+                & $Script:MagickPath -background none -density $density "$srcPath" -resize "$($px)x" -depth 8 -strip $pngPath
+            }
+            if ($LASTEXITCODE -ne 0) { $failures += "Logo export failed for $($logo.Key) @$($scale)x" }
+        }
+        Write-Host "  [PNG]  $($logo.Key)  base $($logo.Base)px  @$($ScaleList -join 'x, ')x" -ForegroundColor Green
+    }
+}
+
+# -- Manifest -----------------------------------------------------------------
+$manifest = @{
+    generatedBy = "scripts/generate-tier-badges.ps1"
+    geometry    = @{
+        height        = $Height
+        radius        = $Radius
+        fontSize      = $FontSize
+        fontWeight    = $Weight
+        letterSpacing = $LetterSpace
+        paddingX      = $PadX
+        textOutlined  = $true
+    }
+    scales = $ScaleList
+    badges = $manifestEntries
+}
+# ConvertTo-Json emits CRLF on Windows, but .gitattributes pins this tree to
+# LF: an unconverted write leaves the file permanently dirty against its own
+# committed blob after every run. Normalise before writing.
+$manifestJson = ($manifest | ConvertTo-Json -Depth 5) -replace "`r`n", "`n"
+[IO.File]::WriteAllText((Join-Path $OutDir "manifest.json"), $manifestJson)
+
+if ($failures.Count -gt 0) {
+    Write-Host ""
+    Write-Host "FAILED:" -ForegroundColor Red
+    $failures | ForEach-Object { Write-Host "  - $_" -ForegroundColor Red }
+    exit 1
+}
+
+Write-Host ""
+Write-Host "OK - $($manifestEntries.Count) badges, contrast >= 4.5:1" -ForegroundColor Green

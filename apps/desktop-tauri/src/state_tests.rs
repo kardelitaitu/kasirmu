@@ -210,6 +210,15 @@ required_permissions = ["cart:read", "cart:write"]
     )
     .unwrap();
     std::fs::write(plugin_dir.join("main.lua"), script).unwrap();
+    // Approve what the manifest declares: the operator grant gate (C2) refuses
+    // an unapproved permission, and this fixture exists to exercise the WATCHER,
+    // not the gate. Written first so the test can then prove that editing the
+    // script (not the grant) is what gets refused.
+    std::fs::write(
+        root.join("plugin-grants.json"),
+        r#"{"schema_version":1,"grants":{"test-plugin":["cart:read","cart:write"]}}"#,
+    )
+    .unwrap();
 }
 
 /// The watcher observes a change and REFUSES it: the live manager keeps serving
@@ -258,6 +267,16 @@ version = "1.0.0"
 [permissions]
 required_permissions = ["cart:read"]
 "#,
+    )
+    .unwrap();
+
+    // The new plugin must also be approved, or the non-vacuity re-load below
+    // would fail on the grant gate rather than on the change this test is
+    // about. Granting it here keeps that re-load a measure of "the set changed",
+    // which is what the assertion needs.
+    std::fs::write(
+        tmp.path().join("plugin-grants.json"),
+        r#"{"schema_version":1,"grants":{"test-plugin":["cart:read","cart:write"],"evil-plugin":["cart:read"]}}"#,
     )
     .unwrap();
 
@@ -315,5 +334,102 @@ fn plugin_manager_is_only_built_at_startup() {
         src.matches("PluginManager::new").count(),
         1,
         "only the startup load may build a manager; a second call site means an automatic reload path is back"
+    );
+}
+
+/// `AppState::new` decides whether to run `PRAGMA journal_mode=WAL` from the
+/// raw SQLite file header, so the byte offsets the helper reads have to be
+/// right. Getting them wrong is silent in both directions: a false negative
+/// makes every launch pay a write-like pragma it does not need, and a false
+/// positive would leave a new store without WAL at all.
+///
+/// Both real cases are cross-checked against SQLite's own answer rather than
+/// against a hard-coded expectation, so this fails when the offsets drift and
+/// not when SQLite changes how it spells a mode.
+#[test]
+fn sqlite_header_uses_wal_matches_sqlites_own_answer() {
+    let dir = tempfile::tempdir().expect("tempdir");
+
+    // (1) A database explicitly switched to WAL.
+    let wal_path = dir.path().join("wal.db");
+    {
+        let conn = Connection::open(&wal_path).expect("open wal db");
+        conn.pragma_update(None, "journal_mode", "WAL")
+            .expect("enable wal");
+        conn.execute_batch("CREATE TABLE t (x INTEGER); INSERT INTO t VALUES (1);")
+            .expect("seed wal db");
+    }
+    let reported: String = Connection::open(&wal_path)
+        .expect("reopen wal db")
+        .pragma_query_value(None, "journal_mode", |r| r.get(0))
+        .expect("read journal_mode");
+    assert_eq!(
+        reported, "wal",
+        "precondition: this database really is in WAL mode"
+    );
+    assert!(
+        sqlite_header_uses_wal(&wal_path),
+        "a WAL database must be recognised from its header"
+    );
+
+    // (2) A database left on the default rollback journal.
+    let rollback_path = dir.path().join("rollback.db");
+    {
+        let conn = Connection::open(&rollback_path).expect("open rollback db");
+        conn.execute_batch("CREATE TABLE t (x INTEGER); INSERT INTO t VALUES (1);")
+            .expect("seed rollback db");
+    }
+    let reported: String = Connection::open(&rollback_path)
+        .expect("reopen rollback db")
+        .pragma_query_value(None, "journal_mode", |r| r.get(0))
+        .expect("read journal_mode");
+    assert_eq!(
+        reported, "delete",
+        "precondition: this database is not in WAL mode"
+    );
+    assert!(
+        !sqlite_header_uses_wal(&rollback_path),
+        "a rollback-journal database must not be reported as WAL"
+    );
+
+    // (3) Anything that is not a readable SQLite header must answer "not WAL"
+    //     so the caller falls through to the pragma and lets SQLite report the
+    //     real problem, instead of the startup path failing on a header read.
+    assert!(
+        !sqlite_header_uses_wal(&dir.path().join("missing.db")),
+        "a missing file is not WAL"
+    );
+    let junk = dir.path().join("junk.db");
+    std::fs::write(&junk, b"not a database at all").expect("write junk");
+    assert!(
+        !sqlite_header_uses_wal(&junk),
+        "a non-SQLite file is not WAL"
+    );
+}
+
+/// The SQLCipher retirement must stay recorded in the module header, and it
+/// must not be read as pending work: the module is the one a reader opens to
+/// ask "is the local DB encrypted". This pins that the header names the
+/// retired plan, the ADR that already carries the correction, and the real
+/// residual exposure (a plaintext snapshot), so the dangerous half cannot be
+/// silently dropped while the plan name survives.
+#[test]
+fn state_header_records_that_sqlcipher_is_retired_not_pending() {
+    let header = include_str!("state.rs");
+    assert!(
+        header.contains("SQLCipher: RETIRED 2026-10-04"),
+        "the header must date the retirement, not leave 'next: SQLCipher' implying live work"
+    );
+    assert!(
+        header.contains("docs/archived/sqlcipher-migration-plan.md"),
+        "the retired plan must be named so the reader can check its status itself"
+    );
+    assert!(
+        header.contains("PLAINTEXT") && header.contains("Store::backup"),
+        "the residual exposure (a plaintext .db / .backup.db snapshot) must stay stated"
+    );
+    assert!(
+        !header.contains("next: SQLCipher"),
+        "the marker must no longer advertise SQLCipher as next work"
     );
 }

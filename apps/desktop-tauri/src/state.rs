@@ -1,8 +1,23 @@
 /*
-last audited DD-MM-YY by DSH-Agent (consolidated from 25-07-26 + 12-07-27 stamps)
+last audited (date unknown) by DSH-Agent (consolidated from 25-07-26 + 12-07-27 stamps)
 crate: desktop-tauri | status: SAFE | lint: CLEAN
 findings: DB connection with foreign_keys ON + WAL (documented); kernel Drop with bounded lock-retry; test-only in-memory mock constructor. Prior findings preserved: unsafe env::set_var removed (C-2), terminal_id typed field, M-4 logging, M-5 plugin task handle. 0 production unwrap/expect (the in-memory Connection::open_in_memory().unwrap() at state.rs is test-constructor scope).
-next: SQLCipher (carried) | perf: Arc-clones on checkout hot path (carried)
+next: none | perf: Arc-clones on checkout hot path (carried)
+SQLCipher: RETIRED 2026-10-04, not pending work. The plan is
+docs/archived/sqlcipher-migration-plan.md ('Status: NEVER ADOPTED -
+superseded'); its checklist is deliberately left unchecked, and
+docs/decisions/2026-07-10-workspace-type-instance-design.md already
+records the correction (2026-09-12: no file-level encryption exists; the
+HMAC binding is a detection layer, not prevention). At-rest protection
+landed at the SETTINGS layer instead: secret values are encrypted (enc:v1)
+and non-exportable keys are filtered from every .ozpkg lane via
+Settings::load_exportable -> IngestPolicy::PortablePackage, which resolves
+through is_non_exportable_setting_key
+(platform/core/src/settings/keys.rs:577) plus is_manager_owned_key. The
+residual exposure the plan named is real and must not be read as pending:
+an unfiltered .db / .backup.db snapshot (Store::backup,
+crates/kasirmu-core/src/db/mod.rs:295) is PLAINTEXT and carries everything,
+so it must never be handed to anyone.
 */
 
 //! `AppState` — the long-lived state managed by Tauri and reached via
@@ -70,6 +85,13 @@ use platform_sync::pg_daemon::PgSyncDaemon;
 
 use crate::error::AppError;
 
+/// Store-database opening and its stale-`-shm` recovery (C28 size reduction).
+mod db_open;
+pub(crate) use db_open::open_store_connection;
+// Re-exported for `state_tests.rs`, which reaches these through `use super::*`.
+#[cfg(test)]
+pub(crate) use db_open::sqlite_header_uses_wal;
+
 /// Shared application state.
 pub struct AppState {
     /// SQLite connection for the local store. Wrapped in `Arc<Mutex<..>>` so
@@ -115,7 +137,7 @@ pub struct AppState {
     pub plugin_change_refused: Arc<AtomicU64>,
 
     /// Background sync daemon. Started during app setup via
-    /// [`SyncDaemon::start`](platform_sync::daemon::SyncDaemon::start).
+    /// `SyncDaemon::start` (platform_sync::daemon::SyncDaemon).
     pub sync_daemon: SyncDaemon,
 
     /// Background PostgreSQL sync daemon (the optional PG transport).
@@ -226,12 +248,30 @@ impl AppState {
                 .map_err(|e| AppError::Internal(format!("creating db dir {parent:?}: {e}")))?;
         }
 
-        let mut conn = Connection::open(&db_path)
-            .map_err(|e| AppError::Internal(format!("opening {db_path:?}: {e}")))?;
-        conn.pragma_update(None, "foreign_keys", "ON")
-            .map_err(|e| AppError::Internal(format!("enabling foreign_keys: {e}")))?;
-        conn.pragma_update(None, "journal_mode", "WAL")
-            .map_err(|e| AppError::Internal(format!("enabling WAL: {e}")))?;
+        // ── Open, with stale-`-shm` recovery ─────────────────────────────
+        // `scripts/start-desktop.bat` stops a previous dev instance with
+        // `taskkill /F /T`, and `cargo tauri dev` restarts the binary after
+        // every Rust edit. Windows releases a memory-mapped `-shm` sidecar
+        // LAZILY, measurably later than the owning process exits, so the
+        // successor finds the file still mapped and the first statement that
+        // touches the database fails with SQLITE_CANTOPEN — "unable to open
+        // database file" (observed 2026-09-28, setup hook panicked).
+        //
+        // Every step that can raise that code lives inside
+        // `open_store_connection`, which re-deletes the stale `-shm` and
+        // retries. Coverage of the *whole* open sequence, not only the
+        // journal-mode transition, is the point: on a database whose header
+        // already says WAL the transition is skipped, so a retry wrapped
+        // around the transition alone would never run — and the plain
+        // `Connection::open` above is lazy, meaning the failure surfaces on
+        // whichever pragma happens to touch the file first.
+        // The `-wal` file is left intact so WAL recovery can commit its
+        // frames on the next open.
+        let mut conn = open_store_connection(&db_path)?;
+
+        // The writability gate (`BEGIN IMMEDIATE; ROLLBACK;`) runs inside
+        // `open_store_connection`, not here. See that function for why it has
+        // to be part of the retried sequence rather than a probe out here.
 
         migrations::run(&mut conn)
             .map_err(|e| AppError::Internal(format!("running migrations: {e}")))?;
@@ -248,7 +288,7 @@ impl AppState {
             .map_err(|e| AppError::Internal(format!("tenant integrity check: {e}")))?;
 
         // Seed the primary store profile if none exists.
-        seed_primary_store(&conn)
+        seed_primary_store(&mut conn)
             .map_err(|e| AppError::Internal(format!("seeding primary store: {e}")))?;
 
         // ── Popularity full pass (ADR #37) ────────────────────────────
@@ -402,11 +442,12 @@ impl AppState {
 /// `INSERT OR IGNORE` cannot change the existing `is_primary` value — leaving
 /// `get_primary_store()` (which queries `is_primary = 1`) returning `None`
 /// and breaking boot on a fresh install.
-fn seed_primary_store(conn: &Connection) -> Result<(), rusqlite::Error> {
-    let count: i64 = conn.query_row("SELECT COUNT(*) FROM locations", [], |r| r.get(0))?;
+fn seed_primary_store(conn: &mut Connection) -> Result<(), rusqlite::Error> {
+    let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+    let count: i64 = tx.query_row("SELECT COUNT(*) FROM locations", [], |r| r.get(0))?;
     if count == 0 {
         let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
-        conn.execute(
+        tx.execute(
             "INSERT INTO locations (id, name, address, tax_id, currency, timezone, is_primary, created_at, updated_at)
              VALUES ('default', 'Main Store', '', '', 'USD', 'UTC', 1, ?1, ?1)",
             rusqlite::params![now],
@@ -416,7 +457,7 @@ fn seed_primary_store(conn: &Connection) -> Result<(), rusqlite::Error> {
         // Promote the canonical 'default' store to primary. The unique partial
         // index on is_primary = 1 allows at most one primary store, so only
         // promote when no other store is already primary (multi-store case).
-        let affected = conn.execute(
+        let affected = tx.execute(
             "UPDATE locations SET is_primary = 1
              WHERE id = 'default'
                AND NOT EXISTS (
@@ -428,6 +469,7 @@ fn seed_primary_store(conn: &Connection) -> Result<(), rusqlite::Error> {
             tracing::info!("promoted 'default' store profile to primary");
         }
     }
+    tx.commit()?;
     Ok(())
 }
 
@@ -655,13 +697,32 @@ impl AppState {
     /// `bound_store_id`. Used by [`resolve_scope`] when a session
     /// carries a `restaurant_pos_id`.
     ///
-    /// Uses `blocking_lock()` on the tokio Mutex — safe here because
-    /// the lock is held for a single indexed SELECT (microseconds).
+    /// # Why this uses `try_lock`, not `blocking_lock`
     ///
-    /// Returns `AppError::Invalid` if the terminal is not found or
-    /// has no binding.
+    /// This is a sync `fn` reached from async command bodies via
+    /// [`resolve_scope`], so the calling thread is driving async tasks. In
+    /// tokio 1.49 `blocking_lock` is `future::block_on(self.lock())`, whose
+    /// first act is `try_enter_blocking_region().expect(..)` — there is no
+    /// uncontended fast path, so this was a guaranteed panic on first use,
+    /// not a parked worker. The critical-section duration is irrelevant;
+    /// the panic fires on entry.
+    ///
+    /// `try_lock` cannot panic. A busy global DB yields `AppError::Invalid`,
+    /// which [`resolve_scope`] already handles by logging and falling back
+    /// to `session.store_id`.
+    ///
+    /// Returns `AppError::Invalid` if the terminal is not found, has no
+    /// binding, or the global DB is momentarily busy.
     fn resolve_restaurant_pos_store(&self, restaurant_pos_id: &str) -> Result<String, AppError> {
-        let db = self.db.blocking_lock();
+        let db = match self.db.try_lock() {
+            Ok(db) => db,
+            Err(e) => {
+                return Err(AppError::Invalid(format!(
+                    "global DB busy while resolving restaurant POS \
+                     '{restaurant_pos_id}' binding: {e}"
+                )));
+            }
+        };
         let binding: Option<String> = db
             .query_row(
                 "SELECT bound_location_id FROM terminals WHERE id = ?1",

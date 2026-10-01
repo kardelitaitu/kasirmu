@@ -239,8 +239,8 @@ func enforceTrialLock(app core.App, hardwareFingerprint, machineID, tenantID str
 }
 
 // normalizeBundleID canonicalizes an activation request's bundle_id.
-// Only "restaurant_starter" is recognized today (TODO C3.2); anything else
-// (blank, unknown, malformed) normalizes to "" — a no-op bundle.
+// Only "restaurant_starter" is recognized (the single bundle shipped by C3.2);
+// anything else (blank, unknown, malformed) normalizes to "" — a no-op bundle.
 func normalizeBundleID(bundle string) string {
 	b := strings.ToLower(strings.TrimSpace(bundle))
 	if b == "restaurant_starter" {

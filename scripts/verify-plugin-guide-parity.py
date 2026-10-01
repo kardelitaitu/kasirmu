@@ -95,6 +95,57 @@ DESCRIPTION = (
 )
 
 
+def self_test() -> int:
+    """Liveness for the four PARSERS, which is the leg nothing else here covers.
+
+    This gate runs in dev-ci and check.sh and had no test of any kind. Every claim it
+    makes is a REGEX match, and its failure direction is the quiet one: if OZ_SET stops
+    matching, implemented_bindings() returns an empty oz set, and "implemented but not
+    documented" then has nothing to complain about -- the gate reports parity on a
+    plugin crate whose entire binding table it is no longer reading. The same holds
+    for OZ_TOKEN on the guide side. Nothing else in the job would notice.
+
+    The first four cases are PURE: a regex that cannot match its own planted text is
+    not a regex that works. The last is a live floor, the same shape check-env-docs
+    uses -- it is the only part that touches the tree, and it exists because a
+    perfectly-matched regex against an empty file still measures nothing.
+
+    Proven by mutation: pointing OZ_SET at a pattern that cannot match turns case 2
+    red. Pure except for that one floor; no file is created, written or modified.
+    """
+    bad: list[str] = []
+
+    def want(name: str, got, expect) -> None:
+        if got != expect:
+            bad.append(f"{name}: expected {expect!r}, got {got!r}")
+
+    want("OZ_TOKEN finds a planted table token",
+         [m.group(1) for m in OZ_TOKEN.finditer("| `oz.discount_apply` | yes |")],
+         ["discount_apply"])
+    want("OZ_SET finds a planted registration",
+         [m.group(1) for m in OZ_SET.finditer('oz.set("promo_lookup", "k");')],
+         ["promo_lookup"])
+    want("LEGACY_HEAD finds a planted hook list",
+         bool(LEGACY_HEAD.finditer("const LEGACY_HOOK_NAMES: &[&str] = &[\n")), True)
+    want("CLI_DOC finds a planted subcommand",
+         [m.group(1) for m in CLI_DOC.finditer("cargo run -p kasirmu-cli -- migrate")],
+         ["migrate"])
+
+    # Live floor: on THIS tree the parsers must find something. A regex can match a
+    # planted string perfectly and still read an empty or renamed file as nothing.
+    oz, legacy = implemented_bindings()
+    if not (oz or legacy):
+        bad.append("live floor: implemented_bindings() found no bindings at all")
+    if not documented_bindings():
+        bad.append("live floor: documented_bindings() found nothing in the guide")
+
+    if bad:
+        print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
+        return 2
+    print("SELF-TEST OK (6 cases, read-only)")
+    return 0
+
+
 def documented_bindings() -> set[str]:
     """Return every binding named in the guide.
 
@@ -156,7 +207,15 @@ def main() -> int:
         help="Always exit 0; print the report and return. Useful for "
              "human-readable summaries without failing CI.",
     )
+    parser.add_argument(
+        "--self-test",
+        action="store_true",
+        help="Run this checker's parser cases and exit.",
+    )
     args = parser.parse_args()
+
+    if args.self_test:
+        return self_test()
 
     if not GUIDE.exists():
         print(f"error: guide not found: {GUIDE}", file=sys.stderr)

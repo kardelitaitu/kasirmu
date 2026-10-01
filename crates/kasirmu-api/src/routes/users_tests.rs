@@ -75,6 +75,96 @@ async fn create_user_returns_201_with_default_tenant() {
     assert_eq!(json["display_name"], "Alice");
 }
 
+// ── pin_hash must never reach the wire ──────────────────────────
+
+/// The handler used to serialise `kasirmu_core::User` directly, whose
+/// `pin_hash` has no `#[serde(skip)]`, so the live 201 carried the stored
+/// Argon2id verifier while the published `UserResponse` schema declared no
+/// such property. This is the regression test for that class: the response
+/// body must not contain `pin_hash` at all.
+#[tokio::test]
+async fn create_user_response_omits_pin_hash() {
+    let app_state = state();
+    {
+        let db = app_state.db.lock().await;
+        seed_role(&db, "role-staff");
+    }
+    let response = create_user(
+        State(app_state),
+        HeaderMap::new(),
+        Extension(claims(None)),
+        Json(body()),
+    )
+    .await
+    .into_response();
+    assert_eq!(response.status(), StatusCode::CREATED);
+
+    let bytes = to_bytes(response.into_body(), 4096).await.unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+
+    assert!(
+        json.get("pin_hash").is_none(),
+        "the credential verifier must never be serialised, got: {json}"
+    );
+    // Belt and braces: no key anywhere in the body may even name it.
+    assert!(
+        !serde_json::to_string(&json).unwrap().contains("pin_hash"),
+        "the literal `pin_hash` must not appear in the response body: {json}"
+    );
+}
+
+/// The published schema and the real payload must describe the SAME field
+/// set — the drift this fix closes was exactly a disagreement between the
+/// two, in both directions (`pin_hash` live-but-undocumented, `tenant_id`
+/// documented-but-never-emitted). Deriving the expectation from the spec
+/// means a future edit to either side fails here.
+#[tokio::test]
+async fn create_user_wire_shape_matches_published_schema() {
+    let app_state = state();
+    {
+        let db = app_state.db.lock().await;
+        seed_role(&db, "role-staff");
+    }
+    let response = create_user(
+        State(app_state),
+        HeaderMap::new(),
+        Extension(claims(None)),
+        Json(body()),
+    )
+    .await
+    .into_response();
+    let bytes = to_bytes(response.into_body(), 4096).await.unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+
+    let spec = crate::spec::base_spec();
+    let schema = &spec["components"]["schemas"]["UserResponse"];
+
+    let emitted: std::collections::BTreeSet<String> =
+        json.as_object().unwrap().keys().cloned().collect();
+    let documented: std::collections::BTreeSet<String> = schema["properties"]
+        .as_object()
+        .unwrap()
+        .keys()
+        .cloned()
+        .collect();
+    assert_eq!(
+        emitted, documented,
+        "the live 201 body and the published UserResponse schema have drifted apart"
+    );
+
+    let required: std::collections::BTreeSet<String> = schema["required"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_str().unwrap().to_owned())
+        .collect();
+    assert!(
+        required.is_subset(&emitted),
+        "the schema requires fields the handler never emits: {:?}",
+        required.difference(&emitted).collect::<Vec<_>>()
+    );
+}
+
 #[tokio::test]
 async fn create_user_stamps_tenant_from_claims() {
     let app_state = state();

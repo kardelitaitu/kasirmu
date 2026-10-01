@@ -44,7 +44,7 @@ fn qris_from_env_missing_key() {
         Err(_) => {
             assert!(result.is_err());
             let msg = result.unwrap_err().to_string();
-            assert!(msg.contains("not set"), "error: {}", msg);
+            assert!(msg.contains("not set"), "error: {msg}");
         }
     }
 }
@@ -54,8 +54,7 @@ fn qris_generate_order_id_format() {
     let id = QrisPaymentProcessor::generate_order_id();
     assert!(
         id.starts_with("QRIS-"),
-        "order id should start with QRIS-: {}",
-        id
+        "order id should start with QRIS-: {id}"
     );
     assert!(id.len() > 10, "order id should have reasonable length");
 }
@@ -240,7 +239,7 @@ fn qris_parse_error_empty() {
 #[test]
 fn qris_debug_masks_key() {
     let proc = QrisPaymentProcessor::new(&test_key(), false);
-    let debug = format!("{:?}", proc);
+    let debug = format!("{proc:?}");
     assert!(!debug.contains("test_key"));
     assert!(!debug.contains("MID-server"));
     assert!(debug.contains("***"));

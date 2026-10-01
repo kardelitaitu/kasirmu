@@ -11,17 +11,26 @@ import {
 
 // ── Types ─────────────────────────────────────────────────────
 
-/** Current backup status information. */
+/**
+ * Current backup status information.
+ *
+ * FIELD NAMES ARE THE WIRE'S, NOT THE UI'S CONVENTION: the Rust `BackupStatus`
+ * derives `Serialize` with no `rename_all`, so the IPC keys are snake_case.
+ * Reading `lastBackup` here silently yielded `undefined` — which
+ * `BackupSection` renders as the load-FAILURE state, a wrong compliance claim.
+ * Every fixture and the dev-mock used to agree with the camelCase reading, so
+ * nothing could detect it; `api-data-contract.test.ts` now pins the real keys.
+ */
 export interface BackupStatus {
-  lastBackup: string | null;
-  lastBackupSize: string | null;
+  last_backup: string | null;
+  last_backup_size: string | null;
   // dbPath intentionally removed — M-7: never expose filesystem path in unauth'd DTO.
 }
 
-/** Result of a backup operation. */
+/** Result of a backup operation. Wire keys are snake_case — see [`BackupStatus`]. */
 export interface BackupResult {
   path: string;
-  sizeBytes: number;
+  size_bytes: number;
 }
 
 /** Arguments for exporting store data to an .kasirpkg file. */
@@ -33,35 +42,41 @@ export interface ExportDataArgs {
   dateTo?: string;
 }
 
-/** Result of a data export operation. */
+/** Result of a data export operation. Wire keys are snake_case — see [`BackupStatus`]. */
 export interface ExportDataResult {
   path: string;
-  sizeBytes: number;
+  size_bytes: number;
   types: string[];
 }
 
-/** Preview of an .kasirpkg import file before actually importing. */
+/**
+ * Preview of an .kasirpkg import file before actually importing.
+ * Wire keys are snake_case — see [`BackupStatus`].
+ */
 export interface ImportPreviewResult {
-  storeName: string;
-  appVersion: string;
-  createdAt: string;
+  store_name: string;
+  app_version: string;
+  created_at: string;
   types: string[];
-  productCount: number;
-  categoryCount: number;
-  saleCount: number | null;
-  customerCount: number | null;
-  userCount: number | null;
-  settingCount: number | null;
+  product_count: number;
+  category_count: number;
+  sale_count: number | null;
+  customer_count: number | null;
+  user_count: number | null;
+  setting_count: number | null;
 }
 
-/** Result of an import operation with per-type counts. */
+/**
+ * Result of an import operation with per-type counts.
+ * Wire keys are snake_case — see [`BackupStatus`].
+ */
 export interface ImportDataResult {
-  productsImported: number;
-  categoriesImported: number;
-  salesImported: number;
-  customersImported: number;
-  usersImported: number;
-  settingsImported: number;
+  products_imported: number;
+  categories_imported: number;
+  sales_imported: number;
+  customers_imported: number;
+  users_imported: number;
+  settings_imported: number;
 }
 
 // ── File dialog helpers ───────────────────────────────────────
@@ -337,3 +352,107 @@ export const importData = (
     sessionToken,
     args: { file_path: filePath, password },
   });
+
+// ── C8 S5b: the restore surface ───────────────────────────────
+//
+// All three commands are DESKTOP-only and every one of them resolves a session
+// on the Rust side (apps/desktop-tauri/src/commands/data.rs:171-231), so unlike
+// `getBackupStatus` there is no unscoped twin to fall back to: without a
+// session token these cannot be called at all, and the UI says so rather than
+// firing a doomed invoke.
+//
+// WIRE KEYS ARE SNAKE_CASE throughout — the Rust DTOs in
+// crates/kasirmu-bridge/src/data/dto.rs:117-191 derive `Serialize` with no
+// `rename_all`, the same trap `BackupStatus` documents above. `size_bytes`,
+// `candidate_schema` and `candidate_path` are NOT camelCase on the wire.
+
+/**
+ * One backup generation found beside the live database.
+ *
+ * `verdict` is the core's stable wire name (`Acceptable`, `OlderButAcceptable`,
+ * `NewerThanThisBuild`, `Corrupt`), never a bool — an operator has to be told
+ * *why* a generation is unusable, which is what `reason` carries. A generation
+ * that exists but FAILS validation is still listed, as `Corrupt`: omitting it
+ * would hide the one thing the list exists to show.
+ *
+ * NOTE there is deliberately no `store_name` field. See {@link prepareRestore}.
+ */
+export interface RestoreCandidate {
+  generation: number;
+  path: string;
+  size_bytes: number;
+  modified: string | null;
+  verdict: string;
+  restorable: boolean;
+  reason: string;
+  candidate_schema: string | null;
+  build_schema: string | null;
+}
+
+/** Result of listing the generations beside the live database. */
+export interface ListRestoreCandidatesResult {
+  candidates: RestoreCandidate[];
+  generations_examined: number;
+}
+
+/**
+ * Arguments for requesting a restore.
+ *
+ * `confirm_store_name` is the operator retyping the store name that the
+ * CANDIDATE database carries — not the live store's name, because the live
+ * database is the one being replaced.
+ *
+ * ⚠️ THE UI MUST NOT PRE-FILL, SUGGEST OR DISPLAY THIS VALUE. The bridge
+ * derives the expected name itself and deliberately does not echo it back
+ * (crates/kasirmu-bridge/src/data/restore.rs:209-210: "the confirmation is only
+ * a real barrier if the answer is not in the error"). `RestoreCandidate`
+ * therefore carries no store name, and a UI that surfaced one — from the live
+ * store, from an export preview, from anywhere — would hand the operator the
+ * answer and reduce a deliberate barrier to a copy-paste. The field is a typed
+ * confirmation on purpose.
+ */
+export interface RestorePrepareArgs {
+  candidate_path: string;
+  confirm_store_name: string;
+}
+
+/** Result of requesting a restore. The restore itself happens on the NEXT boot. */
+export interface RestorePrepareResult {
+  candidate_path: string;
+  request_path: string;
+  requested_at: string;
+  verdict: string;
+  candidate_schema: string | null;
+}
+
+/** Whether a restore request file is pending beside the live database. */
+export interface RestoreStatus {
+  pending: boolean;
+  candidate_path: string | null;
+  requested_at: string | null;
+  verdict: string | null;
+  /** Set when the request file exists but could not be read or parsed. */
+  error: string | null;
+}
+
+/** List the backup generations beside the live database, each with its verdict. */
+export const listRestoreCandidates = (
+  sessionToken: string,
+): Promise<ListRestoreCandidatesResult> =>
+  loggedInvoke<ListRestoreCandidatesResult>('list_restore_candidates', { sessionToken });
+
+/** Read whether a restore request is already pending. */
+export const getRestoreStatus = (sessionToken: string): Promise<RestoreStatus> =>
+  loggedInvoke<RestoreStatus>('restore_status', { sessionToken });
+
+/**
+ * Request a restore of `args.candidate_path` on the next boot.
+ *
+ * REFUSED rather than queued: an unusable candidate, or a store name that does
+ * not match the candidate's own, returns an error and writes no request file.
+ */
+export const prepareRestore = (
+  sessionToken: string,
+  args: RestorePrepareArgs,
+): Promise<RestorePrepareResult> =>
+  loggedInvoke<RestorePrepareResult>('restore_prepare', { sessionToken, args });

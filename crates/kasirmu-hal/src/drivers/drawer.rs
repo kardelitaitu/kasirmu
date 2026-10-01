@@ -114,11 +114,19 @@ impl SerialCashDrawer {
         }
     }
 
-    /// Discover serial ports that look like cash drawers.
+    /// Discover serial ports that could carry a cash drawer.
     ///
-    /// Uses the same KNOWN_SERIAL_ADAPTERS list as the serial scanner
-    /// driver to find USB-to-serial adapters. Returns a driver for
-    /// each discovered port.
+    /// HAL-A: this is deliberately NOT called by
+    /// [`crate::registry::DriverRegistry::discover`], and it does **not**
+    /// filter to known adapters — it calls `probe_ports(false)`, whose own doc
+    /// says `false` keeps "every port the OS reports". An earlier version of
+    /// this comment claimed it used the scanner driver's KNOWN_SERIAL_ADAPTERS
+    /// list, which was wrong: nothing here can tell a drawer from a modem, and
+    /// a drawer is only ever reachable by its configured id (see
+    /// `register_serial_drawer`).
+    ///
+    /// Kept as a discovery helper for the setup wizard's port picker. Callers
+    /// must not treat the result as "these are drawers".
     pub fn discover_all() -> Vec<Self> {
         let ports = match serial::probe_ports(false) {
             Ok(p) => p,
@@ -154,7 +162,11 @@ impl CashDrawer for SerialCashDrawer {
             Ok::<_, HalError>(())
         })
         .await
-        .map_err(|e| HalError::Bluetooth(format!("serial drawer join: {e}")))?
+        // HAL-B: a serial (or USB-serial) drawer must not report its transport
+        // failure as Bluetooth — `HalErrorKind` is the machine-readable field UI
+        // code branches on, so the wrong variant misroutes the one signal meant
+        // to be unambiguous.
+        .map_err(|e| HalError::Io(std::io::Error::other(format!("serial drawer join: {e}"))))?
     }
 
     fn device_info(&self) -> DeviceInfo {

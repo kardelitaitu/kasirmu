@@ -58,3 +58,33 @@ fn get_terminal_with_optional_fields() {
     assert_eq!(t.terminal_secret.as_deref(), Some("s3cret"));
     assert_eq!(t.metadata.as_deref(), Some("{\"version\":2}"));
 }
+
+// ── P3.2/P3.5: the repository is namespace-checked ──────────────────────
+
+/// The wrap must not have widened the module's reach: its own table passes the
+/// ownership check, a foreign table through the same handle is refused.
+#[test]
+fn the_repository_is_scoped_to_its_own_namespace() {
+    use kasirmu_core::db::Store;
+    use kasirmu_core::db::namespaced::{Grants, ModuleId, NamespaceError, NamespacedStore};
+
+    let conn = fresh();
+    let ns = NamespacedStore::new(Store::new(&conn), ModuleId("terminal"), Grants::none());
+
+    ns.own()
+        .query(
+            "SELECT id FROM terminals WHERE id = ?1",
+            rusqlite::params!["t"],
+            |row| row.get::<_, String>(0),
+        )
+        .expect("terminal must be allowed to read its own table");
+
+    let err = ns
+        .own()
+        .query("SELECT id FROM sales", [], |row| row.get::<_, String>(0))
+        .unwrap_err();
+    assert!(
+        matches!(err, NamespaceError::Foreign { ref table, .. } if table == "sales"),
+        "expected Foreign on sales, got {err:?}"
+    );
+}

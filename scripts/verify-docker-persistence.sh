@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # scripts/verify-docker-persistence.sh — Docker volume persistence gate.
 #
-# Verifies that BOTH OZ-POS container images survive a full container
+# Verifies that BOTH kasir.mu container images survive a full container
 # replacement on their named volumes, exactly as production restarts them:
 #
 #   cloud   — SQLite at OZ_DB_PATH=/data/kasir.db on a named volume.

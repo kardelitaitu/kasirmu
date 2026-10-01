@@ -348,6 +348,218 @@ fn mark_offline_synced_refuses_to_resurrect_dead_lettered_row() {
     assert_eq!(synced_at, "", "no sync timestamp may be invented");
 }
 
+/// The TENANT-SCOPED mark must preserve the terminal state exactly as its
+/// unscoped sibling does.
+///
+/// The unscoped variant is a guarded compare-and-set
+/// (`WHERE id = ?1 AND status = 'pending'`) and its doc says why: a stale or
+/// double caller must not "overwrite a dead-lettered (`failed`) row's terminal
+/// state with `synced`". The tenant-scoped variant guards only on `tenant_id`,
+/// so it DID resurrect a failed row — proven by probe: a `failed` row with
+/// `retry_count = 3` and `last_error = 'server error'` came back as
+/// `status = 'synced'` with an invented `synced_at`, while the retry count and
+/// the error text stayed behind, i.e. an internally contradictory row. The
+/// unscoped call on the same row correctly left it `failed`.
+///
+/// Nothing else reads `status = 'failed'` — the dead-letter quarantine lives in
+/// `sync_remote_failures.dead_lettered`, a different table, and retries are
+/// driven from there — so the damage is confined to the queue-status summary
+/// (`SUM(retry_count) WHERE status = 'failed'`), which silently stops counting
+/// the row. That is the same hidden-failure state COR-20 forbids elsewhere in
+/// this module.
+#[test]
+fn tenant_scoped_mark_synced_refuses_to_resurrect_a_dead_lettered_row() {
+    let conn = fresh();
+    let s = store(&conn);
+    conn.execute_batch(
+        "INSERT INTO offline_queue (id, action, payload, status, retry_count, last_error, created_at, synced_at, tenant_id)
+         VALUES ('oq-f', 'sale.create', '{}', 'failed', 3, 'server error', '2025-01-01T10:00:00.000Z', '', 'tenant-a');"
+    )
+    .unwrap();
+
+    s.mark_offline_synced_for_tenant("oq-f", "tenant-a")
+        .unwrap();
+
+    let (status, retry, last_error, synced_at): (String, i64, String, String) = conn
+        .query_row(
+            "SELECT status, retry_count, last_error, synced_at FROM offline_queue WHERE id = 'oq-f'",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+        )
+        .unwrap();
+    assert_eq!(status, "failed", "a terminal failure must stay terminal");
+    assert_eq!(retry, 3, "the retry count is part of the record");
+    assert_eq!(last_error, "server error");
+    assert_eq!(synced_at, "", "no sync timestamp may be invented");
+}
+
+/// The TENANT-SCOPED mark must also join a caller's transaction (C19 slice B).
+///
+/// Its unscoped sibling pins this contract
+/// (`mark_offline_synced_joins_caller_transaction`), and the tenant variant
+/// carried the same gap the resolution mark had: it ran a bare
+/// `self.conn.execute` and an existence probe against the BARE connection,
+/// so the probe could read a state the write never saw, and a rolled-back
+/// caller left the row marked. Both are fixed here rather than left to the
+/// next reader, because C19 slice A's own doc names this as the reason the
+/// wrapper exists ("the existence probe and the write that depends on it are
+/// atomic").
+#[test]
+fn tenant_scoped_mark_synced_joins_caller_transaction() {
+    let conn = fresh();
+    conn.execute_batch(
+        "INSERT INTO offline_queue (id, action, payload, status, retry_count, last_error, created_at, synced_at, tenant_id)
+         VALUES ('oq-tx', 'sale.create', '{}', 'pending', 0, '', '2025-01-01T10:00:00.000Z', '', 'tenant-a');"
+    )
+    .unwrap();
+
+    let tx = conn.unchecked_transaction().unwrap();
+    store(&conn)
+        .mark_offline_synced_for_tenant("oq-tx", "tenant-a")
+        .unwrap();
+    let inside: String = tx
+        .query_row(
+            "SELECT status FROM offline_queue WHERE id = 'oq-tx'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(inside, "synced", "visible inside the caller's transaction");
+    tx.rollback().unwrap();
+
+    let after: String = conn
+        .query_row(
+            "SELECT status FROM offline_queue WHERE id = 'oq-tx'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        after, "pending",
+        "a rolled-back caller must leave the row un-marked"
+    );
+}
+
+// ── C19 slice B: mark_offline_resolved ──────────────────────────
+
+/// The conflict-resolution mark must not resurrect a dead-lettered row either.
+///
+/// `mark_offline_resolved` is the THIRD sibling of this shape and the only one
+/// with no guard at all: its UPDATE is `WHERE id = ?2`, with no
+/// `status = 'pending'` term, so a stale or double caller flips a
+/// `failed` row to `synced` and invents a `synced_at` over a row whose
+/// `retry_count` and `last_error` still record the failure — an internally
+/// contradictory row that the queue-status summary
+/// (`SUM(retry_count) WHERE status = 'failed'`) silently stops counting.
+///
+/// This is the same data-losing case as
+/// `mark_offline_synced_refuses_to_resurrect_dead_lettered_row` and
+/// `tenant_scoped_mark_synced_refuses_to_resurrect_a_dead_lettered_row`, which
+/// is why the guard belongs here too. Unlike those two, no test covered this
+/// sibling at all before this one — verified by grep:
+/// `mark_offline_resolved` had ZERO references in this file.
+#[test]
+fn mark_offline_resolved_refuses_to_resurrect_a_dead_lettered_row() {
+    let conn = fresh();
+    seed_pending_and_synced(&conn);
+
+    // oq-4 is the shared fixture's `failed` row (retry_count 3, last_error
+    // 'server error', empty synced_at) — the same one the unscoped mark is
+    // pinned against, so the two siblings are compared on identical data.
+    store(&conn)
+        .mark_offline_resolved("oq-4", "local won")
+        .unwrap();
+
+    let (status, retry_count, last_error, synced_at): (String, i64, String, String) = conn
+        .query_row(
+            "SELECT status, retry_count, last_error, synced_at FROM offline_queue WHERE id = 'oq-4'",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+        )
+        .unwrap();
+    assert_eq!(status, "failed", "a terminal failure must stay terminal");
+    assert_eq!(retry_count, 3, "the retry count is part of the record");
+    assert_eq!(last_error, "server error", "the failure text must survive");
+    assert_eq!(synced_at, "", "no sync timestamp may be invented");
+}
+
+/// A PENDING row is still resolved normally — the fix must not break the path.
+#[test]
+fn mark_offline_resolved_still_resolves_a_pending_row() {
+    let conn = fresh();
+    seed_pending_and_synced(&conn);
+
+    store(&conn)
+        .mark_offline_resolved("oq-1", "local won")
+        .unwrap();
+
+    let (status, last_error): (String, String) = conn
+        .query_row(
+            "SELECT status, last_error FROM offline_queue WHERE id = 'oq-1'",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!(status, "synced");
+    assert_eq!(
+        last_error, "resolved: conflict (local won)",
+        "the resolution marker is how the status summary counts conflicts"
+    );
+}
+
+/// The resolution mark must JOIN a caller's transaction, not open its own.
+///
+/// The same contract `mark_offline_synced_joins_caller_transaction` pins
+/// for the sibling: a caller that rolls back must leave the row un-marked,
+/// because the action the resolution belongs to did not happen. If this
+/// function autocommitted, the rollback below would leave the row `synced`.
+#[test]
+fn mark_offline_resolved_joins_caller_transaction() {
+    let conn = fresh();
+    seed_pending_and_synced(&conn);
+
+    let tx = conn.unchecked_transaction().unwrap();
+    store(&conn)
+        .mark_offline_resolved("oq-1", "crdt merge")
+        .unwrap();
+    let inside: String = tx
+        .query_row(
+            "SELECT status FROM offline_queue WHERE id = 'oq-1'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(inside, "synced", "visible inside the caller's transaction");
+    tx.rollback().unwrap();
+
+    let after: String = conn
+        .query_row(
+            "SELECT status FROM offline_queue WHERE id = 'oq-1'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        after, "pending",
+        "a rolled-back caller must leave the row un-marked"
+    );
+}
+
+/// An unknown id is still NotFound, not a silent no-op.
+#[test]
+fn mark_offline_resolved_still_reports_an_unknown_id() {
+    let conn = fresh();
+    seed_pending_and_synced(&conn);
+
+    let err = store(&conn)
+        .mark_offline_resolved("does-not-exist", "local won")
+        .unwrap_err();
+    assert!(
+        matches!(err, CoreError::NotFound { .. }),
+        "a missing row must stay NotFound; got {err:?}"
+    );
+}
+
 // ── Mark failed ─────────────────────────────────────────────────
 
 #[test]
@@ -429,6 +641,91 @@ fn enqueue_offline_with_tenant_sets_tenant_id() {
         .unwrap();
     assert_eq!(item.tenant_id, "tenant-a");
     assert_eq!(item.action, "sale.create");
+}
+
+#[test]
+fn enqueue_offline_preserving_item_keeps_identity_and_forces_pending() {
+    // The re-enqueue seam the CRDT merge path uses (platform/sync/src/queue.rs
+    // apply_resolution). It must persist the caller's identity verbatim — id,
+    // tenant, retry_count, priority, origin — and only override the fields that
+    // hand the row back to the push loop.
+    let conn = fresh();
+    let s = store(&conn);
+
+    let mut winner = OfflineQueueItem::new("stock.adjusted", r#"{"sku":"COFFEE","delta":10}"#);
+    winner.id = "winner-1".into();
+    winner.tenant_id = "store-a".into();
+    winner.retry_count = 4;
+    winner.priority = SyncPriority::Critical;
+    winner.origin_terminal_id = Some("term-9".into());
+    // A consumed/failed state must NOT survive the re-enqueue.
+    winner.status = OfflineQueueStatus::Failed;
+    winner.synced_at = Some("2025-01-01T00:00:00.000Z".into());
+
+    let stored = s.enqueue_offline_preserving_item(&winner).unwrap();
+
+    assert_eq!(
+        stored.id, "winner-1",
+        "the caller's uuid is reused, not re-minted"
+    );
+    assert_eq!(
+        stored.tenant_id, "store-a",
+        "the delta's own tenant is preserved"
+    );
+    assert_eq!(
+        stored.retry_count, 4,
+        "the retry ceiling rides through, so the bound engages"
+    );
+    assert_eq!(stored.priority, SyncPriority::Critical);
+    assert_eq!(stored.origin_terminal_id.as_deref(), Some("term-9"));
+    assert_eq!(
+        stored.status,
+        OfflineQueueStatus::Pending,
+        "a re-enqueued winner must be pushable"
+    );
+    assert!(
+        stored.synced_at.is_none(),
+        "synced_at is cleared for the new attempt"
+    );
+
+    // Read it back to prove the row (not just the returned struct) kept them.
+    let loaded = s
+        .list_pending_offline_for_tenant("store-a")
+        .unwrap()
+        .into_iter()
+        .find(|i| i.id == "winner-1")
+        .expect("the winner is pending under its own tenant");
+    assert_eq!(loaded.retry_count, 4);
+    assert_eq!(loaded.priority, SyncPriority::Critical);
+
+    // And the default tenant never sees it: identity follows the row, not a literal.
+    assert!(
+        s.list_pending_offline_for_tenant("default")
+            .unwrap()
+            .is_empty()
+    );
+}
+
+#[test]
+fn enqueue_offline_preserving_item_refuses_a_different_uuid_for_the_same_row() {
+    // Re-enqueue is an INSERT, not an upsert: persisting a SECOND item whose id
+    // already exists is a primary-key violation, not a silent overwrite. That is
+    // what keeps the row's identity single-valued on the wire.
+    let conn = fresh();
+    let s = store(&conn);
+
+    let first = OfflineQueueItem::new("stock.adjusted", r#"{"sku":"COFFEE","delta":1}"#);
+    s.enqueue_offline_preserving_item(&first).unwrap();
+
+    let second = OfflineQueueItem::new("stock.adjusted", r#"{"sku":"COFFEE","delta":2}"#);
+    let dup = OfflineQueueItem {
+        id: first.id.clone(),
+        ..second
+    };
+    assert!(
+        s.enqueue_offline_preserving_item(&dup).is_err(),
+        "a duplicate row id is refused, so a replay cannot clone an identity"
+    );
 }
 
 #[test]

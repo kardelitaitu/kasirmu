@@ -37,7 +37,7 @@ fn price(minor: i64) -> Money {
 
 fn new_sale_line(sale_id: &str, sku: &str, qty: i64, unit_minor: i64, position: i64) -> SaleLine {
     SaleLine {
-        id: format!("line-{}-{}", sale_id, sku),
+        id: format!("line-{sale_id}-{sku}"),
         sale_id: sale_id.to_string(),
         sku: sku.to_string(),
         qty,
@@ -58,7 +58,10 @@ fn new_sale(id: &str, lines: Vec<SaleLine>, total_minor: i64) -> Sale {
         id: id.to_string(),
         status: SaleStatus::Active,
         total: price(total_minor),
-        line_count: lines.len() as i64,
+        // `i64::try_from` rather than `as i64`: a test fixture cannot hold
+        // 2^63 lines, so the conversion is infallible here — stated explicitly
+        // rather than inferred.
+        line_count: i64::try_from(lines.len()).expect("test fixture fits i64"),
         currency: usd(),
         payment_method: Some("cash".to_string()),
         tendered_minor: Some(total_minor),

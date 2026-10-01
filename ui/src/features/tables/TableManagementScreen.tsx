@@ -21,8 +21,13 @@ const STATUS_LABEL_IDS: Record<string, string> = {
   cleaning: 'tables-cleaning',
 };
 
+export interface TableManagementScreenProps {
+  /** Optional callback when a table is selected for assigning to the active cart / order. */
+  onSelectTable?: (tableName: string) => void;
+}
+
 /** Table management screen — interactive floor-plan view for managing restaurant table status (available, occupied, reserved, cleaning). */
-export default function TableManagementScreen() {
+export default function TableManagementScreen({ onSelectTable }: TableManagementScreenProps = {}) {
   const { l10n } = useLocalization();
   const { sessionToken: rawToken } = useWorkspace();
   const sessionToken = rawToken || '';
@@ -249,6 +254,21 @@ export default function TableManagementScreen() {
           )}
 
           <div className="tables-detail-actions">
+            {onSelectTable && (
+              <Button
+                variant="primary"
+                size="sm"
+                data-testid="tables-assign-to-order-btn"
+                onClick={() => {
+                  onSelectTable(selected.name);
+                  closeDetail();
+                }}
+              >
+                <Localized id="tables-assign-to-order">
+                  <span>Select for Order</span>
+                </Localized>
+              </Button>
+            )}
             <Button
               variant={selected.status === 'occupied' ? 'danger' : 'primary'}
               size="sm"

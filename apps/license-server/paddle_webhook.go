@@ -417,21 +417,37 @@ func verifyPaddleConfig() error {
 // only ever widens Plus). Webhook minting passes the bundle from the
 // checkout when the website leg ships; activation passes the request's
 // normalized bundle_id.
+//
+// The warehouse workspace is PREMIUM AND UP (owner ruling 2026-09-29 — the
+// change the website's pricing table publishes as 0/0/0/Unlimited/Unlimited),
+// so the type is absent from every list below Premium, including Pro's. That
+// is why the workspace set is split in two rather than one shared `all`: Pro
+// carries everything EXCEPT warehouse, Premium and Enterprise carry
+// everything.
+//
+// There is no `maxWarehouses` field on the wire at all: the client enforces
+// the warehouse count itself (`SubscriptionTier::max_warehouses()`, plus
+// `allows_workspace_type` for the type). This function's `allowedTypes` is the
+// server's declaration, and the client now overrides it below Premium.
 func tierQuotas(tier, bundle string) (maxStores, maxPOSInstances int, allowedTypes []string) {
-	all := []string{"restaurant-pos", "store-pos", "inventory", "warehouse", "admin", "kds"}
+	// Pro and up: every workspace type except the warehouse.
+	proTypes := []string{"restaurant-pos", "store-pos", "inventory", "admin", "kds"}
+	// Premium and up: the same set plus the warehouse workspace.
+	premiumTypes := []string{"restaurant-pos", "store-pos", "inventory", "warehouse", "admin", "kds"}
 	switch tier {
 	case "enterprise":
-		return 0, 0, all // unlimited stores/instances, all workspace types
-	case "pro":
-		return 2, 5, all
+		return 0, 0, premiumTypes // unlimited stores/instances, all workspace types
 	case "premium":
 		// C4.2: Premium allows up to 5 stores self-serve; >5 requires
 		// Enterprise contract. Unlimited instances and all workspace types.
-		return 5, 0, all
+		return 5, 0, premiumTypes
+	case "pro":
+		// 2 stores, 5 registers/store, kds included; warehouse is Premium+.
+		return 2, 5, proTypes
 	case "plus":
-		// 1 store, 2 registers/store, no kds (§3 Workspace Types — kds is Pro+).
-		// maxWarehouses is enforced client-side via SubscriptionTier::max_warehouses().
-		types := []string{"restaurant-pos", "store-pos", "admin", "inventory", "warehouse"}
+		// 1 store, 2 registers/store, no kds (§3 Workspace Types — kds is Pro+)
+		// and no warehouse (Premium+, 2026-09-29).
+		types := []string{"restaurant-pos", "store-pos", "admin", "inventory"}
 		if bundle == "restaurant_starter" {
 			types = append(types, "kds")
 		}

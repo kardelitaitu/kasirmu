@@ -71,3 +71,7 @@ tier, and expiry, and is where you manage your machines.
 Once activated, the signed payload keeps the app working offline through the
 expiry date plus a grace period, then degrades to the free tier. See
 [Licensing & Plans](../licensing/).
+
+---
+
+Keep reading · **Previous:** [Setup Wizard](../setup-wizard/) · **Next:** [Your First Sale](../first-sale/)

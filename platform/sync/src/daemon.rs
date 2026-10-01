@@ -63,6 +63,160 @@ fn compute_backoff(consecutive_failures: u32) -> Duration {
     Duration::from_millis(jittered)
 }
 
+/// A daemon-status type whose `running` flag the run loop must clear on
+/// EVERY exit path, including a panic (C23).
+///
+/// Implemented for both status types because the two daemons keep separate
+/// structs (`DaemonStatus` here, `crate::pg_daemon::PgDaemonStatus` there) but
+/// share this one rule. The accessor exists so `RunningFlagGuard` can be
+/// written once instead of duplicated per daemon.
+pub trait HasRunningFlag {
+    /// Mutable access to the flag the run loop owns while it is alive.
+    fn running_mut(&mut self) -> &mut bool;
+}
+
+/// Clears a daemon's `running` flag when the run-loop task ends — by return,
+/// by early exit, or by panic.
+///
+/// # Why this is a guard and not a statement after the loop
+///
+/// Both run loops used to clear `running` with a plain `if` **after** their
+/// `loop`, which covers only the normal exit. A panic inside a tick unwinds
+/// the spawned task straight past that code, so the flag stayed `true`
+/// forever and `start` refused with "already running" for the life of the
+/// process — a wedged daemon that no user action could recover. The guard's
+/// `Drop` runs during unwinding as well, so the flag can no longer
+/// outlive the task that owns it.
+///
+/// # Ownership rule
+///
+/// The flag is cleared only when this run **still owns the shutdown slot**.
+/// `stop()` consumes the sender before awaiting exit, so a slot that is
+/// `Some` again means a newer run has already taken over and this stale
+/// task must not clobber the new run's status. That rule is preserved
+/// verbatim from the code it replaces.
+pub(crate) struct RunningFlagGuard<T: HasRunningFlag + Send + Sync + 'static> {
+    status: Arc<RwLock<T>>,
+    shutdown_slot: Arc<Mutex<Option<watch::Sender<bool>>>>,
+    /// This run's own shutdown sender, used to decide whether the slot still
+    /// belongs to us. Compared by channel identity, never by presence.
+    own_shutdown: watch::Sender<bool>,
+    armed: bool,
+}
+
+impl<T: HasRunningFlag + Send + Sync + 'static> RunningFlagGuard<T> {
+    /// Arm the guard for a run whose status has just been set to running.
+    ///
+    /// `own_shutdown` must be the sender this run installed into `shutdown_slot`;
+    /// it is what makes supersession detectable. Identity is the only reliable
+    /// signal here: the run holds its OWN sender in the slot for its whole
+    /// life, so "the slot is `Some`" is true of a healthy run and says
+    /// nothing about whether a newer one has taken over.
+    pub(crate) fn arm(
+        status: Arc<RwLock<T>>,
+        shutdown_slot: Arc<Mutex<Option<watch::Sender<bool>>>>,
+        own_shutdown: watch::Sender<bool>,
+    ) -> Self {
+        Self {
+            status,
+            shutdown_slot,
+            own_shutdown,
+            armed: true,
+        }
+    }
+
+    /// Whether this run may still write the status.
+    ///
+    /// `false` means a newer run installed ITS OWN sender and owns the
+    /// status now, so this run must leave it alone. Note the two cases that
+    /// must both clear, and why presence alone cannot separate them:
+    ///
+    /// * `Some(sender)` where the sender IS ours — a healthy run that is
+    ///   still looping, or one unwinding from a panic. Clears.
+    /// * `None` — `stop()` has already taken our sender, which is the
+    ///   normal shutdown. Clears.
+    ///
+    /// Only `Some(OTHER)` is supersession. An earlier revision tested for
+    /// identity alone, which read `None` as "not ours" and left the flag set
+    /// after every `stop()` — caught by the lifecycle suite, not by review.
+    fn still_owns_slot(slot: &Option<watch::Sender<bool>>, own: &watch::Sender<bool>) -> bool {
+        match slot {
+            Some(s) => s.same_channel(own),
+            None => true,
+        }
+    }
+
+    /// Clear the flag now, consuming the guard.
+    ///
+    /// The orderly path calls this explicitly so `stop()`, which awaits the
+    /// run-loop task, observes the flag already cleared rather than racing
+    /// the guard's drop.
+    pub(crate) async fn clear(mut self) {
+        self.clear_inner().await;
+        self.armed = false;
+    }
+
+    /// The shared clear rule, run exactly once.
+    async fn clear_inner(&self) {
+        let slot = self.shutdown_slot.lock().await;
+        if !Self::still_owns_slot(&slot, &self.own_shutdown) {
+            return;
+        }
+        drop(slot);
+        let mut s = self.status.write().await;
+        *s.running_mut() = false;
+    }
+}
+
+impl<T: HasRunningFlag + Send + Sync + 'static> Drop for RunningFlagGuard<T> {
+    fn drop(&mut self) {
+        if !self.armed {
+            return;
+        }
+        // Reached only on the paths that skip `clear`: an unwinding panic
+        // inside a tick, or cancellation of the run-loop task. This is the
+        // path the pre-C23 code could not serve at all.
+        //
+        // `Drop` cannot await, so both locks are taken non-blockingly. Both
+        // are diagnostics locks held only for field writes, so contention is
+        // transient; rather than dropping the update, a contended lock is
+        // retried on a blocking thread, which cannot itself be abandoned by
+        // the runtime tearing down.
+        let owns = match self.shutdown_slot.try_lock() {
+            Ok(slot) => Self::still_owns_slot(&slot, &self.own_shutdown),
+            // Slot contended: treat as owned, since the only writer is a
+            // newer run's start, and a wrong "owned" here merely clears a flag
+            // the next start sets again.
+            Err(_) => true,
+        };
+        if !owns {
+            return;
+        }
+
+        if let Ok(mut s) = self.status.try_write() {
+            *s.running_mut() = false;
+            return;
+        }
+
+        // Status write contended: finish the clear on a blocking thread so a
+        // panic path cannot silently leave `running` stuck true.
+        let status = Arc::clone(&self.status);
+        let _ = std::thread::Builder::new()
+            .name("running-flag-clear".into())
+            .spawn(move || {
+                if let Ok(mut s) = status.try_write() {
+                    *s.running_mut() = false;
+                }
+            });
+    }
+}
+
+/// Sentinel [`DaemonStatus::pending_count`] (and [`crate::pg_daemon::
+/// PgDaemonStatus::pending_count`]) reports when the offline queue depth could
+/// not be read — kept distinct from `0`, which is a real measurement of an
+/// empty queue. Matches `SyncStore::PENDING_COUNT_UNKNOWN` and
+/// `HealthResponse::sync_queue_depth` on the cloud server.
+pub const PENDING_COUNT_UNKNOWN: i64 = -1;
 /// Snapshot of the daemon's current state, observable via [`SyncDaemon::status`].
 #[derive(Debug, Clone, Default)]
 pub struct DaemonStatus {
@@ -80,8 +234,19 @@ pub struct DaemonStatus {
     pub consecutive_failures: u32,
     /// Backoff delay applied before the current cycle, if any.
     pub backoff_ms: Option<u64>,
-    /// Number of items currently pending in the offline queue.
+    /// Number of items currently pending in the offline queue, or
+    /// [`PENDING_COUNT_UNKNOWN`] when the count could not be read.
+    ///
+    /// `0` means only a real measurement of an empty queue; it must not also
+    /// mean "the read failed", or a terminal reading `sync_status` concludes a
+    /// broken daemon's backlog has drained and stops retrying.
     pub pending_count: i64,
+}
+
+impl HasRunningFlag for DaemonStatus {
+    fn running_mut(&mut self) -> &mut bool {
+        &mut self.running
+    }
 }
 
 /// A reference to a shared DB connection, used by the daemon to create
@@ -127,23 +292,37 @@ pub struct SyncDaemon {
 /// connection. Extracted from [`SyncDaemon::run_tick`] so the read phase
 /// is independently testable.
 ///
-/// Returns `(config, pending)` where `config` is `None` if sync is not
-/// configured or disabled.
+/// Returns `Ok((config, pending))` where `config` is `None` if sync is not
+/// configured or disabled, and `Err(msg)` when the offline queue could not be
+/// read at all. The queue read is NOT collapsed into an empty vector: an empty
+/// push list is indistinguishable from a healthy idle terminal, so a failed
+/// read reported as `[]` would tell the operator the backlog drained when it
+/// was in fact unreadable. The error propagates to the daemon's `read_error`,
+/// which surfaces on `last_error` rather than looking like a clean cycle.
+///
+/// (`SyncConfig::from_settings` still treats an unreadable setting as
+/// "unconfigured": sync not being configured is a legitimate steady state, and
+/// the config read is not a data path the way the queue is.)
 pub(crate) fn read_config_and_pending(
     conn: &rusqlite::Connection,
-) -> (
-    Option<SyncConfig>,
-    Vec<kasirmu_core::offline::OfflineQueueItem>,
-) {
+) -> Result<
+    (
+        Option<SyncConfig>,
+        Vec<kasirmu_core::offline::OfflineQueueItem>,
+    ),
+    String,
+> {
     let store = Store::new(conn);
     let config = SyncConfig::from_settings(&store).ok().flatten();
-    let mut pending = store.list_pending_offline().unwrap_or_default();
+    let mut pending = store.list_pending_offline().map_err(|e| {
+        format!("could not read the offline queue; refusing to report an empty push list: {e}")
+    })?;
     // C49: the ONE ordering rule, shared by every push path. `list_pending_offline`
     // orders by `created_at ASC` alone, so without this a Critical item queued
     // behind a bulk one waits a full cycle and the priority column means nothing.
     // Applied at the READ point so the same vector is pushed and applied by index.
     order_for_push(&mut pending);
-    (config, pending)
+    Ok((config, pending))
 }
 
 /// ADR sync-auth-hardening P1: request a fresh token and persist it as the
@@ -157,10 +336,34 @@ async fn refresh_persisted_api_key(db: &DbConnection, server_url: &str) -> bool 
         tokio::task::spawn_blocking(move || {
             let conn = db_clone.blocking_lock();
             let store = Store::new(&conn);
-            (
-                Settings::get_sync_terminal_id(store.conn()).unwrap_or(None),
-                Settings::get_sync_terminal_secret(store.conn()).unwrap_or(None),
-            )
+            // A decrypt failure is NOT "unpaired". `get_sync_terminal_secret`
+            // fails closed on a value with ciphertext shape that decrypts
+            // under no derivation; collapsing that into `None` silently
+            // demotes this call to the admin-key fallback below, which is a
+            // WEAKER auth path chosen by an integrity failure rather than by
+            // configuration. Logged at error so the operator can tell the two
+            // apart; the `None` still routes to the fallback deliberately.
+            let terminal_id = match Settings::get_sync_terminal_id(store.conn()) {
+                Ok(v) => v,
+                Err(e) => {
+                    tracing::error!(
+                        error = %e,
+                        "sync terminal id could not be decrypted; falling back to admin-key auth"
+                    );
+                    None
+                }
+            };
+            let terminal_secret = match Settings::get_sync_terminal_secret(store.conn()) {
+                Ok(v) => v,
+                Err(e) => {
+                    tracing::error!(
+                        error = %e,
+                        "sync terminal secret could not be decrypted; falling back to admin-key auth"
+                    );
+                    None
+                }
+            };
+            (terminal_id, terminal_secret)
         })
         .await
         .unwrap_or((None, None))
@@ -348,6 +551,11 @@ impl SyncDaemon {
 
         let (tx, rx) = watch::channel(false);
         let shutdown_slot = Arc::clone(&self.shutdown_tx);
+        // A clone for the guard: it must be able to tell "the slot still
+        // holds MY sender" from "a newer run replaced it", and only a
+        // same-channel comparison answers that. Cloning a watch::Sender
+        // shares one channel, so identity survives the move into the slot.
+        let own_shutdown = tx.clone();
         *shutdown_slot.lock().await = Some(tx);
 
         let interval = self.interval;
@@ -361,6 +569,17 @@ impl SyncDaemon {
         }
 
         let worker = tokio::spawn(async move {
+            // C23: own the `running` flag for the whole life of this task, so a
+            // panic inside a tick clears it during unwinding. The previous
+            // code cleared it only after the loop, which a panic skips
+            // entirely — leaving `running = true` and `start` refusing with
+            // "already running" until the process restarted.
+            let _running_guard = RunningFlagGuard::arm(
+                Arc::clone(&daemon_status),
+                Arc::clone(&shutdown_slot),
+                own_shutdown,
+            );
+
             // Re-shadow `rx` as `mut` so the `async move` block can borrow
             // it mutably through the `select!` macro below.
             let mut rx = rx;
@@ -458,14 +677,12 @@ impl SyncDaemon {
                 }
             }
 
-            // Clear `running` only when this run still owns the shutdown
-            // slot: `stop()` consumes the sender before awaiting exit, so a
-            // slot that is `Some` again means a newer run took over and a
-            // stale task must not clobber the new run's status.
-            if shutdown_slot.lock().await.is_none() {
-                let mut s = daemon_status.write().await;
-                s.running = false;
-            }
+            // Clear `running` on the orderly path, before the guard's Drop
+            // would do it: `stop()` awaits this task so it observes the flag
+            // already cleared, and clearing here keeps that ordering explicit
+            // rather than dependent on drop timing. A panic never reaches
+            // this line — the guard covers that case.
+            _running_guard.clear().await;
         });
 
         *self.worker.lock().await = Some(worker);

@@ -4,8 +4,9 @@ area: release
 title: ADR #13: Desktop App Updater — Tauri Plugin + Settings Page Integration
 status: Partially Implemented (2026-07-16) — Settings About page UI is live; see ADR #14 for release automation
 ---
-<!-- Audit stamp: 2026-07-24 · Hermes-Agent · status: RESOLVED (AUDIT-28 2026-08-03) · F1: release workflow is SHIPPED and now builds real Tauri installers with signed latest.json/beta.json manifests (see release.yml + generate-latest-json.mjs). F2: Settings About updater UI is live at SettingsPage.tsx with full updater state + FTL strings. · verified accurate: tauri_plugin_updater registered (lib.rs); @tauri-apps/plugin-updater ^2.10.1 in ui/package.json; tauri.conf.json updater config; oz-pos-updater.key.pub present; capabilities/default.json grants updater:default; UpdateBanner.tsx exists; shared.ftl banner strings present -->
+<!-- Superseded audit marker (2026-07-24, body kept verbatim) · Hermes-Agent · status: RESOLVED (AUDIT-28 2026-08-03) · F1: release workflow is SHIPPED and now builds real Tauri installers with signed latest.json/beta.json manifests (see release.yml + generate-latest-json.mjs). F2: Settings About updater UI is live at SettingsPage.tsx with full updater state + FTL strings. · verified accurate: tauri_plugin_updater registered (lib.rs); @tauri-apps/plugin-updater ^2.10.1 in ui/package.json; tauri.conf.json updater config; oz-pos-updater.key.pub present; capabilities/default.json grants updater:default; UpdateBanner.tsx exists; shared.ftl banner strings present -->
 
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 308 lines, with a prior marker re-verified rather than replaced. ADR #13 covers the in-app updater, and its status line is the kind this campaign has learned to trust — Partially Implemented, with the specific boundary named (the Settings About-page UI is live; release automation is deferred to another ADR) rather than a blanket claim. · THE PRIOR STAMP RECORDS A RESOLUTION RATHER THAN A FINDING, and that is a distinction worth preserving. It notes the release workflow is now SHIPPED and builds real Tauri installers with signed artifacts, which is exactly the gap this campaign has been chasing elsewhere in the tree: the archived CI dashboard said the release job no longer existed, and the changelog set stopped at 0.0.34. Three documents describing the same release pipeline in three different states is the divergence pattern the ARCHITECTURE stub was created to end, and this file is the most current of the three. · WHY IT MATTERS BEYOND ITS OWN LINE COUNT. The updater is the mechanism by which a signed artifact reaches an installed terminal, which makes this ADR upstream of the security posture several other documents in this campaign assume: the keystore guide that had to be corrected about a retired Android workflow, the licence and tamper-resistance decisions that assume a terminal can be brought up to date, and the release checklist whose whole purpose is a trustworthy update path. A document that is honest about the boundary between what shipped and what did not is load-bearing precisely because so much else assumes it. · THE STRUCTURAL NOTE, consistent with the desktop-appupdater family across this tree: the status line names ADR #14 for the release automation rather than absorbing it, and the prior stamp supplies the current answer. Splitting a decision and then cross-referencing the follow-up is what keeps a superseded half from being read as current. · NOT re-measured: the updater's own behaviour, the manifest format, or the signing chain, all of which are the document's content and would need a real update cycle to exercise. What is recorded is that its scope boundary is stated accurately and its cross-references are live. · Prior stamp retained as original evidence; footer re-dated to match the new stamp. -->
 # ADR #13: Desktop App Updater — Tauri Plugin + Settings Page Integration
 
 **Status:** Partially Implemented (2026-07-16) — Settings About page UI is live; see ADR #14 for release automation
@@ -45,7 +46,7 @@ The project already has significant updater scaffolding in place:
 | `updater:default` permission | ✅ Granted | `apps/desktop-client/capabilities/default.json` |
 | `UpdateBanner` component | ✅ Exists | `ui/src/components/UpdateBanner.tsx` |
 | Fluent strings (banner) | ✅ Present | `ui/src/locales/shared.ftl` lines 85-91 |
-| GitHub Release endpoint | ⚡ Referenced | `https://github.com/kardelitaitu/oz-pos/releases/latest/download/latest.json` |
+| GitHub Release endpoint | ⚡ Referenced | `https://github.com/kardelitaitu/kasirmu/releases/latest/download/latest.json` |
 | Settings About page updater UI | ❌ Missing | `ui/src/features/settings/SettingsPage.tsx` |
 | GitHub Actions release workflow | ❌ Missing | `.github/workflows/` is empty |
 | `latest.json` manifest generation | ❌ Missing | No release script |
@@ -139,7 +140,7 @@ After the build artifacts are attached to the release, a job (or step) generates
   "platforms": {
     "windows-x86_64": {
       "signature": "<base64-ed25519-sig-of-the-installer>",
-      "url": "https://github.com/kardelitaitu/oz-pos/releases/download/v0.0.9/kasir.mu_0.0.9_x64-setup.exe"
+      "url": "https://github.com/kardelitaitu/kasirmu/releases/download/v0.0.9/kasir.mu_0.0.9_x64-setup.exe"
     }
   }
 }
@@ -147,7 +148,7 @@ After the build artifacts are attached to the release, a job (or step) generates
 
 The **signature** is generated using the private key (`oz-pos-updater.key`) with a tool like `tauri updater sign` or a Node.js script using `@tauri-apps/plugin-updater` helpers. The private key must be stored as a **GitHub Actions secret** (`UPDATER_PRIVATE_KEY`).
 
-The `latest.json` is uploaded as a release asset so the endpoint `https://github.com/kardelitaitu/oz-pos/releases/latest/download/latest.json` resolves automatically.
+The `latest.json` is uploaded as a release asset so the endpoint `https://github.com/kardelitaitu/kasirmu/releases/latest/download/latest.json` resolves automatically.
 
 #### Workflow Trigger
 - `on: push: tags: ['v*']` — pushing a `v0.0.10` tag triggers a full build and release
@@ -157,7 +158,7 @@ The `latest.json` is uploaded as a release asset so the endpoint `https://github
 The updater endpoint configured in `tauri.conf.json`:
 
 ```
-https://github.com/kardelitaitu/oz-pos/releases/latest/download/latest.json
+https://github.com/kardelitaitu/kasirmu/releases/latest/download/latest.json
 ```
 
 GitHub's `/releases/latest/download/` redirects to the **latest release's** asset named `latest.json`. This means:
@@ -301,7 +302,7 @@ Rely solely on the existing `UpdateBanner` component that auto-checks on mount.
 - `docs/decisions/2026-01-15-module-system-design.md` — ADR #1: Module system (updater module could be extracted later)
 - [Tauri v2 Updater Plugin Documentation](https://v2.tauri.app/plugin/updater/) — Reference for plugin API and config
 
-> last audited 09-08-26 by buffy
+> last audited 29-09-26 by docs-auditor
 > audit: Phase 1 Core Architecture & API Docs Audit
 
 > status: ACCURATE (0 findings) · verified accurate: cargo check passed, no structural orphans, no stale version headers

@@ -64,8 +64,7 @@ fn list_products_with_invalid_currency_returns_error() {
     let result = s.list_products();
     assert!(
         result.is_err(),
-        "empty currency should produce error, got Ok: {:?}",
-        result
+        "empty currency should produce error, got Ok: {result:?}"
     );
 }
 
@@ -85,8 +84,7 @@ fn get_product_with_invalid_currency_returns_error() {
     let result = s.get_product("BAD-CUR");
     assert!(
         result.is_err(),
-        "empty currency should produce error, got Ok: {:?}",
-        result
+        "empty currency should produce error, got Ok: {result:?}"
     );
 }
 
@@ -134,8 +132,7 @@ fn list_sales_with_invalid_currency_returns_error() {
     let result = s.list_sales();
     assert!(
         result.is_err(),
-        "empty currency should produce error, got Ok: {:?}",
-        result
+        "empty currency should produce error, got Ok: {result:?}"
     );
 }
 
@@ -179,8 +176,7 @@ fn get_sale_with_invalid_currency_returns_error() {
     let result = s.get_sale(sale_id);
     assert!(
         result.is_err(),
-        "numeric currency should produce error, got Ok: {:?}",
-        result
+        "numeric currency should produce error, got Ok: {result:?}"
     );
 }
 
@@ -211,8 +207,7 @@ fn list_payments_with_invalid_currency_returns_error() {
     let result = s.list_payments_for_sale("sale-pay");
     assert!(
         result.is_err(),
-        "empty currency should produce error, got Ok: {:?}",
-        result
+        "empty currency should produce error, got Ok: {result:?}"
     );
 }
 
@@ -247,8 +242,7 @@ fn void_pending_sale_missing_deduction_locations_field_errors() {
     let result = s.void_pending_sale("sale-vp-missing");
     assert!(
         result.is_ok(),
-        "missing deduction_locations.lines should still void successfully, got Err: {:?}",
-        result
+        "missing deduction_locations.lines should still void successfully, got Err: {result:?}"
     );
 
     // Verify the sale was voided.
@@ -283,8 +277,7 @@ fn void_pending_sale_truncated_deduction_locations_errors() {
     let result = s.void_pending_sale("sale-vp-trunc");
     assert!(
         result.is_err(),
-        "truncated deduction_locations JSON should error, got Ok: {:?}",
-        result
+        "truncated deduction_locations JSON should error, got Ok: {result:?}"
     );
 }
 
@@ -458,8 +451,7 @@ fn product_with_empty_sku_returns_error() {
     );
     assert!(
         result.is_err(),
-        "empty SKU should be rejected, got Ok: {:?}",
-        result
+        "empty SKU should be rejected, got Ok: {result:?}"
     );
 }
 
@@ -517,8 +509,7 @@ fn product_with_negative_price_is_rejected() {
     );
     assert!(
         result.is_err(),
-        "negative price should be rejected, got Ok: {:?}",
-        result
+        "negative price should be rejected, got Ok: {result:?}"
     );
 }
 

@@ -579,7 +579,7 @@ fn resolved_shortfall_many_allocations() {
     let allocations: Vec<LocationAllocation> = (0..20)
         .map(|i| LocationAllocation {
             location_id: LocationId::from(format!("loc-{i}")),
-            qty: (i + 1) as i64,
+            qty: i64::from(i + 1),
         })
         .collect();
     let rs = ResolvedShortfall {
@@ -636,4 +636,85 @@ fn shortfall_camel_case() {
         json.get("primaryLocationId").is_some(),
         "expected camelCase primaryLocationId"
     );
+}
+
+// ── Phase 5 P5.2: plan_resolution_deductions ────────────────────────────────
+
+fn alloc(location: &str, qty: i64) -> LocationAllocation {
+    LocationAllocation {
+        location_id: LocationId::from(location),
+        qty,
+    }
+}
+
+fn resolution(
+    sku: &str,
+    _requested: i64,
+    allocations: Vec<LocationAllocation>,
+) -> ResolvedShortfall {
+    ResolvedShortfall {
+        sku: sku.into(),
+        allocations,
+    }
+}
+
+#[test]
+fn plan_deductions_builds_one_negative_delta_per_positive_allocation() {
+    let r = resolution("CHO-001", 5, vec![alloc("loc-a", 3), alloc("loc-b", 2)]);
+    let planned = plan_resolution_deductions("CHO-001", 5, &r, |_| Ok(100), |_| Ok(false)).unwrap();
+    assert_eq!(planned.len(), 2);
+    assert_eq!(planned[0].sku, "CHO-001");
+    assert_eq!(planned[0].delta, -3);
+    assert_eq!(planned[1].delta, -2);
+}
+
+#[test]
+fn plan_deductions_rejects_an_allocation_sum_that_does_not_match() {
+    let r = resolution("CHO-001", 5, vec![alloc("loc-a", 3)]);
+    let err = plan_resolution_deductions("CHO-001", 5, &r, |_| Ok(100), |_| Ok(false)).unwrap_err();
+    match err {
+        CoreError::Validation { field, message } => {
+            assert_eq!(field, "resolutions");
+            assert!(
+                message.contains("does not match requested qty 5"),
+                "{message}"
+            );
+        }
+        other => panic!("expected Validation, got {other:?}"),
+    }
+}
+
+#[test]
+fn plan_deductions_refuses_a_shortfall_where_negative_stock_is_not_allowed() {
+    let r = resolution("CHO-001", 4, vec![alloc("loc-a", 4)]);
+    let err = plan_resolution_deductions("CHO-001", 4, &r, |_| Ok(1), |_| Ok(false)).unwrap_err();
+    match err {
+        CoreError::InsufficientStockAtLocation {
+            location_id,
+            requested_delta,
+            available_qty,
+            ..
+        } => {
+            assert_eq!(location_id.as_str(), "loc-a");
+            assert_eq!(requested_delta, 4);
+            assert_eq!(available_qty, 1);
+        }
+        other => panic!("expected InsufficientStockAtLocation, got {other:?}"),
+    }
+}
+
+#[test]
+fn plan_deductions_permits_a_shortfall_where_negative_stock_is_allowed() {
+    let r = resolution("CHO-001", 4, vec![alloc("loc-a", 4)]);
+    let planned = plan_resolution_deductions("CHO-001", 4, &r, |_| Ok(1), |_| Ok(true)).unwrap();
+    assert_eq!(planned.len(), 1);
+    assert_eq!(planned[0].delta, -4);
+}
+
+#[test]
+fn plan_deductions_skips_non_positive_allocations() {
+    let r = resolution("CHO-001", 3, vec![alloc("loc-a", 3), alloc("loc-b", 0)]);
+    let planned = plan_resolution_deductions("CHO-001", 3, &r, |_| Ok(100), |_| Ok(false)).unwrap();
+    assert_eq!(planned.len(), 1);
+    assert_eq!(planned[0].location_id.as_str(), "loc-a");
 }

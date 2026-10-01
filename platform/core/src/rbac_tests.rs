@@ -458,8 +458,7 @@ fn role_preset_names_are_title_case() {
         assert!(!name.is_empty(), "role name must not be empty");
         assert!(
             name.chars().next().unwrap().is_uppercase(),
-            "role name '{}' should start with uppercase",
-            name
+            "role name '{name}' should start with uppercase"
         );
     }
 }
@@ -512,4 +511,34 @@ fn role_is_send_and_sync() {
 fn permission_is_send_and_sync() {
     fn assert_send_sync<T: Send + Sync>() {}
     assert_send_sync::<Permission>();
+}
+
+#[test]
+fn a_malformed_required_is_never_satisfied_by_a_wildcard_derived_from_it() {
+    // The `next:` note this pins: a REQUIRED string carrying a wildcard must
+    // not be matched by a domain wildcard built from the SAME string. The
+    // wildcard in `required` is what is being asked for, not a grant.
+    //
+    // A deeper-than-two-segment required ("sales:*:extra") splits on the FIRST
+    // colon, so domain = "sales" and -- before this guard -- the derived
+    // "sales:*" matched a granted "sales:*". That is the caller's own input
+    // widening its check.
+    assert!(!has_permission(&["sales:*".into()], "sales:*:extra"));
+    // An exact identity is a legitimate match: asking for precisely a grant you
+    // hold is not the caller widening its own check. Only the DERIVED wildcard
+    // clause is suppressed above.
+    assert!(has_permission(&["sales:*".into()], "sales:*"));
+    // An empty domain must not derive the malformed "": "*" wildcard.
+    assert!(!has_permission(&[":*".into()], ":action"));
+}
+
+#[test]
+fn a_well_formed_required_still_matches_its_domain_wildcard() {
+    // The guard above must NOT weaken the intended domain-wildcard behavior.
+    assert!(has_permission(&["sales:*".into()], "sales:void"));
+    assert!(has_permission(&["sales:*".into()], "sales:process"));
+    assert!(!has_permission(&["sales:*".into()], "products:read"));
+    // And the global wildcard still grants anything, malformed or not.
+    assert!(has_permission(&["*".into()], "sales:*:extra"));
+    assert!(has_permission(&["*".into()], "not_a_permission_at_all"));
 }

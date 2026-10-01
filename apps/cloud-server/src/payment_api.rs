@@ -44,7 +44,8 @@ use axum::{
 };
 use foundation::{Currency, Money};
 use kasirmu_api::auth::{ApiTokenClaims, auth_middleware};
-use kasirmu_payment::PaymentProcessor as _;
+use kasirmu_payment::PaymentProcessor;
+use kasirmu_payment::ResilientProcessor;
 use kasirmu_payment::drivers::qris::QrisPaymentProcessor;
 use kasirmu_payment::types::PaymentRequest;
 use serde::Deserialize;
@@ -76,7 +77,34 @@ pub struct PaymentState {
     /// Built once at startup from the server key + sandbox flag; `None` when
     /// `MIDTRANS_SERVER_KEY` is unset — the handler then fails closed with
     /// 503. Tests inject a wiremock-backed processor here directly.
-    pub processor: Option<QrisPaymentProcessor>,
+    ///
+    /// **This is the decorated processor, and that is the point (R9(b), owner
+    /// 2026-09-20).** The resilience decorator is applied HERE, at the single
+    /// construction site — not in `PaymentProcessorRegistry`, which is not on
+    /// the production path at all
+    /// (`docs/plans/_active/payment-resilience-design.md:124`). Wrapping at
+    /// registry lookup would build a breaker per request, so
+    /// `consecutive_failures` could never reach `failure_threshold` and the
+    /// breaker could never trip.
+    ///
+    /// Retrying on this path is safe **because of R9(a)**: the gateway
+    /// idempotency key is now always present (derived from `sale_id`, below),
+    /// which is the precondition §2 sets — a keyless money-moving call is
+    /// forwarded **once**, because the driver mints a fresh `order_id` per
+    /// attempt and a retry would be a second charge.
+    ///
+    /// **The breaker is per DEPLOYMENT today, and that is measured, not
+    /// assumed.** Both credentials are process-wide (`MIDTRANS_SERVER_KEY`
+    /// and `MIDTRANS_QRIS_ACQUIRER`, read into `CloudServerConfig` at
+    /// startup), and `payment_gateways` — the only per-tenant gateway
+    /// configuration — exists in the Postgres init alone, with no SQLite
+    /// counterpart (design doc §4 and §9.3). Every tenant on this process
+    /// therefore shares one merchant account, so one breaker is the correct
+    /// unit until per-tenant gateway config exists. When it does, the change
+    /// is this field and this construction site, via
+    /// `ResilientProcessor::with_shared_breaker`, which takes the breaker
+    /// from the caller for exactly that reason.
+    pub processor: Option<Arc<dyn PaymentProcessor>>,
 }
 
 impl From<CloudServerState> for PaymentState {
@@ -93,12 +121,16 @@ impl PaymentState {
         rate_limiter: RateLimiterState,
     ) -> Self {
         let processor = state.midtrans_server_key.as_deref().map(|key| {
-            build_qris_processor(
+            // R9(b): decorate at construction. `Arc<dyn …>` because what the
+            // handler needs is the trait, and what must NOT happen is a second
+            // decorator built per request (see the field's doc comment).
+            let qris = build_qris_processor(
                 key,
                 state.midtrans_sandbox,
                 state.midtrans_qris_acquirer.as_deref(),
                 None,
-            )
+            );
+            Arc::new(ResilientProcessor::new(Arc::new(qris))) as Arc<dyn PaymentProcessor>
         });
         Self {
             db: state.db.clone(),
@@ -236,6 +268,46 @@ async fn qris_charge_handler(
         "MIDTRANS_SERVER_KEY not configured; QRIS charges are disabled".into(),
     ))?;
 
+    // R9(a) (owner, 2026-09-20): the GATEWAY idempotency key is never `None` here.
+    //
+    // `sale_id` is required and already sent as `reference`, so a retry has a stable
+    // input to key on. Leaving this `None` is what made an existing retry unsafe: the
+    // driver mints a fresh `order_id` per call
+    // (`crates/kasirmu-payment/src/processor.rs:78-80`), so a timeout-plus-retry against
+    // the same sale produced a SECOND live QR and could double-charge it. Deriving the
+    // key from `sale_id` makes the retry re-use the same QR (PAY-2) with no schema, type
+    // or client change, which is why the ruling lets this half proceed on its own.
+    //
+    // The caller's key still WINS when supplied, so this is additive for the contract
+    // this endpoint already documents (`ChargeRequest::idempotency_key`, above) rather
+    // than a redefinition of it.
+    //
+    // NOT the `payments` row's `idempotency_key`: that one is deliberately optional and
+    // stays so (contract at `20261001_sale_idempotency.sql:18`). The ruling says
+    // *gateway key* explicitly for exactly this reason — the two share a field name.
+    //
+    // The separator is `-` and NOT `:`, deliberately: the driver SANITISES the key
+    // before use (`drivers/qris.rs:338-352` keeps only `[A-Za-z0-9_-]` and truncates to
+    // 44 chars), so a colon or a space would be DELETED rather than preserved —
+    // collapsing `tenant-A/sale-1` and `tenant-AB/sale1` onto one key. Tenant is
+    // prefixed because `sale_id` is device-generated and only unique per tenant.
+    // **Blank counts as ABSENT, and this is load-bearing** (design doc §8 row 4,
+    // `payment-resilience-design.md:220`). `Some("")` is `Some`, so a plain
+    // `unwrap_or_else` on the `Option` would let a blank body field through — and
+    // the driver then sanitises it to an empty `order_id` and mints a FRESH one
+    // (`drivers/qris.rs:347-351`), restoring exactly the double-charge hole this
+    // derivation exists to close. A client that posts `"idempotency_key": ""` is
+    // common enough (a form field left empty serialises to a blank string, not to
+    // an absent key) that treating it as a supplied key would be a silent hole.
+    let supplied_key = body
+        .idempotency_key
+        .as_deref()
+        .map(str::trim)
+        .filter(|k| !k.is_empty())
+        .map(str::to_owned);
+    let gateway_idempotency_key =
+        supplied_key.unwrap_or_else(|| format!("qris-{}-{}", tenant_id, body.sale_id));
+
     let request = PaymentRequest {
         amount: Money {
             minor_units: amount_minor,
@@ -243,7 +315,7 @@ async fn qris_charge_handler(
         },
         reference: Some(body.sale_id.clone()),
         description: body.description.clone(),
-        idempotency_key: body.idempotency_key.clone(),
+        idempotency_key: Some(gateway_idempotency_key),
     };
 
     // `sale` is the honest two-phase entry point: it charges and returns as

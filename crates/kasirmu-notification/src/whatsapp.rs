@@ -155,6 +155,15 @@ impl WhatsAppClient {
     }
 
     /// Parse the WhatsApp API response into a NotificationStatus.
+    ///
+    /// NOT-C: UNVERIFIED against the vendor contract. `accepted` is derived
+    /// from `messages[0].message_status`, and this function has NO test
+    /// coverage — it is reachable only through the two live HTTP paths below.
+    /// If a real Meta success body does not carry `message_status`, then
+    /// `accepted` is silently `false` for every successful send and nothing
+    /// would catch it. Do not "fix" this on suspicion: capture one real success
+    /// body as a fixture, assert against it, and only then change the field.
+    /// (`message_id` from `messages[0].id` is the part this crate relies on.)
     fn parse_response(body: &serde_json::Value) -> NotificationStatus {
         let message_id = body["messages"][0]["id"].as_str().map(|s| s.to_string());
         let accepted = body["messages"][0]["message_status"].as_str() == Some("accepted");

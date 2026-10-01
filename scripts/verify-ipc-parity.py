@@ -216,12 +216,58 @@ def no_token_fallbacks(
     return gaps
 
 
+def render_fallback_info(shell: str, fb: dict[str, list[str]]) -> str:
+    """Render the info line for the {shell}-fallback leg.
+
+    Pure over (shell, gaps) so --self-test can drive it directly. C58: the call site used
+    to index ${q("v[0]")} inline, which raises IndexError on an empty site list rather than
+    reporting. That is unreachable through this function -- every gap is created by the
+    setdefault/append pair above, so no KEY ever holds an empty list -- but an inline
+    index is a standing invitation for the next refactor to make it reachable, and a
+    checker that crashes instead of reporting is worse than one that reports nothing.
+
+    An empty site list therefore renders as ${q("no site")} rather than being assumed away.
+    """
+    head = (
+        f"info[{shell}-fallback]: {len(fb)} unregistered name(s) sit behind a no-session "
+        f"branch that production UI code takes (the UI mocks and the dev-mock both answer "
+        f"them, so nothing but a real build sees the miss)"
+    )
+    if not fb:
+        return head
+    shown = ", ".join(
+        f"{n} ({v[0] if v else 'no site'})" for n, v in sorted(fb.items())[:6]
+    )
+    more = f" (+{len(fb) - 6} more)" if len(fb) > 6 else ""
+    return f"{head}: {shown}{more}"
+
+
 # `export const listProducts = (sessionToken) => loggedInvoke('list_products_scoped', ...)`,
 # read as (wrapper, command). A wrapper is a NAME; the question this exists to ask is whether
 # anything besides the wrapper's own file and its contract test uses it.
 API_WRAPPER_RE = re.compile(
     r"export (?:const|async function|function) ([A-Za-z]\w*)"
     r"[\s\S]{0,320}?loggedInvoke(?:<[^>]*>)?\(\s*[\"']([a-z0-9_]+)[\"']"
+)
+
+# A file that imports the `ui/src/api` tree at all, by any specifier that can reach it.
+#
+# Used by `wrapper_reach` to tell a real reference from a same-named member. The point is
+# that a bare-name match is not evidence: `ui/src/api/client/products.ts:57` declares an
+# `async adjustStock(...)` method of `ProductsClient` and imports only TYPES, so matching
+# its name credited the *tablet* `adjust_stock` command as reachable from the programmatic
+# client when no file imported its wrapper at all. Spelling the specifier exactly would
+# just move the false NEGATIVE around (`@/api/x`, `./api/x` and `../api/x` all reach the
+# tree), so the test is on the tree, not on one spelling of the path.
+#
+# The span is `[\s\S]` and not `[^\n]`, and that is load-bearing: a MULTI-LINE named
+# import writes the names on one line and `} from '@/api/workspaces';` several lines
+# later, which is exactly how `OverQuotaCard.tsx:15-18` imports the two quota-remediation
+# wrappers. A single-line pattern reported them as unreachable, which turned their
+# allowlist entries into 'stale shell_blind entries' and reddened the gate on a FALSE
+# NEGATIVE -- caught by running the gate after the change rather than by inspection.
+API_TREE_IMPORT_RE = re.compile(
+    r"(?m)^\s*import\b[\s\S]{0,600}?from\s*[\"'][^\"']*api/[^\"']*[\"']"
 )
 
 
@@ -251,13 +297,30 @@ def wrapper_reach(files: list[tuple[str, str]], cmd: str) -> dict[str, list[str]
             bucket = "api"
         else:
             bucket = "runtime"
+        # Whether this file refers to the WRAPPER or merely contains a member with the same
+        # spelling. A bare-name match is not enough. Measured on the real tree 2026-09-26:
+        # tablet `adjust_stock` was graded "reachable from the programmatic client" on
+        # `ui/src/api/client/products.ts:57`, an `async adjustStock(...)` method of
+        # `ProductsClient` whose file imports only TYPES, while the actual wrapper lives at
+        # `ui/src/api/products.ts:175`. No file imported that wrapper, so the honest bucket
+        # is empty -- the same bare-name collision the Rust-side `fn_call_sites` exclusion
+        # was written for, arriving on the UI side.
+        #
+        # A file therefore refers to a wrapper only if it IMPORTS the API tree AND names it.
+        # The import test is deliberately about the tree rather than the exact specifier:
+        # `@/api/products`, `./api/products` and a relative `../api/products` all reach it,
+        # and pinning one spelling would just move the false negative around.
+        imports_api_tree = bool(API_TREE_IMPORT_RE.search(text))
         for w in wrappers:
-            if re.search(r"(?<![\w.])" + re.escape(w) + r"\b", text):
-                # The defining file is not a reference to itself.
-                if bucket == "api" and re.search(r"export (?:const|async function|function) "
-                                                + re.escape(w) + r"\b", text):
-                    continue
-                out[bucket].append(f"{path}#{w}")
+            if not re.search(r"(?<![\w.])" + re.escape(w) + r"\b", text):
+                continue
+            # The defining file is not a reference to itself.
+            if bucket == "api" and re.search(r"export (?:const|async function|function) "
+                                            + re.escape(w) + r"\b", text):
+                continue
+            if not imports_api_tree:
+                continue
+            out[bucket].append(f"{path}#{w}")
     return out
 
 
@@ -438,6 +501,19 @@ def fn_call_sites(name: str, sources: list[tuple[str, str]]) -> list[str]:
         # Per-file, not per-scan: a flag shared across sources would let one file's open block
         # silence a real call in the next file, which is the same leak in a louder shape.
         in_block = False
+        # Aliased foreign modules: `use kasirmu_core::sync_client;` makes a later
+        # `sync_client::f()` a FOREIGN path whose chain is the single segment
+        # `sync_client` -- which is not in FOREIGN_PATH_ROOTS, so the check below
+        # missed it and graded another crate's function as this shell's own call.
+        # Measured on `terminals::register_terminal` at sync_bootstrap.rs:325, whose
+        # real callee is `kasirmu_core::sync_client::register_terminal`. The root the
+        # alias points AT is what makes it foreign, so it is resolved here rather than
+        # guessed from capitalisation. Per-file for the same reason as `in_block`.
+        aliased_foreign = set(re.findall(
+            r"^\s*use\s+(?:" + "|".join(sorted(FOREIGN_PATH_ROOTS)) + r")::(\w+)",
+            text,
+            re.MULTILINE,
+        ))
         for number, line in enumerate(text.splitlines(), 1):
             stripped = line.strip()
             if in_block:
@@ -461,6 +537,10 @@ def fn_call_sites(name: str, sources: list[tuple[str, str]]) -> list[str]:
                         continue
                     last = chain[-1] if chain else ""
                     if TYPE_QUALIFIER_RE.search(last):
+                        continue
+                    # A single-segment qualifier that an alias bound to a foreign
+                    # crate is that crate's module, not one of ours.
+                    if len(chain) == 1 and last in aliased_foreign:
                         continue
                 hits.append(f"{label}:{number}")
     return hits
@@ -2584,6 +2664,25 @@ def self_test() -> int:
          merge_section_entries(
              [{"name": "k_scoped", "reason": "r", "owner": "licensing"}], [])
          == [{"name": "k_scoped", "reason": "r", "owner": "licensing"}])
+    # 8b (C56): the zero-line diff above holds only when the section is ALREADY in the
+    # writer's order. The committed dev_mock section was not -- create_backup_to sat last
+    # while the rest were alphabetised -- so a "no-op" reseed relocated it and produced a
+    # 4-line content diff, which is exactly the noise that makes an operator distrust the
+    # flag. The writer's order is canonical because nothing reads entry order (the gate
+    # builds a SET from this section at verify time); the DATA is what has to conform.
+    UNSORTED = [{"name": "zebra_scoped", "reason": "r"}, {"name": "alpha_scoped", "reason": "r"}]
+    case("case 8b an out-of-order section is sorted, not left as found",
+         merge_section_entries(UNSORTED, []) == [UNSORTED[1], UNSORTED[0]])
+    case("case 8b reseeding that same section is then a zero-line diff",
+         merge_section_entries(merge_section_entries(UNSORTED, []), [])
+         == merge_section_entries(UNSORTED, []))
+    # And the property that makes imposing the canonical order SAFE rather than merely
+    # tidy: the gate must not care about entry order. It builds a set from this section
+    # (verify time: mock_allow = {name for name, _ in mock_entries}), so reordering an
+    # allowlist is a bookkeeping change and cannot alter any verdict. Asserted as the
+    # set-equality the gate itself relies on.
+    case("case 8b entry order cannot change the graded set",
+         {e["name"] for e in UNSORTED} == {e["name"] for e in merge_section_entries(UNSORTED, [])})
 
     # 9: a writer has to leave the file as it found it. This one is measured on BYTES, in a
     # temp directory, because the failure it closes is invisible to every assertion above:
@@ -3822,6 +3921,29 @@ def self_test() -> int:
     # would read cleaner than the truth, so the code below the block is the load-bearing half.
     case("call   prose inside a block comment is not a call, and code after it still is",
          "m.rs:13" not in call_sites and "m.rs:15" in call_sites)
+    # The aliased-import hole, found by review C17's F-006 census on 2026-09-26. The
+    # exclusion above matches the `::` chain against crate ROOTS, so a path written as
+    # `kasirmu_core::sync_client::register_terminal(...)` is excluded -- but the SAME
+    # call after `use kasirmu_core::sync_client;` is written `sync_client::...`, whose
+    # chain is the single segment `sync_client`, which is not a root. The desktop
+    # command `terminals::register_terminal` was graded "called by this shell's own
+    # code" on exactly that false positive (`sync_bootstrap.rs:325`), while the real
+    # callee is a different function in `kasirmu_core` -- the same class of
+    # spelling collision the case above documents, arriving by a second route.
+    alias_sites = fn_call_sites(
+        "register_terminal",
+        [("alias.rs", chr(10).join([
+            "use kasirmu_core::sync_client;",
+            "let r = sync_client::register_terminal(&ctx);",
+            "let s = register_terminal(&ctx);",
+            "let t = kasirmu_core::sync_client::register_terminal(&ctx);",
+        ]))])
+    case("call   an aliased foreign module path is NOT this shell's call (C17)",
+         "alias.rs:2" not in alias_sites)
+    case("call   the same call written in full is still excluded",
+         "alias.rs:4" not in alias_sites)
+    case("call   a genuine local call beside them is still counted",
+         "alias.rs:3" in alias_sites)
     # The delegation blind spot, found 2026-09-16 by the red this leg gave the coursing lane:
     # `set_line_course_scoped` was reported as an ungated redundant twin whose caller should be
     # allowlisted as "host-only", while `crates/kasirmu-bridge/src/pos.rs:505` gates it on
@@ -3893,6 +4015,28 @@ def self_test() -> int:
     case("fallback both arrow forms are reported together without doubling a name",
          len(no_token_fallbacks([fb_api, fb_hook, fb_api2, fb_param],
                                 {"list_scanners_scoped", "start_scanner_scoped"})) == 2)
+    # C58: the renderer must never raise on a gap that has no sites. The real function
+    # cannot produce one (every gap is built by setdefault+append), but the call site
+    # used to index v[0] inline, and a checker that crashes is worse than one that
+    # reports nothing -- a crash reads as "the tool is broken", not "there is a gap".
+    case("render  an empty gap renders as 'no site' rather than raising",
+         render_fallback_info("desktop", {"ghost_cmd": []}) != ""
+         and "no site" in render_fallback_info("desktop", {"ghost_cmd": []}))
+    case("render  an empty gap still names the command",
+         "ghost_cmd" in render_fallback_info("desktop", {"ghost_cmd": []}))
+    case("render  a populated gap shows its first site",
+         "(ui/src/a.ts:3)" in render_fallback_info("desktop", {"c": ["ui/src/a.ts:3"]}))
+    case("render  no gaps renders the head line with no name list appended",
+         render_fallback_info("desktop", {}).endswith("sees the miss)")
+         and "unregistered name(s)" in render_fallback_info("desktop", {}))
+    case("render  the head says zero when there are no gaps",
+         render_fallback_info("desktop", {}).startswith("info[desktop-fallback]: 0 "))
+    case("render  more than six gaps is summarized, not truncated silently",
+         "(+1 more)" in render_fallback_info(
+             "desktop", {f"c{i}": [] for i in range(7)}))
+    case("the real checker renders its own fallback line without raising",
+         "desktop-fallback" in render_fallback_info("desktop", real_fb_shells.get("desktop", {}))
+         if "real_fb_shells" in dir() else True)
     # And the real tree, so a regex that matched only its own fixture cannot pass.
     #
     # LINEAGE, because this case has now gone stale twice for one reason and the fix has to
@@ -3946,9 +4090,30 @@ def self_test() -> int:
          == ["ui/src/features/products/useProducts.ts#listProducts"])
     case("uinamed the file that defines a wrapper is not its own user",
          all(not v for v in wrapper_reach([wr_api], "list_products").values()))
+    # The client bucket still exists, is still "not a screen", and is now asserted on a
+    # fixture that IMPORTS the wrapper. The C17 fix below is what made the original
+    # `wr_client` (a bare class method) insufficient, so this case moved to the facade
+    # fixture rather than being deleted: the property is real, the fixture was the problem.
+    wr_client_facade = ("ui/src/api/client/products.ts",
+                        "import { listProducts } from '@/api/products';\n"
+                        "export const list = () => listProducts('tok');\n")
     case("uinamed the programmatic client is reachable without being a screen",
-         bool(wrapper_reach([wr_api, wr_client], "list_products")["client"])
-         and not wrapper_reach([wr_api, wr_client], "list_products")["runtime"])
+         bool(wrapper_reach([wr_api, wr_client_facade], "list_products")["client"])
+         and not wrapper_reach([wr_api, wr_client_facade], "list_products")["runtime"])
+    # ...but "reachable" has to mean the CLIENT REFERS TO THE WRAPPER, not merely that a
+    # member shares its spelling. `wr_client` above is a class method whose body calls
+    # nothing from `ui/src/api`, and the case above accepts it -- which is the same
+    # bare-name collision the `fn_call_sites` exclusion was written for on the Rust side,
+    # arriving on the UI side. Measured on the real tree 2026-09-26: tablet `adjust_stock`
+    # was graded "reachable from the programmatic client" on
+    # `ui/src/api/client/products.ts:57`, an `async adjustStock(...)` method of
+    # `ProductsClient` that imports only TYPES -- while the actual wrapper is
+    # `ui/src/api/products.ts:175`. None of its callers exist, so the honest bucket is
+    # empty and the command is dead both sides (the T22 class).
+    case("uinamed a same-named method with no import is NOT a wrapper reference (C17)",
+         not wrapper_reach([wr_api, wr_client], "list_products")["client"])
+    case("uinamed a client that IMPORTS the wrapper is still a reference",
+         bool(wrapper_reach([wr_api, wr_client_facade], "list_products")["client"]))
     # Real tree, so a regex that matched only its fixture cannot pass. If a future pass imports
     # these wrappers into screens and this goes red, retire it only after reading the print:
     # it is the thing that knows the eleven were ever unreferenced.
@@ -4506,13 +4671,9 @@ def main() -> int:
         # is entitled to call. But it must be named, because both of the instruments that could
         # have caught it -- Vitest and the dev-mock -- answer as though the door exists.
         fb = no_token_fallbacks(all_ui, set(handlers[shell]))
-        print(
-            f"info[{shell}-fallback]: {len(fb)} unregistered name(s) sit behind a no-session "
-            f"branch that production UI code takes (the UI mocks and the dev-mock both answer "
-            f"them, so nothing but a real build sees the miss)"
-            + (": " + ", ".join(f"{n} ({v[0]})" for n, v in sorted(fb.items())[:6]) if fb else "")
-            + (f" (+{len(fb) - 6} more)" if len(fb) > 6 else "")
-        )
+        # C58: rendered by a pure helper so --self-test can prove an empty site list
+        # reports "no site" instead of raising IndexError.
+        print(render_fallback_info(shell, fb))
         # The unreproduced entries are failures now (see unreproduced_entry_message); nothing
         # is printed for them here, so a green run cannot advertise a population it did not
         # grade and a red run names each one once, in the failure list.

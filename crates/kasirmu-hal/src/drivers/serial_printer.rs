@@ -6,7 +6,7 @@ next: none | perf: lazy connect, one spawn_blocking per write; port stays open f
 */
 //! Serial receipt printer driver — RS-232, USB-serial, and Bluetooth SPP.
 //!
-//! Implements [`ReceiptPrinter`] over any port the OS exposes as a serial
+//! Implements [`ReceiptPrinter`](crate::traits::printer::ReceiptPrinter) over any port the OS exposes as a serial
 //! device. That covers three transports an operator can pick in the setup
 //! wizard:
 //!

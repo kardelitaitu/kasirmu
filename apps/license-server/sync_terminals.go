@@ -62,7 +62,7 @@ func registerSyncTerminal(machineID, tenantID string) (*terminalCredential, erro
 	}
 	body, err := json.Marshal(map[string]string{
 		"terminal_id": machineID,
-		"label":       "OZ-POS " + machineID,
+		"label":       "kasir.mu " + machineID,
 		"tenant_id":   tenantID,
 	})
 	if err != nil {

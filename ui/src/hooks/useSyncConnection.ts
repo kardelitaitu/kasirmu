@@ -13,7 +13,11 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { testSyncConnection } from '@/api/offline';
-import { isSyncUnconfigured, type ConnectionHealth } from '@/hooks/connectionHealth';
+import {
+  isSyncUnconfigured,
+  isSyncUnauthorized,
+  type ConnectionHealth,
+} from '@/hooks/connectionHealth';
 
 /**
  * Connection state to the cloud sync server. An alias onto the shared
@@ -110,7 +114,14 @@ export function useSyncConnection(): SyncConnectionStatus {
         const result = await testSyncConnection();
         if (!mountedRef.current || seq !== probeSeqRef.current) return;
 
-        if (result.ok) {
+        if (isSyncUnauthorized(result.auth)) {
+          // Checked BEFORE `ok`: the reachability ping is unauthenticated, so
+          // a refused credential still answers `ok: true` and would otherwise
+          // be drawn as a healthy connection while every push 401s. This is
+          // the one answer that must outrank a green socket.
+          setState('unauthorized');
+          setLatencyMs(null);
+        } else if (result.ok) {
           setState('connected');
           setLatencyMs(result.latencyMs);
           nextDelay = POLL_INTERVAL_MS;

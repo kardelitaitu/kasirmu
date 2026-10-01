@@ -9,7 +9,8 @@ a single-entry one ({own terminal: counter}); that is a valid VersionVector and
 is exactly what cross-terminal concurrency needs — terminal A sending {A:n}
 against B's {B:m} is concurrent, while A's own later push {A:n+1} is ordered
 after it.
-next: wire the persisted counter so a restart does not rewind | perf: N/A
+next: none | perf: N/A
+FIXED 2026-10-04: daemon_tick now persists the counter after EVERY push attempt (success or failure) via persist_stamped_counter, so a rejected push can no longer let the surviving counter range be re-emitted and a restart never resumes from a value the server has already seen
 */
 //!
 //! Without these two fields the server cannot compare a push against what it
@@ -22,11 +23,11 @@ use serde_json::Value;
 use super::lamport::Counter;
 
 /// Payload field carrying the sender's version vector. Must match
-/// `oz_cloud_server::conflict_resolution::VECTOR_FIELD`.
+/// `kasirmu_cloud::conflict_resolution::VECTOR_FIELD`.
 pub const VECTOR_FIELD: &str = "_vector";
 
 /// Payload field carrying the sending terminal's id. Must match
-/// `oz_cloud_server::conflict_resolution::TERMINAL_FIELD`.
+/// `kasirmu_cloud::conflict_resolution::TERMINAL_FIELD`.
 pub const TERMINAL_FIELD: &str = "_terminal";
 
 /// Whether a payload already carries a vector.

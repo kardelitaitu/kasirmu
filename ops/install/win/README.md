@@ -1,6 +1,6 @@
 # kasir.mu Windows install scripts
 
-<!-- Audit stamp: 2026-08-31 · docs-auditor · status: ACCURATE (0 findings) · verified against HEAD: install.ps1 supports all documented flags (-Channel/-Version/-System/-DryRun/-NoLaunch/-Repo, default kardelitaitu/oz-pos); uninstall.ps1 -Purge exists; NSIS installMode=currentUser (tauri.conf.json:47); ../install.sh + ../uninstall.sh exist -->
+<!-- Audit stamp: 2026-08-31 · docs-auditor · status: ACCURATE (0 findings) · verified against HEAD: install.ps1 supports all documented flags (-Channel/-Version/-System/-DryRun/-NoLaunch/-Repo, default kardelitaitu/kasirmu); uninstall.ps1 -Purge exists; NSIS installMode=currentUser (tauri.conf.json:47); ../install.sh + ../uninstall.sh exist -->
 
 One-line install and uninstall for Windows, backed by the project's existing
 release pipeline. Both scripts are attached to every GitHub Release as
@@ -11,7 +11,7 @@ the release's `SHA256SUMS.txt`.
 ## Install
 
 ```powershell
-irm https://github.com/kardelitaitu/oz-pos/releases/latest/download/install.ps1 | iex
+irm https://github.com/kardelitaitu/kasirmu/releases/latest/download/install.ps1 | iex
 ```
 
 Or download the script and run it (recommended — the script then verifies
@@ -46,7 +46,7 @@ script again over an existing install upgrades in place.
 ## Uninstall
 
 ```powershell
-irm https://github.com/kardelitaitu/oz-pos/releases/latest/download/uninstall.ps1 | iex
+irm https://github.com/kardelitaitu/kasirmu/releases/latest/download/uninstall.ps1 | iex
 # or
 ./uninstall.ps1            # keep local data
 ./uninstall.ps1 -Purge     # also delete local app data (databases, settings)

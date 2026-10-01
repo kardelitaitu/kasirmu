@@ -328,13 +328,16 @@ export default function PaymentModal({
     cartCurrency,
     effectiveRateInfo,
     convertToChargeCurrency,
+    rateUnknown,
+currenciesUnknown,
+baseCurrencyUnknown,
+retryCurrencyLoad,
+    retryRateRead,
   } = useMultiCurrency({
     open,
     multiCurrency,
     sessionToken,
     totalCurrency: total.currency,
-    addToast,
-    l10nRef,
   });
 
   useEffect(() => {
@@ -463,6 +466,14 @@ export default function PaymentModal({
     if (selectedCustomer) {
       if (!sessionToken) {
         setLoyaltyAccount(null);
+        // The other two resets here are not optional. Without a session there
+        // is no account to redeem against, and redeemPoints/loyaltyDiscount
+        // outlive the token: PosScreen spreads the prop conditionally
+        // (`{...(sessionToken ? { sessionToken } : {})}`) while the modal stays
+        // mounted, so a cleared session leaves a discount that still moves
+        // Total Due with nothing on screen able to cancel it.
+        setRedeemPoints(false);
+        setLoyaltyDiscount(0n);
         return;
       }
       getLoyaltyAccount(sessionToken, selectedCustomer.id)
@@ -501,7 +512,15 @@ export default function PaymentModal({
       return;
     }
     let cancelled = false;
-    if (!sessionToken) return;
+    if (!sessionToken) {
+      // Same reasoning as the account effect above: without a session this
+      // effect cannot recompute the discount, so the stale one must go rather
+      // than survive. Clearing here rather than relying on `redeemPoints`
+      // being false is deliberate -- that guard is not reached here, because
+      // the one above only resets when redeemPoints is ALREADY off.
+      setLoyaltyDiscount(0n);
+      return;
+    }
     getPointsValue(sessionToken, pointsToRedeem)
       .then((val) => {
         if (!cancelled) {
@@ -852,7 +871,14 @@ export default function PaymentModal({
   // in place. The overlay JSX and the terminalPending read still consume `edc`
   // from here, and the gateway front/tail stay shell-owned and are passed down
   // exactly as useGatewayQr and useAutoQr receive them.
-  const { edc, handleTerminalPay, handleTerminalDismiss } = useEdcTenderPhase({
+  const {
+    edc,
+    handleTerminalPay,
+    handleTerminalDismiss,
+    terminals: edcTerminals,
+    selectedTerminalId: edcSelectedTerminalId,
+    setSelectedTerminalId: setEdcSelectedTerminalId,
+  } = useEdcTenderPhase({
     sessionToken,
     effectiveTotalInCartCurrency,
     cartCurrency,
@@ -888,14 +914,22 @@ export default function PaymentModal({
   }, [splits.length, effectiveTotalInCartCurrency, cartCurrency, setSplits]);
 
   const canComplete = useMemo(() => {
+    // CUR-02: settling in a charge currency records `tender_rate_millionths`
+    // against the sale. With the rate read failed we do not know that number,
+    // and the backend does not refuse the write (crates/kasirmu-bridge/src/pos/checkout.rs:424-428
+    // assigns the three CUR-02 fields straight from the args). So the sale would be
+    // recorded with no rate at all while the total silently carried the charge
+    // currency's label. Refuse here instead: the operator retries or picks the
+    // store's own currency.
+    if (rateUnknown) return false;
     if (splitMode) return splitComplete;
     if (method === 'other' && !otherLabel.trim()) return false;
-    if (method === 'open_bill') return customerName.trim().length > 0;
+    if (method === 'open_bill') return customerName.trim().length > 0 || (tableNumber != null && tableNumber.trim().length > 0);
     if (method === 'credit') return customerName.trim().length > 0;
     if (method === 'cash') return sufficient;
     if (method === 'qris') return qrReference.length > 0;
     return true;
-  }, [splitMode, splitComplete, method, otherLabel, sufficient, customerName, qrReference]);
+  }, [rateUnknown, splitMode, splitComplete, method, otherLabel, sufficient, customerName, tableNumber, qrReference]);
 
   const complete = useCallback(async () => {
     setProcessing(true);
@@ -903,6 +937,8 @@ export default function PaymentModal({
     try {
       // ── Open Bill: save cart without payment ──────────────
       if (method === 'open_bill') {
+        const trimmedName = customerName.trim();
+        const trimmedTable = (tableNumber ?? '').trim();
         const cartData = JSON.stringify({
           lines: lineItems.map((l) => ({
             sku: l.sku,
@@ -913,19 +949,26 @@ export default function PaymentModal({
             // checkout push, so the assignment must survive the hold.
             ...(l.courseId ? { courseId: l.courseId } : {}),
             ...(l.coursingStatus ? { coursingStatus: l.coursingStatus } : {}),
+            ...(l.modifiers && l.modifiers.length > 0 ? { modifiers: l.modifiers } : {}),
+            ...(l.note ? { note: l.note } : {}),
           })),
           discountPercent,
           discountLabel,
-          tableNumber,
+          ...(trimmedTable ? { tableNumber: trimmedTable } : {}),
+          ...(trimmedName ? { customerName: trimmedName } : {}),
         });
+        const label = trimmedTable
+          ? (trimmedName ? `Table ${trimmedTable} (${trimmedName})` : `Table ${trimmedTable}`)
+          : (trimmedName ? trimmedName : `Open Bill #${Date.now()}`);
+
         await holdCartScoped(sessionToken!, {
-          label: customerName.trim() || `Open Bill #${Date.now()}`,
+          label,
           cart_data: cartData,
           item_count: lineItems.length,
           total_minor: total.minor_units,
           currency: total.currency,
           bill_type: 'open_bill',
-          customer_name: customerName.trim(),
+          customer_name: trimmedName || (trimmedTable ? `Table ${trimmedTable}` : ''),
         });
         setDone(true);
         return;
@@ -1504,6 +1547,54 @@ export default function PaymentModal({
                   </Localized>
               </div>
             )}
+            {(currenciesUnknown || baseCurrencyUnknown) && (
+              <div className="payment-currency-unknown" role="alert">
+                <div className="payment-currency-unknown-text">
+                  {currenciesUnknown && (
+                    <Localized id="payment-currency-list-unknown">
+                      <span>The list of supported currencies could not be loaded.</span>
+                    </Localized>
+                  )}
+                  {baseCurrencyUnknown && (
+                    <Localized id="payment-default-currency-unknown">
+                      <span>The default currency for this store could not be loaded.</span>
+                    </Localized>
+                  )}
+                </div>
+                <Localized id="payment-retry-aria" attrs={{ 'aria-label': true }}>
+                <button
+                  type="button"
+                  className="payment-currency-unknown-retry"
+                  onClick={retryCurrencyLoad}
+                >
+                  <Localized id="payment-retry">
+                    <span>Retry</span>
+                  </Localized>
+                </button>
+                </Localized>
+              </div>
+            )}
+
+            {selectedCurrency !== total.currency && rateUnknown && (
+              <div className="payment-rate-unknown" role="alert">
+                <Localized id="payment-rate-unknown">
+                  <span className="payment-rate-unknown-text">
+                    Could not load the exchange rate for this pair.
+                  </span>
+                </Localized>
+                <Localized id="payment-retry-aria" attrs={{ 'aria-label': true }}>
+                <button
+                  type="button"
+                  className="payment-rate-unknown-retry"
+                  onClick={retryRateRead}
+                >
+                  <Localized id="payment-retry">
+                    <span>Retry</span>
+                  </Localized>
+                </button>
+                </Localized>
+              </div>
+            )}
 
             {selectedCurrency !== total.currency && effectiveRateInfo && (
               <Localized id="payment-exchange-aria" attrs={{ 'aria-label': true }}>
@@ -1545,7 +1636,7 @@ export default function PaymentModal({
                   <Localized id="payment-default-currency">
                     <span>Default currency</span>
                   </Localized>
-                  <span>{baseCurrency}</span>
+                  <span>{baseCurrencyUnknown ? '—' : baseCurrency}</span>
                 </div>
                 <div className="payment-receipt-currency-row">
                   <Localized id="payment-base-amount">
@@ -1687,6 +1778,9 @@ export default function PaymentModal({
                     terminalPending={edc !== null}
                     autoQrPending={autoQr !== null}
                     onTerminalPay={handleTerminalPay}
+                    terminals={edcTerminals}
+                    selectedTerminalId={edcSelectedTerminalId}
+                    onSelectTerminal={setEdcSelectedTerminalId}
                   />
                 )}
 

@@ -186,7 +186,7 @@ func postToDiscord(webhook, name, email, message string) error {
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", "oz-pos-license-server/1.0")
+	req.Header.Set("User-Agent", "kasirmu-license-server/1.0")
 
 	resp, err := client.Do(req)
 	if err != nil {

@@ -123,6 +123,26 @@ pub static WEBHOOK_5XX_TOTAL: LazyLock<Counter> = LazyLock::new(|| {
     c
 });
 
+/// Times the P-1 anchor-expiry check was SKIPPED because the oldest retained
+/// `created_at` could not be read (`SyncStore::oldest_created_at` returned
+/// `None` from a FAILED scan rather than from an empty queue).
+///
+/// The skip is a fail-open on its own: `None` short-circuits the `since <
+/// oldest` comparison, so a client behind a pruned horizon receives a normal
+/// page instead of the 410 `anchor_expired`. That also SUPPRESSES
+/// [`SYNC_ANCHOR_EXPIRED_TOTAL`], which is the only signal for this path — so
+/// without this counter a broken min-scan reads as "fewer expiries" rather than
+/// as "the check stopped running". Alert on any sustained increase.
+pub static SYNC_ANCHOR_CHECK_SKIPPED_TOTAL: LazyLock<Counter> = LazyLock::new(|| {
+    let c = Counter::new(
+        "sync_anchor_check_skipped_total",
+        "Times the anchor-expiry check was skipped because the min-scan failed",
+    )
+    .unwrap(); // SAFETY: static metric name/opts are compile-time constants; construction cannot fail
+    REGISTRY.register(Box::new(c.clone())).unwrap(); // SAFETY: static registration of a freshly-constructed metric cannot fail
+    c
+});
+
 // ── Image storage (spec 0046b §3.4/§3.7) ──────────────────────────────
 
 /// Total bytes currently stored for the tenant's active image refs

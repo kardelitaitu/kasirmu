@@ -1,7 +1,7 @@
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
 import { describe, expect, it } from 'vitest';
-import { FALLBACK_STORE_TZ, isoToday } from '@/features/analytics/analytics-data';
+import { FALLBACK_STORE_TZ, isoToday, rangeForGranularity } from '@/features/analytics/analytics-data';
 
 /**
  * R36-01 — the analytics date range must not depend on the host timezone.
@@ -54,6 +54,21 @@ describe('analytics timezone anchor (R36-01)', () => {
 
   it('is stable across repeated calls within a run', () => {
     expect(new Set(Array.from({ length: 25 }, () => isoToday(null))).size).toBe(1);
+  });
+
+  it('anchors rangeForGranularity the same way, so the two cannot drift', () => {
+    // The same invariant, for the function that decides the analytics WINDOW
+    // rather than the label. It kept a separate device-local branch for an
+    // unknown store zone, so on an instant where the host and the store
+    // disagree about the date the yearly heatmap rendered one more month than
+    // the calendar it claimed to be anchored to -- 43 cells against an expected
+    // 39 under TZ=Pacific/Kiritimati, which is how check-tz-invariance.py
+    // caught it. Asserting both against the SAME independently computed UTC
+    // value is what makes that drift impossible rather than merely unlikely.
+    const anchored = rangeForGranularity('daily', '', '', null);
+    expect(anchored.to).toBe(utcToday());
+    expect(rangeForGranularity('daily', '', '')).toEqual(anchored);
+    expect(rangeForGranularity('daily', '', '', '+07:00').to).toBe(shiftedToday(7 * 3_600_000));
   });
 
   it('keeps the fallback in step with the schema column default', () => {

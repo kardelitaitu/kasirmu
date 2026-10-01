@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderWithFluentSync } from '@/__tests__/test-utils/render';
@@ -14,6 +14,10 @@ const mockListExchangeRatesScoped = vi.fn();
 const mockListCurrenciesScoped = vi.fn();
 const mockCreateExchangeRateScoped = vi.fn();
 const mockDeleteExchangeRateScoped = vi.fn();
+// The auto-sync switch reads/writes rate_sync.enabled through the generic
+// scoped settings commands (ui/src/api/settings.ts).
+const mockGetSettingScoped = vi.fn();
+const mockSetSettingScoped = vi.fn();
 
 // CUR-06: the screen must route through the session-scoped commands when a
 // workspace session is active, so multi-store deployments never read or
@@ -36,6 +40,19 @@ vi.mock('@/api/currency', () => ({
   deleteExchangeRateScoped: (...args: unknown[]) => mockDeleteExchangeRateScoped(...args),
   formatExchangeRate: (rate: { rate_millionths: number }) =>
     (rate.rate_millionths / 1_000_000).toString(),
+}));
+
+vi.mock('@/api/settings', () => ({
+  getSettingScoped: (...args: unknown[]) => mockGetSettingScoped(...args),
+  setSettingScoped: (...args: unknown[]) => mockSetSettingScoped(...args),
+}));
+
+// The screen resolves the store's IANA zone to pre-fill the effective date
+// (ADR #48 Decision 3). Mocked because the assertion is about WHICH zone the
+// date comes from, not about the location fetch itself.
+const mockGetPrimaryLocationScoped = vi.fn();
+vi.mock('@/api/locations', () => ({
+  getPrimaryLocationScoped: (...args: unknown[]) => mockGetPrimaryLocationScoped(...args),
 }));
 
 // ── Helpers ───────────────────────────────────────────────────────────
@@ -72,6 +89,10 @@ describe('ExchangeRateScreen', () => {
     mockListCurrenciesScoped.mockReset();
     mockCreateExchangeRateScoped.mockReset();
     mockDeleteExchangeRateScoped.mockReset();
+    mockGetPrimaryLocationScoped.mockReset();
+    // No store zone by default: a store profile that never loads is the
+    // fallback path, and it must still not fall back to the DEVICE.
+    mockGetPrimaryLocationScoped.mockResolvedValue(null);
     workspaceMock.sessionToken = '';
   });
 
@@ -365,6 +386,186 @@ describe('ExchangeRateScreen — scoped session', () => {
 
     await waitFor(() => {
       expect(mockDeleteExchangeRateScoped).toHaveBeenCalledWith('test-token', 'rate-1');
+    });
+  });
+});
+
+// ── Auto-sync toggle: the rate_sync.enabled round trip ───────────────────
+// The daemon started shipping 2026-09-29 and re-reads this key every cycle,
+// so the switch is the whole control surface: what it reads must match what
+// it writes, and a failed write must not leave a switch claiming ON.
+describe('ExchangeRateScreen — auto-sync toggle', () => {
+  beforeEach(() => {
+    mockListExchangeRatesScoped.mockReset();
+    mockListCurrenciesScoped.mockReset();
+    mockGetSettingScoped.mockReset();
+    mockSetSettingScoped.mockReset();
+    mockGetSettingScoped.mockResolvedValue(null);
+    mockSetSettingScoped.mockResolvedValue(undefined);
+    workspaceMock.sessionToken = 'test-token';
+  });
+
+  it('reads rate_sync.enabled through the scoped command and reflects it on the switch', async () => {
+    mockListExchangeRatesScoped.mockResolvedValue([]);
+    mockListCurrenciesScoped.mockResolvedValue([]);
+    mockGetSettingScoped.mockResolvedValue('1');
+
+    renderScreen();
+
+    await waitFor(() => {
+      const sw = screen.getByRole('switch', { name: /auto-update rates/i }) as HTMLInputElement;
+      expect(sw.checked).toBe(true);
+    });
+    expect(mockGetSettingScoped).toHaveBeenCalledWith('test-token', 'rate_sync.enabled');
+  });
+
+  it('renders off when the key has never been written (backend default "0")', async () => {
+    mockListExchangeRatesScoped.mockResolvedValue([]);
+    mockListCurrenciesScoped.mockResolvedValue([]);
+    mockGetSettingScoped.mockResolvedValue(null);
+
+    renderScreen();
+
+    const sw = (await screen.findByRole('switch', { name: /auto-update rates/i })) as HTMLInputElement;
+    expect(sw.checked).toBe(false);
+  });
+
+  it('persists a flip as "1" and confirms with a toast', async () => {
+    mockListExchangeRatesScoped.mockResolvedValue([]);
+    mockListCurrenciesScoped.mockResolvedValue([]);
+    mockGetSettingScoped.mockResolvedValue('0');
+
+    renderScreen();
+    const sw = (await screen.findByRole('switch', { name: /auto-update rates/i })) as HTMLInputElement;
+    await waitFor(() => expect(sw).toBeEnabled());
+
+    const user = userEvent.setup();
+    await user.click(sw);
+
+    await waitFor(() => {
+      expect(mockSetSettingScoped).toHaveBeenCalledWith('test-token', 'rate_sync.enabled', '1');
+    });
+    await waitFor(() => {
+      expect(screen.getByText('Rate auto-sync turned on')).toBeTruthy();
+    });
+    expect(sw.checked).toBe(true);
+  });
+
+  it('reverts the switch and toasts when the write fails', async () => {
+    mockListExchangeRatesScoped.mockResolvedValue([]);
+    mockListCurrenciesScoped.mockResolvedValue([]);
+    mockGetSettingScoped.mockResolvedValue('0');
+    mockSetSettingScoped.mockRejectedValue(new Error('denied'));
+
+    renderScreen();
+    const sw = (await screen.findByRole('switch', { name: /auto-update rates/i })) as HTMLInputElement;
+    await waitFor(() => expect(sw).toBeEnabled());
+
+    const user = userEvent.setup();
+    await user.click(sw);
+
+    await waitFor(() => {
+      expect(screen.getByText('Could not save the auto-sync setting')).toBeTruthy();
+    });
+    expect(sw.checked).toBe(false);
+  });
+
+  // ── The effective date anchors to the STORE, not the device ──────────
+  //
+  // These two cases exist because the two "creates a rate" tests above assert
+  // effective_date: expect.any(String) -- which is satisfied by ANY date, on
+  // any host, in any zone. That is why a device-local prefill could ship
+  // despite ADR #48 Decision 3 (the effective date is a business date in the
+  // store's IANA zone) being implemented correctly in the backend.
+  //
+  // The assertion is by VALUE against a store zone the test controls, so it
+  // cannot pass on a host that happens to agree.
+  describe('effective date anchoring', () => {
+    // The clock is pinned so these cases assert a property of the fixture, not
+    // of the hour the suite happens to run at. The case below requires a
+    // +14:00 store to be on a DIFFERENT calendar day from UTC, and that only
+    // holds while UTC is at or past 10:00 -- at 00:38 UTC both are still on the
+    // same date, so `not.toBe(storeToday('+00:00'))` could not hold and the
+    // suite failed for ten hours of every day. 14:00 UTC puts Kiritimati on
+    // the next day, which is the state the case is about.
+    beforeEach(() => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      vi.setSystemTime(new Date('2026-09-05T14:00:00Z'));
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    /** The date the store's zone is currently on, computed the way the backend computes it. */
+    function storeToday(tz: string): string {
+      const now = new Date();
+      // Fixed-offset zones are all this needs, and keeping it explicit means the
+      // test's expectation is derived rather than pasted.
+      const m = /^([+-])(\d{2}):?(\d{2})$/.exec(tz);
+      if (!m) return new Date(now.getTime()).toISOString().slice(0, 10);
+      const sign = m[1] === '-' ? -1 : 1;
+      const offset = sign * (Number(m[2]) * 60 + Number(m[3])) * 60_000;
+      return new Date(now.getTime() + offset).toISOString().slice(0, 10);
+    }
+
+    /** Open the create modal and return its date input. */
+    async function openCreateDateField(): Promise<HTMLInputElement> {
+      const user = userEvent.setup();
+      await user.click(screen.getByText('Add'));
+      const input = (await screen.findByDisplayValue(/^\d{4}-\d{2}-\d{2}$/)) as HTMLInputElement;
+      return input;
+    }
+
+    it('pre-fills the store business date, not the device date', async () => {
+      // +14:00 (Kiritimati) is the largest offset that can put the store's
+      // calendar a full day AHEAD of UTC, and therefore ahead of any west-of-UTC
+      // device.
+      const storeTz = '+14:00';
+      workspaceMock.sessionToken = 'test-token';
+      mockGetPrimaryLocationScoped.mockResolvedValue({ timezone: storeTz });
+      mockListExchangeRatesScoped.mockResolvedValue([]);
+      mockListCurrenciesScoped.mockResolvedValue([]);
+
+      renderScreen();
+      const input = await openCreateDateField();
+
+      expect(input.value).toBe(storeToday(storeTz));
+    });
+
+    it('re-seeds the prefill once the store zone arrives after first paint', async () => {
+      // The zone is fetched, so the first render has only the UTC fallback. If
+      // the form captured its default at module load the prefill would stay on
+      // the fallback forever, and the ADR #48 rule would hold only in the
+      // narrow case where the profile is already cached. This pins that the
+      // value is read when the form is OPENED, not at import time.
+      const storeTz = '+14:00';
+      workspaceMock.sessionToken = 'test-token';
+      mockGetPrimaryLocationScoped.mockResolvedValue({ timezone: storeTz });
+      mockListExchangeRatesScoped.mockResolvedValue([]);
+      mockListCurrenciesScoped.mockResolvedValue([]);
+
+      renderScreen();
+      const input = await openCreateDateField();
+
+      // Same value as the case above, reached through a different path: this
+      // one fails if the prefill is computed once at module scope.
+      expect(input.value).toBe(storeToday(storeTz));
+      expect(input.value).not.toBe(storeToday('+00:00'));
+    });
+
+    it('falls back to the store default, never the device, when the profile never loads', async () => {
+      // A store profile that fails to load must not silently become the host
+      // zone: that is the exact failure ADR #48 was written to prevent, and
+      // FALLBACK_STORE_TZ (UTC) is the schema's own column default.
+      workspaceMock.sessionToken = 'test-token';
+      mockGetPrimaryLocationScoped.mockRejectedValue(new Error('offline'));
+      mockListExchangeRatesScoped.mockResolvedValue([]);
+      mockListCurrenciesScoped.mockResolvedValue([]);
+
+      renderScreen();
+      const input = await openCreateDateField();
+
+      expect(input.value).toBe(storeToday('+00:00'));
     });
   });
 });

@@ -119,7 +119,24 @@ static PINNED_DESKTOP: &[(&str, usize, &[&str])] = &[
         10,
         &["DATA_EXPORT", "SETTINGS_EDIT", "SETTINGS_READ"],
     ),
-    ("edc", 3, &["SALES_PROCESS", "SALES_REFUND", "SALES_VOID"]),
+    // 2026-09-29: the multi-terminal CRUD commands landed in
+    // crates/kasirmu-bridge/src/edc.rs (8d3222d37) and the e-faktur stamping
+    // pair in history (7e2ddcbe5); neither commit moved these pins. Re-measured
+    // from source, not from the red message: 8 gate calls at edc.rs:336,:359,
+    // :380,:401,:405,:432,:476,:520, carrying the 5 keys below. The three
+    // SALES_* keys are the pre-existing tender path; SETTINGS_READ/SETTINGS_EDIT
+    // are the terminal CRUD, which is why the read/write pair appears together.
+    (
+        "edc",
+        8,
+        &[
+            "SALES_PROCESS",
+            "SALES_REFUND",
+            "SALES_VOID",
+            "SETTINGS_EDIT",
+            "SETTINGS_READ",
+        ],
+    ),
     ("email", 3, &["REPORTS_SCHEDULE", "SETTINGS_EDIT"]),
     ("exchange_rates", 0, &[]),
     ("features", 2, &["SETTINGS_EDIT"]),
@@ -131,7 +148,14 @@ static PINNED_DESKTOP: &[(&str, usize, &[&str])] = &[
     ),
     ("hardware", 1, &["PAYMENTS_CASH"]),
     ("health", 0, &[]),
-    ("history", 5, &["REPORTS_EXPORT", "SALES_VIEW"]),
+    // 2026-09-29: re-measured alongside the edc row. history.rs carries 7 gate
+    // calls now (:73,:187,:262,:281,:303,:324,:382) — the two SALES_PROCESS
+    // entries at :262/:281 are the e-faktur stamping pair added by 7e2ddcbe5.
+    (
+        "history",
+        7,
+        &["REPORTS_EXPORT", "SALES_PROCESS", "SALES_VIEW"],
+    ),
     (
         "inventory",
         25,
@@ -174,7 +198,14 @@ static PINNED_DESKTOP: &[(&str, usize, &[&str])] = &[
     ),
     ("picker", 0, &[]),
     ("picker_ticket", 0, &[]),
-    ("plugins", 0, &[]),
+    // No `plugins` row: `44e7be9cd` deleted
+    // `apps/desktop-tauri/src/commands/plugins.rs` — a two-line placeholder
+    // carrying no `#[tauri::command]` and no gate call — together with its
+    // `pub mod plugins;` declaration. `assert_pin` fails a pinned row with no
+    // module on disk ("absent"), so the row outlived its module and this test
+    // was red until it was retired here. The census walks `src/commands`, so
+    // a future plugin module reappears as an unpinned row and must be re-pinned
+    // deliberately rather than silently inherited.
     // Re-pinned 2026-09-23 (was 17): 1b7bd2466 added the plugin-discount
     // gate require_session_permission(..., SALES_DISCOUNT) in
     // kasirmu-bridge/src/pos.rs and did not bump this row. The key was
@@ -286,6 +317,11 @@ static PINNED_DESKTOP: &[(&str, usize, &[&str])] = &[
         ],
     ),
     ("sync", 12, &["SYNC_MANAGE"]),
+    // Pinned at its measured shape: the sync test pins module declares the
+    // gates the sync tests drive, but carries no gate CALL of its own, so the
+    // census reads 0 from it. It is a row because the census walks every
+    // non-skipped .rs in the directory -- an added module is a row, gated or not.
+    ("sync_test_pins", 0, &[]),
     (
         "tables",
         6,
@@ -300,7 +336,10 @@ static PINNED_DESKTOP: &[(&str, usize, &[&str])] = &[
     ("tax", 8, &["SETTINGS_EDIT", "SETTINGS_READ"]),
     (
         "terminals",
-        17,
+        // 17 -> 16: one gate call left the module, so the pin moved down with it.
+        // The pin is a census, not a floor -- a removal has to be recorded the same
+        // way an addition does, or the row stops describing the source.
+        16,
         &[
             "TERMINALS_DELETE",
             "TERMINALS_EDIT",
@@ -329,9 +368,15 @@ static PINNED_TABLET: &[(&str, usize, &[&str])] = &[
     // ADR #36/#37/#38 opener browser plugin: no permission-gated commands.
     ("browser", 0, &[]),
     ("bundles", 0, &[]),
+    // 2026-09-29: re-measured. The tablet categories module carries 3 gate calls
+    // (:141 PRODUCTS_CREATE, :192 PRODUCTS_UPDATE, :240 PRODUCTS_DELETE) — the
+    // count was pinned at 1 while the three write doors were already there.
+    // PRODUCTS_READ is deliberately NOT a key here: the only occurrence is the
+    // prose at :266, which the census skips (it cuts comments before collecting),
+    // so adding it would pin a name no gate call carries.
     (
         "categories",
-        1,
+        3,
         &["PRODUCTS_CREATE", "PRODUCTS_DELETE", "PRODUCTS_UPDATE"],
     ),
     ("currencies", 3, &["SETTINGS_EDIT", "SETTINGS_READ"]),
@@ -357,11 +402,16 @@ static PINNED_TABLET: &[(&str, usize, &[&str])] = &[
     ("hardware", 0, &[]),
     ("health", 0, &[]),
     // Re-pinned 13-09-26: 3a15dafe8 put a real permission check in the five
-    // scoped history twins. Counted at apps/mobile-tauri/src/commands/history.rs
-    // lines 297, 340 (SALES_VIEW) and 380, 404, 428 (REPORTS_EXPORT), using the
-    // SHELL_GATES vocabulary this census applies. history_tests.rs is skipped by
-    // stem, so 268198aba contributes nothing to this row.
-    ("history", 5, &["REPORTS_EXPORT", "SALES_VIEW"]),
+    // scoped history twins. Re-measured 2026-09-29: 7 gate calls —
+    // :320,:364 (SALES_VIEW), :400,:420,:440 (REPORTS_EXPORT) and the two
+    // e-faktur stamping doors at :512,:535 (SALES_PROCESS, added with the
+    // desktop pair). The earlier pin of 5 predates those two.
+    // history_tests.rs is skipped by stem, so 268198aba contributes nothing here.
+    (
+        "history",
+        7,
+        &["REPORTS_EXPORT", "SALES_PROCESS", "SALES_VIEW"],
+    ),
     ("inventory_counts", 1, &["INVENTORY_COUNT"]),
     ("kds", 1, &["KDS_UPDATE"]),
     ("legal_entities", 0, &[]),
@@ -458,7 +508,10 @@ static PINNED_TABLET: &[(&str, usize, &[&str])] = &[
             "TABLES_EDIT",
         ],
     ),
-    ("tax", 1, &["SETTINGS_EDIT", "SETTINGS_READ"]),
+    // 2026-09-29: re-measured. The tablet tax module carries 8 gate calls
+    // (:96,:346,:372,:446 SETTINGS_READ and :141,:230,:314,:412 SETTINGS_EDIT);
+    // the count was pinned at 1, which matched neither the reads nor the writes.
+    ("tax", 8, &["SETTINGS_EDIT", "SETTINGS_READ"]),
     ("testing", 0, &[]),
     (
         "terminals",

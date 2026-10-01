@@ -5,7 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
-description = "OZ-POS Sales Module: POS pipeline, cart management, sales history, refunds."
+description = "kasir.mu Sales Module: POS pipeline, cart management, sales history, refunds."
 
 # Inherits [workspace.lints] from the root Cargo.toml (missing_docs = warn).
 [lints]
@@ -13,6 +13,9 @@ workspace = true
 
 [dependencies]
 foundation = { workspace = true }
+# Phase 3 P3.2: the repository reaches the DB through
+# kasirmu_core::db::namespaced, so core is a normal dependency.
+kasirmu-core = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 tracing = { workspace = true }
@@ -24,4 +27,3 @@ thiserror = { workspace = true }
 
 [dev-dependencies]
 platform-kernel = { workspace = true }
-kasirmu-core = { workspace = true }

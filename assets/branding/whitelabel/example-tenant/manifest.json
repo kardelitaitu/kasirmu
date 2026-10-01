@@ -2,7 +2,7 @@
   "brandId": "example-tenant",
   "appName": "Acme Retail POS",
   "companyName": "Acme Corporation",
-  "description": "Custom Whitelabel POS powered by OZ-POS",
+  "description": "Custom Whitelabel POS powered by kasir.mu",
   "themeTokens": {
     "primaryHsl": "340, 82%, 52%",
     "accentHsl": "38, 92%, 50%",

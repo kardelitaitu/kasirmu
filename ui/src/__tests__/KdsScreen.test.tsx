@@ -155,7 +155,7 @@ vi.mock('@/contexts/WorkspaceContext', () => ({
     lastWorkspace: null,
     switchStore: vi.fn(),
     resolvedStoreId: 'default',
-    sessionToken: null,
+    sessionToken: 'mock-session-token',
     swapSessionToken: vi.fn(),
   }),
 }));

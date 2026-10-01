@@ -25,7 +25,7 @@ fn port_zero_rejected() {
     let errs = validate_config_with(&v).unwrap_err();
     assert!(
         errs.iter()
-            .any(|e| e.key == "OZ_API_PORT" && e.message.contains("0"))
+            .any(|e| e.key == "OZ_API_PORT" && e.message.contains('0'))
     );
 }
 
@@ -300,8 +300,7 @@ fn validator_errors_do_not_leak_credentials() {
     let msg = errs
         .iter()
         .find(|e| e.key == "DATABASE_URL")
-        .map(|e| e.message.as_str())
-        .unwrap_or("");
+        .map_or("", |e| e.message.as_str());
     assert!(
         !msg.contains("hunter2"),
         "DATABASE_URL error leaked password: {msg}"
@@ -313,8 +312,7 @@ fn validator_errors_do_not_leak_credentials() {
     let msg = errs
         .iter()
         .find(|e| e.key == "REDIS_URL")
-        .map(|e| e.message.as_str())
-        .unwrap_or("");
+        .map_or("", |e| e.message.as_str());
     assert!(
         !msg.contains("hunter2"),
         "REDIS_URL error leaked password: {msg}"

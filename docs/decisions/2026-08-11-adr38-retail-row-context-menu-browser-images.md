@@ -1,3 +1,4 @@
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · Clean pass — D1–D4 all shipped and every named artifact exists. The context-menu component is real (`ui/src/features/retail/RetailProductContextMenu.tsx`, with `ui/src/__tests__/RetailProductContextMenu.test.tsx` covering it), the API wrapper the project rule requires is `ui/src/api/browser.ts`, the Tauri command `open_product_images_scoped` is in `apps/desktop-tauri/src/commands/browser.rs`, and the D3 plugin wiring is exactly as described — `tauri-plugin-opener = "2"` in the root `Cargo.toml:138`, consumed via `{ workspace = true }` at `apps/desktop-tauri/Cargo.toml:72`. The command module's own doc comment describes the https-only, percent-encoded contract the ADR mandates, so the security claim in D3 is enforced in the code rather than only asserted. · REPAIRED: the three capability-file and two `lib.rs` paths, which named `apps/desktop-client/` and `apps/tablet-client/` — both renamed, to `apps/desktop-tauri/` and `apps/mobile-tauri/`. The ADR also writes `apps/*/capabilities/*.json` generically in one place, which still reads correctly and was left alone. · The "No product images exist" premise in Context is now HISTORICAL rather than current: `product_images` shipped via `crates/kasirmu-core/migrations/20260901_product_images.sql`, which is the exact seam D2 predicted ("stored product images plug in at the same seam"). I have not edited the Context section, because for a decision record the Context is the record of what was known when the decision was made, and D2 explicitly scopes the work as the web-search fallback — a reader checking whether the feature is done should read Implementation Status, which is correct. Noted here so nobody reads the Context as a present-tense claim. · NOT re-measured: the commit hashes and the exact FTL key names. -->
 ---
 num: 38
 area: products
@@ -71,11 +72,11 @@ State of the codebase:
 
 - Add `tauri-plugin-opener` to the workspace `Cargo.toml` and register
   `.plugin(tauri_plugin_opener::init())` in both
-  `apps/desktop-client/src/lib.rs` and `apps/tablet-client/src/lib.rs`; add the
+  `apps/desktop-tauri/src/lib.rs` and `apps/mobile-tauri/src/lib.rs`; add the
   `opener:allow-open-url` permission (or `opener:default`) to
-  `apps/desktop-client/capabilities/default.json`,
-  `apps/tablet-client/capabilities/default.json`, and
-  `apps/tablet-client/capabilities/mobile.json`.
+  `apps/desktop-tauri/capabilities/default.json`,
+  `apps/mobile-tauri/capabilities/default.json`, and
+  `apps/mobile-tauri/capabilities/mobile.json`.
 - New Tauri command `open_product_images_scoped(sessionToken, name, brand)` in
   **both clients** (`commands/*`, registered in each `lib.rs`) — it resolves
   the session (auth precedent, ADR #7), percent-encodes the query, and calls
@@ -144,3 +145,5 @@ in all three capability files, and `open_product_images_scoped`
 `ui/src/api/browser.ts` wrapper and a dev-mock `window.open` fallback.
 Key commits: `2913d49c`, `be37eac1`. Stored product images remain the
 documented future seam (D2) — the action currently searches Google Images.
+
+> last audited 29-09-26 by docs-auditor

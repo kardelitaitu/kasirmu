@@ -1,8 +1,8 @@
 /*
 last audited 25-07-26 by RSA-Agent (kasirmu-core slice A)
 crate: kasirmu-core | status: SAFE | lint: CLEAN
-findings: append-only audit entry type sound; COR-1 FIXED DD-MM-YY (DSH-Agent) — id field doc updated to UUID v7, matching the constructor's ADR #6 generation
-next: fix field doc | perf: N/A
+findings: append-only audit entry type sound; COR-1 FIXED (date unknown, DSH-Agent) — id field doc updated to UUID v7, matching the constructor's ADR #6 generation
+next: none | perf: N/A
 */
 //! Audit log — immutable, append-only record of sensitive actions.
 //!
@@ -72,9 +72,9 @@ impl AuditEntry {
             id: uuid::Uuid::now_v7().to_string(),
             user_id: user_id.into(),
             action: action.into(),
-            target_type: target_type.map(|s| s.into()),
-            target_id: target_id.map(|s| s.into()),
-            details: details.map(|s| s.into()).unwrap_or_else(|| "{}".into()),
+            target_type: target_type.map(std::convert::Into::into),
+            target_id: target_id.map(std::convert::Into::into),
+            details: details.map_or_else(|| "{}".into(), std::convert::Into::into),
             outcome: outcome.into(),
             created_at: chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
         }

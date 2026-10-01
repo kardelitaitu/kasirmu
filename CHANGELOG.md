@@ -17,19 +17,44 @@ this project adheres to [Semantic Versioning](https://semver.org/).
 > statement of what runs. Two entries predate even that: `docs.yml` was deleted
 > outright by `0fb946b16`, and `circleci.yml` existed for one day (created
 > `0ee9fef4`, moved to `.circleci/config.yml` by `ad1d06e9`).
-> **What runs today (and how to re-check it):** three live workflows —
+> **What runs today (and how to re-check it):** four live workflows —
 > `.github/workflows/dev-ci.yml` (`pull_request` targeting `main` + `push` to main +
 > `workflow_dispatch` — `sed -n '3,8p' .github/workflows/dev-ci.yml`), `.github/workflows/release.yml`
-> (`v*` tags) and `.github/workflows/android.yml` (`v*` tag or `workflow_dispatch`, no PR trigger).
+> (`v*` tags), `.github/workflows/android.yml` (`v*` tag or `workflow_dispatch`, no PR trigger)
+> and `.github/workflows/website.yml` (`push` to main, added by `60acf8141` on 2026-09-24).
 > **Corrected 2026-09-23 (C30):** this said "two" and "no push trigger" — both were true when
 > written and both went false (the push trigger and the restored android.yml). Re-measure with
 > `ls .github/workflows/*.yml`, never from this file. Current gates and
 > their runners are in `docs/operations/ci-pipeline.md`; `.agents/skills/docs-auditor/scripts/check-ci-claims.py`
 > polices every other doc against these two files.
 
+## [0.0.40] — 2026-09-24
+
+Release notes: see docs/releases/CHANGELOG-0.0.40.md (reviewed before tagging).
+
+---
+
 ## [0.0.39] — 2026-09-14
 
 Release notes: see docs/releases/CHANGELOG-0.0.39.md (reviewed before tagging).
+
+---
+
+## [0.0.38] — 2026-09-14
+
+Release notes: see docs/releases/CHANGELOG-0.0.38.md (reviewed before tagging).
+
+> **Restored 2026-09-29.** This entry was written by `debd40169` (`chore: bump version to
+> 0.0.38`) and then **silently dropped by a merge** — the string `[0.0.38]` appears in exactly
+> one commit in this file's history (the one that added it) and in none that removed it,
+> which is the signature of a conflict resolution taking the other side wholesale; the
+> candidate is `cb64cbff0` (merge PR #103, whose branch carried the next release). It survived
+> on `origin/0.0.38`, which is where this text was recovered from. It was a real release:
+> `platform/core/src/database/migrations.rs:400` documents a production incident in which a
+> build of that version panicked against a database a newer build had already migrated.
+> The pointer below is in the same dangling state as its neighbours — `docs/releases/` holds
+> only 0.0.25/31/33/34/36, so 9 of the 13 pointers in this file name a file that was never
+> written. That is a release-process question, not a changelog one.
 
 ---
 
@@ -1707,20 +1732,20 @@ Settings navigation tree extracted from monolithic SettingsPage.tsx into a stand
 - `oz-hal` has no real hardware probes (USB/Bluetooth/serial). Drivers
   added in follow-ups.
 
-[Unreleased]: https://github.com/kardelitaitu/oz-pos/compare/v0.0.14...HEAD
-[0.0.14]: https://github.com/kardelitaitu/oz-pos/compare/v0.0.13...v0.0.14
-[0.0.13]: https://github.com/kardelitaitu/oz-pos/compare/v0.0.12...v0.0.13
-[0.0.12]: https://github.com/kardelitaitu/oz-pos/compare/v0.0.11...v0.0.12
-[0.0.11]: https://github.com/kardelitaitu/oz-pos/compare/v0.0.9...v0.0.11
-[0.0.9]: https://github.com/kardelitaitu/oz-pos/compare/v0.0.8...v0.0.9
-[0.0.8]: https://github.com/kardelitaitu/oz-pos/compare/v0.0.7...v0.0.8
-[0.0.7]: https://github.com/kardelitaitu/oz-pos/compare/v0.0.6...v0.0.7
-[0.0.6]: https://github.com/kardelitaitu/oz-pos/compare/v0.0.5...v0.0.6
-[0.0.5]: https://github.com/kardelitaitu/oz-pos/compare/v0.0.4...v0.0.5
-[0.0.4]: https://github.com/kardelitaitu/oz-pos/releases/tag/v0.0.4
-[0.0.3]: https://github.com/kardelitaitu/oz-pos/releases/tag/v0.0.3
-[0.0.2]: https://github.com/kardelitaitu/oz-pos/releases/tag/v0.0.2
-[0.0.1]: https://github.com/kardelitaitu/oz-pos/releases/tag/v0.0.1
+[Unreleased]: https://github.com/kardelitaitu/kasirmu/compare/v0.0.14...HEAD
+[0.0.14]: https://github.com/kardelitaitu/kasirmu/compare/v0.0.13...v0.0.14
+[0.0.13]: https://github.com/kardelitaitu/kasirmu/compare/v0.0.12...v0.0.13
+[0.0.12]: https://github.com/kardelitaitu/kasirmu/compare/v0.0.11...v0.0.12
+[0.0.11]: https://github.com/kardelitaitu/kasirmu/compare/v0.0.9...v0.0.11
+[0.0.9]: https://github.com/kardelitaitu/kasirmu/compare/v0.0.8...v0.0.9
+[0.0.8]: https://github.com/kardelitaitu/kasirmu/compare/v0.0.7...v0.0.8
+[0.0.7]: https://github.com/kardelitaitu/kasirmu/compare/v0.0.6...v0.0.7
+[0.0.6]: https://github.com/kardelitaitu/kasirmu/compare/v0.0.5...v0.0.6
+[0.0.5]: https://github.com/kardelitaitu/kasirmu/compare/v0.0.4...v0.0.5
+[0.0.4]: https://github.com/kardelitaitu/kasirmu/releases/tag/v0.0.4
+[0.0.3]: https://github.com/kardelitaitu/kasirmu/releases/tag/v0.0.3
+[0.0.2]: https://github.com/kardelitaitu/kasirmu/releases/tag/v0.0.2
+[0.0.1]: https://github.com/kardelitaitu/kasirmu/releases/tag/v0.0.1
 
 > last audited 09-09-26 by docs-auditor
 > audit: Phase 1 Core Architecture & API Docs Audit

@@ -51,6 +51,31 @@ setup-provision-title = Set up this terminal
 setup-provision-account-section = kasir.mu Account
 setup-provision-account-hint = Connect your device to your free account to enable automatic sync and license protection.
 setup-provision-offline-warn = Internet connection is required to create or link your account.
+# The way OUT of the offline state, not just the reason the way IN is shut.
+# provision_device is local SQLite, so a merchant with no signal can still set
+# the terminal up — but on the linked (default) mode every control is disabled
+# and the warning said only why. This is the one click that reaches the mode that
+# still works.
+setup-provision-offline-switch-local = Set up without an account instead
+# What QR pairing actually costs, stated before the merchant taps it: a second
+# device ALREADY signed in to the account. It reads as universal otherwise, and a
+# merchant setting up a single terminal alone cannot meet it.
+setup-account-pair-requirement = { ' QR pairing needs a second phone signed in to your account.' }
+# The submit gate, named. A disabled button cannot be pressed and cannot explain
+# itself, and this card is taller than the viewport, so the unmet requirement and
+# the control that fixes it were both invisible. Items are buttons: each moves
+# focus to the field that must change.
+setup-provision-gate-heading = Still needed before you can finish setup:
+setup-provision-gate-account = Link an account, or pick "Offline only"
+setup-provision-gate-store-type = Choose the kind of shop
+setup-provision-gate-location = Shop name
+setup-provision-gate-owner-name = Your name
+setup-provision-gate-username = Login name
+setup-provision-gate-pin = A PIN of at least 4 digits
+setup-provision-gate-pin-match = Both PINs the same
+# What the terminal is being provisioned WITH. provisionDevice has always sent
+# currency and timezone; the merchant was told neither.
+setup-provision-locale-note = Set up in { $currency } ({ $timezone }). You can change this later in Settings.
 # Step labels for the first-run progress rail. Three steps, matching the three
 # decisions the form actually gates submission on: how the terminal is linked,
 # what kind of shop it is, and who signs in. A rail is not decoration here — the
@@ -67,6 +92,7 @@ setup-mode-linked-title = Link your kasir.mu account
 setup-mode-linked-desc = Sign up or sign in to attach this terminal to your account, for multi-device sync, cloud backup, and your plan.
 setup-tab-pair = QR Pairing
 setup-tab-email = Email Code
+setup-tab-wizard = Setup Wizard
 setup-provision-store-type = What kind of shop is this?
 setup-store-type-simple-retail = Shop
 setup-store-type-simple-retail-blurb = Barcode, cash, receipt, inventory, tax
@@ -84,8 +110,10 @@ setup-provision-success = This terminal is ready.
 setup-provision-error = Could not finish setting up this terminal. Please try again.
 setup-provision-account-required = Please link your kasir.mu account before finishing setup.
 
-setup-account-title = Your account
-setup-account-desc = Optional. Link this POS to your kasir.mu account so you can sign in on the web with Google.
+# `setup-account-title` and `setup-account-desc` were removed 2026-10-01: they
+# belonged to the RETIRED SetupWizard account step (deleted in badd31d2e) and no
+# source referenced either — see setup-wizard-audit.md recommendation 2. The
+# account family below is ProvisioningFlow's, and its heading is its own.
 setup-account-google = Continue with Google
 setup-account-waiting = Waiting for your browser…
 setup-account-linked = Linked to { $email }.
@@ -102,8 +130,9 @@ setup-account-code-label = Verification code
 setup-account-send = Email me a code
 setup-account-code = 6-digit code
 setup-account-verify = Verify
-setup-account-sent = Code sent. It expires in 15 minutes.
-setup-account-optional = You can skip this. Your licence key still runs the POS.
+# `setup-account-sent` and `setup-account-optional` removed 2026-10-01, same as
+# the pair above: both were the retired wizard's, and both were unread — the flow
+# says nothing when the code is sent (the code field appearing IS the signal).
 # The tablet's in-flight states. `setup-account-waiting` above names a browser and stays with
 # the Google control, which really does open one.
 setup-account-sending = Sending the code…
@@ -345,6 +374,11 @@ settings-sync-not-configured = Sync is not configured. Enter a server URL and en
 # Status-bar sync pill: the device has NO server URL at all — a configuration
 # gap, not an outage. Deliberately not "Offline" (statusbar-offline-msg).
 statusbar-sync-unconfigured-msg = { $name } · Not configured
+# Status-bar sync pill: URL and credential ARE stored, but the server refused
+# the credential. Distinct from both neighbours on purpose — not "Not
+# configured" (there IS a configuration) and not "Offline" (the server
+# answered). The fix is re-linking the terminal, not the network.
+statusbar-sync-unauthorized-msg = { $name } · Credential rejected
 settings-sync-status-idle = Ready
 settings-sync-status-ok = Connected
 settings-sync-pending-count = { $count } pending
@@ -513,6 +547,7 @@ data-mgmt-tabs-aria = Data management actions
 data-mgmt-tab-export = Export
 data-mgmt-tab-import = Import
 data-mgmt-tab-backup = Backup
+data-mgmt-tab-restore = Restore
 
 # Export wizard
 data-mgmt-export-wizard-aria = Export wizard
@@ -589,7 +624,44 @@ data-mgmt-backup-label-size = Size
 data-mgmt-backup-create = Create backup now
 data-mgmt-backup-backing-up = Backing up…
 
+# Restore section (C8 S5b)
+#
+# The restore is a SAFE-MODE operation (D5): the request is recorded here and
+# performed on the next start, before anything opens the database. No string
+# here may promise an immediate restore, and none does.
+data-mgmt-restore-status-aria = Restore status
+data-mgmt-restore-title = Restore from backup
+data-mgmt-restore-desc = Replace the live database with one of the backup generations stored beside it. The restore runs the next time kasir.mu starts, before anything opens the database.
+data-mgmt-restore-loading = Reading backup generations…
+data-mgmt-restore-empty = No backup generations were found beside the database.
+data-mgmt-restore-generation = Generation { $number }
+data-mgmt-restore-label-size = Size
+data-mgmt-restore-label-modified = Modified
+data-mgmt-restore-label-schema = Backup schema
+data-mgmt-restore-schema-unknown = Unknown
+data-mgmt-restore-verdict-acceptable = Usable
+data-mgmt-restore-verdict-older = Usable, older schema
+data-mgmt-restore-verdict-newer = Refused, newer schema
+data-mgmt-restore-verdict-corrupt = Refused, corrupt
+data-mgmt-restore-request = Restore this backup
+data-mgmt-restore-confirm-title = Restore from this backup?
+data-mgmt-restore-confirm-desc = To confirm, type the store name that this BACKUP carries — not the name of the store you are running now. The name is not shown anywhere, on purpose: typing it is the confirmation that you have the right backup.
+data-mgmt-restore-store-name-label = Store name in the backup
+data-mgmt-restore-store-name-placeholder = Type the backup's store name
+data-mgmt-restore-submit = Request restore
+data-mgmt-restore-cancel = Cancel
+data-mgmt-restore-next-boot = This restore will run the next time kasir.mu starts. You can keep using the app until then.
+data-mgmt-restore-pending-aria = A restore is already pending
+data-mgmt-restore-pending-title = A restore is already pending
+data-mgmt-restore-pending-desc = A restore has been requested and will run the next time kasir.mu starts. Requesting another would replace it.
+data-mgmt-restore-pending-requested = Requested
+data-mgmt-restore-pending-unreadable = The pending request could not be read
+data-mgmt-restore-cli-hint = You can also restore from the command line: run the kasir.mu CLI restore command while the app is closed.
+
 # Toast notifications
+data-mgmt-toast-restore-success = Restore requested. It will run the next time kasir.mu starts.
+data-mgmt-toast-restore-fail = Could not request the restore
+data-mgmt-toast-restore-store-mismatch = That store name does not match the backup
 data-mgmt-toast-backup-success = Backup created successfully
 data-mgmt-export-complete-aria = Export complete
 data-mgmt-import-complete-aria = Import complete
@@ -711,6 +783,7 @@ settings-update-retry = Retry
 settings-section-email = Email Reports
 settings-email-description = Configure SMTP to receive scheduled report emails.
 settings-email-host = SMTP Host
+settings-email-host-placeholder = smtp.example.com
 settings-email-port = Port
 settings-email-username = Username
 settings-email-username-placeholder = Optional
@@ -719,6 +792,7 @@ settings-email-password-placeholder = Enter password
 settings-email-password-show = Show password
 settings-email-password-hide = Hide password
 settings-email-from = From Address
+settings-email-from-placeholder = reports@mystore.com
 settings-email-use-tls = Use STARTTLS
 settings-email-save-btn = Save SMTP Settings
 settings-email-saved-btn = Saved ✓
@@ -742,6 +816,7 @@ settings-schedule-cadence-weekly = Weekly (Monday)
 settings-schedule-cadence-monthly = Monthly (1st)
 settings-schedule-time = Send Time
 settings-schedule-timezone = Timezone
+settings-schedule-timezone-placeholder = UTC
 settings-schedule-lookback = Lookback Days
 settings-schedule-report-types = Report Types
 settings-schedule-recipients = Recipients
@@ -998,6 +1073,7 @@ settings-diagnostics-detail-scope-not-covered = Does not cover this location
 settings-diagnostics-detail-expires = Expires: { $expiresAt }
 settings-diagnostics-detail-grace = Grace until: { $graceUntil }
 settings-diagnostics-deployment-version = App version: { $version }
+settings-diagnostics-deployment-unknown = Could not read the app version.
 
 
 # ── Receipt format (receipt-format axis, Business Defaults screen) ──
@@ -1075,4 +1151,86 @@ settings-fiscalnum-overview-col-kind = Document kind
 settings-fiscalnum-overview-col-prefix = Prefix
 settings-fiscalnum-overview-col-current = Last number
 settings-fiscalnum-overview-col-updated = Updated
+
+# ── Mobile Setup Wizard & Welcome Flow (Figma spec 720x1280) ──
+setup-mobile-welcome-cta = Setup Wizard →
+setup-mobile-welcome-guide = 2-minute device configuration guide
+setup-mobile-welcome-signup = Sign up
+setup-mobile-welcome-signup-hint = Don't have a license? Create an account first
+setup-mobile-welcome-blurb = Modern, all-in-one POS solution for sales, inventory management, thermal printing, and automatic real-time revenue tracking.
+
+setup-mobile-hub-title = Setup New Device
+setup-mobile-hub-subtitle = Modern, fast & offline-first POS and inventory system for retail stores, cafes & restaurants.
+setup-mobile-feature-offline = Works 100% Offline Without Internet Connection
+setup-mobile-feature-printer = Bluetooth Thermal Receipt Printing
+setup-mobile-feature-multidevice = Multi-Device & Local Sync via WiFi / LAN
+setup-mobile-feature-reports = Automatic Real-time Stock, Cash & Revenue Reports
+setup-mobile-hub-connect-hint = Connect store to sync catalog, staff & transaction reports
+setup-mobile-auth-google-title = Sign in with Google Account
+setup-mobile-auth-google-desc = Safe, fast, and automated cloud backup to Google Drive
+setup-mobile-auth-email-title = Sign in with Email & Password
+setup-mobile-auth-email-desc = Use registered Owner, Store Manager, or Cashier account
+setup-mobile-auth-qr-title = Connect via QR Code / Login Code
+setup-mobile-auth-qr-desc = Scan QR with owner/admin account
+setup-mobile-hub-footer = Don't have a Kasirmu account? Contact sales@kasirmu.com or register at kasirmu.id
+
+setup-mobile-back = Back
+setup-mobile-google-title = Choose an account to continue
+setup-mobile-google-subtitle = to Kasir.mu Sync & Cloud Backup
+setup-mobile-google-privacy = Kasir.mu only requests permission to sync your Google profile. Your sales and transaction data remain stored privately on the local device.
+
+setup-mobile-email-intro = Enter account credentials to connect store catalog & stock data:
+setup-mobile-email-forgot = Forgot password?
+setup-mobile-email-submit = Sign In →
+setup-mobile-email-security = 🔒 End-to-end 256-bit SSL encrypted connection & stored locally on device
+
+setup-mobile-qr-reticle-hint = Ensure QR code is inside the frame
+setup-mobile-qr-guide-title = QR Code Instructions
+setup-mobile-qr-step1 = 1. Open dashboard.kasir.mu in your browser
+setup-mobile-qr-step2 = 2. Sign in with owner account
+setup-mobile-qr-step3 = 3. Click 'Pair New Device' button to display QR code pairing
+setup-mobile-code-guide-title = Login Code Instructions
+setup-mobile-code-step1 = 1. Open kasir.mu in your browser
+setup-mobile-code-step2 = 2. Sign in with owner account
+setup-mobile-code-step3 = Click this link:
+setup-mobile-code-copy = Copy
+setup-mobile-code-copied = Copied!
+
+# EDC Terminals Settings
+settings-edc-title = EDC Card Terminals
+settings-edc-description = Configure physical EDC payment terminals for card processing.
+settings-edc-add = Add EDC Terminal
+settings-edc-edit = Edit EDC Terminal
+settings-edc-delete = Delete
+settings-edc-test = Test Connection
+settings-edc-testing = Testing…
+settings-edc-empty = No EDC card terminals configured yet.
+settings-edc-status-ready = Ready
+settings-edc-status-busy = Busy
+settings-edc-status-offline = Offline
+settings-edc-status-error = Error
+settings-edc-field-name = Terminal Name
+settings-edc-field-connection = Connection Type
+settings-edc-field-transport = Transport
+settings-edc-field-address = Device Address / Port
+settings-edc-field-vendor = Hardware Vendor
+settings-edc-field-model = Terminal Model
+settings-edc-name-placeholder =
+    .placeholder = e.g. BCA Counter 1
+settings-edc-address-wired-placeholder =
+    .placeholder = COM3, /dev/ttyUSB0, or loopback
+settings-edc-address-wireless-placeholder =
+    .placeholder = 192.168.1.188:9000, MAC, or loopback
+settings-edc-vendor-placeholder =
+    .placeholder = e.g. ingenico, verifone, pax, loopback
+settings-edc-model-placeholder =
+    .placeholder = e.g. iPP320, A920
+settings-edc-field-active = Active for Payment
+settings-edc-conn-wired = Wired
+settings-edc-conn-wireless = Wireless
+settings-edc-default-select = Register Default EDC Terminal
+settings-edc-default-auto = Auto (Earliest Created)
+settings-edc-saved = EDC Terminal saved successfully.
+settings-edc-deleted = EDC Terminal deleted.
+settings-edc-delete-confirm = Are you sure you want to delete this EDC terminal?
 

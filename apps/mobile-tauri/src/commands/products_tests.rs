@@ -290,3 +290,55 @@ fn delete_product_args_debug() {
     let d = format!("{args:?}");
     assert!(d.contains("OLD"));
 }
+
+// ── R3: page_window ────────────────────────────────────────────────────
+//
+// `page_window` is the Rust half of the bounded list path and `paginate()` in
+// `ui/src/utils/list-policy.ts` is the other. The doc comment on
+// `page_window` claims the two halves cannot drift apart; these tests are what
+// make that claim true rather than an assertion in a comment. The same
+// property is proved for the UI half at `list-policy.test.ts:65`.
+
+#[test]
+fn page_window_no_bounds_is_the_whole_list() {
+    assert_eq!(page_window(10, None, None), (0, 10));
+}
+
+#[test]
+fn page_window_limits_without_offset() {
+    assert_eq!(page_window(10, Some(3), None), (0, 3));
+}
+
+/// R3 acceptance: "one assert proves page 2 offsets correctly".
+///
+/// The failure this guards is an offset that is accepted but not applied: the
+/// window then starts at 0, so page 2 IS page 1. On a POS screen that reads
+/// as a broken pager rather than as a wrong offset, which is why it is worth
+/// an explicit test and not just the happy path above.
+#[test]
+fn page_window_page_two_offsets_correctly() {
+    // 10 rows at 3 per page: page 1 [0,3), page 2 [3,6), page 3 [6,9),
+    // page 4 [9,10).
+    assert_eq!(page_window(10, Some(3), Some(0)), (0, 3));
+    assert_eq!(page_window(10, Some(3), Some(3)), (3, 6));
+    assert_eq!(page_window(10, Some(3), Some(6)), (6, 9));
+    assert_eq!(page_window(10, Some(3), Some(9)), (9, 10));
+}
+
+#[test]
+fn page_window_clamps_past_the_end_instead_of_panicking() {
+    // Both callers do `drain(start..end)`, which panics if `end < start`, so
+    // the clamp is load-bearing rather than cosmetic.
+    // An offset beyond the row set clamps to the end...
+    assert_eq!(page_window(10, Some(3), Some(999)), (10, 10));
+    // ...and a limit running past the end stops at the end.
+    assert_eq!(page_window(10, Some(999), Some(6)), (6, 10));
+}
+
+#[test]
+fn page_window_never_returns_end_before_start() {
+    // The same clamp reached from an empty list, which is the state of a
+    // freshly seeded store.
+    assert_eq!(page_window(0, Some(3), Some(6)), (0, 0));
+    assert_eq!(page_window(0, None, None), (0, 0));
+}

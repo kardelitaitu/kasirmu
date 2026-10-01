@@ -1,6 +1,7 @@
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 1,744 lines, with a prior marker re-verified rather than replaced. It is, by a wide margin, the MOST-CITED DOCUMENT IN THE REPOSITORY — nineteen files reference it, including this campaign's own stamps on the migration record, the ADR-55 origin model, the SQLCipher plan and the licence audit. That citation count is the reason this pass checked its load-bearing claims rather than its content. · THE LOAD-BEARING CLAIM IS ABOUT THE ORIGIN, AND IT IS CORRECT IN A WAY THAT MATTERS. The deployment section names the Northflank service and describes the public URL as "two names, one service": the current domain canonical, with the previous one as an alias. That is exactly the main-plus-fallback pair ADR-55 created and that this campaign verified in the code last round — the main and fallback origin constants in the core crate's server-origin module. So the runbook and the code agree, and the several old-domain references a grep finds in it are the documented ALIAS rather than rebrand drift. Filing them would have been the second false positive of this kind in two rounds, and the stamp says so explicitly so the next auditor does not make it. · THE OTHER CLAIM CHECKS OUT TOO. The build trigger is described as a push to main running Dev CI with a deploy job building the linked branch, and that job is live in the current workflow set — the same live-versus-archived distinction the archived CI dashboard, the SAST audit and the regression tracker all turned on, and here the runbook is on the right side of it. · SCOPE, because a 1,744-line operations runbook is a document class this campaign has audited before under a different name. Its content is procedure, and procedure is verified by running it against a deployment, which a checkout-based audit cannot do. What this pass established is narrower and is what a reader of the index actually needs: that the most-cited document in the tree still describes the deployment that exists, on the two facts most likely to have drifted. · NOT re-measured: any command, probe interval, rollback step or credential procedure. A runbook that is wrong about the world is dangerous; a runbook whose commands are unverified by this audit is merely unaudited, and the stamp distinguishes the two. · Prior marker retained; footer re-dated to match the new stamp. -->
 # Operations Runbook — kasir.mu (unified Northflank deployment)
 
-<!-- Audit stamp: 2026-09-08 · DSH · status: ACCURATE after repair (4 findings) · SUPERSEDES the 2026-08-31 stamp, which was honest when written — "ACCURATE (0 findings)", verified against HEAD that apps/unified/healthcheck.sh and docs/archived/2026-08-15-unify-auth-and-sync.md exist and that the sync-path claims held. It was overtaken by events, and that is the finding: 23c963303 retired ten workflows to .bak on 2026-09-02, two days later, and swept none of the operational docs that named them. · REPAIRED: (1) §8.5 headline claimed "Merges to main now auto-deploy" via deploy.yml — that file is .bak, and its successor northflank-deploy sits in dev-ci.yml, whose on: block has only pull_request + workflow_dispatch, so the job's own push-branch condition is unreachable dead logic (flagged, not fixed: adding push: branches: [main] reinstates automatic production deploys, and that job omits release-readiness from its needs). Deploys are manual-only via Run workflow. (2) The §8 summary table repeated the same false trigger. (3) §8.5 recommended deploy.yml as "the preferred, auditable path" over Northflank native git triggers — the recommended path is gone, leaving the discouraged one as the only automatic option. (4) §9 claimed the website deploys via website.yml → npx wrangler deploy — zero wrangler references exist in any live workflow, and dev-ci.yml#website stops at Build; the deploy is npm run deploy from website/, by hand. · CODE FINDINGS FLAGGED, NOT PATCHED: the dead push branch above, and website/package.json:17 ("deploy": "bash ../scripts/wrangler-deploy.sh") — the only npm script in the repo invoking bare bash, which AGENTS.md records as resolving to WSL on this platform where it hangs until killed or runs Linux node against Windows-built node_modules. AGENTS.md's own env-var section recommends that command while its own Windows section says bare bash hangs: two correct documents, one contradiction, neither wrong when written. · REV 2 (09-09-26, docs-auditor, CI-claim pass) — status: ACCURATE AFTER REPAIR (4 findings) + 3 more stale-CI instructions fixed in the same section, all of them leftovers of the same retirement. Repaired: §9.2 named the PR `check` job and the `deploy` job (both only in `website.yml.bak:71`/`:144`) and §9.5 told the reader to treat a red `deploy` job as an incident (`.github/workflows/website.yml.bak` is inert since `23c963303`, 2026-09-02) — §9.2 now states plainly that nothing deploys the website and that a rejected token no longer has any CI surface at all, and §9.5 pages on the live-site probe instead. Also dead: §9.3 probe #1 (`gh run list --workflow "Website Deploy"` lists no runs — the empty list is the missing workflow, not health), the §9.3 note claiming the fail-fast credential step runs as the deploy job's first step (`website.yml.bak:155`, retired with it), §9.4 step 4's "re-run the last failed run / push a trivial change" (no run exists, and `dev-ci.yml` has no push trigger; `dev-ci.yml:137-163` builds the site and stops), and §9.1/§9.4's "put it in the GitHub secret store" (`git grep -l CLOUDFLARE_API_TOKEN -- .github/workflows` → `website.yml.bak` only; the live consumer is `scripts/wrangler-deploy.sh:42` reading the environment). Verified from the files: live workflows are `dev-ci.yml` + `release.yml` only; `dev-ci.yml` `on:` is `pull_request: branches: [main]` + `workflow_dispatch` with no `push:` and no `schedule:`; `static-gates` has 28 named steps. Nothing weakened: every open recommendation in §9.5 stays open and is now explicitly unbuilt. · STILL TRUE, re-checked not assumed: backup-pb.sh and litestream.yml are server-side artifacts the operator creates under /opt/oz, not repo files, so their absence from the tree is correct and my sweep's flags against them are false positives. · WHY THIS SLIPPED THE NET: verify-ci-docs-drift.py polices ci-pipeline.md, releases/checklist.md and the pre-commit hook — not this runbook. A workflow retirement updates the checked page and leaves the unchecked one naming the dead file. -->
+<!-- Superseded audit marker (2026-09-08 · DSH, body kept verbatim) · DSH · status: ACCURATE after repair (4 findings) · SUPERSEDES the 2026-08-31 stamp, which was honest when written — "ACCURATE (0 findings)", verified against HEAD that apps/unified/healthcheck.sh and docs/archived/2026-08-15-unify-auth-and-sync.md exist and that the sync-path claims held. It was overtaken by events, and that is the finding: 23c963303 retired ten workflows to .bak on 2026-09-02, two days later, and swept none of the operational docs that named them. · REPAIRED: (1) §8.5 headline claimed "Merges to main now auto-deploy" via deploy.yml — that file is .bak, and its successor northflank-deploy sits in dev-ci.yml, whose on: block has only pull_request + workflow_dispatch, so the job's own push-branch condition is unreachable dead logic (flagged, not fixed: adding push: branches: [main] reinstates automatic production deploys, and that job omits release-readiness from its needs). Deploys are manual-only via Run workflow. (2) The §8 summary table repeated the same false trigger. (3) §8.5 recommended deploy.yml as "the preferred, auditable path" over Northflank native git triggers — the recommended path is gone, leaving the discouraged one as the only automatic option. (4) §9 claimed the website deploys via website.yml → npx wrangler deploy — zero wrangler references exist in any live workflow, and dev-ci.yml#website stops at Build; the deploy is npm run deploy from website/, by hand. · CODE FINDINGS FLAGGED, NOT PATCHED: the dead push branch above, and website/package.json:17 ("deploy": "bash ../scripts/wrangler-deploy.sh") — the only npm script in the repo invoking bare bash, which AGENTS.md records as resolving to WSL on this platform where it hangs until killed or runs Linux node against Windows-built node_modules. AGENTS.md's own env-var section recommends that command while its own Windows section says bare bash hangs: two correct documents, one contradiction, neither wrong when written. · REV 2 (09-09-26, docs-auditor, CI-claim pass) — status: ACCURATE AFTER REPAIR (4 findings) + 3 more stale-CI instructions fixed in the same section, all of them leftovers of the same retirement. Repaired: §9.2 named the PR `check` job and the `deploy` job (both only in `website.yml.bak:71`/`:144`) and §9.5 told the reader to treat a red `deploy` job as an incident (`.github/workflows/website.yml.bak` is inert since `23c963303`, 2026-09-02) — §9.2 now states plainly that nothing deploys the website and that a rejected token no longer has any CI surface at all, and §9.5 pages on the live-site probe instead. Also dead: §9.3 probe #1 (`gh run list --workflow "Website Deploy"` lists no runs — the empty list is the missing workflow, not health), the §9.3 note claiming the fail-fast credential step runs as the deploy job's first step (`website.yml.bak:155`, retired with it), §9.4 step 4's "re-run the last failed run / push a trivial change" (no run exists, and `dev-ci.yml` has no push trigger; `dev-ci.yml:137-163` builds the site and stops), and §9.1/§9.4's "put it in the GitHub secret store" (`git grep -l CLOUDFLARE_API_TOKEN -- .github/workflows` → `website.yml.bak` only; the live consumer is `scripts/wrangler-deploy.sh:42` reading the environment). Verified from the files: live workflows are `dev-ci.yml` + `release.yml` only; `dev-ci.yml` `on:` is `pull_request: branches: [main]` + `workflow_dispatch` with no `push:` and no `schedule:`; `static-gates` has 28 named steps. Nothing weakened: every open recommendation in §9.5 stays open and is now explicitly unbuilt. · STILL TRUE, re-checked not assumed: backup-pb.sh and litestream.yml are server-side artifacts the operator creates under /opt/oz, not repo files, so their absence from the tree is correct and my sweep's flags against them are false positives. · WHY THIS SLIPPED THE NET: verify-ci-docs-drift.py polices ci-pipeline.md, releases/checklist.md and the pre-commit hook — not this runbook. A workflow retirement updates the checked page and leaves the unchecked one naming the dead file. -->
 
 One Northflank service, one Docker image. Two functions behind one caddy
 reverse proxy (single public port):
@@ -753,24 +754,34 @@ The unified image runs three processes under supervisord (caddy, license,
 sync); all write to the container's stdout/stderr, which Northflank
 captures and surfaces in **Dashboard → service → Logs**.
 
-**Everything below is a hosted-service diagnostic, and that is a limitation of
-the clients, not of this page.** No shipped binary writes a persistent local
-log: both Tauri apps initialise logging with `kasirmu_logging::try_init()`
-(`apps/desktop-tauri/src/lib.rs:99`, `apps/mobile-tauri/src/lib.rs:69`),
-which installs an `EnvFilter` + `fmt` subscriber and **no writer**
-(`crates/kasirmu-logging/src/lib.rs:78-89`, no `.with_writer`), so stdout goes wherever the OS puts it
-— which for a double-clicked desktop build is nowhere. The two entry points
-that would have created a file, `init_with_file` and `init_json_with_file`
-(`crates/kasirmu-logging/src/lib.rs:184`, `:238`), have **zero callers outside their
-own tests**; `log_dir` / `LogRoot` / `app_log` / `path_resolver` return **0
-matches across `apps/`**, and the EventLog backend is never wired by any
-binary either. So there is no on-device log file to open, and nothing in this
-section can be run on a till or a tablet.
+**Client logs are on the device since 2026-09-29 — this section says where.**
+Both Tauri apps initialise logging as the FIRST statement of their `setup`
+ closure via `kasirmu_logging::try_init_with_file_or_stdout(dir, "kasirmu", 30)`
+(`apps/desktop-tauri/src/lib.rs`, `apps/mobile-tauri/src/lib.rs`). The helper
+resolves `app.path().app_log_dir()`, runs the LOG-2 writability pre-flight and
+starts an hourly rolling file sink with 30-day retention; if the directory
+cannot be prepared it reports on stderr and falls back to stdout rather than
+going silent. Where the file is:
 
-The tablet is worse than unlogged: it is **unobservable by construction**.
-Android does not persist its logcat, no log-pull ships, and the device never
-reaches the container's stdout — so a field issue on a tablet cannot be
-diagnosed from logs at all, only from the SQL below and from reproducing it.
+| Client | Log directory |
+|---|---|
+| Windows | `%LOCALAPPDATA%\<bundle identifier>\logs\` |
+| Linux | `<local data dir>/<bundle identifier>/logs/` |
+| macOS | `~/Library/Logs/<bundle identifier>/` |
+| Android tablet | `<app config dir>/logs/` — app-private storage, so a debuggable build via `adb run-as`, or root, to read it |
+
+Re-derive the call sites with
+`grep -rn 'try_init_with_file_or_stdout' --include='*.rs' apps/` → the two
+shells. `apps/cloud-server` deliberately stays on `try_init_json()` (stdout):
+the container's stdout is already collected, and a file written inside the
+container would die with it. The `init_syslog` and `init_eventlog` sinks no
+longer exist — both were deleted 2026-09-29 (C29 / D13) as unwired and
+redundant with what the host already captures.
+
+The tablet now writes the same rolling file, but nothing **ships** it: Android
+does not persist its logcat, no log-pull runs, and the device never reaches the
+container's stdout — so pulling a tablet's log still needs physical access to
+the directory above, while desktop support can simply ask for the file.
 
 **Recommended log format:** set `OZ_LOG_FORMAT=json` in the service env
 (§8 table) so the Rust cloud-server emits structured, queryable log lines
@@ -1125,7 +1136,7 @@ an envelope shape, not a conversion any of the four surfaces above performs.
   is pinned as a *known hazard*, not as a contract, by the `known_hazard_*` tests in
   `platform/core/src/settings/tests.rs`; turning it into an error is that crate's
   own recorded next step and a runbook cannot shortcut it.
-- **Do not aim `oz credential-deltas purge` at the settings table.** That lane
+- **Do not aim `kasir credential-deltas purge` at the settings table.** That lane
   walks the `setting_updated` delta ledger and its delete path belongs there; the
   live settings row is untouched by it on purpose, which is the property that makes
   the purge safe to run at all.
@@ -1140,16 +1151,23 @@ an envelope shape, not a conversion any of the four surfaces above performs.
 ## 9. Website Deploy Token (Cloudflare) — lifecycle & rotation
 
 The marketing site (Astro, `website/`) deploys to Cloudflare Workers static assets
-(`oz-pos` worker → `https://ozpos.my.id`) via **`npm run deploy` from `website/`,
-run by hand** — `website/package.json:17` shells out to `scripts/wrangler-deploy.sh`.
+(`oz-pos` worker → `https://kasir.mu`) via **`.github/workflows/website.yml`
+("Website Deploy")**, which runs on a push to main touching `website/**`,
+`prototypes/**` or `scripts/wrangler-deploy.sh` (and on manual dispatch): it
+gates the build, then calls `scripts/wrangler-deploy.sh`. **A manual deploy
+still works** — `npm run deploy` from `website/` (`website/package.json:17`)
+shells out to the same script.
 
-> ⚠️ **No workflow deploys the website.** This section named
-> `.github/workflows/website.yml` until 08-09-26; that file is retired
-> (`website.yml.bak`), and `grep -rn wrangler .github/workflows/*.yml` returns
-> **zero** hits across the live workflows. The live `dev-ci.yml#website` job does
-> asset hygiene, install, typecheck, lint, unit tests and **build** — it stops short
-> of deploying. Everything below about the token still holds; what changed is that
-> the token is consumed by a person, not a pipeline.
+> ✅ **A workflow deploys the website again — since 2026-09-24.** This section
+> said the opposite from 08-09-26 (when `.github/workflows/website.yml` was
+> retired to `attic/website.yml.bak`) until 2026-09-24, when that workflow was
+> restored: it builds, runs `check:links` + `check:seo`, then calls
+> `scripts/wrangler-deploy.sh`, so `grep -rn wrangler .github/workflows/*.yml`
+> is no longer empty. The `dev-ci.yml#website` job is unchanged — PRs only
+> check and build; only `website.yml` deploys, and only on push to main.
+> Everything below about the token holds for both paths; what differs is *who*
+> supplies the secret — the pipeline reads the GitHub secrets of the same name,
+> the manual path reads `.env` / `KASIRMU_CLOUDFLARE_*`.
 >
 > ⚠️ **On Windows the documented command can hang.** `scripts/wrangler-deploy.sh` is
 > invoked as `bash ../scripts/wrangler-deploy.sh` — the only npm script in the repo
@@ -1175,9 +1193,11 @@ dashboard and simply names which account the token acts on.
   the environment, not GitHub: `scripts/wrangler-deploy.sh:42` fails when
   `CLOUDFLARE_API_TOKEN`/`CLOUDFLARE_ACCOUNT_ID` are unset, and AGENTS.md feeds those
   from `.env` / the `KASIRMU_CLOUDFLARE_*` user variables. A GitHub Actions secret of the
-  same name is harmless to keep (it is what the retired website pipeline expected) but
-  `git grep -l CLOUDFLARE_API_TOKEN -- .github/workflows` matches only `website.yml.bak`
-  and `scripts/wrangler-deploy.sh`, so no live workflow reads it.
+  same name is exactly what the restored pipeline reads:
+  `git grep -l CLOUDFLARE_API_TOKEN -- .github/workflows` now matches the LIVE
+  `.github/workflows/website.yml` (its fail-fast verify step and its deploy step)
+  as well as the historical `attic/website.yml.bak`. A secret that rots therefore
+  fails the next website deploy in ~1s rather than waiting for a person to try.
 - Optional hardening: restrict to the single account; skip Client IP filtering unless
   you accept the tradeoff — GitHub-hosted runner egress IPs change, so IP filters are
   a frequent false-failure source.
@@ -1238,9 +1258,10 @@ curl -sf -o /dev/null -w '%{http_code}\n' \
 GitHub's secret store exposes no expiry/rotation metadata, so rely on these three
 probes (fold probe #3 into the §5 poller or an uptime monitor). The fail-fast step
 this section used to describe — "Validate Cloudflare deploy credentials
-(fail-fast)", `website.yml.bak:155` — died with the retired workflow. Nothing
-validates the token before a deploy any more: probe #2 is now a step YOU run by
-hand, and probe #3 is the only ground truth for what actually shipped.
+(fail-fast)" — was restored with the workflow on 2026-09-24 as the first step of
+`.github/workflows/website.yml`, so probe #2 now runs automatically before every
+deploy (manual deploys still validate nothing up front). Probe #3 remains the
+ground truth for what actually shipped.
 
 ### 9.4 Rotation (zero-downtime, ~5 min)
 
@@ -1266,13 +1287,14 @@ hand, and probe #3 is the only ground truth for what actually shipped.
 
 - **TTL policy from §9.2:** every token gets a TTL ≤ 1 year + a calendar entry. A token
   with no TTL is a standing silent-rot risk — treat it as an incident to fix.
-- **Automated token-verify smoke — still not built, and now the only would-be
-  detector is gone.** This bullet used to say the deploy job runs probe #2 pre-build
-  (see §9.3); that step retired with `website.yml` on 2026-09-02, so nothing checks
-  the token at deploy time or any other time. The recommendation stands unchanged:
-  wire probe #2 into a scheduled workflow (or the §5 poller) so an invalid token
-  alerts *before* someone tries to deploy. Note that neither live workflow declares
-  a schedule trigger today, so this means writing one, not editing an existing run.
+- **Automated token-verify smoke — BUILT 2026-09-24 for the deploy path; the
+  scheduled half is still missing.** `.github/workflows/website.yml` runs probe #2
+  as its fail-fast first step, so every website deploy validates the token against
+  Cloudflare before the build and an invalid one fails in ~1s. What is still
+  absent is a `schedule` trigger: a token that rots on a day with no deploy to
+  `website/**` is caught by nothing until someone deploys. The recommendation is
+  unchanged — wire probe #2 into a scheduled workflow (or the §5 poller); no live
+  workflow declares a schedule today, so that means writing one.
   The token is a repo secret; the verify endpoint needs no other permission.
 - **Live-portal poller:** probe #3 is the ground truth for "did the deploy actually
   land" — a 404 on `/docs-portal/intro.html` means stale assets regardless of what CI
@@ -1411,7 +1433,7 @@ kasir --db "$DB" restore --input "$DB.pre-migration.bak"
 ```
 
 `kasir` is the CLI binary name (`crates/kasirmu-cli/Cargo.toml:10-12`), `--db` is the global
-database flag defaulting to `./kasir.db` (`crates/kasirmu-cli/src/cli.rs:31-33`), and
+database flag defaulting to `./var/kasir.db` (`crates/kasirmu-cli/src/cli.rs:31-33`), and
 `restore --input` takes the backup path (`:68-73`). It checkpoints the WAL, closes the
 connection, then hands the swap to `restore_from` — validate, snapshot, drop the
 `-wal`/`-shm` sidecars, stage and verify, atomic rename, re-verify, roll back on failure
@@ -1566,12 +1588,13 @@ caller logs, and the app starts on the existing database either way.
 | `Restored` | The candidate was promoted before the database was opened. | `info`: "pending restore request consumed — the database was replaced before it was opened" |
 | `Refused` | The request exists but was not consumed; the app boots on the existing database and the request stays. | `error`: "a pending restore request was refused; booting on the existing database and leaving the request in place" |
 
-> ⚠️ **There is no log file to read these in.** Both shells call
-> `kasirmu_logging::try_init()` (desktop `:108`, tablet `:82`), which is stdout-only. The file
-> sinks (`try_init_with_file` / `try_init_json_with_file`) have **no production caller** — the
-> only references outside their own crate are its tests
-> (`crates/kasirmu-logging/src/lib_tests.rs:201`, `:229`, `:257`). Watch the app's console
-> output, or start it from a terminal.
+> **Where these lines live:** in a log file on the device. Both shells
+> initialise logging in their `setup` closure via
+> `kasirmu_logging::try_init_with_file_or_stdout(...)` (desktop and tablet
+> `apps/*/src/lib.rs`), which writes hourly rolling files into the platform log
+> directory — §8.6 has the per-platform table — and falls back to stdout only
+> when that directory cannot be prepared. `apps/cloud-server` stays on
+> `try_init_json()` (stdout) because the container already collects it.
 
 A `Refused` reason always carries the verdict name and the validator's own sentence
 (`apps/desktop-tauri/src/recovery.rs:127-135`), e.g.
@@ -1730,4 +1753,4 @@ the swap directly, which is why the app must be closed.
 > derived from the verified identifier and `app_data_dir()` join, not observed by calling the
 > OS API.
 
-> last audited 09-09-26 by docs-auditor
+> last audited 29-09-26 by docs-auditor

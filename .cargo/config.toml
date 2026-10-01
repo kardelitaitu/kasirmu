@@ -1,4 +1,4 @@
-# Compilation caching for OZ-POS local development.
+# Compilation caching for kasir.mu local development.
 #
 # After installing sccache, run the one-time setup script:
 #   powershell -File scripts/setup-cache.ps1   # Windows

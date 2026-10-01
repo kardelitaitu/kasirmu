@@ -213,6 +213,24 @@ impl<'a> CurrencyRepository<'a> {
         }
     }
 
+    /// Whether `code` names a row of the ISO-4217 `currencies` table.
+    ///
+    /// MSL-49: `exchange_rates.from_currency`/`to_currency` are
+    /// `REFERENCES currencies(code)`, so an unknown code was rejected by the
+    /// FK — as a raw `Db(SqliteFailure(ConstraintViolation))` that named no
+    /// field and read as a storage fault. The existing tests asserted only
+    /// `is_err()`, which is why the wrong kind went unnoticed. Checking here
+    /// turns it into the `Validation { field }` the caller can act on, and
+    /// costs one indexed lookup instead of a failed INSERT.
+    fn currency_exists(&self, code: &str) -> Result<bool, CurrencyError> {
+        let n: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM currencies WHERE code = ?1",
+            rusqlite::params![code],
+            |row| row.get(0),
+        )?;
+        Ok(n > 0)
+    }
+
     /// Create a new exchange rate entry.
     ///
     /// `rate_millionths` is the fixed-point exchange rate at a 6-decimal
@@ -263,6 +281,19 @@ impl<'a> CurrencyRepository<'a> {
         // row would be invisible to the uppercase form.
         let from_currency = from_currency.trim().to_uppercase();
         let to_currency = to_currency.trim().to_uppercase();
+        // MSL-49: refuse an unknown code here, naming the field, rather than
+        // letting the FK surface it as an opaque storage failure.
+        for (field, code) in [
+            ("from_currency", &from_currency),
+            ("to_currency", &to_currency),
+        ] {
+            if !self.currency_exists(code)? {
+                return Err(CurrencyError::validation(
+                    field,
+                    format!("{field} must be an ISO-4217 code present in currencies; got {code:?}"),
+                ));
+            }
+        }
         // F-022: the INSERT and its read-back SELECT run inside one
         // transaction so the returned row is a consistent snapshot of
         // exactly what was committed (never write outside a transaction).
@@ -340,6 +371,18 @@ impl<'a> CurrencyRepository<'a> {
         // stored as "USD" so lookups by the trimmed uppercase code match.
         let from_currency = from_currency.trim().to_uppercase();
         let to_currency = to_currency.trim().to_uppercase();
+        // MSL-49: same membership check as create — see `currency_exists`.
+        for (field, code) in [
+            ("from_currency", &from_currency),
+            ("to_currency", &to_currency),
+        ] {
+            if !self.currency_exists(code)? {
+                return Err(CurrencyError::validation(
+                    field,
+                    format!("{field} must be an ISO-4217 code present in currencies; got {code:?}"),
+                ));
+            }
+        }
         // F-022: same transactional write + read-back as create.
         let tx = self.conn.unchecked_transaction()?;
         tx.execute(

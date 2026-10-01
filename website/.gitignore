@@ -10,3 +10,8 @@ dist/
 public/docs-portal/
 # Synced from repo-root dev/ during prebuild — source of truth is dev/
 public/dev/
+# Throwaway design previews (hand-written standalone HTML that restates a
+# component's markup to eyeball layout). Nothing imports these, and they are
+# not build inputs — keeping them out of the index stops a `git add -A` from
+# committing scratch work alongside a real component change.
+.design/

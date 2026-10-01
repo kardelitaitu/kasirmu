@@ -160,7 +160,7 @@ pub(super) fn build_base_schemas() -> Value {
             "required": ["label"],
             "properties": {
                 "label": { "type": "string", "description": "Human-readable label for the token", "example": "kitchen-display-1" },
-                "expiry_hours": { "type": "integer", "format": "int64", "description": "Expiry in hours (default: 24)", "example": 24 },
+                "expiry_hours": { "type": "integer", "format": "int64", "description": "Expiry in hours. Default 24, clamped to a maximum of 8760 (365 days) — the server applies the bound, so an over-long request is shortened rather than honoured. Clamping is documented here because a silently-shortened token is otherwise indistinguishable from a bug.", "default": 24, "example": 24 },
                 "tenant_id": { "type": "string", "description": "Optional tenant/store ID for multi-tenant isolation (admin-key path only — the client-credentials path takes the tenant from the terminal's registration, never the body)" },
                 "client_id": { "type": "string", "description": "Registered terminal ID — client-credentials mint path (ADR sync-auth-hardening P3); paired with client_secret, no admin key needed" },
                 "client_secret": { "type": "string", "description": "Device secret from terminal registration (verified against the stored SHA-256 hash)" },
@@ -256,11 +256,13 @@ pub(super) fn build_base_schemas() -> Value {
         },
         "CategoryDto": {
             "type": "object",
+            "required": ["id", "name", "colour", "icon"],
+            "description": "A product category, exactly as `modules_inventory::Category` serializes. Every field is required because the struct has no optional members.",
             "properties": {
                 "id": { "type": "string" },
                 "name": { "type": "string", "example": "Drinks" },
                 "colour": { "type": "string", "description": "Hex colour code", "example": "#06b6d4" },
-                "created_at": { "type": "string", "format": "date-time" }
+                "icon": { "type": "string", "description": "Display icon name", "example": "cup" }
             }
         },
         "CreateTaxRateRequest": {
@@ -353,27 +355,30 @@ pub(super) fn build_base_schemas() -> Value {
         },
         "TaxRateResponse": {
             "type": "object",
-            "required": ["id", "name", "rate_bps", "is_default", "is_inclusive"],
+            "required": ["id", "name", "rate_bps", "is_default", "is_inclusive", "created_at", "updated_at"],
+            "description": "A tax rate, exactly as `modules_tax::TaxRate` serializes. Every field is required because the struct has no optional members.",
             "properties": {
                 "id": { "type": "string", "description": "Unique tax rate ID" },
                 "name": { "type": "string", "description": "Display name", "example": "VAT 10%" },
                 "rate_bps": { "type": "integer", "format": "int64", "description": "Rate in basis points", "example": 1000 },
                 "is_default": { "type": "boolean", "description": "Whether this is the default rate" },
                 "is_inclusive": { "type": "boolean", "description": "Whether tax is inclusive of price" },
-                "tenant_id": { "type": "string", "description": "Owning tenant (from JWT)" },
-                "created_at": { "type": "string", "format": "date-time" }
+                "created_at": { "type": "string", "format": "date-time", "description": "ISO-8601 creation timestamp" },
+                "updated_at": { "type": "string", "format": "date-time", "description": "ISO-8601 last-update timestamp" }
             }
         },
         "UserResponse": {
             "type": "object",
-            "required": ["id", "username", "display_name", "role_id"],
+            "required": ["id", "username", "display_name", "role_id", "is_active", "created_at", "updated_at"],
+            "description": "The created user, as returned by `POST /api/v1/users`. Deliberately NOT the domain `kasirmu_core::User`: the credential verifier (`pin_hash`) is withheld — a response DTO is the boundary, exactly as `StaffMemberDto` does for the staff IPC surface.",
             "properties": {
                 "id": { "type": "string", "description": "Unique user ID" },
-                "username": { "type": "string", "description": "Login username" },
+                "username": { "type": "string", "description": "Login username (trimmed + lowercased by the store)" },
                 "display_name": { "type": "string", "description": "Display name in UI" },
                 "role_id": { "type": "string", "description": "Assigned role ID", "example": "role-staff" },
-                "tenant_id": { "type": "string", "description": "Owning tenant (from JWT)" },
-                "created_at": { "type": "string", "format": "date-time" }
+                "is_active": { "type": "boolean", "description": "Whether the account may log in (always true at creation)" },
+                "created_at": { "type": "string", "format": "date-time", "description": "ISO-8601 creation timestamp" },
+                "updated_at": { "type": "string", "format": "date-time", "description": "ISO-8601 last-update timestamp" }
             }
         },
         "SaleDetail": {

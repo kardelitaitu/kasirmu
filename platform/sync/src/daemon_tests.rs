@@ -23,6 +23,125 @@ fn setup_db() -> DbConnection {
     Arc::new(Mutex::new(migrations::fresh_db()))
 }
 
+/// Wait for a daemon condition by polling `status()`, not by sleeping a
+/// multiple of the tick.
+///
+/// O-T05 (`todo-optimize-crates.md:1158`). Every daemon test slept a fixed
+/// 500 ms after `start()` and 200 ms after `stop()` against a daemon whose
+/// tick is 100 ms — a 5x floor paid on each of the seven start/stop pairs,
+/// ~5.0 s of the 16.6 s stated sleep floor `platform/sync` contributes to the
+/// workspace's 28.6 s (§10B). It was also the wrong shape: a fixed sleep buys
+/// the same margin on a fast machine and a loaded one, so it is either wasteful
+/// or flaky and never tells you which.
+///
+/// This polls every 10 ms with a 1 s ceiling. A healthy daemon finishes in one
+/// tick (100 ms or better), so the typical case gets faster, and the ceiling is
+/// still 2x the old start allowance. `what` is named in the panic because a
+/// timeout that only says "timed out" is the least useful failure a test can
+/// produce — the status snapshot is printed so the condition is visible.
+async fn wait_for_daemon<F>(daemon: &SyncDaemon, what: &str, mut ok: F)
+where
+    F: FnMut(&DaemonStatus) -> bool,
+{
+    for _ in 0..100 {
+        if ok(&daemon.status().await) {
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    let status = daemon.status().await;
+    panic!(
+        "daemon never reached `{what}` within 1s — running={}, last_sync_at={:?}, last_error={:?}",
+        status.running, status.last_sync_at, status.last_error
+    );
+}
+
+/// Wait for the daemon to have completed at least one cycle.
+async fn wait_for_first_cycle(daemon: &SyncDaemon) {
+    wait_for_daemon(daemon, "a completed first cycle", |s| {
+        s.last_sync_at.is_some()
+    })
+    .await;
+}
+
+/// Wait for the daemon to be fully stopped, rather than assuming `stop()`
+/// returning means the run loop has exited.
+async fn wait_for_stopped(daemon: &SyncDaemon) {
+    wait_for_daemon(daemon, "stopped", |s| !s.running).await;
+}
+
+/// Spawn a mock sync server whose push endpoint always answers 500.
+///
+/// Used to pin the outbound logical-clock contract: a push that FAILS must
+/// still advance the PERSISTED counter, because \`SyncTransport::push_items\`
+/// burns one counter per queued item before the HTTP call is even made.
+/// Leaving the persisted value behind lets the next cycle (or a restart)
+/// re-emit a counter range the server may already have recorded.
+async fn spawn_rejecting_mock_sync_server() -> String {
+    let listener = tokio::net::TcpListener::bind("localhost:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+
+    async fn handle_push() -> impl IntoResponse {
+        (StatusCode::INTERNAL_SERVER_ERROR, "boom")
+    }
+    async fn handle_pull(Json(_req): Json<serde_json::Value>) -> Json<PullResponse> {
+        Json(PullResponse {
+            items: vec![],
+            next_cursor: None,
+        })
+    }
+
+    let app = Router::new()
+        .route("/api/sync/push", post(handle_push))
+        .route("/api/sync/pull", post(handle_pull));
+
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+
+    tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    format!("http://localhost:{port}")
+}
+
+/// Spawn a mock server that COUNTS pull hits and returns an empty page.
+///
+/// Used by the pull-anchor pins: a daemon that replays history must show up as
+/// a hit, so 'the pull was skipped' is observable rather than assumed.
+async fn spawn_counting_pull_server() -> (String, std::sync::Arc<std::sync::atomic::AtomicUsize>) {
+    use std::sync::Arc;
+    use std::sync::atomic::AtomicUsize;
+    let listener = tokio::net::TcpListener::bind("localhost:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let hits = Arc::new(AtomicUsize::new(0));
+    let state = hits.clone();
+
+    async fn handle_push(Json(items): Json<Vec<serde_json::Value>>) -> Json<PushResponse> {
+        Json(PushResponse {
+            results: vec![PushOutcome::Accepted; items.len()],
+        })
+    }
+    async fn handle_pull(
+        State(hits): State<Arc<AtomicUsize>>,
+        Json(_req): Json<serde_json::Value>,
+    ) -> Json<PullResponse> {
+        hits.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        Json(PullResponse {
+            items: vec![],
+            next_cursor: None,
+        })
+    }
+
+    let app = Router::new()
+        .route("/api/sync/push", post(handle_push))
+        .route("/api/sync/pull", post(handle_pull))
+        .with_state(state);
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+    tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    (format!("http://localhost:{port}"), hits)
+}
+
 /// Spawn a minimal mock sync server on port 0 and return its URL.
 /// Handles POST /api/sync/push (returns all accepted) and
 /// POST /api/sync/pull (returns empty items list).
@@ -173,11 +292,11 @@ async fn daemon_runs_when_sync_configured() {
     .unwrap();
     let daemon = SyncDaemon::with_interval(Duration::from_millis(100));
     daemon.start(db).await;
-    tokio::time::sleep(Duration::from_millis(500)).await;
+    wait_for_first_cycle(&daemon).await;
     let status = daemon.status().await;
     assert!(status.last_sync_at.is_some());
     daemon.stop().await;
-    tokio::time::sleep(Duration::from_millis(200)).await;
+    wait_for_stopped(&daemon).await;
 }
 
 #[tokio::test]
@@ -185,12 +304,12 @@ async fn daemon_skips_when_sync_not_configured() {
     let db = setup_db();
     let daemon = SyncDaemon::with_interval(Duration::from_millis(100));
     daemon.start(db).await;
-    tokio::time::sleep(Duration::from_millis(600)).await;
+    wait_for_first_cycle(&daemon).await;
     let status = daemon.status().await;
     assert!(status.last_error.is_none());
     assert!(status.last_sync_at.is_some());
     daemon.stop().await;
-    tokio::time::sleep(Duration::from_millis(200)).await;
+    wait_for_stopped(&daemon).await;
 }
 
 #[tokio::test]
@@ -268,7 +387,7 @@ async fn daemon_auto_updates_url_on_server_migration() {
 
     let daemon = SyncDaemon::with_interval(Duration::from_millis(100));
     daemon.start(db.clone()).await;
-    tokio::time::sleep(Duration::from_millis(500)).await;
+    wait_for_first_cycle(&daemon).await;
 
     // The daemon should have detected the redirect and updated the URL.
     let updated_url = tokio::task::spawn_blocking(move || {
@@ -285,7 +404,7 @@ async fn daemon_auto_updates_url_on_server_migration() {
     );
 
     daemon.stop().await;
-    tokio::time::sleep(Duration::from_millis(200)).await;
+    wait_for_stopped(&daemon).await;
 }
 
 #[tokio::test]
@@ -310,7 +429,7 @@ async fn daemon_pull_phase_detects_server_migration() {
 
     let daemon = SyncDaemon::with_interval(Duration::from_millis(100));
     daemon.start(db.clone()).await;
-    tokio::time::sleep(Duration::from_millis(500)).await;
+    wait_for_first_cycle(&daemon).await;
 
     let updated_url = tokio::task::spawn_blocking(move || {
         let conn = db.blocking_lock();
@@ -326,7 +445,7 @@ async fn daemon_pull_phase_detects_server_migration() {
     );
 
     daemon.stop().await;
-    tokio::time::sleep(Duration::from_millis(200)).await;
+    wait_for_stopped(&daemon).await;
 }
 
 // ── TDD: daemon anchor-expiry recovery ─────────────────────────
@@ -520,6 +639,7 @@ async fn daemon_surfaces_plan_required_without_retry_or_quarantine() {
         }
     })
     .await
+    .unwrap()
     .unwrap();
     assert_eq!(
         pending.len(),
@@ -539,17 +659,20 @@ async fn daemon_surfaces_plan_required_without_retry_or_quarantine() {
     );
 }
 
-// ── TDD Bug #1: spawn_blocking panic is not silently swallowed ─
-
-/// Verify that `read_config_and_pending` propagates errors from a
-/// poisoned connection. When the inner `unwrap()` on the mutex lock
-/// panics, the `spawn_blocking` join handle returns an `Err`, and
-/// `run_tick` must surface that in `last_error`.
-///
-/// We test this by creating a valid DB, then extract the config read
-/// through the `read_config_and_pending` helper (which does the same
-/// work the `spawn_blocking` closure does).
 // ── C20: priority ordering on the push path ──────────────────────
+//
+// The F-018 split extracted the read phase into `read_config_and_pending`,
+// which takes a `&Connection` directly. That REMOVED the case the "TDD Bug
+// #1" section used to document — the read no longer runs inside the
+// `spawn_blocking` closure, so it holds no `Mutex` guard and cannot panic on
+// a poisoned lock. The old doc comment was left attached to nothing and the
+// test it described no longer had a subject, which is why clippy reported
+// "empty line after doc comment" (C25).
+//
+// The panic path itself still exists and is still handled: every closure that
+// DOES take the lock joins through `spawn_blocking` and surfaces a
+// `JoinError` (daemon.rs:157, :189, :214; the prune path logs it at :507), so
+// the behaviour is covered where it actually lives. Nothing is owed here.
 
 /// The acceptance case: a LOW-priority item is enqueued FIRST, so the
 /// un-sorted read (`ORDER BY created_at ASC`) puts it at the head of the batch
@@ -573,7 +696,7 @@ fn read_config_and_pending_orders_critical_before_an_earlier_low_item() {
         .enqueue_offline_priority("catalog", r#"{}"#, SyncPriority::Normal)
         .unwrap();
 
-    let (_config, pending) = read_config_and_pending(&conn);
+    let (_config, pending) = read_config_and_pending(&conn).unwrap();
 
     let order: Vec<&str> = pending.iter().map(|i| i.action.as_str()).collect();
     assert_eq!(
@@ -606,8 +729,8 @@ fn equal_priority_items_are_ordered_deterministically_by_id() {
     )
     .unwrap();
 
-    let first = read_config_and_pending(&conn).1;
-    let second = read_config_and_pending(&conn).1;
+    let first = read_config_and_pending(&conn).unwrap().1;
+    let second = read_config_and_pending(&conn).unwrap().1;
     let ids = |v: &[kasirmu_core::offline::OfflineQueueItem]| {
         v.iter().map(|i| i.id.clone()).collect::<Vec<_>>()
     };
@@ -650,6 +773,7 @@ fn same_priority_items_keep_their_arrival_order() {
     }
 
     let order: Vec<String> = read_config_and_pending(&conn)
+        .unwrap()
         .1
         .iter()
         .map(|i| i.action.clone())
@@ -663,11 +787,105 @@ fn read_config_and_pending_returns_pending_count() {
     let store = Store::new(&conn);
     store.enqueue_offline("test", r#"{}"#).unwrap();
 
-    let (config, pending) = read_config_and_pending(&conn);
+    let (config, pending) = read_config_and_pending(&conn).unwrap();
     assert_eq!(pending.len(), 1);
     assert_eq!(pending[0].action, "test");
     // Config is None because sync is not enabled in fresh DB.
     assert!(config.is_none());
+}
+
+/// A queue that cannot be read must NOT look like an empty queue.
+///
+/// An empty `pending` is indistinguishable from a healthy idle terminal: the
+/// daemon pushes nothing, reports `pushed = 0`, and (before this fix) left
+/// `last_error` clean — so an operator sees a draining backlog that has in
+/// fact stopped. `read_config_and_pending` now propagates the read error so it
+/// reaches the cycle's `read_error` instead of being flattened to `[]`. RED
+/// before the fix: `list_pending_offline().unwrap_or_default()` returned
+/// `Ok((None, vec![]))` here and the test could not even observe the failure.
+#[test]
+fn read_config_and_pending_errors_when_the_offline_queue_cannot_be_read() {
+    let conn = kasirmu_core::migrations::fresh_db();
+    // Drop the table the read needs, so the query fails for a reason other
+    // than 'no rows' (the healthy empty case).
+    conn.execute("DROP TABLE offline_queue", []).unwrap();
+
+    let result = read_config_and_pending(&conn);
+    assert!(
+        result.is_err(),
+        "an unreadable queue must surface as an error, not as an empty push list"
+    );
+}
+
+/// An unreadable pull anchor must surface on `last_error`, not silently force a
+/// full re-pull.
+///
+/// `(None, None)` is the SAME state an operator rewind requests, so collapsing
+/// a read failure into it would replay all history every cycle with no error
+/// shown — the fail-blind shape, and the exact replay the SYNC-01 anchor exists
+/// to prevent. The daemon now propagates the read error and skips the pull.
+///
+/// RED before the fix: `.unwrap_or_default()` produced `(None, None)`, the pull
+/// ran, and `last_error` stayed `None`.
+#[tokio::test]
+async fn run_tick_surfaces_an_unreadable_pull_anchor_instead_of_replaying() {
+    let (server_url, pull_hits) = spawn_counting_pull_server().await;
+    let db = setup_db();
+    let db_setup = db.clone();
+    let url = server_url.clone();
+    tokio::task::spawn_blocking(move || {
+        let conn = db_setup.blocking_lock();
+        // Sync is ENABLED and pointed at the mock server, so the pull phase
+        // is reachable — otherwise the anchor is never read and the pin would
+        // pass for the wrong reason.
+        Settings::set_sync_enabled(&conn, true).unwrap();
+        Settings::set_sync_server_url(&conn, &url).unwrap();
+        // Drop the anchor table AFTER the settings are written.
+        conn.execute("DROP TABLE sync_pull_state", []).unwrap();
+    })
+    .await
+    .unwrap();
+
+    let status = Arc::new(RwLock::new(DaemonStatus::default()));
+    daemon_tick::run_tick(&db, &status, &noop_settings_sink()).await;
+
+    let s = status.read().await;
+    assert!(
+        s.last_error.is_some(),
+        "an unreadable pull anchor must surface on last_error, not read as (None, None)"
+    );
+    assert_eq!(
+        pull_hits.load(std::sync::atomic::Ordering::SeqCst),
+        0,
+        "the daemon must SKIP the pull when the anchor is unreadable, not replay history"
+    );
+}
+
+/// The HTTP daemon's `pending_count` must distinguish "the queue is empty"
+/// from "the count could not be read". It feeds `sync_status`, the operator's
+/// backlog-draining indicator, so a failure reported as `0` would tell a broken
+/// terminal everything has synced. Same sentinel as the PG daemon and the cloud
+/// server's `SyncStatusResponse::pending_count`.
+#[test]
+fn daemon_pending_count_unknown_sentinel_is_shared_and_distinct_from_zero() {
+    // One value, defined on the base daemon module, re-exported by the PG one.
+    assert_eq!(PENDING_COUNT_UNKNOWN, -1);
+    assert_eq!(
+        PENDING_COUNT_UNKNOWN,
+        crate::pg_daemon::PENDING_COUNT_UNKNOWN
+    );
+    assert_ne!(PENDING_COUNT_UNKNOWN, 0);
+}
+
+/// The read path `update_daemon_status` calls fails when the table is gone —
+/// which is what makes the `-1` arm reachable rather than decorative. Before
+/// this, `update_daemon_status` collapsed exactly this error into `0`.
+#[test]
+fn daemon_pending_offline_count_errors_when_the_table_is_missing() {
+    let conn = kasirmu_core::migrations::fresh_db();
+    conn.execute_batch("DROP TABLE offline_queue;").unwrap();
+    let store = Store::new(&conn);
+    assert!(store.pending_offline_count().is_err());
 }
 
 // ── SYNC-01: idempotent remote application ───────────────────────
@@ -806,10 +1024,9 @@ async fn spawn_poison_remote_mock_sync_server() -> String {
     let port = listener.local_addr().unwrap().port();
 
     async fn handle_pull(Json(_req): Json<serde_json::Value>) -> Json<PullResponse> {
-        let mut item = kasirmu_core::offline::OfflineQueueItem::new(
-            "complete_sale",
-            r#"{"line_items":[{"sku":"MISSING","qty":1}]}"#,
-        );
+        // A malformed payload is CoreError::Internal (TRANSIENT): the item
+        // stays retryable until the three-attempt budget is spent.
+        let mut item = kasirmu_core::offline::OfflineQueueItem::new("complete_sale", "{not json");
         item.id = "remote-poison-1".into();
         item.created_at = "2026-01-03T00:00:00.000Z".into();
         Json(PullResponse {
@@ -1042,10 +1259,9 @@ async fn spawn_poison_remote_mock_server_with_two_items() -> String {
         );
         dead.id = "remote-poison-dead".into();
         dead.created_at = "2026-01-03T00:00:00.000Z".into();
-        let mut retry = kasirmu_core::offline::OfflineQueueItem::new(
-            "complete_sale",
-            r#"{"line_items":[{"sku":"MISSING-RETRY","qty":1}]}"#,
-        );
+        // The retry item must fail TRANSIENTLY, or it would be
+        // quarantined on its first failure like the dead one below.
+        let mut retry = kasirmu_core::offline::OfflineQueueItem::new("complete_sale", "{not json");
         retry.id = "remote-poison-retry".into();
         retry.created_at = "2026-01-03T00:00:01.000Z".into();
         Json(PullResponse {
@@ -1617,7 +1833,7 @@ async fn daemon_migration_redirect_is_obeyed_on_server_error_pin() {
 
     let daemon = SyncDaemon::with_interval(Duration::from_millis(100));
     daemon.start(db.clone()).await;
-    tokio::time::sleep(Duration::from_millis(500)).await;
+    wait_for_first_cycle(&daemon).await;
 
     let updated_url = tokio::task::spawn_blocking(move || {
         let conn = db.blocking_lock();
@@ -1633,7 +1849,7 @@ async fn daemon_migration_redirect_is_obeyed_on_server_error_pin() {
     );
 
     daemon.stop().await;
-    tokio::time::sleep(Duration::from_millis(200)).await;
+    wait_for_stopped(&daemon).await;
 }
 
 /// PIN OF A KNOWN HAZARD, NOT AN ENDORSEMENT. FLIP THIS ASSERTION, DO NOT DELETE IT.
@@ -1668,7 +1884,7 @@ async fn daemon_migration_redirect_accepts_plain_http_target_pin() {
 
     let daemon = SyncDaemon::with_interval(Duration::from_millis(100));
     daemon.start(db.clone()).await;
-    tokio::time::sleep(Duration::from_millis(500)).await;
+    wait_for_first_cycle(&daemon).await;
 
     let updated_url = tokio::task::spawn_blocking(move || {
         let conn = db.blocking_lock();
@@ -1684,7 +1900,7 @@ async fn daemon_migration_redirect_accepts_plain_http_target_pin() {
     );
 
     daemon.stop().await;
-    tokio::time::sleep(Duration::from_millis(200)).await;
+    wait_for_stopped(&daemon).await;
 }
 
 /// PIN OF A KNOWN HAZARD, NOT AN ENDORSEMENT. FLIP THIS ASSERTION, DO NOT DELETE IT.
@@ -1719,7 +1935,7 @@ async fn daemon_migration_redirect_persists_an_unshaped_target_pin() {
 
     let daemon = SyncDaemon::with_interval(Duration::from_millis(100));
     daemon.start(db.clone()).await;
-    tokio::time::sleep(Duration::from_millis(500)).await;
+    wait_for_first_cycle(&daemon).await;
 
     let (updated_url, still_enabled) = tokio::task::spawn_blocking(move || {
         let conn = db.blocking_lock();
@@ -1745,7 +1961,7 @@ async fn daemon_migration_redirect_persists_an_unshaped_target_pin() {
     );
 
     daemon.stop().await;
-    tokio::time::sleep(Duration::from_millis(200)).await;
+    wait_for_stopped(&daemon).await;
 }
 
 // ── SYNC-EW: the two promises `nudge` makes ───────────────────────
@@ -1791,5 +2007,314 @@ async fn nudge_coalesces_a_burst_into_one_permit() {
             .await
             .is_err(),
         "three nudges must coalesce into one permit; a second permit means Notify queued"
+    );
+}
+
+// ── C23: the running flag must not outlive the task that owns it ─────
+//
+// The daemon owns `running` for as long as its run-loop task lives. The
+// pre-C23 code cleared the flag with a statement placed AFTER the loop, so a
+// panic unwinding out of a tick skipped it: `running` stayed true and
+// `start` then refused with "already running" until the process restarted.
+//
+// The guard that replaces it decides supersession by comparing the sender in
+// the shutdown slot against this run's OWN sender. "The slot is Some" is not
+// that test -- a healthy run holds its own sender there for its whole life --
+// and these tests pin the difference in both directions.
+
+/// What a run owns at spawn: its shared status, the shutdown slot, and the
+/// guard that releases the flag when the task ends.
+type ArmedGuard = (
+    Arc<RwLock<DaemonStatus>>,
+    Arc<Mutex<Option<watch::Sender<bool>>>>,
+    RunningFlagGuard<DaemonStatus>,
+);
+
+/// Build the triple above.
+fn armed_guard(running: bool) -> ArmedGuard {
+    let status = Arc::new(RwLock::new(DaemonStatus {
+        running,
+        ..Default::default()
+    }));
+    let (tx, _rx) = watch::channel(false);
+    let own = tx.clone();
+    let slot = Arc::new(Mutex::new(Some(tx)));
+    let guard = RunningFlagGuard::arm(Arc::clone(&status), Arc::clone(&slot), own);
+    (status, slot, guard)
+}
+
+/// THE DEFECT. A panic inside a tick must still release the flag.
+#[tokio::test]
+async fn the_running_flag_is_cleared_when_the_owning_task_panics() {
+    let status = Arc::new(RwLock::new(DaemonStatus {
+        running: true,
+        ..Default::default()
+    }));
+    let (tx, _rx) = watch::channel(false);
+    let own = tx.clone();
+    let slot = Arc::new(Mutex::new(Some(tx)));
+
+    let task = tokio::spawn({
+        let status = Arc::clone(&status);
+        let slot = Arc::clone(&slot);
+        async move {
+            let _guard = RunningFlagGuard::arm(status, slot, own);
+            panic!("tick panicked");
+        }
+    });
+
+    assert!(
+        task.await.is_err(),
+        "the spawned task must actually panic for this test to mean anything"
+    );
+
+    for _ in 0..100 {
+        if !status.read().await.running {
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    panic!(
+        "running is still true after the owning task panicked -- the daemon is wedged          and start() will refuse with 'already running' until restart (C23)"
+    );
+}
+
+/// The orderly path clears synchronously, so `stop()` -- which awaits the
+/// run-loop task -- observes the flag already cleared.
+#[tokio::test]
+async fn the_orderly_path_clears_the_flag() {
+    let (status, _slot, guard) = armed_guard(true);
+    guard.clear().await;
+    assert!(
+        !status.read().await.running,
+        "clear() must clear the flag before returning"
+    );
+}
+
+/// A run that still owns the slot clears on drop: the normal exit and every
+/// early return, neither of which goes through `clear()`.
+#[tokio::test]
+async fn a_run_that_still_owns_the_slot_clears_on_drop() {
+    let (status, _slot, guard) = armed_guard(true);
+    drop(guard);
+    assert!(
+        !status.read().await.running,
+        "dropping the guard with the slot still ours must clear the flag"
+    );
+}
+
+/// Supersession: a newer run has installed ITS OWN sender, so the old run must
+/// leave the status alone. This is the rule the manual code carried.
+#[tokio::test]
+async fn a_superseded_run_does_not_clear_the_new_runs_flag() {
+    let status = Arc::new(RwLock::new(DaemonStatus {
+        running: true,
+        ..Default::default()
+    }));
+    let (old_tx, _old_rx) = watch::channel(false);
+    let (new_tx, _new_rx) = watch::channel(false);
+    let slot = Arc::new(Mutex::new(Some(new_tx)));
+
+    // Orderly path: clear() must honour the ownership rule.
+    RunningFlagGuard::arm(Arc::clone(&status), Arc::clone(&slot), old_tx.clone())
+        .clear()
+        .await;
+    assert!(
+        status.read().await.running,
+        "a superseded run cleared the flag a newer run owns (orderly path)"
+    );
+
+    // Drop path: the panic/early-return route must apply the same rule.
+    drop(RunningFlagGuard::arm(Arc::clone(&status), slot, old_tx));
+    assert!(
+        status.read().await.running,
+        "a superseded run cleared the flag a newer run owns (drop path)"
+    );
+}
+
+/// An EMPTY slot is NOT supersession. `stop()` takes this run's sender
+/// before awaiting the loop, so the slot is `None` on the ordinary shutdown
+/// path — and the flag must still clear. An earlier revision read `None` as
+/// "not ours" and left `running` true after every stop, which the lifecycle
+/// tests caught; this pins the case directly so it cannot regress again.
+#[tokio::test]
+async fn an_empty_slot_still_clears_the_flag() {
+    let (status, slot, guard) = armed_guard(true);
+    // Simulate stop(): consume the slot's sender.
+    *slot.lock().await = None;
+
+    guard.clear().await;
+    assert!(
+        !status.read().await.running,
+        "an empty slot means stop() took our sender -- the normal path -- and \
+         must clear the flag, not be mistaken for supersession"
+    );
+}
+
+/// The same case on the drop path.
+#[tokio::test]
+async fn an_empty_slot_clears_the_flag_on_drop() {
+    let (status, slot, guard) = armed_guard(true);
+    *slot.lock().await = None;
+    drop(guard);
+    assert!(
+        !status.read().await.running,
+        "an empty slot must clear the flag on the drop path too"
+    );
+}
+
+/// Presence of a sender is NOT ownership: the run's own sender is absent from
+/// the slot, so the flag must stand even though the slot is `Some`.
+#[tokio::test]
+async fn presence_of_a_sender_is_not_ownership() {
+    let status = Arc::new(RwLock::new(DaemonStatus {
+        running: true,
+        ..Default::default()
+    }));
+    let (own_tx, _own_rx) = watch::channel(false);
+    let (other_tx, _other_rx) = watch::channel(false);
+    let slot = Arc::new(Mutex::new(Some(other_tx)));
+
+    drop(RunningFlagGuard::arm(Arc::clone(&status), slot, own_tx));
+
+    assert!(
+        status.read().await.running,
+        "the slot holds a sender, but not this run's -- the flag must stand"
+    );
+}
+
+/// A push that FAILS must still persist the advanced logical clock.
+///
+/// \`SyncTransport::push_items\` burns one counter per queued item BEFORE the
+/// HTTP call, so by the time the server answers 500 the in-memory counter has
+/// already moved past whatever the previous cycle persisted. If the tick only
+/// writes the clock back on success, the persisted value rewinds relative to
+/// the counters that were actually emitted — the surviving counter range can
+/// then be re-emitted, and a restart starts from a value the server has seen.
+///
+/// RED TODAY, and that is the finding: the persisted clock stays at the seed.
+#[tokio::test]
+async fn run_tick_persists_the_clock_even_when_the_push_fails() {
+    let server_url = spawn_rejecting_mock_sync_server().await;
+    let db = setup_db();
+
+    let db_setup = db.clone();
+    let url = server_url.clone();
+    tokio::task::spawn_blocking(move || {
+        let conn = db_setup.blocking_lock();
+        let store = Store::new(&conn);
+        Settings::set_sync_enabled(&conn, true).unwrap();
+        Settings::set_sync_server_url(&conn, &url).unwrap();
+        Settings::set_sync_terminal_id(&conn, "term-clock").unwrap();
+        // Seed the persisted clock at 40 so the assertion is not 0-vs-0.
+        store.set_setting(crate::crdt::CLOCK_KEY, "40").unwrap();
+        store
+            .enqueue_offline("stock.adjusted", r#"{"sku":"X","delta":1}"#)
+            .unwrap();
+        store
+            .enqueue_offline("stock.adjusted", r#"{"sku":"X","delta":1}"#)
+            .unwrap();
+    })
+    .await
+    .unwrap();
+
+    let status = Arc::new(RwLock::new(DaemonStatus::default()));
+    daemon_tick::run_tick(&db, &status, &noop_settings_sink()).await;
+
+    let persisted = tokio::task::spawn_blocking({
+        let db = db.clone();
+        move || {
+            let conn = db.blocking_lock();
+            Store::new(&conn)
+                .get_setting(crate::crdt::CLOCK_KEY)
+                .unwrap()
+        }
+    })
+    .await
+    .unwrap();
+
+    let persisted: u64 = persisted
+        .as_deref()
+        .and_then(|raw| crate::crdt::parse_counter(raw).ok())
+        .unwrap_or(0);
+
+    assert!(
+        persisted > 40,
+        "a FAILED push still burnt 2 counters (one per queued item), so the \
+persisted clock must advance past the seed; got {persisted}"
+    );
+}
+
+/// A clock row that cannot be read or parsed must NOT seed stamping with `0`.
+///
+/// `parse_counter` (and `SettingsClockStore::load_counter`, which uses it) treat
+/// 'present but unparseable' as an ERROR, not as a fresh clock. The daemon must
+/// agree: seeding a rewound `0` orders this terminal's next push in the past, the
+/// server classifies it `Stale`, and conflict detection silently stops for the
+/// terminal. The only safe degradation is to push WITHOUT vector stamps this
+/// cycle — a defined state the server handles (transport.rs:292-295) — which is
+/// what `read_stamping_seed` returning `None` means. RED before the fix: the old
+/// `.ok().flatten().and_then(parse.ok()).unwrap_or(0)` returned `Some((.., 0))`
+/// here and the daemon stamped with a rewound counter.
+#[tokio::test]
+async fn read_stamping_seed_refuses_to_reuse_zero_when_the_clock_is_corrupt() {
+    let db = setup_db();
+
+    let db_setup = db.clone();
+    tokio::task::spawn_blocking(move || {
+        let conn = db_setup.blocking_lock();
+        let store = Store::new(&conn);
+        Settings::set_sync_terminal_id(&conn, "term-corrupt").unwrap();
+        // A value `parse_counter` documents as corrupt (clock_store_tests.rs:39
+        // asserts it errors): not an integer, no leading-zero/padding excuse.
+        store
+            .set_setting(crate::crdt::CLOCK_KEY, "not-a-number")
+            .unwrap();
+    })
+    .await
+    .unwrap();
+
+    let seed = super::daemon_tick::read_stamping_seed(&db).await;
+    assert!(
+        seed.is_none(),
+        "a corrupt clock must not resolve to a stamping seed; got {seed:?}"
+    );
+}
+
+/// The absent-clock case is the ONE that legitimately seeds `0`.
+///
+/// `ClockStore::load_counter` documents '0 if never written', so a terminal that
+/// has simply never ticked stamps from zero. This pins that the fix did not
+/// over-correct: only 'present but unreadable/corrupt' degrades to unstamped.
+#[tokio::test]
+async fn read_stamping_seed_seeds_zero_only_when_the_clock_was_never_written() {
+    let db = setup_db();
+
+    let db_setup = db.clone();
+    tokio::task::spawn_blocking(move || {
+        let conn = db_setup.blocking_lock();
+        Settings::set_sync_terminal_id(&conn, "term-fresh").unwrap();
+        // No CLOCK_KEY write at all.
+    })
+    .await
+    .unwrap();
+
+    let seed = super::daemon_tick::read_stamping_seed(&db).await;
+    assert_eq!(
+        seed,
+        Some(("term-fresh".to_string(), 0)),
+        "an unwritten clock is a documented zero, not a failure"
+    );
+}
+
+/// A terminal with no identity never stamps — distinct from a clock failure.
+#[tokio::test]
+async fn read_stamping_seed_is_none_without_a_terminal_identity() {
+    let db = setup_db();
+    // Terminal id unset; even a perfectly good clock cannot be attributed.
+    let seed = super::daemon_tick::read_stamping_seed(&db).await;
+    assert!(
+        seed.is_none(),
+        "no terminal id means no stamping; got {seed:?}"
     );
 }

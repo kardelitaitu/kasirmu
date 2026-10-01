@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate docs/src/SUMMARY.md for the OZ-POS documentation portal.
+"""Generate docs/src/SUMMARY.md for the kasir.mu documentation portal.
 
 The sidebar is built from the canonical folders, so dropping a .md file into
 `docs/` or `docs/decisions/` makes it appear in the portal on the next build:

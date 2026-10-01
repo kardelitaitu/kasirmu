@@ -1,0 +1,69 @@
+{
+    "badges":  [
+                   {
+                       "width":  86,
+                       "ink":  "#FFFFFF",
+                       "contrast":  4.76,
+                       "fill":  "#64748B",
+                       "key":  "free",
+                       "height":  40,
+                       "label":  "FREE",
+                       "svg":  "svg/tier-free.svg"
+                   },
+                   {
+                       "width":  90,
+                       "ink":  "#FFFFFF",
+                       "contrast":  4.52,
+                       "fill":  "#8655F6",
+                       "key":  "plus",
+                       "height":  40,
+                       "label":  "PLUS",
+                       "svg":  "svg/tier-plus.svg"
+                   },
+                   {
+                       "width":  78,
+                       "ink":  "#FFFFFF",
+                       "contrast":  4.53,
+                       "fill":  "#0471F1",
+                       "key":  "pro",
+                       "height":  40,
+                       "label":  "PRO",
+                       "svg":  "svg/tier-pro.svg"
+                   },
+                   {
+                       "width":  134,
+                       "ink":  "#3F2D00",
+                       "contrast":  8.12,
+                       "fill":  "#F5C518",
+                       "key":  "premium",
+                       "height":  40,
+                       "label":  "PREMIUM",
+                       "svg":  "svg/tier-premium.svg"
+                   },
+                   {
+                       "width":  162,
+                       "ink":  "#F1F5F9",
+                       "contrast":  16.8,
+                       "fill":  "#12141A",
+                       "key":  "enterprise",
+                       "height":  40,
+                       "label":  "ENTERPRISE",
+                       "svg":  "svg/tier-enterprise.svg"
+                   }
+               ],
+    "scales":  [
+                   1,
+                   2,
+                   3
+               ],
+    "generatedBy":  "scripts/generate-tier-badges.ps1",
+    "geometry":  {
+                     "paddingX":  18,
+                     "radius":  8,
+                     "fontSize":  19,
+                     "letterSpacing":  0.9,
+                     "textOutlined":  true,
+                     "fontWeight":  700,
+                     "height":  40
+                 }
+}

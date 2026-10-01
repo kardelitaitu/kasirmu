@@ -152,7 +152,7 @@ fn stock_transfer_no_locations() {
 #[test]
 fn stock_transfer_empty_notes() {
     let mut transfer = sample_transfer();
-    transfer.notes = "".into();
+    transfer.notes = String::new();
     let json = serde_json::to_string(&transfer).unwrap();
     let back: StockTransfer = serde_json::from_str(&json).unwrap();
     assert_eq!(back.notes, "");
@@ -192,7 +192,7 @@ fn stock_transfer_line_zero_qty_transfer() {
 #[test]
 fn stock_transfer_debug() {
     let transfer = sample_transfer();
-    let debug = format!("{:?}", transfer);
+    let debug = format!("{transfer:?}");
     assert!(debug.contains("TRF-20260701-001"));
     assert!(debug.contains("Warehouse A"));
 }
@@ -207,7 +207,7 @@ fn stock_transfer_line_debug() {
         qty: 10,
         received_qty: 3,
     };
-    let debug = format!("{:?}", line);
+    let debug = format!("{line:?}");
     assert!(debug.contains("SKU-123"));
     assert!(debug.contains("Widget"));
 }

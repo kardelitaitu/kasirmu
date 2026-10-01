@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ── OZ-POS Dev Up (Linux / macOS) ───────────────────────────────────
+# ── kasir.mu Dev Up (Linux / macOS) ───────────────────────────────────
 #
 # One-command local development startup:
 #   1. Resolves the compose-required secrets (JWT secret + admin key):
@@ -51,7 +51,7 @@ COMPOSE_PG=("${COMPOSE_BASE[@]}" -f ops/docker/docker-compose.pg.yml)
 
 # ── Tear-down mode ────────────────────────────────────────────────
 if $DOWN; then
-  echo "👋 Tearing down OZ-POS dev environment..."
+  echo "👋 Tearing down kasir.mu dev environment..."
   if $PG_MODE; then
     "${COMPOSE_PG[@]}" down -v
   else
@@ -213,7 +213,7 @@ if $BUILD; then
 fi
 
 # ── Start services ────────────────────────────────────────────────
-echo "🚀 Starting OZ-POS backend services..."
+echo "🚀 Starting kasir.mu backend services..."
 if $PG_MODE; then
   "${COMPOSE_PG[@]}" up -d
 else
@@ -255,7 +255,7 @@ API_PORT="${OZ_API_PORT:-3099}"
 
 echo ""
 echo "╔══════════════════════════════════════════════════════════╗"
-echo "║  OZ-POS Backend — Ready                                  ║"
+echo "║  kasir.mu Backend — Ready                                  ║"
 echo "╠══════════════════════════════════════════════════════════╣"
 echo "║  Cloud Server:    http://localhost:$API_PORT/api/health  ║"
 echo "║  License Server:  http://localhost:8080/api/health       ║"

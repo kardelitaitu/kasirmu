@@ -10,7 +10,7 @@
 // workspace mocks, lazy screen stubs, real page-registry seeded in
 // beforeEach).
 
-import { describe, expect, it, vi, beforeEach, type Mock } from 'vitest';
+import { describe, expect, it, vi, beforeEach, afterEach, type Mock } from 'vitest';
 import { screen, waitFor, fireEvent } from '@testing-library/react';
 import { act } from 'react';
 import { renderWithProviders } from '@/__tests__/test-utils/render';
@@ -623,6 +623,76 @@ describe('TabletAppShell — routing', () => {
       });
       expect(screen.queryByTestId('session-lock-screen')).not.toBeInTheDocument();
       expect(screen.getByTestId('staff-login-screen')).toBeInTheDocument();
+    });
+  });
+
+  // ── Hash routing (the '#/mobile-setup' contract) ──────────────────
+  //
+  // The provisioning flow's "Set up with a phone instead" button navigates by
+  // setting window.location.hash, not by calling handleNavigate — it lives in a
+  // different component and has no access to the shell. The desktop shell has
+  // listened for hashchange since AppShell.tsx:350; the tablet shell had no
+  // listener, so on a tablet that button changed the URL and rendered nothing.
+  // These pin both halves: the live change and the mount-time deep link.
+
+  describe('hash routing', () => {
+    beforeEach(() => {
+      clearPages();
+      registerPage({ route: 'pos', component: () => null, label: 'POS Terminal' });
+      registerPage({
+        route: 'mobile-setup',
+        component: () => <div data-testid="mobile-setup-page">Mobile Setup</div>,
+        label: 'Mobile Setup Wizard',
+        fullscreen: true,
+      });
+      window.location.hash = '';
+    });
+
+    afterEach(() => {
+      window.location.hash = '';
+    });
+
+    it('renders the fullscreen page when the hash changes to it', async () => {
+      await renderWithProviders(<TabletAppShell />, sharedFtl);
+      await waitFor(() => {
+        expect(screen.getByTestId('workspace-home')).toBeInTheDocument();
+      });
+
+      await act(async () => {
+        window.location.hash = '#/mobile-setup';
+        window.dispatchEvent(new HashChangeEvent('hashchange'));
+      });
+
+      expect(await screen.findByTestId('mobile-setup-page')).toBeInTheDocument();
+      // Fullscreen: no tab bar around it.
+      expect(screen.queryByTestId('memo-banner-mount')).toBeInTheDocument();
+    });
+
+    it('reads a deep-linked hash on mount, not only on change', async () => {
+      window.location.hash = '#/mobile-setup';
+      try {
+        await renderWithProviders(<TabletAppShell />, sharedFtl);
+        expect(await screen.findByTestId('mobile-setup-page')).toBeInTheDocument();
+      } finally {
+        window.location.hash = '';
+      }
+    });
+
+    it('ignores an unregistered hash instead of blanking the screen', async () => {
+      await renderWithProviders(<TabletAppShell />, sharedFtl);
+      await waitFor(() => {
+        expect(screen.getByTestId('workspace-home')).toBeInTheDocument();
+      });
+
+      await act(async () => {
+        window.location.hash = '#/no-such-page';
+        window.dispatchEvent(new HashChangeEvent('hashchange'));
+      });
+
+      // A typo in a deep link must not unmount the app; the current route
+      // stands. Without the getPage() guard this would set currentRoute to a
+      // route with no registration, and the shell would render null.
+      expect(screen.getByTestId('workspace-home')).toBeInTheDocument();
     });
   });
 

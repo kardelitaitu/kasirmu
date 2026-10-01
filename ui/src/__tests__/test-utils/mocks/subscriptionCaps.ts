@@ -17,7 +17,9 @@ export function makeSubscriptionCaps(
     features: {},
     maxLocations: 1,
     maxPosInstances: 1,
-    maxWarehouses: 1,
+    // Free: the warehouse workspace is Premium+ (2026-09-29), so the cap is 0 —
+    // matches SubscriptionTier::max_warehouses, which returns Some(0) not None.
+    maxWarehouses: 0,
     // Free: KDS unavailable at all, so the per-location cap is 0 — matches
     // SubscriptionTier::max_kds_screens, which returns Some(0) not None.
     maxKdsScreens: 0,

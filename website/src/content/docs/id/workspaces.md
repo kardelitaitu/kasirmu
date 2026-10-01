@@ -1,7 +1,7 @@
 ---
 title: Ruang Kerja
 description: Pilih fungsi setiap layar — kasir ritel, layanan restoran, dapur, atau back office.
-category: guides
+category: gettingStarted
 order: 7
 updated: "2026-09-19"
 ---
@@ -16,7 +16,7 @@ Anda berada:
 
 | Ruang Kerja     | Fungsinya                                                                  | Status       |
 | --------------- | -------------------------------------------------------------------------- | ------------ |
-| POS Toko        | Kasir ritel — pencarian produk, pelanggan, dan loyalitas                   | Siap         |
+| POS Ritel       | Kasir ritel — pencarian produk, pelanggan, dan loyalitas                   | Siap         |
 | POS Restoran    | Kasir layanan meja — kategori menu dan manajemen meja                      | Siap         |
 | Tampilan Dapur  | Antrean pesanan untuk dapur — ketuk tiket untuk memajukan statusnya        | Siap         |
 | Gudang          | Produk, tingkat stok, bundel, kategori, dan laporan inventaris             | Siap         |
@@ -41,18 +41,18 @@ ruang kerja secara langsung.
 ## Pengaturan ruang kerja
 
 Setiap ruang kerja memiliki pengaturannya sendiri, sehingga layar berperilaku
-berbeda tergantung perannya. POS Toko mengatur tata letak struk, lebar
+berbeda tergantung perannya. POS Ritel mengatur tata letak struk, lebar
 kertas, tampilan mata uang dan pajak, serta pemindai barcode. POS Restoran
 mengatur tata letak meja, pengiriman kursus, dan printer dapur. Tampilan
 Dapur mengatur eskalasi SLA dan suara pesanan baru. Lihat [Pengaturan](../settings/)
 untuk daftar lengkap.
 
-## Ruang kerja milik sebuah toko
+## Ruang kerja milik sebuah lokasi
 
-Setiap instance ruang kerja terikat ke toko. Saat mulai, perangkat
-menyelesaikan tokonya — dari binding terminal bila ada, jika tidak toko
-utama — lalu menampilkan ruang kerja toko tersebut. Lihat
-[Toko & Topologi](../stores/) dan [Terminal](../terminals/).
+Setiap instance ruang kerja terikat ke lokasi. Saat mulai, perangkat
+menyelesaikan lokasinya — dari binding terminal bila ada, jika tidak lokasi
+utama — lalu menampilkan ruang kerja lokasi tersebut. Lihat
+[Lokasi & Topologi](../location/) dan [Terminal](../terminals/).
 
 ## Ruang kerja yang direncanakan
 
@@ -65,5 +65,7 @@ diluncurkan.
 dikunci untuk layar tanpa pengawas. **Laporan** juga bukan ruang kerja:
 dasbor penjualan dan analitik berada di dalam ruang kerja Admin, pada layar
 **Laporan**.
+
+Lanjut membaca · **Sebelumnya:** [Transaksi Pertama Anda](../first-sale/) · **Berikutnya:** [Hari Pertama Beroperasi](../first-day/)
 
 > last audited 19-09-26 by docs-auditor

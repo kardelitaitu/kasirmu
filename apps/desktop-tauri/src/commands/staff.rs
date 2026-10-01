@@ -12,7 +12,7 @@ REV 2026-09-21 (DSH staff-trash): the REV above said STAFF_DELETE had no desktop
 //! Wave B / B5: the bodies now live in the headless `kasirmu_bridge::staff` module.
 //! Every `#[tauri::command]` below keeps its exact name, parameter list,
 //! attributes and `Result<_, AppError>` wire contract; it builds a
-//! [`crate::state::AppState::bridge_ctx`] and delegates one call. The three
+//! `crate::state::AppState::bridge_ctx` and delegates one call. The three
 //! legacy unscoped tombstones keep their inline denial (there is no business
 //! logic in them to move), while `run_bootstrap_owner` and `role_dto` stay as
 //! `AppError` adapters because the sibling test modules call them directly.

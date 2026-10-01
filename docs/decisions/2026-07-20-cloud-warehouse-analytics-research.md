@@ -1,3 +1,4 @@
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 125 lines, no audit stamp, no footer, no marker. It is the shortest of the four research documents in this batch and the only one with a DECIDED outcome -- "Research (Recommended: Defer to post-1.0)" -- so unlike its siblings it commits to a position, and that position is the checkable claim. The recommendation was to defer the cloud-warehouse analytics export until after 1.0. Deferring is trivially consistent with a codebase that does not have the feature, so the finding here is negative and worth stating plainly: the deferral decision was honoured. There is no warehouse-export implementation to contradict it. · Its Options Evaluated and Cost Comparison sections are point-in-time market judgements that no repository can confirm or deny -- the same class as the benchmark baselines audited in round 14 -- and are left exactly as written. · Worth connecting to its sibling `docs/specs/admin-dashboard-plan.md`, audited in round 9: that plan's Phase 3 wires Paddle `transaction.completed` amounts and Midtrans `gross_amount` into a `revenue_events` collection that the stats endpoint sums -- a narrow, live-revenue analytics path built in the opposite direction from a full warehouse export. Together the two documents show the deferral was a scoping decision rather than a dead end, and a reader asking why there is no warehouse has the answer in one sentence. · No repository paths inside it resolve, so nothing to repair. Stamp and footer added. -->
 # ADR: Cloud Warehouse Analytics Export
 
 **Status:** Research (Recommended: Defer to post-1.0)
@@ -118,8 +119,5 @@ The `AnalyticsBundle` JSON format already maps cleanly to BigQuery's `NEWLINE_DE
 - `docs/decisions/archived/2026-07-10-subscription-tier-entitlement.md` — Feature gating for premium add-ons
 - `docker-compose.yml` — Redis job queue for async export tasks
 
-> last audited 09-08-26 by buffy
-> audit: Phase 1 Core Architecture & API Docs Audit
-
-> status: ACCURATE (0 findings) · verified accurate: cargo check passed, no structural orphans, no stale version headers
+> last audited 29-09-26 by docs-auditor
 

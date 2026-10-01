@@ -1,3 +1,5 @@
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: ACCURATE — 0 findings, no repairs needed · Audited on branch 0.0.40. Clean pass. The record's central mechanism — the KDS consumer reading `target_instance_id` off a runtime-plan route and persisting it — is present at the source: `crates/kasirmu-bridge/src/kds.rs:45` pulls `route.get("target_instance_id")` off the matched route, `:117` does the same for the hardware leg, and the order writer takes `target_instance_id: Option<&str>` at `:160` and binds it at `:177`, emitting it as `targetInstanceId` in the audit JSON at `:186`. The `target_instance_id` column it depends on is a real nullable column on the KDS order table (`crates/kasirmu-core/migrations/20260813_init.sql:291`, `store_id TEXT, kitchen_zone TEXT, table_number TEXT, priority INTEGER NOT NULL DEFAULT 0, target_instance_id TEXT`), so the "Red test reproduced the missing column before the migration" story has a schema that matches its outcome. The Deliberate limitation section is the kind of honesty that usually rots, so it was checked too: the claim that `kds_orders.sale_id` is uniquely constrained and therefore permits one routed target per sale is exactly the constraint Phase 8 then had to work around, and `crates/kasirmu-bridge/src/pos.rs` plus the Phase 8 record agree. · No repairs needed. · No stamp or footer existed on this file before this pass. -->
+
 # ADR: Topology Phase 7 — KDS Runtime Consumer
 
 **Date:** 2026-08-09
@@ -26,3 +28,5 @@ The current `kds_orders.sale_id` uniqueness constraint supports one routed KDS t
 - Desktop runtime-plan selector test confirms source/port/relationship matching.
 - UI typecheck and IPC contract tests pass.
 - Rust formatting and diff checks pass.
+
+> last audited 29-09-26 by docs-auditor

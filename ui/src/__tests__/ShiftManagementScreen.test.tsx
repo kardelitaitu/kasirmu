@@ -348,4 +348,164 @@ describe('ShiftManagementScreen', () => {
     // unreachable by clicking, so that branch cannot be tested through the UI.
     expect(mockCreateCashPayout).not.toHaveBeenCalled();
   });
+
+  // ── Unanswered active-shift read ────────────────────────────
+  //
+  // The defect: `getActiveShiftScoped(token).catch(() => null)` reported a
+  // FAILED read as "no shift is open", and the screen's only affordance in that
+  // state is Open Shift. A transient error therefore invited the cashier to open
+  // a second shift against one the database still holds open. The read failing
+  // and the read answering "none" are now separate states, and the unanswered
+  // one offers Reload.
+
+  it('does not claim there is no active shift when the read failed', async () => {
+    mockListShifts.mockResolvedValue(closedShifts);
+    mockGetActiveShift.mockRejectedValue(new Error('invoke failed'));
+    renderWithFluentSync(<ToastProvider><ShiftManagementScreen /></ToastProvider>, shiftsFtl, sharedFtl);
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent('Failed to load shifts');
+    });
+    // The claim itself must be absent -- not merely accompanied by an error.
+    expect(screen.queryByText('No active shift')).not.toBeInTheDocument();
+    expect(screen.queryByText('Open Shift')).not.toBeInTheDocument();
+    // The only action offered is the one that re-asks the question.
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
+    // The history table still renders: only the active-shift read was unanswered.
+    expect(screen.getByText('Shift History')).toBeInTheDocument();
+  });
+
+  it('recovers the no-active banner once the retry answers', async () => {
+    const user = userEvent.setup();
+    mockListShifts.mockResolvedValue(closedShifts);
+    mockGetActiveShift.mockRejectedValue(new Error('invoke failed'));
+    renderWithFluentSync(<ToastProvider><ShiftManagementScreen /></ToastProvider>, shiftsFtl, sharedFtl);
+
+    // Wait for the FAILED state first. Polling for the banner's absence straight
+    // away passes vacuously -- while `loading` is still true the banner is not
+    // rendered either way, so that assertion proves nothing about the defect.
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent('Failed to load shifts');
+    });
+    expect(screen.queryByText('No active shift')).not.toBeInTheDocument();
+    // The retry succeeds and answers "none". Only NOW is the absence a fact.
+    mockGetActiveShift.mockResolvedValue(null);
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('No active shift')).toBeInTheDocument();
+      expect(screen.getByText('Open Shift')).toBeInTheDocument();
+    });
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  // ── Unanswered shift-report read ───────────────────────────
+  //
+  // The defect: the report read used to be
+  //   getShiftReportScoped(...).catch(() => setShiftReport(null))
+  // and the report block renders only when `shiftReport` is truthy. A refused
+  // read therefore rendered NEITHER the skeleton NOR the report -- a manager
+  // opening a closed shift to balance the drawer saw a silent gap where the
+  // payment breakdown, hourly sales, gross profit and cash payouts belong. The
+  // worst case is not a missing chart: a drawer that is short and a drawer that
+  // was never reconciled looked exactly the same.
+  //
+  // A refusal is EXPECTED here, not exceptional: get_shift_report answers
+  // NotFound when the shift row is gone (crates/kasirmu-core/src/db/shifts.rs:382-392),
+  // and the bridge passes it through (crates/kasirmu-bridge/src/shifts.rs:462-483).
+  // It is still not an answer about the drawer, so it is a third state.
+
+  /** A report with every section populated, so each one can be shown to vanish. */
+  const populatedReport = {
+    shift: { ...closedShifts[0]! },
+    paymentBreakdown: [{ method: 'cash', count: 3, totalMinor: 150000 }],
+    hourlyBreakdown: [{ hour: 9, saleCount: 2, totalMinor: 100000 }],
+    cashPayouts: [{ id: 'payout-1', shiftId: 'shift-2', amountMinor: 20000, reason: 'bank deposit', createdAt: '2026-07-06T21:00:00.000Z' }],
+    saleCount: 3, voidCount: 1, refundCount: 1,
+    cogsMinor: 60000, grossProfitMinor: 90000, grossMarginPercent: 60,
+  };
+
+  /** Open the detail modal on the first closed shift and wait for the report. */
+  async function openDetailModal() {
+    const user = userEvent.setup();
+    renderWithFluentSync(<ToastProvider><ShiftManagementScreen /></ToastProvider>, shiftsFtl, sharedFtl);
+    await waitFor(() => {
+      expect(screen.getByText('View')).toBeInTheDocument();
+    });
+    await user.click(screen.getByText('View'));
+    await waitFor(() => {
+      expect(screen.getByText('Shift Details')).toBeInTheDocument();
+    });
+    return user;
+  }
+
+  it('does not show an empty report when the read failed', async () => {
+    mockListShifts.mockResolvedValue(closedShifts);
+    mockGetActiveShift.mockResolvedValue(null);
+    mockGetShiftReport.mockRejectedValue(new Error('invoke failed'));
+    await openDetailModal();
+
+    // Await the ARRIVING alert first. Polling for the report's absence straight
+    // away passes vacuously: while `reportLoading` is true the report is not
+    // rendered either way, so the assertion would hold for a passing read too.
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent('Could not load this shift report');
+    });
+    // Each section is a claim about the money in that drawer. None may render.
+    // Matched as headings because the text is not unique: the gross-profit
+    // title and its row label share the same value.
+    expect(screen.queryByRole('heading', { name: 'Payment Breakdown' })).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'Hourly Sales' })).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'Transaction Summary' })).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'Gross Profit' })).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'Cash Payouts (Safe Drops)' })).toBeNull();
+    // And the skeleton must be gone: an unanswered read is not a pending one.
+    expect(document.querySelector('.shift-mgmt-report-skeleton')).toBeNull();
+    // The only action offered is the one that re-asks the question.
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
+    // The shift itself still renders: only the REPORT read was unanswered, so
+    // hiding the drawer detail would throw away an answer we do have.
+    expect(screen.getByText('Shift Details')).toBeInTheDocument();
+  });
+
+  it('recovers the report once the retry answers', async () => {
+    mockListShifts.mockResolvedValue(closedShifts);
+    mockGetActiveShift.mockResolvedValue(null);
+    mockGetShiftReport.mockRejectedValueOnce(new Error('invoke failed'));
+    const user = await openDetailModal();
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent('Could not load this shift report');
+    });
+    mockGetShiftReport.mockResolvedValue(populatedReport);
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Payment Breakdown')).toBeInTheDocument();
+    });
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(mockGetShiftReport).toHaveBeenCalledTimes(2);
+    // Every section that had collapsed comes back, not just the first one.
+    expect(screen.getByText('Hourly Sales')).toBeInTheDocument();
+    expect(screen.getByText('Transaction Summary')).toBeInTheDocument();
+    // Section titles are matched as headings, not by text: 'Gross Profit' is
+    // BOTH a section title and a row label (shift-report-gross-profit and
+    // shift-report-gross-profit-value share the value), and the cash-payouts
+    // title is 'Cash Payouts (Safe Drops)', so getByText finds neither one.
+    expect(screen.getByRole('heading', { name: 'Gross Profit' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Cash Payouts (Safe Drops)' })).toBeInTheDocument();
+  });
+
+  it('leaves the report alone when the read succeeds the first time', async () => {
+    mockListShifts.mockResolvedValue(closedShifts);
+    mockGetActiveShift.mockResolvedValue(null);
+    mockGetShiftReport.mockResolvedValue(populatedReport);
+    await openDetailModal();
+
+    await waitFor(() => {
+      expect(screen.getByText('Payment Breakdown')).toBeInTheDocument();
+    });
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(mockGetShiftReport).toHaveBeenCalledTimes(1);
+  });
 });

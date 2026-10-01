@@ -10,7 +10,10 @@ UPDATE plus the `uq_gift_card_redeem_sale` unique index, and an automatic
 merge would defeat both, so a divergent money movement is always a row for
 human review. `tie_break` is total and symmetric so every replica picks the
 same last-writer-wins winner.
-next: persistence + HTTP endpoints | perf: O(terminals + payload fields)
+next: none | perf: O(terminals + payload fields)
+DONE 2026-10-04: the decision is persisted (sync_conflicts) and served over
+HTTP - GET /api/sync/conflicts and POST /api/sync/conflicts/{id}/resolve
+(sync_api.rs:198-200); the store methods live in sync_store/conflicts.rs.
 */
 //!
 //! This module is pure: it takes vectors and payloads and returns a
@@ -131,6 +134,18 @@ pub enum Decision {
 /// not exist before: two offline redemptions of the same gift card merge into
 /// a double spend that every per-record invariant would have rejected
 /// individually. So money is never merged — only flagged.
+///
+/// C19: `"sale"` is in this list because the OFFLINE QUEUE NAMES THE ACTION,
+/// not the domain — `complete_sale` (`kasirmu-core/src/db/offline.rs:388`) and
+/// `void_sale` (`:486`) are what reach this function, and neither contains any
+/// of the other needles. `sync_store.rs:184` passes `item.action` straight in
+/// as `entity_type`, so before this needle existed a completed sale classified
+/// `Severity::Low` / `LastWriterWins` and two concurrent sales of the same
+/// entity auto-resolved with the loser never flagged for review — the exact
+/// value-creation this doc comment says must never be automatic.
+///
+/// The needle is `"sale"`, not the two literals, so a future action named
+/// `sale.*` is covered by construction rather than by another edit here.
 fn is_money_entity(entity_type: &str) -> bool {
     let t = entity_type.to_ascii_lowercase();
     [
@@ -141,6 +156,7 @@ fn is_money_entity(entity_type: &str) -> bool {
         "loyalty",
         "payout",
         "cash",
+        "sale",
     ]
     .iter()
     .any(|needle| t.contains(needle))

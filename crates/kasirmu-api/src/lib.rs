@@ -1,11 +1,11 @@
 /*
-last audited DD-MM-YY by DSH-Agent
+last audited (date unknown) by DSH-Agent
 crate: kasirmu-api | status: SAFE | lint: CLEAN
 findings: 0 unsafe blocks. 2 production panic-on-invariant calls in tokens.rs — both "HMAC accepts any key length" with fixed-size key input (documented-invariant, same pattern as kasirmu-crypto). Doc-comment example in lib.rs also uses a panic-on-invariant call in a //! block (not production code). Security headers, CORS fail-closed, production-secret validation (API-1). Clean server scaffold.
 next: none | perf: N/A
 */
 
-//! OZ-POS OpenAPI REST server.
+//! kasir.mu OpenAPI REST server.
 //!
 //! Starts an axum HTTP server on `OZ_API_PORT` (default 3099) with JWT
 //! authentication on protected routes. The server runs alongside the
@@ -37,7 +37,16 @@ next: none | perf: N/A
 
 // The shared OpenAPI document (`spec.rs`) is one deeply-nested `json!`
 // literal — same requirement as `apps/cloud-server` (main.rs).
+#![deny(unsafe_code)]
 #![recursion_limit = "512"]
+// `rustdoc::private_intra_doc_links` is allowed crate-wide here, and ONLY
+// that lint. Several public items in this crate document their behaviour by
+// naming the private helper that enforces it — which is more useful to a
+// reader than a prose restatement, and is the reason rustdoc has a lint for
+// it rather than an error. `rustdoc::broken_intra_doc_links` is deliberately
+// NOT allowed, so a link to an item that does not exist still fails the
+// build. Precedent: `kasirmu-crypto/src/lib.rs`, `platform/core/src/lib.rs`.
+#![allow(rustdoc::private_intra_doc_links)]
 
 /// JWT auth middleware and token generation.
 pub mod api_audit;
@@ -492,7 +501,7 @@ pub async fn serve() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{port}"))
         .await
         .map_err(|e| format!("failed to bind API port {port}: {e}"))?;
-    info!(port, "OZ-POS API server listening");
+    info!(port, "kasir.mu API server listening");
     axum::serve(listener, router(state))
         .await
         .map_err(|e| format!("API server exited with error: {e}"))?;

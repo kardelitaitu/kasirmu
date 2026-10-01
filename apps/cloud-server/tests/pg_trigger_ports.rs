@@ -73,7 +73,10 @@ async fn throwaway_db() -> Option<(tokio_postgres::Client, String)> {
         .is_err()
     {
         eprintln!("SKIP: could not CREATE DATABASE {db_name} (insufficient privileges?)");
+        #[cfg(not(feature = "pg-tests"))]
         return None;
+        #[cfg(feature = "pg-tests")]
+        panic!("PG test enabled but the resource is unreachable - see the skip message above");
     }
     drop(admin);
 
@@ -89,7 +92,10 @@ async fn throwaway_db() -> Option<(tokio_postgres::Client, String)> {
         .await
     {
         eprintln!("SKIP: could not apply PG_INIT to {db_name}: {e}");
+        #[cfg(not(feature = "pg-tests"))]
         return None;
+        #[cfg(feature = "pg-tests")]
+        panic!("PG test enabled but the resource is unreachable - see the skip message above");
     }
 
     Some((client, db_name))
@@ -133,7 +139,10 @@ fn assert_refused(err: tokio_postgres::Error, needle: &str, what: &str) {
 async fn harness(port: &str) -> Option<(tokio_postgres::Client, String)> {
     let Some((client, db_name)) = throwaway_db().await else {
         eprintln!("SKIP: PostgreSQL unreachable — set OZ_TEST_PG_URL to run {port}");
+        #[cfg(not(feature = "pg-tests"))]
         return None;
+        #[cfg(feature = "pg-tests")]
+        panic!("PG test enabled but the resource is unreachable - see the skip message above");
     };
     Some((client, db_name))
 }
@@ -161,6 +170,7 @@ async fn seed_user(client: &tokio_postgres::Client, user: &str) {
 // (the sweep marker in settings) -> RAISE(ABORT). When the marker IS present
 // the WHEN clause is false, the trigger body never runs, and the DELETE
 // PROCEEDS — that is the whole point of the retention carve-out.
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 async fn pg_audit_log_delete_port_matches_sqlite() {
     let Some((client, db_name)) = harness("audit_log_immutable_delete").await else {
@@ -217,6 +227,7 @@ async fn pg_audit_log_delete_port_matches_sqlite() {
 //
 // SQLite: BEFORE UPDATE, RAISE(ABORT) unconditionally — no carve-out, no
 // anonymization path. The port must refuse every UPDATE.
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 async fn pg_audit_log_update_port_matches_sqlite() {
     let Some((client, db_name)) = harness("audit_log_immutable_update").await else {
@@ -277,6 +288,7 @@ async fn pg_audit_log_update_port_matches_sqlite() {
 // WHEN trim(name)='' OR min_points<0 OR points_per_unit<=0 OR
 // earn_multiplier_millionths<=0 OR length(colour)<>7 OR first char not '#'
 // OR the rest has a non-hex char -> RAISE(ABORT).
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 async fn pg_loyalty_tiers_insert_port_matches_sqlite() {
     let Some((client, db_name)) = harness("loyalty_tiers_validate_insert").await else {
@@ -339,6 +351,7 @@ async fn pg_loyalty_tiers_insert_port_matches_sqlite() {
 //
 // SQLite: BEFORE UPDATE OF name, min_points, points_per_unit,
 // earn_multiplier_millionths, colour — the same predicate, on the update arm.
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 async fn pg_loyalty_tiers_update_port_matches_sqlite() {
     let Some((client, db_name)) = harness("loyalty_tiers_validate_update").await else {
@@ -407,6 +420,7 @@ async fn pg_loyalty_tiers_update_port_matches_sqlite() {
 // SQLite (20260916_role_assignment_scopes.sql:34-40): AFTER INSERT, WHEN
 // (scope_type = 'organization') != (scope_id IS NULL) -> RAISE(ABORT).
 // scope_id must be NULL EXACTLY when the scope is org-wide.
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 async fn pg_assignments_scope_pair_insert_port_matches_sqlite() {
     let Some((client, db_name)) = harness("trg_assignments_scope_id_pair").await else {
@@ -455,6 +469,7 @@ async fn pg_assignments_scope_pair_insert_port_matches_sqlite() {
 // ── trg_assignments_scope_id_pair_update ──────────────────────────────────
 //
 // SQLite: the same predicate on AFTER UPDATE OF scope_type, scope_id.
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 async fn pg_assignments_scope_pair_update_port_matches_sqlite() {
     let Some((client, db_name)) = harness("trg_assignments_scope_id_pair_update").await else {

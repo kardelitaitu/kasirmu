@@ -379,13 +379,22 @@ fn resolve_read_permissions(
 
 /// Warn once if the `OZ_TERMINAL_READ_TIER=full` escape hatch is set
 /// (spec 0047 decision 1: window + flag, slated for removal).
+///
+/// MSL-24: this goes through `tracing`, not `eprintln!`. The server installs a
+/// stdout subscriber (`kasirmu_logging::try_init`), which the container log
+/// captures, so a plain `eprintln!` reaches stderr only — the warning for a
+/// PRIVILEGE-WIDENING configuration would never reach the log an operator
+/// reads. (This previously claimed the subscriber "includes a syslog layer",
+/// which `try_init` has never done; the syslog/eventlog sinks were unwired and
+/// were deleted 2026-09-29 under C29 / D13.) The `Once` is kept: one warning
+/// per process is the point, and `tracing` carries no rate limit of its own.
 fn warn_terminal_read_tier_escape_once() {
     static WARNED: std::sync::Once = std::sync::Once::new();
     WARNED.call_once(|| {
-        eprintln!(
-            "[kasirmu-api] WARNING: OZ_TERMINAL_READ_TIER=full — terminal tokens keep \
-             legacy full read access. This escape hatch is slated for removal after \
-             one release cycle; see spec 0047 decision 1."
+        tracing::warn!(
+            "OZ_TERMINAL_READ_TIER=full — terminal tokens keep legacy full read access. \
+             This escape hatch is slated for removal after one release cycle; see \
+             spec 0047 decision 1."
         );
     });
 }

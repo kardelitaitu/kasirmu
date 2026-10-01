@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ── OZ-POS E2E Test Runner ────────────────────────────────────────────
+# ── kasir.mu E2E Test Runner ────────────────────────────────────────────
 #
 # Orchestrates the full E2E test suite:
 #   1. Start Docker backend (cloud server, license server, Redis)

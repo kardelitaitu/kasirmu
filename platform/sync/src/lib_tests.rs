@@ -199,6 +199,42 @@ fn sync_engine_new_with_api_key() {
     assert_eq!(engine.config.api_key, Some("sk-key".into()));
 }
 
+// ── Embedder stamping contract (doc + debug_assert on run_sync_cycle) ──
+
+/// An engine built without a stamping seed reports NO counter. This is the
+/// state run_sync_cycle's `debug_assert!` fires on: an embedder that calls
+/// the cycle without seeding would push `_vector`-less payloads, and the
+/// server would skip conflict detection for this terminal.
+#[test]
+fn sync_engine_without_stamping_seed_reports_no_counter() {
+    let engine = SyncEngine::new(SyncConfig {
+        server_url: "http://localhost:3099".into(),
+        api_key: None,
+    });
+    assert_eq!(
+        engine.last_stamped_counter(),
+        None,
+        "a fresh engine stamps nothing until with_vector_stamping is called"
+    );
+}
+
+/// Seeding the engine stamps it: the counter is now Some, so the
+/// run_sync_cycle `debug_assert!` is satisfied and the push will carry a
+/// `_vector`.
+#[test]
+fn sync_engine_with_stamping_seed_reports_a_counter() {
+    let engine = SyncEngine::new(SyncConfig {
+        server_url: "http://localhost:3099".into(),
+        api_key: None,
+    })
+    .with_vector_stamping("term-embed", 40);
+    assert_eq!(
+        engine.last_stamped_counter(),
+        Some(40),
+        "the seed value is the highest counter stamped so far"
+    );
+}
+
 // ── SyncResult ───────────────────────────────────────────────
 
 #[test]
@@ -249,10 +285,7 @@ async fn run_sync_cycle_propagates_snapshot_server_migrated() {
         Err(SyncError::ServerMigrated { new_url: url }) => {
             assert_eq!(url, new_url, "ServerMigrated should carry the new_url");
         }
-        other => panic!(
-            "expected SyncError::ServerMigrated from snapshot path, got {:?}",
-            other
-        ),
+        other => panic!("expected SyncError::ServerMigrated from snapshot path, got {other:?}"),
     }
 }
 
@@ -280,10 +313,7 @@ async fn run_sync_cycle_propagates_pull_server_migrated() {
         Err(SyncError::ServerMigrated { new_url: url }) => {
             assert_eq!(url, new_url, "ServerMigrated should carry the new_url");
         }
-        other => panic!(
-            "expected SyncError::ServerMigrated from pull path, got {:?}",
-            other
-        ),
+        other => panic!("expected SyncError::ServerMigrated from pull path, got {other:?}"),
     }
 }
 
@@ -422,10 +452,9 @@ async fn spawn_poison_engine_server() -> String {
         })
     }
     async fn handle_pull(Json(_req): Json<serde_json::Value>) -> Json<PullResponse> {
-        let mut item = kasirmu_core::offline::OfflineQueueItem::new(
-            "complete_sale",
-            r#"{"line_items":[{"sku":"MISSING","qty":1}]}"#,
-        );
+        // A malformed payload is CoreError::Internal (TRANSIENT), so the
+        // engine keeps retrying it rather than quarantining on sight.
+        let mut item = kasirmu_core::offline::OfflineQueueItem::new("complete_sale", "{not json");
         item.id = "remote-engine-poison-1".into();
         item.created_at = "2026-01-03T00:00:00.000Z".into();
         Json(PullResponse {
@@ -448,10 +477,10 @@ async fn spawn_poison_engine_server() -> String {
 }
 
 /// Engine-level dead-letter test (parity with the daemon's
-/// `daemon_retains_anchor_until_remote_item_is_dead_lettered`): a poison
-/// remote item must retain the durable anchor while it is retryable,
-/// then allow the anchor to advance after the third failed attempt
-/// dead-letters it.
+/// `daemon_retains_anchor_until_remote_item_is_dead_lettered`): a
+/// TRANSIENTLY failing remote item (a malformed payload -> Internal) must
+/// retain the durable anchor while it is retryable, then allow the anchor
+/// to advance after the third failed attempt dead-letters it.
 #[tokio::test]
 async fn engine_retains_anchor_until_remote_item_is_dead_lettered() {
     use kasirmu_core::db::Store;
@@ -1794,7 +1823,8 @@ fn apply_push_outcomes_truncated_results_leave_trailing_items_pending() {
     apply_push_outcomes(&queue, &store, &[a.clone(), b.clone()], &results).unwrap();
 
     let all = store.list_all_offline().unwrap();
-    let got = |id: &str| all.iter().find(|i| i.id == id).unwrap().status.clone();
+    // OfflineQueueStatus is Copy, so the closure returns it by value.
+    let got = |id: &str| all.iter().find(|i| i.id == id).unwrap().status;
     assert_eq!(
         got(&a.id),
         kasirmu_core::offline::OfflineQueueStatus::Synced

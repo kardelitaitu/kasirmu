@@ -1,4 +1,4 @@
-# ── OZ-POS Production Compose Override — hardened profile (DOCKER-07) ─
+# ── kasir.mu Production Compose Override — hardened profile (DOCKER-07) ─
 #
 # Merge with the base stack for a deployment-grade posture:
 #

@@ -22,10 +22,127 @@ use crate::testing::{TestBridge, temp_conn};
 use crate::testing::{assert_refused_by_the_seeded_row, seeded_row_loads};
 
 use kasirmu_core::session::SessionContext;
+use kasirmu_security::Keyring;
 use rusqlite::Connection;
 
 fn fresh_conn() -> Connection {
     temp_conn()
+}
+
+// ── Device-binding HMAC: constant-time verification ──────────────────
+
+/// A forged binding signature must be refused, and a genuine one accepted.
+///
+/// `verify_binding` used to re-sign and compare the two hex strings, which
+/// short-circuits on the first differing byte. The verdict is not internal —
+/// it surfaces to the operator as `DeviceBindingDto::signature_valid` — so a
+/// caller who can read that flag gets a byte-at-a-time oracle for free. The
+/// pair below is the behavioural contract: it fails if the comparison ever
+/// becomes "sign and `==`" again in the direction that matters (a near-miss
+/// forgery must NOT be accepted).
+#[test]
+fn verify_binding_accepts_the_real_signature_and_refuses_a_forgery() {
+    let keyring = kasirmu_security::InMemoryKeyring::new();
+    let signature = sign_binding(&keyring, "term-1", "store-a", "ws-a-1").unwrap();
+
+    assert!(
+        verify_binding(&keyring, "term-1", "store-a", "ws-a-1", &signature).unwrap(),
+        "the signature we just minted must verify"
+    );
+
+    // Every byte position of a near-miss forgery: the LAST character differs,
+    // then the FIRST — the two ends the short-circuit treated most and least
+    // cheaply. All must be refused.
+    for pos in [0usize, 1, signature.len() / 2, signature.len() - 1] {
+        let mut forged = signature.clone().into_bytes();
+        forged[pos] = if forged[pos] == b'0' { b'1' } else { b'0' };
+        let forged = String::from_utf8(forged).unwrap();
+        assert_ne!(forged, signature);
+        assert!(
+            !verify_binding(&keyring, "term-1", "store-a", "ws-a-1", &forged).unwrap(),
+            "a forgery differing at byte {pos} must be refused"
+        );
+    }
+
+    // A signature for a DIFFERENT binding must not verify against this one.
+    let other = sign_binding(&keyring, "term-1", "store-b", "ws-b-1").unwrap();
+    assert!(
+        !verify_binding(&keyring, "term-1", "store-a", "ws-a-1", &other).unwrap(),
+        "a signature bound to another store/instance must be refused"
+    );
+
+    // Malformed input is a refusal, never an error and never an accept.
+    assert!(!verify_binding(&keyring, "term-1", "store-a", "ws-a-1", "not-hex").unwrap());
+    assert!(!verify_binding(&keyring, "term-1", "store-a", "ws-a-1", "").unwrap());
+}
+
+/// With no secret in the keyring, nothing can verify — and the check must not
+/// CREATE one. `verify_binding` is called from the diagnostic DTO builder, so a
+/// read that minted a secret would make a probe mutate the device.
+#[test]
+fn verify_binding_refuses_when_no_secret_exists_and_stores_nothing() {
+    let keyring = kasirmu_security::InMemoryKeyring::new();
+    assert!(!verify_binding(&keyring, "term-1", "store-a", "ws-a-1", "00").unwrap());
+    assert_eq!(
+        keyring.get_secret(DEVICE_BINDING_KEYRING_NAME).unwrap(),
+        None,
+        "verification must not mint the secret it failed to find"
+    );
+}
+
+/// The device-binding verifier must compare in CONSTANT TIME.
+///
+/// A SOURCE pin, not a behavioural one, and that is the whole point: the
+/// naive `expected == signature` this replaced was not a *logic* bug — it
+/// accepted and rejected exactly the same inputs, so no black-box test can
+/// tell the two apart. What it leaked was TIME: string equality returns at
+/// the first differing byte, so a forger learns how many leading characters
+/// were already right. The pair in
+/// `verify_binding_accepts_the_real_signature_and_refuses_a_forgery` passes
+/// against BOTH implementations — verified by running it that way — so it
+/// guards the contract while this guards the property.
+///
+/// `Mac::verify_slice` is the answer already carrying the sibling site
+/// (`workspaces::verify_binding_hmac`, whose doc records the same repair).
+/// Written as a source scan because a timing oracle is not observable from a
+/// unit test.
+#[test]
+fn verify_binding_compares_in_constant_time() {
+    let src = include_str!("terminals.rs");
+    let start = src
+        .find("fn verify_binding(")
+        .expect("verify_binding must exist");
+    let body = &src[start..];
+    let end = body.find("\n}").expect("verify_binding must have a body");
+    let body = &body[..end];
+
+    // A FLOOR, load-bearing here rather than decorative: the two expects above
+    // prove the MARKER was found, not that the extracted region is the function.
+    // A body sliced short - an earlier `\n}` closing a nested block, a reordered
+    // signature - satisfies both while containing none of the code under test, and
+    // every assertion below would then pass by inspecting nothing. Same failure
+    // mode the sibling scans in `pos_tests.rs` and `data_tests.rs` now guard too.
+    assert!(
+        body.len() > 200,
+        "extracted only {} bytes for verify_binding, which cannot be the whole function - the scan is reading a region that no longer holds it",
+        body.len()
+    );
+    assert!(
+        body.contains("keyring"),
+        "the extracted region does not look like the verifier body: {body}"
+    );
+
+    assert!(
+        body.contains("verify_slice"),
+        "verify_binding must use Mac::verify_slice (constant-time); a string
+         comparison short-circuits and leaks the mismatch position: {body}"
+    );
+    for bad in ["== signature", "signature ==", "== hex::encode"] {
+        assert!(
+            !body.contains(bad),
+            "verify_binding has a short-circuiting comparison ({bad}): {body}"
+        );
+    }
 }
 
 #[test]
@@ -78,6 +195,7 @@ fn get_terminal_by_device_id() {
 fn terminal_dto_debug() {
     let dto = TerminalDto {
         id: "t1".into(),
+        code: None,
         name: "Front Counter".into(),
         device_id: "host-01".into(),
         is_active: true,
@@ -94,6 +212,7 @@ fn terminal_dto_debug() {
 fn terminal_dto_serialize() {
     let dto = TerminalDto {
         id: "t2".into(),
+        code: Some("02".into()),
         name: "Drive-Thru".into(),
         device_id: "host-02".into(),
         is_active: false,
@@ -104,6 +223,7 @@ fn terminal_dto_serialize() {
     };
     let json = serde_json::to_value(&dto).unwrap();
     assert_eq!(json["name"], "Drive-Thru");
+    assert_eq!(json["code"], "02");
     assert_eq!(json["isActive"], false);
 }
 
@@ -419,4 +539,257 @@ async fn staff_denied_register_terminal() {
     .await;
     // Staff does NOT have TERMINALS_REGISTER — only Manager/Admin do.
     assert!(matches!(result, Err(BridgeError::PermissionDenied(_))));
+}
+
+// ── Device binding ownership: boot reads the GLOBAL identity DB ──────
+
+/// An in-memory keyring pre-seeded with a fixed secret, so a signature minted
+/// with one can be verified with another seeded the same way.
+fn seeded_keyring() -> kasirmu_security::InMemoryKeyring {
+    let keyring = kasirmu_security::InMemoryKeyring::new();
+    keyring
+        .set_secret(DEVICE_BINDING_KEYRING_NAME, "test-binding-secret")
+        .unwrap();
+    keyring
+}
+
+/// A saved device binding must land where `resolve_boot_store` reads it: the
+/// GLOBAL identity DB row chosen by `get_terminal_by_device_id`. The bridge
+/// binding commands used `ctx.resolve_store` (the per-store db), so a binding
+/// the operator saved was written where the boot resolver never looks — it
+/// silently booted into the primary store while Settings reported the binding
+/// as set. Mobile already wrote the global db, and boot (which has no session)
+/// can only read the global db, so the write side was the outlier.
+#[tokio::test]
+async fn device_binding_is_written_to_the_global_db_boot_reads() {
+    let conn = temp_conn();
+    seed_owner(&conn);
+    let tb = scoped_bridge(conn, "tok", "user-owner", "role-owner", "s1");
+
+    // A terminal as Settings → Terminals registers it: in the session's STORE db.
+    // The store db carries its own `locations` row (the FK target for any
+    // binding written there), matching a real store whose profile exists.
+    let source = {
+        let store_conn = tb.db_manager().open_store("s1").unwrap();
+        let db = store_conn.lock().unwrap();
+        db.execute(
+            "INSERT INTO locations (id, name, address, tax_id, currency, timezone, is_primary, created_at, updated_at)
+             VALUES ('default', 'Default', '', '', 'USD', 'UTC', 1, '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z')",
+            [],
+        )
+        .unwrap();
+        let terminal = Terminal::new("POS-1", "dev-001");
+        Store::new(&db).create_terminal(&terminal).unwrap();
+        drop(db);
+        terminal
+    };
+
+    set_test_binding_keyring(Box::new(seeded_keyring()));
+
+    let ctx = tb.ctx();
+    set_device_binding_scoped(
+        &ctx,
+        "tok",
+        SetDeviceBindingArgs {
+            terminal_id: source.id.clone(),
+            bound_store_id: "default".into(),
+            bound_instance_id: "inst-1".into(),
+        },
+    )
+    .await
+    .expect("owner may bind a terminal");
+
+    // RED (pre-fix): the binding sat in the store db, so the global row the
+    // boot resolver picks did not even exist. GREEN: it carries the binding.
+    let global = ctx.lock_global().await;
+    let store = Store::new(&global);
+    let boot_row = store
+        .get_terminal_by_device_id("dev-001")
+        .unwrap()
+        .expect("the device's global terminal row must exist after binding");
+    let (bound_store, bound_instance, signature) = store
+        .get_terminal_binding(&boot_row.id)
+        .unwrap()
+        .expect("the global row must carry the binding boot reads");
+    assert_eq!(bound_store, "default");
+    assert_eq!(bound_instance, "inst-1");
+    assert!(
+        verify_binding(
+            &seeded_keyring(),
+            &boot_row.id,
+            "default",
+            "inst-1",
+            &signature
+        )
+        .unwrap(),
+        "the signature must be minted over the GLOBAL row id the boot verifier hashes"
+    );
+}
+
+/// The legitimate round-trip survives the ownership fix: binding, reading it
+/// back through `get_device_binding_scoped`, and clearing all agree on the one
+/// global row — and the read-back signature still verifies.
+#[tokio::test]
+async fn device_binding_round_trips_and_clears_on_the_global_row() {
+    let conn = temp_conn();
+    seed_owner(&conn);
+    let tb = scoped_bridge(conn, "tok", "user-owner", "role-owner", "s1");
+    let source = {
+        let store_conn = tb.db_manager().open_store("s1").unwrap();
+        let db = store_conn.lock().unwrap();
+        db.execute(
+            "INSERT INTO locations (id, name, address, tax_id, currency, timezone, is_primary, created_at, updated_at)
+             VALUES ('default', 'Default', '', '', 'USD', 'UTC', 1, '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z')",
+            [],
+        )
+        .unwrap();
+        let terminal = Terminal::new("POS-2", "dev-002");
+        Store::new(&db).create_terminal(&terminal).unwrap();
+        drop(db);
+        terminal
+    };
+    let ctx = tb.ctx();
+
+    set_test_binding_keyring(Box::new(seeded_keyring()));
+    set_device_binding_scoped(
+        &ctx,
+        "tok",
+        SetDeviceBindingArgs {
+            terminal_id: source.id.clone(),
+            bound_store_id: "default".into(),
+            bound_instance_id: "inst-1".into(),
+        },
+    )
+    .await
+    .expect("owner may bind a terminal");
+
+    set_test_binding_keyring(Box::new(seeded_keyring()));
+    let bound = get_device_binding_scoped(&ctx, "tok", source.id.clone())
+        .await
+        .expect("binding read-back");
+    assert!(bound.bounded);
+    assert_eq!(bound.bound_store_id.as_deref(), Some("default"));
+    assert_eq!(bound.bound_instance_id.as_deref(), Some("inst-1"));
+    assert!(
+        bound.signature_valid,
+        "the round-tripped binding must still verify against the same secret"
+    );
+
+    clear_device_binding_scoped(&ctx, "tok", source.id.clone())
+        .await
+        .expect("owner may clear a binding");
+    let cleared = get_device_binding_scoped(&ctx, "tok", source.id.clone())
+        .await
+        .expect("read-back after clear");
+    assert!(!cleared.bounded, "a cleared binding must read as unbound");
+}
+
+// ── Bridge write → bridge boot round-trip ─────────────────────────────
+
+use crate::workspaces::resolve_boot_store;
+
+/// A bridge whose GLOBAL db has the owner plus the `s1` location the mirrored
+/// terminal's FK needs, and whose store db `s1` holds a device terminal and the
+/// workspace instance a binding points at. Returns the bridge and that terminal.
+fn bindable_device() -> (TestBridge, Terminal) {
+    let conn = temp_conn();
+    seed_owner(&conn);
+    conn.execute(
+        "INSERT INTO locations (id, name, address, tax_id, currency, timezone, is_primary, created_at, updated_at)
+         VALUES ('s1', 'Store 1', '', '', 'USD', 'UTC', 0, '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z')",
+        [],
+    )
+    .unwrap();
+    let tb = scoped_bridge(conn, "tok", "user-owner", "role-owner", "s1");
+    let terminal = {
+        let store_conn = tb.db_manager().open_store("s1").unwrap();
+        let db = store_conn.lock().unwrap();
+        db.execute(
+            "INSERT INTO locations (id, name, address, tax_id, currency, timezone, is_primary, created_at, updated_at)
+             VALUES ('s1', 'Store 1', '', '', 'USD', 'UTC', 0, '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z')",
+            [],
+        )
+        .unwrap();
+        let store = Store::new(&db);
+        let terminal = Terminal::new("POS-1", "dev-001");
+        store.create_terminal(&terminal).unwrap();
+        store
+            .create_workspace_instance("ws-a-1", "store-pos", "s1", "POS", "", None)
+            .unwrap();
+        drop(db);
+        terminal
+    };
+    (tb, terminal)
+}
+
+/// End to end on the desktop path: the row `set_device_binding_scoped` writes
+/// is the row `resolve_boot_store` reads. The two ownership fixes (bridge
+/// 9993d57c3, mobile 7533b58f7) each only proved one half; this drives BOTH real
+/// bridge surfaces with one in-memory keyring and asserts the device actually
+/// boots into the bound store/instance instead of falling back to primary.
+#[tokio::test]
+async fn bridge_device_binding_round_trips_through_boot_resolution() {
+    let (tb, source) = bindable_device();
+    let ctx = tb.ctx();
+
+    set_test_binding_keyring(Box::new(seeded_keyring()));
+    set_device_binding_scoped(
+        &ctx,
+        "tok",
+        SetDeviceBindingArgs {
+            terminal_id: source.id.clone(),
+            bound_store_id: "s1".into(),
+            bound_instance_id: "ws-a-1".into(),
+        },
+    )
+    .await
+    .expect("owner may bind a terminal");
+
+    set_test_binding_keyring(Box::new(seeded_keyring()));
+    let resolution = resolve_boot_store(&ctx, Some("dev-001".into()))
+        .await
+        .expect("a valid binding must resolve");
+    assert!(
+        resolution.is_bound,
+        "the binding written must be the binding honored: {resolution:?}"
+    );
+    assert_eq!(resolution.store_id, "s1");
+    assert_eq!(resolution.instance_id.as_deref(), Some("ws-a-1"));
+}
+
+/// A binding signed with one secret must NOT boot bound under another — the
+/// tamper/wrong-key refusal is what makes the round-trip meaningful. It falls
+/// back to the primary store instead.
+#[tokio::test]
+async fn bridge_device_binding_with_another_keyring_falls_back_to_primary() {
+    let (tb, source) = bindable_device();
+    let ctx = tb.ctx();
+
+    set_test_binding_keyring(Box::new(seeded_keyring()));
+    set_device_binding_scoped(
+        &ctx,
+        "tok",
+        SetDeviceBindingArgs {
+            terminal_id: source.id.clone(),
+            bound_store_id: "s1".into(),
+            bound_instance_id: "ws-a-1".into(),
+        },
+    )
+    .await
+    .expect("owner may bind a terminal");
+
+    let other = kasirmu_security::InMemoryKeyring::new();
+    other
+        .set_secret(DEVICE_BINDING_KEYRING_NAME, "another-secret")
+        .unwrap();
+    set_test_binding_keyring(Box::new(other));
+
+    let resolution = resolve_boot_store(&ctx, Some("dev-001".into()))
+        .await
+        .expect("resolution must not error on a wrong-key binding");
+    assert!(
+        !resolution.is_bound,
+        "a wrong-key signature must not boot bound: {resolution:?}"
+    );
+    assert_eq!(resolution.store_id, "default");
 }

@@ -7,7 +7,7 @@
 //!
 //! Ports are verbatim: gate kind and ORDER (`SYNC_MANAGE` on the four gated
 //! paths, still taken after `resolve_scope`), every store handle still comes
-//! from [`BridgeCtx::resolve_scope`] and never `resolve_store` (the effective
+//! from [`BridgeCtx::resolve_scope`](crate::ctx::BridgeCtx::resolve_scope) and never `resolve_store` (the effective
 //! store differs for restaurant-POS sessions), the single global-DB read keeps
 //! its inner scope so the lock drops before the store connection is taken, the
 //! sync round-trip and its plan-required early return are untouched, and every
@@ -16,7 +16,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use kasirmu_core::sync_client::{self, SyncAttemptResult, SyncConfig};
+use kasirmu_core::sync_client::{self, SyncConfig};
 
 use kasirmu_core::{OfflineQueueItem, RemoteSyncFailure, Store, SyncPriority};
 
@@ -222,6 +222,7 @@ pub async fn enqueue_offline_scoped(
         .map(SyncPriority::from_str_lenient)
         .unwrap_or(SyncPriority::Normal);
 
+    // ungated-ok: gated by enforce_pos_writable (below), not a permission key
     let (_session, conn) = ctx.resolve_scope(session_token)?;
     // §B read-only lock: sync queueing is an order mutation — a register
     // whose grace window has lapsed may not enqueue new offline work. The
@@ -251,6 +252,7 @@ pub async fn list_pending_offline_scoped(
     ctx: &BridgeCtx<'_>,
     session_token: &str,
 ) -> Result<Vec<OfflineQueueItemDto>, BridgeError> {
+    // ungated-ok: documented split (module header) - SYNC_MANAGE guards the four WRITE paths
     let (_session, conn) = ctx.resolve_scope(session_token)?;
     let db = conn
         .lock()
@@ -281,6 +283,7 @@ pub async fn offline_queue_status_summary_scoped(
     ctx: &BridgeCtx<'_>,
     session_token: &str,
 ) -> Result<OfflineQueueSummaryDto, BridgeError> {
+    // ungated-ok: documented split (module header) - queue-status read
     let (_session, conn) = ctx.resolve_scope(session_token)?;
     let db = conn
         .lock()
@@ -303,6 +306,7 @@ pub async fn pending_offline_count_scoped(
     ctx: &BridgeCtx<'_>,
     session_token: &str,
 ) -> Result<i64, BridgeError> {
+    // ungated-ok: documented split (module header) - count read
     let (_session, conn) = ctx.resolve_scope(session_token)?;
     let db = conn
         .lock()
@@ -375,13 +379,11 @@ pub async fn retry_offline_sync_scoped(
     let store = Store::new(&db);
     let attempt = match outcomes {
         Ok(outcomes) => sync_client::apply_sync_outcomes(&store, &pending_items, &outcomes)?,
-        Err(sync_client::SyncHttpError::PlanRequired) => SyncAttemptResult {
-            synced: 0,
-            failed: 0,
-            error: Some("cloud sync requires a paid plan".into()),
-            plan_required: true,
-        },
-        Err(e) => sync_client::mark_all_failed(&store, &pending_items, &e.to_string())?,
+        // A batch the server never saw is retried, not condemned: `failed` is
+        // terminal for a push item, and nothing writes `status = 'pending'`
+        // again. The helper also carries the plan-gate arm (a free tenant is
+        // gated, not broken). See `sync_client::undelivered_batch`.
+        Err(e) => sync_client::undelivered_batch(&e),
     };
     drop(db);
 
@@ -443,6 +445,7 @@ pub async fn list_remote_failures_scoped(
     ctx: &BridgeCtx<'_>,
     session_token: &str,
 ) -> Result<Vec<RemoteSyncFailureDto>, BridgeError> {
+    // ungated-ok: documented split (module header) - diagnostics read
     let (_session, conn) = ctx.resolve_scope(session_token)?;
     let db = conn
         .lock()

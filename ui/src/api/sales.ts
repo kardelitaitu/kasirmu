@@ -450,6 +450,20 @@ export interface SaleListItem {
   /** Phase 4: frozen 22-char receipt hierarchy code (location-terminal-YYMMDD-staff-seq),
    *  or null for sales predating the code / sales with no known terminal. */
   displayCode?: string | null;
+  /** Phase 6: 17-digit DJP Faktur Pajak string ({kodeTransaksi}{status}{nsfp}) or null. */
+  fakturPajak?: string | null;
+}
+
+/** Phase 6: Indonesian e-Faktur Pajak compliance metadata (DJP Coretax PER-11/PJ/2025). */
+export interface FakturPajakDto {
+  /** 13-digit NSFP issued by DJP (e.g. "2600000000123"). */
+  nsfp: string;
+  /** 2-digit transaction code ("01".."10"). */
+  kodeTransaksi: string;
+  /** 2-digit status code ("00" for normal, "01", "02"... for pengganti). */
+  status: string;
+  /** Complete 17-digit DJP string. */
+  formatted: string;
 }
 
 /** A line item within a sale detail. */
@@ -486,6 +500,8 @@ export interface SaleDetail {
   /** Phase 4: frozen 22-char receipt hierarchy code (location-terminal-YYMMDD-staff-seq),
    *  or null for sales predating the code / sales with no known terminal. */
   displayCode?: string | null;
+  /** Phase 6: Indonesian e-Faktur Pajak compliance metadata (DJP Coretax PER-11/PJ/2025). */
+  fakturPajak?: FakturPajakDto | null;
   /** CUR-02: original sale currency when multi-currency checkout was used. */
   baseCurrency?: string | null;
   /** CUR-02: original sale total in baseCurrency minor units. */
@@ -509,9 +525,19 @@ export interface SaleListResponse {
 export const listSales = (): Promise<SaleListResponse> =>
   loggedInvoke<SaleListResponse>('list_sales');
 
-/** ADR #7: List sales scoped to the store resolved from a session token. */
-export const listSalesScoped = (sessionToken: string): Promise<SaleListResponse> =>
-  loggedInvoke<SaleListResponse>('list_sales_scoped', { sessionToken });
+/**
+ * ADR #7: List sales scoped to the store resolved from a session token.
+ *
+ * R3: `limit` and `offset` bound the page returned in `sales`. Both are
+ * optional and additive — omitted, the whole tier-capped list comes back
+ * exactly as before, which is what every existing caller relies on.
+ */
+export const listSalesScoped = (
+  sessionToken: string,
+  limit?: number,
+  offset?: number,
+): Promise<SaleListResponse> =>
+  loggedInvoke<SaleListResponse>('list_sales_scoped', { sessionToken, limit, offset });
 
 /** Fetch a single sale by its identifier. */
 export const getSale = (id: string): Promise<SaleDetail | null> =>
@@ -520,6 +546,27 @@ export const getSale = (id: string): Promise<SaleDetail | null> =>
 /** ADR #7: Fetch a sale by ID from the store resolved from a session token. */
 export const getSaleScoped = (sessionToken: string, id: string): Promise<SaleDetail | null> =>
   loggedInvoke<SaleDetail | null>('get_sale_scoped', { sessionToken, id });
+
+/** Phase 6: Arguments for stamping a DJP-approved NSFP onto a completed sale. */
+export interface StampFakturPajakArgs {
+  saleId: string;
+  nsfp: string;
+  kodeTransaksi?: string;
+}
+
+/** Phase 6: Stamp a DJP-approved NSFP onto a completed sale. */
+export const stampFakturPajakScoped = (
+  sessionToken: string,
+  args: StampFakturPajakArgs,
+): Promise<FakturPajakDto> =>
+  loggedInvoke<FakturPajakDto>('stamp_faktur_pajak_scoped', { sessionToken, args });
+
+/** Phase 6: Create a Faktur Pengganti for an existing e-Faktur on a completed sale. */
+export const createFakturPenggantiScoped = (
+  sessionToken: string,
+  saleId: string,
+): Promise<FakturPajakDto> =>
+  loggedInvoke<FakturPajakDto>('create_faktur_pengganti_scoped', { sessionToken, saleId });
 
 // ── Void Sale ─────────────────────────────────────────────────────
 
@@ -746,6 +793,7 @@ export interface LineItemDto {
   unitPrice: MoneyDto;
   totalPrice: MoneyDto;
   taxAmount?: MoneyDto;
+  note?: string | null;
 }
 
 /** A payment entry for receipt printing. */
@@ -771,6 +819,8 @@ export interface PrintSalesReceiptArgs {
   total: MoneyDto;
   payments: PaymentDto[];
   tableNumber?: string;
+  /** Phase 6: 17-digit DJP Faktur Pajak string ({kodeTransaksi}{status}{nsfp}) or null. */
+  fakturPajak?: string | null;
 }
 
 /** Result of a receipt print request. */

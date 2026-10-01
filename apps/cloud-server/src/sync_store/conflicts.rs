@@ -1,6 +1,7 @@
 //! Conflict rows for the cloud sync store: the `sync_conflicts` surface.
 //!
-//! Moved verbatim out of [`super::sync_store`] by the 2026-09-15 split; the
+//! Moved verbatim out of [`super::sync_store`](crate::sync_store) by the
+//! 2026-09-15 split; the
 //! parent keeps the dispatch enum, the push/pull/snapshot statement families
 //! and the multi-row fast path, while everything that reads, lists, resolves
 //! or detects a conflict lives here. Two `impl SyncStore` blocks (the public
@@ -17,6 +18,7 @@ use crate::conflict_resolution::{
 };
 use platform_sync::crdt::VersionVector;
 use rusqlite::params;
+use serde_json::Value;
 
 use super::SyncStore;
 // ── Conflict rows (sync_conflicts) ────────────────────────────────────────
@@ -290,10 +292,53 @@ impl SyncStore {
             _ => {}
         }
 
+        // C19: the payload that persists is the one the DECISION chose, not
+        // always the incoming one. `LastWriterWins { winner_is_remote: false }`
+        // means the STORED side won this tie-break, and writing
+        // `incoming_payload` anyway discarded the winner's body while reporting
+        // a successful resolution -- the silent one-side loss the policy table
+        // exists to prevent. The vector still observes the incoming event (both
+        // sides have now been seen, which is what makes the merge convergent),
+        // but the BODY follows the winner.
         if !matches!(decision, Decision::Stale) {
             let mut merged = stored_vector.clone();
             merged.observe(incoming);
-            self.save_entity_vector(tenant_id, entity_type, entity_id, &merged, incoming_payload)
+            // C19(a): `AutoMerge` had no arm, so a concurrent stock adjustment --
+            // reachable in production, see the test -- fell through to "keep the
+            // stored body" and one terminal's delta vanished. The policy's own doc
+            // names the intended outcome: "Additive deltas: both sides apply."
+            //
+            // The merge is computed HERE rather than in the classifier because it
+            // needs both payloads, which `classify` deliberately does not open
+            // (`MergePolicy::AutoMergeDeltas` never reads them). A merge that cannot
+            // be computed -- absent side, unparseable body, no numeric delta, or an
+            // overflow -- falls back to the stored body rather than inventing a
+            // quantity, so the failure mode stays "lose nothing silently" and never
+            // "write a number neither terminal reported".
+            let payload_to_store: Option<String> = match decision {
+                Decision::LastWriterWins {
+                    winner_is_remote: true,
+                    ..
+                } => Some(incoming_payload.to_string()),
+                Decision::AutoMerge { .. } => {
+                    merge_additive_deltas(stored_payload.as_deref(), Some(incoming_payload))
+                        .or_else(|| stored_payload.map(|s| s.to_string()))
+                }
+                // The stored side won, or the pair is unresolved:
+                //   * `LastWriterWins { winner_is_remote: false }` -- the
+                //     winner's body must survive; writing the incoming one
+                //     silently discards the side the tie-break chose.
+                //   * `Flag` -- unresolved, and the review row already carries BOTH
+                //     payloads (`local_payload` / `remote_payload`), so overwriting
+                //     here would destroy the local side a reviewer compares against.
+                _ => stored_payload.map(|s| s.to_string()),
+            };
+            // A `None` stored body cannot occur for `LastWriterWins` (the policy
+            // needs no payload) or `Flag` (which requires one), but CAN for a
+            // first-seen entity where there is no stored side at all: the
+            // incoming body is then the only side there is.
+            let payload_to_store = payload_to_store.as_deref().unwrap_or(incoming_payload);
+            self.save_entity_vector(tenant_id, entity_type, entity_id, &merged, payload_to_store)
                 .await?;
         }
 
@@ -506,4 +551,35 @@ fn conflict_row_from_pg(row: &tokio_postgres::Row) -> SyncConflictRow {
         resolved_at: row.get(13),
         created_at: row.get(14),
     }
+}
+/// Merge two `AutoMergeDeltas` bodies by SUMMING their `delta` fields.
+///
+/// `MergePolicy::AutoMergeDeltas` means "Additive deltas: both sides apply.
+/// Stock movements." -- so a concurrent pair must produce the sum, not a
+/// winner. The merged body is the STORED one with its `delta` replaced by the
+/// sum, which keeps every other field the stored side carried (sku, new_qty,
+/// reason, and anything a future producer adds) instead of inventing a shape
+/// here.
+///
+/// The `new_qty` field is deliberately NOT recomputed. Each side's `new_qty` is
+/// the quantity that side observed AFTER its own delta, and the two disagree by
+/// construction in a concurrent pair -- so any arithmetic on them would be a
+/// guess. `delta` is the additive quantity the policy names; the merged `delta`
+/// is the one number this function is entitled to state.
+///
+/// Returns `None` when the merge cannot be computed -- either side absent, a
+/// body that is not JSON, a missing or non-integer `delta`, or an `i64`
+/// overflow. The caller falls back to the stored body, so the failure mode is
+/// "lose nothing silently" rather than "write a quantity neither terminal
+/// reported". Nothing on this path unwraps parsed input.
+fn merge_additive_deltas(stored: Option<&str>, incoming: Option<&str>) -> Option<String> {
+    let stored_value: Value = serde_json::from_str(stored?).ok()?;
+    let incoming_value: Value = serde_json::from_str(incoming?).ok()?;
+    let stored_delta = stored_value.get("delta")?.as_i64()?;
+    let incoming_delta = incoming_value.get("delta")?.as_i64()?;
+    let summed = stored_delta.checked_add(incoming_delta)?;
+
+    let mut merged = stored_value.as_object()?.clone();
+    merged.insert("delta".to_string(), Value::from(summed));
+    serde_json::to_string(&Value::Object(merged)).ok()
 }

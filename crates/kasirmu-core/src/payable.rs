@@ -1,11 +1,11 @@
 //! Accounts Payable (Hutang / Beli Tempo) domain model.
 //!
-//! A [`Payable`] is money the store owes a supplier for stock received but
+//! A [`Payable`](crate::payable::Payable) is money the store owes a supplier for stock received but
 //! not yet paid — the "add product, haven't paid yet" flow (Phase 4 of
 //! `docs/plans/payment-methods-plan.md` §2b). It mirrors the planned
 //! receivables (AR) shape so both sides share one settlement pattern.
 //!
-//! [`PayableStatus`] is the single source of truth for the `payables.status`
+//! [`PayableStatus`](crate::payable::PayableStatus) is the single source of truth for the `payables.status`
 //! CHECK constraint in `20260918_payables.sql`; the store validates
 //! transitions before they reach SQL. Money is fixed-point [`Money`] (i64
 //! minor units) end to end — never a float.
@@ -63,14 +63,10 @@ impl PayableStatus {
     /// Legal transitions driven by payments and write-off. A payable never
     /// returns from a terminal state; `Paid`/`WrittenOff` are sinks.
     pub fn can_transition(from: Self, to: Self) -> bool {
-        use PayableStatus::*;
+        use PayableStatus::{Open, Paid, Partial, WrittenOff};
         matches!(
             (from, to),
-            (Open, Partial)
-                | (Open, Paid)
-                | (Open, WrittenOff)
-                | (Partial, Paid)
-                | (Partial, WrittenOff)
+            (Open, Partial | Paid | WrittenOff) | (Partial, Paid | WrittenOff)
         )
     }
 

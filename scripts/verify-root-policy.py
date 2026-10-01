@@ -52,12 +52,27 @@ ROOT_FILE_ALLOWLIST = frozenset({
     ".tarpaulin.toml", ".env.example",
     # Human entry points.
     "README.md", "CHANGELOG.md", "CONTRIBUTING.md", "LICENSE", "AGENTS.md",
-    # Owner working files (P5 withdrawal) + the agent-harness contract.
-    "ARCHITECTURE.md", "DSH.md", "done-todo-rebrand.md", "todo-rebrand-2.md",
+    "ARCHITECTURE.md", "DSH.md", "done-todo-rebrand.md", "done-todo-rebrand-2.md",
+    "done-todo-tablet-device-verify.md", "done-todo-tablet-dialog-content-uri.md",
+    "done-todo-project-folder-restructure.md",
     "todo-open-debt-program.md", "todo-review-type.md",
-    "todo-owner-rulings.md",
-    "todo-project-folder-restructure.md",
-    "todo-logo-mark-optical-centring.md",
+    "done-todo-owner-rulings.md", "done-todo-sync-endpoint-derivation.md",
+    # Owner plan docs, same class as the two above: named individually on purpose,
+    # because the allowlist is names-not-patterns so adding one is a decision.
+    "todo-android-4gb-optimization-audit.md", "todo-optimize-crates.md",
+    "manager-codebase-review-checklist.md",
+    "manager-codebase-review-decisions.md",
+    "manager-codebase-review.md",
+    "README-2.md",
+    # Two in-flight plan docs that were left out of their own commits, which made
+    # this gate the only thing reporting them. Both are the class named above, not
+    # scratch: `plan-c1-install-key-s2b-s2c.md` is TRACKED (landed with 461b04c25 /
+    # 73109ee91) and carries the `plan-` token its §7.4 exemption requires;
+    # `todo-modular-scaffolding.md` is the same shape and keeps the `todo-` token.
+    # Recorded rather than renamed: §7.4 makes the name shared state, and moving
+    # another lane's plan file to satisfy a checker would be the wrong repair.
+    "plan-c1-install-key-s2b-s2c.md",
+    "todo-modular-scaffolding.md",
     # Measured exception (§5): not a duplicate of scripts/stats.json —
     # scripts/stats.ps1 and scripts/check.ps1 read this name.
     "stats.json",
@@ -69,6 +84,21 @@ ROOT_FILE_ALLOWLIST = frozenset({
     # which writes it at the repo root by design (its own `REPORT` constant).
     # Nothing here is committed; like `.env`, it is sanctioned tool state.
     "skill-drift-report.md",
+    # The codebase-memory MCP indexes the workspace with its path sanitised into the
+    # filename, so this checkout's two indexes land here. Gitignored derived tool state,
+    # the same class as skill-drift-report.md above, and settled 2026-09-28 by naming them
+    # rather than by deleting a 210 MB index or teaching the gate a pattern it refuses.
+    "C-dev-kasirmu.db",
+    "C-dev-encapsule.db",
+    # Owner plan docs that earned their `done-` rename; same class as the done-todo-*
+    # names above, added when the sweep caught them (2026-09-28).
+    "done-mobile-setupwizard.md",
+    "done-todo-codebase-reliability.md",
+    "done-todo-open-debt-agents-1.md",
+    "done-todo-open-debt-agents-2.md",
+    "done-todo-open-debt-agents-3.md",
+    "done-todo-open-debt-agents-4.md",
+    "done-todo-open-debt-agents-5.md",
 })
 
 # Directories the empty-dir sweep must not descend into. `.git` is git's own;

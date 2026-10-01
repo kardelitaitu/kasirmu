@@ -11,9 +11,9 @@
 //! transitions between.
 //!
 //! Two orthogonal state dimensions (conflating them is the classic memo bug):
-//! - A memo's own lifecycle: [`MemoStatus`] `draft → published → {expired |
+//! - A memo's own lifecycle: [`MemoStatus`](crate::memo::MemoStatus) `draft → published → {expired |
 //!   stopped} → archived`.
-//! - Each recipient's view of that memo: [`DeliveryStatus`] `pending →
+//! - Each recipient's view of that memo: [`DeliveryStatus`](crate::memo::DeliveryStatus) `pending →
 //!   delivered → acknowledged`.
 //!
 //! Invariants: a published memo is immutable-by-revision (an edit bumps
@@ -126,15 +126,12 @@ impl MemoStatus {
     /// not a status transition (it stays `Published` with a bumped `revision`),
     /// so it is intentionally absent here.
     pub fn can_transition(from: Self, to: Self) -> bool {
-        use MemoStatus::*;
+        use MemoStatus::{Archived, Draft, Expired, Published, Stopped};
         matches!(
             (from, to),
-            (Draft, Published)
-                | (Draft, Archived)
-                | (Published, Expired)
-                | (Published, Stopped)
-                | (Expired, Archived)
-                | (Stopped, Archived)
+            (Draft, Published | Archived)
+                | (Published, Expired | Stopped)
+                | (Expired | Stopped, Archived)
         )
     }
 }
@@ -181,10 +178,10 @@ impl DeliveryStatus {
     /// without a separate delivered event); the reverse (de-acknowledging) and
     /// any skip backwards are invalid.
     pub fn can_transition(from: Self, to: Self) -> bool {
-        use DeliveryStatus::*;
+        use DeliveryStatus::{Acknowledged, Delivered, Pending};
         matches!(
             (from, to),
-            (Pending, Delivered) | (Pending, Acknowledged) | (Delivered, Acknowledged)
+            (Pending, Delivered | Acknowledged) | (Delivered, Acknowledged)
         )
     }
 }

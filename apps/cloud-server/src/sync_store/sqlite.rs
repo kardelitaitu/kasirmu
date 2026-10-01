@@ -21,7 +21,8 @@ use super::MULTIROW_CHUNK;
 
 // ── Multi-row push fast path ────────────────────────────────────────────
 
-/// SQLite multi-row fast path for [`SyncStore::push_batch`].
+/// SQLite multi-row fast path for
+/// [`SyncStore::push_batch`](super::SyncStore::push_batch).
 ///
 /// Builds one `INSERT … VALUES (…),(…),… ON CONFLICT (id) DO NOTHING
 /// RETURNING id` statement per [`MULTIROW_CHUNK`] rows, so a whole push page
@@ -99,7 +100,11 @@ pub(super) fn sqlite_push_batch_multirow(
                     results.push(PushOutcome::Accepted);
                 }
                 _ => results.push(PushOutcome::Rejected {
-                    reason: format!("duplicate id: {}", item.id),
+                    reason: format!(
+                        "{} {}",
+                        kasirmu_core::sync_client::DUPLICATE_ID_REJECTION_PREFIX,
+                        item.id
+                    ),
                 }),
             }
         }

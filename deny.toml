@@ -51,7 +51,7 @@
 allow = [
     # The workspace's own proprietary license (root LICENSE file), applied
     # via the [[licenses.clarify]] entries below.
-    "LicenseRef-OZ-POS-Proprietary",
+    "LicenseRef-kasirmu-Proprietary",
     "0BSD",
     "Apache-2.0",
     "Apache-2.0 WITH LLVM-exception",
@@ -82,198 +82,198 @@ allow = [
 [[licenses.clarify]]
 name = "foundation"
 version = "*"
-expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../LICENSE", hash = 0x137696cf }]
+expression = "LicenseRef-kasirmu-Proprietary"
+license-files = [{ path = "../LICENSE", hash = 0x8dcfb81a }]
 [[licenses.clarify]]
 name = "kasirmu-api"
 version = "*"
-expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
+expression = "LicenseRef-kasirmu-Proprietary"
+license-files = [{ path = "../../LICENSE", hash = 0x8dcfb81a }]
 [[licenses.clarify]]
 name = "kasirmu-bridge"
 version = "*"
-expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
+expression = "LicenseRef-kasirmu-Proprietary"
+license-files = [{ path = "../../LICENSE", hash = 0x8dcfb81a }]
 [[licenses.clarify]]
 name = "kasirmu-cli"
 version = "*"
-expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
+expression = "LicenseRef-kasirmu-Proprietary"
+license-files = [{ path = "../../LICENSE", hash = 0x8dcfb81a }]
 [[licenses.clarify]]
 name = "kasirmu-cloud"
 version = "*"
-expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
+expression = "LicenseRef-kasirmu-Proprietary"
+license-files = [{ path = "../../LICENSE", hash = 0x8dcfb81a }]
 [[licenses.clarify]]
 name = "kasirmu-core"
 version = "*"
-expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
+expression = "LicenseRef-kasirmu-Proprietary"
+license-files = [{ path = "../../LICENSE", hash = 0x8dcfb81a }]
 [[licenses.clarify]]
 name = "kasirmu-crypto"
 version = "*"
-expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
+expression = "LicenseRef-kasirmu-Proprietary"
+license-files = [{ path = "../../LICENSE", hash = 0x8dcfb81a }]
 [[licenses.clarify]]
 name = "kasirmu-hal"
 version = "*"
-expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
+expression = "LicenseRef-kasirmu-Proprietary"
+license-files = [{ path = "../../LICENSE", hash = 0x8dcfb81a }]
 [[licenses.clarify]]
 name = "kasirmu-lan"
 version = "*"
-expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
+expression = "LicenseRef-kasirmu-Proprietary"
+license-files = [{ path = "../../LICENSE", hash = 0x8dcfb81a }]
 [[licenses.clarify]]
 name = "kasirmu-local-api"
 version = "*"
-expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
+expression = "LicenseRef-kasirmu-Proprietary"
+license-files = [{ path = "../../LICENSE", hash = 0x8dcfb81a }]
 [[licenses.clarify]]
 name = "kasirmu-logging"
 version = "*"
-expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
+expression = "LicenseRef-kasirmu-Proprietary"
+license-files = [{ path = "../../LICENSE", hash = 0x8dcfb81a }]
 [[licenses.clarify]]
 name = "kasirmu-lua"
 version = "*"
-expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
+expression = "LicenseRef-kasirmu-Proprietary"
+license-files = [{ path = "../../LICENSE", hash = 0x8dcfb81a }]
 [[licenses.clarify]]
 name = "kasirmu-media"
 version = "*"
-expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
+expression = "LicenseRef-kasirmu-Proprietary"
+license-files = [{ path = "../../LICENSE", hash = 0x8dcfb81a }]
 [[licenses.clarify]]
 name = "kasirmu-notification"
 version = "*"
-expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
+expression = "LicenseRef-kasirmu-Proprietary"
+license-files = [{ path = "../../LICENSE", hash = 0x8dcfb81a }]
 [[licenses.clarify]]
 name = "kasirmu-payment"
 version = "*"
-expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
+expression = "LicenseRef-kasirmu-Proprietary"
+license-files = [{ path = "../../LICENSE", hash = 0x8dcfb81a }]
 [[licenses.clarify]]
 name = "kasirmu-plugin"
 version = "*"
-expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
+expression = "LicenseRef-kasirmu-Proprietary"
+license-files = [{ path = "../../LICENSE", hash = 0x8dcfb81a }]
 [[licenses.clarify]]
 name = "kasirmu-app"
 version = "*"
-expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
+expression = "LicenseRef-kasirmu-Proprietary"
+license-files = [{ path = "../../LICENSE", hash = 0x8dcfb81a }]
 [[licenses.clarify]]
 name = "kasirmu-mobile"
 version = "*"
-expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
+expression = "LicenseRef-kasirmu-Proprietary"
+license-files = [{ path = "../../LICENSE", hash = 0x8dcfb81a }]
 [[licenses.clarify]]
 name = "kasirmu-reporting"
 version = "*"
-expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
+expression = "LicenseRef-kasirmu-Proprietary"
+license-files = [{ path = "../../LICENSE", hash = 0x8dcfb81a }]
 [[licenses.clarify]]
 name = "kasirmu-security"
 version = "*"
-expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
+expression = "LicenseRef-kasirmu-Proprietary"
+license-files = [{ path = "../../LICENSE", hash = 0x8dcfb81a }]
 [[licenses.clarify]]
 name = "platform-core"
 version = "*"
-expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
+expression = "LicenseRef-kasirmu-Proprietary"
+license-files = [{ path = "../../LICENSE", hash = 0x8dcfb81a }]
 [[licenses.clarify]]
 name = "platform-kernel"
 version = "*"
-expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
+expression = "LicenseRef-kasirmu-Proprietary"
+license-files = [{ path = "../../LICENSE", hash = 0x8dcfb81a }]
 [[licenses.clarify]]
 name = "platform-startup"
 version = "*"
-expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
+expression = "LicenseRef-kasirmu-Proprietary"
+license-files = [{ path = "../../LICENSE", hash = 0x8dcfb81a }]
 [[licenses.clarify]]
 name = "platform-sync"
 version = "*"
-expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
+expression = "LicenseRef-kasirmu-Proprietary"
+license-files = [{ path = "../../LICENSE", hash = 0x8dcfb81a }]
 [[licenses.clarify]]
 name = "modules-crm"
 version = "*"
-expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
+expression = "LicenseRef-kasirmu-Proprietary"
+license-files = [{ path = "../../LICENSE", hash = 0x8dcfb81a }]
 [[licenses.clarify]]
 name = "modules-currency"
 version = "*"
-expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
+expression = "LicenseRef-kasirmu-Proprietary"
+license-files = [{ path = "../../LICENSE", hash = 0x8dcfb81a }]
 [[licenses.clarify]]
 name = "modules-giftcards"
 version = "*"
-expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
+expression = "LicenseRef-kasirmu-Proprietary"
+license-files = [{ path = "../../LICENSE", hash = 0x8dcfb81a }]
 [[licenses.clarify]]
 name = "modules-inventory"
 version = "*"
-expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
+expression = "LicenseRef-kasirmu-Proprietary"
+license-files = [{ path = "../../LICENSE", hash = 0x8dcfb81a }]
 [[licenses.clarify]]
 name = "modules-kitchen"
 version = "*"
-expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
+expression = "LicenseRef-kasirmu-Proprietary"
+license-files = [{ path = "../../LICENSE", hash = 0x8dcfb81a }]
 [[licenses.clarify]]
 name = "modules-loyalty"
 version = "*"
-expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
+expression = "LicenseRef-kasirmu-Proprietary"
+license-files = [{ path = "../../LICENSE", hash = 0x8dcfb81a }]
 [[licenses.clarify]]
 name = "modules-promotions"
 version = "*"
-expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
+expression = "LicenseRef-kasirmu-Proprietary"
+license-files = [{ path = "../../LICENSE", hash = 0x8dcfb81a }]
 [[licenses.clarify]]
 name = "modules-purchasing"
 version = "*"
-expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
+expression = "LicenseRef-kasirmu-Proprietary"
+license-files = [{ path = "../../LICENSE", hash = 0x8dcfb81a }]
 [[licenses.clarify]]
 name = "modules-reporting"
 version = "*"
-expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
+expression = "LicenseRef-kasirmu-Proprietary"
+license-files = [{ path = "../../LICENSE", hash = 0x8dcfb81a }]
 [[licenses.clarify]]
 name = "modules-sales"
 version = "*"
-expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
+expression = "LicenseRef-kasirmu-Proprietary"
+license-files = [{ path = "../../LICENSE", hash = 0x8dcfb81a }]
 [[licenses.clarify]]
 name = "modules-settings"
 version = "*"
-expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
+expression = "LicenseRef-kasirmu-Proprietary"
+license-files = [{ path = "../../LICENSE", hash = 0x8dcfb81a }]
 [[licenses.clarify]]
 name = "modules-staff"
 version = "*"
-expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
+expression = "LicenseRef-kasirmu-Proprietary"
+license-files = [{ path = "../../LICENSE", hash = 0x8dcfb81a }]
 [[licenses.clarify]]
 name = "modules-tax"
 version = "*"
-expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
+expression = "LicenseRef-kasirmu-Proprietary"
+license-files = [{ path = "../../LICENSE", hash = 0x8dcfb81a }]
 [[licenses.clarify]]
 name = "modules-terminal"
 version = "*"
-expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
+expression = "LicenseRef-kasirmu-Proprietary"
+license-files = [{ path = "../../LICENSE", hash = 0x8dcfb81a }]
 [[licenses.clarify]]
 name = "qris-core"
 version = "*"
-expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
+expression = "LicenseRef-kasirmu-Proprietary"
+license-files = [{ path = "../../LICENSE", hash = 0x8dcfb81a }]
 
 [advisories]
 # Keep yanked crates visible but non-blocking (default is already warn).

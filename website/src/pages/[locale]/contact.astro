@@ -1,0 +1,106 @@
+---
+export function getStaticPaths() {
+  return [{ params: { locale: 'en' } }, { params: { locale: 'id' } }];
+}
+/**
+ * Contact — the page the Company column's "Contact" link opens.
+ *
+ * It is deliberately NOT a second Support page. /support is where a customer
+ * with a problem goes (a form plus the FAQ that answers most of them); this page
+ * is where someone with a commercial question goes — a quote, a multi-branch
+ * rollout, a tax invoice, press — and it names the address for each, so a
+ * message reaches the right inbox on the first try.
+ *
+ * The form is the SAME island the support page renders (`ContactForm`, whose
+ * labels are built from `SUPPORT_LABELS`), not a copy of it: the submit path,
+ * the honeypot, the mailto fallback and the focus handling between states all
+ * stay owned by one component. The Discord invite is the same profile the footer
+ * links — the only profile this project owns (see Footer.astro).
+ */
+import Base from '../../layouts/Base.astro';
+import ContactForm, { SUPPORT_LABELS } from '../../components/ContactForm.tsx';
+import { getRelativeLocaleUrl } from 'astro:i18n';
+import { t, labelMap } from '../../i18n';
+
+const locale = Astro.currentLocale ?? 'en';
+const pageTitle = `kasir.mu — ${t(locale, 'contact.title')}`;
+// The support address has one owner: `support.email`, the key the support page
+// and the FAQ answers already read. A second key holding the same string would
+// be a second place to change it; sales has no other home, so it has its own.
+const supportEmail = t(locale, 'support.email');
+const salesEmail = t(locale, 'contact.salesEmail');
+const DISCORD_INVITE = 'https://discord.gg/NdWDgEzNxx';
+const formLabels = labelMap(locale, SUPPORT_LABELS);
+const supportHref = getRelativeLocaleUrl(locale, 'support');
+---
+
+<Base title={pageTitle} description={t(locale, 'pageDesc.contact')}>
+  <section class="mx-auto max-w-4xl px-4 py-16">
+    <div data-reveal class="text-center">
+      <h1 class="text-4xl font-bold sm:text-5xl">{t(locale, 'contact.title')}</h1>
+      <p class="mx-auto mt-6 max-w-2xl text-lg text-muted">{t(locale, 'contact.subtitle')}</p>
+    </div>
+
+    <div data-reveal class="mx-auto mt-10 max-w-2xl">
+      <h2 class="mb-4 text-center text-xl font-bold">{t(locale, 'contact.formTitle')}</h2>
+      <ContactForm client:load labels={formLabels} />
+    </div>
+
+    <div class="mt-14">
+      <h2 class="text-center text-2xl font-bold">{t(locale, 'contact.channelsTitle')}</h2>
+      <div class="mt-6 grid gap-4 sm:grid-cols-3">
+        <div data-reveal class="flex flex-col rounded-xl border border-ink/10 bg-surface/40 p-5">
+          <h3 class="font-semibold text-ink">{t(locale, 'contact.supportTitle')}</h3>
+          <p class="mt-2 flex-1 text-sm leading-relaxed text-muted">
+            {t(locale, 'contact.supportNote')}
+          </p>
+          <a
+            href={`mailto:${supportEmail}`}
+            class="mt-4 w-fit text-sm font-medium text-link transition-colors duration-200 hover:text-primary-hover"
+          >
+            {supportEmail}
+          </a>
+        </div>
+        <div data-reveal class="flex flex-col rounded-xl border border-ink/10 bg-surface/40 p-5">
+          <h3 class="font-semibold text-ink">{t(locale, 'contact.salesTitle')}</h3>
+          <p class="mt-2 flex-1 text-sm leading-relaxed text-muted">
+            {t(locale, 'contact.salesNote')}
+          </p>
+          <a
+            href={`mailto:${salesEmail}`}
+            class="mt-4 w-fit text-sm font-medium text-link transition-colors duration-200 hover:text-primary-hover"
+          >
+            {salesEmail}
+          </a>
+        </div>
+        <div data-reveal class="flex flex-col rounded-xl border border-ink/10 bg-surface/40 p-5">
+          <h3 class="font-semibold text-ink">{t(locale, 'contact.communityTitle')}</h3>
+          <p class="mt-2 flex-1 text-sm leading-relaxed text-muted">
+            {t(locale, 'contact.communityNote')}
+          </p>
+          <a
+            href={DISCORD_INVITE}
+            target="_blank"
+            rel="noopener noreferrer"
+            class="mt-4 w-fit text-sm font-medium text-link transition-colors duration-200 hover:text-primary-hover"
+          >
+            {t(locale, 'contact.communityCta')}
+          </a>
+        </div>
+      </div>
+    </div>
+
+    <div data-reveal class="mt-10 rounded-2xl border border-ink/10 bg-surface/60 p-6 text-center sm:p-8">
+      <h2 class="text-xl font-bold">{t(locale, 'contact.hoursTitle')}</h2>
+      <p class="mx-auto mt-3 max-w-2xl text-sm leading-relaxed text-muted">
+        {t(locale, 'contact.hours')}
+      </p>
+      <a
+        href={supportHref}
+        class="mt-6 inline-block rounded-md border border-ink/15 px-6 py-3 text-sm font-semibold text-ink transition-colors duration-200 hover:bg-ink/5"
+      >
+        {t(locale, 'contact.faqCta')}
+      </a>
+    </div>
+  </section>
+</Base>

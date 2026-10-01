@@ -1,3 +1,5 @@
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: REPAIRED (4 minor, 0 major) + 1 CROSS-FILE FINDING · Audited on branch 0.0.40. The design in this ADR is intact end to end; what had rotted is the file list, because three of its four paths name crates that no longer exist. Repaired: `crates/oz-core/migrations/126_tenant_plans.sql` → the `tenant_plans` table is in the base schema at `crates/kasirmu-core/migrations/20260813_init.sql:890` (the numbered migration series is gone; migrations are date-stamped), and the same for `127_stripe_customers.sql` → `stripe_customers` at `crates/kasirmu-core/migrations/20260813_init.sql:809`; `crates/oz-core/src/db/plans.rs` → `crates/kasirmu-core/src/db/plans.rs`; `crates/oz-api/src/routes/plans.rs` → `crates/kasirmu-api/src/routes/plans.rs`. `apps/cloud-server/src/sync_api.rs` is the one path in the list that still resolves, and it does still hold `plan_middleware`. · MATCH, re-measured — the enforcement mechanism this ADR is really about, verified symbol by symbol rather than by shape: `SyncError::PlanRequired` is defined at `platform/sync/src/lib.rs:128` and raised at `platform/sync/src/transport.rs:437` and `:503`; `platform/sync/src/daemon_tests.rs:474` carries a section header reading "ADR sync-plan-gating: PlanRequired is terminal", so the no-retry/no-quarantine contract has a named backstop; `SyncHttpError::PlanRequired` is classified in `crates/kasirmu-core/src/sync_client.rs` (`:178` and `:240`); the admin route is exactly as documented, `crates/kasirmu-api/src/routes/plans.rs:3` states `PUT /api/v1/tenants/{tenant_id}/plan` and is gated through `admin_key_authorised`; and the Stripe wiring this ADR's completed-follow-up section claims is real, `set_tenant_plan` is called from `apps/cloud-server/src/webhooks.rs`. The `plan_required` flag on the result type is real too, with a spelling worth knowing: the TypeScript field is camelCase — `planRequired?: boolean` at `ui/src/api/offline.ts:157`, documented in-file as the ADR sync-plan-gating carrier — while the wire and Rust form is `plan_required`. A front-end author searching this ADR for `plan_required` will not find the field. · ⚠️ CROSS-FILE FINDING, reported and NOT patched: this ADR is right and `AGENTS.md` is wrong about the env var. The gate reads `OZ_ENFORCE_PLANS` — `env_bool("OZ_ENFORCE_PLANS")` at `apps/cloud-server/src/config.rs:208`, documented at `apps/cloud-server/src/main.rs:19` and echoed in `apps/cloud-server/src/openapi/cloud.rs:244` — but `AGENTS.md:119` lists `$env:KASIRMU_ENFORCE_PLANS  # plan gating flag` under the `KASIRMU_*` user-scope variables. Every other `KASIRMU_*` name in that section really is `KASIRMU_`-prefixed in code, so this one looks like a genuine single-name drift rather than a general convention. Left alone because the default repair direction for this skill is doc-to-code and patching an agent-configuration file is outside a `docs/` audit — but an operator following AGENTS.md would set a variable the server never reads, and plan gating would silently stay off in production. That is exactly the failure mode the ADR's own "opt-in" design has, so it is worth an owner's decision. · No stamp or footer existed on this file before this pass. -->
+
 # ADR: Gate cloud sync behind a paid plan
 
 **Date:** 2026-08-09 · **Status:** Complete (E1–E4) · **Owner:** buffy
@@ -41,7 +43,7 @@ surfaces the reason; the UI shows "Sync requires a paid plan" rather than
 "disconnected" (E4).
 
 Implemented: `SyncError::PlanRequired` (platform-sync) and
-`SyncHttpError::PlanRequired` (oz-core) are classified from a structured
+`SyncHttpError::PlanRequired` (`kasirmu-core`) are classified from a structured
 `403 {"error":"plan_required"}` in push/pull/snapshot, and the daemon
 treats the variant as terminal — no refresh (the refresh path matches only
 `AuthExpired`), no in-tick retry, and queued items stay `pending`. A
@@ -70,9 +72,9 @@ keep working, instead of a generic sync error.
 
 ## Files
 
-- `crates/oz-core/migrations/126_tenant_plans.sql` — table
-- `crates/oz-core/src/db/plans.rs` — `TenantPlan` + `Store` get/set/list
-- `crates/oz-api/src/routes/plans.rs` — admin plan endpoint
+- `crates/kasirmu-core/migrations/20260813_init.sql:890` — `tenant_plans` table
+- `crates/kasirmu-core/src/db/plans.rs` — `TenantPlan` + `Store` get/set/list
+- `crates/kasirmu-api/src/routes/plans.rs` — admin plan endpoint
 - `apps/cloud-server/src/sync_api.rs` — `plan_middleware` + tests
 
 ## Follow-ups
@@ -93,7 +95,7 @@ subscription lifecycle events into plan changes:
 - **Tenant resolution.** The `tenant_id` metadata set on the Checkout
   Session (forwarded onto the subscription) is used when present; for
   events that carry only a customer id (`invoice.paid`, deleted), the
-  `stripe_customers` table (`127_stripe_customers.sql`) resolves the
+  `stripe_customers` table (`crates/kasirmu-core/migrations/20260813_init.sql:809`) resolves the
   tenant. Unresolvable events are acknowledged with 200 `ignored` so
   Stripe stops retrying.
 - **Plan mapping.** `active`/`trialing`/`past_due` → `Pro`,
@@ -107,3 +109,5 @@ subscription lifecycle events into plan changes:
 To adopt: set `tenant_id` metadata on Stripe Checkout Sessions
 (`subscription_data.metadata` / `metadata`) so the first event can learn
 and persist the customer → tenant mapping.
+
+> last audited 29-09-26 by docs-auditor

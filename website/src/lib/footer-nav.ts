@@ -1,5 +1,5 @@
 /**
- * The footer sitemap as data: four columns, each a heading key plus its links.
+ * The footer sitemap as data: five columns, each a heading key plus its links.
  *
  * Data rather than markup because two consumers need the same list and cannot
  * read each other's copy: `Footer.astro` renders it, and the tests assert over
@@ -21,8 +21,16 @@
  * navigations cannot call the same page different things — they did, and the
  * footer said "Docs"/"Support" while the header said "Dokumentasi"/"Dukungan"
  * on the same Indonesian page. The five business-vertical links likewise reuse
- * `vertical.<key>.label` from the vertical landings. Only destinations no other
- * navigation links to need a `footer.link.*` key of their own.
+ * `vertical.<key>.label` from the vertical landings, and the two legal links
+ * reuse `footer.privacy` / `footer.terms` — the labels they carried in the
+ * standalone legal row that used to sit under the sitemap, before the Company
+ * column absorbed both destinations. Only destinations no other navigation
+ * links to need a `footer.link.*` key of their own.
+ *
+ * The legal pages kept their `/legal/…` URLs when they moved into the Company
+ * column. A link's position in a footer is presentation; a URL is indexed,
+ * linked from SignupForm's consent line, and printed in support replies, so
+ * the column changed and the paths did not.
  *
  * One consequence worth knowing: keys reached through `link.label` are
  * invisible to `scripts/audit-i18n.mjs`, which collects literals inside `t(…)`
@@ -38,7 +46,7 @@
 
 /** One footer link: the `[locale]` route slug and its label's i18n key. */
 export interface FooterLink {
-  /** Route slug handed to `getRelativeLocaleUrl`, e.g. `legal/privacy` is not used here. */
+  /** Route slug handed to `getRelativeLocaleUrl`, e.g. `legal/privacy`. */
   slug: string;
   /** i18n key for the link text — resolved with the page's locale by the renderer. */
   label: string;
@@ -54,7 +62,9 @@ export interface FooterColumn {
 /**
  * Left-to-right column order in the footer. Reading order is deliberate:
  * product first (what the visitor came for), then the two cross-cutting
- * groupings, then help.
+ * groupings, then help, and who-we-are last — the Company column is the one a
+ * visitor looks for when they already know the product, so it reads at the end
+ * of the row rather than pushing the product links inward.
  */
 export const FOOTER_COLUMNS: FooterColumn[] = [
   {
@@ -91,6 +101,16 @@ export const FOOTER_COLUMNS: FooterColumn[] = [
       { slug: 'support', label: 'nav.support' },
       { slug: 'cara', label: 'footer.link.cara' },
       { slug: 'perbandingan', label: 'footer.link.perbandingan' },
+    ],
+  },
+  {
+    heading: 'footer.col.company',
+    links: [
+      { slug: 'about', label: 'footer.link.about' },
+      { slug: 'media-kit', label: 'footer.link.mediaKit' },
+      { slug: 'contact', label: 'footer.link.contact' },
+      { slug: 'legal/terms', label: 'footer.terms' },
+      { slug: 'legal/privacy', label: 'footer.privacy' },
     ],
   },
 ];

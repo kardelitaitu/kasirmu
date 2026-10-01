@@ -5,7 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
-description = "OZ-POS Inventory Module: product catalog, stock management, variants, categories."
+description = "kasir.mu Inventory Module: product catalog, stock management, variants, categories."
 
 # Inherits [workspace.lints] from the root Cargo.toml (missing_docs = warn).
 [lints]
@@ -15,6 +15,9 @@ workspace = true
 anyhow = { workspace = true }
 thiserror = { workspace = true }
 foundation = { workspace = true }
+# Phase 3 P3.2: the repository reaches the DB through
+# kasirmu_core::db::namespaced, so core is a normal dependency.
+kasirmu-core = { workspace = true }
 rusqlite = { workspace = true }
 chrono = { workspace = true }
 uuid = { workspace = true }
@@ -24,4 +27,6 @@ tracing = { workspace = true }
 
 [dev-dependencies]
 platform-kernel = { workspace = true }
-kasirmu-core = { workspace = true }
+# 2026-09-28 (ADR-61 / C26): the P1-1 property suite moved to `foundation` with the
+# model types it exercises — `foundation/src/inventory_proptests.rs` — so this crate no
+# longer needs a `proptest` dev-dependency.

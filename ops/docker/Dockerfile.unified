@@ -1,4 +1,4 @@
-# ── OZ-POS Unified Image (auth + sync in one container) ──────────────
+# ── kasir.mu Unified Image (auth + sync in one container) ──────────────
 #
 # Builds both functions into a single image and runs them under one
 # supervisor behind a single caddy reverse proxy:
@@ -85,6 +85,7 @@ COPY crates/kasirmu-bridge/Cargo.toml crates/kasirmu-bridge/
 COPY crates/qris-core/Cargo.toml crates/qris-core/
 COPY foundation/Cargo.toml foundation/
 COPY platform/core/Cargo.toml platform/core/
+COPY platform/instance-guard/Cargo.toml platform/instance-guard/
 COPY platform/kernel/Cargo.toml platform/kernel/
 COPY platform/startup/Cargo.toml platform/startup/
 COPY platform/sync/Cargo.toml platform/sync/
@@ -115,7 +116,7 @@ RUN mkdir -p crates/kasirmu-core/src crates/kasirmu-api/src crates/kasirmu-loggi
              crates/kasirmu-bridge/src \
              crates/qris-core/src \
              foundation/src \
-             platform/core/src platform/kernel/src platform/startup/src \
+             platform/core/src platform/instance-guard/src platform/kernel/src platform/startup/src \
              platform/sync/src \
              modules/sales/src modules/inventory/src \
              modules/crm/src modules/tax/src modules/settings/src \
@@ -143,6 +144,7 @@ RUN mkdir -p crates/kasirmu-core/src crates/kasirmu-api/src crates/kasirmu-loggi
     && echo "// dummy" > crates/qris-core/src/lib.rs \
     && echo "// dummy" > foundation/src/lib.rs \
     && echo "// dummy" > platform/core/src/lib.rs \
+    && echo "// dummy" > platform/instance-guard/src/lib.rs \
     && echo "// dummy" > platform/kernel/src/lib.rs \
     && echo "// dummy" > platform/startup/src/lib.rs \
     && echo "// dummy" > platform/sync/src/lib.rs \
@@ -162,9 +164,9 @@ RUN mkdir -p crates/kasirmu-core/src crates/kasirmu-api/src crates/kasirmu-loggi
     && echo "// dummy" > modules/purchasing/src/lib.rs \
     && echo "// dummy" > apps/cloud-server/src/main.rs \
     && echo "// dummy" > apps/desktop-tauri/src/main.rs \
-    && printf '[package]\nname = "kasirmu-app"\nversion = "0.0.39"\nedition = "2024"\n' > apps/desktop-tauri/Cargo.toml \
+    && printf '[package]\nname = "kasirmu-app"\nversion = "0.0.40"\nedition = "2024"\n' > apps/desktop-tauri/Cargo.toml \
     && echo "// dummy" > apps/mobile-tauri/src/main.rs \
-    && printf '[package]\nname = "kasirmu-mobile"\nversion = "0.0.39"\nedition = "2024"\n' > apps/mobile-tauri/Cargo.toml \
+    && printf '[package]\nname = "kasirmu-mobile"\nversion = "0.0.40"\nedition = "2024"\n' > apps/mobile-tauri/Cargo.toml \
     && (cargo build --package kasirmu-cloud --release > /tmp/prime.log 2>&1 \
         || { echo "WARN: dependency cache-priming build did not complete (best-effort; see /tmp/prime.log)"; }) \
     && true

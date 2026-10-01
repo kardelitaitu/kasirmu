@@ -105,7 +105,7 @@ fn test_under_quota_no_violations() {
         1,
     );
 
-    let violations = check_tenant_quota_sqlite(&conn, tenant);
+    let violations = check_tenant_quota_sqlite(&conn, tenant).expect("the check runs");
     assert!(violations.is_empty(), "expected no violations under quota");
 }
 
@@ -134,7 +134,7 @@ fn test_at_quota_limit_no_violations() {
         1,
     );
 
-    let violations = check_tenant_quota_sqlite(&conn, tenant);
+    let violations = check_tenant_quota_sqlite(&conn, tenant).expect("the check runs");
     assert!(
         violations.is_empty(),
         "expected no violations when exactly at quota cap"
@@ -151,7 +151,7 @@ fn test_products_over_quota_detected() {
         seed_product(&conn, tenant, &format!("p-{i}"), &format!("SKU-{i}"));
     }
 
-    let violations = check_tenant_quota_sqlite(&conn, tenant);
+    let violations = check_tenant_quota_sqlite(&conn, tenant).expect("the check runs");
     assert_eq!(violations.len(), 1);
     let v = &violations[0];
     assert_eq!(v.tenant_id, tenant);
@@ -198,7 +198,7 @@ fn test_staff_over_quota_detected_excludes_owner_and_inactive() {
         1,
     );
 
-    let violations = check_tenant_quota_sqlite(&conn, tenant);
+    let violations = check_tenant_quota_sqlite(&conn, tenant).expect("the check runs");
     assert_eq!(violations.len(), 1);
     let v = &violations[0];
     assert_eq!(v.tenant_id, tenant);
@@ -234,7 +234,7 @@ fn test_unlimited_tier_no_violations() {
         );
     }
 
-    let violations = check_tenant_quota_sqlite(&conn, tenant);
+    let violations = check_tenant_quota_sqlite(&conn, tenant).expect("the check runs");
     assert!(
         violations.is_empty(),
         "unlimited Enterprise tier must never report quota violations"
@@ -329,7 +329,7 @@ fn test_scan_all_tenants_sqlite() {
         );
     }
 
-    let violations = scan_all_tenants_quota_sqlite(&conn);
+    let violations = scan_all_tenants_quota_sqlite(&conn).expect("the scan runs");
     assert_eq!(violations.len(), 1);
     assert_eq!(violations[0].tenant_id, tenant_bad);
     assert_eq!(violations[0].dimension, QuotaDimensionKind::Products);
@@ -342,7 +342,7 @@ fn test_location_quota_under_and_at_limit() {
 
     // Free tier max_locations is 1
     seed_location(&conn, tenant, "loc-1");
-    let violations = check_tenant_quota_sqlite(&conn, tenant);
+    let violations = check_tenant_quota_sqlite(&conn, tenant).expect("the check runs");
     assert!(
         violations.is_empty(),
         "1 location on Free tier should have no violations"
@@ -358,7 +358,7 @@ fn test_location_quota_exceeded_violation() {
     seed_location(&conn, tenant, "loc-1");
     seed_location(&conn, tenant, "loc-2");
 
-    let violations = check_tenant_quota_sqlite(&conn, tenant);
+    let violations = check_tenant_quota_sqlite(&conn, tenant).expect("the check runs");
     assert_eq!(violations.len(), 1);
     assert_eq!(violations[0].tenant_id, tenant);
     assert_eq!(violations[0].dimension, QuotaDimensionKind::Locations);
@@ -383,7 +383,7 @@ fn test_location_quota_unlimited_enterprise() {
         seed_location(&conn, tenant, &format!("loc-{i}"));
     }
 
-    let violations = check_tenant_quota_sqlite(&conn, tenant);
+    let violations = check_tenant_quota_sqlite(&conn, tenant).expect("the check runs");
     assert!(
         violations.is_empty(),
         "Enterprise tier allows unlimited locations"
@@ -457,7 +457,7 @@ fn test_locations_axis_is_structurally_inert() {
     for i in 1..=40 {
         seed_location(&conn, tenant, &format!("loc-{i}"));
     }
-    let device_side = count_tenant_locations_sqlite(&conn, tenant);
+    let device_side = count_tenant_locations_sqlite(&conn, tenant).expect("the count runs");
     assert_eq!(
         device_side, 40,
         "precondition: the device-side store really does hold 40 locations"
@@ -466,7 +466,7 @@ fn test_locations_axis_is_structurally_inert() {
     // Free/OneTime/Plus cap is 1, so 40 > 1 WOULD fire — if the cloud could see
     // them. On the PG path the count is always 0, so no Locations violation is
     // ever produced for any tenant.
-    let violations = check_tenant_quota_sqlite(&conn, tenant);
+    let violations = check_tenant_quota_sqlite(&conn, tenant).expect("the check runs");
     let locations_violations: Vec<_> = violations
         .iter()
         .filter(|v| v.dimension == QuotaDimensionKind::Locations)
@@ -531,6 +531,108 @@ fn test_locations_axis_is_structurally_inert() {
     );
 }
 
+/// A scan that could not RUN must not look like a scan that found nothing.
+///
+/// **This is the failure mode with no observable symptom.** The detector's whole
+/// output is "a list of tenants over their cap". An empty list means a healthy
+/// deployment, so when the enumeration stopped running -- a dropped table, a locked
+/// database, a corrupted page -- the operator received the exact same silence as on
+/// every ordinary day. No violation is fabricated (the module's own invariant: flag
+/// and notify, never auto-terminate), but the ABSENCE of a flag is also not
+/// reported, and a quota detector that has stopped watching is indistinguishable
+/// from one that found nothing.
+///
+/// The pair with `test_scan_all_tenants_sqlite` is the rule: a scan that RAN returns
+/// its violations, a scan that FAILED returns Err. Both callers here used to be
+/// unable to tell them apart -- `enumerate_active_tenants_sqlite` dropped a failed
+/// `prepare`/`query_map` silently, and the cycle wrapped the whole thing in
+/// `.unwrap_or_default()`.
+#[test]
+fn a_broken_schema_makes_the_scan_fail_rather_than_report_nothing() {
+    let conn = setup_test_db();
+    seed_product(&conn, "tenant-quota-over", "p1", "OVER-1");
+    // The enumeration RUNS and sees the seeded tenant, so "this deployment has
+    // no tenants" is not available as an explanation later.
+    assert!(
+        enumerate_active_tenants_sqlite(&conn)
+            .expect("the enumeration runs against a live schema")
+            .iter()
+            .any(|t| t == "tenant-quota-over"),
+        "precondition: the seeded tenant is actually enumerated"
+    );
+    assert!(
+        scan_all_tenants_quota_sqlite(&conn).is_ok(),
+        "precondition: the scan runs against a live schema"
+    );
+
+    // Now break one of the tables the enumeration reads. `prepare` fails on a
+    // missing table, which is the same class of failure as a corrupt page or a
+    // schema that was never migrated.
+    conn.execute("DROP TABLE tenant_plans", [])
+        .expect("drop tenant_plans");
+
+    assert!(
+        scan_all_tenants_quota_sqlite(&conn).is_err(),
+        "a scan that could not run must report the failure. Returning an empty list
+        here is indistinguishable from a healthy deployment, so a tenant over its
+        cap stops being flagged and nothing anywhere says the detector is blind"
+    );
+    assert!(
+        enumerate_active_tenants_sqlite(&conn).is_err(),
+        "the enumeration is where the read fails, and it must say so rather than
+        returning the 'default'-only list it would otherwise produce"
+    );
+}
+
+/// A COUNT that could not run must not look like a tenant under its cap.
+///
+/// The sibling pin above covers the ENUMERATION step. This one covers the step
+/// after it: each axis is `count > cap`, and `count_tenant_*_sqlite` used to
+/// collapse a failed count to `0` with `.unwrap_or(0)`. `0 > cap` is never true,
+/// so a dropped table or locked database made that axis report the tenant as
+/// COMPLIANT -- enforcement silently switched off for exactly the tenants whose
+/// row counts had become unreadable, which is the worst moment to stop looking.
+///
+/// `check_tenant_quota_sqlite` and the three counts now propagate, matching the
+/// PG backend (`check_tenant_quota_pg` / `count_tenant_*_pg`), which has always
+/// returned `Result` here. The scan is the observable surface: it must fail
+/// rather than return the healthy-deployment empty list.
+#[test]
+fn a_count_that_could_not_run_fails_the_check_rather_than_reporting_compliance() {
+    let conn = setup_test_db();
+    let tenant = "tenant-count-broken";
+    // 201 products: genuinely over the Free cap of 200, so a working count
+    // produces a violation and the test can tell success from silence.
+    for i in 1..=201 {
+        seed_product(&conn, tenant, &format!("p-{i}"), &format!("SKU-{i}"));
+    }
+    assert_eq!(
+        check_tenant_quota_sqlite(&conn, tenant)
+            .expect("the check runs against a live schema")
+            .len(),
+        1,
+        "precondition: the products axis fires while the schema is intact"
+    );
+    assert!(
+        scan_all_tenants_quota_sqlite(&conn).is_ok(),
+        "precondition: the scan runs against a live schema"
+    );
+
+    // Break a table the COUNTS read (not the enumeration's tables), so the
+    // failure is attributable to the count path and not the enumerate step.
+    conn.execute("DROP TABLE products", [])
+        .expect("drop products");
+
+    assert!(
+        check_tenant_quota_sqlite(&conn, tenant).is_err(),
+        "a count that could not run must not report the tenant as compliant"
+    );
+    assert!(
+        scan_all_tenants_quota_sqlite(&conn).is_err(),
+        "a scan whose counts could not run must not return the empty healthy list"
+    );
+}
+
 /// Integration test (C36): the live PostgreSQL query really does return 0 for a
 /// tenant whose device holds location rows — the executed form of the pin above.
 ///
@@ -538,6 +640,7 @@ fn test_locations_axis_is_structurally_inert() {
 /// crate), so it pins nothing in an environment without a database; the
 /// structural assertions in `test_locations_axis_is_structurally_inert` are what
 /// hold everywhere.
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 async fn pg_integration_locations_axis_counts_zero_on_the_cloud() {
     let url = std::env::var("OZ_TEST_PG_URL")
@@ -546,14 +649,20 @@ async fn pg_integration_locations_axis_counts_zero_on_the_cloud() {
         Ok(p) => p,
         Err(e) => {
             eprintln!("PG integration test skipped: {e}");
+            #[cfg(not(feature = "pg-tests"))]
             return;
+            #[cfg(feature = "pg-tests")]
+            panic!("PG test enabled but the resource is unreachable - see the skip message above");
         }
     };
     let client = match pool.pg_client().await {
         Ok(c) => c,
         Err(e) => {
             eprintln!("PG integration test skipped: {e}");
+            #[cfg(not(feature = "pg-tests"))]
             return;
+            #[cfg(feature = "pg-tests")]
+            panic!("PG test enabled but the resource is unreachable - see the skip message above");
         }
     };
 
@@ -578,7 +687,10 @@ async fn pg_integration_locations_axis_counts_zero_on_the_cloud() {
             // tenant GUC — in that case the structural assertions below still
             // carry the claim, and we say so rather than passing silently.
             eprintln!("PG locations probe insert skipped: {e}");
+            #[cfg(not(feature = "pg-tests"))]
             return;
+            #[cfg(feature = "pg-tests")]
+            panic!("PG test enabled but the resource is unreachable - see the skip message above");
         }
     }
 

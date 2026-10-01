@@ -4,9 +4,28 @@
 // found.
 //
 // Scope and skips (each deliberate):
-//   • Only `href=` links on generated .html pages are checked. Fragments,
-//     query strings, and external schemes (http/https, mailto:, tel:,
-//     data:, javascript:, //-relative) are ignored.
+//   • INTERNAL links: only `href=` links on generated .html pages are
+//     checked. Fragments, query strings, and every other external scheme
+//     (http/https elsewhere, mailto:, tel:, data:, javascript:, //-relative)
+//     are ignored by that pass.
+//   • EXTERNAL release/download links — a SECOND pass, below. An absolute
+//     `https://github.com/<owner>/<repo>/releases…` href IS fetched (HEAD,
+//     redirects followed, 2 attempts, 15s timeout). This is the one external
+//     class where "green" has lied: this repo publishes no GitHub Release
+//     objects, so every `releases/latest/download/<asset>` CTA answers 404
+//     while the internal pass cheerfully reports NO BROKEN INTERNAL LINKS —
+//     an absolute external href is skipped by that pass entirely, and the
+//     page that carries it exists, so nothing internal can fail. Measured
+//     2026-09-24: `…/kasirmu/releases` → 200 but empty, and
+//     `…/kasirmu/releases/latest/download/KasirMu-Setup.exe` → 404.
+//     404/410 (and any other definite 4xx) = BROKEN. 403/429, 5xx and
+//     transport errors cannot prove the link is dead, so they are reported
+//     as UNVERIFIABLE and still fail — cannot-verify is not agreement, and
+//     a retry tells a human whether it was the network. App-store and
+//     marketplace links are deliberately NOT fetched: those hosts answer
+//     200 (or region-redirect) for dead IDs, so fetching them would grade a
+//     real 404 as green. `node scripts/check-links.mjs --self-test` exercises
+//     the matcher and the status classifier with no network and no dist/.
 //   • `${...}` in an href is a JS template-literal fragment — rustdoc's
 //     search bundle emits `href="static.files/${f}"` inside inline scripts.
 //     Never a real link; always skipped.
@@ -39,6 +58,91 @@ const PORTAL = '/docs-portal';
 // Cap the printed list so a catastrophic break floods neither the terminal
 // nor the CI log — the count is always printed in full.
 const MAX_PRINTED = 100;
+
+// ── External release/download audit (header bullet 2) ────────────────────
+/** Hosts whose `/…/releases…` hrefs are worth fetching. */
+const RELEASE_HOSTS = new Set(['github.com', 'www.github.com']);
+/** Path shape `/<owner>/<repo>/releases` or `/<owner>/<repo>/releases/…`. */
+const RELEASE_PATH_RE = /^\/[^/]+\/[^/]+\/releases(?:\/|$)/;
+const EXTERNAL_TIMEOUT_MS = 15000;
+const EXTERNAL_ATTEMPTS = 2;
+// A UA GitHub accepts; an empty/`node` UA is how anonymous fetches draw 403s.
+const EXTERNAL_UA = 'kasirmu-check-links/1.0 (+https://kasir.mu)';
+
+/**
+ * Normalize an absolute href to the URL this check will fetch, or null when
+ * the href is not a GitHub release URL. Query and fragment are dropped:
+ * neither can change whether a release exists, and re-fetching the same
+ * target once per `?utm=` would multiply requests against a rate-limited host.
+ */
+function releaseTarget(href) {
+  let u;
+  try {
+    u = new URL(href);
+  } catch {
+    return null; // relative href, mailto:, javascript: — not this pass's job
+  }
+  if (!RELEASE_HOSTS.has(u.hostname.toLowerCase())) return null;
+  if (!RELEASE_PATH_RE.test(u.pathname)) return null;
+  u.hash = '';
+  u.search = '';
+  return u.href;
+}
+
+/**
+ * Classify a final HTTP status for a release URL:
+ *   ok           — the link resolves (any status below 400, after redirects)
+ *   broken       — the server definitively says it is not there (404/410, or
+ *                  any other client error that is not the ambiguous pair below)
+ *   unverifiable — 403/429 (bot challenge or rate limit), 5xx (upstream), or a
+ *                  transport failure: we learned nothing, so the gate must not
+ *                  pass, but the message says it was not proven dead.
+ */
+function classifyStatus(status) {
+  if (status < 400) return 'ok';
+  if (status === 404 || status === 410) return 'broken';
+  if (status === 403 || status === 429) return 'unverifiable';
+  if (status >= 500) return 'unverifiable';
+  return 'broken';
+}
+
+/** Liveness proof for the two pure helpers above — no network, no dist/. */
+function runSelfTest() {
+  const cases = [
+    ['release page', releaseTarget('https://github.com/o/r/releases'), 'https://github.com/o/r/releases'],
+    ['latest asset', releaseTarget('https://github.com/o/r/releases/latest/download/x.exe'), 'https://github.com/o/r/releases/latest/download/x.exe'],
+    ['tagged asset', releaseTarget('https://github.com/o/r/releases/download/v1/x.exe'), 'https://github.com/o/r/releases/download/v1/x.exe'],
+    ['fragment+query dropped', releaseTarget('https://github.com/o/r/releases#assets?tab=1'), 'https://github.com/o/r/releases'],
+    ['repo root is not a release URL', releaseTarget('https://github.com/o/r'), null],
+    ['other github path', releaseTarget('https://github.com/o/r/issues'), null],
+    ['other host', releaseTarget('https://gitlab.com/o/r/releases'), null],
+    ['releases- prefix does not match', releaseTarget('https://github.com/o/r/releases-x'), null],
+    ['relative href', releaseTarget('/en/download/'), null],
+    ['mailto', releaseTarget('mailto:sales@kasir.mu'), null],
+    ['2xx is ok', classifyStatus(200), 'ok'],
+    ['3xx final is ok', classifyStatus(304), 'ok'],
+    ['404 is broken', classifyStatus(404), 'broken'],
+    ['410 is broken', classifyStatus(410), 'broken'],
+    ['401 is broken', classifyStatus(401), 'broken'],
+    ['403 is unverifiable', classifyStatus(403), 'unverifiable'],
+    ['429 is unverifiable', classifyStatus(429), 'unverifiable'],
+    ['500 is unverifiable', classifyStatus(500), 'unverifiable'],
+    ['503 is unverifiable', classifyStatus(503), 'unverifiable'],
+  ];
+  let bad = 0;
+  for (const [name, got, want] of cases) {
+    if (got !== want) {
+      bad += 1;
+      console.log(`FAIL ${name}: expected ${JSON.stringify(want)}, got ${JSON.stringify(got)}`);
+    }
+  }
+  console.log(`check-links --self-test: ${cases.length - bad}/${cases.length} assertion(s) passed`);
+  return bad === 0;
+}
+
+if (process.argv.includes('--self-test')) {
+  process.exit(runSelfTest() ? 0 : 1);
+}
 
 function walkAll(dir, out = []) {
   for (const name of readdirSync(dir)) {
@@ -77,6 +181,11 @@ const isRustdocIdentifierLink = (abs) =>
 const isPortalLink = (abs) => abs === PORTAL || abs.startsWith(PORTAL + '/');
 
 const broken = [];
+// Distinct external release/download targets -> every page that links each
+// one (a Set, so the summary counts pages rather than only the first page
+// where the URL was seen). Storing the pages lets a failure name the CTA
+// that would have shipped.
+const releaseTargets = new Map();
 for (const p of pages) {
   const html = readFileSync(p, 'utf8');
   const pageUrl = toUrl(p);
@@ -85,7 +194,17 @@ for (const p of pages) {
   let m;
   while ((m = re.exec(html))) {
     let h = m[1];
-    if (h.startsWith('#') || isExternal(h) || isTemplateLiteral(h)) continue;
+    if (h.startsWith('#') || isTemplateLiteral(h)) continue;
+    if (isExternal(h)) {
+      // The internal pass cannot resolve an absolute URL. If it is a release
+      // or download CTA, queue it for the external pass instead of dropping it.
+      const target = releaseTarget(h);
+      if (target) {
+        if (!releaseTargets.has(target)) releaseTargets.set(target, new Set());
+        releaseTargets.get(target).add(pageUrl);
+      }
+      continue;
+    }
     h = h.split(/[#?]/)[0].replaceAll('\\', '/');
     if (!h) continue;
     const abs = h.startsWith('/')
@@ -115,4 +234,78 @@ if (broken.length) {
   process.exitCode = 1;
 } else {
   console.log('NO BROKEN INTERNAL LINKS');
+}
+
+// ── External pass: fetch every distinct release/download target ───────────
+// Printed even when everything is fine, so a run that checked nothing is
+// visible as "0" rather than indistinguishable from a pass.
+const targets = [...releaseTargets.keys()].sort();
+const pagesLinkingReleases = new Set();
+for (const set of releaseTargets.values()) for (const p of set) pagesLinkingReleases.add(p);
+console.log(
+  `external release URLs: ${targets.length} (on ${pagesLinkingReleases.size} page(s))`,
+);
+const extBroken = [];
+const extUnverifiable = [];
+for (const url of targets) {
+  const linkingPages = [...releaseTargets.get(url)];
+  const from =
+    linkingPages[0] + (linkingPages.length > 1 ? ` +${linkingPages.length - 1} more` : '');
+  let status = null;
+  let transportError = null;
+  for (let attempt = 1; attempt <= EXTERNAL_ATTEMPTS; attempt += 1) {
+    try {
+      const base = {
+        redirect: 'follow',
+        signal: AbortSignal.timeout(EXTERNAL_TIMEOUT_MS),
+        headers: { 'user-agent': EXTERNAL_UA, accept: '*/*' },
+      };
+      let res = await fetch(url, { ...base, method: 'HEAD' });
+      // Rare, but a host that refuses HEAD must not be graded on 405.
+      if (res.status === 405 || res.status === 501) {
+        res = await fetch(url, {
+          ...base,
+          method: 'GET',
+          headers: { ...base.headers, range: 'bytes=0-0' },
+        });
+      }
+      status = res.status;
+      transportError = null;
+      break;
+    } catch (err) {
+      transportError = err;
+      if (attempt < EXTERNAL_ATTEMPTS) await new Promise((r) => setTimeout(r, 1000 * attempt));
+    }
+  }
+
+  if (transportError) {
+    // Nothing was learned about the link itself — say so rather than calling
+    // it dead, but still fail (cannot-verify is not agreement).
+    extUnverifiable.push(`${url} (from ${from}) -> could not reach it after ${EXTERNAL_ATTEMPTS} attempts: ${transportError.message ?? transportError}`);
+    console.log(`  ??  ${url} (from ${from})`);
+    continue;
+  }
+  const verdict = classifyStatus(status);
+  if (verdict === 'ok') {
+    console.log(`  ok  ${url} (from ${from}) [${status}]`);
+  } else if (verdict === 'broken') {
+    extBroken.push(`${url} (from ${from}) -> ${status}`);
+    console.log(`  404 ${url} (from ${from}) [${status}]`);
+  } else {
+    extUnverifiable.push(`${url} (from ${from}) -> ${status} (rate limit or upstream; not proof the link is dead — re-run)`);
+    console.log(`  ??  ${url} (from ${from}) [${status}]`);
+  }
+}
+if (extBroken.length) {
+  console.log(`BROKEN EXTERNAL RELEASE LINKS: ${extBroken.length}`);
+  for (const b of extBroken.slice(0, MAX_PRINTED)) console.log('  ' + b);
+  process.exitCode = 1;
+}
+if (extUnverifiable.length) {
+  console.log(`UNVERIFIABLE EXTERNAL RELEASE LINKS: ${extUnverifiable.length}`);
+  for (const b of extUnverifiable.slice(0, MAX_PRINTED)) console.log('  ' + b);
+  process.exitCode = 1;
+}
+if (!extBroken.length && !extUnverifiable.length) {
+  console.log('NO BROKEN EXTERNAL RELEASE LINKS');
 }

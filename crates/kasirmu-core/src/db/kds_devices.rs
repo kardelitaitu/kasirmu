@@ -1,13 +1,22 @@
-//! KDS device management - registration, pairing, and status.
+//! KDS device management - registration and status.
 //!
-//! Key functions: register_kds_device (hashes pairing tokens),
-//! validate_pairing_token, get_kds_device,
+//! Key functions: register_kds_device, get_kds_device,
 //! list_kds_devices_for_restaurant, update_kds_device_status,
 //! deactivate_kds_device, plus the KdsDeviceRow query_map row type
 //! and its mappers.
 //!
-//! Invariants: pairing tokens are stored hashed (never plaintext);
-//! deactivation is soft (is_active flag) and logged.
+//! Invariants: a device is registered by the POS that owns it (no
+//! self-service enrollment); deactivation is soft (is_active flag) and
+//! logged.
+//!
+//! **Why there is no pairing token here.** This table used to carry
+//! `pairing_token_hash`/`pairing_expires_at` (and briefly a consumption pair)
+//! for a QR flow in which a KDS screen scanned a code and redeemed it for a
+//! credential. That flow was superseded: the POS registers the device, and
+//! `station_ids` selects which topology stations it displays. Nothing ever
+//! redeemed the token, so the UI displayed a secret that no code verified.
+//! Removed in `20261014_kds_drop_pairing_tokens.sql`; do not reintroduce a
+//! credential here without a consumer that actually checks it.
 
 use crate::db::Store;
 use crate::error::CoreError;
@@ -48,15 +57,13 @@ impl Store<'_> {
             .map_err(|e| CoreError::Internal(format!("serialize station_ids: {e}")))?;
 
         self.conn.execute(
-            "INSERT INTO kds_devices (id, name, restaurant_pos_id, station_ids, pairing_token_hash, pairing_expires_at, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7)",
+            "INSERT INTO kds_devices (id, name, restaurant_pos_id, station_ids, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?5)",
             params![
                 id,
                 input.name,
                 input.restaurant_pos_id,
                 station_ids_json,
-                input.pairing_token_hash,
-                input.pairing_expires_at,
                 now,
             ],
         )?;
@@ -74,78 +81,6 @@ impl Store<'_> {
         })
     }
 
-    /// Validate a pairing token against a device's stored hash and expiry.
-    ///
-    /// Returns `Ok(true)` if the token hash matches AND the token has not
-    /// expired. Returns `Ok(false)` if the device is not found.
-    /// Returns `Err` for expired tokens or hash mismatches.
-    pub fn validate_pairing_token(
-        &self,
-        token_hash: &str,
-        device_id: &str,
-    ) -> Result<bool, CoreError> {
-        // Query the pairing fields directly (not exposed on domain struct).
-        let result: Result<(String, String), _> = self.conn.query_row(
-            "SELECT pairing_token_hash, pairing_expires_at FROM kds_devices WHERE id = ?1",
-            params![device_id],
-            |row| Ok((row.get(0)?, row.get(1)?)),
-        );
-
-        let (stored_hash, expires_at) = match result {
-            Ok(pair) => pair,
-            Err(rusqlite::Error::QueryReturnedNoRows) => return Ok(false),
-            Err(e) => return Err(e.into()),
-        };
-
-        // Check hash match (F9: constant-time — the byte-wise XOR fold
-        // removes the timing oracle on a hash-prefix match; both values are
-        // hex digests, so length is compared first and the fold's outcome
-        // is all that varies).
-        let hash_matches = stored_hash.len() == token_hash.len()
-            && stored_hash
-                .bytes()
-                .zip(token_hash.bytes())
-                .fold(0u8, |acc, (a, b)| acc | (a ^ b))
-                == 0;
-        if !hash_matches {
-            return Err(CoreError::Validation {
-                field: "token_hash",
-                message: "pairing token hash mismatch".into(),
-            });
-        }
-
-        // Check expiry (F9: fail CLOSED on unparseable values). The stored
-        // value is RFC 3339; a bare `YYYY-MM-DD` (legacy/fixture shape) is
-        // tolerated as UTC midnight so expiry is still enforced on it.
-        // Previously ANY unparseable timestamp silently skipped the check,
-        // letting a corrupt or tampered expiry bypass pairing validation.
-        let expires: Option<chrono::DateTime<chrono::FixedOffset>> =
-            match chrono::DateTime::parse_from_rfc3339(&expires_at) {
-                Ok(dt) => Some(dt),
-                Err(_) => chrono::NaiveDate::parse_from_str(&expires_at, "%Y-%m-%d")
-                    .ok()
-                    .and_then(|d| d.and_hms_opt(0, 0, 0))
-                    .map(|dt| dt.and_utc().fixed_offset()),
-            };
-        match expires {
-            Some(expires) if chrono::Utc::now() > expires => {
-                return Err(CoreError::Validation {
-                    field: "pairing_expires_at",
-                    message: "pairing token has expired".into(),
-                });
-            }
-            Some(_) => {}
-            None => {
-                return Err(CoreError::Validation {
-                    field: "pairing_expires_at",
-                    message: format!("malformed pairing_expires_at: {expires_at}"),
-                });
-            }
-        }
-
-        Ok(true)
-    }
-
     /// Retrieve a KDS device by ID.
     pub fn get_kds_device(&self, id: &str) -> Result<Option<KdsDevice>, CoreError> {
         let mut stmt = self.conn.prepare(
@@ -154,7 +89,7 @@ impl Store<'_> {
         )?;
         let mut rows = stmt.query(params![id])?;
         match rows.next()? {
-            Some(row) => Ok(Some(self.row_to_kds_device(row)?)),
+            Some(row) => Ok(Some(Self::row_to_kds_device(row)?)),
             None => Ok(None),
         }
     }
@@ -183,7 +118,7 @@ impl Store<'_> {
         })?;
         rows.map(|r| {
             let row = r?;
-            self.row_from_kds_device_row(row)
+            Self::row_from_kds_device_row(row)
         })
         .collect()
     }
@@ -229,9 +164,22 @@ impl Store<'_> {
         Ok(())
     }
 
-    fn row_to_kds_device(&self, row: &rusqlite::Row) -> rusqlite::Result<KdsDevice> {
+    fn row_to_kds_device(row: &rusqlite::Row) -> rusqlite::Result<KdsDevice> {
         let station_ids_str: String = row.get("station_ids")?;
-        let station_ids: Vec<String> = serde_json::from_str(&station_ids_str).unwrap_or_default();
+        // Fail CLOSED. An empty `station_ids` is the BROADCAST sentinel — see
+        // [`KdsDevice::station_ids`] and `resolve_targets_by_station` Phase 2
+        // (`kds.rs`), which hands such a device EVERY order. Defaulting an
+        // unreadable value to `[]` therefore silently widened a station-scoped
+        // screen into an Expo "see everything" screen. Surface the decode
+        // failure instead, using the same row-mapping idiom as
+        // `db::row_to_product`. (The `connection_status` default below stays:
+        // `Disconnected` is the NARROW end of that enum, so defaulting there is
+        // already fail-closed.)
+        let station_ids: Vec<String> = serde_json::from_str(&station_ids_str).map_err(|e| {
+            rusqlite::Error::ToSqlConversionFailure(
+                std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()).into(),
+            )
+        })?;
         let status_str: String = row.get("connection_status")?;
         Ok(KdsDevice {
             id: row.get("id")?,
@@ -247,8 +195,14 @@ impl Store<'_> {
         })
     }
 
-    fn row_from_kds_device_row(&self, row: KdsDeviceRow) -> Result<KdsDevice, CoreError> {
-        let station_ids: Vec<String> = serde_json::from_str(&row.station_ids).unwrap_or_default();
+    fn row_from_kds_device_row(row: KdsDeviceRow) -> Result<KdsDevice, CoreError> {
+        // Fail CLOSED — see `row_to_kds_device` for why an empty list must not
+        // be the default for an unreadable value.
+        let station_ids: Vec<String> = serde_json::from_str(&row.station_ids).map_err(|e| {
+            CoreError::Internal(format!(
+                "kds_devices.station_ids is not a JSON string array: {e}"
+            ))
+        })?;
         Ok(KdsDevice {
             id: row.id,
             name: row.name,

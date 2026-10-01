@@ -136,7 +136,26 @@ mod debt;
 /// together and records the reason in docs/records/JOURNAL.md, which is what the ceiling
 /// pin asks of a RISE. The provenance is the point: this pass records what landed, it
 /// does not approve it.
-const REGISTERED_FLOOR: usize = 475;
+///
+/// The 475 -> 481 step, 2026-09-29. Six commands landed across two feature commits,
+/// and neither moved this floor nor the generated ledger, so both legs were red at
+/// HEAD:
+///   * `8d3222d37` (feat(edc): implement multi-terminal binding routing and UI
+///     selection) registered `edc::list_edc_terminals_scoped`,
+///     `edc::create_edc_terminal_scoped`, `edc::update_edc_terminal_scoped` and
+///     `edc::delete_edc_terminal_scoped` — the per-terminal CRUD pair behind the
+///     terminal picker.
+///   * `7e2ddcbe5` (feat(bridge): expose e-faktur stamping and pengganti endpoints)
+///     registered `history::stamp_faktur_pajak_scoped` and
+///     `history::create_faktur_pengganti_scoped` — the DJP e-Faktur write doors.
+///
+/// Unlike the 472 -> 475 step above, **all six arrive GATED** and therefore move no
+/// ceiling and no ledger row: `edc::*` carries `SETTINGS_READ`/`SETTINGS_EDIT` and
+/// `history::*` carries `SALES_PROCESS`, so the regeneration below rewrote only
+/// `REGISTERED_TOTAL` (475 -> 481) and left all 68 debt rows identical. That is why
+/// this step touches the floor alone: there is no new debt to record, only new
+/// registrations to count. Provenance recorded in docs/records/JOURNAL.md.
+const REGISTERED_FLOOR: usize = 481;
 /// How far the GENERATED ledger's total may lag the tree before the ledger is overdue a
 /// regeneration. It is not slack on this floor — the floor is measured, not padded — and
 /// the hard pin on the ledger's own rows is
@@ -451,7 +470,7 @@ fn gated_bridge_stems() -> BTreeSet<String> {
         files.len(),
         dir.display()
     );
-    files
+    let mut stems: BTreeSet<String> = files
         .iter()
         .filter(|f| names_permission(&read(f)))
         .map(|f| {
@@ -460,7 +479,37 @@ fn gated_bridge_stems() -> BTreeSet<String> {
                 .to_string_lossy()
                 .to_string()
         })
-        .collect()
+        .collect();
+
+    // A module can also BE a directory. When it is, the namespace a shell wrapper names is the
+    // directory's (pos::add_line_scoped), while the permission calls sit in its children - so
+    // reading only the file stems loses the whole module. Measured 2026-09-28: the COR-7 split
+    // moved the POS handlers into src/pos/*.rs and auth's into src/auth/*.rs, 'pos' and 'auth'
+    // vanished from this set, and twenty-four GATED commands - every pos::*_scoped twin plus six
+    // auth::* - read as debt. One child naming a permission vouches for the module, which is the
+    // same merge the file case above already makes.
+    for f in &files {
+        let Ok(rel) = f.strip_prefix(&dir) else {
+            continue;
+        };
+        let mut components = rel.components();
+        let (Some(first), Some(_child)) = (components.next(), components.next()) else {
+            continue;
+        };
+        let module = first.as_os_str().to_string_lossy().to_string();
+        if stems.contains(&module) {
+            continue;
+        }
+        let module_dir = dir.join(&module);
+        if files
+            .iter()
+            .any(|g| g.starts_with(&module_dir) && names_permission(&read(g)))
+        {
+            stems.insert(module);
+        }
+    }
+
+    stems
 }
 
 fn run_sweep() -> Sweep {
@@ -1551,6 +1600,12 @@ const TOLERATED_FORWARDS: &[&str] = &[
     // to run over its callers instead of over invoke( sites.
     "utils/logged-invoke.ts",
     "__tests__/useSessionKeepalive.test.ts",
+    // The one production forwarder in the tree: invoke<T>(cmd, args) exists to bound the wait on
+    // a command that panics, so its command name is a parameter by construction and cannot be a
+    // literal. Tolerating the FILE suppresses its offender list only - the counts beside it still
+    // include every site it forwards, so a second forwarder anywhere else on the production
+    // surface still reds this leg (measured 2026-09-28).
+    "ui/src/api/tauri.ts",
 ];
 
 /// Does `rel` fall under one of the `TOLERATED_FORWARDS` entries? An entry matches when its components
@@ -1763,7 +1818,7 @@ fn drift_pin_no_computed_command_names_in_ui() {
                         }
                     ));
                     if offend {
-                        offenders.push(format!("{}:{}", rel, at));
+                        offenders.push(format!("{rel}:{at}"));
                     }
                 }
             }

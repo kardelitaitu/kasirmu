@@ -34,6 +34,55 @@ fn insert_user_with_role(conn: &Connection, user_id: &str, role_id: &str) {
     .unwrap();
 }
 
+/// A member in the TRASH must not pin a role in the trash with them.
+///
+/// The two halves of the same feature have to agree, and this is the pair that
+/// did not: the roster, the picker and the holder list all read LIVE accounts,
+/// while the referrer counts that gate `soft_delete_role` read raw rows — so a
+/// soft-deleted member kept both his `users` row and his `assignments` row and
+/// answered "reassign those rows before deleting it" about an account nobody
+/// could see, name, reassign, or wait out (the purge only erases people; it
+/// never clears their assignment). The role was undeletable for good.
+///
+/// The restore is checked too, because the fix must not trade one leak for the
+/// other: putting the member back has to put the block back with him.
+#[test]
+fn reference_counts_ignore_a_trashed_member_but_restoring_them_blocks_again() {
+    let conn = fresh();
+    store(&conn).seed_default_roles().unwrap();
+    insert_authored_role(&conn, "[]");
+    insert_user_with_role(&conn, "holder", AUTHORED);
+    // Deactivate, then trash. The member keeps his `users` row AND his
+    // `assignments` row — `update_user` keeps the assignment's role in sync,
+    // and the trash stamps rather than deletes — so both referrers are still on
+    // disk and only the live-only `users` predicate moves.
+    store(&conn)
+        .update_user("holder", "holder", "Holder", AUTHORED, false)
+        .unwrap();
+    store(&conn).soft_delete_user("holder").unwrap();
+    assert!(
+        store(&conn).list_users().unwrap().is_empty(),
+        "the trashed member leaves the live roster"
+    );
+
+    store(&conn)
+        .soft_delete_role(AUTHORED)
+        .expect("a trashed member must not block deleting the role");
+
+    store(&conn).restore_role(AUTHORED).unwrap();
+    store(&conn).restore_user("holder").unwrap();
+    // Restored INACTIVE, exactly as the delete found him — but a holder all
+    // the same, and the reference count gates deletion, not activity.
+    assert!(
+        !store(&conn).get_user("holder").unwrap().unwrap().is_active,
+        "restore never re-grants access"
+    );
+    assert!(matches!(
+        store(&conn).soft_delete_role(AUTHORED).unwrap_err(),
+        CoreError::Validation { .. }
+    ));
+}
+
 // ── update_role ────────────────────────────────────────────────────────
 
 #[test]
@@ -1063,7 +1112,7 @@ fn role_holders_cap_at_fifty_and_still_report_the_total() {
     assert_eq!(holders.len(), 50, "capped");
     assert_eq!(total, 60, "the full count is not clipped by the cap");
     assert_eq!(
-        total - holders.len() as i64,
+        total - i64::try_from(holders.len()).expect("fixture count fits i64"),
         10,
         "this difference is the and-N-more number the screen shows"
     );
@@ -1261,4 +1310,82 @@ fn role_holder_count_and_role_holders_cannot_disagree() {
         matches!(&err, CoreError::NotFound { entity, .. } if *entity == "role"),
         "{err:?}"
     );
+}
+
+// ── the sweep and the FK: two censuses of "who references a role" ─────
+
+/// A member in the trash does not pin the role for the GUARD, but their
+/// `users` row pins it for the FOREIGN KEY — and the sweep runs in one
+/// transaction, so mistaking the first for the second aborts the whole pass.
+///
+/// This is the pair that did not agree. `role_references_on` filters
+/// `users.deleted_at IS NULL`, which is correct: a tombstone nobody can name,
+/// reassign or wait out must not make a role undeletable. But the referrer it
+/// ignores is still a ROW, and nothing in production ever deletes a `users`
+/// row — `purge_expired_users` anonymises in place and never clears
+/// `role_id` — so `soft_delete_role` trashed the role and
+/// `DELETE FROM roles` then met `SQLITE_CONSTRAINT_FOREIGNKEY`. The sweep has
+/// to ask the FK question, leave the row it cannot collect, and report a count
+/// that matches what is actually gone.
+#[test]
+fn the_purge_leaves_a_role_whose_only_referrer_is_a_trashed_member() {
+    let conn = fresh();
+    let s = store(&conn);
+    insert_authored_role(&conn, "sales.read");
+    insert_user_with_role(&conn, "user-1", AUTHORED);
+
+    let old = (chrono::Utc::now() - chrono::Duration::days(TRASH_RETENTION_DAYS + 1))
+        .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+    conn.execute(
+        "UPDATE users SET deleted_at = ?1 WHERE id = 'user-1'",
+        rusqlite::params![old],
+    )
+    .unwrap();
+
+    // The guard reads LIVE referrers, so the tombstone does not stop this.
+    s.soft_delete_role(AUTHORED)
+        .expect("a trashed member must not pin the role");
+    conn.execute(
+        "UPDATE roles SET deleted_at = ?1, purged_at = NULL WHERE id = ?2",
+        rusqlite::params![old, AUTHORED],
+    )
+    .unwrap();
+
+    let removed = s
+        .purge_expired_roles()
+        .expect("one un-collectable row must not abort the sweep");
+    assert_eq!(
+        removed, 0,
+        "the FK outlives the guard, so nothing was deleted"
+    );
+    // Still on disk, still trashed — the count above is what an operator reads,
+    // and it has to describe the table.
+    let still_there: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM roles WHERE id = ?1 AND deleted_at IS NOT NULL",
+            rusqlite::params![AUTHORED],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(still_there, 1, "the row is left trashed, not deleted");
+    // And the trash read does not offer it back: the window has closed.
+    assert!(s.list_trashed_roles().unwrap().is_empty());
+}
+
+/// The sweep still collects what it can, in the same pass as what it cannot:
+/// the guard above skips a row, it does not abandon the loop.
+#[test]
+fn the_purge_still_collects_a_role_no_row_references() {
+    let conn = fresh();
+    let s = store(&conn);
+    insert_authored_role(&conn, "sales.read");
+    let old = (chrono::Utc::now() - chrono::Duration::days(TRASH_RETENTION_DAYS + 1))
+        .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+    conn.execute(
+        "UPDATE roles SET deleted_at = ?1 WHERE id = ?2",
+        rusqlite::params![old, AUTHORED],
+    )
+    .unwrap();
+    assert_eq!(s.purge_expired_roles().unwrap(), 1);
+    assert!(s.get_role(AUTHORED).unwrap().is_none(), "the row is gone");
 }

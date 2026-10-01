@@ -478,5 +478,72 @@
   }
 }
 
+/* ── Restore section (C8 S5b) ─────────────────────────────────────── */
+
+.data-mgmt-restore-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.data-mgmt-restore-item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-4);
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+}
+
+.data-mgmt-restore-item-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-3);
+}
+
+.data-mgmt-restore-gen {
+  font-weight: var(--font-weight-medium);
+  color: var(--color-fg-primary);
+}
+
+/* The verdict carries its meaning in TEXT, not colour alone, so this class is
+ * weight and spacing only -- no colour that a sighted-only reading would need. */
+.data-mgmt-restore-verdict {
+  font-size: var(--text-sm);
+  color: var(--color-fg-secondary);
+  white-space: nowrap;
+}
+
+.data-mgmt-restore-reason {
+  font-size: var(--text-sm);
+  color: var(--color-fg-tertiary);
+  line-height: var(--leading-normal);
+  margin: 0;
+}
+
+/* An already-pending restore outranks the list: it is the state that changes
+ * what the next boot will do. */
+.data-mgmt-restore-pending {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-4);
+  border: 1px solid var(--color-warning);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-surface);
+}
+
+.data-mgmt-restore-pending-error {
+  font-size: var(--text-sm);
+  color: var(--color-danger);
+  margin: 0;
+}
+
+
 
 

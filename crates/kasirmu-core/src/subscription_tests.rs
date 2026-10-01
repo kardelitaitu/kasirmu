@@ -84,15 +84,17 @@ fn tier_allows_workspace_type() {
     assert!(!SubscriptionTier::Free.allows_workspace_type("kds"));
     assert!(!SubscriptionTier::Free.allows_workspace_type("warehouse"));
 
-    // Plus tier: warehouse/inventory allowed, kds NOT allowed
-    assert!(SubscriptionTier::Plus.allows_workspace_type("warehouse"));
+    // Plus tier: inventory allowed, warehouse (Premium+) and kds (Pro+) NOT
+    assert!(!SubscriptionTier::Plus.allows_workspace_type("warehouse"));
     assert!(SubscriptionTier::Plus.allows_workspace_type("inventory"));
     assert!(!SubscriptionTier::Plus.allows_workspace_type("kds"));
 
-    // Pro & Enterprise tier allow all
+    // Pro unlocks kds and the unknown shell type keys; the warehouse workspace
+    // is the one type reserved for Premium (owner ruling 2026-09-29).
     assert!(SubscriptionTier::Pro.allows_workspace_type("kds"));
     assert!(SubscriptionTier::Pro.allows_workspace_type("analytics-pro"));
-    assert!(SubscriptionTier::Pro.allows_workspace_type("warehouse"));
+    assert!(!SubscriptionTier::Pro.allows_workspace_type("warehouse"));
+    assert!(SubscriptionTier::Premium.allows_workspace_type("warehouse"));
     assert!(SubscriptionTier::Enterprise.allows_workspace_type("anything"));
 }
 
@@ -237,7 +239,7 @@ fn quota_error_register_limit() {
     };
     let msg = err.to_string();
     assert!(msg.contains("Free"));
-    assert!(msg.contains("1"));
+    assert!(msg.contains('1'));
 }
 
 #[test]
@@ -249,7 +251,7 @@ fn quota_error_store_limit() {
     };
     let msg = err.to_string();
     assert!(msg.contains("Pro"));
-    assert!(msg.contains("2"));
+    assert!(msg.contains('2'));
 }
 
 #[test]
@@ -613,7 +615,8 @@ fn allows_workspace_type_bundle_payload_unlocks_kds_on_plus() {
     // A Plus + restaurant_starter bundle mints a signed payload whose
     // allowed_types lists kds even though the Plus TIER statically
     // excludes it (subscription-tiers.md §5). The entitlement must honor
-    // the payload, not the tier defaults.
+    // the payload, not the tier defaults. The bundle widens kds ONLY — the
+    // payload carries no `warehouse` (Premium+ since 2026-09-29).
     let sub = TenantSubscription {
         tenant_id: "default".into(),
         tier: SubscriptionTier::Plus,
@@ -621,8 +624,7 @@ fn allows_workspace_type_bundle_payload_unlocks_kds_on_plus() {
         expires_at: None,
         max_locations: 1,
         max_pos_instances: 2,
-        allowed_types_json:
-            r#"["store-pos","restaurant-pos","admin","warehouse","inventory","kds"]"#.into(),
+        allowed_types_json: r#"["store-pos","restaurant-pos","admin","inventory","kds"]"#.into(),
         signature: "BOOTSTRAP_FREE".into(),
         signed_payload: String::new(),
         api_key: String::new(),
@@ -630,7 +632,7 @@ fn allows_workspace_type_bundle_payload_unlocks_kds_on_plus() {
     };
     assert!(sub.allows_workspace_type("kds"));
     assert!(sub.allows_workspace_type("store-pos"));
-    assert!(sub.allows_workspace_type("warehouse"));
+    assert!(!sub.allows_workspace_type("warehouse"));
 }
 
 #[test]
@@ -651,7 +653,7 @@ fn allows_workspace_type_empty_payload_falls_back_to_tier_defaults() {
         updated_at: String::new(),
     };
     assert!(!sub.allows_workspace_type("kds"));
-    assert!(sub.allows_workspace_type("warehouse"));
+    assert!(!sub.allows_workspace_type("warehouse"));
     assert!(sub.allows_workspace_type("store-pos"));
 }
 
@@ -691,8 +693,7 @@ fn allows_workspace_type_grace_expired_ignores_stored_list() {
         expires_at: Some(old.to_rfc3339()),
         max_locations: 1,
         max_pos_instances: 2,
-        allowed_types_json:
-            r#"["store-pos","restaurant-pos","admin","warehouse","inventory","kds"]"#.into(),
+        allowed_types_json: r#"["store-pos","restaurant-pos","admin","inventory","kds"]"#.into(),
         signature: "BOOTSTRAP_FREE".into(),
         signed_payload: String::new(),
         api_key: String::new(),
@@ -931,11 +932,12 @@ fn test_connection_aware_grace_and_pos_read_only() {
 
 #[test]
 fn max_warehouses_per_tier() {
-    // Free/OneTime: 1 warehouse; Plus: 2; Pro: 3
-    assert_eq!(SubscriptionTier::Free.max_warehouses(), Some(1));
-    assert_eq!(SubscriptionTier::OneTime.max_warehouses(), Some(1));
-    assert_eq!(SubscriptionTier::Plus.max_warehouses(), Some(2));
-    assert_eq!(SubscriptionTier::Pro.max_warehouses(), Some(3));
+    // No warehouse workspace below Premium (owner ruling 2026-09-29): the zeros
+    // match `allows_workspace_type("warehouse")` and the pricing table's row.
+    assert_eq!(SubscriptionTier::Free.max_warehouses(), Some(0));
+    assert_eq!(SubscriptionTier::OneTime.max_warehouses(), Some(0));
+    assert_eq!(SubscriptionTier::Plus.max_warehouses(), Some(0));
+    assert_eq!(SubscriptionTier::Pro.max_warehouses(), Some(0));
     // Premium/Enterprise: unlimited
     assert_eq!(SubscriptionTier::Premium.max_warehouses(), None);
     assert_eq!(SubscriptionTier::Enterprise.max_warehouses(), None);
@@ -1039,7 +1041,7 @@ fn allows_workspace_type_plus_tier() {
     assert!(tier.allows_workspace_type("store-pos"));
     assert!(tier.allows_workspace_type("restaurant-pos"));
     assert!(tier.allows_workspace_type("admin"));
-    assert!(tier.allows_workspace_type("warehouse"));
+    assert!(!tier.allows_workspace_type("warehouse"));
     assert!(tier.allows_workspace_type("inventory"));
     // Plus does NOT unlock kds — that is Pro (§3 Workspace Types).
     assert!(!tier.allows_workspace_type("kds"));
@@ -1047,12 +1049,11 @@ fn allows_workspace_type_plus_tier() {
 }
 
 #[test]
-fn allows_workspace_type_pro_tier_allows_all() {
-    for tier in [
-        SubscriptionTier::Pro,
-        SubscriptionTier::Premium,
-        SubscriptionTier::Enterprise,
-    ] {
+fn allows_workspace_type_pro_and_above() {
+    // Pro opens kds and every unknown shell key, but the warehouse workspace is
+    // Premium+ (owner ruling 2026-09-29), so it is asserted separately instead
+    // of being swept into the "all" loop.
+    for tier in [SubscriptionTier::Premium, SubscriptionTier::Enterprise] {
         assert!(tier.allows_workspace_type("store-pos"));
         assert!(tier.allows_workspace_type("restaurant-pos"));
         assert!(tier.allows_workspace_type("warehouse"));
@@ -1061,6 +1062,12 @@ fn allows_workspace_type_pro_tier_allows_all() {
         assert!(tier.allows_workspace_type("custom-plugin"));
         assert!(tier.allows_workspace_type("anything"));
     }
+
+    let pro = SubscriptionTier::Pro;
+    assert!(pro.allows_workspace_type("store-pos"));
+    assert!(pro.allows_workspace_type("kds"));
+    assert!(pro.allows_workspace_type("anything"));
+    assert!(!pro.allows_workspace_type("warehouse"));
 }
 
 #[test]
@@ -1126,7 +1133,7 @@ fn tier_names() {
 fn test_plus_quota_limits() {
     assert_eq!(SubscriptionTier::Plus.max_locations(), Some(1));
     assert_eq!(SubscriptionTier::Plus.max_pos_instances(), Some(2));
-    assert_eq!(SubscriptionTier::Plus.max_warehouses(), Some(2));
+    assert_eq!(SubscriptionTier::Plus.max_warehouses(), Some(0));
     assert_eq!(SubscriptionTier::Plus.max_staff_users(), Some(5));
     assert_eq!(SubscriptionTier::Plus.sales_history_days(), Some(365));
 }
@@ -1135,7 +1142,7 @@ fn test_plus_quota_limits() {
 fn test_pro_quota_limits() {
     assert_eq!(SubscriptionTier::Pro.max_locations(), Some(2));
     assert_eq!(SubscriptionTier::Pro.max_pos_instances(), Some(5));
-    assert_eq!(SubscriptionTier::Pro.max_warehouses(), Some(3));
+    assert_eq!(SubscriptionTier::Pro.max_warehouses(), Some(0));
     assert_eq!(SubscriptionTier::Pro.max_staff_users(), Some(20));
     assert_eq!(SubscriptionTier::Pro.sales_history_days(), Some(5 * 365));
 }
@@ -1152,16 +1159,18 @@ fn test_free_history_limit() {
 
 #[test]
 fn test_workspace_type_matrix() {
-    // Plus gets inventory/warehouse but NOT kds.
+    // Plus gets inventory but NOT kds (Pro+) or warehouse (Premium+).
     assert!(SubscriptionTier::Plus.allows_workspace_type("store-pos"));
     assert!(SubscriptionTier::Plus.allows_workspace_type("restaurant-pos"));
     assert!(SubscriptionTier::Plus.allows_workspace_type("admin"));
     assert!(SubscriptionTier::Plus.allows_workspace_type("inventory"));
-    assert!(SubscriptionTier::Plus.allows_workspace_type("warehouse"));
+    assert!(!SubscriptionTier::Plus.allows_workspace_type("warehouse"));
     assert!(!SubscriptionTier::Plus.allows_workspace_type("kds"));
-    // Pro gets kds.
+    // Pro gets kds; the warehouse workspace stays Premium+ (owner ruling
+    // 2026-09-29, matching the website's pricing row).
     assert!(SubscriptionTier::Pro.allows_workspace_type("kds"));
-    assert!(SubscriptionTier::Pro.allows_workspace_type("warehouse"));
+    assert!(!SubscriptionTier::Pro.allows_workspace_type("warehouse"));
+    assert!(SubscriptionTier::Premium.allows_workspace_type("warehouse"));
 }
 
 #[test]
@@ -1527,7 +1536,7 @@ fn quota_error_staff_limit_display() {
     };
     let msg = err.to_string();
     assert!(msg.contains("Plus"));
-    assert!(msg.contains("5"));
+    assert!(msg.contains('5'));
     assert!(msg.contains("staff"));
 }
 
@@ -1540,7 +1549,7 @@ fn quota_error_warehouse_limit_display() {
     };
     let msg = err.to_string();
     assert!(msg.contains("Pro"));
-    assert!(msg.contains("3"));
+    assert!(msg.contains('3'));
     assert!(msg.contains("warehouse"));
 }
 
@@ -1698,8 +1707,7 @@ fn workspace_type_grace_expired_plus_reverts_to_free_defaults() {
         max_locations: 1,
         max_pos_instances: 2,
         // Even though kds is in the payload, grace expiry reverts to Free.
-        allowed_types_json:
-            r#"["store-pos","restaurant-pos","admin","warehouse","inventory","kds"]"#.into(),
+        allowed_types_json: r#"["store-pos","restaurant-pos","admin","inventory","kds"]"#.into(),
         signature: "BOOTSTRAP_FREE".into(),
         signed_payload: String::new(),
         api_key: String::new(),
@@ -2101,4 +2109,275 @@ fn debug_redacts_credential_fields_but_keeps_the_row_readable() {
         assert!(out.contains("store-pos"), "allowed_types vanished");
         assert!(out.contains("2026-09-09T00:00:00Z"), "updated_at vanished");
     }
+}
+// -- The two date engines: what they really promise ---------------------
+//
+// `lifecycle_state_at` (subscription.rs:987) and `is_within_grace_period_at`
+// (:682) are PARALLEL implementations over the same fields, and the module
+// doc at :964 claims the second one mirrors the first exactly so the reported
+// state can never disagree with `effective_tier`.
+//
+// **That claim is false.** The two ask different questions and deliberately
+// answer two statuses differently:
+//
+//   - `is_within_grace_period_at` asks: does the paid grant still stand?
+//     `canceled` and `revoked` return false at :694.
+//   - `lifecycle_state_at` asks: what state is this row in? `canceled` and
+//     `paused` are their own states (:1001-1003), because callers must tell a
+//     billing outcome from an abuse verdict (ADR #58 section 2.1).
+//
+// This test pins the honest contract: the grace engine and `effective_tier`
+// agree on every cell, and `lifecycle_state` agrees with them on every status
+// EXCEPT the two documented carve-outs.
+#[test]
+fn lifecycle_state_and_grace_period_agree_except_for_the_documented_carve_outs() {
+    let now = chrono::Utc::now();
+    let day = chrono::Duration::days(1);
+    let iso =
+        |off: chrono::Duration| (now + off).to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+
+    let statuses = [
+        "active",
+        "canceled",
+        "revoked",
+        "paused",
+        "expired",
+        "grace_period",
+        "something_else",
+    ];
+    let tiers = [
+        SubscriptionTier::Free,
+        SubscriptionTier::OneTime,
+        SubscriptionTier::Plus,
+        SubscriptionTier::Pro,
+        SubscriptionTier::Premium,
+        SubscriptionTier::Enterprise,
+    ];
+    let expiries: [Option<String>; 6] = [
+        None,
+        Some(iso(day * 30)),
+        Some(iso(day)),
+        Some(iso(-day)),
+        Some(iso(-day * 400)),
+        Some("not-a-date".into()),
+    ];
+
+    let mut checked = 0usize;
+    let mut carve_outs = 0usize;
+    for status in statuses {
+        for tier in &tiers {
+            for expiry in &expiries {
+                let sub = TenantSubscription {
+                    tenant_id: "default".into(),
+                    tier: tier.clone(),
+                    status: status.into(),
+                    expires_at: expiry.clone(),
+                    max_locations: 1,
+                    max_pos_instances: 1,
+                    allowed_types_json: "[]".into(),
+                    signature: String::new(),
+                    signed_payload: String::new(),
+                    api_key: String::new(),
+                    updated_at: String::new(),
+                };
+                let state = sub.lifecycle_state_at(now);
+                let within_grace = sub.is_within_grace_period_at(now);
+                // Compare the DECISION, not the returned tier: on a Free row
+                // `effective_tier_at` answers Free whether or not the grant
+                // stands, so value-equality is trivially true and would assert
+                // nothing. Downgrading to Free is only observable on a PAID
+                // tier, which is the same collapse `effective_tier_at`'s own
+                // log line names.
+                let downgraded = tier != &SubscriptionTier::Free
+                    && sub.effective_tier_at(now) == SubscriptionTier::Free;
+                let ctx = format!(
+                    "status={status} tier={tier:?} expiry={expiry:?} grace={within_grace} state={state:?}"
+                );
+
+                // The grace engine and effective_tier are two readers of ONE
+                // decision and must never disagree — but only on a PAID tier,
+                // where the decision is observable. On a Free row
+                // `effective_tier_at` answers Free regardless, so it is not a
+                // second reader of the grace verdict there at all; asserting on
+                // it would be asserting a tautology that happens to fail for
+                // the canceled case.
+                if tier != &SubscriptionTier::Free {
+                    assert_eq!(!downgraded, within_grace, "effective_tier vs grace: {ctx}");
+                }
+                checked += 1;
+
+                // Everything the lifecycle engine reports must match the grace
+                // verdict, except the two statuses that get their own state on
+                // purpose and are documented as not grace cases.
+                let state_is_usable = matches!(
+                    state,
+                    SubscriptionLifecycleState::Active | SubscriptionLifecycleState::Grace
+                );
+                if state_is_usable != within_grace {
+                    // Two statuses are left where the engines answer
+                    // differently, and both are by design:
+                    //
+                    //   - `grace_period`: the server SAYS the row is in grace.
+                    //     The lifecycle state reports that straight through,
+                    //     while the date arithmetic knows nothing about the
+                    //     status and may answer false once the date lapses.
+                    //   - anything unrecognized: the lifecycle state fails
+                    //     CLOSED to `Unavailable`, while the grace engine is a
+                    //     bool with no failure channel and answers on the date
+                    //     alone. That asymmetry is the point — `Unavailable` is
+                    //     how a caller learns the row did not parse.
+                    assert!(
+                        status == "grace_period" || status == "something_else",
+                        "{ctx}"
+                    );
+                    carve_outs += 1;
+                }
+            }
+        }
+    }
+    assert_eq!(checked, 7 * 6 * 6, "the matrix must be walked in full");
+    assert!(carve_outs > 0, "the carve-outs must be exercised");
+}
+
+/// MSL-13: the server's explicit `expired` verdict is ignored by the grace
+/// engine, so an expired tenant keeps its PAID tier wherever `effective_tier`
+/// is the source of truth -- including the central quota gate.
+#[test]
+fn server_expired_status_does_not_keep_the_paid_tier() {
+    let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+    // A row the SERVER marked expired while the date is still in the future:
+    // a contradictory row, which is exactly what an explicit verdict is for.
+    let sub = TenantSubscription {
+        tenant_id: "default".into(),
+        tier: SubscriptionTier::Enterprise,
+        status: "expired".into(),
+        expires_at: Some((chrono::Utc::now() + chrono::Duration::days(30)).to_rfc3339()),
+        max_locations: 99,
+        max_pos_instances: 99,
+        allowed_types_json: "[]".into(),
+        signature: String::new(),
+        signed_payload: String::new(),
+        api_key: String::new(),
+        updated_at: now,
+    };
+    assert_eq!(
+        sub.lifecycle_state(),
+        SubscriptionLifecycleState::Expired,
+        "the lifecycle engine honours the server verdict",
+    );
+    assert_eq!(
+        sub.effective_tier(),
+        SubscriptionTier::Free,
+        "an expired row must not keep an Enterprise tier, or the quota gate grants paid limits to a subscription the server has ended",
+    );
+}
+
+/// `as_str` and `lifecycle_state_at` speak TWO DIFFERENT vocabularies, and this
+/// pins both so neither drifts into the other.
+///
+/// I first wrote this as a round-trip test (`lifecycle_state_at(as_str()) == self`)
+/// and it FAILED on `Grace`, which looked like a defect. It is not: the two
+/// strings come from different sources and only happen to overlap.
+///
+///   - `as_str` is the WIRE/DB form of the *normalized* state. It is the serde
+///     `snake_case` form (`ui/src/api/subscription.ts` types this exact union
+///     and its `SubscriptionContext` tests assert `state === "grace"`), and it
+///     is what `AvailabilityFacts::state` is rendered from.
+///   - `lifecycle_state_at` reads the SERVER's `tenant_subscription.status`
+///     column, whose vocabulary is the license server's: `active`,
+///     `grace_period`, `paused`, `canceled`, `revoked`, `expired`.
+///
+/// So `Grace` is "grace" on the wire and `grace_period` in the column, and the
+/// licensing layer's `GracePeriod` (camelCase, `kasirmu-bridge/src/license.rs`)
+/// is a THIRD spelling on a third axis. Round-tripping across them is not a
+/// contract and must not be made one -- the only statuses the two share
+/// literally are the five that are spelled identically.
+#[test]
+fn lifecycle_state_as_str_is_the_wire_form_not_the_status_column_vocabulary() {
+    // The wire form, pinned against the UI union in ui/src/api/subscription.ts.
+    assert_eq!(SubscriptionLifecycleState::Grace.as_str(), "grace");
+
+    // The column vocabulary, pinned at the reader. `grace` is NOT a status the
+    // server writes, so it fails closed to Unavailable -- correctly.
+    assert_eq!(
+        state_sub(SubscriptionTier::Plus, "grace_period", None).lifecycle_state(),
+        SubscriptionLifecycleState::Grace,
+    );
+    assert_eq!(
+        state_sub(SubscriptionTier::Plus, "grace", None).lifecycle_state(),
+        SubscriptionLifecycleState::Unavailable,
+        "the column never holds the wire spelling; Unavailable is the fail-closed answer",
+    );
+
+    // Every state's wire form is a value the UI union declares, and each is
+    // distinct -- so a new variant cannot silently collide with an old one.
+    let all = [
+        SubscriptionLifecycleState::Active,
+        SubscriptionLifecycleState::Grace,
+        SubscriptionLifecycleState::Expired,
+        SubscriptionLifecycleState::Canceled,
+        SubscriptionLifecycleState::Revoked,
+        SubscriptionLifecycleState::Paused,
+        SubscriptionLifecycleState::Unavailable,
+    ];
+    let mut seen = std::collections::BTreeSet::new();
+    for state in all {
+        assert!(
+            seen.insert(state.as_str()),
+            "two states share the wire string {state:?}",
+        );
+    }
+    assert_eq!(seen.len(), 7, "every variant must have its own wire form");
+}
+
+// ── MSL-32: a ledger READ failure must not look like an empty ledger ──
+
+/// A database that cannot answer the `MAX(created_at)` queries is not a
+/// database with an empty ledger.
+///
+/// `compute_max_ledger_timestamp` treated both the same: `.unwrap_or(None)`
+/// turned every `rusqlite::Error` into "no rows", and the `(None, None)` arm
+/// is defined as "no ledger data -- use current time", so the function
+/// answered with `Utc::now()`. Every consumer of that answer is a
+/// clock-tampering defence, and each one is defeated by handing it the wall
+/// clock:
+///
+/// * `validate_clock_rollback` compares the result against `Utc::now()`, so
+///   it compares the clock against itself and passes -- the rollback goes
+///   undetected on a broken database.
+/// * `effective_tier_for_connection` is the fail-CLOSED tier resolver
+///   (`db::quota_gate::Store::resolve_tier_fail_closed`); the wall clock is
+///   the one input that makes it over-credit (a live subscription is
+///   "within grace") instead of degrade to `Free`.
+/// * `get_license_status` reports the failure as `ClockTampered` and prints
+///   the database error as the user-facing message: a wrong diagnosis.
+///
+/// Renaming the tables away is the smallest way to make the reads fail while
+/// leaving the connection itself healthy -- so the only thing under test is
+/// the swallow, not a dead connection.
+#[test]
+fn a_broken_ledger_read_is_not_reported_as_an_empty_ledger() {
+    use crate::migrations;
+    let conn = migrations::fresh_db();
+
+    conn.execute_batch(
+        "ALTER TABLE sales RENAME TO sales_hidden;\
+         ALTER TABLE audit_log RENAME TO audit_log_hidden;",
+    )
+    .unwrap();
+
+    // The read failed. Saying "the ledger is empty" here hands the caller
+    // `Utc::now()` -- the wall clock the guard exists to distrust.
+    let ts = TenantSubscription::compute_max_ledger_timestamp(&conn);
+    assert!(
+        ts.is_err(),
+        "a failed ledger read must not be answered as an empty ledger; got {ts:?}"
+    );
+
+    // The live consequence: the rollback guard must fail closed (Err), not
+    // silently pass by comparing the system clock against itself.
+    assert!(
+        TenantSubscription::validate_clock_rollback(&conn).is_err(),
+        "the rollback guard must not pass when the ledger cannot be read"
+    );
 }

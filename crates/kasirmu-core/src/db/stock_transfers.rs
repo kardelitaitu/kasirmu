@@ -7,8 +7,8 @@
 /*
 last audited 25-07-26 by RSA-Agent (kasirmu-core slice B4: stock transfers deep read)
 crate: kasirmu-core | status: SAFE | lint: CLEAN
-findings: lifecycle handling exemplary (claim-first conditional status UPDATEs inside the same tx as stock writes; cancel re-reads status in-tx fixing a documented prior race; receives validated non-negative/ordered-cap/monotonic with delta-only crediting; checked_add/sub everywhere); COR-19 MEDIUM: send/receive/cancel read+write the LEGACY inventory table (single-PK product_id, per-location unrepresentable) while sales precheck/deduct the canonical stock_summary per ADR-18/19 — no schema trigger bridges them, so transfer moves are invisible to sale-time availability and the retail grid once ledger rows exist (ADR-36 fallback masks it). This is the §3.4 foot-gun the codebase self-documents, applied to production flows
-next: complete ADR-19 §3.4 — route transfers (and stock_counts) through stock_summary rows at source/destination locations, or bridge both tables atomically in the same tx as an interim step | perf: list_transfers_with_lines_by_status uses one grouped IN query (no N+1)
+findings: lifecycle handling exemplary (claim-first conditional status UPDATEs inside the same tx as stock writes; cancel re-reads status in-tx fixing a documented prior race; receives validated non-negative/ordered-cap/monotonic with delta-only crediting; checked_add/sub everywhere); COR-19 FIXED 2026-10-04: send/receive/cancel no longer write the LEGACY inventory table. All three lifecycle methods route their stock delta through the canonical per-location writer `adjust_stock_at_location_with_reason` (send :545, receive :682, cancel :808), which pre-checks stock_summary at the source/destination location, appends the stock_movements delta row, upserts the per-location row, and recomputes the legacy aggregate as SUM over all locations — so a move is visible to sale-time availability and the retail grid. The same routing is in stock_counts.rs (:628/:643). The legacy table is read ONLY through bridge_legacy_inventory_into_stock_summary_in_tx (products_stock_adjust/adjust.rs:403), which materialises a legacy-only non-zero aggregate once at the canonical default location and is inert when per-location rows already exist. Pinned by send_transfer_writes_canonical_stock_summary_and_movement (stock_transfers_tests.rs).
+next: none — ADR-19 §3.1/§3.4 routing is complete (single canonical writer + legacy bridge); the marker's prior 'route transfers through stock_summary' instruction named work already landed | perf: list_transfers_with_lines_by_status uses one grouped IN query (no N+1)
 */
 
 use rusqlite::params;
@@ -469,6 +469,34 @@ impl Store<'_> {
             |row| row.get(0),
         )?;
 
+        // MSL-19: a transfer with NO lines has nothing to move, so it must not
+        // enter the in-transit lifecycle at all. This guard is the one the
+        // `receive_transfer` path depends on: that method computes `all_received`
+        // as `COUNT(*) WHERE received_qty < qty`, which is ZERO on an empty
+        // transfer, so an empty one could be claimed as fully `received` — a
+        // movement that never happened, recorded as complete.
+        //
+        // Refused HERE rather than at `receive_transfer` because the state is
+        // created here: a transfer can never reach `in_transit` with no lines, so
+        // there is no empty transfer for any later step to mis-handle.
+        //
+        // The UI guards its own button (the warehouse console renders Send only
+        // when the scan session is non-empty), but that is a client-side check on
+        // a payload the API accepts directly — the bridge validates locations and
+        // terminals and never the line set. The invariant belongs where the data
+        // is written, not where the button is clicked.
+        let line_count: i64 = tx.query_row(
+            "SELECT COUNT(*) FROM stock_transfer_lines WHERE transfer_id = ?1",
+            params![id],
+            |row| row.get(0),
+        )?;
+        if line_count == 0 {
+            return Err(CoreError::Validation {
+                field: "lines",
+                message: "a transfer with no lines has nothing to move and cannot be sent".into(),
+            });
+        }
+
         let mut lines_stmt = tx.prepare(
             "SELECT id, transfer_id, sku, product_name, qty, received_qty
              FROM stock_transfer_lines WHERE transfer_id = ?1 ORDER BY id",
@@ -513,7 +541,7 @@ impl Store<'_> {
             // recomputes the legacy inventory aggregate as the SUM over all
             // locations. The legacy single-PK precheck/write this replaces
             // clobbered the aggregate and was invisible to stock_summary.
-            self.bridge_legacy_inventory_into_stock_summary_in_tx(&tx, &product_id)?;
+            Self::bridge_legacy_inventory_into_stock_summary_in_tx(&tx, &product_id)?;
             if let Err(err) = self.adjust_stock_at_location_with_reason(
                 &tx,
                 &line.sku,
@@ -650,7 +678,7 @@ impl Store<'_> {
                 // Route the credit through the canonical per-location adjust
                 // fn at the DESTINATION location (see send_transfer) so the
                 // per-location rows and the legacy aggregate stay consistent.
-                self.bridge_legacy_inventory_into_stock_summary_in_tx(&tx, &product_id)?;
+                Self::bridge_legacy_inventory_into_stock_summary_in_tx(&tx, &product_id)?;
                 self.adjust_stock_at_location_with_reason(
                     &tx,
                     &sku,
@@ -776,7 +804,7 @@ impl Store<'_> {
                 // Route the reversal through the canonical per-location
                 // adjust fn: the dispatched qty is credited back at the
                 // SOURCE location it was deducted from (see send_transfer).
-                self.bridge_legacy_inventory_into_stock_summary_in_tx(&tx, &product_id)?;
+                Self::bridge_legacy_inventory_into_stock_summary_in_tx(&tx, &product_id)?;
                 self.adjust_stock_at_location_with_reason(
                     &tx,
                     &sku,

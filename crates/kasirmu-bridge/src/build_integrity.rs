@@ -1,6 +1,6 @@
 //! Build-integrity reporting — the client leg of ADR #57 §2.1.
 //!
-//! One function, [`apk_signing_fingerprint`], which returns this installation’s
+//! One function, [`apk_signing_fingerprint`](crate::build_integrity::apk_signing_fingerprint), which returns this installation’s
 //! APK signing-certificate fingerprint when — and only when — the platform can
 //! produce one. It is the single place the rest of the bridge asks, so the
 //! licence-status call and any future caller agree on how a fingerprint is

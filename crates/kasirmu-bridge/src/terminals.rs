@@ -9,7 +9,7 @@
 //! acquisition order and count, the subscription clock-rollback and tier-quota
 //! gate placement inside `register_terminal_scoped`, every `tracing!` message
 //! and every error variant (each `AppError` maps 1:1 onto its `BridgeError`
-//! twin). Global-DB reads go through [`BridgeCtx::lock_global`]; store-scoped
+//! twin). Global-DB reads go through [`BridgeCtx::lock_global`](crate::ctx::BridgeCtx::lock_global); store-scoped
 //! reads keep the ORIGINAL split between `resolve_store` and
 //! `db_manager.open_store` — the two are not interchangeable and each call site
 //! kept whichever it had. `DEVICE_BINDING_KEYRING_NAME` stays a terminals-module
@@ -21,7 +21,7 @@ use serde::{Deserialize, Serialize};
 use hmac::{Hmac, Mac};
 use sha2::Sha256;
 
-use kasirmu_core::{Store, Terminal, TerminalFeatureOverride, TerminalProfile};
+use kasirmu_core::{CoreError, Store, Terminal, TerminalFeatureOverride, TerminalProfile};
 
 use foundation::validate_not_empty;
 
@@ -31,6 +31,7 @@ use kasirmu_core::permissions;
 
 use crate::ctx::BridgeCtx;
 use crate::error::BridgeError;
+use crate::memo::DEFAULT_TENANT_ID;
 type HmacSha256 = Hmac<Sha256>;
 
 /// Keyring name for the device binding HMAC secret.
@@ -75,6 +76,25 @@ fn sign_binding(
 }
 
 /// Verify a device binding HMAC signature.
+///
+/// Constant-time, and it must stay that way. The obvious implementation —
+/// re-sign and compare the two hex strings — is what this used to do, and it
+/// short-circuits on the first differing byte, so the time to rejection leaks
+/// how many leading hex characters of a forgery were correct. That is a
+/// byte-at-a-time oracle against a value the caller can submit as often as it
+/// likes. [`crate::workspaces::verify_binding_hmac`] already does this
+/// correctly via `Mac::verify_slice` and its module records the same repair;
+/// this is the second site, and the only one that still had it.
+///
+/// The verdict is not merely internal: it surfaces to the operator as
+/// [`DeviceBindingDto::signature_valid`], so an attacker who can read that
+/// flag gets the oracle's output back directly rather than having to time it.
+///
+/// # Errors
+///
+/// [`BridgeError::Internal`](crate::error::BridgeError::Internal) when the keyring cannot be read (a missing secret
+/// is created on first use, exactly as [`sign_binding`] does) or the submitted
+/// signature is not hex.
 fn verify_binding(
     keyring: &dyn kasirmu_security::Keyring,
     terminal_id: &str,
@@ -82,8 +102,32 @@ fn verify_binding(
     instance_id: &str,
     signature: &str,
 ) -> Result<bool, BridgeError> {
-    let expected = sign_binding(keyring, terminal_id, store_id, instance_id)?;
-    Ok(expected == signature)
+    let secret = keyring
+        .get_secret(DEVICE_BINDING_KEYRING_NAME)
+        .map_err(|e| BridgeError::Internal(format!("keyring read failed: {e}")))?;
+    // No secret yet means no binding could have been signed with one, so a
+    // submitted signature cannot match. Refusing here (rather than letting
+    // `sign_binding` mint a secret as a side effect of a READ) also keeps this
+    // fn free of writes: `verify_binding` is called from the diagnostic DTO
+    // builder, and a probe must not mutate the device.
+    let Some(secret) = secret else {
+        return Ok(false);
+    };
+
+    let mut mac = HmacSha256::new_from_slice(secret.as_bytes())
+        .map_err(|e| BridgeError::Internal(format!("HMAC init failed: {e}")))?;
+    mac.update(terminal_id.as_bytes());
+    mac.update(b":");
+    mac.update(store_id.as_bytes());
+    mac.update(b":");
+    mac.update(instance_id.as_bytes());
+
+    // A malformed (non-hex) submission is a failed verification, not an error:
+    // `hex::decode` returning Err must not become a distinguishable outcome.
+    let Ok(expected) = hex::decode(signature) else {
+        return Ok(false);
+    };
+    Ok(mac.verify_slice(&expected).is_ok())
 }
 
 // ── DTOs ──────────────────────────────────────────────────────────────
@@ -94,6 +138,9 @@ fn verify_binding(
 pub struct TerminalDto {
     /// Unique identifier.
     pub id: String,
+    /// Base62 dynamic terminal code (e.g. "01", "02").
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub code: Option<String>,
     /// Display name.
     pub name: String,
     /// ID of the associated device.
@@ -114,6 +161,7 @@ impl From<Terminal> for TerminalDto {
     fn from(t: Terminal) -> Self {
         Self {
             id: t.id,
+            code: None,
             name: t.name,
             device_id: t.device_id,
             is_active: t.is_active,
@@ -123,6 +171,15 @@ impl From<Terminal> for TerminalDto {
             updated_at: t.updated_at,
         }
     }
+}
+
+/// Helper to enrich a [`TerminalDto`] with its Base62 code.
+pub fn to_terminal_dto(store: &Store<'_>, terminal: Terminal) -> Result<TerminalDto, CoreError> {
+    // Propagates, for the same reason as `to_location_dto`.
+    let code = store.get_terminal_code(&terminal.id)?;
+    let mut dto = TerminalDto::from(terminal);
+    dto.code = code;
+    Ok(dto)
 }
 
 /// Arguments for registering a new terminal.
@@ -198,7 +255,10 @@ pub async fn list_terminals_scoped(
 pub fn run_list_terminals(conn: &rusqlite::Connection) -> Result<Vec<TerminalDto>, BridgeError> {
     let store = Store::new(conn);
     let terminals = store.list_terminals()?;
-    let dtos: Vec<TerminalDto> = terminals.into_iter().map(TerminalDto::from).collect();
+    let dtos: Vec<TerminalDto> = terminals
+        .into_iter()
+        .map(|t| to_terminal_dto(&store, t))
+        .collect::<Result<Vec<_>, _>>()?;
     Ok(dtos)
 }
 
@@ -220,9 +280,10 @@ pub async fn get_terminal_scoped(
         .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
     let store = Store::new(&db);
     let terminal = store.get_terminal(&id)?;
+    let dto = terminal.map(|t| to_terminal_dto(&store, t)).transpose()?;
     drop(db);
 
-    Ok(terminal.map(TerminalDto::from))
+    Ok(dto)
 }
 
 /// Ping a terminal in the store resolved from a session token. ADR #7.
@@ -329,15 +390,21 @@ pub async fn get_device_binding_scoped(
     validate_not_empty("terminal_id", &terminal_id)
         .map_err(|e| BridgeError::Invalid(e.to_string()))?;
 
-    let conn = ctx.resolve_store(session_token)?;
-    let db = conn
-        .lock()
-        .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-    let binding = store.get_terminal_binding(&terminal_id)?;
-    drop(db);
-
-    build_device_binding_dto(&terminal_id, binding)
+    // The binding lives on the GLOBAL identity DB row the boot resolver picks
+    // for this device — the same row `set_device_binding_scoped` writes. The
+    // store-registered terminal the UI names is only the key into it.
+    let source = store_registered_terminal(ctx, &session.store_id, &terminal_id)?;
+    let global = ctx.lock_global().await;
+    let store = Store::new(&global);
+    let dto = match store.get_terminal_by_device_id(&source.device_id)? {
+        Some(target) => {
+            let binding = store.get_terminal_binding(&target.id)?;
+            build_device_binding_dto(&target.id, binding)?
+        }
+        None => build_device_binding_dto(&source.id, None)?,
+    };
+    drop(global);
+    Ok(dto)
 }
 
 fn build_device_binding_dto(
@@ -352,8 +419,7 @@ fn build_device_binding_dto(
             signature_valid: false,
         }),
         Some((store_id, instance_id, signature)) => {
-            let keyring = kasirmu_security::default_keyring()
-                .map_err(|e| BridgeError::Internal(format!("keyring unavailable: {e}")))?;
+            let keyring = binding_keyring()?;
             let valid = verify_binding(
                 keyring.as_ref(),
                 terminal_id,
@@ -374,44 +440,6 @@ fn build_device_binding_dto(
 }
 
 // ── Write Commands ───────────────────────────────────────────────────
-
-/// Register a new terminal.
-///
-/// **Deprecated for multi-store (ADR #7):** Use `register_terminal_scoped`.
-pub async fn register_terminal(
-    ctx: &BridgeCtx<'_>,
-    user_id: String,
-    args: RegisterTerminalArgs,
-) -> Result<RegisterTerminalResult, BridgeError> {
-    validate_not_empty("name", &args.name).map_err(|e| BridgeError::Invalid(e.to_string()))?;
-    validate_not_empty("device_id", &args.device_id)
-        .map_err(|e| BridgeError::Invalid(e.to_string()))?;
-
-    let mut terminal = Terminal::new(args.name, args.device_id);
-    if let Some(secret) = args.terminal_secret {
-        terminal = terminal.with_secret(secret);
-    }
-    if let Some(meta) = args.metadata {
-        terminal = terminal.with_metadata(meta);
-    }
-
-    let db = ctx.lock_global().await;
-    let store = Store::new(&db);
-    ctx.require_permission_for_user(
-        &store,
-        &user_id,
-        kasirmu_core::permissions::TERMINALS_REGISTER,
-    )?;
-    store.create_terminal(&terminal)?;
-    drop(db);
-
-    // Multi-terminal: multiple terminals may be registered to the same store_id.
-    // Each terminal gets a unique `id` (UUID) and is identified by its `device_id`
-    // (hostname). At startup, AppState looks up the terminal by device_id to set
-    // the session's `terminal_id`. Binding to a store is a separate step.
-    tracing::info!(id = %terminal.id, name = %terminal.name, "terminal registered");
-    Ok(RegisterTerminalResult { id: terminal.id })
-}
 
 /// Register a terminal in the store resolved from a session token. ADR #7.
 pub async fn register_terminal_scoped(
@@ -717,6 +745,91 @@ pub async fn delete_terminal_profile_scoped(
 
 // ── Device Binding Commands ────────────────────────────────────────
 
+#[cfg(test)]
+thread_local! {
+    /// Test-only keyring override for the device-binding commands.
+    static TEST_BINDING_KEYRING: std::cell::RefCell<Option<Box<dyn kasirmu_security::Keyring>>> =
+        std::cell::RefCell::new(None);
+}
+
+/// Install the keyring a test wants the binding commands to sign with.
+#[cfg(test)]
+pub(crate) fn set_test_binding_keyring(keyring: Box<dyn kasirmu_security::Keyring>) {
+    TEST_BINDING_KEYRING.with(|c| *c.borrow_mut() = Some(keyring));
+}
+
+/// Acquire the keyring used to sign a device binding.
+///
+/// Production is exactly [`kasirmu_security::default_keyring`]. Under
+/// `cfg(test)` a thread-local override lets a test drive the REAL command
+/// bodies with an in-memory keyring — the OS keyring is not injectable, and a
+/// platform credential store would make an end-to-end binding test depend on
+/// machine state. The override is compiled out of production, so behaviour
+/// there is unchanged.
+pub(crate) fn binding_keyring() -> Result<Box<dyn kasirmu_security::Keyring>, BridgeError> {
+    #[cfg(test)]
+    if let Some(keyring) = TEST_BINDING_KEYRING.with(|c| c.borrow_mut().take()) {
+        return Ok(keyring);
+    }
+    kasirmu_security::default_keyring()
+        .map_err(|e| BridgeError::Internal(format!("keyring unavailable: {e}")))
+}
+
+/// Read the store-registered terminal a binding command names.
+///
+/// The device binding is owned by the GLOBAL identity DB — the boot resolver
+/// reads it there (no session exists at boot, so it cannot open a store db) —
+/// but the terminal the UI names is registered in the session's per-store DB.
+/// This reads that row so its `device_id` can key the global row the boot
+/// resolver will pick.
+fn store_registered_terminal(
+    ctx: &BridgeCtx<'_>,
+    session_store_id: &str,
+    terminal_id: &str,
+) -> Result<Terminal, BridgeError> {
+    let conn = ctx
+        .db_manager
+        .open_store(session_store_id)
+        .map_err(|e| BridgeError::Internal(format!("opening store db: {e}")))?;
+    let db = conn
+        .lock()
+        .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
+    Store::new(&db).get_terminal(terminal_id)?.ok_or_else(|| {
+        CoreError::NotFound {
+            entity: "terminal",
+            id: terminal_id.to_owned(),
+        }
+        .into()
+    })
+}
+
+/// Mirror `source` into the global identity DB and return the row the boot
+/// resolver will pick for this device.
+///
+/// `ensure_terminal_addressable` inserts the store terminal when it has no
+/// global row, and reuses the row that already covers the `device_id`
+/// otherwise (`device_id` is UNIQUE, so the MultiTerminal auto-register path's
+/// row is the one reused). `get_terminal_by_device_id` then names exactly the
+/// row `resolve_boot_store` reads — which is why the signature must be minted
+/// over THAT id, not the store row's.
+fn resolve_global_terminal(
+    global: &rusqlite::Connection,
+    source: &Terminal,
+    bound_location_id: &str,
+) -> Result<Terminal, BridgeError> {
+    let store = Store::new(global);
+    store.ensure_terminal_addressable(source, DEFAULT_TENANT_ID, Some(bound_location_id))?;
+    store
+        .get_terminal_by_device_id(&source.device_id)?
+        .ok_or_else(|| {
+            CoreError::NotFound {
+                entity: "terminal",
+                id: source.id.clone(),
+            }
+            .into()
+        })
+}
+
 /// Arguments for setting a device binding.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -746,36 +859,39 @@ pub async fn set_device_binding_scoped(
     ctx.require_session_permission(&session, kasirmu_core::permissions::TERMINALS_EDIT)
         .await?;
 
+    // The UI binds a terminal from the session's STORE db, but the boot
+    // resolver reads the binding from the GLOBAL identity DB: it runs before
+    // any session exists, so the global db is the only one it can open.
+    // Writing the binding into the store db put it where boot never looks, so
+    // a saved binding was silently ignored and the device booted into the
+    // primary store. Mirror the store terminal into global and bind the row
+    // boot resolves for this device.
+    let source = store_registered_terminal(ctx, &session.store_id, &args.terminal_id)?;
+    let global = ctx.lock_global().await;
+    let store = Store::new(&global);
+    let target = resolve_global_terminal(&global, &source, &args.bound_store_id)?;
+    // Sign over the GLOBAL row id: the boot verifier hashes the id of the row
+    // it resolved by `device_id`, so a signature over the store id would never
+    // verify.
     let signature = {
-        let keyring = kasirmu_security::default_keyring()
-            .map_err(|e| BridgeError::Internal(format!("keyring unavailable: {e}")))?;
+        let keyring = binding_keyring()?;
         sign_binding(
             keyring.as_ref(),
-            &args.terminal_id,
+            &target.id,
             &args.bound_store_id,
             &args.bound_instance_id,
         )?
     };
-
-    let conn = ctx
-        .db_manager
-        .open_store(&session.store_id)
-        .map_err(|e| BridgeError::Internal(format!("opening store db: {e}")))?;
-
-    let db = conn
-        .lock()
-        .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
     store.update_terminal_binding(
-        &args.terminal_id,
+        &target.id,
         &args.bound_store_id,
         &args.bound_instance_id,
         &signature,
     )?;
-    drop(db);
+    drop(global);
 
     tracing::info!(
-        terminal_id = %args.terminal_id,
+        terminal_id = %target.id,
         store_id = %args.bound_store_id,
         instance_id = %args.bound_instance_id,
         "device binding set (scoped)"
@@ -809,19 +925,17 @@ pub async fn clear_device_binding_scoped(
     let session = ctx.resolve_session(session_token)?;
     ctx.require_session_permission(&session, kasirmu_core::permissions::TERMINALS_EDIT)
         .await?;
-    let conn = ctx
-        .db_manager
-        .open_store(&session.store_id)
-        .map_err(|e| BridgeError::Internal(format!("opening store db: {e}")))?;
+    // Clear on the same GLOBAL row `set_device_binding_scoped` writes — the
+    // row the boot resolver reads.
+    let source = store_registered_terminal(ctx, &session.store_id, &terminal_id)?;
+    let global = ctx.lock_global().await;
+    let store = Store::new(&global);
+    if let Some(target) = store.get_terminal_by_device_id(&source.device_id)? {
+        store.clear_terminal_binding(&target.id)?;
+    }
+    drop(global);
 
-    let db = conn
-        .lock()
-        .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-    store.clear_terminal_binding(&terminal_id)?;
-    drop(db);
-
-    tracing::info!(terminal_id, "device binding cleared (scoped)");
+    tracing::info!(terminal_id = %source.id, "device binding cleared (scoped)");
     Ok(())
 }
 

@@ -21,6 +21,7 @@
 use std::sync::Arc;
 
 use kasirmu_core::db::Store;
+use kasirmu_core::db::facade::ReportingFacade;
 use kasirmu_core::db::popularity::{
     CategoryForecastRow, CategoryPopularityRow, CategoryTrendPoint,
 };
@@ -197,7 +198,7 @@ pub async fn get_daily_revenue(
 ) -> Result<Vec<DailyRevenueRow>, BridgeError> {
     let db = ctx.db.lock().await;
     let store = Store::new(&db);
-    let rows = store.daily_revenue(start_date, end_date)?;
+    let rows = ReportingFacade::daily_revenue(&store, start_date, end_date)?;
     drop(db);
     Ok(rows)
 }
@@ -281,7 +282,7 @@ pub async fn get_top_products(
     validate_top_product_order(order_by)?;
     let db = ctx.db.lock().await;
     let store = Store::new(&db);
-    let rows = store.top_products(start_date, end_date, limit, order_by)?;
+    let rows = ReportingFacade::top_products(&store, start_date, end_date, limit, order_by)?;
     drop(db);
     Ok(rows)
 }
@@ -371,7 +372,7 @@ pub async fn get_hourly_heatmap(
 ) -> Result<Vec<HourlyHeatmapRow>, BridgeError> {
     let db = ctx.db.lock().await;
     let store = Store::new(&db);
-    let rows = store.hourly_heatmap(start_date, end_date)?;
+    let rows = ReportingFacade::hourly_heatmap(&store, start_date, end_date)?;
     drop(db);
     Ok(rows)
 }
@@ -398,7 +399,11 @@ pub async fn get_low_stock_alerts(
 ) -> Result<Vec<LowStockAlert>, BridgeError> {
     let db = ctx.db.lock().await;
     let store = Store::new(&db);
-    let rows = store.low_stock_alerts(threshold)?;
+    let rows = ReportingFacade::low_stock_alerts_at_location(
+        &store,
+        kasirmu_core::inventory::CANONICAL_DEFAULT_LOCATION_UUID,
+        threshold,
+    )?;
     drop(db);
     Ok(rows)
 }

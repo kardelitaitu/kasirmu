@@ -158,18 +158,25 @@ pub async fn resolve_boot_store(
     // which panics when called from inside a runtime (e.g. `#[tokio::test]`
     // on CI where HOSTNAME is set); eagerly building it for every boot
     // would also waste a D-Bus connection on the common no-binding path.
-    let binding_info = {
+    let binding_info: Option<(String, String, String, String)> = {
         let store = Store::new(&db);
-        store
-            .get_terminal_by_device_id(&device_id)?
-            .and_then(|terminal| {
+        match store.get_terminal_by_device_id(&device_id)? {
+            None => None,
+            Some(terminal) => {
                 let tid = terminal.id;
-                store
-                    .get_terminal_binding(&tid)
-                    .ok()
-                    .flatten()
-                    .map(|(s, i, sig)| (tid, s, i, sig))
-            })
+                // The pre-flight read only decides whether a binding is worth
+                // minting a keyring for, but an errored read is NOT "unbound":
+                // collapsing it to `None` skipped keyring construction and let
+                // the core return the PRIMARY store before it re-read the
+                // binding, silently re-pinning a bound tablet. Only `Ok(None)`
+                // means unbound; every error propagates, matching the sibling
+                // read above and the core's own binding read.
+                match store.get_terminal_binding(&tid) {
+                    Ok(binding) => binding.map(|(s, i, sig)| (tid, s, i, sig)),
+                    Err(e) => return Err(e.into()),
+                }
+            }
+        }
     };
     let keyring = if binding_info.is_some() {
         kasirmu_security::default_keyring().ok()
@@ -219,16 +226,21 @@ fn resolve_boot_store_core(
 
     let binding_info: Option<(String, String, String, String)> = {
         let store = Store::new(conn);
-        store
-            .get_terminal_by_device_id(device_id)?
-            .and_then(|terminal| {
+        match store.get_terminal_by_device_id(device_id)? {
+            None => None,
+            Some(terminal) => {
                 let tid = terminal.id;
+                // An errored binding read is NOT "unbound": reading it as
+                // absence silently unpinned a bound terminal and booted it
+                // into the primary store. Only `Ok(None)` means no binding;
+                // every error propagates, matching the `?` on the sibling
+                // read directly above — and now spelled with `?` for the same
+                // reason it describes: one propagation form, not two.
                 store
-                    .get_terminal_binding(&tid)
-                    .ok()
-                    .flatten()
+                    .get_terminal_binding(&tid)?
                     .map(|(s, i, sig)| (tid, s, i, sig))
-            })
+            }
+        }
     };
 
     if let Some((terminal_id, bound_store_id, bound_instance_id, signature)) = binding_info {
@@ -254,18 +266,24 @@ fn resolve_boot_store_core(
             );
         } else {
             let instance_exists = {
-                db_manager
+                let db_arc = db_manager
                     .open_store(&bound_store_id)
-                    .ok()
-                    .and_then(|db_arc| {
-                        let db = db_arc.lock().ok()?;
-                        let store = Store::new(&db);
-                        store
-                            .get_workspace_instance(&bound_instance_id, None)
-                            .ok()
-                            .map(|_| true)
-                    })
-                    .unwrap_or(false)
+                    .map_err(|e| AppError::Internal(format!("opening store db: {e}")))?;
+                let db = db_arc
+                    .lock()
+                    .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
+                let store = Store::new(&db);
+                // Only `QueryReturnedNoRows` means the bound instance is
+                // genuinely gone (archived or absent) — that is the documented
+                // primary-store fallback. Any OTHER read failure means the
+                // bound store could not be read at all, and collapsing it into
+                // "not found" silently re-pinned the device to the primary
+                // store; it must refuse instead.
+                match store.get_workspace_instance(&bound_instance_id, None) {
+                    Ok(_) => true,
+                    Err(kasirmu_core::CoreError::Db(rusqlite::Error::QueryReturnedNoRows)) => false,
+                    Err(e) => return Err(e.into()),
+                }
             };
 
             if !instance_exists {

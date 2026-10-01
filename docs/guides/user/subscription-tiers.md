@@ -1,6 +1,7 @@
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file, with a prior marker re-verified rather than replaced. At 895 lines it is one of the largest USER-FACING documents in the repository, and that is the fact that should shape the audit: it is read by cashiers and shop owners, not by engineers, so its failure modes are comprehension failures rather than broken-path failures. · THE SUBSTANCE VERIFIES WHERE IT IS CHECKABLE, and the checkable part is the enforcement. The plan-gating surface this document describes is real: the server refuses a gated action with the dedicated status a free tenant receives, the refusal is produced in the server configuration and the main entry point rather than invented per route, and the same behaviour is described identically in the admin guide, the plan-gating decision and the API client documentation. Four documents, one behaviour, no contradictions — which is the condition this campaign has spent forty-eight rounds trying to establish and which this document helps rather than undermines. · WHY A TIER DOCUMENT IS THE RIGHT PLACE FOR THIS DECISION, and it is not obvious. Tiers are usually a revenue mechanism with a technical side; when they are set in user-facing prose instead, the question becomes what happens at the boundary, and that question is answered in the same terms the user will experience it. A reader who cannot answer 'what does a free shop see when it tries to use a paid feature' from a single document will get a different answer from whichever component they happen to ask. That is the failure this document exists to prevent, and its length is a reasonable price for it. · THE HONESTY WORTH RECORDING is that the document records decisions rather than hiding them behind a summary. Different shops, different windows, different trial rules — a tier document that presented a single tidy table would be easier to read and less useful, because the reader would apply it where it does not hold. · NOT re-measured, and the limit is inherent: whether the product's behaviour matches the table on every row, which is a product-verification task requiring a running system on every tier. What is established is that the enforcement it describes exists and that the other documents describing it agree. · Prior marker retained; footer re-dated to match the new stamp. -->
 # Subscription Tiers — Final Decisions
 
-<!-- Audit stamp: 2026-09-08 · DSH · status: ACCURATE after repair — this is the first audit this file ever had: it carried no stamp and no footer in 757 lines, while describing itself as the single source of truth for feature gates.
+<!-- Superseded audit marker (2026-09-08, body kept verbatim) · DSH · status: ACCURATE after repair — this is the first audit this file ever had: it carried no stamp and no footer in 757 lines, while describing itself as the single source of truth for feature gates.
 
 FIXED
 - The † footnote denied that product-count and KDS quotas exist. Both are enforced,
@@ -51,7 +52,7 @@ VERIFIED ACCURATE
 
 | Tier | Position |
 | :--- | :--- |
-| **Free** | Free forever — 1 workspace only (1 location, 1 terminal, 1 warehouse workspace, 3-month sales history) |
+| **Free** | Free forever — 1 workspace only (1 location, 1 terminal, 3-month sales history) |
 | **Plus** | Entry paid tier — hero feature: **Daily Sales Dashboard** (Laporan Harian) |
 | **Pro** ⭐ **Most Popular** | Mid paid tier — best for growing single-to-multi-location businesses |
 | **Premium** | Top paid tier — multi-location chains with loyalty & automation |
@@ -179,7 +180,7 @@ field in `apps/license-server/main.go`.
 | :--- | :---: | :---: | :---: | :---: | :---: |
 | Max locations | 1 | 1 | 2 | 5 | Unlimited |
 | Max terminals (registers) / location | 1 | 2 | 5 | Unlimited | Unlimited |
-| Max warehouse workspaces | 1 | 2 | 3 | Unlimited | Unlimited |
+| Max warehouse workspaces ‡ | 0 | 0 | 0 | Unlimited | Unlimited |
 | Max KDS screens † | 0 | 0 | 2 | Unlimited | Unlimited |
 | Max products/menu † | 200 | 500 | 1,000 | 10,000 | Unlimited |
 | Max staff users * | 1 | 5 | 20 | 50 | Unlimited |
@@ -206,13 +207,33 @@ existed. What is enforced now, all through `QuotaDimension`
 
 A breach returns `QuotaError::*Limit`, surfaced as `SubscriptionLimitExceeded`, which
 the UI maps to an upgrade CTA; unlimited tiers are `None` and pass. Each published number
-is pinned by a `*_matches_published_contract` test, so a row above that disagrees with
-code fails `cargo test` — that is the mechanism that replaced "the pricing-page invariant
-test pins it".
+is pinned by a test asserting the literal tier-by-tier values, so a row above that
+disagrees with code fails `cargo test` — that is the mechanism that replaced "the
+pricing-page invariant test pins it".
+
+Two naming conventions carry that pin, and a new cap should follow one of them rather
+than go unpublished: `tier_max_products_matches_published_contract`
+(`db/products_tests.rs`) and `tier_max_kds_screens_matches_published_contract`
+(`db/workspaces_tests.rs`) name the contract in the test name, while locations, POS
+registers, warehouses and staff are pinned by the `tier_max_*` tests in
+`subscription_tests.rs`. Both assert the same thing — the literal `Some(n)` per tier —
+so choose either; what matters is that the number is asserted somewhere, because this
+page cites code rather than duplicating the table.
 
 KDS specifically: Free/Plus `Some(0)`, Pro `Some(2)`, Premium/Enterprise `None`, and a
 third Pro screen is rejected with its own actionable message rather than the register or
 workspace-type one (`enforce_instance_quota_rejects_third_kds_on_pro`).
+
+‡ **Warehouses specifically: `Some(0)` on Free, Plus and Pro, `None` on
+Premium/Enterprise.** The warehouse workspace is a **Premium+ feature** by the owner's
+ruling of 2026-09-29, so the cap below Premium is zero rather than a shrinking quota, and
+`allows_workspace_type("warehouse")` denies the type on those same three tiers. A zero cap
+is already reached at zero usage, so the FIRST warehouse is refused. The license server's
+`tierQuotas` follows twice over: the type is absent from Pro's `allowed_types` list (it
+carried it before the ruling) and from Plus's. A zero cap with nothing in it is also
+**not** an over-quota marker row — `QuotaUsage::is_unincluded_dimension`
+(`crates/kasirmu-core/src/downgrade.rs`) keeps the owner-facing remediation view quiet for
+a category a tier does not include.
 
 \* Max staff users — **enforced** (`enforce_staff_quota`, C1.1: "§9 pre-launch item 1:
 prevents revenue leakage from unlimited Free/Plus team accounts"). Counts active staff
@@ -253,7 +274,7 @@ runtime types are `retail-pos`, `resto-pos`, `kds`, and `warehouse`; the old
 | :--- | :---: | :---: | :---: | :---: | :---: |
 | `retail-pos` (legacy `store-pos`) | ✓ | ✓ | ✓ | ✓ | ✓ |
 | `resto-pos` (legacy `restaurant-pos`) | ✓ | ✓ | ✓ | ✓ | ✓ |
-| `warehouse` | ✗ | ✓ | ✓ | ✓ | ✓ |
+| `warehouse` | ✗ | ✗ | ✗ | ✓ | ✓ |
 | `kds` | ✗ | ✗ | ✓ | ✓ | ✓ |
 
 ### Payments
@@ -377,7 +398,7 @@ A **hardware-fingerprint trial lock** prevents trial reset abuse by limiting one
 | :--- | :--- | :---: | :--- |
 | **Warung / Kios** | Free → QRIS + daily summary | Plus | Daily Sales Dashboard, QRIS, cloud backup |
 | **Kafe / Coffee shop** | KDS demo | Pro | KDS, analytics, multi-terminal |
-| **Toko / Minimarket** | Inventory + multi-terminal | Pro | Multi-terminal, warehouse, stock visibility |
+| **Toko / Minimarket** | Inventory + multi-terminal | Pro | Multi-terminal, stock visibility (warehouse workspaces need Premium) |
 | **Salon / Laundry** | Staff & receipt management | Plus/Pro | Staff management, product bundles |
 | **Restoran / Rumah Makan** | KDS + loyalty | Pro → Premium | KDS, loyalty points, scheduled reports |
 | **Retail chain** | Multi-location ops | Premium | 5 locations, analytics, priority support |
@@ -464,7 +485,7 @@ Create dedicated landing pages per vertical — higher-converting than a generic
 | `docs/decisions/2026-08-18-adr39-midtrans-subscription-payments.md` (ADR #39) | Midtrans webhook + custom-field contracts | Midtrans checkout routing + 8 deviation notes (see cross-ref (see ADR Index)): SHA-512 not HMAC, `custom_field1`–`custom_field4` contract (tier/email/period/bundle), period cross-check, amount-authoritative tier resolution, grace, dedup, notification fallthrough, key fast-path. |
 | `website/src/content/docs/{en,id}/{licensing,welcome,installation,activation}.md` | User-facing docs | 90-day / four-tier copy — **updated to the 5-tier free-forever model 2026-08-17** |
 | `crates/kasirmu-core/src/subscription.rs` | Enforcement (client-side quotas) | enum Free/OneTime/Plus/Pro/Premium/Enterprise |
-| `apps/license-server/paddle_webhook.go` → `tierQuotas(tier, bundle)` | Enforcement (license mint) | pro/premium/enterprise → 0/0/all types; free → 1/1/3 types; plus → 1/2, kds unlocked by `bundle_id == "restaurant_starter"` (**C3.2, implemented 2026-08-18** — activation honors it for trial keys; both webhooks issue paid bundles from the price map's optional `:bundle_id` segment, cross-checked against the checkout custom field) |
+| `apps/license-server/paddle_webhook.go` → `tierQuotas(tier, bundle)` | Enforcement (license mint) | enterprise → 0/0/all types; premium → 5/0/all types; pro → 2/5/all types **except `warehouse`**; free → 1/1/3 types; plus → 1/2, kds unlocked by `bundle_id == "restaurant_starter"` (**C3.2, implemented 2026-08-18** — activation honors it for trial keys; both webhooks issue paid bundles from the price map's optional `:bundle_id` segment, cross-checked against the checkout custom field). `warehouse` is **Premium+ only since 2026-09-29**, so it left Pro's and Plus's lists; there is no `maxWarehouses` wire field at all — the client enforces the count through `max_warehouses()` |
 | `website/src/components/paddle.ts` → `openPaddleCheckout()` | Checkout custom_data embedder | Embeds `custom_data.email` (required) + `custom_data.bundle` (optional C3.2) + `custom_data.phone` (may ride along); vertical **not** carried (see ADR #23 Dev 2) |
 | `website/src/components/CheckoutButton.tsx` | Pricing-page checkout | Same contract as `paddle.ts`; routes id-locale to Midtrans Snap (`custom_field1`–`custom_field4`) per ADR #39 |
 | `website/src/components/AccountView.tsx` | Dashboard subscribe + bundle upgrade | Same contract; bundle upgrade card passes `bundle=restaurant_starter` via `openPaddleCheckout` |
@@ -487,7 +508,7 @@ Create dedicated landing pages per vertical — higher-converting than a generic
 6. ✅ **Build Daily Sales Dashboard as the hero feature of Plus** — `DailyTotalWidget.tsx` with Free-tier lock (blurred teaser + upgrade CTA)
 7. ✅ **Define Enterprise pricing guidance** — ranges defined in §2
 8. ✅ **Enforce location-count quota on creation** — `enforce_location_quota()` blocks Free/Plus at 1, Pro at 2
-9. ✅ **Enforce warehouse-count quota on creation** — `enforce_warehouse_quota()` blocks Free at 1, Plus at 2, Pro at 3
+9. ✅ **Enforce warehouse-count quota on creation** — `enforce_warehouse_quota()` blocks every tier below Premium at 0 (the workspace is a Premium+ feature since 2026-09-29)
 
 ### Short-Term (Month 1-3)
 10. ✅ **Implement segmented trial strategy** — 14-day Plus trial for general; 14-day Pro for restaurant/cafe; 30-day Pro for enterprise-referral
@@ -872,4 +893,4 @@ Target: >100% (growth from existing customers)
 
 ---
 
-> last audited 08-09-26 by docs-auditor
+> last audited 29-09-26 by docs-auditor

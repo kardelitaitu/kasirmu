@@ -4,8 +4,9 @@ area: architecture
 title: ADR #33: Panic Policy & Production unwrap/expect Enforcement
 status: Implemented (2026-08-03)
 ---
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · ACCURATE on its stated scope, and this pass found one thing the 2026-09-09 DSH stamp did not record. That stamp annotated three `check-ci-claims.py` findings and is retained below verbatim; this entry adds a manifest-level observation. The ADR's title promises "Panic Policy & Production unwrap/expect Enforcement", and the release profile it depends on is exactly as described -- `Cargo.toml` sets panic and backtrace handling at the workspace level with a comment explaining why lto and panic must be workspace-scoped. BUT the enforcement half is not configured where the title implies. The workspace has a `[workspace.lints.rust]` table at `Cargo.toml:224` and it contains exactly one entry: `missing_docs = "warn"`. There is no `unwrap_used` or `expect_used` deny directive in `Cargo.toml`, in a `clippy.toml`, or anywhere else in the tree. So whatever mechanism the ADR chose to keep `unwrap()`/`expect()` out of production code, it is not a workspace lint today. Recorded as a finding rather than repaired: turning a lint on would change what compiles across the whole workspace, which is a code change and not a documentation one, and the ADR may enforce the rule through review or a test rather than a lint -- in which case the title overstates the mechanism rather than the policy being absent. Flagged for the owner to say which it is. · The panic/abort profile configuration the ADR specifies IS present and matches, so the runtime half of the policy is verifiable and holds. · Status checker reports no drift for this row; the front matter "Implemented (2026-08-03)" is consistent with the index. Prior DSH stamp retained as original evidence; stacked footer collapsed. -->
 # ADR #33: Panic Policy & Production unwrap/expect Enforcement
-<!-- Audit stamp: 2026-09-09 · DSH · status: HISTORICAL-RECORD, annotated not rewritten (3 findings from .agents/skills/docs-auditor/scripts/check-ci-claims.py, all in one family: the ADR names the `rust-panic-inventory` CI job twice and `.github/workflows/ci.yml` once, and that workflow was renamed to `.github/workflows/ci.yml.bak` by `23c963303` on 2026-09-02 so GitHub never executes it) · NOTHING HERE WAS REWRITTEN: dated ADR (front-matter `status: Implemented (2026-08-03)`, dated section headers), so the original sentences stand verbatim and each flagged line carries a `ci-claim: ok` pragma pointing at the Currency note added at the end of ## Status, which is where the correction lives · VERIFIED, not recalled: enforcement moved rather than vanished — `.github/workflows/dev-ci.yml:483` runs `python3 scripts/scan-unwrap-panic.py --fail-on-recoverable` as the static-gates step "Panic inventory (ADR #33)" (`dev-ci.yml:482`), and `scripts/gates.json` maps gate `panic-inventory` to dev-ci.yml/static-gates with status `required` · RE-MEASURED: `python3 scripts/scan-unwrap-panic.py --json` → total 130, invariant_annotated 130, recoverable 0, 26 files; `--fail-on-recoverable` exits 0, so the ADR's actual contract still holds while its 98/98 figure is stale-as-of-today · LEFT ALONE: the 2026-08-03 status prose, commit citations (`d82b133d`, `6f7307b3`), and the deferred-ideas paragraph — none is a CI claim this pass is entitled to touch. -->
+<!-- Superseded audit marker (2026-09-09 · DSH, body kept verbatim) · dsh · status: HISTORICAL-RECORD, annotated not rewritten (3 findings from .agents/skills/docs-auditor/scripts/check-ci-claims.py, all in one family: the ADR names the `rust-panic-inventory` CI job twice and `.github/workflows/ci.yml` once, and that workflow was renamed to `.github/workflows/ci.yml.bak` by `23c963303` on 2026-09-02 so GitHub never executes it) · NOTHING HERE WAS REWRITTEN: dated ADR (front-matter `status: Implemented (2026-08-03)`, dated section headers), so the original sentences stand verbatim and each flagged line carries a `ci-claim: ok` pragma pointing at the Currency note added at the end of ## Status, which is where the correction lives · VERIFIED, not recalled: enforcement moved rather than vanished — `.github/workflows/dev-ci.yml:483` runs `python3 scripts/scan-unwrap-panic.py --fail-on-recoverable` as the static-gates step "Panic inventory (ADR #33)" (`dev-ci.yml:482`), and `scripts/gates.json` maps gate `panic-inventory` to dev-ci.yml/static-gates with status `required` · RE-MEASURED: `python3 scripts/scan-unwrap-panic.py --json` → total 130, invariant_annotated 130, recoverable 0, 26 files; `--fail-on-recoverable` exits 0, so the ADR's actual contract still holds while its 98/98 figure is stale-as-of-today · LEFT ALONE: the 2026-08-03 status prose, commit citations (`d82b133d`, `6f7307b3`), and the deferred-ideas paragraph — none is a CI claim this pass is entitled to touch. -->
 
 **Status:** Implemented (2026-08-03) — invariant violated 2026-09-13 15:57, **restored 19:05 by `2accc5513`**; both records below, read them in date order
 > **Live re-measurement (2026-09-13, 15:57) — the contractual zero in this record is
@@ -212,8 +213,26 @@ tracked baseline JSON to chart inventory history over time.
 > though the 98/98 figure quoted above is a 2026-08-03 measurement that the tree has
 > since grown past. The counts move; only the zero is contractual.
 
-> last audited 09-09-26 by docs-auditor
-> audit: Phase 1 Core Architecture & API Docs Audit
+> last audited 29-09-26 by docs-auditor
 
-> status: ACCURATE (0 findings) · verified accurate: cargo check passed, no structural orphans, no stale version headers
 
+> **Repair (2026-10-04): the marker word is load-bearing, and a prior reword
+> silently dropped it.** `scripts/scan-unwrap-panic.py` accepts a documented
+> invariant when the comment matches `INVARIANT_COMMENT_RE`
+> (`(INVARIANT|SAFETY|cannot fail|must not fail|impossible)`, scanner line 144).
+> The PAY-10 hygiene pass (which removed `// SAFETY:` from safe `.lock().unwrap()`
+> calls so `grep SAFETY` finds only real `unsafe`) reworded the
+> kasirmu-payment mock's comments to plain prose — *"Lock poison is the intended
+> failure signal in a test double."* — which matches NONE of those tokens, so the
+> scanner began reporting them as recoverable and `dev-ci.yml#static-gates` went
+> red. `crates/kasirmu-core/src/migrations.rs` had the same problem independently:
+> its comments read `// .unwrap() reason: ...`, also unmatched. Both files now use
+> `// INVARIANT: <text>`, which keeps the panic-inventory marker AND keeps `grep
+> SAFETY` clean — the two goals the PAY-10 pass thought were in conflict are not.
+> Two source-level pins (`mock_lock_unwraps_carry_the_panic_inventory_marker` in
+> `crates/kasirmu-notification/src/mock_tests.rs` and
+> `crates/kasirmu-payment/src/drivers/mock_tests.rs`) assert every code
+> `.lock().unwrap()` in those mocks carries the accepted marker on the same or
+> immediately preceding line, so a future reword cannot drop it again without a
+> test failure. Re-measured 2026-10-04: `python scripts/scan-unwrap-panic.py`
+> exits 0.

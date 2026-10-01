@@ -2,15 +2,15 @@
 //! `apps/desktop-tauri/src/commands/refunds.rs`.
 //!
 //! Process refunds against completed sales, receipt-barcode lookup, and
-//! per-sale refund listings, each consuming a [`BridgeCtx`]. The shell's
+//! per-sale refund listings, each consuming a [`BridgeCtx`](crate::ctx::BridgeCtx). The shell's
 //! `run_process_refund_unchecked` business path moved here as
-//! [`process_refund_unchecked`] (the desktop file keeps an `AppError`
+//! [`process_refund_unchecked`](crate::refunds::process_refund_unchecked) (the desktop file keeps an `AppError`
 //! adapter of the same name for its test mount); the scoped commands
 //! resolve + authorize then delegate to it.
 //!
 //! Gate order, validation, and error paths are verbatim ports of the
 //! command bodies: a shim builds the context, calls one function here, and
-//! maps [`BridgeError`] back to `AppError` so the wire shape never moves.
+//! maps [`BridgeError`](crate::error::BridgeError) back to `AppError` so the wire shape never moves.
 //! Refund total arithmetic still refuses to silently fall back to the sale
 //! currency (`collect::<Result>` for currency parsing, `checked_add` for
 //! the total).
@@ -105,7 +105,7 @@ pub fn process_refund_unchecked(
     // Verify the sale exists and is completed.
     let sale = store
         .get_sale(sale_id)?
-        .ok_or_else(|| BridgeError::Invalid(format!("sale {} not found", sale_id)))?;
+        .ok_or_else(|| BridgeError::Invalid(format!("sale {sale_id} not found")))?;
     if sale.status != kasirmu_core::SaleStatus::Completed {
         return Err(BridgeError::Invalid(format!(
             "cannot refund a sale with status {:?}; only completed sales can be refunded",

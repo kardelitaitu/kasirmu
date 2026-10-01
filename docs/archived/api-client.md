@@ -1,3 +1,4 @@
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · REPAIRED — the class and module names are load-bearing here in a way they are not in an audit snapshot, because this document is a USAGE guide: every code block in it is something a reader copies. `KasirMuClient` does not exist anywhere in the tree; the SDK class is `KasirMuClient`, defined at `ui/src/api/client/kasirmu-client.ts:56` and re-exported from the barrel `ui/src/api/client/index.ts`, whose own header comment shows the identical usage pattern this document teaches (`new KasirMuClient({ baseUrl: ... })`, then `client.health.check()`, `client.products.list()`). The module was renamed alongside it — `oz-pos-client.ts` is now `kasirmu-client.ts` — and the file was renamed too, so "re-exported via client/index.ts from client/kasirmu-client.ts" now resolves to nothing. Every occurrence of both names was repaired. This is the same judgment applied to the modal checklist earlier in this campaign: a stale path in an ARCHIVED audit snapshot is evidence and stays, but a stale identifier in a how-to document breaks the next person who runs it. · EVERYTHING ELSE VERIFIES. `ApiError` is real and in the right place (`ui/src/api/client/client.ts:26`, extended from `Error`, and exercised by `ui/src/__tests__/api-client.test.ts`), so the Error Handling section is correct as written. The sub-client classes the tables document all exist: `AuthClient`, `CategoriesClient`, `HealthClient`, plus `HttpClient` as the transport. The endpoint tables match the server: `/health`, `/api/health`, `/metrics`, `POST /api/v1/tokens`, the product/category/tax/user/sales routes, and `/api/sync/{status,push,pull}` — the sync paths with no `v1` segment, consistent with what the rate-limiting audit found when it corrected the same assumption. · WORTH CREDITING: the document was already currency-aware before this pass. Its Quick Start comments note that a `free`-plan tenant on a server with `OZ_ENFORCE_PLANS=1` gets HTTP 403 `{"error":"plan_required"}` and that queued items stay `pending` and sync after upgrade — which is precisely the plan-gating contract ADR sync-plan-gating defines, including the terminal-error semantics (no retry spin, no quarantine). The Plans section likewise documents `PUT /api/v1/tenants/{tenant_id}/plan` as deliberately UNWRAPPED in the SDK, with a raw `fetch` example and the reason. That is an SDK doc telling the truth about its own gaps, which is rarer than it should be. · The `OZ_ADMIN_KEY` and `OZ_ENFORCE_PLANS` names it uses are the ones the code actually reads — see the AGENTS.md env-var finding recorded elsewhere in this campaign, where the code is right and AGENTS.md is the outlier. · The old `> status: ACCURATE (0 findings) · … all file references valid` footer is replaced, since the class name it implicitly vouched for no longer existed. -->
 # kasir.mu API Client SDK
 
 TypeScript SDK for the kasir.mu cloud server REST API. Provides fully typed
@@ -6,10 +7,10 @@ access to all 20+ endpoints with Bearer token authentication.
 ## Quick Start
 
 ```ts
-import { OZPosClient } from '@/api/client'; // re-exported via client/index.ts from client/oz-pos-client.ts
+import { KasirMuClient } from '@/api/client'; // re-exported via client/index.ts from client/kasirmu-client.ts
 
 // Create a client pointing at your cloud server
-const client = new OZPosClient({ baseUrl: 'http://localhost:3099' });
+const client = new KasirMuClient({ baseUrl: 'http://localhost:3099' });
 
 // (Optional) Set a Bearer token for authenticated endpoints
 client.setToken('eyJhbGciOi...');
@@ -200,7 +201,7 @@ The SDK is designed for easy testing via MSW or a custom `fetchFn`:
 
 ```ts
 // Option 1: Custom fetch function
-const client = new OZPosClient({
+const client = new KasirMuClient({
   baseUrl: 'http://test',
   fetchFn: async (url, init) => new Response(JSON.stringify({ status: 'ok' })),
 });
@@ -210,8 +211,5 @@ import { http, HttpResponse } from 'msw';
 // ... configure MSW handlers to intercept requests
 ```
 
-> last audited 09-08-26 by buffy
-> audit: Phase 1 Core Architecture & API Docs Audit
-
-> status: ACCURATE (0 findings) · verified accurate: cargo check passed, no structural orphans, no stale version headers, all file references valid
+> last audited 29-09-26 by docs-auditor
 

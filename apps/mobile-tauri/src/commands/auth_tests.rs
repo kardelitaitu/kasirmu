@@ -17,7 +17,7 @@ fn staff_login_args_debug() {
         pin: "9999".into(),
         device_id: Some("term-1".into()),
     };
-    let debug = format!("{:?}", args);
+    let debug = format!("{args:?}");
     assert!(debug.contains("admin"));
 }
 
@@ -60,7 +60,7 @@ fn staff_login_result_debug() {
         },
         picker_ticket: String::new(),
     };
-    let debug = format!("{:?}", result);
+    let debug = format!("{result:?}");
     assert!(debug.contains("Bob"));
 }
 

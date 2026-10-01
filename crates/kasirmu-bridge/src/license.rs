@@ -19,7 +19,6 @@
 
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 
 use chrono::{DateTime, Utc};
 use kasirmu_core::Settings;
@@ -32,7 +31,6 @@ use kasirmu_core::license_verification::{
     resume_subscription as core_resume_subscription, store_subscription, verify_crl_signature,
     verify_license_signature,
 };
-use kasirmu_core::permissions;
 use kasirmu_core::subscription::{SubscriptionTier, TenantSubscription};
 use platform_core::settings::keys;
 
@@ -40,7 +38,7 @@ use crate::ctx::BridgeCtx;
 use crate::error::BridgeError;
 
 /// PocketBase requires IDs to be exactly 15 lowercase alphanumeric chars.
-const MACHINE_ID_LEN: usize = 15;
+pub(super) const MACHINE_ID_LEN: usize = 15;
 
 /// Represents the front-end state of a license.
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -162,20 +160,35 @@ pub async fn activate_license(
     // tenant_subscription carries quota facts only. The live key is sealed
     // into `license.api_key` below and nowhere else — passing it here would
     // write a second, cleartext copy for no reader.
-    store_subscription(&conn, "default", &resp.signed_payload, &resp.signature)
+    //
+    // ONE TRANSACTION, and that is the whole point of this block. The write
+    // order below was already chosen to keep the two stores consistent ("this
+    // write comes BEFORE Settings::set_batch so a partial failure doesn't leave
+    // the system in an inconsistent state"), but ordering alone cannot deliver
+    // that: `store_subscription` runs its INSERT in AUTOCOMMIT and
+    // `Settings::set_batch` opens its OWN transaction, so a failure in the
+    // second one left the FIRST already durable. The state the comment set out
+    // to prevent is precisely what a mid-way failure produced — a Pro
+    // `tenant_subscription` row enforcing Pro quotas beside the old Free
+    // payload, which `get_subscription_capabilities` and every tier gate read.
+    // Joining both writers to one transaction makes the ordering claim true
+    // instead of merely stated.
+    let tx = conn.unchecked_transaction()?;
+    store_subscription(&tx, "default", &resp.signed_payload, &resp.signature)
         .map_err(|e| BridgeError::Internal(format!("failed to persist subscription: {e}")))?;
 
-    // Store in settings table
+    // Store in settings table — same transaction, so activation is all-or-nothing.
     Settings::set_batch(
-        &conn,
+        &tx,
         &[
-            ("license.payload".to_string(), resp.signed_payload),
-            ("license.signature".to_string(), resp.signature),
-            ("license.tenant_id".to_string(), resp.tenant_id),
-            ("license.api_key".to_string(), encrypted_api_key),
-            ("license.phone".to_string(), phone_clone),
+            (keys::LICENSE_PAYLOAD.to_string(), resp.signed_payload),
+            (keys::LICENSE_SIGNATURE.to_string(), resp.signature),
+            (keys::LICENSE_TENANT_ID.to_string(), resp.tenant_id),
+            (keys::LICENSE_API_KEY.to_string(), encrypted_api_key),
+            (keys::LICENSE_PHONE.to_string(), phone_clone),
         ],
     )?;
+    tx.commit()?;
 
     Ok(true)
 }
@@ -311,13 +324,22 @@ pub async fn renew_license(ctx: &BridgeCtx<'_>, new_key: String) -> Result<bool,
         .await
         .map_err(|e| BridgeError::Internal(e.to_string()))?;
 
-    // Persist the renewed subscription to both stores.
+    // Persist the renewed subscription to both stores, in ONE transaction.
+    //
+    // The same all-or-nothing requirement as the activate lane, and for the
+    // same reason: `store_subscription` runs its INSERT in autocommit while
+    // `Settings::set_batch` opens its own transaction, so without this
+    // wrapper a failure between them left the renewed `tenant_subscription`
+    // durable beside the PREVIOUS payload and signature. That state is worse
+    // than a failed renewal: the quota gates read Pro while the licence
+    // status check reads the old expiry, and nothing ever reconciles the two.
     let conn = ctx.lock_global().await;
+    let tx = conn.unchecked_transaction()?;
 
     // tenant_subscription (quota enforcement) — no key argument, same rule as
     // the activate lane: `api_key` above exists to call the server, not to be
     // copied into a second table in the clear.
-    store_subscription(&conn, "default", &resp.signed_payload, &resp.signature).map_err(|e| {
+    store_subscription(&tx, "default", &resp.signed_payload, &resp.signature).map_err(|e| {
         BridgeError::Internal(format!("failed to persist renewed subscription: {e}"))
     })?;
 
@@ -332,134 +354,22 @@ pub async fn renew_license(ctx: &BridgeCtx<'_>, new_key: String) -> Result<bool,
             .and_then(|v| v.get("tenant_id")?.as_str().map(String::from));
 
     let mut settings_entries = vec![
-        ("license.payload".to_string(), resp.signed_payload),
-        ("license.signature".to_string(), resp.signature),
+        (keys::LICENSE_PAYLOAD.to_string(), resp.signed_payload),
+        (keys::LICENSE_SIGNATURE.to_string(), resp.signature),
     ];
     if let Some(tid) = renewed_tenant_id {
-        settings_entries.push(("license.tenant_id".to_string(), tid));
+        settings_entries.push((keys::LICENSE_TENANT_ID.to_string(), tid));
     }
 
-    Settings::set_batch(&conn, &settings_entries)?;
+    // Same transaction, then commit: a renewal lands in full or not at all.
+    Settings::set_batch(&tx, &settings_entries)?;
+    tx.commit()?;
 
     Ok(true)
 }
 
-/// Query the physical motherboard UUID or Windows MachineGuid as a stable hardware identifier.
-fn get_system_uuid() -> Option<String> {
-    use std::process::Command;
-
-    // 1. Try motherboard UUID via wmic
-    if let Ok(output) = Command::new("wmic")
-        .args(["csproduct", "get", "uuid"])
-        .output()
-        && output.status.success()
-    {
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let lines: Vec<&str> = stdout
-            .lines()
-            .map(|s| s.trim())
-            .filter(|s| !s.is_empty())
-            .collect();
-        if lines.len() >= 2 {
-            let uuid = lines[1];
-            if !uuid.is_empty()
-                && uuid != "00000000-0000-0000-0000-000000000000"
-                && uuid != "FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF"
-            {
-                return Some(uuid.to_string());
-            }
-        }
-    }
-
-    // 2. Try Windows MachineGuid from Registry
-    if let Ok(output) = Command::new("reg")
-        .args([
-            "query",
-            "HKLM\\SOFTWARE\\Microsoft\\Cryptography",
-            "/v",
-            "MachineGuid",
-        ])
-        .output()
-        && output.status.success()
-    {
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        for line in stdout.lines() {
-            if line.contains("MachineGuid") {
-                let parts: Vec<&str> = line.split_whitespace().collect();
-                if parts.len() >= 3 {
-                    return Some(parts[2].to_string());
-                }
-            }
-        }
-    }
-
-    // 3. Linux/macOS: stable machine-id files (no wmic/reg available).
-    //    /etc/machine-id is the canonical systemd identifier and is stable
-    //    for the lifetime of an installation — the right hardware anchor
-    //    for Linux CI runners and Linux desktops alike. The dbus fallback
-    //    covers hosts without systemd.
-    for path in ["/etc/machine-id", "/var/lib/dbus/machine-id"] {
-        if let Ok(content) = std::fs::read_to_string(path) {
-            let id = content.trim();
-            if !id.is_empty()
-                && id != "00000000-0000-0000-0000-000000000000"
-                && id != "ffffffffffffffffffffffffffffffff"
-            {
-                return Some(id.to_string());
-            }
-        }
-    }
-
-    None
-}
-
-/// Per-process fallback machine-ID source, so the last-resort random UUID
-/// is drawn once and then reused. Without this cache, a machine with no
-/// queryable hardware ID (e.g. a minimal container) would derive a NEW
-/// random machine ID on every `generate_machine_id()` call, breaking the
-/// determinism guarantee that the 15-char fingerprint depends on.
-static FALLBACK_MACHINE_ID: std::sync::OnceLock<String> = std::sync::OnceLock::new();
-
-/// Generate a stable 15-char lowercase alphanumeric machine ID based on
-/// system/hardware UUID, falling back to a random UUID if queries fail.
-///
-/// Uses the hardware ID hashed with SHA-256 to produce a unique
-/// per-installation fingerprint. The ID is persisted in the local
-/// Settings table and reused across activations.
-pub fn generate_machine_id() -> String {
-    let raw_id = get_system_uuid().unwrap_or_else(|| {
-        FALLBACK_MACHINE_ID
-            .get_or_init(|| uuid::Uuid::new_v4().to_string())
-            .clone()
-    });
-
-    let mut hasher = Sha256::new();
-    hasher.update(raw_id.as_bytes());
-    let hash = hasher.finalize();
-    let hex_str = hex::encode(&hash[..16]);
-    hex_str[..MACHINE_ID_LEN].to_string()
-}
-
-/// Compute the canonical `hw_<64hex>` hardware fingerprint from the same
-/// hardware anchor `machine_id` derives from (SPEC-2026-TRIAL-LOCK). The
-/// FULL SHA-256 digest (64 hex chars) is used — the machine_id only takes
-/// the first 15 chars — so the fingerprint is both more collision-resistant
-/// and self-describing ("hw_" prefix) in the license server's
-/// trial_registrations collection. The random-UUID fallback is shared with
-/// `generate_machine_id` so a host with no queryable hardware anchor gets
-/// a stable-in-process value rather than a fresh one per call.
-pub fn generate_hardware_fingerprint() -> String {
-    let raw_id = get_system_uuid().unwrap_or_else(|| {
-        FALLBACK_MACHINE_ID
-            .get_or_init(|| uuid::Uuid::new_v4().to_string())
-            .clone()
-    });
-
-    let mut hasher = Sha256::new();
-    hasher.update(raw_id.as_bytes());
-    let hash = hasher.finalize();
-    format!("hw_{}", hex::encode(hash))
-}
+pub mod machine;
+pub use machine::{generate_hardware_fingerprint, generate_machine_id};
 
 /// Data transfer object for server-authoritative license status.
 /// Mirrors `kasirmu_core::LicenseStatusResponse` but lives in this crate
@@ -513,7 +423,16 @@ pub async fn check_license_status(
             Some(fp) if !fp.is_empty() => Some(fp),
             _ => {
                 let fp = generate_hardware_fingerprint();
-                let _ = Settings::set(&conn, keys::HARDWARE_FINGERPRINT, &fp);
+                // BRIDGE-2: propagate the write. This used to be
+                // `let _ = Settings::set(...)`, discarding the error while still
+                // returning the freshly generated value. When
+                // `get_system_uuid` fails the generator falls back to a
+                // per-PROCESS random UUID (FALLBACK_MACHINE_ID is a OnceLock), so
+                // a failed persist means every launch derives a DIFFERENT
+                // fingerprint — and the license server's one-trial-per-device
+                // lock keys on this value. `get_hardware_fingerprint` above
+                // already persists with `?`; this path now matches it.
+                Settings::set(&conn, keys::HARDWARE_FINGERPRINT, &fp)?;
                 Some(fp)
             }
         };
@@ -752,7 +671,7 @@ pub async fn get_license_status(ctx: &BridgeCtx<'_>) -> Result<LicenseStatusDto,
                 status: LicenseVerificationStatus::InvalidSignature,
                 tier: None,
                 payload: None,
-                message: Some(format!("Invalid signature: {}", e)),
+                message: Some(format!("Invalid signature: {e}")),
             });
         }
 
@@ -765,7 +684,7 @@ pub async fn get_license_status(ctx: &BridgeCtx<'_>) -> Result<LicenseStatusDto,
                     status: LicenseVerificationStatus::InvalidSignature,
                     tier: None,
                     payload: None,
-                    message: Some(format!("Failed to parse payload: {}", e)),
+                    message: Some(format!("Failed to parse payload: {e}")),
                 });
             }
         };
@@ -968,88 +887,12 @@ pub struct PauseResumeDto {
     pub paused_until: Option<String>,
 }
 
-/// Session-scoped variant of [`get_machine_id`].
-pub async fn get_machine_id_scoped(
-    ctx: &BridgeCtx<'_>,
-    session_token: &str,
-) -> Result<String, BridgeError> {
-    let _session = ctx.resolve_session(session_token)?;
-    get_machine_id(ctx).await
-}
-
-/// Session-scoped variant of [`get_hardware_fingerprint`].
-pub async fn get_hardware_fingerprint_scoped(
-    ctx: &BridgeCtx<'_>,
-    session_token: &str,
-) -> Result<String, BridgeError> {
-    let _session = ctx.resolve_session(session_token)?;
-    get_hardware_fingerprint(ctx).await
-}
-
-/// Session-scoped variant of [`renew_license`].
-pub async fn renew_license_scoped(
-    ctx: &BridgeCtx<'_>,
-    session_token: &str,
-    new_key: String,
-) -> Result<bool, BridgeError> {
-    // F-017: enforce per-domain permission on this scoped command.
-    let session = ctx.resolve_session(session_token)?;
-    ctx.require_session_permission(&session, permissions::SETTINGS_EDIT)
-        .await?;
-    renew_license(ctx, new_key).await
-}
-
-/// Session-scoped variant of [`check_license_status`].
-pub async fn check_license_status_scoped(
-    ctx: &BridgeCtx<'_>,
-    session_token: &str,
-) -> Result<ServerLicenseStatusDto, BridgeError> {
-    let _session = ctx.resolve_session(session_token)?;
-    check_license_status(ctx).await
-}
-
-/// Session-scoped variant of [`test_auth_connection`].
-pub async fn test_auth_connection_scoped(
-    ctx: &BridgeCtx<'_>,
-    session_token: &str,
-) -> Result<AuthPingResult, BridgeError> {
-    let _session = ctx.resolve_session(session_token)?;
-    test_auth_connection().await
-}
-
-/// Session-scoped variant of [`get_license_status`].
-pub async fn get_license_status_scoped(
-    ctx: &BridgeCtx<'_>,
-    session_token: &str,
-) -> Result<LicenseStatusDto, BridgeError> {
-    let _session = ctx.resolve_session(session_token)?;
-    get_license_status(ctx).await
-}
-
-/// Session-scoped variant of [`pause_subscription`].
-pub async fn pause_subscription_scoped(
-    ctx: &BridgeCtx<'_>,
-    session_token: &str,
-    pause_months: u8,
-) -> Result<PauseResumeDto, BridgeError> {
-    // F-017: enforce per-domain permission on this scoped command.
-    let session = ctx.resolve_session(session_token)?;
-    ctx.require_session_permission(&session, permissions::SETTINGS_EDIT)
-        .await?;
-    pause_subscription(ctx, pause_months).await
-}
-
-/// Session-scoped variant of [`resume_subscription`].
-pub async fn resume_subscription_scoped(
-    ctx: &BridgeCtx<'_>,
-    session_token: &str,
-) -> Result<PauseResumeDto, BridgeError> {
-    // F-017: enforce per-domain permission on this scoped command.
-    let session = ctx.resolve_session(session_token)?;
-    ctx.require_session_permission(&session, permissions::SETTINGS_EDIT)
-        .await?;
-    resume_subscription(ctx).await
-}
+pub mod scoped;
+pub use scoped::{
+    check_license_status_scoped, get_hardware_fingerprint_scoped, get_license_status_scoped,
+    get_machine_id_scoped, pause_subscription_scoped, renew_license_scoped,
+    resume_subscription_scoped, test_auth_connection_scoped,
+};
 
 #[cfg(test)]
 #[path = "license_tests.rs"]

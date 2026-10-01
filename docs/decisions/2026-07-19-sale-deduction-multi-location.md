@@ -4,9 +4,10 @@ area: inventory
 title: ADR #19: Sale-Deduction Flow for Multi-Location Inventory
 status: Implemented (2026-07-19)
 ---
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · ACCURATE, and its location resolver is still the one every later document defers to. All four helpers the 2026-07-26 stamp verified are live in `crates/kasirmu-core/src/location_resolver.rs` -- `get_default_location_id`, `resolve_primary_location`, `resolve_all_locations` and `resolve_location_chain_for_sku` -- and this ADR is the origin of the deduction-location model that ADR-20, the topology phase records, the warehouse console spec and the `deduction_locations` JSON contract all build on. A resolver that has survived intact across a crate rename, a file split and five dependent ADRs is a strong result. · The prior pass's O1 is confirmed and is NOT a document bug: the "branch 0.0.10" and "v0.0.10 (current)" references at lines 13 and 297 are development-era statements, and the branch is now `0.0.40`. Left as written -- a decision record naming the branch it was written on is doing its job, and correcting it would erase the only temporal anchor the document has. · `adjust_stock_at_location_with_reason` is live, now at `crates/kasirmu-core/src/db/products_stock_adjust/adjust.rs` after the `products.rs` split. The three migrations the stamp names (rebuild-by-location, `sales.deduction_locations`, active-carts location lock) are part of the base schema now rather than separately-numbered files; the `deduction_locations` column is at `crates/kasirmu-core/migrations/20260813_init.sql:618`, verified repeatedly in this campaign. · At 596 lines the audit was scoped to its schema and symbol claims. Status checker reports no drift; prior stamp retained and the stacked footer collapsed. -->
 # ADR #19: Sale-Deduction Flow for Multi-Location Inventory
 
-<!-- Audit stamp: 2026-07-26 · Hermes-Agent · status: ACCURATE (1 observation) · O1: doc references "branch 0.0.10" / "v0.0.10 (current)" (lines 13, 297) — historical development-era refs; current release branch is 0.0.22 (user-owned version divergence, not a doc bug) · verified accurate: commit ef87dac exists ("feat(inventory): implement ADR-18 Phase 1+2 schema foundation"); crates/oz-core/src/location_resolver.rs present with resolve_primary_location:300 / resolve_all_locations:387 / resolve_location_chain_for_sku:476 / get_default_location_id:103; adjust_stock_at_location_with_reason at crates/oz-core/src/db/products.rs:791; migrations 092_rebuild_stock_summary_group_by_location + 093_sales_deduction_locations + 094_active_carts_location_lock all present; Status "Implemented" matches on-disk code -->
+<!-- Superseded audit marker (2026-07-26, body kept verbatim) · Hermes-Agent · status: ACCURATE (1 observation) · O1: doc references "branch 0.0.10" / "v0.0.10 (current)" (lines 13, 297) — historical development-era refs; current release branch is 0.0.22 (user-owned version divergence, not a doc bug) · verified accurate: commit ef87dac exists ("feat(inventory): implement ADR-18 Phase 1+2 schema foundation"); crates/oz-core/src/location_resolver.rs present with resolve_primary_location:300 / resolve_all_locations:387 / resolve_location_chain_for_sku:476 / get_default_location_id:103; adjust_stock_at_location_with_reason at crates/oz-core/src/db/products.rs:791; migrations 092_rebuild_stock_summary_group_by_location + 093_sales_deduction_locations + 094_active_carts_location_lock all present; Status "Implemented" matches on-disk code -->
 
 **Status:** Implemented (2026-07-19)
 **Date:** 2026-07-19
@@ -589,8 +590,39 @@ The ADR is "complete" (can move from Proposed → Accepted) when:
 
 **End of ADR #19.** This document is the canonical reference for the Rust implementation; commit `ef87dac` (ADR-18 schema kit) is its prerequisite foundation.
 
-> last audited 09-08-26 by buffy
-> audit: Phase 1 Core Architecture & API Docs Audit
+> last audited 29-09-26 by docs-auditor
 
-> status: ACCURATE (0 findings) · verified accurate: cargo check passed, no structural orphans, no stale version headers
 
+---
+
+## COR-19 closed: stock transfers and stock counts write the canonical ledger (2026-10-04)
+
+The stock-transfer module's audit footer carried a MEDIUM finding (COR-19, from the
+2026-07 B4 deep read) saying `send_transfer` / `receive_transfer` / `cancel_transfer`
+read and wrote the LEGACY single-PK `inventory` table while sales pre-checked and
+deducted the canonical `stock_summary` per ADR-18/19 — so a transfer move was
+invisible to sale-time availability and the retail grid, and its `next:` line still
+instructed a reader to "route transfers (and stock_counts) through stock_summary".
+
+**That work has landed; the footer was stale.** All three lifecycle methods route
+their delta through the single canonical per-location writer
+`Store::adjust_stock_at_location_with_reason` (defined at
+`crates/kasirmu-core/src/db/products_stock_adjust/adjust.rs:190`) — send at
+`crates/kasirmu-core/src/db/stock_transfers.rs:545`, receive at `:682`, cancel at
+`:808` — and `crates/kasirmu-core/src/db/stock_counts.rs` does the same at `:628`
+and `:643`. That writer pre-checks `stock_summary` at the location, appends the
+`stock_movements` delta row, upserts the per-location row, and recomputes the
+legacy aggregate as the SUM over all locations. A repo sweep for direct
+`UPDATE`/`INSERT`/`DELETE ... inventory` in `stock_transfers.rs` returns zero. The
+legacy table is read only through
+`bridge_legacy_inventory_into_stock_summary_in_tx`
+(`products_stock_adjust/adjust.rs:403`), which materialises a legacy-only non-zero
+aggregate once at the canonical default location and is inert when per-location rows
+already exist — the §3.4 interim bridge this module's findings described.
+
+**New pin:** `send_transfer_writes_canonical_stock_summary_and_movement`
+(`crates/kasirmu-core/src/db/stock_transfers_tests.rs`) asserts that a draft is
+inert, that send leaves `stock_summary` at the source location at 40 (from a legacy
+seed of 50), and that a `stock_movements` row with `delta = -10` and
+`reason = 'stock_transfer_out'` exists. The footer now records COR-19 FIXED and
+`next: none`.

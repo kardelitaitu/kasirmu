@@ -9,7 +9,7 @@
 //!    as the `modules_inventory` ones (compile-time proof).
 //! 3. **DB behaviour parity** — the module service observes the same
 //!    product rows as `kasirmu_core`'s `Store`. Stock-level parity
-//!    (`get_stock` / `adjust_stock_tx`) is intentionally NOT pinned
+//!    (`get_stock` / `adjust_stock_tx`) no longer exists to pin — removed 2026-09-29
 //!    yet: those methods query `inventory.sku` /
 //!    `inventory.low_stock_threshold`, which are planned-schema columns
 //!    absent from the current migration (see the NOTE in

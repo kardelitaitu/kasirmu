@@ -1,6 +1,6 @@
 @echo off
 REM ============================================================================
-REM  start-local-sync.bat — launches the OZ-POS local sync server in Docker.
+REM  start-local-sync.bat — launches the kasir.mu local sync server in Docker.
 REM
 REM  Run from project root (or from the scripts/ folder via double-click).
 REM  Checks if Docker Desktop is installed and running; if stopped, attempts
@@ -87,14 +87,14 @@ goto launch_pg
 
 :launch_sqlite
 echo.
-echo [3/4] Launching OZ-POS Cloud Sync Server (SQLite default)...
+echo [3/4] Launching kasir.mu Cloud Sync Server (SQLite default)...
 docker compose --project-directory . -f ops/docker/docker-compose.yml -f ops/docker/docker-compose.override.yml up -d --build
 if errorlevel 1 goto compose_failed
 goto wait_ready
 
 :launch_pg
 echo.
-echo [3/4] Launching OZ-POS Cloud Sync Server (PostgreSQL)...
+echo [3/4] Launching kasir.mu Cloud Sync Server (PostgreSQL)...
 docker compose --project-directory . -f ops/docker/docker-compose.yml -f ops/docker/docker-compose.override.yml -f ops/docker/docker-compose.pg.yml up -d --build
 if errorlevel 1 goto compose_failed
 goto wait_ready
@@ -152,7 +152,7 @@ exit /b 1
 :compose_success
 echo.
 echo ============================================================================
-echo  OZ-POS Local Sync Server is running and ready!
+echo  kasir.mu Local Sync Server is running and ready!
 echo.
 echo  - API Endpoint:    http://localhost:%SYNC_PORT%
 echo  - Health Check:    http://localhost:%SYNC_PORT%/api/v1/health

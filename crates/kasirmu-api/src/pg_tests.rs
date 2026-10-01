@@ -194,8 +194,22 @@ async fn throwaway_test_pool(
     // Admin connection is raw (no schema): it only creates/drops the
     // throwaway database, so it must not re-apply PG_INIT to the shared
     // base DB (concurrent catalog DDL across parallel test binaries).
+    // R17(i) (owner, 2026-09-20): every stage below that can return `None` now
+    // NAMES ITSELF. The signature still means only "no throwaway database", but a
+    // caller can no longer be sent to the container and the firewall by a `None`
+    // that actually came from, say, a stale-database DROP. `raw_pool` already
+    // prints its own reason at `:153`; these did not.
     let admin_pool = raw_pool(url).await?;
-    let admin = admin_pool.get().await.ok()?;
+    let admin = match admin_pool.get().await {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("PG integration skipped: admin connection from the pool failed: {e}");
+            #[cfg(not(feature = "pg-tests"))]
+            return None;
+            #[cfg(feature = "pg-tests")]
+            panic!("PG test enabled but the resource is unreachable - see the skip message above");
+        }
+    };
 
     // ── Cluster DDL window ─────────────────────────────────────────────
     // The stale sweep and CREATE DATABASE below touch the SHARED cluster
@@ -208,21 +222,34 @@ async fn throwaway_test_pool(
     // Sweep throwaway databases a crashed run left behind (only tests
     // with this prefix create them), so stale DBs cannot accumulate or
     // collide with a fresh run after an OS PID is reused.
-    let stale: Vec<String> = admin
+    let stale_rows = match admin
         .query(
             "SELECT datname FROM pg_database WHERE datname LIKE $1",
             &[&format!("{prefix}_%")],
         )
         .await
-        .ok()?
-        .iter()
-        .map(|r| r.get::<_, String>(0))
-        .collect();
+    {
+        Ok(rows) => rows,
+        Err(e) => {
+            eprintln!("PG integration skipped: stale-database sweep query failed: {e}");
+            #[cfg(not(feature = "pg-tests"))]
+            return None;
+            #[cfg(feature = "pg-tests")]
+            panic!("PG test enabled but the resource is unreachable - see the skip message above");
+        }
+    };
+    let stale: Vec<String> = stale_rows.iter().map(|r| r.get::<_, String>(0)).collect();
     for d in &stale {
-        admin
+        if let Err(e) = admin
             .batch_execute(&format!("DROP DATABASE IF EXISTS {d} WITH (FORCE);"))
             .await
-            .ok()?;
+        {
+            eprintln!("PG integration skipped: dropping stale database {d} failed: {e}");
+            #[cfg(not(feature = "pg-tests"))]
+            return None;
+            #[cfg(feature = "pg-tests")]
+            panic!("PG test enabled but the resource is unreachable - see the skip message above");
+        }
     }
     // PID + random suffix: unique even if the OS reuses a PID while a
     // stale DB from a crashed run is still present. `.simple()` (hex only)
@@ -241,7 +268,10 @@ async fn throwaway_test_pool(
     {
         eprintln!("PG integration skipped: cannot CREATE DATABASE");
         ddl.release().await;
+        #[cfg(not(feature = "pg-tests"))]
         return None;
+        #[cfg(feature = "pg-tests")]
+        panic!("PG test enabled but the resource is unreachable - see the skip message above");
     }
     drop(admin);
     ddl.release().await;
@@ -257,14 +287,24 @@ async fn throwaway_test_pool(
         Some(q) => format!("{head}/{db_name}?{q}"),
         None => format!("{head}/{db_name}"),
     };
-    // `test_pool` applies PG_INIT (full schema) to the throwaway DB.
-    let pool = test_pool(&db_url).await?;
+    // `test_pool` applies PG_INIT (full schema) to the throwaway DB. It prints
+    // its own reason on a schema-apply failure (`:124`) but not on a connect
+    // failure, so the reason is named here as well rather than left to the
+    // caller to guess.
+    let Some(pool) = test_pool(&db_url).await else {
+        eprintln!("PG integration skipped: throwaway database {db_name} could not be opened");
+        #[cfg(not(feature = "pg-tests"))]
+        return None;
+        #[cfg(feature = "pg-tests")]
+        panic!("PG test enabled but the resource is unreachable - see the skip message above");
+    };
     Some((pool, db_name, admin_pool))
 }
 
 /// Integration test against a live Postgres (the same Docker service
 /// `db.rs` uses, port 15432). Skips when unreachable, so the suite stays
 /// green on machines without a running Postgres.
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 async fn pg_integration_rest_roundtrip() {
     let url = std::env::var("OZ_TEST_PG_URL")
@@ -274,7 +314,10 @@ async fn pg_integration_rest_roundtrip() {
     // parallel test process surfaces as a spurious `Db("db error")` abort.
     let Some((pool, db_name, admin_pool)) = throwaway_test_pool(&url, "oz_rest").await else {
         eprintln!("PG REST integration test skipped: throwaway_test_pool returned None ({url})");
+        #[cfg(not(feature = "pg-tests"))]
         return;
+        #[cfg(feature = "pg-tests")]
+        panic!("PG test enabled but the resource is unreachable - see the skip message above");
     };
 
     let tenant = unique_id("pg-rest");
@@ -604,6 +647,7 @@ async fn pg_integration_rest_roundtrip() {
 ///    (create_product → get_product → list_products → create_sale →
 ///    get_sale), which is only possible because every function scopes its
 ///    transaction with the tenant GUC before touching the DB.
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 async fn pg_integration_rest_rls_non_owner() {
     let url = std::env::var("OZ_TEST_PG_URL")
@@ -614,7 +658,10 @@ async fn pg_integration_rest_rls_non_owner() {
     // test processes. The throwaway DB isolates both.
     let Some((pool, db_name, admin_pool)) = throwaway_test_pool(&url, "oz_rest_rls").await else {
         eprintln!("PG REST RLS test skipped: throwaway_test_pool returned None ({url})");
+        #[cfg(not(feature = "pg-tests"))]
         return;
+        #[cfg(feature = "pg-tests")]
+        panic!("PG test enabled but the resource is unreachable - see the skip message above");
     };
 
     let tenant = unique_id("pg-rls");
@@ -804,8 +851,19 @@ async fn pg_integration_rest_rls_non_owner() {
     // Cleanup: owner removes the namespaced rows, then the probe role
     // (DROP OWNED clears its grants first, so the drop can't fail). Both the
     // role drop and the DROP DATABASE are cluster DDL, so take the same
-    // lock; it releases when `_ddl` drops at the end of the test.
-    let _ddl = pg_ddl_guard(&url).await;
+    // lock -- ONCE, for both steps.
+    //
+    // This guard used to be taken TWICE in a row (`let _ddl = ...` here, then a
+    // second `let ddl = ...` before the DROP DATABASE below). The advisory lock
+    // is session-scoped and NOT reentrant across connections, so the second
+    // guard waited on the first for the whole 120s `SCHEMA_LOCK_TIMEOUT` and only
+    // then ran *unlocked* -- the window it was taken to protect was the one window
+    // it did not protect. Measured on a real Postgres: the test took **140.3s**,
+    // nextest reported it SLOW, and terminating the idle first-guard holder
+    // mid-run dropped it to **22.2s** -- the other 120s was this self-deadlock.
+    // One guard, released explicitly, so the DROP DATABASE below really is inside
+    // the lock and the test does not spend its budget waiting on itself.
+    let ddl = pg_ddl_guard(&url).await;
     owner
         .batch_execute(&format!(
             "DELETE FROM sale_lines WHERE sale_id = '{}' AND sale_id IN \
@@ -819,10 +877,7 @@ async fn pg_integration_rest_rls_non_owner() {
         .await
         .expect("cleanup should succeed");
 
-    // Cleanup: drop the throwaway database.
-    // DROP DATABASE is cluster DDL too: take the same lock so a
-    // concurrent worker's CREATE DATABASE cannot interleave with it.
-    let ddl = pg_ddl_guard(&url).await;
+    // Cleanup: drop the throwaway database -- inside the SAME guard taken above.
     drop(pool);
     admin_pool
         .get()
@@ -847,6 +902,7 @@ async fn pg_integration_rest_rls_non_owner() {
 /// test's `FOR UPDATE` chain surfaces as a spurious deadlock abort — the
 /// throwaway DB removes that whole class of flake while keeping the
 /// concurrency semantics identical.
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 async fn pg_integration_concurrent_adjust_stock() {
     let url = std::env::var("OZ_TEST_PG_URL")
@@ -898,7 +954,10 @@ async fn pg_integration_concurrent_adjust_stock() {
         .is_err()
     {
         eprintln!("PG concurrent adjust test skipped: cannot CREATE DATABASE");
+        #[cfg(not(feature = "pg-tests"))]
         return;
+        #[cfg(feature = "pg-tests")]
+        panic!("PG test enabled but the resource is unreachable - see the skip message above");
     }
     let (base, query) = match url.split_once('?') {
         Some((b, q)) => (b, Some(q)),
@@ -920,7 +979,10 @@ async fn pg_integration_concurrent_adjust_stock() {
             .batch_execute(&format!("DROP DATABASE IF EXISTS {db_name} WITH (FORCE);"))
             .await
             .ok();
+        #[cfg(not(feature = "pg-tests"))]
         return;
+        #[cfg(feature = "pg-tests")]
+        panic!("PG test enabled but the resource is unreachable - see the skip message above");
     };
 
     let tenant = unique_id("pg-race");
@@ -1017,6 +1079,7 @@ async fn pg_integration_concurrent_adjust_stock() {
 /// Two concurrent transitions of the same sale must not both validate
 /// against the same stale status: exactly one wins, the loser re-reads
 /// and reports the current state, and `version` bumps exactly once.
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 async fn pg_integration_concurrent_sale_status_transition() {
     let url = std::env::var("OZ_TEST_PG_URL")
@@ -1027,7 +1090,10 @@ async fn pg_integration_concurrent_sale_status_transition() {
     // spurious `Db("db error")` abort.
     let Some((pool, db_name, admin_pool)) = throwaway_test_pool(&url, "oz_sale_race").await else {
         eprintln!("PG concurrent status test skipped: throwaway_test_pool returned None ({url})");
+        #[cfg(not(feature = "pg-tests"))]
         return;
+        #[cfg(feature = "pg-tests")]
+        panic!("PG test enabled but the resource is unreachable - see the skip message above");
     };
 
     let currency: Currency = "USD".parse().unwrap();
@@ -1118,6 +1184,7 @@ async fn pg_integration_concurrent_sale_status_transition() {
 /// tenant only ever sees and mutates its own rows. This is the contract
 /// the per-tenant `UNIQUE (tenant_id, sku)` / `UNIQUE (tenant_id,
 /// username)` constraints (and the tenant-scoped REST lookups) guarantee.
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 async fn pg_integration_tenant_sku_isolation() {
     let url = std::env::var("OZ_TEST_PG_URL")
@@ -1127,7 +1194,10 @@ async fn pg_integration_tenant_sku_isolation() {
     // parallel test process surfaces as a spurious `Db("db error")` abort.
     let Some((pool, db_name, admin_pool)) = throwaway_test_pool(&url, "oz_sku_iso").await else {
         eprintln!("PG tenant-isolation test skipped: throwaway_test_pool returned None ({url})");
+        #[cfg(not(feature = "pg-tests"))]
         return;
+        #[cfg(feature = "pg-tests")]
+        panic!("PG test enabled but the resource is unreachable - see the skip message above");
     };
 
     let tenant_a = unique_id("pg-iso-a");
@@ -1303,6 +1373,7 @@ async fn pg_integration_tenant_sku_isolation() {
 /// terminal. The `oz_email_discovery` role already has SELECT on
 /// `sync_terminals` (from the round-6 cutover); the code must
 /// `SET LOCAL ROLE` into it before the read, mirroring `active_tenants_pg`.
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 async fn pg_integration_terminal_auth_survives_rls_cutover() {
     let url = std::env::var("OZ_TEST_PG_URL")
@@ -1355,7 +1426,10 @@ async fn pg_integration_terminal_auth_survives_rls_cutover() {
         .await
     {
         eprintln!("PG terminal-auth test skipped: cannot CREATE DATABASE ({e})");
+        #[cfg(not(feature = "pg-tests"))]
         return;
+        #[cfg(feature = "pg-tests")]
+        panic!("PG test enabled but the resource is unreachable - see the skip message above");
     }
     let (base, query) = match url.split_once('?') {
         Some((b, q)) => (b, Some(q)),
@@ -1522,13 +1596,17 @@ fn validate_rate_request_boundaries() {
 /// data with no locking, and every row is created with a unique
 /// `source` tag and deleted by id in cleanup, so parallel tests cannot
 /// collide.
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 async fn pg_exchange_rates_roundtrip() {
     let url = std::env::var("OZ_TEST_PG_URL")
         .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:15432/postgres".into());
     let Some(pool) = test_pool(&url).await else {
         eprintln!("pg_exchange_rates_roundtrip: skipped (no PG at {url})");
+        #[cfg(not(feature = "pg-tests"))]
         return;
+        #[cfg(feature = "pg-tests")]
+        panic!("PG test enabled but the resource is unreachable - see the skip message above");
     };
     // Unique dates per run so a crashed run's leftovers cannot collide
     // with the duplicate-detection assertion below.
@@ -1605,13 +1683,17 @@ async fn pg_exchange_rates_roundtrip() {
 ///    INSERT is rejected by WITH CHECK.
 /// 2. With the GUC set to tenant A, only A's row is visible; switching the GUC
 ///    to tenant B hides A's row entirely — genuine cross-tenant isolation.
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 async fn pg_isolates_locations_by_tenant() {
     let url = std::env::var("OZ_TEST_PG_URL")
         .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:15432/postgres".into());
     let Some((pool, db_name, admin_pool)) = throwaway_test_pool(&url, "oz_loc_rls").await else {
         eprintln!("PG location RLS test skipped: throwaway_test_pool returned None ({url})");
+        #[cfg(not(feature = "pg-tests"))]
         return;
+        #[cfg(feature = "pg-tests")]
+        panic!("PG test enabled but the resource is unreachable - see the skip message above");
     };
 
     let tenant_a = unique_id("pg-loc-a");
@@ -1781,13 +1863,17 @@ async fn pg_isolates_locations_by_tenant() {
 /// design pins — delete-by-omission propagation (a dropped desktop row,
 /// including a retention delete, must vanish from the cloud) and RLS
 /// tenant isolation (another tenant's terminal must see nothing).
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 async fn pg_integration_memo_sync_and_active_read() {
     let url = std::env::var("OZ_TEST_PG_URL")
         .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:15432/postgres".into());
     let Some((pool, db_name, admin_pool)) = throwaway_test_pool(&url, "oz_memo").await else {
         eprintln!("PG memo integration test skipped: throwaway_test_pool returned None ({url})");
+        #[cfg(not(feature = "pg-tests"))]
         return;
+        #[cfg(feature = "pg-tests")]
+        panic!("PG test enabled but the resource is unreachable - see the skip message above");
     };
 
     let tenant = unique_id("pg-memo");
@@ -2064,5 +2150,61 @@ fn pg_placeholders_number_from_their_start_index() {
     assert_eq!(pg_placeholders(2, 0), "", "an empty chunk binds nothing");
     for len in [1usize, 2, 9, 10, 11, 99, 100, PG_IN_CHUNK] {
         assert_eq!(pg_placeholders(2, len).split(", ").count(), len);
+    }
+}
+
+// ── R17(i): a silent skip is a wrong diagnosis ─────────────────────────
+
+/// Every early return from `throwaway_test_pool` names the stage that failed.
+///
+/// **This is the guard for R17(i)** (owner, 2026-09-20;
+/// `done-todo-owner-rulings.md:346`), which was deliberately kept open *"when
+/// the race is settled"* and is now executable because the funded A/B settled it —
+/// the race was REVEALED by the fix, not moved (`todo-open-debt-agents-5.md:104`).
+///
+/// R17(ii) removed the false `(Postgres unreachable at {url})` parenthetical. That
+/// fixed the *wrong* message; this fixes the *absent* one. The helper returned
+/// `None` from four stages and only two of them printed anything, so a run that
+/// skipped because a stale-database DROP had failed looked identical to one where
+/// Postgres was not running — and sent the reader to the container, the port and
+/// the firewall. The comment on the helper says as much; a comment cannot stop the
+/// next stage from being added silently, which is what this test is for.
+///
+/// Read as source rather than exercised, because the stages cannot be reached
+/// without a live Postgres and a deliberately broken one: a runtime test would
+/// need to fail a `DROP DATABASE` on purpose. The property is structural — *no
+/// `None` leaves this function unannounced* — so it is asserted structurally.
+#[test]
+fn throwaway_test_pool_never_returns_none_silently() {
+    let src = include_str!("pg_tests.rs");
+    let start = src
+        .find("async fn throwaway_test_pool(")
+        .expect("the helper moved; this guard now grades nothing");
+    // The body ends at the next top-level item.
+    let rest = &src[start..];
+    let end = rest[1..]
+        .find("\nasync fn ")
+        .map(|i| i + 1)
+        .unwrap_or(rest.len());
+    let body = &rest[..end];
+
+    // A bare `.ok()?` is the silent shape R17 names.
+    assert!(
+        !body.contains(".ok()?"),
+        "a `.ok()?` in throwaway_test_pool returns None with no message, which is the R17 defect: name the stage instead"
+    );
+
+    // Every `return None;` must sit within a few lines of an `eprintln!`.
+    let body_lines: Vec<&str> = body.lines().collect();
+    for (i, line) in body_lines.iter().enumerate() {
+        if !line.trim().starts_with("return None;") {
+            continue;
+        }
+        let lo = i.saturating_sub(6);
+        let window = &body_lines[lo..i];
+        assert!(
+            window.iter().any(|l| l.contains("eprintln!")),
+            "the `return None;` at body line {i} has no nearby `eprintln!`, so a caller cannot tell this stage from an unreachable server. Nearby: {window:?}"
+        );
     }
 }

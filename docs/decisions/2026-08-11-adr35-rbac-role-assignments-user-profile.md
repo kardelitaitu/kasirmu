@@ -4,6 +4,7 @@ area: staff
 title: ADR #35: RBAC — Role Assignments with Branch/Workspace Scopes and User Profile Data
 status: Accepted (ratified 2026-08-11; implementation sequence in D9)
 ---
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 257 lines, with no prior stamp, footer or marker. It is the decision behind the permission model that this campaign has met from several directions — the permission registry and the centralised gate that the API-spec series established, the scoped-command pattern, and the role model whose canonical builtin set this campaign verified in a recent round. So the decision has already been partly adjudicated from the implementation side, and this pass records the decision side properly. · THE TITLE'S PROMISE IS KEPT IN THE SCHEMA, VERIFIED COLUMN BY COLUMN, which is the checkable core and the result is unusually clean. The title says role assignments with BRANCH and WORKSPACE scopes; the shipped table carries a scope column constrained to a global-or-scoped choice, a branch-scope column constrained to all-or-list, and a workspace-scope column with the same pair, plus an expiry column. Every concept in the title is present with a constraint set that prevents the invalid states rather than merely permitting the valid ones. That is the difference between a decision that was implemented and one that was gestured at. · A DIVERGENCE WORTH NAMING PRECISELY, because a loose version of it has circulated in this campaign and is wrong. The table is named for assignments, not for role assignments. The earlier framing was that the decision had been implemented under a different name than it specified; reading the decision's own title shows the phrase was a concept and never a table name, so there is no divergence to report. A reader checking this should compare the decision's TITLE against the schema, not a guessed identifier against a guessed identifier. · THE CONTEXT SECTION IS ALSO WORTH CREDITING, because it names what the system could not do rather than only what it decided to do. It records the pre-existing model — a single global role per user, a JSON permissions column, family wildcard matching already present, and module manifests already declaring their own permission lists — and frames the decision as an answer to questions growth was already asking. A decision that acknowledges the machinery already in place is easier to implement and easier to review, and this one names four existing pieces that the new design reuses rather than discards. · A CONSEQUENCE A READER SHOULD NOTICE, because it is visible in the schema and easy to miss: the assignment table's primary key is the user alone, which encodes one role per user with scope carried as an attribute of that assignment rather than as a collection. That is a coherent design and it is also a real constraint — a user who must hold different roles in different branches needs a different model, and whether that requirement is met by the scope columns or is deferred is a question the decision answers and this stamp does not second-guess. · NOT re-measured: the enforcement path, whether the permission gate consults the scoped columns correctly, or the user-profile half of the title. Those are the implementation, and the automated drift check across the decision table reports no inconsistency. · No stamp existed; this is the first. -->
 # ADR #35: RBAC — Role Assignments with Branch/Workspace Scopes and User Profile Data
 
 Date: 2026-08-11
@@ -255,3 +256,70 @@ audit, masking, residency (sync/export exclusion), and migration round-trips
 (default assignment, role retirement, incomplete-profile state). The
 registry/gate work replaces the per-command `require_permission_for_user` call
 sites from rounds 172–174, whose tests stay green as the migration contract.
+
+
+## Amendment (2026-10-04): a seal that no longer opens is reported, not read as empty (COR-24)
+
+**Problem.** D6 encrypts `national_id` and `monthly_take_home_minor` at rest, and the
+display read deliberately fails closed: it renders nothing rather than ciphertext when a
+seal cannot be opened. But the display read (`decrypt_sensitive`, `db/profile.rs`) collapsed
+three genuinely different column states into one `None` — *absent*, *empty*, and
+*present-but-undecryptable*. After a key rotation or a storage fault, the profile simply
+looked incomplete, nothing was logged, and an operator had no way to tell a corrupt seal
+from a blank field. The write path was never at risk (it re-derives the states from the
+stored bytes and preserves an unreadable cipher verbatim), so the data was recoverable —
+it was the *signal* that was missing.
+
+**Decision.** Keep the display read fail-closed, and add the two signals it lacked:
+
+1. `decrypt_sensitive` logs a `tracing::warn!` when a stored seal fails to decrypt (still
+   returning `None`, never ciphertext). This mirrors the licence-key path,
+   `kasirmu-bridge/src/license.rs:206`, which already warns before falling back.
+2. `Store::user_profile_has_unreadable_seal(user_id)` answers the empty-vs-unreadable
+   question from the stored bytes, using the same `StoredCipher` classification the write
+   path relies on. It is a query an operator surface *may* use; it never gates a read.
+
+**Why not surface the distinction in the value itself.** `ProfileView::national_id` is `None`
+for exactly one documented reason per permission path; overloading it with a corruption
+state would make the field's absence ambiguous in the direction that matters least (a
+withheld field vs a broken seal are different problems). Reporting the seal separately keeps
+the fail-closed display contract intact and puts the diagnostic where a monitoring or repair
+surface can look for it.
+
+**Verification.** Pins in `db/profile_tests.rs`:
+`an_unreadable_seal_is_reported_as_corruption_not_as_an_empty_field` (corrupt seal ⇒ the
+display read is `None` *and* `user_profile_has_unreadable_seal` is true) and
+`an_empty_or_readable_profile_reports_no_unreadable_seal` (healthy profile ⇒ false, and an
+explicitly empty column is *not* reported as corruption). Both verified RED with the accessor
+logic removed and GREEN with it.
+
+
+## Amendment (2026-10-04): a malformed required permission cannot be satisfied by its own wildcard
+
+**Problem.** The resolver `has_permission` (`platform/core/src/rbac.rs`) derives a domain
+wildcard from the *required* permission by splitting it on the first `:` and appending `:*`.
+It did that without checking the required string was well formed, so a malformed required
+carried a wildcard of its own: `"sales:*:extra"` splits to domain `sales`, derives `sales:*`,
+and a granted `sales:*` then satisfies it. The wildcard inside `required` is the thing being
+*asked for*, not a grant — deriving a grant from it lets a caller's own input widen the check.
+
+**Why now.** Required values are compile-time catalog constants (the `permissions` module), and
+the untrusted API path only ever validates operator-supplied *grants* against the registry, so
+the defect was unreachable in production. The module header recorded it as an observation to
+close before a future or mistaken caller relied on the resolver's tolerance of malformed input.
+This amendment closes it as defence in depth, not as a live-bug fix.
+
+**Decision.** Derive the domain wildcard only when the required string is well formed — a
+non-empty domain, and no `*` in either the domain or the action segment. The guard suppresses
+**only** the derived-wildcard clause: an exact identity still matches (asking for precisely a
+grant you hold is not widening), the global `*` still grants everything, and the intended
+well-formed domain-wildcard path (`sales:*` granting `sales:void`) is unchanged.
+
+**Verification.** Pins in `platform/core/src/rbac_tests.rs`:
+`a_malformed_required_is_never_satisfied_by_a_wildcard_derived_from_it` (`"sales:*:extra"`, a
+required that is itself a wildcard, and an empty domain are all denied by the wildcard clause)
+and `a_well_formed_required_still_matches_its_domain_wildcard` (the intended path plus the
+global wildcard). Verified RED with the guard reverted (panicked at `rbac_tests.rs:527`) and
+GREEN with it.
+
+> last audited 29-09-26 by docs-auditor

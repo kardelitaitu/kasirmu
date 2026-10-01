@@ -5,6 +5,7 @@ title: "ADR #59: Regional Topology and Modular Delivery — market scope on the 
 status: Proposed (2026-09-21) — the region field, admin route and audit trail are IMPLEMENTED; topology and modules are not
 ---
 
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 900 lines, no audit stamp, no footer and no marker. Its status line splits the decision cleanly in two and is checkable in the same way ADR-58's was: the region field, the admin route and the audit trail are IMPLEMENTED, while topology and modules are NOT. A status line distinguishing the shipped half of a decision from the proposed half is exactly the property that survives a restructure, because it depends on no coordinate to remain meaningful. · THE IMPLEMENTED HALF TIES THIS DOCUMENT TO OTHERS IN THE CAMPAIGN, which is what makes it worth reading carefully rather than skimming. The regional model is not local to this decision: ADR-48 decided how a location's timezone is stored and resolved — IANA name, a bounded three-zone preset list, as_of as a business date — and its resolution helper is live at `crates/kasirmu-core/src/export/email_sender.rs:310`. The statutory-rounding record audited in round 10 sits on the same regional foundation. So the region field this decision implements is the substrate under a timezone decision and a tax-rounding contract, which makes its being live load-bearing in a way an administrative field would not be. That relationship is not stated in this document and is recorded here. · WHAT WAS NOT CHECKED, stated plainly: the admin route and the audit trail are named as implemented but this pass did not walk the license server's admin surface to confirm them, because a route inventory is a code reading rather than a documentation check and the status line is the claim of record. What IS verified is the regional substrate the decision builds on. · STALE PATHS LEFT AS WRITTEN, consistent with every other decision record of this period: the body is expressed in pre-restructure crate and shell names, and the regional module it concerns has since been split by concern. The decision is unaffected; only the coordinates are. · No stamp existed; this is the first, and the footer is new rather than bumped. -->
 # ADR #59: Regional Topology and Modular Delivery
 
 **Status:** Proposed (2026-09-21). **Updated 2026-09-21 (second pass): §2.1a's sequencing steps 1–3
@@ -898,3 +899,64 @@ generalised from one example is the defect §Q3 exists to prevent.
 **The honest consequence if it never lands:** §2.4 says it — data delivers market variation, the ten
 substantive verticals keep the kernel honest, and no fiscal module is built for a market that has
 not asked for one.
+
+## A receipt's footer that cannot be read is not a receipt without a footer (appended 2026-10-04)
+
+§2.3's table records the receipt format as **BUILT** — legal-entity content plus terminal
+layout, resolved through `receipt_formats` and `db/receipt_formats.rs`. The resolution
+chain that reads it (`kasirmu_bridge::hardware::read_receipt_config_for_scope`) has three
+layers for the footer alone: the entity's `footer_text`, the scoped `layout.footer_note`,
+and last the legacy `settings` key `receipt.footer`.
+
+**That last read was fail-blind.** It was written
+`Settings::get_receipt_footer(conn).ok().filter(|f| !f.is_empty())`, so a genuine read
+failure — `SQLITE_BUSY`, a corrupt or locked `settings` table — collapsed to `None`. `None`
+is also the value an operator sees when they have configured **no** footer, so a failure and
+an absence produced the same receipt: the configured footer missing, the print succeeding,
+and nothing logged. The tablet's copy of the body carried it too
+(`apps/mobile-tauri/src/commands/hardware.rs`, inline in `print_sales_receipt_scoped`).
+
+**It contradicted the function's own stated rule**, a few lines above it: "A core error here
+is a real corruption/lookup failure, so it propagates rather than silently downgrading an
+operator's configured paper width." `get_store_name`, `get_store_address` and
+`get_store_tax_id` in the same function all use `?`. The footer was the one read that did not.
+
+**The fix** (commit `1fc5aab6d`) hoists the legacy read above the precedence chain so `?`
+can propagate — a closure cannot carry `?` out to the function — while an empty value still
+maps to `None` so the chain keeps treating "no footer configured" as absence. Absence and
+failure become distinct answers, the same rule the weight-scale list was brought under.
+
+**This is the third site of one family, and the first two are recorded elsewhere.** The
+weight-scale list (`ac93cff77`, ADR-49) dropped any device whose lookup returned `None`; the
+sync daemons' queue depth, stamping seed and pull anchor (ADR-20 family) each turned an
+unreadable value into a default. The pattern is the same in all of them: a value that could
+not be read is reported as the value that means "nothing configured".
+
+**The sibling named here was fixed the next round (commit `41be80d34`).**
+`crates/kasirmu-core/src/db/receipt_formats.rs` inside `effective_receipt_format` had
+`get_receipt_footer(self.conn).unwrap_or_default()`, `get_receipt_show_tax(...).unwrap_or(true)`
+and `get_receipt_show_currency(...).unwrap_or(false)` in its legacy branch — the same shape on
+the same chain, one layer down. Those now propagate with `?`.
+
+**The sharper defect was the PROBE above them, and it was worse than the fills.** The legacy
+branch decides whether a legacy configuration exists at all with
+`LEGACY_RECEIPT_KEYS.iter().any(|key| Settings::get(conn, key).is_ok_and(|v| v.is_some()))`.
+`is_ok_and` folds a read FAILURE into `false`, so an unreadable `settings` table (SQLITE_BUSY,
+corrupt, locked) answered "no" for all ten keys: `has_any` was false and the function returned
+`ReceiptSource::Unset` — byte-identical to the answer for a register that has never been
+configured. The operator's saved receipt settings silently stopped applying and no error
+reached the print path. The layout half of the same function repeated **both** shapes on its
+own probe and its six fills.
+
+**A probe that cannot run is not a negative probe.** That is the general form this round adds
+to the family: the earlier sites turned an unreadable VALUE into a default, this one turned an
+inexecutable CHECK into a "no". `has_any` is now an explicit loop that propagates, and every
+fill uses `?`.
+
+**No defaults were lost, which is why `?` is the right answer rather than a new sentinel.** The
+typed getters already carry their own documented defaults for an ABSENT key — empty footer
+(`typed.rs:132`), tax on (`:119`), currency off (`:89`), dot separator (`:107`). The outer
+`unwrap_or*` could therefore only ever fire on a real error; it was absorbing one, not supplying
+a default. `?` keeps the defaults that belong to absence and surfaces the error where one
+actually occurred.
+> last audited 29-09-26 by docs-auditor

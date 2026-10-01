@@ -2,8 +2,8 @@
 /*
 last audited 25-07-26 by RSA-Agent (kasirmu-core slice B5 finale)
 crate: kasirmu-core | status: SAFE | lint: CLEAN
-findings: exemplary — MONEY-05 checked arithmetic at IPC boundary with documented dev-build rationale (subtotal pass + per-line recompute); atomic create AND receive; canonical stock API in-tx; damage accounting with short-qty surfacing; COR-29 LOW: line 452 uses plain received+damaged (the one unchecked add in an otherwise checked file) — i64 overflow wraps negative in release and bypasses the ordered-qty cap (stock itself still guarded by checked_add inside adjust); receipts land at CANONICAL_DEFAULT_LOCATION (COR-19 family note); list POs reuses a prepared statement per order (acceptable N+1)
-next: checked_add for received+damaged (COR-29) | perf: statement reuse mitigates the per-order line query
+findings: COR-29 CLOSED 26-09-26 (`receive_purchase_order_with_lines` now uses `checked_add` for `received + damaged` — the last bare `+` on an unbounded IPC input here; reachable because `purchase_order_lines.qty` has no ceiling, so `qty = i64::MAX` with `received = MAX-1, damaged = 10` wrapped NEGATIVE, the guard read false, and the over-receipt persisted and stock-adjusted. Pinned by `receive_refuses_a_receipt_whose_sum_would_overflow`); exemplary — MONEY-05 checked arithmetic at IPC boundary with documented dev-build rationale (subtotal pass + per-line recompute); atomic create AND receive; canonical stock API in-tx; damage accounting with short-qty surfacing; receipts land at CANONICAL_DEFAULT_LOCATION (COR-19 family note); list POs reuses a prepared statement per order (acceptable N+1)
+next: none | perf: statement reuse mitigates the per-order line query
 */
 
 use rusqlite::{OptionalExtension, Transaction, TransactionBehavior, params};
@@ -264,8 +264,8 @@ impl Store<'_> {
             created_lines.push(PurchaseOrderLine {
                 id: line_id,
                 po_id: id.clone(),
-                sku: line.sku.to_owned(),
-                product_name: line.product_name.to_owned(),
+                sku: line.sku.clone(),
+                product_name: line.product_name.clone(),
                 qty: line.qty,
                 unit_cost_minor: line.unit_cost_minor,
                 line_total_minor: line_total,
@@ -289,7 +289,7 @@ impl Store<'_> {
                 tax_minor: 0,
                 total_minor: subtotal,
                 notes: notes.to_owned(),
-                created_by: created_by.map(|s| s.to_owned()),
+                created_by: created_by.map(std::borrow::ToOwned::to_owned),
                 created_at: now.clone(),
                 updated_at: now,
             },
@@ -487,8 +487,8 @@ impl Store<'_> {
 
         for line in &po.lines {
             let input = by_line.get(line.id.as_str());
-            let received = input.map(|i| i.received_qty).unwrap_or(0);
-            let damaged = input.map(|i| i.damaged_qty).unwrap_or(0);
+            let received = input.map_or(0, |i| i.received_qty);
+            let damaged = input.map_or(0, |i| i.damaged_qty);
 
             if received < 0 || damaged < 0 {
                 return Err(CoreError::Validation {
@@ -496,7 +496,25 @@ impl Store<'_> {
                     message: "received/damaged quantities must not be negative".into(),
                 });
             }
-            if received + damaged > line.qty {
+            // COR-29: checked arithmetic, the same convention this file applies
+            // to the untrusted CreatePoLineInput a few functions up (MONEY-05:
+            // "arrives over IPC (untrusted) and dev/test builds disable overflow
+            // checks, so a bare `*` silently wraps"). `qty` has no upper bound in
+            // the schema and `received_qty`/`damaged_qty` arrive unvalidated from
+            // the bridge DTO, so a bare `+` here wraps: with qty at `i64::MAX`,
+            // received `MAX-1` and damaged `10` sum to a NEGATIVE i64, the guard
+            // reads false and an over-receipt is persisted and stock-adjusted.
+            // A release build admits it silently; a debug build panics.
+            let accounted = received
+                .checked_add(damaged)
+                .ok_or_else(|| CoreError::Validation {
+                    field: "qty",
+                    message: format!(
+                        "line '{}' received ({received}) + damaged ({damaged}) overflows",
+                        line.sku
+                    ),
+                })?;
+            if accounted > line.qty {
                 return Err(CoreError::Validation {
                     field: "qty",
                     message: format!(

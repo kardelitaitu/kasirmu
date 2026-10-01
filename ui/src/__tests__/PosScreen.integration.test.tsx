@@ -1346,8 +1346,10 @@ describe('PosScreen — Open bills (hold/resume)', () => {
   // asserted its "No open bills" empty state. 8fd64b850 made that unreachable
   // — the badge is the only opener and it is hidden at zero — so the premise
   // no longer holds. Replaced by the case below, which proves the list shows
-  // what it is given. The empty state itself still exists in the overlay
-  // (pos-open-bills-empty) and is now dead UI; flagged, not deleted here.
+  // what it is given. **The empty state itself was deleted on 2026-09-25 under
+  // R21** (`done-todo-owner-rulings.md:382`): the string, its two locale rows and
+  // its `.pos-held-list-empty` rule are gone, so there is no longer a dead
+  // branch for a future test to be written against.
   it('lists the held bill in the open bills list', async () => {
     await setupCart();
 

@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef, useCallback, memo } from 'react';
-import { QRCodeSVG } from 'qrcode.react';
 import { requiredLocalized } from '@/components';
 import { useLocalization } from '@fluent/react';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
@@ -26,7 +25,7 @@ export interface KdsEnrollmentModalProps {
 }
 
 /** Step in the enrollment flow. */
-type EnrollmentStep = 'form' | 'generating' | 'qr' | 'error';
+type EnrollmentStep = 'form' | 'generating' | 'error';
 
 /**
  * Exit-fade length in ms. Mirrors `var(--duration-200)` on the
@@ -36,12 +35,21 @@ type EnrollmentStep = 'form' | 'generating' | 'qr' | 'error';
 const EXIT_MS = 200;
 
 /**
- * KdsEnrollmentModal — handles new KDS device registration via QR-code
- * pairing. The flow is:
- * 1. User enters a display name and selects stations
- * 2. System generates a time-limited pairing token
- * 3. QR code is displayed for the KDS device to scan
- * 4. KDS device connects with the token, completing enrollment
+ * KdsEnrollmentModal — registers a new KDS display device.
+ *
+ * This is **device registration**, not routing. It answers "which physical
+ * screen is this, and which stations does it display" and nothing more; the
+ * shop's route and hierarchy live in the topology editor. The flow is:
+ * 1. Operator enters a display name and selects stations
+ * 2. The device is registered under this POS
+ *
+ * That is the whole flow. It used to mint a pairing token and display a QR
+ * for the screen itself to scan and redeem; that design was superseded,
+ * because a POS-registered screen has nothing to redeem and no secret to
+ * hold. The token was never verified by any code path, so showing it as a
+ * credential was actively misleading. Removed in
+ * `20261014_kds_drop_pairing_tokens.sql`; reinstating a credential here
+ * means writing the consumer that checks it first.
  */
 /**
  * Add a station name to the list. Trims whitespace, rejects empty strings and
@@ -55,28 +63,6 @@ export function addStationToList(
   const trimmed = input.trim();
   if (!trimmed || stations.includes(trimmed)) return stations;
   return [...stations, trimmed];
-}
-
-/**
- * Compute seconds remaining until token expiry, clamped to 0.
- * Exported for testing.
- */
-export function secondsUntilExpiry(tokenExpiry: string, now: number = Date.now()): number {
-  return Math.max(0, Math.floor((new Date(tokenExpiry).getTime() - now) / 1000));
-}
-
-/**
- * Whether the "Done" button in the QR/error step should fire onEnrolled.
- * Fires only when we're still on the QR step and an enrolled device exists —
- * i.e. the operator reached the QR screen and is leaving by choice, not
- * abandoning after a generation failure (error step) or without a device.
- * Exported for testing.
- */
-export function shouldFireOnEnrolledOnDone(
-  step: EnrollmentStep,
-  enrolledDevice: KdsDevice | null,
-): boolean {
-  return step === 'qr' && enrolledDevice != null;
 }
 
 export const KdsEnrollmentModal = memo(function KdsEnrollmentModal({
@@ -143,12 +129,8 @@ export const KdsEnrollmentModal = memo(function KdsEnrollmentModal({
   const [step, setStep] = useState<EnrollmentStep>('form');
   const [name, setName] = useState('');
   const [stationInput, setStationInput] = useState('');
-  const [pairingToken, setPairingToken] = useState<string | null>(null);
-  const [tokenExpiry, setTokenExpiry] = useState<string | null>(null);
-  const [timeLeft, setTimeLeft] = useState(0);
   const [stations, setStations] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [enrolledDevice, setEnrolledDevice] = useState<KdsDevice | null>(null);
   const nameRef = useRef<HTMLInputElement>(null);
 
   // Reset state on open.
@@ -159,28 +141,8 @@ export const KdsEnrollmentModal = memo(function KdsEnrollmentModal({
     setStations([]);
     setStationInput('');
     setError(null);
-    setEnrolledDevice(null);
-    setPairingToken(null);
-    setTokenExpiry(null);
-    setTimeLeft(0);
     requestAnimationFrame(() => nameRef.current?.focus());
   }, [isOpen]);
-
-  // Countdown timer for token expiry.
-  useEffect(() => {
-    if (step !== 'qr' || !tokenExpiry) return;
-
-    const tick = () => {
-      const remaining = Math.max(
-        0,
-        Math.floor((new Date(tokenExpiry).getTime() - Date.now()) / 1000),
-      );
-      setTimeLeft(remaining);
-    };
-    tick();
-    const id = setInterval(tick, 1000);
-    return () => clearInterval(id);
-  }, [step, tokenExpiry]);
 
   const addStation = useCallback(() => {
     const next = addStationToList(stations, stationInput);
@@ -210,50 +172,25 @@ export const KdsEnrollmentModal = memo(function KdsEnrollmentModal({
     setError(null);
 
     try {
-      // Generate a random pairing token and hash it.
-      const tokenBytes = new Uint8Array(32);
-      crypto.getRandomValues(tokenBytes);
-      const token = Array.from(tokenBytes)
-        .map((b) => b.toString(16).padStart(2, '0'))
-        .join('');
-
-      // SHA-256 hash the token for storage.
-      const encoder = new TextEncoder();
-      const hashBuffer = await crypto.subtle.digest(
-        'SHA-256',
-        encoder.encode(token),
-      );
-      const hashArray = Array.from(new Uint8Array(hashBuffer));
-      const tokenHash = hashArray
-        .map((b) => b.toString(16).padStart(2, '0'))
-        .join('');
-
-      // Token expires in 5 minutes.
-      const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
-
       const input: RegisterKdsDeviceInput = {
         name: name.trim(),
         restaurant_pos_id: restaurantPosId,
         station_ids: stations,
-        pairing_token_hash: tokenHash,
-        pairing_expires_at: expiresAt,
       };
 
       const device = await registerKdsDeviceScoped(sessionToken, input);
-      setEnrolledDevice(device);
-      setPairingToken(token);
-      setTokenExpiry(expiresAt);
-      setStep('qr');
-      // NOTE: onEnrolled deliberately does NOT fire here — the QR/token
-      // step below is the operator's actual enrollment window, and an
-      // immediate callback closed the modal before the QR was ever shown.
-      // The callback fires when the operator finishes the QR step (Done).
+      // Registration IS enrollment — the POS owns the device, so there is
+      // nothing left for a second party to do and no secret to hand over.
+      // (This used to mint a pairing token and park on a QR step; see the
+      // component doc for why that was removed.)
+      onEnrolled(device);
+      onClose();
     } catch (e) {
       console.error('kds device enrollment failed', e);
       setError(requiredLocalized(l10n, 'kds-enrollment-failed'));
       setStep('error');
     }
-  }, [name, stations, sessionToken, restaurantPosId, l10n]);
+  }, [name, stations, sessionToken, restaurantPosId, l10n, onEnrolled, onClose]);
 
   const handleBackdropClick = useCallback(
     (e: React.MouseEvent) => {
@@ -400,50 +337,7 @@ export const KdsEnrollmentModal = memo(function KdsEnrollmentModal({
           </div>
         )}
 
-        {/* Step: QR Display */}
-        {step === 'qr' && enrolledDevice && pairingToken && (
-          <div className="kds-enrollment-body kds-enrollment-qr-body">
-            <p className="kds-enrollment-device-name">
-              {enrolledDevice.name}
-            </p>
-            <div className="kds-enrollment-qr-wrapper">
-              <QRCodeSVG
-                value={JSON.stringify({
-                  device_id: enrolledDevice.id,
-                  device_name: enrolledDevice.name,
-                  token: pairingToken,
-                  restaurant_pos_id: restaurantPosId,
-                  expires_at: tokenExpiry,
-                  stations: enrolledDevice.station_ids,
-                })}
-                size={200}
-                level="M"
-                /* Literal hex on purpose, not var(--token): qrcode.react writes these
-                   onto SVG `fill` presentation attributes, where var() never resolves
-                   — both paths are then dropped and inherit black, so the code renders
-                   as a solid square. A pairing code must also stay dark-on-paper-white
-                   in EVERY theme; no semantic token is theme-invariant like that. */
-                bgColor="#ffffff"
-                fgColor="#111827"
-                aria-label={requiredLocalized(
-                  l10n,
-                  'kds-enrollment-qr-aria',
-                  { name: enrolledDevice.name },
-                )}
-              />
-            </div>
-            <p className="kds-enrollment-success-text">
-              {requiredLocalized(l10n, 'kds-enrollment-scan-instruction')}
-            </p>
-            <p className="kds-enrollment-expiry-note">
-              {timeLeft > 0
-                ? requiredLocalized(l10n, 'kds-enrollment-countdown', {
-                    seconds: String(timeLeft),
-                  })
-                : requiredLocalized(l10n, 'kds-enrollment-expired')}
-            </p>
-          </div>
-        )}
+
 
         {/* Footer */}
         <div className="kds-enrollment-footer">
@@ -466,18 +360,10 @@ export const KdsEnrollmentModal = memo(function KdsEnrollmentModal({
               </button>
             </>
           )}
-          {(step === 'qr' || step === 'error') && (
+          {step === 'error' && (
             <button
               className="kds-enrollment-done"
-              onClick={() => {
-                // H3: enrollment completes when the operator finishes the
-                // QR step — this is the first point the device token has
-                // actually been shown for pairing.
-                if (step === 'qr' && enrolledDevice) {
-                  onEnrolled(enrolledDevice);
-                }
-                onClose();
-              }}
+              onClick={onClose}
               data-testid="kds-enrollment-done"
             >
               {requiredLocalized(l10n, 'kds-enrollment-done')}

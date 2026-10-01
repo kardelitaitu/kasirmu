@@ -4,8 +4,9 @@ area: module-system
 title: ADR #31: Decentralized UI Feature Module Registration
 status: Accepted (2026-07-24)
 ---
-<!-- Audit stamp: 2026-07-24 · Hermes-Agent · status: ACTIVE · ADR #31: Decentralized UI Feature Module Registration -->
+<!-- Superseded audit marker (2026-07-24 · Hermes-Agent, body kept verbatim) · hermes · status: ACTIVE · ADR #31: Decentralized UI Feature Module Registration -->
 
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · ACCURATE, and its mechanism is more load-bearing than the ADR's own framing suggests. The three registration functions it specifies are the registry layer this campaign has been re-measuring all session: `registerPage` at `ui/src/registries/page-registry/index.ts`, `registerNavItem` at `ui/src/registries/menu-registry/index.ts`, and `registerWidget` at `ui/src/registries/widget-registry/index.ts`. All three are live and centralised under `ui/src/registries/`. · A PATH FINDING THAT UPDATES THIS CAMPAIGN'S OWN RECORD. The 2026-07-24 Hermes stamp on this file (retained below, re-labelled) records the registries at `ui/src/platform/ui/{page,menu,widget}-registry` -- and in round 15 that location was found to be already stale, with the registries now at `ui/src/registries/`. So this file's prior stamp is one of the two in the repository documenting a location the tree has since left, and the current position is `ui/src/registries/`, as recorded there and here. It is a concrete illustration of why a stamp is a dated observation rather than a durable fact: the stamp was correct, and it is now wrong, and neither state is a defect in it. · The ADR's thesis also shows up in a document audited elsewhere in this campaign: the workspace-settings Phase 0a record describes screens that "register lazily (`lazy(...)` + `registerPage`/`registerNavItem` in `ui/src/features/*/register.tsx`)", which is this ADR's mechanism in use, and the project rule telling authors to grep for a screen name and its `route:` precisely because a registered screen leaves no static import is a direct consequence of decentralising registration this way. · Status checker reports no drift for this row. The prior stamp said "status: ACTIVE", a marker rather than a claim; the front matter says "Accepted (2026-07-24)" and the index agrees. Stacked footer collapsed; prior stamp retained as original evidence. -->
 # ADR #31: Decentralized UI Feature Module Registration
 
 **Status:** Accepted (2026-07-24)  
@@ -108,8 +109,5 @@ export default function App() {
 ### Negative / Trade-offs
 - One additional `index.ts` file per feature folder for exporting the `register()` function.
 
-> last audited 09-08-26 by buffy
-> audit: Phase 1 Core Architecture & API Docs Audit
-
-> status: ACCURATE (0 findings) · verified accurate: cargo check passed, no structural orphans, no stale version headers
+> last audited 29-09-26 by docs-auditor
 

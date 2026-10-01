@@ -8,7 +8,8 @@ next: none | perf: N/A
 //!
 //! [`MessageVisitor`] collects all fields from a `tracing::Event` into
 //! a plain-text string suitable for output channels that don't support
-//! structured data (syslog, Windows Event Log).
+//! structured data (the human-readable text initialisers, and the rolling
+//! file writer).
 
 /// Collects event fields into a plain-text message string.
 ///
@@ -31,7 +32,7 @@ impl<'a> tracing::field::Visit for MessageVisitor<'a> {
     fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
         if field.name() == "message" {
             // Use debug formatting for the message field.
-            self.0.push_str(&format!("{:?}", value));
+            self.0.push_str(&format!("{value:?}"));
         } else {
             self.0.push_str(&format!(" {}={:?}", field.name(), value));
         }

@@ -1,9 +1,9 @@
 //! Shared email scheduling & sending logic — used by both desktop-client
 //! and cloud-server.
 /*
-last audited DD-MM-YY by DSH-Agent
+last audited (date unknown) by DSH-Agent
 crate: kasirmu-core (email_sender) | status: SAFE | lint: CLEAN
-findings: COR-34 FIXED DD-MM-YY — build_smtp_transport now refuses credentialed plaintext SMTP (fail-closed: use_tls=false + port!=465 + creds present → error instead of leaking credentials via builder_dangerous). Timezone resolver is a ~20-zone fixed-offset table with no DST (europe/london ≈ UTC, documented); unknown tz falls back to UTC with a warn (COR-21 family); 2-minute send window + same-date dedup means an app closed at send time skips the day (INFO).
+findings: COR-34 FIXED (date unknown) — build_smtp_transport now refuses credentialed plaintext SMTP (fail-closed: use_tls=false + port!=465 + creds present → error instead of leaking credentials via builder_dangerous). Timezone resolver is a ~20-zone fixed-offset table with no DST (europe/london ≈ UTC, documented); unknown tz falls back to UTC with a warn (COR-21 family); 2-minute send window + same-date dedup means an app closed at send time skips the day (INFO).
 next: none | perf: N/A
 */
 //!
@@ -145,9 +145,9 @@ pub fn should_send_scheduled_with_last_sent(
 
     // Check if it's the right time of day (within a 2-minute window, since
     // the scheduler polls every 60s).
-    let diff_seconds = (current_time.num_seconds_from_midnight() as i64
-        - send_time.num_seconds_from_midnight() as i64)
-        .abs();
+    let diff_seconds = (i64::from(current_time.num_seconds_from_midnight())
+        - i64::from(send_time.num_seconds_from_midnight()))
+    .abs();
     if diff_seconds > 120 {
         return Ok(false);
     }
@@ -215,39 +215,91 @@ pub fn filter_analytics_bundle(bundle: &mut AnalyticsBundle, report_types: &[Str
     }
 }
 
-/// Generate a filtered report email for the scheduled period.
+/// Load the analytics bundle for a schedule's lookback window.
 ///
-/// Loads the schedule's lookback window, exports analytics, filters by
-/// report_types, and builds the email.
-pub fn generate_filtered_report_email(
+/// This is the **database phase only** — the ten sequential aggregates in
+/// [`Store::export_analytics_bundle`], and nothing else. It is split out
+/// from [`generate_filtered_report_email`] so a caller holding a shared
+/// connection mutex (O-H23: the scheduled email report) can release the
+/// lock before rendering, instead of holding it across HTML and text
+/// generation as well as the queries.
+///
+/// Filtering by `schedule.report_types` is deliberately NOT applied here:
+/// it only clears sections the builder would skip anyway, so it saves no
+/// query and belongs with the render.
+///
+/// # Errors
+///
+/// Returns [`CoreError::Internal`] if any aggregate query fails.
+pub fn load_analytics_bundle(
     store: &Store<'_>,
     schedule: &ReportScheduleConfig,
     store_name: &str,
-) -> Result<super::email_report::ReportEmail, CoreError> {
+) -> Result<AnalyticsBundle, CoreError> {
     let lookback_start = Utc::now()
-        .checked_sub_signed(chrono::Duration::days(schedule.lookback_days as i64))
+        .checked_sub_signed(chrono::Duration::days(i64::from(schedule.lookback_days)))
         .unwrap_or(Utc::now())
         .format("%Y-%m-%d")
         .to_string();
     let end = Utc::now().format("%Y-%m-%d").to_string();
 
-    let mut bundle: AnalyticsBundle = store
+    store
         .export_analytics_bundle(
             ExportConfig {
-                start_date: lookback_start.clone(),
-                end_date: end.clone(),
+                start_date: lookback_start,
+                end_date: end,
                 ..ExportConfig::default()
             },
             "",
             store_name,
         )
-        .map_err(|e| CoreError::Internal(format!("Failed to export analytics: {e}")))?;
+        .map_err(|e| CoreError::Internal(format!("Failed to export analytics: {e}")))
+}
 
-    // Filter out unchecked report types
+/// Filter and render an already-loaded bundle into a report email.
+///
+/// **Pure**: touches no database, so a caller may invoke it after
+/// releasing whatever lock guarded [`load_analytics_bundle`].
+///
+/// The date label is recomputed from the schedule rather than carried on
+/// the bundle; it is display text, not data, and recomputing it keeps this
+/// function's signature free of the load phase's temporary values.
+#[must_use]
+pub fn render_report_email(
+    mut bundle: AnalyticsBundle,
+    schedule: &ReportScheduleConfig,
+    store_name: &str,
+) -> super::email_report::ReportEmail {
     filter_analytics_bundle(&mut bundle, &schedule.report_types);
 
-    let date_label = format!("{} to {}", lookback_start, end);
-    Ok(ReportEmailBuilder::build(&bundle, store_name, &date_label))
+    let lookback_start = Utc::now()
+        .checked_sub_signed(chrono::Duration::days(i64::from(schedule.lookback_days)))
+        .unwrap_or(Utc::now())
+        .format("%Y-%m-%d")
+        .to_string();
+    let end = Utc::now().format("%Y-%m-%d").to_string();
+    let date_label = format!("{lookback_start} to {end}");
+
+    ReportEmailBuilder::build(&bundle, store_name, &date_label)
+}
+
+/// Generate a filtered report email for the scheduled period.
+///
+/// Loads the schedule's lookback window, exports analytics, filters by
+/// report_types, and builds the email.
+///
+/// Kept as the one-call convenience path for callers that already own
+/// their database exclusively. A caller sharing one connection with live
+/// UI commands (the scheduled sender) should instead call
+/// [`load_analytics_bundle`], drop its lock, then [`render_report_email`]
+/// — see O-H23.
+pub fn generate_filtered_report_email(
+    store: &Store<'_>,
+    schedule: &ReportScheduleConfig,
+    store_name: &str,
+) -> Result<super::email_report::ReportEmail, CoreError> {
+    let bundle = load_analytics_bundle(store, schedule, store_name)?;
+    Ok(render_report_email(bundle, schedule, store_name))
 }
 
 /// Resolve the current date-time in the given IANA timezone name.

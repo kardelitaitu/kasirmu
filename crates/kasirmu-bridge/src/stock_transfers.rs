@@ -1,19 +1,19 @@
 //! Stock-transfer command bodies (Wave C / C3) — the tauri-free half of
 //! `apps/desktop-tauri/src/commands/stock_transfers.rs`.
 //!
-//! Key functions: the session-scoped [`create_stock_transfer_scoped`],
-//! [`get_stock_transfer_scoped`], [`list_stock_transfers_scoped`],
-//! [`list_in_transit_transfers_scoped`],
-//! [`get_stock_transfer_lines_scoped`], [`add_stock_transfer_line_scoped`],
-//! [`remove_stock_transfer_line_scoped`], [`send_stock_transfer_scoped`],
-//! [`receive_stock_transfer_scoped`] and [`cancel_stock_transfer_scoped`]
-//! operations, each consuming a [`BridgeCtx`]. There is no `run_*`
+//! Key functions: the session-scoped [`create_stock_transfer_scoped`](crate::stock_transfers::create_stock_transfer_scoped),
+//! [`get_stock_transfer_scoped`](crate::stock_transfers::get_stock_transfer_scoped), [`list_stock_transfers_scoped`](crate::stock_transfers::list_stock_transfers_scoped),
+//! [`list_in_transit_transfers_scoped`](crate::stock_transfers::list_in_transit_transfers_scoped),
+//! [`get_stock_transfer_lines_scoped`](crate::stock_transfers::get_stock_transfer_lines_scoped), [`add_stock_transfer_line_scoped`](crate::stock_transfers::add_stock_transfer_line_scoped),
+//! [`remove_stock_transfer_line_scoped`](crate::stock_transfers::remove_stock_transfer_line_scoped), [`send_stock_transfer_scoped`](crate::stock_transfers::send_stock_transfer_scoped),
+//! [`receive_stock_transfer_scoped`](crate::stock_transfers::receive_stock_transfer_scoped) and [`cancel_stock_transfer_scoped`](crate::stock_transfers::cancel_stock_transfer_scoped)
+//! operations, each consuming a [`BridgeCtx`](crate::ctx::BridgeCtx). There is no `run_*`
 //! `&Connection` helper here: the transfer bodies were logic-inline in the
 //! shell, so the store work stays inside the scoped functions.
 //!
 //! Gate order, store construction (`Store::new`, cache-free — as the shell
 //! used) and error paths are verbatim ports of the command bodies: a shim
-//! builds the context, calls one function here, and maps [`BridgeError`]
+//! builds the context, calls one function here, and maps [`BridgeError`](crate::error::BridgeError)
 //! back to `AppError` so the wire shape never moves.
 
 use serde::{Deserialize, Serialize};

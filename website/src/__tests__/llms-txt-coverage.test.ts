@@ -42,7 +42,12 @@ function pageSlugsOnDisk(): string[] {
     for (const name of readdirSync(dir)) {
       const p = join(dir, name);
       if (statSync(p).isDirectory()) {
-        if (name === 'docs') continue;
+        // `docs` and `[guideSegment]` are both collection-driven: the URLs under
+        // them come from content files, not from a page on disk, so they are not
+        // marketing slugs this list can account for. Guides are not yet listed
+        // in llms.txt (SEO plan track A4) — that is a gap in the summary, not a
+        // page being hidden.
+        if (name === 'docs' || name === '[guideSegment]') continue;
         walk(p, `${prefix}${name}/`);
         continue;
       }

@@ -49,6 +49,7 @@ pos-login-required = Perlu Login
 pos-login-desc = Silakan masuk untuk menggunakan POS.
 pos-shift-loading = Memuat shift…
 pos-shift-no-active = Tidak ada shift aktif
+pos-shift-unavailable = Shift tidak tersedia di perangkat ini
 pos-shift-elapsed = { $h ->
     [0] { $m }mnt
    *[other] { $h }j { $m }mnt
@@ -192,7 +193,6 @@ pos-open-bill-saving = Menyimpan…
 pos-open-bill-save = Simpan Tagihan Terbuka
 pos-open-bills-title = Tagihan Terbuka
 pos-open-bills-close-aria = Tutup daftar tagihan terbuka
-pos-open-bills-empty = Tidak ada tagihan terbuka.
 pos-open-bills-resume = Lanjutkan
 
 # Appearance Preview (White-label)
@@ -283,6 +283,10 @@ sales-history-void-reason-placeholder =
     .placeholder = mis. Pembatalan pelanggan
 sales-history-void-default-reason = Dibatalkan dari riwayat penjualan
 sales-history-void-error = Gagal membatalkan pesanan
+# Shown inside the e-Faktur stamp modal when the NSFP write fails (ERR-10).
+sales-history-stamp-error = Gagal membubuhkan NSFP e-Faktur
+# Toast shown when creating a Faktur Pengganti fails.
+sales-history-pengganti-error = Gagal membuat Faktur Pengganti
 sales-history-export-id = ID Penjualan
 sales-history-export-date = Tanggal
 sales-history-export-total = Total
@@ -442,6 +446,18 @@ refund-action-refund = Kembalikan
 # (refund-action-refund = Kembalikan) and the same word sales.id.ftl uses for the en
 # label "Refunded: { $amount }" at refund-done-amount.
 refund-status-refunded = Dikembalikan
+# en: Refunds for this sale could not be loaded. "bisa" is the conditional form the
+# bundle uses for a capability that did not come through (see app-error-offline).
+refund-history-unknown = Pengembalian untuk penjualan ini tidak dapat dimuat
+# en: Cost and margin for this sale could not be loaded.
+margin-history-unknown = Biaya dan margin untuk penjualan ini tidak dapat dimuat
+# en: Cost and margin could not be read for N sales; those rows are exported
+# without them. The number is SALES, not lines; see the note on the en key for
+# why there is no .count attribute.
+sales-history-export-margins-unknown = Biaya dan margin tidak dapat dibaca untuk { $count } penjualan; baris tersebut diekspor tanpa kolom itu
+# en: Cashier names could not be loaded; the Cashier filter is therefore empty and
+# the table shows a dash where a name would be. See the note on the en key.
+sales-history-staff-unknown = Nama kasir tidak dapat dimuat
 
 # Item Modifier Modal
 modifier-no-options = Tidak ada opsi tersedia
@@ -548,6 +564,7 @@ payment-exchange-rate = Nilai tukar
 payment-rate-source = Sumber nilai
 payment-rate-timestamp = Waktu nilai
 payment-rate-source-manual = manual
+payment-rate-unknown = Tidak dapat memuat nilai tukar untuk pasangan ini
 payment-receipt-currency-aria =
     .aria-label = Informasi mata uang nota
 payment-charged-in = Ditagih dalam
@@ -593,7 +610,11 @@ payment-edc-declined = Kartu ditolak
 payment-edc-not-ready = Terminal kartu belum siap ({ $status })
 payment-edc-failed = Pembayaran kartu gagal: { $reason }
 payment-edc-dismiss = Kembali ke pembayaran
-payment-toast-currency-failed = Gagal memuat data mata uang
+
+# Lihat komentar versi en: dua bacaan terpisah dengan izin terpisah.
+payment-currency-list-unknown = Daftar mata uang yang didukung tidak dapat dimuat
+payment-default-currency-unknown = Mata uang default toko ini tidak dapat dimuat
+payment-edc-select-terminal = Pilih Terminal Kartu
 payment-toast-customers-failed = Gagal memuat pelanggan
 payment-toast-loyalty-failed = Gagal memuat akun loyalitas
 payment-toast-points-value-failed = Gagal memuat nilai poin
@@ -1026,3 +1047,21 @@ retail-edit-image-uploading = Mengunggah gambar…
 retail-edit-image-error = Gagal memperbarui gambar. Coba lagi.
 retail-edit-image-menu-note = Item menu selalu memiliki tepat satu gambar.
 retail-edit-image-alt = Gambar { $name } { $slot }
+
+# ── Cart line kitchen notes ──
+pos-cart-line-add-note = Tambah Catatan
+pos-cart-line-edit-note = Ubah Catatan
+pos-cart-line-note-title = Permintaan Khusus
+pos-cart-line-note-placeholder = cth. Tanpa bawang, kurangi es, alergi...
+pos-cart-line-note-clear = Hapus
+
+# ── Save Tab / Open Bills integration ──
+pos-cart-save-tab = Simpan Tagihan
+pos-cart-update-tab = Perbarui Tagihan
+pos-cart-update-tab-aria = Perbarui tagihan terbuka untuk meja ini
+pos-cart-customer-label = Pelanggan
+pos-cart-customer-placeholder = Nama (opsional)...
+pos-cart-customer-aria = Nama pelanggan (opsional)
+pos-cart-new-tab = Tagihan Baru
+pos-cart-new-tab-title = Bersihkan keranjang untuk memulai tagihan baru
+

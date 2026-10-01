@@ -1,3 +1,4 @@
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file, with no prior stamp, footer or marker. It is the operational companion to the root agent guide, and its subtitle is the design statement: TEETH, NOT HISTORY. That distinction is the whole reason the file exists, and it is the sharpest framing this campaign has read on documentation in this repository. · THE ROOT GUIDE STATES THE RULES; THIS FILE STATES WHAT ENFORCES THEM. A reader who has internalised the rule that seven gates run before a commit learns nothing new here, but a reader who wants to know whether the seventh gate can be bypassed learns everything. That is a different question, and answering it is the difference between a policy and a control. The seven steps it enumerates match the list in the root guide exactly — duplication that is a liability when the two drift and an asset when they are checked against each other, which this campaign has done every round. · THE CSS BLIND SPOT IS THE PART MOST WORTH A READER'S ATTENTION, because it is a gate everyone assumes covers something it does not. A stylesheet change passes the lint step, because the lint step runs a tool that does not read stylesheets. The handbook says so plainly, and the companion page audited two rounds ago exists to give the replacement: named walker suites that grade what the linter cannot see, each with its own caveats. A handbook that documents a hole in its own enforcement is worth more than one implying completeness, because the hole is what a reader would otherwise get wrong. · IT REFERS THE READER OUTWARD for the rules themselves rather than restating them, which is the correct division of labour between a root document and an operational one and is one more reason the two stay in sync. · NOT re-measured: whether each gate currently passes, or the CI backstops it names. Running the gates is the original work, and the stamp claims only that the file describes enforcement that exists — the pre-commit hook and the CI workflows are both present, and the hook's own comments corroborate at least one step's history. · No stamp existed; this is the first. -->
 # Agent Ops Handbook
 
 > Teeth, not history: the 7 pre-commit steps, their CI backstops, and the CSS blind spot.
@@ -18,11 +19,19 @@ Removed 2026-09-13: the `cargo fmt --all` pre-commit step (reformatted other age
 
 ## What CI actually runs
 
-Live workflows: `dev-ci.yml` and `release.yml` (desktop-only, `v*` tags). Everything else lives in `.github/workflows/attic/` as inert `.bak`.
-`dev-ci.yml` triggers: `pull_request` to `main`, `push` to `main`, `workflow_dispatch`. A push to `main` runs CI and deploys (`northflank-deploy`); a push to a non-`main` branch runs nothing.
-Jobs (11): `changes`, `website`, `cargo-check`, `cargo-nextest`, `ui-test`, `i18n`, `ci-docs-drift`, `static-gates`, `release-readiness`,
-`release-bridge-test` (push-only, desktop bridge tests in release profile), `northflank-deploy`. `northflank-deploy` needs 7 of them (excludes `ci-docs-drift` and `release-readiness`).
-`cargo-check` is `cargo fmt -- --check` then `cargo check --workspace --all-targets --all-features`. **No live workflow runs clippy** — it is local-only via `scripts/check.sh` and `scripts/release.sh`.
+Four live workflows — re-derive with `ls .github/workflows/*.yml`, never quote this list:
+
+| Workflow | Triggers |
+|---|---|
+| `dev-ci.yml` | `pull_request` to `main`, `push` to `main`, `workflow_dispatch` |
+| `release.yml` | `push` on `v*` tags (desktop-only) |
+| `android.yml` | `push` on `v*` tags, `workflow_dispatch` — no PR trigger |
+| `website.yml` | `push` to `main` filtered to `website/**`, `prototypes/**`, `scripts/wrangler-deploy.sh` and the workflow file itself, plus `workflow_dispatch` |
+
+Everything else lives in `.github/workflows/attic/` as inert `.bak`. A push to `main` runs CI, deploys the backend (`northflank-deploy`) and deploys the site; a push to a non-`main` branch runs nothing.
+`dev-ci.yml` jobs (18): `changes`, `website`, `rust-fmt`, `cargo-check`, `cargo-clippy`, `rust-doc`, `fuzz-typecheck`, `coverage-floors`, `cargo-nextest`, `release-bridge-test` (push-only, desktop bridge tests in release profile), `ui-test`, `i18n`, `ci-docs-drift`, `static-gates`, `go-gate`, `ipc-parity`, `release-readiness`, `northflank-deploy`.
+`northflank-deploy` needs 13 of them (`changes`, `website`, `rust-fmt`, `cargo-check`, `cargo-clippy`, `fuzz-typecheck`, `coverage-floors`, `cargo-nextest`, `ui-test`, `i18n`, `static-gates`, `go-gate`, `ipc-parity`), so it excludes `ci-docs-drift`, `release-readiness` and the push-only `release-bridge-test`. `release.yml` defines three of them, `android.yml` and `website.yml` one each — the four files together are the live set that `scripts/verify-agents-mirrors.py` polices, so re-derive any total there rather than restating one here.
+`rust-fmt` is `cargo fmt --all -- --check` on its own (~20s, no apt layer and no cargo cache); `cargo-check` is `cargo check --workspace --all-targets --all-features`. **Clippy runs in CI** as `cargo-clippy`, path-gated on Rust changes and running `cargo clippy --workspace --all-targets -- -D warnings`; `scripts/check.sh` and `scripts/release.sh` still cover the `--all-features` lane CI does not. This section said two workflows were live and that clippy was local-only until 2026-09-29 — both were true when written, and stopped being true on 2026-09-22, 2026-09-24 and 2026-09-25.
 `scripts/verify-agents-mirrors.py` polices mirror claims about gate counts, step names, commit types, version, per-workflow triggers, stated job totals, and the live workflow a "mirrors <workflow>" claim names — but never opens a job's `run:` lines. Canonical CI reference: `docs/operations/ci-pipeline.md`.
 
 ## CSS has no linter — verify stylesheets with the walker suites
@@ -35,6 +44,8 @@ npx vitest run src/__tests__/themeTokenCompliance.test.ts src/__tests__/composed
 ```
 
 Caveats: each suite grades a fixed set of shapes (a printed denominator, not full coverage); walkers read the working tree, so record dirty `.css` paths alongside any result. Full analysis: `docs/audits/frontend/css-verification.md`.
+
+One shape needs a suite of its own: a motion-enabling `!important` declaration outranks the blanket reduced-motion kill in `reset.css` (both important → specificity decides, and the kill sits at (0,0,0)). `npx vitest run src/__tests__/motionImportantEscapes.test.ts` flags those; it exists because `animationCompliance` never reads `transition` declarations at all, which is where all six escapes found on 2026-09-25 were hiding.
 
 ## Lanes, chokepoints and parallel work
 
@@ -59,3 +70,5 @@ Do not edit another session's in-flight file to turn a suite green: it is a movi
 would sweep their half-finished work. Report it instead, and verify your own change directly — the
 smallest command that covers it (`npm run test -- <file>`) is stronger evidence than a whole-suite run
 you cannot attribute.
+
+> last audited 29-09-26 by docs-auditor

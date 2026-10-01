@@ -155,6 +155,7 @@ export default function ExpoScreen() {
   const [nowMs, setNowMs] = useState(() => Date.now());
 
   const load = useCallback(async () => {
+    if (!sessionToken) return;
     try {
       const all = await listKdsOrdersScoped(sessionToken);
       const activeStoreId = workspaceScope?.storeId;

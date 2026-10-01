@@ -11,6 +11,7 @@ Validates scripts/flaky-quarantine.json:
 Usage:
   python3 scripts/verify-flaky-quarantine.py            # fail on any violation
   python3 scripts/verify-flaky-quarantine.py --report   # print count, still gate
+  python3 scripts/verify-flaky-quarantine.py --self-test  # the strict-argument cases, pure
   python3 scripts/verify-flaky-quarantine.py --anything-else  # REFUSED, exit 2, names the flag
 
 STRICT ARGUMENTS
@@ -20,6 +21,12 @@ A dashed argument this gate does not read is refused, not ignored. It used to be
 `--self-test` fell through to the normal manifest check and printed its usual PASS at exit 0 --
 the caller asked for a self test, nothing self-tested, and the green named a different surface
 than the one that was requested. The whole-tree check still runs, unchanged, on a bare call.
+
+  Changed 2026-09-29: `--self-test` is now IMPLEMENTED rather than refused, because the strict-
+  argument rule above meant the one piece of this file with a documented history of silent
+  fall-through had no way to be tested. Every other unknown flag is still refused with exit 2;
+  `--self-test` is the single entry in KNOWN_FLAGS that is honoured, and the self-test's own cases
+  assert that the refusal survives for everything else.
 
 ROOT RESOLUTION
 ===============
@@ -115,7 +122,7 @@ def corpus_count(root: Path) -> int:
 # reader; keep the two together when a flag is added. Anything else that starts with a dash
 # asks this gate for a surface it does not have, so it is refused -- an ignored flag used to
 # print the ordinary verdict for a check nobody ran.
-KNOWN_FLAGS = ("--report",)
+KNOWN_FLAGS = ("--report", "--self-test")
 
 
 def unknown_flag(argv: list[str]) -> str | None:
@@ -145,8 +152,61 @@ def reject_unknown_flag(flag: str) -> int:
     return 2
 
 
+def self_test() -> int:
+    """Liveness for the strict-argument gate that refused this very flag.
+
+    This gate was the one that REFUSED --self-test, by design: an unread dashed
+    argument used to fall through to the manifest check and print PASS at exit 0, so
+    a caller asking for a self test got a green for a check nobody ran. The refusal was
+    the right answer then and it is still the right answer for every flag that does not
+    exist -- but it also meant the one piece of this file that had already demonstrably
+    broken had no way to be tested.
+
+    It is now implemented, and the refusal is unchanged for everything else. The
+    cases below assert the property that matters: an argument this gate does NOT
+    implement is still caught. If unknown_flag() regressed to returning None, every
+    future flag would fall through to a green again -- silently, and in the exact way
+    this file's own docstring records.
+
+    Pure: argv lists in, no file is read or written.
+    """
+    bad: list[str] = []
+
+    def want(name: str, got, expect) -> None:
+        if got != expect:
+            bad.append(f"{name}: expected {expect!r}, got {got!r}")
+
+    # The regression that already happened once: an unimplemented flag must be
+    # CAUGHT, never ignored.
+    want("an unimplemented flag is caught", unknown_flag(["--nope"]), "--nope")
+    want("--self-test is no longer refused", unknown_flag(["--self-test"]), None)
+    want("--report is still known", unknown_flag(["--report"]), None)
+    want("all known flags together are fine", unknown_flag(["--report"]), None)
+    # A positional has never been judged here and still is not.
+    want("a positional is not judged", unknown_flag(["manifest.json"]), None)
+    # The FIRST unknown is named, so the usage line points at the real problem.
+    want("the first unknown flag is named",
+         unknown_flag(["--self-test", "--report", "--bogus", "--worse"]), "--bogus")
+    want("empty argv is clean", unknown_flag([]), None)
+
+    # The two regexes the manifest rules rest on.
+    want("issue url accepted", bool(ISSUE_RE.match("https://github.com/o/r/issues/1")), True)
+    want("issue shorthand accepted", bool(ISSUE_RE.match("#42")), True)
+    want("free text is not an issue ref", bool(ISSUE_RE.match("see the tracker")), False)
+    want("iso date accepted", bool(DATE_RE.match("2026-09-29")), True)
+    want("a non-date is not a date", bool(DATE_RE.match("29/09/2026")), False)
+
+    if bad:
+        print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
+        return 2
+    print("SELF-TEST OK (10 cases, no files touched)")
+    return 0
+
+
 def main() -> int:
     argv = sys.argv[1:]
+    if "--self-test" in argv:
+        return self_test()
     flag = unknown_flag(argv)
     if flag is not None:
         return reject_unknown_flag(flag)

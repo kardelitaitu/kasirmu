@@ -35,7 +35,7 @@ const mocks = vi.hoisted(() => ({
   syncSettings: { serverUrl: 'https://sync.example.com', hasApiKey: false, enabled: false } as { serverUrl: string | null; hasApiKey: boolean; enabled: boolean },
   userPreferences: { cardsize: '2', fontsize: '1', 'font-smoothing': 'antialiased' as string },
   brandSettings: { primary_colour: '#147EFB', logo_path: null as string | null, store_name: 'My Store' },
-  versionInfo: { name: 'oz-pos' as string, version: '0.0.19', rustVersion: '1.80', target: 'x86_64' },
+  versionInfo: { name: 'kasirmu-app' as string, version: '0.0.19', rustVersion: '1.80', target: 'x86_64' },
   // Snapshots for reset between tests
   _snapshots: null as Record<string, unknown> | null,
   // Failure sets
@@ -190,7 +190,7 @@ function resetFailures() {
   Object.assign(mocks.syncSettings, { serverUrl: 'https://sync.example.com', hasApiKey: false, enabled: false });
   Object.assign(mocks.userPreferences, { cardsize: '2', fontsize: '1', 'font-smoothing': 'antialiased' });
   Object.assign(mocks.brandSettings, { primary_colour: '#147EFB', logo_path: null, store_name: 'My Store' });
-  Object.assign(mocks.versionInfo, { name: 'oz-pos', version: '0.0.19', rustVersion: '1.80', target: 'x86_64' });
+  Object.assign(mocks.versionInfo, { name: 'kasirmu-app', version: '0.0.19', rustVersion: '1.80', target: 'x86_64' });
   identityMocks.deviceId = 'test-device-id';
   identityMocks.terminals = [];
   mocks.currencies.length = 0;

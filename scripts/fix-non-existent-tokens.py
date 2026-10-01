@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Fix truly non-existent CSS tokens across the OZ-POS UI.
+Fix truly non-existent CSS tokens across the kasir.mu UI.
 
 These are tokens used in var() calls that are NOT defined anywhere
 (locally or in tokens.css). Maps each to the correct design token.

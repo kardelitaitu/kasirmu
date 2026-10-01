@@ -115,9 +115,11 @@ async fn spawn_custom_server(app: Router) -> (u16, tokio::task::JoinHandle<()>) 
 // ── Test helpers ─────────────────────────────────────────────────────
 
 /// Create an in-memory SQLite database with migrations.
-fn setup_store() -> Store<'static> {
-    let conn: &'static rusqlite::Connection = Box::leak(Box::new(migrations::fresh_db()));
-    Store::new(conn)
+/// The caller owns the connection: `Store::new` only needs a borrow, so
+/// this takes one instead of `Box::leak`ing a database per test to
+/// manufacture a `'static` (O-T03).
+fn setup_store(db: &rusqlite::Connection) -> Store<'_> {
+    Store::new(db)
 }
 
 /// Create a `SyncConfig` pointing at the test server.
@@ -134,7 +136,8 @@ fn test_config(port: u16) -> SyncConfig {
 #[tokio::test]
 async fn single_sale_enqueued_is_pushed_and_marked_synced() {
     let server = spawn_test_server().await;
-    let store = setup_store();
+    let store_db = migrations::fresh_db();
+    let store = setup_store(&store_db);
 
     // Enqueue a completed sale (simulating SaleSyncEnqueuer behaviour).
     let payload = serde_json::json!({
@@ -178,7 +181,8 @@ async fn single_sale_enqueued_is_pushed_and_marked_synced() {
 #[tokio::test]
 async fn push_items_oldest_first() {
     let server = spawn_test_server().await;
-    let store = setup_store();
+    let store_db = migrations::fresh_db();
+    let store = setup_store(&store_db);
 
     // Enqueue items with a small delay between them so created_at differs.
     store.enqueue_offline("sale_1", r#"{"seq":1}"#).unwrap();
@@ -240,7 +244,8 @@ async fn conflict_response_marks_item_and_re_enqueues() {
         );
 
     let (port, handle) = spawn_custom_server(app).await;
-    let store = setup_store();
+    let store_db = migrations::fresh_db();
+    let store = setup_store(&store_db);
     store
         .enqueue_offline("complete_sale", r#"{"sale_id":"conflict-1"}"#)
         .unwrap();
@@ -288,7 +293,8 @@ async fn rejected_item_marked_failed() {
         );
 
     let (port, handle) = spawn_custom_server(app).await;
-    let store = setup_store();
+    let store_db = migrations::fresh_db();
+    let store = setup_store(&store_db);
     store.enqueue_offline("a", "{}").unwrap();
     store.enqueue_offline("b", "{}").unwrap();
     store.enqueue_offline("c", "{}").unwrap();
@@ -333,7 +339,8 @@ async fn pull_returns_items() {
         );
 
     let (port, handle) = spawn_custom_server(app).await;
-    let store = setup_store();
+    let store_db = migrations::fresh_db();
+    let store = setup_store(&store_db);
     let engine = SyncEngine::new(test_config(port));
     let result = engine.run_sync_cycle(&store).await.unwrap();
 
@@ -374,7 +381,8 @@ async fn api_key_is_sent_in_headers() {
         );
 
     let (port, handle) = spawn_custom_server(app).await;
-    let store = setup_store();
+    let store_db = migrations::fresh_db();
+    let store = setup_store(&store_db);
     store.enqueue_offline("test", "{}").unwrap();
 
     let mut config = test_config(port);
@@ -393,7 +401,8 @@ async fn api_key_is_sent_in_headers() {
 async fn connection_refused_returns_ok_with_zero_counts() {
     // Use a port that nothing is listening on.
     let port = 28999;
-    let store = setup_store();
+    let store_db = migrations::fresh_db();
+    let store = setup_store(&store_db);
     store.enqueue_offline("test", "{}").unwrap();
 
     let config = SyncConfig {
@@ -421,7 +430,8 @@ async fn connection_refused_returns_ok_with_zero_counts() {
 #[tokio::test]
 async fn empty_queue_produces_no_push() {
     let server = spawn_test_server().await;
-    let store = setup_store();
+    let store_db = migrations::fresh_db();
+    let store = setup_store(&store_db);
 
     let engine = SyncEngine::new(test_config(server.port));
     let result = engine.run_sync_cycle(&store).await.unwrap();
@@ -439,7 +449,8 @@ async fn empty_queue_produces_no_push() {
 #[tokio::test]
 async fn multiple_items_are_all_pushed_and_synced() {
     let server = spawn_test_server().await;
-    let store = setup_store();
+    let store_db = migrations::fresh_db();
+    let store = setup_store(&store_db);
 
     store
         .enqueue_offline("complete_sale", r#"{"sale_id":"s1"}"#)
@@ -825,7 +836,8 @@ async fn server_error_prevents_sync_item_stays_pending() {
         post(|| async { axum::http::StatusCode::INTERNAL_SERVER_ERROR }),
     );
     let (port, handle) = spawn_custom_server(reject_app).await;
-    let store = setup_store();
+    let store_db = migrations::fresh_db();
+    let store = setup_store(&store_db);
     store
         .enqueue_offline("complete_sale", r#"{"sale_id":"fail-1"}"#)
         .unwrap();
@@ -1019,7 +1031,8 @@ async fn transient_failure_then_retry_succeeds() {
     let (port, handle) = spawn_custom_server(app).await;
 
     // ── Cycle 1: transient failure ───────────────────────────────────
-    let store = setup_store();
+    let store_db = migrations::fresh_db();
+    let store = setup_store(&store_db);
     store
         .enqueue_offline("complete_sale", r#"{"sale_id":"retry-1"}"#)
         .unwrap();
@@ -1098,7 +1111,9 @@ async fn transient_failure_on_pull_retry_succeeds() {
         );
     let (port, handle) = spawn_custom_server(app).await;
 
-    let store = setup_store();
+    let store_db = migrations::fresh_db();
+
+    let store = setup_store(&store_db);
     let engine = SyncEngine::new(test_config(port));
 
     // Note: no items enqueued — the push phase is skipped (empty queue).
@@ -1145,7 +1160,8 @@ async fn push_unauthorized_401_returns_error() {
             }),
         );
     let (port, handle) = spawn_custom_server(reject_app).await;
-    let store = setup_store();
+    let store_db = migrations::fresh_db();
+    let store = setup_store(&store_db);
     store
         .enqueue_offline("complete_sale", r#"{"sale_id":"auth-401"}"#)
         .unwrap();
@@ -1189,7 +1205,8 @@ async fn push_forbidden_403_returns_error() {
             }),
         );
     let (port, handle) = spawn_custom_server(reject_app).await;
-    let store = setup_store();
+    let store_db = migrations::fresh_db();
+    let store = setup_store(&store_db);
     store
         .enqueue_offline("complete_sale", r#"{"sale_id":"auth-403"}"#)
         .unwrap();
@@ -1232,7 +1249,8 @@ async fn pull_unauthorized_401_returns_error() {
             post(|| async { axum::http::StatusCode::UNAUTHORIZED }),
         );
     let (port, handle) = spawn_custom_server(reject_app).await;
-    let store = setup_store();
+    let store_db = migrations::fresh_db();
+    let store = setup_store(&store_db);
     store
         .enqueue_offline("complete_sale", r#"{"sale_id":"pull-401"}"#)
         .unwrap();

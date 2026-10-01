@@ -11,6 +11,7 @@ import settingsFtl from '@/locales/settings.ftl?raw';
 import tablesFtl from '@/locales/tables.ftl?raw';
 import kdsFtl from '@/locales/kds.ftl?raw';
 import PosScreen from '@/features/sales/PosScreen';
+import RestaurantReceiptsScreen from '@/features/restaurant/screens/RestaurantReceiptsScreen';
 import type { Product } from '@/types/domain';
 
 const mockProducts = [
@@ -29,6 +30,7 @@ const mockActiveWorkspace = vi.hoisted(() => ({ current: 'restaurant-pos' }));
 const mockLogout = vi.hoisted(() => vi.fn());
 const mockGoToWorkspacePicker = vi.hoisted(() => vi.fn());
 const mockGetActiveShift = vi.hoisted(() => vi.fn().mockResolvedValue(null));
+const mockIsManager = vi.hoisted(() => ({ current: false }));
 
 vi.mock('@/contexts/WorkspaceContext', () => ({
   useWorkspace: () => ({
@@ -66,13 +68,13 @@ vi.mock('@/hooks/useWorkspaceNav', () => ({
 
 vi.mock('@/contexts/AuthContext', () => ({
   useAuth: () => ({
-    session: { user_id: 'user-1', username: 'test', role_name: 'cashier', token: 't', role_id: 'r', display_name: 'Test' },
+    session: { user_id: 'user-1', username: 'test', role_name: mockIsManager.current ? 'manager' : 'cashier', token: 't', role_id: 'r', display_name: 'Test' },
     loading: false,
     error: null,
     login: vi.fn(),
     logout: mockLogout,
     clearError: vi.fn(),
-    isManager: false,
+    isManager: mockIsManager.current,
     isOwner: false,
   }),
 }));
@@ -129,6 +131,7 @@ describe('RestaurantPosSidebar', () => {
     mockLogout.mockClear();
     mockGoToWorkspacePicker.mockClear();
     mockGetActiveShift.mockReset().mockResolvedValue(null);
+    mockIsManager.current = false;
   });
 
   it('hides the CartPanel when restaurant sidebar is toggled open and restores it when closed', async () => {
@@ -383,6 +386,62 @@ describe('RestaurantPosSidebar', () => {
     expect(within(footer).getByText(/^v\d/)).toBeInTheDocument();
     expect(within(footer).getByText(/All rights reserved/)).toBeInTheDocument();
   });
+
+  it('greys out Receipts and Payments buttons with Manager+ badge when cashier is not a manager', async () => {
+    const user = userEvent.setup();
+    mockIsManager.current = false;
+    await renderWithProviders(<PosScreen />, salesFtl, productsFtl, inventoryFtl, settingsFtl);
+
+    const toggleBtn = document.querySelector('.restaurant-sidebar-btn') as HTMLButtonElement;
+    await user.click(toggleBtn);
+
+    const receiptsBtn = screen.getByRole('button', { name: /Receipts/i });
+    const paymentsBtn = screen.getByRole('button', { name: /Payments/i });
+
+    expect(receiptsBtn).toBeDisabled();
+    expect(receiptsBtn).toHaveClass('restaurant-sidebar-item--disabled');
+    expect(within(receiptsBtn).getByText('Manager+')).toBeInTheDocument();
+
+    expect(paymentsBtn).toBeDisabled();
+    expect(paymentsBtn).toHaveClass('restaurant-sidebar-item--disabled');
+    expect(within(paymentsBtn).getByText('Manager+')).toBeInTheDocument();
+  });
+
+  it('enables Receipts and Payments for manager and opens full-page sub-screen with back button', async () => {
+    const user = userEvent.setup();
+    mockIsManager.current = true;
+    await renderWithProviders(<PosScreen />, salesFtl, productsFtl, inventoryFtl, settingsFtl);
+
+    const toggleBtn = document.querySelector('.restaurant-sidebar-btn') as HTMLButtonElement;
+    await user.click(toggleBtn);
+
+    const receiptsBtn = screen.getByRole('button', { name: /Receipts/i });
+    expect(receiptsBtn).not.toBeDisabled();
+    expect(receiptsBtn).not.toHaveClass('restaurant-sidebar-item--disabled');
+    expect(within(receiptsBtn).queryByText('Manager+')).toBeNull();
+
+    // Click Receipts opens the full-page sub-screen
+    await user.click(receiptsBtn);
+    expect(screen.getByText('Receipt & Printer Settings')).toBeInTheDocument();
+
+    // Click Back returns to POS
+    const backBtn = screen.getByRole('button', { name: /Back/i });
+    expect(backBtn).toBeInTheDocument();
+    await user.click(backBtn);
+    expect(screen.queryByText('Receipt & Printer Settings')).toBeNull();
+
+    // Open sidebar again and test Payments sub-screen
+    await user.click(document.querySelector('.restaurant-sidebar-btn') as HTMLButtonElement);
+    const paymentsBtn = screen.getByRole('button', { name: /Payments/i });
+    expect(paymentsBtn).not.toBeDisabled();
+    await user.click(paymentsBtn);
+    expect(screen.getByText('Payment Settings')).toBeInTheDocument();
+
+    // Click Back returns to POS
+    const paymentsBackBtn = screen.getByRole('button', { name: /Back/i });
+    await user.click(paymentsBackBtn);
+    expect(screen.queryByText('Payment Settings')).toBeNull();
+  });
 });
 
 /**
@@ -423,3 +482,274 @@ describe('RestaurantPosSidebar — row alignment', () => {
     ).toBe(true);
   });
 });
+
+describe('RestaurantReceiptsScreen — Font Size & Table Number Gating', () => {
+  it('renders 4 font size options with medium active by default, and switches classes on click', async () => {
+    const user = userEvent.setup();
+    await renderWithProviders(
+      <RestaurantReceiptsScreen tablesEnabled={true} />,
+      salesFtl,
+      productsFtl,
+      inventoryFtl,
+      settingsFtl,
+    );
+
+    const verySmallBtn = screen.getByRole('button', { name: 'Very Small' });
+    const smallBtn = screen.getByRole('button', { name: 'Small' });
+    const mediumBtn = screen.getByRole('button', { name: 'Medium' });
+    const largeBtn = screen.getByRole('button', { name: 'Large' });
+
+    expect(verySmallBtn).toBeInTheDocument();
+    expect(smallBtn).toBeInTheDocument();
+    expect(mediumBtn).toBeInTheDocument();
+    expect(largeBtn).toBeInTheDocument();
+
+    // Default is medium
+    expect(mediumBtn).toHaveClass('resto-segmented-btn--active');
+    const paper = document.querySelector('.resto-receipt-paper');
+    expect(paper).toHaveClass('resto-receipt-paper--font-medium');
+
+    // Switch to Very Small
+    await user.click(verySmallBtn);
+    expect(verySmallBtn).toHaveClass('resto-segmented-btn--active');
+    expect(paper).toHaveClass('resto-receipt-paper--font-very-small');
+
+    // Switch to Large
+    await user.click(largeBtn);
+    expect(largeBtn).toHaveClass('resto-segmented-btn--active');
+    expect(paper).toHaveClass('resto-receipt-paper--font-large');
+  });
+
+  it('hides the Show Table Number toggle when tablesEnabled is false', async () => {
+    await renderWithProviders(
+      <RestaurantReceiptsScreen tablesEnabled={false} />,
+      salesFtl,
+      productsFtl,
+      inventoryFtl,
+      settingsFtl,
+    );
+
+    expect(screen.queryByLabelText(/Show Table Number/i)).toBeNull();
+    expect(screen.queryByText('TABLE 4')).toBeNull();
+  });
+
+  it('shows the Show Table Number toggle and table pill when tablesEnabled is true', async () => {
+    const user = userEvent.setup();
+    await renderWithProviders(
+      <RestaurantReceiptsScreen tablesEnabled={true} />,
+      salesFtl,
+      productsFtl,
+      inventoryFtl,
+      settingsFtl,
+    );
+
+    const tableToggle = screen.getByLabelText(/Show Table Number/i);
+    expect(tableToggle).toBeInTheDocument();
+    expect(tableToggle).toHaveAttribute('aria-checked', 'false');
+
+    // Click to enable table number
+    await user.click(tableToggle);
+    expect(tableToggle).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByText('TABLE 4')).toBeInTheDocument();
+  });
+
+  it('renders logo in left column and centered title and lines in right column when logo is enabled', async () => {
+    const user = userEvent.setup();
+    await renderWithProviders(
+      <RestaurantReceiptsScreen tablesEnabled={true} />,
+      salesFtl,
+      productsFtl,
+      inventoryFtl,
+      settingsFtl,
+    );
+
+    // Enter a business logo (via text input)
+    const logoInput = screen.getByPlaceholderText(/Or paste Image URL \/ SVG code/i);
+    await user.clear(logoInput);
+    await user.type(logoInput, 'https://example.com/logo.png');
+
+    // Header row should appear with logo on left and text on right
+    const headerRow = document.querySelector('.resto-receipt-header-row');
+    expect(headerRow).toBeInTheDocument();
+    const logoCol = document.querySelector('.resto-receipt-header-logo-col');
+    expect(logoCol).toBeInTheDocument();
+    const textCol = document.querySelector('.resto-receipt-header-text-col');
+    expect(textCol).toBeInTheDocument();
+
+    // Configure custom title and lines
+    const titleInput = screen.getByLabelText('Receipt Title');
+    const line1Input = screen.getByLabelText('Header Line 1');
+    const line2Input = screen.getByLabelText(/Header Line 2/i);
+
+    await user.clear(titleInput);
+    await user.type(titleInput, 'WARUNG NUSANTARA');
+    await user.clear(line1Input);
+    await user.type(line1Input, 'Jl. Sudirman 45, Jakarta');
+    await user.clear(line2Input);
+    await user.type(line2Input, 'Tel: 021-123456');
+
+    expect(within(textCol as HTMLElement).getByText('WARUNG NUSANTARA')).toBeInTheDocument();
+    expect(within(textCol as HTMLElement).getByText('Jl. Sudirman 45, Jakarta')).toBeInTheDocument();
+    expect(within(textCol as HTMLElement).getByText('Tel: 021-123456')).toBeInTheDocument();
+  });
+
+  it('allows configuring logo position to top, left, and right', async () => {
+    const user = userEvent.setup();
+    await renderWithProviders(
+      <RestaurantReceiptsScreen tablesEnabled={true} />,
+      salesFtl,
+      productsFtl,
+      inventoryFtl,
+      settingsFtl,
+    );
+
+    // Enter a business logo (via text input)
+    const logoInput = screen.getByPlaceholderText(/Or paste Image URL \/ SVG code/i);
+    await user.clear(logoInput);
+    await user.type(logoInput, 'https://example.com/logo.png');
+
+    // Default position is 'left'
+    let headerRow = document.querySelector('.resto-receipt-header-row');
+    expect(headerRow).toBeInTheDocument();
+    expect(headerRow).not.toHaveClass('resto-receipt-header-row--right');
+
+    // Switch to 'top' position
+    const topBtn = screen.getByRole('button', { name: 'Top' });
+    await user.click(topBtn);
+
+    expect(document.querySelector('.resto-receipt-header-row')).toBeNull();
+    const logoWrap = document.querySelector('.resto-receipt-logo-wrap');
+    expect(logoWrap).toBeInTheDocument();
+
+    // Switch to 'right' position
+    const rightBtn = screen.getByRole('button', { name: 'Right' });
+    await user.click(rightBtn);
+
+    headerRow = document.querySelector('.resto-receipt-header-row');
+    expect(headerRow).toBeInTheDocument();
+    expect(headerRow).toHaveClass('resto-receipt-header-row--right');
+    expect(document.querySelector('.resto-receipt-logo-wrap')).toBeNull();
+
+    // Switch back to 'left' position
+    const leftBtn = screen.getByRole('button', { name: 'Left' });
+    await user.click(leftBtn);
+
+    headerRow = document.querySelector('.resto-receipt-header-row');
+    expect(headerRow).toBeInTheDocument();
+    expect(headerRow).not.toHaveClass('resto-receipt-header-row--right');
+  });
+
+  it('displays correct preview math and showcases tax rounding segmented toggle', async () => {
+    const user = userEvent.setup();
+    await renderWithProviders(
+      <RestaurantReceiptsScreen tablesEnabled={true} />,
+      salesFtl,
+      productsFtl,
+      inventoryFtl,
+      settingsFtl,
+    );
+
+    // Initial state: default 10% tax, 'half_up' rounding mode
+    // Net price is 100/110 of gross price:
+    // Item 1: 35.000 * 100/110 = 31818.1818... -> shown: 31.818
+    // Item 2: 16.000 * 100/110 = 14545.4545... -> shown: 14.545
+    // Item 3: 42.000 * 100/110 = 38181.8181... -> shown: 38.182
+    // Exact subtotal: 93.000 * 100/110 = 84545.4545... -> shown: 84.545
+    // 84545.4545... * 0.10 = 8454.5454... -> round = 8455 -> Total: 84545 + 8455 = 93000 -> Change: 100000 - 93000 = 7000
+    // The preview mirrors the ESC/POS renderer: the major part is verbatim,
+    // with no thousands grouping (formatPrice in receiptLogic).
+    expect(screen.getByText('PB1/TAX (10%)')).toBeInTheDocument();
+    expect(screen.getByText('31818')).toBeInTheDocument();
+    expect(screen.getByText('14545')).toBeInTheDocument();
+    expect(screen.getByText('38182')).toBeInTheDocument();
+    expect(screen.getByText('84545')).toBeInTheDocument();
+    expect(screen.getByText('8455')).toBeInTheDocument();
+    expect(screen.getByText('93000')).toBeInTheDocument();
+    expect(screen.getByText('7000')).toBeInTheDocument();
+
+    // Switch to Truncate (Legacy)
+    const truncateBtn = screen.getByRole('button', { name: 'Truncate (Legacy)' });
+    await user.click(truncateBtn);
+
+    // In truncate mode:
+    // 84545.4545... * 0.10 = 8454.5454... -> floor = 8454 -> Total: 84545 + 8454 = 92999 -> Change: 100000 - 92999 = 7001
+    expect(screen.getByText('PB1/TAX (10%)')).toBeInTheDocument();
+    expect(screen.getByText('8454')).toBeInTheDocument();
+    expect(screen.getByText('92999')).toBeInTheDocument();
+    expect(screen.getByText('7001')).toBeInTheDocument();
+
+    // Switch back to Round Half Up
+    const halfUpBtn = screen.getByRole('button', { name: 'Round Half Up' });
+    await user.click(halfUpBtn);
+
+    expect(screen.getByText('PB1/TAX (10%)')).toBeInTheDocument();
+    expect(screen.getByText('8455')).toBeInTheDocument();
+    expect(screen.getByText('93000')).toBeInTheDocument();
+    expect(screen.getByText('7000')).toBeInTheDocument();
+  });
+
+  it('renders menu order note pedas under Nasi Goreng Spesial and toggles with showItemNotes', async () => {
+    const user = userEvent.setup();
+    await renderWithProviders(
+      <RestaurantReceiptsScreen tablesEnabled={true} />,
+      salesFtl,
+      productsFtl,
+      inventoryFtl,
+      settingsFtl,
+    );
+
+    // Note 'pedas' is visible by default under 1x Nasi Goreng Spesial
+    expect(screen.getByText('1x Nasi Goreng Spesial')).toBeInTheDocument();
+    const noteEl = screen.getByText('pedas');
+    expect(noteEl).toBeInTheDocument();
+    expect(noteEl).toHaveClass('resto-receipt-item-note');
+
+    // Toggle off Menu Order Notes
+    const toggleNotes = screen.getByRole('switch', { name: 'Show Menu Order Notes' });
+    expect(toggleNotes).toHaveAttribute('aria-checked', 'true');
+    await user.click(toggleNotes);
+
+    expect(toggleNotes).toHaveAttribute('aria-checked', 'false');
+    expect(screen.queryByText('pedas')).toBeNull();
+
+    // Toggle back on
+    await user.click(toggleNotes);
+    expect(toggleNotes).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByText('pedas')).toBeInTheDocument();
+  });
+
+  it('moves receipt code to first row alongside staff name when Date & Time is disabled', async () => {
+    const user = userEvent.setup();
+    await renderWithProviders(
+      <RestaurantReceiptsScreen tablesEnabled={false} />,
+      salesFtl,
+      productsFtl,
+      inventoryFtl,
+      settingsFtl,
+    );
+
+    // Default: Date & Time enabled -> Row 1 has date and staff name, Row 2 has receipt code
+    let metaRows = document.querySelectorAll('.resto-receipt-meta');
+    expect(metaRows.length).toBe(2);
+    expect(within(metaRows[0] as HTMLElement).getByText('29/09/2026 21:15')).toBeInTheDocument();
+    expect(within(metaRows[0] as HTMLElement).getByText('Test')).toBeInTheDocument();
+    expect(within(metaRows[1] as HTMLElement).getByText('01-01-260929-01-000042')).toBeInTheDocument();
+
+    // Toggle off Show Date & Time
+    const toggleDateTime = screen.getByRole('switch', { name: /Show Date/i });
+    expect(toggleDateTime).toHaveAttribute('aria-checked', 'true');
+    await user.click(toggleDateTime);
+    expect(toggleDateTime).toHaveAttribute('aria-checked', 'false');
+
+    // Now receipt code moves up to row 1, resulting in only 1 meta row
+    metaRows = document.querySelectorAll('.resto-receipt-meta');
+    expect(metaRows.length).toBe(1);
+    expect(within(metaRows[0] as HTMLElement).getByText('01-01-260929-01-000042')).toBeInTheDocument();
+    expect(within(metaRows[0] as HTMLElement).getByText('Test')).toBeInTheDocument();
+    expect(screen.queryByText('29/09/2026 21:15')).toBeNull();
+  });
+});
+
+
+
+

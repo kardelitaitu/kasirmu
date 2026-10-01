@@ -1,5 +1,5 @@
 /* ============================================================
- * OZ-POS Design Tokens
+ * kasir.mu Design Tokens
  *
  * Single source of truth for every visual property.
  * Components reference tokens via var(--token-name) exclusively.
@@ -179,7 +179,9 @@
   --font-weight-semibold: 600;
   --font-weight-bold:     700;
 
+  --leading-condensed: 1.2;
   --leading-tight:   1.25;
+  --leading-snug:    1.4;
   --leading-normal:  1.5;
   --leading-relaxed: 1.625;
 
@@ -240,6 +242,25 @@
   --blur-amount: 0px;
   --shadow-glow: none;
 
+  /* ── Thermal receipt simulation (restaurant print preview) ──────
+     These are deliberately NOT theme-reactive and NOT aliases of the
+     --color-* surface ramp. A thermal receipt is a physical object: it is
+     white paper with dark grey ink no matter what the app theme is, and the
+     preview exists to show the operator what the printer will actually
+     produce. Binding it to --color-bg/-text would make the preview lie in
+     dark mode, which is the one thing this pane must not do. Declared once
+     here so the values have one home and the token gate can see them, per
+     KNOWN_VIOLATIONS_BASELINE = 0 in themeTokenCompliance.test.ts. */
+  --receipt-paper:          #ffffff; /* paper stock */
+  --receipt-paper-ink:      #111827; /* primary thermal ink */
+  --receipt-paper-ink-soft: #374151; /* secondary ink (meta rows) */
+  --receipt-paper-rule:     #4b5563; /* dashed separator rule */
+  --receipt-paper-pill-bg:  #e5e7eb; /* table-number chip fill */
+  --receipt-paper-pill-ink: #1f2937; /* table-number chip text */
+  --receipt-paper-scrim:    #0f1218; /* mat the roll sits on */
+  --receipt-paper-shadow:   0 4px 16px rgba(0, 0, 0, 0.35);
+  --receipt-paper-guide:    1px dashed rgba(59, 130, 246, 0.35);
+
   /* ── Timing ───────────────────────────────────────────────── */
   --duration-0:    0ms;
   --duration-75:   75ms;
@@ -290,11 +311,13 @@
   /* The top bar's height, single-sourced for the same reason: the settings
    * hub's top bar and the staff management header are two different sheets
    * that must render ONE bar height, and neither may drift when the touch
-   * floor changes. Derived, not invented: --touch-target-min is the tallest
-   * mandatory child either bar hosts, both carry --space-2 vertical padding,
-   * and both carry a 1px bottom border. Chrome geometry, not theme — so it
+   * floor changes. Derived, not invented: --touch-target-comfortable is the
+   * tallest mandatory child either bar hosts under the coarse-pointer rule
+   * (a .btn in the settings bar, a tablist [role="tab"] in the staff
+   * header — both 48px), both bars carry --space-2 vertical padding, and
+   * both carry a 1px bottom border. Chrome geometry, not theme — so it
    * is deliberately NOT restated in the light/dark blocks. */
-  --topbar-height: calc(var(--touch-target-min) + 2 * var(--space-2) + 1px);
+  --topbar-height: calc(var(--touch-target-comfortable) + 2 * var(--space-2) + 1px);
 
   /* The memo stack's bottom clearance, DEFAULT value. Each SHELL overrides
    * this on its own layout root as "its own bottom chrome height +
@@ -316,6 +339,7 @@
   --z-modal:     400;
   --z-toast:     500;
   --z-tooltip:   600;
+  --z-splash:    700;
 
   /* ── POS Brand (stable across themes) ─────────────────────── */
   --color-primary-pos:        #1e3a5f;
@@ -449,6 +473,8 @@
   --color-bg-primary:      #ffffff;
   --color-bg-secondary:    #e8e9ec;
   --color-bg-subtle:       rgba(0, 0, 0, 0.02);
+  --receipt-paper-scrim:    #e8e9ec;
+  --receipt-paper-shadow:   0 4px 16px rgba(0, 0, 0, 0.08);
 
   /* ── Text ─────────────────────────────────────────────────── */
   --color-fg:              #1a1d23;
@@ -593,6 +619,8 @@
   --color-bg-primary:      #1c1f27;
   --color-bg-secondary:    #262a34;
   --color-bg-subtle:       rgba(255, 255, 255, 0.03);
+  --receipt-paper-scrim:    #0f1218;
+  --receipt-paper-shadow:   0 4px 16px rgba(0, 0, 0, 0.35);
 
   /* ── Text ─────────────────────────────────────────────────── */
   --color-fg:              #e8eaef;
@@ -671,30 +699,46 @@
   --color-pos-on-primary:     #ffffff;
 }
 
-/* ── Smooth theme transitions ──────────────────── */
-/* Perf note (round AI): this rule deliberately animates ONLY paint-cheap
+/* ── Smooth theme transitions ──────────────────── *//* Perf note (round AI): this rule deliberately animates ONLY paint-cheap
    color properties. box-shadow and backdrop-filter were removed — both
    repaint the full element every frame, and on card-heavy screens (KDS
    board) the 200ms crossfade dropped frames behind the theme toggle's
    own click feedback. Shadows and blurs now snap with the new theme. */
-html.is-theme-transitioning *,
-html.is-theme-transitioning *::before,
-html.is-theme-transitioning *::after {
-  transition-property: color, background-color, border-color,
-    text-decoration-color !important;
-  transition-duration: var(--duration-200) !important;
-  transition-timing-function: var(--ease-out) !important;
+/*
+ * Gated to `no-preference`, and the gate matters more than it looks.
+ * Every declaration below is `!important` on `html.is-theme-transitioning *`
+ * = specificity (0,1,1), while the reduced-motion kill in `reset.css` is an
+ * `!important` longhand on `*` = (0,0,0). Two important declarations are
+ * settled by specificity, so the blanket rule LOST and a reduced-motion user
+ * still watched the whole document cross-fade for 200ms after every theme
+ * toggle. Leaving the gate out is what let that happen; under `reduce` these
+ * rules simply do not exist and the theme snaps (docs/records/JOURNAL.md
+ * already logged this as an open quirk). */
+@media (prefers-reduced-motion: no-preference) {
+  html.is-theme-transitioning *,
+  html.is-theme-transitioning *::before,
+  html.is-theme-transitioning *::after {
+    transition-property: color, background-color, border-color,
+      text-decoration-color !important;
+    transition-duration: var(--duration-200) !important;
+    transition-timing-function: var(--ease-out) !important;
+  }
 }
 
 /* The KDS theme toggle's pill must keep its own slide while the rest of
    the document fades: the global rule above replaces the element's
-   transition shorthand mid-flight, cancelling `left` and making the
-   pill teleport on click. Specificity (0,2,1) beats the (0,1,1) rule. */
-html.is-theme-transitioning .kds-theme-indicator {
-  transition:
-    left 280ms cubic-bezier(0.33, 1, 0.68, 1),
-    background-color var(--duration-200) var(--ease-out),
-    border-color var(--duration-200) var(--ease-out) !important;
+   transition shorthand mid-flight, cancelling `left` and making
+   the pill teleport on click. Specificity (0,2,1) beats the (0,1,1) rule.
+   Same `no-preference` gate as the rule it overrides, for the same reason —
+   it is (0,2,1) `!important`, so it outranked the blanket kill too and the
+   pill kept sliding 280ms for reduced-motion users. */
+@media (prefers-reduced-motion: no-preference) {
+  html.is-theme-transitioning .kds-theme-indicator {
+    transition:
+      left 280ms cubic-bezier(0.33, 1, 0.68, 1),
+      background-color var(--duration-200) var(--ease-out),
+      border-color var(--duration-200) var(--ease-out) !important;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

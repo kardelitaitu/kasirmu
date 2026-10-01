@@ -9,6 +9,7 @@
 
 use super::Store;
 use crate::error::CoreError;
+use rusqlite::OptionalExtension;
 
 /// The smallest SQLite ceiling this module must keep working on:
 /// `SQLITE_MAX_VARIABLE_NUMBER` is 32 766 on the bundled rusqlite
@@ -102,7 +103,7 @@ impl Store<'_> {
     /// catalog snapshot response.
     ///
     /// The candidate list is data-driven and unbounded (see
-    /// [`IMAGE_REFS_IN_CHUNK`]), so it is read in chunks inside ONE
+    /// `IMAGE_REFS_IN_CHUNK`), so it is read in chunks inside ONE
     /// transaction: each chunk rebuilds its placeholders and argument vector
     /// and feeds the same `present` set, and the result is projected
     /// at the end in the CALLER'S candidate order. The statement never ordered
@@ -209,7 +210,14 @@ impl Store<'_> {
              ORDER BY next_attempt_at ASC, enqueued_at ASC
              LIMIT ?1",
         )?;
-        let rows = stmt.query_map(rusqlite::params![limit as i64], |r| {
+        // `try_from` rather than `as i64`: `limit` is caller-supplied and
+        // reaches a SQL `LIMIT`, so a value beyond `i64` should be refused
+        // rather than wrapped into a small (or negative) page size.
+        let limit_i64 = i64::try_from(limit).map_err(|_| CoreError::Validation {
+            field: "limit",
+            message: format!("batch limit {limit} exceeds i64"),
+        })?;
+        let rows = stmt.query_map(rusqlite::params![limit_i64], |r| {
             Ok((r.get(0)?, r.get(1)?, r.get(2)?))
         })?;
         rows.collect::<Result<Vec<_>, _>>().map_err(CoreError::from)
@@ -229,14 +237,15 @@ impl Store<'_> {
             return Ok(());
         }
         // Fetch current attempts
-        let (attempts,): (i32,) = self
+        let attempts: i32 = self
             .conn
             .query_row(
                 "SELECT attempts FROM image_push_queue WHERE hash = ?1",
                 rusqlite::params![hash],
-                |r| Ok((r.get(0)?,)),
+                |r| r.get(0),
             )
-            .unwrap_or((0,));
+            .optional()?
+            .unwrap_or(0);
         let next_attempt = attempts + 1;
         if next_attempt > 8 {
             // Dead-letter after 8 attempts — delete and return
@@ -247,7 +256,23 @@ impl Store<'_> {
             return Ok(());
         }
         // AWS full-jitter: delay = uniform(0, min(30 min, 60 s * 2^attempts))
-        let max_base = 60_i64 * 2_i64.pow(attempts as u32);
+        //
+        // `u32::try_from` rather than `as u32`, and this one is NOT theoretical:
+        // `attempts` is an `i32` column. Under `as u32` a NEGATIVE count (a
+        // corrupt or hand-edited row) wraps to ~4 billion, and `2_i64.pow(..)`
+        // then panics on overflow rather than backing off — turning one bad row
+        // into a crash in the retry path. Clamping at 0 keeps the backoff
+        // monotone and lets the dead-letter rule at 8 attempts do its job.
+        //
+        // The `.min(57)` bound is where `60 * 2^n` still fits `i64` — measured
+        // against the real values rather than estimated: `2^58` fits the
+        // exponent but `60 * 2^58 = 17293822569102704640` exceeds `i64::MAX`,
+        // while `60 * 2^57 = 8646911284551352320` does not. It is not a tuning
+        // choice: the dead-letter rule at 8 attempts means no legitimate row
+        // approaches it, and `limit` below caps the result at 1800 s anyway. It
+        // exists so a hostile `attempts` cannot reach the overflow panic.
+        let attempts = u32::try_from(attempts).unwrap_or(0);
+        let max_base = 60_i64 * 2_i64.pow(attempts.min(57));
         let limit = max_base.min(1800); // 30 minutes in seconds
         let delay_secs: i64 = rand::thread_rng().gen_range(0..=limit);
         let next_at = format!("+{delay_secs} seconds");

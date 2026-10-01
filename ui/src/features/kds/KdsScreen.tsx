@@ -1,5 +1,6 @@
-import { useEffect, useState, useCallback, useMemo, useRef, Profiler } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { Localized, useLocalization } from '@fluent/react';
+import { DevProfiler } from '@/components/DevProfiler';
 import { usePullToRefresh } from '@/hooks/usePullToRefresh';
 import { useSwipe } from '@/hooks/useSwipe';
 import { useKdsOffline } from '@/hooks/useKdsOffline';
@@ -45,9 +46,9 @@ export interface KdsLayoutProps {
   onSaveItems?: (orderId: string, itemsSummary: string, itemCount: number) => void;
   /** Session token for scoped API calls (e.g., fetching line items). */
   sessionToken: string;
-  /** Called when a single line item is tapped to advance its status (TODO 3e). */
+  /** Called when a single line item is tapped to advance its status. */
   onAdvanceItem?: (item: KdsLineItem) => void;
-  /** Called to open the product picker for adding items to a KDS order (TODO 3f). */
+  /** Called to open the product picker for adding items to a KDS order. */
   onAddItems?: (orderId: string) => void;
   /** Set of order IDs that just arrived — used for brief highlight animation. */
   newOrderIds: ReadonlySet<string>;
@@ -140,6 +141,7 @@ export default function KdsScreen() {
   pendingQueueLengthRef.current = pendingQueueLength;
 
   const fetchOrders = useCallback(async () => {
+    if (!sessionToken) return;
     const zone = prefs.kdsZone || undefined;
     const { orders: fetchedOrders, fromCache } = await wrapFetch(() =>
       getKdsQueueScoped(sessionToken, zone),
@@ -228,7 +230,7 @@ export default function KdsScreen() {
     }
   }, [sessionToken, speak, l10n, wrapUpdate]);
 
-  // ── Per-item status advance (TODO 3e) ──────────────────────────
+  // ── Per-item status advance ────────────────────────────────────
   const advanceItemStatus = useCallback(async (item: KdsLineItem) => {
     // ITEM_STATUS_ORDER used to be re-declared here as a fresh array literal on every
     // call; the item ladder is the same progression as the ticket ladder, so it now
@@ -387,11 +389,7 @@ export default function KdsScreen() {
 
   return (
     <KdsCardColorsProvider>
-    <Profiler id="KdsScreen" onRender={(...args) => {
-      if (typeof args[2] === 'number' && args[2] > 1) {
-        console.debug('[Profiler] KdsScreen', args[1] === 'mount' ? '⚡mount' : '♻update', `${args[2].toFixed(1)}ms`);
-      }
-    }}>
+    <DevProfiler id="KdsScreen">
     <div ref={kdsRef} className="kds" tabIndex={-1} role="region" aria-label={requiredLocalized(l10n, 'kds-screen-aria')}>
       {/* A11Y: non-visual announcement of arriving tickets — the chime and
           the 3s visual highlight are both invisible to screen reader users.
@@ -628,7 +626,7 @@ export default function KdsScreen() {
         </div>
       )}
     </div>
-    </Profiler>
+    </DevProfiler>
     </KdsCardColorsProvider>
   );
 }

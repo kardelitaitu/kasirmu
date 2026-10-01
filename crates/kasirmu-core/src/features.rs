@@ -2,12 +2,12 @@
 /*
 last audited 25-07-26 by RSA-Agent (kasirmu-core slice C4: features deep read)
 crate: kasirmu-core | status: SAFE | lint: CLEAN
-findings: production logic (1-685) clean — dependency DAG with recursive enable, kebab-case settings keys, FeatureGuard veto registry (KDS tickets / open shifts), format! interpolates an internal constant only; COR-33 CONVENTION: ~660 lines of inline #[test]/proptest (691-1349) live in this production file despite the declared sibling features_tests.rs — violates AGENTS.md ("never tests in production files", 1,000-line rule); guard COUNT queries use .unwrap_or(0) -> DB error = veto passes (fail-open on a safety guard, COR-11/25 family, INFO)
-next: move inline tests to features_tests.rs (COR-33); propagate guard query errors | perf: N/A
+findings: production logic clean — dependency DAG with recursive enable, kebab-case settings keys, FeatureGuard veto registry (KDS tickets / open shifts), format! interpolates an internal constant only; COR-33 CLOSED 2026-10-04: the inline tests were moved out — this file is 748 lines and ends with #[cfg(test)] #[path = "features_tests.rs"] mod tests; plus #[path = "features_proptests.rs"] mod proptests (no inline #[test]/proptest remains); COR-11/25 CLOSED 2026-10-04: both guard COUNT queries (KdsFeatureGuard::can_disable kds_orders, ShiftFeatureGuard::can_disable shifts) now propagate the read error with .map_err(..)? so an unreadable count fails CLOSED instead of vetoing open
+next: none | perf: N/A
 */
 //!
 //! The [`Feature`] enum defines all 32 toggleable features in the
-//! OZ-POS framework. A [`FeatureRegistry`] holds the currently-active
+//! kasir.mu framework. A [`FeatureRegistry`] holds the currently-active
 //! set and provides helpers for enabling/disabling flags with automatic
 //! dependency resolution.
 //!
@@ -21,7 +21,7 @@ use std::collections::HashSet;
 
 use rusqlite::Connection;
 
-/// Every toggleable feature in the OZ-POS framework.
+/// Every toggleable feature in the kasir.mu framework.
 ///
 /// Variants are in logical groups: core, payments, products, staff,
 /// hardware, business rules, scaling, and advanced. The order is stable;
@@ -611,13 +611,17 @@ impl FeatureGuard for KdsFeatureGuard {
             return Ok(());
         }
 
+        // COR-11 family: propagate the read error instead of `unwrap_or(0)`.
+        // A veto must fail CLOSED — an unreadable count is not "no tickets",
+        // and defaulting it to 0 let an admin disable Kitchen Display over
+        // live tickets. Same fix `db/inventory.rs` applied to its guards.
         let count: i64 = conn
             .query_row(
                 "SELECT COUNT(*) FROM kds_orders WHERE status IN ('pending', 'preparing')",
                 [],
                 |row| row.get(0),
             )
-            .unwrap_or(0);
+            .map_err(|e| format!("cannot verify active kitchen tickets: {e}"))?;
 
         if count > 0 {
             Err(format!(
@@ -644,13 +648,14 @@ impl FeatureGuard for ShiftFeatureGuard {
             return Ok(());
         }
 
+        // COR-11 family: fail CLOSED on an unreadable count (see KdsFeatureGuard).
         let count: i64 = conn
             .query_row(
                 "SELECT COUNT(*) FROM shifts WHERE closed_at IS NULL",
                 [],
                 |row| row.get(0),
             )
-            .unwrap_or(0);
+            .map_err(|e| format!("cannot verify open shifts: {e}"))?;
 
         if count > 0 {
             Err(format!(

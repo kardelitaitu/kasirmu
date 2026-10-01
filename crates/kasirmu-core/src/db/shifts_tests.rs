@@ -1,3 +1,11 @@
+// P2-5: `float_cmp` assertions on exact values the code produces by
+// construction — a fully-attributed percentile is exactly 1.0, a zero trend
+// is exactly 0.0, a 100% margin is exactly 100.0, and a parsed coordinate is
+// the literal it was written as. These are equality assertions, not
+// approximate comparisons: an epsilon would make each one WEAKER by accepting
+// values it should reject.
+#![allow(clippy::float_cmp)]
+
 use super::*;
 use crate::migrations;
 use rusqlite::Connection;
@@ -51,6 +59,67 @@ fn open_shift_duplicate_rejected() {
     assert!(
         matches!(err, CoreError::Validation { field, .. } if field == "user_id"),
         "expected Validation error for duplicate shift, got: {err}"
+    );
+}
+
+// ── COR-27: the partial unique index behind the invariant ────────────
+
+/// COR-27's second half. The `open_shift` guard (COUNT-then-INSERT in one
+/// `BEGIN IMMEDIATE`) serialises the FUNCTION's writers, but it cannot constrain
+/// a writer that bypasses it. `20261011_open_shift_uniqueness.sql` backs it with
+/// a partial unique index — `idx_shifts_open_per_user ON shifts(user_id) WHERE
+/// status = 'open'` (`:92-94`) — which is what makes the invariant structural.
+///
+/// The stamp in `shifts.rs` asserted the opposite in as many words: *"still NO
+/// partial unique index behind it (verified init.sql:1259-1263 — only plain
+/// indexes)"*. The check was real but its SCOPE was wrong: `init.sql` only holds
+/// the baseline schema, while this index is added by a later migration file. The
+/// conclusion was drawn from an incomplete referent set, which is the same error
+/// the ledger has recorded for absence claims five times. This test measures the
+/// fact against a migrated database instead of reading one file.
+#[test]
+fn a_partial_unique_index_guards_open_shifts() {
+    let conn = fresh();
+    seed_user(&conn);
+    let s = store(&conn);
+
+    // The index exists, and it is partial on status = 'open'.
+    let ddl: String = conn
+        .query_row(
+            "SELECT sql FROM sqlite_master WHERE type = 'index' AND name = 'idx_shifts_open_per_user'",
+            [],
+            |r| r.get(0),
+        )
+        .expect("the partial unique index must exist after migrations");
+    assert!(ddl.contains("UNIQUE"), "it must be UNIQUE: {ddl}");
+    assert!(ddl.contains("status = 'open'"), "and partial: {ddl}");
+
+    // The real property: a DIRECT write that skips `open_shift` is refused.
+    s.open_shift("user-1", None, 100).unwrap();
+    let direct = conn.execute(
+        "INSERT INTO shifts (id, user_id, opening_balance_minor, status, opened_at, created_at, updated_at)
+         VALUES ('shift-bypass', 'user-1', 500, 'open', '2025-01-01T00:00:00.000Z',
+                 '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z')",
+        [],
+    );
+    assert!(
+        direct.is_err(),
+        "a second OPEN shift for the same user must be refused by the index, \
+         not merely by the function's guard"
+    );
+
+    // And the index is PARTIAL: a closed shift for the same user still inserts,
+    // so a user accumulates as many closed shifts as they like.
+    let closed = conn.execute(
+        "INSERT INTO shifts (id, user_id, opening_balance_minor, status, opened_at, closed_at, created_at, updated_at)
+         VALUES ('shift-old', 'user-1', 400, 'closed', '2024-12-31T00:00:00.000Z',
+                 '2024-12-31T08:00:00.000Z', '2024-12-31T00:00:00.000Z', '2024-12-31T08:00:00.000Z')",
+        [],
+    );
+    assert!(
+        closed.is_ok(),
+        "the index is partial — CLOSED shifts are outside it: {:?}",
+        closed.err()
     );
 }
 
@@ -445,6 +514,49 @@ fn get_shift_report_gross_profit_from_product_costs() {
 }
 
 #[test]
+fn get_shift_report_nets_refunded_cost_and_revenue_out_of_profit() {
+    let conn = fresh();
+    seed_user(&conn);
+    let s = store(&conn);
+
+    let shift = s.open_shift("user-1", None, 200).unwrap();
+    let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+
+    conn.execute_batch(&format!(
+        "INSERT INTO products (id, sku, name, price_minor, currency, cost_minor, created_at, updated_at) VALUES
+         ('p-1', 'HAT', 'Hat', 1000, 'USD', 400, '{now}', '{now}');
+         INSERT INTO sales (id, user_id, status, total_minor, payment_method, currency, line_count, created_at, updated_at) VALUES
+         ('sale-r1', 'user-1', 'completed', 4000, 'cash', 'USD', 1, '{now}', '{now}');
+         INSERT INTO sale_lines (id, sale_id, sku, qty, unit_minor, line_minor, currency, line_position, cost_minor) VALUES
+         ('sl-r1', 'sale-r1', 'HAT', 4, 1000, 4000, 'USD', 1, 400);"
+    ))
+    .unwrap();
+    // One of the four units comes back. Total stays 0 so the refund is the
+    // only variable: profit must drop by the unit's REVENUE + COST.
+    conn.execute_batch(&format!(
+        "INSERT INTO refunds (id, sale_id, total_minor, currency, reason, note, processed_by, created_at)
+         VALUES ('rf-1', 'sale-r1', 1000, 'USD', '', '', 'user-1', '{now}');
+         INSERT INTO refund_lines (id, refund_id, sale_line_id, sku, qty, unit_minor, line_minor, currency, created_at)
+         VALUES ('rfl-1', 'rf-1', 'sl-r1', 'HAT', 1, 1000, 1000, 'USD', '{now}');"
+    ))
+    .unwrap();
+
+    s.close_shift(&shift.id, 800, None).unwrap();
+    let report = s.get_shift_report(&shift.id).unwrap();
+
+    // Revenue 4000 - refund 1000 = 3000 net. COGS 1600 - 400 = 1200.
+    // Profit = 3000 - 1200 = 1800. Gross revenue minus un-netted COGS
+    // would have said 2400.
+    assert_eq!(report.cogs_minor, 1200);
+    assert_eq!(report.gross_profit_minor, 1800);
+    let expected = 1800.0 / 3000.0 * 100.0;
+    assert!(
+        (report.gross_margin_percent - expected).abs() < 1e-9,
+        "margin was {}",
+        report.gross_margin_percent
+    );
+}
+#[test]
 fn get_shift_report_open_shift() {
     let conn = fresh();
     seed_user(&conn);
@@ -495,6 +607,247 @@ fn close_shift_atomic_within_transaction() {
     assert_eq!(closed.cash_difference_minor, Some(100)); // 1000 - 900
     assert_eq!(closed.total_cash_minor, 1000);
     assert_eq!(closed.total_payouts_minor, 300);
+}
+
+/// RED: a SPLIT-TENDER sale's cash leg is invisible to the drawer because
+/// `close_shift` reads `sales.payment_method` (stamped `split`) instead of the
+/// `payments` table where each tender is recorded with its real method.
+///
+/// The shift REPORT already reads `payments` (`get_shift_report`), so the close
+/// and the report disagree by construction - the exact defect review 8.4 names.
+/// A $10 cash + $10 card sale must put $10 in expected cash, not $0.
+#[test]
+fn close_shift_sees_the_cash_leg_of_a_split_tender() {
+    let conn = fresh();
+    seed_user(&conn);
+    let s = store(&conn);
+
+    // Open with $100 (10000 minor).
+    let shift = s.open_shift("user-1", None, 10000).unwrap();
+    let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+
+    // A $20 sale paid $10 cash + $10 card. The sale carries the `split` stamp
+    // and the real tenders live in `payments`, exactly as checkout writes them.
+    conn.execute_batch(&format!(
+        "INSERT INTO sales (id, user_id, status, total_minor, payment_method, currency, line_count, created_at, updated_at) VALUES
+         ('sale-split', 'user-1', 'completed', 2000, 'split', 'USD', 1, '{now}', '{now}');
+         INSERT INTO payments (id, sale_id, method, amount_minor, currency, created_at) VALUES
+         ('pay-cash', 'sale-split', 'cash', 1000, 'USD', '{now}'),
+         ('pay-card', 'sale-split', 'card', 1000, 'USD', '{now}');"
+    ))
+    .unwrap();
+
+    // Drawer holds opening 10000 + 1000 cash = 11000; close at 11000 is even.
+    let closed = s.close_shift(&shift.id, 11000, None).unwrap();
+    assert_eq!(
+        closed.total_cash_minor, 1000,
+        "the cash leg of a split tender must count as cash"
+    );
+    assert_eq!(
+        closed.expected_cash_minor,
+        Some(11000),
+        "expected_cash must see the cash leg of a split tender (10000 opening + 1000 cash)"
+    );
+    assert_eq!(
+        closed.cash_difference_minor,
+        Some(0),
+        "the drawer matches once the split's cash leg is counted"
+    );
+}
+
+/// The invariant behind C16: the closed shift and the shift REPORT must agree
+/// on the cash total. The report already summed `payments.amount_minor` by
+/// method; the close did not, so the two told different stories about the same
+/// split tender. This pins them together so a future change to either end
+/// cannot silently re-open the gap.
+#[test]
+fn close_shift_and_report_agree_on_cash_for_a_split_tender() {
+    let conn = fresh();
+    seed_user(&conn);
+    let s = store(&conn);
+
+    let shift = s.open_shift("user-1", None, 10000).unwrap();
+    let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+    conn.execute_batch(&format!(
+        "INSERT INTO sales (id, user_id, status, total_minor, payment_method, currency, line_count, created_at, updated_at) VALUES
+         ('sale-split', 'user-1', 'completed', 2000, 'split', 'USD', 1, '{now}', '{now}');
+         INSERT INTO payments (id, sale_id, method, amount_minor, currency, created_at) VALUES
+         ('pay-cash', 'sale-split', 'cash', 1000, 'USD', '{now}'),
+         ('pay-card', 'sale-split', 'card', 1000, 'USD', '{now}');"
+    ))
+    .unwrap();
+
+    // The report is readable while the shift is still open.
+    let report = s.get_shift_report(&shift.id).unwrap();
+    let report_cash: i64 = report
+        .payment_breakdown
+        .iter()
+        .filter(|b| b.method == "cash")
+        .map(|b| b.total_minor)
+        .sum();
+    assert_eq!(report_cash, 1000, "the report counts the split's cash leg");
+
+    let closed = s.close_shift(&shift.id, 11000, None).unwrap();
+    assert_eq!(
+        closed.total_cash_minor, report_cash,
+        "close and report must agree on cash: the close used to say 0 here"
+    );
+}
+
+/// RED: a refund belongs to the shift of the person who PROCESSED it, not to
+/// the shift of whoever sold the original sale. `close_shift` joins refunds to
+/// sales on the SALE's `user_id` and ignores `refunds.processed_by`, so a refund
+/// handled the next day by another cashier belongs to no shift at all -- silently,
+/// and it is typed by the original sale's tender rather than the refund's own.
+///
+/// Review 8.4. Here user-1 sells for cash on shift A; on shift B user-2 refunds
+/// it in cash. Shift A's drawer must be UNTOUCHED by that refund, and shift B's
+/// drawer must show the cash leaving.
+#[test]
+fn close_shift_attributes_a_refund_to_the_shift_that_processed_it() {
+    let conn = fresh();
+    seed_user(&conn);
+    conn.execute_batch(
+        "INSERT INTO users (id, username, pin_hash, display_name, role_id, created_at, updated_at) VALUES
+         ('user-2', 'bob', 'hash', 'Bob', 'role-staff', '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z');"
+    )
+    .unwrap();
+    let s = store(&conn);
+    let usd: crate::Currency = "USD".parse().unwrap();
+    let money = |minor: i64| crate::Money {
+        minor_units: minor,
+        currency: usd,
+    };
+
+    // The original $10 cash sale, made by user-1.
+    conn.execute_batch(
+        "INSERT INTO products (id, sku, name, price_minor, currency, created_at, updated_at, product_type)
+         VALUES ('p-sku', 'SKU', 'Sku', 1000, 'USD', '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z', 'retail');
+         INSERT INTO sales (id, total_minor, currency, line_count, status, payment_method,
+                            created_at, updated_at, user_id, version)
+         VALUES ('sale-ref', 1000, 'USD', 1, 'completed', 'cash',
+                 '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z', 'user-1', 1);
+         INSERT INTO sale_lines (id, sale_id, sku, qty, unit_minor, line_minor, currency, line_position)
+         VALUES ('sl-1', 'sale-ref', 'SKU', 1, 1000, 1000, 'USD', 1);"
+    )
+    .unwrap();
+
+    // Shift A is user-1's, opened and STILL OPEN, with no refund in it yet.
+    let shift_a = s.open_shift("user-1", None, 5000).unwrap();
+
+    // Shift B is user-2's, opened later; user-2 processes the cash refund.
+    let shift_b = s.open_shift("user-2", None, 5000).unwrap();
+    s.create_refund(&crate::Refund::new(
+        "sale-ref",
+        money(1000),
+        "refund",
+        "",
+        "user-2",
+        vec![crate::RefundLine::new(
+            "sl-1",
+            "SKU",
+            1,
+            money(1000),
+            money(1000),
+        )],
+    ))
+    .unwrap();
+
+    // Close A first: user-1's drawer never saw that refund, so expected cash is
+    // just the opening balance -- 5000, diff 0 against a 5000 count.
+    let closed_a = s.close_shift(&shift_a.id, 5000, None).unwrap();
+    assert_eq!(
+        closed_a.expected_cash_minor,
+        Some(5000),
+        "a refund processed on ANOTHER shift must not touch this shift's drawer"
+    );
+    assert_eq!(
+        closed_a.total_refunds_minor, 0,
+        "user-2's refund does not belong to user-1's shift"
+    );
+
+    // Close B: user-2's drawer must show the cash refund leaving it.
+    let closed_b = s.close_shift(&shift_b.id, 4000, None).unwrap();
+    assert_eq!(
+        closed_b.total_refunds_minor, 1000,
+        "the refund belongs to the shift of the user who processed it"
+    );
+    assert_eq!(
+        closed_b.expected_cash_minor,
+        Some(4000),
+        "expected cash must subtract the cash refund this shift processed"
+    );
+}
+
+/// RED: `get_shift_report.refund_count` must attribute a refund to the shift of
+/// the user who PROCESSED it, exactly as `close_shift.total_refunds_minor` does.
+/// The close path was fixed to join on `refunds.processed_by` (review 8.4), but
+/// the report's count still joined on the ORIGINAL sale's `s.user_id` — so the
+/// two surfaces of one shift disagreed: the seller's report claimed a refund
+/// whose cash never left their drawer, and the processor's report, the one whose
+/// drawer actually lost the cash, counted zero.
+///
+/// Same shape as `close_shift_attributes_a_refund_to_the_shift_that_processed_it`
+/// above: user-1 sells for cash, user-2 processes the refund on their own shift.
+#[test]
+fn get_shift_report_refund_count_attributes_to_the_processor() {
+    let conn = fresh();
+    seed_user(&conn);
+    conn.execute_batch(
+        "INSERT INTO users (id, username, pin_hash, display_name, role_id, created_at, updated_at) VALUES
+         ('user-2', 'bob', 'hash', 'Bob', 'role-staff', '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z');"
+    )
+    .unwrap();
+    let s = store(&conn);
+    let usd: crate::Currency = "USD".parse().unwrap();
+    let money = |minor: i64| crate::Money {
+        minor_units: minor,
+        currency: usd,
+    };
+
+    // The original $10 cash sale, made by user-1.
+    conn.execute_batch(
+        "INSERT INTO products (id, sku, name, price_minor, currency, created_at, updated_at, product_type)
+         VALUES ('p-sku', 'SKU', 'Sku', 1000, 'USD', '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z', 'retail');
+         INSERT INTO sales (id, total_minor, currency, line_count, status, payment_method,
+                            created_at, updated_at, user_id, version)
+         VALUES ('sale-ref', 1000, 'USD', 1, 'completed', 'cash',
+                 '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z', 'user-1', 1);
+         INSERT INTO sale_lines (id, sale_id, sku, qty, unit_minor, line_minor, currency, line_position)
+         VALUES ('sl-1', 'sale-ref', 'SKU', 1, 1000, 1000, 'USD', 1);"
+    )
+    .unwrap();
+
+    // Shift A is user-1's (the seller); shift B is user-2's (the processor).
+    let shift_a = s.open_shift("user-1", None, 5000).unwrap();
+    let shift_b = s.open_shift("user-2", None, 5000).unwrap();
+    s.create_refund(&crate::Refund::new(
+        "sale-ref",
+        money(1000),
+        "refund",
+        "",
+        "user-2",
+        vec![crate::RefundLine::new(
+            "sl-1",
+            "SKU",
+            1,
+            money(1000),
+            money(1000),
+        )],
+    ))
+    .unwrap();
+
+    let report_a = s.get_shift_report(&shift_a.id).unwrap();
+    assert_eq!(
+        report_a.refund_count, 0,
+        "user-2's refund must not appear on the SELLER's shift report"
+    );
+
+    let report_b = s.get_shift_report(&shift_b.id).unwrap();
+    assert_eq!(
+        report_b.refund_count, 1,
+        "the refund belongs to the report of the user who processed it"
+    );
 }
 
 #[test]

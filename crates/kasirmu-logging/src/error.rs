@@ -12,13 +12,20 @@ use thiserror::Error;
 #[derive(Debug, Error)]
 #[non_exhaustive]
 pub enum LoggingError {
-    /// The log file could not be opened for writing.
-    #[error("could not open log file: {0}")]
-    OpenFile(#[from] std::io::Error),
-
     /// The configured log level is invalid.
     #[error("invalid log level: {0}")]
     InvalidLevel(String),
+
+    /// The log directory could not be prepared for writing.
+    ///
+    /// LOG-1: this replaced an `OpenFile(#[from] io::Error)` variant that was
+    /// never constructed — no init path opens a log file itself
+    /// (`tracing_appender::rolling` does), so it advertised a guarantee the
+    /// crate could not deliver. This variant is constructed by the
+    /// directory pre-flight `try_init_with_file` now performs, which is the
+    /// failure that IS reachable (LOG-2).
+    #[error("could not prepare log directory: {0}")]
+    LogDirUnusable(#[from] std::io::Error),
 
     /// The global tracing subscriber has already been set.
     #[error("logging already initialised: {0}")]

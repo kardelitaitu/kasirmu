@@ -55,6 +55,12 @@ prometheus = { workspace = true }
 [features]
 default = []
 console = ["dep:console-subscriber"]
+# No-op feature (R15, owner 2026-09-20). The PG integration arms carry
+# `#[cfg_attr(not(feature = "pg-tests"), ignore)]`, so a local run without a
+# database reports them as IGNORED in the summary line instead of passing
+# silently, while CI's `--all-features` keeps all of them running against the
+# `postgres:17-alpine` service in dev-ci.yml.
+pg-tests = []
 
 [build-dependencies]
 # Embeds the asInvoker application manifest into the Windows exe (see

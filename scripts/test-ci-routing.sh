@@ -19,7 +19,7 @@
 set -uo pipefail
 
 WF=".github/workflows/dev-ci.yml"
-KEYS="rust ui i18n website docs release"
+KEYS="rust ui i18n website docs release go"
 
 [ -f "$WF" ] || { echo "FATAL: $WF not found (run from repo root)"; exit 1; }
 
@@ -114,6 +114,13 @@ check "website only"        "rust=false ui=false i18n=false website=true docs=fa
 # reaches the build and check:seo's heading rule. Pinned because before this
 # rule the path matched NO bucket and a prototypes-only PR ran no job at all.
 check "prototype html"      "rust=false ui=false i18n=false website=true docs=false release=false" "prototypes/kds-prototype.html"
+# Go is its own bucket because apps/license-server is a SEPARATE Go module, not a
+# cargo workspace member -- the `rust` rule deliberately does not match it. Before
+# this rule existed the path matched NO bucket at all and was covered only because
+# the Go steps sat in the ungated static-gates job; once they moved to `go-gate`
+# (2026-09-24) a license-server-only PR would have run no Go check whatsoever.
+check "license-server go"   "rust=false ui=false i18n=false website=false docs=false release=false go=true" "apps/license-server/main.go"
+check "license-server mod"  "rust=false ui=false i18n=false website=false docs=false release=false go=true" "apps/license-server/go.sum"
 check "i18n script"         "rust=false ui=false i18n=true website=false docs=false release=false" "scripts/verify-bundle-parity.py"
 # Docs must route to the drift checker: a docs-only PR is precisely the change
 # that can make CI docs lie, and before this output existed it ran nothing.
@@ -135,11 +142,37 @@ check "manifest generator"  "rust=false ui=false i18n=false website=false docs=f
 check "tauri updater pubkey" "rust=true ui=false i18n=false website=false docs=false release=true" "apps/desktop-tauri/tauri.conf.json"
 check "release workflow"    "rust=false ui=false i18n=false website=false docs=true release=true"  ".github/workflows/release.yml"
 # The workflow gating everything must never be able to route itself away.
-check "this workflow"       "rust=true ui=true i18n=true website=true docs=true release=true"     ".github/workflows/dev-ci.yml"
-check "mixed rust+website"  "rust=true ui=false i18n=false website=true docs=false release=false"  "$(printf 'crates/kasirmu-api/src/lib.rs\nwebsite/src/site.css')"
-check "unrelated file"      "rust=false ui=false i18n=false website=false docs=false release=false" "README.md"
-# Non-PR events must always run the full matrix.
-check "dispatch event"      "rust=true ui=true i18n=true website=true docs=true release=true"     "README.md" "workflow_dispatch"
+check "this workflow"       "rust=true ui=true i18n=true website=true docs=true release=true go=true"     ".github/workflows/dev-ci.yml"
+check "mixed rust+website"  "rust=true ui=false i18n=false website=true docs=false release=false go=false"  "$(printf 'crates/kasirmu-api/src/lib.rs\nwebsite/src/site.css')"
+check "unrelated file"      "rust=false ui=false i18n=false website=false docs=false release=false go=false" "README.md"
+# Non-PR events must always run the full matrix. `go` is asserted here rather
+# than left to default, because `go-gate` is path-gated AND sits in
+# northflank-deploy's `needs`: if `all()` stopped setting `go`, every deploy
+# that does not touch Go would be skipped silently rather than failing loudly.
+check "dispatch event"      "rust=true ui=true i18n=true website=true docs=true release=true go=true"     "README.md" "workflow_dispatch"
+
+# ── The size the router used to be blind to ─────────────────────────
+# Every case above is 1-2 paths, and that is precisely why this defect survived
+# them. The router routed each bucket with
+#
+#     printf '%s\n' "$files" | grep -qE '<pattern>' && echo x=true || echo x=false
+#
+# `grep -q` exits at its FIRST match, which closes the pipe while printf is
+# still writing. printf then takes SIGPIPE, and `set -o pipefail` -- which the
+# Route body sets -- turns that into a failed pipeline, so the `||` branch ran
+# and the bucket was reported ABSENT even though it had matched. It only bites
+# once the diff exceeds the 64 KiB pipe buffer (~1,400 paths), so a fixture of
+# one or two paths can never reach it. Measured on run 36682329958
+# (2026-09-30): a 1,729-file diff reported rust=false docs=false go=false
+# release=false while that same diff contained 548 `crates/`, 280 `docs/`, 73
+# `platform/` and 16 `apps/license-server/` paths, and the job log carried five
+# `printf: write error: Broken pipe` lines. The buckets whose first match sat
+# late in the list (ui, i18n, website) happened to come out right, which is the
+# race: WHICH buckets go wrong varies run to run, so a green bucket here is not
+# evidence the router works. 3,000 paths / ~81,000 bytes is deliberately larger
+# than that buffer. Generated with printf's format reuse -- no external `seq`.
+big="$(printf 'crates/probe%05d/src/lib.rs\n' {1..1500}; printf 'docs/notes/probe%05d.md\n' {1..1500})"
+check "large diff (rust+docs)" "rust=true ui=false i18n=false website=false docs=true release=false go=false" "$big"
 
 echo
 echo "$pass/$((pass+fail)) routing cases correct"

@@ -1,6 +1,15 @@
 //! Audit Log — append-only immutable entries, plus the tier retention
 //! sweep (`sweep_audit_retention`) that deletes rows past the tenant's
 //! window through the trigger carve-out migration 20260920.
+// P2-5: three guarded conversions, each correct by construction.
+//  * `COUNT(*)` returned as `i64` then `.max(0) as u64` — a SQL count is
+//    never negative, and `.max(0)` makes that explicit before the cast, so
+//    the sign loss the lint warns about cannot occur.
+//  * `days as i64` into `chrono::Duration::days` — `days` is a `u64` window
+//    size from the API; a value large enough to wrap `i64` is not reachable
+//    (it would be ~292 billion years).
+#![allow(clippy::cast_sign_loss, clippy::cast_possible_wrap)]
+
 /*
 last audited 25-07-26 by RSA-Agent (kasirmu-core slice B5 finale)
 crate: kasirmu-core | status: SAFE | lint: CLEAN
@@ -557,7 +566,7 @@ impl Store<'_> {
         // "X of Y" count and the unreviewed badge.
         let total: u64 = self.conn.query_row(
             &format!("SELECT COUNT(*) FROM audit_log{where_sql}"),
-            rusqlite::params_from_iter(params.iter().map(|p| p.as_ref())),
+            rusqlite::params_from_iter(params.iter().map(std::convert::AsRef::as_ref)),
             |row| row.get(0),
         )?;
 
@@ -568,7 +577,7 @@ impl Store<'_> {
              FROM audit_log{where_sql} ORDER BY created_at DESC, id DESC LIMIT ?{idx}"
         ))?;
         let mut rows = stmt.query(rusqlite::params_from_iter(
-            params.iter().map(|p| p.as_ref()),
+            params.iter().map(std::convert::AsRef::as_ref),
         ))?;
         let mut items: Vec<AuditEntry> = Vec::new();
         while let Some(row) = rows.next()? {
@@ -616,7 +625,7 @@ impl Store<'_> {
              FROM audit_log{where_sql} ORDER BY created_at DESC, id DESC LIMIT ?{idx}"
         ))?;
         let mut rows = stmt.query(rusqlite::params_from_iter(
-            params.iter().map(|p| p.as_ref()),
+            params.iter().map(std::convert::AsRef::as_ref),
         ))?;
         let mut items: Vec<AuditEntry> = Vec::new();
         while let Some(row) = rows.next()? {
@@ -642,7 +651,7 @@ impl Store<'_> {
     /// fails closed on an empty one (the shared WHERE builder's rule).
     ///
     /// Reuses the paged listing's WHERE construction via
-    /// [`build_audit_where`] — no third copy of the filter logic — and
+    /// `build_audit_where` — no third copy of the filter logic — and
     /// caps at [`MAX_AUDIT_EXPORT_ROWS`] exactly like AUD-09. Newest-first
     /// `(created_at, id)` order, same deterministic snapshot shape.
     pub fn list_audit_entries_export_filtered(
@@ -670,7 +679,7 @@ impl Store<'_> {
              FROM audit_log{where_sql} ORDER BY created_at DESC, id DESC LIMIT ?{idx}"
         ))?;
         let mut rows = stmt.query(rusqlite::params_from_iter(
-            params.iter().map(|p| p.as_ref()),
+            params.iter().map(std::convert::AsRef::as_ref),
         ))?;
         let mut items: Vec<AuditEntry> = Vec::new();
         while let Some(row) = rows.next()? {

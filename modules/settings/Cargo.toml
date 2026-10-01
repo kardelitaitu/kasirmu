@@ -5,7 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
-description = "OZ-POS Settings Module: store configuration, feature flags, receipt formatting, sync setup."
+description = "kasir.mu Settings Module: store configuration, feature flags, receipt formatting, sync setup."
 
 # Inherits [workspace.lints] from the root Cargo.toml (missing_docs = warn).
 [lints]
@@ -15,6 +15,10 @@ workspace = true
 anyhow = { workspace = true }
 thiserror = { workspace = true }
 foundation = { workspace = true }
+# Phase 3 P3.2: the repository reaches the DB through
+# kasirmu_core::db::namespaced, so core is a normal dependency (it was
+# dev-only while the repository used a bare &Connection).
+kasirmu-core = { workspace = true }
 rusqlite = { workspace = true }
 chrono = { workspace = true }
 uuid = { workspace = true }
@@ -24,4 +28,3 @@ tracing = { workspace = true }
 
 [dev-dependencies]
 platform-kernel = { workspace = true }
-kasirmu-core = { workspace = true }

@@ -350,7 +350,7 @@ The codebase has been restructured from a flat monolith into the modular archite
 defined above. This layout shows the **actual current state** as of 2026-09-18, after the
 6 restructuring phases **and the repository folder restructure** (`ops/`, `prototypes/`,
 `tools/`, `ui/src/app|theme|registries`, `shared-ui/locales` — see
-`todo-project-folder-restructure.md`). For the long-term target vision (with `integrations/`,
+`done-todo-project-folder-restructure.md`). For the long-term target vision (with `integrations/`,
 top-level `frontend/`, additional modules, etc.), see the **Repository
 Structure (Target — Long-Term Vision)** section above.
 
@@ -367,10 +367,11 @@ kasir.mu/
 │   │       ├─ main.rs
 │   │       └─ state.rs
 │   ├─ license-server/  License activation & validation (Go)
-│   └─ mobile-tauri/   Android + iPad (touch-optimized shell)
-│       └─ src/
-│           ├─ commands/  (shared with desktop-tauri)
-│           └─ same structure
+│   ├─ mobile-tauri/   Android + iPad (touch-optimized shell)
+│   │   └─ src/
+│   │       ├─ commands/  (shared with desktop-tauri)
+│   │       └─ same structure
+│   └─ unified/        Containerized all-in-one deployment (Caddyfile + supervisord.conf; no Cargo.toml)
 │
 ├─ platform/          System infrastructure
 │   ├─ core/           Shared services (database, settings, auth stubs)
@@ -397,16 +398,20 @@ kasir.mu/
 ├─ crates/            Low-level utility crates
 │   ├─ kasirmu-core/        Database migrations, domain types, Store, sync_client, events
 │   ├─ kasirmu-api/         HTTP API server (axum) — now injects config via AppState
+│   ├─ kasirmu-bridge/      Headless command middleware (BridgeCtx, BridgeError) shared by the desktop and tablet IPC shims
 │   ├─ kasirmu-cli/         CLI tool for data import/export and maintenance
 │   ├─ kasirmu-crypto/      Cryptographic primitives (key generation, hashing, encryption)
 │   ├─ kasirmu-hal/         Hardware abstraction layer (printers, scanners, cash drawers, customer displays, scales, EDC payment terminals)
+│   ├─ kasirmu-lan/         Headless LAN event forwarder to KDS tablet peers (legacy-psk-v1 + noise-psk-v1)
+│   ├─ kasirmu-local-api/   Loopback REST API server for the register (embeds the kasirmu-api router on 127.0.0.1)
 │   ├─ kasirmu-logging/     Structured logging setup
 │   ├─ kasirmu-lua/         Lua scripting integration
 │   ├─ kasirmu-media/       Media/image handling
 │   ├─ kasirmu-notification/ Email & push notification dispatching
 │   ├─ kasirmu-payment/     Card payment processing (Stripe, QRIS, Square, Paddle, mock)
 │   ├─ kasirmu-plugin/      Plugin sandbox & lifecycle (Lua scripting bridge)
-│   ├─ kasirmu-reporting/   Report generation (CSV export, daily summaries, menu engineering)
+│   ├─ qris-core/           QRIS (EMVCo MPM) payload parse/build/decode/render for Indonesia
+│   ├─ kasirmu-reporting/   Report generation (CSV export, menu engineering, margins)
 │   └─ kasirmu-security/    Auth, hashing, encryption
 │
 ├─ foundation/src/    Reusable zero-business-logic code
@@ -418,10 +423,16 @@ kasir.mu/
 │   ├─ cart.rs         Cart-line domain type
 │   ├─ constants.rs    Shared constants
 │   ├─ contact.rs      Contact-info value objects
+│   ├─ customer.rs     Customer value objects
 │   ├─ dto.rs          Shared DTOs
 │   ├─ events.rs       Domain event type definitions
+│   ├─ inventory.rs    Inventory value objects
+│   ├─ loyalty.rs      Loyalty value objects
 │   ├─ percentage.rs   Percentage value object
+│   ├─ sales.rs        Sale value objects
 │   ├─ sku.rs          SKU value object
+│   ├─ tax.rs          Tax value objects
+│   ├─ terminal.rs     Terminal value objects
 │   └─ validation.rs   Validation utilities
 │
 ├─ ui/                Frontend (React/TypeScript)
@@ -485,8 +496,15 @@ All 6 restructuring phases have been completed.
 - [x] Refactor `App.tsx` to render from registries with feature gating
 - [x] Split `en-US.ftl` into 12 per-domain Fluent files
 
+> **Path note (2026-09-29).** The `frontend/*` paths ticked above are the directory names
+> this migration created at the time. That tier was later dissolved by the folder
+> restructure: `frontend/shell/` → `ui/src/app/`, `frontend/shared/` → `ui/src/components/`,
+> `frontend/themes/` → `ui/src/theme/`, and the Fluent corpus moved out to
+> `shared-ui/locales/`. The rows are left as the dated record they are; the current tree is
+> the "Project Layout (Post-Restructuring) — Current State" section above.
+
 ### Phase 5 — Tablet Client ✅
-- [x] Create `apps/mobile-tauri/` — Tauri v2 mobile target (dir renamed from `tablet-client/` in 2026-09; the `oz-pos-tablet` package-name rename belongs to the rebrand campaign's T3-2)
+- [x] Create `apps/mobile-tauri/` — Tauri v2 mobile target (dir renamed from `tablet-client/` in 2026-09; the package was renamed `kasirmu-tablet` in the rebrand campaign's T3-2 (done))
 - [x] Move `src-tauri/` → the desktop shell dir (named "desktop-client" at the time of the move; renamed to desktop-tauri/ in 2026-09)
 - [x] Build touch-optimized shell (bottom nav, larger hit targets)
 - [x] Create `platform/startup/` — shared module registration + event wiring
@@ -519,11 +537,11 @@ All 6 restructuring phases have been completed.
   - `Product`, `Category`, `Inventory`, `Sku` — domain types with serde.
   - `Feature` — **39** toggleable feature flags (counted over the `pub enum Feature` variants in `crates/kasirmu-core/src/features.rs`; the file's own `//!` header still says 32 and is stale — a code finding, left alone) with dependency resolution, and **6** setup presets: `simple-retail`, `restaurant`, `full-store`, `cafe`, `franchise`, `custom` (union in `ui/src/api/settings.ts`, keys in `shared-ui/locales/settings.ftl`, preset→feature bundles owned by `preset_feature_keys` in `crates/kasirmu-core/src/features.rs`). The count on this line said 5 until 08-09-26, the same stale count corrected in `docs/guides/developer/admin-guide.md` the same day.
   - `Store<'a>` — typed CRUD facade over `&Connection`. All writes inside transactions.
-- **Migrations**: 66 SQLite `.sql` files plus the generated PG file, **67 in all as measured
-  2026-09-23** (`ls crates/kasirmu-core/migrations/*.sql | wc -l` → 67;
-  `ls crates/kasirmu-core/migrations/*.pg.sql | wc -l` → 1), embedded by the
+- **Migrations**: 68 SQLite `.sql` files plus the generated PG file, **69 in all as measured
+  2026-09-29** (`ls crates/kasirmu-core/migrations/*.sql | wc -l` → 69, of which
+  `ls crates/kasirmu-core/migrations/*.pg.sql | wc -l` → 1 is the generated PG schema), embedded by the
   `include_str!` list in `crates/kasirmu-core/src/migrations.rs`. Re-derive both numbers — this
-  line has now been corrected twice (44 → 59 → 67) because a migration lands with most slices.
+  line has now been corrected three times (44 → 59 → 67 → 69) because a migration lands with most slices.
   The 131-file history was squashed into `20260813_init.sql` — not `init.sql`. `kasirmu_core::migrations::run(conn)` is invoked at
   **application-state construction**, not by a platform subsystem:
   `apps/desktop-tauri/src/state.rs:212`, `apps/mobile-tauri/src/state.rs:117`,
@@ -570,7 +588,7 @@ These crates were originally scaffolded and are now fully implemented:
 
 - **kasirmu-lua** — Embedded Lua scripting runtime built on [`mlua`](https://github.com/mlua-rs/mlua). Loads merchant scripts from `scripts/` and exposes business-rule hooks (`apply_discount`, `calc_line_tax`, `validate_order`). Sandboxed VM with instruction/memory limits and a restricted global environment.
 - **kasirmu-payment** — `PaymentProcessor` trait with Stripe, Square, QRIS/Midtrans, Paddle, and mock implementations. Supports authorize, capture, void, refund, and sale flows.
-- **kasirmu-reporting** — Daily summaries, sales-by-hour, top-products, menu-engineering, and inventory reports; optional `metrics` feature for Prometheus-style counters/gauges.
+- **kasirmu-reporting** — Menu-engineering and margin reports plus CSV export, reached through `kasirmu-bridge/src/reports.rs` and both shells' `commands/reports.rs`. The daily-summary and Prometheus-`metrics` modules were **retired on 2026-09-30** (checklist C29): `metrics` was gated on a feature no dependent enabled, so it compiled in no production build, and `daily_summary` had zero external callers while duplicating the live `kasirmu_core::db::reports`.
 
 ### kasirmu-security (implemented)
 - **Keyring trait** with three platform-native backends: Windows Credential Manager (`windows-sys`), macOS Keychain (`security-framework`), Linux Secret Service (`zbus`).
@@ -581,7 +599,7 @@ These crates were originally scaffolded and are now fully implemented:
 ### kasirmu-logging
 - `tracing` + `tracing-subscriber` with env-filter.
 - Single `kasirmu_logging::init()` call wires up log sinks. Used by `apps/desktop-tauri` and `kasirmu-api`.
-- JSON formatter, syslog, and Windows Event Log outputs planned for Phase 2.
+- JSON formatter available today (`init_json`). Syslog and Windows Event Log sinks are **not** planned — the unwired modules were deleted 2026-09-29 (C29 / D13).
 
 ### apps/desktop-tauri & apps/mobile-tauri (Tauri v2 Shells)
 Each app crate has an identical command surface, wired through `platform-startup`:
@@ -651,7 +669,9 @@ no tooling reads them, so the rule was dropped by the 2026-09-23 documentation
 audit rather than kept as a requirement nothing satisfies.
 
 Every architectural change must create an Architecture Decision Record (ADR).
-As of September 2026 there are 71 ADRs in `docs/decisions/` (plus 2 archived). Key documents include:
+As of 2026-09-29 there are 74 ADRs in `docs/decisions/` (plus 2 archived) —
+`ls docs/decisions/*.md | grep -v README | grep -v '\.status\.md$' | wc -l` → 74, where the
+two `.status.md` sidecars are frontmatter mirrors and not ADRs. Key documents include:
 ```
 docs/decisions/2026-01-15-module-system-design.md
 docs/decisions/2026-02-01-event-bus-design.md

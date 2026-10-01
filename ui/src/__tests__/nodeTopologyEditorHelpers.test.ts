@@ -434,7 +434,7 @@ describe('validateEditorGraph', () => {
     expect(errors.map((e) => e.code)).toContain('duplicate-node');
   });
 
-  it('applies the multi-warehouse tier cap below Pro', () => {
+  it('applies the warehouse tier cap below Premium', () => {
     const nodes: TopologyNodeData[] = [
       ...canonicalNodes,
       { id: 'wh-1', type: 'warehouse', name: 'WH 1', metadata: { typeKey: 'warehouse' }, x: 700, y: 80 },
@@ -449,7 +449,25 @@ describe('validateEditorGraph', () => {
     expect(errors.map((e) => e.code)).toContain('warehouse-tier-limit');
   });
 
-  it('lifts the warehouse cap on Pro (capacity checks replace it)', () => {
+  it('lifts the warehouse cap on Premium (capacity checks replace it)', () => {
+    const nodes: TopologyNodeData[] = [
+      ...canonicalNodes,
+      { id: 'wh-1', type: 'warehouse', name: 'WH 1', metadata: { typeKey: 'warehouse' }, x: 700, y: 80 },
+      { id: 'wh-2', type: 'warehouse', name: 'WH 2', metadata: { typeKey: 'warehouse' }, x: 700, y: 400 },
+    ];
+    const wires: TopologyWireData[] = [
+      ...canonicalWires,
+      { id: 'w-2', fromNodeId: 'ws-1', toNodeId: 'wh-1', direction: 'one-way', fromPortId: 'operation-out', toPortId: 'operation-in', relationshipType: 'generic' },
+      { id: 'w-3', fromNodeId: 'ws-1', toNodeId: 'wh-2', direction: 'one-way', fromPortId: 'operation-out', toPortId: 'operation-in', relationshipType: 'generic' },
+    ];
+    const errors = validateEditorGraph(nodes, wires, true, 'premium');
+    expect(errors.map((e) => e.code)).not.toContain('warehouse-tier-limit');
+  });
+
+  it('keeps the zero warehouse cap on Pro (the workspace is Premium+ since 2026-09-29)', () => {
+    // Pro was the top warehouse tier before the ruling, so this is the tier the
+    // zero cap is easiest to get wrong on — the same diagram Premium accepts is
+    // refused on Pro, exactly as `validate_warehouse_quota` refuses it at Apply.
     const nodes: TopologyNodeData[] = [
       ...canonicalNodes,
       { id: 'wh-1', type: 'warehouse', name: 'WH 1', metadata: { typeKey: 'warehouse' }, x: 700, y: 80 },
@@ -461,6 +479,6 @@ describe('validateEditorGraph', () => {
       { id: 'w-3', fromNodeId: 'ws-1', toNodeId: 'wh-2', direction: 'one-way', fromPortId: 'operation-out', toPortId: 'operation-in', relationshipType: 'generic' },
     ];
     const errors = validateEditorGraph(nodes, wires, true, 'pro');
-    expect(errors.map((e) => e.code)).not.toContain('warehouse-tier-limit');
+    expect(errors.map((e) => e.code)).toContain('warehouse-tier-limit');
   });
 });

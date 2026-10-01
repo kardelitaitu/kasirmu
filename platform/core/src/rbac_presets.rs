@@ -37,6 +37,35 @@ pub fn is_builtin_role_id(id: &str) -> bool {
     ROLE_PRESETS.iter().any(|preset| preset.id == id)
 }
 
+/// Whether `role_id` is a role that sees EVERY workspace in its store, rather
+/// than only the ones explicitly assigned to it.
+///
+/// MSL-21: this set was written out by hand in three places —
+/// `db::workspaces_instances::list_workspaces_inner`, its sibling
+/// `can_access_instance`, and `db::workspaces::list_workspaces_legacy` — each as
+/// a chain of string literals, and each carrying three ids that are NOT role ids
+/// (`admin`, `manager`, `auditor`; every preset id is `role-`-prefixed, and
+/// `users.role_id` is `REFERENCES roles(id)`). Those arms were dead in all three
+/// copies. One definition means the set cannot fork, and a taxonomy change lands
+/// in one place.
+///
+/// **`role-staff` is deliberately NOT in this set.** A staff user must resolve
+/// access through an explicit `user_workspace_instances` assignment or the
+/// `role_workspace_types` fallback, so they can only open workspaces someone
+/// assigned to them — never the full store listing. `role-custom` is likewise
+/// absent: an authored role's reach is whatever its grants say, not a blanket
+/// bypass.
+#[must_use]
+pub fn role_bypasses_workspace_assignment(role_id: &str) -> bool {
+    matches!(
+        role_id,
+        builtin_roles::OWNER
+            | builtin_roles::ADMIN
+            | builtin_roles::MANAGER
+            | builtin_roles::AUDITOR
+    )
+}
+
 /// All built-in role presets bundled together for bulk seeding.
 pub const ROLE_PRESETS: &[RolePreset] = &[
     RolePreset {

@@ -4,9 +4,10 @@ area: inventory
 title: ADR #18: Multi-Location Inventory — Workspace-Bound Stock Locations for Wholesale & Retail
 status: Implemented (2026-07-19)
 ---
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · ACCURATE, and the prior pass's one finding is confirmed. The 2026-07-26 stamp recorded F1: §13 cites "079_workspace_types_rename.sql" and attributes the per-location index to 079, but 079 is actually `079_inventory_location_id.sql` — the workspace rename cascade shipped as 091 and the index as 080. That is a migration-number attribution error in the body, left exactly as written: the numbered series has since been retired wholesale in favour of date-stamped files folded into `crates/kasirmu-core/migrations/20260813_init.sql`, so "correcting" 079 to 091 inside a record of a series that no longer exists would be a cosmetic fix to a historical document. The finding is preserved here instead, which is more useful than a repaired number. · THE SCHEMA THIS ADR ESTABLISHES IS INTACT AND LOAD-BEARING. `adjust_stock_at_location_with_reason` is live, now in `crates/kasirmu-core/src/db/products_stock_adjust/adjust.rs` after the `products.rs` split — the same reorganisation that has invalidated path references in three other documents audited in this campaign. `InventoryStockHandler` is at `modules/inventory/src/handlers.rs`, `rebuild_stock_summary` moved with the other ledger helpers into `db/products_stock_adjust/ledger.rs`, and the `stock_summary` composite primary key, `stock_movements.location_id`, `workspace_inventory_locations`, `inventory_transactions`, `stock_thresholds` and the location-scoped `purchase_orders` columns are all present in the base schema. This ADR is the origin of the stock-location model that ADR-19, the topology phase records and the warehouse spec all build on, so its accuracy matters more than most. · At 1,652 lines it is one of the largest ADRs in the directory; the audit was scoped to its schema and symbol claims rather than a line-by-line read, which is the right proportion at that size. · Status checker reports no drift. Prior stamp retained; stacked footer collapsed. -->
 # ADR #18: Multi-Location Inventory — Workspace-Bound Stock Locations for Wholesale & Retail
 
-<!-- Audit stamp: 2026-07-26 · Hermes-Agent · status: ACCURATE (1 finding) · F1: §13 cites "079_workspace_types_rename.sql" / "Migration 079 adds a per-location index" but 079 is actually 079_inventory_location_id.sql; the workspace rename cascade shipped as 091_workspace_types_rename.sql and the per-location index as 080_stock_movements_location_id.sql (migration numbers off-by-actual in the doc) · verified accurate: migrations 078-091 present (078 inventory_locations, 080 stock_movements.location_id, 082 bound_location_id, 083 workspace_inventory_locations, 084 inventory_transactions, 085 inventory_transaction_id FK, 087 stock_thresholds, 089 stock_summary composite PK, 090 purchase_orders.location_id, 091 workspace rename); 035_workspaces + 060_workspace_instances + 072 archive present; adjust_stock_at_location_with_reason at crates/oz-core/src/db/products.rs:791; InventoryStockHandler at modules/inventory/src/handlers.rs; rebuild_stock_summary in products.rs; Status "Implemented" matches on-disk schema -->
+<!-- Superseded audit marker (2026-07-26, body kept verbatim) · Hermes-Agent · status: ACCURATE (1 finding) · F1: §13 cites "079_workspace_types_rename.sql" / "Migration 079 adds a per-location index" but 079 is actually 079_inventory_location_id.sql; the workspace rename cascade shipped as 091_workspace_types_rename.sql and the per-location index as 080_stock_movements_location_id.sql (migration numbers off-by-actual in the doc) · verified accurate: migrations 078-091 present (078 inventory_locations, 080 stock_movements.location_id, 082 bound_location_id, 083 workspace_inventory_locations, 084 inventory_transactions, 085 inventory_transaction_id FK, 087 stock_thresholds, 089 stock_summary composite PK, 090 purchase_orders.location_id, 091 workspace rename); 035_workspaces + 060_workspace_instances + 072 archive present; adjust_stock_at_location_with_reason at crates/oz-core/src/db/products.rs:791; InventoryStockHandler at modules/inventory/src/handlers.rs; rebuild_stock_summary in products.rs; Status "Implemented" matches on-disk schema -->
 
 **Status:** Implemented (2026-07-19)
 **Date:** 2026-07-18
@@ -1645,8 +1646,36 @@ Instead of a `location_id` column, give each location its own SQLite file.
 - `docs/decisions/2026-07-10-workspace-type-instance-design.md` — ADR #4: Workspace instances (foundation)
 - `docs/decisions/2026-07-10-crdt-delta-ledger-offline-sync.md` — ADR #6: Stock movements delta ledger (foundation)
 
-> last audited 09-08-26 by buffy
-> audit: Phase 1 Core Architecture & API Docs Audit
 
-> status: ACCURATE (0 findings) · verified accurate: cargo check passed, no structural orphans, no stale version headers
+## COR-13 — an unknown inventory transaction type must fail the read
+
+**Status:** Fixed 2026-10-04.
+
+`db/inventory.rs` has three read mappers that turn a stored `type` string back
+into an `InventoryTransactionType` — `list_inventory_transactions`,
+`get_inventory_transaction`, and the per-shift mapper in
+`list_inventory_transactions_for_shift`. All three used
+`from_stored_str(&type_str).unwrap_or(InventoryTransactionType::ManualAdjustment)`.
+
+That default is wrong. `InventoryTransactionType::from_stored_str`
+(`inventory_transaction.rs:72-74`) documents the opposite contract: an unknown
+value round-trips as `None` precisely so that a future migration adding a new
+transaction type fails LOUDLY rather than silently truncating audit history.
+Worse, `ManualAdjustment` is not a neutral placeholder — it is a legitimate,
+distinct type (a manager override adjustment), so an unknown future-migration
+row was silently relabelled as a real transaction kind.
+
+The fix adds `ParseError` (mirroring `crate::memo::ParseError`) and converts all
+three sites to `ok_or_else(|| rusqlite::Error::FromSqlConversionFailure(..))`, so
+a row whose type no current variant understands fails the read. The pin
+`an_unknown_transaction_type_fails_the_read_instead_of_relabelling_it` rebuilds
+`inventory_transactions` without its CHECK constraint (the only way to seed a
+value a future migration might add) and asserts both the list and the single-row
+mapper return `Err`.
+
+**Files:** `crates/kasirmu-core/src/db/inventory.rs`,
+`crates/kasirmu-core/src/inventory_transaction.rs`,
+`crates/kasirmu-core/src/db/inventory_tests.rs`.
+
+> last audited 29-09-26 by docs-auditor
 

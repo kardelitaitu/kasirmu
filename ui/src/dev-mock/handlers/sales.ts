@@ -276,11 +276,19 @@ interface MockCompletedSale {
   paymentMethod: string;
   userId: string;
   createdAt: string;
+  displayCode?: string | null;
+  fakturPajak?: string | null;
 }
-interface MockSaleDetails extends MockCompletedSale {
+interface MockSaleDetails extends Omit<MockCompletedSale, 'fakturPajak'> {
   subtotal: { minor_units: number; currency: string };
   taxTotal: { minor_units: number; currency: string };
   tenderedMinor: number;
+  fakturPajak?: {
+    nsfp: string;
+    kodeTransaksi: string;
+    status: string;
+    formatted: string;
+  } | null | undefined;
   lines: Array<{
     id: string;
     sku: string;
@@ -306,14 +314,16 @@ function seedMockSalesStore(): { sales: MockCompletedSale[]; details: Record<str
     userId: 'admin-1',
     createdAt,
   };
+  const { fakturPajak: _fp, ...seedDetail } = seed;
   return {
     sales: [seed],
     details: {
       'seed-sale-001': {
-        ...seed,
+        ...seedDetail,
         subtotal: { minor_units: 1250, currency: 'USD' },
         taxTotal: { minor_units: 0, currency: 'USD' },
         tenderedMinor: 2000,
+        fakturPajak: null,
         lines: [
           { id: 'seed-line-1', sku: 'LATTE', name: 'Caffè Latte', qty: 1, unit_price: { minor_units: 450, currency: 'USD' }, total_minor: 450, tax_amount: null, tax_rate_id: null },
           { id: 'seed-line-2', sku: 'CROISS', name: 'Butter Croissant', qty: 2, unit_price: { minor_units: 320, currency: 'USD' }, total_minor: 640, tax_amount: null, tax_rate_id: null },
@@ -502,6 +512,55 @@ export function createSalesHandlers(deps: SalesDeps): Record<string, MockHandler
   'get_sale_scoped': (args) => {
     const { id } = (args as { id?: string }) ?? {};
     return id ? (saleDetails[id] ?? null) : null;
+  },
+
+  'stamp_faktur_pajak_scoped': (args) => {
+    const { args: payload } = (args as { args?: { saleId: string; nsfp: string; kodeTransaksi?: string } }) ?? {};
+    if (!payload?.saleId || !payload?.nsfp) {
+      throw new Error('saleId and nsfp are required');
+    }
+    const kodeTransaksi = payload.kodeTransaksi ?? '01';
+    const info = {
+      nsfp: payload.nsfp,
+      kodeTransaksi,
+      status: '00',
+      formatted: `${kodeTransaksi}00${payload.nsfp}`,
+    };
+    const detailItem = saleDetails[payload.saleId];
+    if (detailItem) {
+      detailItem.fakturPajak = info;
+    }
+    const s = completedSales.find((item) => item.id === payload.saleId);
+    if (s) {
+      s.fakturPajak = info.formatted;
+    }
+    saveMockSales();
+    return info;
+  },
+
+  'create_faktur_pengganti_scoped': (args) => {
+    const { saleId } = (args as { saleId?: string }) ?? {};
+    if (!saleId) throw new Error('saleId is required');
+    const existing = saleDetails[saleId]?.fakturPajak;
+    if (!existing) {
+      throw new Error('cannot create faktur pengganti for unstamped sale');
+    }
+    const nextStatus = (parseInt(existing.status, 10) + 1).toString().padStart(2, '0');
+    const info = {
+      ...existing,
+      status: nextStatus,
+      formatted: `${existing.kodeTransaksi}${nextStatus}${existing.nsfp}`,
+    };
+    const detailItem = saleDetails[saleId];
+    if (detailItem) {
+      detailItem.fakturPajak = info;
+    }
+    const s = completedSales.find((item) => item.id === saleId);
+    if (s) {
+      s.fakturPajak = info.formatted;
+    }
+    saveMockSales();
+    return info;
   },
 
   'set_cart_discount': () => null,

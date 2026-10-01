@@ -155,7 +155,7 @@ async fn try_send_scheduled(
     let store_name = {
         let conn = db.lock().await;
         let store = Store::new(&conn);
-        get_store_name(&store).unwrap_or_else(|_| "OZ-POS Store".to_string())
+        get_store_name(&store).unwrap_or_else(|_| "kasir.mu Store".to_string())
     };
 
     let report = {
@@ -246,8 +246,9 @@ async fn deliver_email_report(conn: SharedSqliteConn, payload: &str) -> Result<(
 /// Top-level outbox dispatch: route a delivery entry to the correct
 /// topic handler (ADR #43 D7).
 ///
-/// The signature matches [`outbox::start_drainer_sqlite`]'s `deliver_fn`
-/// so it can be passed directly as a static function pointer.
+/// The signature matches
+/// [`outbox::start_drainer_sqlite`](crate::outbox::start_drainer_sqlite)'s
+/// `deliver_fn` so it can be passed directly as a static function pointer.
 pub fn deliver_outbox_entry(conn: SharedSqliteConn, topic: &str, payload: &str) -> DeliverFuture {
     let topic = topic.to_owned();
     let payload = payload.to_owned();
@@ -287,7 +288,7 @@ pub async fn send_test_report(
         schedule.recipients.clone()
     };
 
-    let store_name = get_store_name(&store).unwrap_or_else(|_| "OZ-POS Store".to_string());
+    let store_name = get_store_name(&store).unwrap_or_else(|_| "kasir.mu Store".to_string());
 
     let report = email_sender::generate_filtered_report_email(&store, &schedule, &store_name)
         .map_err(|e| format!("Failed to generate report: {e}"))?;
@@ -308,7 +309,7 @@ pub async fn send_test_report(
 fn get_store_name(store: &Store<'_>) -> Result<String, String> {
     use kasirmu_core::settings::Settings;
     let name = Settings::get(store.conn, "store.name").map_err(|e| format!("DB error: {e}"))?;
-    Ok(name.unwrap_or_else(|| "OZ-POS Store".to_string()))
+    Ok(name.unwrap_or_else(|| "kasir.mu Store".to_string()))
 }
 
 #[cfg(test)]

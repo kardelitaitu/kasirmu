@@ -7,5 +7,9 @@
   "permissions": [
     "settings:view",
     "settings:edit"
+  ],
+  "capabilities": [
+    "read:settings",
+    "write:settings"
   ]
 }

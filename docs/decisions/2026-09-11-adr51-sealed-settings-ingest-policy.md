@@ -5,6 +5,7 @@ title: ADR #51: Sealed Settings Ingest Policy — One Funnel for Every Untrusted
 status: Accepted (2026-09-11)
 ---
 
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 156 lines, and it is the POLICY half of a pair audited across two rounds — its companion record, `docs/records/snapshots/2026-09-13-adr51-admitted-set-and-blind-sides.md`, was audited last round and exists precisely because this document should not carry a count of what the policy does not cover. Reading the two together is the intended way to read them, and the split is what makes both trustworthy. · EVERY ANCHOR THE COMPANION CITED RESOLVES IN THE CODE THIS ADR DESCRIBES, which closes the loop on last round's verification. The policy's identity functions are where the companion said they were: `is_non_exportable_setting_key` and the credential and device base lookups in `platform/core/src/settings/keys.rs`, and `is_manager_owned_key` plus `set_with_policy` in `platform/core/src/settings/raw.rs`. The companion's central claim — that a policy with 75 declared keys admits 54 and refuses 21, from a channel that authenticates nobody — is therefore measuring this policy, not a document that was superseded since. · THE THREAT MODEL IS THE PART WORTH KEEPING, and this repository had none until this decision wrote one down. The ADR states that sync is device to device, that nothing in the transport or the sync API signs or MACs an item, and therefore that the sender is not an authority — and then draws the consequence most security decisions avoid stating: this policy is NOT a defence against an attacker who can inject. It is a defence against a package or a peer writing a key it has no business writing, naming the ones that matter, `machine_id`, `sync_terminal_id`, `hardware_fingerprint`, device identity and the licence server's one-trial-per-device lock. · IT ALSO REASONS ABOUT THE HALF THAT IS EASY TO FORGET. Refusing on ingest stops a bad key arriving; refusing on EGRESS is what stops a cleartext credential LEAVING the device, and the ADR says so explicitly, noting that the ingest side already refuses on arrival. A policy that only guards one direction reads as complete and is half a policy. · The Context also records the historical shape honestly: the bridge carried its own copy of a deny list plus a prefix rule, the CLI called the shared predicate only so certain keys travelled in packages, and sync ingest applied any key the server sent unchecked. Naming the three prior behaviours is what makes the Decision legible as a change rather than a preference. · NOT re-measured: the per-lane accessors, the egress gate, and the commit-by-commit build sequence, all of which are the document's own content. · No stamp existed; this is the first, and the pair now carries stamps on both sides. -->
 # ADR #51: Sealed Settings Ingest Policy
 
 **Status:** Accepted (2026-09-11) · branch `0.0.37`. Built across `172f7fe3c` (sealed policy +
@@ -65,7 +66,7 @@ the reasoning is in the accessor's own doc comment (`raw.rs:60-66`).
 `:85`, `:103`). The delegation was MISSING for a whole wave: `172f7fe3c` re-exported the types and told
 every lane to go through `oz_core` without delegating the methods, and `platform/sync` has no
 `platform-core` edge — which is why two lanes had to gate on `admits()` behind one named boundary
-instead (`queue.rs:54`, `crates/oz-cli/src/commands/ozpkg.rs:52`). Landed in `a0b8af03d`.
+instead (`queue.rs:54`, `crates/kasirmu-cli/src/commands/ozpkg.rs:52`). Landed in `a0b8af03d`.
 
 **There is no read-only accessor, so the read-only question uses the predicate.** `settings_change_of`
 (`queue.rs:747-759`) must ask whether a key was applied without writing anything, so it gates on
@@ -87,7 +88,7 @@ global one.
 
 - A package exported by an OLDER build may legitimately contain a key the new import refuses, so restoring
   an old file now skips those rows with a warning: `local_api.enabled`, `local_api.port`,
-  `local_api.store_id`, `lan_server.bind` (`crates/oz-cli/src/commands/ozpkg_tests.rs:46-51`).
+  `local_api.store_id`, `lan_server.bind` (`crates/kasirmu-cli/src/commands/ozpkg_tests.rs:46-51`).
 
 - No ordinary setting is caught: `store.name`, `currency.default`, `receipt.footer`,
   `brand.primary_colour`, `ui.locale` and `tax.rounding_mode` are asserted to still travel and still
@@ -98,10 +99,10 @@ global one.
 
 ## What this does not do
 
-- **It does not make a backup safe.** `oz backup` / `oz restore` (`crates/oz-cli/src/commands/backup.rs`)
+- **It does not make a backup safe.** `kasir backup` / `kasir restore` (`crates/kasirmu-cli/src/commands/backup.rs`)
   and the bridge `create_backup` (`crates/oz-bridge/src/data.rs:302`) copy the WHOLE SQLite file with no
   policy at all, so a `.db` still carries `machine_id` and every credential — by design, documented in
-  `crates/oz-cli/README.md`. Filtering the package lane does not narrow that door.
+  `crates/kasirmu-cli/README.md`. Filtering the package lane does not narrow that door.
 
 - **It does not fix confidentiality of anything at rest.** Encryption binds to the typed setter
   (`platform/core/src/settings/typed.rs:339`), never to list membership. **It does not authenticate a
@@ -154,3 +155,5 @@ namespace). **All four are to be INVERTED, not deleted, when a guard lands.** An
 the guard is how next month reads this as done.
 
 Nothing above is verified end to end; every claim traces to a named file or one of the six commits.
+
+> last audited 29-09-26 by docs-auditor

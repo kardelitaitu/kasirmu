@@ -79,16 +79,16 @@ pub fn run_seed_demo(conn: &Connection, args: &SeedDemoArgs) -> Result<()> {
 
     // ── Seed main database ──────────────────────────────────────
     if args.all || args.retail {
-        eprintln!("Seeding retail POS demo data ({} days)...", days);
+        eprintln!("Seeding retail POS demo data ({days} days)...");
         seed_retail(conn, days)?;
     }
     if args.all || args.restaurant {
-        eprintln!("Seeding restaurant POS demo data ({} days)...", days);
+        eprintln!("Seeding restaurant POS demo data ({days} days)...");
         seed_restaurant(conn, days)?;
     }
     if !args.all && !args.retail && !args.restaurant {
         eprintln!("No slice selected. Use --retail, --restaurant, or --all.");
-        eprintln!("Example: oz seed-demo --all --days 90");
+        eprintln!("Example: kasir seed-demo --all --days 90");
     }
 
     conn.execute_batch("PRAGMA foreign_keys = ON;")?;
@@ -135,7 +135,7 @@ fn seed_store_databases(
             }
 
             found = true;
-            eprintln!("\nSeeding per-store DB: {}", fname);
+            eprintln!("\nSeeding per-store DB: {fname}");
 
             let store_conn = rusqlite::Connection::open(&path)
                 .with_context(|| format!("opening store db {}", path.display()))?;
@@ -158,7 +158,7 @@ fn seed_store_databases(
 
     if !found {
         eprintln!(
-            "\nNote: no store-*.sqlite files found in {} — per-store databases will be\ncreated lazily when the app runs. Run `oz seed-demo --all --days 90` again after\nopening a workspace in the app to populate newly-created store databases.",
+            "\nNote: no store-*.sqlite files found in {} — per-store databases will be\ncreated lazily when the app runs. Run `kasir seed-demo --all --days 90` again after\nopening a workspace in the app to populate newly-created store databases.",
             db_dir.display()
         );
     }
@@ -184,6 +184,15 @@ fn copy_reference_data(main_db_path: &str, store_conn: &Connection) -> Result<()
 
     for table in tables {
         // Read schema columns from main DB
+        // The `filter_map(|r| r.ok())` that stood here was swept for in the
+        // `row.get(..)` fail-blind family and is UNREACHABLE, so it is left as
+        // written rather than converted: `PRAGMA table_info` column 1 is the
+        // column NAME, which SQLite always returns as TEXT, so this read cannot
+        // fail. The row read below is unreachable for a different reason --
+        // `rusqlite::types::Value`'s `FromSql` is infallible
+        // (rusqlite-0.31.0/src/types/from_sql.rs:249-254, `Ok(value.into())`) and
+        // the index is bounded by `cols.len()`. Recorded so a later sweep does not
+        // re-open it, and so a future change that CAN fail here is noticed.
         let cols: Vec<String> = main_conn
             .prepare(&format!("PRAGMA table_info({table})"))?
             .query_map([], |row| row.get::<_, String>(1))?
@@ -486,7 +495,7 @@ fn seed_retail(conn: &Connection, days: u32) -> Result<()> {
             );
         }
     }
-    eprintln!("  ✅ {} sales over {} days", total_sales, days);
+    eprintln!("  ✅ {total_sales} sales over {days} days");
 
     Ok(())
 }
@@ -584,7 +593,7 @@ fn seed_restaurant(conn: &Connection, days: u32) -> Result<()> {
 
     // ── Tables ──────────────────────────────────────────────────
     for t in 1..=12 {
-        let tid = format!("table-{:02}", t);
+        let tid = format!("table-{t:02}");
         conn.execute(
             "INSERT OR IGNORE INTO tables (id, name, capacity, status) VALUES (?1,?2,4,'available')",
             params![tid, format!("Table {}", t)],
@@ -688,7 +697,7 @@ fn seed_restaurant(conn: &Connection, days: u32) -> Result<()> {
             );
         }
     }
-    eprintln!("  ✅ {} orders over {} days", total_orders, days);
+    eprintln!("  ✅ {total_orders} orders over {days} days");
 
     Ok(())
 }

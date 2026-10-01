@@ -1,5 +1,61 @@
 use super::*;
 
+// ── LUA-A/LUA-B: no hand-written Send/Sync ──────────────────────────
+
+/// The crate must NOT hand-implement `Sync` for `LuaRuntime`.
+///
+/// `mlua::Lua` is `Send` but deliberately not `Sync`; a hand-written
+/// `unsafe impl Sync` made `Arc<LuaRuntime>` shareable across threads and
+/// concurrent `load_str` calls crashed with STATUS_ACCESS_VIOLATION. This is a
+/// source-level pin: it fails if anyone reintroduces the impl, which is the only
+/// thing that made the crash reachable.
+#[test]
+fn lua_runtime_does_not_hand_implement_sync() {
+    let src = include_str!("lib.rs");
+    for line in src.lines() {
+        let trimmed = line.trim();
+        // Ignore comment lines — the explanation deliberately names the impl.
+        if trimmed.starts_with("//") {
+            continue;
+        }
+        assert!(
+            !trimmed.starts_with("unsafe impl Sync for LuaRuntime")
+                && !trimmed.starts_with("unsafe impl Send for LuaRuntime"),
+            "LuaRuntime must not hand-implement Send/Sync (LUA-A): {trimmed}"
+        );
+    }
+}
+
+// ── LUA-C: the instruction limit cannot be escaped via coroutines ───
+
+/// A coroutine must not be able to run past the instruction limit.
+///
+/// Lua hooks are per-thread, so `coroutine.wrap` used to execute its body on a
+/// new Lua thread the hook never observed: a 200 000-iteration loop completed
+/// where the identical main-thread loop aborted at 100K. `coroutine` is now
+/// removed from the sandbox, so the global is nil.
+#[test]
+fn sandbox_removes_coroutine_so_the_instruction_limit_holds() {
+    let lua = runtime();
+    let co: mlua::Value = lua.lua.globals().get("coroutine").unwrap();
+    assert!(
+        matches!(co, mlua::Value::Nil),
+        "coroutine must be removed — it escapes the per-thread instruction limit"
+    );
+}
+
+/// The main thread keeps its instruction limit (the behaviour the removal
+/// preserves, asserted so the fix cannot silently disable the hook).
+#[test]
+fn main_thread_still_aborts_past_the_instruction_limit() {
+    let lua = runtime();
+    let result = lua.load_str("local x = 0 for i = 1, 200000 do x = x + 1 end result = x");
+    assert!(
+        result.is_err(),
+        "the main-thread instruction limit must hold"
+    );
+}
+
 fn runtime() -> LuaRuntime {
     LuaRuntime::new().expect("Lua VM init")
 }
@@ -247,11 +303,7 @@ fn validate_order_no_hook() {
 fn sandbox_allows_os_date_but_blocks_execute() {
     let lua = runtime();
     let date_ok = lua.load_str(r#"local d = os.date("!*t"); assert(type(d) == "table")"#);
-    assert!(
-        date_ok.is_ok(),
-        "os.date should be available: {:?}",
-        date_ok
-    );
+    assert!(date_ok.is_ok(), "os.date should be available: {date_ok:?}");
     let time_ok = lua.load_str(r#"local t = os.time(); assert(type(t) == "number")"#);
     assert!(time_ok.is_ok(), "os.time should be available");
     let exec_blocked = lua.load_str(r#"os.execute("echo hacked")"#);

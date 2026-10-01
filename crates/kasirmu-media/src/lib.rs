@@ -1,37 +1,45 @@
 /*
-last audited DD-MM-YY by DSH-Agent
+last audited (date unknown) by DSH-Agent
 crate: kasirmu-media | status: SAFE | lint: CLEAN
-findings: 0 unsafe blocks (earlier risk sweep counted comment text "no unsafe" — corrected); transforms guarded: decompression-bomb caps (max_pixels/max_side/max_input_bytes) enforced via header-only probe before decode, zero-size sources rejected, crop math saturating with solid-colour trim guard, single-decode pipeline (M-2). Storage backends documented PLANNED stubs returning NotImplemented. No defects found.
+findings: 0 unsafe blocks (earlier risk sweep counted comment text "no unsafe" — corrected); transforms guarded: decompression-bomb caps (max_pixels/max_side/max_input_bytes) enforced via header-only probe before decode, zero-size sources rejected, crop math saturating with solid-colour trim guard, single-decode pipeline (M-2). Storage backends documented PLANNED stubs returning NotImplemented. No defects found. NOTE 2026-09-30: the `#![deny(unsafe_code)]` below this stamp was INERT until that date — a malformed comment merge (a closing delimiter immediately followed by an opening one, on line 6) had swallowed the attribute into a block comment, so the crate compiled with no unsafe lint at all. Restored as a real inner attribute; the `0 unsafe blocks` above is now enforced rather than asserted.
 next: none — storage persistence still planned | perf: decode-once pipeline; N/A elsewhere
-*//*
-Media & image processing crate for OZ-POS.
-
-Status: transform stages (thumbnail / compress / crop) IMPLEMENTED.
-Persistence (MediaStorage backends + DB metadata) PLANNED.
-
-Implemented:
-- Thumbnail generation (maintain aspect ratio, preset sizes)
-- Image compression (JPEG quality / WebP pass-through / PNG)
-- Auto-crop (border trim / centre-crop / smart bias)
-
-PLANNED:
-- Image storage (local filesystem + object storage + DB metadata)
-- Pipeline persistence (store + record media_assets rows)
-
-Depends on the `image` crate (0.25) for pixel-level operations.
 */
+#![deny(unsafe_code)]
 
-//! Image processing utilities for OZ-POS.
+//! Image processing utilities for kasir.mu.
 //!
 //! `kasirmu-media` provides image thumbnail generation, compression, and
 //! auto-crop operations for product photos, category icons, and
 //! store logos, plus a pipeline orchestrator and metrics.
 //!
+//! Depends on the `image` crate (0.25) for pixel-level operations.
+//!
 //! # Status
 //!
-//! The transform functions ([`thumbnail`], [`compress`], [`crop`]) are
-//! implemented. Storage backends and DB metadata persistence are
-//! PLANNED stubs ([`storage`], [`MediaPipeline::process`]).
+//! The transform functions are **implemented**: thumbnail generation
+//! ([`thumbnail`], aspect-ratio preserving with preset sizes), image compression
+//! ([`compress`], JPEG quality / WebP pass-through / PNG) and auto-crop
+//! ([`crop`], border trim / centre-crop / smart bias).
+//!
+//! Storage backends and DB metadata persistence are **PLANNED** stubs
+//! ([`storage`], [`MediaPipeline::process`]): image storage (local filesystem,
+//! object storage, DB metadata) and pipeline persistence (store + record
+//! `media_assets` rows) return `NotImplemented`.
+//!
+//! # Wiring status: implemented, and reached by nothing
+//!
+//! **No crate in the workspace depends on this one.** Measured 2026-09-30
+//! (C29 / decision D13): outside its own directory the only references to
+//! `kasirmu-media` are its declaration in the root `Cargo.toml`, its `deny.toml`
+//! licence entry, and its row in `ARCHITECTURE.md` — zero `*.rs` call sites.
+//!
+//! It is **kept** under D13's rule — *redundant-and-inert is deleted;
+//! unwired-but-implemented is kept and labelled honestly*. It falls on the KEEP
+//! side because its transforms are implemented and audited, it is the only image
+//! pipeline in the tree, and product photos are a real product need whether or
+//! not a plan currently schedules the storage half: deleting it would discard
+//! capability rather than resolve a contradiction. This note is the "labelled
+//! honestly" half of that ruling, not an oversight.
 
 pub mod compress;
 pub mod crop;

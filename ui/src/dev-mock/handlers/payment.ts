@@ -51,7 +51,7 @@ mockLocalPaymentRails.set(
       is_enabled: true,
       parameters: JSON.stringify({
         static_qr_payload:
-          '00020101021226690012ID.CO.QRIS.WWW0215ID20230123456780303UME52045812530336054051000000000000000000000000000000005802ID5910OZ POS DEMO6007JAKARTA6304ABCD',
+          '00020101021226690012ID.CO.QRIS.WWW0215ID20230123456780303UME52045812530336054051000000000000000000000000000000005802ID5912KASIRMU DEMO6007JAKARTA6304ABCD',
       }),
     },
     { rail_code: 'edc', label: 'EDC (card)', is_enabled: true, parameters: '{}' },
@@ -128,13 +128,130 @@ let mockQrisSeq = 0;
 /** orderId → remaining polls before it settles. */
 const mockQrisPollsLeft = new Map<string, number>();
 
+interface MockEdcTerminalRow {
+  id: string;
+  name: string;
+  connectionType: 'wired' | 'wireless';
+  transport: 'serial' | 'usb' | 'bluetooth' | 'tcp';
+  address: string;
+  vendor?: string | null;
+  model?: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+let mockEdcTerminals: MockEdcTerminalRow[] = [
+  {
+    id: 'edc-term-1',
+    name: 'Counter 1 - BCA EDC',
+    connectionType: 'wired',
+    transport: 'serial',
+    address: 'COM3',
+    vendor: 'ingenico',
+    model: 'iPP320',
+    isActive: true,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+  },
+  {
+    id: 'edc-term-2',
+    name: 'Mobile Mandiri PAX',
+    connectionType: 'wireless',
+    transport: 'tcp',
+    address: '192.168.1.188:9000',
+    vendor: 'pax',
+    model: 'A920',
+    isActive: true,
+    createdAt: '2026-01-02T00:00:00.000Z',
+    updatedAt: '2026-01-02T00:00:00.000Z',
+  },
+];
+
 export function createPaymentHandlers(deps: PaymentDeps): Record<string, MockHandler> {
   const { unwrapArgs } = deps;
   return {
 
   // ── EDC card-present terminal ──────────────────────────────────────
-  'edc_terminal_status': () => ({ status: 'ready' }),
-  'edc_terminal_status_scoped': () => ({ status: 'ready' }),
+  'edc_terminal_status': (args) => {
+    const a = unwrapArgs<{ terminalId?: string }>(args);
+    if (a.terminalId && !mockEdcTerminals.some((t) => t.id === a.terminalId)) {
+      throw new Error(`EDC card terminal '${a.terminalId}' not found`);
+    }
+    return { status: 'ready' };
+  },
+  'edc_terminal_status_scoped': (args) => {
+    const a = unwrapArgs<{ terminalId?: string }>(args);
+    if (a.terminalId && !mockEdcTerminals.some((t) => t.id === a.terminalId)) {
+      throw new Error(`EDC card terminal '${a.terminalId}' not found`);
+    }
+    return { status: 'ready' };
+  },
+  'list_edc_terminals_scoped': () => [...mockEdcTerminals],
+  'create_edc_terminal_scoped': (args) => {
+    const { args: input } = unwrapArgs<{
+      args: {
+        name: string;
+        connectionType: 'wired' | 'wireless';
+        transport: 'serial' | 'usb' | 'bluetooth' | 'tcp';
+        address: string;
+        vendor?: string | null;
+        model?: string | null;
+        isActive?: boolean;
+      };
+    }>(args);
+    const now = new Date().toISOString();
+    const created: MockEdcTerminalRow = {
+      id: `edc-term-${Date.now()}`,
+      name: input.name,
+      connectionType: input.connectionType,
+      transport: input.transport,
+      address: input.address,
+      vendor: input.vendor ?? null,
+      model: input.model ?? null,
+      isActive: input.isActive ?? true,
+      createdAt: now,
+      updatedAt: now,
+    };
+    mockEdcTerminals.push(created);
+    return created;
+  },
+  'update_edc_terminal_scoped': (args) => {
+    const { args: input } = unwrapArgs<{
+      args: {
+        id: string;
+        name: string;
+        connectionType: 'wired' | 'wireless';
+        transport: 'serial' | 'usb' | 'bluetooth' | 'tcp';
+        address: string;
+        vendor?: string | null;
+        model?: string | null;
+        isActive: boolean;
+      };
+    }>(args);
+    const idx = mockEdcTerminals.findIndex((t) => t.id === input.id);
+    const existing = mockEdcTerminals[idx];
+    if (!existing) throw new Error(`edc_terminal not found: ${input.id}`);
+    const updated: MockEdcTerminalRow = {
+      id: existing.id,
+      createdAt: existing.createdAt,
+      name: input.name,
+      connectionType: input.connectionType,
+      transport: input.transport,
+      address: input.address,
+      vendor: input.vendor ?? null,
+      model: input.model ?? null,
+      isActive: input.isActive,
+      updatedAt: new Date().toISOString(),
+    };
+    mockEdcTerminals[idx] = updated;
+    return updated;
+  },
+  'delete_edc_terminal_scoped': (args) => {
+    const { id } = unwrapArgs<{ id: string }>(args);
+    mockEdcTerminals = mockEdcTerminals.filter((t) => t.id !== id);
+    return null;
+  },
   'edc_sale': (args) => {
     const a = args as { args: { amountMinor: number; currency: string } };
     const { amountMinor, currency } = a.args ?? a;

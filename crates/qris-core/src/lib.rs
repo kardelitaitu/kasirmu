@@ -10,10 +10,18 @@
 //!
 //! | Feature  | Enables |
 //! |----------|---------|
-//! | *(none)* | [`QrisPayload::parse`], [`QrisBuilder`], all field access, CRC utilities |
-//! | `decode` | [`QrisPayload::from_image`], [`QrisPayload::from_bytes`] |
-//! | `render` | [`QrisPayload::to_qr_png`], [`QrisPayload::to_qr_svg`], [`QrisPayload::to_qr_png_with_logo`] |
+//! | *(none)* | `QrisPayload::parse`, [`QrisBuilder`], all field access, CRC utilities |
+//! | `decode` | `QrisPayload::from_image`, `QrisPayload::from_bytes` |
+//! | `render` | `QrisPayload::to_qr_png`, `QrisPayload::to_qr_svg`, `QrisPayload::to_qr_png_with_logo` |
 //! | `serde`  | `Serialize` / `Deserialize` on all public data types |
+//!
+//! Feature-gated items are named in plain code spans rather than intra-doc
+//! links on purpose: an intra-doc link resolves only when the item is
+//! actually compiled, so `[`QrisPayload::from_image`]` is an unresolved-link
+//! error under `cargo doc --no-default-features` and under any
+//! `RUSTDOCFLAGS="-D warnings"` build that does not enable every feature.
+//! Naming them as text keeps the table readable in every configuration and
+//! keeps the docs buildable in all of them.
 //!
 //! ## Flow 1 — Read a QR sticker and extract the NMID
 //!
@@ -67,6 +75,8 @@
 //! # }
 //! # Ok::<(), qris_core::QrisError>(())
 //! ```
+
+#![deny(unsafe_code)]
 
 pub mod amount;
 pub mod builder;

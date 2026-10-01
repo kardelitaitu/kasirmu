@@ -12,6 +12,7 @@ import { useLocalization } from '@fluent/react';
 import { requiredLocalized } from '@/components';
 import { useToast } from '@/components/Toast';
 import { l10nErrorMessage } from '@/utils/app-error';
+import { settleRead } from '@/utils/settle-read';
 import { Button } from '@/components/Button';
 import { Skeleton } from '@/components/Skeleton';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
@@ -29,23 +30,13 @@ import {
 } from '@/api/inventoryCounts';
 import { listWarehouseProductsAtLocation, type ProductDto } from '@/api/products';
 
-/**
- * One settled read. `ok: false` means the call NEVER ANSWERED — a different
- * fact from "answered, and the answer was an empty list". The shape is the
- * sanctioned boot idiom (app/AppShell.tsx:87-94); the load-bearing
- * half is that the caller writes nothing on `ok: false`, so the state keeps
- * its UNKNOWN value instead of being overwritten with a plausible empty one.
- */
-type Read<T> = { ok: true; value: T } | { ok: false };
-
-async function settle<T>(label: string, read: Promise<T>): Promise<Read<T>> {
-  try {
-    return { ok: true, value: await read };
-  } catch (err) {
-    console.error(`[warehouse-count] ${label} read failed — recording unknown:`, err);
-    return { ok: false };
-  }
-}
+// One settled read. `ok: false` records that the call NEVER ANSWERED -- a
+// different fact from "answered, and the answer was an empty list". The shape
+// is the sanctioned boot idiom (ui/src/utils/settle-read.ts); the
+// load-bearing half is that the caller writes nothing on `ok: false`, so the
+// state keeps its UNKNOWN value instead of being overwritten with a plausible
+// empty one. The subsystem label on each call carries that attribution into
+// the console line.
 
 interface Props {
   sessionToken: string;
@@ -80,6 +71,20 @@ export default function WarehouseCountFlow({ sessionToken, locationId, onComplet
   // Scan input
   const [scanInput, setScanInput] = useState('');
   const scanRef = useRef<HTMLInputElement>(null);
+  // Serialises scans of the SAME line. The count-line update is an ABSOLUTE
+  // write (`update_count_line` SETs counted_qty, and the bridge copies
+  // `args.counted_qty` straight through), so the client has to read-modify-write
+  // `counted + 1` from the `lines` array. Two scans that overlap before the first
+  // `await loadLines()` returns both read the same `counted_qty` and the second
+  // write silently discards one count -- on a PHYSICAL stock count, which then
+  // feeds an inventory adjustment. Barcode scanners fire faster than a round
+  // trip, so this is reachable in normal use.
+  //
+  // A per-line in-flight set, not a global busy flag: scanning two DIFFERENT
+  // products concurrently is fine and must not be serialised, and the ref is
+  // mutated (not state) so the guard never triggers a re-render or an await on
+  // a stale closure.
+  const scansInFlight = useRef(new Set<string>());
 
   const loadCounts = useCallback(async () => {
     if (!sessionToken) return;
@@ -101,7 +106,9 @@ export default function WarehouseCountFlow({ sessionToken, locationId, onComplet
       return;
     }
     let cancelled = false;
-    void settle('product catalogue', listWarehouseProductsAtLocation(sessionToken, locationId)).then(
+    void settleRead('warehouse-count product catalogue',
+      listWarehouseProductsAtLocation(sessionToken, locationId),
+    ).then(
       (read) => {
         // A throw writes nothing, so the catalogue stays UNKNOWN.
         if (!cancelled && read.ok) setProducts(read.value);
@@ -179,6 +186,10 @@ export default function WarehouseCountFlow({ sessionToken, locationId, onComplet
         return;
       }
       const existing = lines.find((l) => l.sku === product.sku);
+      // Skip a scan for a line whose previous increment is still in flight; the
+      // counter would otherwise be read stale and the +1 lost.
+      if (existing && scansInFlight.current.has(product.sku)) return;
+      if (existing) scansInFlight.current.add(product.sku);
       try {
         if (existing) {
           // Scan again = +1 counted
@@ -198,6 +209,11 @@ export default function WarehouseCountFlow({ sessionToken, locationId, onComplet
         await loadLines();
       } catch (err) {
         addToast({ type: 'error', message: l10nErrorMessage(err, l10n, 'warehouse-count-error') });
+      } finally {
+        // Released in `finally`, not after the success path: a failed increment
+        // must not leave the SKU locked out of scanning for the rest of the
+        // session, which would silently drop real counts.
+        if (existing) scansInFlight.current.delete(product.sku);
       }
     },
     [sessionToken, activeCount, products, lines, loadLines, l10n, addToast],

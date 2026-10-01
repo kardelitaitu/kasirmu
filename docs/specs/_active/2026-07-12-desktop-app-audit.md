@@ -1,3 +1,5 @@
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 500 lines, with no prior stamp, footer and no marker. It is the PARENT audit for several specifications this campaign has already audited, which makes it a hub rather than a leaf — the money-closure specification audited two rounds ago closes a finding from here, and so does the card-terminal and environment work. Reading it last, after those, is the right order: the children were judged on their own terms and this is the document they answer to. · THE HEADER CORRECTS A FALSE CLAIM ABOUT ITS OWN PROVENANCE, and that is the first thing a reader should know. It states that the audit followed a named framework, and then — in the same line — records that the previous version of that line was a link to a skill file which has never existed in this repository, and that the skills directory ships a different set. A document that removes its own false citation, in place, with the reason, is doing something almost no document does. It is the same principle this campaign has been applying to audit stamps all session: a claim about provenance that cannot be supported should be deleted rather than softened, and the deletion should say why. · THE BASELINE SECTION IS HISTORICAL EVIDENCE AND MUST NOT BE READ AS CURRENT, and the stamp says so explicitly because the names in it will mislead. The commands quoted use the pre-restructure crate and application names, and they are correct FOR THE DATE THE AUDIT RAN. This is the frozen-record case this campaign has applied throughout: a changelog, an archived plan, and a dated baseline are records, and editing their identifiers would destroy the evidence of what was true. A reader who needs today's command has the quickstart; a reader auditing what the audit actually did needs this section unchanged. · THE CLOSURE CLAIMS ARE FALSIFIABLE AND THE CHILDREN CONFIRM THEM. The document reports all critical and high findings resolved, and names the resolutions — the exchange-rate conversion to integer millionths closed in a specific epic, and LAN retry, sync pull safety and brand validation closed in a specific version. The money-closure specification audited in this campaign is that first resolution, and this campaign verified its invariant in the tree. A parent audit whose children are individually verified is the strongest form this evidence takes. · NOT re-measured: the lints and builds in the baseline, the severity judgements, and whether the medium findings were subsequently resolved. The baseline is history by construction and the medium items are backlog, which is the correct place for them. · No stamp existed; this is the first. -->
+
 # Desktop App Audit (kasir.mu)
 
 - **Audit ID:** 2026-07-12-desktop-app-audit
@@ -113,11 +115,11 @@ Tighten incrementally as the audit progresses.
 
 **Location:** `apps/desktop-client/src/commands/license.rs` writes `license.payload`, `license.signature`, `license.tenant_id`, `license.api_key` via `Settings::set_batch` into the global settings table. SQLite is plaintext at rest. ~~On Windows any user with file-system access (`%APPDATA%\mu.kasir.app\`) can read the license.~~
 
-> **CORRECTION 2026-09-12 — true when written, incomplete now, and it understates in one direction while the fix overstates in the other. Measured:** the **database file is still not encrypted** — no whole-file layer exists (see the correction in ADR #4 §5 and the NEVER ADOPTED banner on `docs/archived/sqlcipher-migration-plan.md`) — but **some columns are**. Since `e105109f6` (2026-08-29, `security(H-5): extract oz-crypto crate + transparent secret encryption at rest`) `license.api_key` is stored as ciphertext bound to the machine id: `crates/oz-bridge/src/license.rs` encrypts before the write and decrypts on read, so a bare file read now returns sealed bytes for that one key, not the key. `license.payload`, `license.signature` and `license.tenant_id` are still plaintext in the file, as is **any `license.api_key` row written before 2026-08-29** — the read path passes legacy plaintext straight through (see ADR #4 §5), so the exposure this finding describes is closed for new writes and open for old ones. So: whole-file encryption, no; field-level encryption of named secrets, yes; and "anyone with the file can read the license" is now true only of the non-secret license fields and of pre-`e105109f6` rows.
+> **CORRECTION 2026-09-12 — true when written, incomplete now, and it understates in one direction while the fix overstates in the other. Measured:** the **database file is still not encrypted** — no whole-file layer exists (see the correction in ADR #4 §5 and the NEVER ADOPTED banner on `docs/archived/sqlcipher-migration-plan.md`) — but **some columns are**. Since `e105109f6` (2026-08-29, `security(H-5): extract oz-crypto crate + transparent secret encryption at rest`) `license.api_key` is stored as ciphertext bound to the machine id: `crates/kasirmu-bridge/src/license.rs` encrypts before the write and decrypts on read, so a bare file read now returns sealed bytes for that one key, not the key. `license.payload`, `license.signature` and `license.tenant_id` are still plaintext in the file, as is **any `license.api_key` row written before 2026-08-29** — the read path passes legacy plaintext straight through (see ADR #4 §5), so the exposure this finding describes is closed for new writes and open for old ones. So: whole-file encryption, no; field-level encryption of named secrets, yes; and "anyone with the file can read the license" is now true only of the non-secret license fields and of pre-`e105109f6` rows.
 
 **Why critical:** With machine-id (60-bit entropy) guessable and the API key extracted via local file read, an attacker can mint a cloned license bound to a different machine and exfiltrate tenant-API access. This is a one-step credential-exfiltration primitive — local-file read yields full tenant takeover. Promoted from HIGH to CRITICAL after reviewer pass.
 
-**Fix:** (1) ~~Encrypt SQLite at rest with SQLCipher (rusqlite `bundled-sqlcipher` feature)~~ **never adopted — 2026-09-12: no `Cargo.toml` in this workspace mentions sqlcipher in any form and the SQLite dependency is plain `rusqlite` with `features = ["bundled", "backup"]`; the shipped substitute is field-level encryption of the API key via `crates/oz-crypto`, which is a different and weaker thing than this clause promises.** (2) ~~move API key to OS credential store via the `keyring` crate~~ **not done either: `keyring` appears in no manifest, and `license.api_key` still lives in the SQLite settings table, encrypted — `crates/oz-bridge/src/license.rs` writes it through `Settings::set_batch`; `oz_security::Keyring` is used for other material, not for this key** ; (3) bump machine-id entropy to ≥128 bits and re-key license on machine identity change.
+**Fix:** (1) ~~Encrypt SQLite at rest with SQLCipher (rusqlite `bundled-sqlcipher` feature)~~ **never adopted — 2026-09-12: no `Cargo.toml` in this workspace mentions sqlcipher in any form and the SQLite dependency is plain `rusqlite` with `features = ["bundled", "backup"]`; the shipped substitute is field-level encryption of the API key via `crates/kasirmu-crypto`, which is a different and weaker thing than this clause promises.** (2) ~~move API key to OS credential store via the `keyring` crate~~ **not done either: `keyring` appears in no manifest, and `license.api_key` still lives in the SQLite settings table, encrypted — `crates/kasirmu-bridge/src/license.rs` writes it through `Settings::set_batch`; `oz_security::Keyring` is used for other material, not for this key** ; (3) bump machine-id entropy to ≥128 bits and re-key license on machine identity change.
 
 **Severity:** CRITICAL — local-file → license takeover.
 
@@ -308,12 +310,12 @@ Bundles: **C-1** plus the actual `f64`/`f32` money-domain hits across the worksp
 Run the following (broader pattern, captures field declarations and parameter types as well as `Vec<f64>` container shapes):
 ```bash
 grep -rnE '\b(f32|f64)\b' \
-    crates/oz-core crates/oz-payment crates/oz-reporting \
-    modules/ apps/desktop-client/src/ \
+    crates/kasirmu-core crates/kasirmu-payment crates/kasirmu-reporting \
+    modules/ apps/desktop-tauri/src/ \
     | grep -vE '//|test|tests/|format!|ToString|Display|#[doc'
 ```
 
-Initial audit pass on `apps/desktop-client/src/**/*.rs` returned only `commands/exchange_rates.rs:23, 54`. Workspace-wide application of the broader grep above will surface additional offenders for ticket X-3.
+Initial audit pass on `apps/desktop-tauri/src/**/*.rs` returned only `commands/exchange_rates.rs:23, 54`. (This read `apps/desktop-client`, the shell's pre-rebrand directory name; the rename landed after this audit, and the command above was repointed with it.) Workspace-wide application of the broader grep above will surface additional offenders for ticket X-3.
 
 #### Baseline snapshotting for re-audit
 
@@ -334,7 +336,7 @@ All CRITICAL and HIGH findings are now resolved across the 0.0.22 / 0.0.23 relea
 2. ~~**C-1** — Exchange rates to `i64` millionths.~~ **CLOSED in Epic X-3 (see §11).**
 3. ~~**C-3** — CSP enabled in `tauri.conf.json`.~~ **CLOSED.**
 4. ~~**C-4** — LAN default-bind to `127.0.0.1` + PSK gate.~~ **CLOSED.**
-5. ~~**C-5** — License key moved to OS credential store via `oz-security` crate.~~ **CLOSED — but CLOSED AS SOMETHING ELSE, corrected 2026-09-12:** the key was never moved to the OS credential store (it is still a row in the SQLite `settings` table, written by `crates/oz-bridge/src/license.rs` through `Settings::set_batch`); what shipped is that the row's value is encrypted at rest and bound to the machine id. The `oz_security::Keyring` surface this line credits exists and is used for other material, so the closure was recorded against the wrong mechanism — and the whole-file encryption the finding's own fix asked for was never adopted at all.
+5. ~~**C-5** — License key moved to OS credential store via `oz-security` crate.~~ **CLOSED — but CLOSED AS SOMETHING ELSE, corrected 2026-09-12:** the key was never moved to the OS credential store (it is still a row in the SQLite `settings` table, written by `crates/kasirmu-bridge/src/license.rs` through `Settings::set_batch`); what shipped is that the row's value is encrypted at rest and bound to the machine id. The `oz_security::Keyring` surface this line credits exists and is used for other material, so the closure was recorded against the wrong mechanism — and the whole-file encryption the finding's own fix asked for was never adopted at all.
 6. ~~**H-1** — LAN handler bounded retry loop.~~ **CLOSED.**
 7. ~~**H-2** — Sync pull `confirm_destructive` + backup.~~ **CLOSED.**
 8. ~~**H-3** — Brand logo path validation.~~ **CLOSED.**
@@ -374,12 +376,12 @@ The next auditor should run the same baseline block **plus** the following non-c
 
 ```bash
 # C-1: f64/f32 in money-domain fields (run from project root) — CLOSED
-# Expected empty for crates/oz-core, apps/desktop-client/src/, apps/tablet-client/src/,
+# Expected empty for crates/kasirmu-core, apps/desktop-tauri/src/, apps/mobile-tauri/src/,
 # platform/startup/src/, modules/currency/. oz-payment/oz-reporting may still surface
 # non-finite uses for follow-up.
 grep -rn ': f64\|: Option<f64>\|pub.*[0-9].*f64' \
-    crates/oz-core crates/oz-payment crates/oz-reporting \
-    modules/ apps/desktop-client/src/ \
+    crates/kasirmu-core crates/kasirmu-payment crates/kasirmu-reporting \
+    modules/ apps/desktop-tauri/src/ \
     | grep -v 'ToString\|Display\|format\|test\|tests/'
 
 # C-2: std::env::set_var / remove_var in apps/desktop-client — CLOSED (expect empty)
@@ -392,7 +394,7 @@ jq '.app.security.csp' apps/desktop-client/tauri.conf.json
 grep -rn 'TcpListener::bind\|TcpListener::bind_raw' apps/desktop-client/
 
 # C-5: license material — CLOSED (expect keyring-based storage)
-grep -rn 'license\.' apps/desktop-client/src/commands/ | grep -i 'set\|set_batch'
+grep -rn 'license\.' apps/desktop-tauri/src/commands/ | grep -i 'set\|set_batch'
 
 # H-3: brand logo path validation — CLOSED (expect canonicalize + app_data_dir)
 grep -rn 'canonicalize\|app_data_dir' apps/desktop-client/src/commands/branding.rs
@@ -421,11 +423,11 @@ Add the result of each grep to the next audit report under a "Closure" column. I
 
 | File | Change |
 |------|--------|
-| `crates/oz-core/src/exchange_rate.rs` | `ExchangeRateRow.rate: f64` → `rate_millionths: i64`; new `display_rate()` helper. |
-| `crates/oz-core/migrations/20260813_init.sql` | NEW: `ADD COLUMN rate_millionths INTEGER DEFAULT 0` → `UPDATE … = ROUND(rate * 1e6)` → `DROP COLUMN rate`. Documented rollback path. |
-| `crates/oz-core/src/migrations.rs` | Registered migration `071` next to `070`. |
-| `crates/oz-core/src/db/settings.rs` | `list_exchange_rates` / `create_exchange_rate` / `upsert_exchange_rate` all consume `i64 millionths`; the `<= 0` validation guard added to `create_exchange_rate` (defence in depth — `upsert_exchange_rate` already had it). |
-| `crates/oz-core/tests/currency_integration.rs` | Full rewrite: 38 tests covering ordering, FK constraints, validation rejection, large/small rates, display_rate formatting, currency parsing, Money multi-currency, and roundtrips. |
+| `modules/currency/src/models.rs` (was `crates/oz-core/src/exchange_rate.rs`) | `ExchangeRateRow.rate: f64` → `rate_millionths: i64`; new `display_rate()` helper. Repointed 2026-09-25: the type moved to the `modules-currency` crate, so the old path no longer exists. |
+| `crates/kasirmu-core/migrations/20260813_init.sql` | NEW: `ADD COLUMN rate_millionths INTEGER DEFAULT 0` → `UPDATE … = ROUND(rate * 1e6)` → `DROP COLUMN rate`. Documented rollback path. |
+| `crates/kasirmu-core/src/migrations.rs` | Registered migration `071` next to `070`. |
+| `crates/kasirmu-core/src/db/settings.rs` | `list_exchange_rates` / `create_exchange_rate` / `upsert_exchange_rate` all consume `i64 millionths`; the `<= 0` validation guard added to `create_exchange_rate` (defence in depth — `upsert_exchange_rate` already had it). |
+| `crates/kasirmu-core/tests/currency_integration.rs` | Full rewrite: 38 tests covering ordering, FK constraints, validation rejection, large/small rates, display_rate formatting, currency parsing, Money multi-currency, and roundtrips. |
 | `apps/desktop-client/src/commands/exchange_rates.rs` | `ExchangeRateDto` + `CreateExchangeRateArgs` use `rate_millionths: i64`; `<= 0` validation in command layer; tests updated. |
 | `apps/tablet-client/src/commands/exchange_rates.rs` | Same shape as desktop client. |
 | `platform/startup/src/rate_sync.rs` | Frankfurter daemon's `f64` rate now converted via `(*rate * RATE_SCALE).round() as i64` with documented clippy-allow at the cast; this is the only unavoidable `f64` site in the FX domain. |
@@ -449,7 +451,7 @@ Add the result of each grep to the next audit report under a "Closure" column. I
 
 ### What is still open
 
-- The grep in §10 (C-1 line) is now expected to return **empty** for `crates/oz-core` `apps/desktop-client` `apps/tablet-client` `platform/startup` `modules/currency`. The next auditor should confirm the grep yields zero matches across all the directories the epic touched, and snapshot the diff against the pre-epic baseline at `docs/specs/_active/_archive/2026-07-12-baseline.txt` once that archive is created (the previous epic did not snapshot before remediation — backlog item).
+- The grep in §10 (C-1 line) is now expected to return **empty** for `crates/kasirmu-core` `apps/desktop-client` `apps/tablet-client` `platform/startup` `modules/currency`. The next auditor should confirm the grep yields zero matches across all the directories the epic touched, and snapshot the diff against the pre-epic baseline at `docs/specs/_active/_archive/2026-07-12-baseline.txt` once that archive is created (the previous epic did not snapshot before remediation — backlog item).
 - **Legacy-data backfill hazard in migration 071**: if a pre-existing row had `rate = +Inf` (e.g. an early-API misconfiguration), SQLite's `CAST(Inf AS INTEGER)` clamps to `i64::MAX`; `rate = NaN` backfills to `0` via `CAST(NaN AS INTEGER)`. The new `<= 0` validation runs only on insert, not on the post-migration SELECT. Operators upgrading from a 0.0.4-or-earlier install with suspect legacy data should validate or wipe the `exchange_rates` table before applying 071. The migration is otherwise safe for well-formed legacy data.
 - **Front-end wire-format break** (`ExchangeRateDto` field rename): the field `rate: f64` is now `rate_millionths: i64` on both the desktop and tablet DTOs. Any TypeScript / React consumer of the Tauri command result that read `dto.rate` must update to `dto.rate_millionths` and divide by `1_000_000` for display. The React/TS `ui/` tree is out of this audit's scope but the `ui/src/api/exchange_rates.ts` (or equivalent) consumer is a follow-up ticket for the front-end team; until updated, the affected UI surfaces will read `undefined` and any pre-C-1 cached JSON in the browser will be stale. Pre-1.0 release makes the breaking change acceptable; documenting here so the next front-end PR picks it up.
 - **C-2 / C-3 / C-4 / C-5** — ALL CLOSED (0.0.22/0.0.23). See §12 for details.
@@ -498,3 +500,5 @@ Add the result of each grep to the next audit report under a "Closure" column. I
 ---
 
 *End of audit (revision 3: all CRITICAL + HIGH findings closed).*
+
+> last audited 29-09-26 by docs-auditor

@@ -7,7 +7,8 @@ import { renderWithProvidersSync } from '@/__tests__/test-utils/render';
 import salesFtl from '@/locales/sales.ftl?raw';
 import shiftsFtl from '@/locales/shifts.ftl?raw';
 import sharedFtl from '@/locales/shared.ftl?raw';
-import EodReportScreen from '@/features/sales/EodReportScreen';
+import EodReportScreen, { closedShiftsOnStoreDay } from '@/features/sales/EodReportScreen';
+import { FALLBACK_STORE_TZ } from '@/features/analytics/analytics-data';
 
 // ── Mocks ────────────────────────────────────────────────────────────
 
@@ -31,6 +32,22 @@ vi.mock('@/api/shifts', () => ({
 
 vi.mock('@/api/hardware', () => ({
   printReceiptScoped: (...args: unknown[]) => mockPrintReceipt(...args),
+}));
+
+// The screen reads the store's offset through useStoreTimezone, which fetches
+// it asynchronously. Without this the zone arrives some ticks AFTER the shifts
+// do, so a fixture built on the UTC day is reconciled under one calendar and
+// re-reconciled under the other a moment later -- which is exactly how
+// 'shows over/short tags for shift cash differences' came to fail on some runs
+// and pass on others with identical inputs.
+//
+// 'UTC' is pinned deliberately. It makes every fixture below agree with the
+// screen by construction, so the store-day behaviour itself is exercised ONLY
+// by the dedicated describe block at the foot of this file, where the offset is
+// passed explicitly and cannot race.
+const mockGetPrimaryLocationScoped = vi.fn();
+vi.mock('@/api/locations', () => ({
+  getPrimaryLocationScoped: (...args: unknown[]) => mockGetPrimaryLocationScoped(...args),
 }));
 
 // EodReportScreen.tsx:10 imports buildCsv/downloadCsv from here. Only the
@@ -111,6 +128,12 @@ describe('EodReportScreen', () => {
     mockListShifts.mockReset();
     mockPrintReceipt.mockReset();
     mockDownloadCsv.mockReset();
+    // Pinned in beforeEach, not at module scope: mockReset() above would clear
+    // a module-scope implementation and leave the fetch returning undefined,
+    // which the hook swallows into storeTz = null -- and null resolves to
+    // FALLBACK_STORE_TZ, a different value again.
+    mockGetPrimaryLocationScoped.mockReset();
+    mockGetPrimaryLocationScoped.mockResolvedValue({ id: 'store-1', timezone: 'UTC' });
   });
 
   it('renders the title', async () => {
@@ -477,5 +500,187 @@ describe('EodReportScreen', () => {
       expect(mockEodReportScoped).toHaveBeenCalled();
     });
     expect(mockEodReport).not.toHaveBeenCalled();
+  });
+});
+
+// ── REP-03: the shift reconciliation is the STORE's day, not UTC's ──────────
+//
+// This file is where the UTC-prefix filter lives, so it is where the pin has to
+// be. `closedShiftsOnStoreDay` takes a `now` seam precisely because the defect
+// is only observable while the store and UTC disagree about the date; a test
+// written against the wall clock would have been green for most of the day and
+// useless as a regression gate.
+describe('closedShiftsOnStoreDay — store-day anchoring (REP-03)', () => {
+  // Every fixture below is chosen so the store day and the UTC day DISAGREE,
+  // and the choice is ASSERTED, not assumed -- see the first case. The defect
+  // exists only while those two calendars differ, so a fixture that agreed with
+  // them would make the case below it pass for the wrong reason.
+  //
+  // Shifts run ~12h, so a close time is an OFFSET BACK FROM NOW rather than a
+  // wall-clock date: realistic, and one helper then builds a discriminating
+  // pair and a control.
+  //
+  // NOW is midday UTC deliberately: at 00:00Z a +14 store has ALREADY crossed
+  // into the next day, which inverts every fixture. The earlier drafts of this
+  // block used midnight and asserted the opposite direction of the same
+  // relationship -- they passed by measuring a fixture and asserting the wrong
+  // sign of the result. Pinning NOW here and deriving each offset from the
+  // arithmetic below is what stops that recurring.
+  const NOW = Date.parse('2026-09-04T12:00:00Z');
+  const closedAgo = (hours: number) => new Date(NOW - hours * 3_600_000).toISOString();
+
+  // The store calendar day for an offset, as this test computes it: the
+  // instant shifted, then read on the UTC calendar. Plain arithmetic, written
+  // out here so no expectation below is produced by the code under test.
+  const storeDayAt = (hoursAgo: number, offsetHours: number) =>
+    new Date(NOW - hoursAgo * 3_600_000 + offsetHours * 3_600_000).toISOString().slice(0, 10);
+  const utcDayAt = (hoursAgo: number) =>
+    new Date(NOW - hoursAgo * 3_600_000).toISOString().slice(0, 10);
+
+  // 13h back is 23:00Z on the 3rd: yesterday in UTC, but 09:00 on the 3rd at
+  // -14:00, which IS the store's today (the store is on the 3rd at midday UTC).
+  // The old filter compared the UTC prefix "2026-09-03" against UTC's today
+  // "2026-09-04", found no match, and dropped the shift from the
+  // reconciliation entirely.
+  const STORE_TODAY_UTC_YESTERDAY = 13;
+  // 6h back is 06:00Z on the 4th: today in UTC, but yesterday at +14:00.
+  const UTC_TODAY_STORE_YESTERDAY = 6;
+  // 1h back: both calendars say today. The control that catches a fix which
+  // moves shifts that were always right.
+  const SAME_DAY_BOTH = 1;
+  // 30h back: both calendars say yesterday.
+  const BOTH_YESTERDAY = 30;
+
+  it('files a shift under the store day that closed it, not under UTC', () => {
+    const shifts = [makeShift({ closedAt: closedAgo(STORE_TODAY_UTC_YESTERDAY) })];
+
+    // The discriminating claim, made first so the next line cannot be vacuous.
+    expect(utcDayAt(STORE_TODAY_UTC_YESTERDAY)).not.toBe(utcDayAt(0));
+    expect(storeDayAt(STORE_TODAY_UTC_YESTERDAY, -14)).toBe(storeDayAt(0, -14));
+    expect(closedShiftsOnStoreDay(shifts, '-14:00', NOW)).toHaveLength(1);
+    // The old filter compared the UTC prefix, so it dropped this shift.
+    expect(closedShiftsOnStoreDay(shifts, 'UTC', NOW)).toHaveLength(0);
+  });
+
+  it('drops a shift the store saw yesterday but UTC calls today', () => {
+    const shifts = [makeShift({ closedAt: closedAgo(UTC_TODAY_STORE_YESTERDAY) })];
+
+    // Same discrimination, other direction: today for the cashier, yesterday
+    // for a store at +14:00, which at midday UTC is already on the 5th.
+    expect(utcDayAt(UTC_TODAY_STORE_YESTERDAY)).toBe(utcDayAt(0));
+    expect(storeDayAt(UTC_TODAY_STORE_YESTERDAY, 14)).not.toBe(storeDayAt(0, 14));
+    expect(closedShiftsOnStoreDay(shifts, '+14:00', NOW)).toHaveLength(0);
+    expect(closedShiftsOnStoreDay(shifts, 'UTC', NOW)).toHaveLength(1);
+  });
+
+  it('agrees with UTC when the two calendars name the same day', () => {
+    // The fix must not have turned a UTC-anchored screen into a store-anchored
+    // one that also MOVES shifts that were always right.
+    const shifts = [makeShift({ closedAt: closedAgo(SAME_DAY_BOTH) })];
+
+    expect(storeDayAt(SAME_DAY_BOTH, 14)).toBe(storeDayAt(0, 14));
+    expect(closedShiftsOnStoreDay(shifts, '+14:00', NOW)).toHaveLength(1);
+    expect(closedShiftsOnStoreDay(shifts, '-14:00', NOW)).toHaveLength(1);
+    expect(closedShiftsOnStoreDay(shifts, 'UTC', NOW)).toHaveLength(1);
+  });
+
+  it('drops a shift both calendars call yesterday', () => {
+    const shifts = [makeShift({ closedAt: closedAgo(BOTH_YESTERDAY) })];
+
+    expect(storeDayAt(BOTH_YESTERDAY, 14)).not.toBe(storeDayAt(0, 14));
+    expect(closedShiftsOnStoreDay(shifts, '+14:00', NOW)).toHaveLength(0);
+    expect(closedShiftsOnStoreDay(shifts, 'UTC', NOW)).toHaveLength(0);
+  });
+
+  it('separates the two days at every hour of the day, for shifts of every age', () => {
+    // Not "exactly one of the two zones says yes" -- that is false, and asserting
+    // it was the first mistake in this file. A shift that closed 1h ago is the
+    // same day for BOTH calendars, and one that closed 20h ago is the previous
+    // day for BOTH; only a middle band disagrees. Measured over the sweep below
+    // (24 instants x ages 1..20h, offset +14:00): 196 pairs agree, 136 agree on
+    // being yesterday, 74 say yes for the store only, 74 for UTC only.
+    //
+    // The claim worth pinning is therefore the DIRECTION, not a count: whenever
+    // the two zones disagree, the store must say yes exactly when the store's
+    // own calendar says the close happened on the store's own today. Recomputed
+    // independently here with plain UTC arithmetic on the shifted instants, so
+    // the expectation does not come from the function under test.
+    const H = 3_600_000;
+    let disagreed = 0;
+    for (let hour = 0; hour < 24; hour++) {
+      for (const ageH of [1, 6, 12, 20]) {
+        const now = NOW + hour * H;
+        const closed = now - ageH * H;
+        const onStoreDay = new Date(closed + 14 * H).toISOString().slice(0, 10)
+          === new Date(now + 14 * H).toISOString().slice(0, 10);
+        const onUtcDay = new Date(closed).toISOString().slice(0, 10)
+          === new Date(now).toISOString().slice(0, 10);
+        const shifts = [makeShift({ closedAt: new Date(closed).toISOString() })];
+        expect(closedShiftsOnStoreDay(shifts, '+14:00', now).length, `hour ${hour}, age ${ageH}h`)
+          .toBe(onStoreDay ? 1 : 0);
+        if (onStoreDay !== onUtcDay) disagreed++;
+      }
+    }
+    // Guard against the sweep silently degenerating into a no-op.
+    expect(disagreed).toBeGreaterThan(0);
+  });
+
+  it('is unaffected by the host zone', () => {
+    // Not a self-comparison (an earlier draft of this test compared the helper
+    // with itself and could never fail). Every day in the helper is read on a
+    // UTC calendar after shifting by the store offset, and the host zone is
+    // never consulted -- so the same call must produce the same array under any
+    // host. Only a host-sensitive implementation could break this, and the way
+    // to break it here is to move the comparison to a gate that runs under
+    // several host zones; see the registration in scripts/check-tz-invariance.py.
+    const shifts = [makeShift({ closedAt: closedAgo(STORE_TODAY_UTC_YESTERDAY) })];
+    const result = closedShiftsOnStoreDay(shifts, '-14:00', NOW);
+
+    expect(result).toHaveLength(1);
+    expect(result.map((s) => s.closedAt)).toEqual([closedAgo(STORE_TODAY_UTC_YESTERDAY)]);
+    // The instant's own date is the 3rd; the store at -14:00, which at midday
+    // UTC is still on the 3rd, is looking at the 3rd. A raw string comparison of
+    // the unshifted instant against UTC's day would have said 'no'.
+    expect(closedAgo(STORE_TODAY_UTC_YESTERDAY).slice(0, 10))
+      .not.toBe(utcDayAt(0));
+    expect(utcDayAt(STORE_TODAY_UTC_YESTERDAY)).toBe(storeDayAt(0, -14));
+  });
+
+  it('falls back to the store default when no zone is known', () => {
+    const shifts = [makeShift({ closedAt: closedAgo(STORE_TODAY_UTC_YESTERDAY) })];
+    // FALLBACK_STORE_TZ is UTC, so an unknown zone keeps the previous
+    // behaviour rather than silently adopting the device's (analytics-data:99-117
+    // is why that fallback is a fixed constant and not the host).
+    expect(closedShiftsOnStoreDay(shifts, null, NOW)).toHaveLength(0);
+    expect(closedShiftsOnStoreDay(shifts, undefined, NOW)).toHaveLength(0);
+    expect(closedShiftsOnStoreDay(shifts, FALLBACK_STORE_TZ, NOW)).toHaveLength(0);
+    // And a value that is not a fixed +-HH:MM offset resolves to 0 too, which
+    // is the path a store profile with an IANA name would take if a caller ever
+    // passed one straight through.
+    expect(closedShiftsOnStoreDay(shifts, 'Asia/Jakarta', NOW)).toHaveLength(0);
+  });
+
+  it('ignores open shifts and shifts with no close time', () => {
+    const shifts = [
+      makeShift({ status: 'open', closedAt: closedAgo(SAME_DAY_BOTH) }),
+      makeShift({ status: 'closed', closedAt: null }),
+    ];
+    expect(closedShiftsOnStoreDay(shifts, '+14:00', NOW)).toHaveLength(0);
+  });
+
+  it('keeps every closed shift the store saw today, and drops the rest', () => {
+    // A drawer that reconciles three shifts must not lose one because the
+    // cashier's terminal sits in a different region than the store. 'a' is
+    // today everywhere; 'b' is today only for a store behind UTC; 'c' is
+    // yesterday everywhere.
+    const shifts = [
+      makeShift({ id: 'a', closedAt: closedAgo(UTC_TODAY_STORE_YESTERDAY) }),
+      makeShift({ id: 'b', closedAt: closedAgo(STORE_TODAY_UTC_YESTERDAY) }),
+      makeShift({ id: 'c', closedAt: closedAgo(BOTH_YESTERDAY) }),
+    ];
+    // Measured: UTC keeps 'a'; the -14:00 store, which at midday UTC is still on
+    // the 3rd, keeps 'a' and 'b'.
+    expect(closedShiftsOnStoreDay(shifts, 'UTC', NOW).map((s) => s.id)).toEqual(['a']);
+    expect(closedShiftsOnStoreDay(shifts, '-14:00', NOW).map((s) => s.id)).toEqual(['a', 'b']);
   });
 });

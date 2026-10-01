@@ -1,4 +1,4 @@
--- Buy X Get Y Promotion Script for OZ-POS Lua Engine
+-- Buy X Get Y Promotion Script for kasir.mu Lua Engine
 -- Example: Buy 2 items of SKU "COFFEE-01", get 1 free (100% discount on 3rd item)
 
 function apply_promotion(cart)

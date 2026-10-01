@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="autocomplete" content="off" />
-    <title>OZ-POS</title>
+    <title>kasir.mu</title>
 
     <!-- Favicon & PWA icons (legacy + modern browser support) -->
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
@@ -18,10 +18,30 @@
     <!-- Restore saved theme before first paint to prevent theme flash. -->
     <script>
       (function() {
+        // Reads BOTH keys on purpose. 'kasirmu-theme-v4' is what the app
+        // writes (ThemeProvider.tsx:41); 'oz-pos-theme-v4' is the legacy key
+        // it migrates FROM and then deletes on first load. This script used
+        // to read only the legacy key -- which by the time it ran had been
+        // removed, so `theme` was always null, no attribute was ever set,
+        // and the CSS fell through to prefers-color-scheme. On a light OS
+        // with the app set to dark that rendered a WHITE frame before
+        // React's dark splash: the theme flash this script exists to stop.
         var theme = null;
-        try { theme = localStorage.getItem('oz-pos-theme-v4'); } catch(e) {}
-        if (theme === 'light' || theme === 'dark') {
-          document.documentElement.setAttribute('data-theme', theme);
+        try {
+          theme = localStorage.getItem('kasirmu-theme-v4')
+               ?? localStorage.getItem('oz-pos-theme-v4');
+        } catch(e) {}
+        // 'default' is the pre-0.0.37 glass value; ThemeProvider maps it to
+        // dark, so mirror that rather than leaving the attribute unset.
+        if (theme === 'light') {
+          document.documentElement.setAttribute('data-theme', 'light');
+        } else if (theme === 'dark' || theme === 'default') {
+          document.documentElement.setAttribute('data-theme', 'dark');
+        } else {
+          // Nothing stored yet: match ThemeProvider's own default (dark),
+          // NOT the OS. Leaving the attribute unset is what let
+          // prefers-color-scheme disagree with the app's default theme.
+          document.documentElement.setAttribute('data-theme', 'dark');
         }
       })();
     </script>
@@ -40,8 +60,14 @@
 
     <!-- Inline theme base styles so the first paint already has the correct background and text color. -->
     <style>
+      /* `light dark` lets the browser pick from the OS, and the explicit
+         per-theme rules below then decide from the app's own choice — which
+         is what the script above has already written onto <html> before this
+         rule is parsed. An unconditional `dark` here told the UA the canvas
+         was dark regardless of theme, so a light install had a dark base
+         layer under everything until the author background painted. */
       :root {
-        color-scheme: dark;
+        color-scheme: light dark;
         accent-color: #5a9fd4;
       }
       html[data-theme="dark"] { color-scheme: dark; }
@@ -52,22 +78,39 @@
         color: #f0f6ff;
         margin: 0;
         padding: 0;
-        min-height: 100dvh;
+        /* `height` + `overflow: hidden`, matching index.mobile.html. This entry
+           used `min-height: 100dvh` on html, body AND #root, so three
+           full-viewport minimums stacked and the document ran a fraction
+           taller than the window — enough to raise a scrollbar over the
+           splash, which is position:fixed inset:0 and therefore exactly
+           viewport-sized. The shell itself never scrolls the document:
+           .app-layout is height:100dvh/overflow:hidden and .app-content owns
+           the only content scroll (AppLayout.css), so clamping the document
+           cannot take scrolling away from any screen. */
+        height: 100%;
+        overflow: hidden;
+        overscroll-behavior: none;
       }
 
-      /* Light theme override (applied via data-theme attribute or OS preference) */
-      html[data-theme="light"] {
+      /* Light theme override (applied via data-theme attribute or OS preference).
+         Must name BODY as well as html. The dark rule above is `html, body`,
+         and a bare `html[data-theme="light"]` outranks it on <html> only
+         (0,1,1 vs 0,0,1) — <body> kept matching the dark gradient, so a
+         light-themed install painted a DARK first frame and then flipped to
+         the white React splash. That flash is the defect this rule repairs. */
+      html[data-theme="light"],
+      html[data-theme="light"] body {
         background: linear-gradient(160deg, #f1f5f9 0%, #e9eef4 50%, #e2e8f0 100%);
         color: #1e293b;
       }
 
-      @media (prefers-color-scheme: light) {
-        html, body {
-          background: linear-gradient(160deg, #f1f5f9 0%, #e9eef4 50%, #e2e8f0 100%);
-          color: #1e293b;
-        }
+      /* height, not min-height: the third stacked viewport block was the
+         overflow this entry's scrollbar came from. Mirrors index.mobile.html,
+         which already shipped this shape. */
+      #root {
+        height: 100%;
+        overflow: hidden;
       }
-      #root { min-height: 100dvh; }
     </style>
 
     <!-- Boot splash (stage 1): token-first with static fallbacks so the
@@ -79,6 +122,25 @@
       .app-splash {
         position: fixed;
         inset: 0;
+        /* Same stacking as the React stage: --z-splash is the highest token
+           on the scale (tokens.css), so the splash covers modal/toast/tooltip.
+           The fallback matters because tokens.css has not loaded yet at this
+           stage — without a z-index here the element is `auto`, and `auto`
+           loses to any LATER body sibling that sets one, so a dev overlay or
+           a drag region would paint over the splash while the app is still
+           booting. That is the exact property the "keep values in sync"
+           comment above promises is kept. */
+        z-index: var(--z-splash, 700);
+        /* Own background matching StaffLoginScreen, so the splash seamlessly
+           shares canvas with the login screen without any color pop or shift. */
+        background-color: var(--color-bg, #12141a);
+        background:
+          radial-gradient(
+            ellipse 80% 60% at 50% 30%,
+            color-mix(in srgb, var(--color-accent, #147EFB) 6%, transparent),
+            transparent 70%
+          ),
+          var(--color-bg, #12141a);
         display: flex;
         flex-direction: column;
         align-items: center;
@@ -87,6 +149,31 @@
         color: var(--color-fg-secondary, #94a3b8);
         font-family: var(--font-sans, -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', system-ui, sans-serif);
         font-size: var(--text-base, 0.875rem);
+      }
+      /* Theme-aware first frame. The var() fallback above cannot know the
+         theme, so a light install would still paint dark until tokens.css
+         lands. These rules use the same hardcoded palette the <body> rules
+         use, and match the login screen background per theme. */
+      html[data-theme="dark"] .app-splash,
+      html:not([data-theme="light"]) .app-splash {
+        background-color: #12141a;
+        background:
+          radial-gradient(
+            ellipse 80% 60% at 50% 30%,
+            rgba(20, 126, 251, 0.06),
+            transparent 70%
+          ),
+          #12141a;
+      }
+      html[data-theme="light"] .app-splash {
+        background-color: #ffffff;
+        background:
+          radial-gradient(
+            ellipse 80% 60% at 50% 30%,
+            rgba(20, 126, 251, 0.04),
+            transparent 70%
+          ),
+          #f4f5f7;
       }
       html[data-theme="light"] .app-splash { color: #596577; }
       .app-splash__label { font-size: var(--text-sm, 0.75rem); }

@@ -74,3 +74,28 @@ fn the_fallback_cache_still_satisfies_the_trait_contract() {
     );
     assert!(!cache.is_healthy());
 }
+
+/// RED: `create_cache` used to return `NoopCache` with NO log when the
+/// `cache-redis` feature is simply not compiled, so an operator reading
+/// `cache_healthy=false` at startup could not tell "this build has no
+/// Redis cache at all" apart from "a Redis server is configured but
+/// dead". The not-compiled arm must emit a distinguishable line; the
+/// dead-server arm already logs its own `error = %e` warning.
+#[cfg(not(feature = "cache-redis"))]
+#[test]
+fn create_cache_without_the_feature_is_distinguishable_from_a_dead_server() {
+    // The contract is a SOURCE-level invariant: the arm guarded by
+    // `#[cfg(not(feature = "cache-redis"))]` must carry a tracing call
+    // naming the missing feature. A behavioural assertion cannot see a
+    // log line, so this reads the module source the same way the other
+    // stamp pins in this repo do.
+    let src = include_str!("cache.rs");
+    let arm_start = src
+        .find("pub fn create_cache(")
+        .expect("create_cache must exist");
+    let body = &src[arm_start..];
+    assert!(
+        body.contains("cache-redis feature is not compiled"),
+        "the no-feature arm of create_cache must log WHY it returned a noop cache"
+    );
+}

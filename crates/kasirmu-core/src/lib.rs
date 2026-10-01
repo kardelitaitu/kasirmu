@@ -1,11 +1,11 @@
 /*
-last audited DD-MM-YY by DSH-Agent (verify + delta)
+last audited (date unknown) by DSH-Agent (verify + delta)
 crate: kasirmu-core | status: SAFE | lint: CLEAN
-findings: zero unsafe verified (#![deny(unsafe_code)] holds); baseline claims re-verified. COR-1 FIXED DD-MM-YY — UUID-v7 field docs updated across 13 production files (swept audit/ cash_payout/ kds/ offline/ payment/ product_bundle/ product_variant/ promotion/ purchase_order/ shift/ supplier/ sync_pull/ table). COR-3 FIXED DD-MM-YY — config_validator redacts userinfo from DATABASE_URL and REDIS_URL before logging (redact_url helper, tested). COR-6 FIXED DD-MM-YY — mislabeled SAFETY comments reworded to plain comments in db/profile.rs (the COR-6 pattern). Delta files (edc_terminals, loyalty, profile, staff, migrations) reviewed: no new unsafe or production unwrap/expect concerns.
+findings: zero unsafe verified (#![deny(unsafe_code)] holds); baseline claims re-verified. COR-1 FIXED (date unknown) — UUID-v7 field docs updated across 13 production files (swept audit/ cash_payout/ kds/ offline/ payment/ product_bundle/ product_variant/ promotion/ purchase_order/ shift/ supplier/ sync_pull/ table). COR-3 FIXED (date unknown) — config_validator redacts userinfo from DATABASE_URL and REDIS_URL before logging (redact_url helper, tested). COR-6 FIXED (date unknown) — mislabeled SAFETY comments reworded to plain comments in db/profile.rs (the COR-6 pattern). Delta files (edc_terminals, loyalty, profile, staff, migrations) reviewed: no new unsafe or production unwrap/expect concerns.
 next: none — all open COR findings from the closed campaign resolved | perf: N/A
 */
 
-//! Domain types for OZ-POS.
+//! Domain types for kasir.mu.
 //!
 //! `kasirmu-core` is the foundation crate of the framework. It contains the
 //! types every other crate builds on: [`Money`] and [`Currency`] for
@@ -23,6 +23,83 @@ next: none — all open COR findings from the closed campaign resolved | perf: N
 //!   be documented.
 
 #![deny(unsafe_code)]
+// P2-5: `clippy::pedantic` is enabled HERE, at the crate root, rather than in
+// `Cargo.toml`. This crate carries `[lints] workspace = true`, and Cargo refuses
+// to combine that with a local `[lints.clippy]` table — `cargo metadata` fails
+// with "cannot override `workspace.lints` in `lints`, either remove the
+// overrides or `lints.workspace = true` and manually specify the lints". A
+// crate-root attribute *composes* with the workspace table instead of
+// conflicting with it, so `missing_docs` and any future workspace lint are still
+// inherited and no crate has to opt out of the shared table. Same approach as
+// `foundation` (see its `src/lib.rs`).
+//
+// Baseline measured 2026-09-29: 1,902 distinct pedantic findings across 47
+// lints. (Measure with `--all-targets` and DEDUPE on file:line:col — the crate
+// is compiled as both `lib` and `lib test`, so every non-test finding is
+// reported twice and a raw tally reads ~1.8x high.) The allows below account
+// for 1,621 of them; the remaining 281 were fixed.
+#![warn(clippy::pedantic)]
+// Documentation lints — 1,427 findings, prose rather than behaviour (`# Errors`
+// sections, backticks in doc comments, `#[must_use]` on getters). Named
+// explicitly rather than left off, so the debt stays visible instead of silently
+// absent. Identical rationale to `foundation`.
+#![allow(clippy::missing_errors_doc)] // 778
+#![allow(clippy::doc_markdown)] // 462
+#![allow(clippy::must_use_candidate)] // 184
+#![allow(clippy::missing_panics_doc)]
+// 3
+// 10 findings, all in `db/` query helpers that accept an owned aggregate and
+// hand it to a `&T` boundary. Taking `&T` at the signature cascades up every
+// caller — the public `Store` surface plus ~90 test call sites — for no
+// behavioural gain, so the owned signature stays. Same call as `foundation`.
+#![allow(clippy::needless_pass_by_value)]
+// Judgement classes — the lint fires on a shape that is deliberate here, and
+// "fixing" it is a readability argument rather than a correctness one. The
+// counts are the 2026-09-29 baseline: tracked debt, not a clean bill.
+#![allow(clippy::too_many_lines)] // 33 — long but linear report/query builders
+#![allow(clippy::unreadable_literal)] // 34 — unseparated literals (epoch stamps, minor units)
+#![allow(clippy::similar_names)] // 16 — e.g. `conn`/`conn2` in transaction helpers
+#![allow(clippy::match_same_arms)] // 15 — arms kept split for domain clarity
+#![allow(clippy::used_underscore_binding)] // 13 — `_`-prefixed bindings that are read
+#![allow(clippy::items_after_statements)]
+// 12 — nested helpers declared next to use
+// 16 findings, every one `use super::*;` in a `db/` module. Those modules are
+// paired with a `#[path = "..._tests.rs"] mod tests` child that itself does
+// `use super::*;` to inherit the parent's imports. Clippy's auto-expansion of
+// the glob only sees names used in the lib target, so it silently drops names
+// the child test module needs (e.g. `Currency`) — applying it broke the lib-test
+// build. The glob is load-bearing here, not lazy.
+#![allow(clippy::wildcard_imports)]
+// SQLite boundary casts — `i64` <-> `f64` for money and `u64` <-> `i64` for row
+// counts. Each site is a deliberate conversion at the storage edge, bounded by
+// an invariant the lint cannot see.
+#![allow(clippy::cast_possible_truncation)] // 7
+#![allow(clippy::cast_sign_loss)] // 6
+#![allow(clippy::cast_possible_wrap)]
+// 5
+// 20 findings, all HTML/CSV report builders in `export/` that do
+// `s.push_str(&format!(...))`. Clippy's `write!` form needs `use
+// std::fmt::Write` plus an error path for a write that cannot fail on a
+// `String`, which is more noise than the append it replaces. Left as-is.
+#![allow(clippy::format_push_string)]
+// Signature-shaping lints, each on a single public helper:
+//  * `implicit_hasher` (2) — `&HashMap<String, String>` on `validate_config_with`
+//    and the `.kasirpkg` manifest reader. The default hasher is the intended
+//    contract; generalising over `S: BuildHasher` would ripple to callers for
+//    no gain in a validator that never hashes adversarially.
+//  * `unnecessary_wraps` (1) — `location_resolver` keeps `Result` on a path that
+//    is currently infallible so the caller's `?` chain does not change shape
+//    when it grows a fallible branch.
+#![allow(clippy::implicit_hasher)]
+#![allow(clippy::unnecessary_wraps)]
+// Intent judgements on match arms and file-name checks:
+//  * `match_wildcard_for_single_variants` (2) — the `_` arm is deliberate: it is
+//    the "any future variant" arm in a test asserting today's behaviour.
+//  * `case_sensitive_file_extension_comparisons` (2) — `migrations` compares
+//    against `.sql` / `.pg.sql` on purpose; `Path::extension()` returns only the
+//    last component and cannot express the `.pg.sql` case.
+#![allow(clippy::match_wildcard_for_single_variants)]
+#![allow(clippy::case_sensitive_file_extension_comparisons)]
 
 /// Immutable audit log — cash management and data-modification events.
 pub mod attestation;
@@ -58,9 +135,10 @@ pub mod downgrade;
 pub mod error;
 /// Domain event types for cross-crate communication.
 pub mod events;
-// Note: ExchangeRateRow re-exported from `modules-currency`.
-// The old `pub mod exchange_rate` shim was removed in R2 Phase 4.
-// Import directly from `modules_currency::ExchangeRateRow`.
+// Note: ExchangeRateRow lives in `modules-currency` and is NOT re-exported here.
+// The old `pub mod exchange_rate` shim was removed in R2 Phase 4, and the
+// deprecated Store currency shims were retired 2026-09-28 (ADR-61), so this crate
+// no longer depends on modules-currency outside its dev-dependencies.
 /// Feature-gate registry and runtime guards.
 pub mod entitlements;
 /// Unified analytics export — JSON bundle of all report types.
@@ -72,7 +150,7 @@ pub mod gift_card;
 pub mod inventory;
 /// Inventory audit transactions (ADR-18 §9a + §9b; ADR-19 §3.2).
 pub mod inventory_transaction;
-/// OZ-POS package metadata reader (`.kasirpkg` bundles).
+/// kasir.mu package metadata reader (`.kasirpkg` bundles).
 pub mod kasirpkg;
 /// Kitchen Display System order pipeline.
 pub mod kds;
@@ -214,6 +292,7 @@ pub use cart::{Cart, CartError, CartId, CartLine};
 pub use cash_payout::CashPayout;
 pub use category::Category;
 pub use customer::Customer;
+pub use db::facade::ReportingFacade;
 pub use db::plans::TenantPlan;
 pub use db::reports::{
     CategoryBreakdownRow, DailyRevenueRow, HourlyHeatmapRow, LowStockAlert, MonthlyRevenueRow,
@@ -283,11 +362,12 @@ pub use stock_transfer::{StockTransfer, StockTransferLine};
 pub use subscription::{InstanceStatus, SubscriptionTier, TenantSubscription};
 pub use supplier::Supplier;
 pub use sync_client::{
-    PingResult, PullResult, Snapshot, SyncAttemptResult, SyncConfig, SyncHttpError,
+    PingResult, PullResult, Snapshot, SyncAttemptResult, SyncAuthHealth, SyncConfig, SyncHttpError,
     TerminalRegistrationResult, TokenResult, admin_key_from_env, apply_snapshot,
-    apply_sync_outcomes, fetch_snapshot_from_server, mark_all_failed, mint_token,
-    persist_refreshed_api_key, ping_server, register_terminal, request_refresh_token,
-    request_token, request_token_client_credentials, send_items_to_server, sync_pending,
+    apply_sync_outcomes, derive_sync_url_if_unset, fetch_snapshot_from_server, mark_all_failed,
+    mint_token, persist_refreshed_api_key, ping_server, probe_sync_auth, probe_sync_connection,
+    register_terminal, request_refresh_token, request_token, request_token_client_credentials,
+    send_items_to_server, should_derive_sync_url, sync_pending, undelivered_batch,
 };
 pub use table::{Table, TableStatus};
 pub use terminal::Terminal;

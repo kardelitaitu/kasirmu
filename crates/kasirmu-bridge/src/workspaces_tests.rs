@@ -245,6 +245,105 @@ async fn list_workspaces_for_store_scoped_uses_session_role() {
     );
 }
 
+// ── Pre-session screen listing: the account and the store are both checked ──
+//
+// The ticket is verified in both this fn and `list_workspaces`; only the
+// sibling went on to resolve the account. `list_workspace_screens` answered
+// for a DEACTIVATED member and for a store the caller has no relationship
+// with, so the pair disagreed about whether the caller existed and what they
+// could reach. These two cases pin the halves back together.
+
+/// Seed one screen row for `store-pos` in `store_id`, so a permitted call has
+/// something to return and a refusal is distinguishable from an empty table.
+fn seed_screens(tb: &TestBridge, store_id: &str) {
+    let conn = tb.db_manager().open_store(store_id).unwrap();
+    let db = conn.lock().unwrap();
+    db.execute(
+        "INSERT INTO workspace_type_screens (type_key, screen_key, sort_order) \
+         VALUES ('store-pos', 'pos', 0)",
+        [],
+    )
+    .unwrap();
+}
+
+#[tokio::test]
+async fn list_workspace_screens_refuses_a_deactivated_account() {
+    let tb = picker_state(|_| {});
+    seed_screens(&tb, "store-a");
+    let secret = tb.ctx().picker_ticket_secret.clone();
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i64;
+
+    // The owner is live, so the ticket works...
+    let live = list_workspace_screens(
+        &tb.ctx(),
+        crate::picker::sign_picker_ticket(&secret, "user-owner", now + 300),
+        "store-pos".into(),
+        "store-a".into(),
+    )
+    .await
+    .expect("a live account with store access may list screens");
+    assert!(!live.is_empty());
+
+    // ...then deactivated. The signature is unchanged and still valid, so only
+    // a real account check can refuse this.
+    {
+        let db = tb.ctx().lock_global().await;
+        Store::new(&db)
+            .update_user("user-owner", "owner", "Owner", "role-owner", false)
+            .unwrap();
+    }
+    let denied = list_workspace_screens(
+        &tb.ctx(),
+        crate::picker::sign_picker_ticket(&secret, "user-owner", now + 300),
+        "store-pos".into(),
+        "store-a".into(),
+    )
+    .await;
+    assert!(
+        matches!(denied, Err(BridgeError::PermissionDenied(_))),
+        "a deactivated account must not list screens: {denied:?}"
+    );
+}
+
+#[tokio::test]
+async fn list_workspace_screens_refuses_a_store_outside_the_callers_access() {
+    // The cashier carries `user_location_access` rows naming store-a only, so
+    // store-b is out of reach — the same fail-closed rule the session path
+    // applies. A ticket alone used to answer for either store.
+    let tb = picker_state(|conn| {
+        // `location_id` is a real FK, so the locations row must exist first.
+        conn.execute_batch(
+            "INSERT INTO locations (id, name, address, currency, timezone) \
+                  VALUES ('store-a', 'Store A', '', 'USD', 'UTC');
+             INSERT INTO user_location_access (user_id, location_id, access_level) \
+                  VALUES ('user-cashier', 'store-a', 'operator');",
+        )
+        .unwrap();
+    });
+    seed_screens(&tb, "store-a");
+    seed_screens(&tb, "store-b");
+    let secret = tb.ctx().picker_ticket_secret.clone();
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i64;
+    let ticket = || crate::picker::sign_picker_ticket(&secret, "user-cashier", now + 300);
+
+    list_workspace_screens(&tb.ctx(), ticket(), "store-pos".into(), "store-a".into())
+        .await
+        .expect("store-a is in the caller's access set");
+
+    let denied =
+        list_workspace_screens(&tb.ctx(), ticket(), "store-pos".into(), "store-b".into()).await;
+    assert!(
+        matches!(denied, Err(BridgeError::PermissionDenied(_))),
+        "store-b is outside the caller's access: {denied:?}"
+    );
+}
+
 // ── Scoped-sessions follow-up: post-login listings ────────────────────
 //
 // TDD red: a scoped member must not be able to switch into an
@@ -583,4 +682,72 @@ fn remediation_target_trims_so_padding_cannot_mint_a_second_store() {
     let conn = conn_with_location("store-1");
     let got = remediation_target(&conn, "store-9", Some("  store-1  ".into())).unwrap();
     assert_eq!(got, "store-1");
+}
+
+// ── Device-binding read failure on the boot path ───────────────────────
+
+/// Seed one terminal bound to `store-a`/`ws-a-1`, then force ONLY the binding
+/// read to fail. The baseline already seeds the primary store `default`.
+///
+/// `get_terminal_binding` selects `bound_location_id, bound_instance_id,
+/// binding_signature`; `get_terminal_by_device_id` does not read
+/// `binding_signature`, so dropping that column makes exactly the inner
+/// read error while the outer read still succeeds.
+fn binding_read_is_corrupt() -> TestBridge {
+    picker_state(|conn| {
+        conn.execute_batch(
+            "INSERT INTO locations (id, name, address, tax_id, currency, timezone, is_primary, created_at, updated_at)
+             VALUES ('store-a', 'Store A', '', '', 'USD', 'UTC', 0,
+                     '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z');",
+        )
+        .unwrap();
+        let store = Store::new(conn);
+        let terminal = kasirmu_core::Terminal::new("Tablet-1", "tablet-1");
+        store.create_terminal(&terminal).unwrap();
+        store
+            .update_terminal_binding(&terminal.id, "store-a", "ws-a-1", "deadbeef")
+            .unwrap();
+        conn.execute_batch("ALTER TABLE terminals DROP COLUMN binding_signature;")
+            .unwrap();
+    })
+}
+
+/// A device-binding read error must NOT be read as "this terminal is
+/// unbound". `resolve_boot_store` used `.ok().flatten()` on
+/// `get_terminal_binding`, so an errored read collapsed into the same `None`
+/// as a genuinely unbound terminal and the device silently booted into the
+/// PRIMARY store — unpinning a bound terminal from its assigned store and
+/// instance. The sibling read in the same expression,
+/// `get_terminal_by_device_id`, propagates with `?`; only `Ok(None)` means
+/// "unbound".
+#[tokio::test]
+async fn resolve_boot_store_refuses_when_the_binding_read_errors() {
+    let tb = binding_read_is_corrupt();
+
+    let result = resolve_boot_store(&tb.ctx(), Some("tablet-1".into())).await;
+
+    // RED: the errored read read as "unbound" → Ok(is_bound=false, primary
+    // store). GREEN: the read failure refuses the boot.
+    assert!(
+        result.is_err(),
+        "a binding read failure must refuse, not silently unpin the terminal: {result:?}"
+    );
+}
+
+/// The documented unbound path survives: a terminal whose binding row exists
+/// but carries no binding at all is genuinely unbound, so it still resolves
+/// to the primary store rather than erroring.
+#[tokio::test]
+async fn resolve_boot_store_falls_back_to_primary_when_no_binding_exists() {
+    let tb = picker_state(|conn| {
+        Store::new(conn)
+            .create_terminal(&kasirmu_core::Terminal::new("Tablet-2", "tablet-2"))
+            .unwrap();
+    });
+
+    let resolution = resolve_boot_store(&tb.ctx(), Some("tablet-2".into()))
+        .await
+        .expect("an unbound terminal is not an error");
+    assert!(!resolution.is_bound);
+    assert_eq!(resolution.store_id, "default");
 }

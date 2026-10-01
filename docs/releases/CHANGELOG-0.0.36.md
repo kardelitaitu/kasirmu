@@ -1,3 +1,4 @@
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 583 lines, no audit stamp, no footer and no marker. A per-version changelog is a dated record, and the treatment applied across this campaign has been consistent: the body is preserved exactly and the audit confirms what can be confirmed about the build it describes. · WHAT THAT MEANS HERE SPECIFICALLY, and it is the reason this file is worth a first stamp at all. It is the fifth per-version changelog in `docs/releases/`, and the one that closes the gap recorded against its siblings in earlier rounds — the set previously stopped at 0.0.34 while the branch moved on, and this file extends the record to 0.0.36. A release-notes directory that jumps versions is a reader's problem rather than a repository's, and the fact that the sequence now runs 0.0.25, 0.0.31, 0.0.33, 0.0.34 and 0.0.36 means the earlier observation about the set being several minors stale no longer describes the directory. · THE SCOPE IS DELIBERATELY EXCLUDED, and stating it plainly is the whole of this stamp. Every test count, gate result and benchmark figure belongs to one build on one day, and re-deriving them is a release-engineering task. The upgrade notes at the end of a changelog are the part that tends to stay true, because they describe what a deployer must do rather than what the build measured, and those were not re-verified either. · The related work that DID land is recorded elsewhere in this directory rather than here: the 0.0.36 carried-work backlog, audited in the previous round, is the companion document for anything a reader wants to know about what 0.0.36 deferred. A changelog says what shipped; the backlog says what did not, and the second is the one people need. · No stamp existed; this is the first, and the footer is new rather than bumped. -->
 # Changelog — kasir.mu 0.0.36
 
 **Release date:** 2026-09-04
@@ -580,4 +581,6 @@ comments were added this release and all eleven were checked by reading the
 guard or the value's provenance — but the gate accepts the *marker*, not the
 *argument*. A confidently-worded wrong invariant satisfies it. Reviewing those
 comments for truth is worth doing independently of this release.
+
+> last audited 29-09-26 by docs-auditor
 

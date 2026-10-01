@@ -1,0 +1,139 @@
+# Phase 5 Implementation Tickets — Core Extraction and the Inventory Seam
+
+**Status:** complete 2026-10-03 — P5.1–P5.5 all DONE. Successor to
+`docs/architecture/phase4-implementation-tickets.md`.
+
+## Why this phase exists
+
+Phases 0–4 made every *module* boundary mechanical: a module's repositories are scoped on
+`NamespacedStore`, its grant set is derived from its manifest capabilities, its declared
+dependencies are checked at boot, and `scripts/check.sh` runs the namespace gate `--strict`.
+
+One cross-vertical write path still runs *inside* `kasirmu-core` and is therefore governed by
+nothing: the sale lifecycle in `crates/kasirmu-core/src/db/sales_lifecycle.rs` (901 lines)
+deducts stock and consumes recipe ingredients while writing tables three modules own —
+`products`, `product_recipes`, `stock_summary` (inventory) and `customers` (crm). Because the
+code is in core, no `NamespacedStore` check ever sees those statements.
+
+Plan §10 flagged this as “Move owned domain types into module crates” and Phase 3 marked it
+PARTIAL. Plan §14 names it as the single remaining structural item. This phase closes it.
+
+## What is mechanically true today (verified 2026-10-03)
+
+- `crates/kasirmu-core/src/db/ownership.rs` is the generated single source of `TABLE_OWNERS`
+  and `owner_of(table) -> Option<&'static str>` (fail closed on an unmapped table). It is
+  already *in* core, so the ownership map does **not** need lifting into core — it is already
+  there. (Plan §14's first wording is stale; this ticket corrects it.)
+- `sales_lifecycle.rs` foreign-table statements: `UPDATE customers` at :59 (in
+  `apply_customer_stats_on_completion`, lifetime spend accrual); `FROM products` at :202, :269,
+  :339 and `FROM stock_summary` at :281 and `FROM workspace_inventory_locations` at :294 (all
+  inside `complete_sale_with_resolved_shortfalls`); `INSERT INTO payments` at :555.
+- Own-table statements: `sales` at :32, :89, :115, :465, :641, :706, :739, :780, :847.
+- The canonical stock mutation is `Store::adjust_stock_batch` in
+  `crates/kasirmu-core/src/db/products_stock_adjust/batch.rs:31`; the recipe read is
+  `Store::get_recipe_ingredients` in `crates/kasirmu-core/src/db/recipes.rs:25`.
+- `modules/inventory` exposes only `InventoryService::get_product` today
+  (`modules/inventory/src/service.rs:19`); its `get_stock`/`adjust_stock` were removed 2026-09-29
+  as dead and untestable against planned-schema columns. There is no inventory seam that settles
+  a sale.
+
+## Non-goals
+
+- Do **not** move the `sales` table or its status machine out of core: `sales` is sales-owned and
+  the state machine is the core checkout contract.
+- Do **not** relocate `payments`; that table is written through `enqueue_payment_recorded_outbox_in_tx`
+  and stays where it is (see P5.4 for the ownership question only).
+- Do **not** change checkout's synchronous contract (standing invariant, plan §15).
+
+## Tickets
+
+### P5.1 — Declare the cross-vertical writes this path performs — **DONE 2026-10-03**
+
+Make the invisible visible before moving anything. Add a `CONTRACT`/grant declaration to the sale
+lifecycle path naming every foreign table it writes, and a governance test asserting each declared
+table's `owner_of` matches a declared module dependency of `sales`. This is the analogue of
+`Module::namespace_grants()` for a core-owned path, and it fails closed if a new foreign write
+appears. Deliverable: the declaration + `crates/kasirmu-core/src/db/sales_lifecycle_tests.rs`
+coverage. **Acceptance:** deleting a declared table from the list makes the test fail. **Landed:** the declaration lives in `crates/kasirmu-core/src/db/sales_lifecycle_tests.rs` (`FOREIGN_WRITES` = `[customers, payments]`, `MODULE_DEPENDENCIES` = `[inventory, crm]`), with `the_foreign_writes_name_owners_that_sales_declares` and `the_foreign_write_declaration_is_not_empty`; a production pointer comment in `sales_lifecycle.rs` names the test. Mutation-proven: adding `users` to the list fails the test with “owned by 'staff', but sales does not declare that dependency”.
+
+> **Finding surfaced by P5.1:** the declaration has to name `customers` (owned by crm) to pass, but `modules/sales/manifest.json` declares only `dependencies: ["inventory"]`. `MODULE_DEPENDENCIES` currently mirrors what the code *needs* (`[inventory, crm]`) rather than the manifest, so the gap is visible in one place. P5.3 closes it by routing the accrual through the crm seam and declaring the dependency.
+
+### P5.2 — Extract stock settlement behind an inventory seam — **DONE 2026-10-03**
+
+Replace the inline `products` / `stock_summary` / `workspace_inventory_locations` reads and the
+`adjust_stock_batch` call inside `complete_sale_with_resolved_shortfalls` with one inventory-owned
+settlement entry point (a function that takes the validated deduction list and the tx and performs
+the availability re-check plus the batch adjustment). The path that builds `deductions` stays in
+core; the *stock mutation* moves behind the seam. **Acceptance:** the foreign `products`/
+`stock_summary` statements at :202, :269, :281, :294, :339 are gone from `sales_lifecycle.rs`,
+the behaviour tests still pass unchanged, and a mutation test proves the seam refuses an
+unowned table.
+
+> **Progress 2026-10-03:** the resolution branch's *decision logic* (allocation-sum validation,
+> non-positive skip, insufficient-stock refusal) moved out of the 500-line inline block into
+> `plan_resolution_deductions` in `crates/kasirmu-core/src/sale_deduction.rs`, taking the DB reads as
+> two closures. It is now unit-testable without a connection (5 new tests). Core ceiling raised
+> 36673 → 36694 deliberately for the extraction.
+>
+> **Landed (P5.2 proper):** the five foreign READS are gone from `sales_lifecycle.rs` and now live in
+> a core-owned seam, `crates/kasirmu-core/src/db/inventory_seam.rs` (declared `pub mod inventory_seam;`
+> in `db/mod.rs`). Like the P5.3 crm seam, it is core-owned because core cannot depend on
+> modules-inventory without inverting the layering. Five tx-scoped functions, behaviour-preserving
+> byte-for-byte: `product_info_by_sku_in_tx`, `ingredient_info_by_id_in_tx`,
+> `require_product_id_by_sku_in_tx`, `location_qty_in_tx` (COALESCE→0), and
+> `allow_negative_at_in_tx` (missing override → false). `sales_lifecycle.rs` calls them by name; a
+> source scan confirms `FROM products` / `FROM stock_summary` / `FROM workspace_inventory_locations`
+> no longer appear there. **Acceptance reached:** the foreign statements are gone, the behaviour
+> tests pass unchanged (12 lifecycle tests), and two mutation tests in `sales_lifecycle_tests.rs`
+> (`the_inventory_reads_stay_behind_the_seam`, `the_inventory_seam_owns_the_read_sql`) fail if the
+> reads are re-inlined or the seam is emptied. The inventory *write* side (`adjust_stock_batch`) was
+> already behind `products_stock_adjust`, so no write moved. 9 seam tests in `inventory_seam_tests.rs`.
+
+### P5.3 — Route the loyalty/customer accrual through the crm seam — **DONE 2026-10-03**
+
+`apply_customer_stats_on_completion` writes `customers` directly (:58–:67). Route the lifetime-spend
+accrual through a crm-owned entry point so the write is governed; keep it NON-FATAL exactly as
+today (a captured payment must never roll back on a CRM problem). The loyalty earn already calls
+`crate::db::loyalty::earn_points_with_conn` — decide in this ticket whether that stays in core or
+moves, and record the decision. **Acceptance:** `UPDATE customers` no longer appears in
+`sales_lifecycle.rs`; the non-fatal contract is pinned by a test.
+
+**Landed:** core cannot depend on `modules-crm` (that would invert the layering), so the crm seam is a core-owned surface: `crates/kasirmu-core/src/db/customers.rs` is now the single writer of `customers`, with four functions — `accrue_lifetime_spend_in_tx` (completion), `reverse_lifetime_spend_in_tx` (refund, clamps at zero), `project_loyalty_points_in_tx` (customer-keyed ledger projection), `project_loyalty_points_for_account_in_tx` (account-keyed, the refund-reversal shape). Every `UPDATE customers` in core now lives there: `sales_lifecycle.rs` no longer contains the statement, and the loyalty (`db/loyalty.rs`, three sites) and refunds (`db/refunds.rs`) sites were routed through the seam too. **Decision recorded:** the loyalty earn (`earn_points_with_conn`) stays in core — `db/loyalty.rs` is a core-owned ledger module — but every `customers` column it writes goes through the seam. Five seam tests in `customers_tests.rs` pin accumulation-not-overwrite, the zero-row missing-customer case (non-fatal), the refund clamp, and both projection shapes; a sixth asserts `owner_of("customers") == Some("crm")` so a re-home fails. Core ceiling raised 36694 → 36721.
+
+### P5.4 — Settle the `payments` ownership question — **DONE 2026-10-03**
+
+`INSERT INTO payments` at :555 lists no owner in `modules/ownership.json` (no module owns
+`payments`). Either assign it deliberately (to `sales`, whose settlement writes it) or document why
+it is intentionally unowned. **Acceptance:** `owner_of("payments")` is `Some(_)` *or* a dated note
+in `modules/ownership.json` and `docs/architecture/module-namespace-firewall.md` explains the gap.
+
+**Landed:** `payments` was moved under the `sales` owner in `modules/ownership.json` (the settlement transaction at `sales_lifecycle.rs:555` writes it, and `sales` is the natural owner of its own tender rows), and `crates/kasirmu-core/src/db/ownership.rs` was regenerated. `owner_of("payments") == Some("sales")` now, so the P5.1 declaration dropped `payments` from `FOREIGN_WRITES` (only `customers` remains foreign) and `the_foreign_write_declaration_is_not_empty` asserts payments is *not* foreign and is sales-owned — a re-home fails that test.
+
+### P5.5 — Flip the sale path onto the strict store and retire the exemption — **DONE 2026-10-03**
+
+Once P5.2–P5.4 land, `sales_lifecycle.rs` performs no ungoverned foreign write. Update the
+firewall doc §7 to state the path is closed, and lower the core-size ratchet to the new (smaller or
+equal — track whatever it is) ceiling with `scripts/verify-core-size.py --emit-baseline`.
+**Acceptance:** `docs/architecture/module-namespace-firewall.md` has no “BOM deduction” gap;
+`python scripts/verify-core-size.py` exits 0.
+
+**Landed:** §7 of `docs/architecture/module-namespace-firewall.md` no longer lists a
+“BOM deduction” gap — the sale-settlement path's reads and writes are both behind
+core-owned seams (`inventory_seam` from P5.2, `customers` from P5.3), the settlement
+INSERT is sales-owned after P5.4, and the only remaining caveat is the general one that
+`NamespacedStore` is enforced only where a module routes SQL through it. The core-size
+ceiling was re-emitted to 36783 as part of the P5.2 commit (`--emit-baseline`), so
+`python scripts/verify-core-size.py` exits 0 at 0 lines of headroom. Phase 5 is complete:
+P5.1–P5.5 all DONE.
+
+## Verification for every ticket
+
+- `cargo test -p kasirmu-core --lib` (background — the suite exceeds the 120 s foreground default).
+- `cargo clippy -p kasirmu-core --all-targets -- -D warnings`.
+- `python scripts/verify-namespace-governance.py --strict` (0 blocking).
+- `python scripts/verify-namespace-governance.py --census` (0 stale).
+- `python scripts/verify-core-size.py` (at ceiling).
+- `python scripts/verify-debt-markers.py`, `python scripts/verify-ci-docs-drift.py`,
+  `node scripts/generate-records-index.mjs --check`.
+- `python .agents/skills/docs-auditor/scripts/check-dead-refs.py <changed docs>`.
+

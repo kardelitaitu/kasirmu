@@ -6,6 +6,7 @@ next: none | perf: N/A
 */
 //! Error type for the inventory domain.
 
+use kasirmu_core::db::namespaced::NamespaceError;
 use thiserror::Error;
 
 /// Errors that can originate in the inventory domain.
@@ -14,6 +15,10 @@ pub enum InventoryError {
     /// A database operation failed.
     #[error("database error: {0}")]
     Db(#[from] rusqlite::Error),
+
+    /// A namespace check rejected the statement (Phase 3 P3.2).
+    #[error("namespace error: {0}")]
+    Namespace(#[from] NamespaceError),
 
     /// A lookup by id returned no row.
     #[error("not found: {entity} {id}")]
@@ -45,35 +50,5 @@ impl InventoryError {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn inventory_error_validation_message() {
-        let err = InventoryError::validation("sku", "must not be empty");
-        assert!(matches!(
-            err,
-            InventoryError::Validation { field, .. } if field == "sku"
-        ));
-        assert_eq!(
-            format!("{err}"),
-            "validation error on sku: must not be empty"
-        );
-    }
-
-    #[test]
-    fn inventory_error_not_found_message() {
-        let err = InventoryError::NotFound {
-            entity: "product",
-            id: "bad-id".into(),
-        };
-        assert_eq!(format!("{err}"), "not found: product bad-id");
-    }
-
-    #[test]
-    fn inventory_error_from_rusqlite() {
-        let rusqlite_err = rusqlite::Error::QueryReturnedNoRows;
-        let err = InventoryError::from(rusqlite_err);
-        assert!(matches!(err, InventoryError::Db(_)));
-    }
-}
+#[path = "error_tests.rs"]
+mod tests;

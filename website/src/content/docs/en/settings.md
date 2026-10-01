@@ -12,7 +12,7 @@ updated: "2026-09-19"
 
 Settings is a sidebar of focused screens grouped into three categories:
 **Business** (General, Appearance), **Operations** (Receipt, Cloud Sync,
-Email Reports, Store POS, Restaurant POS, Inventory), and **System** (About,
+Email Reports, Retail POS, Restaurant POS, Inventory), and **System** (About,
 License, Diagnostics, Topology, Local API). Pin the screens you use often so
 they stay at the top. Screens with related jobs — Features, Data, Terminals,
 Locations, Audit Log, Offline Queue, Shifts, Tax Rates, Exchange Rates, and

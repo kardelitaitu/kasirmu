@@ -4,8 +4,9 @@ area: ui
 title: ADR #3: Frontend Restructure
 status: Implemented (2026-07-15)
 ---
-<!-- Audit stamp: 2026-07-22 · Hermes-Agent · status: ACCURATE (1 minor path note) · frontend/shell, frontend/shared, frontend/themes (tokens.css, components.css, reset.css, responsive.css) all exist; App.tsx uses registerPage/registerNavItem · note: registries actually live at ui/src/platform/ui/{page,menu,widget}-registry, not frontend/shell/ as Section 1 implies (path drift, not a logic error); 15 shared components + 3 registries match the description · Status "Implemented (2026-07-15)" consistent -->
+<!-- Superseded audit marker (2026-07-22, body kept verbatim) · Hermes-Agent · status: ACCURATE (1 minor path note) · frontend/shell, frontend/shared, frontend/themes (tokens.css, components.css, reset.css, responsive.css) all exist; App.tsx uses registerPage/registerNavItem · note: registries actually live at ui/src/platform/ui/{page,menu,widget}-registry, not frontend/shell/ as Section 1 implies (path drift, not a logic error); 15 shared components + 3 registries match the description · Status "Implemented (2026-07-15)" consistent -->
 
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · ⚠️ THE PRIOR AUDIT'S OWN PATH NOTE HAS ITSELF DRIFTED, and that is the finding here. The 2026-07-22 stamp records "registries actually live at ui/src/platform/ui/{page,menu,widget}-registry, not frontend/shell/ as Section 1 implies". Those directories do not exist. The registries are now at `ui/src/registries/page-registry/index.ts` and `ui/src/registries/menu-registry/index.ts`, with `ui/src/registries/` as the root. So the correction written into this file's evidence has been overtaken by a second move, and a reader who followed the note would now land in the wrong place — the same failure mode as the stale `tokens.css` path recorded in three other documents in this campaign, and the reason such notes are worth re-measuring rather than trusted. · The rest of the prior verification holds: the `frontend/shell`, `frontend/shared` and `frontend/themes` roots exist, `App.tsx` still uses `registerPage`/`registerNavItem`, and the shared components and three registries match the description. Status "Implemented (2026-07-15)" is consistent with the front matter, and the ADR status checker reports no drift for this row. · Body left as written, including Section 1's description of where registries live: this is the record of the restructure as decided, and an ADR's job is to say what was decided, not where everything ended up. The registries and `tokens.css` both moved after the decision; correcting the body would turn a decision record into a status page. · The 2026-07-22 Hermes stamp is retained as the original evidence, re-labelled rather than superseded, and the two stacked `> status: ACCURATE` lines under the old footer are collapsed to one machine-read line. -->
 # ADR #3: Frontend Restructure
 
 **Status:** Implemented (2026-07-15)
@@ -250,7 +251,4 @@ the same decoupling without reorganizing 30 feature directories.
 - `RESTRUCTURING.md` — Phase 4: Frontend Infrastructure
 - ADR #1 — Module System Design (modules own backend AND frontend)
 
-> last audited 09-08-26 by buffy
-> audit: Phase 1 Core Architecture & API Docs Audit; Phase 4 ADR Deep Audit
-> status: ACCURATE (0 findings) · verified accurate: cargo check passed, no structural orphans, no stale version headers
-> status: ACCURATE (verified against actual codebase)
+> last audited 29-09-26 by docs-auditor

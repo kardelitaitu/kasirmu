@@ -10,24 +10,9 @@ use kasirmu_core::db::Store;
 use kasirmu_core::db::tax::TaxRateWindow;
 use kasirmu_core::tax_rate::RoundingMode;
 
-use crate::commands::authz::require_permission_for_user;
+use crate::commands::authz::require_permission_for_session;
 use crate::error::AppError;
 use crate::state::AppState;
-
-/// Verify a tax permission against the global identity database.
-///
-/// Users and roles are global authentication records (ADR #4 / ADR #7);
-/// tax business data is read from the store-scoped connection after this
-/// check succeeds. Mirror of `require_loyalty_permission` in loyalty.rs.
-async fn require_tax_permission(
-    state: &AppState,
-    user_id: &str,
-    permission: &str,
-) -> Result<(), AppError> {
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    require_permission_for_user(&store, user_id, permission)
-}
 
 // ── DTOs ──────────────────────────────────────────────────────────────
 //
@@ -107,13 +92,10 @@ pub async fn list_tax_rates_scoped(
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<TaxRateDto>, AppError> {
-    let (session, conn) = state.resolve_scope(&session_token)?;
-    require_tax_permission(
-        &state,
-        &session.user_id,
-        kasirmu_core::permissions::SETTINGS_READ,
-    )
-    .await?;
+    let session = state.resolve_session(&session_token)?;
+    require_permission_for_session(&state, &session, kasirmu_core::permissions::SETTINGS_READ)
+        .await?;
+    let conn = state.resolve_store(&session_token)?;
     let db = conn
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
@@ -155,13 +137,10 @@ pub async fn create_tax_rate_scoped(
     args: CreateTaxRateArgs,
     state: State<'_, AppState>,
 ) -> Result<TaxRateDto, AppError> {
-    let (session, conn) = state.resolve_scope(&session_token)?;
-    require_tax_permission(
-        &state,
-        &session.user_id,
-        kasirmu_core::permissions::SETTINGS_EDIT,
-    )
-    .await?;
+    let session = state.resolve_session(&session_token)?;
+    require_permission_for_session(&state, &session, kasirmu_core::permissions::SETTINGS_EDIT)
+        .await?;
+    let conn = state.resolve_store(&session_token)?;
     let db = conn
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
@@ -247,13 +226,10 @@ pub async fn update_tax_rate_scoped(
     args: UpdateTaxRateArgs,
     state: State<'_, AppState>,
 ) -> Result<TaxRateDto, AppError> {
-    let (session, conn) = state.resolve_scope(&session_token)?;
-    require_tax_permission(
-        &state,
-        &session.user_id,
-        kasirmu_core::permissions::SETTINGS_EDIT,
-    )
-    .await?;
+    let session = state.resolve_session(&session_token)?;
+    require_permission_for_session(&state, &session, kasirmu_core::permissions::SETTINGS_EDIT)
+        .await?;
+    let conn = state.resolve_store(&session_token)?;
     let db = conn
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
@@ -334,13 +310,10 @@ pub async fn delete_tax_rate_scoped(
     id: String,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let (session, conn) = state.resolve_scope(&session_token)?;
-    require_tax_permission(
-        &state,
-        &session.user_id,
-        kasirmu_core::permissions::SETTINGS_EDIT,
-    )
-    .await?;
+    let session = state.resolve_session(&session_token)?;
+    require_permission_for_session(&state, &session, kasirmu_core::permissions::SETTINGS_EDIT)
+        .await?;
+    let conn = state.resolve_store(&session_token)?;
     let db = conn
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
@@ -369,13 +342,10 @@ pub async fn get_tax_rate_dependency_counts_scoped(
     id: String,
     state: State<'_, AppState>,
 ) -> Result<TaxRateDependencyCountsDto, AppError> {
-    let (session, conn) = state.resolve_scope(&session_token)?;
-    require_tax_permission(
-        &state,
-        &session.user_id,
-        kasirmu_core::permissions::SETTINGS_READ,
-    )
-    .await?;
+    let session = state.resolve_session(&session_token)?;
+    require_permission_for_session(&state, &session, kasirmu_core::permissions::SETTINGS_READ)
+        .await?;
+    let conn = state.resolve_store(&session_token)?;
     let db = conn
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
@@ -398,13 +368,10 @@ pub async fn list_category_tax_rates_scoped(
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<CategoryTaxRateRow>, AppError> {
-    let (session, conn) = state.resolve_scope(&session_token)?;
-    require_tax_permission(
-        &state,
-        &session.user_id,
-        kasirmu_core::permissions::SETTINGS_READ,
-    )
-    .await?;
+    let session = state.resolve_session(&session_token)?;
+    require_permission_for_session(&state, &session, kasirmu_core::permissions::SETTINGS_READ)
+        .await?;
+    let conn = state.resolve_store(&session_token)?;
     let db = conn
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
@@ -441,13 +408,10 @@ pub async fn set_category_tax_rates_scoped(
     args: SetCategoryTaxRatesArgs,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let (session, conn) = state.resolve_scope(&session_token)?;
-    require_tax_permission(
-        &state,
-        &session.user_id,
-        kasirmu_core::permissions::SETTINGS_EDIT,
-    )
-    .await?;
+    let session = state.resolve_session(&session_token)?;
+    require_permission_for_session(&state, &session, kasirmu_core::permissions::SETTINGS_EDIT)
+        .await?;
+    let conn = state.resolve_store(&session_token)?;
     let db = conn
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
@@ -479,12 +443,8 @@ pub async fn list_tax_rate_rounding_modes_scoped(
     state: State<'_, AppState>,
 ) -> Result<std::collections::HashMap<String, Option<RoundingMode>>, AppError> {
     let session = state.resolve_session(&session_token)?;
-    require_tax_permission(
-        &state,
-        &session.user_id,
-        kasirmu_core::permissions::SETTINGS_READ,
-    )
-    .await?;
+    require_permission_for_session(&state, &session, kasirmu_core::permissions::SETTINGS_READ)
+        .await?;
     let conn = state.resolve_store(&session_token)?;
     let db = conn
         .lock()

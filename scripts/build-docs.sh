@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# build-docs.sh — Build the OZ-POS documentation portal (mdBook)
+# build-docs.sh — Build the kasir.mu documentation portal (mdBook)
 #
 # Pipeline (order matters):
 #   1. cargo doc        → target/doc/
@@ -22,7 +22,7 @@ if ! command -v mdbook >/dev/null 2>&1; then
 fi
 
 echo "=========================================="
-echo " Building OZ-POS Documentation Portal"
+echo " Building kasir.mu Documentation Portal"
 echo "=========================================="
 
 echo ""

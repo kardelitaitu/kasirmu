@@ -433,6 +433,30 @@
   box-shadow: var(--shadow-xl);
 }
 
+/* Narrow variant for the e-Faktur stamp dialog (SalesHistoryScreen.tsx:1220),
+ * which only needs to override the base max-width. Sized for a two-field form
+ * rather than the 40rem list modal it borrows its chrome from. */
+.sales-history-stamp-modal {
+  max-width: 28.75rem;
+}
+
+/* The e-Faktur badge under a receipt code (SalesHistoryScreen.tsx:118). Carries
+ * the tooltip anchor now that the native title= is gone. */
+.sales-history-faktur-badge {
+  display: inline-block;
+  margin-top: 2px;
+}
+
+/* The e-Faktur NSFP block inside the detail drawer
+ * (SalesHistoryScreen.tsx:1435). Was inline. */
+.sales-history-efaktur-section {
+  margin: var(--space-4) 0;
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
 .sales-history-modal-header {
   display: flex;
   align-items: center;
@@ -587,6 +611,71 @@
 /* ── Refunds in detail modal ───────────────────────────── */
 .sales-history-refunds {
   margin-bottom: var(--space-4);
+}
+
+/* The refund list did not answer. Warning rather than danger: the money is not
+   wrong, the screen simply does not know, and the danger palette already reads
+   as "this operation failed" on the void form in this same sheet. */
+.sales-history-refunds-unknown {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-warning-bg);
+  border: 1px solid var(--color-warning-dim);
+  border-radius: var(--radius-md);
+  color: var(--color-warning);
+  font-size: var(--text-sm);
+}
+
+.sales-history-refunds-unknown > button {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+/* The margin alert is the same shape as the refund one on purpose: both say a
+   READ did not answer, both keep the bad value out of the table, and both offer
+   the one action that can change the answer. A second, near-identical block
+   would drift from it on the first token fix. */
+.sales-history-margins-unknown {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-warning-bg);
+  border: 1px solid var(--color-warning-dim);
+  border-radius: var(--radius-md);
+  color: var(--color-warning);
+  font-size: var(--text-sm);
+}
+
+.sales-history-margins-unknown > button {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+/* The roster alert is the same shape as the refund and margin ones on purpose:
+   all three say a READ did not answer, all three keep a bad value out of the
+   table, and all three offer the one action that can change the answer. A third
+   near-identical block would drift from them on the first token fix. */
+.sales-history-staff-unknown {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-warning-bg);
+  border: 1px solid var(--color-warning-dim);
+  border-radius: var(--radius-md);
+  color: var(--color-warning);
+  font-size: var(--text-sm);
+}
+
+.sales-history-staff-unknown > button {
+  margin-left: auto;
+  flex-shrink: 0;
 }
 
 .sales-history-refunds h3 {

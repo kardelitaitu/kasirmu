@@ -1,13 +1,16 @@
 //! Weight scale commands.
 //!
-//! Phase 3.3 T2: `ScaleDeviceInfo` moved to the shared `kasirmu_bridge::scale`
-//! module (Agent 2's Wave D extraction) and is re-exported here, same as
-//! the desktop shell. The bodies stay tablet-native this slice: the
-//! scoped twins on the bridge take a `BridgeCtx` the tablet `AppState`
-//! cannot yet build (see the T2 seam notes in `void.rs`), so the shims
-//! keep resolving sessions natively (`state.resolve_session`) and going
-//! straight to the HAL registry — byte-identical behaviour to the
-//! bridge bodies, which only differ by ctx plumbing.
+//! Phase 3.3 T2 moved `ScaleDeviceInfo` to `kasirmu_bridge::scale` and this
+//! slice goes the rest of the way: all three bodies now delegate to the
+//! bridge, exactly as `analytics.rs` and `audit.rs` do. The old header said
+//! the tablet "cannot yet build" a `BridgeCtx`; that stopped being true when
+//! `AppState::bridge_ctx()` landed (`state.rs:473`, which already carries
+//! `registry`), and the native copies were the last place the tablet could
+//! diverge from the desktop. Delegating is what makes the
+//! `ac93cff77` fix reach this shell: the native `list_scale_devices_scoped`
+//! below still walked `scale_ids()` and skipped any id that did not resolve,
+//! so a scale could vanish from the list with no error — the same defect the
+//! bridge had. A copy is dropped rather than re-patched.
 
 use tauri::{State, command};
 
@@ -26,14 +29,9 @@ pub use kasirmu_bridge::scale::ScaleDeviceInfo;
 pub async fn read_scale_weight(
     state: State<'_, AppState>,
 ) -> Result<Option<WeightReading>, AppError> {
-    let scale = state.registry.scale("default").await;
-    match scale {
-        Some(s) => {
-            let reading = s.read_weight()?;
-            Ok(Some(reading))
-        }
-        None => Ok(None),
-    }
+    kasirmu_bridge::scale::read_scale_weight(&state.bridge_ctx())
+        .await
+        .map_err(Into::into)
 }
 
 /// Session-scoped variant of `read_scale_weight`.
@@ -42,15 +40,10 @@ pub async fn read_scale_weight_scoped(
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<Option<WeightReading>, AppError> {
-    let _session = state.resolve_session(&session_token)?;
-    let scale = state.registry.scale("default").await;
-    match scale {
-        Some(s) => {
-            let reading = s.read_weight()?;
-            Ok(Some(reading))
-        }
-        None => Ok(None),
-    }
+    let ctx = state.bridge_ctx();
+    kasirmu_bridge::scale::read_scale_weight_scoped(&ctx, &session_token)
+        .await
+        .map_err(Into::into)
 }
 
 /// List all registered weight scales resolved from a session token. ADR #7.
@@ -59,20 +52,10 @@ pub async fn list_scale_devices_scoped(
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<ScaleDeviceInfo>, AppError> {
-    let _session = state.resolve_session(&session_token)?;
-    let ids = state.registry.scale_ids().await;
-    let mut devices = Vec::with_capacity(ids.len());
-    for id in ids {
-        if let Some(scale) = state.registry.scale(&id).await {
-            let info = scale.device_info();
-            devices.push(ScaleDeviceInfo {
-                vendor_id: info.vendor,
-                product_id: info.model,
-                device_path: info.serial,
-            });
-        }
-    }
-    Ok(devices)
+    let ctx = state.bridge_ctx();
+    kasirmu_bridge::scale::list_scale_devices_scoped(&ctx, &session_token)
+        .await
+        .map_err(Into::into)
 }
 
 #[cfg(test)]

@@ -16,6 +16,15 @@
 //! the figure does not improve when a door is ported — delegating *creates*
 //! divergence, because the shell body becomes a call the twin does not contain.
 //!
+//! **The shared pair no longer exists, so that `1 / 6` cannot be reproduced —
+//! recorded forward rather than back-edited (2026-09-25).** The shell's
+//! `require_category_permission` was deleted when the three write doors moved to
+//! `authz::require_permission_for_session` under R10's gate-ORDER sweep; the
+//! bridge keeps its own copy (`kasirmu-bridge/src/categories.rs:117`), where it is
+//! still the writes' gate. The parity numerator therefore reads **0 / 6** today,
+//! and that is a fact about the helper count, not about the doors: no door became
+//! more or less divergent. The date above stays as the reading it was.
+//!
 //! The `--map` is load-bearing here: `list_categories` and `run_list_categories`
 //! are renamed twins, and without that one entry the pair is never compared at
 //! all. Naming it is what moves the denominator from 5 to 6 and reveals the
@@ -28,7 +37,7 @@
 //! the bridge's shape *is* the desktop's original body, and this shell is the
 //! divergent side of a two-shell fork.
 //!
-//! **One door is ported.** [`list_categories`] shares
+//! **One door is ported.** [`list_categories`](crate::commands::categories::list_categories) shares
 //! [`kasirmu_bridge::categories::run_list_categories`] — §1b.9's "port the query,
 //! keep the door": this door resolves no session, so it is ledger-neutral, and
 //! only the statement moves. The instrument still prints this pair as
@@ -36,7 +45,7 @@
 //! helper *receives* the connection, so it has no `CTX.db.lock()` statement
 //! where the door keeps one. That absent lock line is the shape §1b.9 asks for,
 //! so **no `run_*` port can ever read clean** — expect it and read the diff.
-//! [`CategoryDto`] crossed the boundary with it and is re-exported, so
+//! [`CategoryDto`](kasirmu_bridge::categories::CategoryDto) crossed the boundary with it and is re-exported, so
 //! `use super::*;` in `categories_tests.rs` keeps resolving it and no field
 //! list is duplicated across two crates.
 //!
@@ -47,7 +56,7 @@
 //! the deny-path store open and change the error a caller receives against an
 //! unopenable store, because `open_store` creates the directory, the database
 //! file and runs migrations on a cache miss. ADR #49 §4 pins gate and lock
-//! order, so those bodies stay tablet-native. [`list_categories_scoped`] is
+//! order, so those bodies stay tablet-native. [`list_categories_scoped`](crate::commands::categories::list_categories_scoped) is
 //! refused on two further grounds of its own — see its note.
 
 use serde::{Deserialize, Serialize};
@@ -56,7 +65,7 @@ use tauri::{State, command};
 use kasirmu_core::Store;
 use kasirmu_core::permissions;
 
-use crate::commands::authz::require_permission_for_user;
+use crate::commands::authz::require_permission_for_session;
 use crate::error::AppError;
 use crate::state::AppState;
 
@@ -126,10 +135,11 @@ pub async fn create_category_scoped(
     args: CreateCategoryArgs,
     state: State<'_, AppState>,
 ) -> Result<CreateCategoryResult, AppError> {
-    let (session, conn) = state.resolve_scope(&session_token)?;
+    let session = state.resolve_session(&session_token)?;
     // Permission is checked against the GLOBAL identity DB (ADR #4/#7);
     // the store-scoped DB has no user rows.
-    require_category_permission(&state, &session.user_id, permissions::PRODUCTS_CREATE).await?;
+    require_permission_for_session(&state, &session, permissions::PRODUCTS_CREATE).await?;
+    let conn = state.resolve_store(&session_token)?;
     let db = conn
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
@@ -178,8 +188,10 @@ pub async fn update_category_scoped(
     args: UpdateCategoryArgs,
     state: State<'_, AppState>,
 ) -> Result<UpdateCategoryResult, AppError> {
-    let (session, conn) = state.resolve_scope(&session_token)?;
-    require_category_permission(&state, &session.user_id, permissions::PRODUCTS_UPDATE).await?;
+    let session = state.resolve_session(&session_token)?;
+    require_permission_for_session(&state, &session, permissions::PRODUCTS_UPDATE).await?;
+    let conn = state.resolve_store(&session_token)?;
+
     let db = conn
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
@@ -224,8 +236,10 @@ pub async fn delete_category_scoped(
     args: DeleteCategoryArgs,
     state: State<'_, AppState>,
 ) -> Result<DeleteCategoryResult, AppError> {
-    let (session, conn) = state.resolve_scope(&session_token)?;
-    require_category_permission(&state, &session.user_id, permissions::PRODUCTS_DELETE).await?;
+    let session = state.resolve_session(&session_token)?;
+    require_permission_for_session(&state, &session, permissions::PRODUCTS_DELETE).await?;
+    let conn = state.resolve_store(&session_token)?;
+
     let db = conn
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
@@ -233,21 +247,6 @@ pub async fn delete_category_scoped(
 
     let affected_products = store.delete_category_with_unlink(&args.id)?;
     Ok(DeleteCategoryResult { affected_products })
-}
-
-/// Verify a category permission against the global identity database.
-///
-/// Users and roles are global authentication records (ADR #4 / ADR #7);
-/// category business data is read from the store-scoped connection after
-/// this check succeeds. Mirror of `require_tax_permission` in tax.rs.
-async fn require_category_permission(
-    state: &AppState,
-    user_id: &str,
-    permission: &str,
-) -> Result<(), AppError> {
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    require_permission_for_user(&store, user_id, permission)
 }
 
 /// Session-scoped variant of `list_categories`.

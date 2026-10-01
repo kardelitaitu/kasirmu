@@ -1,3 +1,4 @@
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: REPAIRED (crate/path renames) — 0 behavioural findings · Audited on branch 0.0.40. Every `cargo` package this file names was renamed when the workspace was restructured, and that was proven by execution rather than by reading a manifest: `cargo pkgid -p oz-core` and `cargo pkgid -p oz-pos-app` both return "did not match any packages", and `cargo metadata --no-deps` lists 40 packages, none of them under the old `oz-*` names. The current mapping, read from each manifest path: `oz-core` -> `kasirmu-core` (`crates/kasirmu-core/Cargo.toml`), `oz-pos-app` -> `kasirmu-app` (`apps/desktop-tauri/Cargo.toml`), `oz-pos-tablet` -> `kasirmu-mobile` (`apps/mobile-tauri/Cargo.toml`), `oz-security` -> `kasirmu-security` (`crates/kasirmu-security/Cargo.toml`). The old client directories moved with them: `apps/desktop-client/` -> `apps/desktop-tauri/` and `apps/tablet-client/` -> `apps/mobile-tauri/`. All of these were repaired in place. The numbered migration series this file cites is likewise gone: migrations are date-stamped and the tables are folded into `crates/kasirmu-core/migrations/20260813_init.sql`. This slice's schema and evaluation API are all real and were located rather than assumed: `assignments`, `assignment_branches` and `assignment_workspaces` are `crates/kasirmu-core/migrations/20260813_init.sql:27`, `:15` and `:21`; `ScopeMode` is `crates/kasirmu-core/src/db/assignments.rs:27`; the fail-closed matcher `matches_scope` is `:198`; `assignment_for_user` is `:242`; `set_assignment` is `:430`; and `require_permission_scoped` — the assignment-aware gate this plan's Cycle 2b added — is documented in that same module at `:360`. The plan's central security invariant, that an empty list never means "all", is exactly what `matches_scope` is described as enforcing, so the code still carries the rule the plan was written to protect. The `modules/staff/src/models.rs` role consts and the `platform/core` / `platform/kernel` paths this plan cites were unaffected by the restructure and still resolve. · The original plan text is preserved as approved; only the identifiers that stopped resolving were changed, no design claim was rewritten. · No stamp or footer existed on this file before this pass. -->
 # RBAC assignment model and role taxonomy alignment
 
 > **Status: IN PROGRESS — 2026-08-11.** Cycles 1 (assignment schema +
@@ -23,13 +24,13 @@ Auditor; fold cashier/kitchen into Staff + workspace assignments; retire
   `apps/*/src/commands/*.rs`.
 - `role-cashier` grants include `sales:process` (+ payment/customer/discount
   keys); `role-kitchen` grants include `kds:view`, `kds:update`, `sales:view`,
-  `workspaces:switch` (`crates/oz-core/src/db/staff.rs` tests assert `kds:view`
+  `workspaces:switch` (`crates/kasirmu-core/src/db/staff.rs` tests assert `kds:view`
   / `kds:update`).
 - Branch and workspace entities exist (`stores`, `terminals`,
   `workspaces`); the audit's CUR-03 flagged unscoped currency commands as a P0
   that this model is the structural fix for.
 - Migration conventions: numbered `.sql` files registered in
-  `crates/oz-core/src/migrations.rs`; data migrations repair existing rows
+  `crates/kasirmu-core/src/migrations.rs`; data migrations repair existing rows
   (see `117_scoping_store_id_fk.sql`).
 
 ## 3. Problem statement
@@ -93,8 +94,8 @@ permission (gate) AND branch/workspace in scope for scoped roles.
 6. Update the staff screen: five-role list, assignment editor (scope_mode +
    branch/workspace pickers), localized strings, and the new staff IPC
    contract test.
-7. Run area tests: `test-tdd.sh -p crates/oz-core`, `cargo test -p oz-pos-app
-   --lib`, `cargo test -p oz-pos-tablet --lib`, fmt, clippy, plus the UI
+7. Run area tests: `test-tdd.sh -p crates/kasirmu-core`, `cargo test -p kasirmu-app
+   --lib`, `cargo test -p kasirmu-mobile --lib`, fmt, clippy, plus the UI
    checks from validation.md.
 
 ## 6. Test plan
@@ -111,13 +112,13 @@ unchanged:
   `tax.rs`, `topology.rs`, `workspaces.rs`.
 - Tablet commands: `auth.rs`, `authz.rs`, `categories.rs`, `customers.rs`,
   `loyalty.rs`, `pos.rs`, `settings.rs`, `tax.rs`, `workspaces.rs`.
-- Integration/other: `crates/oz-core/tests/staff_integration.rs`,
+- Integration/other: `crates/kasirmu-core/tests/staff_integration.rs`,
   `settings_integration.rs`, `shift_integration.rs`,
-  `crates/oz-cli/src/commands.rs`.
+  `crates/kasirmu-cli/src/commands.rs`.
 - Role sources: `modules/staff/src/models.rs` (consts),
   `modules/staff/src/lib.rs` (`Role::new("role-cashier")`),
-  `apps/cloud-server/src/openapi.rs` (docs/examples),
-  `apps/desktop-client/src/state.rs` (session resolution).
+  `apps/cloud-server/src/openapi.rs` (docs and examples),
+  `apps/desktop-tauri/src/state.rs` (session resolution).
 
 ### New tests (Red first)
 
@@ -214,7 +215,7 @@ acceptance criteria are met (see validation.md). Moved to `_done/` on
 
 ### Cycle 3 — front-end + assignment write path (DONE)
 
-- `Store::set_assignment` / `write_assignment_scope` (oz-core): transactional
+- `Store::set_assignment` / `write_assignment_scope` (kasirmu-core): transactional
   upsert of the assignment scope + dimension rows, safe inside an open
   transaction; `create_user_with_profile` takes an optional assignment spec.
 - `AssignmentDto`/`AssignmentArgs` on both clients: the staff DTO carries
@@ -230,3 +231,5 @@ acceptance criteria are met (see validation.md). Moved to `_done/` on
 - Strings in both `staff.ftl` bundles (parity clean); the
   `api-staff-contract` test pins the assignment wire shape; screen tests
   cover the taxonomy, pre-fill, save, and empty-list block.
+
+> last audited 29-09-26 by docs-auditor

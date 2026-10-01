@@ -240,8 +240,19 @@ pub fn validate_sql(sql: &str, prefix: &str) -> Result<(), PluginError> {
     // 4. Fail-closed: reject quoted identifiers (PLG-11).
     ensure_no_quoted_identifiers(sql)?;
 
-    // 5. Extract all table references and validate them
-    let table_names = extract_table_references(sql);
+    // 5. Strip comments before extraction (PLG-A).
+    //
+    // The extraction regexes anchor each table name to its keyword with
+    // whitespace, and a comment is legal SQLite between the two:
+    // `DELETE FROM/**/sales` extracted ZERO tables, so the prefix loop below
+    // had nothing to reject and the statement reached the core schema. Quoted
+    // identifiers (PLG-11) were closed; this is the same bypass with no
+    // quoting at all. Removing comments first — rather than teaching every
+    // regex the comment grammar — keeps one place that knows what a comment is.
+    let sql = strip_sql_comments(sql);
+
+    // 6. Extract all table references and validate them
+    let table_names = extract_table_references(&sql);
     for tbl in &table_names {
         // Skip CTE names (they start with the CTE, no prefix enforcement)
         if !tbl.starts_with(prefix) {
@@ -303,11 +314,82 @@ pub fn ensure_no_quoted_identifiers(sql: &str) -> Result<(), PluginError> {
 }
 
 /// Check if `text` contains `keyword` as a whole word (bounded by non-alphanumeric chars).
+///
+/// PLG-B: the compile result is unwrapped rather than degraded to `false`.
+/// `regex::escape` makes the pattern valid by construction, so a failure is an
+/// unreachable programming error — and `false` means "keyword absent", which is
+/// the fail-OPEN direction on a security check. Matches the `sql_regex`
+/// invariant policy a few lines above.
 fn contains_word(text: &str, keyword: &str) -> bool {
     let pattern = format!(r"(?i)\b{}\b", regex::escape(keyword));
+    // SAFETY: the keyword is `regex::escape`d, so the pattern is valid by
+    // construction; this cannot fail for any input.
     Regex::new(&pattern)
-        .map(|re| re.is_match(text))
-        .unwrap_or(false)
+        .expect("escaped keyword pattern must compile")
+        .is_match(text)
+}
+
+/// Remove SQL comments from `sql`, leaving string literals intact (PLG-A).
+///
+/// Handles `--` line comments and `/* ... */` block comments. A comment
+/// character inside a single-quoted string literal is data, not a comment, so
+/// the same in-string toggle the quoted-identifier scan uses guards this walk
+/// (with `''` as the escape). Comments are replaced by a single space rather
+/// than deleted, so `FROM/**/sales` becomes `FROM sales` and the keyword
+/// stays separated from the identifier instead of fusing into one token.
+///
+/// An unterminated block comment consumes the remainder; the statement is then
+/// validated as written and will almost certainly fail to extract the trailing
+/// tables, which is the fail-closed direction.
+fn strip_sql_comments(sql: &str) -> String {
+    let bytes = sql.as_bytes();
+    let mut out = String::with_capacity(sql.len());
+    let mut in_string = false;
+    let mut i = 0;
+    while i < bytes.len() {
+        let b = bytes[i];
+        if in_string {
+            out.push(b as char);
+            if b == b'\'' {
+                // `''` inside a string is an escaped quote, not the terminator.
+                if i + 1 < bytes.len() && bytes[i + 1] == b'\'' {
+                    out.push('\'');
+                    i += 2;
+                    continue;
+                }
+                in_string = false;
+            }
+            i += 1;
+            continue;
+        }
+        match b {
+            b'\'' => {
+                in_string = true;
+                out.push('\'');
+                i += 1;
+            }
+            b'-' if i + 1 < bytes.len() && bytes[i + 1] == b'-' => {
+                // Line comment: skip to end of line (keep the newline).
+                while i < bytes.len() && bytes[i] != b'\n' {
+                    i += 1;
+                }
+                out.push(' ');
+            }
+            b'/' if i + 1 < bytes.len() && bytes[i + 1] == b'*' => {
+                i += 2;
+                while i + 1 < bytes.len() && !(bytes[i] == b'*' && bytes[i + 1] == b'/') {
+                    i += 1;
+                }
+                i = (i + 2).min(bytes.len());
+                out.push(' ');
+            }
+            _ => {
+                out.push(b as char);
+                i += 1;
+            }
+        }
+    }
+    out
 }
 
 /// Extract table names referenced in a SQL statement.

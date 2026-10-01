@@ -71,3 +71,7 @@ perangkat.
 Setelah aktif, payload bertanda tangan menjaga aplikasi tetap berfungsi
 offline hingga tanggal kedaluwarsa ditambah masa tenggang, lalu menurun ke
 paket gratis. Lihat [Lisensi & Paket](../licensing/).
+
+---
+
+Lanjut membaca · **Sebelumnya:** [Wizard Pengaturan](../setup-wizard/) · **Berikutnya:** [Transaksi Pertama Anda](../first-sale/)

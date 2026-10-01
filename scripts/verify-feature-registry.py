@@ -6,7 +6,7 @@ Rust backend, frontend FEATURES constant, and UI registrations.
 WHY
 ====
 
-The OZ-POS feature flag system requires three sources of truth to stay
+The kasir.mu feature flag system requires three sources of truth to stay
 in sync:
   1. The Rust `Feature` enum + `feature_key()` in
      `crates/kasirmu-core/src/features.rs` — canonical backend definitions.

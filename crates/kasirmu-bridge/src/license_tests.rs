@@ -205,6 +205,122 @@ fn server_license_status_dto_null_optionals() {
     assert!(json.contains("\"deviceRevoked\":true"));
 }
 
+// ── Activation is all-or-nothing ────────────────────────────────────
+
+/// A failure while writing the settings rows must not leave the NEW tier
+/// persisted.
+///
+/// `activate_license` writes two stores: `tenant_subscription` (the quota
+/// facts every tier gate and `get_subscription_capabilities` read) and the
+/// `settings` rows carrying the signed payload. The write ORDER was already
+/// deliberate — the comment says "this write comes BEFORE
+/// Settings::set_batch so a partial failure doesn't leave the system in an
+/// inconsistent state" — but ordering alone cannot deliver that, because
+/// `store_subscription` runs in AUTOCOMMIT while `Settings::set_batch`
+/// opens its own transaction. A failure in the second left the first
+/// durable: a Pro `tenant_subscription` beside the old Free payload.
+///
+/// Both writers now join ONE transaction, so this asserts the property the
+/// comment always claimed. The `settings` table is dropped to force the
+/// second write to fail after the first has run, which is exactly the
+/// mid-way failure the old shape committed through.
+#[test]
+fn a_failed_settings_write_rolls_back_the_new_tier() {
+    let conn = crate::testing::temp_conn();
+    let before = TenantSubscription::load(&conn, "default")
+        .expect("load")
+        .expect("bootstrap row");
+    assert_eq!(before.tier, kasirmu_core::SubscriptionTier::Free);
+
+    let payload = r#"{
+        "tenant_id": "default",
+        "tier_key": "pro",
+        "status": "active",
+        "max_locations": 2,
+        "max_pos_instances": 3,
+        "allowed_types": ["restaurant-pos", "store-pos", "admin"],
+        "starts_at": "2026-07-12T00:00:00Z",
+        "expires_at": "2027-07-12T00:00:00Z",
+        "grace_until": "2027-07-26T00:00:00Z",
+        "issued_at": "2026-07-12T00:00:00Z"
+    }"#;
+
+    // The settings write is made to fail; the subscription write is not.
+    let tx = conn.unchecked_transaction().unwrap();
+    store_subscription(&tx, "default", payload, "SIG_PRO").expect("subscription write");
+    conn.execute_batch("DROP TABLE settings;")
+        .expect("drop settings");
+    let settings_result =
+        Settings::set_batch(&tx, &[("license.payload".to_string(), payload.to_string())]);
+    assert!(
+        settings_result.is_err(),
+        "the settings write must fail against a dropped table"
+    );
+    // The caller propagates the error and the transaction never commits,
+    // so the guard drops it and the whole activation unwinds.
+    drop(tx);
+
+    let after = TenantSubscription::load(&conn, "default")
+        .expect("load")
+        .expect("row still present");
+    assert_eq!(
+        after.tier,
+        kasirmu_core::SubscriptionTier::Free,
+        "a failed activation must not leave the new tier enforcing quotas"
+    );
+}
+
+/// The renewal lane has the same all-or-nothing requirement as activation.
+///
+/// `renew_license` persists to the same two stores in the same order, and
+/// the same trap applied: `store_subscription` in autocommit followed by
+/// `Settings::set_batch` in its own transaction. A failure between them
+/// left the renewed `tenant_subscription` durable beside the PREVIOUS
+/// payload — quota gates reading Pro while the licence status check reads
+/// the old expiry. Both writes now share one transaction.
+#[test]
+fn a_failed_settings_write_rolls_back_a_renewal_too() {
+    let conn = crate::testing::temp_conn();
+    let payload = r#"{
+        "tenant_id": "default",
+        "tier_key": "premium",
+        "status": "active",
+        "max_locations": 9,
+        "max_pos_instances": 9,
+        "allowed_types": ["restaurant-pos", "store-pos", "admin"],
+        "starts_at": "2026-07-12T00:00:00Z",
+        "expires_at": "2031-07-12T00:00:00Z",
+        "grace_until": "2031-07-26T00:00:00Z",
+        "issued_at": "2026-07-12T00:00:00Z"
+    }"#;
+    let before = TenantSubscription::load(&conn, "default")
+        .expect("load")
+        .expect("bootstrap row")
+        .tier;
+
+    let tx = conn.unchecked_transaction().unwrap();
+    store_subscription(&tx, "default", payload, "SIG_PREMIUM").expect("subscription write");
+    conn.execute_batch("DROP TABLE settings;")
+        .expect("drop settings");
+    assert!(
+        Settings::set_batch(
+            &tx,
+            &[(keys::LICENSE_PAYLOAD.to_string(), payload.to_string())]
+        )
+        .is_err(),
+        "the settings write must fail against a dropped table"
+    );
+    drop(tx); // unwinds, as the caller's `?` would
+
+    let after = TenantSubscription::load(&conn, "default")
+        .expect("load")
+        .expect("row still present")
+        .tier;
+    assert_eq!(
+        after, before,
+        "a failed renewal must not leave a higher tier enforcing quotas"
+    );
+}
 // ── store_subscription → TenantSubscription round-trip ───────
 
 #[test]

@@ -146,10 +146,10 @@ proptest! {
     fn checked_div_identity(a in any::<i64>(), c in currencies()) {
         let m = Money { minor_units: a, currency: c };
         assert_eq!(m.checked_div(1).map(|m| m.minor_units), Some(a), "div by 1 is identity");
-        if a != i64::MIN {
-            assert_eq!(m.checked_div(-1).map(|m| m.minor_units), Some(-a), "div by -1 negates");
-        } else {
+        if a == i64::MIN {
             assert!(m.checked_div(-1).is_none(), "i64::MIN / -1 overflows");
+        } else {
+            assert_eq!(m.checked_div(-1).map(|m| m.minor_units), Some(-a), "div by -1 negates");
         }
     }
 
@@ -275,7 +275,16 @@ proptest! {
             .and_then(|v| v.checked_add(parsed_frac))
             .unwrap_or(0);
         let signed = if sign == "-" { -reconstructed } else { reconstructed };
-        assert_eq!(signed as i64, minor, "round-trip recovers minor units for {minor} ({s})");
+        // `try_into` rather than `as i64`: the narrowing is infallible here
+        // (signed was reconstructed FROM an i64 `minor`), and saying so
+        // explicitly turns "this cannot overflow" from a comment into a checked
+        // assertion. `as` would silently wrap if a future change to the parser
+        // let the reconstruction grow, which is exactly the failure this
+        // round-trip property exists to catch.
+        let signed_i64: i64 = signed
+            .try_into()
+            .expect("reconstruction of an i64 must fit in i64");
+        assert_eq!(signed_i64, minor, "round-trip recovers minor units for {minor} ({s})");
     }
 
     /// `checked_div` is exact Rust integer division (truncation toward

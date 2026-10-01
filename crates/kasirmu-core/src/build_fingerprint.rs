@@ -11,7 +11,7 @@
 //!
 //! ADR #57 §2.2 is the clause that keeps the control from being decorative:
 //! **absence of a verdict is treated as a verdict.** A missing, malformed or
-//! unparseable report classifies as [`BuildFingerprintVerdict::Unknown`] and is
+//! unparseable report classifies as [`BuildFingerprintVerdict::Unknown`](crate::build_fingerprint::BuildFingerprintVerdict::Unknown) and is
 //! NEVER treated as valid. Without that, an attacker bypasses the control by
 //! deleting the reporting line rather than defeating the comparison — the
 //! cheapest possible attack.
@@ -37,7 +37,7 @@ use serde::{Deserialize, Serialize};
 /// surface must not produce a mismatch against a correct build.
 fn normalize(raw: &str) -> String {
     raw.chars()
-        .filter(|c| c.is_ascii_hexdigit())
+        .filter(char::is_ascii_hexdigit)
         .map(|c| c.to_ascii_lowercase())
         .collect()
 }

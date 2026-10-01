@@ -2,7 +2,7 @@
 title: Instalasi
 description: Pasang kasir.mu di Windows, macOS, atau Linux.
 category: gettingStarted
-order: 2
+order: 3
 updated: "2026-09-23"
 ---
 
@@ -29,7 +29,7 @@ WebView2 yang sudah tersedia di Windows 10 dan 11.
 
 Unduh dari [halaman unduh](../../download/) — tidak diperlukan akun.
 Penginstalnya sendiri dipublikasikan di
-[GitHub Releases](https://github.com/kardelitaitu/oz-pos/releases).
+[GitHub Releases](https://github.com/kardelitaitu/kasirmu/releases).
 
 **Windows** — jalankan `kasir.mu_<versi>_x64-setup.exe` (atau `.msi`) dan ikuti
 petunjuknya. Terpasang ke akun pengguna Anda dan menambahkan entri kasir.mu ke
@@ -37,9 +37,10 @@ menu Mulai.
 
 ## Peluncuran pertama
 
-Wizard pengaturan menanyakan nama usaha dan mata uang bawaan Anda — keduanya
-dapat diubah kapan saja di pengaturan. Paket gratis dimulai pada peluncuran
-pertama; Anda dapat naik paket kapan saja dari Pengaturan → Lisensi.
+Wizard pengaturan menanyakan akun (atau pengaturan tanpa akun), jenis toko,
+dan login owner — lihat [Wizard Pengaturan](../setup-wizard/). Paket gratis
+dimulai pada peluncuran pertama; Anda dapat naik paket kapan saja dari
+Pengaturan → Lisensi.
 
 ## Pembaruan
 
@@ -52,4 +53,8 @@ sebelumnya dapat dipasang ulang secara manual dari halaman rilis.
 ## Langkah berikutnya
 
 [Transaksi pertama Anda](../first-sale/), atau lihat [aktivasi](../activation/)
-saat siap membuka lebih banyak toko, pembayaran QRIS, dan sinkron cloud.
+saat siap membuka lebih banyak lokasi, pembayaran QRIS, dan sinkron cloud.
+
+---
+
+Lanjut membaca · **Sebelumnya:** [Mulai Cepat](../quickstart/) · **Berikutnya:** [Wizard Pengaturan](../setup-wizard/)

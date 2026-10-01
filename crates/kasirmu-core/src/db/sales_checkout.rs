@@ -275,12 +275,11 @@ impl Store<'_> {
                         location_id: allocation.location_id.clone(),
                         delta: -allocation.qty,
                     }));
-                    line_deductions.insert(line.id.to_string(), allocations);
+                    line_deductions.insert(line.id.clone(), allocations);
                 } else {
                     let available = availability
                         .first()
-                        .map(|location| location.qty_available)
-                        .unwrap_or(0);
+                        .map_or(0, |location| location.qty_available);
                     let alternatives = if stock_locations.len() > 1 {
                         availability
                             .into_iter()
@@ -290,8 +289,7 @@ impl Store<'_> {
                     } else if let Some(ws_id) = workspace_instance_id {
                         crate::location_resolver::resolve_location_chain_for_sku(
                             &tx, ws_id, &line.sku, line.qty,
-                        )
-                        .unwrap_or_default()
+                        )?
                         .into_iter()
                         .filter(|a| a.location_id != primary_location)
                         .collect()
@@ -368,8 +366,7 @@ impl Store<'_> {
                             } else {
                                 let available = availability
                                     .first()
-                                    .map(|location| location.qty_available)
-                                    .unwrap_or(0);
+                                    .map_or(0, |location| location.qty_available);
                                 let alternatives = if stock_locations.len() > 1 {
                                     availability
                                         .into_iter()
@@ -382,8 +379,7 @@ impl Store<'_> {
                                         ws_id,
                                         &ing_sku,
                                         required_qty,
-                                    )
-                                    .unwrap_or_default()
+                                    )?
                                     .into_iter()
                                     .filter(|a| a.location_id != primary_location)
                                     .collect()
@@ -449,8 +445,11 @@ impl Store<'_> {
             "version": 1,
             "lines": sale.lines.iter().map(|line| {
                 let deductions = line_deductions
-                    .get(&line.id.to_string())
-                    .map(|allocations| {
+                    .get(&line.id.clone()).map_or_else(|| vec![serde_json::json!({
+                        "location_id": primary_location.as_str(),
+                        "qty": line.qty,
+                        "sold_at": now,
+                    })], |allocations| {
                         allocations
                             .iter()
                             .map(|allocation| serde_json::json!({
@@ -459,12 +458,7 @@ impl Store<'_> {
                                 "sold_at": now,
                             }))
                             .collect::<Vec<_>>()
-                    })
-                    .unwrap_or_else(|| vec![serde_json::json!({
-                        "location_id": primary_location.as_str(),
-                        "qty": line.qty,
-                        "sold_at": now,
-                    })]);
+                    });
                 serde_json::json!({
                     "sale_line_id": line.id,
                     "sku": line.sku,
@@ -498,8 +492,10 @@ impl Store<'_> {
         // ADR-20 §6: pending_expires_at = NOW + 30 min for stale-reaper.
         let pending_expires_at = chrono::Utc::now()
             .checked_add_signed(chrono::Duration::minutes(30))
-            .map(|t| t.to_rfc3339_opts(chrono::SecondsFormat::Millis, true))
-            .unwrap_or_else(|| now.clone());
+            .map_or_else(
+                || now.clone(),
+                |t| t.to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
+            );
 
         // ── Receipt hierarchy code (phase 3) ─────────────────────
         // Mint the frozen 22-char nomor faktur and capture the terminal id.

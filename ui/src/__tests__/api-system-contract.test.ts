@@ -23,7 +23,7 @@ import {
 } from '@/api/system';
 
 const VERSION = {
-  name: 'oz-pos',
+  name: 'kasirmu-app',
   version: '0.0.37',
   rustVersion: '1.82.0',
   target: 'x86_64-pc-windows-msvc',

@@ -21,9 +21,9 @@
 //! - **Over quota** (`current > limit`) — the tenant is *above* the cap
 //!   and holds resources that must be archived or the plan upgraded.
 //!   This is the §J "mark resources above the new quota as `over_quota`"
-//!   condition and what [`QuotaUsage::is_over_quota`] reports.
+//!   condition and what [`QuotaUsage::is_over_quota`](crate::downgrade::QuotaUsage::is_over_quota) reports.
 //! - **At the cap** (`current == limit`) — fully compliant, but the next
-//!   creation is blocked. Reported by [`QuotaUsage::blocks_creation`] so
+//!   creation is blocked. Reported by [`QuotaUsage::blocks_creation`](crate::downgrade::QuotaUsage::blocks_creation) so
 //!   a UI can distinguish "remove some" from "you can't add more".
 //!
 //! An unlimited tier (`limit == None`) is never over quota and never
@@ -231,6 +231,22 @@ impl QuotaUsage {
     /// next creation. Includes the strictly-over case.
     pub fn blocks_creation(&self) -> bool {
         matches!(self.limit, Some(limit) if self.current >= limit)
+    }
+
+    /// True when the tier does not include this dimension **at all**: a zero
+    /// cap with nothing in it.
+    ///
+    /// [`blocks_creation`](Self::blocks_creation) is still true here — the next
+    /// creation would be refused, which is exactly right for a creation gate.
+    /// It is the wrong answer for the owner-facing remediation markers
+    /// (`Store::persist_over_quota_markers`, `per_location_over_quota_rows`):
+    /// with nothing to archive there is no "at the cap" state to report, and
+    /// emitting one would put a permanent row on every tenant of every tier
+    /// that does not include the dimension — the warehouse workspace below
+    /// Premium (owner ruling 2026-09-29) and KDS below Pro.
+    #[must_use]
+    pub fn is_unincluded_dimension(&self) -> bool {
+        self.limit == Some(0) && self.current == 0
     }
 
     /// How far past the cap the tenant already is (`current - limit`),

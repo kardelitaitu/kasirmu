@@ -1,3 +1,4 @@
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 198 lines, no audit stamp, no footer, no docs-auditor marker of any kind. It is explicitly "Research (evaluation only)" -- a survey of on-device ML runtimes for Rust, a training pipeline, performance impact and privacy -- so its falsifiable surface is a comparison of EXTERNAL options, not claims about this repository. That is the honest scope of what an audit can establish here, and stating it plainly is more useful than manufacturing findings. What IS checkable, I checked: the document's framing claim that this is evaluation-only is consistent with how the work was actually taken up. `docs/decisions/2026-08-11-adr37-product-popularity-index.md`, audited in round 7, records a prototype-level demand forecast shipping on 2026-08-12 as `Store::category_forecast` -- a linear least-squares fit over each category's recent trend units, with day-of-week de-seasonalisation for daily series, and an explicit note that "the learned on-device model from the 2026-07-20 research remains out of scope". So this research document was read, a deliberately narrow slice of it was adopted, and the ML-runtime question it poses was consciously deferred. That is the correct lifecycle for an evaluation document, and the connection is recorded nowhere else in the repository -- this stamp is the only place it is written down. · NOT re-measured: the runtime comparison, the crate landscape and the performance estimates, which age faster than anything else in this directory and should be re-dated rather than re-verified. A future pass that needs this survey current needs a new survey, not an audit of this one. · Body left entirely as written; no paths inside it resolve to repository files, so there was nothing to repair. Stamp and footer added, which is all this file needed. -->
 # Research: On-Device ML for Demand Forecasting
 
 **Status:** Research (evaluation only)
@@ -191,8 +192,5 @@ When implemented:
 - `docs/decisions/2026-07-10-crdt-delta-ledger-offline-sync.md`
 - `crates/oz-core/src/db/reports.rs` (data sources)
 
-> last audited 09-08-26 by buffy
-> audit: Phase 1 Core Architecture & API Docs Audit
-
-> status: ACCURATE (0 findings) · verified accurate: cargo check passed, no structural orphans, no stale version headers
+> last audited 29-09-26 by docs-auditor
 

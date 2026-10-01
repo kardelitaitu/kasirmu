@@ -1,11 +1,11 @@
 //! Audit command bodies (Wave E / E5) — the tauri-free half of
 //! `apps/desktop-tauri/src/commands/audit.rs`.
 //!
-//! Key functions: the store-scoped audit reads ([`list_audit_log_scoped`],
-//! [`get_audit_review_status_scoped`]), the organization-level security trail
-//! read ([`list_security_events_scoped`]), the review-checkpoint write
-//! ([`mark_audit_reviewed_scoped`]) and the two CSV exports
-//! ([`export_audit_log_scoped`], [`export_security_events_scoped`]).
+//! Key functions: the store-scoped audit reads ([`list_audit_log_scoped`](crate::audit::list_audit_log_scoped),
+//! [`get_audit_review_status_scoped`](crate::audit::get_audit_review_status_scoped)), the organization-level security trail
+//! read ([`list_security_events_scoped`](crate::audit::list_security_events_scoped)), the review-checkpoint write
+//! ([`mark_audit_reviewed_scoped`](crate::audit::mark_audit_reviewed_scoped)) and the two CSV exports
+//! ([`export_audit_log_scoped`](crate::audit::export_audit_log_scoped), [`export_security_events_scoped`](crate::audit::export_security_events_scoped)).
 //!
 //! Gate order is a verbatim port of the shell: resolve the scope, enforce the
 //! Premium+ audit tier, then `audit:view` / `audit:export` — the domain's own
@@ -242,7 +242,7 @@ async fn require_audit_permission(
 /// published on the pricing page): **Audit Log is Premium+** — which
 /// subsumes the Free rule "no tenant-facing audit logs and no audit-log
 /// retention entitlement": Free/Plus/Pro sessions get
-/// [`BridgeError::PermissionDenied`] before any audit row is read, reviewed,
+/// [`BridgeError::PermissionDenied`](crate::error::BridgeError::PermissionDenied) before any audit row is read, reviewed,
 /// or exported, no matter which roles they hold.
 ///
 /// Reads the SAME fail-closed entitlement read model the caps command

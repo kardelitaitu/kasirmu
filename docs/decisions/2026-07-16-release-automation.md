@@ -4,8 +4,9 @@ area: release
 title: ADR #14: Release Automation — GitHub Actions Build & Publish Pipeline
 status: Proposed (2026-07-16)
 ---
-<!-- Audit stamp: 2026-07-24 · Hermes-Agent · status: RESOLVED (AUDIT-28 2026-08-03) · F1: pipeline is SHIPPED and release.yml is now the single tag-triggered orchestrator (version gate → Tauri installer builds for Linux/Windows/macOS → signed latest.json/beta.json → draft release → inventory → publish). F2: release.yml now references scripts/generate-latest-json.mjs (via --merge) and scripts/verify-updater-signature.mjs; the ADR's Windows-NSIS/MSI + latest.json-on-every-release design is implemented. · verified accurate: ADR#13 existing infra (plugin/tauri.conf.json/pubkey/capabilities/UpdateBanner) all present; SettingsPage updater UI live; FTL strings present -->
+<!-- Superseded audit marker (2026-07-24, body kept verbatim) · Hermes-Agent · status: RESOLVED (AUDIT-28 2026-08-03) · F1: pipeline is SHIPPED and release.yml is now the single tag-triggered orchestrator (version gate → Tauri installer builds for Linux/Windows/macOS → signed latest.json/beta.json → draft release → inventory → publish). F2: release.yml now references scripts/generate-latest-json.mjs (via --merge) and scripts/verify-updater-signature.mjs; the ADR's Windows-NSIS/MSI + latest.json-on-every-release design is implemented. · verified accurate: ADR#13 existing infra (plugin/tauri.conf.json/pubkey/capabilities/UpdateBanner) all present; SettingsPage updater UI live; FTL strings present -->
 
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 326 lines, with a prior marker re-verified rather than replaced. ADR #14 is the release-automation half of the pair with ADR #13, which this campaign audited in the previous round and found honest about its own boundary. · A STATUS-LINE QUESTION WORTH RAISING, because it is the same authority-divergence pattern the ARCHITECTURE pointer was created to end, in a smaller form. This ADR's front matter reads Proposed (2026-07-16), while ADR #13's prior stamp records that the release workflow is SHIPPED and now builds real signed Tauri installers, and `.github/workflows/release.yml` is a live workflow. So two ADRs about one pipeline report different states — one as a proposal, the other as a resolution. The work is evidently done; this document has not been updated to say so, and the stamp records that rather than editing the front matter, because whether a Proposed ADR is retroactively marked Accepted or superseded by a note is the index owner's convention decision, not an audit's. · THE SUBSTANTIVE CLAIM CHECKS OUT at the one place it can be. The workflow is live and is the same release workflow the dependency and CI-claims work in this campaign kept finding behind a stale claim — the archived CI dashboard audited in round 13 was corrected precisely because it said this pipeline no longer existed. Three documents, three different states, and the live workflow agrees with the most recent one. · WHY IT MATTERS BEYOND ITS OWN LINE COUNT: the release pipeline is upstream of the updater ADR that points at it, of the keystore guide that had to be repaired because it thought there was no CI path, and of the security posture every device-trust decision in this repository assumes — a signed artifact reaching an installed terminal. A document candid about what has actually shipped is load-bearing precisely because so much else assumes it. · NOT re-measured: the pipeline's build, signing and publish steps, the installer formats, or any release-configuration detail, all of which are the document's own content and would need a real release to exercise. · Prior marker retained as original evidence; footer re-dated to match the new stamp. -->
 # ADR #14: Release Automation — GitHub Actions Build & Publish Pipeline
 
 **Status:** Proposed (2026-07-16)
@@ -35,7 +36,7 @@ This is error-prone, non-reproducible, and blocks the in-app updater (ADR #13) f
 |-----------|-----------|
 | Tauri updater plugin configured | `apps/desktop-client/tauri.conf.json:60` |
 | Ed25519 public key committed | `oz-pos-updater.key.pub` |
-| `latest.json` endpoint | `https://github.com/kardelitaitu/oz-pos/releases/latest/download/latest.json` |
+| `latest.json` endpoint | `https://github.com/kardelitaitu/kasirmu/releases/latest/download/latest.json` |
 | NSIS + WiX bundle targets | `tauri.conf.json` `bundle.targets = "all"` |
 | Code signing config | `tauri.conf.json` `windows.signCommand` using `signtool.exe` |
 | Settings About page updater UI | Implemented in ADR #13 |
@@ -127,7 +128,7 @@ Steps:
   "platforms": {
     "windows-x86_64": {
       "signature": "<base64-ed25519-signature>",
-      "url": "https://github.com/kardelitaitu/oz-pos/releases/download/v0.1.0/kasir.mu_0.1.0_x64-setup.exe"
+      "url": "https://github.com/kardelitaitu/kasirmu/releases/download/v0.1.0/kasir.mu_0.1.0_x64-setup.exe"
     }
   }
 }
@@ -319,7 +320,7 @@ Build for Windows, macOS, and Linux in a matrix strategy.
 - `scripts/generate-latest-json.js` — Manifest generation script (to be created)
 - `.github/workflows/release.yml` — Workflow definition (to be created)
 
-> last audited 09-08-26 by buffy
+> last audited 29-09-26 by docs-auditor
 > audit: Phase 1 Core Architecture & API Docs Audit
 
 > status: ACCURATE (0 findings) · verified accurate: cargo check passed, no structural orphans, no stale version headers

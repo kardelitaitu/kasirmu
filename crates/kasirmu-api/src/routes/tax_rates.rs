@@ -19,6 +19,7 @@ use axum::{
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
 };
+use rusqlite::OptionalExtension;
 use serde::Deserialize;
 
 use kasirmu_core::db::Store;
@@ -187,9 +188,16 @@ fn check_scope_target_sqlite(
     };
     // Table and column come from the match arms above, never from the request.
     let sql = format!("SELECT tenant_id FROM {table} WHERE id = ?1");
+    // MSL-30: `.optional()?`, NOT `.unwrap_or(None)`. The latter maps EVERY
+    // `rusqlite::Error` to `None`, so a broken query failed the tenant comparison
+    // below and the caller was told the target belongs to another tenant -- a
+    // wrong diagnosis that also hides the real fault. `optional()` maps ONLY
+    // `QueryReturnedNoRows` to `None` and propagates the rest, which is what the
+    // Postgres twin (`pg::scope_target_exists`) does with
+    // `.map_err(|e| PgError::Db(e.to_string()))?`.
     let owner: Option<String> = db
         .query_row(&sql, rusqlite::params![target], |row| row.get(0))
-        .unwrap_or(None);
+        .optional()?;
     if owner.as_deref() != Some(tenant_id) {
         return Err(CoreError::Validation {
             field: column,
@@ -384,13 +392,21 @@ pub async fn update_tax_rate(
     }
     // The hub shares one database: the row must belong to THIS tenant before
     // core's (device-shaped, tenant-blind) update runs on it.
-    let owner: Option<String> = db
-        .query_row(
-            "SELECT tenant_id FROM tax_rates WHERE id = ?1 AND is_active = 1",
-            rusqlite::params![id],
-            |row| row.get(0),
-        )
-        .unwrap_or(None);
+    //
+    // MSL-31: `.optional()?`, the same repair as `check_scope_target_sqlite`
+    // above. `.unwrap_or(None)` mapped every `rusqlite::Error` to `None`, so a
+    // broken query failed this comparison and the caller was told the tax rate
+    // does not exist -- while it does, and the database is the thing failing.
+    let owner: Option<String> = match db.query_row(
+        "SELECT tenant_id FROM tax_rates WHERE id = ?1 AND is_active = 1",
+        rusqlite::params![id],
+        |row| row.get(0),
+    ) {
+        Ok(v) => v,
+        // A DB error is NOT "no such rate": report it as the internal failure it
+        // is instead of letting the comparison below render a 404.
+        Err(e) => return store_error_response(CoreError::Db(e)),
+    };
     if owner.as_deref() != Some(tenant_id) {
         return store_error_response(CoreError::NotFound {
             entity: "tax_rate",

@@ -62,8 +62,14 @@ impl Store<'_> {
     /// `get_over_quota_report` read path can attach them to the report in one
     /// round-trip.
     pub fn persist_over_quota_markers(&self) -> Result<Vec<OverQuotaMarker>, CoreError> {
+        // MSL-38: the LEDGER-aware reader, so this agrees with the gates that
+        // call it. It previously used `effective_tier()` (the wall clock) while
+        // the creation gates had moved to ledger time (MSL-36), which let a
+        // refusal and the marker refresh two lines later be computed against
+        // two different tiers. The doc above already promised the contract —
+        // "obtained the same way the creation gates get it" — this makes it true.
         let tier = match TenantSubscription::load(self.conn, TENANT_ID)? {
-            Some(sub) => sub.effective_tier(),
+            Some(sub) => sub.effective_tier_for_connection(self.conn),
             None => SubscriptionTier::Free,
         };
         let report = self.assess_downgrade(&tier)?;
@@ -81,6 +87,13 @@ impl Store<'_> {
 
                 let mut markers = Vec::with_capacity(report.usages.len());
                 for usage in &report.usages {
+                    // A dimension the tier does not include at all (a zero cap
+                    // with nothing in it) is not an "at the cap" row: there is
+                    // nothing to archive. Without this skip every Free/Plus/Pro
+                    // tenant would carry a permanent `warehouses 0/0` marker.
+                    if usage.is_unincluded_dimension() {
+                        continue;
+                    }
                     let (severity, severity_str) = if usage.is_over_quota() {
                         (OverQuotaSeverity::Over, "over")
                     } else if usage.blocks_creation() {
@@ -173,12 +186,9 @@ impl Store<'_> {
         for row in rows {
             let (resource_id, resource_type, dim_key, severity_key, limit, current, marked_at) =
                 row?;
-            let dimension = match QuotaDimension::from_key(&dim_key) {
-                Some(d) => d,
-                None => {
-                    skipped += 1;
-                    continue;
-                }
+            let Some(dimension) = QuotaDimension::from_key(&dim_key) else {
+                skipped += 1;
+                continue;
             };
             let severity = match severity_key.as_str() {
                 "over" => OverQuotaSeverity::Over,
@@ -213,11 +223,21 @@ impl Store<'_> {
 
     /// Count all products in the catalog.
     ///
-    /// Mirrors the inline count in [`Store::enforce_product_quota`] so
-    /// the assessment and the creation gate agree on what consumes the
-    /// product quota. (Extracting the shared count out of
-    /// `enforce_product_quota` is a possible follow-up; kept local here
-    /// to avoid editing the concurrent-agent hot file.)
+    /// THE shared products count, not a mirror. The over-quota assessment
+    /// ([`Store::assess_downgrade`]) and the creation gate
+    /// (`quota_gate::quota_count`, whose `Products` arm calls this) both read it,
+    /// so the two cannot disagree about what consumes the product quota.
+    ///
+    /// This doc used to say the count was inline in
+    /// [`Store::enforce_product_quota`] and that extracting it was a follow-up.
+    /// That extraction has since happened: `enforce_product_quota` now delegates
+    /// to `enforce_creation_quota`, which counts through `count_products`.
+    ///
+    /// One other products count exists on purpose and is NOT a duplicate:
+    /// `create_product_with_attributes` counts inside its own transaction, after
+    /// the insert, because under WAL a pre-transaction count reads only its
+    /// snapshot — the doc there explains that this is what closes the TOCTOU the
+    /// pre-transaction gate cannot.
     pub fn count_products(&self) -> Result<i64, CoreError> {
         let count: i64 = self
             .conn

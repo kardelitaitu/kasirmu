@@ -12,7 +12,7 @@
 //! Split from `db/tax.rs` 13-09-26, behaviour unchanged — pure module
 //! decomposition, no logic edits.
 
-use rusqlite::params;
+use rusqlite::{OptionalExtension, params};
 
 use crate::db::Store;
 use crate::error::CoreError;
@@ -31,7 +31,7 @@ impl Store<'_> {
     /// Everything is checked BEFORE the transaction opens: name and rate bounds,
     /// a strict `YYYY-MM-DD` window with `effective_from < effective_to`, and a
     /// scope target that is non-empty and actually exists
-    /// ([`Self::validate_scope_target`]).
+    /// (`Self::validate_scope_target`).
     ///
     /// # Overlapping windows in one tier are legal
     ///
@@ -130,13 +130,20 @@ impl Store<'_> {
         self.validate_scope_target(scope)?;
 
         let tx = self.conn.unchecked_transaction()?;
-        let existing = tx
+        // MSL-27: `.optional()?`, NOT `.ok()`. A bare `.ok()` collapses EVERY
+        // rusqlite error to `None`, so a genuine DB failure here was reported to
+        // the caller as `NotFound` -- "no such tax rate" while the database was
+        // actually failing. That is a wrong diagnosis on the money path, and it
+        // hides a real fault. `optional()` maps ONLY `QueryReturnedNoRows` to
+        // `None` and propagates anything else, which is the crate's standard
+        // idiom (38 uses against this file's zero before this change).
+        let existing: Option<String> = tx
             .query_row(
                 "SELECT created_at FROM tax_rates WHERE id = ?1 AND is_active = 1",
                 params![id],
                 |row| row.get::<_, String>(0),
             )
-            .ok();
+            .optional()?;
         let Some(created_at) = existing else {
             return Err(CoreError::NotFound {
                 entity: "tax_rate",
@@ -239,6 +246,11 @@ impl Store<'_> {
                 message: format!("{column} must not be empty; NULL means unscoped"),
             });
         }
+        // MSL-27: `.optional()?` for the same reason as the existence probe in
+        // `update_tax_rate_scoped`. A `.ok()` here turned a DB failure into
+        // "no such {table} row", so an operator whose scope target DID exist was
+        // told it did not -- a wrong validation message that also swallowed the
+        // real error.
         let exists: Option<i64> = self
             .conn
             .query_row(
@@ -246,7 +258,7 @@ impl Store<'_> {
                 params![id],
                 |row| row.get(0),
             )
-            .ok();
+            .optional()?;
         if exists.is_none() {
             return Err(CoreError::Validation {
                 field: column,
@@ -279,7 +291,7 @@ impl Store<'_> {
                     })
                 },
             )
-            .ok())
+            .optional()?)
     }
 
     /// Every active rate's scope and window, in one read.
@@ -336,13 +348,24 @@ impl Store<'_> {
 
     // ── Scoped resolution ─────────────────────────────────────────────
     //
-    // tax-separation P1 slice 1 (todo-global-saas-2.md, "Separate business
-    // tax configuration from application defaults"). The four columns added by
-    // 20260921_tax_rate_scoping.sql are read here and nowhere else; nothing in
-    // the sale computation path calls this yet, because nothing can author a
-    // scoped row until the write-side slice lands. Wiring the resolver into
-    // `compute_sale_tax` before then would change money math on every sale to
-    // serve a table that can only ever hold tenant-global rows.
+    // tax-separation P1 (todo-global-saas-2.md, "Separate business tax
+    // configuration from application defaults"). The four columns added by
+    // 20260921_tax_rate_scoping.sql (`legal_entity_id`, `location_id`,
+    // `effective_from`, `effective_to`) are resolved here into one answer per
+    // (location, entity, business date).
+    //
+    // The comment here used to say the columns were "read here and nowhere
+    // else" and that "nothing in the sale computation path calls this yet,
+    // because nothing can author a scoped row until the write-side slice
+    // lands". Both halves have since become false and are corrected rather
+    // than left to mislead: the authoring doors landed
+    // ([`Self::create_tax_rate_scoped`] / [`Self::update_tax_rate_scoped`]), and
+    // [`Store::resolve_tax_rate_for_location`] is now the sale path's own
+    // level-3 lookup (`db/sales_tax.rs:577`, documented at `:487`). Writes to
+    // the window columns also arrive through `sync_pull`. What that old note
+    // was protecting against is still true and still the reason resolution is
+    // centralised here: one resolver, so the sale, the authoring UI and the
+    // diagnostic surfaces cannot disagree about which rate applies on a day.
 
     /// Resolve the tax rate that applies at one location on one business date.
     ///
@@ -464,7 +487,7 @@ impl Store<'_> {
                 params![rate_id],
                 |row| Ok((row.get(0)?, row.get(1)?)),
             )
-            .ok();
+            .optional()?;
         let Some((entity, location)) = pair else {
             return Ok(None);
         };
@@ -497,7 +520,7 @@ impl Store<'_> {
                 rusqlite::params![location_id],
                 |row| row.get::<_, Option<String>>(0),
             )
-            .ok()
+            .optional()?
             .flatten())
     }
 
@@ -538,7 +561,7 @@ impl Store<'_> {
                     ))
                 },
             )
-            .ok();
+            .optional()?;
         let Some((entity, location, from, to)) = row else {
             return Ok(false);
         };
@@ -603,7 +626,7 @@ impl Store<'_> {
                     ))
                 },
             )
-            .ok();
+            .optional()?;
         let Some((entity, location)) = stored else {
             return Ok(());
         };
@@ -946,11 +969,11 @@ impl TaxRateCandidate {
 pub fn parse_effective_date(value: &str) -> Option<chrono::NaiveDate> {
     let b = value.as_bytes();
     let shape_ok = b.len() == 10
-        && b[..4].iter().all(|c| c.is_ascii_digit())
+        && b[..4].iter().all(u8::is_ascii_digit)
         && b[4] == b'-'
-        && b[5..7].iter().all(|c| c.is_ascii_digit())
+        && b[5..7].iter().all(u8::is_ascii_digit)
         && b[7] == b'-'
-        && b[8..].iter().all(|c| c.is_ascii_digit());
+        && b[8..].iter().all(u8::is_ascii_digit);
     if !shape_ok {
         return None;
     }

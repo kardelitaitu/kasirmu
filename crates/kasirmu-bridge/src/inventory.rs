@@ -10,7 +10,7 @@
 //!
 //! The gate keeps the shell's NON-scope-aware form
 //! (`Store::require_permission` against the GLOBAL identity DB) through the
-//! module-private [`require_inventory_permission`]. That is deliberate parity,
+//! module-private [`require_inventory_permission`](crate::stock_transfers::require_inventory_permission). That is deliberate parity,
 //! not an oversight: users and roles live only in the identity DB, so
 //! authorizing against the store connection would deny every caller — see the
 //! note on the helper. Wave-A's categories/tax gates set the same precedent.
@@ -113,7 +113,10 @@ pub async fn create_inventory_location(
         // Source the quota tier from the entitlements read model (Phase B one
         // limit table) so the warehouse gate shares the caps projection's
         // single source instead of a second subscription derivation.
-        Entitlements::from_subscription(&sub, UsageCounts::default()).tier
+        //
+        // MSL-36: ledger-aware, because this door grants a capability and has
+        // no `validate_clock_rollback` on its path.
+        Entitlements::from_subscription_for_connection(&sub, &identity, UsageCounts::default()).tier
     };
 
     let conn = ctx
@@ -504,7 +507,7 @@ pub async fn create_inventory_transaction(
     let store = Store::new(&db);
 
     let ttype = InventoryTransactionType::from_stored_str(&type_str)
-        .ok_or_else(|| BridgeError::Invalid(format!("invalid transaction type: {}", type_str)))?;
+        .ok_or_else(|| BridgeError::Invalid(format!("invalid transaction type: {type_str}")))?;
 
     let tx_id = store.create_inventory_transaction(
         ttype,

@@ -8,14 +8,15 @@
 // on the render path. IT RECORDS, IT DOES NOT ENDORSE; invert, never delete.
 //
 // HOW THE TABLET DIFFERS (measured; it shapes every case below):
-//   * NO HASH ROUTING. git grep location.hash|hashchange over
-//     ui/src/app/tablet/ = zero hits. currentRoute is internal state
-//     (:39 default 'pos') set only by handleNavigate (:89-101 — checks ONLY
-//     isPageAccessible, never feature) and by the workspace-rebind effect
-//     (:50-62: admin->settings, warehouse->products). The desktop's
-//     direct-hash-entry vector does not exist here; case 6 pins that inertness,
-//     cases 2-4 drive the tablet's real route sources: boot default and
-//     workspace rebind.
+//   * HASH ROUTING ADDED 2026-09-30. currentRoute is internal state
+//     (:122 default 'pos') set by handleNavigate (checks ONLY isPageAccessible,
+//     never feature), by the workspace-rebind effect (:143-152: admin->settings,
+//     warehouse->products), and NOW by a hashchange listener mirroring
+//     AppShell.tsx:350-395. The listener was added because ProvisioningFlow's
+//     "Set up with a phone instead" button navigates by setting
+//     window.location.hash from another component; with no listener it was a dead
+//     button on a tablet. Case 6 pins the feature-gate consequence of that new
+//     route source, cases 2-4 drive the older ones.
 //   * THREE fullscreen branches (restaurant-pos :157, store-pos :168, kds :179)
 //     render hardcoded screens without ever consulting getPage/pageDenied —
 //     there NEITHER gate can fire (cases 7-9). The tablet has NO isKdsKiosk
@@ -221,17 +222,38 @@ describe('TabletAppShell — feature-disabled pages still render via every table
     expect(screen.queryByTestId('pos-page-stub')).not.toBeInTheDocument();
   });
 
-  // ── 6. Boundary: hash entry, the desktop vector, is INERT on the tablet ──
-  it('ignores location.hash entirely — the desktop direct-entry vector does not exist here', async () => {
+  // ── 6. Hash entry — REVISED 2026-09-30: no longer inert ──────────────────
+  //
+  // This case once asserted the tablet shell IGNORES location.hash, with the
+  // header above calling hash routing a desktop-only vector. That was a true
+  // reading of the code, and it was the bug: ProvisioningFlow's "Set up with a
+  // phone instead" button navigates by setting window.location.hash = '#/mobile-setup'
+  // (it lives in another component and cannot call handleNavigate), so on a
+  // tablet it changed the URL and rendered nothing — a dead button on the one
+  // device it was written for. The shell now syncs hash -> currentRoute exactly as
+  // AppShell.tsx:350-395 does, and mobile-setup-wizard.spec.ts pins the round trip.
+  //
+  // The pin is inverted, not deleted: the FEATURE gate remains the subject. A
+  // feature-disabled page reached BY HASH still renders, because pageDenied is a
+  // role gate and isPageAccessible ignores feature — the same hazard, now reached
+  // through a route source that exists on this shell.
+  it('renders a feature-disabled page reached by hash, though nav hides it', async () => {
     registerDisabledPage('pos', 'pos-page-stub');
     registerDisabledPage('restaurant-reports', 'rr-stub');
     window.location.hash = '#/restaurant-reports';
-    await renderWithProviders(<TabletAppShell />, staffFtl);
-    await act(async () => {});
-    await waitFor(() => {
-      expect(screen.getByTestId('pos-page-stub')).toBeInTheDocument();
-    });
-    expect(screen.queryByTestId('rr-stub')).not.toBeInTheDocument();
+    try {
+      await renderWithProviders(<TabletAppShell />, staffFtl);
+      await act(async () => {});
+      await waitFor(() => {
+        expect(screen.getByTestId('rr-stub')).toBeInTheDocument();
+      });
+      // The gate that DID apply is the role one, and this session is a cashier,
+      // so the page renders rather than raising Access Denied.
+      expect(screen.queryByText('Access Denied')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('pos-page-stub')).not.toBeInTheDocument();
+    } finally {
+      window.location.hash = '';
+    }
   });
 
   // ── 7-9. Fullscreen branches: hardcoded screens, neither gate reachable ──

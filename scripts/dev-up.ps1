@@ -1,4 +1,4 @@
-# ── OZ-POS Dev Up (Windows PowerShell) ───────────────────────────────
+# ── kasir.mu Dev Up (Windows PowerShell) ───────────────────────────────
 #
 # One-command local development startup:
 #   1. Resolves the compose-required secrets (JWT secret + admin key):
@@ -38,7 +38,7 @@ $ComposePg  = $ComposeBase + @('-f', 'ops/docker/docker-compose.pg.yml')
 
 # ── Tear-down mode ────────────────────────────────────────────────
 if ($Down) {
-  Write-Host "👋 Tearing down OZ-POS dev environment..." -ForegroundColor Yellow
+  Write-Host "👋 Tearing down kasir.mu dev environment..." -ForegroundColor Yellow
   if ($Pg) {
     docker @ComposePg down -v
   } else {
@@ -235,7 +235,7 @@ if ($Build) {
 }
 
 # ── Start services ────────────────────────────────────────────────
-Write-Host "🚀 Starting OZ-POS backend services..." -ForegroundColor Cyan
+Write-Host "🚀 Starting kasir.mu backend services..." -ForegroundColor Cyan
 if ($Pg) {
   docker @ComposePg up -d
 } else {
@@ -277,7 +277,7 @@ $apiPort = if ($env:OZ_API_PORT) { $env:OZ_API_PORT } else { "3099" }
 
 Write-Host ""
 Write-Host "╔══════════════════════════════════════════════════════════╗" -ForegroundColor Green
-Write-Host "║  OZ-POS Backend — Ready                                  ║" -ForegroundColor Green
+Write-Host "║  kasir.mu Backend — Ready                                  ║" -ForegroundColor Green
 Write-Host "╠══════════════════════════════════════════════════════════╣" -ForegroundColor Green
 Write-Host "║  Cloud Server:    http://localhost:$apiPort/api/health       ║" -ForegroundColor Green
 Write-Host "║  License Server:  http://localhost:8080/api/health       ║" -ForegroundColor Green

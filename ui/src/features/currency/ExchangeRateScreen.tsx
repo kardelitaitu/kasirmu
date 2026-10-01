@@ -11,6 +11,7 @@ import {
   type CreateExchangeRateArgs,
 } from '@/api/currency';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
+import { getSettingScoped, setSettingScoped } from '@/api/settings';
 import { Card } from '@/components/Card';
 import { Button } from '@/components/Button';
 import { Skeleton } from '@/components/Skeleton';
@@ -18,13 +19,27 @@ import { SettingsPopup, requiredLocalized } from '@/components';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useToast } from '@/components/Toast';
 import { parseMinorUnits } from '@/types/domain';
+import { isoToday } from '@/features/analytics/analytics-data';
+import { useStoreTimezone } from '@/hooks/useStoreTimezone';
 import './ExchangeRateScreen.css';
 
-function todayStr(): string {
-  const d = new Date();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${d.getFullYear()}-${m}-${day}`;
+// The default effective date used to be today's date read off the DEVICE
+// calendar. That is not merely a different-looking value -- it defeated a
+// documented contract. create_exchange_rate_scoped resolves the store's IANA
+// zone and defaults the effective date to that zone's business date (ADR #48,
+// Decision 3: "as_of is a business date resolved in the location's IANA
+// zone, not a raw UTC instant"). This form pre-filled the field, so
+// effective_date was always sent and the backend default was never reached:
+// a terminal in any zone other than the store's saved a rate one day off the
+// boundary where the rate goes live.
+//
+// isoToday() is the shared anchor (features/analytics/analytics-data) that
+// reads the store calendar, with FALLBACK_STORE_TZ (UTC, the schema's own
+// column default) when the profile has not loaded. reports/DashboardScreen
+// made the identical replacement for the identical reason -- see the REP-03
+// comment above its own date helpers.
+function todayStr(storeTz?: string | null): string {
+  return isoToday(storeTz);
 }
 
 interface FormData {
@@ -35,13 +50,18 @@ interface FormData {
   effectiveDate: string;
 }
 
-const EMPTY_FORM: FormData = {
+// The effective date is pre-filled rather than left blank, so the field opens
+// on a sensible day. It takes storeTz (not the device) — see todayStr above.
+const emptyForm = (storeTz?: string | null): FormData => ({
   fromCurrency: '',
   toCurrency: '',
   rate: '',
   source: '',
-  effectiveDate: todayStr(),
-};
+  effectiveDate: todayStr(storeTz),
+});
+
+/** Settings key read/written by the auto-sync toggle (platform/core keys.rs). */
+const RATE_SYNC_ENABLED_KEY = 'rate_sync.enabled';
 
 /** Exchange rate management screen — create and delete currency exchange rates for multi-currency support. */
 export default function ExchangeRateScreen() {
@@ -58,10 +78,21 @@ export default function ExchangeRateScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
-  const [form, setForm] = useState<FormData>(EMPTY_FORM);
+  const [form, setForm] = useState<FormData>(() => emptyForm());
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ExchangeRateDto | null>(null);
+
+  // ── Auto-sync toggle (rate_sync.enabled) ───────────────────────────
+  // The daemon behind this switch started shipping 2026-09-29 and re-reads
+  // the key every cycle, so flipping it takes effect within one cycle (≤ 5
+  // minutes while off) without a restart. Default off = the backend default,
+  // so an untouched install never makes a network call. A failed READ is not
+  // an error state for this screen (unset key, legacy no-session mode): it
+  // shows off, which is the truth either way; a failed WRITE toasts.
+  const [autoSync, setAutoSync] = useState(false);
+  const [autoSyncLoading, setAutoSyncLoading] = useState(true);
+  const [autoSyncSaving, setAutoSyncSaving] = useState(false);
 
   // LOAD-07: request-generation guard — a slow response from an earlier
   // load/unmount must never overwrite newer state.
@@ -91,10 +122,55 @@ export default function ExchangeRateScreen() {
 
   useEffect(() => { load(); }, [load]);
 
+  const loadAutoSync = useCallback(async () => {
+    try {
+      const raw = await getSettingScoped(sessionToken || null, RATE_SYNC_ENABLED_KEY);
+      setAutoSync(raw === '1');
+    } catch {
+      // Unset key (never written) or no session token: the backend default
+      // for this key is "0", which is also what we just rendered.
+    } finally {
+      setAutoSyncLoading(false);
+    }
+  }, [sessionToken]);
+
+  useEffect(() => { loadAutoSync(); }, [loadAutoSync]);
+
+  const toggleAutoSync = useCallback(
+    async (next: boolean) => {
+      setAutoSyncSaving(true);
+      try {
+        await setSettingScoped(sessionToken || null, RATE_SYNC_ENABLED_KEY, next ? '1' : '0');
+        setAutoSync(next);
+        addToast({
+          message: requiredLocalized(
+            l10n,
+            next ? 'currency-autosync-enabled' : 'currency-autosync-disabled',
+          ),
+          type: 'success',
+        });
+      } catch {
+        // Nothing was written, so the switch must go back — an optimistic
+        // toggle that stays flipped lies about the daemon's actual state.
+        addToast({ message: requiredLocalized(l10n, 'currency-autosync-error'), type: 'error' });
+      } finally {
+        setAutoSyncSaving(false);
+      }
+    },
+    [sessionToken, l10n, addToast],
+  );
+
+  // ADR #48 Decision 3: the effective date is a business date in the store's
+  // IANA zone. AnalyticsScreen and reports/DashboardScreen anchor to the same
+  // value, so all three screens share one read instead of each inventing its own
+  // default. Until it loads (or if the fetch fails) the anchor is
+  // FALLBACK_STORE_TZ (UTC, the schema's column default), never the device zone.
+  const storeTz = useStoreTimezone();
+
   const openCreate = useCallback(() => {
-    setForm(EMPTY_FORM);
+    setForm(emptyForm(storeTz));
     setShowModal(true);
-  }, []);
+  }, [storeTz]);
 
   const handleDeleteClick = useCallback((rate: ExchangeRateDto) => {
     setDeleteTarget(rate);
@@ -172,6 +248,37 @@ export default function ExchangeRateScreen() {
           <Button onClick={openCreate}>Add</Button>
         </Localized>
       </div>
+
+      {/* Auto-sync switch — writes rate_sync.enabled; see loadAutoSync above. */}
+      <Card shadow="sm">
+        <div className="exchange-rate-autosync">
+          <div className="exchange-rate-autosync-text">
+            <span className="exchange-rate-autosync-label" id="er-autosync-label">
+              <Localized id="currency-autosync-title">
+                <span>Auto-update rates</span>
+              </Localized>
+            </span>
+            <p className="exchange-rate-autosync-hint">
+              <Localized id="currency-autosync-hint">
+                <span>Fetches exchange rates on a schedule and stores them with their effective date.</span>
+              </Localized>
+            </p>
+          </div>
+          <label className="exchange-rate-switch" htmlFor="er-autosync">
+            <input
+              id="er-autosync"
+              type="checkbox"
+              role="switch"
+              checked={autoSync}
+              aria-checked={autoSync}
+              aria-labelledby="er-autosync-label"
+              disabled={autoSyncLoading || autoSyncSaving}
+              onChange={(e) => toggleAutoSync(e.target.checked)}
+            />
+            <span className="exchange-rate-switch-slider" aria-hidden="true" />
+          </label>
+        </div>
+      </Card>
 
       {loading ? (
         <div className="exchange-rate-loading-skeleton" aria-hidden="true">

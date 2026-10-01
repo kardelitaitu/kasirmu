@@ -9,6 +9,8 @@ import type { PieSlice } from '@/components/charts/CanvasPieChart';
 import { l10nErrorMessage } from '@/utils/app-error';
 import { useCurrency } from '@/contexts/CurrencyContext';
 import { minorUnitExponent } from '@/types/domain';
+import { isoToday, isoDaysAgo } from '@/features/analytics/analytics-data';
+import { useStoreTimezone } from '@/hooks/useStoreTimezone';
 
 /** Canvas 2D category breakdown donut chart widget for the reporting dashboard. */
 export default function CategoryPieChartWidget() {
@@ -24,17 +26,25 @@ const { sessionToken: rawToken } = useWorkspace();
   const [slices, setSlices] = useState<PieSlice[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // REP-03: one read of the store's calendar anchor, shared by every widget.
+  const storeTz = useStoreTimezone();
+  // The store zone lands AFTER the first fetch, so the window is refetched once
+  // it arrives. Without this the second load blanks the tile to a skeleton and the
+  // user watches the chart they were already reading disappear — the same reason
+  // DashboardScreen keeps `hasLoaded` separate from `loading` (DashboardScreen.tsx:169,
+  // :427) and shows a 'Refreshing…' line instead of the full-screen spinner.
+  const [hasLoaded, setHasLoaded] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const end = new Date();
-      const start = new Date();
-      start.setDate(start.getDate() - 30);
+      // REP-03: the window is the STORE's last 31 days. The backend buckets
+      // the range by the store's offset, so a UTC-anchored end date omits the
+      // store's current day for every store past UTC midnight.
       const rows = await getCategoryBreakdown(
-        start.toISOString().slice(0, 10),
-        end.toISOString().slice(0, 10),
+        isoDaysAgo(30, storeTz),
+        isoToday(storeTz),
         sessionToken,
       );
       setSlices(
@@ -48,12 +58,13 @@ const { sessionToken: rawToken } = useWorkspace();
       setError(l10nErrorMessage(e, l10n, 'app-error-generic'));
     } finally {
       setLoading(false);
+      setHasLoaded(true);
     }
-  }, [sessionToken, l10n]);
+  }, [sessionToken, l10n, storeTz]);
 
   useEffect(() => { load(); }, [load]);
 
-  if (loading) {
+  if (loading && !hasLoaded) {
     return (
       <div className="reporting-widget" aria-hidden="true">
         <div className="reporting-widget-header">

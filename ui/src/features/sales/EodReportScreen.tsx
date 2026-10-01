@@ -6,6 +6,8 @@ import {
 } from '@/api/sales';
 import { listShiftsScoped, type ShiftDto } from '@/api/shifts';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
+import { FALLBACK_STORE_TZ, storeOffsetMs } from '@/features/analytics/analytics-data';
+import { useStoreTimezone } from '@/hooks/useStoreTimezone';
 import { formatMoney } from '@/types/domain';
 import { buildCsv, downloadCsv } from '../reports/csv';
 import { Card } from '@/components/Card';
@@ -47,19 +49,67 @@ export const EOD_TAG_KEYS = {
 
 // ── Shift Summary Sub-component ──────────────────────────────────
 
+/**
+ * The closed shifts that fell on the STORE's calendar day.
+ *
+ * This is the cash-reconciliation list, and it used to be filtered by
+ * `closedAt.startsWith(new Date().toISOString().slice(0, 10))` -- comparing the
+ * UTC prefix of an INSTANT against the UTC day. For a store at Asia/Jakarta
+ * (+07:00) that is wrong for seven hours a day, and silently so: a shift closed
+ * at 02:00 local is 19:00Z the previous day, so `closedAt` starts with
+ * YESTERDAY and the shift drops out of today's reconciliation entirely.
+ * Measured 2026-09-30 at 2026-09-04T21:30Z, the instant a +07 store is already
+ * on 09-05: `isoToday('+07:00')` is '2026-09-05', and a shift closed at
+ * 2026-09-04T18:00Z is 2026-09-05 01:00 local -- today to the cashier, filed
+ * under yesterday by the old filter.
+ *
+ * The fix is not a bigger date comparison, it is WHICH day is being asked for.
+ * `build_eod_report` (crates/kasirmu-bridge/src/history.rs:398) draws every
+ * figure in the report from `Store::export_daily_summary`, which buckets by the
+ * store's UTC offset -- and its own comment says the header and body must share
+ * ONE day definition or "the header and the body of one sheet could describe
+ * two different days". The UI half was still on UTC, so it did exactly that:
+ * a Jakarta cashier read figures for the 05th beside a shift list for the 04th.
+ *
+ * Converting the instant to the store's day is the same two-step isoToday uses
+ * -- shift by the offset, then read the calendar on UTC -- so the filter cannot
+ * disagree with the report it sits under. storeOffsetMs returns 0 for anything
+ * that is not a fixed +-HH:MM offset, including FALLBACK_STORE_TZ ('UTC'), which
+ * is the correct value for it.
+ *
+ * Exported so the test asserts against this function's own contract rather than
+ * a second copy of the comparison.
+ *
+ * `now` is a seam, not a feature: this bug only exists during the hours when
+ * the store and UTC disagree about the date, so a test pinned to the wall clock
+ * would pass ten hours out of twenty-four and a regression gate that fires only
+ * sometimes teaches people to ignore it. Both production call sites leave it
+ * alone and get "now".
+ */
+export function closedShiftsOnStoreDay<T extends { status: string; closedAt: string | null }>(
+  shifts: T[],
+  storeTz?: string | null,
+  now: number = Date.now(),
+): T[] {
+  const offset = storeOffsetMs(storeTz ?? FALLBACK_STORE_TZ);
+  const today = new Date(now + offset).toISOString().slice(0, 10);
+  return shifts.filter(
+    (s) => s.status === 'closed' && !!s.closedAt && new Date(Date.parse(s.closedAt) + offset).toISOString().slice(0, 10) === today,
+  );
+}
+
 interface ShiftSummaryProps {
   shifts: ShiftDto[];
   currency: string;
+  /** The store's UTC offset; see closedShiftsOnStoreDay for why this is needed. */
+  storeTz: string | null;
 }
 
-function ShiftSummarySection({ shifts, currency }: ShiftSummaryProps) {
+function ShiftSummarySection({ shifts, currency, storeTz }: ShiftSummaryProps) {
   const { l10n } = useLocalization();
   // Times follow the active Fluent locale (not the browser default).
   const numLocale = [...l10n.bundles][0]?.locales[0] ?? 'en-US';
-  const today = new Date().toISOString().slice(0, 10);
-  const todayClosed = shifts.filter(
-    (s) => s.status === 'closed' && s.closedAt && s.closedAt.startsWith(today),
-  );
+  const todayClosed = closedShiftsOnStoreDay(shifts, storeTz);
   const activeShift = shifts.find((s) => s.status === 'open');
 
   if (todayClosed.length === 0 && !activeShift) {
@@ -277,6 +327,10 @@ export default function EodReportScreen() {
   const { l10n } = useLocalization();
   const { sessionToken: rawToken } = useWorkspace();
   const sessionToken = rawToken || '';
+  // REP-03: the shift reconciliation below is compared against the STORE's
+  // calendar day, because every figure in the report it sits under is bucketed
+  // that way by the backend. See closedShiftsOnStoreDay.
+  const storeTz = useStoreTimezone();
   const { addToast } = useToast();
   const [report, setReport] = useState<EodReport | null>(null);
   const [shifts, setShifts] = useState<ShiftDto[]>([]);
@@ -340,9 +394,11 @@ export default function EodReportScreen() {
         body += sep;
       }
 
-      const todayClosed = shiftsRef.current.filter(
-        (s) => s.status === 'closed' && s.closedAt && s.closedAt.startsWith(new Date().toISOString().slice(0, 10)),
-      );
+      // The SAME filter the on-screen section uses -- one definition, so the
+      // printed sheet cannot reconcile a different set of drawers than the one
+      // on screen (that disagreement is what build_eod_report's C5 comment
+      // calls "the header and the body of one sheet describing two days").
+      const todayClosed = closedShiftsOnStoreDay(shiftsRef.current, storeTz);
       if (todayClosed.length > 0) {
         body += line('  CLOSED SHIFTS');
         for (const s of todayClosed) {
@@ -392,7 +448,7 @@ export default function EodReportScreen() {
     // the end-of-day report print presents a destroyed session, rejects, and the button simply
     // does nothing -- on the one screen an operator expects to produce a signed record. deps
     // listed only lastRefresh, which the refresh button changes and a session switch does not.
-  }, [lastRefresh, sessionToken, l10n, addToast]);
+  }, [lastRefresh, sessionToken, l10n, addToast, storeTz]);
 
   const exportCsv = useCallback(() => {
     const r = reportRef.current;
@@ -520,7 +576,7 @@ export default function EodReportScreen() {
 
       {/* ── Shift Summary Section ────────────────── */}
       {!loading && !error && report && (
-        <ShiftSummarySection shifts={shifts} currency={currency} />
+        <ShiftSummarySection shifts={shifts} currency={currency} storeTz={storeTz} />
       )}
 
       {loading && !report ? (

@@ -33,6 +33,122 @@ fn make_po_line() -> PurchaseOrderLine {
     }
 }
 
+// ── MSL-41: an omitted status must PRESERVE the row, not force "active" ──
+
+/// `update_supplier` (both variants) defaults an absent `status` to `"active"`
+/// (`purchasing.rs` — `args.status.as_deref().unwrap_or("active")`), and the
+/// Suppliers screen never sends one: its edit form is seeded from the row but
+/// carries no status field, and the payload omits it entirely
+/// (the supplier-management screen builds `UpdateSupplierArgs` without `status`).
+///
+/// So editing a supplier — any edit, even fixing a phone number — silently
+/// RE-ACTIVATES an inactive one. The row the user was looking at said
+/// "inactive"; the save flips it. Nothing in the UI can express the intent, and
+/// nothing reports the change.
+///
+/// This pins the contract the fix has to satisfy, at the level the defect
+/// lives: an omitted status means "leave it as it is", while an explicit value
+/// still wins. It is written against the pure argument mapping so it needs no
+/// BridgeCtx.
+#[test]
+fn an_omitted_status_preserves_the_existing_supplier_status() {
+    // The mapping the two update wrappers perform, extracted here so the
+    // contract is assertable without a bridge context.
+    fn resolved_status(requested: Option<&str>, existing: &str) -> String {
+        requested.unwrap_or(existing).to_owned()
+    }
+
+    // The reported defect: omit + inactive must NOT become active.
+    assert_eq!(
+        resolved_status(None, "inactive"),
+        "inactive",
+        "an edit that does not mention status must leave an inactive supplier inactive"
+    );
+
+    // An explicit value still wins, both directions.
+    assert_eq!(resolved_status(Some("inactive"), "active"), "inactive");
+    assert_eq!(resolved_status(Some("active"), "inactive"), "active");
+}
+
+/// The consequence, driven through the real store rather than restated as a
+/// source grep: what `unwrap_or("active")` hands the UPDATE. An inactive
+/// supplier edited through the UI payload (which omits `status`) reaches the
+/// store as `"active"` and is silently re-activated.
+#[test]
+fn an_inactive_supplier_survives_an_edit_that_omits_status() {
+    use kasirmu_core::db::Store;
+    let conn = kasirmu_core::migrations::fresh_db();
+    let store = Store::new(&conn);
+
+    let created = store
+        .create_supplier("SUP900", "Dormant Co", "", "", "", "", "", "", "")
+        .unwrap();
+    store
+        .update_supplier(
+            &created.id,
+            "SUP900",
+            "Dormant Co",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "inactive",
+        )
+        .unwrap();
+    assert_eq!(
+        store.get_supplier(&created.id).unwrap().unwrap().status,
+        "inactive"
+    );
+
+    // The UI edits the phone number; its payload carries no `status` key.
+    let edit = UpdateSupplierArgs {
+        id: created.id.clone(),
+        code: "SUP900".into(),
+        name: "Dormant Co".into(),
+        contact_person: None,
+        phone: Some("+230 5555 0000".into()),
+        email: None,
+        address: None,
+        tax_id: None,
+        payment_terms: None,
+        notes: None,
+        status: None,
+    };
+
+    let existing = store.get_supplier(&edit.id).unwrap().unwrap().status;
+    let resolved = status_for_update(edit.status.as_deref(), &existing);
+    assert_eq!(
+        resolved, "inactive",
+        "an edit that omits status must preserve the row, not force it active"
+    );
+
+    store
+        .update_supplier(
+            &edit.id,
+            &edit.code,
+            &edit.name,
+            edit.contact_person.as_deref().unwrap_or_default(),
+            edit.phone.as_deref().unwrap_or_default(),
+            edit.email.as_deref().unwrap_or_default(),
+            edit.address.as_deref().unwrap_or_default(),
+            edit.tax_id.as_deref().unwrap_or_default(),
+            edit.payment_terms.as_deref().unwrap_or_default(),
+            edit.notes.as_deref().unwrap_or_default(),
+            &resolved,
+        )
+        .unwrap();
+
+    let after = store.get_supplier(&edit.id).unwrap().unwrap();
+    assert_eq!(after.status, "inactive", "the edit must not resurrect it");
+    assert_eq!(
+        after.phone, "+230 5555 0000",
+        "and the edit must still land"
+    );
+}
+
 // ── SupplierDto ─────────────────────────────────────────────────────
 
 #[test]

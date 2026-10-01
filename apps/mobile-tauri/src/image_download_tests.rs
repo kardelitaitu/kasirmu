@@ -2,6 +2,24 @@
 
 use super::*;
 
+/// Set a file's mtime. `File::set_modified` needs write access, and the file has
+/// to exist first.
+fn set_mtime(path: &std::path::Path, t: std::time::SystemTime) {
+    let f = std::fs::OpenOptions::new().write(true).open(path).unwrap();
+    f.set_modified(t).unwrap();
+}
+
+/// A file's mtime in milliseconds since the epoch.
+fn mtime_ms(path: &std::path::Path) -> u128 {
+    std::fs::metadata(path)
+        .unwrap()
+        .modified()
+        .unwrap()
+        .duration_since(std::time::SystemTime::UNIX_EPOCH)
+        .unwrap()
+        .as_millis()
+}
+
 // ── LRU tracker ──────────────────────────────────────────────────────
 
 #[test]
@@ -48,6 +66,107 @@ fn lru_remove_frees_bytes() {
 fn lru_default_budget_is_256mb() {
     let lru = LruTracker::with_default_budget();
     assert_eq!(lru.budget_bytes(), 256 * 1024 * 1024);
+}
+
+/// A file whose mtime cannot be read must be SKIPPED, not ranked as the oldest.
+///
+/// `seed_lru` read the mtime with `.unwrap_or(0)`, so an unreadable mtime became
+/// 1970 — the smallest possible. The sort below orders ASCENDING and `touch`es in
+/// that order, and `LruTracker::evict` pops the FRONT, so the fabricated entry was
+/// the first thing discarded. For an image the cache had very likely just
+/// downloaded, that throws the download away over a metadata read.
+///
+/// It was also the odd one out in its own loop: a file whose NAME or whose
+/// METADATA cannot be read is skipped with `continue`, and only a failed mtime
+/// fabricated a value. Skipping keeps the LRU ignorant of the file instead of
+/// ranking it last.
+///
+/// HONEST SCOPE: this pin covers the RANKING, not the fabrication. The unreadable-
+/// mtime branch is not constructible here -- a test cannot make `modified()` fail
+/// for a file it just created -- and restoring `.unwrap_or(0)` leaves this test
+/// GREEN, verified, because both fixture files have readable mtimes and the
+/// default never fires. So it guards the ordering the fix depends on (older file
+/// is the eviction victim, newer survives) rather than the branch itself, and it
+/// would catch a regression that reordered the sort or the `touch` loop. The
+/// branch's correctness rests on reading, not on this test.
+#[test]
+fn seed_lru_ranks_a_file_by_its_real_mtime_and_keeps_it() {
+    let tmp = std::env::temp_dir().join(format!("oz-imgseed-{}", uuid::Uuid::new_v4()));
+    let img_dir = tmp.join("images");
+    // Fresh dir every run: a panic above skips the cleanup below, and reusing a
+    // pid-derived name let a previous failed run's leftovers decide the result.
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(&img_dir).unwrap();
+
+    // Two files, so the older one is the legitimate LRU victim and the newer one
+    // must survive: that is what proves the ranking uses real mtimes.
+    let older = img_dir.join("aaaaaaaaaaaaaaaa.webp");
+    let newer = img_dir.join("bbbbbbbbbbbbbbbb.webp");
+    std::fs::write(&older, vec![0u8; 80]).unwrap();
+    std::fs::write(&newer, vec![0u8; 80]).unwrap();
+    // PIN the mtimes rather than hoping two back-to-back writes land in
+    // different ticks. They do not always: where the filesystem's timestamps are
+    // coarse both files got the SAME mtime, `sort_by_key` is stable so the order
+    // fell through to `read_dir`, and the file this test calls "newer" was then
+    // touched first and evicted first. That is why it failed 3/3 retries in CI
+    // while passing locally -- a fixture that never proved the property its own
+    // assertion depends on.
+    let base = std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_700_000_000);
+    set_mtime(&older, base);
+    set_mtime(&newer, base + std::time::Duration::from_secs(60));
+    // Prove the fixture before testing the behaviour: both files must exist, and
+    // the newer one must actually BE newer -- otherwise the ranking below has
+    // nothing to rank and this test grades the filesystem, not the code.
+    assert!(
+        older.exists() && newer.exists(),
+        "fixture: both files must be written"
+    );
+    assert!(
+        mtime_ms(&newer) > mtime_ms(&older),
+        "fixture: the two mtimes must differ"
+    );
+
+    let mut mgr = ImageDownloadManager::new();
+    // A budget that FITS both (160 bytes), so `seed_lru`'s own internal `evict()`
+    // has nothing to discard and the LRU ends up holding exactly the two files.
+    mgr.lru = LruTracker::new(1000);
+    mgr.seed_lru(&tmp);
+    assert_eq!(mgr.lru.len(), 2, "both readable files must be seeded");
+
+    // `seed_lru` ranks ASCENDING by mtime and touches in that order, and
+    // `evict()` pops the FRONT. So tightening the budget must discard the OLDER
+    // file and leave the newer one -- which is exactly the ordering a fabricated
+    // 1970 mtime would corrupt by putting the newer file at the front.
+    mgr.lru = {
+        let mut lru = LruTracker::new(1000);
+        lru.touch("aaaaaaaaaaaaaaaa", 80);
+        lru.touch("bbbbbbbbbbbbbbbb", 80);
+        lru
+    };
+    // Re-seed into a budget that cannot hold both.
+    let mut tight = ImageDownloadManager::new();
+    tight.lru = LruTracker::new(100);
+    tight.seed_lru(&tmp);
+    assert_eq!(
+        tight.lru.len(),
+        1,
+        "a 100-byte budget keeps one of the 160 bytes"
+    );
+
+    // The survivor must be the NEWER file: the older one is the legitimate LRU
+    // victim. On the old code a file whose mtime could not be read was stamped
+    // 1970 and took that victim slot instead.
+    let survivor = img_dir.join("bbbbbbbbbbbbbbbb.webp");
+    assert!(
+        survivor.exists(),
+        "the newer file must survive eviction: it is not the LRU while its mtime is readable"
+    );
+    assert!(
+        !img_dir.join("aaaaaaaaaaaaaaaa.webp").exists(),
+        "the older file is the one seed_lru discards"
+    );
+
+    let _ = std::fs::remove_dir_all(&tmp);
 }
 
 // ── Missing-set / run_cycle ──────────────────────────────────────────

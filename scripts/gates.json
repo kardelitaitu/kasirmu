@@ -6,170 +6,373 @@
       "id": "ui-lint",
       "label": "UI lint",
       "status": "required",
-      "runners": { "check.sh": ["ui lint"], "check:all": ["eslint"] },
-      "ci": { "workflow": "dev-ci.yml", "job": "ui-test" }
+      "runners": {
+        "check.sh": [
+          "ui lint"
+        ],
+        "check:all": [
+          "eslint"
+        ]
+      },
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "ui-test"
+      }
     },
     {
       "id": "ui-typecheck",
       "label": "UI typecheck",
       "status": "required",
-      "runners": { "check.sh": ["ui typecheck"], "check:all": ["type check"] },
-      "ci": { "workflow": "dev-ci.yml", "job": "ui-test" }
+      "runners": {
+        "check.sh": [
+          "ui typecheck"
+        ],
+        "check:all": [
+          "type check"
+        ]
+      },
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "ui-test"
+      }
     },
     {
       "id": "ui-unit-tests",
       "label": "UI unit tests",
       "status": "required",
-      "runners": { "check.sh": ["ui test"], "check:all": ["unit tests"] },
+      "runners": {
+        "check.sh": [
+          "ui test"
+        ],
+        "check:all": [
+          "unit tests"
+        ]
+      },
       "_note": "Was ci.yml#ui-test. dev-ci.yml#ui-test runs `cd ui && npm test` (vitest) -- the same suite under the same job name.",
-      "ci": { "workflow": "dev-ci.yml", "job": "ui-test" }
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "ui-test"
+      }
     },
     {
       "id": "analytics-tz-invariance",
       "label": "Analytics timezone invariance",
       "status": "required",
-      "runners": { "check.sh": ["analytics tz invariance"] },
-      "ci": { "workflow": "dev-ci.yml", "job": "ui-test" }
+      "runners": {
+        "check.sh": [
+          "analytics tz invariance"
+        ]
+      },
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "ui-test"
+      }
     },
     {
       "id": "i18n-lint",
       "label": "i18n lint",
       "status": "required",
-      "runners": { "check.sh": ["i18n lint"], "check:all": ["i18n lint"] },
-      "ci": { "workflow": "dev-ci.yml", "job": "i18n" }
+      "runners": {
+        "check.sh": [
+          "i18n lint"
+        ],
+        "check:all": [
+          "i18n lint"
+        ]
+      },
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "i18n"
+      }
     },
     {
       "id": "ftl-dedupe",
       "label": "FTL dedupe",
       "status": "required",
-      "runners": { "check.sh": ["ftl dedupe"], "check:all": ["ftl dedupe"] },
-      "ci": { "workflow": "dev-ci.yml", "job": "i18n" }
+      "runners": {
+        "check.sh": [
+          "ftl dedupe"
+        ],
+        "check:all": [
+          "ftl dedupe"
+        ]
+      },
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "i18n"
+      }
     },
     {
       "id": "ftl-orphans",
       "label": "FTL orphan lint",
       "status": "required",
-      "runners": { "check.sh": ["ftl orphans"] },
+      "runners": {
+        "check.sh": [
+          "ftl orphans"
+        ]
+      },
       "_note": "Mirror of bundle-parity: keys with no reference. Staged-scoped in the hook, because a whole-tree blocker is unusable -- dynamic composition (`analytics-month-${m}`) leaves 93 honest candidates of which an unknown fraction are detection gaps rather than debt. --census reports the tree informationally. Existing debt is real: topology-shortcuts-* (18 keys, feature removed) and ~23 warehouse-* keys with zero references anywhere.",
-      "ci": { "workflow": "dev-ci.yml", "job": "i18n" }
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "i18n"
+      }
     },
     {
       "id": "rust-fmt",
       "label": "Rust fmt",
       "status": "required",
-      "runners": { "check.sh": ["cargo fmt"] },
-      "ci": { "workflow": "dev-ci.yml", "job": "cargo-check" }
+      "runners": {
+        "check.sh": [
+          "cargo fmt"
+        ]
+      },
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "rust-fmt"
+      }
     },
     {
       "id": "go",
       "label": "Go (license-server)",
       "status": "required",
-      "runners": { "check.sh": ["go fmt", "go vet", "go test (short)"] },
-      "_note": "Was ci.yml#go. gofmt/go vet/go test -short now run in dev-ci.yml#static-gates, verified green locally first. The pre-commit Go gate remains the only place Go is enforced on a commit.",
-      "ci": { "workflow": "dev-ci.yml", "job": "static-gates" }
+      "runners": {
+        "check.sh": [
+          "go fmt",
+          "go vet",
+          "go test (short)"
+        ]
+      },
+      "_note": "Was ci.yml#go. gofmt/go vet/go test -short ran in dev-ci.yml#static-gates from 0.0.37 until 2026-09-24, when they moved to dev-ci.yml#go-gate -- the job was split because `go test -short` measured 325s on two separate runs and was 51% of a job that also gated ~25 cheap Python/shell checks. Path-gated on the new `go` route output (`^apps/license-server/`), which did not exist before: `apps/license-server/**` matched no router bucket, and the Go steps were covered only because they sat in the ungated static-gates job. The pre-commit Go gate remains the only place Go is enforced on a commit.",
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "go-gate"
+      }
     },
     {
       "id": "website-tests",
       "label": "Website unit tests",
       "status": "required",
-      "runners": { "check.sh": ["website test"] },
+      "runners": {
+        "check.sh": [
+          "website test"
+        ]
+      },
       "_note": "Was website.yml#check. dev-ci.yml#website runs `cd website && npm test`; website.yml is .bak.",
-      "ci": { "workflow": "dev-ci.yml", "job": "website" }
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "website"
+      }
     },
     {
       "id": "website-assets",
       "label": "Website asset hygiene",
       "status": "required",
-      "runners": { "check.sh": ["website assets"] },
-      "ci": { "workflow": "dev-ci.yml", "job": "website" }
+      "runners": {
+        "check.sh": [
+          "website assets"
+        ]
+      },
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "website"
+      }
     },
     {
       "id": "rust-clippy",
       "label": "Clippy",
       "status": "required",
-      "runners": { "check.sh": ["clippy"] },
+      "runners": {
+        "check.sh": [
+          "clippy"
+        ]
+      },
       "_note": "Runs locally only, and not everywhere locally: its two runners are scripts/check.sh (step \"clippy workspace\") and scripts/release.sh. No live workflow runs it -- clippy occurs 0 times in both dev-ci.yml and release.yml -- so a green CI says nothing about clippy. It is also NOT run before a push: .githooks/pre-push invokes scripts/run-pre-push.py, which carries no clippy task at any tier. status=\"required\" is the policy this project holds, not a claim that a gate enforces it."
     },
     {
       "id": "rust-tests",
       "label": "Rust tests",
       "status": "required",
-      "runners": { "check.sh": ["test workspace", "test doctests"] },
+      "runners": {
+        "check.sh": [
+          "test workspace",
+          "test doctests"
+        ]
+      },
       "_note": "Was ci.yml#rust-test-fast. dev-ci.yml runs `cargo nextest run --workspace --all-features` with NO excludes, so it covers this more broadly than check.sh, whose own nextest step excludes kasirmu-app. nextest does not run doctests, so that part remains check.sh-only.",
-      "ci": { "workflow": "dev-ci.yml", "job": "cargo-nextest" }
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "cargo-nextest"
+      }
     },
     {
       "id": "release-bridge-tests",
       "label": "Release-profile bridge tests",
       "status": "required",
       "_note": "CI-ONLY by design: no check.sh runner, because a release build would add minutes to every local run. dev-ci.yml#release-bridge-test runs `cargo nextest run -p kasirmu-bridge --release` on push to main only (not PR, not scheduled): a release compile is much colder than the debug one, and taxing every PR with it was ruled not worth the guarantee. Landable because release went green at 2dc500382 - never land a gate red. Flag trap: `-P release` is the NEXTEST profile and would silently re-run the debug build; `-r`/`--release` is the cargo profile.",
-      "ci": { "workflow": "dev-ci.yml", "job": "release-bridge-test" }
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "release-bridge-test"
+      }
     },
     {
       "id": "architecture-boundaries",
       "label": "Architecture boundaries",
       "status": "required",
-      "runners": { "check.sh": ["architecture boundaries"] },
+      "runners": {
+        "check.sh": [
+          "architecture boundaries"
+        ]
+      },
       "_note": "Was ci.yml#architecture-boundaries. Runs in dev-ci.yml#static-gates with --strict, verified green locally.",
-      "ci": { "workflow": "dev-ci.yml", "job": "static-gates" }
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "static-gates"
+      }
+    },
+    {
+      "id": "db-script-self-tests",
+      "label": "DB script self-tests",
+      "status": "required",
+      "runners": {
+        "check.sh": [
+          "db backup script self-test",
+          "db restore script self-test"
+        ]
+      },
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "static-gates",
+        "steps": [
+          "DB backup script self-test",
+          "DB restore script self-test"
+        ]
+      },
+      "_note": "Two `--self-test` flags, one gate row: scripts/backup-db.sh and scripts/restore-db.sh each gained one in the same commit, and they are the same defect. A sqlite3 .backup DESTINATION embedded in a dot-command is NOT path-translated by MSYS2 (measured on MINGW64_NT-10.0-26200 with sqlite3 3.50.6), so an absolute path failed with a bare `cannot open /c/...` and the restore ABORTED at its own pre-restore safety step -- the worst possible place for a path bug. Both scripts' documented invocations are RELATIVE (backup-db.sh header :9-12), which is why the defect survived; the relative leg is asserted in each self-test for exactly that reason, so a translator that breaks the common case fails too. Mutation proof: dropping the `$(sqlite3_dot_arg ...)` call leaves the relative leg green and takes the absolute leg to 0 backups (backup) and 2 rows instead of 1 (restore). A gate that cannot fail is decoration, and the sibling precedent is the same (`pg-receipt-selftest`, `scoped-ambient-reads-self-test`)."
     },
     {
       "id": "root-policy",
       "label": "Root policy (P8)",
       "status": "required",
-      "_note": "Added in 0.0.39 (P8 of todo-project-folder-restructure.md). scripts/verify-root-policy.py fails when the repo root gains a file outside the section-5 allowlist (tool contracts + owner entry files + .env) and sweeps empty directories, the one junk class no git-based check can see. Cleared pr_body.md, skill-drift-report.md, scripts/__pycache__ and .agents/__pycache__ (Pile C); cleared the empty ui/scripts directory. Local-only by design: it inspects the working tree, so a runner checkout may legitimately carry ephemera this repo does not own; therefore no ci key, and pre-commit is deliberately not lengthened - scripts/check.sh is its only runner.",
+      "_note": "Added in 0.0.39 (P8 of done-todo-project-folder-restructure.md). scripts/verify-root-policy.py fails when the repo root gains a file outside the section-5 allowlist (tool contracts + owner entry files + .env) and sweeps empty directories, the one junk class no git-based check can see. Cleared pr_body.md, skill-drift-report.md, scripts/__pycache__ and .agents/__pycache__ (Pile C); cleared the empty ui/scripts directory. Local-only by design: it inspects the working tree, so a runner checkout may legitimately carry ephemera this repo does not own; therefore no ci key, and pre-commit is deliberately not lengthened - scripts/check.sh is its only runner.",
       "runners": {
-       "check.sh": [
-        "root policy",
-        "root policy self-test"
-       ]
+        "check.sh": [
+          "root policy",
+          "root policy self-test"
+        ]
+      }
+    },
+    {
+      "id": "dockerfile-workspace",
+      "label": "Dockerfile workspace parity",
+      "status": "required",
+      "_note": "Wired 2026-09-26 (review 12.2). scripts/verify-dockerfile-workspace.py compares every workspace member against BOTH ops/docker Dockerfiles' cache stages. It existed, worked and passed while running NOWHERE -- no gates.json id, no check.sh step, no workflow step, no hook -- and two source files (ops/docker/Dockerfile.server:93, ops/docker/Dockerfile.unified:62) plus docs/plans/_active/northflank-p1-p7-plan.md:26 asserted it ran 'in CI'. The only workflow that ever referenced it is .github/workflows/attic/ci.yml.bak:668, a retired file GitHub does not execute. Its absence is the same five days in which the unified image was unbuildable (2026-09-13 to 2026-09-18) with nothing to notice.",
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "static-gates"
+      },
+      "runners": {
+        "check.sh": [
+          "dockerfile workspace"
+        ]
       }
     },
     {
       "id": "no-raw-params",
       "label": "No raw params (ADR #7 Phase 4)",
       "status": "required",
-      "ci": { "workflow": "dev-ci.yml", "job": "static-gates" },
-      "runners": { "check.sh": ["no-raw-params"] }
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "static-gates"
+      },
+      "runners": {
+        "check.sh": [
+          "no-raw-params"
+        ]
+      }
     },
     {
       "id": "scoped-coverage",
       "label": "Scoped coverage (H-1)",
       "status": "required",
       "_note": "Added 0.0.37. scripts/verify-scoped-coverage.sh enforces H-1/H-2 -- every registered Tauri command has a _scoped variant or an allowlist entry -- and is the check.sh step IMMEDIATELY AFTER no-raw-params, which has been catalogued all along. One of three adjacent verification gates that were simply never recorded; the others are ipc-parity and topology-parity. Runs in dev-ci.yml#static-gates and locally via scripts/check.sh; not in the pre-commit hook. (Corrected 2026-09-20, closing the note half of GI-1.)",
-      "ci": { "workflow": "dev-ci.yml", "job": "static-gates" },
-      "runners": { "check.sh": ["scoped coverage (H-1)"] }
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "static-gates"
+      },
+      "runners": {
+        "check.sh": [
+          "scoped coverage (H-1)"
+        ]
+      }
+    },
+    {
+      "id": "scoped-authorization",
+      "label": "Scoped authorization (H-1b)",
+      "status": "required",
+      "_note": "Added 2026-09-25 with the crate-audit round that found four authorization defects (BRIDGE-3, BRIDGE-5, BRIDGE-7 among them). verify-scoped-coverage.sh checks that a command HAS a _scoped twin and stops there: the moment a twin exists the command is 'covered' and the twin's BODY is never opened. So a _scoped fn that resolves a session and then reads or writes with no authorization at all passed that gate -- which is exactly how those defects survived. This gate checks the property: a _scoped fn reaching the store or the HAL must call a permission helper, be named in a reasoned list, or carry an `// ungated-ok:` marker in its body. Measured at introduction: 348 _scoped fns scanned, 0 unreasoned. The 35 explained entries split into deliberate shell asymmetry (promotions reads), documented module policy (tables, offline, scale, workspaces-picker), device-per-install values (license, health), and one KNOWN OPEN GAP deliberately NOT laundered as safe: the 9 hardware device commands (BRIDGE-7), where device access is currently open to any authenticated operator. Gating those is a product ruling, not a repair, so they carry a marker that says so. Runs in dev-ci.yml#static-gates, pre-push Tier 0 and scripts/check.sh.",
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "static-gates"
+      },
+      "runners": {
+        "check.sh": [
+          "scoped authorization (H-1b)"
+        ]
+      }
     },
     {
       "id": "ipc-parity",
       "label": "IPC parity",
       "status": "required",
-      "_note": "Added 0.0.37. scripts/verify-ipc-parity.py enforces three directions. Forward: the UI invokes a command string absent from a shell's generate_handler![]. Reverse (backlog item 46): a shell registers a *_scoped command that no client invokes, so its permission check guards nothing -- the mirror of the gap the item-46 sweep kept finding, and the reason three SECURITY_MANAGE / SETTINGS_EDIT gates were mistaken for live security posture for several rounds. Both directions use dated allowlist sections (desktop/tablet, plus scoped_orphans for the reverse) and both self-clean, so neither list can accrete. Third direction, added 2026-09-18: an entry no direction reproduces -- production UI code names it nowhere and the shell does not register it -- now FAILS the run instead of being printed as info[<shell>-unreachable] while the run returned 0. It was the last population this file accepted and graded nothing about, and the three entries it found were deleted in the same change (desktop list_categories, list_products; tablet list_products -- the tablet's unscoped products command still exists in products.rs and stays an F-006 deletion candidate), so a shell section now carries measured gaps only and the entry counts went 11 -> 9 and 139 -> 138. Measured 2026-09-18: 441 UI command strings; desktop 455 registered / 9 unregistered UI names / 3 unregistered fns; tablet 320 registered / 138 unregistered UI names / 3 unregistered fns. The 25 allowlisted scoped orphans are a WORK QUEUE, not a clean bill -- most look like dead surface for F-006 to remove. --write-allowlist preserves sections it does not own. Runs in CI at dev-ci.yml#static-gates and in check.sh; the note claiming it local-only was itself stale and was corrected here.",
-      "ci": { "workflow": "dev-ci.yml", "job": "static-gates" },
-      "runners": { "check.sh": ["ipc parity"] }
+      "_note": "Added 0.0.37. scripts/verify-ipc-parity.py enforces three directions. Forward: the UI invokes a command string absent from a shell's generate_handler![]. Reverse (backlog item 46): a shell registers a *_scoped command that no client invokes, so its permission check guards nothing -- the mirror of the gap the item-46 sweep kept finding, and the reason three SECURITY_MANAGE / SETTINGS_EDIT gates were mistaken for live security posture for several rounds. Both directions use dated allowlist sections (desktop/tablet, plus scoped_orphans for the reverse) and both self-clean, so neither list can accrete. Third direction, added 2026-09-18: an entry no direction reproduces -- production UI code names it nowhere and the shell does not register it -- now FAILS the run instead of being printed as info[<shell>-unreachable] while the run returned 0. It was the last population this file accepted and graded nothing about, and the three entries it found were deleted in the same change (desktop list_categories, list_products; tablet list_products -- the tablet's unscoped products command still exists in products.rs and stays an F-006 deletion candidate), so a shell section now carries measured gaps only and the entry counts went 11 -> 9 and 139 -> 138. Measured 2026-09-18: 441 UI command strings; desktop 455 registered / 9 unregistered UI names / 3 unregistered fns; tablet 320 registered / 138 unregistered UI names / 3 unregistered fns. The 25 allowlisted scoped orphans are a WORK QUEUE, not a clean bill -- most look like dead surface for F-006 to remove. --write-allowlist preserves sections it does not own. Runs in CI at dev-ci.yml#ipc-parity and in check.sh; the note claiming it local-only was itself stale and was corrected here. MOVED 2026-09-24: this gate and its --self-test left dev-ci.yml#static-gates for a job of their own, because the self-test measured 209s and 216s on two runs -- 33% of a job that also gated ~25 cheap checks. The real gate runs first in the new job so an actual parity violation still reports in ~30s; the self-test, which answers a rarer question, takes the slower slot. Path-gated on rust OR ui, since a parity break can only come from crates/, apps/*/src or ui/.",
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "ipc-parity"
+      },
+      "runners": {
+        "check.sh": [
+          "ipc parity"
+        ]
+      }
     },
     {
       "id": "topology-parity",
       "label": "Topology contract parity",
       "status": "required",
       "_note": "Added 0.0.37. scripts/verify-topology-parity.py keeps the vendored kasirmu-core copy and the UI copy of topologySemantics.json byte-identical, since both sides of the IPC boundary read it. Runs in dev-ci.yml#static-gates and locally via scripts/check.sh. (Corrected 2026-09-20, closing the note half of GI-1.)",
-      "ci": { "workflow": "dev-ci.yml", "job": "static-gates" },
-      "runners": { "check.sh": ["topology contract parity"] }
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "static-gates"
+      },
+      "runners": {
+        "check.sh": [
+          "topology contract parity"
+        ]
+      }
     },
     {
       "id": "invoke-token-parity",
       "label": "IPC invoke token parity",
       "status": "required",
       "_note": "Added 0.0.37 (TDD round AE). scripts/verify-invoke-parity.py fails when ui/src/api invokes a command whose Rust signature requires session_token without carrying a sessionToken payload -- the round-AC class (edc.ts card-present wrappers shipped with no token; caught by hand, invisible to tsc/vitest). Union semantics across BOTH shells (desktop + tablet share the ui front-end). The unregistered-command class is intentionally NOT here: verify-ipc-parity.py (F-008/F-050) owns it with its own allowlist.",
-      "ci": { "workflow": "dev-ci.yml", "job": "static-gates" },
-      "runners": { "check.sh": ["invoke token parity"] }
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "static-gates"
+      },
+      "runners": {
+        "check.sh": [
+          "invoke token parity"
+        ]
+      }
     },
     {
       "id": "scoped-ambient-reads-self-test",
       "label": "Scoped ambient reads self-test",
       "status": "required",
       "runners": {
-        "check.sh": ["scoped ambient reads"]
+        "check.sh": [
+          "scoped ambient reads"
+        ]
       },
       "ci": {
         "workflow": "dev-ci.yml",
@@ -182,7 +385,9 @@
       "label": "Unguarded ambient IPC call sites",
       "status": "required",
       "runners": {
-        "check.sh": ["unguarded ambient ipc calls"]
+        "check.sh": [
+          "unguarded ambient ipc calls"
+        ]
       },
       "ci": {
         "workflow": "dev-ci.yml",
@@ -190,80 +395,187 @@
       },
       "_note": "Reads ipc-parity-allowlist.json and fails when a command a shell does NOT register is called from production code outside an ADR #7 token check. Added after round 66 found get_cart_deduction_location sitting in that allowlist as accepted debt while PosScreen called it unconditionally, so every desktop sale with a stock-target item threw; round 67 found two more the same way (PaymentModal's shortfall-retry receipt read, and EodReportScreen)."
     },
-
     {
       "id": "no-hardcoded-money-format",
       "label": "No hardcoded exp-2 money formatting",
       "status": "required",
-      "runners": { "check.sh": ["hardcoded-money-format"] },
+      "runners": {
+        "check.sh": [
+          "hardcoded-money-format"
+        ]
+      },
       "_note": "Was ci.yml#rust-money-format. Runs in dev-ci.yml#static-gates, verified green locally.",
-      "ci": { "workflow": "dev-ci.yml", "job": "static-gates" }
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "static-gates"
+      }
     },
     {
       "id": "test-shadow-copies",
       "label": "Test shadow copies",
       "status": "required",
       "_note": "Added 0.0.37. scripts/verify-test-shadow-copies.py fails when a test file redeclares a top-level production function it does not import AND the two bodies are similar (Jaccard >= 0.50 on non-keyword tokens). Five such suites were removed in 1c153ef7, 80216a2e, b270aba2, 314b7783, a695d3af and 314b7783's was the proof this is not cosmetic: its copied in-flight guard keyed on order.status where production keys on order.id, the author annotated the difference 'simplified', and the test named for that guard passed against a rule the app never had. Ships with --self-test (four cases, including an empty-corpus case that refuses to report clean) because a static gate with no liveness case is indistinguishable from one that passes. Pure python with no toolchain deps. Runs in dev-ci.yml#static-gates and locally via scripts/check.sh. (Corrected 2026-09-20, closing the note half of GI-1.)",
-      "ci": { "workflow": "dev-ci.yml", "job": "static-gates" },
-      "runners": { "check.sh": ["test shadow copies"] }
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "static-gates"
+      },
+      "runners": {
+        "check.sh": [
+          "test shadow copies"
+        ]
+      }
     },
     {
       "id": "docker-dry-run",
       "label": "Docker build smoke (--docker-dry-run)",
       "status": "required",
-      "runners": { "check.sh": ["docker build"] },
-      "_note": "Local-only by necessity, not by oversight. check.sh:405 runs `docker build -f ops/docker/Dockerfile.server -t oz-pos-cloud:local`; every container workflow in .github/workflows is retired to .bak (docker-*.yml.bak), so no live job builds an image and there is nowhere to cite. Recorded here so the absence is a decision rather than a gap: on a clone without core.hooksPath nothing builds the server image before merge."
+      "runners": {
+        "check.sh": [
+          "docker build"
+        ]
+      },
+      "_note": "Local-only by necessity, not by oversight. check.sh:564 runs `docker build -f ops/docker/Dockerfile.server -t kasir-cloud:local`; every container workflow in .github/workflows is retired to .bak (docker-*.yml.bak), so no live job builds an image and there is nowhere to cite. Recorded here so the absence is a decision rather than a gap: on a clone without core.hooksPath nothing builds the server image before merge."
     },
     {
       "id": "migration",
       "label": "Migration smoke",
       "status": "required",
-      "runners": { "check.sh": ["migration"] },
+      "runners": {
+        "check.sh": [
+          "migration"
+        ]
+      },
       "_note": "Local-only. check.sh:98-99 run `cargo run -p kasirmu-cli -- migrate` twice (smoke + idempotency). No CI job does. ⚠ The section comment at check.sh:97 says 'mirrors CI `migration` job' and that is FALSE -- dev-ci.yml's ten jobs are changes, website, cargo-check, cargo-nextest, ui-test, i18n, ci-docs-drift, static-gates, release-readiness, northflank-deploy; none is named `migration`. Distinct from pg-schema-drift and migration-column-types, which ARE CI-backed in static-gates since 0.0.37; this entry is the SQLite migrate-up path, which never is."
     },
     {
       "id": "skill-drift",
       "label": "Skill drift guard",
       "status": "required",
-      "runners": { "check.sh": ["skill-drift"] },
+      "runners": {
+        "check.sh": [
+          "skill-drift"
+        ]
+      },
       "_note": "Was ci.yml#skill-drift-tests. Runs in dev-ci.yml#static-gates, verified green locally.",
-      "ci": { "workflow": "dev-ci.yml", "job": "static-gates" }
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "static-gates"
+      }
+    },
+    {
+      "id": "skill-drift-tests",
+      "label": "Skill drift guard self-tests",
+      "status": "required",
+      "runners": {
+        "check.sh": [
+          "skill-drift-guard-tests"
+        ]
+      },
+      "_note": "The 32 bats tests that prove the skill-drift guard still detects what it claims to detect. They ran in ci.yml#skill-drift-tests until that workflow was retired to attic/ci.yml.bak, which left the guard as the only thing enforcing the guard. Restored as a dev-ci.yml#static-gates step that installs bats by apt. check.sh runs them only when bats is on PATH and WARN-SKIPS otherwise, so a Windows or bare dev machine does not go red over a missing test runner. Not the same gate as skill-drift: that one runs the detector, this one runs the tests of the detector.",
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "static-gates"
+      }
+    },
+    {
+      "id": "font-claims",
+      "label": "Font claims",
+      "status": "required",
+      "runners": {
+        "check.sh": [
+          "font-claims"
+        ]
+      },
+      "_note": "check-font-claims.mjs re-executes the font lane’s published claims andcompares each against the expectation stated in the script, so a claimcannot rot silently. It had no caller at all: the only job that ever ranit was retired to attic/ci.yml.bak, which is exactly the failure its ownheader names — \"a documented check nobody executes becomes adescription of a past run\". 17 s. Node is a hard requirement here, sounlike skill-drift-tests there is no skip branch: a missing node is abroken checkout, not an optional dependency.",
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "static-gates"
+      }
     },
     {
       "id": "panic-inventory",
       "label": "Panic inventory",
       "status": "required",
-      "runners": { "check.sh": ["panic-inventory"] },
+      "_runner_note": "The check.sh runner label is NOT a step() name. check.sh runs this one as an INLINE block (scripts/check.sh:373-390, `echo -n \"panic-inventory scan... \"` around `python3 scripts/scan-unwrap-panic.py --fail-on-recoverable`), not through `step \"...\"` the way the other 141 do. A cross-check that resolves runner labels against step() names therefore reports it missing, which is a false positive -- the scan runs, and it is required. Recorded here so the next reader does not \"fix\" the label by renaming it to something that still matches nothing, or conclude the gate is unhooked.",
+      "runners": {
+        "check.sh": [
+          "panic-inventory"
+        ]
+      },
       "_note": "Was ci.yml#rust-panic-inventory, then had no CI job at all while scan-unwrap-panic.py was red. R36-12 found the redness was the SCANNER's bug -- it did not track /* */ block comments across lines, so it read the repo's audit stamps as code (6 false positives) and, in apps/cloud-server/src/redirect.rs, treated a stamp mentioning #[cfg(test)] as the start of test code and stopped checking the rest of the file (1 suppressed real finding). Fixed, triaged, and now enforced in dev-ci.yml#static-gates.",
-      "ci": { "workflow": "dev-ci.yml", "job": "static-gates" }
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "static-gates"
+      }
+    },
+    {
+      "id": "pg-receipt-selftest",
+      "label": "PG receipt checker self-test",
+      "status": "required",
+      "runners": {
+        "check.sh": [
+          "pg receipt self-test"
+        ]
+      },
+      "_note": "Added 2026-09-27 with P0-2. verify-pg-tests-ran.py is the only reader of nextest's <flakyFailure> -- the shape in which a retry-rescued failure is recorded while the report's own totals still say failures=\"0\", which is why a rerun-until-green suite can look clean. Its VERDICT has run per JUnit file in cargo-nextest since that step landed; its SELF-TEST ran in neither dev-ci.yml nor check.sh, so a regression inside the checker would have stayed invisible while every grade it produced still looked authoritative. That is not hypothetical: adding this step found the self-test RED -- the tree had grown to 88 skip arms across 16 files in 3 crates while ARM_BASELINE still read 84, so the census guard's own expectation had been firing on stale numbers (growth came from the kasirmu-api pg.rs split, whose pg_tests.rs alone holds 15). ARM_BASELINE moved 84 -> 88 in the same commit, per the contract at its own comment; ARM_FLOOR stayed at 65 deliberately, because raising a floor to track a bigger census erodes the headroom that absorbs a legitimate arm conversion. Same principle as auditor-selftests: a checker that cannot run is indistinguishable from a checker that found nothing.",
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "static-gates",
+        "steps": [
+          "PG receipt checker self-test"
+        ]
+      }
     },
     {
       "id": "a11y-advisory",
       "label": "A11y regression (advisory)",
       "status": "advisory",
-      "runners": { "check.sh": ["a11y"] },
-      "_note": "Local-only AND advisory by design: check.sh:196-200 runs `npm run test:a11y` and prints WARN on regressions without failing, because known product-level a11y bugs are tracked and a blocking gate would be disabled within a day. ⚠ The message at check.sh:200 says 'non-blocking, see CI', which misleads -- `git grep a11y .github/workflows/dev-ci.yml` returns nothing, and AGENTS.md states plainly that 'E2E, a11y, security and nightly suites are NOT enforced in CI'. A green Dev CI run is not evidence a11y was checked."
+      "runners": {
+        "check.sh": [
+          "a11y"
+        ]
+      },
+      "_note": "C24 correction. The old note said a11y was checked nowhere but locally, on the strength of `git grep a11y .github/workflows/dev-ci.yml` returning nothing. That grep was looking for a dedicated job and missed the real execution path: dev-ci.yml#ui-test (line ~467) runs `cd ui && npm test`, which is bare `vitest run`, and ui/vite.config.ts:129 excludes only ['e2e/**','node_modules/**'] -- so every file under src/__tests__/a11y/ runs in CI and an axe violation fails the job. Verified non-vacuously by injecting an unnamed <button> into a rendered subtree and watching the suite exit 1. This ENTRY is still advisory in the sense that check.sh's separate verbose re-run does not fail the gate; enforcement in CI is real and comes from ui-test, not from here. The genuine C24 gap is coverage: each screen's suite asserts a single rendered state, so conditional subtrees are never scanned (StaffLoginScreen is checked only on the username step, leaving the whole PIN pad unscanned)."
     },
     {
       "id": "feature-registry",
       "label": "Feature registry parity",
       "status": "required",
-      "ci": { "workflow": "dev-ci.yml", "job": "static-gates" },
-      "runners": { "check.sh": ["feature registry"] }
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "static-gates"
+      },
+      "runners": {
+        "check.sh": [
+          "feature registry"
+        ]
+      }
     },
     {
       "id": "plugin-guide-parity",
       "label": "Plugin-guide parity",
       "status": "required",
-      "ci": { "workflow": "dev-ci.yml", "job": "static-gates" },
-      "runners": { "check.sh": ["plugin-guide parity"] }
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "static-gates"
+      },
+      "runners": {
+        "check.sh": [
+          "plugin-guide parity"
+        ]
+      }
     },
     {
       "id": "ci-docs-drift",
       "label": "CI docs drift",
       "status": "required",
       "_note": "History worth keeping: this was declared 'required' while pointing at ci.yml#ci-docs-drift, a workflow retired to .bak by 23c96330, so it enforced nothing anywhere and the status was false. It was downgraded to 'advisory' when first wired into dev-ci.yml because the checker was reporting 68 items it had no vocabulary for. R36-10 closed those out to 0 and the step is now blocking -- the stated condition. advisory_at is removed because the step no longer sets continue-on-error. Two steps in each runner since 0.0.37: the drift check, and `--self-test`, which mutates four of the classifiers this gate depends on and requires each to be noticed, plus a control that must still pass. It exists because this is the gate that polices every other gate's CI claim and was the only one of the family without one, so \"drift: 0 items\" was indistinguishable from \"the checker stopped looking\" -- the failure that let the manifest rot. `ci.steps` is a list because the job has two relevant steps; singular `step` is only read by the advisory_at == \"step\" path.",
-      "runners": { "check.sh": ["ci docs drift", "ci docs drift self-test"] },
+      "runners": {
+        "check.sh": [
+          "ci docs drift",
+          "ci docs drift self-test"
+        ]
+      },
       "ci": {
         "workflow": "dev-ci.yml",
         "job": "ci-docs-drift",
@@ -278,67 +590,114 @@
       "label": "CI path router regression test",
       "status": "required",
       "_note": "scripts/test-ci-routing.sh extracts the Route shell body from dev-ci.yml and runs it against the synthetic diffs pinned in that file -- it quotes no count on purpose, matching .githooks/pre-push, because the figure that used to sit here was true when written and had rotted by the time anyone looked. The authoritative list stays in the script. c5ec6381 shipped the router with no committed test, while the 0.0.36 release notes claimed one existed -- this file makes that claim true and keeps it true.",
-      "runners": { "check.sh": ["ci routing test"] },
-      "ci": { "workflow": "dev-ci.yml", "job": "ci-docs-drift" }
+      "runners": {
+        "check.sh": [
+          "ci routing test"
+        ]
+      },
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "ci-docs-drift"
+      }
     },
     {
       "id": "windows-config",
       "label": "Windows config drift (NSIS installMode + asInvoker manifests)",
       "status": "required",
-      "runners": { "check.sh": ["windows config"] },
+      "runners": {
+        "check.sh": [
+          "windows config"
+        ]
+      },
       "_note": "Was ci.yml#windows-config. Runs in dev-ci.yml#static-gates, verified green locally.",
-      "ci": { "workflow": "dev-ci.yml", "job": "static-gates" }
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "static-gates"
+      }
     },
     {
       "id": "unified-healthcheck",
       "label": "Unified healthcheck script test",
       "status": "required",
-      "runners": { "check.sh": ["healthcheck script test"] },
+      "runners": {
+        "check.sh": [
+          "healthcheck script test"
+        ]
+      },
       "_note": "Was ci.yml#unified-healthcheck. Runs in dev-ci.yml#static-gates (20 assertions), verified green locally.",
-      "ci": { "workflow": "dev-ci.yml", "job": "static-gates" }
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "static-gates"
+      }
     },
     {
       "id": "bundle-budget",
       "label": "Bundle budget",
       "status": "required",
-      "runners": { "check:all": ["bundle budget", "bundle budget (mobile)"] },
+      "runners": {
+        "check:all": [
+          "bundle budget",
+          "bundle budget (mobile)"
+        ]
+      },
       "_note": "gzip budgets on BOTH artifacts built from one `ui/` tree. Enforced by the job named in this row's `ci` block: `dev-ci.yml#ui-test` declares `Bundle budget (desktop)` and `Bundle budget (mobile)`, which are the first CI steps to compile `ui/` at all -- each `bundle:check` script builds before it measures. The same two gates are declared locally in scripts/check-ui.mjs (`npm run check:all`), cited by gate name rather than line number, because this row once cited `check-ui.mjs:139` and it had rotted to :157. The woff2 line is `BUDGET_WOFF2_KB`, default 400 KB against a measured 296 KB -- 74 % of a ceiling set against today's payload, so the realistic way to fail it is a second family or a wider subset. PERF-02; the tablet leg closes notes.md item 38.",
-      "ci": { "workflow": "dev-ci.yml", "job": "ui-test" }
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "ui-test"
+      }
     },
     {
       "id": "data-testid-compliance",
       "label": "Data-testid compliance",
-      "status": "required",
-      "runners": { "check:all": ["testid"] },
-      "_note": "Ratchet on data-testid literals across ui/src: R1 kebab-case, R2 no full literal produced by two files. Its ONLY runner is check:all (scripts/check-ui.mjs leg 0); no workflow runs it yet, so a violation is invisible to CI today and only `cd ui && npm run check:all` catches it. Frozen spec: docs/plans/todo-testid-checker-spec.md."
+      "status": "advisory",
+      "runners": {
+        "check:all": [
+          "testid"
+        ]
+      },
+      "_note": "Ratchet on data-testid literals across ui/src: R1 kebab-case, R2 no full literal produced by two files. Its ONLY runner is check:all (scripts/check-ui.mjs leg 0); no workflow runs it yet, so a violation is invisible to CI today and only `cd ui && npm run check:all` catches it. Frozen spec: docs/plans/todo-testid-checker-spec.md. RELABELLED required -> advisory 2026-09-25 (C25) for the same reason as perf-smoke: declared required while no workflow could fail on it. C25 also forbids relabelling clippy or e2e this way - those two have real local runners and belong in CI, not in the advisory column."
     },
     {
       "id": "e2e",
       "label": "E2E tests",
       "status": "required",
-      "runners": { "check:all": ["e2e"] },
+      "runners": {
+        "check:all": [
+          "e2e"
+        ]
+      },
       "_note": "No CI job. Needs the Docker backend; check.sh L203 states 'E2E is NOT run here'. Reachable only via `cd ui && npm run check:all`. Was ci.yml#e2e."
     },
     {
       "id": "perf-smoke",
       "label": "Perf smoke",
-      "status": "required",
-      "runners": { "check:all": ["perf smoke"] },
-      "_note": "Local-only, and conditional even there: check-ui.mjs:157 runs `npm run test:e2e:perf` (Playwright desktop + tablet budgets, PERF-10) but records status 'skip' when Playwright browsers are not installed, so on a fresh clone it silently does nothing. No CI job runs it. Two layers of opt-out on a gate marked required."
+      "status": "advisory",
+      "runners": {
+        "check:all": [
+          "perf smoke"
+        ]
+      },
+      "_note": "Local-only, and conditional even there: check-ui.mjs:157 runs `npm run test:e2e:perf` (Playwright desktop + tablet budgets, PERF-10) but records status 'skip' when Playwright browsers are not installed, so on a fresh clone it silently does nothing. No CI job runs it. Two layers of opt-out on a gate marked required. RELABELLED required -> advisory 2026-09-25 (C25): the row's own text described a gate that cannot fail a build, so advisory is the honest status rather than a demotion. Enforcement is unchanged - nothing ran it before and nothing runs it now; only the claim moved."
     },
     {
       "id": "rust-test-apps",
       "label": "Rust test apps",
       "status": "required",
       "_note": "Was ci.yml#rust-test-apps. dev-ci.yml's nextest carries no --exclude flags, so the app crates are in scope; check.sh's equivalent DOES exclude kasirmu-app, which is why this looked uncovered.",
-      "ci": { "workflow": "dev-ci.yml", "job": "cargo-nextest" }
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "cargo-nextest"
+      }
     },
     {
       "id": "rust-test-full",
       "label": "Rust test full",
       "status": "required",
       "_note": "Was ci.yml#rust-test-full. dev-ci.yml#cargo-nextest runs the full workspace with all features and no excludes.",
-      "ci": { "workflow": "dev-ci.yml", "job": "cargo-nextest" }
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "cargo-nextest"
+      }
     },
     {
       "id": "sync-slow-tests",
@@ -374,7 +733,11 @@
       "id": "audit",
       "label": "Dependency audit (cargo-deny, advisory)",
       "status": "advisory",
-      "runners": { "check.sh": ["supply chain advisories"] },
+      "runners": {
+        "check.sh": [
+          "supply chain advisories"
+        ]
+      },
       "_note": "RE-FILED, not restored: the runner named here is the local scripts/check.sh leg 'supply chain advisories (advisory)', which runs 'cargo deny check' against deny.toml and NEVER fails the run. Deliberately NO 'ci' block — no live workflow runs it (`grep -nE 'cargo deny|cargo audit|osv' .github/workflows/dev-ci.yml .github/workflows/release.yml` exits 1), so naming a job here would be a claim this checker is entitled to catch. Two of its outcomes are SKIPs — cargo-deny not installed, and the advisory database unreachable — and its fourth outcome is a non-blocking WARN, so a green check.sh is NOT proof the supply chain was checked; neither is a green PR, since .githooks/pre-push runs scripts/run-pre-push.py and never calls check.sh. Rust only: `npm ci --no-audit` in check.sh deliberately SUPPRESSES the npm side, and cargo-audit itself still runs nowhere — this row covers cargo-deny. Was 'retired / Dependency audit', ci.yml#audit only, and required-on-push before that."
     },
     {
@@ -383,6 +746,70 @@
       "status": "retired",
       "_note": "cargo-fuzz ran in ci.yml#fuzz only. The RUSTC_WRAPPER='' note recorded below is still accurate for whoever restores it.",
       "note": "The fuzz job deliberately sets RUSTC_WRAPPER: '' in its job env. The ubuntu runner image globally wraps rustc with sccache, which breaks cargo-fuzz's --target build (its rustc version probe execs the resolved nightly toolchain path directly and dies with 'could not execute process sccache .../bin/rustc -vV'). The fuzz job is the only job affected (nightly + --target), so sccache must stay disabled there — do NOT re-add it. Caching is instead handled by Swatinem/rust-cache@v2 with `workspaces: tools/fuzz` (cargo-fuzz builds into tools/fuzz/target/, which default workspace discovery misses)."
+    },
+    {
+      "id": "fuzz-typecheck",
+      "label": "Fuzz targets typecheck",
+      "status": "required",
+      "runners": {
+        "check.sh": [
+          "fuzz typecheck"
+        ]
+      },
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "fuzz-typecheck",
+        "steps": [
+          "Typecheck fuzz targets (all features)"
+        ]
+      },
+      "_note": "Added 2026-09-27 with P0-3. This is deliberately NOT a restoration of the retired `fuzz` gate above, and the distinction is the point: the fuzzers do not RUN here. Seven targets sat in tools/fuzz compiled by nothing, and the rot was invisible because nothing could get far enough to report it — all four path dependencies read `../foundation`, `../crates/kasirmu-lua`, `../crates/kasirmu-core`, `../crates/kasirmu-plugin`, which resolve against tools/fuzz/Cargo.toml to tools/foundation et al. and do not exist. `cargo fuzz build` died at MANIFEST LOAD, before rustc ran, so there was no compile error to notice and no job to run one; the targets had been unreachable since the directory acquired its extra level. Fixed to `../../` and verified: `cargo check --bins --all-features` in tools/fuzz now finishes with zero errors across all seven (measured 2026-09-27), and `--all-features` is load-bearing because cart_deser, kasirpkg_parse and manifest_parse live behind kasirmu-core-fuzz / kasirmu-plugin-fuzz — a default-feature check would silently typecheck four of seven. A fuzz RUN stays out of reach for a different reason, recorded rather than papered over: libFuzzer + AddressSanitizer has no MSVC runtime in the nightly toolchain (`*asan*` under the Windows rustlib is empty), which makes the linked build Linux-only. Same shape as the `panic-inventory` entry: a target nothing compiles is indistinguishable from a target that compiles fine."
+    },
+    {
+      "id": "unsafe-safety",
+      "label": "Unsafe constructs carry a SAFETY comment",
+      "status": "required",
+      "runners": {
+        "check.sh": [
+          "unsafe safety comments",
+          "unsafe safety comments (tree)"
+        ]
+      },
+      "_note": "Added 2026-09-28 with P3-3. P2-6 raised `#![deny(unsafe_code)]` from 7 to 38 of 43 crate roots, so the crates holding NO unsafe cannot grow any — but five legitimately keep it (kasirmu-logging syslog/eventlog FFI, kasirmu-security CredWriteW/CredReadW, kasirmu-hal JNI + Bluetooth, kasirmu-lua's Send/Sync impls, and the Tauri shells' `#[unsafe(link_section)]`), and a deny cannot protect those. Nothing else did either: measured 2026-09-27, no script and no gates.json entry mentioned SAFETY at all, so the only thing standing between a new unsafe block in those five and an unreviewed justification was the reviewer's eye. Now it is mechanical — `scripts/verify-unsafe-safety.py` fails any real construct without a `SAFETY:` comment, with a 18-case `--self-test`. LOCAL-ONLY for now: no CI step was added, so like `root policy` and `no-raw-params` this runs in `check.sh` and pre-push rather than on a PR. Adding a `static-gates` step is the natural follow-up and needs no code change, only a dev-ci.yml step. TWO MEASURED TRAPS the checker had to be taught, both recorded in its docstring: (a) grepping `unsafe` is nearly useless in this repo because the audit stamps are doc comments that say things like 'zero unsafe, no FFI/IO' and '8 unsafe blocks (not 6 — prior stamp miscount)' — an unanchored `unsafe impl` match flagged five sites in kasirmu-lua that were all PROSE about unsafe, two of them explaining that the crate deliberately does NOT implement it, and one a test assertion whose string literal starts with the phrase; (b) a strict same-or-adjacent-line rule for SAFETY produced 12 false positives because this repo documents a whole statement GROUP above the first of several calls (db_tests.rs:160-170 justifies four separate env calls in one block, windows.rs:66-73 justifies a block from six lines up). Hence the anchored arm, the comment-line filter, and the 12-line lookback."
+    },
+    {
+      "id": "rust-doc",
+      "label": "Rustdoc (deny warnings)",
+      "status": "required",
+      "runners": {
+        "check.sh": [
+          "rustdoc (deny warnings)"
+        ]
+      },
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "rust-doc"
+      },
+      "_note": "Added 2026-09-28 with P2-4. Until this row, `cargo doc` had NO runner anywhere — not in check.sh, not in any live workflow, not in release.sh — so a broken intra-doc link was never a failure in any context. It is the exact shape of `rust-clippy` before C25 and `fuzz` before P0-3: a surface that looked covered because nothing reported on it. Measured 2026-09-28, the undeclared check was hiding 295 errors across 20 crates. SIX of them were not link noise but docs confidently describing something that does not exist: `KdsSyncEvent::OrderRecalled` (the variant is `Recalled`), `DriverRegistry::apply_config` (it is a FREE FUNCTION, not a method), `BridgeError::NotFound` (x3 — no such variant; the enum has Core/Hardware/Invalid/PermissionDenied/InvalidSession/TopologyValidation/Internal), `WebhookEndpoint::redacted` (no such method), and `get_setup_status` (x2 — the same file marks it REMOVED in a comment 10 lines above the link). THE ENV VAR AND THE RUNNER LANDED IN ONE COMMIT, and that is the whole point: `RUSTDOCFLAGS: -D warnings` set on its own would have been a dead setting — rustdoc is the only reader, and with no `cargo doc` invocation it would have changed nothing while reading like a gate in review. Both halves or neither. TWO TRAPS this gate had to avoid, both measured rather than assumed: (1) the LOCAL step must pass `RUSTDOCFLAGS` inline — without it `cargo doc` reports warnings and STILL EXITS 0, so the step would be decoration that can never fail; (2) `--no-deps` is required, because without it a dependency's own doc warnings would fail this gate for a crate this repo does not own. CI runs `cargo doc --workspace --no-deps` with the variable supplied by the workflow-level env block (dev-ci.yml:10-16); local runs supply it inline per step. The acceptance command `RUSTDOCFLAGS=\"-D warnings\" cargo doc --workspace --no-deps` was verified to exit 0 with zero errors AND zero warnings before either half landed — the ordered acceptance in P2-4 is what kept this from being a red gate on every PR, and it is worth keeping in mind for the next gate added this way."
+    },
+    {
+      "id": "coverage-floors",
+      "label": "Per-crate coverage floors",
+      "status": "required",
+      "runners": {
+        "check.sh": [
+          "coverage floors"
+        ]
+      },
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "coverage-floors",
+        "steps": [
+          "Coverage report",
+          "Grade against the floors"
+        ]
+      },
+      "_note": "Added 2026-09-27 with P1-2. Coverage INSTRUMENTATION has existed for a long time (scripts/coverage.sh, cargo-llvm-cov, HTML + lcov output) and coverage ENFORCEMENT did not: the script prints a percentage and exits 0 whatever the number is, and the `coverage` gate above has been `retired` since ci.yml was renamed to .bak. A report nobody reads cannot fire. This closes that, on the rule the checklist states for itself -- 'an unrecorded threshold is not a threshold' -- so the figure lives in scripts/coverage-floors.json rather than in prose. PER-CRATE, not a workspace average, because P1-2 says a global average 'hides the crates that matter' and the measurement bears it out: measured 2026-09-27, foundation 99.4%, kasirmu-core 83.8%, modules-inventory 78.4%, platform-sync 68.7%, workspace 73.9%. A single 70% floor would have passed with platform-sync -- the crate this checklist calls the highest-risk surface -- dropping a full point, because foundation's 99.4% carried it. Each floor sits 2 points BELOW its measured value: a ratchet that freezes the level reached and fires on regression, not a target that goes red on day one and teaches people to ignore it. The checker is unit-tested in both directions (`--self-test`, 13 cases, including that a 95% workspace average still fails a 60% crate and that summing cannot become averaging). Two constraints worth naming: cargo llvm-cov RUNS THE SUITE and aborts on any failing test (measured: an unrelated in-flight failure in kasirmu-bridge aborted a workspace run), so in check.sh a measurement failure is reported as 'could not measure' rather than 'coverage regressed' -- those are different problems; and the job needs the same system dependencies as cargo-nextest because it links the workspace."
     },
     {
       "id": "flaky-quarantine",
@@ -469,54 +896,133 @@
       "label": "Release workflow validation",
       "status": "required",
       "_note": "R36-11. release.yml was renamed to release.yml.bak by 23c96330 with an empty commit message and nothing replaced it, so pushing a v* tag produced no installers for a whole release cycle. A workflow that never runs cannot report its own breakage, so this validates statically what needs no tag, key material, or macOS/Windows runner: action pins, referenced paths, docker residue left by the desktop-only restore, an inventory gate demanding an artifact no matrix entry builds, and that a missing UPDATER_PRIVATE_KEY still hard-fails rather than publishing an unsigned manifest every client rejects. Ships with --self-test (8 mutations) so a regression cannot silently turn it into a no-op.",
-      "runners": { "check.sh": ["release workflow validation"] },
-      "ci": { "workflow": "dev-ci.yml", "job": "static-gates" }
+      "runners": {
+        "check.sh": [
+          "release workflow validation"
+        ]
+      },
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "static-gates"
+      }
     },
     {
       "id": "release-readiness",
       "label": "Release readiness",
       "status": "required",
       "_note": "Runs scripts/check-updater-compat.mjs, which builds a Rust harness pinned to the minisign-verify version the real Tauri updater client uses and proves that signatures from generate-latest-json.mjs VERIFY, that a tampered installer is REJECTED, and that the pubkey committed in tauri.conf.json parses. Before this it ran ONLY inside release.yml.bak, i.e. nowhere at all -- so the signing chain could have rotted silently alongside the retired workflow and the first symptom would be customers unable to auto-update. Path-gated on the release toolchain and the updater pubkey because the harness needs a cold cargo build. No `runners` key: that field names LOCAL entry points, and this one needs a cargo build, so it is CI-only. DEPLOY COUPLING IS A DECISION, NOT AN OVERSIGHT (2026-09-14): `northflank-deploy` deliberately omits this gate from its `needs` -- that deploy POSTs the commit sha to Northflank, which builds ops/docker/Dockerfile.unified, a BACKEND container consuming no installer, no latest.json and no updater pubkey, while release.yml gates this chain where it binds (release-validate runs the same scripts/check-updater-compat.mjs, release-build needs release-validate, release-publish needs release-build). Adding the edge here would bind 100% of deploys to a check unrelated to the artifact shipped, because the changes router forces release=true on every non-PR event while the release router paths held 140 of 7,841 commits over the last 90 days (1.79%), and because its own failure surface (an unstable rust-toolchain pin, node 24, a cold cargo build under the workflow-wide RUSTFLAGS) can stop a deploy it cannot affect; narrowing the route instead is a no-op on the deploy path. Read `status` as POLICY, not as a deploy graph: required-by-policy and not-a-deploy-prerequisite are both true at once, so the missing `needs` edge is this note, not a bug to file. Residual risk, stated: `main` is unprotected, so a red run of this gate is still mergeable.",
-      "ci": { "workflow": "dev-ci.yml", "job": "release-readiness" }
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "release-readiness"
+      }
     },
     {
       "id": "doc-uniqueness",
       "label": "Doc uniqueness",
       "status": "required",
-      "ci": { "workflow": "dev-ci.yml", "job": "static-gates" },
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "static-gates"
+      },
       "_note": "Added in 0.0.36 after f3d9cca6 moved the repo-root subscription-tiers.md into docs/records/ without noticing docs/guides/ already had a copy from 28147fe4, leaving two tracked files both stamped 'single source of truth' for pricing with disagreeing entitlement rows. Carried a pair-specific baseline until the R36-14 product ruling (2026-09-07: docs/guides/ is the single authority; audit Premium+Enterprise, white-label Enterprise-only) removed the losing copy and emptied the baseline -- the promotion condition R36-10 set. Promoted to required with a ci block in the same ruling.",
-      "runners": { "check.sh": ["doc uniqueness"] }
+      "runners": {
+        "check.sh": [
+          "doc uniqueness"
+        ]
+      }
     },
     {
       "id": "eol-guard",
       "label": "EOL guard",
       "status": "required",
       "_note": "Added in 0.0.36 (R36-15). The pre-commit line-ending step filtered on 'git check-attr text' alone, which is wrong twice: it ignored '.gitattributes *.bat text eol=crlf' and stripped CRLF from the working tree (producing a phantom-dirty git status with zero content diff), and because '* text=auto' reports 'auto' for every path including binaries, a staged PNG had the 0D 0A in its signature deleted and the mangled blob re-staged -- verified on apps/desktop-tauri/icons/32x32.png, 1515 to 1507 bytes. Both are silent corruption behind a green hook. The test extracts the live guard from .githooks/pre-commit rather than copying it, so it cannot drift from what it polices, and it fails loudly if either guard disappears.",
-      "ci": { "workflow": "dev-ci.yml", "job": "static-gates" },
-      "runners": { "check.sh": ["eol guard"] }
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "static-gates"
+      },
+      "runners": {
+        "check.sh": [
+          "eol guard"
+        ]
+      }
     },
     {
       "id": "typecheck-gate",
       "label": "typecheck gate",
       "status": "required",
       "_note": "Added in 0.0.37. Guards the UI typecheck step of .githooks/pre-commit, which was added after ten commits landed with HEAD failing tsc -- Vitest injects describe/it/expect/beforeEach/vi at runtime, so a missing import passes 'npm run test' and only fails 'tsc --noEmit', and nothing ran that before commit. The step fires only when a commit stages ui/src TypeScript, so on a Rust-only or docs-only stretch it goes unexercised and is indistinguishable from a step someone deleted; this test extracts the live step from the hook and drives it against a throwaway repo with a stubbed npm, asserting it triggers on nested .ts/.tsx, stays off for CSS/Rust/CI/docs-only and empty indexes, honours KASIRMU_SKIP_TYPECHECK=1, aborts with rc=1 on a failing typecheck, and warns rather than silently passing when ui/node_modules is absent.",
-      "ci": { "workflow": "dev-ci.yml", "job": "static-gates" },
-      "runners": { "check.sh": ["typecheck gate"] }
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "static-gates"
+      },
+      "runners": {
+        "check.sh": [
+          "typecheck gate"
+        ]
+      }
+    },
+    {
+      "id": "typecheck-tripwire",
+      "label": "typecheck tripwire",
+      "status": "required",
+      "_note": "Promoted 2026-09-30. scripts/test-typecheck-tripwire.sh policed the SECOND typecheck guard in .githooks/post-commit -- the one that fires after a commit stages ui/src TypeScript -- and was wired to NO runner at all, in check.sh or in any workflow. The sibling test for the pre-commit step of the same name (test-typecheck-gate.sh) has been a required gate since 0.0.37, so the two guards looked equally defended and one was not. The tripwire defends the failure modes the pre-commit gate cannot see: a pathspec matching nothing, a block placed BELOW one of the hook's four early `exit 0` paths, and a verdict written when npm never ran. It extracts the live block between the '# tripwire-start' and '# tripwire-end' markers rather than reimplementing the trigger, so a copy in the test would pass forever while the real tripwire silently never ran. Measured cost under a second with only npm stubbed and a throwaway git repo, so it belongs beside its siblings in the job that already runs nine of them.",
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "static-gates",
+        "steps": [
+          "UI typecheck tripwire self-test"
+        ]
+      },
+      "runners": {
+        "check.sh": [
+          "typecheck tripwire"
+        ]
+      }
+    },
+    {
+      "id": "records-index-escaping",
+      "label": "records index escaping",
+      "status": "required",
+      "_note": "Promoted 2026-09-30. scripts/test-records-index-escaping.sh policed the cell sanitizer in scripts/generate-records-index.mjs -- the guard that stops a record label containing '](x)' from becoming a fabricated link in docs/records/README.md -- and was wired to NO runner. The generator itself does run, in ci-docs-drift, but that step is `--check`, which is happy with whatever the generator writes, so it can only ever say the output is faithful to the input; it says nothing about whether a hostile label is neutralised. An escaping regression would have shipped a generator that still regenerated its own index perfectly. The test drives the LIVE generator through KASIRMU_RECORDS_ROOT and then a frozen deliberately-unfixed one that MUST fail the same exploit assertion, which is what makes a green run evidence rather than a tautology. Measured 2.3s, and it writes only inside a mktemp dir.",
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "static-gates",
+        "steps": [
+          "Records index escaping self-test"
+        ]
+      },
+      "runners": {
+        "check.sh": [
+          "records index escaping"
+        ]
+      }
     },
     {
       "id": "cbm-hook-guard",
       "label": "post-commit index guard",
       "status": "required",
       "_note": "Added in 0.0.37. Guards .githooks/post-commit, which refreshes the codebase-memory graph every commit and had been dead for 535 commits (2026-09-05 01:32 to 2026-09-08) with nothing anywhere reporting it. Two causes, both invisible at commit time: it resolved the indexer off PATH, landing on the stale %LOCALAPPDATA%\\Programs build that refuses to join a newer running daemon (30s handshake timeout), and it sent that failure to /dev/null. A third, unrelated hazard was found while proving the fix: a file literally named 'nul' in the repo root -- what '2> nul' creates under Git bash, unlike cmd.exe -- aborts the indexer's discovery pass in ~2s before .cbmignore is consulted, so the whole root index fails with a generic 'Pipeline failed'. The test extracts the live resolve and ghost-quarantine blocks from the hook via markers rather than copying them, so it cannot drift from what it polices, and it FATALs if a marker disappears instead of passing vacuously. It asserts versioned-over-PATH precedence, numeric (not lexical) version ordering, both pin env vars, that PATH and the legacy install remain reachable as fallbacks, that untracked reserved-name ghosts are relocated to .git/cbm-ghosts while tracked paths are never touched, that no index output is pointed at /dev/null, that the hook is mode 100755 in the index, and end to end that a real 'git hook run post-commit' writes a start line, captures the indexer's stdout, records a zero exit status, clears a ghost, and honours CBM_SKIP_POST_COMMIT=1.",
-      "ci": { "workflow": "dev-ci.yml", "job": "static-gates" },
-      "runners": { "check.sh": ["cbm hook guard"] }
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "static-gates"
+      },
+      "runners": {
+        "check.sh": [
+          "cbm hook guard"
+        ]
+      }
     },
     {
       "id": "agents-mirrors",
       "label": "AGENTS.md mirror truthfulness",
       "status": "required",
-      "_note": "Added in 0.0.36. Two copies of the agent rules exist (root AGENTS.md, .agents/AGENTS.md); a third, .prime/AGENTS.md, was deleted with the .prime/ tree on 08-09-26 and its per-mirror mutation table went with it. scripts/bump-version.ps1 syncs only their version lines -- the file itself documents that nothing syncs the gate list. Twice in this release a mirror stated something the repo contradicted: .agents/AGENTS.md kept saying 'Steps 6, 7 and 8 have no CI backstop' after 13f2a1dc put Go into dev-ci.yml#static-gates, and root AGENTS.md claimed dev-ci 'runs on every PR and push' when it has no push trigger at all. The first is the mirror that governs work under .agents/, so an agent following it would believe Go changes are unguarded. Required and CI-blocking from day one, unlike ci-docs-drift, because it has no baseline and no pre-existing failures: ground truth is read from .githooks/pre-commit, .github/workflows/*.yml and Cargo.toml rather than asserted, so adding a gate or bumping the version updates the expectation without touching the checker. --self-test mutates each mirror and requires a named finding; a mutation that changes nothing is reported WRONG rather than passing silently, which is how the .prime phrasing gap was found and closed.",
-      "runners": { "check.sh": ["agents mirrors", "agents mirrors self-test"] },
+      "_note": "Added in 0.0.36. Two copies of the agent rules exist (root AGENTS.md, .agents/AGENTS.md); a third, .prime/AGENTS.md, was deleted with the .prime/ tree on 08-09-26 and its per-mirror mutation table went with it. scripts/bump-version.ps1 syncs only their version lines -- the file itself documents that nothing syncs the gate list. Twice in this release a mirror stated something the repo contradicted: .agents/AGENTS.md kept saying 'Steps 6, 7 and 8 have no CI backstop' after 13f2a1dc put Go into dev-ci.yml#static-gates, and root AGENTS.md claimed dev-ci 'runs on every PR and push' when it has no push trigger at all. The first is the mirror that governs work under .agents/, so an agent following it would believe Go changes are unguarded. Required and CI-blocking from day one, unlike ci-docs-drift, because it has no baseline and no pre-existing failures: ground truth is read from .githooks/pre-commit, .github/workflows/*.yml and Cargo.toml rather than asserted, so adding a gate or bumping the version updates the expectation without touching the checker. --self-test mutates each mirror and requires a named finding; a mutation that changes nothing is reported WRONG rather than passing silently, which is how the .prime phrasing gap was found and closed. RETIREMENT 2026-09-29: the second copy, .agents/management/AGENTS.md, was deleted 2026-09-24 by 5ec0ca164 -- a commit whose whole change was that deletion -- so MIRRORS now holds root AGENTS.md alone, bump-version.ps1 no longer writes a second version-lock line, and a retired path in that list is reported as a missing one rather than read as agreement. (The deletion was recorded, not reverted: manager-codebase-review-checklist.md:723 already finds no live target to repoint to.)",
+      "runners": {
+        "check.sh": [
+          "agents mirrors",
+          "agents mirrors self-test"
+        ]
+      },
       "ci": {
         "workflow": "dev-ci.yml",
         "job": "ci-docs-drift",
@@ -528,7 +1034,12 @@
       "label": "Conventional-commit subjects",
       "status": "required",
       "_note": "Added in 0.0.36. .githooks/commit-msg has enforced the subject format locally since 9cf14190, but core.hooksPath is set by setup-dev.ps1 and is not versioned, so a clone that skips setup gets no subject gate -- a limitation the hook's own header states and defers to a future CI check. This closes that. The rule is extracted from the hook at run time (TYPES, PATTERN, and the Merge/Revert/fixup/squash/amend exemptions) rather than duplicated, so local and CI cannot drift into disagreeing about what is legal; each extractor raises rather than returning an empty set, because an empty exemption list would reject every merge commit and an empty type list would accept anything. Commits older than the hook's own introduction are skipped, derived via `git log --diff-filter=A -- .githooks/commit-msg` rather than a hardcoded sha, and the skipped count is printed so the grandfathering is visible. Verified against the four commits the hook header names as its motivation (2eea3d07, faa5dae0, 5855c429, 84a71f3e): all four are found, all four are pre-rule, and the 77 commits since the hook conform. The CI step needs fetch-depth 0 -- with the default depth of 1 the range is empty and the gate would pass by checking nothing.",
-      "runners": { "check.sh": ["commit subjects", "commit subjects self-test"] },
+      "runners": {
+        "check.sh": [
+          "commit subjects",
+          "commit subjects self-test"
+        ]
+      },
       "ci": {
         "workflow": "dev-ci.yml",
         "job": "static-gates",
@@ -540,11 +1051,17 @@
       "label": "PG schema drift guard",
       "status": "required",
       "_note": "Added in 0.0.37. 20260813_init.pg.sql is GENERATED by this script from the SQLite migrations and must never be hand-edited. The job lived in ci.yml, which 23c96330 renamed to .bak with no replacement, and it was restored neither in dev-ci.yml nor in check.sh -- so the only guard was pre-commit step 7, and core.hooksPath is set by scripts/setup-dev.ps1 and is not versioned. On a clone that skips setup, a stale or hand-edited generated file committed and merged clean. `--check` is a pure text comparison: no Docker, no psycopg, no sqlite handle, ~1s. Note the asymmetry this closes is not that the gate was weak, but that it had NO gates.json record at all, so verify-ci-docs-drift.py could not report a gate that is required but not enforced -- it never learned the gate existed.",
-      "runners": { "check.sh": ["pg schema drift"] },
+      "runners": {
+        "check.sh": [
+          "pg schema drift"
+        ]
+      },
       "ci": {
         "workflow": "dev-ci.yml",
         "job": "static-gates",
-        "steps": ["PG schema drift"]
+        "steps": [
+          "PG schema drift"
+        ]
       }
     },
     {
@@ -552,11 +1069,17 @@
       "label": "Migration column types",
       "status": "required",
       "_note": "Added in 0.0.37. Exact-decimal columns must be fixed-point integers (*_minor / *_millionths); a new float needs a justified whitelist entry, because a float money column is the defect class this repo's Money struct exists to prevent. Same history as pg-schema-drift: retired with ci.yml, never restored anywhere but the opt-in hook. Run here WITHOUT --staged-only, which is what the hook uses -- CI must scan all 28 migration files, not whatever one commit happened to touch, or a float column shipped by a hook-less clone is never revisited. ~0.1s.",
-      "runners": { "check.sh": ["migration column types"] },
+      "runners": {
+        "check.sh": [
+          "migration column types"
+        ]
+      },
       "ci": {
         "workflow": "dev-ci.yml",
         "job": "static-gates",
-        "steps": ["Migration column types"]
+        "steps": [
+          "Migration column types"
+        ]
       }
     },
     {
@@ -564,7 +1087,11 @@
       "label": "i18n bundle parity",
       "status": "required",
       "_note": "Added in 0.0.37. This is pre-commit step 4 and had NO gates.json record until then, which is a worse failure than pointing at a retired workflow: verify-ci-docs-drift.py iterates the gates present in the manifest, so a gate with no record can never be reported as required-but-not-enforced. The blind spot is structural, not a data error. It is also the step whose own history is the worst -- before the Fluent page audit it walked only literal <Localized id> under ui/src/features/** and skipped every shared-chrome and context file it was handed, so 14 broken keys shipped while it reported clean. --scan-dirs is load-bearing: the tool defaults to `features` alone, and the directories named add 108 files (428 -> 536, 25% more coverage; re-measured 2026-09-18 -- the +108 delta has held, the absolutes had rotted from 228/336 and the old 47% with them). A runner that omits the flag prints '0 missing key(s)' over a fifth of the surface unexamined. The list lives in THREE executable copies -- this note, dev-ci.yml's step, scripts/check.sh, and scripts/verify-bundle-parity.py's CENSUS_SCAN_DIRS (reached by the pre-push hook via --full-census) -- and the restructure campaign's P2 deleted two of the named directories (`frontend`, `platform`) on 2026-09-17 without updating any of them, which made the gate exit 2 'scan dir not found' on every push and in CI until 2026-09-18. CI and check.sh deliberately run WITHOUT --staged-only, which the hook uses: a key reference shipped by a hook-less clone must be revisited by something.",
-      "runners": { "check.sh": ["bundle parity"] },
+      "runners": {
+        "check.sh": [
+          "bundle parity"
+        ]
+      },
       "ci": {
         "workflow": "dev-ci.yml",
         "job": "static-gates",
@@ -576,7 +1103,11 @@
       "label": "Runner label integrity",
       "status": "required",
       "_note": "Added in 0.0.37. verify-ci-docs-drift.py checked each gate's `runners` labels with has_needle(), which is ANY-of: a gate declaring three labels was satisfied by one. Deleting the other two from check.sh left the manifest asserting guards that no longer existed while the checker printed '0 drift item(s)'. Demonstrated against this repo's own ci-docs-drift gate, which declares both 'ci docs drift' and 'ci docs drift self-test' -- removing the self-test step changed nothing. The rule is now missing_needles(), which reports every label matching nothing; adopting it was safe precisely because the manifest was accurate under the stricter reading (all 5 multi-label gates resolved every label), so this closed a latent gap rather than converting it into false failures. Two properties the test encodes because both produced confident wrong answers first: ROOT derives from __file__ not cwd, so a fixture that omits the checker itself reads the real repo and agrees with itself; and needles match by substring, so a short label cannot fail while a longer one containing it exists.",
-      "runners": { "check.sh": ["runner labels"] },
+      "runners": {
+        "check.sh": [
+          "runner labels"
+        ]
+      },
       "ci": {
         "workflow": "dev-ci.yml",
         "job": "ci-docs-drift",
@@ -587,59 +1118,437 @@
       "id": "exhaustive-deps-ratchet",
       "label": "Exhaustive-deps ratchet",
       "status": "required",
-      "runners": { "check.sh": ["exhaustive-deps ratchet"] },
-      "ci": { "workflow": "dev-ci.yml", "job": "ui-test" },
+      "runners": {
+        "check.sh": [
+          "exhaustive-deps ratchet"
+        ]
+      },
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "ui-test"
+      },
       "_note": "Caps react-hooks/exhaustive-deps warnings at the value in scripts/exhaustive-deps-baseline.json (7, down from 12). `npm run lint` is `eslint .` with no --max-warnings 0, so it exits 0 while reporting 58 warnings, and this rule is the only automated check for a stale closure. Item 69 found five callbacks listing `userId` -- a prop no component body ever read, kept 'used' only by its presence in the deps array -- while two of those same arrays omitted `promotionIds`, which IS sent in the complete_sale payload. Neither was gated by anything. The ratchet does not clear the debt, it freezes the improvement. Runs in ui-test rather than static-gates because it needs ui/node_modules, which only ui-test and i18n install. Like the FTL orphan gate its CI value depends on the job actually running, and dev-ci.yml has no push trigger, so on a long-lived release branch check.sh remains the only thing enforcing it."
     },
     {
       "id": "server-origins",
       "label": "Server origin consistency",
       "status": "required",
-      "runners": { "check.sh": ["server origins"] },
+      "runners": {
+        "check.sh": [
+          "server origins"
+        ]
+      },
       "_note": "Added in 0.0.39. Reads the compiled origin list in crates/kasirmu-core/src/server_origin.rs (ADR #55) and fails when a Tauri CSP, the Worker CSP, the Worker LICENSE_API_URL fallback, the settings draft, or either Rust dev fallback disagrees with it. The drift it guards was live: the compiled auth URL said license.kasir.mu while both Tauri CSPs, the desktop bootstrap, the settings draft and the runbook all said license.ozpos.my.id, so a host change silently needed a release and nothing detected the mismatch. Local-only (no CI runner): needs node and nothing else."
     },
     {
       "id": "env-docs",
       "label": "Environment variables are documented",
       "status": "required",
-      "runners": { "check.sh": ["env docs"] },
+      "runners": {
+        "check.sh": [
+          "env docs"
+        ]
+      },
       "_note": "Added in 0.0.39, then WIRED TO THE EXISTING CHECKER on 2026-09-20: scripts/check-env-docs.mjs was written before anyone looked in .agents/skills/docs-auditor/scripts/, where check-env-docs.py had covered this since 09-09-26 with a WIDER scope (32 variables here vs 15). That one also reads apps/unified/healthcheck.sh's shell vars, accepts PADDLE_/MIDTRANS_/LOGIN_/LICENSE_/OZPA_ prefixes, checks go-live-checklist.md and verification-*.md, and carries an `env-doc: ok:` pragma. The duplicate was deleted; the step name is unchanged so the runner mapping holds. Runner: python .agents/skills/docs-auditor/scripts/check-env-docs.py."
     },
     {
       "id": "unified-routes",
       "label": "Unified image routes the licence server",
       "status": "required",
-      "runners": { "check.sh": ["unified routes"] },
+      "runners": {
+        "check.sh": [
+          "unified routes"
+        ]
+      },
       "_note": "Added in 0.0.39. Every /api route the licence server registers must be claimed by the FIRST matching handle in apps/unified/Caddyfile that proxies to :8080 — caddy handle is first-match-wins, so the generic /api/* fallback does not cover anything under /api/v1/*. A route without a carve-out answers 404 in production while its tests pass, which is how the whole device-link flow (ADR #54 §2.5) sat unrouted. Runner: node scripts/check-unified-routes.mjs."
     },
     {
       "id": "auditor-selftests",
       "label": "Docs-auditor checkers still run",
       "status": "required",
-      "runners": { "check.sh": ["auditor self-tests"] },
-      "_note": "Added in 0.0.39. A checker that cannot run is indistinguishable from a checker that found nothing: check-api-surface.py had been dead since apps/desktop-client was renamed, and check-nav-paths.py reported SELF-TEST WRONG because its self-test read the live nav. This runs every self-test the docs-auditor ships -- the roster is the script's own for-line, five as of 2026-09-24 (check-dead-refs joined with the source-relative link rules, check-adr-status with the status-word comparator), not a count maintained here. Runner: sh scripts/check-auditor-selftests.sh."
+      "runners": {
+        "check.sh": [
+          "auditor self-tests"
+        ]
+      },
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "ci-docs-drift",
+        "steps": [
+          "Docs-auditor self-tests"
+        ]
+      },
+      "_note": "Added in 0.0.39. A checker that cannot run is indistinguishable from a checker that found nothing: check-api-surface.py had been dead since apps/desktop-client was renamed, and check-nav-paths.py reported SELF-TEST WRONG because its self-test read the live nav. This runs every self-test the docs-auditor ships -- the roster is the script's own for-line, six as of 2026-09-24 (check-dead-refs joined with the source-relative link rules, check-adr-status with the status-word comparator, check-site-links with the route-vs-filesystem cases), not a count maintained here. Runner: sh scripts/check-auditor-selftests.sh."
+    },
+    {
+      "id": "api-surface",
+      "label": "API reference surface",
+      "status": "required",
+      "runners": {
+        "check.sh": [
+          "api surface"
+        ]
+      },
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "ci-docs-drift",
+        "steps": [
+          "API reference surface"
+        ]
+      },
+      "_note": "Added 2026-09-29. The page is the IPC contract agents and integrators read first, and it had drifted 169 ways from the registries: 101 listed names that exist nowhere in the repo (97 unscoped ADR #7 twins whose code has been deleted, 4 retired setup/topology names), 55 registered commands with no row, 10 availability markers naming the wrong shell, and 3 commands defined but in no handler. The repair and the gate landed in the same change, so the step has a green baseline from day one -- which is the only reason it is being wired at all; a gate introduced against a 169-finding page gets muted, which is exactly what happened to this checker between 08-09-26 and today. It exits 2 rather than 0 when an input cannot be parsed, so 'the checker could not run' never reads as 'the checker found nothing'. Runner: python .agents/skills/docs-auditor/scripts/check-api-surface.py; check.sh step 'api surface'."
     },
     {
       "id": "records-index",
       "label": "Records index freshness",
       "status": "required",
-      "runners": { "check.sh": ["records index freshness"] },
-      "ci": { "workflow": "dev-ci.yml", "job": "ci-docs-drift", "steps": ["Records index freshness check"] },
+      "runners": {
+        "check.sh": [
+          "records index freshness"
+        ]
+      },
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "ci-docs-drift",
+        "steps": [
+          "Records index freshness check"
+        ]
+      },
       "_note": "Added 2026-09-23 by the documentation audit. The freshness gate docs/records/README.md and docs/README.md both described as 'unbuilt by decision' is now built, and the decision log reverses with it: --check was RED at wiring time (148 generated vs 158 committed lines, ADR #60 missing) and a run of it surfaced the generator defect behind seven dead snapshots/ rows -- a gate deferred to avoid crying wolf had let the wolf in. Wired blocking in check.sh AND dev-ci.yml#ci-docs-drift because the drift was repaired in the same change, so the step has a green baseline from day one (the inverse of ci-docs-drift's advisory->required arc, for the same stated reason: a known-red baseline gets disabled)."
     },
     {
       "id": "adr-status",
       "label": "ADR status-table drift",
       "status": "required",
-      "runners": { "check.sh": ["adr status drift"] },
+      "runners": {
+        "check.sh": [
+          "adr status drift"
+        ]
+      },
       "_note": "Added 2026-09-24 closing open item 2 of the 2026-09-23 documentation audit. The hand table in docs/decisions/README.md reconciled its status column against ADR frontmatter by hand three times (2026-08-09: 26 cells empty while every file stated a status; 2026-09-23: #55/#56/#58 trailing their re-audits), and that file's Conventions order the re-derivation with a script, never by hand. This is the script: the status WORD per the Conventions contract, frontmatter over header line, rows resolved by file path so the documented duplicate #43 checks each file against its own row, cross-reference table excluded (prose cells, not status words). Runner: python .agents/skills/docs-auditor/scripts/check-adr-status.py. NO ci block BY DESIGN, local-only like auditor-selftests. Green from day one (54 of 54 rows); its --self-test carries deliberately red synthetic drift and cannot-verify cases and runs in scripts/check-auditor-selftests.sh."
+    },
+    {
+      "id": "site-links",
+      "label": "Website route links",
+      "status": "required",
+      "runners": {
+        "check.sh": [
+          "site links"
+        ]
+      },
+      "_note": "Added 2026-09-24 closing open item 4 of the 2026-09-23 documentation audit. website/src/content docs link each other with Astro routes (../cloud-sync/, ../../pricing/, /en/docs/...) -- a filesystem scanner flagged ~90 of them as dead while every one resolved, and could not see a ghost slug either way. This is the site-aware checker: route table from astro.config i18n locales x src/pages ([locale] expanded, directory-format URLs) x content routes enumerated the way [...slug].astro emits them (a ghost slug is red even though the catch-all pattern exists) x public/ files and public/_redirects sources; per-collection base URLs (docs -> /{loc}/docs/{slug}/, legal -> its consuming page); fence/backtick-aware extraction so authoring-guide examples are not claims; #fragments graded against the target page's real heading ids since 2026-09-24 (github-slugger 2.0.0 port, verified on all 9,003 repo headings: duplicate-heading -1/-2 suffixes, explicit HTML ids; component-route fragments skipped as documented). Fail-loud contract: unparseable locales, a renamed docs catch-all, missing content, or an unenumerable dynamic segment exit 1 rather than reading green. Runner: python .agents/skills/docs-auditor/scripts/check-site-links.py. NO ci block BY DESIGN, local-only like adr-status. Green from day one (38 content docs, 0 findings); --self-test carries 27 red/green cases and runs in scripts/check-auditor-selftests.sh."
     },
     {
       "id": "dead-refs",
       "label": "Docs dead references",
-      "status": "advisory",
-      "ci": { "workflow": "dev-ci.yml", "job": "ci-docs-drift", "advisory_at": "step", "steps": ["Docs dead references"] },
-      "_note": "Added 2026-09-23 by the documentation audit. Runs check-dead-refs.py in CI with continue-on-error because its findings sat in manager-codebase-review-checklist.md while a concurrent session was actively writing that file during the audit (the count grew 2 -> 7 over the session as the peer kept writing, which is the point: racing it is the wrong trade for pragma insertions). NO check.sh runner BY DESIGN, not by omission: check.sh's step() exits 1 on first failure, so a leg red for reasons outside the runner's control would break every local pre-push until the peer file clears (19 gates already carry no runners; this joins them for a stated reason). FLIP CONDITION, so the advisory state cannot calcify: when check-dead-refs reports 0, drop continue-on-error and advisory_at, set status required, and add runners.check.sh ['docs dead refs'] with the step -- the ci-docs-drift precedent (advisory -> required when R36-10 closed the count to 0), with the trigger written down instead of implied."
+      "status": "required",
+      "runners": {
+        "check.sh": [
+          "docs dead refs"
+        ]
+      },
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "ci-docs-drift",
+        "steps": [
+          "Docs dead references"
+        ]
+      },
+      "_note": "FLIPPED TO REQUIRED 2026-09-25 (C62), because the flip condition this entry wrote for itself was MET and the point of writing it down was to act on it rather than let the advisory state calcify. Original advisory reason, kept because it is still the right call at the time it was made: findings sat in manager-codebase-review-checklist.md while a concurrent session was actively writing that file (the count grew 2 -> 7 over that session), and check.sh's step() exits 1 on first failure, so a leg red for reasons outside the runner's control would have broken every local pre-push. HOW THE CONDITION WAS MET: the audit register's 82 pre-rebrand paths were repointed to the real files (c6ebcc165), and the four remaining hits were quoted-or-illustrative paths -- a mistyped root cited as command evidence, a brief that named a directory which no longer exists, a path used as an ILLUSTRATIVE EXAMPLE of a non-test file, and my own C62/C70 prose quoting the dead names as the FINDING. Those four are not citations to fix; they are deliberate absences, and they now carry the NEGATIVE_MARKERS wording this checker documents for exactly that case ('does not exist', 'no longer exists', 'never existed'). Measured immediately before the flip: 9 unresolved references -> 0. The gate now has a check.sh runner ('docs dead refs') as the condition required, and the CI step drops continue-on-error so a future dead path fails the job rather than annotating it."
+    },
+    {
+      "id": "shell-syntax",
+      "label": "shell syntax",
+      "status": "required",
+      "_note": "Added 2026-09-29. A shell file that does not parse does not RUN, so every step inside it is skipped and nothing reports that; the pre-commit hook case is sharper, because a hook that cannot parse stops gating everything it was written to gate. sh -n parses without executing, so this is safe to run first, on a bare checkout, and cannot have side effects. Paid for itself on its first run: scripts/profile.sh line 151 read \"fi# -- Build and run command\", and since bash treats # as a comment only when it STARTS a word, \"fi#\" lexes as one token, the enclosing if never closed, and bash reported it at END OF FILE 65 lines away with every keyword, quote, brace and $( in the file balancing. Covers all first-party .sh repo-wide and excludes vendored trees.",
+      "runners": {
+        "check.sh": [
+          "shell syntax",
+          "shell syntax self-test"
+        ]
+      },
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "static-gates"
+      }
+    },
+    {
+      "id": "ps-syntax",
+      "label": "powershell syntax",
+      "status": "required",
+      "_note": "Added 2026-09-30, the shell gate's twin for the language shell's scope rule cannot reach. That rule is a shebang, read as a fact about the file, and PowerShell has no shebang -- so 26 tracked .ps1 files were parsed by nothing, including ops/install/win/{install,uninstall}.ps1 which run on a USER's machine. A separate file rather than a flag: putting a parser-per-language switch inside is_shell() would mean every future Windows question had to be answered in a file named for shells. Paid for itself on the class it was written for: scripts/profile.ps1 had a backtick inside a double-quoted string, and backtick is PowerShell's ESCAPE, so the closing quote was itself escaped, the string never terminated, and the parser reported it 65 lines later as 'The string is missing the terminator' plus a phantom 'Missing closing }'. ParseFile is an AST parse and never executes, so it is as safe to run first as sh -n. Refuses with exit 2 when neither pwsh nor powershell is present, and when it finds no .ps1 at all: a clean run must be distinguishable from a starved one.",
+      "runners": {
+        "check.sh": [
+          "powershell syntax",
+          "powershell syntax self-test"
+        ]
+      },
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "static-gates"
+      }
+    },
+    {
+      "id": "workflow-syntax",
+      "label": "workflow syntax",
+      "status": "required",
+      "_note": "Added 2026-09-29, the shell gate's sibling. A .github/workflows/*.yml that is not valid YAML runs NO JOBS AT ALL: GitHub reports the workflow errored and executes none of them, so the failure presents as a green PR that stopped checking rather than a red one. Only release.yml had a syntax check before this (verify-release-workflow.py); dev-ci.yml, android.yml and website.yml had none. Also rejects three shapes that are valid YAML but invalid as workflows -- non-mapping top level, no jobs key, and jobs that is empty or a list -- because \"it parsed\" is the most misleading possible green. Refuses to report clean when it finds no workflows (exit 2). The attic is excluded deliberately: a retired .bak is never executed.",
+      "runners": {
+        "check.sh": [
+          "workflow syntax",
+          "workflow syntax self-test"
+        ]
+      },
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "static-gates"
+      }
+    },
+    {
+      "id": "selftests-wired",
+      "label": "self-tests wired",
+      "status": "required",
+      "_note": "Added 2026-09-29. Answers one question: does a checker's --self-test have a caller? A self-test no runner invokes rots in silence -- the cases still pass by hand and nothing says nobody runs them. Measured when it was written: 24 of 28 scripts/verify-*.py declared a --self-test and NINE were invoked from no runner at all; one of the nine had been printing \"nothing calls this flag\" in its own report. Deliberately narrow: it does not decide WHICH runner should invoke one, or whether a given self-test is any good, and a check.sh-only caller counts. It also ships with the bug class it was written to catch, found in the gate three times before it was right: a COMMENT mentioning the flag counted as a caller; a RETIRED .bak workflow counted as a caller; and the scope covered only verify-*.py, so check-*.py was invisible. Full-line comments are stripped, attic/ is excluded, and the scope is now verify-*/check-*.",
+      "runners": {
+        "check.sh": [
+          "self-tests wired",
+          "self-tests wired self-test"
+        ]
+      },
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "static-gates"
+      }
+    },
+    {
+      "id": "settled-read-copies",
+      "label": "settled-read copies",
+      "status": "required",
+      "_note": "Added 2026-09-30. The settled-read contract -- a failed read returns { ok: false } with no value, so a caller cannot mistake it for \"answered, and the answer was empty\" -- reached FOUR hand-copied implementations before any check could see them: BootRead in app/AppShell.tsx, BootReadResult in utils/boot-retry.ts, Read in stock-transfers/StockTransfersScreen.tsx and warehouse/WarehouseCountFlow.tsx. Each was type-correct, each passed the whole suite, and two documented the contract by citing a COPY at a line range that had already moved. Nothing in scripts/ referenced settleRead at all, so the fifth copy would have arrived the same silent way. Shape-based, not name-based: naming those four in a list would make the checker report zero findings the day after it was written, which is how the first four got there. It grades declarations only -- a caller may legitimately name the type in a signature -- and it does not judge whether a second verdict SHAPE is ever warranted; boot-retry.ts keeps its own function because a read that must be RE-ISSUED against a timeout cannot reuse settleRead, and this checker is what records that the distinction is deliberate rather than accidental.",
+      "runners": {
+        "check.sh": [
+          "settled-read copies",
+          "settled-read copies self-test"
+        ]
+      },
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "static-gates"
+      }
+    },
+    {
+      "id": "checker-selftest-companions",
+      "label": "checker self-test companions",
+      "status": "required",
+      "_note": "Added 2026-09-29. Each step here is the LIVENESS PROOF for a gate named in the same row: the cases that prove the gate can still FAIL, which no bare run of the gate can see. The convention, stated at 'IPC command parity self-test' in dev-ci.yml, is that a checker's self-test lives beside the checker it proves. This row exists because gates.json had no reverse-direction check -- test-runner-labels.py grades gates.json -> check.sh and never asks whether a step that EXISTS has a row -- so wiring them was silent, and an inventory that understates the matrix is the same quiet-drift problem as a gate that cannot see half its input. These were each mutation-proven: a regex or pattern pointed at something that cannot match, which must turn the case red rather than reporting zero. Two of the seventeen (doc uniqueness self-test, release workflow self-test) pre-date this row and were ALREADY unlisted when it was written -- the drift was not introduced by the 2026-09 work, only measured by it.",
+      "runners": {
+        "check.sh": [
+          "bundle parity self-test",
+          "exhaustive-deps ratchet self-test",
+          "plugin-guide parity self-test",
+          "topology contract parity self-test",
+          "ipc invoke token parity self-test",
+          "dockerfile workspace self-test",
+          "no-hardcoded-money-format self-test",
+          "test shadow copies self-test",
+          "feature registry parity self-test",
+          "windows config drift self-test",
+          "migration column types self-test",
+          "coverage floors self-test",
+          "deployment verification self-test",
+          "flaky quarantine self-test",
+          "chokepoints self-test",
+          "doc uniqueness self-test",
+          "release workflow self-test",
+          "tz invariance self-test",
+          "runner commands self-test",
+          "runner claims self-test",
+          "testid self-test",
+          "release version self-test",
+          "updater compat self-test",
+          "updater signature self-test",
+          "quota coverage self-test",
+          "selftest sweep self-test"
+        ]
+      }
+    },
+    {
+      "id": "local-matrix-checkers",
+      "label": "local matrix checkers",
+      "status": "required",
+      "_note": "Added 2026-09-29 to close the 7 gate steps that ran in check.sh with no row. These are checkers, not setup: npm ci, website npm ci, test workspace (nextest), test application shells and their siblings are deliberately NOT listed here, and that is the reason no blanket reverse check exists. check.sh mixes gates with INSTALLS and TEST-RUNNER invocations, and deciding which is which is a judgement per step, not a rule -- so a naive 'every step needs a row' check would fire on 13 correct entries and get muted on its first run. Which is the shape of the mistake this campaign has made repeatedly: a check broad enough to be easy is narrow enough to be useless. Each step listed here runs a scripts/*.py checker with a --self-test beside it, and verify-selftests-wired.py is what keeps that pairing true from now on.",
+      "runners": {
+        "check.sh": [
+          "ipc invoke token parity",
+          "windows config drift",
+          "feature registry parity",
+          "no-hardcoded-money-format",
+          "flaky quarantine",
+          "deployment verification",
+          "chokepoints",
+          "runner commands",
+          "runner claims",
+          "selftest sweep",
+          "fluent dynamic families"
+        ]
+      },
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "static-gates"
+      }
+    },
+    {
+      "id": "local-matrix-unlisted-gates",
+      "label": "local-matrix unlisted gates",
+      "status": "required",
+      "_note": "Added 2026-09-29. Pre-existing drift, NOT introduced by the 2026-09 work: four steps that run a real check had no row, so the inventory understated the matrix. Classified by reading what each step actually runs rather than by its name, because the names are not reliable here -- 'updater manifest generator' runs a --self-test, and 'script tests' runs a test runner, so neither is a gate and neither belongs in a gate row -- 'updater manifest generator' is listed under checker-selftest-companions instead, because it invokes generate-latest-json.mjs --self-test. Also deliberately NOT here: for the same reason npm ci and test workspace (nextest) are not: 'migration smoke test' and 'migration idempotency' both invoke the SAME cargo run, so they are two EXERCISES of one command rather than two gates, and listing them would imply two independent checks where there is one. Re-verified 2026-09-29 against the live tree: check.sh declares 119 steps, gates.json accounts for all but those same TEN, and no gate step has lost its row. The reasoning above still holds.",
+      "runners": {
+        "check.sh": [
+          "clippy workspace",
+          "no-raw-params (ADR #7 Phase 4)",
+          "skill-drift-guard"
+        ]
+      }
+    },
+    {
+      "id": "debt-markers",
+      "label": "Debt markers resolve to a plan",
+      "status": "required",
+      "_note": "Added 2026-09-30. No checker graded debt-marker ids before this one. A `TODO 2a` in a comment is invisible to the compiler, to the test suite, and to check-dead-refs.py (which grades packages and paths, not debt ids), so the repo accumulated two distinct failures with no gate to catch either: a marker whose work already shipped is a dead pointer, and a marker whose id resolves to no plan is a citation to a document nobody can open. The first run found 12 of the second and 9+1 of the first. Repaired in the same change (the 9 shipped KDS 3e/3f pointers and the plan's own dangling 3e retired; the two live TODO 4e sites given a real definition in docs/plans/_active/todo.md) so the step has a green baseline from day one, the same rule the api-surface gate wrote for itself. Ships required, not advisory: 0 findings is a baseline a flip can be measured from, whereas advisory_at would have been a permanent exemption. The self-test is a separate step because verify-selftests-wired.py and verify-selftest-sweep.py are what keep that pairing true -- a checker whose self-test nobody runs is a checker whose rules can rot unseen.",
+      "runners": {
+        "check.sh": [
+          "debt markers",
+          "debt markers self-test"
+        ]
+      },
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "static-gates",
+        "steps": [
+          "Debt markers",
+          "Debt marker checker self-test"
+        ]
+      }
+    },
+    {
+      "id": "client-type-drift",
+      "label": "Browser SDK types vs published OpenAPI",
+      "status": "required",
+      "_note": "Added 2026-09-30. ui/src/api/client/types.ts opens with a header saying every type in it is derived from the OpenAPI 3.1 specification. Nothing derived them and nothing graded them. A manual census on 2026-09-30 found 5 of the 15 interfaces present on both sides had drifted: CategoryDto carried created_at (the row has no timestamp, and the REQUIRED icon was missing instead), TokenResponse was missing token_id, SyncStatusResponse invented conflict_count and total_items (neither exists on the wire), CreateTokenRequest could not express the ADR sync-auth-hardening client-credentials path, ProductDetail lacked image_hash and images, and SaleStatus lacked pending. The worst was not a stale field but a wrong SHAPE: create_token_handler answers a token envelope and the client typed the envelope as the details, so every Authorization header built from it would have carried a stringified object. Repaired in the commit before this one, and this checker then found a SIXTH the census had missed -- HealthResponse was omitting rls_posture and portable_derivation_uses_master_key, both always sent -- because the census extractor mis-parsed the same file. Required rather than advisory so 0 findings is a baseline a flip can be measured from. Only names present on BOTH sides are compared: the document describes two servers while types.ts describes the one the browser talks to, so a two-way set comparison would be a permanent red page, and the one-sided names are reported as context instead. Exits 2 rather than 0 when an input cannot be parsed, so a checker that could not run never reads as one that found nothing.",
+      "_parser_note": "The extractors read a Rust json! literal out of a .rs file, which is not JSON. Three inputs in these two files break a naive reader, and each was found by running the checker against the live tree rather than by reasoning about it: line comments between schema entries (one contains a JSON example, whose braces a scanner counts as structure, which is how PushOutcome lost its own name), a Rust expression embedded as a value (apps/cloud-server/src/openapi/cloud.rs carries env! with CARGO_PKG_VERSION as an example), and a description string containing escaped quotes. Comments are blanked before scanning rather than removed, so every offset and line number survives; a macro invocation is skipped as one token, the way a string is. The self-test covers the scanner cases and the classify cases and touches no files, so it cannot rot when the tree is renamed.",
+      "runners": {
+        "check.sh": [
+          "client type drift",
+          "client type drift self-test"
+        ]
+      },
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "static-gates",
+        "steps": [
+          "Client type drift",
+          "Client type drift self-test"
+        ]
+      }
+    },
+    {
+      "id": "mapper-alignment",
+      "label": "Positional row-mapper alignment",
+      "status": "required",
+      "_note": "Added 2026-10-04. `name: row.get(3)?` couples a mapper to its SQL by POSITION and nothing in Rust checks that coupling: reorder the projection, insert a column, or copy a mapper onto a new struct and the fields silently take each other's values -- every one present, correctly typed, and wrong. Not hypothetical: run_list_credit_sales (crates/kasirmu-bridge/src/settings/core.rs) reads index 1, `p.gateway_reference`, into `customer_name`, the field the retail credit list renders in a Customer column (ui/src/features/retail/RetailModals.tsx), so an operator reads a payment reference where the buyer's name belongs. It survived because the pin covering that type builds the DTO from hand-written literals -- a wire-shape pin that never runs a query, so it cannot see the mapping. The checker pairs each mapper block with the statement feeding it and compares the Nth column against the field name. ONE mismatch is acknowledged and reported each run without failing it: choosing which column a customer name should come from is a product ruling, not a repair, and the record is docs/records/JOURNAL.md (2026-10-04, a3c871787). The suppression is keyed by (file, field), so any OTHER mapper with the same defect still fails -- verified by re-running the checker against a copy of that mapper under a different path, where it reports and exits 1. Required rather than advisory so 0 findings is a baseline a flip can be measured from. Exits 2 on a refused --roots list, so a starved corpus never reads as a clean tree.",
+      "runners": {
+        "check.sh": [
+          "mapper alignment"
+        ]
+      },
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "static-gates",
+        "steps": [
+          "Mapper alignment"
+        ]
+      }
+    },
+    {
+      "id": "replay-fork",
+      "label": "COR-7 replay fork control set",
+      "status": "required",
+      "_note": "Added 2026-10-05. The tablet command layer is a fork of the desktop one, so the per-attempt idempotency rules (COR-7) exist twice -- kasirmu-bridge/src/pos/checkout/replay.rs and apps/mobile-tauri/src/commands/pos/checkout.rs -- and the fork's own header says 'a second implementation of the SAME rules ... keep them in step'. Nothing checked that, and they drifted into a SECURITY defect: only the bridge refused a colon in the attempt id (validated_attempt_id), which is what stops a crafted `a:rekey:b` from composing a base key byte-identical to another attempt's re-key LOOKUP key and making the replay guard answer with a sale the basket never rang up (1596631d2). The trim half of the same contract stayed in step ONLY because `whitespace_only_attempt_id_is_unguarded_like_the_tablet` pinned it, so the failure mode is precisely a rule added to one fork without a cross-shell pin. The checker pins the CONTROL SET and not the bodies: the fork returns a different error type (AppError vs BridgeError) and legitimately diverges in behaviour, so a body diff would over-report, but a control present on one side only is always a regression. Exits 2 on a refused --root so a starved corpus never reads as a clean tree. NOT gating the tablet's missing re-key EPOCH counter: that is the Rekey-vs-refuse product ruling plus a missing port, not a control that can be required today.",
+      "runners": {
+        "check.sh": [
+          "replay fork"
+        ]
+      },
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "static-gates",
+        "steps": [
+          "Replay fork control set"
+        ]
+      }
+    },
+    {
+      "id": "namespace-governance",
+      "label": "Module namespace governance (soft)",
+      "status": "required",
+      "runners": {
+        "check.sh": [
+          "namespace governance",
+          "namespace governance self-test"
+        ]
+      },
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "static-gates"
+      },
+      "_note": "Added 2026-09-30 (Round 4 of the modular-scaffolding plan, Immediate Next Action 3). ADR-62 named the module seams; docs/architecture/module-namespace-governance.md names the rules and this enforces the mechanical half of them SOFTLY. Rule 1 (no new cross-vertical raw SQL outside the reporting facade) fails only on a NEW edge -- the two edges that exist are frozen in scripts/namespace-governance-baseline.json: modules/reporting/src/repository.rs reads sales directly (known facade-bypass debt, plan 9.5) and modules/loyalty/src/repository.rs reads gift_cards while loyalty declares only [crm] (found by this inventory, not surfaced by the plan). Rule 2 (no new unclassified handler) fails a type absent from scripts/handler-classification.json, populated from the Phase 0 census (docs/architecture/handler-census-phase0.md) with the ADR-62 D4 vocabulary. Rule 3 (undeclared dependency) is informational, not blocking, because real edges exist today. Style is deliberately soft, not strict: every module shares one SQLite connection, so a namespace boundary is a convention rather than a mechanically expressible property, and strict enforcement is deferred to Phase 4. The checker reads table names OUT of Rust string literals (a mask-strings-first scanner finds nothing, which is how the first draft reported 0 of 2 known edges); it carries --self-test, and the pair is listed under checker-selftest-companions via verify-selftests-wired.py. | Updated 2026-10-03 (Phase 4 P4.5): the gate step now runs --strict (scripts/check.sh), so an undeclared dependency (Rule 3) blocks instead of being informational. Strictness is safe because the population was clean at flip time (0 undeclared edges; 1 frozen cross-vertical edge, baselined and grant-marked)."
+    },
+    {
+      "id": "capability-parity",
+      "label": "Capability parity (manifest capabilities)",
+      "status": "required",
+      "runners": {
+        "check.sh": [
+          "capability parity"
+        ]
+      },
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "static-gates"
+      },
+      "_note": "Added 2026-10-03 (Phase 4 P4.1 of the modular-scaffolding plan). A module manifest's `capabilities` array was free text, so a grant for a namespace the module does not own and does not declare as a dependency read exactly like a legitimate one. This gate makes the set mechanical: `read:<id>` + `write:<id>` when the module owns tables in modules/ownership.json, plus `read:<dep>` for every entry in its `dependencies`. verify-namespace-governance.py --check-capabilities derives the expected set for all 14 manifests (36 capabilities) and fails on any drift; --emit-capabilities rewrites them. It is the manifest half of the strict enforcement Phase 4 targets -- the runtime NamespacedStore check in crates/kasirmu-core is the other half, and the two must agree on the same ownership map."
+    },
+    {
+      "id": "ownership-map-parity",
+      "label": "Ownership map parity (single source)",
+      "status": "required",
+      "runners": {
+        "check.sh": [
+          "ownership map parity",
+          "ownership map generate check"
+        ]
+      },
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "static-gates"
+      },
+      "_note": "Added 2026-10-02 (Phase 2 of the modular-scaffolding plan, resolving the NamespacedStore draft section 7). The table->module ownership map had TWO hand-maintained copies (docs/architecture/module-namespace-governance.md section 3 prose and TABLE_OWNERS in scripts/verify-namespace-governance.py); Phase 2 needs a third copy in Rust so the runtime NamespacedStore check can consult the same map, and a third hand-maintained list is exactly what drifts. So the map now has ONE source, modules/ownership.json: scripts/generate-ownership-map.mjs generates crates/kasirmu-core/src/db/ownership.rs from it (--check fails on drift) and verify-namespace-governance.py --check-ownership fails when its TABLE_OWNERS disagrees. Three consumers, one source, pinned by a Rust unit test (crates/kasirmu-core/src/db/ownership_tests.rs) and a Python self-test (mutation fixtures for duplicate-table and empty-map). Local-only runner today; adding a dev-ci.yml step needs no code change."
+    },
+    {
+      "id": "core-size-ratchet",
+      "label": "Core size ratchet",
+      "status": "required",
+      "runners": {
+        "check.sh": [
+          "core size ratchet",
+          "core size ratchet self-test"
+        ]
+      },
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "static-gates"
+      },
+      "_note": "Added 2026-10-03 (Phase 3 P3.4 of the modular-scaffolding plan, section 11.1). The plan's boundary rule for extraction has a number: crates/kasirmu-core must not grow as modules move out. Without a measured ceiling the extraction is reversible by accident -- new logic lands back in core and nothing notices, because a codebase that is 'smaller than yesterday' has no yesterday. scripts/verify-core-size.py counts NON-BLANK production lines under crates/kasirmu-core/src, excluding whole test files (*_tests.rs, tests.rs, any tests/ directory) and inline #[cfg(test)] mod blocks, with comments and string bodies masked first; scripts/core-size-baseline.json records the ceiling (36590 across 176 files). The checker FAILS when the count rises above the ceiling and reports the headroom when it falls, so LOWERING the ceiling is a deliberate edit in a commit that says why -- exactly how a retired namespace edge leaves scripts/namespace-governance-baseline.json. Mutation-proven: adding three production lines to crates/kasirmu-core/src/audit.rs fails with +3, removing them passes. The self-test is a separate step because verify-selftests-wired.py is what keeps that pairing true."
     }
   ]
 }

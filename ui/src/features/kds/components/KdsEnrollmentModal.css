@@ -95,9 +95,10 @@
    with no .css hit anywhere in the tree, and git log -S shows only that one
    adding commit — the wrapper was born unstyled rather than losing a rule. It is not decorative: its job is to be the box the
    control fills, so the honest property is the one every other wrapper in this
-   sheet already opens with — .kds-enrollment-generating /:162,
-   .kds-enrollment-qr-body /:187 and .kds-enrollment-qr-wrapper /:202 are all
-   display:flex — which also takes the input out of the parent's line box, so a
+   sheet already opens with — .kds-enrollment-generating is display:flex, and
+   the QR/modal-body rules that used to be cited here were deleted with the
+   pairing-token flow (20261014) — which also takes the input out of the
+   parent's line box, so a
    width:100% /:77 control no longer hangs a descender gap under itself.
    Nothing else: no colour and no font-size, because .kds-enrollment-input
    /:76-:85 already owns both and restating them on the wrapper would start a
@@ -183,56 +184,6 @@
   }
 }
 
-/* QR success display */
-.kds-enrollment-qr-body {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-8) var(--space-5);
-}
-
-/* QR code wrapper */
-.kds-enrollment-qr-wrapper {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: var(--space-4);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  /* The padding around the code IS the QR's outer quiet zone, so it must be the
-     same paper-white in every theme: a --kds-* surface goes near-black in dark mode
-     and scanners reject a code whose quiet zone is dark. --color-paper is the
-     theme-invariant scannable surface (tokens.css :root only, never overridden).
-     Before that token existed this borrowed --color-pos-on-primary — a FOREGROUND
-     token standing in for a surface, which reads as a bug to anyone auditing the
-     palette. Raw hex is not an option: themeTokenCompliance baseline 0. Note the
-     QR modules themselves are painted by qrcode.react as SVG fill PRESENTATION
-     ATTRIBUTES, where var() never resolves, so the #fff/#000 literals in
-     KdsEnrollmentModal.tsx stay (documented in 145e0265). */
-  background: var(--color-paper);
-}
-
-.kds-enrollment-device-name {
-  margin: 0;
-  font-size: var(--text-lg);
-  font-weight: var(--font-weight-semibold);
-  color: var(--color-fg);
-}
-
-.kds-enrollment-success-text {
-  margin: 0;
-  font-size: var(--text-sm);
-  color: var(--color-fg-secondary);
-  text-align: center;
-}
-
-.kds-enrollment-expiry-note {
-  margin: var(--space-2) 0 0;
-  font-size: var(--text-xs);
-  color: var(--color-fg-muted);
-  text-align: center;
-}
 
 /* Error */
 .kds-enrollment-error {

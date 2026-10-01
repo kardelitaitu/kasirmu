@@ -25,7 +25,7 @@ export interface TopologyStatusStripProps {
   /** Graph-level validation errors rendered as the alert banner. */
   bannerGraphLevel: TopologyValidationError[];
   /** Tier gate + capacity metadata availability (Pro downgrade notice). */
-  isProAllowed: boolean;
+  warehouseTierAllowed: boolean;
   hasCapacityMetadata: boolean;
   /** Subscription capabilities; the quota chip renders only when present. */
   caps: SubscriptionCapabilities | null;
@@ -42,7 +42,7 @@ export interface TopologyStatusStripProps {
 /** The canvas status strip the editor previously rendered inline. */
 export function TopologyStatusStrip({
   bannerGraphLevel,
-  isProAllowed,
+  warehouseTierAllowed,
   hasCapacityMetadata,
   caps,
   warehouseCount,
@@ -70,7 +70,7 @@ export function TopologyStatusStrip({
           ))}
         </div>
       )}
-      {!isProAllowed && hasCapacityMetadata && (
+      {!warehouseTierAllowed && hasCapacityMetadata && (
         // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions
         <div className="topology-tier-notice" role="status" onMouseDown={(e) => e.stopPropagation()}>
           <WarningIcon size={14} />

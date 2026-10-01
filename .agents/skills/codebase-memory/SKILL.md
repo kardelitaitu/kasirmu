@@ -3,7 +3,23 @@ name: codebase-memory
 description: "Query the kasir.mu code knowledge graph from run_code via the codebase-memory-mcp server. Use for structural discovery instead of grep/read: explore the codebase, understand the architecture, what functions exist, show me the structure, who calls this function, what does X call, trace the call chain, find callers of, show dependencies, impact analysis, blast radius, dead code, unused functions, high fan-in, high fan-out, refactor candidates, code quality audit, hot paths, Cypher query examples, edge types, graph query syntax, how to use search_graph."
 ---
 
-<!-- Audit stamp: 2026-09-22 · Budak-Korporat · status: ACCURATE — 0 findings · Audited against branch `0.0.39` at `e56bf8307`, working tree clean. The three findings the 18-09-26 audit raised against this file are all confirmed REPAIRED, each re-measured: the root path at `:103` now reads `C:/dev/ozpos` with the "never hardcode a versioned subpath" qualifier (the old `C:/dev/ozpos/0.0.35/oz-pos` is gone); `:104` now names the indexed branch `0.0.39`; and `:622` now says every `kasirmu-*` token must resolve to a workspace crate, where it used to say `oz-*`. Re-measured this pass: all nine paths the skill cites exist — `apps/license-server`, `apps/mobile-tauri/gen/schemas/android-schema.json`, `crates/kasirmu-api/src/routes`, `docs/decisions`, `docs/records/JOURNAL.md`, `modules/sales`, `ui/src/dev-mock/tauri-api.ts`, `ui/src/features/locations/topologyContract.ts` and `foundation/src/cart.rs`. The surviving `oz-pos` strings are NOT rebrand drift: `:112-113` states explicitly that `oz-pos` is the code-memory graph's project key rather than the brand, and every `project: 'oz-pos'` argument depends on it — they were deliberately left alone. NOT re-measured (they are outputs of the `mcp__cbm__*` graph tool, not facts readable from the tree, and re-running the index is out of scope for a docs audit): the node and entry counts at `:109` (174 files), `:216` (195 entries / 18 entries), `:468` (951 files) and `:578` (44 files), the qualified-name examples at `:226-229`, the latency figures, and the run-log claim at `:481`. Those stand on their 2026-09-08 measurements and should be re-timed against a fresh index before being quoted again. -->
+<!-- Audit stamp: 2026-09-27 · DSH · status: REPAIRED — project key renamed `oz-pos` → `kasirmu` and the graph rebuilt. -->
+<!-- SUPERSEDED CONTEXT — this is why the key changed. The 22-09-26 stamp below recorded `oz-pos` as
+     the graph's project key and treated every `project: 'oz-pos'` argument as a live locator that must
+     not be touched. That reasoning was correct for the artifact it described, but the artifact was
+     already unreachable: `.githooks/post-commit` passed `--name "oz-pos"` while the derived key was
+     `C-dev-kasirmu`, so the hook wrote an index under a third name no tool read back, and
+     `list_projects` returned `{"projects":[]}`. The 24-09-26 rebuild was killed mid-run
+     (`index.supervisor.reap outcome=killed exit_code=1`), leaving a 201 MB orphan.
+     Repaired 27-09-26: hook now passes `--name "kasirmu"`; full re-index completed in 12.5 s →
+     62,727 nodes / 330,418 edges, `status: indexed`, branch `0.0.40`; `list_projects` reports exactly
+     one project. Every `project:` and qualified-name example in this file was re-pointed to `kasirmu`
+     at the same time. Measured claims below that predate this pass (node-label counts, edge-type
+     totals, file-node counts, latency table, `detect_changes` 951 files, the `:216`/`:468`/`:578`
+     counts, and the `manage_adr` result) are STILL on their 2026-09-08 measurements against the old
+     47,002-node graph — re-measure before quoting any of them. -->
+
+<!-- Superseded audit stamp: 2026-09-22 · Budak-Korporat · status: ACCURATE at the time — 0 findings · Audited against branch `0.0.39` at `e56bf8307`, working tree clean. The three findings the 18-09-26 audit raised against this file are all confirmed REPAIRED, each re-measured: the root path at `:103` now reads `C:/dev/kasirmu` with the "never hardcode a versioned subpath" qualifier (the old `C:/dev/ozpos/0.0.35/oz-pos` is gone); `:104` now names the indexed branch `0.0.39`; and `:622` now says every `kasirmu-*` token must resolve to a workspace crate, where it used to say `oz-*`. Re-measured this pass: all nine paths the skill cites exist — `apps/license-server`, `apps/mobile-tauri/gen/schemas/android-schema.json`, `crates/kasirmu-api/src/routes`, `docs/decisions`, `docs/records/JOURNAL.md`, `modules/sales`, `ui/src/dev-mock/tauri-api.ts`, `ui/src/features/locations/topologyContract.ts` and `foundation/src/cart.rs`. Its claim that the surviving `oz-pos` strings were a deliberate project key, not rebrand drift, was TRUE OF THE 22-09-26 GRAPH and is now obsolete — that key resolved to nothing, and the 27-09-26 pass renamed it (see the stamp above). -->
 
 <!-- Superseded audit stamp: 2026-09-08 · DSH · status: NEW, then RE-MEASURED twice the same day as the graph advanced (generation 2026-09-04T18:32Z → 05:07Z → 05:23Z). Every number, shape, error string and latency below was produced by executing the tool against the live oz-pos graph — nothing is copied from the upstream docs. The re-measurements are themselves a lesson: 44,213 nodes became 47,002, a tld-7 hot path became tld-4, an unlabeled-source Cypher that returned 42 rows on one generation returned 0 on the next, and this file shipped one false causal claim ("index_repository lies about failing") that a later controlled retry disproved — the real cause was a reserved-name ghost file, and the refresh it credited itself to was the post-commit hook. Numbers here are dated, and so is every inference. -->
 
@@ -72,7 +88,7 @@ so never hardcode a path to it.
 
 ```ts
 const r = await tools.mcp__cbm__search_graph({
-  project: 'oz-pos',
+  project: 'kasirmu',
   name_pattern: 'KdsOrder',
   label: 'Struct',
   limit: 5,
@@ -97,25 +113,27 @@ const r = await tools.mcp__cbm__search_graph({
 
 ---
 
-## Project facts (measured 08-09-26)
+## Project facts (graph rebuilt 27-09-26; ⚠️ rows not marked "re-measured" are pre-rename)
 
 | Fact | Value |
 |---|---|
-| Project name to pass | `oz-pos` |
-| Root path | `C:/dev/ozpos` — resolve it with `git rev-parse --show-toplevel`; the checkout is multi-root, so never hardcode a versioned subpath |
-| Indexed branch | `0.0.39` |
-| Nodes / edges | 47,002 / 238,859 |
-| Node labels / edge types | 19 / 26 (top edges: USAGE 99,400 · CALLS 56,009 · DEFINES 44,167) |
-| File nodes | 2,998 — TypeScript 1,093, Rust 967, CSS 132, Go 72, Python 51, TOML 46, Bash 44, SQL 44, YAML 24, JavaScript 8 |
-| Index generation | 2026-09-08T05:23:51Z (= 12:23 local), mode `full`, `recording_status: complete`. **Expect drift**: the post-commit hook re-indexes on every commit, and this table was already stale twice while it was being written. The generation is the volatile field — quote it, do not quote the counts. |
-| Coverage flags | 44 `parse_partial` files, 0 `skipped`, 174 files + 20 dirs excluded by design |
+| Project name to pass | `kasirmu` |
+| Root path | `C:/dev/kasirmu` — resolve it with `git rev-parse --show-toplevel`; the checkout is multi-root, so never hardcode a versioned subpath |
+| Indexed branch | `0.0.40` |
+| Nodes / edges | 62,727 / 330,418 |
+| Node labels / edge types | 19 / 26 (top edges: USAGE 99,400 · CALLS 56,009 · DEFINES 44,167 — **re-measure**, these are pre-rename) |
+| File nodes | 2,998 — TypeScript 1,093, Rust 967, CSS 132, Go 72, Python 51, TOML 46, Bash 44, SQL 44, YAML 24, JavaScript 8 (pre-rename) |
+| Index generation | 2026-09-27 index rebuilt under the `kasirmu` key — 62,727 nodes / 330,418 edges, `status: indexed`, branch `0.0.40`. **Expect drift**: the post-commit hook re-indexes on every commit, and the generation is the volatile field — quote it, do not quote the counts. |
+| Coverage flags | 59 `parse_partial` files, 0 `skipped`, 245 files + 21 dirs excluded by design |
 | Exclusions | `.cbmignore` (build artifacts, node_modules, images, logs) — it deliberately un-excludes `scripts/`, `docs/`, `audit/` so prose and shell are searchable |
 
-**`oz-pos` is the graph's project key, not the brand — leave it.** The brand is `kasir.mu`, but
-this string is what the index was built under, so every `project: 'oz-pos'` argument below is a
-live locator: renaming it in this doc makes the calls read a graph that does not exist. It is
-explicitly allow-listed by `.agents/skills/skill-drift-guard/scripts/detect.sh` for that reason.
-Re-indexing under a new name is an infrastructure change, not a doc edit.
+**`kasirmu` is the graph's project key.** The brand is `kasir.mu`, and `kasirmu` is what the
+index is built under, so every `project: 'kasirmu'` argument below is a live locator. The key
+was `oz-pos` until 2026-09-27 — that rename was the repair of a real defect, not cosmetic:
+`.githooks/post-commit` hardcoded `--name "oz-pos"` while the derived key was
+`C-dev-kasirmu`, so the hook wrote an index under a third name that no tool could read back,
+and `list_projects` returned empty. If you meet `project: 'oz-pos'` anywhere, it is stale —
+re-run this skill's mandatory calls and use the key `list_projects` actually reports.
 
 **The index lags by however long it has been since the last commit — which can be
 weeks.** This graph sat 610 commits behind HEAD (generation 04-09-26) until 08-09-26,
@@ -133,14 +151,14 @@ looks current can still be describing a tree that no longer exists.
 
 ```ts
 await tools.mcp__cbm__list_projects({});
-await tools.mcp__cbm__index_status({ project: 'oz-pos' });
+await tools.mcp__cbm__index_status({ project: 'kasirmu' });
 ```
 
 Then, once you know which files your answer depends on:
 
 ```ts
 await tools.mcp__cbm__check_index_coverage({
-  project: 'oz-pos',
+  project: 'kasirmu',
   paths: ['crates/kasirmu-core/src/kds.rs', 'crates/kasirmu-core/migrations/20260813_init.sql'],
 });
 ```
@@ -225,10 +243,10 @@ for. (`languages`, `packages` and `entry_points` were never requested on their o
 `<project>.<path segments joined by dots, dashes preserved>.<Symbol>[.<Member>]`
 
 ```text
-oz-pos.crates.kasirmu-core.src.kds.KdsOrder
-oz-pos.foundation.src.cart.Cart.add_line
-oz-pos.ui.src.features.tables.register.registerTablesFeature
-oz-pos.agents.skills.docs-auditor.scripts.check-orphans.main
+kasirmu.crates.kasirmu-core.src.kds.KdsOrder
+kasirmu.foundation.src.cart.Cart.add_line
+kasirmu.ui.src.features.tables.register.registerTablesFeature
+kasirmu.agents.skills.docs-auditor.scripts.check-orphans.main
 ```
 
 The last one is `.agents/skills/docs-auditor/scripts/check-orphans.py`: a leading dot in
@@ -249,9 +267,9 @@ tool when the group prefix was carrying meaning.
 ### 1. Find a symbol, read it, see who calls it
 
 ```ts
-const hit = await tools.mcp__cbm__search_graph({ project: 'oz-pos', name_pattern: 'KdsOrder', label: 'Struct', limit: 5 });
-const src = await tools.mcp__cbm__get_code_snippet({ project: 'oz-pos', qualified_name: 'oz-pos.crates.kasirmu-core.src.kds.KdsOrder' });
-const callers = await tools.mcp__cbm__trace_path({ project: 'oz-pos', function_name: 'oz-pos.foundation.src.cart.Cart.add_line', direction: 'inbound', depth: 2 });
+const hit = await tools.mcp__cbm__search_graph({ project: 'kasirmu', name_pattern: 'KdsOrder', label: 'Struct', limit: 5 });
+const src = await tools.mcp__cbm__get_code_snippet({ project: 'kasirmu', qualified_name: 'kasirmu.crates.kasirmu-core.src.kds.KdsOrder' });
+const callers = await tools.mcp__cbm__trace_path({ project: 'kasirmu', function_name: 'kasirmu.foundation.src.cart.Cart.add_line', direction: 'inbound', depth: 2 });
 ```
 
 `get_code_snippet` returns an **absolute** `file_path` plus `start_line`/`end_line`, so
@@ -265,7 +283,7 @@ in this repo, so the call returns instead of throwing:
 
 ```json
 { "status": "ambiguous", "message": "2 matches for \"add_line\"...",
-  "suggestions": [{ "qualified_name": "oz-pos.foundation.src.cart.Cart.add_line", "file_path": "foundation/src/cart.rs" }] }
+  "suggestions": [{ "qualified_name": "kasirmu.foundation.src.cart.Cart.add_line", "file_path": "foundation/src/cart.rs" }] }
 ```
 
 Fix: pass the `qualified_name` from `suggestions`. A wrong qualified name is a hard
@@ -275,9 +293,9 @@ fastest way to discover the real name.
 ### 3. Ranked text search when you do not know the symbol
 
 ```ts
-await tools.mcp__cbm__search_graph({ project: 'oz-pos', query: 'process payment tender', limit: 10 });
-await tools.mcp__cbm__search_graph({ project: 'oz-pos', semantic_query: ['refund', 'void transaction'], limit: 5 });
-await tools.mcp__cbm__search_code({ project: 'oz-pos', pattern: 'registerPage', limit: 10 });
+await tools.mcp__cbm__search_graph({ project: 'kasirmu', query: 'process payment tender', limit: 10 });
+await tools.mcp__cbm__search_graph({ project: 'kasirmu', semantic_query: ['refund', 'void transaction'], limit: 5 });
+await tools.mcp__cbm__search_code({ project: 'kasirmu', pattern: 'registerPage', limit: 10 });
 ```
 
 `query` is BM25 over names and docstrings (camelCase split) with structural boosting;
@@ -291,7 +309,7 @@ are how you detect truncation — there is no `offset`, raise `limit` or narrow 
 ### 4. Blast radius of the working tree
 
 ```ts
-await tools.mcp__cbm__detect_changes({ project: 'oz-pos', format: 'json' });
+await tools.mcp__cbm__detect_changes({ project: 'kasirmu', format: 'json' });
 ```
 
 Measured here: `base: main`, `changed_files: 951` — because this branch is a long-lived
@@ -303,10 +321,10 @@ symbols you edited.
 ### 5. Architecture, scoped
 
 ```ts
-await tools.mcp__cbm__get_architecture({ project: 'oz-pos', aspects: ['overview'] });
-await tools.mcp__cbm__get_architecture({ project: 'oz-pos', path: 'modules/sales', aspects: ['overview'] });
-await tools.mcp__cbm__get_architecture({ project: 'oz-pos', aspects: ['clusters'] });
-await tools.mcp__cbm__get_architecture({ project: 'oz-pos', aspects: ['cycles'] });
+await tools.mcp__cbm__get_architecture({ project: 'kasirmu', aspects: ['overview'] });
+await tools.mcp__cbm__get_architecture({ project: 'kasirmu', path: 'modules/sales', aspects: ['overview'] });
+await tools.mcp__cbm__get_architecture({ project: 'kasirmu', aspects: ['clusters'] });
+await tools.mcp__cbm__get_architecture({ project: 'kasirmu', aspects: ['cycles'] });
 ```
 
 `path` is real scoping: `modules/sales` returned 232 nodes / 582 edges against the
@@ -321,7 +339,7 @@ quoting.
 
 ```ts
 await tools.mcp__cbm__query_graph({
-  project: 'oz-pos',
+  project: 'kasirmu',
   query: "MATCH (f:Function) WHERE f.transitive_loop_depth >= 3 RETURN f.qualified_name AS qn, f.transitive_loop_depth AS tld ORDER BY tld DESC LIMIT 5",
 });
 ```
@@ -381,7 +399,7 @@ Other measured Cypher behavior:
 - Edge properties exist per type — CALLS carries `args`, `callee`, `candidates`,
   `confidence`, `line`, `strategy`, `url_path`, `via`. `Route` nodes carry `method`,
   `broker`, `source`.
-- `manage_adr({ project: 'oz-pos', mode: 'get' })` returns `status: no_adr`. The graph
+- `manage_adr({ project: 'kasirmu', mode: 'get' })` returns `status: no_adr`. The graph
   stores no ADR; the real ones are markdown in `docs/decisions/` (ADR 34–43 and
   earlier). Do not treat an empty ADR store as "this project has no decisions".
 
@@ -480,7 +498,7 @@ Graph tools are ~30–50× cheaper than the grep-backed ones; the exception is
 ## Re-indexing, and what not to touch
 
 **The graph already refreshes itself.** `.githooks/post-commit` re-indexes in the
-background after every commit (proven: three `oz-pos-<epoch>.log` run logs appeared
+background after every commit (proven: three `kasirmu-<epoch>.log` run logs appeared
 inside three minutes while this page was being edited). So on a branch where commits
 land every few minutes, the graph is normally minutes old, not days old — the 610-commit
 lag this file originally documented was a *dead hook*, not normal operation. The hook
@@ -494,7 +512,7 @@ a manual re-index.
 Three calls on 08-09-26 failed at ~2.7 s with:
 
 ```text
-{"project":"oz-pos","status":"error","hint":"Pipeline failed. Check repo_path exists
+{\"project\":\"kasirmu\","status":"error","hint":"Pipeline failed. Check repo_path exists
 and contains source files. Try mode='fast' for a quicker diagnostic run."}
 ```
 
@@ -519,7 +537,7 @@ Two lessons, and the second one is about me:
 ### Success shape (measured, `mode: 'full'`, 5.0 s)
 
 ```json
-{ "project": "oz-pos", "status": "indexed", "nodes": 47002, "edges": 238859,
+{ \"project\": \"kasirmu\", "status": "indexed", "nodes": 47002, "edges": 238859,
   "expected_nodes": 47002, "expected_edges": 238859, "skipped_count": 0,
   "parse_partial_count": 0, "not_indexed_files_count": 174,
   "excluded": { "dirs": [".cargo", ".freebuff", ".git", ".vscode", "fuzz"], "count": 20, "truncated": true },
@@ -533,9 +551,11 @@ Two lessons, and the second one is about me:
 
 ### Calling it correctly
 
-- **Always pass `name: 'oz-pos'`.** Without it the project is keyed from the path
-  (`C-dev-...`-style, like the other indexed projects on this machine), leaving a second
-  full graph while every tool call keeps reading the stale one.
+- **Always pass `name: 'kasirmu'`.** Without it the project is keyed from the path
+  (`C-dev-kasirmu`-style, like the other indexed projects on this machine), leaving a second
+  full graph while every tool call keeps reading the stale one. This is not hypothetical: the
+  post-commit hook passed `--name "oz-pos"`, so commits re-indexed under a key no tool read
+  back and `list_projects` came back empty. `mode full` + `--name kasirmu` is what repaired it.
 - `mode`: `fast` | `moderate` | `full` | `cross-repo-intelligence`. `full` is what this
   repo uses and what `semantic_query` needs.
 - Confirm a run with `index_status` (nodes/edges) and `check_index_coverage` →
@@ -631,4 +651,4 @@ in "Mandatory first two calls" before repeating any of them to someone else.
 
 ---
 
-> last audited 22-09-26 by Budak-Korporat
+> last audited 27-09-26 by DSH

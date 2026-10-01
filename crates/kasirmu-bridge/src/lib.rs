@@ -1,4 +1,4 @@
-//! `kasirmu-bridge` — headless command middleware for the OZ-POS desktop and
+//! `kasirmu-bridge` — headless command middleware for the kasir.mu desktop and
 //! tablet IPC shells (refactor campaign Phase 2).
 //!
 //! Command bodies move here so they can be compiled, tested and reused
@@ -21,6 +21,8 @@
 //! then crm/auth/staff, inventory, pos/kds/hardware, enterprise/settings),
 //! wired in as they are extracted; the Wave-A catalog/fiscal/money modules
 //! below are all landed.
+
+#![deny(unsafe_code)]
 
 pub mod ctx;
 pub mod error;
@@ -159,4 +161,4 @@ pub mod tables;
 pub mod terminals;
 
 #[cfg(test)]
-mod testing;
+pub(crate) mod testing;

@@ -1429,7 +1429,7 @@ func TestRenewHandler_PlusTier(t *testing.T) {
 	seedTenant(t, app, "rnwplus00000001", "rnwpluskey00001", "active")
 	seedSubscription(t, app, "rnwplus00000001", "plus", "active")
 	seedLicenseKeyWithLimits(t, app, "rnwpluskey00001-key", "plus", "unused",
-		"2099-12-31 23:59:59.000Z", 1, 2, `["restaurant-pos", "store-pos", "admin", "inventory", "warehouse"]`)
+		"2099-12-31 23:59:59.000Z", 1, 2, `["restaurant-pos", "store-pos", "admin", "inventory"]`)
 
 	body := strings.NewReader(`{"tenant_id":"rnwplus00000001","key":"rnwpluskey00001-key"}`)
 	req := httptest.NewRequest("POST", "/api/v1/license/renew", body)

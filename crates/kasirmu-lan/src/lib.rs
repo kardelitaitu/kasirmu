@@ -4,12 +4,41 @@ crate: kasirmu-lan | status: SAFE | lint: CLEAN
 findings: DC-1 FIXED (mitigation) — the PSK handshake compare is now constant-time (psk_matches hashes both inputs with HMAC-SHA256 and compares digests via verify_slice; string == short-circuited on the first differing byte). Threat-model note added to the helper doc: the PSK still travels in cleartext in the hello JSON, so this handshake remains LAN discovery-filtering, not transport security. DC-1 FULL FIX 30-08-26 — noise-psk-v1 transport implemented: Noise_XXpsk3_25519_ChaChaPoly_SHA256 via `snow`, PSK mixed into message 3 so it never crosses the wire; first-byte transport selection (0x01 noise / '{' legacy) keeps old KDS clients working; static key derived deterministically from the PSK (domain-separated SHA-256). 5 new tests: handshake+encrypted-event roundtrip, wrong-PSK drop, unknown-selector drop, legacy hello accept, legacy hello reject. DC-2 FIXED — per-peer offline buffer pushes now route through buffer_event_for_peer with a drop-oldest cap of 1,024 events/peer (2 new tests: cap + per-peer isolation; 27 lan_server tests pass). DEVICE-KEYED REPLAY 13-09-26 (agent 5) — the offline buffer moved into the `replay` module and is now keyed by the hello/discover `device_id` when the peer presents one: a reconnecting tablet dials from a NEW ephemeral port, so address keying could never find its queue in production (stamped by agent 4's live validation); device-less peers keep `peer_addr` keying. The drain moved from the accept loop into `handle_peer` phase 2 (the device_id is only known after the handshake), replay still obeys the station filter, and retention is bounded twice (1,024/queue + 8,192 total, drop-oldest, tracing::warn!). Wire format untouched. Otherwise solid: handshake inside the spawned task (accept-loop DoS-safe), bounded broadcast with lagged-peer handling, safe 127.0.0.1 default with PSK required for external bind, heartbeat/replay design documented
 next: deprecate legacy-psk-v1 once all KDS clients speak noise-psk-v1 | perf: N/A
 */
-//! Headless LAN event transport for OZ-POS, extracted from
+//! Headless LAN event transport for kasir.mu, extracted from
 //! `apps/desktop-tauri/src/lan_server.rs` (Agent 1, Phase 1.1).
 //!
 //! Owns the TCP listener, the per-peer offline buffers and both PSK
 //! transports; it has no dependency on Tauri, windowing or any GUI
 //! crate, so a headless binary can drive it directly.
+//!
+//! # Wiring status: implemented, and reached by a test harness rather than a product client
+//!
+//! **Who starts it.** The desktop shell starts it on **every launch**,
+//! unconditionally: `apps/desktop-tauri/src/lib.rs:948-979` constructs
+//! [`LanEventForwarder`], calls
+//! `platform_startup::spawn_daemon("LAN event forwarder", forwarder.run())`, and
+//! subscribes three event-bus handlers (`sale.completed`, `order.course_fired`,
+//! `kds.sync`). The bind address comes from `lan_server.bind` and defaults to
+//! loopback; `0.0.0.0` is refused unless a non-empty `lan_server.psk` is also
+//! set. So the listener is live on every install, confined to `127.0.0.1`
+//! unless an operator configures otherwise.
+//!
+//! **Who consumes it.** Nothing shipped. No client in either shell dials this
+//! server: `apps/mobile-tauri` carries no `kasirmu-lan` dependency, and the
+//! desktop's own in-app KDS board is fed over ordinary IPC from the local
+//! database, not over LAN. The only peer that ever connects is the test harness
+//! in `apps/desktop-tauri/src/commands/kds_lan_live_tests.rs`.
+//!
+//! **Why it is kept anyway.** Ruled 2026-09-30 (decision **D6**, reversing its
+//! original "retire" recommendation): this crate is *unwired-but-implemented*,
+//! not redundant-and-inert, so it falls on the KEEP side of the project's own
+//! class rule. Retiring it would destroy a hardened, audited transport
+//! (Noise_XXpsk3, constant-time PSK compare, bounded device-keyed replay) to
+//! remove a loopback socket. **Retiring it remains legitimate as a product
+//! decision** if LAN KDS is dropped as a direction — but that is a product
+//! call, not a cleanup one, and it is a multi-site removal rather than the
+//! one-line workspace `exclude` D6 originally proposed (this manifest inherits
+//! `workspace = true`, so an `exclude` fails).
 //!
 //! Entry points: [`LanEventForwarder`] (construct with a bind address +
 //! optional PSK, then `handle()` for a cloneable [`LanForwarderHandle`]
@@ -83,10 +112,20 @@ next: deprecate legacy-psk-v1 once all KDS clients speak noise-psk-v1 | perf: N/
 //! let forwarder = LanEventForwarder::default();
 //! ```
 
+#![deny(unsafe_code)]
+// `rustdoc::private_intra_doc_links` is allowed crate-wide here, and ONLY
+// that lint. Several public items in this crate document their behaviour by
+// naming the private helper that enforces it — which is more useful to a
+// reader than a prose restatement, and is the reason rustdoc has a lint for
+// it rather than an error. `rustdoc::broken_intra_doc_links` is deliberately
+// NOT allowed, so a link to an item that does not exist still fails the
+// build. Precedent: `kasirmu-crypto/src/lib.rs`, `platform/core/src/lib.rs`.
+#![allow(rustdoc::private_intra_doc_links)]
+
 use std::collections::VecDeque;
 use std::sync::Arc;
 
-use foundation::contracts::{EventHandler, ModuleResult};
+use foundation::contracts::{EventHandler, HandlerType, ModuleResult};
 use kasirmu_core::events::{CourseFired, SaleCompleted};
 use serde::Deserialize;
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
@@ -113,6 +152,47 @@ pub use kds_sync::{
     KdsQueueProvider, KdsQueueSnapshot, KdsQueueTicket, KdsSyncEvent, KdsSyncHandler,
     PeerSubscription, event_station_scope, should_deliver,
 };
+
+/// Whether a bind address is loopback-only (LAN-A).
+///
+/// Accepts the host forms the app can produce: `127.0.0.1`, `localhost`,
+/// `::1`, and an empty host (which `TcpListener::bind` treats as
+/// "all interfaces", so it is NOT loopback and must be rejected). A host that
+/// cannot be parsed as an IP is treated as non-loopback unless it is literally
+/// `localhost`, so an unknown hostname fails closed.
+fn bind_addr_is_loopback(addr: &str) -> bool {
+    // Split host from an optional port. IPv6 literals are bracketed: [::1]:9180.
+    let host = if let Some(rest) = addr.strip_prefix('[') {
+        // Bracketed IPv6: [::1] or [::1]:9180.
+        match rest.split_once(']') {
+            Some((h, _)) => h,
+            None => return false,
+        }
+    } else if addr.matches(':').count() > 1 {
+        // An UNBRACKETED IPv6 literal (e.g. "::1", "::"). It carries no port,
+        // so splitting on ':' would mangle it — take it whole. This is the case
+        // that made "::1" fail the loopback check.
+        addr
+    } else {
+        // IPv4 or hostname, optionally with a port.
+        match addr.rsplit_once(':') {
+            Some((h, _)) => h,
+            None => addr,
+        }
+    };
+    if host.is_empty() {
+        // "…:9180" with no host means all interfaces.
+        return false;
+    }
+    if host.eq_ignore_ascii_case("localhost") {
+        return true;
+    }
+    match host.parse::<std::net::IpAddr>() {
+        Ok(ip) => ip.is_loopback(),
+        // An unparseable hostname is not proven loopback; fail closed.
+        Err(_) => false,
+    }
+}
 
 /// Maximum number of pending broadcast messages before old ones are
 /// dropped (avoids unbounded memory growth for slow peers).
@@ -301,6 +381,22 @@ impl LanEventForwarder {
     /// 4. Sends heartbeat pings every 5s
     /// 5. Buffers events on write failure and exits
     pub async fn run(self) {
+        // LAN-A: refuse to serve an unauthenticated non-loopback bind. The
+        // caller used to be trusted to pair "external address" with "a PSK" —
+        // the desktop app did so with an exact-string check for `"0.0.0.0"`,
+        // which any other external spelling (`"::"`, a LAN IP, `"0.0.0.0:9180"`)
+        // would slip past, exposing every event as cleartext. The check belongs
+        // here, where the actual bind address is known and cannot be compared
+        // wrongly by a caller.
+        if self.psk.is_none() && !bind_addr_is_loopback(&self.bind_addr) {
+            tracing::error!(
+                address = %self.bind_addr,
+                "refusing to serve the LAN forwarder without a PSK on a non-loopback address — \
+                 events would be readable by anyone on the network; bind 127.0.0.1 or configure a PSK"
+            );
+            return;
+        }
+
         let listener = match TcpListener::bind(&self.bind_addr).await {
             Ok(l) => {
                 tracing::info!(address = %self.bind_addr, "LAN event forwarder started");
@@ -880,6 +976,10 @@ pub struct SaleCompletedHandler {
 }
 
 impl EventHandler<SaleCompleted> for SaleCompletedHandler {
+    fn handler_type(&self) -> HandlerType {
+        HandlerType::PluginBridge
+    }
+
     fn handle(&self, event: &SaleCompleted) -> ModuleResult {
         let json = serde_json::to_string(event)
             .map_err(|e| anyhow::anyhow!("serialising SaleCompleted: {e}"))?;
@@ -896,6 +996,10 @@ pub struct CourseFiredHandler {
 }
 
 impl EventHandler<CourseFired> for CourseFiredHandler {
+    fn handler_type(&self) -> HandlerType {
+        HandlerType::PluginBridge
+    }
+
     fn handle(&self, event: &CourseFired) -> ModuleResult {
         let json = serde_json::to_string(event)
             .map_err(|e| anyhow::anyhow!("serialising CourseFired: {e}"))?;

@@ -19,7 +19,7 @@ fn counts(
 
 #[test]
 fn free_tier_flags_every_over_cap_dimension() {
-    // Free caps: locations 1, registers 1, warehouses 1, staff 1, products 200.
+    // Free caps: locations 1, registers 1, warehouses 0, staff 1, products 200.
     let report = evaluate(&SubscriptionTier::Free, &counts(3, 2, 2, 2, 5));
     assert!(report.is_over_quota());
 
@@ -37,9 +37,11 @@ fn free_tier_flags_every_over_cap_dimension() {
         report.usage(QuotaDimension::PosRegisters).unwrap().excess(),
         1
     );
+    // Warehouses are Premium+ only, so Free's cap is 0 and BOTH seeded
+    // warehouses are excess.
     assert_eq!(
         report.usage(QuotaDimension::Warehouses).unwrap().excess(),
-        1
+        2
     );
     assert_eq!(report.usage(QuotaDimension::Staff).unwrap().excess(), 1);
     // 5 products is well under the 200 cap.
@@ -49,7 +51,7 @@ fn free_tier_flags_every_over_cap_dimension() {
             .unwrap()
             .is_over_quota()
     );
-    assert_eq!(report.total_excess(), 5);
+    assert_eq!(report.total_excess(), 6);
 }
 
 #[test]
@@ -61,6 +63,44 @@ fn at_cap_is_not_over_quota_but_blocks_creation() {
     assert!(loc.blocks_creation(), "at the cap blocks the next creation");
     assert_eq!(loc.excess(), 0);
     assert!(!report.is_over_quota());
+}
+
+#[test]
+fn a_zero_cap_with_nothing_in_it_is_an_unincluded_dimension() {
+    // The warehouse workspace moved to Premium+ on 2026-09-29, so every lower
+    // tier caps warehouses at 0. Zero usage against a zero cap still answers
+    // `blocks_creation` (the creation gate must refuse the first warehouse),
+    // but it is NOT an "at the cap" state for the owner-facing markers:
+    // `is_unincluded_dimension` is what both marker writers skip on, so a
+    // tenant is never nagged about a category its tier does not include.
+    let report = evaluate(&SubscriptionTier::Free, &counts(0, 0, 0, 0, 0));
+    let wh = report.usage(QuotaDimension::Warehouses).unwrap();
+    assert_eq!(wh.limit, Some(0));
+    assert!(wh.blocks_creation(), "the first warehouse is refused");
+    assert!(!wh.is_over_quota());
+    assert_eq!(wh.excess(), 0);
+    assert!(wh.is_unincluded_dimension());
+
+    // One legacy warehouse is real excess, not an un-included dimension.
+    let report = evaluate(&SubscriptionTier::Free, &counts(0, 0, 1, 0, 0));
+    let wh = report.usage(QuotaDimension::Warehouses).unwrap();
+    assert!(wh.is_over_quota());
+    assert!(!wh.is_unincluded_dimension());
+
+    // Every other dimension has a non-zero cap, so nothing else qualifies.
+    for (dim, c) in [
+        (QuotaDimension::Locations, counts(0, 0, 0, 0, 0)),
+        (QuotaDimension::PosRegisters, counts(0, 0, 0, 0, 0)),
+        (QuotaDimension::Staff, counts(0, 0, 0, 0, 0)),
+        (QuotaDimension::Products, counts(0, 0, 0, 0, 0)),
+    ] {
+        let report = evaluate(&SubscriptionTier::Free, &c);
+        let usage = report.usage(dim).unwrap();
+        assert!(
+            !usage.is_unincluded_dimension(),
+            "{dim:?} has a non-zero cap and must keep its at-cap marker"
+        );
+    }
 }
 
 #[test]
@@ -101,7 +141,7 @@ fn dimensions_emit_in_canonical_order_with_matching_limits() {
 
 #[test]
 fn pro_tier_boundary_between_at_cap_and_over() {
-    // Pro caps: locations 2, registers 5, warehouses 3, staff 20, products 1000.
+    // Pro caps: locations 2, registers 5, warehouses 0, staff 20, products 1000.
     let report = evaluate(&SubscriptionTier::Pro, &counts(2, 6, 3, 20, 1000));
     // locations at cap (2): not over, blocks.
     assert!(
@@ -116,17 +156,15 @@ fn pro_tier_boundary_between_at_cap_and_over() {
             .unwrap()
             .blocks_creation()
     );
-    // registers over by 1.
+    // registers over by 1, warehouses over by 3 — the warehouse workspace is
+    // Premium+ only, so Pro's cap is 0 rather than 3.
     let pos = report.usage(QuotaDimension::PosRegisters).unwrap();
     assert!(pos.is_over_quota());
     assert_eq!(pos.excess(), 1);
-    // warehouses/staff/products at cap: not over.
-    assert!(
-        !report
-            .usage(QuotaDimension::Warehouses)
-            .unwrap()
-            .is_over_quota()
-    );
+    let wh = report.usage(QuotaDimension::Warehouses).unwrap();
+    assert!(wh.is_over_quota());
+    assert_eq!(wh.excess(), 3);
+    // staff/products at cap: not over.
     assert!(!report.usage(QuotaDimension::Staff).unwrap().is_over_quota());
     assert!(
         !report
@@ -134,7 +172,7 @@ fn pro_tier_boundary_between_at_cap_and_over() {
             .unwrap()
             .is_over_quota()
     );
-    assert_eq!(report.total_excess(), 1);
+    assert_eq!(report.total_excess(), 4);
 }
 
 #[test]
@@ -151,8 +189,7 @@ fn default_counts_are_within_every_paid_tier() {
         let report = evaluate(&tier, &zero);
         assert!(
             !report.is_over_quota(),
-            "empty tenant over quota on {:?}",
-            tier
+            "empty tenant over quota on {tier:?}"
         );
         assert_eq!(report.total_excess(), 0);
     }

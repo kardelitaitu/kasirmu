@@ -7,34 +7,59 @@ next: none | perf: N/A
 //! Inventory Repository — database queries for products, categories, and stock levels.
 
 use crate::error::InventoryError;
-use crate::models::{Inventory, LocationId, Product, ProductType};
+use crate::models::{Product, ProductType};
 use foundation::{Barcode, Currency, Money, Sku};
-use rusqlite::{Connection, Transaction, params};
+use kasirmu_core::db::Store;
+use kasirmu_core::db::namespaced::{Grants, ModuleId, NamespacedStore};
+use rusqlite::Connection;
+
+/// The inventory module's own namespace id, as the ownership map names it.
+const OWNER: ModuleId = ModuleId("inventory");
+
+/// The module's own manifest, embedded so the runtime grant set is derived from
+/// the same declaration the governance checker reads (Phase 4 P4.1 item 2).
+const MANIFEST: &str = include_str!("../manifest.json");
 
 /// Repository for inventory and product database operations.
+///
+/// Phase 3 P3.2: reaches the database through a [`NamespacedStore`] scoped to the
+/// `inventory` namespace rather than a bare `&Connection`, so `get_product` is
+/// checked against `modules/ownership.json` before it runs. `inventory` owns
+/// `products` and declares no foreign read, so its embedded manifest
+/// (Phase 4 P4.1) yields no grant.
 pub struct InventoryRepository<'a> {
-    conn: &'a Connection,
+    ns: NamespacedStore<'a>,
 }
 
 impl<'a> InventoryRepository<'a> {
     /// Create a new `InventoryRepository` borrowing a SQLite connection.
     pub fn new(conn: &'a Connection) -> Self {
-        Self { conn }
+        Self {
+            ns: NamespacedStore::new(
+                Store::new(conn),
+                OWNER,
+                Grants::from_manifest_json(OWNER, MANIFEST),
+            ),
+        }
     }
 
     /// Retrieve a product by ID.
     pub fn get_product(&self, id: &str) -> Result<Option<Product>, InventoryError> {
-        let mut stmt = self.conn.prepare(
+        let rows = self.ns.own().query_try(
             "SELECT id, sku, name, price_minor, currency, category_id, barcode, created_at, updated_at, price_updated_at, track_serial, product_type, version, cost_minor, brand, rack_location, notes, unit, is_active, default_supplier_id, popularity_score, image_hash
              FROM products WHERE id = ?1",
+            rusqlite::params![id],
+            Self::map_product_row,
         )?;
+        Ok(rows.into_iter().next())
+    }
 
-        let mut rows = stmt.query(params![id])?;
-        let row = match rows.next()? {
-            Some(r) => r,
-            None => return Ok(None),
-        };
-
+    /// Map a `products` row into a [`Product`].
+    ///
+    /// Kept as a named helper so the namespace-checked `query` closure stays a
+    /// one-liner while the fail-closed parsing (currency/SKU validation, the
+    /// `product_type` swallow the comment below explains) stays readable.
+    fn map_product_row(row: &rusqlite::Row<'_>) -> Result<Product, InventoryError> {
         let currency_str: String = row.get(4)?;
         let currency: Currency = currency_str
             .parse()
@@ -71,7 +96,7 @@ impl<'a> InventoryRepository<'a> {
             "InventoryRepository::get_product",
         );
 
-        Ok(Some(Product {
+        Ok(Product {
             id: row.get(0)?,
             sku,
             name: row.get(2)?,
@@ -95,51 +120,16 @@ impl<'a> InventoryRepository<'a> {
             is_active: row.get::<_, i64>(18).unwrap_or(1) != 0,
             default_supplier_id: row.get(19).unwrap_or(None),
             image_hash: row.get(20).unwrap_or(None),
-        }))
+        })
     }
 
-    /// Retrieve product stock level for a SKU.
-    pub fn get_stock(&self, sku: &Sku) -> Result<Option<Inventory>, InventoryError> {
-        let mut stmt = self.conn.prepare(
-            "SELECT product_id, sku, qty, low_stock_threshold, updated_at, location_id
-             FROM inventory WHERE sku = ?1",
-        )?;
-
-        let mut rows = stmt.query(params![sku.as_str()])?;
-        let row = match rows.next()? {
-            Some(r) => r,
-            None => return Ok(None),
-        };
-
-        let sku_str: String = row.get(1)?;
-        let sku = Sku::try_new(sku_str)
-            .ok_or_else(|| InventoryError::validation("sku", "invalid SKU"))?;
-        let loc_str: String = row.get(5).unwrap_or_default();
-
-        Ok(Some(Inventory {
-            product_id: row.get(0)?,
-            sku,
-            qty: row.get(2)?,
-            low_stock_threshold: row.get(3)?,
-            updated_at: row.get(4)?,
-            location_id: LocationId::from(loc_str),
-        }))
-    }
-
-    /// Adjust stock level for a product inside a transaction.
-    pub fn adjust_stock_tx(
-        &self,
-        tx: &Transaction,
-        sku: &Sku,
-        delta: i64,
-    ) -> Result<(), InventoryError> {
-        let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
-        tx.execute(
-            "UPDATE inventory SET qty = qty + ?1, updated_at = ?2 WHERE sku = ?3",
-            params![delta, now, sku.as_str()],
-        )?;
-        Ok(())
-    }
+    // `get_stock` and `adjust_stock_tx` were REMOVED here on 2026-09-29. Both read or wrote
+    // `inventory.sku` / `inventory.low_stock_threshold`, columns the migrations do not carry
+    // -- `repository_tests.rs` said so in a note promising tests "once the migration is
+    // applied" -- and after `InventoryService`'s wrappers went, they had no caller either.
+    // SQL that cannot run is not a plan, and unreachable code cannot be covered: the pair was
+    // holding `modules-inventory` at 75.2% against a 76.0% floor. They arrive with the
+    // migration, tests included, or not at all.
 }
 
 #[cfg(test)]

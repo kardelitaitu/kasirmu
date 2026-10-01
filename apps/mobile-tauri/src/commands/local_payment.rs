@@ -11,13 +11,13 @@
 //!
 //! # ADR #49 status — measured 2026-09-16, `verify-body-parity.py` → **1 / 2**
 //!
-//! **One door is ported.** [`get_local_payment_methods_scoped`] delegates to
+//! **One door is ported.** [`get_local_payment_methods_scoped`](kasirmu_bridge::local_payment::get_local_payment_methods_scoped) delegates to
 //! [`kasirmu_bridge::local_payment::get_local_payment_methods_scoped`]: the bodies
 //! were statement-identical, and the door names a permission
 //! (`SETTINGS_READ`), so the move is ledger-neutral. The twin's argument order
 //! is payload-first, `session_token` last.
 //!
-//! **One door is REFUSED.** [`set_local_payment_methods_scoped`] would **gain a
+//! **One door is REFUSED.** [`set_local_payment_methods_scoped`](kasirmu_bridge::local_payment::set_local_payment_methods_scoped) would **gain a
 //! gate**: the twin adds an ADR #47 location-resource check on top of the
 //! session gate — `require_permission_for_session_resource(&session,
 //! SETTINGS_EDIT, ScopeType::Location, location_id)`
@@ -26,7 +26,7 @@
 //! removing one, so the body stays tablet-native.
 //!
 //! **Correction to the note this file used to carry.** It claimed "no
-//! `BridgeCtx` on tablet yet", which is stale: [`AppState::bridge_ctx`] exists
+//! `BridgeCtx` on tablet yet", which is stale: `AppState::bridge_ctx` exists
 //! (`apps/mobile-tauri/src/state.rs:417`) and is what the ported door above
 //! uses. That paragraph predates the Slice 1+ shims and had already stopped
 //! describing this shell.
@@ -91,8 +91,9 @@ pub async fn set_local_payment_methods_scoped(
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<EffectivePaymentRail>, AppError> {
-    let (session, conn) = state.resolve_scope(&session_token)?;
+    let session = state.resolve_session(&session_token)?;
     require_permission_for_session(&state, &session, permissions::SETTINGS_EDIT).await?;
+    let conn = state.resolve_store(&session_token)?;
     let submitted: Vec<NewPaymentRail> = rails
         .into_iter()
         .map(|r| NewPaymentRail {

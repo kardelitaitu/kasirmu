@@ -1,5 +1,6 @@
-<!-- Audit stamp: 2026-09-08 · DSH · status: ACCURATE AFTER REPAIR (4 findings, 3 were claims of enforcement that does not exist) · Replaces the 2026-07-22 Hermes-Agent stamp, whose verdict "ACCURATE (1 minor path nit)" cannot be reconciled with what is now in the table: 6.2.2 asserted cargo-audit runs weekly in CI when the only copies live in two .bak workflows that GitHub never executes, and 6.4.1 pointed at a RELEASE.md that does not exist. · What survived verification, because a doc with wrong rows is not a doc with no true rows: `oz-security` is a real crate (1 of 13), `mask_pan()` is real at crates/oz-security/src/mask.rs, `rotate_key()` is a real trait method (lib.rs:125, 242) inside RotationInfo, and `oz-security::Keyring` is a real pub trait at lib.rs:80 with InMemoryKeyring plus windows/macos/linux modules — so the four "Protect Cardholder Data" rows that credit oz-security all hold. Note I nearly wrote the Keyring row up as false: my first grep looked for a struct or a mod, and a trait is none of those. A no-match from a pattern you chose is not evidence of absence. · 3.2.1 was narrowed rather than deleted: no PAN/CVV/track column exists in any of the 44 SQLite migrations and audit.rs carries a live redaction blocklist naming pin, cvv, cvc, card_number, pan and private_key — genuinely good evidence — but "never stores PIN" is false as written because gift_cards.pin is stored verbatim; see the precision note under that table. · The file also used to end with a "Last updated: 2026-08-16" line 25 days newer than this stamp's predecessor, which no tool reads: the doc admitted in prose that it had been edited long after it was last verified. Left in place; the footer below now reflects this pass. -->
+<!-- Superseded audit marker (2026-09-08, body kept verbatim) · DSH · status: ACCURATE AFTER REPAIR 2026-09-25 (crate names corrected: 8 dead `oz-*` references replaced with the real `kasirmu-*` paths; rows 3.3.0/3.4.0 re-scoped from a bare "Implemented" to N/A-by-design with the zero-caller fact stated; gift-card PIN note extended past "authentication credential" to record that nothing verifies it) · Replaces the 2026-07-22 Hermes-Agent stamp, whose verdict "ACCURATE (1 minor path nit)" cannot be reconciled with what is now in the table: 6.2.2 asserted cargo-audit runs weekly in CI when the only copies live in two .bak workflows that GitHub never executes, and 6.4.1 pointed at a RELEASE.md that does not exist. · What survived verification, because a doc with wrong rows is not a doc with no true rows: the crate is real, `mask_pan()` is real at crates/kasirmu-security/src/mask.rs:50-77, `rotate_key()` is a real trait method inside RotationInfo, and `Keyring` is a real pub trait at lib.rs:80 with InMemoryKeyring plus windows/macos/linux modules — so the four "Protect Cardholder Data" rows credit a crate that exists. **⚠ 2026-09-25: that crate is `kasirmu-security`, not `oz-security`.** The stamp and the four rows above all spelled it `oz-security`/`oz-core`, a pre-rename name; `crates/oz-security` does not exist and `crates/oz-core` does not either. The claims were true and the paths were dead, which is the failure mode a directory rename produces in prose that nothing re-derives. Corrected in place. Note I nearly wrote the Keyring row up as false: my first grep looked for a struct or a mod, and a trait is none of those. A no-match from a pattern you chose is not evidence of absence. · 3.2.1 was narrowed rather than deleted: no PAN/CVV/track column exists in any of the 44 SQLite migrations and audit.rs carries a live redaction blocklist naming pin, cvv, cvc, card_number, pan and private_key — genuinely good evidence — but "never stores PIN" is false as written because gift_cards.pin is stored verbatim; see the precision note under that table. · The file also used to end with a "Last updated: 2026-08-16" line 25 days newer than this stamp's predecessor, which no tool reads: the doc admitted in prose that it had been edited long after it was last verified. Left in place; the footer below now reflects this pass. -->
 
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 142 lines, with a prior marker re-verified rather than replaced. It is a compliance checklist scoped to a specific standard version, and its status line says Planning / Review — which is the correct label for a document that maps requirements rather than certifies compliance, and the distinction is the first thing a reader needs. · THE PRIOR STAMP RECORDS A REPAIR OF THE KIND THIS CAMPAIGN HAS BEEN MAKING ALL SESSION, and it is worth noting because it was made recently and in bulk: eight dead pre-restructure crate references were corrected, and the repair is dated separately from the original audit. A compliance document naming crates that no longer exist is a document whose citations cannot be followed, and in a checklist that maps each requirement to the component that satisfies it, an unfollowable citation is the whole failure. · THE SCOPE IS THE INTERESTING PART, and it is narrower than a reader might assume. The document draws the boundary around cardholder data specifically — the point where the system handles it — rather than claiming coverage of the standard as a whole. That is the correct scoping for a point-of-sale product whose payment path is a thin slice of a much larger standard, and it is also the scoping that makes the document maintainable: a checklist claiming comprehensive coverage would need re-verification against every requirement, while one scoped to the data it actually touches can be checked honestly by someone who understands that path. · A NOTE ON WHAT AN AUDIT CAN ESTABLISH HERE, which is the limit this stamp exists to record. Conformance to a payment-card standard is not a property a documentation audit can confirm; it is established by assessment, evidence collection and an accredited party. What a documentation audit can confirm is the thing this file actually needs: that the components it maps requirements onto exist, and that its own citations resolve. The prior stamp's bulk repair is evidence that the second was not true and has since been made so. · NOT re-measured: the compliance posture itself, whether any requirement is genuinely satisfied, and whether the standard version named is current. Those are assessment questions, and a stamp implying otherwise on a document whose subject is a compliance claim would be exactly the over-reach this campaign has avoided throughout. · Prior marker retained; footer re-dated to match the new stamp. -->
 # PCI-DSS Compliance Checklist
 
 > **Status:** Planning / Review
@@ -23,20 +24,60 @@ kasir.mu processes, transmits, and stores cardholder data when processing credit
 
 | Requirement | Status | Notes |
 |-------------|--------|-------|
-| 3.2.1 Do not store full PAN, CVV, or PIN after authorization | ✅ Application | **True for cardholder data, and the wording was too broad.** No PAN, CVV/CVC or track columns exist in any of the SQLite migrations (`ls crates/kasirmu-core/migrations/*.sql | wc -l` → 67 as of 2026-09-23; this row said 44, which was true when written and is the kind of count nothing re-derives), and `crates/oz-core/src/db/audit.rs` keeps an explicit redaction blocklist containing `pin`, `cvv`, `cvc`, `card_number`, `pan`, `private_key`. But the flat word "PIN" is not accurate store-wide: `gift_cards.pin` is a real column, and staff credentials are held separately as `users.pin_hash`. Say *cardholder* PIN. See the note under this table. |
-| 3.3.0 Mask PAN when displayed (first 6 + last 4) | ✅ Implemented | `mask_pan()` helper in `oz-security` |
-| 3.4.0 Render PAN unreadable when stored (encryption, tokenization) | ✅ Implemented | `oz-security` provides encryption helpers |
-| 3.5.1 Document key management procedures | ✅ Implemented | Key rotation policy — P12-1: `rotate_key()` implemented in `oz-security::Keyring`. Old key archived as `{name}-prev`. See `docs/decisions/archived/2026-07-10-subscription-tier-entitlement.md`. |
-| 3.6.1 Secure cryptographic key storage | ✅ Implemented | OS keyring via `oz-security::Keyring` |
+| 3.2.1 Do not store full PAN, CVV, or PIN after authorization | ✅ Application | **True for cardholder data, and the wording was too broad.** No PAN, CVV/CVC or track columns exist in any of the SQLite migrations (`ls crates/kasirmu-core/migrations/*.sql | wc -l` → 67 as of 2026-09-23; this row said 44, which was true when written and is the kind of count nothing re-derives), and `crates/kasirmu-core/src/db/audit.rs` keeps an explicit redaction blocklist containing `pin`, `cvv`, `cvc`, `card_number`, `pan`, `private_key` (`SENSITIVE_DETAIL_KEYS`, :18-39, verbatim — verified 2026-09-25). But the flat word "PIN" is not accurate store-wide: `gift_cards.pin` is a real column, and staff credentials are held separately as `users.pin_hash`. Say *cardholder* PIN. See the note under this table. |
+| 3.3.0 Mask PAN when displayed (first 6 + last 4) | ✅ N/A by design | The helper is correct and tested — `kasirmu_security::mask::mask_pan()` (`crates/kasirmu-security/src/mask.rs:50-77`) implements first-six/last-four with a ≤10-digit overlap branch. It has **zero production callers**, and correctly so: no PAN is ever displayed, because none is ever stored (see 3.2.1). `mask_token` is the only function in that module with live callers. Verified 2026-09-25. |
+| 3.4.0 Render PAN unreadable when stored (encryption, tokenization) | ✅ N/A by design | No PAN is stored, so there is nothing to render unreadable: no `card`/`pan` column exists in any migration, and every in-repo writer sets `gateway_response` to None. What *is* stored plaintext is a merchant's own gift-card code and PIN, which are **not** cardholder data — the classification is recorded in the precision note below and in review item C21. |
+| 3.5.1 Document key management procedures | ✅ Implemented | Key rotation policy — P12-1: `rotate_key()` implemented in `kasirmu_security::Keyring`. Old key archived as `{name}-prev`. See `docs/decisions/archived/2026-07-10-subscription-tier-entitlement.md`. |
+| 3.6.1 Secure cryptographic key storage | ✅ Implemented | OS keyring via `kasirmu_security::Keyring` |
 
-> **Precision note (verified 08-09-26).** `crates/oz-core/migrations/20260813_init.sql:138`
+> **Precision note (verified 08-09-26; extended 2026-09-25).** `crates/kasirmu-core/migrations/20260813_init.sql:138`
 > defines `gift_cards.pin TEXT NOT NULL DEFAULT ''`, written verbatim from
-> `input.pin.unwrap_or_default()` at `crates/oz-core/src/db/gift_cards.rs:49` and inserted at
-> line 57 — no hashing anywhere on that path, and `SELECT ... pin` returns it to callers
+> `input.pin.unwrap_or_default()` at `crates/kasirmu-core/src/db/gift_cards.rs:49` and inserted at
+> line 63 — no hashing anywhere on that path, and `SELECT ... pin` returns it to callers
 > (lines 125, 156, 239). That is a *gift-card* PIN, not cardholder data, so it does not
-> violate 3.2.1 as PCI defines it; it is still a plaintext authentication credential in the
+> violate 3.2.1 as PCI defines it; it is still stored recoverable in the
 > same database file as `users.pin_hash`, which is hashed by name and design. Recorded as a
 > `CODE FINDING`, not patched here.
+>
+> **The 2026-09-25 extension matters more than the wording it amends.** This note called the
+> gift-card PIN "a plaintext authentication credential" without asking whether anything
+> *checks* it — and nothing does. A tree-wide search finds no PIN predicate, no bridge
+> verify function, and no UI prompt to enter a gift-card PIN; the only PIN surface is the
+> optional field on the issue modal. `card_number` beside it is in the same position for a
+> different reason: it is a merchant-issued bearer identifier (`GC-` + 12 alphanumerics,
+> printed on the card and read at the till), not a PAN, and it is the column every lookup
+> matches on. Neither is cardholder data, so 3.2.1 was never breached here; but the phrase
+> "authentication credential" should not be read as describing a working control. The
+> product question — is gift-card PIN protection intended at all? — is open and tracked as
+> review item C69.
+>
+> **One correction to the paragraph above, measured 2026-09-26 (review C69 pass).** It says
+> nothing checks the PIN, which is TRUE, but it does not say what the code already does with
+> it — and it is more than nothing. MSL-10 (`modules/loyalty/src/models.rs:88-125`, `:127`)
+> makes it a secret at the SERIALIZATION boundary: the field is `skip_serializing` with
+> `default` (so older clients still deserialize), and a manual `Debug` impl renders it as
+> `<redacted>`. The struct's own doc calls it "PIN for balance checks", i.e. a control that
+> was intended. So the accurate statement is not "a credential nothing treats as one" but
+> **a credential that is protected in transit and at rest-in-memory, stored recoverably at
+> rest-on-disk, and never verified by any code path** — the last of which is why C69 remains
+> an open product question rather than a settled defect. Pinned by
+> `gift_card_pin_is_never_serialized_or_debugged` in the same file.
+>
+> **RESOLVED 2026-09-29 (review C69). The PIN was REMOVED, not hashed or documented away.**
+> The three paragraphs above were right at every step and they converge on the answer: a
+> value that is protected in transit, stored recoverably on disk, and *never verified by any
+> code path* is not a control — it is a liability with a reassuring name. The deciding
+> observation came from the MSL-10 note above: because the field was `skip_serializing`, it
+> could not even be READ BACK through the API that returns the card, so it was a write-only
+> secret with no reader *and* no verifier. The issue modal nonetheless labelled it
+> "PIN (optional)" with the placeholder "For balance checks" — promising a capability the
+> code never had. Removed by `20261015_gift_cards_drop_pin.sql`, following the KDS
+> pairing-token removal of the day before verbatim: *"A displayed-but-unverified secret
+> invites the next reader to assume it is verified. Deleting it is the honest state."*
+> The field, the modal input, the two locale strings in each language, and the two tests
+> that pinned the round-trip are gone; the tests that replaced them assert the absence
+> instead. `card_number` is untouched and unaffected — it is a bearer identifier the till
+> reads, not a secret.
 
 ## Maintain a Vulnerability Management Program
 
@@ -52,7 +93,7 @@ kasir.mu processes, transmits, and stores cardholder data when processing credit
 | Requirement | Status | Notes |
 |-------------|--------|-------|
 | 7.1.1 Restrict access to cardholder data by business need-to-know | ✅ Implemented | RBAC via `StaffRoles` feature (owner/admin/manager/staff/auditor) |
-| 7.2.1 Role-based access control matrix | ✅ Implemented | See `oz-core::user` for permission model |
+| 7.2.1 Role-based access control matrix | ✅ Implemented | `platform_core::rbac` — `has_permission` (rbac.rs:121,259) over role constants `role-owner`/`role-admin` (rbac.rs:273,277), re-exported as `kasirmu_core::rbac`. `StaffRoles` is an *entitlement flag* (kasirmu-core/src/features.rs), not the permission model. Verified 2026-09-25. |
 | 8.2.1 Unique user IDs for all personnel | ✅ Implemented | Each cashier has unique login |
 | 8.3.1 Secure authentication (multi-factor where possible) | 📋 Planned | PIN-based auth → MFA in Phase 3 |
 | 8.5.1 Manage user identities and access | ✅ Implemented | User management via Staff Management UI |
@@ -85,14 +126,18 @@ kasir.mu processes, transmits, and stores cardholder data when processing credit
 
 | Feature | Implementation |
 |---------|----------------|
-| **PAN masking** | `oz_security::mask_pan()` — shows first 6 + last 4 digits |
-| **Encrypted storage** | AES-256-GCM via `oz-security` (future: KEK in OS keyring) |
-| **Key management** | OS-level keyring (`oz_security::Keyring`) |
-| **RBAC** | `StaffRoles` feature with owner/admin/manager/staff/auditor roles |
+| **PAN masking** | `kasirmu_security::mask::mask_pan()` — first 6 + last 4 digits. Implemented and tested, with **no production callers** (no PAN is stored). |
+| **Encrypted storage** | AES-256-GCM via `kasirmu-security` (future: KEK in OS keyring) |
+| **Key management** | OS-level keyring (`kasirmu_security::Keyring`) |
+| **RBAC** | `platform_core::rbac` — `has_permission` over `role-owner`/`role-admin`/`role-manager`/`role-staff` constants, re-exported as `kasirmu_core::rbac` |
 | **Audit logging** | `AuditLog` feature — immutable, append-only |
 | **Dependency scanning** | `cargo audit` weekly via GitHub Actions |
 | **Coding standards** | `AGENTS.md` with security rules |
 
+---
+
+*Last verified 2026-09-25 (review item C21): eight dead `oz-security`/`oz-core` paths replaced with the real `kasirmu-security`/`kasirmu-core` ones, the two PAN rows re-scoped to N/A-by-design, and the gift-card PIN note extended to state the finding it had stopped one step short of — the PIN is stored recoverable and nothing in the tree ever verifies it (filed as C69). No claim in this document was found false about cardholder data; every correction was a dead path or an over-broad verdict.*
+
 > **Last updated:** 2026-08-16
 
-> last audited 08-09-26 by docs-auditor
+> last audited 29-09-26 by docs-auditor

@@ -67,18 +67,34 @@ async fn try_send_scheduled(
         return Ok(());
     }
 
-    // Scope 2: Generate filtered report
-    let (report, recipients) = {
+    // Scope 2a: Load the analytics bundle under the lock.
+    //
+    // O-H23: the lock is released BEFORE rendering. Previously this scope
+    // held `db.lock().await` across `generate_filtered_report_email`, which
+    // runs ten sequential aggregates AND builds the HTML and text bodies.
+    // The connection is the process-wide `Arc<Mutex<Connection>>` shared
+    // with every UI command, the sync daemon and the image-push daemon, so
+    // every other DB consumer on the till stalled for the whole window —
+    // including the pure-rendering half, which needs no database at all.
+    //
+    // Splitting load from render keeps the lock around only the queries.
+    let (bundle, store_name) = {
         let conn = db.lock().await;
         let store = Store::new(&conn);
         let name = kasirmu_core::Settings::get(store.conn, "store.name")
             .ok()
             .flatten()
-            .unwrap_or_else(|| "OZ-POS Store".to_string());
-        let report = email_sender::generate_filtered_report_email(&store, &schedule, &name)
+            .unwrap_or_else(|| "kasir.mu Store".to_string());
+        let bundle = email_sender::load_analytics_bundle(&store, &schedule, &name)
             .map_err(|e| format!("Report gen: {e}"))?;
-        (report, schedule.recipients.clone())
+        (bundle, name)
     };
+
+    // Scope 2b: Render with NO database lock held.
+    let (report, recipients) = (
+        email_sender::render_report_email(bundle, &schedule, &store_name),
+        schedule.recipients.clone(),
+    );
 
     if recipients.is_empty() {
         warn!("No recipients configured, skipping scheduled send");

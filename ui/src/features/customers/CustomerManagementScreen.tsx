@@ -21,6 +21,7 @@ import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { SettingsPopup, requiredLocalized } from '@/components';
 import { useToast } from '@/components/Toast';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
+import { usePagedList } from '@/hooks/usePagedList';
 import { formatMoney } from '@/types/domain';
 import { l10nErrorMessage } from '@/utils/app-error';
 import './CustomerManagementScreen.css';
@@ -107,6 +108,15 @@ export default function CustomerManagementScreen() {
   const [searchTotal, setSearchTotal] = useState<number | null>(null);
   const [searching, setSearching] = useState(false);
   const searchSeqRef = useRef(0);
+  // R3: bounded list data path — the table renders one page of the loaded or
+  // searched set through the shared policy, not the whole collection.
+  const {
+    page: customerPage,
+    total: customerTotal,
+    pageItems: customerPageItems,
+    setPage: setCustomerPage,
+    resetPage,
+  } = usePagedList(customers);
   // CUST-05: read-only history modal state.
   const [historyTarget, setHistoryTarget] = useState<CustomerDto | null>(null);
   const [history, setHistory] = useState<CustomerHistory | null>(null);
@@ -196,6 +206,9 @@ export default function CustomerManagementScreen() {
     },
     [sessionToken, load],
   );
+
+  // R3: a new query is a new result set, so the pager returns to page 1.
+  useEffect(() => { resetPage(); }, [searchQuery, resetPage]);
 
   useEffect(() => {
     const handle = window.setTimeout(() => {
@@ -546,7 +559,7 @@ export default function CustomerManagementScreen() {
                 </Localized>
               </tr>
             </thead>
-            <tbody>{customers.map((customer) => (
+            <tbody>{customerPageItems.map((customer) => (
                 <tr key={customer.id}>
                   <td>
                     <div className="customer-mgmt-cell-name">
@@ -599,6 +612,30 @@ export default function CustomerManagementScreen() {
               ))}
 </tbody>
           </table>
+          {/* R3: page navigation for the bounded table above. */}
+          {customerTotal > 1 && (
+            <nav className="pager-nav" aria-label={requiredLocalized(l10n, 'pagination-aria')}>
+              <Button
+                unstyled
+                className="pager-btn"
+                disabled={customerPage === 0}
+                onClick={() => setCustomerPage((p) => p - 1)}
+                aria-label={requiredLocalized(l10n, 'previous-page-aria')}
+              >
+                &lsaquo;
+              </Button>
+              <span className="pager-info" aria-current="true">{customerPage + 1} / {customerTotal}</span>
+              <Button
+                unstyled
+                className="pager-btn"
+                disabled={customerPage >= customerTotal - 1}
+                onClick={() => setCustomerPage((p) => p + 1)}
+                aria-label={requiredLocalized(l10n, 'next-page-aria')}
+              >
+                &rsaquo;
+              </Button>
+            </nav>
+          )}
               </div>
       )}
 

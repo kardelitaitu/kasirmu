@@ -9,15 +9,15 @@ updated: "2026-08-17"
 ## Paket
 
 kasir.mu memiliki lima paket: `free`, `plus`, `pro`, `premium`, dan
-`enterprise`. Apa yang dibuka setiap paket — toko, register, gudang,
+`enterprise`. Apa yang dibuka setiap paket — lokasi, register, gudang,
 pembayaran QRIS, sinkron cloud, dan skrip — ditampilkan di
 [halaman harga](../../pricing/).
 
 | Kapabilitas         | Gratis | Plus | Pro | Premium | Enterprise |
 | ------------------- | ------ | ---- | --- | ------- | ---------- |
-| Toko                | 1      | 1    | 2   | 5       | Tanpa batas |
-| Register / toko     | 1      | 2    | 5   | Tanpa batas | Tanpa batas |
-| Gudang              | 1      | 2    | 3   | Tanpa batas | Tanpa batas |
+| Lokasi                | 1      | 1    | 2   | 5       | Tanpa batas |
+| Register / lokasi     | 1      | 2    | 5   | Tanpa batas | Tanpa batas |
+| Gudang              | Tidak  | Tidak | Tidak | Tanpa batas | Tanpa batas |
 | Staf pengguna       | 1      | 5    | 20  | 50      | Tanpa batas |
 | Riwayat penjualan   | 3 bulan | 1 tahun | 5 tahun | Tanpa batas | Tanpa batas |
 | Pembayaran QRIS     | ✓ (statis + dinamis) | ✓ (statis + dinamis) | ✓ | ✓ | ✓ |
@@ -28,8 +28,8 @@ Paket tahunan = 2 bulan gratis (bayar 10 bulan, dapat 12).
 
 ## Paket Gratis
 
-Paket Gratis bersifat **gratis selamanya** — satu toko, satu register, satu
-gudang, dan riwayat penjualan 3 bulan. Tidak perlu kunci lisensi untuk
+Paket Gratis bersifat **gratis selamanya** — satu lokasi, satu register, dan
+riwayat penjualan 3 bulan. Tidak perlu kunci lisensi untuk
 memulai: paket Gratis dimulai pada peluncuran pertama, dan Anda dapat naik
 paket kapan saja tanpa menginstal ulang. Setelah 3 bulan, transaksi yang
 lebih lama disembunyikan di balik ajakan naik paket — tidak ada yang
@@ -70,7 +70,7 @@ dari jarak jauh, yang membebaskan slot dan menandatangani keluar perangkat.
 ## Melihat lisensi Anda
 
 **Pengaturan → Lisensi** menampilkan paket Anda, status, tanggal kedaluwarsa,
-masa tenggang, maksimal toko dan instance POS, ID tenant, dan tipe ruang
+masa tenggang, maksimal lokasi dan instance POS, ID tenant, dan tipe ruang
 kerja yang diizinkan. Halaman akun di situs web menampilkan hal yang sama
 dari browser Anda, lengkap dengan manajemen perangkat. Lihat
 [Aktivasi Lisensi](../activation/).

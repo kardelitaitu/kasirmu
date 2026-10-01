@@ -608,7 +608,7 @@ fn franchise_preset_has_expected_features() {
 }
 
 #[test]
-#[should_panic]
+#[should_panic(expected = "feature StaffRoles requires StaffLogin but it is not in the set")]
 fn from_set_panics_on_missing_dependency() {
     FeatureRegistry::from_set([Feature::StaffRoles]);
 }
@@ -1117,4 +1117,78 @@ fn dev_mock_preset_feature_keys_match_this_crates_own_presets() {
              from MOCK_PRESET_FEATURE_KEYS or add the preset to core."
         );
     }
+}
+
+// ── Feature guards fail CLOSED when their state read errors (COR-11 family) ──
+//
+// Both guards are safety vetoes: a non-zero count must BLOCK the disable.
+// Reading the count with `.unwrap_or(0)` turned any DB error into "count 0",
+// i.e. the veto silently PASSED — an admin could disable Kitchen Display while
+// tickets were live, or Shift Management over an unreconciled open drawer.
+// That is the exact defect COR-11 fixed in `db/inventory.rs`, where the
+// deactivate / shift-start guards now propagate the read error instead of
+// `unwrap_or(0)`. Renaming the table is the deterministic way to make the
+// guard's own `COUNT` fail without inventing a corrupt row.
+
+/// An unreadable `kds_orders` must not read as "no active tickets".
+#[test]
+fn kds_guard_fails_closed_when_the_ticket_read_errors() {
+    let conn = crate::migrations::fresh_db();
+    conn.execute_batch("ALTER TABLE kds_orders RENAME TO kds_orders_hidden;")
+        .unwrap();
+
+    let guard = KdsFeatureGuard;
+    let verdict = guard.can_disable(Feature::KitchenDisplay, &conn);
+    assert!(
+        verdict.is_err(),
+        "a guard that cannot count open tickets must refuse the disable, got: {verdict:?}"
+    );
+}
+
+/// An unreadable `shifts` table must not read as "no open shifts".
+#[test]
+fn shift_guard_fails_closed_when_the_shift_read_errors() {
+    let conn = crate::migrations::fresh_db();
+    conn.execute_batch("ALTER TABLE shifts RENAME TO shifts_hidden;")
+        .unwrap();
+
+    let guard = ShiftFeatureGuard;
+    let verdict = guard.can_disable(Feature::ShiftManagement, &conn);
+    assert!(
+        verdict.is_err(),
+        "a guard that cannot count open shifts must refuse the disable, got: {verdict:?}"
+    );
+}
+
+/// The healthy path is unchanged: an empty store may still disable both.
+#[test]
+fn guards_still_allow_disable_on_an_empty_store() {
+    let conn = crate::migrations::fresh_db();
+    assert!(
+        KdsFeatureGuard
+            .can_disable(Feature::KitchenDisplay, &conn)
+            .is_ok()
+    );
+    assert!(
+        ShiftFeatureGuard
+            .can_disable(Feature::ShiftManagement, &conn)
+            .is_ok()
+    );
+}
+
+/// The production entry point agrees: the registry forwards a guard's
+/// fail-closed refusal instead of swallowing it (the disable path calls
+/// this, not the guard directly).
+#[test]
+fn guard_registry_refuses_when_a_guard_cannot_read_its_state() {
+    let conn = crate::migrations::fresh_db();
+    conn.execute_batch("ALTER TABLE shifts RENAME TO shifts_hidden;")
+        .unwrap();
+
+    let registry = FeatureGuardRegistry::new_with_defaults();
+    let verdict = registry.check_feature(Feature::ShiftManagement, &conn);
+    assert!(
+        verdict.is_err(),
+        "the registry must surface the guard's refusal, got: {verdict:?}"
+    );
 }

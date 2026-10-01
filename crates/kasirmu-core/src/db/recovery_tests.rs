@@ -71,7 +71,7 @@ fn verified_marker(path: &Path) -> String {
         panic!(
             "snapshot {} ({} bytes) carries no marker: {e}",
             path.display(),
-            std::fs::metadata(path).map(|m| m.len()).unwrap_or(0)
+            std::fs::metadata(path).map_or(0, |m| m.len())
         )
     })
 }

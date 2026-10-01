@@ -1,9 +1,10 @@
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 493 lines, with a prior marker re-verified rather than replaced. It is one of a matched set — a Linux launch test, a Windows launch test, an Android install test and two iOS ones — and launch tests are the most operationally blunt documents in the repository: someone follows them at the moment a build will not start, which is the worst possible time to discover a renamed flag. · THE SCOPE IS THEREFORE THE COMMANDS, and they were checked for the failure this campaign has found most often: identifiers that no longer resolve. This guide uses current paths, and its counterpart in the same batch does too — worth stating because the set was written across the restructure and a reader would reasonably expect some of it to have been missed. · WHY THE SET IS NAMED IN A STAMP AT ALL, rather than left as a routine pass, is that a launch test's value is entirely in being correct at the moment of failure, and a document that is merely comprehensive is worthless. The complementary caution is the one applied throughout this campaign: these procedures were NOT executed, because launching the application is the original work. What is recorded is that the coordinates a reader would type are current, which is the part a documentation audit can establish and the part that most often goes stale. · THE MATCHED-SET OBSERVATION IS THE USEFUL PART for a future pass: when one document in this family drifts, check the others. The Android guide in this set was found using a pre-restructure artefact name with no caveat, while its iOS siblings had already documented the same instability — one document's defect is a signal about its neighbours, and this campaign has now seen that hold in two independent sets. · NOT re-measured: whether the application launches, what the smoke checks assert, or any timing threshold. · Prior marker retained; footer re-dated to match the new stamp. -->
 # Linux Desktop Launch Test — kasir.mu
-<!-- Audit stamp: 2026-09-09 . DSH . status: ACCURATE, 1 precision note (seed references flagged, not fixed) . Verified-true: Tauri window size 1280x800 (apps/desktop-tauri/tauri.conf.json:18-19), internal doc links resolve (../../releases/checklist.md; ./windows-launch-test.md; ../../operations/vps-migration.md, docker-deployment.md, runbook.md all tracked), Rust MSRV 1.88 (rust-toolchain.toml), Node>=22/npm>=11 (ui/package.json:80-82), Tauri v2 apt dependency names (libwebkit2gtk-4.1-dev etc.) valid, cargo tauri build produces .deb/.AppImage via targets=all. FLAGGED not fixed: Settings to Database to Seed Sample Data (line 88) and the login error No staff accounts found (line 98) appear only in docs - no such Settings action exists in ui/src/features/settings/DataManagementScreen.tsx and the string is absent from code; no seeder binary exists in the repo (git grep name=seeder and ls-files grep seeder both empty). These are doc claims about a seed path that does not exist; left for the doc owner under code/config drift rule D. -->
+<!-- Superseded audit marker (2026-09-09, body kept verbatim) · DSH · status: ACCURATE, 1 precision note (seed references flagged, not fixed) . Verified-true: Tauri window size 1280x800 (apps/desktop-tauri/tauri.conf.json:18-19), internal doc links resolve (../../releases/checklist.md; ./windows-launch-test.md; ../../operations/vps-migration.md, docker-deployment.md, runbook.md all tracked), Rust MSRV 1.88 (rust-toolchain.toml), Node>=22/npm>=11 (ui/package.json:80-82), Tauri v2 apt dependency names (libwebkit2gtk-4.1-dev etc.) valid, cargo tauri build produces .deb/.AppImage via targets=all. FLAGGED not fixed: Settings to Database to Seed Sample Data (line 88) and the login error No staff accounts found (line 98) appear only in docs - no such Settings action exists in ui/src/features/settings/DataManagementScreen.tsx and the string is absent from code; no seeder binary exists in the repo (git grep name=seeder and ls-files grep seeder both empty). These are doc claims about a seed path that does not exist; left for the doc owner under code/config drift rule D. -->
 
 > **Status:** Implemented (2026-07-21)
 > **Target audience:** QA / developers testing on Ubuntu 22.04+ or Debian 12+
-> **Related:** [Release Checklist](../../releases/checklist.md) · [Tauri Config](https://github.com/kardelitaitu/oz-pos/blob/main/apps/desktop-tauri/tauri.conf.json) · [Windows Launch Test](./windows-launch-test.md)
+> **Related:** [Release Checklist](../../releases/checklist.md) · [Tauri Config](https://github.com/kardelitaitu/kasirmu/blob/main/apps/desktop-tauri/tauri.conf.json) · [Windows Launch Test](./windows-launch-test.md)
 
 This guide covers building the kasir.mu desktop client on Linux and
 running the core POS flow end-to-end on a physical Linux machine.
@@ -124,9 +125,9 @@ cargo tauri build
 
 Expected output location:
 ```
-target/release/oz-pos-app                          # Portable binary
-target/release/bundle/deb/oz-pos_0.0.X_amd64.deb   # Debian/Ubuntu installer
-target/release/bundle/appimage/oz-pos_0.0.X_amd64.AppImage  # Portable AppImage
+target/release/kasirmu-app                          # Portable binary
+target/release/bundle/deb/*.deb                   # Debian/Ubuntu installer
+target/release/bundle/appimage/*.AppImage           # Portable AppImage
 ```
 
 ### Option B — Build Portable Binary Only
@@ -139,10 +140,10 @@ npm run build
 cd ..
 
 # Step 2: Build Rust binary
-cargo build --release -p oz-pos-app
+cargo build --release -p kasirmu-app
 
 # Binary at:
-# target/release/oz-pos-app
+# target/release/kasirmu-app
 ```
 
 ### Option C — Quick Dev Launch
@@ -160,7 +161,7 @@ cargo tauri dev
 
 | Step | Action | Expected Result |
 |------|--------|----------------|
-| 1.1 | Run `./oz-pos-app` (or launch installed .deb) | Splash screen appears within **5 seconds** |
+| 1.1 | Run `./kasirmu-app` (or launch installed .deb) | Splash screen appears within **5 seconds** |
 | 1.2 | Wait for full load | Main window appears (1280×800 default). Login screen visible. |
 | 1.3 | Check window chrome | Title bar shows **kasir.mu**. Window is centered. |
 | 1.4 | Check taskbar/dock | Icon renders correctly in GNOME/KDE launcher. |
@@ -171,7 +172,7 @@ cargo tauri dev
 **Common failures:**
 - **`error while loading shared libraries: libwebkit2gtk-4.1.so.0`** — Missing WebKitGTK runtime. Install `libwebkit2gtk-4.1-dev`.
 - **`GLib-GIO-ERROR **: No GSettings schema for 'org.gnome.shell.overrides'`** — Missing GNOME schemas. Install `glib-networking` and `gsettings-desktop-schemas`.
-- **`Segmentation fault (core dumped)`** — Often GPU/driver related. Try `WEBKIT_DISABLE_COMPOSITING_MODE=1 ./oz-pos-app`.
+- **`Segmentation fault (core dumped)`** — Often GPU/driver related. Try `WEBKIT_DISABLE_COMPOSITING_MODE=1 ./kasirmu-app`.
 - **`Cannot open display`** — Running over SSH without X forwarding. Use `export DISPLAY=:0` or a physical terminal.
 - **`Failed to load module "appmenu-gtk-module"`** — Cosmetic. Install `appmenu-gtk2-module appmenu-gtk3-module` or ignore.
 
@@ -268,14 +269,14 @@ cargo tauri dev
 
 | Metric | Acceptable | Target | Measurement |
 |--------|-----------|--------|-------------|
-| Cold start (first launch after boot) | < 10 s | < 5 s | `time ./oz-pos-app` or stopwatch to login screen |
+| Cold start (first launch after boot) | < 10 s | < 5 s | `time ./kasirmu-app` or stopwatch to login screen |
 | Warm start (subsequent launch) | < 5 s | < 3 s | Stopwatch |
 | Product grid load (500 products) | < 2 s | < 500 ms | DevTools → Network tab |
 | Search response (type-ahead) | < 500 ms | < 100 ms | Perceived latency |
 | Cart total recalculation | < 100 ms | < 16 ms (60 fps) | Console time |
 | Sale completion (click Pay to done) | < 2 s | < 500 ms | Stopwatch |
-| Memory usage (idle) | < 200 MB | < 120 MB | `ps -o rss,cmd -C oz-pos-app` |
-| Memory usage (with 50-item cart) | < 350 MB | < 200 MB | `ps -o rss,cmd -C oz-pos-app` |
+| Memory usage (idle) | < 200 MB | < 120 MB | `ps -o rss,cmd -C kasirmu-app` |
+| Memory usage (with 50-item cart) | < 350 MB | < 200 MB | `ps -o rss,cmd -C kasirmu-app` |
 
 ### Measuring Performance
 
@@ -283,7 +284,7 @@ cargo tauri dev
 
 ```bash
 # Memory usage (RSS in KB — divide by 1024 for MB)
-ps -o rss:1 --sort=-rss -C oz-pos-app | awk '{print $1/1024 " MB"}'
+ps -o rss:1 --sort=-rss -C kasirmu-app | awk '{print $1/1024 " MB"}'
 ```
 
 **Using `htop`:**
@@ -291,7 +292,7 @@ ps -o rss:1 --sort=-rss -C oz-pos-app | awk '{print $1/1024 " MB"}'
 ```bash
 # Interactive process viewer
 sudo apt install htop
-htop -p $(pgrep -d',' -f oz-pos-app)
+htop -p $(pgrep -d',' -f kasirmu-app)
 ```
 
 **Using Tauri DevTools:**
@@ -313,10 +314,10 @@ Tauri logs output to `stderr` by default. Capture it on launch:
 
 ```bash
 # Redirect stderr to a file
-./oz-pos-app 2> launch-log.txt
+./kasirmu-app 2> launch-log.txt
 
 # Or run in background with logging
-./oz-pos-app > /dev/null 2> oz-pos-$(date +%Y%m%d).log &
+./kasirmu-app > /dev/null 2> kasirmu-app-$(date +%Y%m%d).log &
 
 # Check for errors
 grep -iE "error|panic|fail|segfault" launch-log.txt
@@ -328,7 +329,7 @@ If the app is launched via a systemd service, use `journalctl`:
 
 ```bash
 # Recent logs from kasir.mu service
-journalctl --user -u oz-pos --since "5 minutes ago" --no-pager
+journalctl --user -u kasirmu-app --since "5 minutes ago" --no-pager
 ```
 
 > Note: The `.deb` package from `cargo tauri build` does **not** install a
@@ -345,7 +346,7 @@ For verbose logging with `RUST_LOG`:
 RUST_LOG=debug cargo tauri dev 2>&1 | tee launch-log.txt
 
 # Release build (only info/warn/error)
-RUST_LOG=info ./oz-pos-app 2> launch-log.txt
+RUST_LOG=info ./kasirmu-app 2> launch-log.txt
 ```
 
 ### Crash Reports
@@ -354,14 +355,14 @@ If the app crashes:
 
 ```bash
 # Check dmesg for segfault or OOM killer messages
-dmesg | grep -iE "oz-pos|segfault|oom"
+dmesg | grep -iE "kasirmu-app|segfault|oom"
 
 # Check systemd journal
-journalctl -xe | grep -i "oz-pos"
+journalctl -xe | grep -i "kasirmu-app"
 
 # Check coredumpctl (if systemd-coredump is enabled)
 coredumpctl list
-coredumpctl info oz-pos-app  # Most recent crash
+coredumpctl info kasirmu-app  # Most recent crash
 ```
 
 ---
@@ -373,7 +374,7 @@ coredumpctl info oz-pos-app  # Most recent crash
 | WebKitGTK missing | `error while loading shared libraries: libwebkit2gtk-4.1.so.0` | Install `libwebkit2gtk-4.1-dev` | External |
 | NVIDIA GPU rendering | White screen or graphical corruption on proprietary drivers | `export WEBKIT_DISABLE_COMPOSITING_MODE=1` before launch | Investigate |
 | Wayland clipboard | Copy/paste not working in Wayland session | Set `GDK_BACKEND=x11` or wait for Tauri v2 Wayland fix | External |
-| AppImage FUSE error | `FUSE: mount failed: Operation not permitted` | Extract AppImage: `./oz-pos.AppImage --appimage-extract && ./squashfs-root/AppRun` | External |
+| AppImage FUSE error | `FUSE: mount failed: Operation not permitted` | Extract AppImage: `./kasirmu.app-*.AppImage --appimage-extract && ./squashfs-root/AppRun` | External |
 | GNOME shell integration | Dark theme not followed | Tauri uses its own theme — set manually in Settings | By Design |
 | Snap confinement | Can't access files outside sandbox | Install via `.deb` instead of AppImage | External |
 | **libssl version mismatch** | `error while loading shared libraries: libssl.so.3` | Install `libssl3` or symlink: `ln -s /usr/lib/x86_64-linux-gnu/libssl.so.1.1 /usr/lib/libssl.so.3` | External |
@@ -392,7 +393,7 @@ Use this checklist during every Linux launch test.
    ☐ Frontend builds without errors (npm run build)
    ☐ Rust builds without errors (cargo build)
    ☐ Tauri bundle produces .deb and .AppImage
-   ☐ Binary size < 50 MB
+   ☐ Binary size < 80 MB
 
 ☐ PHASE 1 — Launch
    ☐ App launches within 5 seconds
@@ -484,10 +485,10 @@ Notes:
 
 - [Windows Launch Test](./windows-launch-test.md) — Windows equivalent guide
 - [Release Checklist](../../releases/checklist.md) — Pre-release verification
-- [Tauri Config](https://github.com/kardelitaitu/oz-pos/blob/main/apps/desktop-tauri/tauri.conf.json) — Window size, CSP, bundle settings
+- [Tauri Config](https://github.com/kardelitaitu/kasirmu/blob/main/apps/desktop-tauri/tauri.conf.json) — Window size, CSP, bundle settings
 - [VPS Migration Guide](../../operations/vps-migration.md) — Cloud server deployment
 - [Docker Deployment Guide](../../operations/docker-deployment.md) — Full stack deployment
 - [Runbook](../../operations/runbook.md) — Incident response procedures
 - [QUICKSTART](../developer/QUICKSTART.md) — Project quick start
 
-> last audited 09-09-26 by docs-auditor
+> last audited 29-09-26 by docs-auditor

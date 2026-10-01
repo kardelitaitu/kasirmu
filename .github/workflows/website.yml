@@ -1,0 +1,162 @@
+# ── Website Deploy (Cloudflare Workers) ─────────────────────────────────────
+#
+# Builds the Astro marketing site (website/) and deploys it to the `oz-pos`
+# Worker (static assets) on every push to main that touches the site.
+#
+# WHY THIS FILE EXISTS AGAIN. `attic/website.yml.bak` is the retired copy of
+# this pipeline (retired by `23c963303`, 2026-09-02). From then until
+# 2026-09-24 the site deployed only by hand (`npm run deploy` →
+# scripts/wrangler-deploy.sh), so `main` and https://kasir.mu could drift
+# with nothing noticing a merge that never shipped — runbook §9 recorded
+# exactly that gap. Restored the same way android.yml was: a live file beside
+# its `.bak` copy, which stays in attic/ as the historical record.
+#
+# NOT a PR trigger. `dev-ci.yml#website` already runs asset hygiene, install,
+# typecheck, unit tests, build, the link audit and the SEO audit on every PR
+# that touches `website/**`. A second PR job would buy nothing and cost a
+# runner; this workflow only acts where a deploy is actually possible — a
+# push to main.
+#
+# NO DOCS PORTAL BUILD. The retired pipeline also built mdBook/cargo doc/
+# TypeDoc into `public/docs-portal` (soft-fail). It is deliberately not
+# restored: production does not serve the portal today
+# (`https://kasir.mu/docs-portal/intro.html` → 404, `docs/book` is untracked),
+# `dev-ci.yml#website` does not build it either, and adding a Rust toolchain +
+# GTK apt layer here would make the deploy's gate set differ from the one the
+# commit was merged under. The docs hub degrades on its own `portalExists`
+# gate when the tree is absent.
+#
+# FAIL-CLOSED. A missing or rejected CLOUDFLARE_API_TOKEN /
+# CLOUDFLARE_ACCOUNT_ID fails the run loudly in ~1s, before npm ci. A green
+# run must never mean "not deployed" — that is the failure mode
+# docs/operations/runbook.md §9.2 records (~20 silently undeployed runs).
+
+name: Website Deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'website/**'
+      # `prebuild` copies repo-root prototypes/ into website/public/dev/, so a
+      # prototype change changes what is published.
+      - 'prototypes/**'
+      - 'scripts/wrangler-deploy.sh'
+      - '.github/workflows/website.yml'
+  # Manual redeploy (e.g. to pick up a change the paths filter did not see).
+  workflow_dispatch:
+
+# A deploy is never cancelled by a later push: killing one mid-flight would
+# leave the Worker serving a half-updated asset set. Queue behind it instead —
+# the opposite polarity from dev-ci.yml, where cancelling a superseded PR run
+# is the point.
+concurrency:
+  group: website-deploy
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+# Least privilege (CICD-01): the deploy authenticates with the Cloudflare API
+# token, never with the GitHub token.
+permissions:
+  contents: read
+
+env:
+  # Baked into the JS bundle at build time (import.meta.env) — belongs in the
+  # workflow/wrapper env, NOT in wrangler.toml (see website/.env.example).
+  PUBLIC_LICENSE_API_URL: ${{ secrets.PUBLIC_LICENSE_API_URL }}
+  # PUBLIC_PADDLE_CLIENT_TOKEN is deliberately NOT passed. Turning the
+  # checkout on is a product decision (live client token + production price
+  # ids + PUBLIC_PADDLE_ENVIRONMENT=production); passing a sandbox token here
+  # would ship a half-wired checkout instead of the mailto fallback that
+  # production serves today.
+
+jobs:
+  deploy:
+    name: Deploy to Cloudflare Workers
+    runs-on: ubuntu-latest
+    steps:
+      # Fail-fast credential gate (runbook §9.3, probe #2). A rejected or
+      # missing token is a credentials problem, not a build problem, so it must
+      # fail in ~1s BEFORE npm ci and the build rather than after them. The
+      # probe is Cloudflare's own /user/tokens/verify, with an account-scoped
+      # fallback: short-lived (cfat_) tokens 401 on user-level endpoints while
+      # still being perfectly valid for the deploy.
+      - name: Validate Cloudflare deploy credentials (fail-fast)
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "::error::Missing CLOUDFLARE_API_TOKEN or CLOUDFLARE_ACCOUNT_ID repo secret — cannot deploy."
+            echo "Add both secrets (Workers Scripts:Edit token + account id), then re-run this job."
+            echo "Rotation runbook: docs/operations/runbook.md §9."
+            exit 1
+          fi
+          HTTP=$(curl -sS -m 15 -o /tmp/cf-verify.json -w '%{http_code}' \
+            "https://api.cloudflare.com/client/v4/user/tokens/verify" \
+            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" || true)
+          if [ "$HTTP" = "401" ]; then
+            echo "User-level verify rejected the token — retrying against account ${CLOUDFLARE_ACCOUNT_ID} (short-lived tokens are account-scoped)."
+            HTTP=$(curl -sS -m 15 -o /tmp/cf-verify.json -w '%{http_code}' \
+              "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/tokens/verify" \
+              -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" || true)
+          fi
+          if [ "$HTTP" != "200" ]; then
+            echo "::error::Cloudflare token verification failed (HTTP ${HTTP}) — deploy blocked."
+            echo "  Response: $(head -c 300 /tmp/cf-verify.json 2>/dev/null || echo 'no response body')"
+            echo "  HTTP 400 + 'Invalid access token [code: 9109]' → CLOUDFLARE_API_TOKEN is invalid or"
+            echo "  expired; rotate it per docs/operations/runbook.md §9. HTTP 000 → the runner could"
+            echo "  not reach api.cloudflare.com; retry before touching the token."
+            exit 1
+          fi
+          STATUS=$(jq -r '.result.status // empty' /tmp/cf-verify.json 2>/dev/null || true)
+          if [ -n "$STATUS" ] && [ "$STATUS" != "active" ]; then
+            echo "::error::Cloudflare API token is not active (status: '${STATUS}') — deploy blocked."
+            echo "  Rotate CLOUDFLARE_API_TOKEN per docs/operations/runbook.md §9."
+            exit 1
+          fi
+          echo "Cloudflare token valid (status: ${STATUS:-verified}) — proceeding."
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: 'website/package-lock.json'
+      - name: Install dependencies
+        run: cd website && npm ci --no-audit --no-fund
+      # rehype-mermaid renders ```mermaid blocks at BUILD time and needs a
+      # browser for it — build-only, never shipped to the client.
+      - name: Install Playwright (for Mermaid render)
+        run: cd website && npx playwright install --with-deps chromium
+      # `npm run check` = astro check behind `precheck` (i18n audit, password
+      # policy, vitest). `npm run build` = `prebuild` (sync-dev-files, i18n
+      # audit, UI-string audit, password policy, portal import, vitest) then
+      # the build. Between them this is the same gate set `dev-ci.yml#website`
+      # ran on the PR that produced this commit.
+      - name: Typecheck & gates
+        run: cd website && npm run check
+      - name: Build
+        run: cd website && npm run build
+      # Both audit the RENDERED output, so both must follow the build — the
+      # ordering dev-ci.yml#website documents for the same pair.
+      - name: Internal link check
+        run: cd website && npm run check:links
+      - name: SEO / head check
+        run: cd website && npm run check:seo
+      # SKIP_BUILD=1: dist/ was just built and gated above, and rebuilding
+      # would only duplicate it. wrangler-deploy.sh then deploys AND verifies
+      # one origin per declared route (website/scripts/verify-deploy.mjs) — the
+      # guard that exists because `wrangler deploy` replaced the zone's route
+      # set on 2026-09-23 and every kasir.mu URL answered 522 while the Worker
+      # itself was healthy.
+      - name: Deploy to Cloudflare Workers
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          SKIP_BUILD=1 bash scripts/wrangler-deploy.sh \
+            --message "GitHub Actions — ${GITHUB_SHA:0:9} (${GITHUB_REF_NAME})"

@@ -13,14 +13,13 @@ import { describe, expect, it } from 'vitest';
  * sentence was well-formed prose in a markdown file.
  *
  * This is the source half of the guard. scripts/check-seo.mjs asserts the same
- * thing on the rendered pages, where an href to the GitHub repository — which
- * still contains `oz-pos` — is not counted, since the repo kept its name.
+ * thing on the rendered pages, where an href to the GitHub repository is not
+ * counted either. The repository was renamed to kardelitaitu/kasirmu on
+ * 2026-09-24, so the former old-slug allowlist was deleted.
  */
 
 const SRC = join(import.meta.dirname, '..');
 const RETIRED_BRAND = /\bOZ[-_ ]?POS/i;
-/** The GitHub repository kept its name through the rebrand; naming it is right. */
-const KEPT_REPOSITORY = /kardelitaitu\/oz-pos/g;
 const SCANNED = /\.(?:md|astro|tsx|ts|json)$/;
 
 function walk(dir: string, out: string[] = []): string[] {
@@ -39,7 +38,7 @@ const sources = walk(SRC).filter((path) => !relativeToSrc(path).includes('__test
 describe('retired brand', () => {
   it('is named nowhere in the site source', () => {
     const offenders = sources.filter((path) =>
-      RETIRED_BRAND.test(readFileSync(path, 'utf8').replace(KEPT_REPOSITORY, ' ')),
+      RETIRED_BRAND.test(readFileSync(path, 'utf8')),
     );
     expect(offenders.map(relativeToSrc)).toEqual([]);
   });

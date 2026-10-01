@@ -2,7 +2,7 @@
 //!
 //! Wired from `recovery.rs` as `#[cfg(test)] #[path = "recovery_tests.rs"] mod tests;`.
 //!
-//! Everything here drives [`consume_pending_restore`] through its two parameters — a live
+//! Everything here drives [`consume_pending_restore`](crate::recovery::consume_pending_restore) through its two parameters — a live
 //! database path and (derived from it) the request path — so no Tauri app, window or
 //! `AppState` is involved. The candidate databases are real migrated files built by
 //! `kasirmu_core::migrations::fresh_db`'s sibling, `migrations::run`.
@@ -14,11 +14,10 @@ use tempfile::TempDir;
 
 /// A scratch directory removed when the guard drops.
 fn scratch(label: &str) -> TempDir {
-    let dir = tempfile::Builder::new()
+    tempfile::Builder::new()
         .prefix(&format!("kasirmu_restore_{label}_"))
         .tempdir()
-        .expect("create scratch dir");
-    dir
+        .expect("create scratch dir")
 }
 
 /// A migrated, on-disk database carrying `store_name`.
@@ -50,6 +49,46 @@ fn write_request(db_path: &Path, candidate: &Path) {
         serde_json::to_vec_pretty(&request).expect("encode request"),
     )
     .expect("write request");
+}
+
+/// C8 / S6: the request the BRIDGE writes is the request the SHELL consumes.
+///
+/// This is the connection the review actually asked for. The bridge side has its
+/// own test that a request file appears and names the backup; the shell side has
+/// tests that a HAND-WRITTEN request is consumed. Neither proves the two halves
+/// fit, and a suffix or field-name drift between them would leave both green while
+/// the updater's safety net stayed decorative.
+///
+/// So this drives the real writer and then the real boot consumer over its output.
+#[tokio::test]
+async fn a_bridge_written_request_is_consumed_by_the_boot_path() {
+    let dir = scratch("bridge_request");
+    let db = dir.path().join("kasir.db");
+    migrated_db(&db, "Live Store");
+    // The pre-update backup, at the path `create_backup` actually writes:
+    // `default_backup_path` swaps the EXTENSION, so `kasir.db` -> `kasir.backup.db`
+    // (not `kasir.db.backup.db`, which is the naming the generations elsewhere use).
+    let candidate = db.with_extension("backup.db");
+    migrated_db(&candidate, "Backup Store");
+
+    kasirmu_bridge::data::queue_pre_update_restore_candidate(&db)
+        .await
+        .expect("the bridge must queue the backup it just validated");
+
+    // The boot path now finds and promotes it, with no hand-written file involved.
+    let outcome = consume_pending_restore(&db);
+    match outcome {
+        Outcome::Restored {
+            candidate: restored,
+            ..
+        } => assert_eq!(restored, candidate),
+        other => panic!("the bridge-written request must be consumable, got {other:?}"),
+    }
+    assert_eq!(
+        store_name(&db).as_deref(),
+        Some("Backup Store"),
+        "the pre-update backup is now the live database"
+    );
 }
 
 /// A boot with no request file is the ordinary boot.

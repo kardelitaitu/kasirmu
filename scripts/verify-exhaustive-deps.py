@@ -93,10 +93,82 @@ def measure(output: str) -> tuple[int, int]:
     return warnings, deps
 
 
+# A realistic eslint tail: the summary line plus per-file findings.
+ESLINT_WITH_DEPS = """
+/ui/src/a.tsx
+  12:7  warning  React Hook useEffect has a missing dependency: 'token'  react-hooks/exhaustive-deps
+  18:7  warning  React Hook useCallback has a missing dependency: 'id'    react-hooks/exhaustive-deps
+
+/ui/src/b.tsx
+  30:1  warning  React Hook useMemo has an unnecessary dependency: 'x'  react-hooks/exhaustive-deps
+
+✖ 3 problems (0 errors, 3 warnings)
+"""
+
+ESLINT_NO_DEPS = """
+✖ 12 problems (0 errors, 12 warnings)
+"""
+
+
+def self_test() -> int:
+    """Liveness for measure(), which is the leg this ratchet cannot self-detect.
+
+    This gate runs in dev-ci (static-gates) and check.sh and had no test of any
+    kind. Its whole comparison is a regex count against a cap, so the failure that
+    hides is narrow and total: if RULE_RE stops matching, measure() returns deps == 0,
+    0 is under any cap, and the ratchet reports CLEAN on a tree full of the warnings
+    it exists to hold down. Nothing else here would notice -- the gate would not
+    fail, it would simply stop counting.
+
+    So the first case is the anti-zero case: realistic eslint output MUST yield a
+    non-zero exhaustive-deps count. Proven by mutation -- pointing RULE_RE at a
+    pattern that cannot match turns it red with deps == 0, which is the exact silent
+    state. The rest cover the fail-closed branches measure() already has, because a
+    self-test that only tests the happy path proves nothing about the guard rails.
+
+    Pure: synthetic strings only, no file is read, written or shelled out to.
+    """
+    bad: list[str] = []
+
+    def want(name: str, got, expect) -> None:
+        if got != expect:
+            bad.append(f"{name}: expected {expect!r}, got {got!r}")
+
+    # The anti-zero case. deps must be 3, not 0.
+    want("exhaustive-deps counted, not missed", measure(ESLINT_WITH_DEPS), (3, 3))
+    # Output carrying warnings but none of THIS rule must read 0, not N.
+    want("other rules do not inflate the count", measure(ESLINT_NO_DEPS), (12, 0))
+    # Fail-closed branch 1: no parseable summary must raise, never return.
+    try:
+        measure("some output with no summary line at all")
+        bad.append("unparseable output: expected SystemExit, got a value")
+    except SystemExit:
+        pass
+    # Fail-closed branch 2: deps > warnings means the format changed.
+    try:
+        measure("1 problems (0 errors, 1 warnings)\n"
+                 "react-hooks/exhaustive-deps\nreact-hooks/exhaustive-deps\n"
+                 "react-hooks/exhaustive-deps")
+        bad.append("inconsistent parse: expected SystemExit, got a value")
+    except SystemExit:
+        pass
+
+    if bad:
+        print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
+        return 2
+    print("SELF-TEST OK (4 cases, no files touched)")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--set-baseline", action="store_true", help="record the current count as the cap")
+    ap.add_argument("--self-test", action="store_true",
+                    help="Run this checker's measure() cases and exit. Pure: reads no file.")
     args = ap.parse_args()
+
+    if args.self_test:
+        return self_test()
 
     code, output = run_eslint()
     # eslint exits 1 when there are problems and 2 on a usage/config error; both mean the number

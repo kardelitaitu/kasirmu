@@ -6,10 +6,16 @@
 //! (which wraps `platform_core::settings::Settings`) and the Store API
 //! against an in-memory SQLite database.
 
-#![allow(deprecated)]
-
 use kasirmu_core::{Feature, FeatureRegistry, Settings, Store, migrations};
 use rusqlite::Connection;
+
+use modules_currency::repository::CurrencyRepository;
+
+/// The retired `Store` currency shims delegated here; the tests that exercised them
+/// now call the repository directly (ADR-61 / C26).
+fn repo(conn: &Connection) -> CurrencyRepository<'_> {
+    CurrencyRepository::new(conn)
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────
 
@@ -889,11 +895,13 @@ fn set_default_currency_writes_new_key_and_cleans_up_old_key() {
 #[test]
 fn default_currency_roundtrip_via_store_api() {
     let conn = setup();
-    let s = store(&conn);
 
-    assert_eq!(s.get_default_currency().unwrap(), None);
-    s.set_default_currency("CAD").unwrap();
-    assert_eq!(s.get_default_currency().unwrap(), Some("CAD".into()));
+    assert_eq!(repo(&conn).get_default_currency().unwrap(), None);
+    repo(&conn).set_default_currency("CAD").unwrap();
+    assert_eq!(
+        repo(&conn).get_default_currency().unwrap(),
+        Some("CAD".into())
+    );
 }
 
 // ── Global currency settings via Store API ─────────────────────────────
@@ -901,25 +909,41 @@ fn default_currency_roundtrip_via_store_api() {
 #[test]
 fn currency_settings_via_store_api() {
     let conn = setup();
-    let s = store(&conn);
 
     // Defaults.
-    assert_eq!(s.get_currency_format().unwrap(), "symbol");
-    assert_eq!(s.get_currency_symbol_position().unwrap(), "prefix");
-    assert_eq!(s.get_currency_decimal_separator().unwrap(), "dot");
-    assert_eq!(s.get_currency_thousands_separator().unwrap(), "comma");
+    assert_eq!(repo(&conn).get_currency_format().unwrap(), "symbol");
+    assert_eq!(
+        repo(&conn).get_currency_symbol_position().unwrap(),
+        "prefix"
+    );
+    assert_eq!(repo(&conn).get_currency_decimal_separator().unwrap(), "dot");
+    assert_eq!(
+        repo(&conn).get_currency_thousands_separator().unwrap(),
+        "comma"
+    );
 
     // Set all via Store.
-    s.set_currency_format("code").unwrap();
-    s.set_currency_symbol_position("suffix").unwrap();
-    s.set_currency_decimal_separator("comma").unwrap();
-    s.set_currency_thousands_separator("space").unwrap();
+    repo(&conn).set_currency_format("code").unwrap();
+    repo(&conn).set_currency_symbol_position("suffix").unwrap();
+    repo(&conn).set_currency_decimal_separator("comma").unwrap();
+    repo(&conn)
+        .set_currency_thousands_separator("space")
+        .unwrap();
 
     // Verify.
-    assert_eq!(s.get_currency_format().unwrap(), "code");
-    assert_eq!(s.get_currency_symbol_position().unwrap(), "suffix");
-    assert_eq!(s.get_currency_decimal_separator().unwrap(), "comma");
-    assert_eq!(s.get_currency_thousands_separator().unwrap(), "space");
+    assert_eq!(repo(&conn).get_currency_format().unwrap(), "code");
+    assert_eq!(
+        repo(&conn).get_currency_symbol_position().unwrap(),
+        "suffix"
+    );
+    assert_eq!(
+        repo(&conn).get_currency_decimal_separator().unwrap(),
+        "comma"
+    );
+    assert_eq!(
+        repo(&conn).get_currency_thousands_separator().unwrap(),
+        "space"
+    );
 }
 
 // ── Currency settings coexistence with store settings ──────────────────
@@ -931,9 +955,9 @@ fn currency_settings_independent_of_store_settings() {
 
     // Mix store and global currency settings.
     s.set_store_name("Shop One").unwrap();
-    s.set_default_currency("GBP").unwrap();
-    s.set_currency_format("code").unwrap();
-    s.set_currency_symbol_position("suffix").unwrap();
+    repo(&conn).set_default_currency("GBP").unwrap();
+    repo(&conn).set_currency_format("code").unwrap();
+    repo(&conn).set_currency_symbol_position("suffix").unwrap();
     s.set_store_address("10 High St").unwrap();
 
     // Store settings preserved.
@@ -941,9 +965,15 @@ fn currency_settings_independent_of_store_settings() {
     assert_eq!(s.get_store_address().unwrap(), Some("10 High St".into()));
 
     // Currency settings preserved.
-    assert_eq!(s.get_default_currency().unwrap(), Some("GBP".into()));
-    assert_eq!(s.get_currency_format().unwrap(), "code");
-    assert_eq!(s.get_currency_symbol_position().unwrap(), "suffix");
+    assert_eq!(
+        repo(&conn).get_default_currency().unwrap(),
+        Some("GBP".into())
+    );
+    assert_eq!(repo(&conn).get_currency_format().unwrap(), "code");
+    assert_eq!(
+        repo(&conn).get_currency_symbol_position().unwrap(),
+        "suffix"
+    );
 }
 
 // ── Currency settings with shift lifecycle ─────────────────────────────
@@ -968,26 +998,35 @@ fn currency_settings_accessible_before_shift_open() {
     let s = store(&conn);
 
     // Set global currency settings before opening a shift.
-    s.set_default_currency("EUR").unwrap();
-    s.set_currency_format("code").unwrap();
-    s.set_currency_decimal_separator("comma").unwrap();
+    repo(&conn).set_default_currency("EUR").unwrap();
+    repo(&conn).set_currency_format("code").unwrap();
+    repo(&conn).set_currency_decimal_separator("comma").unwrap();
 
     // Open shift.
     let shift = s.open_shift("user-alice", None, 500).unwrap();
     assert_eq!(shift.status, "open");
 
     // Currency settings must remain accessible and unchanged during the shift.
-    assert_eq!(s.get_default_currency().unwrap(), Some("EUR".into()));
-    assert_eq!(s.get_currency_format().unwrap(), "code");
-    assert_eq!(s.get_currency_decimal_separator().unwrap(), "comma");
+    assert_eq!(
+        repo(&conn).get_default_currency().unwrap(),
+        Some("EUR".into())
+    );
+    assert_eq!(repo(&conn).get_currency_format().unwrap(), "code");
+    assert_eq!(
+        repo(&conn).get_currency_decimal_separator().unwrap(),
+        "comma"
+    );
 
     // Close shift.
     let closed = s.close_shift(&shift.id, 800, None).unwrap();
     assert!(closed.is_closed());
 
     // Currency settings must survive after closing the shift.
-    assert_eq!(s.get_default_currency().unwrap(), Some("EUR".into()));
-    assert_eq!(s.get_currency_format().unwrap(), "code");
+    assert_eq!(
+        repo(&conn).get_default_currency().unwrap(),
+        Some("EUR".into())
+    );
+    assert_eq!(repo(&conn).get_currency_format().unwrap(), "code");
 }
 
 #[test]
@@ -996,28 +1035,43 @@ fn change_currency_setting_during_open_shift() {
     seed_users_for_shift(&conn);
     let s = store(&conn);
 
-    s.set_default_currency("USD").unwrap();
+    repo(&conn).set_default_currency("USD").unwrap();
 
     // Open shift.
     let shift = s.open_shift("user-alice", None, 1000).unwrap();
-    assert_eq!(s.get_default_currency().unwrap(), Some("USD".into()));
+    assert_eq!(
+        repo(&conn).get_default_currency().unwrap(),
+        Some("USD".into())
+    );
 
     // Change the default currency mid-shift (e.g. switch to IDR).
-    s.set_default_currency("IDR").unwrap();
-    assert_eq!(s.get_default_currency().unwrap(), Some("IDR".into()));
+    repo(&conn).set_default_currency("IDR").unwrap();
+    assert_eq!(
+        repo(&conn).get_default_currency().unwrap(),
+        Some("IDR".into())
+    );
 
     // Other currency formatting settings remain independent.
-    s.set_currency_symbol_position("suffix").unwrap();
-    assert_eq!(s.get_currency_symbol_position().unwrap(), "suffix");
-    assert_eq!(s.get_currency_format().unwrap(), "symbol"); // still default
+    repo(&conn).set_currency_symbol_position("suffix").unwrap();
+    assert_eq!(
+        repo(&conn).get_currency_symbol_position().unwrap(),
+        "suffix"
+    );
+    assert_eq!(repo(&conn).get_currency_format().unwrap(), "symbol"); // still default
 
     // Close shift.
     let closed = s.close_shift(&shift.id, 1500, None).unwrap();
     assert!(closed.is_closed());
 
     // Changes must persist after close.
-    assert_eq!(s.get_default_currency().unwrap(), Some("IDR".into()));
-    assert_eq!(s.get_currency_symbol_position().unwrap(), "suffix");
+    assert_eq!(
+        repo(&conn).get_default_currency().unwrap(),
+        Some("IDR".into())
+    );
+    assert_eq!(
+        repo(&conn).get_currency_symbol_position().unwrap(),
+        "suffix"
+    );
 }
 
 #[test]
@@ -1027,25 +1081,37 @@ fn multiple_shifts_preserve_currency_settings() {
     let s = store(&conn);
 
     // Set currency at the start.
-    s.set_default_currency("GBP").unwrap();
+    repo(&conn).set_default_currency("GBP").unwrap();
 
     // ── Shift 1 ──────────────────────────────────────────────────
     let s1 = s.open_shift("user-alice", None, 100).unwrap();
-    assert_eq!(s.get_default_currency().unwrap(), Some("GBP".into()));
+    assert_eq!(
+        repo(&conn).get_default_currency().unwrap(),
+        Some("GBP".into())
+    );
     let c1 = s.close_shift(&s1.id, 200, None).unwrap();
     assert!(c1.is_closed());
 
     // Currency setting survives shift 1.
-    assert_eq!(s.get_default_currency().unwrap(), Some("GBP".into()));
+    assert_eq!(
+        repo(&conn).get_default_currency().unwrap(),
+        Some("GBP".into())
+    );
 
     // ── Shift 2 ──────────────────────────────────────────────────
     let s2 = s.open_shift("user-alice", None, 300).unwrap();
-    assert_eq!(s.get_default_currency().unwrap(), Some("GBP".into()));
+    assert_eq!(
+        repo(&conn).get_default_currency().unwrap(),
+        Some("GBP".into())
+    );
     let c2 = s.close_shift(&s2.id, 400, None).unwrap();
     assert!(c2.is_closed());
 
     // Currency setting survives shift 2.
-    assert_eq!(s.get_default_currency().unwrap(), Some("GBP".into()));
+    assert_eq!(
+        repo(&conn).get_default_currency().unwrap(),
+        Some("GBP".into())
+    );
 }
 
 #[test]
@@ -1056,9 +1122,11 @@ fn currency_settings_survive_load_all_across_shift_ops() {
 
     // Set a mix of store + global currency settings.
     s.set_store_name("Currency Shop").unwrap();
-    s.set_default_currency("JPY").unwrap();
-    s.set_currency_format("code").unwrap();
-    s.set_currency_thousands_separator("none").unwrap();
+    repo(&conn).set_default_currency("JPY").unwrap();
+    repo(&conn).set_currency_format("code").unwrap();
+    repo(&conn)
+        .set_currency_thousands_separator("none")
+        .unwrap();
 
     // Open + close a shift.
     let shift = s.open_shift("user-alice", None, 5000).unwrap();
@@ -1095,34 +1163,45 @@ fn currency_keys_isolated_from_store_keys() {
 
     // Set across three namespaces.
     s.set_store_name("Shop").unwrap();
-    s.set_default_currency("AUD").unwrap();
-    s.set_currency_format("code").unwrap();
-    s.set_currency_decimal_separator("comma").unwrap();
+    repo(&conn).set_default_currency("AUD").unwrap();
+    repo(&conn).set_currency_format("code").unwrap();
+    repo(&conn).set_currency_decimal_separator("comma").unwrap();
 
     // Remove a store key — currency keys must survive.
     Settings::remove(&conn, "store.name").unwrap();
-    assert_eq!(s.get_default_currency().unwrap(), Some("AUD".into()));
-    assert_eq!(s.get_currency_format().unwrap(), "code");
-    assert_eq!(s.get_currency_decimal_separator().unwrap(), "comma");
+    assert_eq!(
+        repo(&conn).get_default_currency().unwrap(),
+        Some("AUD".into())
+    );
+    assert_eq!(repo(&conn).get_currency_format().unwrap(), "code");
+    assert_eq!(
+        repo(&conn).get_currency_decimal_separator().unwrap(),
+        "comma"
+    );
 
     // Remove a currency key — other currency keys must survive.
     Settings::remove(&conn, "currency.format").unwrap();
-    assert_eq!(s.get_default_currency().unwrap(), Some("AUD".into()));
+    assert_eq!(
+        repo(&conn).get_default_currency().unwrap(),
+        Some("AUD".into())
+    );
     // After removal, format falls back to default.
-    assert_eq!(s.get_currency_format().unwrap(), "symbol");
+    assert_eq!(repo(&conn).get_currency_format().unwrap(), "symbol");
 }
 
 #[test]
 fn currency_keys_isolated_from_receipt_keys() {
     let conn = setup();
-    let s = store(&conn);
 
-    s.set_currency_decimal_separator("comma").unwrap();
+    repo(&conn).set_currency_decimal_separator("comma").unwrap();
     // Receipt decimal separator is a separate setting.
     kasirmu_core::Settings::set_receipt_decimal_separator(&conn, "dot").unwrap();
 
     // They must not interfere.
-    assert_eq!(s.get_currency_decimal_separator().unwrap(), "comma");
+    assert_eq!(
+        repo(&conn).get_currency_decimal_separator().unwrap(),
+        "comma"
+    );
     assert_eq!(
         kasirmu_core::Settings::get_receipt_decimal_separator(&conn).unwrap(),
         "dot"
@@ -1130,16 +1209,18 @@ fn currency_keys_isolated_from_receipt_keys() {
 
     // Remove receipt key — currency key must survive.
     Settings::remove(&conn, "receipt.decimal_separator").unwrap();
-    assert_eq!(s.get_currency_decimal_separator().unwrap(), "comma");
+    assert_eq!(
+        repo(&conn).get_currency_decimal_separator().unwrap(),
+        "comma"
+    );
 }
 
 #[test]
 fn load_all_never_contains_old_default_currency_key() {
     let conn = setup();
-    let s = store(&conn);
 
     // Use the typed API (which writes to the new key and cleans the old one).
-    s.set_default_currency("NZD").unwrap();
+    repo(&conn).set_default_currency("NZD").unwrap();
 
     let all = Settings::load_all(&conn).unwrap();
     assert!(
@@ -1155,13 +1236,15 @@ fn load_all_never_contains_old_default_currency_key() {
 #[test]
 fn direct_raw_write_to_old_key_does_not_affect_new_key_reads() {
     let conn = setup();
-    let s = store(&conn);
 
     // Someone writes directly to the old key (e.g. raw SQL).
     Settings::set(&conn, "store.default_currency", "CHF").unwrap();
 
     // If new key is absent, get_default_currency falls back.
-    assert_eq!(s.get_default_currency().unwrap(), Some("CHF".into()));
+    assert_eq!(
+        repo(&conn).get_default_currency().unwrap(),
+        Some("CHF".into())
+    );
 
     // But load_all will show the old key.
     let all = Settings::load_all(&conn).unwrap();
@@ -1171,7 +1254,7 @@ fn direct_raw_write_to_old_key_does_not_affect_new_key_reads() {
     );
 
     // Once we write via typed API, the old key must be cleaned up.
-    s.set_default_currency("SEK").unwrap();
+    repo(&conn).set_default_currency("SEK").unwrap();
     assert!(
         !Settings::load_all(&conn)
             .unwrap()
@@ -1179,7 +1262,10 @@ fn direct_raw_write_to_old_key_does_not_affect_new_key_reads() {
             .any(|(k, _)| k == "store.default_currency"),
         "typed set must clean up old key"
     );
-    assert_eq!(s.get_default_currency().unwrap(), Some("SEK".into()));
+    assert_eq!(
+        repo(&conn).get_default_currency().unwrap(),
+        Some("SEK".into())
+    );
 }
 
 // ── Overwrite protection: store settings don't clobber currency ──────
@@ -1187,12 +1273,11 @@ fn direct_raw_write_to_old_key_does_not_affect_new_key_reads() {
 #[test]
 fn overwrite_store_settings_preserves_currency_settings() {
     let conn = setup();
-    let s = store(&conn);
 
     // Set currency settings.
-    s.set_default_currency("KRW").unwrap();
-    s.set_currency_format("code").unwrap();
-    s.set_currency_symbol_position("suffix").unwrap();
+    repo(&conn).set_default_currency("KRW").unwrap();
+    repo(&conn).set_currency_format("code").unwrap();
+    repo(&conn).set_currency_symbol_position("suffix").unwrap();
 
     // Overwrite store settings (simulating the bulk set_store_settings flow).
     Settings::set_store_name(&conn, "New Name").unwrap();
@@ -1202,9 +1287,15 @@ fn overwrite_store_settings_preserves_currency_settings() {
     // Note: NOT calling set_default_currency here — simulating a store-only update.
 
     // Currency settings must be unchanged.
-    assert_eq!(s.get_default_currency().unwrap(), Some("KRW".into()));
-    assert_eq!(s.get_currency_format().unwrap(), "code");
-    assert_eq!(s.get_currency_symbol_position().unwrap(), "suffix");
+    assert_eq!(
+        repo(&conn).get_default_currency().unwrap(),
+        Some("KRW".into())
+    );
+    assert_eq!(repo(&conn).get_currency_format().unwrap(), "code");
+    assert_eq!(
+        repo(&conn).get_currency_symbol_position().unwrap(),
+        "suffix"
+    );
 }
 
 #[test]
@@ -1217,12 +1308,12 @@ fn overwrite_currency_settings_preserves_store_settings() {
     s.set_store_address("123 Main St").unwrap();
 
     // Set currency settings.
-    s.set_default_currency("MXN").unwrap();
-    s.set_currency_format("symbol").unwrap();
+    repo(&conn).set_default_currency("MXN").unwrap();
+    repo(&conn).set_currency_format("symbol").unwrap();
 
     // Overwrite currency settings.
-    s.set_default_currency("CAD").unwrap();
-    s.set_currency_format("code").unwrap();
+    repo(&conn).set_default_currency("CAD").unwrap();
+    repo(&conn).set_currency_format("code").unwrap();
 
     // Store settings must be unchanged.
     assert_eq!(s.get_store_name().unwrap(), Some("Original Store".into()));
@@ -1283,14 +1374,15 @@ fn setup_writes_global_currency_key() {
 #[test]
 fn all_currency_keys_have_distinct_namespaces() {
     let conn = setup();
-    let s = store(&conn);
 
     // Set every currency-related key through its typed API.
-    s.set_default_currency("PLN").unwrap();
-    s.set_currency_format("code").unwrap();
-    s.set_currency_symbol_position("suffix").unwrap();
-    s.set_currency_decimal_separator("comma").unwrap();
-    s.set_currency_thousands_separator("space").unwrap();
+    repo(&conn).set_default_currency("PLN").unwrap();
+    repo(&conn).set_currency_format("code").unwrap();
+    repo(&conn).set_currency_symbol_position("suffix").unwrap();
+    repo(&conn).set_currency_decimal_separator("comma").unwrap();
+    repo(&conn)
+        .set_currency_thousands_separator("space")
+        .unwrap();
 
     // Load all and verify distinct keys.
     let all = Settings::load_all(&conn).unwrap();
@@ -1325,13 +1417,15 @@ fn all_currency_keys_have_distinct_namespaces() {
 #[test]
 fn set_default_currency_idempotent_same_value_roundtrip() {
     let conn = setup();
-    let s = store(&conn);
 
-    s.set_default_currency("USD").unwrap();
-    s.set_default_currency("USD").unwrap();
-    s.set_default_currency("USD").unwrap();
+    repo(&conn).set_default_currency("USD").unwrap();
+    repo(&conn).set_default_currency("USD").unwrap();
+    repo(&conn).set_default_currency("USD").unwrap();
 
-    assert_eq!(s.get_default_currency().unwrap(), Some("USD".into()));
+    assert_eq!(
+        repo(&conn).get_default_currency().unwrap(),
+        Some("USD".into())
+    );
     // No old key after repeated sets.
     assert_eq!(
         kasirmu_core::Settings::get(&conn, "store.default_currency").unwrap(),
@@ -1347,12 +1441,15 @@ fn default_currency_remove_restores_fallback() {
     // Write old key and new key.
     s.set_setting("store.default_currency", "DKK").unwrap();
     s.set_setting("currency.default", "NOK").unwrap();
-    assert_eq!(s.get_default_currency().unwrap(), Some("NOK".into()));
+    assert_eq!(
+        repo(&conn).get_default_currency().unwrap(),
+        Some("NOK".into())
+    );
 
     // Remove the new key — fallback must kick in.
     kasirmu_core::Settings::remove(&conn, "currency.default").unwrap();
     assert_eq!(
-        s.get_default_currency().unwrap(),
+        repo(&conn).get_default_currency().unwrap(),
         Some("DKK".into()),
         "must fall back to old key when new key is removed"
     );
@@ -1361,14 +1458,13 @@ fn default_currency_remove_restores_fallback() {
 #[test]
 fn default_currency_both_keys_absent_returns_none() {
     let conn = setup();
-    let s = store(&conn);
 
-    assert_eq!(s.get_default_currency().unwrap(), None);
+    assert_eq!(repo(&conn).get_default_currency().unwrap(), None);
 
     // Setting then removing.
-    s.set_default_currency("USD").unwrap();
+    repo(&conn).set_default_currency("USD").unwrap();
     kasirmu_core::Settings::remove(&conn, "currency.default").unwrap();
-    assert_eq!(s.get_default_currency().unwrap(), None);
+    assert_eq!(repo(&conn).get_default_currency().unwrap(), None);
 }
 
 // ── Currency settings survive full Store lifecycle ────────────────────
@@ -1378,29 +1474,37 @@ fn currency_settings_persist_after_feature_save() {
     let conn = setup();
     let s = store(&conn);
 
-    s.set_default_currency("SGD").unwrap();
-    s.set_currency_format("code").unwrap();
+    repo(&conn).set_default_currency("SGD").unwrap();
+    repo(&conn).set_currency_format("code").unwrap();
 
     // Save features (uses set_batch internally — must not clobber currency).
     let reg = kasirmu_core::FeatureRegistry::simple_retail();
     s.save_features(&reg).unwrap();
 
-    assert_eq!(s.get_default_currency().unwrap(), Some("SGD".into()));
-    assert_eq!(s.get_currency_format().unwrap(), "code");
+    assert_eq!(
+        repo(&conn).get_default_currency().unwrap(),
+        Some("SGD".into())
+    );
+    assert_eq!(repo(&conn).get_currency_format().unwrap(), "code");
 }
 
 #[test]
 fn currency_settings_persist_after_prune_stale_features() {
     let conn = setup();
-    let s = store(&conn);
 
-    s.set_default_currency("HKD").unwrap();
-    s.set_currency_symbol_position("suffix").unwrap();
+    repo(&conn).set_default_currency("HKD").unwrap();
+    repo(&conn).set_currency_symbol_position("suffix").unwrap();
 
     // Prune stale features.
     let reg = kasirmu_core::FeatureRegistry::simple_retail();
     kasirmu_core::Settings::prune_stale_features(&conn, &reg).unwrap();
 
-    assert_eq!(s.get_default_currency().unwrap(), Some("HKD".into()));
-    assert_eq!(s.get_currency_symbol_position().unwrap(), "suffix");
+    assert_eq!(
+        repo(&conn).get_default_currency().unwrap(),
+        Some("HKD".into())
+    );
+    assert_eq!(
+        repo(&conn).get_currency_symbol_position().unwrap(),
+        "suffix"
+    );
 }

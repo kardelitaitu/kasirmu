@@ -146,10 +146,21 @@ export function isoDaysAgo(daysAgo: number, storeTz?: string | null): string {
 /**
  * The inclusive `[from, to]` window for a granularity. Daily/Weekly/
  * Monthly/Yearly are anchored at "now"; Custom uses the picked range.
- * When `storeTz` is provided (the primary store's `timezone`, REP-03) the
- * anchor is the STORE's calendar day, not the device's — a laptop in
- * another region must still query "today" as the store sees it. Passing
- * `null`/`undefined` keeps the legacy device-local anchor.
+ *
+ * The anchor is always the STORE's calendar day (REP-03) — `storeTz` when the
+ * primary store's `timezone` has loaded, and FALLBACK_STORE_TZ before that.
+ *
+ * A null/undefined `storeTz` used to mean "fall back to the DEVICE's calendar"
+ * and that was wrong twice over. It made the query window depend on where the
+ * app happened to be running, which is the exact failure FALLBACK_STORE_TZ's
+ * own comment warns about ("a UTC CI runner and a UTC+7 workstation"), and it
+ * made this function disagree with `isoToday()` on the same instant — the
+ * yearly grid then rendered one more month than the calendar it was anchored
+ * to. TZ=Pacific/Kiritimati at 2026-09-30T12:00Z: host month 10, store month
+ * 9, 43 yearly cells against an expected 39.
+ *
+ * Null now means "the store zone is not known yet", which is what the value
+ * actually is while the profile is still loading.
  */
 export function rangeForGranularity(
   g: Granularity,
@@ -157,24 +168,15 @@ export function rangeForGranularity(
   customTo: string,
   storeTz?: string | null,
 ): { from: string; to: string } {
-  let y: number;
-  let m: number;
-  let d: number;
-  let dow: number; // 0 = Monday … 6 = Sunday
-  if (storeTz === undefined || storeTz === null || storeTz === '') {
-    const now = new Date();
-    y = now.getFullYear();
-    m = now.getMonth();
-    d = now.getDate();
-    dow = (now.getDay() + 6) % 7;
-  } else {
-    // UTC getters on the offset-shifted instant = the store's calendar.
-    const s = new Date(Date.now() + storeOffsetMs(storeTz));
-    y = s.getUTCFullYear();
-    m = s.getUTCMonth();
-    d = s.getUTCDate();
-    dow = (s.getUTCDay() + 6) % 7;
-  }
+  // One path, always. UTC getters on the offset-shifted instant read the
+  // STORE's calendar; storeOffsetMs('') and storeOffsetMs(null) are 0, so an
+  // unknown zone resolves to FALLBACK_STORE_TZ exactly as isoToday() does.
+  // Keeping a device-local branch here is what let the two drift apart.
+  const s = new Date(Date.now() + storeOffsetMs(storeTz ?? FALLBACK_STORE_TZ));
+  const y = s.getUTCFullYear();
+  const m = s.getUTCMonth();
+  const d = s.getUTCDate();
+  const dow = (s.getUTCDay() + 6) % 7; // 0 = Monday … 6 = Sunday
   // Calendar-safe day construction (month/year rollover via Date.UTC).
   const iso = (yy: number, mm: number, dd: number) =>
     new Date(Date.UTC(yy, mm, dd)).toISOString().slice(0, 10);
@@ -386,6 +388,25 @@ function mondayFirst(jsDay: number): number {
   return (jsDay + 6) % 7;
 }
 
+/**
+ * An ISO `YYYY-MM-DD` as a Date, read on the UTC calendar.
+ *
+ * `new Date(`${iso}T00:00:00`)` — the shape that was in the three call
+ * sites below — has no timezone designator, so it is parsed in the HOST's zone.
+ * Every hour west of UTC therefore reads the date as the PREVIOUS day: under
+ * TZ=Asia/Jakarta, `2026-01-01` parses as local Dec 31, and `.getDate()` says
+ * 31 for a row the backend labelled the 1st. That is the same host-dependence
+ * `isoToday()` was fixed for, one layer down: the window is now store-anchored,
+ * so a row inside it still landed in the wrong cell whenever the device zone
+ * was not UTC.
+ *
+ * The UTC read matches `addDaysUtc()` below and the rest of this file, which
+ * already spell `T00:00:00Z`.
+ */
+function parseIsoDate(iso: string): Date {
+  return new Date(`${iso}T00:00:00Z`);
+}
+
 /** Aggregated raw revenue + order count for one heatmap cell key. */
 interface HeatTotals {
   minor: number;
@@ -400,16 +421,16 @@ export interface HeatCell extends HeatTotals {
 
 /** The yearly heatmap's `YYYY-MM:week` cell key for a Monday week_start. */
 function yearlyWeekKey(weekStart: string): string {
-  const d = new Date(`${weekStart}T00:00:00`);
-  const month = d.getMonth();
+  const d = parseIsoDate(weekStart);
+  const month = d.getUTCMonth();
   // Ordinal of the week among the month's Monday weeks (0-based) — the same
   // Monday-first structure as the trend cards' weekStartKey. The old
   // day-of-month arithmetic capped at 3, silently merging the 5th Monday of
   // a month into the 4th week's cell. The key carries the week_start's
   // YYYY-MM so a multi-year range never merges two Januaries into one column.
   let week = 0;
-  for (let day = 1; day <= d.getDate(); day++) {
-    if (mondayFirst(new Date(d.getFullYear(), month, day).getDay()) === 0) week += 1;
+  for (let day = 1; day <= d.getUTCDate(); day++) {
+    if (mondayFirst(new Date(Date.UTC(d.getUTCFullYear(), month, day)).getUTCDay()) === 0) week += 1;
   }
   return `${weekStart.slice(0, 7)}:${week - 1}`;
 }
@@ -434,7 +455,7 @@ function heatTotals(
   };
   if (g === 'monthly') {
     for (const r of data.daily ?? []) {
-      add(String(new Date(`${r.date}T00:00:00`).getDate()), r.total_minor, r.sale_count);
+      add(String(parseIsoDate(r.date).getUTCDate()), r.total_minor, r.sale_count);
     }
   } else if (g === 'yearly') {
     for (const r of data.weekly ?? []) {
@@ -705,10 +726,10 @@ export async function loadHeatmapRows(q: AnalyticsQuery): Promise<{
 
 /** Completed table-bound orders per day → per-bucket turn minutes. */
 function weekStartKey(iso: string): string {
-  const d = new Date(`${iso}T00:00:00`);
-  const dow = (d.getDay() + 6) % 7; // Monday-first
-  d.setDate(d.getDate() - dow);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const d = parseIsoDate(iso);
+  const dow = (d.getUTCDay() + 6) % 7; // Monday-first
+  d.setUTCDate(d.getUTCDate() - dow);
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
 }
 
 function monthDays(ym: string): number {

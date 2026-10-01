@@ -58,8 +58,9 @@ pub async fn get_regional_config_scoped(
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<kasirmu_core::RegionalConfig, AppError> {
-    let (session, conn) = state.resolve_scope(&session_token)?;
+    let session = state.resolve_session(&session_token)?;
     require_permission_for_session(&state, &session, permissions::SETTINGS_READ).await?;
+    let conn = state.resolve_store(&session_token)?;
     let conn = conn
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
@@ -95,8 +96,9 @@ pub async fn set_regional_config_scoped(
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<kasirmu_core::RegionalConfig, AppError> {
-    let (session, conn) = state.resolve_scope(&session_token)?;
+    let session = state.resolve_session(&session_token)?;
     require_permission_for_session(&state, &session, permissions::SETTINGS_EDIT).await?;
+    let conn = state.resolve_store(&session_token)?;
     let conn = conn
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;

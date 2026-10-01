@@ -34,6 +34,12 @@ foundation = { workspace = true }
 tokio-postgres = { workspace = true }
 deadpool-postgres = { workspace = true }
 
+[features]
+# No-op feature (R15, owner 2026-09-20) — see the same block in
+# apps/cloud-server/Cargo.toml for what it buys. Gating is per crate because
+# the arms live in three crates and cargo features do not cross a boundary.
+pg-tests = []
+
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }
 tower = { workspace = true }

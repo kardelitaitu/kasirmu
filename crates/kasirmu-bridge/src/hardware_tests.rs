@@ -65,6 +65,51 @@ fn print_sales_receipt_args_deserialise() {
     assert_eq!(args.payments.len(), 1);
 }
 
+#[test]
+fn print_sales_receipt_args_deserialise_camel_case() {
+    let json = r#"{
+        "date": "01 Jan 2026",
+        "receiptNumber": "REC-001",
+        "items": [
+            {
+                "name": "Coffee",
+                "quantity": 1,
+                "unitPrice": { "minorUnits": 350, "currency": "USD" },
+                "totalPrice": { "minorUnits": 350, "currency": "USD" }
+            }
+        ],
+        "subtotal": { "minorUnits": 350, "currency": "USD" },
+        "total": { "minorUnits": 350, "currency": "USD" },
+        "payments": [
+            {
+                "method": "CASH",
+                "amount": { "minorUnits": 500, "currency": "USD" },
+                "change": { "minorUnits": 150, "currency": "USD" }
+            }
+        ]
+    }"#;
+    let args: PrintSalesReceiptArgs = serde_json::from_str(json).unwrap();
+    assert_eq!(args.date, "01 Jan 2026");
+    assert_eq!(args.items.len(), 1);
+    assert_eq!(args.items[0].unit_price.minor_units, 350);
+    assert_eq!(args.subtotal.minor_units, 350);
+    assert_eq!(args.total.minor_units, 350);
+    assert_eq!(args.payments[0].amount.minor_units, 500);
+}
+
+#[test]
+fn line_item_dto_deserialise_with_note() {
+    let json = r#"{
+        "name": "Nasi Goreng Spesial",
+        "quantity": 1,
+        "unitPrice": { "minor_units": 35000, "currency": "IDR" },
+        "totalPrice": { "minor_units": 35000, "currency": "IDR" },
+        "note": "pedas"
+    }"#;
+    let item: LineItemDto = serde_json::from_str(json).unwrap();
+    assert_eq!(item.note.as_deref(), Some("pedas"));
+}
+
 // -- DTO struct tests --
 
 #[test]
@@ -255,6 +300,110 @@ fn serial_mode_offers_only_port_backed_scanners() {
     // Filtering preserves the list's order, which is the family-ranked
     // order from the registry — it does not re-sort.
     assert_eq!(got, ids_of(&["scanner:serial:COM7", "scanner:bt:COM9"]));
+}
+
+// -- a scanner preference that cannot be read is not an unconfigured terminal --
+
+/// `scanner_prefs` returned a bare `(String, String)` and folded all three of
+/// its reads into defaults: a FAILED `hardware_profiles` query fell through via
+/// `.ok()`, and both legacy keys via `unwrap_or_default()`. An unreadable
+/// `settings` table therefore produced `("", "")` -- byte-identical to a
+/// terminal that was never configured. The saved Device ID stopped being
+/// fronted, and an empty mode falls to the `_ => ids` arm of `ids_for_mode`, so
+/// a `keyboard`-wedge terminal would open COM ports and a serial-only one would
+/// be handed a HID device.
+///
+/// The pin makes `settings` PRESENT but unreadable (BLOB `value`) and asserts
+/// the read refuses instead of answering "nothing saved". No profile row exists
+/// for the terminal, so the legacy branch is the one exercised.
+#[test]
+fn an_unreadable_settings_table_is_not_an_unconfigured_terminal() {
+    let conn = rusqlite::Connection::open_in_memory().expect("in-memory settings db");
+    conn.execute_batch(
+        "CREATE TABLE hardware_profiles (terminal_id TEXT PRIMARY KEY, profile_json TEXT NOT NULL); \
+         CREATE TABLE settings (key TEXT PRIMARY KEY, value BLOB NOT NULL, \
+                                 updated_at TEXT NOT NULL DEFAULT ''); \
+         INSERT INTO settings (key, value) VALUES ('scanner.device_id', x'80');",
+    )
+    .expect("building the settings tables");
+
+    let err = scanner_prefs(&conn, "term-1")
+        .expect_err("an unreadable settings table must not read as no preference");
+    assert!(
+        matches!(err, BridgeError::Core { .. }),
+        "expected the read failure to surface, got {err:?}"
+    );
+}
+
+#[test]
+fn a_missing_profile_row_falls_through_to_the_legacy_keys() {
+    // The ONE legitimate absence: no profile row yet. It must not error, and it
+    // must still resolve the legacy keys.
+    let conn = rusqlite::Connection::open_in_memory().expect("in-memory settings db");
+    conn.execute_batch(
+        "CREATE TABLE hardware_profiles (terminal_id TEXT PRIMARY KEY, profile_json TEXT NOT NULL); \
+         CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, \
+                                 updated_at TEXT NOT NULL DEFAULT ''); \
+         INSERT INTO settings (key, value) VALUES ('scanner.device_id', 'scanner:usb:abc');",
+    )
+    .expect("building the settings tables");
+
+    let (preferred, mode) = scanner_prefs(&conn, "term-1").expect("absence must not error");
+    assert_eq!(preferred, "scanner:usb:abc");
+    // The getter's own documented default for an ABSENT key is "auto"
+    // (platform/core/src/settings/typed.rs:272), which is what makes the outer
+    // `unwrap_or_default()` the old code carried doubly wrong: it could only
+    // fire on an error, and it would have replaced that documented default with
+    // an empty string.
+    assert_eq!(mode, "auto");
+}
+
+// -- receipt config: a failed legacy footer read must not read as "no footer" --
+
+/// `read_receipt_config_for_scope` resolves the footer from three layers, the
+/// legacy `settings` key last. That read used to be wrapped in `.ok()`, so a
+/// real failure (a locked or corrupt `settings` table) became `None` -- the
+/// same value an operator sees when they configured no footer at all. The
+/// receipt then printed with the configured footer missing and nothing said so.
+///
+/// The pin makes `settings` PRESENT but unreadable (its `value` column is a
+/// BLOB, so every `row.get::<_, String>(0)` fails), then asserts the config
+/// builder REFUSES rather than returning a footer-less config. Every other
+/// settings read in the same function already propagates, which is why `?`
+/// here is consistency rather than a new policy.
+#[test]
+fn a_failed_legacy_footer_read_refuses_instead_of_printing_without_a_footer() {
+    // A provisioned store db: the resolver reads `locations` and the scoped
+    // `receipt_formats` rows before it ever reaches the legacy key, so an
+    // empty in-memory db would fail earlier for the wrong reason.
+    let bridge = TestBridge::new();
+    let store = bridge.db_manager().open_store("default").unwrap();
+    let guard = store.lock().expect("store db lock");
+    platform_core::settings::Settings::set(&guard, "receipt.footer", "Thank you")
+        .expect("seeding the legacy footer");
+
+    let _ = read_receipt_config_for_scope(&guard, None)
+        .expect("a readable settings table must resolve a config");
+
+    // Rebuild `settings` with the value stored as a BLOB. Every read in this
+    // path does `row.get::<_, String>(0)`, which fails on a blob, so the
+    // settings layer is PRESENT but unreadable -- exactly the locked/corrupt
+    // case the swallow used to absorb. Rows the resolver only probes with
+    // `is_ok_and(..)` still answer falsy, so control reaches the footer chain.
+    guard
+        .execute_batch(
+            "DROP TABLE settings; \
+         CREATE TABLE settings (key TEXT PRIMARY KEY, value BLOB NOT NULL, \
+                                     updated_at TEXT NOT NULL DEFAULT ''); \
+         INSERT INTO settings (key, value) VALUES ('receipt.footer', x'80');",
+        )
+        .expect("rebuilding settings with an unreadable value");
+
+    let err = read_receipt_config_for_scope(&guard, None).unwrap_err();
+    assert!(
+        matches!(err, BridgeError::Core { .. }),
+        "a failed footer read must surface as a Core error, not a config whose footer silently vanished; got {err:?}"
+    );
 }
 
 #[test]

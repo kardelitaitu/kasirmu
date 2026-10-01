@@ -83,6 +83,26 @@ pub fn auto_crop_img(
         ));
     }
 
+    // MED-B: the doc above promises InvalidDimensions for a degenerate TARGET
+    // too, but only the SOURCE was checked — a zero-width target returned a
+    // 0xN image (reproduced: Some(ImageDimensions::new(0, 100)) -> Ok 0x300).
+    // The target only matters for the modes that use it.
+    if matches!(mode, CropMode::CenterCrop | CropMode::Smart) {
+        match target {
+            None => {
+                return Err(MediaError::InvalidDimensions(
+                    "CenterCrop/Smart require a target".into(),
+                ));
+            }
+            Some(t) if t.width == 0 || t.height == 0 => {
+                return Err(MediaError::InvalidDimensions(
+                    "crop target dimensions must be positive".into(),
+                ));
+            }
+            Some(_) => {}
+        }
+    }
+
     let cropped = match mode {
         CropMode::TrimBorders => trim_borders(&img, w, h),
         CropMode::CenterCrop => {

@@ -1,11 +1,11 @@
 /*
-last audited DD-MM-YY by DSH-Agent
+last audited (date unknown) by DSH-Agent
 crate: kasirmu-lua | status: SAFE | lint: CLEAN
 findings: 2 actual unsafe blocks verified — both `unsafe impl Send/Sync for LuaRuntime` with item-scoped #[allow(unsafe_code)] + documented SAFETY rationale (mlua is Send+Sync; LuaRuntime holds an Arc<Mutex<...>>) — crate root #![deny(unsafe_code)] holds. LUA-3 RESOLVED — removed detect_overwrites(): dead code (never called anywhere) whose overwrite detection was a no-op (counted duplicates in the input list, not VM overwrites). LUA-2 already fixed (percent range at parse site). Sandbox hardening verified: io/loadfile/dofile/require/package/debug removed, os reduced, 10 MiB memory cap, 100K instruction hook, MONEY-05 float hand-off documented. Default::default() .expect() is documented-infallible (LuaRuntime::new cannot fail).
 next: none — crate stable | perf: N/A
 */
 
-//! Embedded Lua scripting runtime for OZ-POS.
+//! Embedded Lua scripting runtime for kasir.mu.
 //!
 //! `kasirmu-lua` lets merchants customize business rules, promotions, and
 //! order validation at runtime without recompiling the Rust core.
@@ -17,7 +17,8 @@ next: none — crate stable | perf: N/A
 //! Every script executes in a restricted environment:
 //!
 //! - **Removed globals**: `io`, `loadfile`, `dofile`, `require`,
-//!   `package`, `debug`, `rawget`, `rawset`
+//!   `package`, `debug`, `rawget`, `rawset`, `coroutine` (removed because
+//!   hooks are per-thread and a coroutine would escape the instruction limit)
 //! - **Restricted globals**: `os` — `date`, `time`, and `clock` are available
 //!   (read-only); `os.execute`, `os.remove`, `os.rename`, `os.exit` are nil
 //! - **Allowed**: safe `math`, `string`, `table`, `pairs`, `ipairs`,
@@ -99,12 +100,16 @@ pub struct LuaRuntime {
     lua: mlua::Lua,
 }
 
-// SAFETY: `LuaRuntime` is used behind a `Mutex` in application state,
-// guaranteeing that only one thread accesses it at a time.
-#[allow(unsafe_code)]
-unsafe impl Send for LuaRuntime {}
-#[allow(unsafe_code)]
-unsafe impl Sync for LuaRuntime {}
+// LUA-A/LUA-B: this type deliberately implements NEITHER `Send` nor `Sync`
+// by hand. `mlua::Lua` is `Send` (the `send` feature) but is NOT `Sync`,
+// because Lua state must not be entered concurrently; the crate used to
+// `unsafe impl Sync` here on the strength of a comment claiming "used behind a
+// Mutex" — which nothing enforced. `LuaRuntime` is `pub` with a `pub fn new()`,
+// so the impl made `Arc<LuaRuntime>` `Send + Sync` and any holder could reach
+// the `&self` API from many threads with no lock at all (reproduced:
+// STATUS_ACCESS_VIOLATION). Neither impl is needed: every real holder is a
+// `tokio::sync::Mutex`, which is `Sync` for a `Send` `T`, and `PluginManager`
+// (which owns the runtime) needs only `Send`, which `mlua` supplies.
 
 impl Default for LuaRuntime {
     fn default() -> Self {
@@ -143,6 +148,16 @@ impl LuaRuntime {
                 "collectgarbage",
                 "module",
                 "load",
+                // LUA-C: Lua hooks are per-thread state, so `coroutine.wrap` runs
+                // its body on a NEW Lua thread that the instruction-limit hook
+                // below never observes — a coroutine could loop past
+                // INSTRUCTION_LIMIT indefinitely (reproduced: 200 000 iterations
+                // completed while the identical main-thread loop aborted at 100K).
+                // No script or plugin in this repository uses coroutines, so
+                // removing the global closes the bypass without taking anything
+                // away. The 10 MiB memory cap still applies to coroutines; this
+                // restores the CPU bound the doc already promises.
+                "coroutine",
             ];
             for name in remove {
                 globals
@@ -239,7 +254,7 @@ impl LuaRuntime {
             return Ok(());
         }
         let mut entries: Vec<_> = std::fs::read_dir(dir)
-            .map_err(|e| LuaError::Load(format!("read dir {:?}: {e}", dir)))?
+            .map_err(|e| LuaError::Load(format!("read dir {dir:?}: {e}")))?
             .filter_map(|e| e.ok())
             .filter(|e| e.path().extension().is_some_and(|ext| ext == "lua"))
             .collect();

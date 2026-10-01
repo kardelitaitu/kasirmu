@@ -5,7 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
-description = "Sync engine: offline queue, HTTP transport, push/pull replication, and conflict resolution for OZ-POS."
+description = "Sync engine: offline queue, HTTP transport, push/pull replication, and conflict resolution for kasir.mu."
 
 # Inherits [workspace.lints] from the root Cargo.toml (missing_docs = warn).
 [lints]
@@ -32,6 +32,14 @@ rustls-native-certs = { workspace = true }
 
 [features]
 slow-tests = []
+# No-op feature (R15, owner 2026-09-20) — the same idiom as `slow-tests`, for
+# the PG arms. See apps/cloud-server/Cargo.toml for what it buys.
+pg-tests = []
 
 [dev-dependencies]
 axum = { workspace = true }
+# P1-1: conflict resolution is the highest-risk surface in this crate — two
+# terminals editing one sale, arriving in either order — and it had no
+# property tests at all. `conflict_tests.rs` samples examples; these
+# strategies range over the space the examples sit in.
+proptest = { workspace = true }

@@ -21,6 +21,7 @@ const ALLOWED_FIELDS: &[&str] = &[
     "author",
     "dependencies",
     "permissions",
+    "capabilities",
     "database_namespace",
 ];
 
@@ -45,7 +46,7 @@ fn is_semver(s: &str) -> bool {
 #[test]
 fn schema_file_is_valid_json() {
     let content = std::fs::read_to_string(schema_path()).unwrap_or_else(|e| {
-        panic!("failed to read schema file '{}': {e}", SCHEMA_PATH);
+        panic!("failed to read schema file '{SCHEMA_PATH}': {e}");
     });
     let parsed: serde_json::Value =
         serde_json::from_str(&content).expect("schema file must be valid JSON");
@@ -111,7 +112,7 @@ fn discover_manifests() -> Vec<String> {
 
     let modules_dir = workspace_root().join("modules");
     if !modules_dir.is_dir() {
-        panic!("no modules/ directory found at {:?}", modules_dir);
+        panic!("no modules/ directory found at {modules_dir:?}");
     }
 
     for entry in std::fs::read_dir(&modules_dir).unwrap() {

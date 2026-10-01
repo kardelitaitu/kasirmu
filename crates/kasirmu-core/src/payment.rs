@@ -1,8 +1,8 @@
 /*
 last audited 25-07-26 by RSA-Agent (kasirmu-core slice A)
 crate: kasirmu-core | status: SAFE | lint: CLEAN
-findings: tender types sound; idempotency_key captured here confirms PAY-2 drop point is in kasirmu-payment drivers, not kasirmu-core; COR-1 FIXED DD-MM-YY (DSH-Agent) — id field doc updated to UUID v7
-next: fix field doc | perf: N/A
+findings: tender types sound; idempotency_key captured here confirms PAY-2 drop point is in kasirmu-payment drivers, not kasirmu-core; COR-1 FIXED (date unknown, DSH-Agent) — id field doc updated to UUID v7
+next: none | perf: N/A
 */
 //! Payment domain type — individual payment tenders within a sale.
 //!

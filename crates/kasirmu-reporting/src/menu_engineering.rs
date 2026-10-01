@@ -2,7 +2,18 @@
 last audited 25-07-26 by RSA-Agent (kasirmu-reporting slice A: deep read)
 crate: kasirmu-reporting | status: SAFE | lint: CLEAN
 findings: R-1 INFO (menu_engineering merge_same_product_rows keeps the first-seen unit price/cost — the revenue-descending SQL order's first row, not the mode — so merged margin_per_unit can misrepresent; proposed: derive unit price as total_revenue/total_volume or document) | R-2 INFO (all reporting queries wrap DATE(s.created_at) in WHERE predicates — non-sargable, full table scans on large sales tables; fine today, propose sargable range predicates when volume grows)
-next: cosmetic analytics polish in fix-order | perf: DATE() non-sargable
+next: none | perf: DATE() non-sargable (R-2, deliberately NOT scheduled —
+  an INFO note to revisit if sales-table volume ever makes the full scan
+  visible; there are no sargable rewrites pending, and the tz-aware
+  DATE(created_at, tz) form is the current shape)
+R-1 RESOLVED 2026-10-04 by documentation, the audit's second option:
+  merge_same_product_rows (menu_engineering.rs) carries a `// REP-B:` comment
+  stating the kept unit price/cost is the FIRST-SEEN row from the
+  revenue-descending SQL — the highest-revenue price point, NOT the mode or
+  an average — so merged margin_per_unit is representative of that price
+  point; derive total_revenue/total_volume if an average is wanted.
+  The former `next: cosmetic analytics polish in fix-order` named a phase
+  that no longer exists in any live plan; R-2 was never a fix-order item.
 */
 //! Menu Engineering Analytics — volume, contribution margin, and quadrant
 //! classification for restaurant menu items.
@@ -49,6 +60,15 @@ pub struct MenuEngineeringRow {
     pub total_margin_minor: i64,
     /// Total revenue: unit_price * volume.
     pub total_revenue_minor: i64,
+    /// ISO-4217 code the three money fields above are denominated in.
+    ///
+    /// C22: this report used to sum every line regardless of currency, so a
+    /// USD line and an IDR line produced one total that was not money in any
+    /// currency — and the screen, having no code to read, formatted it with
+    /// the workspace default. Rows are now grouped per (product, currency)
+    /// and this field is what lets the UI label them correctly. It is always
+    /// non-empty: `sale_lines.currency` is NOT NULL.
+    pub currency: String,
 }
 
 /// Menu engineering classification quadrant.
@@ -86,7 +106,20 @@ pub fn query_menu_engineering(
     end_date: &str,
 ) -> Result<MenuEngineeringResult, CoreError> {
     let mut stmt = conn.prepare(
-        "SELECT p.id AS product_id, p.sku, p.name,
+        // REP-A: LEFT JOIN, keyed on the SKU (which is what sale_lines carries)
+        // with the SKU as the name/id fallback. An INNER join erased the whole
+        // menu history of any product later deleted, while margin reporting and
+        // `kasirmu_core::db::reports`'s daily aggregates still counted those
+        // lines (reproduced: 0 rows after delete_product). `sale_lines.sku` has
+        // no foreign key to products.
+        // C22: `sl.currency` is part of BOTH the grouping and the ordering key.
+        // Without it, USD and IDR amounts were added into one number that is
+        // money in no currency, and the row carried no code for the UI to
+        // format with. Same convention as the rest of the report suite --
+        // see db/reports/product_sales.rs:175 and revenue.rs:144.
+        "SELECT COALESCE(p.id, sl.sku) AS product_id, sl.sku AS sku,
+                COALESCE(p.name, sl.sku) AS name,
+                sl.currency AS currency,
                 COALESCE(SUM(sl.qty), 0) AS total_volume,
                 sl.unit_minor AS unit_price_minor,
                 COALESCE(sl.cost_minor, p.cost_minor, 0) AS unit_cost_minor,
@@ -95,10 +128,10 @@ pub fn query_menu_engineering(
                 SUM(sl.line_minor) AS total_revenue_minor
          FROM sale_lines sl
          JOIN sales s ON sl.sale_id = s.id
-         JOIN products p ON sl.sku = p.sku
+         LEFT JOIN products p ON sl.sku = p.sku
          WHERE s.status = 'completed'
            AND DATE(s.created_at) BETWEEN ?1 AND ?2
-         GROUP BY p.id, sl.unit_minor
+         GROUP BY COALESCE(p.id, sl.sku), sl.currency, sl.unit_minor
          ORDER BY total_revenue_minor DESC",
     )?;
 
@@ -114,6 +147,7 @@ pub fn query_menu_engineering(
                 margin_per_unit: row.get("margin_per_unit")?,
                 total_margin_minor: row.get("total_margin_minor")?,
                 total_revenue_minor: row.get("total_revenue_minor")?,
+                currency: row.get("currency")?,
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;
@@ -135,20 +169,30 @@ pub fn query_menu_engineering(
     })
 }
 
-/// Merge rows that belong to the same product (different sale prices).
+/// Merge rows that belong to the same product sold at different prices.
+///
+/// The key is `(sku, currency)`, not `sku` alone: C22's whole point is
+/// that a product sold in two currencies is two different amounts of money,
+/// and keying on the SKU would fuse them straight back together after the
+/// SQL had separated them.
 fn merge_same_product_rows(rows: Vec<MenuEngineeringRow>) -> Vec<MenuEngineeringRow> {
-    let mut merged: std::collections::HashMap<String, MenuEngineeringRow> =
+    let mut merged: std::collections::HashMap<(String, String), MenuEngineeringRow> =
         std::collections::HashMap::new();
 
     for row in rows {
         use std::collections::hash_map::Entry;
-        match merged.entry(row.sku.clone()) {
+        match merged.entry((row.sku.clone(), row.currency.clone())) {
             Entry::Occupied(mut existing) => {
                 let existing = existing.get_mut();
                 existing.total_volume += row.total_volume;
                 existing.total_margin_minor += row.total_margin_minor;
                 existing.total_revenue_minor += row.total_revenue_minor;
-                // Keep the first unit price/cost (most common / representative).
+                // REP-B: keep the first-seen unit price/cost. That is the row
+                // the SQL ordered first — the HIGHEST-REVENUE price point, not
+                // "the most common" as this comment used to claim. The merged
+                // margin_per_unit is therefore representative of the biggest
+                // price point rather than of the product overall; derive it from
+                // total_revenue/total_volume if an average is wanted.
             }
             Entry::Vacant(entry) => {
                 entry.insert(row);

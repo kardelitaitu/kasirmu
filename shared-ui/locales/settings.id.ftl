@@ -130,6 +130,31 @@ setup-provision-title = Siapkan terminal ini
 setup-provision-account-section = Akun kasir.mu
 setup-provision-account-hint = Hubungkan perangkat Anda ke akun gratis untuk mengaktifkan sinkronisasi otomatis dan perlindungan lisensi.
 setup-provision-offline-warn = Koneksi internet diperlukan untuk membuat atau menautkan akun Anda.
+# Jalan KELUAR dari kondisi offline, bukan hanya alasan jalan masuk tertutup.
+# provision_device adalah SQLite lokal, jadi merchant tanpa sinyal tetap bisa
+# menyiapkan terminal — tetapi pada mode tertaut (default) semua kontrol nonaktif
+# dan peringatan hanya menyebut alasannya. Ini satu klik ke mode yang masih jalan.
+setup-provision-offline-switch-local = Selesaikan tanpa akun
+# Yang sebenarnya dibutuhkan QR, dinyatakan sebelum merchant mengeklik: perangkat
+# kedua yang SUDAH masuk ke akun. Kalau tidak disebut, terbaca sebagai universal,
+# dan merchant yang menyiapkan satu terminal sendirian tidak dapat melakukannya.
+setup-account-pair-requirement = { ' Pasangkan QR membutuhkan HP kedua yang sudah masuk ke akun Anda.' }
+# Gerbang kirim, diberi nama. Tombol nonaktif tidak bisa ditekan dan tidak bisa
+# menjelaskan dirinya sendiri, dan kartu ini lebih tinggi dari viewport, sehingga
+# syarat yang belum terpenuhi maupun kontrol untuk memperbaikinya sama-sama
+# tak terlihat. Tiap butir adalah tombol: masing-masing memindahkan fokus ke kolom
+# yang harus diubah.
+setup-provision-gate-heading = Masih diperlukan sebelum penyiapan selesai:
+setup-provision-gate-account = Tautkan akun, atau pilih "Offline saja"
+setup-provision-gate-store-type = Pilih jenis usaha
+setup-provision-gate-location = Nama toko
+setup-provision-gate-owner-name = Nama Anda
+setup-provision-gate-username = Nama masuk
+setup-provision-gate-pin = PIN minimal 4 angka
+setup-provision-gate-pin-match = Kedua PIN sama
+# Yang akan dipakai terminal ini. provisionDevice selalu mengirim mata uang dan
+# zona waktu; merchant diberi tahu keduanya.
+setup-provision-locale-note = Disiapkan dalam { $currency } ({ $timezone }). Bisa diubah nanti di Pengaturan.
 # Label langkah untuk rel progres saat pertama kali dijalankan. Tiga langkah,
 # sesuai tiga keputusan yang benar-benar menjadi syarat pengiriman formulir:
 # cara terminal ditautkan, jenis tokonya, dan siapa yang bisa masuk. Rel ini
@@ -146,6 +171,7 @@ setup-mode-linked-title = Tautkan akun kasir.mu Anda
 setup-mode-linked-desc = Daftar atau masuk untuk menautkan terminal ini ke akun Anda, untuk sinkronisasi antarperangkat, backup cloud, dan paket Anda.
 setup-tab-pair = Pasangkan QR
 setup-tab-email = Kode Email
+setup-tab-wizard = Panduan Wizard
 setup-provision-store-type = Jenis usaha apa ini?
 setup-store-type-simple-retail = Toko
 setup-store-type-simple-retail-blurb = Barcode, tunai, struk, stok, pajak
@@ -163,8 +189,10 @@ setup-provision-success = Terminal ini siap.
 setup-provision-error = Tidak dapat menyelesaikan penyiapan terminal ini. Silakan coba lagi.
 setup-provision-account-required = Harap tautkan akun kasir.mu Anda sebelum menyelesaikan penyiapan.
 
-setup-account-title = Akun Anda
-setup-account-desc = Opsional. Tautkan POS ini ke akun kasir.mu Anda agar bisa masuk di web dengan Google.
+# `setup-account-title` dan `setup-account-desc` dihapus 2026-10-01: keduanya
+# milik langkah akun SetupWizard yang sudah retirement (dihapus di badd31d2e) dan
+# tidak ada sumber yang memakainya — lihat rekomendasi 2 di
+# setup-wizard-audit.md. Keluarga akun di bawah ini milik ProvisioningFlow.
 setup-account-google = Lanjutkan dengan Google
 setup-account-waiting = Menunggu browser Anda…
 setup-account-linked = Tertaut ke { $email }.
@@ -181,8 +209,10 @@ setup-account-code-label = Kode verifikasi
 setup-account-send = Kirim kode ke email
 setup-account-code = Kode 6 digit
 setup-account-verify = Verifikasi
-setup-account-sent = Kode terkirim. Kode kedaluwarsa dalam 15 menit.
-setup-account-optional = Anda dapat melewati ini. Kunci lisensi Anda tetap menjalankan POS.
+# `setup-account-sent` dan `setup-account-optional` dihapus 2026-10-01, sama seperti
+# pasangan di atas: keduanya milik wizard yang sudah retirement, dan keduanya
+# tidak terbaca — alur ini tidak memberi pesan saat kode terkirim (munculnya kolom
+# kode sudah menjadi sinyalnya).
 # Status saat proses (tablet). `setup-account-waiting` di atas menyebut browser dan tetap
 # dipakai kontrol Google, yang memang membuka browser.
 setup-account-sending = Mengirim kode…
@@ -335,6 +365,11 @@ settings-sync-not-configured = Sinkronisasi belum dikonfigurasi. Masukkan URL se
 # Pil sinkronisasi di bilah status: perangkat belum punya URL server sama
 # sekali — celah konfigurasi, bukan gangguan jaringan. Sengaja bukan "Luring".
 statusbar-sync-unconfigured-msg = { $name } · Belum dikonfigurasi
+# Pil sinkronisasi di bilah status: URL dan kredensial SUDAH tersimpan, tetapi
+# server menolak kredensial itu. Sengaja berbeda dari kedua tetangganya —
+# bukan "Belum dikonfigurasi" (konfigurasinya ada) dan bukan "Luring" (server
+# menjawab). Perbaikannya dengan menautkan ulang terminal, bukan jaringan.
+statusbar-sync-unauthorized-msg = { $name } · Kredensial ditolak
 settings-sync-status-idle = Siap
 settings-sync-status-ok = Terhubung
 settings-sync-pending-count = { $count } tertunda
@@ -414,6 +449,7 @@ data-mgmt-tabs-aria = Tindakan manajemen data
 data-mgmt-tab-export = Ekspor
 data-mgmt-tab-import = Impor
 data-mgmt-tab-backup = Cadangan
+data-mgmt-tab-restore = Pemulihan
 data-mgmt-export-wizard-aria = Wizard ekspor
 data-mgmt-export-title = Pilih data untuk diekspor
 data-mgmt-export-types-aria = Tipe data untuk diekspor
@@ -481,6 +517,37 @@ data-mgmt-backup-never = Tidak Pernah
 data-mgmt-backup-label-size = Ukuran
 data-mgmt-backup-create = Buat cadangan sekarang
 data-mgmt-backup-backing-up = Mencadangkan…
+data-mgmt-restore-status-aria = Status pemulihan
+data-mgmt-restore-title = Pulihkan dari cadangan
+data-mgmt-restore-desc = Ganti database aktif dengan salah satu generasi cadangan yang tersimpan di sampingnya. Pemulihan dijalankan saat kasir.mu dijalankan berikutnya, sebelum apa pun membuka database.
+data-mgmt-restore-loading = Membaca generasi cadangan…
+data-mgmt-restore-empty = Tidak ada generasi cadangan yang ditemukan di samping database.
+data-mgmt-restore-generation = Generasi { $number }
+data-mgmt-restore-label-size = Ukuran
+data-mgmt-restore-label-modified = Diubah
+data-mgmt-restore-label-schema = Skema cadangan
+data-mgmt-restore-schema-unknown = Tidak diketahui
+data-mgmt-restore-verdict-acceptable = Dapat digunakan
+data-mgmt-restore-verdict-older = Dapat digunakan, skema lebih lama
+data-mgmt-restore-verdict-newer = Ditolak, skema lebih baru
+data-mgmt-restore-verdict-corrupt = Ditolak, rusak
+data-mgmt-restore-request = Pulihkan cadangan ini
+data-mgmt-restore-confirm-title = Pulihkan dari cadangan ini?
+data-mgmt-restore-confirm-desc = Untuk mengonfirmasi, ketik nama toko yang dibawa CADANGAN ini — bukan nama toko yang sedang Anda jalankan. Nama itu sengaja tidak ditampilkan di mana pun: mengetiknya adalah konfirmasi bahwa Anda memilih cadangan yang benar.
+data-mgmt-restore-store-name-label = Nama toko dalam cadangan
+data-mgmt-restore-store-name-placeholder = Ketik nama toko cadangan
+data-mgmt-restore-submit = Minta pemulihan
+data-mgmt-restore-cancel = Batal
+data-mgmt-restore-next-boot = Pemulihan ini akan dijalankan saat kasir.mu dijalankan berikutnya. Anda tetap dapat memakai aplikasi sampai saat itu.
+data-mgmt-restore-pending-aria = Pemulihan sudah tertunda
+data-mgmt-restore-pending-title = Pemulihan sudah tertunda
+data-mgmt-restore-pending-desc = Pemulihan telah diminta dan akan dijalankan saat kasir.mu dijalankan berikutnya. Meminta yang lain akan menggantikannya.
+data-mgmt-restore-pending-requested = Diminta
+data-mgmt-restore-pending-unreadable = Permintaan yang tertunda tidak dapat dibaca
+data-mgmt-restore-cli-hint = Anda juga dapat memulihkan dari baris perintah: jalankan perintah restore CLI kasir.mu saat aplikasi tertutup.
+data-mgmt-toast-restore-success = Pemulihan diminta. Akan dijalankan saat kasir.mu dijalankan berikutnya.
+data-mgmt-toast-restore-fail = Tidak dapat meminta pemulihan
+data-mgmt-toast-restore-store-mismatch = Nama toko itu tidak cocok dengan cadangan
 data-mgmt-toast-backup-success = Cadangan berhasil dibuat
 data-mgmt-export-complete-aria = Ekspor selesai
 data-mgmt-import-complete-aria = Impor selesai
@@ -694,6 +761,7 @@ settings-tax-id-pattern-hint = Hanya huruf, angka, garis, titik, dan garis mirin
 settings-section-email = Laporan Email
 settings-email-description = Konfigurasi SMTP untuk menerima laporan email terjadwal.
 settings-email-host = Host SMTP
+settings-email-host-placeholder = smtp.example.com
 settings-email-port = Port
 settings-email-username = Nama Pengguna
 settings-email-username-placeholder = Opsional
@@ -702,6 +770,7 @@ settings-email-password-placeholder = Masukkan kata sandi
 settings-email-password-show = Tampilkan kata sandi
 settings-email-password-hide = Sembunyikan kata sandi
 settings-email-from = Alamat Pengirim
+settings-email-from-placeholder = reports@mystore.com
 settings-email-use-tls = Gunakan STARTTLS
 settings-email-save-btn = Simpan Pengaturan SMTP
 settings-email-saved-btn = Tersimpan ✓
@@ -725,6 +794,7 @@ settings-schedule-cadence-weekly = Mingguan (Senin)
 settings-schedule-cadence-monthly = Bulanan (Tanggal 1)
 settings-schedule-time = Waktu Kirim
 settings-schedule-timezone = Zona Waktu
+settings-schedule-timezone-placeholder = UTC
 settings-schedule-lookback = Hari Mundur
 settings-schedule-report-types = Jenis Laporan
 settings-schedule-recipients = Penerima
@@ -980,6 +1050,7 @@ settings-diagnostics-detail-scope-not-covered = Tidak mencakup lokasi ini
 settings-diagnostics-detail-expires = Kedaluwarsa: { $expiresAt }
 settings-diagnostics-detail-grace = Tenggang hingga: { $graceUntil }
 settings-diagnostics-deployment-version = Versi aplikasi: { $version }
+settings-diagnostics-deployment-unknown = Tidak dapat membaca versi aplikasi.
 
 
 # ── Format struk (receipt-format axis, layar Business Defaults) ──
@@ -1057,4 +1128,86 @@ settings-fiscalnum-overview-col-kind = Jenis dokumen
 settings-fiscalnum-overview-col-prefix = Awalan
 settings-fiscalnum-overview-col-current = Nomor terakhir
 settings-fiscalnum-overview-col-updated = Diperbarui
+
+# ── Mobile Setup Wizard & Welcome Flow (Figma spec 720x1280) ──
+setup-mobile-welcome-cta = Setup Wizard →
+setup-mobile-welcome-guide = Panduan 2 menit konfigurasi perangkat
+setup-mobile-welcome-signup = Sign up
+setup-mobile-welcome-signup-hint = Belum punya lisensi? Buat akun dulu
+setup-mobile-welcome-blurb = Solusi kasir modern serba bisa untuk mencatat penjualan, kelola stok barang, cetak struk thermal, dan pantau omset toko secara otomatis.
+
+setup-mobile-hub-title = Setup Device Baru
+setup-mobile-hub-subtitle = Sistem kasir & Inventory modern, cepat & offline-first untuk toko retail, cafe & restoran.
+setup-mobile-feature-offline = Bekerja 100% Offline Tanpa Koneksi Internet
+setup-mobile-feature-printer = Cetak Struk Thermal Bluetooth
+setup-mobile-feature-multidevice = Multi-Device & Sinkronisasi Lokal via WiFi / LAN
+setup-mobile-feature-reports = Laporan Stok, Kas & Omset Otomatis Real-time
+setup-mobile-hub-connect-hint = Hubungkan toko untuk sinkronisasi katalog, staf & laporan transaksi
+setup-mobile-auth-google-title = Masuk dengan Akun Google
+setup-mobile-auth-google-desc = Aman, cepat, dan otomatis backup cloud ke Google Drive
+setup-mobile-auth-email-title = Masuk dengan Email & Password
+setup-mobile-auth-email-desc = Gunakan akun Owner, Store Manager, atau Kasir yang terdaftar
+setup-mobile-auth-qr-title = Hubungkan via QR Code / Login Code
+setup-mobile-auth-qr-desc = Scan QR dengan akun owner/admin
+setup-mobile-hub-footer = Belum punya akun Kasirmu? Hubungi sales@kasirmu.com atau daftar di kasirmu.id
+
+setup-mobile-back = Kembali
+setup-mobile-google-title = Pilih akun untuk melanjutkan
+setup-mobile-google-subtitle = ke aplikasi Kasir.mu Sync & Cloud Backup
+setup-mobile-google-privacy = Kasir.mu hanya meminta izin sinkronisasi profil Google. Data penjualan dan transaksi Anda tetap tersimpan privat di perangkat lokal.
+
+setup-mobile-email-intro = Masukkan kredensial akun untuk menghubungkan data katalog & stok toko:
+setup-mobile-email-forgot = Lupa kata sandi?
+setup-mobile-email-submit = Masuk →
+setup-mobile-email-security = 🔒 Koneksi terenkripsi end-to-end SSL 256-bit & tersimpan lokal di perangkat
+
+setup-mobile-qr-reticle-hint = Pastikan QR code berada di dalam bingkai
+setup-mobile-qr-guide-title = Petunjuk Penggunaan QR code
+setup-mobile-qr-step1 = 1. Buka website dashboard.kasir.mu
+setup-mobile-qr-step2 = 2. Masuk dengan akun owner
+setup-mobile-qr-step3 = 3. Klik tombol 'Pasangkan Device Baru' untuk menampilkan QR code pairing
+setup-mobile-code-guide-title = Petunjuk Penggunaan login code
+setup-mobile-code-step1 = 1. Buka website kasir.mu
+setup-mobile-code-step2 = 2. Masuk dengan akun owner
+setup-mobile-code-step3 = Klik link ini :
+setup-mobile-code-copy = Copy
+setup-mobile-code-copied = Tersalin!
+
+# EDC Terminals Settings
+settings-edc-title = Terminal Kartu EDC
+settings-edc-description = Konfigurasikan terminal pembayaran EDC fisik untuk pemrosesan kartu.
+settings-edc-add = Tambah Terminal EDC
+settings-edc-edit = Edit Terminal EDC
+settings-edc-delete = Hapus
+settings-edc-test = Uji Koneksi
+settings-edc-testing = Menguji…
+settings-edc-empty = Belum ada terminal kartu EDC yang dikonfigurasi.
+settings-edc-status-ready = Siap
+settings-edc-status-busy = Sibuk
+settings-edc-status-offline = Terputus
+settings-edc-status-error = Galat
+settings-edc-field-name = Nama Terminal
+settings-edc-field-connection = Tipe Koneksi
+settings-edc-field-transport = Protokol Transport
+settings-edc-field-address = Alamat Perangkat / Port
+settings-edc-field-vendor = Vendor Perangkat
+settings-edc-field-model = Model Terminal
+settings-edc-name-placeholder =
+    .placeholder = mis. BCA Counter 1
+settings-edc-address-wired-placeholder =
+    .placeholder = COM3, /dev/ttyUSB0, atau loopback
+settings-edc-address-wireless-placeholder =
+    .placeholder = 192.168.1.188:9000, MAC, atau loopback
+settings-edc-vendor-placeholder =
+    .placeholder = mis. ingenico, verifone, pax, loopback
+settings-edc-model-placeholder =
+    .placeholder = mis. iPP320, A920
+settings-edc-field-active = Aktif untuk Pembayaran
+settings-edc-conn-wired = Kabel (Wired)
+settings-edc-conn-wireless = Nirkabel (Wireless)
+settings-edc-default-select = Terminal EDC Standar Kasir Ini
+settings-edc-default-auto = Otomatis (Pertama Dibuat)
+settings-edc-saved = Terminal EDC berhasil disimpan.
+settings-edc-deleted = Terminal EDC berhasil dihapus.
+settings-edc-delete-confirm = Apakah Anda yakin ingin menghapus terminal EDC ini?
 

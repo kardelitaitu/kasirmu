@@ -194,6 +194,20 @@ pub(super) async fn midtrans_webhook_handler(
         // Amount policy (fail closed): a settlement whose signed amount
         // disagrees with what we asked to charge is an incident, not a
         // rounding debate — record it and DO NOT finalize.
+        //
+        // **The equality is safe against a NEGATIVE signed amount, and the reason
+        // is in another file.** `midtrans_gross_to_minor` does not reject a leading
+        // minus — `i64::from_str` accepts it, so `"-15000"` parses to `Some(-15000)`
+        // (`webhooks_tests.rs`, `midtrans_gross_parse_edges`). It cannot match here
+        // because a ledger row's `amount_minor` is always POSITIVE: the only
+        // production writer rejects `amount_minor <= 0` before recording
+        // (`payment_api.rs:216`). So the guarantee is the conjunction of that guard
+        // and this comparison, not the parser's contract.
+        //
+        // Worth knowing before anyone 'simplifies' either half. Comparing absolute
+        // values, or relaxing the `<= 0` check to a `== 0` check, would open a path
+        // where a negative signed amount matches a positive charge and a
+        // disagreement is recorded as a settlement.
         let minor_ok = match event.gross_amount.as_deref().map(midtrans_gross_to_minor) {
             Some(Some(v)) => v == entry.amount_minor,
             Some(None) => false, // malformed fraction/garbage in a signed field

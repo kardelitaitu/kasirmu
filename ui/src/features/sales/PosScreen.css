@@ -395,13 +395,6 @@
   gap: var(--space-2);
 }
 
-.pos-held-list-empty {
-  margin: var(--space-5);
-  text-align: center;
-  color: var(--color-fg-secondary);
-  font-size: var(--text-sm);
-}
-
 .pos-held-item {
   display: flex;
   align-items: center;

@@ -80,3 +80,29 @@ fn list_tax_rates_ordered_by_name() {
     assert_eq!(rates[0].name, "Alpha Tax");
     assert_eq!(rates[1].name, "Zebra Tax");
 }
+
+// ── P3.2/P3.5: the repository is namespace-checked ──────────────────────
+
+/// The wrap must not have widened the module's reach: its own table passes the
+/// ownership check, a foreign table through the same handle is refused.
+#[test]
+fn the_repository_is_scoped_to_its_own_namespace() {
+    use kasirmu_core::db::Store;
+    use kasirmu_core::db::namespaced::{Grants, ModuleId, NamespaceError, NamespacedStore};
+
+    let conn = fresh();
+    let ns = NamespacedStore::new(Store::new(&conn), ModuleId("tax"), Grants::none());
+
+    ns.own()
+        .query("SELECT 1 FROM tax_rates", [], |row| row.get::<_, i64>(0))
+        .expect("tax must be allowed to read tax_rates");
+
+    let err = ns
+        .own()
+        .query("SELECT 1 FROM sales", [], |row| row.get::<_, i64>(0))
+        .unwrap_err();
+    assert!(
+        matches!(err, NamespaceError::Foreign { ref table, .. } if table == "sales"),
+        "expected Foreign on sales, got {err:?}"
+    );
+}

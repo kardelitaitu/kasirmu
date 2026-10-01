@@ -2,12 +2,12 @@
 //!
 //! Extracted verbatim from `apps/desktop-tauri/src/commands/kds.rs` (Wave D / D2a).
 //! Every KDS command requires `kds:view` or `kds:update`, authorized against the
-//! global identity DB through [`BridgeCtx::require_session_permission`] (ADR #7).
+//! global identity DB through [`BridgeCtx::require_session_permission`](crate::ctx::BridgeCtx::require_session_permission) (ADR #7).
 //!
 //! The only shell coupling here was the `kds:orders-changed` / `kds:chit-printed`
-//! UI pushes and the HAL printer lookup. Events now go through [`BridgeCtx::emitter`]
+//! UI pushes and the HAL printer lookup. Events now go through [`BridgeCtx::emitter`](crate::ctx::BridgeCtx::emitter)
 //! (`None` = silent no-op, exactly the old `if let Some(app) = state.app.as_ref()`);
-//! printers through [`BridgeCtx::registry`].
+//! printers through [`BridgeCtx::registry`](crate::ctx::BridgeCtx::registry).
 
 use std::sync::Arc;
 

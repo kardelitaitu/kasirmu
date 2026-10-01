@@ -1,5 +1,5 @@
 /*
-last audited DD-MM-YY by DSH-Agent
+last audited (date unknown) by DSH-Agent
 crate: kasirmu-hal | status: SAFE | lint: CLEAN
 findings: 0 actual unsafe blocks. #![deny(unsafe_code)] at crate root (RUST-06). Mock driver's .expect("poisoned") calls on Mutex locks are documented as test-double convention (mock always compiled per AGENTS.md). No other production unwrap/expect. Registry uses per-category RwLock with fail-open discovery; all 6 hardware traits have mock implementations. The EDC terminal slot was unified 31-08-26 (closing the bypass). WeightScale discovery gap documented in registry stamp.
 next: WeightScale discovery path still open; otherwise stable | perf: N/A
@@ -8,7 +8,7 @@ next: WeightScale discovery path still open; otherwise stable | perf: N/A
 // unsafe addition requires an explicit, narrowly-scoped reviewable allow.
 #![deny(unsafe_code)]
 
-//! Hardware Abstraction Layer for OZ-POS.
+//! Hardware Abstraction Layer for kasir.mu.
 //!
 //! `kasirmu-hal` is the seam between business logic and physical devices.
 //! Business code only ever sees the trait (`BarcodeScanner`,
@@ -29,6 +29,15 @@ next: WeightScale discovery path still open; otherwise stable | perf: N/A
 //! Every trait has a programmable mock in [`drivers::mock`]. Tests use
 //! the mocks; production code uses real drivers registered through
 //! [`registry::DriverRegistry`] at startup.
+
+// `rustdoc::private_intra_doc_links` is allowed crate-wide here, and ONLY
+// that lint. Several public items in this crate document their behaviour by
+// naming the private helper that enforces it — which is more useful to a
+// reader than a prose restatement, and is the reason rustdoc has a lint for
+// it rather than an error. `rustdoc::broken_intra_doc_links` is deliberately
+// NOT allowed, so a link to an item that does not exist still fails the
+// build. Precedent: `kasirmu-crypto/src/lib.rs`, `platform/core/src/lib.rs`.
+#![allow(rustdoc::private_intra_doc_links)]
 
 /// Turning saved hardware configuration into registered drivers.
 pub mod bootstrap;

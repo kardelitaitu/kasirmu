@@ -21,6 +21,7 @@ import { Button } from '@/components/Button';
 import { Skeleton } from '@/components/Skeleton';
 import { SegmentedTabs, requiredLocalized, type RequiredLocalizedL10n } from '@/components';
 import { l10nErrorMessage } from '@/utils/app-error';
+import { settleRead } from '@/utils/settle-read';
 import './StockTransfersScreen.css';
 
 const STATUS_FILTERS = ['all', 'draft', 'pending', 'in_transit', 'received', 'cancelled'] as const;
@@ -36,25 +37,6 @@ function statusLabel(status: string): string {
  */
 function localizedStatusLabel(l10n: RequiredLocalizedL10n, status: string): string {
   return l10n.getString(`stock-transfers-status-${status}`) ?? statusLabel(status);
-}
-
-/**
- * One settled read. `ok: false` records that the call NEVER ANSWERED — which
- * is a different fact from "answered, and the answer was an empty list". The
- * shape is the sanctioned boot idiom (app/AppShell.tsx:87-94), and
- * the part that matters is what the caller does with `ok: false`: NOTHING, so
- * the picker keeps its UNKNOWN state instead of being overwritten with a
- * plausible empty catalogue.
- */
-type Read<T> = { ok: true; value: T } | { ok: false };
-
-async function settle<T>(label: string, read: Promise<T>): Promise<Read<T>> {
-  try {
-    return { ok: true, value: await read };
-  } catch (err) {
-    console.error(`[stock-transfers] ${label} read failed — recording unknown:`, err);
-    return { ok: false };
-  }
 }
 
 function formatDate(iso: string | null, locale: string): string {
@@ -130,8 +112,8 @@ export default function StockTransfersScreen() {
     try {
       const [data, prodRead, termRead] = await Promise.all([
         listStockTransfers(sessionToken),
-        settle('listProductsScoped', listProductsScoped(sessionToken)),
-        settle('listTerminalsScoped', listTerminalsScoped(sessionToken)),
+        settleRead('stock-transfers listProductsScoped', listProductsScoped(sessionToken)),
+        settleRead('stock-transfers listTerminalsScoped', listTerminalsScoped(sessionToken)),
       ]);
       setTransfers(data);
       // Only an ANSWER is written. A throw writes nothing, so the dropdowns

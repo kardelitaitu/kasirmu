@@ -35,6 +35,8 @@ export interface SettingsPopupProps {
   cancelLabel?: string;
   /** Modal width variant. sm=480px, md=560px (default), lg=640px */
   size?: SettingsPopupSize;
+  /** Optional extra class name added to the dialog panel. */
+  className?: string;
 }
 
 /**
@@ -81,6 +83,7 @@ export function SettingsPopup({
   saveDisabled,
   cancelLabel,
   size = 'md',
+  className,
 }: SettingsPopupProps) {
   const { l10n } = useLocalization();
   const panelRef = useRef<HTMLDivElement>(null);
@@ -100,7 +103,7 @@ export function SettingsPopup({
     >
       <div
         ref={panelRef}
-        className={`settings-popup settings-popup--${size}`}
+        className={`settings-popup settings-popup--${size}${className ? ` ${className}` : ''}`}
         role="dialog"
         aria-modal="true"
         aria-label={title}

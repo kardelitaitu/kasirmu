@@ -182,7 +182,7 @@ fn payment_request_debug() {
         description: Some("Coffee order".into()),
         idempotency_key: None,
     };
-    let debug = format!("{:?}", req);
+    let debug = format!("{req:?}");
     assert!(debug.contains("50000"));
     assert!(debug.contains("inv-001"));
 }
@@ -217,7 +217,7 @@ fn payment_result_debug_success() {
         },
         message: Some("approved".into()),
     };
-    let debug = format!("{:?}", r);
+    let debug = format!("{r:?}");
     assert!(debug.contains("txn_123"));
     assert!(debug.contains("approved"));
 }
@@ -234,7 +234,7 @@ fn payment_result_debug_failure() {
         },
         message: Some("declined".into()),
     };
-    let debug = format!("{:?}", r);
+    let debug = format!("{r:?}");
     assert!(debug.contains("declined"));
     assert!(!debug.contains("txn_"));
 }
@@ -282,7 +282,7 @@ fn payment_receipt_debug() {
         timestamp: "2026-07-07T12:00:00Z".into(),
         raw_data: Some("9F26...".into()),
     };
-    let debug = format!("{:?}", receipt);
+    let debug = format!("{receipt:?}");
     assert!(debug.contains("txn_456"));
     assert!(debug.contains("Card"));
 }

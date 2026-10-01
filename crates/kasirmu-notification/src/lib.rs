@@ -1,13 +1,22 @@
 /*
-last audited DD-MM-YY by DSH-Agent
+last audited (date unknown) by DSH-Agent
 crate: kasirmu-notification | status: SAFE | lint: CLEAN
 findings: 0 production unsafe blocks — the only unsafe is test-only std::env::set_var/remove_var in whatsapp_tests.rs (serial_test-gated, SAFETY documented). Production lock().unwrap() confined to mock.rs (documented test-double pattern). Verified webhook HMAC verification (whatsapp.rs:328) and mock driver. No defects found.
 next: none | perf: N/A
 */
-//! WhatsApp Cloud API notification client for OZ-POS.
+//! WhatsApp Cloud API notification client for kasir.mu.
 //!
 //! Provides a notification abstraction with a mock driver for testing
 //! and a real WhatsApp Cloud API client for production use.
+//!
+//! # Wiring status (NOT-D)
+//!
+//! The whole surface is currently INERT. The event-bus handlers are wired by
+//! `platform/startup` behind the `whatsapp-notifications` feature, that
+//! crate's `default = []`, and neither `apps/desktop-tauri` nor
+//! `apps/mobile-tauri` enables it — so no shipped binary sends a notification.
+//! Every handler is also opt-in per configured phone number (see the wiring):
+//! an unset recipient skips its handler rather than messaging a placeholder.
 //!
 //! # Quick start
 //!
@@ -23,6 +32,13 @@ next: none | perf: N/A
 //! mock.send_template("+1234567890", "order_confirmed", &json!({...})).await?;
 //! assert_eq!(mock.sent_count(), 1);
 //! ```
+
+// P2-6: zero production `unsafe`. The only occurrences are
+// `std::env::set_var`/`remove_var` in `whatsapp_tests.rs`, which are unsafe
+// since Rust 2024 and are TEST-ONLY; that file carries its own
+// `#![allow(unsafe_code)]`, the file-scoped precedent at
+// `kasirmu-security/src/windows.rs:13`.
+#![deny(unsafe_code)]
 
 pub mod email_scheduler;
 pub mod handlers;
@@ -105,7 +121,7 @@ impl TemplateParameter {
     pub fn currency(code: &str, amount: i64) -> Self {
         Self {
             param_type: "currency".into(),
-            text: Some(format!("{} {}", amount, code)),
+            text: Some(format!("{amount} {code}")),
             currency_code: Some(code.to_owned()),
             amount_1000: Some(amount.saturating_mul(1000)),
         }

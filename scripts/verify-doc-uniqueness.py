@@ -124,6 +124,30 @@ def tracked_files() -> list[str]:
     return [f for f in out.stdout.splitlines() if f.strip()]
 
 
+HTML_COMMENT = re.compile(r"<!--.*?-->", re.S)
+
+
+def strip_comments(text: str) -> str:
+    """Remove HTML comments from a document head before claim matching.
+
+    An audit stamp is provenance, not a claim of authority. Every stamped doc in
+    this tree opens with a long `<!-- Audit stamp: ... -->` block that routinely
+    contains the word "supersedes" while DESCRIBING an earlier stamp it replaced
+    ("supersedes the same-day STALE-BY-INFRA-CHANGE stamp"). Matching that as an
+    exclusivity claim made the gate report two UNRELATED same-named documents as
+    competing authorities: docs/releases/checklist.md (the release pipeline) was
+    flagged against docs/legal/id/checklist.md (the Indonesian registration
+    checklist), and the gate's remedy asked for the legal file to be marked
+    historical -- which would have been a false statement about a document that
+    is current and has nothing to do with releases.
+
+    Stripping comments first is what the check already means by "the first 40
+    lines": it is looking for the document's own voice, and an audit stamp is
+    somebody else's.
+    """
+    return HTML_COMMENT.sub(" ", text)
+
+
 def head_claims(path: Path) -> bool:
     """True if the file's opening lines claim exclusivity."""
     try:
@@ -131,7 +155,7 @@ def head_claims(path: Path) -> bool:
             head = "".join(fh.readline() for _ in range(HEAD_LINES))
     except OSError:
         return False
-    return bool(AUTHORITY.search(head))
+    return bool(AUTHORITY.search(strip_comments(head)))
 
 
 def scan(root: Path) -> list[str]:

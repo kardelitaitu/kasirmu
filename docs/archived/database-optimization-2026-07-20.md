@@ -1,3 +1,5 @@
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: REPAIRED (1 broken index reference) — otherwise ACCURATE · Audited on branch 0.0.40. This file already carried a `> last audited 08-08-26 by docs-auditor` footer but no house stamp; one is added here without disturbing that footer's date claim. · THE REPAIR, and it is an internal contradiction rather than age: the "Existing Indexes" table names `idx_stock_summary_location` and even records the rename — "Composite unique (was `idx_stock_summary_item_location`)". Twelve lines later, the "Top Queries & Index Coverage" table still cites the OLD name — `Stock check (SKU + location) | stock_summary | idx_stock_summary_item_location ✅` — and the Verdict rests on that table ("10/10 top queries have covering indexes"). The old name does not exist: the current schema has `idx_stock_summary_location` at `crates/kasirmu-core/migrations/20260813_init.sql:1292` and no `idx_stock_summary_item_location` anywhere. Repaired, because this is not a stale path but a wrong name inside the document's own evidence table — a reader spot-checking the coverage verdict greps the old name, finds nothing, and cannot confirm the claim. The claim itself is still true; only the name that proves it was wrong. · EVERYTHING ELSE IN P42-2 VERIFIED: `idx_products_sku`, `idx_sales_pending_expires`, `uq_products_barcode` and `idx_customers_name` are all present in the current schema, so the "customers name-index gap is closed" finding remains accurate. · P42-1's central recommendation is confirmed implemented at the source rather than taken from the doc: `crates/kasirmu-core/src/migrations.rs:458-459` sets `journal_mode` to WAL and `busy_timeout` to 5000, and the function's own doc comment at `:449` says so. P42-3 is confirmed too — `scripts/backup-db.sh` runs `PRAGMA integrity_check` at line 41 and `VACUUM` at line 57. · LEFT ALONE as an archived record: the pre-restructure paths (`crates/oz-core/src/migrations.rs:742`, `apps/desktop-client/src/state.rs:176`, `apps/tablet-client/src/state.rs:107` — now `crates/kasirmu-core/`, `apps/desktop-tauri/`, `apps/mobile-tauri/`), the PRAGMA baseline table, the connection-pool analysis, and the "recommended" column values. Those are the evidence of a July audit; the file lives in `docs/archived/` and is not a live runbook. · No stamp existed at the top of this file before this pass. -->
+
 # Database Optimization Audit — 2026-07-20
 
 ## P42-1: WAL Mode Audit
@@ -60,7 +62,7 @@ conn.pragma_update(None, "busy_timeout", "5000")?;
 | Sale list (recent) | `sales` | `idx_sales_created_at` ✅ | — |
 | Get sale by ID + lines | `sales` + `sale_lines` | PK + `idx_sale_lines_sale_id` ✅ | — |
 | Pending sales by expiry | `sales` | `idx_sales_pending_expires` ✅ | — |
-| Stock check (SKU + location) | `stock_summary` | `idx_stock_summary_item_location` ✅ | — |
+| Stock check (SKU + location) | `stock_summary` | `idx_stock_summary_location` ✅ | — |
 | Inventory by product | `inventory` | `idx_inventory_product_id` ✅ | — |
 | Offline queue by status | `offline_queue` | `idx_offline_queue_status` ✅ | — |
 | Barcode lookup | `products` | `idx_products_barcode` ✅ | — |
@@ -97,4 +99,4 @@ See updated backup script for implementation.
 
 ---
 
-> last audited 08-08-26 by docs-auditor
+> last audited 29-09-26 by docs-auditor

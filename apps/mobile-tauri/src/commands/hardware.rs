@@ -9,7 +9,7 @@
 //! for commands that touch no database row.
 
 use serde::{Deserialize, Serialize};
-use tauri::{Emitter, State, command};
+use tauri::{State, command};
 
 use kasirmu_core::{Currency, Money, Settings};
 use kasirmu_hal::DisplayContent;
@@ -76,6 +76,9 @@ pub struct PrintSalesReceiptArgs {
     #[serde(default)]
     /// Table Number.
     pub table_number: Option<String>,
+    #[serde(default)]
+    /// Optional 17-digit DJP Faktur Pajak string.
+    pub faktur_pajak: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -93,6 +96,9 @@ pub struct LineItemDto {
     #[serde(default)]
     /// Tax Amount.
     pub tax_amount: Option<MoneyDto>,
+    #[serde(default)]
+    /// Optional menu order note (e.g. "pedas").
+    pub note: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -109,9 +115,11 @@ pub struct PaymentDto {
 
 /// Flat serialisable representation of Money — the front-end sends
 /// these instead of a nested Money object for simplicity.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct MoneyDto {
     /// Minor Units.
+    #[serde(alias = "minor_units")]
     pub minor_units: i64,
     /// ISO-4217 currency code.
     pub currency: String,
@@ -204,9 +212,11 @@ pub async fn print_receipt_scoped(
     let lines: Vec<&str> = args.body.lines().collect();
     let n = lines.len();
     printer.print_receipt(&args.body).await?;
-    // Emit a completion event so the front-end can show a toast.
-    if let Some(ref app) = state.app {
-        let _ = app.emit("receipt:printed", serde_json::json!({ "lines": n }));
+    // Emit a completion event so the front-end can show a toast. R10 #3: the
+    // event rides the bridge's injected EventSink (BridgeCtx::emitter), the
+    // same seam the delegated doors use, not a raw AppHandle.
+    if let Some(sink) = state.bridge_ctx().emitter {
+        sink.emit("receipt:printed", serde_json::json!({ "lines": n }));
     }
     Ok(PrintReceiptResult { printed_lines: n })
 }
@@ -238,35 +248,82 @@ pub async fn print_sales_receipt_scoped(
 
     // Load store info + display settings from the DB in a block
     // so the MutexGuard is dropped before any .await point.
+    //
+    // Display options resolve through `Store::effective_receipt_format`, the
+    // same single source of truth the desktop bridge print path uses: the
+    // scoped `receipt_formats` rows win and the legacy `receipt.*` keys are
+    // the fallback, so a tablet prints the same config the register does.
+    // The terminal id is awaited BEFORE the db guard is taken: the guard is
+    // a std Mutex (not Send), and holding it across an await point fails to
+    // compile the command future.
+    let terminal_id = state.terminal_id.lock().await.clone();
     let (config, store_info) = {
         let (_session, conn_arc) = state.resolve_scope(&session_token)?;
         let db_guard = conn_arc
             .lock()
             .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
         let conn = &*db_guard;
-        let store_name = Settings::get_store_name(&conn)?.unwrap_or_else(|| "OZ-POS Store".into());
+        let store_name =
+            Settings::get_store_name(&conn)?.unwrap_or_else(|| "kasir.mu Store".into());
         let store_address = Settings::get_store_address(&conn)?.unwrap_or_default();
         let store_tax_id = Settings::get_store_tax_id(&conn)?;
-        let decimals = Settings::get_receipt_decimal_separator(&conn)?;
-        let decimal_separator = match decimals.as_str() {
+        let effective = kasirmu_core::Store::new(conn)
+            .effective_receipt_format(terminal_id.as_deref(), None)?;
+        let decimal_separator = match effective
+            .content
+            .as_ref()
+            .map(|c| c.decimal_separator.as_str())
+            .unwrap_or("dot")
+        {
             "comma" => receipt::DecimalSeparator::Comma,
             "none" => receipt::DecimalSeparator::None,
             _ => receipt::DecimalSeparator::Dot,
         };
-        let paper_width = match Settings::get_receipt_paper_width(&conn)?.as_str() {
-            "narrow" => receipt::PaperWidth::Narrow,
+        let paper_width = match effective.layout.paper_width_mm {
+            Some(58) => receipt::PaperWidth::Narrow,
             _ => receipt::PaperWidth::Standard,
         };
+        let (show_tax, show_currency) = effective
+            .content
+            .as_ref()
+            .map(|c| (c.show_tax, c.show_currency))
+            .unwrap_or((
+                Settings::get_receipt_show_tax(&conn)?,
+                Settings::get_receipt_show_currency(&conn)?,
+            ));
+        // The legacy footer read propagates rather than swallowing with
+        // `.ok()`. It is the LAST resort: reaching it means the entity and
+        // layout layers carried no footer, so this key is all that stands
+        // between the operator's configured footer and a blank one. A failed
+        // read (SQLITE_BUSY, a corrupt or locked settings table) used to
+        // become `None` — indistinguishable from "no footer configured" — and
+        // the receipt printed without the footer the operator set. Every
+        // other settings read in this block uses `?` for the same reason.
+        // Read before the chain so `?` can reach the function.
+        let legacy_footer = {
+            let raw = Settings::get_receipt_footer(&conn)?;
+            if raw.is_empty() { None } else { Some(raw) }
+        };
+        let footer = effective
+            .content
+            .as_ref()
+            .map(|c| c.footer_text.clone())
+            .filter(|f| !f.is_empty())
+            .or_else(|| {
+                effective
+                    .layout
+                    .footer_note
+                    .clone()
+                    .filter(|f| !f.is_empty())
+            })
+            .or_else(|| legacy_footer.clone());
         let cfg = receipt::ReceiptConfig {
             paper_width,
-            show_currency: Settings::get_receipt_show_currency(&conn)?,
+            show_currency,
             decimal_separator,
-            show_tax: Settings::get_receipt_show_tax(&conn)?,
-            footer: {
-                let f = Settings::get_receipt_footer(&conn)?;
-                if f.is_empty() { None } else { Some(f) }
-            },
-            show_table_number: Settings::get_receipt_show_table_number(&conn)?,
+            show_tax,
+            footer,
+            show_table_number: effective.layout.show_table_number.unwrap_or(false),
             barcode_enabled: false,
             payment_link_template: None,
         };
@@ -295,6 +352,11 @@ pub async fn print_sales_receipt_scoped(
                     unit_price: i.unit_price.to_money()?,
                     total_price: i.total_price.to_money()?,
                     tax_amount: i.tax_amount.map(|t| t.to_money()).transpose()?,
+                    // Forwarded, not dropped: the arg declares `note` with
+                    // `#[serde(default)]` at :101 and the HAL prints it under the
+                    // item, so omitting it here would compile-fail AND lose the
+                    // note on the tablet while the desktop shell kept it.
+                    note: i.note,
                 })
             })
             .collect::<Result<Vec<_>, _>>()?,
@@ -312,6 +374,7 @@ pub async fn print_sales_receipt_scoped(
                 })
             })
             .collect::<Result<Vec<_>, _>>()?,
+        faktur_pajak: args.faktur_pajak,
     };
 
     let data = receipt::format_sales_receipt(&receipt, &config);
@@ -319,8 +382,9 @@ pub async fn print_sales_receipt_scoped(
 
     printer.print_raw(&data).await?;
 
-    if let Some(ref app) = state.app {
-        let _ = app.emit(
+    // R10 #3: broadcast through the bridge's EventSink, not a raw handle.
+    if let Some(sink) = state.bridge_ctx().emitter {
+        sink.emit(
             "receipt:printed",
             serde_json::json!({ "lines": line_count }),
         );
@@ -363,9 +427,12 @@ pub async fn list_scanners_scoped(
         .await
         .clone()
         .unwrap_or_else(|| "unknown".to_string());
+    // Propagates: a scanner preference that could not be READ is not the same
+    // as one that was never saved, and treating it as absent would offer every
+    // scanner and ignore the saved device.
     let (preferred, mode) = {
         let conn = state.db.lock().await;
-        kasirmu_bridge::hardware::scanner_prefs(&conn, &terminal_id)
+        kasirmu_bridge::hardware::scanner_prefs(&conn, &terminal_id)?
     }; // guard dropped: Connection is !Send
     Ok(prefer_first(
         kasirmu_bridge::hardware::ids_for_mode(ids, &mode)

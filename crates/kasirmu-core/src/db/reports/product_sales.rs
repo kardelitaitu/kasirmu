@@ -12,6 +12,15 @@
 //! Split from `db/reports.rs` 13-09-26, behaviour unchanged — pure module
 //! decomposition, no logic edits.
 
+// P2-5: every cast here converts EXACT integer minor units to `f64` for one
+// division whose result is a PERCENTAGE (`part as f64 / whole as f64 * 100.0`).
+// A percentage is a ratio, not money — no monetary value is stored or summed in
+// floating point, and the i64 minor-unit totals remain the source of truth that
+// the ratio is derived FROM. `cast_precision_loss` is unactionable here for the
+// same reason it exists: it is warning that a 53-bit mantissa cannot hold every
+// i64, which is true and irrelevant to a two-significant-figure display value.
+#![allow(clippy::cast_precision_loss)]
+
 use rusqlite::params;
 
 use crate::db::Store;
@@ -240,6 +249,12 @@ impl Store<'_> {
     /// (product+location or product+global) is configured, the row appears
     /// with the `default_threshold` value. If a custom threshold is
     /// configured, that threshold is used instead.
+    ///
+    /// The filter compares against that RESOLVED threshold — the same
+    /// `COALESCE(...)` the `threshold` column reports — so an enabled custom
+    /// threshold replaces the default for the decision as well as the value.
+    /// Testing the default first would return rows whose own fields
+    /// contradict them (`current_qty` above the reported `threshold`).
     pub fn low_stock_alerts_at_location(
         &self,
         location_id: &str,
@@ -263,13 +278,16 @@ impl Store<'_> {
              FROM products p
              LEFT JOIN stock_summary ss
                 ON ss.item_id = p.id AND ss.location_id = ?1
-             WHERE COALESCE(ss.qty, 0) <= ?2
-                OR (SELECT 1 FROM stock_thresholds st
-                    WHERE st.product_id = p.id
-                      AND (st.location_id = ?1 OR st.location_id IS NULL)
-                      AND st.enabled = 1
-                      AND COALESCE(ss.qty, 0) <= st.threshold
-                    LIMIT 1) = 1
+             WHERE COALESCE(ss.qty, 0) <= COALESCE(
+                        (SELECT st.threshold FROM stock_thresholds st
+                         WHERE st.product_id = p.id
+                           AND st.location_id = ?1 AND st.enabled = 1
+                         LIMIT 1),
+                        (SELECT st.threshold FROM stock_thresholds st
+                         WHERE st.product_id = p.id
+                           AND st.location_id IS NULL AND st.enabled = 1
+                         LIMIT 1),
+                        ?2)
              ORDER BY current_qty ASC",
         )?;
         let rows = stmt.query_map(params![location_id, default_threshold], |row| {

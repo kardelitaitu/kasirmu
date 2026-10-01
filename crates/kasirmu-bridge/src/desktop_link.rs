@@ -5,7 +5,7 @@
 //! waits on a loopback port. This module owns that wait: bind, hand the shell a redirect
 //! URI, then accept until a request actually carries the code or the failure reason.
 //!
-//! Key items: [`LoopbackListener`] and [`LinkCallback`].
+//! Key items: [`LoopbackListener`](crate::desktop_link::LoopbackListener) and [`LinkCallback`](crate::desktop_link::LinkCallback).
 //!
 //! Invariants: the query is parsed and never reflected (the served page is static, so a
 //! crafted `link_error` cannot inject markup into the browser), and a request carrying
@@ -37,7 +37,7 @@ pub enum LinkCallback {
 /// sentence would cost more than the sentence. One line in each language beats one language
 /// that is wrong for half the merchants.
 const RELAY_PAGE: &str = "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">\
-    <title>OZ-POS</title></head><body style=\"font-family:system-ui;padding:3rem;text-align:center\">\
+    <title>kasir.mu</title></head><body style=\"font-family:system-ui;padding:3rem;text-align:center\">\
     <p>You can close this window and return to the app.</p>\
     <p lang=\"id\">Anda dapat menutup jendela ini dan kembali ke aplikasi.</p></body></html>";
 

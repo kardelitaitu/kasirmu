@@ -938,7 +938,7 @@ fn export_eod_breakdown_reconciles_with_the_daily_summary() {
     let voids = s.export_eod_voids().unwrap();
 
     // Header and body are the same set of sales.
-    let header_count: i64 = daily.len() as i64;
+    let header_count: i64 = i64::try_from(daily.len()).expect("fixture count fits i64");
     let body_count: i64 = breakdown.iter().map(|r| r.sale_count).sum();
     assert_eq!(
         body_count, header_count,
@@ -1162,6 +1162,90 @@ fn compute_tax_exclusive_adds_tax_to_sale_total() {
     );
     assert_eq!(sale.subtotal.minor_units, 700);
     assert_eq!(sale.tax_total.minor_units, 70);
+}
+
+// C15: the SAME correction TAX-06 made for exclusive tax is owed to tip and
+// service charge. Migration 20260822_sale_charges.sql added the columns with
+// the stated purpose that "the recorded sale.total understated collected
+// revenue" -- but the term was never added, so the defect the migration names
+// is still live: `sale.total` excludes tip + service while the UI total
+// (usePosState.ts:234-244) and therefore the payment splits include them.
+//
+// The customer pays 700 + 100 tip + 50 service = 850. `total` must say 850, or
+// revenue, loyalty and the drawer keep disagreeing with the payments table.
+#[test]
+fn compute_tax_adds_tip_and_service_to_the_sale_total() {
+    let conn = fresh();
+    let s = store(&conn);
+
+    let mut sale = make_single_line_sale("COFFEE", 2, 350); // total = 700 (pre-tax)
+    sale.tip_minor = 100;
+    sale.service_charge_minor = 50;
+    assert_eq!(
+        sale.total.minor_units, 700,
+        "cart total starts charges-free"
+    );
+
+    s.compute_sale_tax(&mut sale, &[], RoundingMode::Truncate)
+        .unwrap();
+
+    assert_eq!(
+        sale.total.minor_units, 850,
+        "total must include tip + service: it is what the customer paid"
+    );
+    // The tax basis is unchanged -- tip and service are not taxable here and
+    // must not be folded into subtotal or tax_total.
+    assert_eq!(sale.subtotal.minor_units, 700);
+    assert_eq!(sale.tax_total.minor_units, 0);
+}
+
+#[test]
+fn compute_tax_adds_tip_and_service_on_top_of_exclusive_tax() {
+    let conn = fresh();
+    let s = store(&conn);
+    seed_tax_rate(&conn, "VAT 10%", 1000, true, false);
+
+    let mut sale = make_single_line_sale("COFFEE", 2, 350); // 700 + 70 tax
+    sale.tip_minor = 100;
+    sale.service_charge_minor = 50;
+    s.compute_sale_tax(&mut sale, &[], RoundingMode::Truncate)
+        .unwrap();
+
+    assert_eq!(
+        sale.total.minor_units, 920,
+        "700 subtotal + 70 exclusive tax + 150 charges = 920"
+    );
+    assert_eq!(sale.subtotal.minor_units, 700);
+    assert_eq!(sale.tax_total.minor_units, 70);
+}
+
+/// The C15 charge adjustment must apply ONCE. `compute_sale_tax` and its
+/// scoped twin are also reached from preview paths, so this pins what a second
+/// call does: it RE-ADDS the charges, because each call is documented to run on
+/// a sale whose `total` still excludes them. The test states that contract
+/// rather than leaving it implicit -- if a caller ever feeds back an
+/// already-adjusted sale, this is the assertion that goes red.
+#[test]
+fn compute_tax_reads_charges_from_the_sale_not_from_its_own_output() {
+    let conn = fresh();
+    let s = store(&conn);
+
+    let mut sale = make_single_line_sale("COFFEE", 2, 350);
+    sale.tip_minor = 100;
+    sale.service_charge_minor = 50;
+    s.compute_sale_tax(&mut sale, &[], RoundingMode::Truncate)
+        .unwrap();
+    assert_eq!(sale.total.minor_units, 850);
+
+    // A second call on the SAME sale re-adds: the charges are read from
+    // `tip_minor`/`service_charge_minor`, never from the running total.
+    s.compute_sale_tax(&mut sale, &[], RoundingMode::Truncate)
+        .unwrap();
+    assert_eq!(
+        sale.total.minor_units, 1000,
+        "a second call adds the charges again -- callers must not feed back an \
+         already-adjusted sale"
+    );
 }
 
 #[test]
@@ -2270,6 +2354,66 @@ fn complete_sale_deduction_rejects_underpaid_payment_splits() {
         )
         .unwrap();
     assert_eq!(payment_count, 0, "no payment rows may exist");
+}
+
+/// C15, the like-with-like half, measured end to end rather than asserted.
+///
+/// The UI's payable total includes tip + service (`usePosState.ts` `total`),
+/// and it is that number which drives the splits, so the splits legitimately
+/// sum to MORE than the bare cart total. Before C15 the validator compared
+/// the two different bases and only rejected a SHORTFALL, so a tip-bearing
+/// tender passed for the wrong reason and an UNDERPAID one that covered only
+/// the tip-exclusive part was accepted. Now `sale.total` carries the charges,
+/// so the comparison is between like and like -- this test pins that: a
+/// tender covering cart total + tip + service completes; one covering only the
+/// cart total is refused.
+#[test]
+fn complete_sale_deduction_compares_charged_total_like_with_like() {
+    let conn = fresh();
+    let s = store(&conn);
+    seed_product_with_stock(&conn, "COFFEE", 10);
+
+    // Cart total 700, tip 100, service 50 -> payable 850.
+    let mut sale = make_single_line_sale("COFFEE", 2, 350);
+    sale.tip_minor = 100;
+    sale.service_charge_minor = 50;
+    s.compute_sale_tax(&mut sale, &[], RoundingMode::Truncate)
+        .unwrap();
+    assert_eq!(
+        sale.total.minor_units, 850,
+        "payable total carries the charges"
+    );
+
+    // Underpaid against the PAYABLE total: 700 covers the cart but not the
+    // charges, and must now be rejected.
+    let underpaid = s.complete_sale_deduction(&sale, None, &tender(700), "cashier-1", None);
+    match underpaid {
+        Err(CoreError::Validation { field, message }) => {
+            assert_eq!(
+                field, "payments",
+                "expected field 'payments', got '{field}'"
+            );
+            assert!(
+                message.contains("do not cover"),
+                "expected an under-payment message, got: {message}"
+            );
+        }
+        other => panic!("700 must not cover an 850 payable total, got: {other:?}"),
+    }
+    assert!(
+        s.get_sale(&sale.id).unwrap().is_none(),
+        "the refused sale must not be persisted"
+    );
+
+    // The full payable tender completes, and the persisted total is the
+    // charged one -- so the sale row and the payments table agree.
+    s.complete_sale_deduction(&sale, None, &tender(850), "cashier-1", None)
+        .expect("850 covers the payable total");
+    let stored = s.get_sale(&sale.id).unwrap().expect("sale persisted");
+    assert_eq!(
+        stored.total.minor_units, 850,
+        "the stored total is what the customer paid, charges included"
+    );
 }
 
 /// The worst case: `payment_splits: Some([])` bypasses the command layer's
@@ -3784,6 +3928,49 @@ fn resolve_best_tax_rates_returns_empty_when_no_rates_exist() {
     assert!(rates.is_empty());
 }
 
+#[test]
+fn a_db_failure_in_the_category_probe_does_not_bill_the_tenant_default_rate() {
+    let conn = fresh();
+    let s = store(&conn);
+
+    // Arrange: a category-assigned rate AND a different store default, with the
+    // product assigned to the category. Resolving normally must return the
+    // category rate -- level 2 -- and never the default.
+    seed_tax_rate(&conn, "Default Store Tax 5%", 500, true, false);
+    let cat_rate_id = seed_tax_rate(&conn, "Category Tax 8%", 800, false, false);
+    s.create_category("CAT-TEST", "Test Category", "#ffffff", "")
+        .unwrap();
+    s.set_category_tax_rates("CAT-TEST", std::slice::from_ref(&cat_rate_id))
+        .unwrap();
+    seed_product_with_category(&conn, "TEST-SKU", Some("CAT-TEST"));
+
+    let before = s.resolve_best_tax_rates_for_sku("TEST-SKU").unwrap();
+    assert_eq!(
+        before.iter().map(|r| r.id.as_str()).collect::<Vec<_>>(),
+        vec![cat_rate_id.as_str()],
+        "the category level must outrank the store default before any fault is injected"
+    );
+
+    // Force a REAL fault in the product's category-id probe.
+    //
+    // Under the old `.ok().and_then(|v| v)` the failure collapsed to `None`,
+    // and `None` is defined here as "this product has no category" -- so
+    // resolution SILENTLY FELL THROUGH to level 3 and billed the tenant-default
+    // rate (5%) instead of the category's 8%. A wrong tax rate on a sale, with
+    // no error raised anywhere. Renaming only the column the probe reads keeps
+    // the failure the probe's own rather than a later statement's.
+    conn.execute_batch("ALTER TABLE products RENAME COLUMN category_id TO category_id_hidden;")
+        .unwrap();
+
+    let err = s
+        .resolve_best_tax_rates_for_sku("TEST-SKU")
+        .expect_err("a DB failure must not silently bill the tenant-default rate");
+    assert!(
+        matches!(err, CoreError::Db(_)),
+        "the category probe must surface the DB fault, got {err:?}"
+    );
+}
+
 // ── Multi-terminal: list_sales_by_user ─────────────────────────
 
 #[test]
@@ -3794,7 +3981,7 @@ fn list_sales_by_user_filters_correctly() {
     let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
 
     // Create 3 sales: 2 for user-alice, 1 for user-bob.
-    for (uid, _i) in [("alice", 0u32), ("alice", 1), ("bob", 2)].iter() {
+    for (uid, _i) in &[("alice", 0u32), ("alice", 1), ("bob", 2)] {
         let sale = crate::Sale {
             id: uuid::Uuid::now_v7().to_string(),
             status: crate::SaleStatus::Completed,
@@ -4067,7 +4254,7 @@ fn checkout_rejects_unknown_promotion() {
         .compute_checkout_promotions(&mut sale, &["nope".into()], chrono::Utc::now())
         .unwrap_err();
     assert!(
-        matches!(err, crate::error::CoreError::NotFound { ref entity, .. } if entity == &"promotion")
+        matches!(err, crate::error::CoreError::NotFound { entity, .. } if entity == "promotion")
     );
 }
 
@@ -4930,4 +5117,207 @@ fn compute_tax_lua_override_zero_bps_is_accepted_as_a_zero_rated_line() {
     let json = sale.lines[0].tax_breakdown_json.as_deref().unwrap();
     let breakdown: Vec<serde_json::Value> = serde_json::from_str(json).unwrap();
     assert_eq!(breakdown[0]["rate_bps"], 0);
+}
+/// MSL-18: the module's stated invariant is "voids write audit entries" — and
+/// `void_pending_sale` writes none.
+///
+/// Its sibling `void_sale` records `sale.void` with the reason, the user and the
+/// total. `void_pending_sale` reverses every stock deduction the sale made and
+/// flips the row to `voided`, and it is reachable from the register UI
+/// (`ui/src/api/sales.ts:395`, behind `SALES_PROCESS`). Nothing about the
+/// difference in difficulty justifies the difference in traceability: an operator
+/// asking who voided this sale gets an answer for a completed sale and silence
+/// for a pending one.
+#[test]
+fn void_pending_sale_writes_an_audit_entry() {
+    let conn = fresh();
+    let s = store(&conn);
+
+    conn.execute(
+        "INSERT OR IGNORE INTO products (id, sku, name, price_minor, currency, product_type) VALUES ('prod-aud', 'AUD-1', 'Audited', 5000, 'IDR', 'retail')",
+        [],
+    )
+    .unwrap();
+    let default_loc = crate::location_resolver::get_default_location_id();
+    conn.execute(
+        "INSERT OR IGNORE INTO stock_summary (item_id, location_id, qty) VALUES ('prod-aud', ?1, 10)",
+        rusqlite::params![default_loc.as_str()],
+    )
+    .unwrap();
+
+    let mut cart = Cart::new(usd());
+    cart.add_line(CartLine::new(Sku::new("AUD-1"), 3, price(5000)))
+        .unwrap();
+    let sale = Sale::from_cart(&cart).unwrap();
+    s.complete_sale_deduction(&sale, None, &tender(15000), "staff-1", None)
+        .unwrap();
+
+    s.void_pending_sale(&sale.id).unwrap();
+
+    let logged: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM audit_log WHERE action = 'sale.void' AND target_id = ?1",
+            rusqlite::params![&sale.id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        logged, 1,
+        "voiding a pending sale reverses stock and flips the row; it must leave a trace, exactly as void_sale does",
+    );
+}
+
+#[test]
+fn a_db_failure_in_lookup_sale_by_receipt_barcode_surfaces_the_error() {
+    let conn = fresh();
+    let s = store(&conn);
+
+    seed_product_with_category(&conn, "ITEM-1", None);
+    let mut cart = Cart::new(usd());
+    cart.add_line(CartLine::new(Sku::new("ITEM-1"), 1, price(1000)))
+        .unwrap();
+    let sale = Sale::from_cart(&cart).unwrap();
+    s.create_sale(&sale).unwrap();
+    s.save_receipt_barcode(&sale.id, "BC-123").unwrap();
+
+    // Verify healthy path
+    let found = s.lookup_sale_by_receipt_barcode("BC-123").unwrap();
+    assert_eq!(found.unwrap().id, sale.id);
+
+    // Fault the query by renaming the column
+    conn.execute_batch("ALTER TABLE receipt_barcodes RENAME COLUMN barcode TO barcode_hidden;")
+        .unwrap();
+
+    let err = s
+        .lookup_sale_by_receipt_barcode("BC-123")
+        .expect_err("a DB failure must not silently return Ok(None)");
+    assert!(
+        matches!(err, CoreError::Db(_)),
+        "expected CoreError::Db, got {err:?}"
+    );
+}
+
+#[test]
+fn void_pending_sale_propagates_db_error_when_reading_sale_total() {
+    let conn = fresh();
+    let s = store(&conn);
+
+    conn.execute(
+        "INSERT OR IGNORE INTO products (id, sku, name, price_minor, currency, product_type) VALUES ('prod-vps', 'VPS-1', 'VPS', 5000, 'IDR', 'retail')",
+        [],
+    )
+    .unwrap();
+    let default_loc = crate::location_resolver::get_default_location_id();
+    conn.execute(
+        "INSERT OR IGNORE INTO stock_summary (item_id, location_id, qty) VALUES ('prod-vps', ?1, 10)",
+        rusqlite::params![default_loc.as_str()],
+    )
+    .unwrap();
+
+    let mut cart = Cart::new(usd());
+    cart.add_line(CartLine::new(Sku::new("VPS-1"), 2, price(5000)))
+        .unwrap();
+    let sale = Sale::from_cart(&cart).unwrap();
+    s.complete_sale_deduction(&sale, None, &tender(10000), "staff-1", None)
+        .unwrap();
+
+    // Corrupt total_minor column data with a blob so reading i64 fails
+    conn.execute(
+        "UPDATE sales SET total_minor = X'FFFF' WHERE id = ?1",
+        rusqlite::params![&sale.id],
+    )
+    .unwrap();
+
+    let err = s.void_pending_sale(&sale.id).expect_err(
+        "a database error reading total_minor must not be swallowed into null audit details",
+    );
+    assert!(
+        matches!(err, CoreError::Db(_)),
+        "expected CoreError::Db, got {err:?}"
+    );
+}
+
+#[test]
+fn complete_sale_deduction_propagates_db_error_when_resolving_shortfall_alternatives() {
+    let conn = fresh();
+    let s = store(&conn);
+
+    conn.execute_batch(
+        "INSERT OR IGNORE INTO inventory_locations (id, name, type) VALUES
+            ('loc-pri-f', 'Primary', 'store'),
+            ('loc-sec-f', 'Secondary', 'warehouse');
+         INSERT OR IGNORE INTO locations (id, name, is_primary) VALUES ('store-f', 'Test Store', 0);
+         INSERT OR IGNORE INTO workspace_instances (id, type_key, location_id, name)
+            VALUES ('ws-multi-fault',
+                (SELECT key FROM workspace_types LIMIT 1),
+                'store-f', 'Multi-Fault');
+         INSERT OR IGNORE INTO workspace_inventory_locations (id, instance_id, location_id, is_primary, sort_order)
+            VALUES ('wsl-pri-f', 'ws-multi-fault', 'loc-pri-f', 1, 0),
+                   ('wsl-sec-f', 'ws-multi-fault', 'loc-sec-f', 0, 1);",
+    )
+    .unwrap();
+    let product_id = seed_product_with_stock(&conn, "COFFEE-F", 0);
+    conn.execute(
+        "INSERT OR REPLACE INTO stock_summary (item_id, location_id, qty) VALUES (?1, 'loc-sec-f', 5)",
+        rusqlite::params![product_id],
+    )
+    .unwrap();
+
+    let sale = make_single_line_sale("COFFEE-F", 2, 350);
+
+    // Fault the query used by resolve_location_chain_for_sku
+    conn.execute_batch(
+        "ALTER TABLE workspace_inventory_locations RENAME COLUMN location_id TO location_id_faulted;",
+    )
+    .unwrap();
+
+    let err = s
+        .complete_sale_deduction(&sale, Some("ws-multi-fault"), &[], "cashier-1", None)
+        .expect_err("database error in alternative location resolution must not be swallowed");
+    assert!(
+        matches!(err, CoreError::Db(_)),
+        "expected CoreError::Db, got {err:?}"
+    );
+}
+
+#[test]
+fn complete_sale_with_resolved_shortfalls_propagates_db_error_when_checking_stock_summary() {
+    let conn = fresh();
+    let s = store(&conn);
+    let loc_a = "loc-a";
+    setup_locations_with_stock(&conn, "COFFEE", loc_a, 5, "loc-b", 10);
+
+    let sale = make_single_line_sale("COFFEE", 5, 350);
+    let resolution = crate::sale_deduction::ResolvedShortfall {
+        sku: "COFFEE".into(),
+        allocations: vec![crate::sale_deduction::LocationAllocation {
+            location_id: crate::inventory::LocationId::from(loc_a),
+            qty: 5,
+        }],
+    };
+
+    // Corrupt the stock_summary qty column with a blob to trip FromSqlConversionFailure
+    conn.execute(
+        "UPDATE stock_summary SET qty = X'FFFF' WHERE location_id = ?1",
+        rusqlite::params![loc_a],
+    )
+    .unwrap();
+
+    let err = s
+        .complete_sale_with_resolved_shortfalls(
+            &sale,
+            None,
+            &tender(1750),
+            "cashier-1",
+            None,
+            &[resolution],
+            &[],
+        )
+        .expect_err(
+            "database error reading stock_summary must propagate, not report insufficient stock",
+        );
+    assert!(
+        matches!(err, CoreError::Db(_)),
+        "expected CoreError::Db, got {err:?}"
+    );
 }

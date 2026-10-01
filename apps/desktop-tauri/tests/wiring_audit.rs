@@ -81,14 +81,13 @@ fn find_lib_rs(app_dir: &str) -> PathBuf {
 #[test]
 fn desktop_client_no_duplicate_handler_commands() {
     let lib_rs = find_lib_rs(".");
-    let src = fs::read_to_string(&lib_rs)
-        .unwrap_or_else(|e| panic!("failed to read {:?}: {}", lib_rs, e));
+    let src =
+        fs::read_to_string(&lib_rs).unwrap_or_else(|e| panic!("failed to read {lib_rs:?}: {e}"));
 
     let commands = extract_handler_commands(&src);
     assert!(
         !commands.is_empty(),
-        "no generate_handler commands found in {:?}",
-        lib_rs
+        "no generate_handler commands found in {lib_rs:?}"
     );
 
     let mut seen = HashSet::new();
@@ -101,23 +100,21 @@ fn desktop_client_no_duplicate_handler_commands() {
 
     assert!(
         duplicates.is_empty(),
-        "Duplicate command(s) found in desktop-tauri generate_handler!: {:?}. \
-         Tauri v2 panics at runtime when the same command path appears twice.",
-        duplicates
+        "Duplicate command(s) found in desktop-tauri generate_handler!: {duplicates:?}. \
+         Tauri v2 panics at runtime when the same command path appears twice."
     );
 }
 
 #[test]
 fn tablet_client_no_duplicate_handler_commands() {
     let lib_rs = find_lib_rs("../mobile-tauri");
-    let src = fs::read_to_string(&lib_rs)
-        .unwrap_or_else(|e| panic!("failed to read {:?}: {}", lib_rs, e));
+    let src =
+        fs::read_to_string(&lib_rs).unwrap_or_else(|e| panic!("failed to read {lib_rs:?}: {e}"));
 
     let commands = extract_handler_commands(&src);
     assert!(
         !commands.is_empty(),
-        "no generate_handler commands found in {:?}",
-        lib_rs
+        "no generate_handler commands found in {lib_rs:?}"
     );
 
     let mut seen = HashSet::new();
@@ -130,9 +127,8 @@ fn tablet_client_no_duplicate_handler_commands() {
 
     assert!(
         duplicates.is_empty(),
-        "Duplicate command(s) found in mobile-tauri generate_handler!: {:?}. \
-         Tauri v2 panics at runtime when the same command path appears twice.",
-        duplicates
+        "Duplicate command(s) found in mobile-tauri generate_handler!: {duplicates:?}. \
+         Tauri v2 panics at runtime when the same command path appears twice."
     );
 }
 

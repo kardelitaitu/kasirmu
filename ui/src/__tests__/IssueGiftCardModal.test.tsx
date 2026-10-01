@@ -28,7 +28,6 @@ describe('IssueGiftCardModal', () => {
     expect(screen.getByLabelText('Card number')).toHaveValue('GC-TEST12345678');
     expect(screen.getByLabelText('Initial amount')).toBeInTheDocument();
     expect(screen.getByLabelText('Issued to')).toBeInTheDocument();
-    expect(screen.getByLabelText('PIN')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /issue card/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /cancel/i })).toBeInTheDocument();
   });
@@ -121,9 +120,12 @@ describe('IssueGiftCardModal', () => {
     expect(cardInput).toHaveValue('GC-MYCARD');
   });
 
-  it('uses password type for PIN input', () => {
+  it('has no PIN field (removed 2026-09-29 — nothing ever verified it)', () => {
     renderWithFluentSync(<IssueGiftCardModal sessionToken="tok-1" onClose={vi.fn()} onIssued={vi.fn()} />, giftCardsFtl);
-    expect(screen.getByLabelText('PIN')).toHaveAttribute('type', 'password');
+    expect(screen.queryByLabelText('PIN')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('PIN (optional)')).not.toBeInTheDocument();
+    // The issuance form carries no password-type input at all.
+    expect(document.querySelector('input[type="password"]')).toBeNull();
   });
 
   it('rejects decimal amounts with validation error', async () => {
@@ -144,12 +146,12 @@ describe('IssueGiftCardModal', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
-  it('clears error when editing PIN after validation failure', async () => {
+  it('clears error when editing the card number after validation failure', async () => {
     renderWithFluentSync(<IssueGiftCardModal sessionToken="tok-1" onClose={vi.fn()} onIssued={vi.fn()} />, giftCardsFtl);
     await userEvent.click(screen.getByRole('button', { name: /issue card/i }));
     expect(screen.getByRole('alert')).toBeInTheDocument();
-    const pinInput = screen.getByLabelText('PIN');
-    await userEvent.type(pinInput, '1234');
+    const cardInput = screen.getByLabelText('Card number');
+    await userEvent.type(cardInput, 'X');
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 

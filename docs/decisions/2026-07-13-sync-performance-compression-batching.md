@@ -4,8 +4,9 @@ area: sync
 title: ADR #10: Sync Performance Strategy
 status: Implemented (all 3 phases complete as of 2026-07-15)
 ---
-<!-- Audit stamp: 2026-07-24 · Hermes-Agent · status: ACCURATE (0 findings, claims verified) · MAX_BATCH_BYTES=64KB at platform/sync/src/lib.rs:751; gzip compressed (transport.rs:124 .gzip(true)); AnchorExpired variant present; build_batches present; SyncPriority enum (0=Critical,1=Normal,2=Low) in crates/oz-core/src/offline.rs; migration 073_offline_queue_priority.sql exists; /metrics + /health endpoints in apps/cloud-server/src/main.rs; all 3 phase spec files exist -->
+<!-- Superseded audit marker (2026-07-24, body kept verbatim) · Hermes-Agent · status: ACCURATE (0 findings, claims verified) · MAX_BATCH_BYTES=64KB at platform/sync/src/lib.rs:751; gzip compressed (transport.rs:124 .gzip(true)); AnchorExpired variant present; build_batches present; SyncPriority enum (0=Critical,1=Normal,2=Low) in crates/oz-core/src/offline.rs; migration 073_offline_queue_priority.sql exists; /metrics + /health endpoints in apps/cloud-server/src/main.rs; all 3 phase spec files exist -->
 
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · ACCURATE, with line drift only. The specific numbers this ADR fixes still hold: `MAX_BATCH_BYTES` is `64 * 1024` at `platform/sync/src/lib.rs:151` (the 2026-07-24 stamp cites `:751`, ordinary drift in a file that has grown) and is consumed where the stamp says at `:609` inside `build_batches`. The gzip compression on the transport path and the `AnchorExpired` anchor variant are both present in `platform/sync/src/daemon.rs`. All three phase spec files the stamp confirms still exist, so this is a decision with its implementation record intact rather than an orphan. · The ADR status checker reports no drift for this row, and the front matter "Implemented (all 3 phases complete as of 2026-07-15)" is consistent with the index. · Left as written, including the `crates/oz-core` reference for SyncPriority (now `crates/kasirmu-core/src/offline.rs`) and the numbered migration `073_offline_queue_priority.sql` belonging to the retired sequential series. This is a decision record; its paths are how the decision was written down. · The 2026-07-24 Hermes stamp is retained as original evidence, re-labelled rather than superseded, and the stacked status lines under the old footer are collapsed to a single machine-read line. -->
 # ADR #10: Sync Performance Strategy
 
 **Status:** Implemented (all 3 phases complete as of 2026-07-15)
@@ -96,7 +97,4 @@ A 1.5 s debounce inside the wakeup arm coalesces rapid bursts (e.g. barcode scan
 
 **Expected latency after this change:** 1.5 s debounce + HTTP round-trip (~0.5–2 s) ≈ **2–4 s** to cloud portal visibility, down from up to 120 s.
 
-> last audited 09-08-26 by buffy
-> audit: Phase 1 Core Architecture & API Docs Audit; Phase 4 ADR Deep Audit
-> status: ACCURATE (0 findings) · verified accurate: cargo check passed, no structural orphans, no stale version headers
-> status: ACCURATE (verified against actual codebase)
+> last audited 29-09-26 by docs-auditor

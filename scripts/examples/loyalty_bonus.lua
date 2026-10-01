@@ -1,4 +1,4 @@
--- Loyalty Bonus Script for OZ-POS Lua Engine
+-- Loyalty Bonus Script for kasir.mu Lua Engine
 -- Example: Customers spending over 100,000 minor units (e.g. $100)
 -- in a single transaction earn a 5% bonus on their next purchase.
 --

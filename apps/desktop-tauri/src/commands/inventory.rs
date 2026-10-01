@@ -1,7 +1,7 @@
 //! Tauri commands for multi-location inventory, shifts, transactions, thresholds, and pending sale checkout.
 //!
 //! The bodies live in `kasirmu_bridge::inventory` (Wave C / C1); every command here
-//! is a thin shim that builds the per-call [`BridgeCtx`] and maps `BridgeError`
+//! is a thin shim that builds the per-call [`BridgeCtx`](kasirmu_bridge::ctx::BridgeCtx) and maps `BridgeError`
 //! back onto `AppError` variant-for-variant. The global-DB gate adapter below
 //! stays because the sibling test module exercises it directly.
 

@@ -12,12 +12,15 @@ import { l10nErrorMessage } from '@/utils/app-error';
 import { useCurrency } from '@/contexts/CurrencyContext';
 import { useAnimatedModal } from '@/hooks/useAnimatedModal';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
+// The shared answered-or-unknown read contract. Four screens each grew their own copy
+// before this moved to ui/src/utils/settle-read.ts.
+import { settleRead } from '@/utils/settle-read';
 import { Card } from '@/components/Card';
 import { Button } from '@/components/Button';
 import { EmptyState } from '@/components';
 import { NoShiftsIcon } from '@/components/EmptyStateIllustrations';
 import { Skeleton } from '@/components/Skeleton';
-import { formatMoney } from '@/types/domain';
+import { formatMoney, minorUnitExponent, parseBalanceInput } from '@/types/domain';
 import {
   listShiftsScoped,
   openShiftScoped,
@@ -47,6 +50,13 @@ export default function ShiftManagementScreen() {
   const { currency } = useCurrency();
   const [shifts, setShifts] = useState<ShiftDto[]>([]);
   const [activeShift, setActiveShift] = useState<ShiftDto | null>(null);
+  // `null` is the honest answer to BOTH 'no open shift' and 'we could not ask',
+  // so the screen needs a third state to tell them apart. `unknown` means the
+  // read failed; it must never reach the no-active banner below, which invites
+  // the cashier to open a second shift while the first may still be open. The
+  // partial unique index (migrations/20261011_open_shift_uniqueness.sql) would
+  // refuse that write, but the operator would be told the wrong reason.
+  const [activeShiftUnknown, setActiveShiftUnknown] = useState(false);
   const [loading, setLoading] = useState(true);
 
   // ── Modals ────────────────────────────────────────────────────────
@@ -55,6 +65,16 @@ export default function ShiftManagementScreen() {
   const [showDetailModal, setShowDetailModal] = useState<ShiftDto | null>(null);
   const [shiftReport, setShiftReport] = useState<ShiftReportDto | null>(null);
   const [reportLoading, setReportLoading] = useState(false);
+  // Same contract as `activeShiftUnknown` above, one level down. `null` is the
+  // honest answer to BOTH 'this shift has no report' and 'we could not ask',
+  // and the report is what a manager balances a drawer against: the payment
+  // breakdown, the hourly sales, the gross profit and the cash payouts. A read
+  // that failed used to render NOTHING, so a drawer short of cash and a drawer
+  // that never reconciled looked identical. `unknown` is the third state.
+  const [reportUnknown, setReportUnknown] = useState(false);
+  // Re-issuing the read is a new request, not a re-render, so the retry is a
+  // nonce in the effect's dependency list rather than a function call.
+  const [reportNonce, setReportNonce] = useState(0);
   const [openingBalance, setOpeningBalance] = useState('');
   const [closingBalance, setClosingBalance] = useState('');
   const [shiftNotes, setShiftNotes] = useState('');
@@ -74,10 +94,19 @@ export default function ShiftManagementScreen() {
     try {
       const [allShifts, active] = await Promise.all([
         listShiftsScoped(sessionToken),
-        getActiveShiftScoped(sessionToken).catch(() => null),
+        settleRead('active_shift', getActiveShiftScoped(sessionToken)),
       ]);
       setShifts(allShifts);
-      setActiveShift(active);
+      if (active.ok) {
+        setActiveShift(active.value);
+        setActiveShiftUnknown(false);
+      } else {
+        // `null` is what BOTH answers look like from here: a read that found
+        // nothing, and a read that failed. Only the flag keeps them apart, and
+        // the no-active banner below is gated on it so a transient failure can
+        // never invite the cashier to open a shift that is already open.
+        setActiveShiftUnknown(true);
+      }
     } catch {
       addToast({ message: requiredLocalized(l10n, 'shift-load-error'), type: 'error' });
     } finally {
@@ -91,22 +120,45 @@ export default function ShiftManagementScreen() {
   useEffect(() => {
     if (!showDetailModal) {
       setShiftReport(null);
+      setReportUnknown(false);
       return;
     }
+    let cancelled = false;
     setReportLoading(true);
-    getShiftReportScoped(sessionToken, showDetailModal.id)
-      .then(setShiftReport)
-      .catch(() => setShiftReport(null))
-      .finally(() => setReportLoading(false));
-  }, [showDetailModal, sessionToken]);
+    settleRead('shift_report', getShiftReportScoped(sessionToken, showDetailModal.id)).then((read) => {
+      if (cancelled) { return; }
+      if (read.ok) {
+        setShiftReport(read.value);
+        setReportUnknown(false);
+      } else {
+        // A refusal is an expected outcome, not a malfunction:
+        // crates/kasirmu-core/src/db/shifts.rs:382-392 answers NotFound when the
+        // shift row is gone, and the bridge passes that through
+        // (crates/kasirmu-bridge/src/shifts.rs:462-483). It is still not an
+        // answer about the drawer, so it becomes `unknown` rather than `null`.
+        setShiftReport(null);
+        setReportUnknown(true);
+      }
+      setReportLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [showDetailModal, sessionToken, reportNonce]);
+
+  // The retry is a new READ, not a re-render, so it bumps the nonce the effect
+  // above depends on. Calling the read directly from the handler instead would
+  // duplicate the settle/guard logic in a second place, where the next change
+  // to it would reach only one of the two.
+  const retryReportRead = useCallback(() => setReportNonce((n) => n + 1), []);
 
   // ── Open shift ────────────────────────────────────────────────────
 
   const handleOpenShift = useCallback(async () => {
-    // SHIFT-03: opening balance is integer minor units — reject fractional
-    // input instead of silently truncating it via parseInt.
-    const balance = openingBalance.trim() === '' ? 0 : Number(openingBalance);
-    if (!Number.isInteger(balance) || balance < 0) {
+    // SHIFT-03 + MONEY-02 + MONEY-05: opening balance is entered in major units
+    // scaled by the active currency's exponent. Reject fractional input for
+    // 0-decimal currencies (like IDR) or fractional input exceeding currency precision.
+    const trimmed = openingBalance.trim();
+    const balance = trimmed === '' ? 0 : parseBalanceInput(trimmed, currency);
+    if (balance === null || balance < 0) {
       setError(requiredLocalized(l10n, 'shift-invalid-opening-balance'));
       return;
     }
@@ -124,14 +176,15 @@ export default function ShiftManagementScreen() {
     } finally {
       setSaving(false);
     }
-  }, [openingBalance, sessionToken, load, l10n]);
+  }, [openingBalance, currency, sessionToken, load, l10n]);
 
   // ── Close shift ───────────────────────────────────────────────────
 
   const handleCloseShift = useCallback(async () => {
     if (!activeShift) return;
-    const balance = Number(closingBalance);
-    if (!Number.isInteger(balance) || balance < 0) {
+    const trimmed = closingBalance.trim();
+    const balance = trimmed === '' ? null : parseBalanceInput(trimmed, currency);
+    if (balance === null || balance < 0) {
       setError(requiredLocalized(l10n, 'shift-invalid-balance'));
       return;
     }
@@ -153,7 +206,7 @@ export default function ShiftManagementScreen() {
     } finally {
       setSaving(false);
     }
-  }, [activeShift, closingBalance, shiftNotes, sessionToken, l10n]);
+  }, [activeShift, closingBalance, currency, shiftNotes, sessionToken, l10n]);
 
 
   const dismissCloseSummary = useCallback(async () => {
@@ -167,10 +220,18 @@ export default function ShiftManagementScreen() {
 
   // ── Create payout ─────────────────────────────────────────────────
 
+  // Parsed ONCE and shared with the button's disabled state. The button used to
+  // call `parseBalanceInput` twice and coalesce the second to 0 -- a branch that
+  // can never be taken, because the line above already rejects `null`. TypeScript
+  // also refuses to narrow across two separate calls, so the `?? 0` was there to
+  // satisfy the checker rather than to describe a real case.
+  const parsedPayout = parseBalanceInput(payoutAmount.trim(), currency);
+
   const handleCreatePayout = useCallback(async () => {
     if (!activeShift) return;
-    const amount = Number(payoutAmount);
-    if (!Number.isInteger(amount) || amount <= 0) {
+    const trimmed = payoutAmount.trim();
+    const amount = trimmed === '' ? null : parseBalanceInput(trimmed, currency);
+    if (amount === null || amount <= 0) {
       setError(requiredLocalized(l10n, 'shift-invalid-payout-amount'));
       return;
     }
@@ -195,7 +256,7 @@ export default function ShiftManagementScreen() {
     // surfaced as a generic retryable error, so the operator would press Save again on a form
     // that could not succeed until the screen remounted. :186 also awaits load(), which now
     // refreshes against the same session as the write.
-  }, [activeShift, payoutAmount, payoutReason, load, l10n, sessionToken]);
+  }, [activeShift, payoutAmount, payoutReason, currency, load, l10n, sessionToken]);
 
   // ── Format time/date helpers ───────────────────────────────────────
 
@@ -395,8 +456,33 @@ export default function ShiftManagementScreen() {
             </Card>
           )}
 
+          {/* ── Unanswered active-shift read ──────────────────── */}
+          {activeShiftUnknown && !closedShiftSummary && (
+            /* The screen does NOT know whether a shift is open. That is not the
+               same claim as "none is open", so this branch is deliberately
+               separate from the banner below and offers Reload rather than Open
+               Shift -- opening here would be the exact wrong action. Reuses the
+               copy the screen already ships and the one error class it already
+               owns, so no new Fluent key and no new sheet rule. */
+            <Card shadow="sm" className="shift-mgmt-no-active">
+              <div className="shift-mgmt-no-active-content">
+                <div className="shift-mgmt-modal-error" role="alert">
+                  <Localized id="shift-load-error">
+                    <span>Failed to load shifts</span>
+                  </Localized>
+                </div>
+                {/* Direct child of the flex row so the sheet's existing
+                    `.shift-mgmt-no-active-content > button { margin-left: auto }`
+                    pushes it right with no new rule. */}
+                <Button variant="secondary" onClick={load}>
+                  <Localized id="retry"><span>Retry</span></Localized>
+                </Button>
+              </div>
+            </Card>
+          )}
+
           {/* ── No active shift banner ──────────────────── */}
-          {!activeShift && !closedShiftSummary && (
+          {!activeShift && !activeShiftUnknown && !closedShiftSummary && (
             <Card shadow="sm" className="shift-mgmt-no-active">
               <div className="shift-mgmt-no-active-content">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" width="32" height="32" aria-hidden="true">
@@ -547,9 +633,10 @@ export default function ShiftManagementScreen() {
                   <input
                     id="open-balance"
                     type="number"
+                    step="any"
                     className="shift-mgmt-input"
                     min="0"
-                    placeholder="e.g. 500 for $5.00"
+                    placeholder={minorUnitExponent(currency) > 0 ? "e.g. 50.00" : "e.g. 50000"}
                     value={openingBalance}
                     onChange={(e) => setOpeningBalance(e.target.value)}
                     aria-label={l10n.getString('shift-field-opening-balance')}
@@ -612,9 +699,10 @@ export default function ShiftManagementScreen() {
                   <input
                     id="payout-amount"
                     type="number"
+                    step="any"
                     className="shift-mgmt-input"
                     min="1"
-                    placeholder="e.g. 20000 for $200.00"
+                    placeholder={minorUnitExponent(currency) > 0 ? "e.g. 200.00" : "e.g. 200000"}
                     value={payoutAmount}
                     onChange={(e) => setPayoutAmount(e.target.value)}
                     aria-label={l10n.getString('shift-field-payout-amount')}
@@ -654,7 +742,7 @@ export default function ShiftManagementScreen() {
                   variant="primary"
                   onClick={handleCreatePayout}
                   loading={saving}
-                  disabled={!payoutAmount || !Number.isInteger(Number(payoutAmount)) || Number(payoutAmount) <= 0}
+                  disabled={parsedPayout === null || parsedPayout <= 0}
                 >
                   Record Payout
                 </Button>
@@ -744,9 +832,10 @@ export default function ShiftManagementScreen() {
                   <input
                     id="close-balance"
                     type="number"
+                    step="any"
                     className="shift-mgmt-input"
                     min="0"
-                    placeholder="e.g. 15000 for $150.00"
+                    placeholder={minorUnitExponent(currency) > 0 ? "e.g. 150.00" : "e.g. 150000"}
                     value={closingBalance}
                     onChange={(e) => setClosingBalance(e.target.value)}
                     aria-label={l10n.getString('shift-field-closing-balance')}
@@ -787,7 +876,11 @@ export default function ShiftManagementScreen() {
                   variant="primary"
                   onClick={handleCloseShift}
                   loading={saving}
-                  disabled={!closingBalance || !Number.isInteger(Number(closingBalance)) || Number(closingBalance) < 0}
+                  disabled={
+                    !closingBalance.trim() ||
+                    parseBalanceInput(closingBalance.trim(), currency) === null ||
+                    (parseBalanceInput(closingBalance.trim(), currency) ?? -1) < 0
+                  }
                 >
                   Close Shift
                 </Button>
@@ -1028,6 +1121,24 @@ export default function ShiftManagementScreen() {
                       <Skeleton width="30%" height="0.75rem" />
                     </div>
                   ))}
+                </div>
+              )}
+
+              {/* ── Unanswered report read ──────────────────── */}
+              {reportUnknown && !reportLoading && (
+                <div className="shift-mgmt-report-unknown" role="alert">
+                  <Localized id="shift-report-unknown">
+                    <span>Could not load this shift report</span>
+                  </Localized>
+                  {/* A DIRECT child of the flex row, so the `> button` rule in
+                      .shift-mgmt-report-unknown pushes the retry right without
+                      a wrapper. The round-9 banner is the same shape, in its own
+                      class -- the rule is per-class, not inherited. */}
+                  <Button variant="secondary" onClick={retryReportRead}>
+                    <Localized id="retry">
+                      <span>Retry</span>
+                    </Localized>
+                  </Button>
                 </div>
               )}
 

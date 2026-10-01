@@ -1,4 +1,169 @@
 
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file, and at 13,271 lines it is THE LARGEST DOCUMENT IN THE REPOSITORY — roughly three times the largest backlog, and larger than every other file audited in this campaign combined. That fact alone makes it worth a careful stamp, because a file this size in a documentation tree is not a document so much as a sediment record, and the question worth asking is whether it still functions as one. · THE STRUCTURE ANSWERS THAT IN ITS FAVOUR, and the structure is the finding. It is a reverse-chronological log of dated entries, each headed by a claim and then the evidence for or against it — the opening entry, for instance, records what a coverage gate reported, notes that the manifest's own recorded figure disagreed with it, and then explains that the floor had been calibrated against a shape the code no longer had. That entry does not say the gate was wrong; it says the gate was measuring a surface that had moved underneath a threshold calibrated for a different one. · AND IT PREFERS DELETING DEAD CODE TO WRITING TESTS FOR IT, which is the most interesting thing in it. The entries name specific methods with no caller, and cite the repository's own test files saying the columns they used did not exist in the current schema — then conclude the methods should go rather than be covered. A coverage floor pushing an author toward writing tests for functions that cannot work is a gate producing the wrong incentive, and a journal that records the incentive problem is more useful than one that records only the number. · THE HONESTY IS SYSTEMATIC ACROSS ENTRIES, and it is the same discipline this campaign has been enforcing on audit stamps for fifty rounds: each entry distinguishes what a tool SAID from what was actually TRUE, and the usual finding is that the tool was right about the number and wrong about the cause. That is the same pattern as the settings-ingest census, the rate-limit collapse, and the tablet-driving method record — all of which this campaign audited and found to hold up. A repository that logs its own misdiagnoses in this way can be audited at all. · WHY IT IS IN THE RECORDS DIRECTORY RATHER THAN ARCHIVED, and the answer is the same one this campaign gave for the very large backlog: a journal that is still receiving entries is live, and it is receiving them — the newest entry is dated on the day of this audit. A reader who wants the project's reasoning over time starts here; a reader who wants a decision starts in the decision directory. · WHAT WAS NOT DONE, stated plainly because at this size the omission is large: the individual entries were not re-derived. Thirteen thousand lines of dated engineering reasoning is the original work, and a documentation audit can establish only what this stamp records — that the file is structured as a dated evidence-bearing log, that it is actively maintained, and that the reasoning pattern in its entries is the one this campaign has independently found reliable elsewhere. · No stamp existed; this is the first. -->
+
+## 2026-09-29 — The modules-inventory coverage floor was dead code, not missing tests
+
+**What the gate said.** `modules-inventory: 70.7% < floor 76.0%` (176/249 lines), while the manifest's own
+`_measured` recorded 78.4. The floor had been calibrated when the crate still held the inventory models and
+their 738 lines of tests; the COR-7 refactor (`a0427851d`) moved both down to `foundation`, leaving a smaller,
+differently-shaped surface behind.
+
+**What was actually wrong.** Six methods across two layers, none of them runnable:
+
+- `InventoryService::get_stock` / `adjust_stock` (`74890b7f2`) — no caller anywhere, and the sibling test's own
+  note said their columns were "planned-schema columns not yet in the current migration".
+- `InventoryRepository::get_stock` / `adjust_stock_tx` (`8c1310db8`) — `repository_tests.rs:143` said outright
+  that `inventory.sku` and `inventory.low_stock_threshold` "do not exist in the current migration schema", and
+  with the service wrappers gone they had no caller either. Their SQL could not execute.
+
+Two prose references in `foundation/src/inventory_proptests.rs:21` and `:117` named the pair as a live example,
+and `tests/boundary_contract.rs` listed them as "intentionally NOT pinned"; all three were corrected rather than
+left to rot. Coverage went 70.7% → 75.2% after the first removal, and the second removes the rest of the
+uncovered lines the report counted as zero.
+
+**Why deletion and not tests.** These lines were not untested, they were unreachable — SQL against columns the
+migrations never created. `scripts/coverage-floors.json` says lowering a floor "is the failure this gate exists
+to catch", so re-baselining was the wrong instrument. They arrive with the migration, tests included, or not at
+all.
+
+**And a ruling on the root scratch files, since two rules disagreed.** `.gitignore:166-169` blesses dot-prefixed
+agent scratch and names both `.tmp-build/` AND a root file (`.tmp-28-a.txt`); the root-policy gate deliberately
+rejects stray root FILES, because that is the one junk class no git-based check can see. Both can hold if the
+shape is a dot-DIRECTORY: scratch belongs in `.tmp-build/` or similar, never as a `.tmp-*.txt` at the root.
+`.gitignore` now says so. The matching line in AGENTS.md is owed but not written — that file is dirty by another
+session this round, and a pathspec commit would sweep their edit in.
+## 2026-09-29 — CORRECTION: CI has always run the app suites; the gap was local only
+
+**What I got wrong, and how.** The note I added to `scripts/check.sh` this session says the two
+application suites "had no automation at all", and a second note says the desktop's six integration
+targets are gated by nothing. Both are false, and both came from the same bad grep: I searched
+`.github/workflows` for the literal strings `kasirmu-app` and `kasirmu-mobile`, found none, and
+concluded nothing ran them. CI does not name the packages — `dev-ci.yml:552` runs
+`cargo nextest run --workspace --all-features` with NO excludes, which includes both shells and
+their integration targets. `check.sh` is the half that excluded them (`--exclude kasirmu-app
+--exclude kasirmu-mobile`), so the hole was local-only. It is still worth repairing, which is why
+the step stays.
+
+**Also corrected by the same reading:** the six integration targets are covered in CI for one more
+reason — CI builds from a fresh checkout, where no dev instance holds
+`target/debug/kasirmu-app.exe`, the lock that keeps them out of the local step.
+
+**Rule I should have applied:** a grep for a package NAME proves nothing about a `--workspace` run.
+Check what the job actually executes before claiming what it covers.
+## 2026-09-29 — The instance guard now belongs to both shells, and the sweep found two holes (P2)
+
+**What moved.** `apps/desktop-tauri/src/single_instance.rs` (211 lines, plus 45 lines of tests) is now
+`platform/instance-guard`, a crate of its own, and `apps/mobile-tauri` calls the same `acquire()` at the
+top of its `run()`. I took that file over on the owner's explicit word, after four rounds of waiting on
+another session's uncommitted edits. Their working-tree delta was documentation plus a 1500→2000 ms mutex
+timeout, and both survive in the new crate.
+
+**Why a new crate and not `platform-startup`.** My own plan said `platform-startup`; reading it changed
+the answer. It — and every other crate under `platform/` — carries `deny(unsafe_code)`, and its opening
+comment is a long account of removing an allow that was not justified. A named Win32 mutex is FFI by
+definition, so putting it there would have meant allowing a deny the crate documents as deliberate.
+`platform/*` is globbed by the root manifest, so the new crate needed no members-list edit.
+
+**Two holes the sweep found, both repaired here.**
+
+1. `unsafe-safety` has scanned this tree since 2026-09-27, but its file list comes from git: while the new
+   crate was untracked the gate reported 30 constructs, and after the commit it reports 41, every one
+   justified. The five missing `SAFETY:` notes are written.
+2. Neither `scripts/check.sh` nor ANY `.github/workflows` file named `kasirmu-app` or `kasirmu-mobile`.
+   The two application suites — 173 desktop tests, 690 tablet tests — had no automation anywhere. They are
+   excluded from the workspace run for a real reason (their unit tests link the Tauri runtime), and that
+   exclusion had quietly become “nobody runs them”. `check.sh` now runs them explicitly in both the nextest
+   and the fallback branch, placed after the flake receipt so the app run cannot overwrite the JUnit report
+   that step grades.
+
+**Evidence.** `platform-instance-guard`: 3 tests pass. `cargo check` clean for new crate plus both shells.
+`clippy -D warnings` clean on all three. `unsafe-safety`: OK (41 constructs, every one justified). `cargo fmt`
+clean. Commits `42217f2a4`, `fd812d6a4`, `3a7eb4612`.
+## 2026-09-29 — The 19 “flaky” PG tests were racing, and nextest could already stop it (P1)
+
+**Finding.** The full workspace run passed 9731/9731, and the flake receipt
+(`scripts/verify-pg-tests-ran.py --nextest-junit target/nextest/default/junit.xml`) reported **FAIL: 19
+test(s) failed and were then rescued by a retry** — every one of them a `kasirmu-cloud` Postgres
+integration test (`db_tests`, `email_pg_tests`, `sync_store_tests`, `tests/pg_stock_guard`,
+`tests/pg_init_reconciliation`, `tests/pg_trigger_ports`). The JUnit totals call all 19 a pass; only the
+receipt names them, which is why that step exists.
+
+**Cause, named.** They share ONE resource — the dev Postgres database — and several apply the whole
+schema to `public` (`PG_INIT`) while others assert on it: `pg_integration_apply_schema_can_be_skipped`
+requires `public` to be EMPTY (`db_tests.rs:459`). nextest runs test binaries in parallel, so two of them
+overlapping is a self-inflicted collision, and `retries = { count = 2 }` turns the loser into a silent
+pass. Not nondeterminism: contention.
+
+**Repair.** One test group with `max-threads = 1`, applied by filter to every test whose name contains
+`pg`, in `.config/nextest.toml`. Serializing the one resource is the fix; relaxing the retry would only
+have hidden it.
+
+**Measured after.** `cargo nextest run -p kasirmu-cloud --all-features`: 415 run, 415 passed, 4 skipped,
+and the receipt says `PASS — no <flakyFailure> and no <failure>` where it had named 19.
+## 2026-09-29 — P2 deferred: the mobile guard waits for the desktop guard to be committed
+
+**What is done.** `apps/mobile-tauri/src/state.rs` now sets `busy_timeout(5s)` before its pragmas and probes
+writability with `BEGIN IMMEDIATE; ROLLBACK`, with the same actionable refusal message the desktop shell got
+— the half that protects the DATA. `2de3e0250`.
+
+**What is deferred, and why it is not laziness.** The guard half is a Windows named-mutex + `FindWindowW`
+module (211 lines + tests) that another lane added to `apps/desktop-tauri/src/single_instance.rs` and has left
+MODIFIED in the working tree across two rounds. AGENTS §7.3 forbids editing another session's uncommitted
+work, and the alternatives are both worse than waiting: duplicating 200 lines of `unsafe` FFI into
+`apps/mobile-tauri` gives the tree two implementations of one primitive, and writing a second, minimal guard in
+`platform-startup` for mobile alone gives it two implementations with different behaviour (mine cannot focus
+the running window).
+
+**The follow-up, sized.** When that file is committed: move it to `platform/startup/src/single_instance.rs`
+(both shells already depend on `platform-startup` for `console` / cache init), export it, point the desktop's
+`run()` at the shared path, add one call at the top of the mobile shell's `run()`, and delete the app-local
+module. Mechanical, and the reason it is worth doing at all is the Windows dev/test case: Android enforces
+single-instance itself, so on the tablet this is belt-and-braces, while `pos_tests.rs:870` records the
+two-process window as a real one for the desktop-run tablet shell.
+## 2026-09-29 — Ruling: the `s-no-stamp` row is a tax note, and `created_at` is stamped by the schema (P4/P5)
+
+**Correcting an earlier reading of my own.** The agenda item "`s-no-stamp` `created_at` semantics" came from the
+row id, not from the test's subject. `migrations_tests.rs:2845` inserts `('s-no-stamp', ...)` without
+`tax_estimate_note` to pin that the column is nullable with NO default, so an unstamped tax estimate reads back
+as NULL rather than a sentinel (`:2836-2840`), and `:2864` pins that arbitrary free text is accepted. Nothing in
+that test is about `created_at`.
+
+**The question the row id misled me into asking, now settled.** `sales.created_at` is
+`TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))` — the shape every table in that init migration
+uses — so the value can never be NULL, the sales repository's `created_at: row.get(8)?` into a `String` cannot
+fail on it, and the SQL default is **byte-identical** to the Rust chrono format the constructors produce.
+
+**Consequence for ADR-61 D7.** The schema can stamp, in the same format, so the Rust clock is only reached
+because each insert names the column explicitly. Removing `chrono` from `foundation` is therefore an omission
+change with no format risk — and still ten production insert paths across five crates, which is why D7 keeps it
+recorded rather than done.
+## 2026-09-28 — Fix: prevent WebView2 collision and SQLite readonly lock on concurrent launch (desktop)
+
+**Context:**
+During `cargo tauri dev` reload/watch or rapid secondary launches, process collision manifested dual errors:
+1. `ERROR failed to create webview: WebView2 error: WindowsError(Error { code: HRESULT(0x800700AA), message: "The requested resource is in use." })`
+2. `Failed to setup app: error encountered during setup hook: internal error: seeding primary store: attempt to write a readonly database`
+
+Root cause:
+`tauri-plugin-single-instance` checks `GetLastError() == ERROR_ALREADY_EXISTS`. If `FindWindowW` returns null (e.g. while the previous instance is shutting down or before its event target window is created), the plugin silently fell through without exiting (`std::process::exit(0)` was guarded by `if !hwnd.is_null()`). The secondary process continued into Tauri window creation, racing for the locked `EBWebView` profile directory and SQLite database.
+Furthermore, in `AppState::new`, `conn.busy_timeout` was not configured (defaulting to 0ms), and `seed_primary_store` used `conn.transaction()?` (`BEGIN DEFERRED`), which starts with a read lock and fails with `SQLITE_BUSY` or `SQLITE_READONLY_CANTLOCK` when attempting an in-flight write upgrade under concurrency.
+
+**Changes:**
+1. `apps/desktop-tauri/src/single_instance.rs` & `apps/desktop-tauri/src/single_instance_tests.rs`:
+   - Created process-boundary single-instance guard using Windows session-local named mutex (`Local\mu.kasir.app-primary-instance`).
+   - If held, searches for active window (`kasir.mu` or IPC target), brings to foreground, forwards arguments, and exits cleanly.
+   - If held but window is not found (e.g. `tauri dev` watch reload), retries with 1500ms timeout for previous instance to finish releasing file locks before cleanly terminating.
+2. `apps/desktop-tauri/src/lib.rs`:
+   - Wired `single_instance::acquire()` at the very entry of `pub fn run()` before runtime or logging initialization.
+3. `apps/desktop-tauri/src/state.rs`:
+   - Configured `conn.busy_timeout(std::time::Duration::from_secs(5))` in `AppState::new`.
+   - Updated `seed_primary_store` to use `conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?` to avoid deferred lock-upgrade collisions.
+
+**Verification:**
+- `cargo check -p kasirmu-app` -> OK, 0 warnings.
+- `cargo test -p kasirmu-app --lib single_instance::tests` -> 3 passed, 0 failed.
+- `cargo test -p kasirmu-app --lib state::tests` -> 11 passed, 0 failed.
+
 ## 2026-09-20 — Absorb: `auth::has_users` raises the tablet debt ceiling 88 → 89 (mobile/tablet)
 
 **Context:**
@@ -12224,13 +12389,996 @@ committed and that file may be dirty in a sibling lane. `scripts/verify-scoped-c
 scope (fixed separately in `19568c216`). No census row moved: `desktop_link` gates nothing in either
 shell under this decision.
 
+## 2026-09-25 — Animation audit: four validated defects repaired, one claim disproved (ui/hooks, ui/theme, ui/features/kds)
+
+**Request:** "a very deep bug hunting on animation for our app both windows or mobile." The audit swept
+140 sheets / 63 keyframes files / 513 transitions / 18 `requestAnimationFrame` sites / 24
+exit-animation callers across both entries (`index.html`+`main.tsx`, `index.mobile.html`+
+`main.mobile.tsx`). Seven candidate defects came out of it; **every one was validated before a line of
+implementation was touched** — Red first, and one of them did not survive validation.
+
+**Validation (evidence, not assertion).** Each claim got its own failing test or a measurement:
+
+| # | Claim | Verdict | Evidence |
+|---|---|---|---|
+| 1 | `useAnimatedModal` reopen race strands a modal at opacity 0 | **confirmed** | 2 Red tests, `exiting` stuck `true` |
+| 2 | `useAnimatedModal` ignores reduced motion | **confirmed** | 2 Red tests, `mounted` held 200ms |
+| 3 | `!important` transitions outrank the blanket reduce kill | **confirmed** | 6 escapes, two independent scans (Python + the new TS gate) agreeing line-for-line |
+| 4 | KDS WAAPI tab pill ignores reduced motion | **confirmed** | control test plays `{duration:340}`, reduce test shows it still playing |
+| 5 | WorkspaceSettingsModal/FastPIN exit timer longer than the CSS | **DISPROVED as a bug** | see below |
+| 6 | `components/UpdateBanner` is dead while the shipped twin has no exit | **confirmed** | 3 greps: only its own test imports it |
+| 7 | backdrop-filter / layout-prop / `transition:all` / box-shadow-pulse jank | **measured, not unit-testable** | keyframe property scan + `animationCompliance`'s own harvest line |
+
+**#5 is the finding that failed validation, and it is the one worth remembering.** My claim was
+"the panel is invisible but still hit-testable for 100ms." Reading the markup instead of guessing:
+`WorkspaceSettingsModal.tsx:156-171` nests `.panel` INSIDE `.backdrop`, and
+`WorkspaceSettingsModal.module.css:21` puts `pointer-events: none` on `.backdrop--exiting` deliberately
+ungated — "refusing stale clicks while closing is function, not decoration." The panel inherits it.
+`FastPINOverlay.css:60` does the same for its overlay, and the card inherits from that. So neither
+mismatch is a hit-test hazard; what survives is only that `overlayOut`/`slideoverOut` reach opacity 0
+at 200ms while the backdrop runs to 300ms — a visual asymmetry, and a documentation inconsistency
+(`useExitAnimation.ts:66-70` states the duration MUST equal the surface's own rule, then cites this
+very component as a correct example of passing one explicitly). Left alone this round on purpose:
+changing 200→300 is a design judgement about entry/exit symmetry, not a defect repair.
+
+**Solution — three repairs, each driven by its Red test:**
+
+1. `ui/src/hooks/useAnimatedModal.ts` — the close branch used to `return () => clearTimeout(timer)`
+   before `prevShow.current = show`, so the ref read `true` for the whole exit. A reopen inside the
+   window then matched NEITHER branch: React's cleanup cancelled the unmount (so `mounted` survived)
+   while nothing cleared `exiting`, pinning the surface on its `animation: … forwards` keyframe at
+   opacity 0 with the caller's focus trap off (`mOpen && !eOpen`). Recording the edge on that path is
+   the whole fix — it lets the opening branch fire on the way back in. Same file: the delay now runs
+   through `animDuration()`, the last exit path in the app that did not.
+2. `ui/src/features/kds/useKdsTabIndicator.ts` — gated the `Element.animate()` flourish on
+   `prefersReducedMotion()`. **WAAPI is invisible to both stylesheet guards**: `reset.css`'s blanket
+   `animation-duration: 0.01ms !important` and `tokens.css`'s `animation: none` address CSS animations
+   only, so a reduced-motion user was getting a full-speed 340ms squeeze-and-overshoot on every KDS
+   tab change. Same class as the topology simulation pulse fixed 2026-08-12; the pill still MOVES
+   (position is state-driven), only the flourish is suppressed.
+3. **Six `!important` escapes**, each scoped under `@media (prefers-reduced-motion: no-preference)`
+   rather than stripped of `!important` — stripping would have changed cascade behaviour in the normal
+   case for no gain, while the media gate makes the declaration not exist under `reduce`. The blanket
+   kill is an `!important` longhand on `*` = (0,0,0); two important declarations are settled by
+   specificity, so anything at ≥(0,1,0) beat it: `tokens.css` `html.is-theme-transitioning *` (0,1,1)
+   and its `.kds-theme-indicator` override (0,2,1) — a 200ms document crossfade plus a 280ms pill slide
+   after every theme toggle — and `KdsScreen.css` `.kds-switch` (0,1,0) / `.kds-switch::after` (0,2,0),
+   the last one carrying real motion (the knob slides 24px). The `tokens.css` pair is exactly the
+   "pre-existing quirk … worth a future round" this journal already logged on 2026-09-11; it is now
+   closed. The misleading comment at `KdsScreen.css:2399` that justified omitting `.kds-switch` (it
+   claimed tokens.css kills animation/transition "on all elements") was rewritten to state the real
+   rule.
+
+**Why a new gate was needed:** `animationCompliance.test.ts`'s own harvest line says
+"513 transition declarations are never read" — all six escapes were transitions, so the existing
+suite was structurally incapable of surfacing them. `ui/src/__tests__/motionImportantEscapes.test.ts`
+closes that hole and is written so it cannot go vacuous: four synthetic cases pin the predicate (bare
+escape flagged; `no-preference`-scoped accepted; `none`/`0.01ms`/iteration-count-1 kills accepted;
+a comment that narrates a reduce block does NOT excuse a real declaration), and a corpus case asserts
+the walker still sees >100 sheets including `reset.css`/`tokens.css`/`KdsScreen.css`. CI picks it up
+for free — `dev-ci.yml:421` runs bare `npm test`.
+
+**Verification:** `tsc --noEmit` clean; `eslint` 0 errors (56 warnings, all pre-existing); targeted
+suites 94/94 (animation + modal + hook), 847/847 (KDS + shift), 111/111 (5 CSS compliance + 4 theme),
+6/6 (new gate); full `vitest run` 10,495 passed / 2 failed — those 2 were load flakes (different files
+every run: AnalyticsScreen, DesignSystem, useNewTicketSound, TopologyRevisionBrowser,
+SalesDashboardScreen), and all five pass in isolation. `animationCompliance` harvest numbers are
+byte-identical to the pre-change baseline (140 sheets / 334 declarations / 161 graded / 48.2% /
+76 swallowed / 30 reduce blocks / 513 transitions), so restructuring those six declarations changed
+no graded count. Skill drift guard: 2 findings, both pre-existing in `figma-bridge/SKILL.md`.
+
+**Deliberately NOT done:** (a) the perf findings — `backdrop-filter` animated in 11 modal enter/exit
+keyframe families, `left`+`width` transitions with permanent `will-change` on `.kds-tab-indicator`,
+55 `transition: all` declarations, infinite `box-shadow` pulses on always-on KDS/kiosk/payment
+surfaces, and `mousemove`-only cart-resize drag (inert to touch) — are measured and evidenced but not
+unit-testable, so they need a perf/E2E slice rather than a TDD one. (b) The dead `components/UpdateBanner`
+twin: confirmed dead (only its own test imports it; not exported from `components/index.ts`), while the
+shipped `app/UpdateBanner.tsx` snaps away on dismiss (`app/UpdateBanner.css` has 0 `exiting` rules) and
+is the sole one of 63 keyframes sheets with no reduced-motion handling at all. That is a retirement
+plus a feature, so it is its own slice. (c) `index.html:116` still claims React clears `#boot-splash` on
+mount — false, the node is a sibling before `#root`; `index.mobile.html` documents it correctly.
+
+**Commits:** `cfbf3199a` fix(ui): clear exiting on mid-fade reopen and honour reduced motion ·
+`fd159742d` fix(ui): gate KDS tab pill WAAPI flourish on reduced motion ·
+`22caae2d5` fix(ui): scope important motion declarations to no-preference — plus this docs entry.
 
 
+### 2026-09-28 — TDD round 1: the tax scope/window/entity probes no longer swallow a DB fault
+
+**Problem:** Three one-row readers in `crates/kasirmu-core/src/db/tax/scopes.rs` ended their
+`query_row` in a bare `.ok()` — `tax_rate_scope` (`:490`), `tax_rate_window` (`:294`) and
+`location_legal_entity` (`:524`) — and `tax_rate_applies_at` (`:564`) did the same. A bare
+`.ok()` collapses EVERY `rusqlite::Error` to `None`, and `None` is defined by these methods as
+"no such active row" / "no entity assigned". So a DB failure was reported as a configuration
+answer: the authoring screen (`list_tax_rate_scopes` callers, bridge `tax.rs:296`, tablet
+`tax.rs:114`) and the sale path (`db/sales_tax.rs:511`, `:517`) were handed "this rate has no
+scope", "this rate has no window" and "this location has no legal entity" while the database was
+actually failing. The entity answer is the one with a money consequence: `Some(s) =>
+self.location_legal_entity(&s.location_id)?` in `sales_tax.rs` decides whether level 2 of the
+resolver walk applies at all.
+
+This is the exact MSL-27 class the same file already documents fixing twice — `update_tax_rate_scoped`
+(`:133`) and `validate_scope_target` (`:250`) both carry comments naming the `.ok()` trap — so the
+defect was a known pattern that had not been swept to these four probes.
+
+**Solution:** Each probe now uses `.optional()?` — rusqlite's idiom that maps ONLY
+`QueryReturnedNoRows` to `None` and propagates every other error as `CoreError::Db`. Two Red-first
+tests in `db/tax_tests.rs` force a real fault the way the sibling MSL-27 pin does
+(`ALTER TABLE ... RENAME TO ..._hidden`) and assert the failure surfaces as `CoreError::Db`, not as
+`None`. Both went red for the right reason ("a DB failure must not read as 'no such rate': None")
+before the fix and green after.
+
+**Verified:** full `kasirmu-core` lib suite **3395 passed / 0 failed**; tax module 80/80;
+`cargo fmt -p kasirmu-core -- --check` reports no diff in either touched file (the two diffs it does
+report are pre-existing, in `user_tests.rs`, and are the red recorded in
+`docs/records/snapshots/2026-09-28-rustfmt-gate-red.md`); `cargo clippy -p kasirmu-core --all-targets`
+emits no diagnostic naming either touched file (6 pre-existing errors elsewhere).
+
+**Deliberately NOT done:** the same `.ok()` shape still stands at 14 sites across `db/` — `kds_lines.rs:154`,
+`kds_orders.rs:442`, `loyalty.rs:674`, `popularity.rs:591`/`:627`, `promotions.rs:289`/`:421`,
+`products_stock_adjust/adjust.rs:466`/`:475`, `sales_tax.rs:548` and others — plus `tax/scopes.rs:629`
+(the last-coverage guard's own read, where a swallowed fault reads as "nothing is covered" and
+DECLINES a refusal the guard exists to raise). Whether each of those is a bug depends on what its
+`None` means to its caller, so the sweep is a per-site TDD slice, not a mechanical replace. That is
+round 2+.
+
+**Commits:** this entry + the fix land in the pathspec commit below.
 
 
+### 2026-09-28 — TDD round 2: the loyalty earn path stops inventing an award rate
+
+**Problem:** two probes in `crates/kasirmu-core/src/db/loyalty.rs` turned a database fault into
+an ANSWER, not an error.
+
+1. The tier-formula probe (`:665-676`) ended in `.ok()` and was then answered with
+   `unwrap_or((10, 1_000_000))` — a hardcoded rate. So a failing `loyalty_tiers` read did not
+   fail the award; it **awarded points at a rate the operator never configured**, silently. The
+   tier IS the rate ladder; a wrong rate here is money-shaped, and the mistake is only
+   discoverable by reconciling points after the fact. The Red test proves the severity: with the
+   probe faulted, `earn_points` returned `Ok(Some(... points: 100 ...))` instead of an error.
+2. The customer-existence probe used `.unwrap_or(false)`, so "the `customers` table could not be
+   queried" was answered `CoreError::NotFound { entity: "customer" }` — "this customer does not
+   exist" while the row was present and the database was failing. The same shape sat in
+   `get_or_create_loyalty_account` (`:105-112`), which is the second door into the same probe.
+
+**Solution:** both probes now use `.optional()?`. A genuinely MISSING tier (or a NULL `tier_id`)
+keeps the documented default rate; a row that EXISTS but whose read FAILED is now `CoreError::Db`.
+Two Red-first tests in `db/loyalty_tests.rs` force a real fault and assert `CoreError::Db`.
+
+**A test that passed for the wrong reason, caught and fixed.** The first draft of the formula test
+renamed the whole `loyalty_tiers` table. That passed BEFORE the fix — but not because the probe was
+pinned: the whole-table rename also broke the later tier-recompute subquery in the
+`UPDATE loyalty_accounts` statement, so the function failed for an unrelated reason. The fault is
+now injected by renaming ONLY the column the probe reads
+(`ALTER TABLE loyalty_tiers RENAME COLUMN earn_multiplier_millionths TO ..._hidden`), which leaves
+the later `SELECT id FROM loyalty_tiers` resolving and therefore pins the probe itself. Both tests
+now go red for the right reason and green after.
+
+**Verified:** full `kasirmu-core` lib suite **3397 passed / 0 failed** (3395 + the 2 new);
+loyalty module 49/49; `cargo fmt -p kasirmu-core -- --check` reports no diff in either touched
+file; `cargo clippy -p kasirmu-core --all-targets` emits no diagnostic naming either touched file.
+
+**Deliberately NOT done — the candidates this pass surveyed and rejected as distinct slices:**
+`adjust.rs:466`/`:475` (stock-threshold lookup collapsing a fault to "no threshold configured",
+dropping a low-stock alert) and `:494` `unwrap_or(false)` (dedup probe collapsing to "no existing
+alert", duplicating an alert); `promotions.rs:289`/`:421` (`get_product(...).ok()` in the
+category-scope closure, silently treating an unreadable product as uncategorized and dropping its
+line from the discount base — that closure's `Option` contract makes it a signature change, not a
+one-liner); and `tax/scopes.rs:629` in `ensure_scoped_coverage_survives`, where a swallowed fault
+reads as "nothing covers this location" and DECLINES a refusal the guard exists to raise. Each needs
+its own red-first slice.
+
+**Commits:** this entry + the fix land in the pathspec commit below.
 
 
+### 2026-09-28 — TDD round 3: the tax coverage guard stops failing open
 
+**Problem:** `Store::ensure_scoped_coverage_survives` (`crates/kasirmu-core/src/db/tax/scopes.rs:617-629`)
+exists to REFUSE archiving the last rate row covering a scoped location — the "somebody authored a
+scope for a branch, and archiving its last row silently relocates that branch onto a fallback three
+tiers away, or onto nothing at all" case its own doc describes. Its first read of the row being
+archived ended in `.ok()`, and the very next lines define `None` as "no such active row — nothing
+scoped is being erased" and return `Ok(())`. So a database fault made the guard **allow the archive
+it exists to refuse**: fail-open on a money-configuration guard. The Red test proves it — with the
+probe faulted, `delete_tax_rate` returned `Ok(())`.
 
+**Solution:** the probe now uses `.optional()?`, so only a genuinely absent row is "nothing scoped
+is being erased" and a real fault is `CoreError::Db`. The Red-first test injects the fault by
+renaming only the column that read touches (`RENAME COLUMN location_id TO location_id_hidden`), so
+the failure is the guard's own and not a later statement's.
 
+**Verified:** full `kasirmu-core` lib suite **3398 passed / 0 failed** (3397 + 1 new); tax module
+81/81; `cargo fmt -p kasirmu-core -- --check` and `cargo clippy -p kasirmu-core --all-targets` both
+silent on the two touched files.
 
+**Investigated and deliberately NOT changed — `adjust.rs:466`/`:475`/`:494`.** These were queued
+for this round and are NOT defects: the caller documents the threshold check as "NON-FATAL by design:
+a threshold alert is advisory, so a failure here must not roll back the stock adjustment", routes it
+through `if let Err(e) = ... { tracing::warn!(...) }` (`:345-359`, the MSL-26 log), and
+`products_tests.rs::a_failing_threshold_check_does_not_block_the_stock_adjustment` pins that a failed
+threshold check must not fail the adjustment. Converting the probes to hard errors would break that
+pinned contract. The residual (a fault reads as "no threshold configured" or "no existing alert")
+changes which advisory alert is written, never the adjustment — so it belongs to the threshold
+feature, not to this probe-class sweep. Recorded rather than churned.
+
+**New leads this pass surveyed, queued for their own slices (not fixed here):**
+1. `db/sales_tax.rs:541-549` — `resolve_best_tax_rates_for_sku_at` reads the product's
+   `category_id` with `.ok().and_then(|v| v)`; a fault makes a product read as UNCATEGORIZED and
+   silently falls through to the tenant-default rate. That is a wrong TAX RATE on a sale. Same
+   MSL-27 class, and the strongest remaining candidate found so far.
+2. `db/popularity.rs:620-628` — `sku_means` reads the product's category with
+   `.ok().flatten()`; a fault silently drops to the global mean, quietly shifting the popularity
+   score for that SKU's search events.
+
+**Commits:** this entry + the fix land in the pathspec commit below.
+
+### 2026-09-28 — TDD round 4: a category-probe fault stops billing the tenant-default rate
+
+**Problem:** `Store::resolve_best_tax_rates_for_sku_at` (`crates/kasirmu-core/src/db/sales_tax.rs`)
+picks a sale line's tax rates from three levels: product-assigned, then category-assigned via the
+product's `category_id`, then the store default. The level-2 probe read `category_id` with
+`.ok().and_then(|v| v)`, so a database fault collapsed to `None` — and `None` there means "this
+product has no category". Resolution fell through to level 3 and returned the TENANT-DEFAULT rate.
+The Red test made the money impact literal: an 8% category rate and a 5% default configured, the
+probe faulted, and `resolve_best_tax_rates_for_sku` returned the "Default Store Tax 5%" row — a
+wrong tax rate on a real sale, with no error raised anywhere.
+
+**Solution:** `.optional()?` — but the obvious form was wrong and the suite caught it. Keeping the
+bare `row.get(0)` let inference pick `String`, so a product with a NULL `category_id` — the
+ordinary "no category" case — errored `InvalidColumnType` and broke 12 existing tests, among them
+`resolve_best_tax_rates_falls_back_to_default_store_rate` and
+`resolve_best_tax_rates_returns_empty_when_no_rates_exist`. The correct form names the column's
+nullability in the getter — `row.get::<_, Option<String>>(0)` — and flattens:
+`.optional()?.flatten()`. Row-missing, column-NULL, and DB fault are three distinct outcomes
+again: the first two really are "no category", the third propagates as `CoreError::Db`. The test
+injects the fault by renaming only `products.category_id`, so the failure is the probe's own.
+
+**Verified:** Red first — the new test failed returning the default-rate row; after the fix the
+sales module passed 156/156 and the full `kasirmu-core` lib suite passed **3399 / 0**
+(3398 + 1 new); `cargo fmt --check` and `cargo clippy --all-targets` clean on both touched files.
+
+**Commits:** this entry + the fix land in the pathspec commit below.
+
+### 2026-09-28 — TDD round 5: a category-probe fault stops scoring popularity against the global mean
+
+**Problem:** `Store::recompute_popularity` (`crates/kasirmu-core/src/db/popularity.rs`)
+refreshes a single SKU's popularity score after a sale or search event, smoothing its raw
+signals against cached per-category means. The probe deciding WHICH means to use — reading the
+product's `category_id` — used `.ok().flatten()`, so a database fault collapsed to `None`.
+`None` there reads as "uncategorized": the SKU fell back to the GLOBAL catalog means, a
+global-mean-smoothed score overwrote the correct category-mean one, and the recompute reported
+`Ok(())`. The retail grid's default popularity sort silently drifted for that SKU with no
+error anywhere — the same MSL-27 defect class as round 4, one file over.
+
+**Solution:** `.optional()?`, with the round-4 lesson applied on the first attempt: the getter
+is typed `row.get::<_, Option<String>>(0)` so a NULL `category_id` (the ordinary uncategorized
+case) still resolves to `None`, and `flatten()` keeps row-missing and column-NULL as the same
+"no category" while a real fault propagates. `sku_means` became
+`Result<(f64, f64, f64), CoreError>`; its only caller — `recompute_popularity`, already
+`Result`-returning — now propagates with `?`.
+
+**Verified:** Red first — under a faulted probe (renaming only `products.category_id`) the
+recompute reported success: `expect_err` got `Ok(())`. After the fix the popularity module
+passed 15/15 and the full `kasirmu-core` lib suite passed **3400 / 0** (3399 + 1 new);
+`cargo fmt --check` and `cargo clippy --all-targets` clean on both touched files. The test
+pins the healthy path before injecting the fault — a missing category cache would otherwise
+make the fault test pass for the wrong reason — and asserts the failed run left the stored
+score untouched.
+
+**Investigated & deliberately NOT done:** `read_setting`'s own `.ok()` still collapses a
+settings-read fault into a cache miss, falling back to global means — same drift, lower
+severity, different fault surface. Queued as its own slice.
+
+### 2026-09-28 — TDD round 6: receipt-barcode lookup stops swallowing DB errors (COR-9)
+
+**Problem:** `Store::lookup_sale_by_receipt_barcode` (`crates/kasirmu-core/src/db/sales.rs`)
+used `.ok()` on its query into the `receipt_barcodes` table. Any database failure (table/column
+corruption, lock error, schema drift) silently collapsed into `None`, causing the function to
+report `Ok(None)` ("sale not found") instead of propagating `CoreError::Db`. This could cause
+an active sale to be treated as non-existent during receipt verification or returns.
+
+**Solution:** Replaced `.ok()` with `.optional()?` on the query row result, returning
+`Result<Option<Sale>, CoreError>` where DB errors are properly propagated and missing barcodes
+cleanly resolve to `Ok(None)`. Updated the audit header to mark COR-9 CLOSED.
+
+**Verified:** Red first (`a_db_failure_in_lookup_sale_by_receipt_barcode_surfaces_the_error`
+panicked with `a DB failure must not silently return Ok(None): None`). After `.optional()?`
+the test passed, along with `cargo fmt`.
+
+**Commits:** this entry + the fix land in the pathspec commit below.
+
+### 2026-09-28 — TDD round 7: primary regional config stops swallowing DB errors
+
+**Problem:** `Store::primary_regional_config` (`crates/kasirmu-core/src/db/regional.rs`)
+queries `SELECT id FROM locations WHERE is_primary = 1 LIMIT 1` using `.ok()`. Any database
+query fault (table lock, schema corruption, I/O failure) collapsed into `None`, returning
+`Ok(None)` ("no primary location / not seeded yet") instead of propagating `CoreError::Db`.
+Callers would incorrectly treat an active store with a faulted DB as an unseeded deployment.
+
+**Solution:** Replaced `.ok()` with `.optional()?` on the query row result, returning
+`Result<Option<RegionalConfig>, CoreError>` where genuine DB failures propagate as `Err(CoreError::Db)`
+while an unseeded/no-primary state cleanly resolves to `Ok(None)`.
+
+**Verified:** Red first (`primary_regional_config_propagates_database_error` panicked with
+`a database error must not silently return Ok(None): None`). After `.optional()?`, the test
+passed and `cargo fmt` was applied.
+
+**Commits:** this entry + the fix land in the pathspec commit below.
+
+### 2026-09-28 — TDD round 8: monthly forecasts, a means-read fault, and a torn means cache
+
+**Problem (1/3):** `Store::category_forecast` (`crates/kasirmu-core/src/db/popularity.rs`)
+parsed every trend bucket key with `NaiveDate::parse_from_str(&p.period_start, "%Y-%m-%d")`.
+The monthly bucket key is `YYYY-MM` (`strftime('%Y-%m', …)`), which never matches, so every
+monthly point was dropped from its category's series and the forecast returned a confident row
+of zeros — `forecast_units: 0`, `trend_per_period: 0.0`, `recent_avg_units: 0.0` — for a catalog
+with real monthly sales history. The granularity is reachable: the bridge's `validate_trend_args`
+admits `monthly` (`TREND_GRANULARITIES`) and `ui/src/api/reports.ts` types the argument
+`'daily' | 'weekly' | 'monthly'`. The caller got a confident zero instead of an error.
+
+**Solution (1/3):** a `parse_period_start` helper accepts both bucket-key shapes — `%Y-%m-%d` for
+the daily/weekly buckets and `%Y-%m` anchored to the first of the month. Only the per-period
+ordering and count feed the fit, so the anchor day is immaterial; the function doc now says so.
+
+**Problem (2/3):** `read_setting` used `.ok()`, collapsing a `settings` read fault onto the same
+`None` as a genuinely absent key. `read_mean`, `category_means` and `sku_means` were built on
+that, so a fault read as an empty cache: the SKU was scored against 0.0 means — the fresh-DB
+path — and `recompute_popularity` returned `Ok(())`. Same defect class as MSL-27 (the category
+probe, round 5, one level up); round 5's entry queued exactly this slice.
+
+**Solution (2/3):** `read_setting` now returns `Result<Option<String>, CoreError>` via
+`.optional()?`, so only row-absence is `None`; `read_mean` and `category_means` propagate, and
+`category_popularity_trend`'s means read propagates with them. An absent or unparseable cache
+still degrades to the global fallback by design — it is a locally rebuilt cache, not a source of
+truth — while a database fault is now an error.
+
+**Problem (3/3):** `recompute_all_popularity` persisted the means cache (`CATEGORY_MEANS` plus the
+three `MEAN_*` keys) through `self.conn` and only then opened the transaction that writes the
+scores. A score write that failed left the cache ahead of the catalog, so every later single-SKU
+recompute smoothed against means that no stored score was built from until some later full pass
+happened to succeed — and AGENTS.md puts SQLite writes in one transaction.
+
+**Solution (3/3):** a free `write_setting_in_tx(tx, key, value)` helper; the cache and the scores
+now commit in one transaction. The old `write_setting`/`write_mean` methods went away with their
+now-only caller.
+
+**Verified:** Red first on all three. (1) `left: 0, right: 16` on a 10 → 12 → 14 units-per-month
+series; (2) `expect_err` got `Ok(())` after renaming only `settings.value`; (3) `left:
+"145.61720018347634"` vs `right: "35.35050620855721"` after a trigger blocked the score UPDATE.
+After the fixes the popularity module passed **36/36** (33 before this round) and
+`cargo fmt -p kasirmu-core -- --check` is clean on both touched files. The full `kasirmu-core` lib
+suite is **3376 passed / 29 failed**, and all 29 are pre-existing environment failures — the
+file-DB race, backup and export tests panicking on `Os { code: 5, PermissionDenied }` while
+building a database under `std::env::temp_dir()` — untouched by this round.
+
+**Investigated & deliberately NOT done:** a void does not recompute popularity, but `void_sale`
+only voids `status = 'active'` sales, which the `status = 'completed'` filter never counted, so no
+score can be left stale by one. The popularity window filters compare an RFC3339 `…T…Z` value
+against SQL-side `datetime('now')`, but that prefilter is always a superset of the
+`[0, WINDOW_DAYS)` window `decayed_sum`/`total_events` enforce afterwards, so nothing is
+mis-included.
+
+**Commits:** this entry + the fixes land in the pathspec commit below.
+
+### 2026-09-28 — TDD round 9: legal entity regional resolution stops swallowing DB errors
+
+**Problem:** `Store::regional_config_for_location` (`crates/kasirmu-core/src/db/regional.rs`)
+queries `legal_entities` to construct the `LegalEntity` layer. The query row execution used
+`.ok()`, collapsing any row parsing, type conversion, or query fault into `None`. When faulted,
+the location silently ignored its configured legal entity and fell back to organization/built-in
+defaults (e.g. "en-US", built-in currency) and returned `Ok(RegionalConfig)` rather than
+propagating `CoreError::Db`.
+
+**Solution:** Replaced `.ok()` with `.optional()?` on the `query_row` call. Row-absence
+(or cross-tenant isolation where no row matches) still cleanly resolves to `None` preserving
+fail-closed tenant isolation, while SQLite type conversion or database errors propagate as
+`Err(CoreError::Db)`.
+
+**Verified:** Red first (`regional_config_for_location_propagates_legal_entity_db_error`
+panicked with `a database error reading legal entity must not silently fall back: RegionalConfig { ... locale: RegionalValue { value: "en-US", scope: BuiltIn } ... }`).
+After `.optional()?`, the test passed, all 21 regional tests passed, and `cargo fmt` was clean.
+
+**Commits:** this entry + the fix land in the pathspec commit below.
+
+### 2026-09-28 — TDD round 10: void_pending_sale audit detail stops swallowing total_minor DB errors
+
+**Problem:** `Store::void_pending_sale` (`crates/kasirmu-core/src/db/sales_lifecycle.rs`)
+queries `total_minor` from the updated sale row to record in the `sale.void` audit log entry.
+The query used `.ok()`, causing any SQLite read/type-conversion/database error to collapse to
+`None`. This caused the audit log to record `"total_minor": null` for a voided sale without
+signaling any error, corrupting audit trails.
+
+**Solution:** Replaced `.ok()` with `.optional()?` on `tx.query_row`, propagating
+`CoreError::Db` when reading `total_minor` fails.
+
+**Verified:** Red first (`void_pending_sale_propagates_db_error_when_reading_sale_total`
+panicked with `a database error reading total_minor must not be swallowed into null audit details: ()`).
+After the fix, the test passed cleanly and `cargo fmt` was applied.
+
+**Commits:** this entry + the fix land in the pathspec commit below.
+
+### 2026-09-28 — TDD round 11: legacy stock bridge and location qty stop swallowing DB errors
+
+**Problem:** `Store::bridge_legacy_inventory_into_stock_summary_in_tx` and
+`Store::legacy_aware_location_qty` (`crates/kasirmu-core/src/db/products_stock_adjust/adjust.rs`)
+query `SELECT qty FROM inventory WHERE product_id = ?1` using `.ok()`. Any SQLite
+read/type-conversion/database error collapsed into `None`. In the legacy bridge, this silently
+skipped backfilling existing inventory into `stock_summary` with `Ok(())`. In location qty
+resolution, it caused current stock to be evaluated as 0, potentially overwriting legacy inventory
+upon stock adjustment.
+
+**Solution:** Replaced `.ok()` with `.optional()?` on both `inventory` query calls, ensuring
+database errors propagate as `Err(CoreError::Db)` instead of corrupting inventory calculations.
+
+**Verified:** Red first (`bridge_legacy_inventory_propagates_db_error_when_reading_inventory`
+panicked with `a database error reading legacy inventory must not silently be ignored: ()`).
+After `.optional()?`, the test passed, all 17 stock adjust tests passed, and formatting was clean.
+
+**Commits:** this entry + the fix land in the pathspec commit below.
+
+### 2026-09-28 — TDD batch 2: Postgres-twin monthly drift, and a Sunday reported a week early
+
+**Problem (1/2):** the Postgres mirror of the forecast
+(`apps/cloud-server/src/email_pg/popularity.rs`) parsed every trend bucket key with
+`NaiveDate::parse_from_str(&p.period_start, "%Y-%m-%d")` — the exact defect the previous round
+fixed on the SQLite side, still live in the twin. Its own trend emits `LEFT(created_at, 7)`,
+that is `YYYY-MM`, for the monthly granularity, so every monthly point was dropped from its
+category's series and the web dashboard's monthly forecast returned rows of zeros for catalogs
+with real monthly history. A duplicated implementation drifted from the original: the twin had
+no tests at all, which is why nothing caught it.
+
+**Solution (1/2):** one parser, not two. `parse_period_start` is now `pub` in
+`kasirmu_core::db::popularity` (the container type the twin already imports from) and the twin
+delegates to it, so the two implementations can no longer disagree about which bucket-key shapes
+the trend can emit. The new `email_pg/popularity_tests.rs` pins the contract the twin relies on.
+
+**Problem (2/2):** the weekly trend bucket used `DATE(x, tz, 'weekday 0', '-7 days')` (SQLite)
+and `date_trunc('week', x::date)::date - 1` (PG). Both put the boundary Sunday in the PREVIOUS
+week: `'weekday 0'` leaves a Sunday where it is and the `-7 days` then subtracts a week, so every
+Sunday sale was reported a week early and split away from the Monday that follows it.
+`Store::weekly_revenue` documents and has already fixed this exact class for its own Monday form
+(`'weekday 1', '-7 days'` pushes a Monday into the previous week; the fix is to shift first).
+The trend's doc comment also claimed to mirror `weekly_revenue`'s expression, which no longer
+exists — a maintainer trusting it would have concluded the two surfaces share a week boundary
+when they do not.
+
+**Solution (2/2):** shift first, then advance — `DATE(x, tz, '-6 days', 'weekday 0')` — so the
+boundary Sunday opens its own week; the PG mirror advances the day by one before truncating
+(`date_trunc('week', x::date + 1)::date - 1`). The comment now states the real convention: weekly
+trend buckets are Sunday-start, deliberately unlike `weekly_revenue`'s Monday-first weeks.
+
+**Verified:** Red first for both. (1) `a_monthly_bucket_key_parses_into_a_date` failed on the
+monthly key while the daily key passed. (2) `weekly_trend_buckets_a_sunday_with_the_week_it_starts`
+failed with `left: ["2026-08-02", "2026-08-09"]` for a Sunday+Monday pair that is one week.
+After the fixes: popularity **37/37**, cloud **363/363**, reports **115/115**, and the full
+`kasirmu-core` lib suite **3409 / 0**. ⚠️ The PG weekly expression cannot be run in this
+ecosystem — the twin's integration arms are `pg-tests`-gated (54 skipped, no Postgres available)
+— so that edit is inspection-verified only; the SQLite side of the same idiom is run-verified.
+
+**Environment, and why the earlier "29 environmental failures" claim was only half right:**
+every one of those 29 failures was `Os { code: 5, PermissionDenied }` raised while a test built a
+file database under `std::env::temp_dir()`, which this sandbox denies. Redirecting `TMP`/`TEMP`
+to a writable directory (`target/tdd-tmp`) lets them all run: the suite goes from **3376 / 29** to
+**3409 / 0**. Tests that need a real file database are runnable here after all — only the
+database-backed ones (Postgres) are not.
+
+**Investigated & deliberately NOT done:** `tz_modifier` still reads the primary location's
+timezone with `.ok()`, but its UTC fallback is documented and logged, and making it an error means
+an `Result` signature through nine modules — left for its own slice. The Sunday-vs-Monday week
+convention difference between the popularity trend and `weekly_revenue` is now documented rather
+than changed: unifying it is a product decision with UI consequences, not a defect fix.
+
+**Commits:** this entry + the fixes land in the pathspec commit below.
+
+### 2026-09-28 — TDD round 13: KDS complete_sale_to_kds stops swallowing product name DB errors
+
+**Problem:** `Store::complete_sale_to_kds_fanout` (`crates/kasirmu-core/src/db/kds_lines.rs`)
+resolves product display names for kitchen tickets using
+`self.product_name_by_sku(&l.sku).ok().flatten().unwrap_or_else(|| l.sku.clone())`.
+Any database query error (disk I/O, table lock, corrupted index) silently collapsed into `None`
+via `.ok()`, causing the kitchen ticket to print the raw SKU string instead of failing the
+ticket transaction and alerting the system.
+
+**Solution:** Changed `.ok().flatten()` to `?` on `product_name_by_sku(&l.sku)`, properly
+propagating `CoreError::Db` when querying product details fails, while legitimately un-named
+or missing product rows still fall back cleanly to `l.sku.clone()`.
+
+**Verified:** Red first (`complete_sale_to_kds_propagates_db_error_when_resolving_product_name`
+panicked with `a database error reading product name must not silently fall back to raw SKU`).
+After the fix, the test passed cleanly and `cargo fmt` was applied.
+
+**Commits:** this entry + the fix land in the pathspec commit below.
+
+### 2026-09-28 — TDD batch 3: unvalidated date bounds on the custom-report door
+
+**Loose end from batch 2, closed by RUNNING it rather than inspecting it.** That batch changed the
+Postgres twin's weekly bucket to `date_trunc('week', x::date + 1)::date - 1` and could only inspect
+the result. It is now evaluated against a real `postgres:17-alpine` (throwaway container, no host
+port, stopped afterwards): for Sunday 2026-08-09 the old form yields `2026-08-02` — the previous
+week, i.e. the bug — and the new one `2026-08-09`, the Sunday it opens; a Monday and a Saturday map
+identically before and after. The change fixes the boundary case and moves nothing else, so it
+stands. It stays an expression-level proof: the cloud's 54 `pg-tests` arms need a full
+`init.pg.sql` bootstrap, not merely a reachable server.
+
+**Problem:** `Store::build_custom_report` (`crates/kasirmu-core/src/export/mod.rs`) is the IPC door
+behind `build_custom_report_scoped` — the custom-report builder a user types a date range into — and
+it interpolated `start_date`/`end_date` straight into `DATE(col, tz) BETWEEN ?2 AND ?3` without
+validating them. Every other date-bounded report in the crate validates at the door, because
+`check_date_bound` exists precisely for this: SQLite compares a boundary as a plain string, so
+`"2026-13-45"` matches no row and the report returns **empty with no error** — the shape this repo
+treats as the worst one, "nothing errors and the numbers just read zero". The 24-09-26 crate review
+had already been through this function (MSL-57 fixed its *bound format*), and its own entry records
+that the export filter sat outside the audit fence — which is how the validation half stayed open.
+
+**Solution:** validate both bounds with `crate::db::reports::check_date_bound` when present, before
+the `0000-01-01`/`9999-12-31` defaults are applied, and inside the `has_date_filter` branch only —
+so a dataset with no date filter still ignores stray dates instead of rejecting them.
+
+**Verified:** Red first, and re-proven by temporarily reverting the fix (the honest way to show the
+failure was not incidental): the test failed with
+`CustomReportResponse { columns: ["id"], rows: [], truncated: false }` handed to `expect_err` — an
+empty report, not an error. Green after the fix: export **145/145**, `cargo fmt -p kasirmu-core`
+clean on both touched files.
+
+**Also checked and found sound (no change made):** `csv_cell` quotes cells and doubles embedded
+quotes; all ten CSV writers' headers match their row widths; the cloud's `revenue_profit_fields` is
+a faithful REP-08 mirror of the core arithmetic; and all six custom-report dataset definitions name
+real columns (`shifts` correctly filters on `opened_at`, not `created_at`).
+
+**Not fixed, recorded:** `truncated = rows.len() >= limit as usize` reports truncation for a result
+set that exactly fills the limit, because the query can only ever fetch `limit` rows — a truthful
+flag needs a `limit + 1` fetch. Still open from earlier batches: `tz_modifier`'s `.ok()` (documented
+UTC fallback, nine-module blast radius) and the cloud's `pg-tests` arms.
+
+**Commits:** this entry + the fix land in the pathspec commit below.
+
+### 2026-09-28 — TDD round 14: promotion category resolution stops swallowing product DB errors
+
+**Problem:** `Store::apply_promotion_to_sale` and `Store::apply_promotions_batch`
+(`crates/kasirmu-core/src/db/promotions.rs`) resolved product categories for category-scoped
+promotions via `self.get_product(sku).ok().flatten().and_then(|p| p.product.category_id)`.
+Any database read or type-conversion fault when looking up the product collapsed into `None`
+via `.ok()`. This caused category-scoped promotions to view eligible products as uncategorized,
+silently reducing or eliminating discounts (e.g. charging full price without error).
+
+**Solution:** Pre-resolve the product categories of the sale's lines when `promo.category_id.is_some()`,
+propagating any database error with `self.get_product(&line.sku)?` before discount evaluation.
+
+**Verified:** Red first (`apply_category_promotion_propagates_db_error_when_resolving_product`
+panicked with `a database error resolving product category must not silently collapse to zero discount: PromotionApplication { ... discount_minor: 0 ... }`).
+After the fix, the test passed, all 40 promotions tests passed, and formatting was clean.
+
+**Commits:** this entry + the fix land in the pathspec commit below.
+
+### 2026-09-28 — TDD round 15: checkout shortfall alternative resolution stops swallowing DB errors
+
+**Problem:** In `Store::complete_sale_deduction` (`crates/kasirmu-core/src/db/sales_checkout.rs`),
+when stock shortfall occurs, alternative inventory locations are resolved via
+`resolve_location_chain_for_sku(...).unwrap_or_default()`. If a database error occurs (e.g.
+locked tables, corruption, or I/O failure during binding traversal), `.unwrap_or_default()`
+swallowed the error and returned an empty vector. This caused the checkout flow to falsely
+report zero available alternatives in the shortfall validation payload rather than surfacing
+`CoreError::Db`.
+
+**Solution:** Replaced `.unwrap_or_default()` with `?` in both line item and BOM ingredient
+shortfall resolution blocks, propagating database errors immediately.
+
+**Verified:** Red first (`complete_sale_deduction_propagates_db_error_when_resolving_shortfall_alternatives`
+panicked expecting `CoreError::Db` but got `Validation { field: "stock", ... alternatives: [] }`).
+After changing to `?`, the test passed cleanly and `cargo fmt` was applied.
+
+**Commits:** this entry + the fix land in the pathspec commit below.
+
+### 2026-09-28 — TDD round 16: legacy workspace assignment stops swallowing row decoding DB errors
+
+**Problem:** In `Store::list_workspaces_legacy` (`crates/kasirmu-core/src/db/workspaces.rs`),
+user workspace assignments were queried from `user_workspaces` via
+`query_map(...)?.filter_map(|r| r.ok()).collect()`. Any row decoding or database error
+silently caused the corrupt row to be filtered out. If all rows or specific assignments failed,
+the user's workspace keys became empty and unexpectedly fell through to role-level workspace
+assignments, failing open with broader or unintended permissions.
+
+**Solution:** Changed `.filter_map(|r| r.ok())` to `.collect::<Result<Vec<_>, _>>()?`,
+ensuring row decoding or query errors fail closed and propagate as `Err(CoreError::Db)`.
+
+**Verified:** Red first (`list_workspaces_legacy_propagates_db_error_on_corrupt_user_workspace_row`
+panicked with `corrupt user_workspaces row must abort resolution with DB error: []`).
+After changing to `.collect::<Result<Vec<_>, _>>()?`, the test passed cleanly and `cargo fmt` was applied.
+
+**Commits:** this entry + the fix land in the pathspec commit below.
+
+### 2026-09-28 — TDD round 17: one table turn per sale, one bucket per unlabelled discount (core/reports)
+
+**Problem (1/2):** `Store::table_turnover` and `Store::hourly_table_activity`
+(`crates/kasirmu-core/src/db/reports/sales_summary.rs`) counted `COUNT(*)` over `kds_orders`
+joined to `sales`. `kds_orders` is `UNIQUE (sale_id, kitchen_zone)`, and the migration's own
+comment says a sale whose items span two kitchen zones fans out into one ticket per zone — so one
+party at one table was reported as two table turns, and the occupancy curve double-counted the
+same sale.
+
+**Problem (2/2):** `Store::discounts_summary` selected
+`COALESCE(NULLIF(discount_label, ''), 'discount') AS label` but grouped on the RAW
+`discount_label` column. An unlabelled discount is stored either as NULL (no label) or as `''`
+(empty label), so the same displayed code came back as two rows both labelled `discount`, each
+with half the count, and the pair spent two of the five `LIMIT 5` slots.
+
+**Solution:** `COUNT(DISTINCT s.id)` in both KDS-joined rollups, and
+`GROUP BY COALESCE(NULLIF(discount_label, ''), 'discount')` in `discounts_summary`, so the group
+key is the label that is actually displayed. Both doc comments now state the invariant (one turn
+per sale whatever the zone fan-out; bucketing on the displayed label). No other change.
+
+**Verified:** Red first, three independent failures. `table_turnover_counts_one_turn_per_table_not_per_kitchen_ticket`
+failed `left: 2, right: 1` (one sale, two zones, one table);
+`hourly_table_activity_counts_one_turn_per_table_not_per_kitchen_ticket` failed the same way;
+`discounts_summary_treats_null_and_empty_labels_as_one_bucket` failed `left: 3, right: 2` with
+codes `[WELCOME10 1, discount 1, discount 1]`. Green after the fix: reports + export + popularity
+**297/297**, `cargo fmt -p kasirmu-core -- --check` clean.
+
+**Closed from an earlier batch:** `truncated = rows.len() >= limit as usize` is fixed in
+`8c38443cb` — the query now fetches `limit + 1`, so a page that exactly fills the limit reports
+`truncated: false` while the genuine case still reports `true` and the page stays capped.
+
+**Probed and found sound (no change made):** a store offset past ±14:00 is not the silent-wipe
+hazard it looks like — SQLite accepts it (`DATE('2026-01-01T10:00:00Z', '+15:00')` → `2026-01-02`),
+so no NULL dates; an impossible day is likewise harmless (`DATE('2026-02-31')` → `2026-03-03`, and
+the range bounds compare as TEXT, so `2026-02-31` is a loose but harmless upper bound rather than
+an empty report) — `check_date_bound`'s month/day-range contract therefore stands as documented;
+`filter_analytics_bundle` never clears `category_popularity` / `category_forecast`, which is
+harmless because the email builder renders neither section, and the UI's seven
+daily/weekly/monthly/top-products/heatmap/category/stock checkboxes are exactly the seven keys the
+filter DOES clear; the cloud bundle calls `category_popularity(3)` and
+`category_forecast(.., "weekly", 10)`, matching the core call sites exactly. The cloud modules with
+no tests at all were read in full (`email_pg/analytics.rs`, `email_pg/settings_store.rs`,
+`email_pg/queue_worker.rs`, `sync_store/{sqlite,pg,conflicts,tenant}.rs`, `openapi/cloud.rs`) and
+no provable defect surfaced from reading: their PG arms need the full `init.pg.sql` bootstrap,
+which this checkout cannot run.
+
+**Not fixed, recorded:** the cloud report loop polls every 300 s
+(`start_report_sender_loop_pg`, `apps/cloud-server/src/email_pg/queue_worker.rs`) while
+`should_send_scheduled_with_last_sent` accepts a send only inside a ±120 s window — a wake-up that
+falls outside it is a silent miss for that whole period (~20% of wake-ups). The function reads the
+wall clock, so there was no deterministic Red, and widening the window is a behaviour change rather
+than a fix.
+
+**Commits:** the `truncated` fix is `8c38443cb`; the two rollup fixes are `bec59ac3b`; this entry
+lands in its own pathspec commit.
+
+### 2026-09-28 — TDD round 18: stock threshold alert checks stop swallowing DB errors
+
+**Problem:** In `Store::check_stock_threshold_and_alert_in_tx` (`crates/kasirmu-core/src/db/products_stock_adjust/adjust.rs`),
+querying `stock_thresholds` (for product+location or global product thresholds) chained `.ok().or_else(|| ...ok())`.
+Any query or row decoding error (e.g. invalid threshold integer or DB read error) was collapsed to `None`,
+failing open and silently skipping threshold alerts as if no threshold had been configured.
+Similarly, querying `stock_alert_events` used `.unwrap_or(false)`, masking database query errors when checking for
+existing alerts.
+
+**Solution:** Replaced `.ok()` with `.optional()?` on the threshold queries and `.optional()?.unwrap_or(false)`
+on the alert events query, ensuring database and decoding errors properly propagate as `CoreError::Db`.
+
+**Verified:** Red first (`check_stock_threshold_and_alert_propagates_db_error` panicked with
+`database error reading threshold must propagate: ()`). After changing to `.optional()?`, the test passed cleanly
+along with all 18 stock adjustment tests.
+
+**Commits:** this entry + the fix land in the pathspec commit below.
+
+### 2026-09-28 — TDD round 18: a custom stock threshold no longer sits under the default (core/reports + cloud mirror)
+
+**Problem:** `Store::low_stock_alerts_at_location`
+(`crates/kasirmu-core/src/db/reports/product_sales.rs`) resolved the reported `threshold` with a
+three-way `COALESCE(product+location, product+global, default)` but decided the WHERE with a
+DISJUNCTION — `COALESCE(ss.qty, 0) <= ?2 OR (custom ≤ threshold)` — so the default branch fired
+even when an enabled custom threshold existed. A product configured with a threshold of 4 and 5
+units on hand was returned as a low-stock alert carrying `current_qty: 5` beside `threshold: 4`: a
+row whose own fields contradict it, surfaced in the UI's low-stock badge. The Postgres twin
+(`apps/cloud-server/src/email_pg/analytics.rs::low_stock_alerts_at_location_pg`) had the identical
+predicate, so the scheduled email's low-stock section reported the same false alert.
+
+**Solution:** the filter now compares the current quantity against the SAME resolved threshold the
+`threshold` column reports — one `COALESCE(...)` in the WHERE, mirroring the SELECT list — so an
+enabled custom threshold replaces the default for the decision as well as for the value. Applied to
+both twins.
+
+**Verified:** Red first:
+`low_stock_alerts_at_location_does_not_fall_back_to_the_default_over_a_custom_threshold` failed with
+`[... current_qty: 5, threshold: 4 ...]` ("custom threshold 4 with 5 on hand is not low stock").
+Green after the fix, with the unpinned half asserted too (a product with no threshold still reports
+at the default). The Postgres twin was proved at expression level in a throwaway
+`postgres:17-alpine`: the OLD predicate returned `CALM (qty 5, threshold 4)`, `DEEP (15, custom 20)`
+and `PLAIN (5, default 10)`; the NEW one drops `CALM` and keeps `DEEP` and `PLAIN`. Suites: core
+reports + export + popularity **298/298**, cloud `sync_store` **22/22**, `cargo fmt -- --check` clean
+for both crates.
+
+**Also fixed (doc):** `WeeklyRevenueRow::week_start` was documented as "the week start (Sunday)"
+while the query buckets Monday-first (`'-6 days', 'weekday 1'`) and the UI keys yearly heatmap cells
+off a Monday `week_start` — a row doc contradicting the value it describes.
+
+**Folded in, no behaviour change:** the two table-activity rollups now share a `TABLE_TURN_SOURCE`
+constant holding the `COUNT(DISTINCT s.id)` source and its predicate. Two hand-copied versions
+drifting apart is exactly what produced the same double-count bug in both queries in round 17.
+
+**Probed and found sound (no change made):** the audit's premise that `sync_store/sqlite.rs` has no
+tests was WRONG — its arms are exercised through the parent's `sync_store_tests.rs` (origin-terminal
+round trip, fallback INSERT, all three pull shapes, conflict detection with auto-merge and
+last-writer-wins, duplicate rejection, tax-rate scope, and a sibling's three-shape filter test). Two
+genuinely uncovered paths were closed with tests and both are CLEAN, not finds: the multi-statement
+chunk boundary (`sqlite_push_batch_keeps_outcomes_across_the_multirow_chunk_boundary`, 501 items with
+a duplicate straddling the boundary: first `Accepted`, second `Rejected`, 500 rows stored) and the
+SYNC-10 fail-loud decode path (`sqlite_pull_fails_loudly_when_a_row_cannot_be_decoded`). Also sound:
+`sqlite_snapshot_products` reading `price_updated_at` as required is NOT the outlier the PG arm's
+`unwrap_or_default` suggests — core's own product row mapper (`db/mod.rs:617`) reads it as required
+too, so a NULL is outside the column's contract; `inventory_turnover`'s `sku_count =
+COUNT(*) FROM products` is exact because `delete_product` is a hard DELETE; and the tenant-scoped
+products join the cloud PG queries carry (`AND p.tenant_id = s.tenant_id`) has no core equivalent to
+fix, because the local `sales` table has no `tenant_id`/`store_id` column at all.
+
+**Commits:** this entry + the fixes land in the pathspec commit below.
+
+### 2026-09-28 — TDD round 19: reverse_loyalty_on_refund stops swallowing DB errors on earn lookup
+
+**Problem:** In `reverse_loyalty_on_refund` (`crates/kasirmu-core/src/db/loyalty.rs`), the query looking up
+the original `earn` transaction for a refunded sale used `.ok()`. Any database query error or column decoding
+failure (e.g. invalid integer points representation) was collapsed to `None`. The function treated this as
+"sale earned nothing or predates loyalty" and returned `Ok(None)`, silently completing the refund without
+reversing the customer's earned loyalty points.
+
+**Solution:** Replaced `.ok()` with `.optional()?` on the earn query, so legitimate missing rows return `Ok(None)`
+while true database and decoding errors properly propagate as `Err(CoreError::Db)`.
+
+**Verified:** Red first (`reverse_loyalty_on_refund_propagates_db_error_when_reading_earn_row` panicked with
+`database error reading earn transaction must propagate, not return Ok(None): None`). After `.optional()?`,
+the test passed cleanly along with all 50 loyalty tests.
+
+**Commits:** this entry + the fix land in the pathspec commit below.
+
+### 2026-09-28 — TDD round 20: next_count_number stops swallowing DB errors on sequence lookup
+
+**Problem:** In `Store::next_count_number` (`crates/kasirmu-core/src/db/stock_counts.rs`),
+the query computing `COALESCE(MAX(CAST(SUBSTR(count_number, ...) AS INTEGER)), 0)` used `.unwrap_or(0)`.
+Because `COALESCE` guarantees a row with 0 if no matching counts exist, `query_row` returns `Err` only on genuine
+database failures (e.g. database locks, disk failures, or schema errors). The `.unwrap_or(0)` swallowed
+these errors and returned `Ok(format!("{prefix}001"))`, causing collisions and constraint violations on subsequent inserts.
+
+**Solution:** Replaced `.unwrap_or(0)` with `?`, ensuring database errors properly propagate as `Err(CoreError::Db)`.
+
+**Verified:** Red first (`next_count_number_propagates_db_error` panicked with
+`database error in next_count_number must propagate, not fallback to 0: "CNT-20260928-001"`).
+After adding `?`, the test passed cleanly along with all 25 stock count tests.
+
+**Commits:** this entry + the fix land in the pathspec commit below.
+
+### 2026-09-28 — TDD round 21: set_terminal_profile stops misreporting DB errors as NotFound
+
+**Problem:** In `Store::set_terminal_profile` (`crates/kasirmu-core/src/db/terminal_profiles.rs`),
+the pre-check verifying terminal existence queried `SELECT COUNT(*) FROM terminals WHERE id = ?1` and mapped
+it with `.unwrap_or(false)`. If a database error occurred during the count query (e.g. disk fault or table lock),
+`.unwrap_or(false)` treated it as 0 terminals found and returned `Err(CoreError::NotFound { entity: "terminal", .. })`.
+This misreported underlying database faults as missing entities.
+
+**Solution:** Replaced `.map(...).unwrap_or(false)` with direct `?` propagation on the count query,
+only returning `CoreError::NotFound` when `count == 0` without DB errors.
+
+**Verified:** Red first (`set_terminal_profile_propagates_db_error_when_checking_terminal_exists` panicked with
+`expected CoreError::Db, got NotFound { entity: "terminal", id: "t1" }`).
+After adding `?`, the test passed cleanly along with all 19 terminal profile tests.
+
+**Commits:** this entry + the fix land in the pathspec commit below.
+
+### 2026-09-28 — TDD round 22: mark_push_attempt stops swallowing DB errors on attempts lookup
+
+**Problem:** In `Store::mark_push_attempt` (`crates/kasirmu-core/src/db/image_refs.rs`),
+when recording an image push failure, the current attempt count was queried via
+`SELECT attempts FROM image_push_queue WHERE hash = ?1` chained with `.unwrap_or((0,))`.
+If reading the `attempts` column failed due to a database error or invalid column type,
+the error was swallowed and treated as `0` attempts, endlessly resetting backoff attempts and
+preventing dead-letter handling.
+
+**Solution:** Replaced `.unwrap_or((0,))` with `.optional()?.unwrap_or(0)`, ensuring true database
+errors propagate as `Err(CoreError::Db)`.
+
+**Verified:** Red first (`mark_push_attempt_propagates_db_error_when_reading_attempts` panicked with
+`database error reading attempts must propagate, not fallback to (0,): ()`).
+After adding `.optional()?`, the test passed cleanly along with all 16 image ref tests.
+
+**Commits:** this entry + the fix land in the pathspec commit below.
+
+### 2026-09-28 — TDD round 23: complete_sale_with_resolved_shortfalls stops swallowing DB errors on stock check
+
+**Problem:** In `Store::complete_sale_with_resolved_shortfalls` (`crates/kasirmu-core/src/db/sales_lifecycle.rs`),
+when re-checking stock availability at alternative locations for shortfall resolutions, `stock_summary` and
+`workspace_inventory_locations` were queried using bare `.unwrap_or(0)`. If a database query or column decoding
+failure occurred (e.g. invalid integer format or DB error), the error was swallowed and treated as `available = 0`,
+causing the sale to fail with `CoreError::InsufficientStockAtLocation` instead of propagating `Err(CoreError::Db)`.
+
+**Solution:** Replaced `.unwrap_or(0)` with `.optional()?.unwrap_or(0)` on both the `stock_summary` availability
+query and the `workspace_inventory_locations` negative stock allowance check, properly propagating database errors.
+
+**Verified:** Red first (`complete_sale_with_resolved_shortfalls_propagates_db_error_when_checking_stock_summary`
+panicked with `expected CoreError::Db, got InsufficientStockAtLocation ...`).
+After adding `.optional()?`, the test passed cleanly along with all 12 shortfall settlement tests.
+
+**Commits:** this entry + the fix land in the pathspec commit below.
+
+### 2026-09-29 — Registration ratchet: floor 475 -> 481 for the EDC CRUD and e-Faktur doors
+
+**Problem:** Two feature commits registered six desktop commands and moved neither
+`REGISTERED_FLOOR` nor the generated debt ledger, so
+`drift_pin_registration_floor_is_met` and the ledger's own total were red at HEAD. The
+floor leg reads the tree on purpose — the only way it can fail is that names were
+registered — which is exactly what happened.
+
+**What landed:**
+
+- `8d3222d37` (feat(edc): implement multi-terminal binding routing and UI selection)
+  registered `edc::list_edc_terminals_scoped`, `edc::create_edc_terminal_scoped`,
+  `edc::update_edc_terminal_scoped`, `edc::delete_edc_terminal_scoped`.
+- `7e2ddcbe5` (feat(bridge): expose e-faktur stamping and pengganti endpoints)
+  registered `history::stamp_faktur_pajak_scoped`, `history::create_faktur_pengganti_scoped`.
+
+**All six arrive GATED**, which is the difference from the 472 -> 475 step: `edc::*`
+carries `SETTINGS_READ`/`SETTINGS_EDIT` and `history::*` carries `SALES_PROCESS`. So no
+ceiling and no ledger row moved — regenerating the ledger rewrote only
+`REGISTERED_TOTAL` (475 -> 481) and left all 68 debt rows byte-identical. This pass
+records what landed; it does not approve it.
+
+**Also fixed in the same pass:** four `gate_audit` census pins had drifted from source
+and one had never matched. Re-measured, not copied from the red message — desktop `edc`
+3 -> 8 calls and +`SETTINGS_EDIT`/`SETTINGS_READ`; desktop `history` 5 -> 7
+(+`SALES_PROCESS`). Tablet `history` 5 -> 7 (+`SALES_PROCESS`); tablet `categories`
+count 1 -> 3 with `PRODUCTS_READ` deliberately NOT added (its only occurrence is prose
+the census skips); tablet `tax` count 1 -> 8. The `rust-doc` gate was red on seven
+intra-doc errors across five crates and is now green.
+
+**Verified:** Reran the generator (`KASIRMU_REGENERATE_GATE_LEDGER=1`) rather than
+typing rows, as its header requires; 68 rows / 481 registered. `cargo test -p kasirmu-app
+--lib commands::registration_gate_tests` → 14 passed. `cargo test -p kasirmu-app --test
+gate_audit` → 3 passed. `RUSTDOCFLAGS='-D warnings' cargo doc --workspace --no-deps` →
+clean. `cargo fmt --all --check` and workspace clippy `-D warnings` → clean.
+
+### 2026-09-29 — Tablet twin of the same ratchet: mobile floor 343 -> 345
+
+**Problem:** The desktop entry above covers the app shell. The SAME commit registered the
+same pair on the tablet shell (`7e2ddcbe5` added
+`history::stamp_faktur_pajak_scoped` and `history::create_faktur_pengganti_scoped` to
+both `lib.rs` files), and it moved neither the mobile floor nor the mobile ledger — so
+`cargo test -p kasirmu-mobile` was red at HEAD too. Found by a full-workspace run, not by
+the per-crate checks.
+
+**What landed:** the two names above and nothing else, verified by diffing the
+`generate_handler![` block against `ebdca2758` (the commit that last set the constant):
+343 names then, 345 now, zero removals. Both arrive GATED on `SALES_PROCESS`, so
+regenerating the ledger rewrote only `REGISTERED_TOTAL` (343 -> 345) and left all 92 debt
+rows identical.
+
+**Note on the two-leg shape:** the mobile file checks the floor against the ledger's
+generated total as well as against the tree, so raising the floor alone turns it red with
+"the floor is now guarding a number nobody measured". Regenerating the ledger is required
+in the same pass; that is the pin working as designed, not a second defect.
+
+**Verified:** `KASIRMU_REGENERATE_GATE_LEDGER=1 cargo test -p kasirmu-mobile --lib
+drift_pin_generated_ledger_is_the_sweeps_own_output` → regenerated, 92 rows / 345
+registered. `cargo test -p kasirmu-mobile --lib commands::registration_gate_tests` → 12
+passed.
+
+### 2026-09-29 — RESOLVED: the records index is stamped and generated at once
+
+**Found while running the `scripts/check.sh` static gates.** `node
+scripts/generate-records-index.mjs --check` failed at HEAD, and the two mechanisms that
+touch `docs/records/README.md` were mutually exclusive:
+
+- `2b345fea4` (docs: audit the CI pipeline, records registry, …) committed an
+  **audit stamp** as the file's first line, per the docs-auditor convention every
+  other record now carries.
+- `scripts/generate-records-index.mjs` **rewrote the whole file** and had no
+  stamp-preservation logic. Running it therefore deleted the stamp; the freshness gate
+  then compared the stamped file against unstamped output and failed.
+
+So the gate was red for as long as the stamp existed, and the stamp was destroyed the
+moment someone followed the gate's own instruction ("run:
+node scripts/generate-records-index.mjs"). Neither the generator's header nor the gate's
+message mentioned the stamp, so the loop was silent until a reader noticed the stamp was
+gone.
+
+**RESOLVED the same day, and it was worse than the stamp alone.** Diagnosing the diff
+properly turned up a second defect underneath it: the generator's `frontMatter()` reader
+required `---` on the literal FIRST line, and the audit campaign stamps records ABOVE
+their front matter. ADR #37, #38 and #47 therefore lost their `num`, dropped out of the
+numbered table, and were reclassified as unnumbered records — the committed index listed
+55 ADRs while the generator could only see 52. That is the same class of defect the gate's
+own `_note` records finding at wiring time ("148 generated vs 158 committed lines, ADR #60
+missing").
+
+Three changes, all in `scripts/generate-records-index.mjs`:
+
+1. `frontMatter()` steps over a leading HTML comment before looking for `---`. Only
+   comments are skipped; any other leading text still means "no front matter".
+2. `leadingStamp()` carries the committed file's leading `<!-- … -->` block into the
+   render verbatim.
+3. `trailingFooter()` carries the trailing `> last audited …` line, which the campaign
+   writes as the stamp's other half.
+
+The generator still owns everything it authors — title, banner, sections, rows — so
+"header + conventions are regenerated too" holds for the index itself; only human
+provenance is passed through, which the script cannot know. Both ungated generated files
+(`docs/README.md` via `scripts/gen-summary.py`, and the SEO review) carry stamps today
+precisely because nothing compares them to a generator; this gives the one GATED file the
+same reach.
+
+**Verified:** `--check` now reports `ok: … (55 ADRs, …)`, exit 0, with the committed file
+byte-identical to HEAD — `--check` writes nothing. Negative control: tampering one body
+line still fails the gate, so the pass-through did not blunt it.
+
+**Damage check:** an earlier diagnosis run DID delete the committed stamp in the working
+tree. Restored with `git checkout --`, verified byte-identical to HEAD. Nothing was
+committed from that run.
+
+### 2026-09-29 — Two dead tables beside the receipt index allocator
+
+**Found while checking that `5f59498df`'s tombstone removal left nothing dangling.**
+That refactor is CORRECT and I verified the reason rather than assuming it: it replaces
+the old "an index id is never reused" rule with a **lowest-available slot recycler**, and
+the code genuinely implements it — `allocate_entity_index_with_ceiling_on_conn`
+(`crates/kasirmu-core/src/db/receipt_code.rs:170-191`) returns `1` when free and otherwise
+the first gap (`t1.index_id + 1` where `index_id + 1` is unused), which matches the module
+doc written in the same commit and plan §4.1 / §10. Dropping the tombstone WRITE path is
+therefore right: with recycling, a retired id is meant to come back.
+
+**What the refactor left behind.** Two tables are created and replicated but read and
+written by nothing:
+
+- `entity_index_cursors` — `20261006_receipt_hierarchy_code.sql:37` plus the PG replica.
+- `entity_index_tombstones` — the same file `:49`.
+
+Neither is touched by any `.rs` outside two COMMENTS in
+`crates/kasirmu-core/src/migrations_tests.rs` (`:823`, `:1078`), both of which merely count
+tables. The old module doc's "Allocation is monotonic, driven by `entity_index_cursors`"
+was the only thing that ever claimed otherwise, and `5f59498df` removed that sentence along
+with the tombstone writer — so the header is now honest and the tables are simply orphaned.
+Plan `_active/receipt-hierarchy-code.md` documents the recycler in three places (§4.1, §10,
+the checklist) and mentions **neither table**.
+
+**NOT dropped here, deliberately.** Removing them is a migration change, which AGENTS.md
+§E6 puts on the ask-first list, and it is wider than it looks: both are pinned by the
+table-count assertion (`migrations_tests.rs:833`, `127`) and appear in the generated
+`20260813_init.pg.sql` whitelist at `:621-630` and its RLS array at `:3754`, so a drop must
+move the count pin and regenerate the PG replica in the same pass. They are inert today
+(no reader, no writer, no policy that depends on them), so the cost of leaving them is
+schema noise rather than risk. Recorded for the allocator's owner to decide.
+
+## 2026-10-04 — The credit-sale listing shows a payment gateway reference in its Customer column (`kasirmu-bridge`)
+
+Found while sweeping row mappers for reads that degrade instead of propagating. Not a swallow —
+a **column/field misalignment**, which is the worse version of the same family: the value is
+present, correctly typed, and wrong.
+
+`run_list_credit_sales` (`crates/kasirmu-bridge/src/settings/core.rs:66`) selects
+`s.id, p.gateway_reference, s.total_minor, s.currency, s.created_at, p.settled_at,
+COALESCE(u.display_name, '')` and maps those seven columns onto `CreditSaleDto` **positionally**.
+Index 1 is `p.gateway_reference`, and it lands in `customer_name`; `cashier_name` takes index 6,
+the display name. So the projection never reads any customer column at all — it reads the
+payment gateway's reference into the field the UI shows as the buyer.
+
+**Measured, then pinned** (`kasirmu-bridge/src/settings_tests.rs`,
+`the_credit_sale_projection_maps_gateway_reference_into_the_customer_column`, added by
+`a3c871787`): a completed credit sale for customer 'Bagus' (`sales.customer_id` → `customers.id`),
+with a payment whose `gateway_reference` is `GW-REF-9`, returns `customer_name == "GW-REF-9"`.
+The retail credit list renders that field in a **Customer** column
+(`ui/src/features/retail/RetailModals.tsx:376`, `{c.customerName || '—'}`), so an operator reads
+`GW-REF-9` where a name belongs.
+
+**Why it survived.** The existing pin for this type
+(`credit_sale_dto_emits_the_camel_case_wire_the_retail_list_reads`) constructs a `CreditSaleDto`
+from hand-written literals and asserts its serialized shape. That is a real pin — it caught the
+2026-09-15 snake_case/camelCase break — but it is blind to the query, because it never runs one.
+A DTO-shape pin and a query-mapping pin are different facts, and only the first existed. The
+struct's doc comment makes the confusion concrete: it calls this field "the cashier name", while
+the column at its index is the gateway reference — three different readings of one line, none of
+them checked by anything.
+
+**NOT fixed here, deliberately.** Which column a customer name should come from is a product
+ruling, not a repair: `customers.name` exists (`migrations/20260813_init.sql:102`) and the
+projection does not join it, but choosing between adding that join, renaming the field to match
+what it currently carries, or dropping the field from the wire changes what a cashier sees and
+is a behaviour change to a surface already repaired once under this name. What this round could
+do honestly is remove the blindness, so the pin now fails on any future edit to the projection
+and the swap can no longer happen unseen. Recorded for the credit-list owner to decide.
+> last audited 29-09-26 by docs-auditor

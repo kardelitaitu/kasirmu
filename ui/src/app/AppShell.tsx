@@ -17,10 +17,12 @@ import { useFeatures } from '@/hooks/useFeatures';
 import { useTerminalProfile } from '@/hooks/useTerminalProfile';
 import { getPage, isPageAccessible, type PageRegistration } from '@/registries/page-registry';
 import { recordMark } from '@/utils/perf-metrics';
+import { settleRead } from '@/utils/settle-read';
 import PermissionDenied from '@/components/PermissionDenied';
 import { ErrorState } from '@/components/ErrorState';
 import { LazyBoundary } from '@/components/LazyBoundary';
 import { AppBootSplash } from '@/components/AppBootSplash';
+import { useSplashExit } from '@/hooks/useSplashExit';
 import { toWorkspaceType, type WorkspaceType } from '@/features/settings/workspaceType';
 import { getLicenseStatus } from '@/api/license';
 import { hasUsers } from '@/api/staff';
@@ -92,23 +94,12 @@ function useWorkspaceNavShortcuts(active: string | null, onBack: () => void) {
  */
 export type LicenseBootState = 'active' | 'grace' | 'inactive' | 'unknown';
 
-/** One settled boot read: `ok: false` records UNKNOWN — never a borrowed fact. */
-type BootRead<T> = { ok: true; value: T } | { ok: false };
-
-/**
- * Await `read` and tag it as answered-or-unknown. Every boot IPC gets its OWN
- * `settle`, so a throw from one call cannot forge another call's answer — the
- * behaviour this replaces was one try/catch around a Promise.all whose catch
- * wrote BOTH licence-active and setup-complete.
- */
-async function settle<T>(label: string, read: Promise<T>): Promise<BootRead<T>> {
-  try {
-    return { ok: true, value: await read };
-  } catch (err) {
-    console.error(`[boot] ${label} read failed — recording unknown:`, err);
-    return { ok: false };
-  }
-}
+// Every boot IPC gets its OWN settled read, so a throw from one call cannot
+// forge another call's answer -- the behaviour this replaces was one try/catch
+// around a Promise.all whose catch wrote BOTH licence-active and
+// setup-complete. `settleRead` is the one implementation of that contract
+// (ui/src/utils/settle-read.ts); it was hand-copied here from the day that
+// util existed. The `boot ` label carries this subsystem into the console line.
 
 /**
  * Application shell — handles setup wizard flow, auth gates,
@@ -233,7 +224,7 @@ export default function AppShell() {
       // UNKNOWN that the badge below renders — so an unavailable capability is
       // never reported as the positive assertion "this store has no users", the
       // value that would open CreatePinScreen.
-      settle('has_users', hasUsers()).then((res) => {
+      settleRead('boot has_users', hasUsers()).then((res) => {
         if (res.ok) setHasAnyUsers(res.value.has_users);
       });
       return;
@@ -247,12 +238,12 @@ export default function AppShell() {
       // splash in `finally`.
       try {
         const [licenseRes, setupRes, usersRes] = await Promise.all([
-          settle('get_license_status', getLicenseStatus()),
-          settle(
-            'get_first_run_state',
+          settleRead('boot get_license_status', getLicenseStatus()),
+          settleRead(
+            'boot get_first_run_state',
             getDeviceId().then((terminalId) => getFirstRunState(terminalId)),
           ),
-          settle('has_users', hasUsers()),
+          settleRead('boot has_users', hasUsers()),
         ]);
         if (cancelled) return;
 
@@ -325,24 +316,32 @@ export default function AppShell() {
   const prevWorkspaceRef = useRef(activeWorkspace);
   useEffect(() => {
     if (prevWorkspaceRef.current !== undefined && prevWorkspaceRef.current !== activeWorkspace) {
-      const hashRoute = window.location.hash.replace('#/', '');
-      if (hashRoute && getPage(hashRoute)) {
-        setCurrentRoute(hashRoute);
-        // Clear the hash after consuming it so it does not persist and
-        // override the workspace default on subsequent workspace switches.
-        // (WorkspaceHome's Analytics/Reports shortcuts set the hash before
-        // switching workspaces — this prevents a stale hash from hijacking
-        // the next admin workspace open.)
+      if (!activeWorkspace) {
+        // Returning to workspace picker from an active workspace:
+        // Clear any residual hash route and reset currentRoute to non-fullscreen default
+        // so that WorkspaceHome is rendered.
         window.location.hash = '';
+        setCurrentRoute('products');
       } else {
-        const workspaceRoute: Record<string, string> = {
-          'restaurant-pos': 'sales',
-          'store-pos': 'products',
-          kds: 'kds',
-          warehouse: 'warehouse',
-          admin: 'settings',
-        };
-        setCurrentRoute(workspaceRoute[activeWorkspace ?? ''] ?? 'products');
+        const hashRoute = window.location.hash.replace('#/', '');
+        if (hashRoute && getPage(hashRoute)) {
+          setCurrentRoute(hashRoute);
+          // Clear the hash after consuming it so it does not persist and
+          // override the workspace default on subsequent workspace switches.
+          // (WorkspaceHome's Analytics/Reports shortcuts set the hash before
+          // switching workspaces — this prevents a stale hash from hijacking
+          // the next admin workspace open.)
+          window.location.hash = '';
+        } else {
+          const workspaceRoute: Record<string, string> = {
+            'restaurant-pos': 'sales',
+            'store-pos': 'products',
+            kds: 'kds',
+            warehouse: 'warehouse',
+            admin: 'settings',
+          };
+          setCurrentRoute(workspaceRoute[activeWorkspace] ?? 'products');
+        }
       }
     }
     prevWorkspaceRef.current = activeWorkspace;
@@ -354,8 +353,16 @@ export default function AppShell() {
   // page routes so the AppShell React state stays in sync.
   useEffect(() => {
     const syncFromHash = () => {
-      const raw = window.location.hash.replace('#/', '');
-      if (!raw) return;
+      const raw = window.location.hash.replace(/^#\/?/, '');
+      if (!raw) {
+        // When the hash is cleared and there is no active workspace,
+        // ensure currentRoute is reset away from any fullscreen page
+        // so WorkspaceHome is rendered.
+        if (!activeWorkspace) {
+          setCurrentRoute('products');
+        }
+        return;
+      }
       // Cross-page deep links may carry a sub-section query — the settings
       // hub reads its section out of the same hash
       // (`#/settings/topology?branch=<id>` from the Locations dashboard's
@@ -385,7 +392,7 @@ export default function AppShell() {
     syncFromHash();
     window.addEventListener('hashchange', syncFromHash);
     return () => window.removeEventListener('hashchange', syncFromHash);
-  }, []);
+  }, [activeWorkspace]);
 
   /**
    * Called when the activation flow finishes (license activated + owner
@@ -516,21 +523,25 @@ export default function AppShell() {
     setCurrentRoute(route);
   }, [userRole, userPermissions]);
 
-  // P12-4: Session lock screen takes precedence over all other views.
-  // Memo surface (owner ruling 2026-09-08): the banner is app-wide EXCEPT the
-  // login and lock screens — a locked terminal must not display ops memos to
-  // anyone standing at it. (This mount previously cited the memo spec's
-  // session-alive reasoning; the ruling supersedes it.)
-  if (isLocked && session) {
-    return <SessionLockScreen onUnlock={handleUnlock} />;
-  }
+  const { splashMounted, splashExiting } = useSplashExit(loading);
 
-  if (loading) {
-    // Branded boot splash (stage 2) — visually continues the static
-    // stage-1 splash from index.html while the license + setup IPC
-    // round-trips resolve. Replaces the former bare-text gate.
-    return <AppBootSplash />;
-  }
+  // NOTE: no `if (loading) return <AppBootSplash />` here on purpose.
+  // That early return used to be the only splash site while booting, and the
+  // fragment below the other one. Because the two sit at DIFFERENT positions
+  // in the tree, React unmounted the booting splash and mounted a *second*
+  // one when `loading` flipped — so `useSplashExit` faded out a splash that
+  // had just been created, while the original vanished with no transition at
+  // all. One render site, always mounted, is what makes the crossfade real.
+
+  const renderActiveView = () => {
+    // P12-4: Session lock screen takes precedence over all other views.
+    // Memo surface (owner ruling 2026-09-08): the banner is app-wide EXCEPT the
+    // login and lock screens — a locked terminal must not display ops memos to
+    // anyone standing at it. (This mount previously cited the memo spec's
+    // session-alive reasoning; the ruling supersedes it.)
+    if (isLocked && session) {
+      return <SessionLockScreen onUnlock={handleUnlock} />;
+    }
 
   // ADR #58 §2.6: if the subscription is revoked, show the data-export screen
   // rather than the re-activation or login screen. The merchant cannot log in
@@ -616,6 +627,54 @@ export default function AppShell() {
     );
   }
 
+  // Render the current page from the registry, or null if not found.
+  const pageRegistration = getPage(currentRoute);
+  const PageComponent = pageRegistration?.component ?? null;
+  const pageDenied = pageRegistration && !isPageAccessible(pageRegistration, userRole, userPermissions);
+
+  // Fullscreen pages render without the AppLayout wrapper and without requiring an active workspace.
+  // The memo banner follows them — EXCEPT the customer-facing kiosk, where memos are internal
+  // staff communication that must not display to customers (owner ruling
+  // 2026-09-08: banner everywhere except login + lock + kiosk).
+  if (pageRegistration?.fullscreen) {
+    if (pageDenied) {
+      return (
+        <PermissionDenied
+          action={pageRegistration!.label}
+          requiredRole={pageRegistration!.requiredRole!}
+          requiredPermission={pageRegistration!.requiredPermission}
+        />
+      );
+    }
+    const isCustomerKiosk = currentRoute === 'kiosk';
+    const FullscreenPageComponent = PageComponent as React.ComponentType<{ onProvisioned?: () => void }>;
+    return PageComponent ? (
+      <>
+        {!isCustomerKiosk && <MemoBanner />}
+        {bootBadges}
+        {/* T5: wrap in workspace-fullscreen so registry fullscreen pages
+            (mobile-setup, kiosk, …) get the same ws-page-enter animation
+            as hardcoded fullscreen workspaces. key= re-triggers on route change,
+            except for grouped routes (e.g. staff/roles/trash) which share one screen. */}
+        <div className="workspace-fullscreen" key={pageRegistration.screenGroup ?? currentRoute}>
+          {renderPageLayout(
+            <LazyBoundary>
+              <FullscreenPageComponent
+                onProvisioned={() => {
+                  setSetupKnownComplete(true);
+                  setCurrentRoute('products');
+                  window.location.hash = '';
+                }}
+              />
+            </LazyBoundary>,
+            pageRegistration.layout,
+            orientation.isLandscape,
+          )}
+        </div>
+      </>
+    ) : null;
+  }
+
   if (!activeWorkspace) {
     return (
       <div className="workspace-home-wrapper">
@@ -627,11 +686,6 @@ export default function AppShell() {
       </div>
     );
   }
-
-  // Render the current page from the registry, or null if not found.
-  const pageRegistration = getPage(currentRoute);
-  const PageComponent = pageRegistration?.component ?? null;
-  const pageDenied = pageRegistration && !isPageAccessible(pageRegistration, userRole, userPermissions);
 
   // Workspace fullscreen — restaurant POS hides the sidebar.
   // KDS is a separate workspace screen, navigated to via the chef button in PosScreen.
@@ -737,35 +791,6 @@ export default function AppShell() {
     );
   }
 
-  // Fullscreen pages render without the AppLayout wrapper. The memo banner
-  // follows them — EXCEPT the customer-facing kiosk, where memos are internal
-  // staff communication that must not display to customers (owner ruling
-  // 2026-09-08: banner everywhere except login + lock + kiosk).
-  if (pageRegistration?.fullscreen) {
-    if (pageDenied) {
-      return (
-        <PermissionDenied
-          action={pageRegistration!.label}
-          requiredRole={pageRegistration!.requiredRole!}
-          requiredPermission={pageRegistration!.requiredPermission}
-        />
-      );
-    }
-    const isCustomerKiosk = currentRoute === 'kiosk';
-    return PageComponent ? (
-      <>
-        {!isCustomerKiosk && <MemoBanner />}
-        {bootBadges}
-        {renderPageLayout(
-          <LazyBoundary>
-            <PageComponent />
-          </LazyBoundary>,
-          pageRegistration.layout,
-          orientation.isLandscape,
-        )}
-      </>
-    ) : null;
-  }
 
   return (
     <>
@@ -795,6 +820,18 @@ export default function AppShell() {
         ) : null}
       </AppLayout>
       {settingsModal}
+    </>
+  );
+  };
+
+  return (
+    <>
+      {splashMounted && <AppBootSplash exiting={splashExiting} />}
+      {/* While booting, the splash is the ONLY thing on screen. This is not
+          an early return (see the note above it): the shell mounts behind the
+          splash so that when `loading` flips, the splash simply finishes its
+          fade and reveals an already-mounted shell — no remount, no flash. */}
+      {!loading && renderActiveView()}
     </>
   );
 }

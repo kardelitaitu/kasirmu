@@ -73,11 +73,18 @@ pub fn is_valid_amount_str(s: &str) -> bool {
 /// - If base + fee or calculated fee produces a fraction like `0.11`,
 ///   it rounds up to `1` whole rupiah.
 ///
+/// QRIS-D: this is integer-only arithmetic. The previous implementation parsed
+/// the percentage as `f64` and computed `(base as f64) * (pct / 100.0)`, which
+/// breaks the house rule that monetary values never use floats — a percentage
+/// such as `"0.1"` is not exactly representable, so the fee could be off by a
+/// rupiah at a boundary. The percentage is now parsed as an exact decimal
+/// (numerator over a power of ten) and the whole computation runs in `u128`.
+///
 /// # Errors
-/// Returns [`QrisError::InvalidAmount`] if `percent_str` cannot be parsed as a positive float.
+/// Returns [`QrisError::InvalidAmount`] if `percent_str` is not a non-negative
+/// decimal with at most 4 fractional digits.
 ///
 /// # Examples
-///
 /// ```
 /// use qris_core::amount::calculate_percentage_fee;
 ///
@@ -89,88 +96,56 @@ pub fn is_valid_amount_str(s: &str) -> bool {
 /// assert_eq!(calculate_percentage_fee(50_005, "0.7").unwrap(), 351);
 /// ```
 pub fn calculate_percentage_fee(base_amount: u64, percent_str: &str) -> Result<u64, QrisError> {
-    let trimmed = percent_str.trim();
-    let pct = trimmed
-        .parse::<f64>()
-        .map_err(|_| QrisError::InvalidAmount(format!("invalid fee percentage: {percent_str}")))?;
+    // Exact decimal parse: "0.7" -> (7, 10^1). Rejects signs, exponents and
+    // more than 4 fractional digits, all of which would need a wider scale.
+    let (num, scale) = parse_percent(percent_str)?;
+    if num == 0 {
+        return Ok(0);
+    }
+    // fee = ceil(base * num / (100 * scale)), in u128 so nothing overflows.
+    let denom = 100u128 * scale;
+    let numerator = (base_amount as u128) * (num as u128);
+    // Ceiling division for positive integers.
+    let fee = numerator.div_ceil(denom);
+    u64::try_from(fee)
+        .map_err(|_| QrisError::InvalidAmount(format!("fee out of range: {percent_str}")))
+}
 
-    if pct < 0.0 || !pct.is_finite() {
+/// Parse a non-negative decimal percentage into (numerator, power-of-ten scale).
+///
+/// `"0.01"` -> `(1, 100)`; `"7"` -> `(7, 1)`. At most 4 fractional digits.
+fn parse_percent(s: &str) -> Result<(u64, u128), QrisError> {
+    let bad = || QrisError::InvalidAmount(format!("invalid fee percentage: {s}"));
+    let t = s.trim();
+    if t.is_empty() {
+        return Err(bad());
+    }
+    let (int_part, frac_part) = match t.split_once('.') {
+        Some((i, f)) => (i, f),
+        None => (t, ""),
+    };
+    if frac_part.len() > 4 {
         return Err(QrisError::InvalidAmount(format!(
-            "fee percentage must be positive: {percent_str}"
+            "fee percentage has more than 4 decimal places: {s}"
         )));
     }
-
-    let fee_float = (base_amount as f64) * (pct / 100.0);
-    Ok(fee_float.ceil() as u64)
+    let int_digits = if int_part.is_empty() { "0" } else { int_part };
+    if !int_digits.bytes().all(|b| b.is_ascii_digit())
+        || !frac_part.bytes().all(|b| b.is_ascii_digit())
+    {
+        return Err(bad());
+    }
+    // numerator = int_part concatenated with frac_part, padded to 4 digits.
+    let mut digits = String::with_capacity(int_digits.len() + 4);
+    digits.push_str(int_digits);
+    digits.push_str(frac_part);
+    for _ in frac_part.len()..4 {
+        digits.push('0');
+    }
+    let num: u64 = digits.parse().map_err(|_| bad())?;
+    Ok((num, 10_000))
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn parse_integer_amount() {
-        assert_eq!(parse_amount("50000").unwrap(), 50_000);
-    }
-
-    #[test]
-    fn parse_decimal_amount() {
-        assert_eq!(parse_amount("50000.00").unwrap(), 50_000);
-    }
-
-    #[test]
-    fn parse_zero() {
-        assert_eq!(parse_amount("0").unwrap(), 0);
-    }
-
-    #[test]
-    fn reject_empty() {
-        assert!(parse_amount("").is_err());
-    }
-
-    #[test]
-    fn reject_text() {
-        assert!(parse_amount("abc").is_err());
-    }
-
-    #[test]
-    fn format_round_trip() {
-        let amount = 123_456u64;
-        let s = format_amount(amount);
-        assert_eq!(parse_amount(&s).unwrap(), amount);
-    }
-
-    #[test]
-    fn fee_percentage_accuracy_and_rounding() {
-        // 0.01% accuracy tests:
-        // 0.01% on 350,000 = 35 rupiah exactly
-        assert_eq!(calculate_percentage_fee(350_000, "0.01").unwrap(), 35);
-        assert_eq!(calculate_percentage_fee(10_000, "0.01").unwrap(), 1);
-        assert_eq!(calculate_percentage_fee(100_000, "0.01").unwrap(), 10);
-        assert_eq!(calculate_percentage_fee(1_000_000, "0.01").unwrap(), 100);
-
-        // Fractional result must be rounded up (ceil):
-        // e.g. 0.01% on 5,555 = 0.5555 -> rounds up to 1
-        assert_eq!(calculate_percentage_fee(5_555, "0.01").unwrap(), 1);
-        // 0.01% on 1 = 0.0001 -> rounds up to 1
-        assert_eq!(calculate_percentage_fee(1, "0.01").unwrap(), 1);
-        // 0.01% on 350,001 = 35.0001 -> rounds up to 36
-        assert_eq!(calculate_percentage_fee(350_001, "0.01").unwrap(), 36);
-
-        // Standard QRIS fees (0.7% MDR):
-        // 0.7% on 50,000 = 350 exactly
-        assert_eq!(calculate_percentage_fee(50_000, "0.7").unwrap(), 350);
-        // 0.7% on 50,001 = 350.007 -> rounds up to 351
-        assert_eq!(calculate_percentage_fee(50_001, "0.7").unwrap(), 351);
-        // 0.7% on 50,010 = 350.07 -> rounds up to 351
-        assert_eq!(calculate_percentage_fee(50_010, "0.7").unwrap(), 351);
-
-        // 0.3% MDR:
-        // 0.3% on 33,333 = 99.999 -> rounds up to 100
-        assert_eq!(calculate_percentage_fee(33_333, "0.3").unwrap(), 100);
-
-        // Invalid percentage inputs
-        assert!(calculate_percentage_fee(100_000, "-0.5").is_err());
-        assert!(calculate_percentage_fee(100_000, "abc").is_err());
-    }
-}
+#[path = "amount_tests.rs"]
+mod tests;

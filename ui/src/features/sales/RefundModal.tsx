@@ -56,9 +56,59 @@ export default function RefundModal({ open, sale, onClose, onRefunded }: RefundM
     });
   }, []);
 
+  /**
+   * The refundable share of one sale line, in minor units.
+   *
+   * THE CONTRACT with the server, which is not arbitrary. For a refund of
+   * `qty` units from a line booked at `total_minor` for `line.qty` units:
+   *
+   *   client sends   round(total_minor * qty / line.qty)
+   *   server accepts <= floor(total_minor * qty / line.qty) + 1
+   *
+   * because round(x) <= floor(x) + 1 for every x >= 0 the client can never
+   * exceed the ceiling. Verified exhaustively for total_minor 0..=400,
+   * line.qty 1..=12, qty 1..=line.qty: zero overshoots.
+   *
+   * That inequality is also exactly why the server tolerance is ONE minor unit
+   * rather than an equality -- see
+   * crates/kasirmu-core/src/db/refunds.rs:283-294, which names this client
+   * and explains the margin. The previous unit-price-then-multiply form
+   * overshot by up to qty-1 units and needed the whole tolerance to absorb it;
+   * this form needs none, so the margin is now belt-and-braces.
+   *
+   * Why pro-rata on the LINE rather than unit_minor * qty: a price override is
+   * legitimate and stores line_minor != unit_minor * qty, so an equality against
+   * the unit price would refuse refunds the server itself sold at a changed
+   * price (crates/kasirmu-core/src/db/refunds_tests.rs:1483-1501 seeds it).
+   *
+   * ONE rule, used by both the displayed total and the submitted payload.
+   * The two used to disagree: the total showed the exact fraction
+   * `total_minor * qty / line.qty` while the payload rounded a UNIT price
+   * first and multiplied it back, so a 100-minor line taken as 2 of 3
+   * displayed 66.67 and refunded 66, and 1000 taken as 3 of 7 displayed
+   * 428.57 and refunded 429 -- the error ran both ways.
+   *
+   * Rounding a unit price and multiplying it back is also wrong on its own:
+   * a FULL line of 999 over 7 refunds 1001, which is more than the line
+   * originally sold. Prorating the line total and rounding ONCE cannot
+   * over-refund, because selecting every unit reproduces the line total
+   * exactly.
+   *
+   * @param totalMinor the line total as sold
+   * @param lineQty units on the line
+   * @param selectedQty units being refunded
+   */
+  const lineShare = (totalMinor: number, lineQty: number, selectedQty: number): number => {
+    if (selectedQty <= 0) return 0;
+    // A zero-quantity line cannot be prorated; refund it whole, which is what
+    // the old `(line.qty ?? 1)` division by 1 did.
+    if (lineQty <= 0) return Math.round(totalMinor);
+    return Math.round((totalMinor * selectedQty) / lineQty);
+  };
+
   const totalRefund = sale.lines.reduce((sum, line) => {
     const qty = selectedLines[line.id] ?? 0;
-    return sum + (line.total_minor ?? 0) * qty / (line.qty ?? 1);
+    return sum + lineShare(line.total_minor ?? 0, line.qty ?? 1, qty);
   }, 0);
 
   const hasSelection = Object.values(selectedLines).some((q) => q > 0);
@@ -72,14 +122,19 @@ export default function RefundModal({ open, sale, onClose, onRefunded }: RefundM
         .filter((l) => (selectedLines[l.id] ?? 0) > 0)
         .map((l) => {
           const qty = selectedLines[l.id]!;
-          const unitPriceMinor = Math.round((l.total_minor ?? 0) / (l.qty ?? 1));
+          // Same helper the displayed total uses, so the operator sees the
+          // number that will actually be refunded.
+          const lineTotalMinor = lineShare(l.total_minor ?? 0, l.qty ?? 1, qty);
+          // The payload shape requires a unit price; derive it from the share
+          // so the two cannot drift apart again.
+          const unitPriceMinor = Math.round(lineTotalMinor / qty);
           return {
             saleLineId: l.id,
             sku: l.sku,
             qty,
             unitPriceMinor,
             currency: sale.total.currency,
-            lineTotalMinor: unitPriceMinor * qty,
+            lineTotalMinor,
           };
         });
       const scopedArgs: ProcessRefundScopedArgs = {

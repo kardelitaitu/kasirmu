@@ -258,6 +258,12 @@ const SCREENS: ScreenEntry[] = [
     ],
     // Classes used by child StockAlertPanel component rendered inside drawer
     externalClasses: ['stock-alert-panel'],
+    // R3: cites the shared pager block (.pager-nav/.pager-btn/.pager-info) this
+    // screen's page controls use. The cite is the mechanism this suite offers
+    // for a globally imported sheet — case 1 resolves against css UNION
+    // parentCss, and cases 2 and 3 still walk `css` alone, so the shared sheet
+    // is never graded for duplicate or dead rules through this entry.
+    parentCss: ['../theme/components.css'],
   },
   {
     name: 'BundleManagementScreen',
@@ -289,7 +295,27 @@ const SCREENS: ScreenEntry[] = [
     // EXTERNAL_CLASS_LEDGER entry below for the measurement. The stack is a
     // SIBLING of this page under #root, so its class can never appear in this
     // screen's markup.
-    externalClasses: ['memo-stack'],
+    //
+    // `segmented-tab` is the second whole-name mute, and it is the composed-child
+    // `segmented-tab` is the second whole-name entry, and it is the composed-child
+    // shape rather than a sibling one: this sheet carries a scoped override at
+    // :160 — `.staff-mgmt-header .segmented-tab[role="tab"]` drops the shared
+    // strip's extra track padding so the header settles on the touch-target token
+    // — while the class itself is defined once in components/SegmentedTabs.css:118
+    // and rendered by the shared <SegmentedTabs> that StaffTabs.tsx:74 composes.
+    // The walk reads this entry's markup plus additionalTsx, and additionalTsx
+    // DOES include StaffTabs.tsx (:290) — but that file renders the component,
+    // it never spells `segmented-tab`, so the base stays unseen from here and the
+    // rule reads dead without the entry.
+    //
+    // It lives in dynamicClassPrefixes rather than externalClasses (moved
+    // 2026-09-29): the ledger case requires an externalClasses value to be
+    // defined OUTSIDE the entry's own css (:2511-2515), and the rule that makes
+    // this name matter is the one at StaffManagementScreen.css:160, which IS this
+    // entry's own sheet. A whole-name entry is not a wildcard — the census credits
+    // p === cls only through this list — so it excuses exactly `segmented-tab`
+    // and does not reach any future segmented-* name.
+    dynamicClassPrefixes: ['segmented-tab', 'memo-stack'],
   },
 
   // ── Setup ─────────────────────────────────────────────
@@ -309,12 +335,26 @@ const SCREENS: ScreenEntry[] = [
     // utility sheet, not a class this feature's own sheet should have to own.
     parentCss: ['../theme/components.css'],
   },
+  {
+    name: 'MobileWelcomeFlow',
+    tsx: 'setup/mobile/MobileWelcomeFlow.tsx',
+    additionalTsx: [
+      'setup/mobile/MobileWelcomeScreen.tsx',
+      'setup/mobile/MobileSetupHub.tsx',
+      'setup/mobile/MobileGoogleAuthModal.tsx',
+      'setup/mobile/MobileEmailAuthModal.tsx',
+      'setup/mobile/MobileQrPairingModal.tsx',
+    ],
+    css: ['setup/mobile/MobileWelcomeFlow.module.css'],
+  },
 
   // ── Customers ─────────────────────────────────────────
   {
     name: 'CustomerManagementScreen',
     tsx: 'customers/CustomerManagementScreen.tsx',
     css: ['customers/CustomerManagementScreen.css'],
+    // R3: cites the shared pager block — see the ProductManagementScreen note.
+    parentCss: ['../theme/components.css'],
   },
 
   // ── Inventory ─────────────────────────────────────────
@@ -647,7 +687,6 @@ const SCREENS: ScreenEntry[] = [
     additionalTsx: [
       'settings/sections/GeneralSection.tsx',
       'settings/sections/AppearanceSection.tsx',
-      'settings/sections/ReceiptSection.tsx',
       'settings/sections/SyncSection.tsx',
       'settings/sections/AboutSection.tsx',
       // SettingsFooter.tsx carries the settings-footer-* markup (theme switch,
@@ -736,7 +775,9 @@ const SCREENS: ScreenEntry[] = [
     // BackupSection.tsx carries the data-mgmt-backup-* markup and its flash modifier,
     // moved out of the screen in DataManagement slice 3; unregistered, the guard
     // reads those classes as dead CSS.
-    additionalTsx: ['settings/components/BackupSection.tsx', 'settings/components/ImportSection.tsx', 'settings/components/ExportSection.tsx'],
+    // RestoreSection.tsx (C8 slice S5b) is the same case: its data-mgmt-restore-*
+    // classes are styled by this sheet but live in the section, not the screen.
+    additionalTsx: ['settings/components/BackupSection.tsx', 'settings/components/ImportSection.tsx', 'settings/components/ExportSection.tsx', 'settings/components/RestoreSection.tsx'],
     // dynamicClassPrefixes: ['data-mgmt-toast--'] struck 2026-09-15 · DSH · an inert allowance, retired with evidence rather than quietly deleted: the family it muted was removed by f16c7ead5 (2026-07-09, 0 inserted / 38 deleted on settings/DataManagementScreen.css), and today 0 rules match it in 137 sheets and 0 composition sites exist in any walked source. The strings that survive as data-mgmt-toast-* in useBackupStatus.ts, useExportWizard.ts, useImportWizard.ts and settings.ftl are Fluent message IDs with ONE dash, not class names. Re-derive: git grep -n data-mgmt-toast-- -- ui/src ui/e2e (1 hit, this comment). Graded by the prefix arm at the foot of this file.
     knownDynamicFragments: [
       // Template-literal parameters inside flashRows.has() that the
@@ -873,7 +914,21 @@ const SCREENS: ScreenEntry[] = [
       'workspaces/components/ToolsCategoryGrid.tsx',
       'workspaces/components/ToolCard.tsx',
     ],
-    dynamicClassPrefixes: [ 'ws-color-admin', 'ws-color-kds', 'ws-color-restaurant-pos', 'ws-color-store-pos', 'ws-color-warehouse', 'role-badge--owner', 'role-badge--manager', 'role-badge--staff', 'role-badge--auditor', 'role-badge--custom', 'role-badge--default'],
+    // `memo-stack` (added 2026-09-30) backs the clearance band
+    // `body:has(.memo-stack) .ws-main` at WorkspaceHome.css:270 — the picker's
+    // last Tools row was unreachable while a memo bubble was pending, because
+    // .memo-banner-open re-enables pointer-events on the bubble body and
+    // physically covered the one card that routes into the admin workspace.
+    // The stack is a SIBLING of this page under #root, so its class can never
+    // appear in the picker's markup.
+    //
+    // dynamicClassPrefixes, not externalClasses, for the reason the
+    // StaffManagementScreen entry documents (moved there 2026-09-29): the
+    // ledger case at :2553 requires an externalClasses value to be defined
+    // OUTSIDE the entry's own css, and `extractClassSelectors` now mints
+    // `memo-stack` from the `:has()` selector in THIS sheet. A whole-name entry
+    // is not a wildcard, so the prefix excuses exactly `memo-stack`.
+    dynamicClassPrefixes: [ 'ws-color-admin', 'ws-color-kds', 'ws-color-restaurant-pos', 'ws-color-store-pos', 'ws-color-warehouse', 'role-badge--owner', 'role-badge--manager', 'role-badge--staff', 'role-badge--auditor', 'role-badge--custom', 'role-badge--default', 'memo-stack'],
     externalClasses: [
       'workspace-card--active',
       'workspace-card-ripple',
@@ -902,6 +957,8 @@ const SCREENS: ScreenEntry[] = [
     name: 'VoidOrdersScreen',
     tsx: 'sales/VoidOrdersScreen.tsx',
     css: ['sales/VoidOrdersScreen.css'],
+    // R3: cites the shared pager block — see the ProductManagementScreen note.
+    parentCss: ['../theme/components.css'],
   },
   {
     name: 'EodReportScreen',
@@ -973,6 +1030,19 @@ const SCREENS: ScreenEntry[] = [
     name: 'PaymentModal',
     tsx: 'sales/PaymentModal.tsx',
     css: ['sales/PaymentModal.css'],
+    // CARD_TENDER_PANEL: the EDC terminal selector renders `btn btn--sm
+    // btn--primary/--secondary` for its terminal chips (CardTenderPanel.tsx:104)
+    // and the modal shell renders `btn` on its own actions. The whole family is
+    // defined once in theme/components.css, which BOTH entry points import
+    // (main.tsx:7 desktop, main.mobile.tsx:20 tablet), so those four names are a
+    // real global dependency rather than a rule this feature's sheet owes — the
+    // same cite, for the same reason, that eight other entries already carry
+    // (:266 PosScreen, :316 KdsScreen, :337 CustomerManagementScreen and
+    // siblings). Case 1 resolves against css UNION parentCss, so the cite answers
+    // the used-vs-defined question; cases 2 and 3 keep walking PaymentModal.css
+    // alone, so the shared sheet is never graded for dead or duplicate rules
+    // through this entry.
+    parentCss: ['../theme/components.css'],
     dynamicClassPrefixes: [ 'payment-overlay--enter', 'payment-overlay--exit', 'payment-modal--enter', 'payment-modal--exit'],
     additionalTsx: [
       'sales/payment/CashTenderPanel.tsx',
@@ -1256,6 +1326,94 @@ const SCREENS: ScreenEntry[] = [
 
   // ── Restaurant ─────────────────────────────────────────
   {
+    // The restaurant POS settings sub-screens landed by b3e68d5c7
+    // ("feat(resto-pos): add receipts and payments configuration sub-screens",
+    // 2026-09-29) with a SHARED sheet and no SCREENS entries, which is the one
+    // shape the coverage case refuses: a new stylesheet may not join
+    // BASELINE_UNCITED, so its css, tsx and entries have to land together.
+    // Both screens are mounted from sales/PosScreen.tsx:663/:684 behind the
+    // `restaurant` workspace type, so they are reachable, not dead.
+    //
+    // css is the SHARED sheet and both entries cite it: that is what the sheet
+    // is for (its own header says so), and the two screens each own no sheet of
+    // their own. Cases 2 and 3 walk that one sheet per entry, so a name only the
+    // OTHER screen renders reads dead here — restaurant-rail-* and
+    // restaurant-static-qr-box are the current examples, defined for the
+    // payments rail and claimed by the Payments entry below rather than muted
+    // in this one. Nothing is exempted in either entry.
+    name: 'RestaurantReceiptsScreen',
+    tsx: 'restaurant/screens/RestaurantReceiptsScreen.tsx',
+    css: ['restaurant/screens/RestaurantSettingsScreens.css'],
+    // The sheet is SHARED with RestaurantPaymentsScreen, and the dead-class walk
+    // reads this entry's markup plus additionalTsx — so the rail, QR and loading
+    // names live only in the sibling and would grade as dead from here. Listing
+    // the sibling is the line-82 rule for markup that belongs to the same
+    // change-set: "when markup moves OUT of a registered screen, append the
+    // receiving component to that entry's additionalTsx in the same change-set".
+    // Both screens landed together in b3e68d5c7 against this one sheet, and each
+    // entry names the other's file rather than muting 9 rules one by one.
+    additionalTsx: ['restaurant/screens/RestaurantPaymentsScreen.tsx'],
+    // The settings-field / settings-form / settings-toggle family is defined
+    // once in settings/SettingsPage.css and imported by the settings shell this
+    // screen deliberately reuses. Same cite, same reason, as the four settings
+    // cards (:1385 StatutoryNumberingCard and siblings).
+    //
+    // `../theme/components.css` is the SECOND legal parentCss shape (:120-131) and
+    // is cited here for one class: `noise-dither`, the elevated-surface grain
+    // overlay. The preview card declares `box-shadow: var(--shadow-sm)`, so
+    // noiseDitherCompliance requires it to carry the overlay — and that gate reads
+    // CSS SELECTORS, so `.restaurant-preview-card` is named in the dither block of
+    // components.css *and* the element carries the class. Citing the sheet that
+    // defines the utility is what the :127-138 note calls saying what is true in a
+    // field the guard can check, rather than muting the name in
+    // knownDynamicFragments (which would falsely assert it is composed at runtime).
+    parentCss: ['settings/SettingsPage.css', '../theme/components.css'],
+    // The paper width is chosen at runtime from the operator's setting:
+    // `resto-receipt-paper resto-receipt-paper--${paperWidth === 'narrow' ? '58mm' : '80mm'}`
+    // (RestaurantReceiptsScreen.tsx:418). The static walk cannot see either tail,
+    // so both rules graded dead. This is the genuine composed-at-runtime case the
+    // field exists for — unlike `noise-dither` above, which is a literal name and
+    // is therefore CITED rather than muted.
+    // The Test Print status classes are composed at runtime from the result
+    // type: `resto-test-print-status--${testPrintResult.type}` (:1278), so the
+    // static walk cannot see `--success` / `--error` and both rules would grade
+    // dead. Same composed-at-runtime case as the paper widths above.
+    dynamicClassPrefixes: ['resto-receipt-paper--', 'resto-test-print-status--'],
+  },
+  {
+    // See the RestaurantReceiptsScreen note above for the shared-sheet ruling.
+    // This entry is the one that renders the rail rows: the markup now carries
+    // restaurant-rails-list / -rail-row / -rail-info / -rail-label / -rail-code /
+    // -rail-actions / -rail-remove and restaurant-static-qr-box, which is what
+    // those rules were written for. Until 2026-09-29 the markup kept the same
+    // design as inline style objects and used a `button button--ghost` element
+    // whose class this repo does not define, so the sheet graded as eight dead
+    // rules and three undefined names at once. Wiring the names up fixed both
+    // directions; no exemption was needed or added.
+    name: 'RestaurantPaymentsScreen',
+    tsx: 'restaurant/screens/RestaurantPaymentsScreen.tsx',
+    css: ['restaurant/screens/RestaurantSettingsScreens.css'],
+    // The RECIPROCAL half of the cite the RestaurantReceiptsScreen entry makes
+    // (:1343). Both screens render from this one sheet, and the dead-class walk
+    // grades the WHOLE sheet against this entry's markup plus additionalTsx — so
+    // without this line every receipt-side rule (restaurant-preview-*,
+    // resto-receipt-*) grades as dead from here, which is exactly the "each entry
+    // names the other's file rather than muting rules one by one" rule at :1338.
+    // It went missing while the receipt preview was built out in dc7571036: the
+    // Receipts side kept its cite, this side never gained one.
+    additionalTsx: ['restaurant/screens/RestaurantReceiptsScreen.tsx'],
+    // Same runtime-composed paper widths as the Receipts entry above: this entry
+    // now grades that sibling's markup, so it needs the same prefix door for the
+    // `--58mm` / `--80mm` tails the static walk cannot see.
+    dynamicClassPrefixes: ['resto-receipt-paper--', 'resto-test-print-status--'],
+    // Same `noise-dither` cite as the Receipts entry: this entry grades that
+    // sibling's markup through additionalTsx, and the preview card carries the
+    // class, so the sheet that defines the utility must be named here too — the
+    // coverage block checks that a cited sheet actually defines what it is
+    // cited for, and it will not accept the citation on the Receipts entry.
+    parentCss: ['settings/SettingsPage.css', '../theme/components.css'],
+  },
+  {
     name: 'RestaurantMenu',
     tsx: 'restaurant/RestaurantMenu.tsx',
     css: ['restaurant/RestaurantMenu.css'],
@@ -1264,6 +1422,25 @@ const SCREENS: ScreenEntry[] = [
       'restaurant-card--added',
       'restaurant-card--disabled',
       'restaurant-card--pinned',
+      // `is-resizing` moved here from externalClasses (2026-09-29), and this is
+      // the ONLY list that can carry it. It is a body state applied by
+      // classList.add at sales/hooks/useCartResize.ts:56, never through a
+      // className sink, so the dead walk would call its rule at
+      // RestaurantMenu.css:755-764 unreachable. The three mechanisms that excuse
+      // a dead name do not fit:
+      //   - externalClasses is out on the ledger case's own terms — that case
+      //     requires the value to be defined OUTSIDE the entry's own css
+      //     (:2511-2515), and this rule lives in the sheet this entry owns;
+      //   - knownDynamicFragments excuses only the used-but-undefined direction
+      //     (:2069), never the dead one, which is why a fragment attempt printed
+      //     "Dead classes: is-resizing";
+      //   - `used` and `composed` are what the walk wants, and neither can see a
+      //     class the component never spells.
+      // A whole-name entry is not a wildcard: the census credits p === cls only
+      // through this list, so it excuses exactly `is-resizing` and nothing else.
+      // The rule stays because deleting it would un-freeze this screen's cards
+      // under the sales divider's drag, which is the entire point of the pairing.
+      'is-resizing',
     ],
     // Trusted child component, named whole: the pin badge's Tooltip renders
     // `tooltip-wrapper` + `tooltip-wrapper--inline` (Tooltip.tsx:225), defined
@@ -1279,16 +1456,9 @@ const SCREENS: ScreenEntry[] = [
       'restaurant-card',
       'tooltip-wrapper',
       'tooltip-wrapper--inline',
-      // non-JSX: applied to document.body by classList.add at
-      // sales/hooks/useCartResize.ts:56 (removed at :67), never through a
-      // className sink, so it cannot enter the used set. The rule it carries is
-      // `body.is-resizing .restaurant-card` (:542-551) -- a GLOBAL state class
-      // that the sales screen's divider sets in order to freeze this screen's
-      // card transforms mid-drag, which is why the two halves live in different
-      // features. Same shape as KdsScreen's no-anim, and it carries the same
-      // ledger member below; deleting the rule instead would un-freeze the
-      // cards under the moving cursor.
-      'is-resizing',
+      // (Folded with the Agent-3-era 'restaurant-card' above into one list
+      // rather than a duplicate key — duplicate keys are legal JS but the second
+      // silently wins, which would have dropped the original.)
     ],
     // The Agent 3 extraction moved the tile/tab-strip/grid/overlay JSX into
     // components/*.tsx; they share the screen's stylesheet (global classes).
@@ -1408,9 +1578,62 @@ const SCREENS: ScreenEntry[] = [
     css: ['settings/screens/screens-placeholder.css'],
   },
   {
+    // MIGRATED from the scaffold set (2026-09-29): the screen now composes the
+    // real EdcTerminalsCard as its body, the same way SystemDiagnosticsScreen
+    // composes DiagnosticsSection. It keeps the scaffold shell — heading, the
+    // migration note, and `section.settings-screen-placeholder` — because
+    // SettingsPage.test.tsx:420 requires every settings body to BE that section,
+    // so the wrapper is NOT dropped and the placeholder sheet stays cited.
+    //
+    // A `settings-screen` div used to sit here instead. No sheet defined that
+    // class: the div carried its own inline padding and a hardcoded maxWidth,
+    // and it made the scaffold's own title and note unreachable. The class was
+    // reported as used-but-undefined and its three placeholder siblings as dead
+    // — one wrong wrapper, two findings.
+    //
+    // additionalTsx, not a borrowed cite: the screen renders no edc-terminals-*
+    // markup of its own, so the walk has to read the card's file to see the
+    // names it really uses. Without it, citing EdcTerminalsCard.css grades that
+    // sheet's whole inventory (26 names) as dead.
     name: 'DevicesConnectivityScreen',
     tsx: 'settings/screens/DevicesConnectivityScreen.tsx',
-    css: ['settings/screens/screens-placeholder.css'],
+    css: ['settings/screens/screens-placeholder.css', 'settings/components/EdcTerminalsCard.css'],
+    additionalTsx: ['settings/components/EdcTerminalsCard.tsx'],
+    // The card builds its state chips by interpolation — `edc-badge--${t.connectionType}`
+    // and `edc-badge--${isActive ? 'active' : 'inactive'}` at
+    // EdcTerminalsCard.tsx:271/:276, and `edc-status-indicator--${currentStatus}`
+    // at :290. The static parser sees only the base, so the modifier rules in
+    // EdcTerminalsCard.css read dead without the prefixes. Named individually
+    // rather than as a bare `edc-badge--` / `edc-status-indicator--` prefix: the
+    // sheet defines exactly these, and a family prefix would excuse any future
+    // modifier nobody renders.
+    dynamicClassPrefixes: [
+      'edc-badge--wired',
+      'edc-badge--wireless',
+      'edc-badge--active',
+      'edc-badge--inactive',
+      'edc-status-indicator--ready',
+      'edc-status-indicator--busy',
+      'edc-status-indicator--offline',
+      'edc-status-indicator--error',
+    ],
+    // The active/inactive badge reads `edc-badge--${t.isActive ? 'active' : 'inactive'}`
+    // (EdcTerminalsCard.tsx:276). The template head yields the base
+    // `edc-badge--` and the ternary's two string literals are lifted as BARE
+    // class names, so the parser reports `active` and `inactive` as undefined
+    // while the composite actually rendered is `edc-badge--active` /
+    // `edc-badge--inactive`. BOTH halves are needed and neither is redundant:
+    // the two prefixes above keep the sheet's real rules from grading dead, and
+    // these two fragments stop the ternary's literals being read as class names
+    // the sheet must define. Measured, not assumed — dropping the prefixes
+    // prints "Dead classes: edc-badge--active, edc-badge--inactive" and dropping
+    // the fragments prints them as used-but-undefined.
+    knownDynamicFragments: ['active', 'inactive'],
+    // The card reuses the settings form vocabulary — settings-field,
+    // -label, -input, -toggle and its -switch/-slider, plus settings-form — all
+    // defined once in SettingsPage.css, which the settings shell imports. The
+    // same cite the four settings cards and both restaurant screens carry.
+    parentCss: ['settings/SettingsPage.css'],
   },
   {
     name: 'BusinessDefaultsScreen',
@@ -2154,11 +2377,6 @@ const EXTERNAL_CLASS_LEDGER: { entry: string; value: string; reason: string }[] 
     entry: 'RestaurantMenu',
     value: 'restaurant-card',
     reason: 'non-JSX: the base is assigned to a local at features/restaurant/components/MenuItemTile.tsx:189 (let cardClass of the literal) and only the composed value reaches className, so the extractor never sees the base; its entry already carries a restaurant-card-- prefix which cannot cover the base either',
-  },
-  {
-    entry: 'RestaurantMenu',
-    value: 'is-resizing',
-    reason: 'non-JSX: applied to document.body by classList.add at features/sales/hooks/useCartResize.ts:56, outside every component JSX and every prefix shape; the rule is a global body-state selector (body.is-resizing .restaurant-card, RestaurantMenu.css:542-551) whose whole purpose is to freeze THIS screen\'s cards while the sales screen\'s divider drags, so the setter and the rule cannot be brought into one feature',
   },
   {
     entry: 'KdsScreen',

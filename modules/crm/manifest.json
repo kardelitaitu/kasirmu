@@ -7,5 +7,9 @@
   "permissions": [
     "crm:view",
     "crm:edit"
+  ],
+  "capabilities": [
+    "read:crm",
+    "write:crm"
   ]
 }

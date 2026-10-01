@@ -1,4 +1,4 @@
-//! OZ-POS Cloud Sync Server — headless binary (no Tauri, no WebView).
+//! kasir.mu Cloud Sync Server — headless binary (no Tauri, no WebView).
 //!
 //! Serves both the REST API (`kasirmu-api` routes) and sync-push/pull endpoints
 //! on the same HTTP port. Run in production behind a reverse proxy.
@@ -20,12 +20,19 @@
 //! | `OZ_REDIRECT_ONLY` | — | Run in redirect-only mode (ADR #11). Requires `OZ_SYNC_REDIRECT_URL`. Skips DB, prune, metrics, API — only serves the migration redirect. |
 //! | `OZ_SYNC_REDIRECT_URL` | — | New server URL for migration redirect. When set, all `/api/sync/*` requests return `{"error":"server_migrated","new_url":"<url>"}` with HTTP 421. |
 //! | `OZ_WORKER_THREADS` | `2` | Tokio runtime worker threads (0 = logical CPU count). Tune higher for multi-tenant deployments under sustained sync load. |
-//! | `RUST_LOG` | `info` | Log level filter (e.g. `debug`, `oz_cloud_server=debug`) |
+//! | `RUST_LOG` | `info` | Log level filter (e.g. `debug`, `kasirmu_cloud=debug`) |
 
 // serde_json's `json!` recurses once per key/value pair, and the OpenAPI
 // spec's `paths` object is one long literal (exchange-rates endpoints,
 // 2026-08-31, pushed it past the default 128).
 #![recursion_limit = "512"]
+// P2-6: the crate has no production `unsafe` — the only occurrences are
+// `std::env::set_var`/`remove_var` calls in `db_tests.rs`, which are unsafe
+// since Rust 2024 and are TEST-ONLY. A crate-level deny therefore holds for
+// every shipping path, and that one test file opts out with its own
+// `#![allow(unsafe_code)]` — the file-scoped precedent documented at
+// `kasirmu-security/src/windows.rs:13`.
+#![deny(unsafe_code)]
 
 mod config;
 mod conflict_resolution;
@@ -466,7 +473,7 @@ async fn serve(
     let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{port}"))
         .await
         .map_err(|e| format!("failed to bind port {port}: {e}"))?;
-    info!(port, "OZ-POS cloud server listening");
+    info!(port, "kasir.mu cloud server listening");
 
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown::shutdown_signal())
@@ -500,7 +507,9 @@ struct HealthResponse {
     db_connected: bool,
     /// Database ping latency in microseconds.
     db_latency_us: u64,
-    /// Number of items in the sync queue with status `pending`.
+    /// Number of items in the sync queue with status `pending`, or -1 when the
+    /// count could not be read. 0 is a real answer -- an idle but healthy queue --
+    /// so an unreadable count must not borrow it.
     sync_queue_depth: i64,
     /// ISO-8601 timestamp of the most recent sync activity, or null.
     last_sync_at: Option<String>,
@@ -639,7 +648,16 @@ async fn health_handler(
             let latency = db_start.elapsed().as_micros() as u64;
             let connected = ping_result.is_ok();
 
-            // Same 10s depth cache on the SQLite branch.
+            // Same 10s depth cache on the SQLite branch. A count that could not
+            // be read is reported as -1, NOT as 0: the field is `sync_queue_depth`,
+            // and "0 pending items" is the answer an idle but healthy queue gives.
+            // A failed COUNT therefore used to render as a healthy empty queue on
+            // the very signal an operator watches for a stalled sync. The PG arm
+            // above carries the same 0-on-failure, but there it is guarded by
+            // `if connected` and by the 2s pool timeout, so the two rarely diverge;
+            // the SQLite arm has no such guard. -1 is the same "unknown" the
+            // `rls_posture` field already uses, and the field is documented as a
+            // report rather than a guarantee.
             let depth = match state.health_depth_cache.cached().await {
                 Some(d) => d,
                 None => {
@@ -649,18 +667,25 @@ async fn health_handler(
                             [],
                             |row| row.get::<_, i64>(0),
                         )
-                        .unwrap_or(0);
+                        .unwrap_or(-1);
                     state.health_depth_cache.store(fresh).await;
                     fresh
                 }
             };
 
+            // Likewise for `last_sync_at`: null means "nothing has synced yet",
+            // which is the correct answer for a fresh deployment and a lie for a
+            // database we could not read. A broken read is reported as null AND
+            // logged, so the value is not the only evidence.
             let last = conn
                 .query_row(
                     "SELECT MAX(synced_at) FROM offline_queue WHERE synced_at IS NOT NULL",
                     [],
                     |row| row.get::<_, Option<String>>(0),
                 )
+                .map_err(|e| {
+                    tracing::warn!(error = %e, "could not read the last sync timestamp");
+                })
                 .unwrap_or(None);
 
             // SQLite has no row-level security, so the question does not arise.

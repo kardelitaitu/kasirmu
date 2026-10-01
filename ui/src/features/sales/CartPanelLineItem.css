@@ -467,6 +467,138 @@
   outline-offset: 1px;
 }
 
+/* ── Modifiers tags on cart line ──────────────────────────── */
+
+.pos-cart-line-modifiers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin-top: 2px;
+  margin-bottom: 2px;
+}
+
+.pos-cart-line-modifier-tag {
+  font-size: var(--text-xs, 0.75rem);
+  color: var(--color-fg-secondary);
+  background: var(--color-bg-secondary);
+  padding: 1px 6px;
+  border-radius: var(--radius-sm, 4px);
+  line-height: 1.3;
+}
+
+.pos-cart-line-modifier-price {
+  color: var(--color-accent);
+  font-weight: var(--font-weight-medium);
+}
+
+/* ── Kitchen notes / Special instructions ───────────────── */
+
+.pos-cart-line-note-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: var(--space-1);
+  padding: 0 var(--space-1);
+  background: transparent;
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-fg-muted);
+  font-size: var(--text-2xs);
+  cursor: pointer;
+  vertical-align: middle;
+  transition: all var(--duration-100) var(--ease-out);
+}
+
+.pos-cart-line-note-btn:hover {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+  background: var(--color-accent-subtle);
+}
+
+.pos-cart-line-note-btn--active {
+  border-style: solid;
+  border-color: var(--color-accent);
+  background: var(--color-accent-subtle);
+  color: var(--color-accent);
+}
+
+.pos-cart-line-note-btn:focus-visible {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 1px;
+}
+
+.pos-cart-line-note-badge {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: var(--space-1);
+  margin-top: 2px;
+  padding: 1px var(--space-2);
+  background: var(--color-accent-subtle);
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius-sm, 4px);
+  font-size: var(--text-xs, 0.75rem);
+  color: var(--color-fg);
+  line-height: 1.3;
+  word-break: break-word;
+}
+
+.pos-cart-line-note-icon {
+  flex-shrink: 0;
+  font-size: 0.85em;
+}
+
+.pos-cart-line-note-text {
+  font-style: italic;
+  font-weight: var(--font-weight-medium);
+}
+
+.pos-cart-line-note-modal {
+  max-width: 440px;
+  width: 90vw;
+}
+
+.pos-cart-note-modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+}
+
+.pos-cart-note-modal-item-name {
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-fg-muted);
+}
+
+.pos-cart-note-input {
+  width: 100%;
+  min-height: 80px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-surface);
+  color: var(--color-fg);
+  font-family: inherit;
+  font-size: var(--text-sm);
+  line-height: var(--leading-snug);
+  resize: vertical;
+  box-sizing: border-box;
+}
+
+.pos-cart-note-input:focus {
+  outline: none;
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px var(--color-accent-alpha);
+}
+
+.pos-cart-note-modal-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
 /* ── Responsive: tablet thumbnail shrink ────────────────────
  * On narrower viewports the right-side panel reflows below the
  * menu (see CartPanel.css @media) and we trim the thumbnail so

@@ -37,7 +37,7 @@ export interface KdsTicketCardProps {
   sessionToken: string;
   /** Called when a single line item is tapped to advance its status. */
   onAdvanceItem?: (item: KdsLineItem) => void;
-  /** Called to open the product picker for adding items to this order (TODO 3f). */
+  /** Called to open the product picker for adding items to this order. */
   onAddItems?: (orderId: string) => void;
   /** Whether this ticket just arrived (brief highlight animation). */
   isNew?: boolean;
@@ -190,7 +190,7 @@ export const KdsTicketCard = memo(function KdsTicketCard({
   const [editCount, setEditCount] = useState(String(order.item_count));
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // ── Line items: lazy-fetch + re-fetch on save (TODO 3f) ────────
+  // ── Line items: lazy-fetch + re-fetch on save ──────────────────
   const [lineItems, setLineItems] = useState<KdsLineItem[] | null>(null);
   const [lineItemsLoading, setLineItemsLoading] = useState(false);
   const [fetchKey, setFetchKey] = useState(0);

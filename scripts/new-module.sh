@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# OZ-POS — new module scaffold generator (bash)
+# kasir.mu — new module scaffold generator (bash)
 #
 # Creates a stub vertical under modules/<id>/ that compiles, registers with
 # the kernel, and passes its own tests on first run — then prints the two
@@ -122,7 +122,7 @@ cat > "$MODULE_DIR/manifest.json" <<EOF
   "name": "$NAME",
   "version": "0.1.0",
   "description": "$DESCRIPTION Stub: lifecycle only, domain logic not yet migrated.",
-  "author": "OZ-POS contributors",
+  "author": "kasir.mu contributors",
   "dependencies": $DEPS_JSON,
   "permissions": [
     "${ID}:view",
@@ -139,7 +139,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-description = "OZ-POS $NAME Module (stub): $DESCRIPTION"
+description = "kasir.mu $NAME Module (stub): $DESCRIPTION"
 
 # Inherits [workspace.lints] from the root Cargo.toml (missing_docs = warn).
 [lints]

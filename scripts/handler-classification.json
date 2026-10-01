@@ -1,0 +1,98 @@
+{
+  "schema_version": 1,
+  "description": "Handler classification registry for the soft namespace-governance rule (docs/architecture/module-namespace-governance.md, Rule 2). Every EventHandler impl a production file declares must appear here with one of the ADR-62 D4 categories. The populating classification is the Phase 0 census (docs/architecture/handler-census-phase0.md §3); scripts/verify-namespace-governance.py fails when a NEW impl type is absent, and deliberately does not re-grade existing rows.",
+  "categories": {
+    "command_contributor": "Runs synchronously in the sale transaction and may reject it (ADR-62 D1/D2).",
+    "projection_subscriber": "Runs after commit, derives a projection, may not reject the sale (ADR-62 D1/D3).",
+    "query_facade": "Serves reads through a sanctioned facade (ADR-62 D4/D5).",
+    "lifecycle": "Module load/start/stop hook; not a seam (ADR-62 D6).",
+    "plugin_bridge": "Bridges an event to an external surface, e.g. the LAN fan-out (ADR-62 D6).",
+    "internal_helper": "Support code with no seam contract (ADR-62 D6)."
+  },
+  "handlers": [
+    {
+      "name": "SaleSyncEnqueuer",
+      "category": "projection_subscriber",
+      "topic": "sale.completed",
+      "site": "platform/startup/src/event_handlers.rs:44",
+      "note": "Sync outbox enqueue."
+    },
+    {
+      "name": "InventorySyncEnqueuer",
+      "category": "projection_subscriber",
+      "topic": "product.created, stock.adjusted",
+      "site": "platform/startup/src/event_handlers.rs:147",
+      "note": "One struct, two subscriptions."
+    },
+    {
+      "name": "AuditLogHandler",
+      "category": "projection_subscriber",
+      "topic": "sale.completed, stock.adjusted, product.created",
+      "site": "platform/startup/src/event_handlers.rs:248",
+      "note": "One struct, three subscriptions."
+    },
+    {
+      "name": "LoyaltyEarnHandler",
+      "category": "command_contributor",
+      "topic": "sale.completed",
+      "site": "platform/startup/src/event_handlers.rs:439",
+      "note": "In-transaction loyalty award also lives at sales_lifecycle.rs apply_customer_stats_on_completion."
+    },
+    {
+      "name": "SettingsUpdatedHandler",
+      "category": "projection_subscriber",
+      "topic": "settings.updated",
+      "site": "platform/startup/src/event_handlers.rs:510",
+      "note": "ADR #22 relay."
+    },
+    {
+      "name": "OrderConfirmationHandler",
+      "category": "command_contributor",
+      "topic": "sale.completed",
+      "site": "crates/kasirmu-notification/src/handlers.rs:80",
+      "note": "External side-effect; feature-gated whatsapp-notifications."
+    },
+    {
+      "name": "PaymentReceiptHandler",
+      "category": "command_contributor",
+      "topic": "sale.completed",
+      "site": "crates/kasirmu-notification/src/handlers.rs:249",
+      "note": "Feature-gated; only when WHATSAPP_RECEIPT_PHONE is set."
+    },
+    {
+      "name": "StockLowAlertHandler",
+      "category": "command_contributor",
+      "topic": "stock.adjusted",
+      "site": "crates/kasirmu-notification/src/handlers.rs:170",
+      "note": "Feature-gated; only when WHATSAPP_MANAGER_PHONE is set."
+    },
+    {
+      "name": "SaleCompletedHandler",
+      "category": "plugin_bridge",
+      "topic": "sale.completed",
+      "site": "crates/kasirmu-lan/src/lib.rs:978",
+      "note": "LAN fan-out; wired by the desktop shell (apps/desktop-tauri/src/lib.rs:978)."
+    },
+    {
+      "name": "CourseFiredHandler",
+      "category": "plugin_bridge",
+      "topic": "order.course_fired",
+      "site": "crates/kasirmu-lan/src/lib.rs:998",
+      "note": "LAN fan-out."
+    },
+    {
+      "name": "KdsSyncHandler",
+      "category": "plugin_bridge",
+      "topic": "kds.sync",
+      "site": "crates/kasirmu-lan/src/kds_sync.rs:245",
+      "note": "LAN fan-out."
+    },
+    {
+      "name": "InventoryStockHandler",
+      "category": "internal_helper",
+      "topic": "sale.completed",
+      "site": "modules/inventory/src/handlers.rs:220",
+      "note": "DEAD / test-only: constructed nowhere in production. Its BOM deduction duplicates the in-transaction Store path; see the Phase 0 census headline correction. Kept classified so a future re-subscription is not mistaken for new work."
+    }
+  ]
+}

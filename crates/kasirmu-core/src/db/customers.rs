@@ -2,8 +2,8 @@
 /*
 last audited 25-07-26 by RSA-Agent (kasirmu-core slice B5 part 3)
 crate: kasirmu-core | status: SAFE | lint: CLEAN
-findings: clean CRUD; PII-bounded search per CUST-06 (server-side LIKE with ESCAPE, clamped page [1,100], count for pagination); store soft-scoping documented (migration 069/117); COR-23 INFO: delete_customer hard-deletes regardless of sales history / loyalty account — dangling references possible; single-statement writes rely on SQLite statement atomicity (crate-wide RUST-08 convention)
-next: consider soft-delete or referential guard on delete_customer (COR-23) | perf: N/A
+findings: clean CRUD; PII-bounded search per CUST-06 (server-side LIKE with ESCAPE, clamped page [1,100], count for pagination); store soft-scoping documented (migration 069/117); single-statement writes rely on SQLite statement atomicity (crate-wide RUST-08 convention); COR-23 CLOSED 26-09-26 — and one correction to how it was first stated: it read "hard-deletes regardless of sales history / loyalty account — dangling references possible", which is NOT what happens. `sales.customer_id` and `loyalty_accounts.customer_id` are NO ACTION and `foreign_keys` is ON on every connection path, so the FK rejects the delete outright and a dangling reference is impossible (CUST-11 intends exactly that). The real gap was reporting, not safety: the refusal reached the client as `CoreError::Db` with a raw "FOREIGN KEY constraint failed", naming neither the customer nor the blocker, so a UI could only show a storage fault. Now mapped to `Validation { field: "customer_id", .. }` with a message that says what holds the row and what to do
+next: none | perf: N/A
 */
 
 use rusqlite::params;
@@ -14,6 +14,38 @@ use crate::Customer;
 use crate::error::CoreError;
 
 use super::Store;
+
+/// Normalise the optional contact fields of a customer row to what the API
+/// reports (MSL-44).
+///
+/// An unparseable address becomes `None` — the same answer the read path
+/// (`row_to_customer`) and the return-value builders already give, via
+/// `Email::new(..).ok()`. The bug was that the WRITE disagreed with both: it
+/// bound the caller's raw string straight into the INSERT/UPDATE, so the column
+/// held `Some("not-an-email")` while every API surface reported `email: None`.
+/// Measured before the fix:
+///
+/// ```text
+/// create returns        = None
+/// stored in the column  = Some("not-an-email")     <- the disagreement
+/// read-back returns     = None
+/// ```
+///
+/// The value was therefore invisible through the type system and permanent in
+/// storage: `create_customer_invalid_email_saved_as_none` names the intended
+/// behaviour precisely, and it is the COLUMN that was not honouring it. Any
+/// future reader of the raw column — a report, an export, a sync push — would
+/// have picked up what every caller believed was absent.
+///
+/// Returning `None` here (rather than rejecting) keeps the contract the suite
+/// already pins, so callers that validate first are unaffected either way.
+fn normalise_contact_field(raw: Option<&str>, valid: impl Fn(&str) -> bool) -> Option<String> {
+    let trimmed = raw?.trim();
+    if trimmed.is_empty() || !valid(trimmed) {
+        return None;
+    }
+    Some(trimmed.to_owned())
+}
 
 impl Store<'_> {
     /// List all customers, ordered by name.
@@ -189,6 +221,9 @@ impl Store<'_> {
                 ),
             });
         }
+        // MSL-44: bind what the API reports, not the raw caller string.
+        let email = normalise_contact_field(email, |s| Email::new(s).is_ok());
+        let phone = normalise_contact_field(phone, |s| Phone::new(s).is_ok());
 
         let id = uuid::Uuid::now_v7().to_string();
         let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
@@ -246,6 +281,10 @@ impl Store<'_> {
             });
         }
 
+        // MSL-44: bind what the API reports, not the raw caller string.
+        let email = normalise_contact_field(email, |s| Email::new(s).is_ok());
+        let phone = normalise_contact_field(phone, |s| Phone::new(s).is_ok());
+
         let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
         let rows = self.conn.execute(
             "UPDATE customers SET name = ?1, email = ?2, phone = ?3, notes = ?4, updated_at = ?5 WHERE id = ?6",
@@ -265,11 +304,136 @@ impl Store<'_> {
         })
     }
 
+    /// Accrue a completed sale's base-currency total into the customer's
+    /// lifetime spend, inside the caller's transaction (Phase 5 P5.3).
+    ///
+    /// `customers` is owned by the `crm` module (`modules/ownership.json`); this
+    /// is the core-owned surface that module's data is written through, and the
+    /// single writer of `total_spent_minor`. The sale lifecycle calls it instead
+    /// of issuing the `UPDATE` itself, so the column has one entry point.
+    ///
+    /// Statement-level atomic increment (no read-modify-write race): SQLite
+    /// raises on i64 overflow, which the caller logs non-fatal. Returns the
+    /// number of rows touched (0 when the customer vanished).
+    ///
+    /// # Errors
+    ///
+    /// Returns `CoreError::Db` when the statement itself fails.
+    pub fn accrue_lifetime_spend_in_tx(
+        tx: &rusqlite::Connection,
+        customer_id: &str,
+        amount_minor: i64,
+    ) -> Result<usize, CoreError> {
+        let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+        let rows = tx.execute(
+            "UPDATE customers SET total_spent_minor = total_spent_minor + ?1, updated_at = ?2 \
+             WHERE id = ?3",
+            params![amount_minor, now, customer_id],
+        )?;
+        Ok(rows)
+    }
+
+    /// Project the authoritative `loyalty_accounts.points` balance onto
+    /// `customers.loyalty_points`, inside the caller's transaction (Phase 5
+    /// P5.3, MSL-4).
+    ///
+    /// `customers` is crm-owned; this is the second core-owned writer of a
+    /// `customers` column, paired with [`Self::accrue_lifetime_spend_in_tx`], so
+    /// all core writes to the table live here rather than in the loyalty ledger.
+    ///
+    /// # Errors
+    ///
+    /// Returns `CoreError::Db` when the statement fails.
+    pub fn project_loyalty_points_in_tx(
+        tx: &rusqlite::Connection,
+        customer_id: &str,
+    ) -> Result<usize, CoreError> {
+        let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+        let rows = tx.execute(
+            "UPDATE customers SET loyalty_points = \
+                (SELECT points FROM loyalty_accounts WHERE customer_id = ?1), \
+             updated_at = ?2 WHERE id = ?1",
+            params![customer_id, now],
+        )?;
+        Ok(rows)
+    }
+
+    /// Project the ledger balance onto `customers.loyalty_points`, resolving the
+    /// customer from the loyalty ACCOUNT id (Phase 5 P5.3, MSL-4 refund-reversal
+    /// shape). Same single-writer contract as
+    /// [`Self::project_loyalty_points_in_tx`], for the path that has no customer
+    /// id in hand.
+    ///
+    /// # Errors
+    ///
+    /// Returns `CoreError::Db` when the statement fails.
+    pub fn project_loyalty_points_for_account_in_tx(
+        conn: &rusqlite::Connection,
+        account_id: &str,
+    ) -> Result<usize, CoreError> {
+        let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+        let rows = conn.execute(
+            "UPDATE customers SET loyalty_points = \
+                (SELECT points FROM loyalty_accounts WHERE id = ?1), \
+             updated_at = ?2 WHERE id = (SELECT customer_id FROM loyalty_accounts WHERE id = ?1)",
+            params![account_id, now],
+        )?;
+        Ok(rows)
+    }
+
+    /// Reverse part of a customer's lifetime spend on refund, inside the caller's
+    /// transaction (Phase 5 P5.3). The mirror of
+    /// [`Self::accrue_lifetime_spend_in_tx`]: clamps at zero (`MAX(..., 0)`) so a
+    /// refund can never drive the lifetime total negative, and takes the timestamp
+    /// so the caller's existing clock is used.
+    ///
+    /// # Errors
+    ///
+    /// Returns `CoreError::Db` when the statement fails.
+    pub fn reverse_lifetime_spend_in_tx(
+        conn: &rusqlite::Connection,
+        customer_id: &str,
+        amount_minor: i64,
+        at: &str,
+    ) -> Result<usize, CoreError> {
+        let rows = conn.execute(
+            "UPDATE customers SET total_spent_minor = MAX(total_spent_minor - ?1, 0), \
+             updated_at = ?2 WHERE id = ?3",
+            params![amount_minor, at, customer_id],
+        )?;
+        Ok(rows)
+    }
+
     /// Delete a customer by id.
     pub fn delete_customer(&self, id: &str) -> Result<(), CoreError> {
-        let rows = self
+        // COR-23: the referential guard is the FK itself (`sales.customer_id`
+        // and `loyalty_accounts.customer_id`, both NO ACTION), which is the
+        // INTENDED design — CUST-11 blocks the delete so no orphaned child rows
+        // can be left behind. What was missing is only the NAME of the failure:
+        // a bare `DELETE` met `FOREIGN KEY constraint failed`, which reaches the
+        // client as `CoreError::Db` and names neither the customer nor what is
+        // holding it. Mapped to `Validation` rather than `Conflict`: the
+        // customer EXISTS, so `NotFound` would be a lie, and the shared
+        // `Conflict` message is written for a uniqueness collision ("already
+        // exists") which reads as a failed CREATE here. `Validation` carries a
+        // free-form message, so the refusal can say what holds the row and what
+        // to do — and `field: "customer_id"` names the column both referrers
+        // share.
+        let deleted = self
             .conn
-            .execute("DELETE FROM customers WHERE id = ?1", params![id])?;
+            .execute("DELETE FROM customers WHERE id = ?1", params![id]);
+        if let Err(rusqlite::Error::SqliteFailure(e, _)) = &deleted
+            && e.code == rusqlite::ErrorCode::ConstraintViolation
+        {
+            return Err(CoreError::Validation {
+                field: "customer_id",
+                message: "this customer still has sales or a loyalty account; those rows \
+                          reference it and must be removed or reassigned before the customer \
+                          can be deleted"
+                    .to_owned(),
+            });
+        }
+        let rows = deleted?;
         if rows == 0 {
             return Err(CoreError::NotFound {
                 entity: "customer",

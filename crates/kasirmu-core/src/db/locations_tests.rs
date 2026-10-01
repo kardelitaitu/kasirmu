@@ -2,16 +2,16 @@ use super::*;
 use crate::migrations;
 use crate::subscription::SubscriptionTier;
 
-fn setup() -> (Store<'static>, String) {
-    let conn = migrations::fresh_db();
-    let conn: &'static rusqlite::Connection = Box::leak(Box::new(conn));
-    let store = Store::new(conn);
+/// The caller owns the connection, so this no longer `Box::leak`s a
+/// database per test to manufacture a `'static` (O-T03).
+fn setup(db: &rusqlite::Connection) -> (Store<'_>, String) {
+    let store = Store::new(db);
 
     // ADR #56 §2.6 removed the seeded 'Default Store' row: a store with no
     // merchant should have no location, so the baseline no longer ships one
     // and the test creates what it needs. Inserting is also what
     // provision_device does, so the fixture matches production.
-    conn.execute(
+    db.execute(
         "INSERT INTO locations (id, name, address, tax_id, currency, timezone, is_primary, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 1, ?7, ?8)",
         rusqlite::params![
             "default",
@@ -30,7 +30,8 @@ fn setup() -> (Store<'static>, String) {
 
 #[test]
 fn list_returns_seeded_primary() {
-    let (store, _) = setup();
+    let store_db = migrations::fresh_db();
+    let (store, _) = setup(&store_db);
     let profiles = store.list_locations().unwrap();
     assert_eq!(profiles.len(), 1);
     assert!(profiles[0].is_primary);
@@ -38,21 +39,161 @@ fn list_returns_seeded_primary() {
 
 #[test]
 fn get_returns_seeded_primary() {
-    let (store, id) = setup();
+    let store_db = migrations::fresh_db();
+    let (store, id) = setup(&store_db);
     let profile = store.get_location_profile(&id).unwrap().unwrap();
     assert_eq!(profile.name, "Main Store");
 }
 
+// ── MSL-42: the location update must validate the currency like its sibling ──
+
+/// Two store methods write `locations.currency`, and only one validated it.
+///
+/// `update_regional_config_for_location` routes the value through
+/// `regional::validate_regional_axis_value("currency", ..)`, which parses it as a
+/// `Currency` and canonicalises it. `update_location_profile` wrote the same
+/// column raw — no check here, and none at the bridge either, whose
+/// `update_location_profile_scoped` validates the TIMEZONE beside it but not the
+/// currency. The column is `TEXT NOT NULL DEFAULT 'USD'` with no CHECK.
+///
+/// **What the contract actually is, measured rather than assumed:** `Currency`'s
+/// `FromStr` (`foundation/src/money.rs:119`) checks SHAPE — exactly three ASCII
+/// alphabetic bytes, uppercased — and has no ISO-4217 membership table. So
+/// `"XYZ"` is a legal value by design and `"US"`, `"USDD"` and `""` are not.
+/// The doc comment on `validate_regional_axis_value` saying "ISO-4217 alpha-3"
+/// describes that shape, not a registry lookup.
+///
+/// The UI makes the difference reachable: the inspector renders timezone as a
+/// three-option preset `<select>` with a client-side guard, and currency as a
+/// free-text `<input>` whose only constraint is `maxLength={3}` — so `""` is an
+/// ordinary keystroke (clear the field and blur), not a hand-crafted payload.
+#[test]
+fn update_location_profile_rejects_a_malformed_currency() {
+    let store_db = migrations::fresh_db();
+    let (store, id) = setup(&store_db);
+
+    let before = store.get_location_profile(&id).unwrap().unwrap();
+    assert_eq!(before.currency, "USD");
+
+    // An empty field is the reachable bad case: the input has no required rule.
+    let err = store
+        .update_location_profile(&id, "Main Store", "123 Main St", "TAX-001", "", "UTC")
+        .expect_err("a blank currency must be refused, not persisted");
+    assert!(
+        matches!(
+            err,
+            CoreError::Validation {
+                field: "currency",
+                ..
+            }
+        ),
+        "a malformed currency is a VALIDATION error; got {err:?}"
+    );
+
+    // A wrong-length code too.
+    assert!(
+        store
+            .update_location_profile(&id, "Main Store", "123 Main St", "TAX-001", "US", "UTC")
+            .is_err(),
+        "a two-letter code is malformed"
+    );
+
+    // The row must be untouched: a refused update changes nothing.
+    let after = store.get_location_profile(&id).unwrap().unwrap();
+    assert_eq!(
+        after.currency, before.currency,
+        "the refused value must not land"
+    );
+}
+
+/// Both write paths must agree on the shape rule and the canonical form. This is
+/// the property the fix establishes, stated independently of any one bad value.
+#[test]
+fn both_currency_write_paths_agree_on_what_is_legal() {
+    let store_db = migrations::fresh_db();
+    let (store, id) = setup(&store_db);
+
+    // Lowercase is accepted by the regional path and canonicalised upward.
+    store
+        .update_regional_config_for_location(&id, "", "UTC", "idr", "")
+        .unwrap();
+    assert_eq!(
+        store.get_location_profile(&id).unwrap().unwrap().currency,
+        "IDR",
+        "the regional path canonicalises to uppercase"
+    );
+
+    // The plain update path must end at the same place for the same input.
+    store
+        .update_location_profile(&id, "Main Store", "123 Main St", "TAX-001", "usd", "UTC")
+        .unwrap();
+    assert_eq!(
+        store.get_location_profile(&id).unwrap().unwrap().currency,
+        "USD",
+        "and so must the plain update path — same rule, same canonical form"
+    );
+
+    // They agree on the SHAPE rule: a non-blank malformed code fails on both.
+    assert!(
+        store
+            .update_regional_config_for_location(&id, "", "UTC", "US", "")
+            .is_err(),
+        "the regional path rejects a malformed currency"
+    );
+    assert!(
+        store
+            .update_location_profile(&id, "Main Store", "123 Main St", "TAX-001", "US", "UTC")
+            .is_err(),
+        "and so must the plain update path"
+    );
+
+    // They deliberately DIFFER on blank, and that difference is the point.
+    //
+    // `update_regional_config_for_location` writes the OVERRIDE layer: blank is
+    // the "inherit from the entity/organization layer" sentinel, and
+    // `write_blank_clears_each_axis_to_inherit` pins that clearing each axis
+    // really does fall through. `update_location_profile` writes the flat profile
+    // the inspector edits, where a blank currency is simply an empty field the
+    // user left behind — there is no lower layer for it to inherit from, and the
+    // read side (`regional_config_for_location`) takes the Location layer's value
+    // as-is before `RegionalLayer::blank` maps blank to "not set here".
+    //
+    // So the two writers have DIFFERENT blank semantics on purpose, and pinning
+    // both directions stops a later refactor from "unifying" them into whichever
+    // one it happens to read first. (I got this wrong on the first attempt and
+    // wrote a fix that made blank preserve on the regional path too; the existing
+    // test caught it, which is the system working.)
+    assert!(
+        store
+            .update_regional_config_for_location(&id, "", "UTC", "", "")
+            .is_ok(),
+        "the regional override path treats blank as the inherit sentinel"
+    );
+    assert_eq!(
+        store.get_location_profile(&id).unwrap().unwrap().currency,
+        "",
+        "and cloning that contract onto the profile path would erase the setting"
+    );
+    assert!(
+        store
+            .update_location_profile(&id, "Main Store", "123 Main St", "TAX-001", "", "UTC")
+            .is_err(),
+        "the profile path has no inherit layer, so blank is a validation error"
+    );
+}
+
 #[test]
 fn get_returns_none_for_missing() {
-    let (store, _) = setup();
+    let store_db = migrations::fresh_db();
+    let (store, _) = setup(&store_db);
     let profile = store.get_location_profile("nonexistent").unwrap();
     assert!(profile.is_none());
 }
 
 #[test]
 fn get_primary_returns_seeded() {
-    let (store, _) = setup();
+    let store_db = migrations::fresh_db();
+    let (store, _) = setup(&store_db);
     let profile = store.get_primary_location().unwrap().unwrap();
     assert_eq!(profile.id, "default");
     assert!(profile.is_primary);
@@ -60,7 +201,8 @@ fn get_primary_returns_seeded() {
 
 #[test]
 fn create_second_store() {
-    let (store, _) = setup();
+    let store_db = migrations::fresh_db();
+    let (store, _) = setup(&store_db);
     let second = LocationProfile {
         id: uuid::Uuid::now_v7().to_string(),
         name: "Branch 2".into(),
@@ -79,7 +221,8 @@ fn create_second_store() {
 
 #[test]
 fn update_location_profile() {
-    let (store, id) = setup();
+    let store_db = migrations::fresh_db();
+    let (store, id) = setup(&store_db);
     let updated = store
         .update_location_profile(&id, "Updated Store", "456 New St", "TAX-999", "USD", "UTC")
         .unwrap();
@@ -89,7 +232,8 @@ fn update_location_profile() {
 
 #[test]
 fn update_nonexistent_returns_not_found() {
-    let (store, _) = setup();
+    let store_db = migrations::fresh_db();
+    let (store, _) = setup(&store_db);
     let err = store
         .update_location_profile("nonexistent", "X", "", "", "USD", "UTC")
         .unwrap_err();
@@ -98,12 +242,13 @@ fn update_nonexistent_returns_not_found() {
 
 #[test]
 fn set_primary_location_promotes_and_demotes() {
-    let (store, primary_id) = setup();
+    let store_db = migrations::fresh_db();
+    let (store, primary_id) = setup(&store_db);
     let second = LocationProfile {
         id: uuid::Uuid::now_v7().to_string(),
         name: "Branch 2".into(),
-        address: "".into(),
-        tax_id: "".into(),
+        address: String::new(),
+        tax_id: String::new(),
         currency: "USD".into(),
         timezone: "UTC".into(),
         is_primary: false,
@@ -132,19 +277,21 @@ fn set_primary_location_promotes_and_demotes() {
 
 #[test]
 fn set_primary_nonexistent_returns_not_found() {
-    let (store, _) = setup();
+    let store_db = migrations::fresh_db();
+    let (store, _) = setup(&store_db);
     let err = store.set_primary_location("nonexistent").unwrap_err();
     assert!(matches!(err, CoreError::NotFound { .. }));
 }
 
 #[test]
 fn delete_second_store() {
-    let (store, _) = setup();
+    let store_db = migrations::fresh_db();
+    let (store, _) = setup(&store_db);
     let second = LocationProfile {
         id: uuid::Uuid::now_v7().to_string(),
         name: "Branch 2".into(),
-        address: "".into(),
-        tax_id: "".into(),
+        address: String::new(),
+        tax_id: String::new(),
         currency: "USD".into(),
         timezone: "UTC".into(),
         is_primary: false,
@@ -159,14 +306,16 @@ fn delete_second_store() {
 
 #[test]
 fn delete_primary_store_rejected() {
-    let (store, id) = setup();
+    let store_db = migrations::fresh_db();
+    let (store, id) = setup(&store_db);
     let err = store.delete_location_profile(&id).unwrap_err();
     assert!(matches!(err, CoreError::Validation { field: "id", .. }));
 }
 
 #[test]
 fn delete_nonexistent_returns_not_found() {
-    let (store, _) = setup();
+    let store_db = migrations::fresh_db();
+    let (store, _) = setup(&store_db);
     let err = store.delete_location_profile("nonexistent").unwrap_err();
     assert!(matches!(err, CoreError::NotFound { .. }));
 }
@@ -175,12 +324,13 @@ fn delete_nonexistent_returns_not_found() {
 /// by the ON DELETE RESTRICT foreign key constraint.
 #[test]
 fn delete_store_with_workspace_instances_rejected() {
-    let (store, _) = setup();
+    let store_db = migrations::fresh_db();
+    let (store, _) = setup(&store_db);
     let second = LocationProfile {
         id: "store-branch".into(),
         name: "Branch".into(),
-        address: "".into(),
-        tax_id: "".into(),
+        address: String::new(),
+        tax_id: String::new(),
         currency: "USD".into(),
         timezone: "UTC".into(),
         is_primary: false,
@@ -216,12 +366,13 @@ fn delete_store_with_workspace_instances_rejected() {
 /// ADR #6: user_location_access FK also enforces ON DELETE RESTRICT.
 #[test]
 fn delete_store_with_user_access_rejected() {
-    let (store, _) = setup();
+    let store_db = migrations::fresh_db();
+    let (store, _) = setup(&store_db);
     let second = LocationProfile {
         id: "store-b2".into(),
         name: "Branch 2".into(),
-        address: "".into(),
-        tax_id: "".into(),
+        address: String::new(),
+        tax_id: String::new(),
         currency: "USD".into(),
         timezone: "UTC".into(),
         is_primary: false,
@@ -279,7 +430,8 @@ fn update_all_fields_roundtrip() {
     // Verify every mutable field (name, address, tax_id, currency,
     // timezone) is persisted and returned. The existing test only
     // checks name + address.
-    let (store, id) = setup();
+    let store_db = migrations::fresh_db();
+    let (store, id) = setup(&store_db);
     let updated = store
         .update_location_profile(
             &id,
@@ -310,7 +462,8 @@ fn update_all_fields_roundtrip() {
 fn list_orders_primary_first() {
     // list_locations orders by is_primary DESC, created_at ASC.
     // The primary must appear before any non-primary locations.
-    let (store, _) = setup();
+    let store_db = migrations::fresh_db();
+    let (store, _) = setup(&store_db);
     make_second(&store, "branch-a", "Branch A");
     make_second(&store, "branch-b", "Branch B");
 
@@ -333,12 +486,13 @@ fn create_store_with_is_primary_true_rejected_by_db() {
     // is_primary=true is rejected at the DB level, so the
     // single-primary invariant is enforced by the schema, not by
     // create_location_profile. This test documents that enforcement.
-    let (store, _) = setup();
+    let store_db = migrations::fresh_db();
+    let (store, _) = setup(&store_db);
     let second = LocationProfile {
         id: "branch-p".into(),
         name: "Branch P".into(),
-        address: "".into(),
-        tax_id: "".into(),
+        address: String::new(),
+        tax_id: String::new(),
         currency: "USD".into(),
         timezone: "UTC".into(),
         is_primary: true, // would create a second primary
@@ -357,7 +511,8 @@ fn create_store_with_is_primary_true_rejected_by_db() {
 fn set_primary_on_already_primary_is_noop() {
     // set_primary_location on the location that's already primary should
     // succeed and leave the state unchanged (demote then re-promote).
-    let (store, id) = setup();
+    let store_db = migrations::fresh_db();
+    let (store, id) = setup(&store_db);
     let result = store.set_primary_location(&id).unwrap();
     assert!(result.is_primary);
     // Still exactly one primary.
@@ -377,7 +532,8 @@ fn set_primary_rolls_back_on_nonexistent() {
     // promoting the target. If the target doesn't exist, the
     // rollback (tx.rollback()) must restore the original primary.
     // This test verifies the transaction is rolled back correctly.
-    let (store, original_id) = setup();
+    let store_db = migrations::fresh_db();
+    let (store, original_id) = setup(&store_db);
     let err = store.set_primary_location("nonexistent").unwrap_err();
     assert!(matches!(err, CoreError::NotFound { .. }));
 
@@ -400,7 +556,8 @@ fn set_primary_rolls_back_on_nonexistent() {
 #[test]
 fn create_and_delete_cycle() {
     // Full lifecycle: create, verify, delete, verify gone.
-    let (store, _) = setup();
+    let store_db = migrations::fresh_db();
+    let (store, _) = setup(&store_db);
     let p = make_second(&store, "temp-store", "Temp");
     assert_eq!(store.list_locations().unwrap().len(), 2);
 
@@ -412,7 +569,8 @@ fn create_and_delete_cycle() {
 #[test]
 fn update_does_not_change_is_primary() {
     // Updating a non-primary location must not promote it.
-    let (store, _) = setup();
+    let store_db = migrations::fresh_db();
+    let (store, _) = setup(&store_db);
     let p = make_second(&store, "branch-u", "Branch U");
     store
         .update_location_profile(&p.id, "Renamed", "", "", "USD", "UTC")
@@ -425,7 +583,8 @@ fn update_does_not_change_is_primary() {
 fn get_primary_returns_none_when_no_primary() {
     // Edge case: if no store is marked primary (corrupted state),
     // get_primary_location returns None rather than erroring.
-    let (store, _) = setup();
+    let store_db = migrations::fresh_db();
+    let (store, _) = setup(&store_db);
     // Demote the only primary to simulate corruption.
     store
         .conn
@@ -438,12 +597,13 @@ fn get_primary_returns_none_when_no_primary() {
 #[test]
 fn multiple_locations_distinct_currencies() {
     // Verify locations with different currencies coexist.
-    let (store, _) = setup();
+    let store_db = migrations::fresh_db();
+    let (store, _) = setup(&store_db);
     let p1 = LocationProfile {
         id: "usd-store".into(),
         name: "USD Branch".into(),
-        address: "".into(),
-        tax_id: "".into(),
+        address: String::new(),
+        tax_id: String::new(),
         currency: "USD".into(),
         timezone: "UTC".into(),
         is_primary: false,
@@ -455,8 +615,8 @@ fn multiple_locations_distinct_currencies() {
     let p2 = LocationProfile {
         id: "eur-store".into(),
         name: "EUR Branch".into(),
-        address: "".into(),
-        tax_id: "".into(),
+        address: String::new(),
+        tax_id: String::new(),
         currency: "EUR".into(),
         timezone: "UTC".into(),
         is_primary: false,
@@ -475,13 +635,15 @@ fn multiple_locations_distinct_currencies() {
 
 #[test]
 fn count_locations_returns_seeded() {
-    let (store, _) = setup();
+    let store_db = migrations::fresh_db();
+    let (store, _) = setup(&store_db);
     assert_eq!(store.count_locations().unwrap(), 1);
 }
 
 #[test]
 fn enforce_location_quota_allows_within_limit() {
-    let (store, _) = setup();
+    let store_db = migrations::fresh_db();
+    let (store, _) = setup(&store_db);
     // Free allows 1 store; we have 1 seeded → adding another must
     // NOT be blocked here (the quota check counts BEFORE the new
     // insert, so current=1, limit=1 → current >= limit → blocked).
@@ -517,7 +679,8 @@ fn create_location_profile_tx_veto_closes_limit_race() {
             updated_at: "2026-07-01T10:00:00Z".into(),
         }
     }
-    let (store, _) = setup();
+    let store_db = migrations::fresh_db();
+    let (store, _) = setup(&store_db);
     let tier = SubscriptionTier::Pro; // limit 2; the seed is location #1.
     store.arm_creation_quota(QuotaDimension::Locations, tier.clone());
     store
@@ -558,7 +721,8 @@ fn create_location_profile_unarmed_is_ungated() {
             updated_at: "2026-07-01T10:00:00Z".into(),
         }
     }
-    let (store, _) = setup();
+    let store_db = migrations::fresh_db();
+    let (store, _) = setup(&store_db);
     store
         .create_location_profile(&profile("store-2", "Branch 2"))
         .unwrap();
@@ -567,7 +731,8 @@ fn create_location_profile_unarmed_is_ungated() {
 
 #[test]
 fn enforce_location_quota_blocks_at_limit() {
-    let (store, _) = setup();
+    let store_db = migrations::fresh_db();
+    let (store, _) = setup(&store_db);
     // Free allows 1 store; we already have 1 → must be blocked.
     let err = store
         .enforce_location_quota(&SubscriptionTier::Free)
@@ -580,7 +745,8 @@ fn enforce_location_quota_blocks_at_limit() {
 
 #[test]
 fn enforce_location_quota_blocks_plus_at_limit() {
-    let (store, _) = setup();
+    let store_db = migrations::fresh_db();
+    let (store, _) = setup(&store_db);
     // Plus allows 1 store; we already have 1 → must be blocked.
     let err = store
         .enforce_location_quota(&SubscriptionTier::Plus)
@@ -593,13 +759,14 @@ fn enforce_location_quota_blocks_plus_at_limit() {
 
 #[test]
 fn enforce_location_quota_pro_allows_two_locations() {
-    let (store, _) = setup();
+    let store_db = migrations::fresh_db();
+    let (store, _) = setup(&store_db);
     // Pro allows 2 locations; we have 1 → adding a second is OK.
     let second = LocationProfile {
         id: "store-2".into(),
         name: "Branch 2".into(),
-        address: "".into(),
-        tax_id: "".into(),
+        address: String::new(),
+        tax_id: String::new(),
         currency: "USD".into(),
         timezone: "UTC".into(),
         is_primary: false,
@@ -626,26 +793,28 @@ fn enforce_location_quota_pro_allows_two_locations() {
 
 #[test]
 fn enforce_location_quota_error_message_includes_tier_and_count() {
-    let (store, _) = setup();
+    let store_db = migrations::fresh_db();
+    let (store, _) = setup(&store_db);
     let err = store
         .enforce_location_quota(&SubscriptionTier::Free)
         .unwrap_err();
     let msg = err.to_string();
     assert!(msg.contains("Free"), "message should name the tier: {msg}");
-    assert!(msg.contains("1"), "message should show the limit: {msg}");
+    assert!(msg.contains('1'), "message should show the limit: {msg}");
 }
 
 #[test]
 fn enforce_location_quota_premium_allows_four() {
-    let (store, _) = setup();
+    let store_db = migrations::fresh_db();
+    let (store, _) = setup(&store_db);
     // Premium allows up to 5 locations (limit is exclusive: >= blocks).
     // We have 1 seeded; add 3 more = 4 total → OK.
     for i in 0..3 {
         let p = LocationProfile {
             id: format!("store-{i}"),
             name: format!("Branch {i}"),
-            address: "".into(),
-            tax_id: "".into(),
+            address: String::new(),
+            tax_id: String::new(),
             currency: "USD".into(),
             timezone: "UTC".into(),
             is_primary: false,
@@ -664,8 +833,8 @@ fn enforce_location_quota_premium_allows_four() {
     let p = LocationProfile {
         id: "store-3".into(),
         name: "Branch 3".into(),
-        address: "".into(),
-        tax_id: "".into(),
+        address: String::new(),
+        tax_id: String::new(),
         currency: "USD".into(),
         timezone: "UTC".into(),
         is_primary: false,
@@ -685,14 +854,15 @@ fn enforce_location_quota_premium_allows_four() {
 
 #[test]
 fn enforce_location_quota_enterprise_unlimited() {
-    let (store, _) = setup();
+    let store_db = migrations::fresh_db();
+    let (store, _) = setup(&store_db);
     // Enterprise has no location limit (None) — always passes.
     for i in 0..15 {
         let p = LocationProfile {
             id: format!("store-{i}"),
             name: format!("Branch {i}"),
-            address: "".into(),
-            tax_id: "".into(),
+            address: String::new(),
+            tax_id: String::new(),
             currency: "USD".into(),
             timezone: "UTC".into(),
             is_primary: false,
@@ -712,7 +882,8 @@ fn enforce_location_quota_enterprise_unlimited() {
 
 #[test]
 fn ticket_prefix_empty_resolves_to_none() {
-    let (store, id) = setup();
+    let store_db = migrations::fresh_db();
+    let (store, id) = setup(&store_db);
     // '' is the no-prefix sentinel: no inheritance from the entity's
     // statutory fiscal prefix, and no default spelling either.
     assert_eq!(store.location_ticket_prefix(&id).unwrap(), None);
@@ -725,7 +896,8 @@ fn ticket_prefix_empty_resolves_to_none() {
 
 #[test]
 fn ticket_prefix_normalizes_trim_and_case_at_the_boundary() {
-    let (store, id) = setup();
+    let store_db = migrations::fresh_db();
+    let (store, id) = setup(&store_db);
     store.set_location_ticket_prefix(&id, "  kds-a  ").unwrap();
     assert_eq!(
         store.location_ticket_prefix(&id).unwrap(),
@@ -745,15 +917,16 @@ fn ticket_prefix_normalizes_trim_and_case_at_the_boundary() {
 
 #[test]
 fn ticket_prefix_duplicate_within_tenant_refused_by_index() {
-    let (store, _) = setup();
+    let store_db = migrations::fresh_db();
+    let (store, _) = setup(&store_db);
     store
         .set_location_ticket_prefix("default", "KDS-A")
         .unwrap();
     let second = LocationProfile {
         id: "loc-2".into(),
         name: "Second".into(),
-        address: "".into(),
-        tax_id: "".into(),
+        address: String::new(),
+        tax_id: String::new(),
         currency: "USD".into(),
         timezone: "UTC".into(),
         is_primary: false,

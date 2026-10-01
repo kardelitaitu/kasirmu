@@ -26,14 +26,14 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const CHECKER = resolve(ROOT, 'scripts', 'verify-architecture-boundaries.py');
 const fixtures = [];
 
-function fixture({ packages = [], uiFiles = {}, baseline = { entries: [] }, metadata = null } = {}) {
+function fixture({ packages = [], uiFiles = {}, files = {}, baseline = { entries: [] }, metadata = null } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'oz-boundaries-'));
   fixtures.push(dir);
   mkdirSync(join(dir, 'scripts'), { recursive: true });
   mkdirSync(join(dir, 'ui', 'src'), { recursive: true });
   copyFileSync(CHECKER, join(dir, 'scripts', 'verify-architecture-boundaries.py'));
 
-  for (const [relative, content] of Object.entries(uiFiles)) {
+  for (const [relative, content] of Object.entries({ ...uiFiles, ...files })) {
     const path = join(dir, relative);
     mkdirSync(dirname(path), { recursive: true });
     writeFileSync(path, content);
@@ -95,6 +95,14 @@ function run(dir, args = []) {
   }
 }
 
+// Dates are relative to today on purpose. A fixed far-future expiry is what this
+// harness used to carry, and the quarter-term rule added for C26 refuses it -- an
+// exemption longer than a quarter has to be renewed on the record. Keeping the
+// fixtures relative also stops the suite from rotting as the calendar moves past
+// a hardcoded introduciton or expiry.
+const DAY_MS = 86_400_000;
+const isoDay = (offset) => new Date(Date.now() + offset * DAY_MS).toISOString().slice(0, 10);
+
 function baselineEntry(rule, path, target, overrides = {}) {
   return {
     rule,
@@ -102,8 +110,8 @@ function baselineEntry(rule, path, target, overrides = {}) {
     target,
     reason: 'Fixture transitional debt',
     owner: 'test-owner',
-    introduced: '2026-08-06',
-    expires: '2099-12-31',
+    introduced: isoDay(-70),
+    expires: isoDay(15),
     ...overrides,
   };
 }
@@ -144,6 +152,37 @@ describe('verify-architecture-boundaries.py', () => {
     const result = run(dir);
     assert.equal(result.code, 1, result.output);
     assert.match(result.output, /core-upward-dependency/);
+  });
+
+  it('names a re-export-only core edge a type shim, not an upward dependency (C26)', () => {
+    const dir = fixture({
+      packages: [{ name: 'kasirmu-core', dependencies: [{ name: 'modules-sales' }] }, { name: 'modules-sales' }],
+      files: { 'crates/kasirmu-core/src/shim.rs': 'pub use modules_sales::SaleRow;\n' },
+    });
+    const result = run(dir);
+    assert.equal(result.code, 1, result.output);
+    assert.match(result.output, /core-type-shim/);
+    assert.doesNotMatch(result.output, /core-upward-dependency/);
+  });
+
+  it('keeps a core edge that calls into the module as an upward dependency', () => {
+    const dir = fixture({
+      packages: [{ name: 'kasirmu-core', dependencies: [{ name: 'modules-sales' }] }, { name: 'modules-sales' }],
+      files: { 'crates/kasirmu-core/src/uses.rs': 'pub fn go() { modules_sales::finalize(); }\n' },
+    });
+    const result = run(dir);
+    assert.equal(result.code, 1, result.output);
+    assert.match(result.output, /core-upward-dependency/);
+    assert.doesNotMatch(result.output, /core-type-shim/);
+  });
+
+  it('does not read an unseen tree as a re-export: no core source stays an upward dependency', () => {
+    const dir = fixture({
+      packages: [{ name: 'kasirmu-core', dependencies: [{ name: 'modules-sales' }] }, { name: 'modules-sales' }],
+    });
+    const result = run(dir);
+    assert.match(result.output, /core-upward-dependency/);
+    assert.doesNotMatch(result.output, /core-type-shim/);
   });
 
   it('matches Cargo dependency paths reported as package directories', () => {
@@ -223,6 +262,39 @@ describe('verify-architecture-boundaries.py', () => {
     const result = run(dir);
     assert.equal(result.code, 1, result.output);
     assert.match(result.output, /new.*ui-direct-invoke/s);
+  });
+
+  it('refuses an expiry bumped past one quarter with no recorded reason (C26)', () => {
+    const dir = fixture({
+      packages: [{ name: 'foundation' }],
+      baseline: {
+        entries: [
+          baselineEntry('core-upward-dependency', 'crates/kasirmu-core/Cargo.toml', 'modules-crm', {
+            expires: isoDay(200),
+          }),
+        ],
+      },
+    });
+    const result = run(dir);
+    assert.equal(result.code, 2, result.output);
+    assert.match(result.output, /renewals/);
+  });
+
+  it('accepts the same bump once a dated renewal carries a reason', () => {
+    const dir = fixture({
+      packages: [{ name: 'kasirmu-core', dependencies: [{ name: 'modules-crm' }] }, { name: 'modules-crm' }],
+      baseline: {
+        entries: [
+          baselineEntry('core-upward-dependency', 'crates/kasirmu-core/Cargo.toml', 'modules-crm', {
+            introduced: isoDay(-120),
+            expires: isoDay(80),
+            renewals: [{ on: isoDay(-1), reason: 'type move scheduled for the next quarter (D3)' }],
+          }),
+        ],
+      },
+    });
+    const result = run(dir);
+    assert.equal(result.code, 0, result.output);
   });
 
   it('fails for expired and stale baseline entries', () => {

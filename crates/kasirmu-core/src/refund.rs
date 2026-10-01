@@ -1,3 +1,3 @@
-//! Refund domain type — re-exported from `modules_sales`.
+//! Refund domain type — re-exported from `foundation` (moved down 2026-09-28, ADR-61 / C26).
 
-pub use modules_sales::models::{Refund, RefundLine};
+pub use foundation::sales::{Refund, RefundLine};

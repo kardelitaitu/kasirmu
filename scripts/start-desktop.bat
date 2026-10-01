@@ -1,6 +1,6 @@
 @echo off
 REM ============================================================================
-REM  start-desktop.bat — launches the OZ-POS desktop client in dev mode.
+REM  start-desktop.bat — launches the kasir.mu desktop client in dev mode.
 REM
 REM  Run from project root (or any directory). It will cd to the Rust crate,
 REM  then `cargo tauri dev` which builds the Rust binary in debug profile,
@@ -32,6 +32,17 @@ REM      `..\apps\desktop-tauri` suffix is resolved relative to that, so the
 REM      bat works no matter which directory it is invoked from. Do NOT replace
 REM      with an absolute path that ties it to one developer's machine layout.
 REM
+REM  NOTE ON `beforeDevCommand` IN apps\desktop-tauri\tauri.conf.json:
+REM  tauri-cli does NOT run it from the crate directory this bat cd's into.
+REM  It runs the child with the working directory set to the FRONTEND
+REM  directory derived from `frontendDist` -- here `ui\` -- so
+REM  `npm run dev --prefix ../ui` is CORRECT even though it reads one level
+REM  short from apps\desktop-tauri. "Correcting" it to `../../ui` makes npm
+REM  look for C:\dev\ui\package.json, and the dev server never starts.
+REM  (Measured 2026-09-28: `--prefix ../ui` resolves to C:\dev\kasirmu\ui and
+REM  npm finds kasirmu-ui; `--prefix ../../ui` fails with ENOENT on
+REM  C:\dev\ui\package.json.)
+REM
 REM  PREREQS (you install these once, this bat does none of it):
 REM    - Node.js + npm            (node / npm on PATH)
 REM    - Rust toolchain           (rustup + stable)
@@ -51,6 +62,13 @@ REM        -File "%~dp0free-dev-port.ps1" -Port 1420
 REM  (%~dp0 IS scripts\ now, so there is no `scripts\` prefix on the suffix --
 REM  adding one doubles the directory and the -File argument resolves to a path
 REM  inside scripts\scripts\, which does not exist.)
+REM
+REM  PREVIOUS-INSTANCE HANDLING (auto on every startup, Windows only):
+REM  scripts\stop-desktop-instances.ps1 kills `kasirmu-app.exe` /
+REM  `kasirmu-mobile.exe` and then WAITS until the locks they held are actually
+REM  free -- polling, not sleeping a fixed guess. See the comment at the call
+REM  site below for why the wait, not the kill, is the half that decides
+REM  whether the next launch works.
 REM ============================================================================
 setlocal
 
@@ -65,6 +83,30 @@ echo Checking for stale dev processes on port 1420...
 powershell.exe -ExecutionPolicy Bypass -NoProfile -File "%~dp0free-dev-port.ps1" -Port 1420
 if errorlevel 1 (
     echo [WARNING] Could not cleanly free port 1420. Tauri may fail to start.
+)
+REM Stop the complete app process tree, not just the Rust parent. WebView2 keeps
+REM renderer/GPU utility children alive after `taskkill /IM` alone; they retain the
+REM EBWebView profile lock and the replacement fails with HRESULT 0x800700AA.
+REM
+REM The WAIT is the load-bearing half, and scripts\stop-desktop-instances.ps1
+REM owns it: `taskkill /F /T` returns as soon as the processes die, but Windows
+REM releases what they held -- the memory-mapped SQLite -shm sidecar and the
+REM EBWebView profile lock -- LAZILY, measurably later. Launching straight into
+REM that window is what produced HRESULT 0x800700AA and "unable to open
+REM database file" from the setup hook on 2026-09-28. A fixed `timeout /t 3`
+REM was the first fix and is only a guess; the script VERIFIES instead:
+REM it polls until no kasir.mu process and no own WebView2 child remain,
+REM attributing WebView2 children by the `mu.kasir.app` marker in their
+REM --user-data-dir so it never touches Windows Search's. It exits 0 as soon
+REM as the locks are free -- including when nothing was running, so a clean
+REM start pays nothing -- and 1 only at its deadline, which is what the
+REM warning below reports. Do NOT reintroduce a bare `taskkill` here: the
+REM wait is what makes the next launch work.
+echo Stopping any previous kasir.mu instance and waiting for its locks...
+powershell.exe -ExecutionPolicy Bypass -NoProfile -File "%~dp0stop-desktop-instances.ps1"
+if errorlevel 1 (
+    echo [WARNING] A previous instance may still hold the database or WebView2 lock.
+    echo           Launching anyway; the app now retries the database open itself.
 )
 
 REM Sync connectivity: the debug build auto-provisions a connection to the

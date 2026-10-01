@@ -4,6 +4,8 @@
 # a sidebar; this labels the page-level back button that returns to the
 # workspace picker.
 staff-back-aria = Back to workspaces
+# Screen title rendered beside the staff management icon in the header lead.
+staff-management-title = Staff Management
 # Names the Staff / Roles / Trash tab strip in the page header.
 staff-tabs-aria = Staff, roles and trash
 # Status strip (components/StaffManagementFooter.tsx). A fullscreen route

@@ -80,6 +80,7 @@ scope was empty; it does not mean the boundaries held.
 from __future__ import annotations
 
 import argparse
+import calendar
 import json
 import os
 import re
@@ -93,12 +94,16 @@ from typing import Any
 RULES = {
     "module-to-module": {"category": "cargo", "severity": "P1", "hint": "Move composition to an application/platform boundary or depend on a shared contract."},
     "core-upward-dependency": {"category": "cargo", "severity": "P1", "hint": "Keep kasirmu-core below business modules; move shared contracts/models to a lower layer."},
+    "core-type-shim": {"category": "cargo", "severity": "P2", "hint": "Re-export-only edge (C26/D3): kasirmu-core re-exports modules-*/ types and mentions nothing else. Move the shared types to foundation, then delete the Cargo edge."},
     "platform-to-business": {"category": "cargo", "severity": "P1", "hint": "Use platform-startup or an application composition root for business-module wiring."},
     "ui-direct-invoke": {"category": "ui", "severity": "P2", "hint": "Route Tauri IPC through ui/src/api or a documented infrastructure adapter."},
     "bridge-toolkit-purity": {"category": "renderer", "severity": "P1", "hint": "Keep crates/, modules/, platform/ and foundation/ toolkit-free (ADR #49, ADR #53): a tauri/gtk/webkit dependency or reference removes the headless seam a second renderer binds to."},
     "ui-framework-vocabulary": {"category": "renderer", "severity": "P2", "hint": "Keep renderer vocabulary out of app-layer prose (ADR #53): cite the caller by its role, not by its .tsx/.css filename."},
+    "event-sink-seam": {"category": "renderer", "severity": "P1", "hint": "Route UI events through BridgeCtx::emitter (kasirmu_bridge::ctx::EventSink), not a raw app handle: the EventSink seam is what keeps a second shell bindable (R10 #3)."},
 }
 BUSINESS_PREFIX = "modules-"
+CORE_CRATE = "kasirmu-core"
+CORE_SOURCE = ("crates", "kasirmu-core", "src")
 BRIDGE_TOOLKIT_SECTIONS = ("[dependencies]", "[dev-dependencies]", "[build-dependencies]")
 BRIDGE_TOOLKIT_PATTERN = re.compile(r"tauri|webkit|gtk", re.IGNORECASE)
 ALLOWED_PLATFORM_COMPOSER = "platform-startup"
@@ -112,6 +117,27 @@ CHAR_LITERAL_PATTERN = re.compile(r"'(?:\\.|[^\\'])'")
 # `reactivate`, and `.tsx`/`.css` are lowercase in every citation this tree holds.
 UI_VOCABULARY_ROOTS = ("crates", "modules", "platform", "foundation")
 UI_VOCABULARY_PATTERN = re.compile(r"\bReact\b|\.tsx|\.css|component to render")
+
+# R10 #3: events cross the shell/bridge seam through `EventSink`. The bridge
+# holds `BridgeCtx::emitter: Option<Arc<dyn EventSink>>` and every shell
+# implements it over its AppHandle (`TauriEventSink`). A command body that
+# reaches for its own handle and calls `app.emit(..)` forks the event path the
+# seam exists to centralize, so a second shell inherits a private emitter.
+EVENT_SINK_ROOTS = ("apps",)
+# A raw-handle broadcast: `app.emit(`, `app_handle.emit(`, `handle.emit(`.
+# `sink.emit(`/`self.emit(`/`emitter.emit(` are the seam and never match.
+RAW_EMIT_PATTERN = re.compile(r"\b(?:app|app_handle|handle)\.emit\s*\(")
+# The seam's own implementation is the exemption, not a finding: these are the
+# `impl EventSink for TauriEventSink` bodies the bridge documents at
+# `crates/kasirmu-bridge/src/ctx.rs:48-56`.
+EVENT_SINK_IMPL_PATTERN = re.compile(r"impl(?:<[^>]*>)?\s+EventSink\s+for\s+")
+# The one raw-handle broadcast that is NOT a bypass: the shell's composition
+# root installs `platform_startup::event_handlers::set_settings_emit_fn` with a
+# closure over its own handle. The platform hook speaks a plain
+# `Box<dyn Fn(&str, Value)>`, not `EventSink`, so the handle is converted at
+# exactly this boundary — the installation of the emit function, not a second
+# event path. Every line of that call argument list is exempt.
+EVENT_SINK_HOOK_PATTERN = re.compile(r"set_settings_emit_fn\s*\(")
 
 
 def configure_streams() -> None:
@@ -306,6 +332,9 @@ def cargo_findings(metadata: dict[str, Any], root: Path, scope: dict[str, int]) 
             raise ValueError(f"Cargo metadata package {package['name']} has no manifest_path")
         package_by_path.update({key: package["name"] for key in package_path_keys(manifest, root)})
         package_manifest[package["name"]] = relative_path(Path(manifest), root)
+    # Classified once, from the source: see core_edge_kinds() below.
+    business_targets = {package["name"] for package in packages if package["name"].startswith(BUSINESS_PREFIX)}
+    core_kinds = core_edge_kinds(root, business_targets)
     findings: list[dict[str, Any]] = []
     for package in packages:
         owner = package["name"]
@@ -332,8 +361,8 @@ def cargo_findings(metadata: dict[str, Any], root: Path, scope: dict[str, int]) 
             # fallback -- see `metadata_from_cargo`). A second spelling that no input
             # can produce is a branch nothing exercises, i.e. a rule that would go
             # unfelt the day it silently stopped matching.
-            if owner == "kasirmu-core" and target_is_business:
-                rule = "core-upward-dependency"
+            if owner == CORE_CRATE and target_is_business:
+                rule = "core-type-shim" if core_kinds.get(target) == "shim" else "core-upward-dependency"
             elif owner_is_business and target_is_business:
                 rule = "module-to-module"
             elif owner.startswith("platform-") and target_is_business and owner != ALLOWED_PLATFORM_COMPOSER:
@@ -389,6 +418,58 @@ def mask_comments_and_strings(text: str) -> str:
             out.append(char)
             i += 1
     return "".join(out)
+
+
+
+def core_edge_kinds(root: Path, targets: set[str]) -> dict[str, str]:
+    """Split the kasirmu-core upward edges into re-export shims and real code (C26/D3).
+
+    The rule registry cannot tell the two apart from the Cargo graph, which is how
+    seven one-line `pub use modules_x::T` re-exports sat under the same rule as the
+    one genuine upward dependency. A named rule has to be EARNED from the source, so
+    this reads it: an edge is "shim" when kasirmu-core mentions `modules_<target>::`
+    at least once and EVERY mention sits on a `use` / `pub use` line; otherwise it
+    is "real".
+
+    Positive evidence only, deliberately. Zero mentions returns "real", never "shim":
+    a fixture repository with no crate source examines nothing, and reading that
+    absence as proof of a re-export would downgrade the rule for every tree this
+    checker cannot see -- the same failure as a walk that reports zero findings
+    because it walked nothing.
+
+    Comments and string contents are masked first, so a prose citation is not
+    evidence: `migrations_tests.rs` names `modules_tax::models::RoundingMode` in a
+    comment, and counting that would have made an eight-of-eight shim tree look like
+    seven.
+
+    Keyed by the Cargo *target* name (`modules-crm`), not the underscored module path.
+    """
+    kinds: dict[str, str] = {}
+    if not targets:
+        return kinds
+    source = root.joinpath(*CORE_SOURCE)
+    if not source.is_dir():
+        return kinds
+    texts: list[str] = []
+    for path in sorted(source.rglob("*.rs")):
+        try:
+            texts.append(mask_comments_and_strings(path.read_text(encoding="utf-8")))
+        except OSError as exc:
+            raise ValueError(f"cannot read kasirmu-core source: {path}: {exc}") from exc
+    for target in sorted(targets):
+        token = f"{target.replace('-', '_')}::"
+        mentions = 0
+        shim_only = True
+        for text in texts:
+            for line in text.splitlines():
+                if token not in line:
+                    continue
+                mentions += line.count(token)
+                stripped = line.strip()
+                if not (stripped.startswith("use ") or stripped.startswith("pub use ")):
+                    shim_only = False
+        kinds[target] = "shim" if mentions and shim_only else "real"
+    return kinds
 
 
 def strip_comments_preserving_strings(text: str) -> str:
@@ -726,6 +807,119 @@ def ui_vocabulary_findings(root: Path, scope: dict[str, int]) -> list[dict[str, 
     return dedupe_findings(findings)
 
 
+# A Rust LIFETIME (`'_'`, `'a`, `'static`, `'de`) is an apostrophe that the
+# simple comment/string masker reads as a character-literal opener, after which
+# it swallows the following code as a "string" until the next apostrophe. Shell
+# command signatures are full of `State<'_, AppState>`, so the rule must mask a
+# lifetime-neutralized copy: the replacement keeps byte offsets (spaces of equal
+# length), so reported line numbers still match the original file.
+RUST_LIFETIME_PATTERN = re.compile(r"'(?:static|[A-Za-z_][A-Za-z0-9_]*)")
+
+
+def neutralize_lifetimes(text: str) -> str:
+    """Blank Rust lifetimes so the simple masker does not open a fake string.
+
+    Offsets are preserved: each match is replaced by as many spaces as it is
+    wide, and every lifetime match is on one line by construction (`'` and an
+    identifier contain no newline), so line numbering is unaffected.
+    """
+    return RUST_LIFETIME_PATTERN.sub(lambda m: " " * len(m.group(0)), text)
+
+
+def event_sink_findings(root: Path, scope: dict[str, int]) -> list[dict[str, Any]]:
+    """Report raw AppHandle broadcasts that bypass the EventSink seam (R10 #3).
+
+    The bridge's emitter is the one door UI events leave a command through:
+    `BridgeCtx::emitter: Option<Arc<dyn EventSink>>` is injected by the shell and
+    every command is handed it. A body that keeps its own `app`/`app_handle`
+    and calls `.emit(..)` on it forks that path — the desktop and tablet shells
+    then hold two ways to broadcast, and a third shell would have to find and
+    copy the forked one. The rule flags the raw-handle call only.
+
+    Scanned through `mask_comments_and_strings`, so a doc comment that mentions
+    `app.emit(..)` (the accepted pattern IS named in prose) is invisible, and
+    the string event name beside a real call is invisible too. The
+    `impl EventSink for TauriEventSink` body is the seam itself and is exempt:
+    inside it, `handle.emit(..)` is exactly the delegation the trait wants, so
+    the impl's line range is skipped rather than the call being flagged.
+    """
+    findings: list[dict[str, Any]] = []
+    for top in EVENT_SINK_ROOTS:
+        base = root / top
+        if not base.is_dir():
+            continue
+        for path in sorted(base.rglob("*.rs")):
+            try:
+                raw = path.read_text(encoding="utf-8")
+            except OSError as exc:
+                raise ValueError(f"cannot read shell source: {path}: {exc}") from exc
+            scope["shell_files"] += 1
+            code = mask_comments_and_strings(neutralize_lifetimes(raw))
+            exempt = exempt_event_impl_lines(code)
+            for match in RAW_EMIT_PATTERN.finditer(code):
+                line = code.count("\n", 0, match.start()) + 1
+                if line in exempt:
+                    continue
+                findings.append(
+                    make_finding(
+                        "event-sink-seam",
+                        relative_path(path, root),
+                        match.group(0).rstrip(" \t(").strip(),
+                        line,
+                    )
+                )
+    return dedupe_findings(findings)
+
+
+def exempt_event_impl_lines(code: str) -> set[int]:
+    """Line numbers inside an `impl EventSink for ...` block, or a
+    `set_settings_emit_fn(...)` call.
+
+    The impl block is brace-walked from the `impl` keyword so the whole body is
+    exempt (the trait's default `emit_ui` forwards to `emit`, and a literal
+    brace count would be blind to a nested closure). The platform hook is
+    paren-walked from `set_settings_emit_fn(` for the mirror reason: its
+    `Box<dyn Fn(..)>` argument list has no `EventSink` to route through, so the
+    handle conversion there is the hook's installation, not a fork.
+    """
+    lines: set[int] = set()
+    for match in EVENT_SINK_IMPL_PATTERN.finditer(code):
+        depth = 0
+        opened = False
+        i = match.end()
+        start_line = code.count("\n", 0, match.start()) + 1
+        while i < len(code):
+            char = code[i]
+            if char == "{":
+                depth += 1
+                opened = True
+            elif char == "}":
+                depth -= 1
+                if opened and depth == 0:
+                    end_line = code.count("\n", 0, i) + 1
+                    lines.update(range(start_line, end_line + 1))
+                    break
+            i += 1
+    for match in EVENT_SINK_HOOK_PATTERN.finditer(code):
+        depth = 0
+        opened = False
+        i = match.end() - 1
+        start_line = code.count("\n", 0, match.start()) + 1
+        while i < len(code):
+            char = code[i]
+            if char == "(":
+                depth += 1
+                opened = True
+            elif char == ")":
+                depth -= 1
+                if opened and depth == 0:
+                    end_line = code.count("\n", 0, i) + 1
+                    lines.update(range(start_line, end_line + 1))
+                    break
+            i += 1
+    return lines
+
+
 def make_finding(rule: str, path: str, target: str, line: int | None) -> dict[str, Any]:
     policy = RULES[rule]
     return {"rule": rule, "category": policy["category"], "severity": policy["severity"], "path": normalize_path(path), "line": line, "target": target, "baseline_status": "new", "remediation": policy["hint"]}
@@ -742,6 +936,29 @@ def dedupe_findings(findings: list[dict[str, Any]]) -> list[dict[str, Any]]:
         if key not in unique or (unique[key]["line"] is None and finding["line"] is not None):
             unique[key] = finding
     return sorted(unique.values(), key=lambda f: (f["rule"], f["path"], f["target"], f["line"] or 0))
+
+
+MAX_TERM_MONTHS = 3
+"""One calendar quarter: the term every entry in this baseline already uses.
+
+2026-08-06 -> 2026-11-06, which is what makes this a re-derivable rule rather than a
+magic number. A transitional exemption may run one quarter; a second quarter is a
+decision somebody has to make on the record, not an edit to a date.
+"""
+
+
+def add_months(start: date, months: int) -> date:
+    """Calendar-month arithmetic, clamped to the month's last valid day.
+
+    Deliberately not a 90-day timedelta: a quarter is a calendar term, so
+    2026-08-06 + 3 months is 2026-11-06 whatever the month lengths are, and this
+    baseline own dates are expressible in it.
+    """
+    index = start.month - 1 + months
+    year = start.year + index // 12
+    month = index % 12 + 1
+    last_day = calendar.monthrange(year, month)[1]
+    return date(year, month, min(start.day, last_day))
 
 
 def load_baseline(path: Path, root: Path) -> list[dict[str, Any]]:
@@ -767,6 +984,46 @@ def load_baseline(path: Path, root: Path) -> list[dict[str, Any]]:
             raise ValueError(f"baseline entry introduced date is after expiry: {entry}")
         if introduced > date.today():
             raise ValueError(f"baseline entry introduced date is in the future: {entry}")
+        # A bumped expiry has to be a RECORDED DECISION. Nothing this checker
+        # receives can tell that a date was edited, so the rule is structural
+        # instead: one quarter from the introduction, and every further quarter
+        # must arrive as a 'renewals' entry carrying its own date and reason.
+        # Without this, extending a deadline was indistinguishable from renewing
+        # it, which is the whole of C26's second clause.
+        renewals = entry.get("renewals", [])
+        if not isinstance(renewals, list):
+            raise ValueError(f"baseline entry 'renewals' must be a list: {entry}")
+        anchor = introduced
+        for renewal in renewals:
+            if not isinstance(renewal, dict):
+                raise ValueError(f"baseline renewal must be an object: {entry}")
+            on, reason = renewal.get("on"), renewal.get("reason")
+            if not isinstance(on, str) or not on.strip():
+                raise ValueError(f"baseline renewal needs an 'on' date: {entry}")
+            if not isinstance(reason, str) or not reason.strip():
+                raise ValueError(
+                    f"baseline renewal needs a non-empty reason - that reason is the"
+                    f" difference between a decision and an edit: {entry}"
+                )
+            try:
+                renewed_on = date.fromisoformat(on)
+            except ValueError as exc:
+                raise ValueError(f"baseline renewal has an invalid date: {entry}") from exc
+            if renewed_on > date.today():
+                raise ValueError(f"baseline renewal date is in the future: {entry}")
+            if renewed_on > expires:
+                raise ValueError(f"baseline renewal is dated after the expiry it extends: {entry}")
+            anchor = max(anchor, renewed_on)
+        # Gated on a LIVE exemption: a past expiry is already an expired finding
+        # (exit 1), and refusing it as malformed input would report a governed
+        # history as a broken file. The rule exists to govern extensions.
+        if expires >= date.today() and expires > add_months(anchor, MAX_TERM_MONTHS):
+            where = "its last renewal" if renewals else "its introduction"
+            raise ValueError(
+                f"baseline entry runs past {MAX_TERM_MONTHS} months from {where} ({anchor}"
+                f" -> {expires}). Bring the expiry in, or extend it one quarter at a time by"
+                f" adding a renewals entry with a dated reason: {entry}"
+            )
         # Canonicalize FIRST, then key. The recorded entry and the freshly
         # computed finding must pass through the same function, or a suppression
         # spelled against one checkout stops matching a finding computed from
@@ -830,6 +1087,7 @@ def new_scope() -> dict[str, int]:
         "bridge_files": 0,
         "app_layer_roots": 0,
         "app_layer_files": 0,
+        "shell_files": 0,
         "baseline_entries": 0,
     }
 
@@ -849,6 +1107,7 @@ def population_clause(scope: dict[str, int]) -> str:
         f"{scope['bridge_files']} file(s) scanned below the application layer, "
         f"{scope['app_layer_files']} app-layer .rs file(s) scanned across "
         f"{scope['app_layer_roots']}/{len(UI_VOCABULARY_ROOTS)} root(s), "
+        f"{scope['shell_files']} shell .rs file(s) scanned for the event seam, "
         f"{scope['baseline_entries']} baseline entry(ies)]"
     )
 
@@ -918,6 +1177,7 @@ def main() -> int:
             + ui_findings(root, scope)
             + bridge_toolkit_findings(root, scope)
             + ui_vocabulary_findings(root, scope)
+            + event_sink_findings(root, scope)
         )
         scope["baseline_entries"] = len(baseline)
         tracked, blocking, stale, expired = apply_baseline(findings, baseline)

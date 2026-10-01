@@ -109,19 +109,25 @@ pub async fn test_sync_connection(
     url: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<sync_client::PingResult, AppError> {
-    let resolved = match url.filter(|u| !u.is_empty()) {
-        Some(u) => Some(u),
+    let (resolved, api_key) = match url.filter(|u| !u.is_empty()) {
+        // An explicit front-end URL is a reachability test of a candidate,
+        // not a report on this device's stored credential — so it carries no
+        // key and no credential verdict.
+        Some(u) => (Some(u), None),
         None => {
             let db = state.db.lock().await;
-            Settings::get_sync_server_url(&db)?.filter(|s| !s.is_empty())
+            let u = Settings::get_sync_server_url(&db)?.filter(|s| !s.is_empty());
+            let k = Settings::get_sync_api_key(&db)?.filter(|k| !k.is_empty());
+            (u, k)
         }
     };
     match resolved {
-        Some(u) => Ok(sync_client::ping_server(&u).await),
+        Some(u) => Ok(sync_client::probe_sync_connection(&u, api_key.as_deref()).await),
         None => Ok(sync_client::PingResult {
             ok: false,
             status: "No server URL configured".into(),
             latency_ms: None,
+            auth: None,
         }),
     }
 }
@@ -183,8 +189,9 @@ pub async fn update_sync_settings_scoped(
     args: UpdateSyncSettingsArgs,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let (session, conn_arc) = state.resolve_scope(&session_token)?;
+    let session = state.resolve_session(&session_token)?;
     require_permission_for_session(&state, &session, permissions::SYNC_MANAGE).await?;
+    let conn_arc = state.resolve_store(&session_token)?;
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
@@ -203,8 +210,9 @@ pub async fn sync_run_scoped(
 ) -> Result<SyncAttemptResult, AppError> {
     // Phase 1: Read pending items and config from DB (brief lock).
     let (pending_items, config_opt) = {
-        let (session, conn_arc) = state.resolve_scope(&session_token)?;
+        let session = state.resolve_session(&session_token)?;
         require_permission_for_session(&state, &session, permissions::SYNC_MANAGE).await?;
+        let conn_arc = state.resolve_store(&session_token)?;
         let db_guard = conn_arc
             .lock()
             .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
@@ -262,20 +270,11 @@ pub async fn sync_run_scoped(
             &pending_items,
             &outcomes,
         )?),
-        // ADR sync-plan-gating: a free tenant is gated, not broken. Do NOT
-        // mark the items failed — they stay `pending` and sync automatically
-        // once the tenant upgrades.
-        Err(sync_client::SyncHttpError::PlanRequired) => Ok(SyncAttemptResult {
-            synced: 0,
-            failed: 0,
-            error: Some("cloud sync requires a paid plan".into()),
-            plan_required: true,
-        }),
-        Err(e) => Ok(sync_client::mark_all_failed(
-            &store,
-            &pending_items,
-            &e.to_string(),
-        )?),
+        // A batch the server never saw is retried, not condemned: `failed` is
+        // terminal for a push item, and nothing writes `status = 'pending'`
+        // again. The helper also carries the plan-gate arm (a free tenant is
+        // gated, not broken). See `sync_client::undelivered_batch`.
+        Err(e) => Ok(sync_client::undelivered_batch(&e)),
     }
 }
 
@@ -286,8 +285,9 @@ pub async fn pending_sync_count_scoped(
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<i64, AppError> {
-    let (session, conn_arc) = state.resolve_scope(&session_token)?;
+    let session = state.resolve_session(&session_token)?;
     require_permission_for_session(&state, &session, permissions::SYNC_MANAGE).await?;
+    let conn_arc = state.resolve_store(&session_token)?;
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
@@ -345,8 +345,9 @@ pub async fn get_sync_plan_scoped(
     // Resolve URL + API key first (brief DB lock), then drop the lock
     // before the async HTTP call.
     let (url, api_key) = {
-        let (session, conn_arc) = state.resolve_scope(&session_token)?;
+        let session = state.resolve_session(&session_token)?;
         require_permission_for_session(&state, &session, permissions::SYNC_MANAGE).await?;
+        let conn_arc = state.resolve_store(&session_token)?;
         let db_guard = conn_arc
             .lock()
             .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
@@ -378,8 +379,10 @@ pub async fn test_sync_connection_scoped(
 ) -> Result<sync_client::PingResult, AppError> {
     let session = state.resolve_session(&session_token)?;
     require_permission_for_session(&state, &session, permissions::SYNC_MANAGE).await?;
-    let resolved = match url.filter(|u| !u.is_empty()) {
-        Some(u) => Some(u),
+    let (resolved, api_key) = match url.filter(|u| !u.is_empty()) {
+        // See `test_sync_connection`: an explicit candidate URL carries no
+        // credential verdict.
+        Some(u) => (Some(u), None),
         None => {
             let conn_arc = state
                 .db_manager
@@ -389,15 +392,18 @@ pub async fn test_sync_connection_scoped(
                 .lock()
                 .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
             let db = &*db_guard;
-            Settings::get_sync_server_url(&db)?.filter(|s| !s.is_empty())
+            let u = Settings::get_sync_server_url(&db)?.filter(|s| !s.is_empty());
+            let k = Settings::get_sync_api_key(&db)?.filter(|k| !k.is_empty());
+            (u, k)
         }
     };
     match resolved {
-        Some(u) => Ok(sync_client::ping_server(&u).await),
+        Some(u) => Ok(sync_client::probe_sync_connection(&u, api_key.as_deref()).await),
         None => Ok(sync_client::PingResult {
             ok: false,
             status: "No server URL configured".into(),
             latency_ms: None,
+            auth: None,
         }),
     }
 }
@@ -413,8 +419,9 @@ pub async fn sync_pull_scoped(
     validate_pull_consent(&args)?;
     // Phase 1: Read config from DB (brief lock).
     let config_opt = {
-        let (session, conn_arc) = state.resolve_scope(&session_token)?;
+        let session = state.resolve_session(&session_token)?;
         require_permission_for_session(&state, &session, permissions::SYNC_MANAGE).await?;
+        let conn_arc = state.resolve_store(&session_token)?;
         let db_guard = conn_arc
             .lock()
             .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
@@ -439,7 +446,18 @@ pub async fn sync_pull_scoped(
     let snapshot = sync_client::fetch_snapshot_from_server(&config).await;
 
     // Phase 3: Apply snapshot to DB (brief lock).
-    let db = state.db.lock().await;
+    //
+    // The STORE db, not the global `state.db`: Phase 1 read this command's
+    // config from the store, `sync_run_scoped` above writes its push outcomes
+    // to the store, and the scoped catalog the pull feeds (`list_products_scoped`
+    // / `create_product_scoped`) reads and writes the store. Applying to the
+    // global connection landed a pulled catalog in a file no scoped reader
+    // opens — the pull reported success while the product list never changed.
+    let conn_arc = state.resolve_store(&session_token)?;
+    let db_guard = conn_arc
+        .lock()
+        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
+    let db = &*db_guard;
     let store = Store::new(&db);
     match snapshot {
         Ok(s) => Ok(sync_client::apply_snapshot(&store, &s)?),
@@ -526,6 +544,28 @@ pub struct SyncConflictDto {
 /// original (which reads the global connection), this reads the scoped
 /// connection so the tenant whose session opened the command is the tenant
 /// whose cloud is asked.
+/// COR-31: a bounded client for the conflict list/resolve commands.
+///
+/// Both commands used a bare `reqwest::Client::new()`, which has no timeout
+/// at all. They are user-initiated UI calls — the operator taps the conflict
+/// queue, then resolves a row — so an unbounded hang pins the command
+/// forever and the spinner never clears. 10s connect / 30s total matches the
+/// convention for the other bounded non-bulk JSON calls (`sync_client`,
+/// `whatsapp`, the payment drivers).
+fn bounded_conflict_client() -> reqwest::Client {
+    reqwest::Client::builder()
+        .connect_timeout(std::time::Duration::from_secs(10))
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .unwrap_or_else(|e| {
+            tracing::error!(
+                error = %e,
+                "could not build bounded HTTP client for sync conflicts; falling back to an unbounded client"
+            );
+            reqwest::Client::new()
+        })
+}
+
 async fn sync_server_credentials(
     state: &State<'_, AppState>,
     session_token: &str,
@@ -569,7 +609,7 @@ pub async fn list_sync_conflicts_scoped(
         return Ok(Vec::new());
     };
 
-    let mut request = reqwest::Client::new().get(format!("{base}/api/sync/conflicts"));
+    let mut request = bounded_conflict_client().get(format!("{base}/api/sync/conflicts"));
     if let Some(status) = &args.status {
         request = request.query(&[("status", status)]);
     }
@@ -618,7 +658,7 @@ pub async fn resolve_sync_conflict_scoped(
         return Ok(false);
     };
 
-    let mut request = reqwest::Client::new()
+    let mut request = bounded_conflict_client()
         .post(format!("{base}/api/sync/conflicts/{}/resolve", args.id))
         .json(&serde_json::json!({ "resolution": args.resolution }));
     if let Some(key) = key {

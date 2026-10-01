@@ -4,10 +4,10 @@ use super::*;
 use crate::db::Store;
 use crate::migrations;
 
-fn store() -> Store<'static> {
-    let conn = migrations::fresh_db();
-    let conn: &'static rusqlite::Connection = Box::leak(Box::new(conn));
-    Store::new(conn)
+/// The caller owns the connection, so this no longer `Box::leak`s a
+/// database per test to manufacture a `'static` (O-T03).
+fn store(db: &rusqlite::Connection) -> Store<'_> {
+    Store::new(db)
 }
 
 const NOW: &str = "2026-09-26T12:00:00.000Z";
@@ -66,7 +66,8 @@ fn layout() -> ReceiptLayout {
 
 #[test]
 fn content_write_upserts_one_row_per_entity() {
-    let store = store();
+    let store_db = migrations::fresh_db();
+    let store = store(&store_db);
     store
         .set_receipt_content_for_entity("ent-1", &content(), NOW)
         .unwrap();
@@ -89,7 +90,8 @@ fn content_write_upserts_one_row_per_entity() {
 
 #[test]
 fn content_write_rejects_unknown_and_duplicate_element_codes() {
-    let store = store();
+    let store_db = migrations::fresh_db();
+    let store = store(&store_db);
     let mut bad = content();
     bad.required_fields.push("qr_code_marketing".into());
     let err = store
@@ -116,7 +118,8 @@ fn content_write_rejects_unknown_and_duplicate_element_codes() {
 
 #[test]
 fn content_write_rejects_bad_separator_and_long_footer() {
-    let store = store();
+    let store_db = migrations::fresh_db();
+    let store = store(&store_db);
     let mut bad = content();
     bad.decimal_separator = "period".into();
     assert!(
@@ -135,7 +138,8 @@ fn content_write_rejects_bad_separator_and_long_footer() {
 
 #[test]
 fn layout_write_rejects_bad_scope_and_nonsense_width() {
-    let store = store();
+    let store_db = migrations::fresh_db();
+    let store = store(&store_db);
     let mut wide = layout();
     wide.paper_width_mm = Some(200);
     assert!(
@@ -167,7 +171,8 @@ fn layout_write_rejects_bad_scope_and_nonsense_width() {
 
 #[test]
 fn db_check_rejects_out_of_range_width_even_without_the_boundary() {
-    let store = store();
+    let store_db = migrations::fresh_db();
+    let store = store(&store_db);
     // Supervisor addition 3: nonsense widths fail at the DB layer too.
     let err = store.conn.execute(
         "INSERT INTO receipt_formats (id, tenant_id, scope_type, scope_id, config, paper_width_mm, created_at, updated_at)
@@ -181,7 +186,8 @@ fn db_check_rejects_out_of_range_width_even_without_the_boundary() {
 
 #[test]
 fn content_comes_from_the_entity_and_layout_from_terminal_over_workspace() {
-    let store = store();
+    let store_db = migrations::fresh_db();
+    let store = store(&store_db);
     store
         .conn
         .execute(
@@ -231,7 +237,8 @@ fn content_comes_from_the_entity_and_layout_from_terminal_over_workspace() {
 
 #[test]
 fn terminal_layout_fills_only_its_own_fields_over_workspace() {
-    let store = store();
+    let store_db = migrations::fresh_db();
+    let store = store(&store_db);
     store
         .conn
         .execute(
@@ -272,7 +279,8 @@ fn terminal_layout_fills_only_its_own_fields_over_workspace() {
 
 #[test]
 fn no_scoped_rows_and_no_legacy_keys_answers_unset() {
-    let store = store();
+    let store_db = migrations::fresh_db();
+    let store = store(&store_db);
     let eff = store
         .effective_receipt_format(Some("no-such-terminal"), None)
         .unwrap();
@@ -291,7 +299,8 @@ fn legacy_fallback_reads_exactly_the_pinned_keys() {
     // Pin the EXACT key list: if the settings-rebuild stream retires or
     // renames a key, this test fails here first instead of the fallback
     // silently drifting.
-    let store = store();
+    let store_db = migrations::fresh_db();
+    let store = store(&store_db);
     for key in LEGACY_RECEIPT_KEYS {
         platform_core::settings::Settings::set(store.conn, key, "x").unwrap();
     }
@@ -319,7 +328,8 @@ fn legacy_fallback_reads_exactly_the_pinned_keys() {
 
 #[test]
 fn scoped_row_overrides_the_legacy_key_for_the_same_concern() {
-    let store = store();
+    let store_db = migrations::fresh_db();
+    let store = store(&store_db);
     // Legacy footer set org-globally.
     platform_core::settings::Settings::set(store.conn, "receipt.footer", "legacy footer").unwrap();
     // Scoped content row with a different footer.
@@ -353,7 +363,8 @@ fn scoped_row_overrides_the_legacy_key_for_the_same_concern() {
 
 #[test]
 fn unknown_element_code_is_named_in_the_error() {
-    let store = store();
+    let store_db = migrations::fresh_db();
+    let store = store(&store_db);
     let mut bad = content();
     bad.required_fields = vec!["nft_certificate".into()];
     let err = store
@@ -365,4 +376,55 @@ fn unknown_element_code_is_named_in_the_error() {
         }
         other => panic!("expected Validation, got {other:?}"),
     }
+}
+
+// ── AN UNREADABLE settings TABLE IS NOT AN UNCONFIGURED REGISTER ─────
+
+/// `effective_receipt_format` probes the ten legacy keys to decide whether a
+/// legacy configuration exists at all. That probe used
+/// `Settings::get(conn, key).is_ok_and(|v| v.is_some())`, so an unreadable
+/// `settings` table (SQLITE_BUSY, corrupt, locked) answered "no" for every key:
+/// `has_any` was false, the function returned `ReceiptSource::Unset`, and the
+/// operator's saved receipt settings silently stopped applying with no error
+/// reaching the print path. The four fills below the probe had the same shape
+/// (`unwrap_or_default` / `unwrap_or(0)` / `unwrap_or(false)`), and the layout
+/// half of the function repeated both.
+///
+/// The pin makes `settings` PRESENT but unreadable — `value` is a BLOB, so
+/// every `row.get::<_, String>(0)` fails — and asserts the read REFUSES. A
+/// probe that cannot run must not be reported as a negative probe.
+#[test]
+fn an_unreadable_settings_table_is_an_error_not_an_unconfigured_register() {
+    let store_db = migrations::fresh_db();
+    let store = store(&store_db);
+    // A readable settings table answers Unset (no legacy key set) — the
+    // honest-source rule, and the behaviour that must survive.
+    let eff = store
+        .effective_receipt_format(Some("term-1"), None)
+        .expect("a readable settings table must resolve");
+    assert_eq!(eff.content_source, ReceiptSource::Unset);
+
+    // Now make the table unreadable without removing it, which is exactly the
+    // locked/corrupt/short-read case the probe used to absorb.
+    store
+        .conn
+        .execute_batch(
+            "DROP TABLE settings; \
+             CREATE TABLE settings (key TEXT PRIMARY KEY, value BLOB NOT NULL, \
+                                     updated_at TEXT NOT NULL DEFAULT ''); \
+             INSERT INTO settings (key, value) VALUES ('receipt.footer', x'80');",
+        )
+        .expect("rebuilding settings with an unreadable value");
+
+    let err = store
+        .effective_receipt_format(Some("term-1"), None)
+        .expect_err("an unreadable settings table must not read as Unset");
+    // The exact variant is the platform error wrapping the SQLite column-type
+    // failure; the point of the pin is that it is an ERROR rather than a
+    // silently-Unset answer, so assert on the shape and name the actual value
+    // in the message.
+    assert!(
+        matches!(err, CoreError::Platform(_)),
+        "expected the read failure to surface as a Platform error, got {err:?}"
+    );
 }

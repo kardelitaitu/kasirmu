@@ -1,51 +1,228 @@
 ---
+/**
+ * Plan comparison table (rendered by pricing.astro under the plan cards).
+ *
+ * The layout is the "hero column" comparison style: one rounded panel, features
+ * down the left, plans across the top, and the FEATURED plan carried in a tinted
+ * column the eye can follow without hunting. `highlight` decides which column
+ * that is — the same flag the card grid uses for its badge — so the two surfaces
+ * cannot disagree about which plan is featured.
+ *
+ * Three structural decisions, each with its reason:
+ *
+ *  - FULL HEIGHT; ONLY THE WIDTH SCROLLS (`overflow-x-auto`, no `max-height`).
+ *    The panel used to be capped at 44rem with `overflow-auto`, which put a
+ *    scrollbar inside the table and hid the last rows behind it until the reader
+ *    found it. The table now grows to its content and the PAGE does the vertical
+ *    scrolling.
+ *
+ *    The cost is stated because it is not obvious: with the panel as a
+ *    scrollport, `sticky top-0` on the header row no longer sticks — measured on
+ *    the built page, the row scrolls away with the page. The spec promotes
+ *    `overflow-y` to `auto` beside any `overflow-x`, so the panel remains the
+ *    nearest scrollport even when it has nothing to scroll vertically, and a
+ *    pinned child is trapped inside it. What still earns its keep is
+ *    `sticky left-0` on the feature column: on a narrow screen the panel IS a
+ *    real horizontal scroller, and without that pin a reader scrolling out to
+ *    the Enterprise column loses the row label entirely. `tabindex="0"` keeps
+ *    that region keyboard-scrollable — a scroll region a keyboard user cannot
+ *    reach is a region they cannot read.
+ *
+ *  - THE TINT IS A TOKEN (`bg-plan-tint`, global.css), never a translucent wash
+ *    of the primary colour. The tinted header and the tinted cells are sticky,
+ *    and a see-through background lets the rows scrolling underneath show
+ *    through the pinned cell. One semantic value per theme also keeps the site
+ *    rule that components consume tokens and never raw hex.
+ *
+ *  - CELL VALUES ARE DATA (`boolean | string | number`). A boolean renders a
+ *    glyph PLUS an `sr-only` word; the plan cards spell inclusion with an
+ *    `aria-hidden` glyph and nothing else, which tells a screen-reader user the
+ *    feature but not whether it is included. The glyph keeps the card grid's own
+ *    vocabulary (`text-link` for included, `text-muted/50` for not) instead of a
+ *    second palette of its own.
+ *
+ * Nothing here is hardcoded English: the heading, the chip, the price-row label,
+ * the currency note and both inclusion words come from the i18n dictionary, and
+ * every figure comes from the tier objects the cards above were rendered from —
+ * so this table cannot advertise a price the checkout does not bill.
+ */
 import type { FeatureRow, PricingTier } from '../content/pricing/types';
 import { t } from '../i18n';
 
 interface Props {
   rows: FeatureRow[];
-  /** Only tierKey + name are rendered (prices live in the card grid). */
-  columns: Pick<PricingTier, 'tierKey' | 'name'>[];
+  /** The full tiers, not just their names: header and price row both read prices. */
+  columns: PricingTier[];
 }
 
 const { rows, columns } = Astro.props;
 const locale = Astro.currentLocale ?? 'en';
-
-function cellHtml(value: boolean | string | number): string {
-  if (value === true) return '<span class="text-green-400 font-bold">✓</span>';
-  if (value === false) return '<span class="text-red-400 font-bold">✗</span>';
-  return String(value);
-}
+const comparisonLabel = t(locale, 'pricingPage.comparison');
+// Tiers with a real price id: the two-month note is a yearly-billing statement
+// and telling it is simply false for the free-forever and quote-only tiers.
+const BILLED_TIERS = new Set(['plus', 'pro', 'premium']);
 ---
 
-<div class="overflow-x-auto rounded-lg border border-ink/10">
-  <table class="w-full min-w-[560px] border-collapse text-left text-sm">
-    <caption class="sr-only">{t(locale, 'pricingPage.comparison')}</caption>
-    <thead>
-      <tr class="border-b border-ink/10">
-        <th scope="col" class="px-4 py-3 text-muted"> </th>
+<section aria-labelledby="plan-comparison">
+  <h2 id="plan-comparison" class="text-center text-2xl font-bold">{comparisonLabel}</h2>
+
+  <div
+    class="mt-6 overflow-x-auto rounded-2xl border border-ink/10 bg-surface"
+    tabindex="0"
+    role="group"
+    aria-label={comparisonLabel}
+  >
+    <table class="w-full min-w-[46rem] border-collapse text-left text-sm">
+      <caption class="sr-only">{comparisonLabel}</caption>
+      <thead>
+        <tr>
+          {/* The corner cell names the axis. Left blank it is an unnamed header
+              cell a screen reader reads as empty, and this is also where the
+              reference layout puts the word for the row dimension. */}
+          <th
+            scope="col"
+            class="sticky left-0 z-30 border-b border-ink/10 bg-surface px-5 py-5 align-bottom text-xs font-normal text-muted"
+          >
+            {t(locale, 'pricingPage.feature')}
+          </th>
+          {
+            columns.map((c) => (
+              <th
+                scope="col"
+                class:list={[
+                  'border-b border-ink/10 px-5 py-5 align-bottom',
+                  c.highlight ? 'bg-plan-tint' : 'bg-surface',
+                ]}
+              >
+                {/* No "Most Popular" chip here: the tinted column says it
+                    without a second badge, three inches under a card that
+                    already carries that badge. */}
+                <span class="block text-base font-bold text-ink">{c.name}</span>
+                <span class="mt-0.5 block text-xs font-normal text-muted">
+                  {c.prices.yearly.price}
+                  {c.prices.yearly.period && ` ${c.prices.yearly.period}`}
+                </span>
+              </th>
+            ))
+          }
+        </tr>
+      </thead>
+      <tbody>
         {
-          columns.map((c) => (
-            <th scope="col" class="px-4 py-3 font-semibold">
-              {c.name}
-            </th>
+          rows.map((row) => (
+            <tr>
+              <th
+                scope="row"
+                class="sticky left-0 z-10 border-b border-ink/5 bg-surface px-5 py-4 text-left align-top text-sm font-normal text-muted"
+              >
+                {row.label}
+              </th>
+              {columns.map((c) => (
+                <td
+                  class:list={[
+                    'border-b border-ink/5 px-5 py-4 align-top',
+                    c.highlight ? 'bg-plan-tint' : '',
+                  ]}
+                >
+                  {typeof row.values[c.tierKey] === 'boolean' ? (
+                    row.values[c.tierKey] === true ? (
+                      <>
+                        <span aria-hidden="true" class="text-base font-semibold text-link">
+                          ✓
+                        </span>
+                        <span class="sr-only">{t(locale, 'pricingPage.included')}</span>
+                      </>
+                    ) : (
+                      <>
+                        <span aria-hidden="true" class="text-base text-muted/70">
+                          ✗
+                        </span>
+                        <span class="sr-only">{t(locale, 'pricingPage.notIncluded')}</span>
+                      </>
+                    )
+                  ) : (
+                    <span class="font-medium text-ink">{row.values[c.tierKey]}</span>
+                  )}
+                </td>
+              ))}
+            </tr>
           ))
         }
-      </tr>
-    </thead>
-    <tbody>
-      {
-        rows.map((row) => (
-          <tr class="border-b border-ink/5 last:border-0">
-            <th scope="row" class="px-4 py-3 font-normal text-muted">
-              {row.label}
-            </th>
-            {columns.map((c) => (
-              <td class="px-4 py-3" set:html={cellHtml(row.values[c.tierKey])} />
-            ))}
-          </tr>
-        ))
-      }
-    </tbody>
-  </table>
-</div>
+      </tbody>
+      {/* The price row is the LAST row of the table, inside the tinted column
+          like every other row, so the featured plan's figure is where a reader
+          who scrolled the whole table lands. The monthly figure is the primary
+          one because it is the smaller number; the currency and the yearly
+          statement sit under it as the qualifier rather than as a second price
+          competing with the first. */}
+      <tfoot>
+        <tr>
+          <th
+            scope="row"
+            class="sticky left-0 z-10 bg-surface px-5 py-5 text-left align-top text-sm font-normal text-muted"
+          >
+            {t(locale, 'pricingPage.planPricing')}
+          </th>
+          {
+            columns.map((c) => (
+              <td class:list={['px-5 py-5 align-top', c.highlight ? 'bg-plan-tint' : '']}>
+                <span class="block font-semibold text-ink">
+                  {c.prices.monthly.price}
+                  {c.prices.monthly.period && (
+                    <span class="text-xs font-normal text-muted"> {c.prices.monthly.period}</span>
+                  )}
+                </span>
+                <span class="mt-1 block text-xs text-muted">
+                  {c.currency}
+                  {BILLED_TIERS.has(c.tierKey) && ` · ${t(locale, 'pricingPage.twoMonthsFree')}`}
+                </span>
+              </td>
+            ))
+          }
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+
+  {/* One footnote element — a single paragraph, so the small print under the
+      table is one thing to read rather than two blocks that happen to be
+      adjacent. `<br />` separates the four notes because they are one voice:
+      the asterisks' legend, one line per marked row, then the perpetual-
+      licensing note that carries no marker of its own. (A `<ul>` plus a `<p>`,
+      the previous shape, drew a list-marker gutter and a second paragraph
+      rhythm for lines that are all the same kind of aside.)
+
+      Faint muted and 10px — the smallest text on the page — because this is
+      reference material a reader consults after the prices, not a claim
+      competing with them. It is the token at alpha rather than an `opacity-50`
+      on the box: the colour token is this site's existing way to say
+      "de-emphasised" (the ✗ glyph above uses it too), and it cannot leave a
+      half-transparent background behind when a parent gains one.
+
+      THE 80% IS A DESIGN CALL, NOT AN AA PASS — know the number before changing
+      it. Measured by painting the computed colour over each theme's real page
+      background and running the WCAG relative-luminance formula, 80% reads
+      dark 4.26:1 / light 4.62:1 at this size: the light theme clears the 4.5:1
+      WCAG AA floor for normal text and the DARK THEME DOES NOT. That is the
+      owner's ruling of 2026-09-29 — the note is an aside under the prices and
+      should read as one — so the exposure is stated here rather than quietly
+      absorbed. `text-muted/84` is the faintest value that passes in both themes
+      (dark 4.53:1 / light 5.12:1) and 83% is where dark fails at 4.45:1, so if
+      legibility outranks the tint, 84 is the number, not 100. Whole-token
+      `text-muted` would read 5.96:1 dark / 7.76:1 light, but it is the weight of
+      the table's own column labels — the note has to sit below those, not
+      beside them. Re-measure with that method, not by eye.
+
+      Outside the scrolling panel so it stays visible while the reader scrolls
+      the table, and inside the section so it travels with the table it
+      annotates. One line per marked row: all three payment rows share the `*`,
+      so each line names its own subject — a single note would silently orphan
+      two markers, and the rows' own order is the only thing tying a line back
+      to its row. */}
+  <p class="mt-3 max-w-3xl text-[10px] leading-relaxed text-muted/80">
+    {t(locale, 'pricingPage.qrisNote')}<br />
+    {t(locale, 'pricingPage.midtransNote')}<br />
+    {t(locale, 'pricingPage.stripeNote')}<br />
+    {t(locale, 'pricingPage.note')}
+  </p>
+</section>

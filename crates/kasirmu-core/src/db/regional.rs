@@ -7,9 +7,9 @@
 //! field and the topology screen hand-lists them), so a regional column must
 //! never ride that path. This module reads the three scopes, assembles the
 //! inheritance chain, and hands the resolution to the pure
-//! [`RegionalConfig::resolve`].
+//! [`RegionalConfig::resolve`](crate::regional::RegionalConfig::resolve).
 
-use rusqlite::params;
+use rusqlite::{OptionalExtension, params};
 
 use super::Store;
 use crate::CoreError;
@@ -28,7 +28,7 @@ impl Store<'_> {
     /// Resolve the effective regional configuration for one location.
     ///
     /// Walks Location → Legal Entity → Organization (the `settings` table) and
-    /// lets [`RegionalConfig::resolve`] apply the built-in fallback, so the
+    /// lets [`RegionalConfig::resolve`](crate::regional::RegionalConfig::resolve) apply the built-in fallback, so the
     /// precedence rule lives in exactly one place.
     ///
     /// The legal-entity layer is read **tenant-filtered**: an entity row
@@ -87,7 +87,7 @@ impl Store<'_> {
                             row.get::<_, String>("country_code")?,
                         ))
                     })
-                    .ok();
+                    .optional()?;
                 entity.map(|(locale, timezone, currency, country_code)| {
                     RegionalLayer::blank(
                         ConfigScope::LegalEntity,
@@ -135,7 +135,7 @@ impl Store<'_> {
                 [],
                 |row| row.get(0),
             )
-            .ok();
+            .optional()?;
         match id {
             Some(id) => self.regional_config_for_location(&id).map(Some),
             None => Ok(None),

@@ -2,9 +2,11 @@
 /*
 last audited 25-07-26 by RSA-Agent (kasirmu-core slice B5 part 6)
 crate: kasirmu-core | status: SAFE | lint: CLEAN
-findings: clean CRUD; update_promotion validates only the name while create also validates promo_type/value_minor/min_order_minor (COR-12-class asymmetry, INFO); window query uses SQLite strftime now()
-next: extend update validation | perf: N/A
+findings: clean CRUD; COR-12 asymmetry CLOSED 2026-10-04 — update_promotion (at :162) now calls the same shared validate_promotion(promo)? at :163 that create_promotion calls at :132, so update validates promo_type/value_minor/min_order_minor exactly like create (validator at :29 covers empty name, invalid promo_type, negative value_minor/min_order_minor, Percentage/BuyXGetY value_minor 1..=100, BuyXGetY specifics); window query uses SQLite strftime now()
+next: none | perf: N/A
 */
+
+use std::collections::HashMap;
 
 use rusqlite::params;
 
@@ -148,7 +150,7 @@ impl Store<'_> {
                 promo.ends_at,
                 promo.min_order_minor,
                 promo.category_id,
-                promo.active as i64,
+                i64::from(promo.active),
                 promo.created_at,
                 promo.updated_at,
             ],
@@ -179,7 +181,7 @@ impl Store<'_> {
                 promo.ends_at,
                 promo.min_order_minor,
                 promo.category_id,
-                promo.active as i64,
+                i64::from(promo.active),
                 promo.updated_at,
                 promo.id,
             ],
@@ -284,12 +286,18 @@ impl Store<'_> {
 
         // Category scope resolution: SKU -> product category. Only
         // consulted when the promotion carries a category_id.
-        let category_of = |sku: &str| {
-            self.get_product(sku)
-                .ok()
-                .flatten()
-                .and_then(|p| p.product.category_id)
-        };
+        let mut categories = HashMap::new();
+        if promo.category_id.is_some() {
+            for line in &sale.lines {
+                if !categories.contains_key(&line.sku) {
+                    let cat = self
+                        .get_product(&line.sku)?
+                        .and_then(|p| p.product.category_id);
+                    categories.insert(line.sku.clone(), cat);
+                }
+            }
+        }
+        let category_of = |sku: &str| categories.get(sku).cloned().flatten();
         let discount_minor = crate::compute_discount(&promo, &sale, now, category_of)?;
 
         let app = PromotionApplication {
@@ -416,12 +424,18 @@ impl Store<'_> {
 
             // Category scope resolution: SKU -> product category. Only
             // consulted when the promotion carries a category_id.
-            let category_of = |sku: &str| {
-                self.get_product(sku)
-                    .ok()
-                    .flatten()
-                    .and_then(|p| p.product.category_id)
-            };
+            let mut categories = HashMap::new();
+            if promo.category_id.is_some() {
+                for line in &sale.lines {
+                    if !categories.contains_key(&line.sku) {
+                        let cat = self
+                            .get_product(&line.sku)?
+                            .and_then(|p| p.product.category_id);
+                        categories.insert(line.sku.clone(), cat);
+                    }
+                }
+            }
+            let category_of = |sku: &str| categories.get(sku).cloned().flatten();
             let discount_minor = crate::compute_discount(&promo, sale, now, category_of)?;
 
             let remaining = sale

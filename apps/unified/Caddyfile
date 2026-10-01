@@ -1,4 +1,4 @@
-# ── OZ-POS Unified Image — caddy reverse proxy ────────────────────────
+# ── kasir.mu Unified Image — caddy reverse proxy ────────────────────────
 #
 # One public port (:80) path-routes to the two functions inside the
 # container. TLS is terminated at the platform edge (Northflank) for the

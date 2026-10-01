@@ -1,4 +1,4 @@
-//! Stock variance report — `oz stock-variance`.
+//! Stock variance report — `kasir stock-variance`.
 //!
 //! Wires the existing read-only core report
 //! ([`kasirmu_core::db::Store::stock_variance_report`], checklist item C12) to
@@ -7,15 +7,15 @@
 //! comes back.
 //!
 //! WHY A CLI SUBCOMMAND, and not a desktop or tablet panel: the CLI already
-//! owns the read-only maintenance surface (`oz backup`, `oz restore`,
-//! `oz export`, `oz credential-deltas`), so this reuses an existing surface
+//! owns the read-only maintenance surface (`kasir backup`, `kasir restore`,
+//! `kasir export`, `kasir credential-deltas`), so this reuses an existing surface
 //! instead of inventing one, and it drags no UI gate (vitest, bundle budget,
 //! locale strings) behind it. It is the shape the neighbouring read-only
 //! operations already use.
 //!
-//! WHY TEXT AND NOT CSV: `oz export` writes CSV because it dumps BULK data.
+//! WHY TEXT AND NOT CSV: `kasir export` writes CSV because it dumps BULK data.
 //! This is a bounded triage view of at most
-//! [`STOCK_VARIANCE_MAX_ROWS`] rows, which is the same shape as `oz sale get`
+//! [`STOCK_VARIANCE_MAX_ROWS`] rows, which is the same shape as `kasir sale get`
 //! (a fixed-width table). The core row type carries no `Serialize`, and core is
 //! out of scope here, so a hand-rolled second serialization would be a second
 //! definition of the row — the drift this codebase avoids.
@@ -93,7 +93,7 @@ pub(crate) const LONG_HELP: &str = concat!(
 pub(crate) fn open_store_for_stock_variance(path: &str) -> Result<Connection> {
     if !Path::new(path).is_file() {
         anyhow::bail!(
-            "oz stock-variance reads an existing store and never creates one: no database exists at {path}. --db defaults to ./kasir.db in the CURRENT directory, so a mistyped or relative path lands here as a file that is not there, and a variance report over an empty file would read as a clean ledger rather than as a missing database. Take a copy of a live store and run against the copy: oz backup --output <copy.db>, then oz stock-variance --db <copy.db>. Nothing was created, read, or written."
+            "kasir stock-variance reads an existing store and never creates one: no database exists at {path}. --db defaults to ./kasir.db in the CURRENT directory, so a mistyped or relative path lands here as a file that is not there, and a variance report over an empty file would read as a clean ledger rather than as a missing database. Take a copy of a live store and run against the copy: kasir backup --output <copy.db>, then kasir stock-variance --db <copy.db>. Nothing was created, read, or written."
         );
     }
     crate::commands::open_db(path)
@@ -141,7 +141,7 @@ pub(crate) fn bound_note(returned: usize, limit: i64) -> Option<String> {
     }
 }
 
-/// `oz stock-variance` — report `stock_summary` vs the `stock_movements` ledger.
+/// `kasir stock-variance` — report `stock_summary` vs the `stock_movements` ledger.
 ///
 /// Read-only: the only statement issued is the report's own `SELECT`. Validation
 /// errors from the report (`--min-difference` negative, `--limit` outside
@@ -179,9 +179,9 @@ pub(crate) fn run_stock_variance(conn: &Connection, args: &StockVarianceArgs) ->
         println!("{note}");
     }
     println!();
-    println!("{}", HELP_WHY);
+    println!("{HELP_WHY}");
     println!();
-    println!("{}", HELP_BYTES_NOT_CONTENT);
+    println!("{HELP_BYTES_NOT_CONTENT}");
     Ok(())
 }
 

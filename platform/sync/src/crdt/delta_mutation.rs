@@ -10,7 +10,8 @@ replica. `total_quantity` saturates: an overflowing sum is reported as
 i64::MAX/MIN rather than wrapping into a plausible wrong number. Payload
 parsing fails closed — a delta missing any required field is an error, never a
 silently zeroed delta.
-next: adopt in queue.rs once the crdt_delta blob is retired | perf: N/A
+next: none | perf: N/A
+NOT ADOPTED 2026-10-04, and the reason changed: the crdt_delta blob was NOT retired - instead the blob was made safe (dedupe, idempotence, null-side skip, self-merge collapse: 5ac248e75..36127a9c4) and the appliers were routed through appliers::envelope_deltas. This typed merge is still the better shape, but swapping it in is a redesign of the four queue arms, not a pending cleanup.
 */
 //!
 //! This module **describes** the merge contract. It does not replace

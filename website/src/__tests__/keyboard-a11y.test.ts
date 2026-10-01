@@ -125,7 +125,10 @@ describe('page chrome follows the page locale', () => {
 
   it('Header forwards that locale to the theme and language controls', () => {
     expect(HEADER).toContain('<ThemeToggle locale={locale} />');
-    expect(HEADER).toContain('<LocaleSwitcher locale={locale} />');
+    // Matched by prefix: the guides layer threads per-locale counterpart paths
+    // through here, and an exact-tag match would fail every time a prop is
+    // added for a page class that has one.
+    expect(HEADER).toContain('<LocaleSwitcher locale={locale}');
   });
 
   it('Base passes the locale it resolved to the chrome', () => {

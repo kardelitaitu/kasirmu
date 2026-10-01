@@ -1,6 +1,6 @@
 //! Shared application-level event handlers.
 /*
-last audited DD-MM-YY by DSH-Agent
+last audited (date unknown) by DSH-Agent
 crate: platform-startup (event_handlers) | status: SAFE | lint: CLEAN
 findings: six handlers share a uniform lock/Store/enqueue-or-audit pattern with poison-safe mapping and structured error logs; sale completions enqueued at SyncPriority::Critical (P-2, documented); audit entries system-initiated; no unsafe/no SQL interpolation. COR-33 already resolved: inline tests were extracted to sibling event_handlers_tests.rs (file is now 479 lines, not 1,219).
 next: none | perf: handlers hold the shared DB mutex briefly
@@ -12,7 +12,7 @@ next: none | perf: handlers hold the shared DB mutex briefly
 
 use std::sync::{Arc, Mutex};
 
-use foundation::contracts::{EventHandler, ModuleResult};
+use foundation::contracts::{EventHandler, HandlerType, ModuleResult};
 use kasirmu_core::audit::AuditEntry;
 use kasirmu_core::db::Store;
 use kasirmu_core::events::{ProductCreated, SaleCompleted, SettingsUpdated, StockAdjusted};
@@ -42,6 +42,10 @@ impl SaleSyncEnqueuer {
 }
 
 impl EventHandler<SaleCompleted> for SaleSyncEnqueuer {
+    fn handler_type(&self) -> HandlerType {
+        HandlerType::ProjectionSubscriber
+    }
+
     fn handle(&self, event: &SaleCompleted) -> ModuleResult {
         let conn = self
             .db
@@ -83,15 +87,32 @@ impl EventHandler<SaleCompleted> for SaleSyncEnqueuer {
 
         // P-2: Sale completions are Critical priority — they must
         // propagate before inventory or settings changes.
+        //
+        // TENANT comes from the EVENT, never a hardcoded "default".
+        // `enqueue_offline_priority` pins `"default"`, and the `SaleCompleted`
+        // event has always carried `store_id` — so a multi-store sale settled
+        // through this lane was filed under `"default"` and the queue, which is
+        // read per tenant, would never push it. `enqueue_offline_scoped` is the
+        // combined tenant+priority entry point that exists for exactly this
+        // (`offline.rs` OFF-09); the in-transaction lane already uses the same
+        // shape, and `enqueue_offline_in_tx_commits_with_its_transaction_and_
+        // keeps_the_tenant` pins it with the comment that the hardcoded helper
+        // "would reintroduce the multi-store bug this one avoids".
+        //
+        // An absent `store_id` falls back to "default", which is the same
+        // behaviour this call had unconditionally — so a single-store install is
+        // unchanged, and only the multi-store case is repaired.
+        let tenant_id = event.store_id.as_deref().unwrap_or("default");
         store
-            .enqueue_offline_priority("complete_sale", &payload, SyncPriority::Critical)
+            .enqueue_offline_scoped("complete_sale", &payload, tenant_id, SyncPriority::Critical)
             .map_err(|e| {
                 error!(
                     sale_id = %event.sale_id,
+                    tenant_id = %tenant_id,
                     error = %e,
                     "sync enqueuer: failed to enqueue completed sale"
                 );
-                anyhow::anyhow!("sync enqueuer: enqueue_offline_priority failed: {e}")
+                anyhow::anyhow!("sync enqueuer: enqueue_offline_scoped failed: {e}")
             })?;
 
         info!(
@@ -124,6 +145,10 @@ impl InventorySyncEnqueuer {
 }
 
 impl EventHandler<ProductCreated> for InventorySyncEnqueuer {
+    fn handler_type(&self) -> HandlerType {
+        HandlerType::ProjectionSubscriber
+    }
+
     fn handle(&self, event: &ProductCreated) -> ModuleResult {
         let conn = self
             .db
@@ -163,6 +188,10 @@ impl EventHandler<ProductCreated> for InventorySyncEnqueuer {
 }
 
 impl EventHandler<StockAdjusted> for InventorySyncEnqueuer {
+    fn handler_type(&self) -> HandlerType {
+        HandlerType::ProjectionSubscriber
+    }
+
     fn handle(&self, event: &StockAdjusted) -> ModuleResult {
         let conn = self
             .db
@@ -217,6 +246,10 @@ impl AuditLogHandler {
 }
 
 impl EventHandler<SaleCompleted> for AuditLogHandler {
+    fn handler_type(&self) -> HandlerType {
+        HandlerType::ProjectionSubscriber
+    }
+
     fn handle(&self, event: &SaleCompleted) -> ModuleResult {
         let conn = self
             .db
@@ -287,6 +320,10 @@ impl EventHandler<SaleCompleted> for AuditLogHandler {
 }
 
 impl EventHandler<StockAdjusted> for AuditLogHandler {
+    fn handler_type(&self) -> HandlerType {
+        HandlerType::ProjectionSubscriber
+    }
+
     fn handle(&self, event: &StockAdjusted) -> ModuleResult {
         let conn = self
             .db
@@ -333,6 +370,10 @@ impl EventHandler<StockAdjusted> for AuditLogHandler {
 }
 
 impl EventHandler<ProductCreated> for AuditLogHandler {
+    fn handler_type(&self) -> HandlerType {
+        HandlerType::ProjectionSubscriber
+    }
+
     fn handle(&self, event: &ProductCreated) -> ModuleResult {
         let conn = self
             .db
@@ -396,6 +437,10 @@ impl LoyaltyEarnHandler {
 }
 
 impl EventHandler<SaleCompleted> for LoyaltyEarnHandler {
+    fn handler_type(&self) -> HandlerType {
+        HandlerType::CommandContributor
+    }
+
     fn handle(&self, event: &SaleCompleted) -> ModuleResult {
         let Some(ref customer_id) = event.customer_id else {
             info!(
@@ -463,6 +508,10 @@ impl SettingsUpdatedHandler {
 }
 
 impl EventHandler<SettingsUpdated> for SettingsUpdatedHandler {
+    fn handler_type(&self) -> HandlerType {
+        HandlerType::ProjectionSubscriber
+    }
+
     fn handle(&self, event: &SettingsUpdated) -> ModuleResult {
         let changed_keys = event.changed_keys.clone();
         let terminal_id = event.terminal_id.clone();

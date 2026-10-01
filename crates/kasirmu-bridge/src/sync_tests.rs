@@ -895,3 +895,96 @@ fn disposal_survives_a_missing_or_unlistable_directory() {
         Vec::<std::path::PathBuf>::new()
     );
 }
+
+#[tokio::test]
+async fn store_linked_terminal_ignores_unissued_or_none() {
+    let bridge = crate::testing::TestBridge::new();
+    let ctx = bridge.ctx();
+
+    // None terminal
+    assert!(!store_linked_terminal(&ctx, None).await.unwrap());
+
+    // Unissued terminal
+    let unissued = kasirmu_core::desktop_link::TerminalCredential {
+        issued: false,
+        terminal_id: None,
+        device_secret: None,
+        reason: Some("sync service unreachable".to_string()),
+    };
+    assert!(!store_linked_terminal(&ctx, Some(&unissued)).await.unwrap());
+}
+
+#[tokio::test]
+async fn store_linked_terminal_stores_credentials_and_enables_sync() {
+    let bridge = crate::testing::TestBridge::new();
+    let ctx = bridge.ctx();
+
+    let cred = kasirmu_core::desktop_link::TerminalCredential {
+        issued: true,
+        terminal_id: Some("term-device-123".to_string()),
+        device_secret: Some("sec-abc-xyz".to_string()),
+        reason: None,
+    };
+
+    let stored = store_linked_terminal(&ctx, Some(&cred)).await.unwrap();
+    assert!(stored);
+
+    let conn = ctx.lock_global().await;
+    assert_eq!(
+        Settings::get_sync_terminal_id(&conn).unwrap().as_deref(),
+        Some("term-device-123")
+    );
+    assert_eq!(
+        Settings::get_sync_terminal_secret(&conn)
+            .unwrap()
+            .as_deref(),
+        Some("sec-abc-xyz")
+    );
+    assert!(Settings::is_sync_enabled(&conn).unwrap());
+}
+
+#[tokio::test]
+async fn store_linked_terminal_mints_token_when_server_url_configured() {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpListener;
+
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let server_url = format!("http://{}", listener.local_addr().unwrap());
+    tokio::spawn(async move {
+        if let Ok((mut socket, _)) = listener.accept().await {
+            let mut buffer = vec![0_u8; 4096];
+            let _ = socket.read(&mut buffer).await;
+            let body = r#"{"token":{"token":"jwt-token-minted-xyz"}}"#;
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                body.len(),
+                body
+            );
+            let _ = socket.write_all(response.as_bytes()).await;
+        }
+    });
+
+    let bridge = crate::testing::TestBridge::new();
+    let ctx = bridge.ctx();
+    {
+        let conn = ctx.lock_global().await;
+        Settings::set_sync_server_url(&conn, &server_url).unwrap();
+    }
+
+    let cred = kasirmu_core::desktop_link::TerminalCredential {
+        issued: true,
+        terminal_id: Some("term-device-789".to_string()),
+        device_secret: Some("sec-pass-789".to_string()),
+        reason: None,
+    };
+
+    let stored = store_linked_terminal(&ctx, Some(&cred)).await.unwrap();
+    assert!(stored);
+
+    let conn = ctx.lock_global().await;
+    assert_eq!(
+        Settings::get_sync_api_key(&conn).unwrap().as_deref(),
+        Some("jwt-token-minted-xyz")
+    );
+    assert!(Settings::is_sync_enabled(&conn).unwrap());
+}

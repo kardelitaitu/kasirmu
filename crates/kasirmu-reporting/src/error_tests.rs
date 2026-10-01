@@ -69,8 +69,7 @@ fn from_rusqlite_error_conversion() {
     );
     assert!(
         reporting_err.to_string().starts_with("database error:"),
-        "got: {:?}",
-        reporting_err
+        "got: {reporting_err:?}"
     );
     // Source chain preserved (#[from] preserves the inner cause).
     use std::error::Error as _;

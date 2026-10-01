@@ -183,7 +183,7 @@ fn audit_entry_debug_output() {
         None::<String>,
         "ok",
     );
-    let debug = format!("{:?}", entry);
+    let debug = format!("{entry:?}");
     assert!(debug.contains("u1"));
     assert!(debug.contains("test"));
 }

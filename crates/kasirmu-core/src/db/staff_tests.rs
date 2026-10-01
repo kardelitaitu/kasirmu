@@ -690,6 +690,85 @@ fn deactivate(conn: &rusqlite::Connection, id: &str) {
         .unwrap();
 }
 
+/// C65: a failure AFTER the trash UPDATE must leave nothing committed.
+///
+/// **This test exists because the obvious one does not discriminate.** A
+/// `joins_a_caller_transaction` case was written first and it PASSED WITH THE WRAP
+/// REMOVED — because rusqlite's `Connection::execute` writes into whatever
+/// transaction the connection already holds, so on the caller-owned path the
+/// wrapper's `is_autocommit()` branch is false and a bare write behaves identically.
+/// That is exactly the "no-op wrap a future reader treats as a guarantee" C65 warns
+/// about, and it is why the assertion below targets the AUTOCOMMIT path instead:
+/// that is the only path where the wrapper changes the observable outcome.
+///
+/// The forcing function is the markers table: `persist_over_quota_markers` DELETEs
+/// and re-INSERTs it after the UPDATE, so dropping that table makes step 2 fail with
+/// step 1 already done. Discriminating because the assertion is on the row that the
+/// FIRST statement wrote: with the wrap it is rolled back; without it, the
+/// autocommitted UPDATE survives and the member is left in a half-deleted state.
+#[test]
+fn soft_delete_user_rolls_back_the_update_when_the_marker_refresh_fails() {
+    let conn = fresh();
+    seed_users(&conn);
+    deactivate(&conn, "user-3");
+
+    // Force step 2 to fail after step 1 has written.
+    conn.execute_batch("DROP TABLE over_quota_markers").unwrap();
+
+    let result = store(&conn).soft_delete_user("user-3");
+    assert!(
+        result.is_err(),
+        "the marker refresh cannot succeed without its table"
+    );
+
+    let deleted_at: Option<String> = conn
+        .query_row(
+            "SELECT deleted_at FROM users WHERE id = 'user-3'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert!(
+        deleted_at.is_none(),
+        "a failed delete must leave the member out of the trash -- with no wrap the \
+         autocommitted UPDATE survives and the row is half-deleted"
+    );
+}
+
+#[test]
+fn soft_delete_user_accepts_an_open_transaction_without_nesting() {
+    let conn = fresh();
+    seed_users(&conn);
+    deactivate(&conn, "user-3");
+
+    let tx = conn.unchecked_transaction().unwrap();
+    Store::new(&tx).soft_delete_user("user-3").unwrap();
+    let inside: Option<String> = tx
+        .query_row(
+            "SELECT deleted_at FROM users WHERE id = 'user-3'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert!(
+        inside.is_some(),
+        "the delete must be visible inside the caller's transaction"
+    );
+    tx.rollback().unwrap();
+
+    let after: Option<String> = conn
+        .query_row(
+            "SELECT deleted_at FROM users WHERE id = 'user-3'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert!(
+        after.is_none(),
+        "a rolled-back caller must leave the member out of the trash"
+    );
+}
+
 #[test]
 fn soft_delete_refuses_an_active_member() {
     let conn = fresh();
@@ -930,6 +1009,38 @@ fn restore_returns_the_member_inactive() {
     assert!(store(&conn).list_trashed_users().unwrap().is_empty());
 }
 
+/// `TrashedUser` derives `Debug` around a `User` field, so it inherits the
+/// redaction `User`'s manual impl applies to `pin_hash` — it must NOT print
+/// the credential verifier through its own derive. This is the one place the
+/// embedding path can be exercised: `modules-staff` cannot name `TrashedUser`
+/// without depending on this layer.
+#[test]
+fn trashed_user_debug_inherits_the_pin_hash_redaction() {
+    let conn = fresh();
+    seed_users(&conn);
+    deactivate(&conn, "user-3");
+    store(&conn).soft_delete_user("user-3").unwrap();
+
+    let trash = store(&conn).list_trashed_users().unwrap();
+    assert_eq!(trash.len(), 1, "precondition: one trashed member");
+
+    let out = format!("{:?}", trash[0]);
+    assert!(
+        out.contains("<redacted>"),
+        "TrashedUser's derived Debug must reach User's redacting impl: {out}"
+    );
+    assert!(
+        !out.contains(&trash[0].user.pin_hash),
+        "the embedded verifier must not be printed: {out}"
+    );
+    // The row stays readable, and the trash-specific field survives.
+    assert!(out.contains("TrashedUser"), "type name must print: {out}");
+    assert!(
+        out.contains("deleted_at"),
+        "the trash field must still print: {out}"
+    );
+}
+
 #[test]
 fn purge_anonymises_only_past_the_window() {
     let conn = fresh();
@@ -1110,6 +1221,52 @@ fn record_login_attempt_returns_remaining() {
         .unwrap()
         .unwrap();
     assert_eq!(second, 1);
+}
+
+/// C18: the prune, the three limit checks, the INSERT and the re-check are ONE
+/// decision and must be atomic. They ran as separate autocommit statements, so a
+/// failure after the prune committed the deletion while recording no attempt --
+/// the recorded history is destroyed AND the attempt is invisible to the limits.
+///
+/// This forces the INSERT to fail AFTER the prune has already run, and asserts
+/// the prune did not survive. On the pre-fix code the stale row is gone; with
+/// the transaction it is still there, which is the all-or-nothing contract.
+#[test]
+fn record_login_attempt_is_all_or_nothing_when_the_insert_fails() {
+    let conn = fresh();
+    let s = store(&conn);
+
+    // Seed an OLD attempt that the prune would delete (outside the window).
+    let stale_at = chrono::Utc::now().timestamp()
+        - i64::try_from(LIMITS.window_secs).expect("window fits i64")
+        - 60;
+    conn.execute(
+        "INSERT INTO login_attempts (id, username, device_id, attempted_at) VALUES ('stale-1', 'alice', NULL, ?1)",
+        rusqlite::params![stale_at],
+    )
+    .unwrap();
+    let before: i64 = conn
+        .query_row("SELECT COUNT(*) FROM login_attempts", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(before, 1, "one stale row is seeded");
+
+    // Make the INSERT fail with a trigger, AFTER the prune statement has run.
+    conn.execute_batch(
+        "CREATE TRIGGER fail_login_insert BEFORE INSERT ON login_attempts \
+         BEGIN SELECT RAISE(ABORT, 'forced insert failure'); END;",
+    )
+    .unwrap();
+    let err = s.record_login_attempt_scoped("alice", None, LIMITS);
+    assert!(err.is_err(), "the forced insert failure must surface");
+
+    // THE ASSERTION: the prune must have been rolled back with the insert.
+    let after: i64 = conn
+        .query_row("SELECT COUNT(*) FROM login_attempts", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(
+        after, 1,
+        "a failed insert must not leave the prune committed: the whole sequence is one decision"
+    );
 }
 
 #[test]

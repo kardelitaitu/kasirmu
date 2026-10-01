@@ -683,7 +683,7 @@ impl Store<'_> {
                 Box::new(crate::memo::ParseError(status_str.clone())),
             )
         })?;
-        let duration = duration_str.parse::<MemoDuration>().map_err(|_| {
+        let duration = duration_str.parse::<MemoDuration>().map_err(|()| {
             rusqlite::Error::FromSqlConversionFailure(
                 0,
                 rusqlite::types::Type::Text,

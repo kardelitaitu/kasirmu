@@ -2,7 +2,7 @@
 title: Terminal
 description: Daftarkan dan konfigurasikan perangkat yang menjalankan kasir.mu.
 category: guides
-order: 8
+order: 5
 updated: "2026-09-09"
 ---
 
@@ -51,23 +51,42 @@ masing berperilaku sesuai kebutuhan lokasinya.
 
 ## Binding perangkat
 
-Ikat terminal ke toko dan instance ruang kerja agar perangkat langsung membuka
+Ikat terminal ke lokasi dan instance ruang kerja agar perangkat langsung membuka
 layar itu alih-alih pemilih — layar dapur yang selalu Tampilan Dapur, kasir
-yang selalu POS Toko. Menghapus binding mengembalikan perangkat ke pemilih
+yang selalu POS Ritel. Menghapus binding mengembalikan perangkat ke pemilih
 ruang kerja.
 
 ## Status terminal
 
-Dasbor multi-toko melacak terminal **aktif**, **daring**, dan **total** serta
-menampilkan status terminal per toko, sehingga Anda dapat melihat sekilas
+Dasbor multi-lokasi melacak terminal **aktif**, **daring**, dan **total** serta
+menampilkan status terminal per lokasi, sehingga Anda dapat melihat sekilas
 perangkat mana yang aktif dan bekerja. Perangkat melapor saat terhubung
 kembali, dan terminal yang lama offline terlihat di sini sebelum menyebabkan
 kejutan di kasir.
 
+## Diagnostik
+
+**Pengaturan → Sistem → Diagnostik** menampilkan alasan setiap fitur
+terbuka atau terkunci untuk Anda saat ini — gerbang yang sama yang
+memberlakukan aplikasi, dengan alasan yang disebutkan. Layarnya hanya-baca
+dan bekerja offline. Jika sebuah fitur diam atau tidak tersedia di perangkat,
+mulai dari sana: layar itu akan menyebut gerbang yang memblokirnya daripada
+membiarkan Anda menebak.
+
+Dua lubang yang perlu diwaspadai sejak awal:
+
+- **Uji cetak memakai tata letak yang terakhir disimpan.** Di pengaturan
+  struk POS Restoran, tombol uji cetak mencetak tata letak *tersimpan* Anda
+  — simpan draf dulu atau ujinya menampilkan yang lama.
+- **Terminal yang tampak offline** (printer diam, tanpa sinyal) hampir
+  selalu butuh terhubung lagi, bukan didaftarkan ulang. Periksa nama terminal
+  dan pengenal perangkatnya (hostname atau MAC) serta status daring/aktifnya
+di dasbor sebelum menghapus dan menambahkannya lagi.
+
 ## Terminal dalam topologi
 
-Terminal muncul di editor topologi bersama toko dan gudang, dan tata letak
+Terminal muncul di editor topologi bersama lokasi dan gudang, dan tata letak
 tersinkron ke setiap perangkat saat terhubung kembali. Lihat
-[Toko & Topologi](../stores/) dan [Ruang Kerja](../workspaces/).
+[Lokasi & Topologi](../location/) dan [Ruang Kerja](../workspaces/).
 
 > last audited 09-09-26 by docs-auditor

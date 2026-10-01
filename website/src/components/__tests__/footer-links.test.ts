@@ -44,19 +44,30 @@ function resolve(dict: Record<string, unknown>, key: string): unknown {
     );
 }
 
-/** Every i18n key the footer renders: four headings, sixteen links, one nav name. */
+/** Every i18n key the footer renders: five headings, twenty-one links, one nav name. */
 const COPY_KEYS = [
   'footer.sitemap',
   ...FOOTER_COLUMNS.map((column) => column.heading),
   ...FOOTER_LINKS.map((link) => link.label),
 ];
 
+/**
+ * Keys whose two locales are deliberately the SAME string.
+ *
+ * "Media Kit" is a loanword in Indonesian and is what press contacts there
+ * write, so translating it would invent a term nobody searches for. Spelled
+ * out here rather than by loosening the shared-label assertion below: any other
+ * key that stops differing is still a bug, and an empty exception list was the
+ * expectation until this page existed.
+ */
+const SHARED_LABEL_OK = ['footer.link.mediaKit'];
+
 // ─── Sitemap data ────────────────────────────────────────────────────
 
 describe('footer sitemap data', () => {
-  it('has four columns and sixteen links', () => {
-    expect(FOOTER_COLUMNS).toHaveLength(4);
-    expect(FOOTER_LINKS).toHaveLength(16);
+  it('has five columns and twenty-one links', () => {
+    expect(FOOTER_COLUMNS).toHaveLength(5);
+    expect(FOOTER_LINKS).toHaveLength(21);
   });
 
   it('has no duplicate slug (two links to one page read as a broken column)', () => {
@@ -64,7 +75,7 @@ describe('footer sitemap data', () => {
     expect(new Set(slugs).size).toBe(slugs.length);
   });
 
-  it('covers the product, solutions, business and help groupings', () => {
+  it('covers the product, solutions, business, help and company groupings', () => {
     for (const slug of [
       'features',
       'pricing',
@@ -82,6 +93,11 @@ describe('footer sitemap data', () => {
       'support',
       'cara',
       'perbandingan',
+      'about',
+      'media-kit',
+      'contact',
+      'legal/terms',
+      'legal/privacy',
     ]) {
       expect(FOOTER_LINKS.map((link) => link.slug), `missing ${slug}`).toContain(slug);
     }
@@ -96,9 +112,30 @@ describe('footer sitemap data', () => {
     expect(FOOTER_SRC).toContain('FOOTER_COLUMNS');
   });
 
-  it('renders 2 legal links (privacy and terms)', () => {
-    expect(FOOTER_SRC).toContain("'legal/privacy'");
-    expect(FOOTER_SRC).toContain("'legal/terms'");
+  it('keeps Privacy and Terms in the Company column, and only there', () => {
+    // They used to sit in a second <nav> under the sitemap with their own
+    // aria-label. That row is gone; the destinations moved into the Company
+    // column, so this asserts the data — not the markup — is what carries them,
+    // and that no other column duplicates them.
+    const company = FOOTER_COLUMNS.find((column) => column.heading === 'footer.col.company');
+    expect(company, 'the Company column is gone').toBeDefined();
+    expect(company?.links.map((link) => link.slug)).toEqual([
+      'about',
+      'media-kit',
+      'contact',
+      'legal/terms',
+      'legal/privacy',
+    ]);
+    const legalLinks = FOOTER_LINKS.filter((link) => link.slug.startsWith('legal/'));
+    expect(legalLinks.map((link) => link.slug)).toHaveLength(2);
+  });
+
+  it('no longer renders a separate legal nav', () => {
+    // The row's own accessible name (`footer.legal`) is gone with it; a
+    // leftover <nav> would be a second landmark naming the same two links.
+    expect(FOOTER_SRC).not.toContain("'footer.legal'");
+    expect(FOOTER_SRC).not.toContain("'legal/privacy'");
+    expect(FOOTER_SRC).not.toContain("'legal/terms'");
   });
 });
 
@@ -151,14 +188,14 @@ describe('footer copy is localized', () => {
     }
   });
 
-  it('shares no label between the locales', () => {
+  it('shares no label between the locales, except the ones named here', () => {
     // The regression this catches: the footer rendering one language for every
     // locale — which it did, in Indonesian, until the label keys landed. An
-    // empty list is the expectation; if a future label is deliberately the same
-    // in both languages (a proper noun, say), name it here explicitly rather
-    // than loosening the assertion to a count.
+    // empty list is the expectation; a label that is deliberately the same in
+    // both languages is named in SHARED_LABEL_OK rather than the assertion
+    // being loosened to a count.
     const shared = COPY_KEYS.filter((key) => resolve(enJson, key) === resolve(idJson, key));
-    expect(shared).toEqual([]);
+    expect(shared).toEqual(SHARED_LABEL_OK);
   });
 
   it('keeps localized column headings (they were inline ternaries before)', () => {
@@ -192,21 +229,29 @@ describe('Footer copyright', () => {
     expect(FOOTER_SRC).toContain('aria-label="Discord"');
   });
 
-  it('has X, Instagram, Facebook, and Telegram social links', () => {
-    // General platform web URLs — real profiles not created yet.
-    expect(FOOTER_SRC).toContain('https://x.com');
-    expect(FOOTER_SRC).toContain('aria-label="X (Twitter)"');
-    expect(FOOTER_SRC).toContain('https://www.instagram.com');
-    expect(FOOTER_SRC).toContain('aria-label="Instagram"');
-    expect(FOOTER_SRC).toContain('https://www.facebook.com');
-    expect(FOOTER_SRC).toContain('aria-label="Facebook"');
-    expect(FOOTER_SRC).toContain('https://telegram.org');
-    expect(FOOTER_SRC).toContain('aria-label="Telegram"');
+  it('links no platform homepage — only profiles this project owns', () => {
+    // The X, Instagram, Facebook and Telegram icons were removed on 2026-09-24:
+    // they pointed at the platforms' own homepages, so they were dead ends for
+    // users and the reason Organization.sameAs could name nothing but Discord
+    // (SEO audit T8/D4). This is the rot guard, inverted: it now fails if
+    // someone re-adds a platform rather than if someone removes one. Add a real
+    // profile URL to the footer AND to this list AND to sameAs in one change.
+    for (const homepage of [
+      'https://x.com',
+      'https://www.instagram.com',
+      'https://www.facebook.com',
+      'https://telegram.org',
+    ]) {
+      expect(FOOTER_SRC, `${homepage} is a platform homepage, not a kasir.mu profile`).not.toContain(homepage);
+    }
+    for (const label of ['X (Twitter)', 'Instagram', 'Facebook', 'Telegram']) {
+      expect(FOOTER_SRC, `no icon may claim to be ${label}`).not.toContain(`aria-label="${label}"`);
+    }
   });
 
   it('all social links open safely in a new tab', () => {
     // Every social anchor carries target=_blank + rel=noopener noreferrer.
-    const socials = ['Discord', 'X (Twitter)', 'Instagram', 'Facebook', 'Telegram'];
+    const socials = ['Discord'];
     for (const label of socials) {
       const anchorMatch = FOOTER_SRC.match(
         new RegExp(`href="[^"]*"\\s+target="_blank"\\s+rel="noopener noreferrer"[^>]*aria-label="${label.replace(/[()]/g, '\\$&')}"`),
@@ -217,12 +262,8 @@ describe('Footer copyright', () => {
 
   it('social links use brand-color hover tints', () => {
     // Same effect as Discord: muted gray -> brand color on hover.
-    const tints = [
-      ['Discord', '#5865F2'],
-      ['Instagram', '#E4405F'],
-      ['Facebook', '#1877F2'],
-      ['Telegram', '#229ED9'],
-    ] as const;
+    // Discord is the only profile left; the other four tints went with them.
+    const tints = [['Discord', '#5865F2']] as const;
     for (const [, color] of tints) {
       expect(FOOTER_SRC).toContain(`hover:text-[${color}]`);
     }

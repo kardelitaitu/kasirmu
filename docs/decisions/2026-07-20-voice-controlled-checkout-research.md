@@ -1,3 +1,4 @@
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 97 lines, no audit stamp, no footer, no marker. A research document on voice-controlled checkout, and the smallest of the four 2026-07-20 research files. Its falsifiable surface is external (speech-to-text options, accuracy claims, hardware), not repository claims, so the honest audit scope is narrow -- and unlike the other three research documents in this batch, this one appears to have had NO downstream effect recorded anywhere. The AI/forecasting research led to a documented prototype, the cloud-warehouse research led to a documented deferral, and the CRDT survey led to the strategy in ADR #21. Nothing in the repository traces back to this document. That is a legitimate outcome for an evaluation that was read and set aside, but it is worth stating, because a research document sitting in `docs/decisions/` reads as intent to a future maintainer with no way to tell it was simply declined. · NOT re-measured: the speech-recognition option comparison and its accuracy figures, which age faster than any content in this directory and should be re-dated rather than re-verified. · Body left entirely as written. No repository paths inside it resolve, so there was nothing to repair; stamp and footer added. -->
 # ADR: Voice-Controlled Checkout Research
 
 **Status:** Research (Recommended: Defer to post-2.0)
@@ -90,8 +91,5 @@ The plugin infrastructure (Lua sandbox, permission system) is ready to host a vo
 - `crates/oz-hal/examples/custom_barcode_scanner.rs` — Custom HAL driver pattern (voice would follow same pattern)
 - `docs/a11y.md` — WCAG-2.1 AA checklist (voice would address 2.5.3 Label in Name)
 
-> last audited 09-08-26 by buffy
-> audit: Phase 1 Core Architecture & API Docs Audit
-
-> status: ACCURATE (0 findings) · verified accurate: cargo check passed, no structural orphans, no stale version headers
+> last audited 29-09-26 by docs-auditor
 

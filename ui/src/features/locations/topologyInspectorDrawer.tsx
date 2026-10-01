@@ -46,7 +46,7 @@ export function TopologyInspectorDrawer({
   duplicateSelection,
   handleDeleteRequest,
   handleSetNodeMetadata,
-  isProAllowed,
+  warehouseTierAllowed,
   sessionToken,
   clearSelection,
 }: {
@@ -59,7 +59,7 @@ export function TopologyInspectorDrawer({
   duplicateSelection: () => void;
   handleDeleteRequest: () => void;
   handleSetNodeMetadata: (nodeId: string, patch: Record<string, unknown>) => void;
-  isProAllowed: boolean;
+  warehouseTierAllowed: boolean;
   sessionToken: string | null;
   clearSelection: () => void;
 }) {
@@ -240,7 +240,7 @@ export function TopologyInspectorDrawer({
       {selectedNode.type === 'warehouse' && (
         <div className="inspector-section">
           <h4 className="inspector-section-title"><Localized id="topology-inspector-section-warehouse">Warehouse</Localized></h4>
-          <WarehouseSettingsCard node={selectedNode} onChange={handleSetNodeMetadata} capacityLocked={!isProAllowed} />
+          <WarehouseSettingsCard node={selectedNode} onChange={handleSetNodeMetadata} capacityLocked={!warehouseTierAllowed} />
         </div>
       )}
 

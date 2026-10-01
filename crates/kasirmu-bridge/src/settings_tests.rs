@@ -1737,7 +1737,19 @@ fn license_writer_literals_are_swept_from_license_rs_not_from_a_transcription() 
 /// actually broke tonight: a lane paraphrasing platform-core, or wrapping its
 /// refusal in another variant.
 const RAW_RS: &str = include_str!("../../../platform/core/src/settings/raw.rs");
-const BRIDGE_SETTINGS_RS: &str = include_str!("settings.rs");
+/// The bridge's settings lane, as EVERY file that can spell a refusal door.
+///
+/// The 2026-09-27 `settings.rs` split moved the two `cleartext_credential_refusal`
+/// doors into `settings/core.rs`, leaving `settings.rs` with none — so a scan of
+/// `settings.rs` alone finds zero doors and its own count assertion fails. The
+/// invariant is "the bridge asks the shared producer at both of its doors", a
+/// property of the `settings` MODULE rather than of one file, so both files are
+/// concatenated here. Adding a door in a third file means adding it here too.
+const BRIDGE_SETTINGS_RS: &str = concat!(
+    include_str!("settings.rs"),
+    "\n",
+    include_str!("settings/core.rs"),
+);
 const TABLET_SETTINGS_RS: &str =
     include_str!("../../../apps/mobile-tauri/src/commands/settings.rs");
 
@@ -1872,7 +1884,10 @@ fn both_shell_lanes_take_the_credential_refusal_from_its_one_producer() {
     let mut carriers: Vec<String> = Vec::new();
     for (label, source) in [
         ("platform/core/src/settings/raw.rs", RAW_RS),
-        ("crates/kasirmu-bridge/src/settings.rs", BRIDGE_SETTINGS_RS),
+        (
+            "crates/kasirmu-bridge/src/settings.rs + settings/core.rs",
+            BRIDGE_SETTINGS_RS,
+        ),
         (
             "apps/mobile-tauri/src/commands/settings.rs",
             TABLET_SETTINGS_RS,
@@ -1911,10 +1926,11 @@ fn both_shell_lanes_take_the_credential_refusal_from_its_one_producer() {
 
     // (C) Each lane asks the producer and wraps the answer in its own Invalid.
     // The expected counts are what the two files contain: the bridge asks at both
-    // of its doors, the tablet at its one door.
+    // of its doors (now in `settings/core.rs` after the 2026-09-27 split), the
+    // tablet at its one door.
     for (label, source, wrap, asks) in [
         (
-            "crates/kasirmu-bridge/src/settings.rs",
+            "crates/kasirmu-bridge/src/settings.rs + settings/core.rs",
             BRIDGE_SETTINGS_RS,
             "BridgeError::Invalid(refusal)",
             2usize,
@@ -2025,5 +2041,363 @@ fn credit_sale_dto_emits_the_camel_case_wire_the_retail_list_reads() {
     assert!(
         json["settledAt"].is_null(),
         "an open tab must emit settledAt: null rather than omitting the key"
+    );
+}
+
+/// What the QUERY actually puts in each field. The pin above tests the DTO's
+/// wire shape from hand-made values, so it cannot see which SQL column feeds
+/// which field -- which is how the mismatch below survived the 2026-09-15 wire
+/// repair and this whole campaign's sweeps.
+///
+/// MEASURED, and asserted here so it is not lost: index 1 of the projection is
+/// `p.gateway_reference`, and it lands in `customer_name`. `cashier_name` takes
+/// index 6, `COALESCE(u.display_name, '')`. The retail credit list renders
+/// `customerName` in a **Customer** column (the retail credit-list modal), so an
+/// operator currently reads the payment gateway's own reference where the buyer's
+/// name belongs -- and the doc on the struct calls that field "the cashier name",
+/// which is a third, different reading of the same line.
+///
+/// The test pins TODAY'S behaviour rather than a corrected one: choosing which
+/// column a customer name should come from (there is a `customers.name` the
+/// projection does not join) is a product ruling, not a repair, and the wire has
+/// already been repaired once under this name. If the mapping is corrected, this
+/// test fails and must be updated with it -- the point is that the swap can no
+/// longer happen unseen.
+#[test]
+fn the_credit_sale_projection_maps_gateway_reference_into_the_customer_column() {
+    let conn = fresh_conn();
+    {
+        let store = Store::new(&conn);
+        store.seed_default_roles().unwrap();
+    }
+    conn.execute_batch(
+        "INSERT INTO customers (id, name) VALUES ('cus-1', 'Bagus');
+         INSERT INTO users (id, username, pin_hash, display_name, role_id, is_active, created_at, updated_at)
+           VALUES ('u-1', 'rina', 'h', 'Rina', 'role-owner', 1, '2026-01-01', '2026-01-01');
+         INSERT INTO sales (id, total_minor, currency, line_count, status, user_id, customer_id, created_at, updated_at)
+           VALUES ('s-1', 25000, 'IDR', 1, 'completed', 'u-1', 'cus-1', '2026-01-01', '2026-01-01');
+         INSERT INTO payments (id, sale_id, method, gateway_reference, amount_minor, currency, created_at)
+           VALUES ('pay-1', 's-1', 'credit', 'GW-REF-9', 25000, 'IDR', '2026-01-01');",
+    )
+    .expect("seeding a completed credit sale");
+
+    let rows = run_list_credit_sales(&conn).expect("the listing must resolve");
+    assert_eq!(rows.len(), 1);
+    let sale = &rows[0];
+
+    // TODAY'S TRUTH, pinned. The buyer is 'Bagus' and there is no join that could
+    // reach that name; what arrives is the gateway reference.
+    assert_eq!(
+        sale.customer_name, "GW-REF-9",
+        "measured: the projection puts p.gateway_reference into customer_name"
+    );
+    assert_eq!(
+        sale.cashier_name, "Rina",
+        "cashier_name comes from the user"
+    );
+}
+
+// ── R10 gate-KIND: the scoped settings WRITERS are scope-aware ──────────
+
+/// A `settings:edit` holder whose only assignment covers a DIFFERENT branch is
+/// denied, and the store DB is never opened.
+///
+/// **This is the guard for R10's gate-KIND half on `settings`** (owner ruling
+/// 2026-09-20, `done-todo-owner-rulings.md:272`). Every scoped setter used to gate
+/// with the non-scope-aware `BridgeCtx::require_permission_for_user` over a store
+/// `Store` it could only obtain *after* `open_store`, while this module's own
+/// readers ran the scope-aware `require_session_permission`. The two forms agree on
+/// a role that simply lacks `settings:edit` — which is why the existing
+/// `denies_staff_without_settings_edit` tests could not see the difference, and why
+/// they stay green if this migration is reverted. This test asks the one question
+/// only the scope-aware form answers: the caller HAS the permission, and is refused
+/// because their assignment does not cover the store they addressed.
+///
+/// Mutation-tested rather than assumed: restoring `require_permission_for_user` at
+/// `settings.rs` makes this fail with `Ok(())` — the write lands in another branch's
+/// store.
+#[tokio::test]
+async fn scoped_settings_writer_denies_a_settings_edit_holder_out_of_scope() {
+    use kasirmu_core::db::assignments::{AssignmentSpec, ScopeMode, ScopeType};
+    use kasirmu_core::session::SessionContext;
+
+    let conn = crate::testing::temp_conn();
+    {
+        let store = Store::new(&conn);
+        store.seed_default_roles().unwrap();
+    }
+    conn.execute_batch(
+        "INSERT INTO roles (id, name, description, permissions, created_at, updated_at) VALUES
+            ('role-scoped-editor', 'ScopedEditor', 'Settings editor, one branch', '[\"settings:edit\"]', '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z');
+         INSERT INTO users (id, username, pin_hash, display_name, role_id, is_active, created_at, updated_at)
+         VALUES ('user-scoped-editor', 'editor', 'hash', 'Editor', 'role-scoped-editor', 1, '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z');",
+    )
+    .unwrap();
+    // The assignment names store-a; the session below addresses store-b.
+    Store::new(&conn)
+        .set_assignment(
+            "user-scoped-editor",
+            "role-scoped-editor",
+            &AssignmentSpec {
+                scope_mode: ScopeMode::Scoped,
+                branches_all: false,
+                branches: vec!["store-a".into()],
+                workspaces_all: true,
+                workspaces: vec![],
+                scope_type: ScopeType::Organization,
+                scope_id: None,
+            },
+        )
+        .unwrap();
+
+    // `TestBridge::new()` supplies its own unique store directory, so the
+    // session's store is created on first `open_store` — which is exactly what
+    // this test must NOT reach.
+    let bridge = crate::testing::TestBridge::new().with_conn(conn);
+    bridge.sessions().write().unwrap().insert(
+        "editor-token".into(),
+        SessionContext::new(
+            "user-scoped-editor".into(),
+            "role-scoped-editor".into(),
+            "terminal-1".into(),
+            "store-b".into(),
+            "instance-1".into(),
+            "pos".into(),
+            None,
+            0,
+        ),
+    );
+
+    let result = set_receipt_settings_scoped(
+        &bridge.ctx(),
+        "editor-token",
+        ReceiptSettingsDto {
+            show_currency: true,
+            decimal_separator: "dot".into(),
+            show_tax: true,
+            footer: String::new(),
+            paper_width: "standard".into(),
+            show_table_number: false,
+            margin_top: 0,
+            margin_bottom: 0,
+            margin_left: 0,
+            margin_right: 0,
+            tax_rounding_mode: None,
+        },
+    )
+    .await;
+
+    // The DENIAL MESSAGE is the discriminator, and it is not decoration. Both gate
+    // forms answer `PermissionDenied` here, so a bare variant match cannot tell the
+    // scope-aware gate from the unscoped one: the unscoped form runs
+    // `require_permission` against the STORE db, and store dbs carry no `users` rows
+    // (identity lives only in the global db), so it denies for the wrong reason and a
+    // matches!() on the variant passes either way — proved by mutating this setter
+    // back to the unscoped form, which left a variant-only assertion GREEN. The
+    // scope-aware path is the one that names the scope:
+    // `crates/kasirmu-core/src/db/staff.rs:322`.
+    match result {
+        Err(BridgeError::PermissionDenied(message)) => assert!(
+            message.contains("out of scope"),
+            "the refusal must name the SCOPE (not a missing user row), got {message:?}"
+        ),
+        other => panic!("expected a scope denial, got {other:?}"),
+    }
+}
+
+// ── Hardware-settings precedence (TODO 4e) ─────────────────────
+//
+// The ticket's three boxes: make the `hardware_profiles` row authoritative; decide
+// the no-row case (seed once from the JSON file, then stop reading it); and pin the
+// precedence with a test so a fallback added below the DB read cannot silently win.
+// These tests drive the real `get_hardware_settings` over a `TestBridge`, with a
+// unique temp base dir per case so the profile file is a real file on disk.
+
+/// A unique base directory for one hardware-settings test, and the terminal id it
+/// is keyed by. The directory is left for the OS temp cleaner, matching
+/// `inventory_tests::unique_store_dir` (this crate's fence forbids manifest edits,
+/// so `tempfile` is avoided here on the same reasoning).
+fn hw_base_dir() -> std::path::PathBuf {
+    static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    std::env::temp_dir().join(format!(
+        "kasirmu-bridge-hw-{}-{}-{}",
+        std::process::id(),
+        nanos,
+        SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+    ))
+}
+
+/// A profile with an unmistakable printer device path, so a value read back can be
+/// attributed to exactly one source.
+fn hw_profile(device_path: &str) -> TerminalProfile {
+    TerminalProfile {
+        printer_device_path: device_path.to_string(),
+        ..Default::default()
+    }
+}
+
+/// Write a profile JSON file directly to the path `get_hardware_settings` reads.
+fn write_profile_file(base_dir: &std::path::Path, terminal_id: &str, profile: &TerminalProfile) {
+    let path = TerminalProfile::profile_path(base_dir, terminal_id);
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::fs::write(&path, serde_json::to_string(profile).unwrap()).unwrap();
+}
+
+/// Seed a `hardware_profiles` row directly, bypassing the reader under test.
+async fn seed_hw_row(
+    ctx: &crate::ctx::BridgeCtx<'_>,
+    terminal_id: &str,
+    profile: &TerminalProfile,
+) {
+    let json = serde_json::to_string(profile).unwrap();
+    let conn = ctx.db.lock().await;
+    conn.execute(
+        "INSERT OR REPLACE INTO hardware_profiles (terminal_id, profile_json, schema_version, updated_at)
+         VALUES (?1, ?2, ?3, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
+        rusqlite::params![terminal_id, json, profile.schema_version],
+    )
+    .unwrap();
+}
+
+/// TODO 4e box 1: once a row exists, the JSON file is never consulted.
+#[tokio::test]
+async fn hw_db_row_wins_over_json_file() {
+    let base = hw_base_dir();
+    let tb = crate::testing::TestBridge::new().with_terminal_id("t-db-wins");
+    let ctx = tb.ctx();
+
+    seed_hw_row(&ctx, "t-db-wins", &hw_profile("/db/row/wins")).await;
+    write_profile_file(&base, "t-db-wins", &hw_profile("/file/should/lose"));
+
+    let got = get_hardware_settings(&ctx, &base).await.unwrap();
+    assert_eq!(
+        got.printer_device_path, "/db/row/wins",
+        "the DB row is authoritative; the JSON file must not shadow it",
+    );
+}
+
+/// TODO 4e box 2: with no row, the JSON file seeds the row once; every later read
+/// then takes the row, so a later file edit cannot change the resolved profile.
+#[tokio::test]
+async fn hw_json_seeds_a_missing_row_once() {
+    let base = hw_base_dir();
+    let tb = crate::testing::TestBridge::new().with_terminal_id("t-seed-once");
+    let ctx = tb.ctx();
+
+    write_profile_file(&base, "t-seed-once", &hw_profile("/from/file/seed"));
+
+    let first = get_hardware_settings(&ctx, &base).await.unwrap();
+    assert_eq!(first.printer_device_path, "/from/file/seed");
+
+    // The read must have persisted the seeded row.
+    let row_path: Option<String> = {
+        let conn = ctx.db.lock().await;
+        conn.query_row(
+            "SELECT profile_json FROM hardware_profiles WHERE terminal_id = ?1",
+            rusqlite::params!["t-seed-once"],
+            |r| r.get(0),
+        )
+        .ok()
+    };
+    assert!(row_path.is_some(), "the JSON seed must create the DB row");
+
+    // Now edit the file behind the DB's back; the row must still win.
+    write_profile_file(&base, "t-seed-once", &hw_profile("/file/changed/behind/db"));
+    let second = get_hardware_settings(&ctx, &base).await.unwrap();
+    assert_eq!(
+        second.printer_device_path, "/from/file/seed",
+        "after the seed row exists, the file is no longer read",
+    );
+}
+
+/// TODO 4e box 2, legacy branch: with no row and no file, the old SQLite settings
+/// seed the row, and the row then wins over a later file.
+#[tokio::test]
+async fn hw_legacy_settings_seed_a_missing_row() {
+    let base = hw_base_dir();
+    let tb = crate::testing::TestBridge::new().with_terminal_id("t-legacy-seed");
+    let ctx = tb.ctx();
+
+    {
+        let conn = ctx.db.lock().await;
+        conn.execute(
+            "INSERT OR REPLACE INTO settings (key, value) VALUES ('printer.device_path', '/from/legacy')",
+            [],
+        )
+        .unwrap();
+    }
+
+    let first = get_hardware_settings(&ctx, &base).await.unwrap();
+    assert_eq!(first.printer_device_path, "/from/legacy");
+
+    write_profile_file(&base, "t-legacy-seed", &hw_profile("/file/after-legacy"));
+    let second = get_hardware_settings(&ctx, &base).await.unwrap();
+    assert_eq!(
+        second.printer_device_path, "/from/legacy",
+        "the legacy-seeded row is canonical; a later file edit must not win",
+    );
+}
+
+/// TODO 4e: a present but unreadable row does NOT fall back to the file — the row
+/// stays authoritative, and the caller gets defaults instead of a superseded file.
+#[tokio::test]
+async fn hw_unreadable_row_does_not_fall_back_to_file() {
+    let base = hw_base_dir();
+    let tb = crate::testing::TestBridge::new().with_terminal_id("t-bad-row");
+    let ctx = tb.ctx();
+
+    {
+        let conn = ctx.db.lock().await;
+        conn.execute(
+            "INSERT OR REPLACE INTO hardware_profiles (terminal_id, profile_json, schema_version, updated_at)
+             VALUES ('t-bad-row', 'not json', 1, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
+            [],
+        )
+        .unwrap();
+    }
+    write_profile_file(&base, "t-bad-row", &hw_profile("/file/must/not/appear"));
+
+    let got = get_hardware_settings(&ctx, &base).await.unwrap();
+    assert_eq!(
+        got.printer_device_path,
+        TerminalProfile::default().printer_device_path,
+        "an unreadable row yields defaults, never the JSON file it superseded",
+    );
+}
+
+/// TODO 4e box 2 (the "no source at all" corner): when neither the DB, the file
+/// nor the legacy keys carry anything, the reader still seeds a row — the legacy
+/// branch composes the defaults and persists them — so the terminal is pinned to
+/// one row from the first read on rather than re-deriving every time. The value
+/// it returns is the type's defaults.
+#[tokio::test]
+async fn hw_no_source_returns_defaults_and_pins_a_row() {
+    let base = hw_base_dir();
+    let tb = crate::testing::TestBridge::new().with_terminal_id("t-nothing");
+    let ctx = tb.ctx();
+
+    let got = get_hardware_settings(&ctx, &base).await.unwrap();
+    assert_eq!(
+        got.printer_device_path,
+        TerminalProfile::default().printer_device_path
+    );
+
+    let row_exists: bool = {
+        let conn = ctx.db.lock().await;
+        conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM hardware_profiles WHERE terminal_id = 't-nothing')",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap()
+    };
+    assert!(
+        row_exists,
+        "the legacy branch seeds a row even from defaults, so the id is pinned \
+         to one row from the first read on",
     );
 }

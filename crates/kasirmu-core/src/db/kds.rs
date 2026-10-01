@@ -13,8 +13,8 @@
 /*
 last audited 25-07-26 by RSA-Agent (kasirmu-core slice B final: kds deep read)
 crate: kasirmu-core | status: SAFE | lint: CLEAN
-findings: clean — both format!-SQL sites interpolate only match-derived internal timestamp columns (verified injection-safe, closes B5-part-6 flag); line-item transitions enforced by an explicit allowed() state machine (order-level updates lack the same machine — INFO, frontend-driven fixed set); pairing tokens stored hashed; prep_time clamped >=0; fanout normalized via kds_order_targets (no duplicate tickets); stale devices auto-deactivated with logging
-next: consider order-level transition validation | perf: queue filter in Rust post-query, fine at KDS scale
+findings: clean — both format!-SQL sites interpolate only match-derived internal timestamp columns (verified injection-safe, closes B5-part-6 flag); transitions enforced by explicit state machines at BOTH levels — line items AND orders (the original INFO 'order-level updates lack the same machine' is STALE, corrected 2026-10-04: `update_kds_status` (crates/kasirmu-core/src/db/kds_orders.rs:389) is forward-only `pending → preparing → ready → served` plus `cancelled` from any active state, rejects regressions with Validation, treats `served`/`cancelled` as terminal, makes a same-state replay a no-op that preserves started_at, and is a compare-and-set (C18) so a competing transition cannot be overwritten); pairing tokens stored hashed; prep_time clamped >=0; fanout normalized via kds_order_targets (no duplicate tickets); stale devices auto-deactivated with logging
+next: none | perf: queue filter in Rust post-query, fine at KDS scale
 */
 
 use crate::db::Store;
@@ -200,8 +200,19 @@ impl Store<'_> {
 
     fn row_to_kds_line_item(row: &rusqlite::Row) -> rusqlite::Result<KdsLineItem> {
         let modifiers_json: Option<String> = row.get("modifiers_json")?;
+        // Fail CLOSED. NULL (and the empty string the write path never stores)
+        // is the legitimate "no modifiers" sentinel; an unreadable blob is NOT,
+        // because defaulting it to `[]` made a corrupt row indistinguishable
+        // from a plain item — the kitchen screen then silently dropped "no
+        // onions". Same shape as MOD-A's silently-empty BOM list: the empty
+        // collection is the code path for a DIFFERENT, wrong semantic. Surface
+        // the decode failure instead, using the `row_to_product` idiom.
         let modifiers: Vec<KdsModifier> = match modifiers_json {
-            Some(json) if !json.is_empty() => serde_json::from_str(&json).unwrap_or_default(),
+            Some(json) if !json.is_empty() => serde_json::from_str(&json).map_err(|e| {
+                rusqlite::Error::ToSqlConversionFailure(
+                    std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()).into(),
+                )
+            })?,
             _ => vec![],
         };
         Ok(KdsLineItem {
@@ -226,7 +237,6 @@ impl Store<'_> {
     /// Used by both `create_kds_line_items` (for initial creation) and
     /// `update_kds_order_items` (for replacement after deletion).
     fn create_kds_line_items_in_tx(
-        &self,
         tx: &rusqlite::Transaction<'_>,
         order_id: &str,
         items: &[CreateKdsLineItemInput],
@@ -251,6 +261,13 @@ impl Store<'_> {
                     })?,
                 )
             };
+            // `try_from` rather than `as i64`, same reasoning as the line index
+            // in `create_inventory_transaction`: a wrapped `line_position` would
+            // reorder the kitchen ticket silently.
+            let line_position = i64::try_from(i).map_err(|_| CoreError::Validation {
+                field: "line_position",
+                message: format!("line index {i} exceeds i64"),
+            })?;
             tx.execute(
                 "INSERT INTO kds_line_items
                     (id, kds_order_id, sku, display_name, qty, course, modifiers_json,
@@ -264,7 +281,7 @@ impl Store<'_> {
                     item.qty,
                     item.course,
                     modifiers_json,
-                    i as i64,
+                    line_position,
                     now,
                 ],
             )?;

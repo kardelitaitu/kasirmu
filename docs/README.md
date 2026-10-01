@@ -1,3 +1,4 @@
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 144 lines, with a prior marker re-verified rather than replaced. It is the entry point to the entire documentation tree, which makes its directory table the highest-traffic navigational surface in the repository — a reader who cannot find a document from here will conclude it does not exist. That is why the table was checked rather than assumed. · THE THIRTEEN DIRECTORIES IT LINKS TO ALL EXIST, and that is the checkable core: every relative directory link in the overview table resolves. The index also does something most indexes here do not — it names the specific key files in each directory, so a reader can go straight to a runbook or an index rather than browsing a folder. · THIS FILE DOCUMENTS ITS OWN TOOLING'S BROKEN PARTS, and that is the part worth recording. It states that the index generator faithfully reproduces rather than fixes three quirks: a duplicated decision number that emits two rows, an empty audits section because the generator scans a directory deleted in the very commit that wrote the script, and — the genuinely admirable part — the explicit decision to KEEP that dead branch in the script, recorded as such, rather than quietly removed. Most projects delete the code and forget; this one keeps the evidence and labels it. A reader debugging the empty section can see exactly why it is empty and that someone already knew. · THE ONE GENUINE GAP, and it is small: the directory overview table omits the audits directory, even though this same file links to a report inside it later and the tree holds eight files there — including the two most recent audit reports in the repository. That is DISTINCT from the generator quirk above, and separating the two matters: a reader could easily read the documented empty-section note as covering the missing table row when it does not. The navigation gap and the generator bug have the same surface and different causes. NOT REPAIRED, deliberately — this file carries a generated index and its own conventions, and adding a row to a hand-maintained table belongs to its owner alongside the generator fix rather than to an audit beside it. · The header's correction is also worth noting: it explains that a line crediting a docs-auditor workflow was wrong, because that name belongs to the audit skill and never was a CI workflow. An index that corrects its own provenance in place is doing the right thing. · Prior marker retained; footer re-dated to match the new stamp. -->
 # kasir.mu Documentation
 
 > Created by the 2026-08-31 docs reorganization (`13b81cfa5`, reorg phase C — the
@@ -15,10 +16,13 @@
 | [`specs/`](./specs/) | Active and completed specs — workspace-settings phases, audit plans, module manifests | [`_active/`](./specs/_active/) — in-progress specs |
 | [`operations/`](./operations/) | Production runbook, deployment guides, platform build/test guides | [`runbook.md`](./operations/runbook.md) — unified Northflank deployment runbook |
 | [`security/`](./security/) | Security audits, checklists, hardening guides, incident response, data-governance policy | [`PCI-DSS_CHECKLIST.md`](./security/PCI-DSS_CHECKLIST.md), [`data-residency-and-retention.md`](./security/data-residency-and-retention.md) |
+| [`legal/`](./legal/) | Corporate and compliance documents, scoped by jurisdiction | [`README.md`](./legal/README.md) — jurisdiction index; [`id/`](./legal/id/) — PT Perorangan (Indonesia) |
 | [`guides/`](./guides/) | Reference documentation — architecture, user/admin guides, whitepapers, roadmaps | [`ARCHITECTURE.md`](../ARCHITECTURE.md) — at repo root, canonical since 2026-09-23 |
+| [`architecture/`](./architecture/) | Cross-cutting design docs — the critical-path invariants and their enforcing tests, plus modular-app and workspace plans | [`CRITICAL_PATH_INVARIANTS.md`](./architecture/CRITICAL_PATH_INVARIANTS.md) — stock ≥ 0, sale total, refund ≤ settled, sync convergence |
 | [`releases/`](./releases/) | Changelogs, release process, checklists | [`CHANGELOG-0.0.33.md`](./releases/CHANGELOG-0.0.33.md) |
 | [`observability/`](./observability/) | Logging, error handling, metrics | [`logging-2026-07-20.md`](./observability/logging-2026-07-20.md) |
 | [`benchmarks/`](./benchmarks/) | Performance benchmarks and regression tracking | [`baseline-2026-07-21.md`](./benchmarks/baseline-2026-07-21.md) |
+| [`audits/`](./audits/) | Audit reports — full audits of the docs system, the API reference, CSS verification, and SEO/crawler reviews | [`2026-09-28-docs-audit.md`](./audits/2026-09-28-docs-audit.md); [`frontend/css-verification.md`](./audits/frontend/css-verification.md) — no linter sees `.css` |
 | [`archived/`](./archived/) | Truly retired documents — completed/superseded audits, old plans, obsolete guides | *(26 files; the 2026-08-31 retirement pass moved the last three repo-root docs here — see [`records/`](./records/) index)* |
 | [`plans/`](./plans/) | Active improvement plans | [`northflank-p1-p7-plan.md`](./plans/_active/northflank-p1-p7-plan.md) |
 
@@ -96,7 +100,7 @@ directory that `0689d5652` deleted in the same commit that wrote the script — 
 branch, kept on purpose and recorded as such in the script rather than quietly removed.
 - **Status vocabulary:** `Proposed / Accepted / Implemented / Partially Implemented / Superseded / Archived`
 
-> last audited 09-09-26 by docs-auditor
+> last audited 29-09-26 by docs-auditor
 
 > Audit note (08-09-26): all 16 linked targets resolve, including the three Quick links
 > that are not in the table (`operations/ci-pipeline.md`, `security/security-audit-completion.md`,
@@ -133,3 +137,10 @@ branch, kept on purpose and recorded as such in the script rather than quietly r
 > their post-reorg locations) and superseded the 08-09-26 "all 16 linked targets
 > resolve" note, which had been false since the guides reorg moved its three named
 > files. Full findings: `docs/audits/documentation-audit-23-09-26.md`. <!-- dead-ref: ok: the four backticked paths above cite the links AS THEY WERE before repointing -->
+>
+> **Addition (26-09-26):** `legal/` joined the curated set — the row this page was missing
+> for a directory that had been sitting outside it. It is now **12 curated, 3 excluded,
+> 15 present**, superseding the 08-09-26 counts of 11/3/14 in both places they appear in
+> that note. Not an audit: the directory is new and its contents are founder-side working
+> drafts, not documentation of shipped behaviour. Content carries its own status markers
+> (`[UNVERIFIED]`/`[PENDING]`/`[DECIDED]`) — see [`legal/README.md`](./legal/README.md).

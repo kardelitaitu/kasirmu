@@ -15,7 +15,7 @@ use kasirmu_lua::{
 use mlua::RegistryKey;
 
 use crate::error::PluginError;
-use crate::loader::{hash_plugin_set, load_plugins};
+use crate::loader::{LoadedPlugin, hash_plugin_set, load_plugins};
 use crate::manifest::Permission;
 
 /// A discount queued by a plugin script for later application.
@@ -43,6 +43,58 @@ pub struct PluginSandbox {
 struct HookRef {
     plugin_id: String,
     func_name: String,
+}
+
+/// Environment variable holding the plugin-signing public key (PEM).
+///
+/// Read once at [`PluginManager::new`]. Unset means plugin signatures are not
+/// verified, which is the documented opt-in default — see `crate::signature`.
+/// Named `KASIRMU_`-prefixed to match the house convention for deployment
+/// configuration (AGENTS.md §4).
+pub const SIGNATURE_PUBLIC_KEY_ENV: &str = "KASIRMU_PLUGIN_PUBLIC_KEY";
+
+/// Read a loaded plugin's scripts as (relative path, bytes) pairs for signing.
+///
+/// Relative to the plugin directory, never absolute: an absolute path embeds the
+/// install location, so a plugin signed on one machine would fail to verify on
+/// another. An unreadable script yields its path with empty bytes rather than
+/// being skipped, so a script that disappears after being resolved cannot
+/// silently drop out of the digest and leave a signature that still matches.
+///
+/// # Why both sides are canonicalised before the strip
+///
+/// `LoadedPlugin.scripts` holds **canonicalised** paths (see
+/// `resolve_plugin_scripts`), while `LoadedPlugin.directory` holds the path as
+/// the directory walk produced it. On Windows `canonicalize` returns a `\\?\`
+/// verbatim-prefixed path, so stripping the raw directory off a canonical script
+/// path **fails**, and the old `unwrap_or(path)` fallback silently emitted an
+/// absolute path instead. The effect was Windows-only and invisible to the unit
+/// tests — which build their own relative names — but it made every signature
+/// machine-specific, so a plugin signed on one install could never verify on
+/// another. Canonicalising both sides makes the strip succeed and the name
+/// relative on every platform. Caught by `tests/signature_roundtrip.rs`.
+fn read_plugin_scripts(plugin: &LoadedPlugin) -> Vec<(String, Vec<u8>)> {
+    let canonical_dir = std::fs::canonicalize(&plugin.directory).ok();
+    plugin
+        .scripts
+        .iter()
+        .map(|path| {
+            let relative = canonical_dir
+                .as_deref()
+                .and_then(|dir| path.strip_prefix(dir).ok())
+                // Fall back to the raw directory, then to the file name alone.
+                // The file name is still relative and still identifies the file
+                // within a plugin, which beats an absolute path that would make
+                // the signature machine-specific.
+                .or_else(|| path.strip_prefix(&plugin.directory).ok())
+                .map(|p| p.to_path_buf())
+                .or_else(|| path.file_name().map(std::path::PathBuf::from))
+                .unwrap_or_else(|| path.clone());
+            let relative = relative.to_string_lossy().replace('\\', "/");
+            let bytes = std::fs::read(path).unwrap_or_default();
+            (relative, bytes)
+        })
+        .collect()
 }
 
 /// Runtime manager for Lua plugin scripts.
@@ -115,6 +167,77 @@ impl PluginManager {
         // changed on-disk set is detected, never authenticated.
         let content_hash = hash_plugin_set(&registry);
 
+        // Surface the fingerprint. This is the only production consumer of the
+        // value, and it is what makes the record-only fingerprint observable:
+        // the shell never swaps the live set, so without this line a changed
+        // plugin set is indistinguishable in the log from an unchanged one.
+        // An operator comparing the fingerprint across restarts can see that
+        // the set moved — the detection half of C2, with no trust model chosen.
+        tracing::info!(
+            fingerprint = format!("{content_hash:016x}"),
+            plugins = registry.plugins.len(),
+            ids = ?registry
+                .plugins
+                .iter()
+                .map(|p| p.manifest.plugin.name.as_str())
+                .collect::<Vec<_>>(),
+            "plugin set fingerprint recorded — a changed set is refused until restart"
+        );
+
+        // ── Verify plugin signatures (C2 / D7) ──────────────────────
+        // The grant gate below answers "did the operator approve this plugin's
+        // permissions?"; it cannot answer "is this the plugin they approved?",
+        // because `plugin-grants.json` sits in the same directory an attacker
+        // who can add a plugin can write to. This is the authenticity half.
+        //
+        // Env-configured rather than a parameter: `PluginManager::new` is called
+        // from both shells and from tests, and threading a key through every
+        // caller would be a larger change than the gate itself. An unset key
+        // means unsigned plugins load exactly as before -- see the module docs
+        // on `crate::signature` for why verification is opt-in per install.
+        let signing_key = std::env::var(SIGNATURE_PUBLIC_KEY_ENV).ok();
+        if signing_key.is_none() {
+            tracing::debug!(
+                "no {SIGNATURE_PUBLIC_KEY_ENV} configured — plugin signatures are not verified"
+            );
+        }
+        let mut unverified: Vec<(String, String)> = Vec::new();
+        for plugin in &registry.plugins {
+            let id = &plugin.manifest.plugin.name;
+            let declared: Vec<String> = plugin
+                .manifest
+                .permissions
+                .required_permissions
+                .iter()
+                .map(ToString::to_string)
+                .collect();
+            let scripts = read_plugin_scripts(plugin);
+            match crate::signature::verify_plugin(
+                &plugin.directory,
+                id,
+                &plugin.manifest.plugin.version,
+                &declared,
+                &scripts,
+                signing_key.as_deref(),
+            ) {
+                Ok(true) => {
+                    tracing::info!(plugin = %id, "plugin signature verified");
+                }
+                Ok(false) => {}
+                Err(e) => unverified.push((id.clone(), e.to_string())),
+            }
+        }
+        if !unverified.is_empty() {
+            let detail = unverified
+                .iter()
+                .map(|(id, why)| format!("'{id}': {why}"))
+                .collect::<Vec<_>>()
+                .join("; ");
+            return Err(PluginError::Signature(format!(
+                "plugin signature verification failed — refused. {detail}"
+            )));
+        }
+
         // ── Enforce plugin permissions ──────────────────────────────
         for plugin in &registry.plugins {
             // Check that all declared permissions are in the whitelist.
@@ -137,6 +260,68 @@ impl PluginManager {
                 )));
             }
         }
+
+        // ── Operator grant gate (C2 / D7) ───────────────────────────
+        // The whitelist above answers "is this a real permission?"; it cannot
+        // answer "did the operator approve it for THIS plugin?", because the
+        // list is written by the plugin author. Without the gate below a
+        // plugin shipping `required_permissions = ["cart:write"]` receives the
+        // discount bindings with no human in the loop — the self-declaration
+        // D7 rules must become an operator grant.
+        //
+        // Loaded AFTER the whitelist so a malformed grants file cannot mask an
+        // invalid manifest: the more specific diagnosis wins.
+        let grants = crate::grants::load(plugins_dir)?;
+        let grants_path = crate::grants::PluginGrants::path_in(plugins_dir);
+        let mut ungranted_any: Vec<(String, Vec<String>)> = Vec::new();
+        for plugin in &registry.plugins {
+            let id = &plugin.manifest.plugin.name;
+            let missing = crate::grants::ungranted(
+                &plugin.manifest.permissions.required_permissions,
+                grants.granted_for(id),
+            );
+            if !missing.is_empty() {
+                ungranted_any.push((
+                    id.clone(),
+                    missing.iter().map(ToString::to_string).collect(),
+                ));
+            }
+        }
+        if !ungranted_any.is_empty() {
+            // Fail closed, and name the remedy concretely: the operator has to
+            // be able to paste the fix, not go hunting for the file's shape.
+            let detail = ungranted_any
+                .iter()
+                .map(|(id, perms)| {
+                    format!(
+                        "'{id}' needs [{}]",
+                        perms
+                            .iter()
+                            .map(|p| format!("\"{p}\""))
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join("; ");
+            return Err(PluginError::Manifest(format!(
+                "plugin permissions were not granted by the operator — refused. {detail}. \
+                 Record the approval in {} as: \
+                 {{ \"schema_version\": {}, \"grants\": {{ \"<plugin-id>\": [\"<permission>\"] }} }}",
+                grants_path.display(),
+                crate::grants::SUPPORTED_SCHEMA_VERSION_PUBLIC,
+            )));
+        }
+        // Every plugin that reached here has granted == declared, so the
+        // capability-gated `oz` table built below from `required_permissions`
+        // IS the granted set. The gate is deliberately single-source: adding a
+        // second filter over that table would let the two disagree, and the
+        // rejection above is the only place the decision is made.
+        tracing::debug!(
+            plugins = registry.plugins.len(),
+            grants_file = %grants_path.display(),
+            "plugin permission grants verified"
+        );
 
         let runtime = LuaRuntime::new().map_err(|e| PluginError::Lua(e.to_string()))?;
 

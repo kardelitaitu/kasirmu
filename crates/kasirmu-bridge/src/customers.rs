@@ -1,20 +1,20 @@
 //! Customer command bodies (Wave B / B1) — the tauri-free half of
 //! `apps/desktop-tauri/src/commands/customers.rs`.
 //!
-//! Key types: [`CustomerDto`] plus the create/update/delete argument sets, the
+//! Key types: [`CustomerDto`](crate::customers::CustomerDto) plus the create/update/delete argument sets, the
 //! bounded search page (CUST-06) and the read-only history aggregate (CUST-05).
 //! Key functions: the five global-identity-DB operations (`list_global`,
 //! `get_global`, `create_global`, `update_global`, `delete_global`) and the
 //! seven session-scoped ones (`list_scoped`, `get_scoped`, `create_scoped`,
 //! `update_scoped`, `delete_scoped`, `search_scoped`, `history_scoped`),
-//! each consuming a [`BridgeCtx`].
+//! each consuming a [`BridgeCtx`](crate::ctx::BridgeCtx).
 //!
 //! Gate order and error paths are verbatim ports of the command bodies: field
 //! validation still runs before the session is resolved, the legacy commands
 //! still authorize the caller-supplied `user_id` against the global DB with
 //! the non-scope-aware `Store::require_permission`, and `get_scoped` alone
 //! keeps the scope-aware session gate it always had. A shim builds the
-//! context, calls one function here, and maps [`BridgeError`] back to
+//! context, calls one function here, and maps [`BridgeError`](crate::error::BridgeError) back to
 //! `AppError` so the wire shape never moves.
 
 use serde::{Deserialize, Serialize};

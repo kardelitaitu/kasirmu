@@ -1,7 +1,8 @@
-import { useState, useMemo, useCallback, useRef, useEffect, Profiler } from 'react';
+import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { Grid, type CellComponentProps } from 'react-window';
 import { useLocalization } from '@fluent/react';
 import { useToast } from '@/components/Toast';
+import { DevProfiler } from '@/components/DevProfiler';
 import { Localized } from '@/components/Localized';
 import { formatMoney, type Product } from '@/types/domain';
 import { lookupProductBySkuScoped } from '@/api/products';
@@ -236,11 +237,7 @@ export default function ProductLookupScreen({ onAddProduct }: ProductLookupScree
   );
 
   return (
-    <Profiler id="ProductLookupScreen" onRender={(...args) => {
-      if (typeof args[2] === 'number' && args[2] > 1) {
-        console.debug('[Profiler] ProductLookupScreen', args[1] === 'mount' ? '⚡mount' : '♻update', `${args[2].toFixed(1)}ms`);
-      }
-    }}>
+    <DevProfiler id="ProductLookupScreen">
     <div className="product-lookup">
       {/* ── Toolbar: Search + Barcode ────────────── */}
       <div className="product-toolbar">
@@ -421,7 +418,7 @@ export default function ProductLookupScreen({ onAddProduct }: ProductLookupScree
         </div>
       )}
     </div>
-    </Profiler>
+    </DevProfiler>
   );
 }
 

@@ -1,8 +1,8 @@
 //! Stock-Keeping Unit (SKU) — a string identifier for a product.
 /*
-last audited DD-MM-YY by DSH-Agent
+last audited (date unknown) by DSH-Agent
 crate: foundation | status: SAFE | lint: CLEAN
-findings: clean validated newtype — trim+non-empty, serde validates via try_new. COR-33 FIXED DD-MM-YY — inline tests moved to sibling sku_tests.rs.
+findings: clean validated newtype — trim+non-empty, serde validates via try_new. COR-33 FIXED (date unknown) — inline tests moved to sibling sku_tests.rs.
 next: none | perf: N/A
 */
 //!

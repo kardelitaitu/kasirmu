@@ -341,6 +341,67 @@ describe('RetailPosScreen — interactions', () => {
     expect(setDiscount).toHaveBeenCalledWith(10, '');
   });
 
+  // The retail percentage handler was the copy that drifted from the canonical
+  // one at features/sales/hooks/usePosCartActions.ts:206-207. It used
+  // `parseFloat` + `Math.min(100, ...)` where the main screen uses
+  // `Number` + `!Number.isInteger(pct) || pct < 1 || pct > 100`, so the retail
+  // screen accepted a fractional percent the main screen refuses.
+  //
+  // The consequence is money, not cosmetics: usePosState computes
+  // `Math.floor(subtotal.minor_units * (100 - discountPercent) / 100)`
+  // (usePosState.ts:228-236), so a fractional percent silently truncates the
+  // DISCOUNTED TOTAL and the receipt shows a percent the total does not match.
+  // `Math.min(100, ...)` also turned an over-100 entry into a free sale
+  // instead of refusing it.
+  //
+  // The modal input is type="number" with min/max (RetailModals.tsx:494-502),
+  // but those attributes are advisory -- they do not prevent a fractional
+  // value being typed or pasted -- so the guard has to be in the handler.
+  async function openRetailDiscount(setDiscount: ReturnType<typeof vi.fn>) {
+    const posState = await import('@/features/sales/usePosState');
+    vi.mocked(posState.usePosState).mockReturnValue(createUsePosStateMock({
+      lines: [{ id: 'line-1' as LineId, sku: 'SKU-001' as Sku, name: 'Indomie Goreng', category: '', qty: 1, unit_price: { minor_units: 100000, currency: 'IDR' } }],
+      total: { minor_units: 100000, currency: 'IDR' },
+      subtotal: { minor_units: 100000, currency: 'IDR' },
+      setDiscount,
+    }));
+    await renderWithProviders(<RetailPosScreen />, salesFtl, productsFtl, tablesFtl, catFtl);
+    const diskonBtn = await screen.findByRole('button', { name: /^diskon$/i });
+    await userEvent.click(diskonBtn);
+    return screen.getByRole('spinbutton', { name: /discount/i });
+  }
+  it('refuses a fractional percent discount', async () => {
+    const setDiscount = vi.fn();
+    const input = await openRetailDiscount(setDiscount);
+    await userEvent.type(input, '33.7');
+    await userEvent.click(screen.getByRole('button', { name: /apply/i }));
+    // 33.7 would have become a silent Math.floor on the discounted total.
+    expect(setDiscount).not.toHaveBeenCalled();
+  });
+  it('refuses a percent above 100 instead of clamping it to a free sale', async () => {
+    const setDiscount = vi.fn();
+    const input = await openRetailDiscount(setDiscount);
+    await userEvent.type(input, '150');
+    await userEvent.click(screen.getByRole('button', { name: /apply/i }));
+    expect(setDiscount).not.toHaveBeenCalled();
+  });
+  it('refuses a zero percent discount', async () => {
+    const setDiscount = vi.fn();
+    const input = await openRetailDiscount(setDiscount);
+    await userEvent.type(input, '0');
+    await userEvent.click(screen.getByRole('button', { name: /apply/i }));
+    expect(setDiscount).not.toHaveBeenCalled();
+  });
+  it('accepts a whole percent of exactly 100', async () => {
+    const setDiscount = vi.fn();
+    const input = await openRetailDiscount(setDiscount);
+    await userEvent.type(input, '100');
+    await userEvent.click(screen.getByRole('button', { name: /apply/i }));
+    // The boundary must stay ACCEPTED: the guard is an integer check, and a
+    // deliberate 100% is a legal free sale, not an error to refuse.
+    expect(setDiscount).toHaveBeenCalledWith(100, '');
+  });
+
   // MONEY-04: the Rp tab must scale the entered amount by the CART
   // currency's minor-unit exponent. The old handler hardcoded ×100 —
   // for IDR (exponent 0) that inflated the ratio 100x, so any Rp
@@ -361,6 +422,68 @@ describe('RetailPosScreen — interactions', () => {
     const rpInput = screen.getByRole('spinbutton', { name: /discount \(rp\)/i });
     await userEvent.type(rpInput, '2000');
     await userEvent.click(screen.getByRole('button', { name: /apply/i }));
+    expect(setDiscount).toHaveBeenCalledWith(2, '');
+  });
+
+  // MONEY-05: the Rp tab converts a typed AMOUNT into a percent, and
+  // usePosState recomputes the money from that percent. So rounding the
+  // RATIO -- which is what `Math.round(x * 100) / 100` did -- rounded the MONEY,
+  // in both directions. These cases use amounts whose percent does not
+  // survive two decimal places, which the 2000/100000 case above does.
+
+  /** Type an Rp discount against a mocked subtotal and return setDiscount. */
+  async function applyRpDiscount(subtotalMinor: number, typed: string) {
+    const posState = await import('@/features/sales/usePosState');
+    const setDiscount = vi.fn();
+    vi.mocked(posState.usePosState).mockReturnValue(createUsePosStateMock({
+      lines: [{ id: 'line-1' as LineId, sku: 'SKU-001' as Sku, name: 'X', category: '', qty: 1, unit_price: { minor_units: subtotalMinor, currency: 'IDR' } }],
+      total: { minor_units: subtotalMinor, currency: 'IDR' },
+      subtotal: { minor_units: subtotalMinor, currency: 'IDR' },
+      setDiscount,
+    }));
+    await renderWithProviders(<RetailPosScreen />, salesFtl, productsFtl, tablesFtl, catFtl);
+    await userEvent.click(await screen.findByRole('button', { name: /^diskon$/i }));
+    await userEvent.click(screen.getByRole('button', { name: /^Rp$/i }));
+    await userEvent.type(screen.getByRole('spinbutton', { name: /discount \(rp\)/i }), typed);
+    await userEvent.click(screen.getByRole('button', { name: /apply/i }));
+    return setDiscount;
+  }
+
+
+  // The Rp tab offers an AMOUNT the domain cannot hold, and the tests below
+  // pin only the half that is fixable here. Verified across the whole chain:
+  //
+  //   foundation/src/percentage.rs:38        Percentage(u8)
+  //   pos/checkout.rs:246                   discount_percent: i64
+  //   pos/preview.rs:176                    checkout_discount_percent -> clamp 0..=100
+  //   usePosState.ts:287                     Math.round(percent)
+  //
+  // so only 5058 of 14955150 (subtotal, amount) pairs up to 50000/300
+  // produce a whole percent. This is a domain decision, so these tests do
+  // not assert an exact amount is preserved -- they cannot be. They assert
+  // the projection itself, which IS this line's responsibility.
+
+  it('projects the exact ratio rather than a two-decimal approximation', async () => {
+    // 70 off 40000 is a true 0.175%. Math.round(x * 100) / 100 sent 0.18,
+    // and the cart then took 73 off instead of 70.
+    const setDiscount = await applyRpDiscount(40000, '70');
+
+    const pct = setDiscount.mock.calls[0]![0] as number;
+    expect(pct).toBeCloseTo(0.175, 9);
+  });
+
+  it('never projects a discount above what was typed', async () => {
+    // The old ratio round could push the projection past the typed amount,
+    // which is the direction that costs the cashier money.
+    const setDiscount = await applyRpDiscount(40000, '70');
+    const pct = setDiscount.mock.calls[0]![0] as number;
+
+    expect(pct * 40000 / 100).toBeLessThanOrEqual(70);
+  });
+
+  it('keeps a whole-percent Rp discount exact', async () => {
+    // 2000 off 100000 is exactly 2% and must still project to exactly 2.
+    const setDiscount = await applyRpDiscount(100000, '2000');
     expect(setDiscount).toHaveBeenCalledWith(2, '');
   });
 

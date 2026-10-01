@@ -19,11 +19,16 @@
 //! settings redaction on both arms and every error string are unchanged.
 
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
-use kasirmu_core::db::{BACKUP_GENERATIONS, CandidateVerdict, Store, validate_candidate};
+use kasirmu_core::db::{Store, validate_candidate};
+// `data_tests.rs` names `BACKUP_GENERATIONS` through `use super::*`; the
+// production reader of it moved to `data/restore.rs`, so an unconditional
+// import here would be unused in the lib build.
+#[cfg(test)]
+use kasirmu_core::db::BACKUP_GENERATIONS;
 use kasirmu_core::kasirpkg::{export_kasirpkg, import_kasirpkg};
 use kasirmu_core::permissions;
 use kasirmu_core::settings::{IngestPolicy, IngestPolicyKind};
@@ -33,354 +38,24 @@ use crate::error::BridgeError;
 
 // ── DTOs ──────────────────────────────────────────────────────────
 
-#[derive(Debug, Serialize)]
-/// Backupstatus.
-pub struct BackupStatus {
-    /// Last Backup.
-    pub last_backup: Option<String>,
-    /// Last Backup Size.
-    pub last_backup_size: Option<String>,
-    // Db Path intentionally omitted — leaks the filesystem path to
-    // any IPC caller (M-7: never expose db_path in unauth'd DTOs).
-}
-
-#[derive(Debug, Serialize)]
-/// Backupresult.
-pub struct BackupResult {
-    /// Path.
-    pub path: String,
-    /// Size Bytes.
-    pub size_bytes: u64,
-}
-
-#[derive(Debug, Deserialize)]
-/// Exportdataargs.
-pub struct ExportDataArgs {
-    /// Types.
-    pub types: Vec<String>,
-    /// Password.
-    pub password: String,
-    /// Output Path.
-    pub output_path: String,
-    /// Date From.
-    pub date_from: Option<String>,
-    /// Date To.
-    pub date_to: Option<String>,
-}
-
-#[derive(Debug, Serialize)]
-/// Exportdataresult.
-pub struct ExportDataResult {
-    /// Path.
-    pub path: String,
-    /// Size Bytes.
-    pub size_bytes: u64,
-    /// Types.
-    pub types: Vec<String>,
-}
-
-#[derive(Debug, Deserialize)]
-/// Importpreviewargs.
-pub struct ImportPreviewArgs {
-    /// File Path.
-    pub file_path: String,
-    /// Password.
-    pub password: String,
-}
-
-#[derive(Debug, Serialize)]
-/// Importpreviewresult.
-pub struct ImportPreviewResult {
-    /// Store Name.
-    pub store_name: String,
-    /// App Version.
-    pub app_version: String,
-    /// ISO-8601 creation timestamp.
-    pub created_at: String,
-    /// Types.
-    pub types: Vec<String>,
-    /// Product Count.
-    pub product_count: usize,
-    /// Category Count.
-    pub category_count: usize,
-    /// Sale Count.
-    pub sale_count: Option<usize>,
-    /// Customer Count.
-    pub customer_count: Option<usize>,
-    /// User Count.
-    pub user_count: Option<usize>,
-    /// Setting Count.
-    pub setting_count: Option<usize>,
-}
-
-#[derive(Debug, Deserialize)]
-/// Importdataargs.
-pub struct ImportDataArgs {
-    /// File Path.
-    pub file_path: String,
-    /// Password.
-    pub password: String,
-}
-
-// ── C8 restore surface (slice S3) ─────────────────────────────────
-
-/// One backup generation beside the live database, judged as a restore source.
-///
-/// `verdict` is the core's typed `CandidateVerdict` rendered as its stable
-/// wire name (see `verdict_name`), never a bool: an operator has to be told
-/// *why* a generation is unusable, and `reason` carries the core's own
-/// sentence for exactly that. A generation that exists but fails validation is
-/// LISTED as `Corrupt` — omitting it would hide the evidence that a backup is
-/// unusable, which is the one thing the list exists to show.
-#[derive(Debug, Serialize)]
-/// Restorecandidate.
-pub struct RestoreCandidate {
-    /// Generation number: 0 is `<db>.backup.db`, 1 is `<db>.backup.1.db`, 2 is `<db>.backup.2.db`.
-    pub generation: usize,
-    /// Absolute path of the generation file.
-    pub path: String,
-    /// File size in bytes (0 when the file could not be stat'd).
-    pub size_bytes: u64,
-    /// Last modification time, `YYYY-MM-DD HH:MM:SS` local, when available.
-    pub modified: Option<String>,
-    /// Stable wire name of the validation verdict.
-    pub verdict: String,
-    /// Whether `verdict` permits this generation to replace the live database.
-    pub restorable: bool,
-    /// The validator's human-readable explanation.
-    pub reason: String,
-    /// Newest date-shaped migration id the candidate carries.
-    pub candidate_schema: Option<String>,
-    /// Newest date-shaped migration id this build's registry carries.
-    pub build_schema: Option<String>,
-}
-
-#[derive(Debug, Serialize)]
-/// Listrestorecandidatesresult.
-pub struct ListRestoreCandidatesResult {
-    /// One entry per generation that exists on disk, newest generation first.
-    pub candidates: Vec<RestoreCandidate>,
-    /// How many generations were examined (generation 0 included).
-    pub generations_examined: usize,
-}
-
-#[derive(Debug, Deserialize)]
-/// Restoreprepareargs.
-pub struct RestorePrepareArgs {
-    /// Path of the chosen candidate — one of `list_restore_candidates`' paths.
-    pub candidate_path: String,
-    /// The store name READ FROM THE CANDIDATE database, typed by the operator.
-    ///
-    /// This is the confirmation of WHICH database is about to replace the live
-    /// one. It is checked against the candidate's own `store.name`, never
-    /// against the live database's, because the live database is the one being
-    /// replaced.
-    pub confirm_store_name: String,
-}
-
-#[derive(Debug, Serialize)]
-/// Restoreprepareresult.
-pub struct RestorePrepareResult {
-    /// Path of the candidate the request names.
-    pub candidate_path: String,
-    /// Path of the request file that was written.
-    pub request_path: String,
-    /// ISO-8601 timestamp the request was written at.
-    pub requested_at: String,
-    /// Stable wire name of the candidate's validation verdict.
-    pub verdict: String,
-    /// Newest date-shaped migration id the candidate carries.
-    pub candidate_schema: Option<String>,
-}
-
-#[derive(Debug, Serialize)]
-/// Restorestatus.
-pub struct RestoreStatus {
-    /// Whether a request file exists beside the live database.
-    pub pending: bool,
-    /// Path of the candidate the pending request names.
-    pub candidate_path: Option<String>,
-    /// ISO-8601 timestamp the pending request was written at.
-    pub requested_at: Option<String>,
-    /// Verdict the pending request was prepared under.
-    pub verdict: Option<String>,
-    /// Why the request file could not be read, when it could not.
-    pub error: Option<String>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-/// The on-disk restore request the boot path consumes (S4).
-struct RestoreRequest {
-    /// Path of the chosen candidate.
-    candidate_path: String,
-    /// ISO-8601 timestamp the request was written at.
-    requested_at: String,
-    /// Stable wire name of the candidate's validation verdict.
-    verdict: String,
-    /// Newest date-shaped migration id the candidate carries.
-    candidate_schema: Option<String>,
-    /// The store name the operator confirmed, read from the candidate.
-    confirmed_store_name: String,
-}
-
-#[derive(Debug, Serialize)]
-/// Importdataresult.
-pub struct ImportDataResult {
-    /// Products Imported.
-    pub products_imported: usize,
-    /// Categories Imported.
-    pub categories_imported: usize,
-    /// Sales Imported.
-    pub sales_imported: usize,
-    /// Customers Imported.
-    pub customers_imported: usize,
-    /// Users Imported.
-    pub users_imported: usize,
-    /// Settings Imported.
-    pub settings_imported: usize,
-}
+pub mod dto;
+pub use dto::{
+    BackupResult, BackupStatus, ExportDataArgs, ExportDataResult, ImportDataArgs, ImportDataResult,
+    ImportPreviewArgs, ImportPreviewResult, ListRestoreCandidatesResult, RestoreCandidate,
+    RestorePrepareArgs, RestorePrepareResult, RestoreStatus,
+};
+// `RestoreRequest` is the on-disk boot-path record: private to the data MODULE
+// (not part of the IPC surface), so it is imported for the boot reader rather
+// than re-exported.
+use dto::RestoreRequest;
 
 // ── Helpers ───────────────────────────────────────────────────────
 
-/// Derive the default backup target from the live database path.
-///
-/// The shell supplies `db_path` (the one AppState value this module cannot
-/// reach); the derivation itself — swap the extension for `backup.db` and render
-/// it — is the original `default_backup_path` body, unchanged.
-fn default_backup_path(db_path: &Path) -> String {
-    let mut path = db_path.to_path_buf();
-    path.set_extension("backup.db");
-    path.display().to_string()
-}
-
-/// C-1: Reject path traversal — ensure the path does not contain `..`
-/// segments that could escape the intended directory boundary.
-fn validate_contained_path(path: &str) -> Result<(), BridgeError> {
-    let p = std::path::Path::new(path);
-    for component in p.components() {
-        if matches!(component, std::path::Component::ParentDir) {
-            return Err(BridgeError::Internal(format!(
-                "path traversal rejected: '..' not allowed in '{path}'"
-            )));
-        }
-    }
-    Ok(())
-}
-
-fn human_size(bytes: u64) -> String {
-    const UNITS: &[&str] = &["B", "KB", "MB", "GB"];
-    let mut size = bytes as f64;
-    let mut unit_idx = 0;
-    while size >= 1024.0 && unit_idx < UNITS.len() - 1 {
-        size /= 1024.0;
-        unit_idx += 1;
-    }
-    format!("{:.1} {}", size, UNITS[unit_idx])
-}
-
-/// Map settings rows to export JSON, dropping every row the sealed
-/// [`IngestPolicy::PortablePackage`] refuses (review MED-2): credential
-/// secrets, device-bound identities and lifecycle-manager keys.
-///
-/// An exported-then-restored backup carrying `local_api.secret` would hand two
-/// installs the same signing secret, and one carrying `local_api.enabled` or
-/// `lan_server.bind` would flip a manager's persisted intent behind its back.
-/// Both answers now come from the ONE policy owned by platform-core and
-/// re-exported through `kasirmu_core::settings` — this lane holds no key list and
-/// no prefix rule of its own, which is precisely how the GUI and CLI lanes
-/// drifted apart before the funnel. Outcome here is unchanged from the
-/// bridge-local `is_non_exportable_key` this replaced (that predicate ORed the
-/// same two rules); what changes is that there is now one rule to point at.
-pub fn exportable_settings_rows(rows: Vec<(String, String)>) -> Vec<serde_json::Value> {
-    rows.into_iter()
-        .filter(|(key, _)| IngestPolicy::PortablePackage.admits(key))
-        .map(|(key, value)| serde_json::json!({ "key": key, "value": value }))
-        .collect()
-}
-
-/// The batch quota gate for `import_data` (W4-S2), extracted so tests
-/// drive the exact production decision.
-///
-/// Counts the payload rows that will CREATE a product — rows whose SKU is
-/// not already in the catalog, mirroring the import loop's keying
-/// (existing-SKU rows are updates/merges, not new creations; unparseable
-/// rows are skipped by the loop and therefore not counted either) — and
-/// refuses via `Store::ensure_quota_allows(Products, tier, n)` when the
-/// tier's cap would be exceeded. The tier resolves fail-closed to Free
-/// when no subscription row exists. Returns the counted new rows.
-///
-/// A duplicate NEW SKU appearing twice in one payload is counted twice
-/// while the loop would insert it once: overcounting fails closed, never
-/// open, which is the safe direction for a statutory quota.
-pub fn gate_import_product_batch(
-    store: &Store<'_>,
-    products: &[serde_json::Value],
-) -> Result<i64, BridgeError> {
-    let tier = store.resolve_tier_fail_closed()?;
-    let new_products = products
-        .iter()
-        .filter_map(|val| serde_json::from_value::<kasirmu_core::Product>(val.clone()).ok())
-        .filter(|product| {
-            !store
-                .conn()
-                .query_row(
-                    "SELECT 1 FROM products WHERE sku = ?1",
-                    rusqlite::params![product.sku.to_string()],
-                    |_| Ok(()),
-                )
-                .is_ok()
-        })
-        .count() as i64;
-    store
-        .ensure_quota_allows(
-            kasirmu_core::downgrade::QuotaDimension::Products,
-            &tier,
-            new_products,
-        )
-        .map_err(BridgeError::from)?;
-    Ok(new_products)
-}
-
-/// The users-arm quota gate for `import_data` (W6-A / S2.1), mirroring
-/// `gate_import_product_batch` exactly.
-///
-/// Counts the payload rows that will CREATE a user — rows whose id is not
-/// already present, mirroring the import loop's keying — and refuses via
-/// `Store::ensure_quota_allows(Staff, tier, n)` when the tier's staff cap
-/// would be exceeded. The tier resolves fail-closed to Free when no
-/// subscription row exists. Returns the counted new rows.
-///
-/// A duplicate NEW id appearing twice in one payload is counted twice while
-/// the loop would insert it once: overcounting fails closed, never open,
-/// which is the safe direction for a statutory quota.
-pub fn gate_import_user_batch(
-    store: &Store<'_>,
-    users: &[serde_json::Value],
-) -> Result<i64, BridgeError> {
-    let tier = store.resolve_tier_fail_closed()?;
-    let new_users = users
-        .iter()
-        .filter_map(|val| serde_json::from_value::<kasirmu_core::User>(val.clone()).ok())
-        .filter(|user| {
-            !store
-                .conn()
-                .query_row(
-                    "SELECT 1 FROM users WHERE id = ?1",
-                    rusqlite::params![user.id],
-                    |_| Ok(()),
-                )
-                .is_ok()
-        })
-        .count() as i64;
-    store
-        .ensure_quota_allows(
-            kasirmu_core::downgrade::QuotaDimension::Staff,
-            &tier,
-            new_users,
-        )
-        .map_err(BridgeError::from)?;
-    Ok(new_users)
-}
+pub mod helpers;
+pub use helpers::{exportable_settings_rows, gate_import_product_batch, gate_import_user_batch};
+// The three path/size helpers are private to the data MODULE (not IPC surface),
+// so the command bodies below import them rather than re-exporting.
+use helpers::{default_backup_path, human_size, validate_contained_path};
 
 // ── Commands ──────────────────────────────────────────────────────
 
@@ -467,6 +142,84 @@ async fn create_backup_direct(
         path: output,
         size_bytes,
     })
+}
+
+/// Queue the just-made pre-update backup as a boot restore request (C8 / S6).
+///
+/// # Why this exists
+///
+/// The updater takes a backup before it installs (`UpdateBanner` ->`create_backup`)
+/// and recorded the path in the `updater.last_backup_path` setting -- which NOTHING
+/// reads. So the "safety net" review 14.1 calls decorative was exactly that: a backup
+/// on disk that no restore path would ever offer, and a setting no code consults.
+/// This writes the SAME request file the boot consumer already understands, so the
+/// backup becomes a recovery the operator can actually reach.
+///
+/// # Why it does not reuse `restore_prepare`
+///
+/// That function requires a session and `SETTINGS_EDIT`, and the pre-update path runs
+/// before login -- the same reason `create_backup` is its own ungated entry point. The
+/// difference in authority is deliberate and narrow: `restore_prepare` lets an operator
+/// choose ANY candidate, so it demands a typed store-name confirmation; this may only
+/// queue the backup the update just wrote, so there is no choice to confirm. It is not
+/// exposed over IPC -- nothing in the renderer can reach it.
+///
+/// # Fails closed on a candidate that is not restorable
+///
+/// The backup is validated before the request is written. A candidate the boot path
+/// would refuse leaves NO request on disk, so a failed update cannot queue a restore
+/// that would refuse at the next boot and confuse the operator.
+#[allow(dead_code)] // wired by the updater lane; the boot consumer is the reader
+pub async fn queue_pre_update_restore_candidate(
+    db_path: &Path,
+) -> Result<QueueRestoreCandidateResult, BridgeError> {
+    let candidate_path = default_backup_path(db_path);
+    let candidate = Path::new(&candidate_path);
+    if !candidate.is_file() {
+        return Err(BridgeError::Invalid(format!(
+            "no pre-update backup at '{candidate_path}' to queue"
+        )));
+    }
+
+    // Validate BEFORE writing, exactly as `restore_prepare` does: a request file
+    // must not exist for a candidate the boot path would refuse anyway.
+    let report = validate_candidate(candidate).into_result(candidate)?;
+    let store_name = candidate_store_name(candidate)?.unwrap_or_default();
+
+    let requested_at = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+    let request = RestoreRequest {
+        candidate_path: candidate_path.clone(),
+        requested_at: requested_at.clone(),
+        verdict: verdict_name(report.verdict).to_string(),
+        candidate_schema: report.candidate_schema.clone(),
+        confirmed_store_name: store_name,
+    };
+    let request_path = restore_request_path(db_path);
+    let bytes = serde_json::to_vec_pretty(&request)
+        .map_err(|e| BridgeError::Internal(format!("encoding the restore request: {e}")))?;
+    std::fs::write(&request_path, bytes).map_err(|e| {
+        BridgeError::Internal(format!(
+            "writing the restore request '{}': {e}",
+            request_path.display()
+        ))
+    })?;
+    Ok(QueueRestoreCandidateResult {
+        candidate_path,
+        request_path: request_path.display().to_string(),
+        requested_at,
+    })
+}
+
+/// Result of [`queue_pre_update_restore_candidate`].
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QueueRestoreCandidateResult {
+    /// The backup that was queued.
+    pub candidate_path: String,
+    /// The request file the boot path will consume.
+    pub request_path: String,
+    /// ISO-8601 timestamp the request was written at.
+    pub requested_at: String,
 }
 
 /// Export data, session-gated.
@@ -576,7 +329,17 @@ async fn export_data_direct(
     };
 
     let users = if wants("users") {
-        let usrs = store.list_users()?;
+        let mut usrs = store.list_users()?;
+        // GUI arm of the same rule the CLI lane applies (see
+        // `crates/kasirmu-cli/src/commands/kasirpkg.rs`): `pin_hash` is
+        // selected by `Store::list_users` and serialized by `User`, so it would
+        // otherwise ride into every portable package. It is blanked rather than
+        // omitted because `User::pin_hash` has no `#[serde(default)]` and all
+        // three import arms swallow the resulting deserialization failure with
+        // `if let Ok(..)` — omitting the key would silently skip every user.
+        for u in &mut usrs {
+            u.pin_hash.clear();
+        }
         Some(
             serde_json::to_value(&usrs)
                 .ok()
@@ -633,7 +396,7 @@ async fn export_data_direct(
 
     let store_name = store
         .get_store_name()?
-        .unwrap_or_else(|| "OZ-POS Store".into());
+        .unwrap_or_else(|| "kasir.mu Store".into());
 
     let features: HashMap<String, String> = store
         .load_features()
@@ -781,15 +544,15 @@ pub async fn import_data(
                 )
                 .is_ok();
             if !exists {
-                let _ = tx.execute(
+                tx.execute(
                     "INSERT INTO categories (id, name, colour, icon) VALUES (?1, ?2, ?3, ?4)",
                     rusqlite::params![cat.id, cat.name, colour, ""],
-                );
+                )?;
             } else {
-                let _ = tx.execute(
+                tx.execute(
                     "UPDATE categories SET name = ?1, colour = ?2, icon = '' WHERE id = ?3",
                     rusqlite::params![cat.name, colour, cat.id],
-                );
+                )?;
             }
             categories_imported += 1;
         }
@@ -835,16 +598,16 @@ pub async fn import_data(
                 let email_str = cust.email.map(|e| e.to_string());
                 let phone_str = cust.phone.map(|p| p.to_string());
                 if exists {
-                    let _ = tx.execute(
+                    tx.execute(
                         "UPDATE customers SET name = ?1, email = ?2, phone = ?3, notes = ?4, updated_at = ?5 WHERE id = ?6",
                         rusqlite::params![cust.name, email_str, phone_str, cust.notes, now, cust.id],
-                    );
+                    )?;
                 } else {
-                    let _ = tx.execute(
+                    tx.execute(
                         "INSERT INTO customers (id, name, email, phone, notes, loyalty_points, total_spent_minor, currency, created_at, updated_at)
                          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
                         rusqlite::params![cust.id, cust.name, email_str, phone_str, cust.notes, 0i64, 0i64, "USD", now, now],
-                    );
+                    )?;
                 }
                 customers_imported += 1;
             }
@@ -864,17 +627,26 @@ pub async fn import_data(
                     )
                     .is_ok();
                 if exists {
-                    let _ = tx.execute(
+                    tx.execute(
                         "UPDATE users SET username = ?1, display_name = ?2, role_id = ?3, is_active = ?4, updated_at = ?5 WHERE id = ?6",
                         rusqlite::params![user.username, user.display_name, user.role_id, user.is_active, chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true), user.id],
-                    );
+                    )?;
                 } else {
-                    // Users from export have no PIN hash; mark as inactive so they must be re-invited
-                    let _ = tx.execute(
+                    // The package DOES carry `pin_hash` (the egress arm above
+                    // serializes `Store::list_users()` wholesale), but this path
+                    // deliberately does not use it — the column is written
+                    // empty and the account lands INACTIVE so the member must
+                    // be re-invited. (The previous comment claimed the export
+                    // had no PIN hash; it does.)
+                    //
+                    // Stripping it from the export requires `#[serde(default)]`
+                    // on `User::pin_hash` first — see the CLI twin of this arm
+                    // (`kasirmu-cli/src/commands/kasirpkg.rs`).
+                    tx.execute(
                         "INSERT INTO users (id, username, pin_hash, display_name, role_id, is_active, created_at, updated_at)
                          VALUES (?1, ?2, ?3, ?4, ?5, 0, ?6, ?7)",
                         rusqlite::params![user.id, user.username, "", user.display_name, user.role_id, chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true), chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true)],
-                    );
+                    )?;
                 }
                 users_imported += 1;
             }
@@ -996,274 +768,17 @@ pub async fn create_backup_to(
     })
 }
 
-// ── C8 restore surface: request a restore, never perform one ───────
-
-/// Filename infix and suffix of the restore request file.
-///
-/// The full shape is `<db-name>.restore-request.json` — the live database's
-/// own name with `.restore-request.json` appended, so the request sits BESIDE
-/// the database it names and the boot path (slice S4) finds it from the same
-/// `db_path` every other command here receives. The name is derived in ONE
-/// place: writer and reader must agree, and a second derivation is how they
-/// drift.
-const RESTORE_REQUEST_SUFFIX: &str = ".restore-request.json";
-
-/// Path of the restore request file for a live database.
-fn restore_request_path(db_path: &Path) -> PathBuf {
-    let name = db_path
-        .file_name()
-        .unwrap_or_default()
-        .to_string_lossy()
-        .into_owned();
-    db_path.with_file_name(format!("{name}{RESTORE_REQUEST_SUFFIX}"))
-}
-
-/// Path of backup generation `generation` for the live database.
-///
-/// Mirrors `Store::backup_generation_path` (private in kasirmu-core, which is
-/// why this is not called): generation 0 is `<db>.backup.db` itself — the name
-/// `default_backup_path` writes — and generation `n` is its sibling
-/// `<db>.backup.n.db`, the generation number inserted before the extension.
-fn backup_generation_path(db_path: &Path, generation: usize) -> PathBuf {
-    let mut path = db_path.to_path_buf();
-    path.set_extension("backup.db");
-    if generation == 0 {
-        return path;
-    }
-    let mut name = path.file_stem().unwrap_or_default().to_os_string();
-    name.push(format!(".{generation}"));
-    let extension = path.extension().unwrap_or_default().to_os_string();
-    if !extension.is_empty() {
-        name.push(".");
-        name.push(extension);
-    }
-    path.with_file_name(name)
-}
-
-/// Stable wire name of a verdict.
-///
-/// Spelled out rather than derived from `Debug`, so a refactor of the core
-/// enum cannot silently change what the IPC surface and the request file say.
-fn verdict_name(verdict: CandidateVerdict) -> &'static str {
-    match verdict {
-        CandidateVerdict::Acceptable => "Acceptable",
-        CandidateVerdict::OlderButAcceptable => "OlderButAcceptable",
-        CandidateVerdict::NewerThanThisBuild => "NewerThanThisBuild",
-        CandidateVerdict::Corrupt => "Corrupt",
-    }
-}
-
-/// The store name a candidate database carries, read READ-ONLY.
-///
-/// Returns `None` when the candidate has no `store.name` row (or no settings
-/// table at all) — a legitimate state, and one the confirmation check must
-/// treat as "cannot be confirmed" rather than as a match.
-fn candidate_store_name(candidate: &Path) -> Result<Option<String>, BridgeError> {
-    let conn = rusqlite::Connection::open_with_flags(
-        candidate,
-        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
-    )
-    .map_err(|e| {
-        BridgeError::Internal(format!(
-            "cannot open the candidate '{}' read-only: {e}",
-            candidate.display()
-        ))
-    })?;
-    Ok(Store::new(&conn).get_store_name()?)
-}
-
-/// Enumerate the backup generations beside the database, each with its verdict.
-///
-/// Generation 0 is the current backup (`<db>.backup.db`), generations 1 and 2
-/// are its rotated siblings, so at most [`BACKUP_GENERATIONS`] entries exist.
-/// Only generations actually present on disk are returned, newest first.
-///
-/// A generation that exists but FAILS validation is returned as `Corrupt` with
-/// the validator's reason — never skipped. That is the whole point of the list:
-/// an operator looking at "why can I not restore this backup" has to see the
-/// unusable one and read why, and a silently shorter list answers a question
-/// nobody asked.
-///
-/// Read-only: this command opens each candidate read-only and never touches the
-/// live database, its sidecars or any request file. It takes no session token
-/// for the same reason `list_products` takes none — it is a pure read of data
-/// the caller can already see, and the mutating half of this surface
-/// ([`restore_prepare`]) is where `SETTINGS_EDIT` is enforced.
-pub async fn list_restore_candidates(
-    db_path: &Path,
-) -> Result<ListRestoreCandidatesResult, BridgeError> {
-    let mut candidates = Vec::new();
-    for generation in (0..BACKUP_GENERATIONS).rev() {
-        let path = backup_generation_path(db_path, generation);
-        if !path.is_file() {
-            continue;
-        }
-        let report = validate_candidate(&path);
-        let (size_bytes, modified) = match std::fs::metadata(&path) {
-            Ok(meta) => {
-                let modified = meta.modified().ok().map(|t| {
-                    let dt: chrono::DateTime<chrono::Local> = t.into();
-                    dt.format("%Y-%m-%d %H:%M:%S").to_string()
-                });
-                (meta.len(), modified)
-            }
-            Err(_) => (0, None),
-        };
-        candidates.push(RestoreCandidate {
-            generation,
-            path: path.display().to_string(),
-            size_bytes,
-            modified,
-            verdict: verdict_name(report.verdict).to_string(),
-            restorable: report.verdict.is_restorable(),
-            reason: report.reason,
-            candidate_schema: report.candidate_schema,
-            build_schema: report.build_schema,
-        });
-    }
-    Ok(ListRestoreCandidatesResult {
-        candidates,
-        generations_examined: BACKUP_GENERATIONS,
-    })
-}
-
-/// Prepare a restore request for the next boot — gated on `SETTINGS_EDIT`.
-///
-/// This does NOT restore anything and does NOT touch the live database. It
-/// validates the candidate, checks the operator's typed confirmation against
-/// the candidate's OWN `store.name`, and writes
-/// `<db>.restore-request.json` for the boot path (slice S4) to consume before
-/// `AppState::new` opens anything. The gate is the one `import_data` uses, and
-/// for the same reason: both commands replace the merchant's data with data
-/// from a file.
-///
-/// The order of the three refusals is deliberate — validate first, confirm
-/// second, write third — so a corrupt candidate produces no file even when the
-/// operator typed the right name, and a wrong name produces no file even when
-/// the candidate is perfect.
-///
-/// # Errors
-///
-/// * [`BridgeError::Core`] when the candidate is `Corrupt` or
-///   `NewerThanThisBuild` — the validator's typed refusal, before any write.
-/// * [`BridgeError::Invalid`] when the typed confirmation does not match the
-///   candidate's store name, or the candidate has none to match.
-/// * [`BridgeError::Internal`] when the request file cannot be written.
-pub async fn restore_prepare(
-    ctx: &BridgeCtx<'_>,
-    session_token: &str,
-    db_path: &Path,
-    args: RestorePrepareArgs,
-) -> Result<RestorePrepareResult, BridgeError> {
-    let session = ctx.resolve_session(session_token)?;
-    ctx.require_session_permission(&session, permissions::SETTINGS_EDIT)
-        .await?;
-    // C-1: contain the candidate path — reject path traversal, exactly as the
-    // two import/export lanes do.
-    validate_contained_path(&args.candidate_path)?;
-    let candidate = Path::new(&args.candidate_path);
-
-    // 1. Validate. A refusal here returns the core's own typed message and
-    //    writes nothing: the request file must not exist for a candidate the
-    //    boot path would refuse anyway.
-    let report = validate_candidate(candidate).into_result(candidate)?;
-
-    // 2. Confirm. The operator must type the store name READ FROM THE
-    //    CANDIDATE — proof they are looking at the database they are about to
-    //    promote, not at the live one. A candidate with no store name cannot
-    //    be confirmed at all, so it is refused rather than accepted on an
-    //    empty string.
-    let confirmation = args.confirm_store_name.trim();
-    //    The expected name is deliberately NOT echoed back: the confirmation
-    //    is only a real barrier if the answer is not in the error.
-    match candidate_store_name(candidate)? {
-        Some(name) if name == confirmation => {}
-        Some(_) => {
-            return Err(BridgeError::Invalid(
-                "the store name typed does not match the name the candidate carries".into(),
-            ));
-        }
-        None => {
-            return Err(BridgeError::Invalid(
-                "the candidate carries no store name to confirm against".into(),
-            ));
-        }
-    }
-
-    // 3. Write. The request names the candidate, the moment and the verdict,
-    //    so the boot path re-checks nothing it has to guess at and an operator
-    //    can read what is pending.
-    let requested_at = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
-    let request = RestoreRequest {
-        candidate_path: args.candidate_path.clone(),
-        requested_at: requested_at.clone(),
-        verdict: verdict_name(report.verdict).to_string(),
-        candidate_schema: report.candidate_schema.clone(),
-        confirmed_store_name: confirmation.to_string(),
-    };
-    let request_path = restore_request_path(db_path);
-    let bytes = serde_json::to_vec_pretty(&request)
-        .map_err(|e| BridgeError::Internal(format!("encoding the restore request: {e}")))?;
-    std::fs::write(&request_path, bytes).map_err(|e| {
-        BridgeError::Internal(format!(
-            "writing the restore request '{}': {e}",
-            request_path.display()
-        ))
-    })?;
-
-    Ok(RestorePrepareResult {
-        candidate_path: args.candidate_path,
-        request_path: request_path.display().to_string(),
-        requested_at,
-        verdict: verdict_name(report.verdict).to_string(),
-        candidate_schema: report.candidate_schema,
-    })
-}
-
-/// Report whether a restore request is pending, and what it names.
-///
-/// The boot path consumes the request (slice S4); until it does, this is how a
-/// caller tells the operator that a restore is pending and which candidate it
-/// will promote. A request file that cannot be parsed is reported as an error
-/// WITH `pending: true` — the file is there, so the honest answer is "pending,
-/// but unreadable", never "nothing pending".
-///
-/// Read-only, and it takes no token for the same reason
-/// [`list_restore_candidates`] does not.
-pub async fn restore_status(db_path: &Path) -> Result<RestoreStatus, BridgeError> {
-    let request_path = restore_request_path(db_path);
-    if !request_path.is_file() {
-        return Ok(RestoreStatus {
-            pending: false,
-            candidate_path: None,
-            requested_at: None,
-            verdict: None,
-            error: None,
-        });
-    }
-    let read = std::fs::read(&request_path)
-        .map_err(|e| format!("reading '{}': {e}", request_path.display()))
-        .and_then(|bytes| {
-            serde_json::from_slice::<RestoreRequest>(&bytes)
-                .map_err(|e| format!("parsing '{}': {e}", request_path.display()))
-        });
-    Ok(match read {
-        Ok(request) => RestoreStatus {
-            pending: true,
-            candidate_path: Some(request.candidate_path),
-            requested_at: Some(request.requested_at),
-            verdict: Some(request.verdict),
-            error: None,
-        },
-        Err(error) => RestoreStatus {
-            pending: true,
-            candidate_path: None,
-            requested_at: None,
-            verdict: None,
-            error: Some(error),
-        },
-    })
-}
+pub mod restore;
+pub use restore::{list_restore_candidates, restore_prepare, restore_status};
+// The path/name helpers are private to the data MODULE (they take paths, not a
+// context), so the remaining command bodies import them rather than
+// re-exporting — `pub(super)` items cannot be re-exported (`E0364`).
+use restore::{candidate_store_name, restore_request_path, verdict_name};
+// `data_tests.rs` names `RESTORE_REQUEST_SUFFIX` through `use super::*` to check
+// the derived file name directly; the production boot reader is in
+// `data/restore.rs`, so an unconditional import here would be unused.
+#[cfg(test)]
+use restore::RESTORE_REQUEST_SUFFIX;
 
 #[cfg(test)]
 #[path = "data_tests.rs"]

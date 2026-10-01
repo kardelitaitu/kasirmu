@@ -622,9 +622,19 @@ async fn delete_customer_scoped_is_blocked_by_loyalty_and_sales_references() {
     }
 
     let result = delete_scoped(&state.ctx(), "store-a-token", "cust-1").await;
+    // MSL-76: the refusal is a TYPED validation now, not a raw DB error. The FK
+    // is still what blocks the delete (this asserts the row survives below), but
+    // the sub_kind reaching the UI distinguishes "still referenced" from
+    // "database failed", which the previous `Core { sub_kind: Db }` could not.
     assert!(
-        matches!(result, Err(BridgeError::Core { .. })),
-        "delete must be blocked by the FK guard, got: {result:?}"
+        matches!(
+            &result,
+            Err(BridgeError::Core {
+                sub_kind: kasirmu_core::error::CoreErrorKind::Validation,
+                message,
+            }) if message.contains("loyalty account") && message.contains("reassigned")
+        ),
+        "delete must be blocked by a named Validation naming the reference, got: {result:?}"
     );
 
     // The customer row is retained — nothing was silently cascaded.

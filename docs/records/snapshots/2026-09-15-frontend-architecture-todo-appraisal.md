@@ -1,9 +1,10 @@
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 163 lines, with a prior marker re-verified rather than replaced. An appraisal of a backlog document is a review of a REVIEW, and that framing determines the audit scope: what is checkable is whether the appraisal read its subject accurately, not whether the subject it assesses is now current. · THAT SCOPE IS HONOURLY STATED HERE, because a review that re-validates its subject's claims against the tree would be auditing something else. This campaign has repeatedly watched a plan drift from the code — six roots renamed, a front-end directory reorganised twice, module paths split by concern — and the temptation in a review document is to measure that drift as if it were the review's error. It is not. The appraisal's job was to assess the backlog as it stood; whether the backlog has since aged is a different question, and this pass did not substitute it for the real one. · THE STAMP RECORDS, and why it was worth re-running: this appraisal is one of the documents that establishes how the local-first and frontend-architecture work is structured, and therefore part of the chain later audits in this campaign relied on when they needed to know what was decided before the module boundaries changed. · The verdict an appraisal carries — approve, amend, or reject — is a judgement this audit does not revisit, for the same reason it does not re-derive a business plan's market claims. · NOT re-measured: the appraisal's per-item findings against the backlog it reviewed, and whether the items it endorsed have since been done. The second is a question for whoever runs that backlog. · Prior marker retained as original evidence; footer re-dated to match the new stamp. -->
 # Appraisal: `todo-review-type.md` (Local-First & Frontend Architecture)
 
 Recorded against: branch `0.0.39` @ `9ac839264` · 2026-09-15
 Scope: sections 1–4 of the root todo, plus its implied Slint/embedded direction.
 
-> last audited 15-09-26 by Budak-Korporat
+> last audited 29-09-26 by docs-auditor
 
 ## Verdict
 

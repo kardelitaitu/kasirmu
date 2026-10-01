@@ -55,6 +55,38 @@ fn print_sales_receipt_args_deserialise() {
     assert_eq!(args.payments.len(), 1);
 }
 
+#[test]
+fn print_sales_receipt_args_deserialise_camel_case() {
+    let json = r#"{
+        "date": "01 Jan 2026",
+        "receiptNumber": "REC-001",
+        "items": [
+            {
+                "name": "Coffee",
+                "quantity": 1,
+                "unitPrice": { "minorUnits": 350, "currency": "USD" },
+                "totalPrice": { "minorUnits": 350, "currency": "USD" }
+            }
+        ],
+        "subtotal": { "minorUnits": 350, "currency": "USD" },
+        "total": { "minorUnits": 350, "currency": "USD" },
+        "payments": [
+            {
+                "method": "CASH",
+                "amount": { "minorUnits": 500, "currency": "USD" },
+                "change": { "minorUnits": 150, "currency": "USD" }
+            }
+        ]
+    }"#;
+    let args: PrintSalesReceiptArgs = serde_json::from_str(json).unwrap();
+    assert_eq!(args.date, "01 Jan 2026");
+    assert_eq!(args.items.len(), 1);
+    assert_eq!(args.items[0].unit_price.minor_units, 350);
+    assert_eq!(args.subtotal.minor_units, 350);
+    assert_eq!(args.total.minor_units, 350);
+    assert_eq!(args.payments[0].amount.minor_units, 500);
+}
+
 // -- DTO struct tests --
 
 #[test]
@@ -133,6 +165,25 @@ fn line_item_dto_deserialize() {
     assert_eq!(item.name, "Coffee");
     assert_eq!(item.quantity, 2);
     assert!(item.tax_amount.is_none());
+    // Asserted for the same reason as `tax_amount` above: this test is what forces a
+    // NEW optional field to be read rather than merely declared. `note` was added to
+    // `LineItemDto` with `#[serde(default)]` and to the HAL's `receipt::LineItem`, but
+    // the tablet's constructor kept the three old fields and dropped it — the payload
+    // deserialised fine, so nothing here went red, and the tablet silently printed no
+    // order notes while desktop did. A `None` from a payload that omits the key is
+    // also the contract the UI relies on when it sends no note.
+    assert!(item.note.is_none());
+}
+
+#[test]
+fn line_item_dto_carries_the_order_note_when_sent() {
+    let json = r#"{"name":"Nasi Goreng","quantity":1,"unitPrice":{"minor_units":25000,"currency":"IDR"},"totalPrice":{"minor_units":25000,"currency":"IDR"},"note":"pedas"}"#;
+    let item: LineItemDto = serde_json::from_str(json).unwrap();
+    assert_eq!(
+        item.note.as_deref(),
+        Some("pedas"),
+        "the UI sends `note` and the HAL prints it under the item, so the DTO must keep it"
+    );
 }
 
 #[test]
@@ -253,6 +304,54 @@ fn a_preference_naming_an_absent_scanner_changes_nothing() {
     assert_eq!(ordered(&got), ["a", "b"]);
 }
 
+/// The `.ok()` call the legacy footer read must NOT carry. The check runs
+/// against code with `//` comments stripped, so the fix's own prose that
+/// names `.ok()` cannot trip it.
+const OK_PROBE: &str = ".ok()";
+
+// -- a failed legacy footer read must propagate (mirrors the bridge pin) --
+
+/// The tablet's `print_sales_receipt_scoped` builds the receipt config inline,
+/// so this is a SOURCE-TEXT pin: the body is unreachable without a full
+/// `AppState`. It asserts the legacy footer read is not wrapped in `.ok()`,
+/// which would turn a locked or corrupt `settings` table into `None` -- the
+/// same value an operator sees when they configured no footer at all, so the
+/// receipt would print without it and nothing would say so.
+///
+/// The scan starts at the first `use` so it inspects CODE, never the module
+/// doc: the doc legitimately describes the swallow while explaining the fix,
+/// and a pin that fails on a correct file gets deleted by the next reader.
+/// (Round-145 lesson.)
+#[test]
+fn the_tablet_propagates_a_failed_legacy_footer_read() {
+    const SOURCE: &str = include_str!("hardware.rs");
+    let code = match SOURCE.find("use tauri::") {
+        Some(at) => &SOURCE[at..],
+        None => {
+            panic!("hardware.rs no longer starts its imports with `use tauri::`; revisit this pin")
+        }
+    };
+    // Strip `//` comment lines before asserting: the module doc and the fix's
+    // own comment legitimately SPELL `.ok()` while explaining what was removed,
+    // and a pin that trips on prose fails on a correct file (round-145 lesson).
+    let code_only: String = code
+        .lines()
+        .filter(|line| !line.trim_start().starts_with("//"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        !code_only.contains(OK_PROBE),
+        "the tablet must not wrap the legacy footer read in `.ok()`; that turns a locked or corrupt settings table into `None`, which reads as \"no footer\" and prints without it"
+    );
+    assert!(
+        code_only.contains("?;"),
+        "the tablet footer read must propagate its error with `?`"
+    );
+    assert!(
+        code.contains("legacy_footer"),
+        "the tablet footer chain must resolve the legacy read through a binding so `?` can propagate"
+    );
+}
 #[test]
 fn both_shells_order_scanners_the_same_way() {
     // The desktop and tablet each carry a copy of this helper, so a device

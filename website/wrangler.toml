@@ -5,7 +5,12 @@
 # and public/_redirects (301s) exactly like Pages does.
 #
 # Deploy (from website/):   npm run build && npx wrangler deploy
-# Or via CI:                .github/workflows/website.yml
+# Or via CI:                .github/workflows/website.yml ("Website Deploy") — runs
+#                           on push to main when website/**, prototypes/** or
+#                           scripts/wrangler-deploy.sh change, and on manual
+#                           dispatch. Reads the CLOUDFLARE_API_TOKEN and
+#                           CLOUDFLARE_ACCOUNT_ID repo secrets, gates the build,
+#                           then calls scripts/wrangler-deploy.sh with SKIP_BUILD=1.
 #
 # Alternative: Cloudflare Pages (Git integration) also works — the build
 # command/output are the same (`npm run build` → `dist/`); wrangler.toml is

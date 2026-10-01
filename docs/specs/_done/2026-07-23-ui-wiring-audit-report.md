@@ -1,3 +1,4 @@
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 217 lines, no audit stamp, no footer, no marker. It is the findings half of the plan/report pair audited in the same round, and it is a DATED AUDIT REPORT — the format in which the findings are the deliverable and the evidence is the state of the tree on a particular day. · The honest scope of this audit is therefore narrow, and stating it is more useful than manufacturing findings: re-running a UI element audit means walking every screen and every control, which is the original work and not a documentation task. What this pass did instead was confirm the report's SUBJECT is still live, because a report about a surface that has since been deleted is a different kind of document from one about a surface that was refactored. The desktop settings surface is still there — it is the screen the Phase 0a extraction split into five section components, audited in round 9 — so this report describes a real screen in an earlier shape rather than something that has evaporated. · The checked or unchecked state of any finding boxes in the report is left exactly as found. Ticking or unticking a finding in a completed audit report is the one operation an audit pass must never perform without evidence, because the box is the record of who verified what. · Read together with its plan (audited in the same round), the pair is a well-formed audit trail: a plan, a report, and both filed in `_done/` with the execution status recorded by location rather than prose. · Stamp and footer added; the file had neither. -->
 # UI Wiring & Element Audit Report — Settings (kasir.mu Desktop App)
 
 - **Audit ID:** 2026-07-23-ui-wiring-audit
@@ -215,3 +216,5 @@
 ---
 
 *End of report.*
+
+> last audited 29-09-26 by docs-auditor

@@ -4,6 +4,7 @@ area: cloud
 title: ADR #43: Cloud Sync Performance & Scale-Out Roadmap
 status: Implemented (D1–D4, D7, D9-ready) — remaining items deferred or infra-only (2026-09-02)
 ---
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 257 lines, no audit stamp, no footer, no marker. Front matter reads Implemented for D1–D4, D7 and D9-ready, with the remaining items characterised as deferred or infra-only (2026-09-02) — an unusual and welcome precision, naming which decision numbers landed rather than claiming blanket completion. The sync performance surface it governs is real and heavily exercised: the `MAX_BATCH_BYTES` batching constant, the gzip transport path, the `SyncPriority` enum and the `AnchorExpired` variant verified in ADR-10 (round 16) are the same machinery this roadmap scales, and the `platform/sync/tests/` integration suite it names is present. · IT IS ALSO THE DOCUMENT THAT GAVE THE EDGE RELAY SPEC ITS PREMISE. `docs/specs/_active/0049-edge-relay-network.md`, audited in round 7, opens by depending on ADR #43 for origin optimisations and is the concrete plan for putting cheap VPS relays in front of the origin this roadmap optimises. The dependency is declared from the spec side, not the ADR side, and the spec also cites Spec 0046b for the content-addressed images that make image caching safe. That chain — origin optimisations here, relay deployment there — is the largest performance design in the repository and it is documented in two files under two different owners, with the link running in one direction only. Recorded as a navigation observation. · NOT re-measured: any latency or throughput figure, which are point-in-time measurements of a deployed service and belong to a benchmark run rather than a documentation audit. · Status checker reports no drift for this row. Body left entirely as written; stamp and footer added. -->
 # ADR #43: Cloud Sync Performance & Scale-Out Roadmap
 
 **Status:** Implemented (D1–D4, D7, D9-ready) — remaining items deferred or infra-only (2026-09-02)  
@@ -255,3 +256,19 @@ While designed for horizontal scaling, several items in Tiers 2–4 should **not
 - `docs/records/sqlite-pg-roles.md` — SQLite↔Postgres schema parity & RLS cutover
 - `scripts/rls-cutover.sql` — the pending RLS enforcement cutover (D9)
 
+> last audited 29-09-26 by docs-auditor
+
+
+---
+
+## Where D4/D5/D7 stand now (appended 2026-10-04)
+
+Three module `next:` markers claimed that D4/D5/D7 work was still pending. Measuring the tree, all three had landed:
+
+- **D4 — Redis/Valkey backend.** `apps/cloud-server/src/redis_backend.rs` is wired with an in-process fallback on a Redis error: `apps/cloud-server/src/sync_api.rs:584` tries the cross-instance snapshot cache first and falls through to the in-process single-flight path on `Ok(None)` or `Err(_)`, and `apps/cloud-server/src/rate_limit.rs:183` holds `Option<RedisBackend>` with the same fallback. The `next: integration with in-process fallback on Redis error` note was already satisfied.
+- **D5/D7 — transactional outbox.** The email report sender is a producer: `apps/cloud-server/src/email.rs:168` enqueues into the outbox (ADR #43 D7), and `apps/cloud-server/src/main.rs:330-331` starts the drainer. A PG variant exists as well — `enqueue_pg` (`apps/cloud-server/src/outbox.rs:98`) and `start_drainer_pg` (`apps/cloud-server/src/outbox.rs:373`) alongside the SQLite `enqueue_sqlite`/`start_drainer_sqlite`.
+- **Conflict surface.** `apps/cloud-server/src/conflict_resolution.rs` keeps its decision pure, but the persistence and HTTP endpoints its `next:` note asked for are live: the `sync_conflicts` rows plus `GET /api/sync/conflicts` and `POST /api/sync/conflicts/{id}/resolve` (`apps/cloud-server/src/sync_api.rs:198-200`, handlers at `:772` and `:815`), with the store surface in `apps/cloud-server/src/sync_store/conflicts.rs`.
+
+Pins: `list_conflicts_route_is_registered_and_empty_by_default` and `resolve_conflict_route_reports_404_for_an_unknown_id` (both in `apps/cloud-server/src/sync_api_tests.rs`) keep the HTTP half of the conflict surface from silently disappearing. The three module headers now read `next: none`.
+
+> D4/D5/D7 status re-measured 2026-10-04.

@@ -1,29 +1,39 @@
 //! Index ids for the receipt hierarchy code.
 //!
-//! An index id is an immutable badge allocated once, at registration, and
-//! printed as two uppercase hex digits inside the receipt code
-//! (`01-02-260918-01-000123`). It is deliberately NOT "the Nth location":
-//! a value is never reused, because a retired `02` reissued to a new
-//! location would make every historic receipt naming `02` resolve to the
-//! wrong store — and with a tax number on the receipt that is
-//! falsification, not a cosmetic bug.
+//! An index id is allocated at registration and printed as dynamic-width
+//! Base62 characters inside the receipt code (`01-02-260929-10a-000123`). The
+//! allocator is a **lowest-available slot recycler** (plan §4.1): it hands out
+//! the lowest positive integer (1, 2, 3…) not currently held by an active
+//! entity in the tenant, and when an entity (location, terminal, staff) is
+//! deleted its index id is released and reclaimed by the next entity — this is
+//! the intended, spec'd behaviour, not a leak.
 //!
-//! Allocation is monotonic, driven by `entity_index_cursors`, so even a row
-//! deleted without a tombstone cannot hand its index to the next entity.
-//! `0x00` is never allocated: it is the display sentinel for "no staff"
-//! (kiosk and system sales). The ceiling is `0xFF` — two hex digits is all
-//! the field can express — and the allocator refuses rather than wraps,
-//! because a wrap would reissue live codes.
+//! `0` is never allocated: `"00"` is the display sentinel for "no staff"
+//! (kiosk and system sales; [`INDEX_ID_NONE`](crate::db::receipt_code::INDEX_ID_NONE)).
+//! The ceiling is `14,776,335` ($62^4 - 1$) — four Base62 digits is all the field
+//! can express — and the allocator refuses rather than wraps, because a wrap
+//! would reissue live codes.
 //!
-//! Design and decisions: docs/plans/receipt-hierarchy-code.md
+//! "Active" is expressed per entity kind, and the three kinds do NOT share one
+//! predicate — see the `extra_where` arm in
+//! `allocate_entity_index_with_ceiling_on_conn` (private, so named rather than
+//! linked). Only `users` is soft-deleted (`20261009_staff_trash.sql` adds
+//! `deleted_at`), so only the `User` arm carries `AND deleted_at IS NULL`; a
+//! trashed staff member must not hold a slot. Neither `locations` nor `terminals`
+//! has that column — their rows are removed outright — so their arm is empty and a
+//! deleted row frees its index by no longer existing. Adding a `deleted_at` to
+//! either table later would make its arm silently over-allocate unless this arm is
+//! updated with it.
+//!
+//! Design and decisions: docs/plans/_active/receipt-hierarchy-code.md
 
 use chrono::{DateTime, FixedOffset};
 use rusqlite::{OptionalExtension, params};
 
 use crate::CoreError;
 
-/// Largest index id the two-hex-digit field can express.
-pub const INDEX_ID_MAX: i64 = 0xFF;
+/// Largest index id the 4-digit Base62 field can express: 62^4 - 1 = 14,776,335.
+pub const INDEX_ID_MAX: i64 = 14_776_335;
 
 /// Display sentinel for "no entity" — a kiosk sale has no staff.
 pub const INDEX_ID_NONE: i64 = 0x00;
@@ -51,22 +61,78 @@ impl EntityIndexKind {
     }
 }
 
-/// Render an index id as the two uppercase hex digits used in the code.
+/// Base62 character table: 0–9 (0..9), a–z (10..35), A–Z (36..61).
+pub const BASE62_ALPHABET: &[u8; 62] =
+    b"0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+
+/// Format an index id as a dynamic-width Base62 string (minimum 2 characters).
+///
+/// - `value <= 0`: `"00"` (the [`INDEX_ID_NONE`] sentinel)
+/// - `1..=3843` (< 62^2): padded to 2 characters (`01`–`zz`)
+/// - `3844..=238327` (< 62^3): 3 characters (`100`–`zzz`)
+/// - `238328..=14776335` (< 62^4): 4 characters (`1000`–`zzzz`)
+#[must_use]
+pub fn format_base62_index(value: i64) -> String {
+    if value <= 0 {
+        return "00".to_string();
+    }
+    let mut n = value as u64;
+    let mut digits = Vec::new();
+    while n > 0 {
+        let rem = (n % 62) as usize;
+        digits.push(BASE62_ALPHABET[rem] as char);
+        n /= 62;
+    }
+    digits.reverse();
+    if digits.len() < 2 {
+        format!("0{}", digits.into_iter().collect::<String>())
+    } else {
+        digits.into_iter().collect()
+    }
+}
+
+/// Parse a Base62 index string back into its numeric index id.
+///
+/// Returns `None` if the string contains invalid characters, is empty,
+/// or exceeds [`INDEX_ID_MAX`].
+#[must_use]
+pub fn parse_base62_index(s: &str) -> Option<i64> {
+    let s = s.trim();
+    if s.is_empty() {
+        return None;
+    }
+    let mut acc: u64 = 0;
+    for &b in s.as_bytes() {
+        let val = match b {
+            b'0'..=b'9' => u64::from(b - b'0'),
+            b'a'..=b'z' => u64::from(b - b'a' + 10),
+            b'A'..=b'Z' => u64::from(b - b'A' + 36),
+            _ => return None,
+        };
+        acc = acc.checked_mul(62)?.checked_add(val)?;
+    }
+    let signed = i64::try_from(acc).ok()?;
+    if signed > INDEX_ID_MAX {
+        return None;
+    }
+    Some(signed)
+}
+
+/// Legacy alias for [`format_base62_index`].
 #[must_use]
 pub fn index_hex(value: i64) -> String {
-    format!("{value:02X}")
+    format_base62_index(value)
 }
 
 impl crate::db::Store<'_> {
-    /// Allocate the next index id for `(tenant_id, kind)`.
+    /// Allocate the lowest available index id for `(tenant_id, kind)`.
     ///
-    /// Monotonic and never reused. The claim is one statement — the
-    /// increment reads the row's own `next_value` at write time — so two
-    /// interleaved allocations can never observe the same ordinal.
+    /// Finds the lowest positive integer (1, 2, 3...) not currently in use by
+    /// an active entity in the tenant's database. When an entity (location,
+    /// terminal, staff) is deleted, its index id is reclaimed and recycled for
+    /// the next new entity.
     ///
-    /// Must be called inside a transaction. On exhaustion the caller is
-    /// expected to roll back, which is what stops a refused allocation
-    /// from consuming an index anyway.
+    /// Must be called inside a transaction.
     pub fn allocate_entity_index(
         &self,
         tx: &rusqlite::Transaction<'_>,
@@ -74,82 +140,81 @@ impl crate::db::Store<'_> {
         kind: EntityIndexKind,
         now: &str,
     ) -> Result<i64, CoreError> {
-        // Seed 2, read `next_value - 1`: the stored cursor then always
-        // means "the next id to hand out", including on the very first
-        // insert, which no conflict branch ever touches.
-        let allocated: i64 = tx.query_row(
-            "INSERT INTO entity_index_cursors (tenant_id, entity_kind, next_value, updated_at)
-             VALUES (?1, ?2, 2, ?3)
-             ON CONFLICT(tenant_id, entity_kind)
-                 DO UPDATE SET next_value = next_value + 1, updated_at = ?3
-             RETURNING next_value - 1",
-            params![tenant_id, kind.as_str(), now],
-            |row| row.get(0),
-        )?;
+        Self::allocate_entity_index_with_ceiling(tx, tenant_id, kind, now, INDEX_ID_MAX)
+    }
 
-        if allocated > INDEX_ID_MAX {
+    /// Allocate the lowest available index id for `(tenant_id, kind)` on an
+    /// arbitrary connection (which may already be inside a transaction).
+    pub fn allocate_entity_index_on_conn(
+        &self,
+        conn: &rusqlite::Connection,
+        tenant_id: &str,
+        kind: EntityIndexKind,
+        now: &str,
+    ) -> Result<i64, CoreError> {
+        Self::allocate_entity_index_with_ceiling_on_conn(conn, tenant_id, kind, now, INDEX_ID_MAX)
+    }
+
+    pub(crate) fn allocate_entity_index_with_ceiling(
+        tx: &rusqlite::Transaction<'_>,
+        tenant_id: &str,
+        kind: EntityIndexKind,
+        now: &str,
+        ceiling: i64,
+    ) -> Result<i64, CoreError> {
+        Self::allocate_entity_index_with_ceiling_on_conn(tx, tenant_id, kind, now, ceiling)
+    }
+
+    pub(crate) fn allocate_entity_index_with_ceiling_on_conn(
+        conn: &rusqlite::Connection,
+        tenant_id: &str,
+        kind: EntityIndexKind,
+        _now: &str,
+        ceiling: i64,
+    ) -> Result<i64, CoreError> {
+        let (table, extra_where) = match kind {
+            EntityIndexKind::Location => ("locations", ""),
+            EntityIndexKind::Terminal => ("terminals", ""),
+            EntityIndexKind::User => ("users", "AND deleted_at IS NULL"),
+        };
+
+        let query = format!(
+            "SELECT CASE 
+                WHEN NOT EXISTS (
+                    SELECT 1 FROM {table} 
+                    WHERE tenant_id = ?1 AND index_id = 1 {extra_where}
+                ) THEN 1
+                ELSE COALESCE(
+                    (
+                        SELECT t1.index_id + 1
+                        FROM {table} t1
+                        WHERE t1.tenant_id = ?1 AND t1.index_id IS NOT NULL {extra_where}
+                          AND NOT EXISTS (
+                              SELECT 1 FROM {table} t2
+                              WHERE t2.tenant_id = ?1 AND t2.index_id = t1.index_id + 1 {extra_where}
+                          )
+                        ORDER BY t1.index_id ASC
+                        LIMIT 1
+                    ),
+                    1
+                )
+            END"
+        );
+
+        let allocated: i64 = conn.query_row(&query, params![tenant_id], |row| row.get(0))?;
+
+        if allocated > ceiling {
             return Err(CoreError::Validation {
                 field: "index_id",
                 message: format!(
-                    "index id exhausted: {} for tenant '{}' has reached {INDEX_ID_MAX} \
-                     (0xFF); the two-hex-digit field cannot express another",
+                    "index id exhausted: {} for tenant '{}' has reached {ceiling}; \
+                     the 4-digit Base62 field cannot express another",
                     kind.as_str(),
                     tenant_id
                 ),
             });
         }
         Ok(allocated)
-    }
-
-    /// Record what a retired index id *was*, so historic codes resolve.
-    ///
-    /// Append-only and idempotent: re-retiring the same index is a no-op.
-    /// This does not free the index — only `entity_index_cursors` decides
-    /// what gets handed out, and it never goes backwards.
-    // One argument over clippy's default, deliberately: the list mirrors the
-    // `entity_index_tombstones` row it inserts — tenant, kind, index, entity,
-    // label, retired_at — plus `tx` and `now`. Grouping them into a struct
-    // would hide the correspondence that is this method's whole point.
-    #[allow(clippy::too_many_arguments)]
-    pub fn retire_entity_index(
-        &self,
-        tx: &rusqlite::Transaction<'_>,
-        tenant_id: &str,
-        kind: EntityIndexKind,
-        index_id: i64,
-        entity_id: &str,
-        label: &str,
-        now: &str,
-    ) -> Result<(), CoreError> {
-        tx.execute(
-            "INSERT INTO entity_index_tombstones
-                 (tenant_id, entity_kind, index_id, entity_id, label, retired_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6)
-             ON CONFLICT(tenant_id, entity_kind, index_id) DO NOTHING",
-            params![tenant_id, kind.as_str(), index_id, entity_id, label, now],
-        )?;
-        Ok(())
-    }
-
-    /// What an index id resolved to, for a code that outlived its row.
-    ///
-    /// Returns the tombstone label when the entity was retired, or `None`
-    /// when this tenant never issued that index.
-    pub fn retired_entity_label(
-        &self,
-        tenant_id: &str,
-        kind: EntityIndexKind,
-        index_id: i64,
-    ) -> Result<Option<String>, CoreError> {
-        self.conn
-            .query_row(
-                "SELECT label FROM entity_index_tombstones
-                  WHERE tenant_id = ?1 AND entity_kind = ?2 AND index_id = ?3",
-                params![tenant_id, kind.as_str(), index_id],
-                |row| row.get(0),
-            )
-            .optional()
-            .map_err(Into::into)
     }
 }
 
@@ -162,16 +227,20 @@ pub const SEQUENCE_MIN: i64 = 1;
 /// (999,999 ≈ 2,739/day). Per §4.6 the claim refuses rather than wraps.
 pub const SEQUENCE_MAX: i64 = 999_999;
 
-/// Assemble the frozen 22-character receipt code.
+/// Assemble the frozen receipt code.
 ///
 /// Pure: it takes the already-resolved indices and the store-local date, so
 /// it is trivially testable and the same code that freezes at checkout also
 /// renders in a reprint six months later. The caller passes
-/// [`INDEX_ID_NONE`] (0x00) for `staff_idx` when the sale has no staff
-/// (`sales.user_id` is null — kiosk / system sale), so the code never
-/// prints a staff index that was never assigned.
+/// [`INDEX_ID_NONE`] (0) for `staff_idx` when the sale has no staff
+/// (`sales.user_id` is null — kiosk / system sale), so the code prints "00".
 ///
-/// Format: `{loc:02X}-{term:02X}-{YYMMDD}-{staff:02X}-{seq:06}`
+/// Format: `{loc_base62}-{term_base62}-{YYMMDD}-{staff_base62}-{seq:06}`
+///
+/// Length:
+/// - 22 characters for standard operations (all indices < 3,844).
+/// - 23–25 characters with 3-digit indices.
+/// - 24–28 characters with 4-digit indices.
 #[must_use]
 pub fn assemble_receipt_code(
     loc_idx: i64,
@@ -182,10 +251,10 @@ pub fn assemble_receipt_code(
 ) -> String {
     format!(
         "{}-{}-{}-{}-{:06}",
-        index_hex(loc_idx),
-        index_hex(term_idx),
+        format_base62_index(loc_idx),
+        format_base62_index(term_idx),
         yymmdd,
-        index_hex(staff_idx),
+        format_base62_index(staff_idx),
         seq
     )
 }
@@ -271,7 +340,7 @@ impl crate::db::Store<'_> {
         Ok(idx)
     }
 
-    /// Mint the frozen 22-char receipt hierarchy code for a sale, or return
+    /// Mint the frozen receipt hierarchy code for a sale, or return
     /// `None` when it cannot be formed.
     ///
     /// Returns `(display_code, terminal_id)` — `terminal_id` is the raw
@@ -334,33 +403,50 @@ impl crate::db::Store<'_> {
             )
             .optional()?;
         let (yymmdd, fiscal_year) = resolve_receipt_date(now_utc, tz.as_deref().unwrap_or("UTC"))?;
-        let seq = self.claim_receipt_sequence(tx, tenant_id, &index_hex(term_idx), &fiscal_year)?;
+        let seq = self.claim_receipt_sequence(
+            tx,
+            tenant_id,
+            &format_base62_index(term_idx),
+            &fiscal_year,
+        )?;
         let code = assemble_receipt_code(loc_idx, term_idx, &yymmdd, staff_idx, seq);
         Ok((Some(code), terminal_id))
     }
 }
 
-/// Parse a stored `locations.timezone` value (`'+HH:MM'` / `'-HH:MM'` /
-/// `'UTC'` / `'Z'`) into a total offset in seconds, or `None` when the value
-/// is not a fixed offset core can interpret (e.g. an IANA name). Mirrors the
-/// contract enforced by [`crate::db::reports::datetime::tz_modifier`].
+/// Parse a stored `locations.timezone` value into a total offset in seconds, or
+/// `None` when the value cannot be resolved at all.
+///
+/// MSL-29: this used to parse ONLY the numeric forms (`'+HH:MM'` / `'-HH:MM'` /
+/// `'UTC'` / `'Z'`), so an IANA zone name — a value the model SUPPORTS and the
+/// reports path resolves — fell to UTC here. A store set to `Asia/Jakarta` got
+/// reports bucketed at +07 (`tz_modifier` -> `parse_utc_offset` ->
+/// `offset_for_zone`) while its RECEIPT NUMBERS were dated at +00, and the date
+/// feeds both the printed `yymmdd` and the `fiscal_year` that selects the
+/// sequence: the receipt could land in the wrong fiscal year with no trace
+/// (`receipt_code.rs` has zero `tracing::` calls, while `tz_modifier` warns on
+/// its own fallback).
+///
+/// It now delegates to the same resolver `tz_modifier` uses, so the two paths
+/// cannot disagree on one stored value. The shared helper returns a `±HH:MM`
+/// string, which is also why an IANA name is resolved rather than passed on.
 fn offset_seconds(tz: &str) -> Option<i64> {
-    let tz = tz.trim();
-    if tz.is_empty() || tz.eq_ignore_ascii_case("UTC") || tz.eq_ignore_ascii_case("Z") {
+    // `Z` is the one spelling `parse_fixed_offset` does not carry, and it means
+    // UTC — the same answer, so normalise it before delegating.
+    let raw = tz.trim();
+    if raw.eq_ignore_ascii_case("Z") {
         return Some(0);
     }
-    // An offset with no sign at all is already `None` for this function, so
-    // `?` carries the second arm instead of a nested match that re-says it.
-    let (sign, rest) = match tz.strip_prefix('+') {
+    let offset = crate::db::reports::parse_utc_offset(raw)?;
+    // `parse_utc_offset` is the single source of the `±HH:MM` shape, so this
+    // split cannot see a third form; an unparsable result is unresolvable.
+    let (sign, rest) = match offset.strip_prefix('+') {
         Some(r) => (1i64, r),
-        None => (-1i64, tz.strip_prefix('-')?),
+        None => (-1i64, offset.strip_prefix('-')?),
     };
     let (h, m) = rest.split_once(':')?;
     let h: i64 = h.parse().ok()?;
     let m: i64 = m.parse().ok()?;
-    if !(0..=14).contains(&h) || !(0..=59).contains(&m) {
-        return None;
-    }
     Some(sign * (h * 3600 + m * 60))
 }
 
@@ -386,7 +472,16 @@ pub fn resolve_receipt_date(
         message: format!("invalid UTC timestamp '{now_utc}': {e}"),
     })?;
     let secs = offset_seconds(location_timezone).unwrap_or(0);
-    let offset = FixedOffset::east_opt(secs as i32).ok_or_else(|| CoreError::Validation {
+    // `i32::try_from` rather than `as i32`: the `ok_or_else` below already
+    // treats an out-of-range offset as a validation failure, so the narrowing
+    // should BE that check rather than a silent wrap in front of it. With
+    // `as`, an offset beyond `i32` would wrap to a plausible-looking value and
+    // the error branch could never fire.
+    let offset_i32 = i32::try_from(secs).map_err(|_| CoreError::Validation {
+        field: "receipt_date",
+        message: format!("timezone offset out of range: {secs}s"),
+    })?;
+    let offset = FixedOffset::east_opt(offset_i32).ok_or_else(|| CoreError::Validation {
         field: "receipt_date",
         message: format!("timezone offset out of range: {secs}s"),
     })?;

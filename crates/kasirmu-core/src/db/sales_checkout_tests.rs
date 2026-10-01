@@ -69,7 +69,7 @@ fn single_line_sale(sku: &str, actor: Option<&str>) -> Sale {
     cart.add_line(CartLine::new(Sku::new(sku), 1, price(1000)))
         .unwrap();
     let mut sale = Sale::from_cart(&cart).unwrap();
-    sale.user_id = actor.map(|s| s.to_string());
+    sale.user_id = actor.map(std::string::ToString::to_string);
     sale
 }
 

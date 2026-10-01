@@ -54,6 +54,7 @@ payment-exchange-rate = Exchange rate
 payment-rate-source = Rate source
 payment-rate-timestamp = Rate timestamp
 payment-rate-source-manual = manual
+payment-rate-unknown = Could not load the exchange rate for this pair
 payment-receipt-currency-aria =
     .aria-label = Receipt currency information
 payment-charged-in = Charged in
@@ -102,6 +103,7 @@ payment-edc-declined = Card declined
 payment-edc-not-ready = Card terminal is not ready ({ $status })
 payment-edc-failed = Card payment failed: { $reason }
 payment-edc-dismiss = Back to payment
+payment-edc-select-terminal = Select Card Terminal
 payment-qris-scan = Scan with your payment app
 payment-qris-waiting = Waiting for payment...
 payment-qris-manual-confirm = I received the payment
@@ -171,7 +173,15 @@ payment-complete = Complete
 payment-retry-aria =
     .aria-label = Retry payment
 payment-retry = Retry
-payment-toast-currency-failed = Failed to load currency data
+
+# The picker list and the store default are SEPARATE reads with separate
+# permissions -- list_currencies_scoped gates nothing, while the default and
+# the rate list require SETTINGS_READ (crates/kasirmu-bridge/src/currency.rs:262
+# and :107) -- so one can be refused while the other answers. Each names
+# itself here: an empty picker and the sale's own currency standing in for
+# the default are both answers the screen never received.
+payment-currency-list-unknown = The list of supported currencies could not be loaded.
+payment-default-currency-unknown = The default currency for this store could not be loaded.
 payment-toast-customers-failed = Failed to load customers
 payment-toast-loyalty-failed = Failed to load loyalty account
 payment-toast-points-value-failed = Failed to load points value
@@ -316,6 +326,11 @@ sales-history-void-reason-placeholder =
     .placeholder = e.g. Customer cancellation
 sales-history-void-default-reason = Voided from sales history
 sales-history-void-error = Failed to void order
+# Shown inside the e-Faktur stamp modal when the NSFP write fails (ERR-10: the
+# raw backend message used to be rendered here instead).
+sales-history-stamp-error = Failed to stamp the e-Faktur NSFP
+# Toast shown when creating a Faktur Pengganti fails.
+sales-history-pengganti-error = Failed to create the Faktur Pengganti
 
 # Sales History export
 sales-history-export-id = Sale ID
@@ -474,6 +489,28 @@ refund-line-qty = Qty
 refund-line-total = Total
 refund-action-refund = Refund
 refund-status-refunded = Refunded
+# The refund list could not be READ. Distinct from refund-previous-refunds, which
+# asserts there are none: this one says the screen does not know.
+refund-history-unknown = Refunds for this sale could not be loaded
+
+# The per-line cost / margin report could not be READ. The Cost, Margin and
+# Margin % columns are hidden in this state, and this is the only place the gap
+# is named -- a blank cost cell would read as a cheaper line.
+margin-history-unknown = Cost and margin for this sale could not be loaded
+
+# The CASHIER roster could not be READ. This is not a malfunction:
+# list_staff_scoped requires STAFF_READ, so a session that may still read sales
+# history can be refused this one list. Without this key the Cashier filter reads
+# as 'All Cashiers' and every name in the table falls back to a truncated id.
+sales-history-staff-unknown = Cashier names could not be loaded
+
+# The CSV export finished, but the per-line margin read failed for N of the sales
+# in it, so those rows carry blank cost and margin cells. The count is the
+# number of SALES whose margins are missing, not the number of lines. No .count
+# attribute: a Fluent message's value must precede its attributes, and one was
+# written here first -- requiredLocalized then returned the KEY ID, so the toast
+# read 'sales-history-export-margins-unknown' to the operator.
+sales-history-export-margins-unknown = Cost and margin could not be read for { $count } sale(s); those rows are exported without them
 
 # Item Modifier Modal
 modifier-no-options = No options available
@@ -602,6 +639,7 @@ pos-shift-difference = Difference
 pos-shift-expected-cash = Expected Cash
 pos-shift-loading = Loading shift…
 pos-shift-no-active = No active shift
+pos-shift-unavailable = Shifts unavailable on this device
 pos-shift-elapsed = { $h ->
     [0] { $m }m
    *[other] { $h }h { $m }m
@@ -691,7 +729,6 @@ pos-open-bill-saving = Saving…
 pos-open-bill-save = Save Open Bill
 pos-open-bills-title = Open Bills
 pos-open-bills-close-aria = Close open bills list
-pos-open-bills-empty = No open bills.
 pos-open-bills-resume = Resume
 
 # ── Retail POS load error / retry ──
@@ -1036,3 +1073,20 @@ retail-edit-image-uploading = Uploading image…
 retail-edit-image-error = Could not update the image. Try again.
 retail-edit-image-menu-note = Menu items always have exactly one image.
 retail-edit-image-alt = { $name } image { $slot }
+
+# ── Cart line kitchen notes ──
+pos-cart-line-add-note = Add Note
+pos-cart-line-edit-note = Edit Note
+pos-cart-line-note-title = Special Request
+pos-cart-line-note-placeholder = e.g. No onion, less ice, allergy...
+pos-cart-line-note-clear = Clear
+
+# ── Save Tab / Open Bills integration ──
+pos-cart-save-tab = Save Tab
+pos-cart-update-tab = Update Tab
+pos-cart-update-tab-aria = Update open tab for this table
+pos-cart-customer-label = Customer
+pos-cart-customer-placeholder = Name (optional)...
+pos-cart-customer-aria = Customer name (optional)
+pos-cart-new-tab = New Tab
+pos-cart-new-tab-title = Clear active cart to start a new tab

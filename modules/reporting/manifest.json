@@ -3,9 +3,16 @@
   "name": "Reporting",
   "version": "1.0.0",
   "description": "Reporting module: generates and exports sales, inventory, and financial reports. Wires into sale.completed to populate report data.",
-  "dependencies": ["inventory", "sales"],
+  "dependencies": [
+    "inventory",
+    "sales"
+  ],
   "permissions": [
     "reports:view",
     "reports:export"
+  ],
+  "capabilities": [
+    "read:inventory",
+    "read:sales"
   ]
 }

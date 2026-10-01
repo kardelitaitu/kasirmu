@@ -236,6 +236,75 @@ fn inv_sync_enqueuer_multiple_events() {
 
 // ── SaleSyncEnqueuer tests ───────────────────────────────────────
 
+/// The enqueued row must carry the SALE store, not a hardcoded "default".
+///
+/// `enqueue_offline_priority` pins `"default"` as the tenant, and the
+/// `SaleCompleted` event has always carried `store_id`. Every fixture in this
+/// file set `store_id: None`, which is exactly how the mismatch survived: the
+/// queue is READ per tenant, so a multi-store sale filed under `"default"` is
+/// never pushed by its own store daemon, and no test looked. The sibling
+/// in-transaction lane already pins the correct behaviour
+/// (`enqueue_offline_in_tx_commits_with_its_transaction_and_keeps_the_tenant`),
+/// whose comment says the hardcoded helper "would reintroduce the multi-store
+/// bug this one avoids" — this closes the same hole on the event lane.
+#[test]
+fn sync_enqueuer_files_the_row_under_the_sale_store_not_a_hardcoded_default() {
+    let db = fresh_db();
+    let handler = SaleSyncEnqueuer::new(db.clone());
+
+    let event = SaleCompleted {
+        sale_id: "sale-store-7".into(),
+        store_id: Some("store-7".into()),
+        line_items: vec![],
+        total_minor: 0,
+        currency: "USD".into(),
+        customer_id: None,
+    };
+
+    handler.handle(&event).unwrap();
+
+    let conn = db.lock().unwrap();
+    let tenant: String = conn
+        .query_row(
+            "SELECT tenant_id FROM offline_queue WHERE action = 'complete_sale'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        tenant, "store-7",
+        "the sale store, not the enqueue helper hardcoded default"
+    );
+}
+
+/// An event without a store keeps the previous behaviour: "default".
+#[test]
+fn sync_enqueuer_falls_back_to_default_without_a_store() {
+    let db = fresh_db();
+    let handler = SaleSyncEnqueuer::new(db.clone());
+
+    let event = SaleCompleted {
+        sale_id: "sale-no-store".into(),
+        store_id: None,
+        line_items: vec![],
+        total_minor: 0,
+        currency: "USD".into(),
+        customer_id: None,
+    };
+
+    handler.handle(&event).unwrap();
+
+    let conn = db.lock().unwrap();
+    let tenant: String = conn
+        .query_row(
+            "SELECT tenant_id FROM offline_queue WHERE action = 'complete_sale'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(tenant, "default", "a single-store install is unchanged");
+}
+
 #[test]
 fn sync_enqueuer_creates_offline_entry() {
     let db = fresh_db();

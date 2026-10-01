@@ -1,9 +1,9 @@
 //! Workspace CRUD — workspace types, instances, navigation screens,
 //! per-user instance assignments, role-to-type access, and session resolution.
 /*
-last audited DD-MM-YY by DSH-Agent
+last audited (date unknown) by DSH-Agent
 crate: kasirmu-core (workspaces) | status: SAFE | lint: CLEAN
-findings: ADR #4 resolution chain well built (role-owner bypass -> explicit user instances -> role types), quota enforcement checks the signed entitlement's allowed_types (C3.2), no-nesting caveat documented per RUST-08 with a pinned test; dynamic SQL interpolates only internal param markers (injection-safe); COR-30 FIXED DD-MM-YY — all access-resolution .unwrap_or(false) sites (workspaces_instances.rs + workspaces_lifecycle.rs) now propagate DB errors via ? — the access gate fails closed instead of failing toward the MORE PERMISSIVE tier on a read error (same family as COR-11/25). hardcoded role-id allowlist (8 variants) is fragile if presets change.
+findings: ADR #4 resolution chain well built (role-owner bypass -> explicit user instances -> role types), quota enforcement checks the signed entitlement's allowed_types (C3.2), no-nesting caveat documented per RUST-08 with a pinned test; dynamic SQL interpolates only internal param markers (injection-safe); COR-30 FIXED (date unknown) — all access-resolution .unwrap_or(false) sites (workspaces_instances.rs + workspaces_lifecycle.rs) now propagate DB errors via ? — the access gate fails closed instead of failing toward the MORE PERMISSIVE tier on a read error (same family as COR-11/25). hardcoded role-id allowlist (8 variants) is fragile if presets change.
 next: none | perf: indexed resolution queries
 */
 //!
@@ -181,25 +181,35 @@ impl Store<'_> {
         role_id: &str,
         user_id: Option<&str>,
     ) -> Result<Vec<WorkspaceRow>, CoreError> {
-        if role_id == "role-owner"
-            || role_id == "role-admin"
-            || role_id == "admin"
-            || role_id == "role-manager"
-            || role_id == "role-staff"
-            || role_id == "role-auditor"
-            || role_id == "manager"
-            || role_id == "auditor"
+        // MSL-21: three of the eight literals below are not role ids at all —
+        // `admin`, `manager`, `auditor`. Every preset id is `role-`-prefixed and
+        // `users.role_id` is `REFERENCES roles(id)`, so those arms were dead. The
+        // four real ones are now taken from the taxonomy.
+        //
+        // NOTE the deliberate difference from
+        // `platform_core::rbac::role_bypasses_workspace_assignment`, which does NOT
+        // admit `role-staff`: this legacy reader resolves from the pre-ADR-#4
+        // tables (`user_workspaces`, `role_workspaces`) and its bypass historically
+        // included Staff. It is ALSO unreachable — `list_workspaces_legacy` has no
+        // caller outside its own tests — so the divergence is inert and is recorded
+        // rather than silently reconciled: changing a policy on a dead path would
+        // make the next reader think the two agree.
+        if platform_core::rbac::builtin_roles::OWNER == role_id
+            || platform_core::rbac::builtin_roles::ADMIN == role_id
+            || platform_core::rbac::builtin_roles::MANAGER == role_id
+            || platform_core::rbac::builtin_roles::STAFF == role_id
+            || platform_core::rbac::role_bypasses_workspace_assignment(role_id)
         {
             return self.list_all_workspace_types();
         }
 
         if let Some(uid) = user_id {
-            let user_keys: Vec<String> = self
+            let mut stmt = self
                 .conn
-                .prepare("SELECT ws_key FROM user_workspaces WHERE user_id = ?1")?
+                .prepare("SELECT ws_key FROM user_workspaces WHERE user_id = ?1")?;
+            let user_keys: Vec<String> = stmt
                 .query_map(params![uid], |row| row.get::<_, String>(0))?
-                .filter_map(|r| r.ok())
-                .collect();
+                .collect::<Result<Vec<_>, _>>()?;
 
             if !user_keys.is_empty() {
                 let placeholders: Vec<String> = user_keys

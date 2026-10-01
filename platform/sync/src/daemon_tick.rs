@@ -22,6 +22,103 @@ use kasirmu_core::offline::OfflineQueueItem;
 /// `settings_sink` is invoked after the pull phase applies a remote
 /// `settings.update` (SYNC-10) so the change is reactive in this
 /// terminal's UI even though it was made elsewhere.
+/// Persist the transport's current stamped counter, when stamping is on.
+///
+/// Best-effort (a failed write costs one restart's worth of detection,
+/// never the pushed data), and called after EVERY push attempt — success
+/// or failure. `SyncTransport::push_items` burns one counter per queued item
+/// BEFORE the HTTP call, so on a rejected push the in-memory counter has
+/// already moved past the persisted one; writing it back only on success
+/// would let the surviving counter range be re-emitted, and a restart would
+/// resume from a value the server has already seen (detection then silently
+/// stops for this terminal).
+async fn persist_stamped_counter(db: &DbConnection, transport: &SyncTransport) {
+    let Some(counter) = transport.last_stamped_counter() else {
+        return;
+    };
+    let db_clone = db.clone();
+    let value = counter.to_string();
+    let _ = tokio::task::spawn_blocking(move || {
+        let conn = db_clone.blocking_lock();
+        kasirmu_core::Store::new(&conn).set_setting(crate::crdt::CLOCK_KEY, &value)
+    })
+    .await;
+}
+
+/// Read this terminal's stamping seed: its configured id (when present) and
+/// the persisted logical clock.
+///
+/// Both push sites use this to decide whether to stamp: a terminal without an
+/// identity does not stamp, and its counter is meaningless. Reading the pair
+/// together keeps the two sites from drifting apart.
+///
+/// Returns `None` when stamping cannot be seeded SAFELY — either no terminal id,
+/// or the clock row exists but could not be read or parsed. The second case is
+/// not the same as an absent clock: `parse_counter` documents at length that a
+/// value which does not parse is an error rather than a `0`, because a fresh
+/// counter orders this terminal's next push in the past, the server classifies
+/// it `Stale`, and detection silently stops for this terminal — the exact
+/// outcome the caller's own doc warns about. `SettingsClockStore::load_counter`
+/// already returns `Err` here; this is the daemon's half of that one rule.
+pub(crate) async fn read_stamping_seed(db: &DbConnection) -> Option<(String, u64)> {
+    let db_clone = db.clone();
+    let read = tokio::task::spawn_blocking(move || {
+        let conn = db_clone.blocking_lock();
+        // `Ok(None)` = a normal 'no stamping' (no terminal identity). `Err` = the
+        // clock exists but cannot be read safely. The caller degrades both to
+        // unstamped, but only the second is an error worth logging.
+        let Some(terminal) = kasirmu_core::settings::Settings::get_sync_terminal_id(&conn)
+            .ok()
+            .flatten()
+        else {
+            return Ok(None);
+        };
+        // Absent clock -> `0` is correct and documented (`ClockStore::load_counter`
+        // says '0 if never written'). A present-but-unreadable or present-but-corrupt
+        // clock must NOT collapse to `0`; it propagates as an error so the caller
+        // degrades to unstamped instead of emitting a rewound counter.
+        let counter = match kasirmu_core::Store::new(&conn).get_setting(crate::crdt::CLOCK_KEY) {
+            Ok(Some(raw)) => crate::crdt::parse_counter(&raw).map_err(|e| e.to_string())?,
+            Ok(None) => 0,
+            Err(e) => return Err(e.to_string()),
+        };
+        Ok(Some((terminal, counter)))
+    })
+    .await;
+    match read {
+        Ok(Ok(seed)) => seed,
+        Ok(Err(e)) => {
+            tracing::error!(
+                error = %e,
+                "sync: the persisted clock could not be read or parsed; pushing WITHOUT vector stamps this cycle rather than rewinding the counter, which would make the server classify every push as stale"
+            );
+            None
+        }
+        Err(e) => {
+            tracing::error!(
+                error = %e,
+                "sync: the clock read panicked; pushing WITHOUT vector stamps this cycle"
+            );
+            None
+        }
+    }
+}
+
+/// Turn vector stamping on for `transport` when this terminal has an identity.
+///
+/// Seeding from the persisted clock is what stops a restart from rewinding the
+/// counter, and a rewound counter makes the server classify every push as
+/// stale — detection then quietly stops for this terminal.
+async fn with_stamping_seed(db: &DbConnection, transport: SyncTransport) -> SyncTransport {
+    match read_stamping_seed(db).await {
+        Some((terminal_id, counter)) => transport.with_vector_stamping(&terminal_id, counter),
+        // No terminal identity, or a clock that could not be read safely: leave the
+        // transport unstamped. The server treats an unstamped item as coming from a
+        // peer that predates vector support and skips detection for it — a defined
+        // degradation — whereas a rewound counter would mis-classify pushes as stale.
+        None => transport,
+    }
+}
 /// ADR sync-auth-hardening P1/P4: refresh the persisted API key and retry
 /// the push batch exactly once after an `AuthExpired` rejection. Returns
 /// (pushed, error) where `error` is set when the entire retry path fails
@@ -46,6 +143,7 @@ async fn push_retry_after_auth_refresh(
             read_config_and_pending(&conn)
         })
         .await
+        .unwrap_or(Ok((None, Vec::new())))
         .unwrap_or((None, Vec::new()))
     };
     let Some(retry_cfg) = retry_cfg else {
@@ -61,50 +159,21 @@ async fn push_retry_after_auth_refresh(
             Some("push rejected (401) and refreshed key is not usable".into()),
         );
     };
-    // Enable conflict-detection stamping when this terminal has an identity.
-    // The counter is seeded from the persisted clock and written back after
-    // the push, so a restart resumes where it left off instead of rewinding.
-    let seeded = {
-        let db_clone = db.clone();
-        tokio::task::spawn_blocking(move || {
-            let conn = db_clone.blocking_lock();
-            let terminal = kasirmu_core::settings::Settings::get_sync_terminal_id(&conn)
-                .ok()
-                .flatten();
-            let counter = kasirmu_core::Store::new(&conn)
-                .get_setting(crate::crdt::CLOCK_KEY)
-                .ok()
-                .flatten()
-                .and_then(|raw| crate::crdt::parse_counter(&raw).ok())
-                .unwrap_or(0);
-            (terminal, counter)
-        })
-        .await
-        .unwrap_or((None, 0))
-    };
-    let transport = match seeded.0 {
-        Some(terminal_id) => transport.with_vector_stamping(&terminal_id, seeded.1),
-        None => transport,
-    };
+    let transport = with_stamping_seed(db, transport).await;
 
     match transport.push_items(&pending).await {
         Ok(results) => {
             let pushed = results.len();
-            if let Some(counter) = transport.last_stamped_counter() {
-                let db_clone = db.clone();
-                let value = counter.to_string();
-                // Persisting is best-effort: a failed write costs one restart's
-                // worth of detection, never the pushed data.
-                let _ = tokio::task::spawn_blocking(move || {
-                    let conn = db_clone.blocking_lock();
-                    kasirmu_core::Store::new(&conn).set_setting(crate::crdt::CLOCK_KEY, &value)
-                })
-                .await;
-            }
+            persist_stamped_counter(db, &transport).await;
             let apply_err = apply_push_results(db, pending, results).await;
             (pushed, apply_err)
         }
-        Err(retry_err) => (0, Some(retry_err.to_string())),
+        Err(retry_err) => {
+            // Even a rejected push burnt one counter per queued item, so the
+            // persisted clock must still advance or the range can be re-emitted.
+            persist_stamped_counter(db, &transport).await;
+            (0, Some(retry_err.to_string()))
+        }
     }
 }
 
@@ -196,12 +265,18 @@ pub(super) async fn run_tick(
     let db_clone = db.clone();
     let (config, pending, read_error) = match tokio::task::spawn_blocking(move || {
         let conn = db_clone.blocking_lock();
-        let (cfg, pending) = read_config_and_pending(&conn);
-        (cfg, pending)
+        read_config_and_pending(&conn)
     })
     .await
     {
-        Ok((cfg, pending)) => (cfg, pending, None),
+        Ok(Ok((cfg, pending))) => (cfg, pending, None),
+        // The queue read failed inside the blocking closure. This is NOT an
+        // empty queue: report the read as the cycle's error so the operator
+        // sees a failed read instead of a clean, idle-looking tick.
+        Ok(Err(msg)) => {
+            tracing::error!(error = %msg, "sync daemon read phase failed");
+            (None, Vec::new(), Some(msg))
+        }
         Err(join_err) => {
             let msg = format!("sync config read panicked: {join_err}");
             tracing::error!(error = %msg, "sync daemon read phase failed");
@@ -235,50 +310,12 @@ pub(super) async fn run_tick(
                 }
             };
             if let Some(transport) = transport {
-                // Enable conflict-detection stamping when this terminal has an
-                // identity. The counter is seeded from the persisted clock and
-                // written back after the push: a counter that rewinds on
-                // restart makes the server classify every push as stale, and
-                // detection would quietly stop for this terminal.
-                let seeded = {
-                    let db_clone = db.clone();
-                    tokio::task::spawn_blocking(move || {
-                        let conn = db_clone.blocking_lock();
-                        let terminal =
-                            kasirmu_core::settings::Settings::get_sync_terminal_id(&conn)
-                                .ok()
-                                .flatten();
-                        let counter = kasirmu_core::Store::new(&conn)
-                            .get_setting(crate::crdt::CLOCK_KEY)
-                            .ok()
-                            .flatten()
-                            .and_then(|raw| crate::crdt::parse_counter(&raw).ok())
-                            .unwrap_or(0);
-                        (terminal, counter)
-                    })
-                    .await
-                    .unwrap_or((None, 0))
-                };
-                let transport = match seeded.0 {
-                    Some(terminal_id) => transport.with_vector_stamping(&terminal_id, seeded.1),
-                    None => transport,
-                };
+                let transport = with_stamping_seed(db, transport).await;
 
                 match transport.push_items(&pending).await {
                     Ok(results) => {
                         pushed = results.len();
-                        if let Some(counter) = transport.last_stamped_counter() {
-                            let db_clone = db.clone();
-                            let value = counter.to_string();
-                            // Best-effort: a failed write costs one restart's
-                            // worth of detection, never the pushed data.
-                            let _ = tokio::task::spawn_blocking(move || {
-                                let conn = db_clone.blocking_lock();
-                                kasirmu_core::Store::new(&conn)
-                                    .set_setting(crate::crdt::CLOCK_KEY, &value)
-                            })
-                            .await;
-                        }
+                        persist_stamped_counter(db, &transport).await;
                         // Phase 3: Apply push results to DB (blocking).
                         // SYNC-02: carry the FULL local items (not just ids)
                         // so a conflict is resolved by the shared ADR #21
@@ -290,6 +327,10 @@ pub(super) async fn run_tick(
                     }
                     Err(e) => {
                         pushed = 0;
+                        // Even a rejected push burnt one counter per queued
+                        // item; persist the advanced clock so the range cannot
+                        // be re-emitted (see `persist_stamped_counter`).
+                        persist_stamped_counter(db, &transport).await;
                         // ADR #11: If the server migrated, update the local
                         // URL so the next cycle connects to the new server.
                         if let SyncError::ServerMigrated { new_url } = &e {
@@ -322,17 +363,46 @@ pub(super) async fn run_tick(
             // fetch updates newer than the last successfully-applied page
             // (previously every cycle pulled the ENTIRE queue and re-applied
             // stock/sale mutations, silently corrupting inventory).
-            let (pull_since, pull_cursor) = {
+            //
+            // An unreadable anchor must NOT default to `(None, None)`: that is
+            // the SAME state an operator rewind requests, so a read failure
+            // would silently force a full re-pull of the entire history every
+            // cycle, with no error surfaced. Propagate it to `sync_error`
+            // instead and skip the pull for this cycle.
+            let pull_anchor = {
                 let db_clone = db.clone();
                 tokio::task::spawn_blocking(move || {
                     let conn = db_clone.blocking_lock();
                     let store = Store::new(&conn);
-                    let st = store.get_sync_pull_state().unwrap_or_default();
-                    (st.since, st.cursor)
+                    store.get_sync_pull_state().map(|st| (st.since, st.cursor))
                 })
                 .await
-                .unwrap_or((None, None))
             };
+            let (pull_since, pull_cursor, anchor_readable) = match pull_anchor {
+                Ok(Ok(pair)) => (pair.0, pair.1, true),
+                Ok(Err(e)) => {
+                    let msg = format!(
+                        "could not read the durable pull anchor; skipping the pull rather than replaying all history: {e}"
+                    );
+                    tracing::error!(error = %e, "sync pull anchor read failed");
+                    if sync_error.is_none() {
+                        sync_error = Some(msg);
+                    }
+                    (None, None, false)
+                }
+                Err(join_err) => {
+                    let msg = format!("pull anchor read panicked: {join_err}");
+                    tracing::error!(error = %msg, "sync pull anchor read failed");
+                    if sync_error.is_none() {
+                        sync_error = Some(msg);
+                    }
+                    (None, None, false)
+                }
+            };
+            // `anchor_readable` tracks ONLY whether the anchor read succeeded.
+            // It must not be derived from `sync_error`, which may already hold a
+            // PUSH error (e.g. PlanRequired) that has nothing to do with the
+            // anchor — conflating them would skip a perfectly good pull.
 
             // RUST-05: fail closed for the pull phase as well.
             let transport = match SyncTransport::try_new(&cfg.server_url, cfg.api_key.as_deref()) {
@@ -349,7 +419,7 @@ pub(super) async fn run_tick(
                     None
                 }
             };
-            if let Some(transport) = transport {
+            if let Some(transport) = transport.filter(|_| anchor_readable) {
                 match transport
                     .pull_updates(pull_since.as_deref(), pull_cursor.as_deref())
                     .await
@@ -616,15 +686,35 @@ async fn update_daemon_status(
     sync_error: &Option<String>,
     read_error: &Option<String>,
 ) {
-    // Get pending count
+    // Get pending count. A read that fails reports PENDING_COUNT_UNKNOWN
+    // rather than 0: `sync_status` feeds the operator's "is my backlog
+    // draining?" indicator, so answering 0 for a dropped table / poisoned
+    // lock / panicked worker tells a broken terminal its queue is empty.
+    // Same third state and same two logged failure points as the PG daemon.
     let db_clone = db.clone();
-    let pending_count = tokio::task::spawn_blocking(move || {
+    let pending_count = match tokio::task::spawn_blocking(move || {
         let conn = db_clone.blocking_lock();
         let store = Store::new(&conn);
-        store.pending_offline_count().unwrap_or(0)
+        store.pending_offline_count()
     })
     .await
-    .unwrap_or(0);
+    {
+        Ok(Ok(count)) => count,
+        Ok(Err(e)) => {
+            tracing::warn!(
+                error = %e,
+                "sync status: could not read the offline queue depth; reporting unknown"
+            );
+            PENDING_COUNT_UNKNOWN
+        }
+        Err(e) => {
+            tracing::warn!(
+                error = %e,
+                "sync status: the queue-depth read panicked; reporting unknown"
+            );
+            PENDING_COUNT_UNKNOWN
+        }
+    };
 
     // Update daemon status
     let mut s = daemon_status.write().await;
@@ -766,6 +856,17 @@ fn apply_pulled_page(
         // be overwritten with our now-stale value. The re-read and the write
         // below share the same `blocking_lock()` hold, so no rewind can
         // interleave between them.
+        // Fail-SAFE, not fail-blind: if this re-read fails, `durable` becomes
+        // `(None, None)`, which will NOT match the captured `(prev_since,
+        // prev_cursor)` (unless both were already `None`, i.e. first sync), so
+        // `rewound` is true and we take the conservative branch below — retain
+        // the anchor and do not advance. The worst case is a spurious 'rewind
+        // detected' that leaves the old anchor in place, which only costs a
+        // re-pull; it can never overwrite a live anchor with a stale one.
+        // (The one exception is the genuine first-sync `(None, None)`, where
+        // there is nothing to clobber.) Contrast the anchor READ at the top of
+        // the tick, which must error — there a silent default would force a
+        // full-history replay instead of refusing one.
         let durable = store.get_sync_pull_state().unwrap_or_default();
         let rewound =
             durable.since.as_deref() != prev_since || durable.cursor.as_deref() != prev_cursor;

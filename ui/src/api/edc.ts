@@ -1,8 +1,8 @@
 // ── EDC card-present payment terminal ──────────────────────────────
 //
 // Card-present payments via the EDC terminal wired into the desktop
-// client (currently a success-mode mock). These wrappers call the
-// `edc_*` Tauri commands registered in lib.rs.
+// client. When multiple terminals exist, commands accept `terminalId`.
+// Omitted or null terminalId falls back to the default configured terminal.
 
 import { loggedInvoke } from '@/utils/logged-invoke';
 
@@ -29,34 +29,74 @@ export interface EdcResult {
   message: string;
 }
 
-/** Query the EDC terminal's current status. */
-export const edcTerminalStatus = (): Promise<EdcStatus> =>
-  loggedInvoke<EdcStatus>('edc_terminal_status');
+/** Configured card terminal DTO. */
+export interface EdcTerminalDto {
+  id: string;
+  name: string;
+  connectionType: 'wired' | 'wireless';
+  transport: 'serial' | 'usb' | 'bluetooth' | 'tcp';
+  address: string;
+  vendor?: string | null;
+  model?: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Arguments to create an EDC card terminal. */
+export interface CreateEdcTerminalDto {
+  name: string;
+  connectionType: 'wired' | 'wireless';
+  transport: 'serial' | 'usb' | 'bluetooth' | 'tcp';
+  address: string;
+  vendor?: string | null;
+  model?: string | null;
+  isActive?: boolean;
+}
+
+/** Arguments to update an EDC card terminal. */
+export interface UpdateEdcTerminalDto {
+  id: string;
+  name: string;
+  connectionType: 'wired' | 'wireless';
+  transport: 'serial' | 'usb' | 'bluetooth' | 'tcp';
+  address: string;
+  vendor?: string | null;
+  model?: string | null;
+  isActive: boolean;
+}
+
+/** Query an EDC terminal's current status. */
+export const edcTerminalStatus = (terminalId?: string | null): Promise<EdcStatus> =>
+  loggedInvoke<EdcStatus>('edc_terminal_status', { terminalId });
 
 /**
- * Session-scoped status query — the pre-flight the checkout runs before
- * asking the terminal to take money. `test_edc_connection_scoped` was
- * once planned as a dedicated probe; it never shipped, and this command
- * answers the same question under the same session enforcement, so the
- * checkout reuses the wire that exists (agents-3 3.2 decision).
+ * Session-scoped status query — pre-flight before tender.
  */
-export const edcTerminalStatusScoped = (sessionToken: string): Promise<EdcStatus> =>
-  loggedInvoke<EdcStatus>('edc_terminal_status_scoped', { sessionToken });
+export const edcTerminalStatusScoped = (
+  sessionToken: string,
+  terminalId?: string | null,
+): Promise<EdcStatus> =>
+  loggedInvoke<EdcStatus>('edc_terminal_status_scoped', { sessionToken, terminalId });
 
 /**
  * Process a card-present sale (authorize + capture).
  *
  * `amountMinor` is in the currency's minor units (e.g. cents for USD,
- * rupiah for IDR). The Rust command resolves the session from
- * `sessionToken` and enforces the SALES_PROCESS permission — without a
- * valid token the invoke fails, never the terminal.
+ * rupiah for IDR).
  */
 export const edcSale = (
   sessionToken: string,
   amountMinor: number,
   currency: string,
+  terminalId?: string | null,
 ): Promise<EdcResult> =>
-  loggedInvoke<EdcResult>('edc_sale', { sessionToken, amountMinor, currency });
+  loggedInvoke<EdcResult>('edc_sale', {
+    sessionToken,
+    amountMinor,
+    currency,
+    terminalId,
+  });
 
 /** Refund a previously captured card transaction (SALES_REFUND). */
 export const edcRefund = (
@@ -64,17 +104,47 @@ export const edcRefund = (
   transactionId: string,
   amountMinor: number,
   currency: string,
+  terminalId?: string | null,
 ): Promise<EdcResult> =>
   loggedInvoke<EdcResult>('edc_refund', {
     sessionToken,
     transactionId,
     amountMinor,
     currency,
+    terminalId,
   });
 
 /** Void a pending authorisation before capture (SALES_VOID). */
 export const edcVoid = (
   sessionToken: string,
   transactionId: string,
+  terminalId?: string | null,
 ): Promise<EdcResult> =>
-  loggedInvoke<EdcResult>('edc_void', { sessionToken, transactionId });
+  loggedInvoke<EdcResult>('edc_void', { sessionToken, transactionId, terminalId });
+
+/** List configured card-payment terminals (SETTINGS_READ or SALES_PROCESS). */
+export const listEdcTerminalsScoped = (
+  sessionToken: string,
+): Promise<EdcTerminalDto[]> =>
+  loggedInvoke<EdcTerminalDto[]>('list_edc_terminals_scoped', { sessionToken });
+
+/** Create a new card-payment terminal (SETTINGS_EDIT). */
+export const createEdcTerminalScoped = (
+  sessionToken: string,
+  args: CreateEdcTerminalDto,
+): Promise<EdcTerminalDto> =>
+  loggedInvoke<EdcTerminalDto>('create_edc_terminal_scoped', { sessionToken, args });
+
+/** Update an existing card-payment terminal (SETTINGS_EDIT). */
+export const updateEdcTerminalScoped = (
+  sessionToken: string,
+  args: UpdateEdcTerminalDto,
+): Promise<EdcTerminalDto> =>
+  loggedInvoke<EdcTerminalDto>('update_edc_terminal_scoped', { sessionToken, args });
+
+/** Delete a card-payment terminal (SETTINGS_EDIT). */
+export const deleteEdcTerminalScoped = (
+  sessionToken: string,
+  id: string,
+): Promise<void> =>
+  loggedInvoke<void>('delete_edc_terminal_scoped', { sessionToken, id });

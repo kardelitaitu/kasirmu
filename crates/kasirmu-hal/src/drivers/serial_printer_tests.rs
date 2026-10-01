@@ -53,7 +53,7 @@ async fn constructing_a_printer_never_opens_the_port() {
     // The whole fail-open premise of the bootstrap: a saved profile naming a
     // port that is gone must register fine and fail on the print, not at
     // startup. If new() ever opens, this test is where it gets caught.
-    let printer = SerialReceiptPrinter::new("OZ-POS-NOT-A-REAL-PORT", 9600, info("ghost"));
+    let printer = SerialReceiptPrinter::new("kasir.mu-NOT-A-REAL-PORT", 9600, info("ghost"));
     assert!(
         printer.port.lock().await.is_none(),
         "new() must not connect"
@@ -62,7 +62,7 @@ async fn constructing_a_printer_never_opens_the_port() {
 
 #[tokio::test]
 async fn printing_to_an_absent_port_errors_instead_of_panicking() {
-    let printer = SerialReceiptPrinter::new("OZ-POS-NOT-A-REAL-PORT", 9600, info("ghost"));
+    let printer = SerialReceiptPrinter::new("kasir.mu-NOT-A-REAL-PORT", 9600, info("ghost"));
     let result = printer.print_receipt("hello").await;
     assert!(
         result.is_err(),

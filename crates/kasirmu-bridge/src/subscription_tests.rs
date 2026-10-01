@@ -406,9 +406,26 @@ fn capabilities_report_paused_state() {
     let dto = caps(&conn);
     if seeded_row_reaches_a_paid_tier() {
         assert_eq!(dto.state, "paused");
+        // AMENDED 2026-09-25 for MSL-13 (2c34d8b47, same day).
+        //
+        // This asserted tier == "plus" with the reason "pause flags the state;
+        // entitlements unchanged here". That was the behaviour before MSL-13 added
+        // `paused` to the explicit-verdict family, and it is now WRONG. The rule it
+        // replaced is stated at subscription.rs:695-699: an EXPLICIT server-written
+        // verdict about the grant must beat the date arithmetic, because `paused`
+        // (like `canceled`, `revoked`, `expired`) IS the verdict. Before it, a row
+        // the server had ended while `expires_at` was still in the future counted as
+        // "within grace" and `effective_tier` returned the PAID tier, granting full
+        // paid limits to a subscription the server had already stopped.
+        //
+        // So paused reverts entitlements to Free, exactly as `canceled` does one test
+        // above and `expired` does in the sibling — this test was the only one of the
+        // three still asserting the pre-MSL-13 behaviour. The STATE assertion above is
+        // unchanged and still passes: the lifecycle machine names `paused`, and only
+        // the entitlement half moved.
         assert_eq!(
-            dto.tier, "plus",
-            "pause flags the state; entitlements unchanged here"
+            dto.tier, "free",
+            "paused is an explicit verdict: it reverts entitlements to Free, as canceled and expired do"
         );
     } else {
         // Release: PAUSED is on the row and PLUS is the stamped tier; the
@@ -1187,16 +1204,17 @@ fn per_location_rows_emit_at_cap_and_omit_zero_counts() {
         "the row carries its own store as target"
     );
     assert_eq!(kds[0].resource_type, "kds_screen");
-    // Zero warehouses is not an "at cap" row even though Pro caps warehouses:
-    // an empty category is nothing to remediate, and Free/Plus cap KDS at 0
-    // which would otherwise flag every single store.
+    // Zero warehouses is not an "at cap" row. Pro caps warehouses at 0 since
+    // the workspace moved to Premium+ (2026-09-29), so without the
+    // un-included-dimension rule the 0/0 pair would read as "at the cap" and
+    // flag every single store — the same shape Free/Plus have for KDS.
     assert!(
         !rows.iter().any(|r| r.resource_type == "warehouse"),
         "{rows:?}"
     );
     // Topology-node aggregate (D61 ruling: marker-only dimension riding the
     // existing per-location caps — no tier cap of its own). Limit = SUM of
-    // Pro's finite caps: pos 5 + warehouses 3 + kds 2 = 10. Current = the
+    // Pro's finite caps: pos 5 + warehouses 0 + kds 2 = 7. Current = the
     // store's non-archived instances (2 active KDS + 1 suspended = 3), and
     // the suspended instance alone forces the Over verdict even though 3 is
     // far below the summed cap.
@@ -1214,8 +1232,8 @@ fn per_location_rows_emit_at_cap_and_omit_zero_counts() {
     assert_eq!(topo[0].current, 3, "suspended nodes still exist");
     assert_eq!(
         topo[0].limit,
-        Some(10),
-        "sum of Pro's finite per-location caps"
+        Some(7),
+        "sum of Pro's finite per-location caps (warehouses contribute 0)"
     );
     assert_eq!(
         topo[0].severity,
@@ -1264,4 +1282,84 @@ fn per_location_rows_emit_nothing_for_an_unlimited_cap() {
         2,
     );
     assert!(rows.is_empty(), "an unlimited cap must never produce a row");
+}
+
+// ── MSL-37: the caps payload must agree with the gate it describes ──
+
+/// After MSL-36 the creation gates resolve the tier against the LEDGER, so the
+/// caps DTO — the payload the UI renders every gate from — has to answer with
+/// the same tier. Otherwise a rolled-back clock shows Premium caps while the
+/// gate refuses, which is exactly the "verdict contradicts the gate" drift the
+/// one-read-model work exists to prevent.
+///
+/// The divergence needs the two clocks to disagree; a unit test cannot move the
+/// OS clock, so it moves the LEDGER forward instead — the same relative state a
+/// rollback produces. The row is stamped Premium and expires inside Premium's
+/// grace window relative to real time, so the aligned-clock answer is Premium.
+#[test]
+fn caps_report_the_ledger_tier_the_gate_enforces() {
+    use kasirmu_core::availability::UsageCounts;
+    use kasirmu_core::entitlements::Entitlements;
+
+    let conn = fresh_db();
+    let ledger_now = chrono::Utc::now();
+    let expiry = ledger_now - chrono::Duration::days(20);
+    conn.execute(
+        "UPDATE tenant_subscription SET tier_key = 'premium', status = 'active', expires_at = ?1 WHERE tenant_id = 'default'",
+        rusqlite::params![expiry.to_rfc3339()],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO sales (id, status, total_minor, currency, line_count, created_at, updated_at) VALUES ('s1', 'completed', 1000, 'USD', 1, ?1, ?1)",
+        rusqlite::params![ledger_now.to_rfc3339()],
+    )
+    .unwrap();
+
+    // Aligned clocks: both answers are Premium, so this fixture is not
+    // accidentally testing some other difference.
+    assert_eq!(caps(&conn).tier, "premium", "aligned clocks must agree");
+
+    // Roll the world forward 40 days of ledger time while the wall clock stays
+    // put: exactly the state a rolled-back install presents.
+    let rolled = ledger_now + chrono::Duration::days(40);
+    conn.execute(
+        "UPDATE sales SET created_at = ?1, updated_at = ?1 WHERE id = 's1'",
+        rusqlite::params![rolled.to_rfc3339()],
+    )
+    .unwrap();
+
+    let gate_tier = {
+        let store = Store::new(&conn);
+        store.resolve_tier_fail_closed().unwrap()
+    };
+    let dto = caps(&conn);
+
+    assert_eq!(
+        gate_tier.tier_key(),
+        "free",
+        "past grace the enforcement gate downgrades to Free"
+    );
+    assert_eq!(
+        dto.tier,
+        gate_tier.tier_key(),
+        "the caps payload must report the tier the gate enforces, not the wall clock's"
+    );
+
+    // And the limits it publishes must follow that same tier, or the UI
+    // renders a cap the gate will refuse.
+    let free_max = QuotaDimension::Locations.limit_for(&kasirmu_core::SubscriptionTier::Free);
+    assert_eq!(
+        dto.max_locations, free_max,
+        "published caps follow the gate tier"
+    );
+
+    // Sanity: the wall-clock reader really does disagree, so this test would
+    // notice if `caps` were switched back.
+    let sub = TenantSubscription::load(&conn, "default").unwrap().unwrap();
+    let wall = Entitlements::from_subscription(&sub, UsageCounts::default());
+    assert_eq!(
+        wall.tier.tier_key(),
+        "premium",
+        "the wall-clock reader still grants Premium — the divergence this pins"
+    );
 }

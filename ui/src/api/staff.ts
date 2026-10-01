@@ -147,6 +147,9 @@ export interface AssignmentArgs {
 /** A staff member record. */
 export interface StaffMemberDto {
   id: string;
+  /** Base62 dynamic staff/cashier badge code (e.g. "01", "02"). */
+  staff_code?: string | null;
+  code?: string | null;
   username: string;
   display_name: string;
   role_id: string;
@@ -179,6 +182,8 @@ export interface StaffMemberDto {
   is_profile_complete: boolean;
   /** The user's single effective assignment (ADR #35 D5 / spec 0048). */
   assignment: AssignmentDto;
+  /** ISO-8601 creation timestamp from users table, if available. */
+  created_at?: string | null;
 }
 
 /**

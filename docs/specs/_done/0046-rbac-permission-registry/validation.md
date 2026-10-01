@@ -1,3 +1,4 @@
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: REPAIRED (crate/path renames) — 0 behavioural findings · Audited on branch 0.0.40. Every `cargo` package this file names was renamed when the workspace was restructured, and that was proven by execution rather than by reading a manifest: `cargo pkgid -p oz-core` and `cargo pkgid -p oz-pos-app` both return "did not match any packages", and `cargo metadata --no-deps` lists 40 packages, none of them under the old `oz-*` names. The current mapping, read from each manifest path: `oz-core` -> `kasirmu-core` (`crates/kasirmu-core/Cargo.toml`), `oz-pos-app` -> `kasirmu-app` (`apps/desktop-tauri/Cargo.toml`), `oz-pos-tablet` -> `kasirmu-mobile` (`apps/mobile-tauri/Cargo.toml`), `oz-security` -> `kasirmu-security` (`crates/kasirmu-security/Cargo.toml`). The old client directories moved with them: `apps/desktop-client/` -> `apps/desktop-tauri/` and `apps/tablet-client/` -> `apps/mobile-tauri/`. All of these were repaired in place. The numbered migration series this file cites is likewise gone: migrations are date-stamped and the tables are folded into `crates/kasirmu-core/migrations/20260813_init.sql`. The executed-checks table is a dated record of the 2026-08-11 run and is left exactly as executed — those counts belong to that tree, and restating them as current is the drift this pass removes. What survives audit is the acceptance criteria, and all five still describe code that exists: the bidirectional inventory pin (`rbac::ALL_ENFORCED` == registry), `validate_grants` rejecting wildcards over sensitive keys, `Store::create_role` mapping failures to `CoreError::Validation` via `crates/kasirmu-core/src/db/roles.rs:188`, and the registry's public surface (`is_registered`, `is_sensitive`, `validate_grant`) which the 0047 and 0049 slices both consume in fact. The claim that the two legacy seed keys were added as byte-identical constants is consistent with the audit having added `PRODUCTS_CRUD` / `CATEGORIES_MANAGE`. · The original plan text is preserved as approved; only the identifiers that stopped resolving were changed, no design claim was rewritten. · No stamp or footer existed on this file before this pass. -->
 # Validation
 
 > **Status: IMPLEMENTED — 2026-08-11.** All checks executed and green; every
@@ -7,16 +8,16 @@
 ## Executed checks (2026-08-11)
 
 - `cargo test -p platform-core --lib` — 234/234 pass (registry 9/9).
-- `cargo test -p oz-core --lib -- db::staff` — 42/42 pass (incl. the
+- `cargo test -p kasirmu-core --lib -- db::staff` — 42/42 pass (incl. the
   `create_role` write-time rejection tests).
-- `cargo test -p oz-core --test staff_integration` — 25/25 pass.
-- `cargo test -p oz-pos-app --lib -- commands::staff` — 40/40 pass.
-- `cargo test -p oz-pos-tablet --lib -- commands::staff` — 19/19 pass.
+- `cargo test -p kasirmu-core --test staff_integration` — 25/25 pass.
+- `cargo test -p kasirmu-app --lib -- commands::staff` — 40/40 pass.
+- `cargo test -p kasirmu-mobile --lib -- commands::staff` — 19/19 pass.
 - `cargo fmt --all -- --check` — clean.
 - `cargo clippy -p platform-core -- -D warnings` — clean.
-- `cargo clippy -p oz-core -- -D warnings` — clean.
+- `cargo clippy -p kasirmu-core -- -D warnings` — clean.
 - `bash .agents/skills/skill-drift-guard/scripts/detect.sh` — no drift.
-- `test-changed.sh` — not runnable this round: `oz-pos-app.exe` was locked by
+- `test-changed.sh` — not runnable this round: `kasirmu-app.exe` was locked by
   a running process (left alone per the shared-tree rule); nearest consumer
   suites above substituted.
 
@@ -46,3 +47,5 @@
 - [x] **A new operational key in an existing family requires only a registry
   addition — zero role edits** — verified by the bidirectional inventory and
   `validate_grants` design; `ALL_ENFORCED` is the single place to add a key.
+
+> last audited 29-09-26 by docs-auditor

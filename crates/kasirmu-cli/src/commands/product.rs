@@ -88,7 +88,7 @@ pub(crate) fn run_product_get(store: &Store<'_>, sku: &str) -> Result<()> {
             );
             println!("SKU:          {}", p.product.sku.as_str());
             println!("Name:         {}", p.product.name);
-            println!("Price:        {}", price_str);
+            println!("Price:        {price_str}");
             println!(
                 "Category:     {}",
                 p.category_name.as_deref().unwrap_or("(none)")

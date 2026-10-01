@@ -92,7 +92,7 @@ describe('pickExportPath / exportData', () => {
 
     mocks.logged.mockResolvedValue({
       path: cachePath,
-      sizeBytes: BYTES.length,
+      size_bytes: BYTES.length,
       types: ['products'],
     });
 
@@ -110,11 +110,11 @@ describe('pickExportPath / exportData', () => {
     // What the UI shows is the user's destination, not a cache path that no
     // longer exists by the time it is rendered.
     expect(result.path).toBe(SAVE_URI);
-    expect(result.sizeBytes).toBe(BYTES.length);
+    expect(result.size_bytes).toBe(BYTES.length);
   });
 
   it('does not bridge an export that was never picked through the picker', async () => {
-    mocks.logged.mockResolvedValue({ path: '/tmp/direct.kasirpkg', sizeBytes: 1, types: [] });
+    mocks.logged.mockResolvedValue({ path: '/tmp/direct.kasirpkg', size_bytes: 1, types: [] });
 
     const result = await exportData('tok', {
       types: [],
@@ -247,7 +247,7 @@ describe('pickBackupPath / createBackupTo', () => {
     const cachePath = await pickBackupPath();
     expect(cachePath).toBeTruthy();
 
-    mocks.logged.mockResolvedValue({ path: cachePath, sizeBytes: BYTES.length });
+    mocks.logged.mockResolvedValue({ path: cachePath, size_bytes: BYTES.length });
 
     const result = await createBackupTo('tok', cachePath!);
 
@@ -259,11 +259,11 @@ describe('pickBackupPath / createBackupTo', () => {
     // What the UI shows is the user's destination, not a cache path that no
     // longer exists by the time it is rendered.
     expect(result.path).toBe(SAVE_URI);
-    expect(result.sizeBytes).toBe(BYTES.length);
+    expect(result.size_bytes).toBe(BYTES.length);
   });
 
   it('does not bridge a backup that was never picked through the picker', async () => {
-    mocks.logged.mockResolvedValue({ path: '/tmp/direct.backup.db', sizeBytes: 1 });
+    mocks.logged.mockResolvedValue({ path: '/tmp/direct.backup.db', size_bytes: 1 });
 
     const result = await createBackupTo('tok', '/tmp/direct.backup.db');
 

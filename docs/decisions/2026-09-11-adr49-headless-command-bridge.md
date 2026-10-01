@@ -4,6 +4,7 @@ area: desktop-client
 title: ADR #49: Headless Command Bridge — Moving Command Bodies into crates/oz-bridge
 status: Accepted (2026-09-11) — implemented for the desktop shell; tablet client not started
 ---
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 188 lines, no audit stamp, no footer and no marker. Its status line is unusually precise — Accepted, implemented for the DESKTOP shell, tablet client not started — and that precision is the kind that survives a restructure, so it was the first thing checked. · AND IT IS STILL TRUE IN SUBSTANCE, because the bridge it created is the most structurally consequential artefact in the repository. `crates/kasirmu-bridge/src/` carries the shared command bodies this decision moved out of the shells — `ctx.rs`, `lib.rs`, `data.rs`, `features.rs` and `kds.rs` all present. The crate is now `kasirmu-bridge` rather than the `oz-bridge` the title names, but the boundary it established is the one every later document in this campaign has relied on: the platform-core boundary checker enforces a `bridge-toolkit-purity` rule specifically so a second renderer could bind, and ADR-44, audited in the previous round, sits alongside this one as the decision that made design rules enforceable rather than aspirational. · THE SHELL ASYMMETRY IS WORTH RECORDING, because the document is honest about it and the tree kept the shape. The decision moved command bodies into a headless bridge so the shells become delegates — which is exactly why `kasirmu-bridge` can be depended on by something that is not a Tauri app, and why the toolkit-purity gate exists. A reader trying to understand why that crate may not depend on `tauri` will find the answer in the gate definition and the rationale in this ADR. · NOT RE-MEASURED: whether the tablet shell has since been migrated. The status line says not started, and this pass did not walk both clients to confirm or refute it — the desktop-side bridge exists, and that is what the document's own claim rests on. A future pass wanting to close that leg should diff the two handler registries, which is what the ipc-parity gate does. · No stamp existed; this is the first. -->
 # ADR #49: Headless Command Bridge — Moving Command Bodies into crates/oz-bridge
 
 **Status:** Accepted (2026-09-11). The desktop side is built; the tablet side is not.
@@ -186,3 +187,233 @@ takes one. “ctx first” is a default, not a mandate; the burden sits on *remo
    rewritten from under them.
 3. **The findings this decision preserved are not fixed.** They are registered, not
    remediated.
+
+## Amendment 2026-10-04 — absence and failure are different answers
+
+A bridge body that reads a hardware registry is where this decision's error boundary stops
+being academic. `kasirmu_bridge::scale::list_scale_devices_scoped` is the first such body to
+carry the rule explicitly, and the distinction is worth recording because the two neighbouring
+bodies in the same module resolve it in *opposite* directions on purpose.
+
+**The defect (fixed at `ac93cff77`).** The body walked `registry.scale_ids()` and paired each id
+with `if let Some(scale) = registry.scale(&id).await`, pushing only the ones that resolved. A
+lookup that came back `None` therefore **removed a device from the answer** — a device list
+shorter than the registry actually holds, returned as `Ok`, with no error and no log. Nothing in
+the result distinguished "this register has two scales" from "this register has two scales and
+one of them was silently dropped". An operator sees a scale missing from the hardware view and
+has nothing to act on.
+
+**Why that is not the same as the sibling `None`.** `read_scale_weight_scoped` (same module)
+maps a missing scale to `Ok(None)` deliberately: *no scale bound to this register* is a defined
+state that the UI renders as "no weight". One `None` is a fact about the register; the other was
+a fact about the read that had been laundered into a fact about the register. The amendment's
+rule: **`None` may mean "absent" or it may mean "the lookup failed"; these must be different
+types or the failure will eventually be read as an absence.**
+
+**The fix is a registry accessor, not a retry loop.** `kasirmu-hal` gained
+`DriverRegistry::scales() -> Vec<(String, Option<Arc<dyn WeightScale>>)>`, which takes *one*
+read guard and returns every id together with its driver. The list can no longer be shortened by
+a second lookup racing a concurrent change, because there is no second lookup. The `Option` is
+always `Some` today — the map has no removal path — and is kept so the snapshot stays
+self-describing for a caller that must not assume it. The command still guards the arm and
+returns a loud `BridgeError::Internal` naming the id, rather than continuing with a shorter list.
+
+**Test-support is a feature, not a `#[cfg(test)]` gate.** The pins need to bind a scale, and the
+production writer (`register_scale`) was deleted 2026-09-27 as dead code. A `#[cfg(test)]` gate
+cannot serve a downstream crate: cargo compiles `kasirmu-hal` **without** `cfg(test)` when it is a
+dependency of `kasirmu-bridge`'s own test build. The capability is therefore a `test-support`
+feature that the consuming `[dev-dependencies]` turns on, which leaves every release build
+byte-identical. This is the pattern for any future fixture helper a sibling crate needs.
+
+**The pins, and what they honestly cover.** Four tests: a registered scale is reported with its
+identity; an unconfigured register reports an empty list rather than an error; the listed count
+always accounts for every id the registry reports; and `scales()` pairs each id with its driver.
+The third was verified RED-then-GREEN against the fix. Stated plainly: **no test can drive the
+`None` arm through the public registry**, because no code path ever removes a scale — the arm is a
+guard, not a reachable state. The count invariant and the `scales()` pairing pin the *contract*
+that made the omission impossible, which is the part a regression would break.
+
+**Still open, and now recorded as the tablet twin's debt.**
+`apps/mobile-tauri/src/commands/scale.rs:66-73` carries the identical `if let Some(..)` swallow and
+does **not** route through the bridge yet (that is this ADR's own §What was NOT done, item 1 — the
+tablet is still a second copy of every body). The desktop shell
+(`apps/desktop-tauri/src/commands/scale.rs:19-39`) delegates to the bridge and inherits the fix.
+A future pass closing the tablet migration should fix the twin by delegating, not by re-patching
+the copy.
+
+## Amendment 2026-10-04 (b) — the tablet twin is delegated, not re-patched
+
+The amendment above closed with the tablet twin at
+`apps/mobile-tauri/src/commands/scale.rs` carrying the same silent-omission swallow. It has
+now been fixed the way that note said it should be — by delegating, not by re-patching the copy
+(`18fbdff99`).
+
+**The blocker in the file's own header was stale.** `scale.rs` claimed the bodies stayed
+tablet-native because the bridge's scoped twins "take a `BridgeCtx` the tablet `AppState` cannot
+yet build". That stopped being true when `AppState::bridge_ctx()` landed
+(`apps/mobile-tauri/src/state.rs:473`), and the ctx already carries `registry`
+(`:499`). Every other tablet command had been delegating for some time — `analytics.rs:28`,
+`audit.rs:123` and the rest — so the scale module was the last holdout carrying a comment that
+described a world that no longer existed. **A stale "cannot yet" is a standing instruction to
+copy, and copies drift.** The header now says what is true.
+
+**The copy had already drifted into the defect.** The native `list_scale_devices_scoped` was
+`scale_ids()` plus `if let Some(scale) = state.registry.scale(&id).await` — the identical
+silent-omission shape the bridge had before `ac93cff77`. So this was not a tidy-up: the tablet
+still shipped the bug the bridge had just shed, and only delegating could carry the fix across.
+
+**One body had to be added rather than moved.** The tablet exposes an *unscoped*
+`read_scale_weight` door; the bridge only had the scoped twin. The unscoped body now lives in
+`kasirmu_bridge::scale::read_scale_weight` with a doc noting it performs no scope resolution, so
+the scoped form is preferred wherever a token exists. This is the ADR's own §`currency_info`
+precedent in reverse: a body that genuinely wants no context should not be invented in the shell
+when the headless crate can own it and both shells can share it.
+
+**The pin that guards against a returning copy, and the trap it walked into.** The tablet now
+asserts its own source carries no `scale_ids()` walk and no `registry.scale(` lookup. The first
+version scanned the whole file and **failed on the correct module** — the new module doc names
+`scale_ids()` while explaining what was removed. That is the failure mode to watch for in any
+source-text pin: it matched the prose, not the code, and a pin that fails on a correct file gets
+deleted by the next reader. The pin now starts at the first `use` and inspects only code, and it
+panics with an explanatory message if that anchor disappears. Re-verified RED-then-GREEN by
+reintroducing the registry walk.
+
+**Still open (the tablet migration itself).** This closes the *scale* leg, not §What was NOT
+done item 1: the tablet is still a second copy of most other bodies. The count is now one
+module smaller, and `apps/mobile-tauri/src/commands/scale.rs` no longer contributes to the
+divergence the ipc-parity gate watches.
+
+## Amendment 2026-10-04 (c) — a preference that cannot be read is not an unset preference
+
+The hardware bridge is where this decision's error boundary meets a settings read, and the
+second such site this campaign has found. `scanner_prefs` (`crates/kasirmu-bridge/src/hardware.rs`)
+returns the operator's saved scanner Device ID and input mode, and it returned a bare
+`(String, String)` while folding **all three** of its reads into defaults: a FAILED
+`hardware_profiles` query fell through via `.ok()`, a stored profile that would not parse fell
+through via `.and_then(..ok())`, and both legacy keys via `unwrap_or_default()`.
+
+**What that produced.** An unreadable `settings` table — SQLITE_BUSY, corrupt, locked — answered
+`("", "auto")`, byte-identical to a terminal that was never configured. `preferred` empty makes
+`prefer_first` a no-op, so the Device ID the operator saved stops being fronted; and an empty
+mode falls to the `_ => ids` arm of `ids_for_mode`, so a `keyboard`-wedge terminal opens COM
+ports and a serial-only terminal is handed a HID device. Those are precisely the failures
+`ids_for_mode` was introduced to prevent — the read failure re-created them silently.
+
+**`scanner_prefs` now returns `Result<_, BridgeError>` and propagates.** The profile query uses
+`.optional()` so a MISSING row remains the one legitimate absence and still falls through to the
+legacy keys; a non-parsing profile is an error rather than a silent fall-through, because a
+configuration the operator did save must not be ignored; the two legacy reads use `?`. Both
+callers thread the result — `saved_scanner_prefs` for the bridge, `list_scanners_scoped` for the
+tablet.
+
+**The outer default was doubly wrong, which is the general lesson.** The getters already carry
+their own documented defaults for an absent key — an empty device id, and `"auto"` for the mode
+(`platform/core/src/settings/typed.rs:272`). An `unwrap_or_default()` written outside them could
+therefore only ever fire on an error, AND it would have replaced that documented `"auto"` with an
+empty string. **A default written one layer above the layer that already owns the default is a
+swallow wearing a policy's clothes.** That is the same reading that made the receipt-format fills
+safe to convert to `?` — the defaults belonged below, where they still are.
+
+**Pins.** `an_unreadable_settings_table_is_not_an_unconfigured_terminal` makes `settings` present
+but unreadable (a BLOB `value`) and asserts the read refuses; verified RED with the swallow
+restored (it answered `("", "auto")`) and GREEN with the fix.
+`a_missing_profile_row_falls_through_to_the_legacy_keys` pins the one absence that must NOT error,
+and in doing so records the getter's own `"auto"` default so a future edit cannot quietly drop it.
+
+## Amendment 2026-10-04 (d) — a list that cannot be read must not come back full of blanks
+
+The previous three amendments were about a `None` that could mean either absence or failure. This
+one is the harder version of the same bug: a value that is present, well-typed, and **wrong**.
+
+`list_staff_scoped` makes three reads per member — the profile, the assignment, and the badge
+code — and all three swallowed their error (`.ok().flatten()` twice, `.unwrap_or(None)` for the
+code). A failure anywhere in the loop therefore returned a roster that still *looked* populated
+while every entry carried a blank profile and a blank `staff_code`. Nothing in the response
+distinguished it from a correct roster of members who simply had not filled anything in. The same
+three reads appear again in `restore_staff_scoped` and `list_staff_trash_scoped`, so a manager
+could restore a member and receive back a DTO that reads as incomplete.
+
+**Why this is worse than the earlier sites.** An absent value can at least be reasoned about — a
+blank footer, a missing scale, an unset preference. A list of correctly-shaped objects carrying
+silently-emptied fields cannot: every field is present and every field is a lie, and the caller has
+no signal to branch on. The rule the earlier amendments stated (absence and failure must be
+distinguishable) was satisfied here on paper — the function returned `Ok` — while being violated in
+substance.
+
+**Fixed by propagating, with the loops made explicit.** All three sites use `?`; the two
+`.iter().map(..).collect()` loops became `for` loops because the body can now fail, which also
+makes the per-member cost visible. A roster either reflects the store or fails.
+
+**Pin.** `a_failed_roster_read_refuses_instead_of_listing_blanks` drops `users.index_id` — the
+column `get_staff_code` reads and `list_users` does not — together with the index over it (SQLite
+refuses `DROP COLUMN` while an index covers it), so the loop is entered and its later read fails.
+Verified RED with the swallows restored, returning a full roster with every `staff_code: None` and
+`is_profile_complete: false`, and GREEN with the fix.
+
+## Amendment 2026-10-04 (e) — the last four swallows, and what made them findable
+
+Amendment (d) fixed the roster loop. Sweeping for the same shape found five more, all in this
+crate and all the same one: a Base62 **code** read through `unwrap_or(None)`.
+
+`to_location_dto` and `to_terminal_dto` enrich a DTO with its code via `get_location_code` /
+`get_terminal_code`, and both swallowed. These two helpers sit on the read path for every scoped
+location and terminal command — including the write responses the UI echoes straight back — so a
+locked or corrupt table would have blanked the code across the list **and** on create and update.
+Three more sat in `staff.rs`: the code in `create_staff_scoped`, and the pair in
+`update_staff_scoped`.
+
+**What made them findable is worth recording, because it is a technique rather than a fix.** The
+`update_staff_scoped` site reads:
+
+```
+    (
+        store.assignment_for_user(&args.id)?,
+        store.get_staff_code(&args.id).unwrap_or(None),
+    )
+```
+
+Two reads of the same row, adjacent, one propagating and one swallowing. The inconsistency is the
+tell. It is the same signal that located the receipt-footer defect (every other settings read in
+that function used `?`) and the scanner-preference defect. **When a function handles one kind of
+read two different ways, the divergent one is the bug** — no amount of grepping for a pattern finds
+that as reliably as reading the neighbour.
+
+**Fixed.** Both `to_*_dto` helpers return `Result` and propagate; the three `staff.rs` reads do
+the same. Callers thread it — `.collect::<Result<Vec<_>, _>>()?` for the list sites and
+`.transpose()?` for the optional ones, which is the idiomatic spelling and worth noting since the
+first attempt at each was a `?` in the wrong position.
+
+**Pin.** `a_failed_location_code_read_refuses_instead_of_returning_a_blank_code` assigns the
+seeded location an index id (the migration does not), proves the code round-trips, then drops
+`locations.index_id` and the index over it so the code read fails. Verified RED with the swallow
+restored — the full DTO returned with `code: None` — and GREEN with the fix.
+
+## Amendment 2026-10-04 (f) — the divergence this decision exists to stop, found once more
+
+Amendment (e) fixed the Base62 code reads in the bridge's `to_location_dto` and `to_terminal_dto`.
+This amendment is the same defect in the **tablet's own copy** of that surface:
+`apps/mobile-tauri/src/commands/terminals.rs` enriched each `TerminalDto` with its code through
+`get_terminal_code(..).unwrap_or(None)`, in both `run_list_terminals` and `get_terminal_scoped`.
+
+**This is precisely the divergence ADR-49 exists to track, and it is worth recording as such.**
+The bridge was repaired under `ab1e84700`; the tablet kept the old behaviour for the length of
+this campaign, because the two bodies are separate copies and fixing one does not fix the other.
+That is §What was NOT done item 1 still costing something concrete: not a style complaint about
+duplication, but a defect repaired in one copy and left live in the second.
+
+**The failure mode, unchanged from the bridge's.** A read failure produced `code: None`, which is
+byte-identical to a terminal never assigned a code. The listing is what the terminals screen
+renders, so a locked or corrupt table blanked the code column across every row with nothing to
+distinguish it from an unconfigured fleet.
+
+**Both sites now propagate**, and the listing loop became an explicit `for` because its body can
+fail. Pinned by `a_failed_terminal_code_read_refuses_instead_of_listing_blanks`, which drops
+`terminals.index_id` and the index over it -- the column `get_terminal_code` reads and
+`list_terminals` does not, so the loop is entered and its later read fails. Verified RED with the
+swallow restored: a complete `TerminalDto` returned with `code: None`. GREEN with the fix.
+
+**The parity lesson, stated plainly.** A sweep of the bridge does not sweep the tablet, and this
+campaign's sweeps had been running one crate at a time. A fix reported as "the code reads" should
+name its crate, because the twin is a separate file that will not inherit it.
+
+> last audited 29-09-26 by docs-auditor

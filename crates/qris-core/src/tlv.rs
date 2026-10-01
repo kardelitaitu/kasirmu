@@ -24,13 +24,17 @@ pub(crate) struct Tlv {
 /// Does **not** recurse into nested TLV structures (merchant account info,
 /// additional data). Use [`parse_nested`] for those.
 pub(crate) fn parse_tlvs(payload: &str) -> Result<Vec<Tlv>, QrisError> {
+    // QRIS-A: offsets are BYTES, matching `encode_field`. The previous version
+    // counted CHARACTERS while the encoder wrote the byte length, so any
+    // non-ASCII value (an Indonesian merchant name, an accented store name)
+    // made the two disagree and the payload failed to parse at all.
+    let bytes = payload.as_bytes();
+    let total = bytes.len();
     let mut result = Vec::new();
     let mut pos = 0;
-    let chars: Vec<char> = payload.chars().collect();
-    let total = chars.len();
 
     while pos < total {
-        // Need at least tag(2) + len(2) = 4 characters
+        // Need at least tag(2) + len(2) = 4 bytes.
         if pos + 4 > total {
             return Err(QrisError::TooShort {
                 needed: pos + 4,
@@ -38,18 +42,16 @@ pub(crate) fn parse_tlvs(payload: &str) -> Result<Vec<Tlv>, QrisError> {
             });
         }
 
-        let tag_str: String = chars[pos..pos + 2].iter().collect();
-        let tag = tag_str.parse::<u8>().map_err(|_| QrisError::BadLength {
+        let tag = parse_two_digits(&bytes[pos..pos + 2]).map_err(|_| QrisError::BadLength {
             tag: 0,
             reason: "tag field is not a 2-digit decimal number",
         })?;
         pos += 2;
 
-        let len_str: String = chars[pos..pos + 2].iter().collect();
-        let len = len_str.parse::<usize>().map_err(|_| QrisError::BadLength {
+        let len = parse_two_digits(&bytes[pos..pos + 2]).map_err(|_| QrisError::BadLength {
             tag,
             reason: "length field is not a 2-digit decimal number",
-        })?;
+        })? as usize;
         pos += 2;
 
         if pos + len > total {
@@ -59,12 +61,29 @@ pub(crate) fn parse_tlvs(payload: &str) -> Result<Vec<Tlv>, QrisError> {
             });
         }
 
-        let value: String = chars[pos..pos + len].iter().collect();
+        // A byte length that lands mid-codepoint means the payload is not the
+        // text it claims to be; refuse it rather than panicking on the slice.
+        let value = std::str::from_utf8(&bytes[pos..pos + len])
+            .map_err(|_| QrisError::BadLength {
+                tag,
+                reason: "value is not valid UTF-8 at the declared length",
+            })?
+            .to_owned();
         result.push(Tlv { tag, value });
         pos += len;
     }
 
     Ok(result)
+}
+
+/// Parse exactly two ASCII decimal digits into a `u8`.
+fn parse_two_digits(digits: &[u8]) -> Result<u8, ()> {
+    let d0 = digits.first().ok_or(())?.wrapping_sub(b'0');
+    let d1 = digits.get(1).ok_or(())?.wrapping_sub(b'0');
+    if d0 > 9 || d1 > 9 {
+        return Err(());
+    }
+    Ok(d0 * 10 + d1)
 }
 
 /// Parse nested sub-tags inside a Merchant Account Info or Additional Data value.
@@ -76,63 +95,35 @@ pub(crate) fn parse_nested(value: &str) -> Result<Vec<Tlv>, QrisError> {
 
 /// Encode a single (tag, value) pair as a QRIS TLV segment.
 ///
-/// # Panics
-/// Panics if `value.len() > 99` — the length field is exactly 2 decimal digits.
-pub(crate) fn encode_field(tag: u8, value: &str) -> String {
-    assert!(
-        value.len() <= 99,
-        "QRIS value length must be ≤ 99 characters (tag {:02}, len {})",
-        tag,
-        value.len()
-    );
-    format!("{:02}{:02}{}", tag, value.len(), value)
+/// QRIS-B: returns `Err` rather than panicking when the value does not fit.
+/// The length field is exactly two decimal digits, so 99 BYTES is the hard
+/// ceiling — and the previous `assert!` was reachable from safe APIs
+/// (`QrisBuilder::build()` → `to_qris_string()`) whose signatures gave the
+/// caller no warning that a long merchant name could abort the process.
+///
+/// The length is the value's BYTE count, which is what the QRIS/EMVCo wire
+/// format specifies and what `parse_tlvs` now reads back (QRIS-A).
+pub(crate) fn encode_field(tag: u8, value: &str) -> Result<String, QrisError> {
+    let len = value.len();
+    if len > 99 {
+        return Err(QrisError::FieldTooLong { tag, len });
+    }
+    Ok(format!("{tag:02}{len:02}{value}"))
 }
 
 /// Encode a set of sub-tag (tag, value) pairs as a nested TLV value string,
 /// then wrap the whole thing as the value of `outer_tag`.
-pub(crate) fn encode_nested(outer_tag: u8, inner_fields: &[(u8, &str)]) -> String {
-    let inner: String = inner_fields
-        .iter()
-        .map(|(t, v)| encode_field(*t, v))
-        .collect();
+pub(crate) fn encode_nested(
+    outer_tag: u8,
+    inner_fields: &[(u8, &str)],
+) -> Result<String, QrisError> {
+    let mut inner = String::new();
+    for (t, v) in inner_fields {
+        inner.push_str(&encode_field(*t, v)?);
+    }
     encode_field(outer_tag, &inner)
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn round_trip_simple() {
-        let encoded = encode_field(0, "01");
-        assert_eq!(encoded, "000201");
-        let tlvs = parse_tlvs(&encoded).unwrap();
-        assert_eq!(tlvs.len(), 1);
-        assert_eq!(tlvs[0].tag, 0);
-        assert_eq!(tlvs[0].value, "01");
-    }
-
-    #[test]
-    fn round_trip_multiple() {
-        let mut s = encode_field(0, "01");
-        s.push_str(&encode_field(1, "11"));
-        let tlvs = parse_tlvs(&s).unwrap();
-        assert_eq!(tlvs.len(), 2);
-        assert_eq!(tlvs[1].tag, 1);
-        assert_eq!(tlvs[1].value, "11");
-    }
-
-    #[test]
-    fn nested_round_trip() {
-        let nested = encode_nested(26, &[(0, "ID.CO.QRIS.WWW"), (2, "ID1020001234567")]);
-        let outer = parse_tlvs(&nested).unwrap();
-        assert_eq!(outer.len(), 1);
-        assert_eq!(outer[0].tag, 26);
-
-        let inner = parse_nested(&outer[0].value).unwrap();
-        assert_eq!(inner[0].tag, 0);
-        assert_eq!(inner[0].value, "ID.CO.QRIS.WWW");
-        assert_eq!(inner[1].tag, 2);
-        assert_eq!(inner[1].value, "ID1020001234567");
-    }
-}
+#[path = "tlv_tests.rs"]
+mod tests;

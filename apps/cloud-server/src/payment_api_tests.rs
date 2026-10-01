@@ -51,6 +51,13 @@ async fn midtrans_mock() -> MockServer {
     mock
 }
 
+/// Wrap a wiremock-backed processor the way production does (R9(b)), so these
+/// tests exercise the same decorator the server builds at startup rather than a
+/// bare driver that no deployment ever calls.
+fn resilient(processor: QrisPaymentProcessor) -> Arc<dyn PaymentProcessor> {
+    Arc::new(ResilientProcessor::new(Arc::new(processor)))
+}
+
 fn state_for(mock_uri: &str) -> PaymentState {
     let processor =
         QrisPaymentProcessor::new_with_endpoint("sk-test", &format!("{mock_uri}/v2"), true);
@@ -58,7 +65,7 @@ fn state_for(mock_uri: &str) -> PaymentState {
         db: Arc::new(Mutex::new(fresh_db())),
         pg: None,
         rate_limiter: RateLimiterState::new(),
-        processor: Some(processor),
+        processor: Some(resilient(processor)),
     }
 }
 
@@ -343,7 +350,7 @@ async fn sent_charge_body(acquirer: Option<&str>) -> serde_json::Value {
         db: Arc::new(Mutex::new(fresh_db())),
         pg: None,
         rate_limiter: RateLimiterState::new(),
-        processor: Some(processor),
+        processor: Some(resilient(processor)),
     };
     let resp = payment_router(state)
         .oneshot(authed_post(
@@ -415,23 +422,243 @@ fn cloud_state_with_acquirer(acquirer: Option<&str>) -> CloudServerState {
 /// the processor — and leaves it `None` when unset.
 #[test]
 fn payment_state_carries_acquirer_setting_from_cloud_state() {
-    let unset = PaymentState::from_state_with_rate_limiter(
-        cloud_state_with_acquirer(None),
-        RateLimiterState::new(),
-    );
+    // `PaymentState` now holds the DECORATED processor (`Arc<dyn
+    // PaymentProcessor>`), so the acquirer mapping is asserted where it is
+    // produced — `build_qris_processor`, the function
+    // `from_state_with_rate_limiter` calls — and the state itself is asserted
+    // to carry a processor built from the cloud config. Splitting it this way
+    // keeps the assertion instead of downcasting through the decorator.
     assert_eq!(
-        unset.processor.expect("key set").acquirer(),
+        build_qris_processor("sk-test", true, None, None).acquirer(),
         None,
         "unset config must leave the processor generic"
+    );
+    assert_eq!(
+        build_qris_processor("sk-test", true, Some("gopay"), None).acquirer(),
+        Some("gopay"),
+        "configured acquirer must reach the processor"
     );
 
     let set = PaymentState::from_state_with_rate_limiter(
         cloud_state_with_acquirer(Some("gopay")),
         RateLimiterState::new(),
     );
+    assert!(
+        set.processor.is_some(),
+        "a configured server key must produce a processor"
+    );
+    let unset = PaymentState::from_state_with_rate_limiter(
+        cloud_state_with_acquirer(None),
+        RateLimiterState::new(),
+    );
+    assert!(
+        unset.processor.is_some(),
+        "an unset acquirer must still produce a processor"
+    );
+}
+
+// ── R9(a): the gateway idempotency key is never absent ────────────────
+
+/// The charge body carries a DETERMINISTIC, tenant-scoped `order_id` even when
+/// the caller sends no idempotency key.
+///
+/// **This is the guard for R9(a)** (owner, 2026-09-20;
+/// `done-todo-owner-rulings.md:246`). Before it, `idempotency_key` was copied
+/// straight off the request body, so a caller that omitted it got `None` — and the
+/// driver mints a FRESH `order_id` for a `None` key
+/// (`crates/kasirmu-payment/src/drivers/qris.rs:347-351`). A timeout followed by a
+/// retry of the same sale therefore produced a second live QR against the same
+/// `sale_id`: a double-charge path that needed no bug on the client at all, only a
+/// timeout.
+///
+/// The assertion is on the WIRE body, not on the derived string, because the
+/// derivation is only half the contract — the driver sanitises and truncates the key
+/// before it becomes `order_id`, so a test that stopped at the `format!` would pass
+/// while the value that actually reaches Midtrans differed.
+#[tokio::test]
+async fn charge_derives_a_stable_gateway_key_when_the_caller_sends_none() {
+    let mock = midtrans_mock().await;
+    let api_base = format!("{}/v2", mock.uri());
+    let processor = build_qris_processor("sk-test", true, None, Some(&api_base));
+    let state = PaymentState {
+        db: Arc::new(Mutex::new(fresh_db())),
+        pg: None,
+        rate_limiter: RateLimiterState::new(),
+        processor: Some(resilient(processor)),
+    };
+    let app = payment_router(state);
+
+    // Two calls with the SAME body and no key: a retry.
+    let send = || {
+        authed_post(
+            "/api/payment/midtrans/qris",
+            r#"{"sale_id":"sale-1","amount_minor":15000}"#,
+            Some("tenant-A"),
+        )
+    };
+    for _ in 0..2 {
+        let resp = app.clone().oneshot(send()).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    let received = mock.received_requests().await.unwrap();
+    assert_eq!(received.len(), 2, "one charge body per request");
+    let bodies: Vec<serde_json::Value> = received
+        .iter()
+        .map(|r| serde_json::from_slice(&r.body).expect("charge body is JSON"))
+        .collect();
+
+    let first = bodies[0]["transaction_details"]["order_id"]
+        .as_str()
+        .unwrap_or_else(|| panic!("order_id must be a string, body: {}", bodies[0]));
+    let second = bodies[1]["transaction_details"]["order_id"]
+        .as_str()
+        .unwrap_or_else(|| panic!("order_id must be a string, body: {}", bodies[1]));
+
     assert_eq!(
-        set.processor.expect("key set").acquirer(),
-        Some("gopay"),
-        "configured acquirer must reach the processor"
+        first, second,
+        "a retry of the same sale must reuse the same gateway key, or it mints a \
+         second live QR"
+    );
+    assert!(
+        first.contains("sale-1"),
+        "the derived key must be traceable to the sale it belongs to, got {first:?}"
+    );
+    assert!(
+        first.contains("tenant-A"),
+        "the key must be tenant-scoped: `sale_id` is device-generated and only \
+         unique within a tenant, so two tenants may legitimately both use 'sale-1'. \
+         Got {first:?}"
+    );
+}
+
+/// A BLANK `idempotency_key` still dedupes: the retry reuses one gateway key.
+///
+/// **This is the design doc's §8 row 4** (`payment-resilience-design.md:220`), and
+/// the doc calls it *"**yes** — this is the production hole"*.
+///
+/// **The hole was narrower than a missing derivation and wider than it looked.**
+/// R9(a) derived the gateway key from `sale_id` when the caller sent none, and the
+/// test next door covers `None`. But a client that posts
+/// `"idempotency_key": ""` sends `Some("")`, which is not `None` — so the
+/// derivation was skipped, the driver sanitised the blank to an empty `order_id`
+/// and minted a FRESH key per attempt (`drivers/qris.rs:347-351`). A form field
+/// left empty serialises to a blank string rather than an absent key, so this was
+/// reachable without any client bug at all.
+///
+/// Asserted on the wire `order_id` across two identical requests, because that is
+/// what the gateway actually dedupes on: a test that stopped at the handler's
+/// local variable would pass while the value reaching Midtrans still differed.
+#[tokio::test]
+async fn blank_idempotency_key_still_dedupes_to_one_gateway_key() {
+    let mock = midtrans_mock().await;
+    let api_base = format!("{}/v2", mock.uri());
+    let processor = build_qris_processor("sk-test", true, None, Some(&api_base));
+    let state = PaymentState {
+        db: Arc::new(Mutex::new(fresh_db())),
+        pg: None,
+        rate_limiter: RateLimiterState::new(),
+        processor: Some(resilient(processor)),
+    };
+    let app = payment_router(state);
+
+    // The empty string, not an absent field: `Option<String>` sees `Some("")`.
+    let send = || {
+        authed_post(
+            "/api/payment/midtrans/qris",
+            r#"{"sale_id":"sale-blank","amount_minor":15000,"idempotency_key":""}"#,
+            Some("tenant-A"),
+        )
+    };
+    for _ in 0..2 {
+        let resp = app.clone().oneshot(send()).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    let received = mock.received_requests().await.unwrap();
+    assert_eq!(received.len(), 2, "one charge body per request");
+    let order_ids: Vec<String> = received
+        .iter()
+        .map(|r| {
+            let body: serde_json::Value =
+                serde_json::from_slice(&r.body).expect("charge body is JSON");
+            body["transaction_details"]["order_id"]
+                .as_str()
+                .unwrap_or_default()
+                .to_owned()
+        })
+        .collect();
+
+    assert!(
+        !order_ids[0].is_empty(),
+        "the charge must carry an order_id"
+    );
+    assert_eq!(
+        order_ids[0], order_ids[1],
+        "a blank idempotency_key must be treated as ABSENT, not as a supplied key: \
+         with a fresh key per attempt the gateway mints a second live QR for one sale"
+    );
+    assert!(
+        order_ids[0].contains("sale-blank"),
+        "the derived key must be traceable to the sale, got {:?}",
+        order_ids[0]
+    );
+}
+
+/// A charge with **no** `qr_string` still answers, with `qr_string: null`.
+///
+/// **The optional half of the driver's message contract.** `qris.rs:642-646`
+/// builds `SCAN_QR|<order_id>|<qr>` when Midtrans returns a QR and
+/// `SCAN_QR|<order_id>` when it does not, and the handler extracts the QR with
+/// `message.split('|').nth(2)` (`payment_api.rs:313-317`) — which is `None` for the
+/// two-field form. That `None` path was untested: the only existing charge test
+/// uses a mock that always supplies `qr_string`, so it exercises only the
+/// three-field branch.
+///
+/// Why it is worth a test rather than a reading: if the extraction ever became
+/// `nth(1)` or if the driver dropped the separator, the three-field case would
+/// still pass (the QR string would just be wrong but non-null) while this one
+/// would either panic or answer with the ORDER ID in the QR field — and the UI
+/// renders whatever is in `qr_string` as a scannable code. A wrong-but-present QR
+/// is worse than an absent one.
+#[tokio::test]
+async fn charge_without_a_qr_string_answers_with_a_null_qr() {
+    let mock = MockServer::start().await;
+    // No `qr_string` key at all: Midtrans omits it for some acquirer routes.
+    let body = serde_json::json!({
+        "status_code": "201",
+        "status_message": "QRIS transaction is created",
+        "transaction_id": "txn-no-qr",
+        "order_id": "QRIS-NO-QR",
+        "gross_amount": "15000.00",
+        "currency": "IDR",
+        "payment_type": "qris",
+        "transaction_status": "pending"
+    });
+    Mock::given(method("POST"))
+        .and(path("/v2/charge"))
+        .respond_with(ResponseTemplate::new(201).set_body_json(body))
+        .mount(&mock)
+        .await;
+
+    let resp = payment_router(state_for(&mock.uri()))
+        .oneshot(authed_post(
+            "/api/payment/midtrans/qris",
+            r#"{"sale_id":"sale-no-qr","amount_minor":15000}"#,
+            Some("tenant-A"),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let json = body_json(resp).await;
+    assert_eq!(json["status"], "qr_issued");
+    assert_eq!(json["order_id"], "QRIS-NO-QR");
+    // `null`, NOT the order id: a two-field message has no third element, and the
+    // field must be absent rather than aliased to whatever came second.
+    assert!(
+        json["qr_string"].is_null(),
+        "an absent QR must be null, not the order id: got {}",
+        json["qr_string"]
     );
 }

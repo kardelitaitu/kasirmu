@@ -13,11 +13,12 @@ use axum::{
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use kasirmu_core::db::Store;
 
 use kasirmu_core::CoreError;
+use kasirmu_core::User;
 
 use crate::AppState;
 use crate::auth::ApiTokenClaims;
@@ -42,6 +43,56 @@ pub struct CreateUserRequest {
     pub display_name: String,
     /// Role ID (e.g. "role-staff", "role-owner").
     pub role_id: String,
+}
+
+/// Response body for `POST /api/v1/users` — the created user, WITHOUT the
+/// credential verifier.
+///
+/// The handler used to serialise `kasirmu_core::User` directly, whose
+/// `pin_hash` field carries no `#[serde(skip)]`; the live 201 therefore
+/// emitted the stored Argon2id verifier while the published
+/// `UserResponse` schema (`spec/schemas.rs`) declared no such property.
+/// Same precedent as `StaffMemberDto`
+/// (`kasirmu-bridge/src/staff.rs:100`), which exists precisely so the
+/// front-end never sees a `pin_hash`: a response type is the place to
+/// withhold a credential, not a `#[serde(skip)]` on a shared domain
+/// struct that the store and the sync snapshot both need in full.
+///
+/// Field set = every field `User` serialises except `pin_hash`. Keeping
+/// `is_active`/`updated_at` is deliberate: both are already on the wire
+/// today (`lib_tests.rs` asserts `is_active`), so dropping them here
+/// would be a silent breaking removal for any consumer — the published
+/// schema was the side that was wrong about them.
+#[derive(Debug, Serialize)]
+pub struct UserResponse {
+    /// Unique user ID.
+    pub id: String,
+    /// Login username (normalised: trimmed + lowercased by the store).
+    pub username: String,
+    /// Display name shown in the UI.
+    pub display_name: String,
+    /// Assigned role ID.
+    pub role_id: String,
+    /// Whether the account may log in.
+    pub is_active: bool,
+    /// ISO-8601 creation timestamp.
+    pub created_at: String,
+    /// ISO-8601 last-update timestamp.
+    pub updated_at: String,
+}
+
+impl From<User> for UserResponse {
+    fn from(user: User) -> Self {
+        Self {
+            id: user.id,
+            username: user.username,
+            display_name: user.display_name,
+            role_id: user.role_id,
+            is_active: user.is_active,
+            created_at: user.created_at,
+            updated_at: user.updated_at,
+        }
+    }
 }
 
 /// Create a new user.
@@ -143,7 +194,7 @@ pub async fn create_user(
         )
         .await
         {
-            Ok(user) => (StatusCode::CREATED, Json(user)).into_response(),
+            Ok(user) => (StatusCode::CREATED, Json(UserResponse::from(user))).into_response(),
             Err(e) => e.into_response(),
         };
     }
@@ -170,7 +221,7 @@ pub async fn create_user(
                     "failed to stamp tenant_id on user — snapshot scoping may be affected"
                 );
             }
-            (StatusCode::CREATED, Json(user)).into_response()
+            (StatusCode::CREATED, Json(UserResponse::from(user))).into_response()
         }
         Err(e) => store_error_response(e),
     }

@@ -160,6 +160,7 @@ impl HealthState {
     }
 
     /// The worse of two states, by [`Self::severity_rank`].
+    #[must_use]
     pub fn worst(self, other: Self) -> Self {
         if self.severity_rank() <= other.severity_rank() {
             self
@@ -188,7 +189,7 @@ pub fn aggregate(states: &[HealthState]) -> HealthState {
     states
         .iter()
         .copied()
-        .reduce(|acc, s| acc.worst(s))
+        .reduce(HealthState::worst)
         .unwrap_or(HealthState::Unknown)
 }
 

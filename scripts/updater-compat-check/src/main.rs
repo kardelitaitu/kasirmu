@@ -1,4 +1,4 @@
-// ── OZ-POS Updater Compatibility Check (AUDIT-28 RELEASE-04) ─────────────
+// ── kasir.mu Updater Compatibility Check (AUDIT-28 RELEASE-04) ─────────────
 //
 // This harness replicates — line for line — the signature verification path
 // the REAL Tauri updater client runs, using the SAME crate and version the
@@ -36,6 +36,8 @@
 // File-based arguments are provided because very long base64 values can exceed
 // Windows command-line limits / get mangled by shell quoting; the integration
 // driver writes them to temp files instead.
+
+#![deny(unsafe_code)]
 
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine;

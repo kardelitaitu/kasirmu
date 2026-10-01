@@ -1,3 +1,4 @@
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file, and it is where this campaign's longest-standing open finding finally gets pinned to a precise, CORRECTED form — so the correction is the substance of this stamp. · THE SPEC CLOSES A REAL GAP, and the evidence is that the unsafe call is largely gone. It replaces an unsafe environment-mutation call with typed configuration, and a scan confirms the call now survives only in a handful of places in the cloud server, most of them in test files. The severity was recorded as CRITICAL, which was right: an environment mutation not synchronised with threads reading it is a data race, and typed configuration removes the class rather than the instance. Its status line is honest about the remainder — DONE, partial, watch channel deferred — and this pass found the deferred part accurately described. · THE ENV-VAR FINDING, CORRECTED AFTER THIRTY-ODD ROUNDS OF REPORTING IT LOOSELY, and the correction changes who needs to act. The loose version was: the root guide documents a `KASIRMU_` prefix where the code reads `OZ_`. That was too simple. The codebase is MID-MIGRATION with BOTH prefixes live, serving different layers. Verified this pass: the deployment tokens are genuinely prefixed, with the skills that consume them setting the unprefixed names FROM the prefixed pair, exactly as the guide describes — so that half of the documentation is RIGHT. The master-key variable is also right, and the guide's note that the older spelling remains a read alias is accurate in both directions, with the new name in the crypto crate. The documentation is wrong on a specific, BOUNDED set of server-configuration variables: the admin key, the plan-enforcement flag, the API secret and the licence private key are read with the OLD prefix in the server config and the config validator, and the prefixed spellings do not appear in the code at all. So the defect is not a wholesale prefix error — it is that the new prefix was applied to variables that were never migrated. That is a much smaller and more actionable fix, and it is why the loose version should not be repeated. · Recorded here rather than patched because the file needing correction is the root agent guide, which is outside a markdown audit and which this campaign has consistently flagged rather than edited. · NOT re-measured: the deferred watch channel, and whether the remaining unsafe calls in the cloud server are reachable in production rather than only in tests. · No machine-readable stamp existed; this is the first. -->
 # C-2 — Replace `unsafe { std::env::set_var(...) }` with typed config + watch channel
 
 - **Status:** DONE (partial — watch channel deferred)
@@ -45,7 +46,7 @@ segfault under contention).
 ## Acceptance criteria
 
 - [x] No `unsafe { std::env::set_var(...) }` in any production path
-      (grep `apps/desktop-client/src/` and `apps/tablet-client/src/`)
+      (grep `apps/desktop-tauri/src/` and `apps/mobile-tauri/src/` — the old `apps/desktop-client`/`apps/tablet-client` directories no longer exist; renamed in the rebrand)
 - [x] No `unsafe { std::env::remove_var(...) }` in any production path
 - [x] `AppState.terminal_id: Arc<Mutex<Option<String>>>` typed field
       replaces env var (simpler than the proposed `AppConfig` struct —
@@ -119,7 +120,7 @@ segfault under contention).
 
 ```bash
 # 1. No more unsafe env mutation
-grep -rn 'env::set_var\|env::remove_var' apps/desktop-client/src/ apps/tablet-client/src/
+grep -rn 'env::set_var\|env::remove_var' apps/desktop-tauri/src/ apps/mobile-tauri/src/
 # expect: 0 matches in production paths
 
 # 2. Tests pass
@@ -170,3 +171,5 @@ head -5 apps/desktop-client/src/commands/features.rs
 - `apps/desktop-client/src/state.rs:149`
 - `apps/desktop-client/src/commands/features.rs:316, 330`
 - `apps/desktop-client/src/lib.rs` (Tauri builder + `setup()`)
+
+> last audited 29-09-26 by docs-auditor

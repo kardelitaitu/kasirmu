@@ -12,7 +12,7 @@ import type { FeatureRow, PricingTier } from './types';
 // of the English words: "ruang kerja" for workspace (shared.id.ftl
 // nav-switch-workspace = "Ganti Ruang Kerja", workspace-home-available =
 // "{ $count } ruang kerja tersedia"; docs/id/workspaces.md is titled "Ruang
-// Kerja"), "Layar Dapur (KDS)" for the kitchen display (docs/id/stores.md
+// Kerja"), "Layar Dapur (KDS)" for the kitchen display (docs/id/location.md
 // names the preset exactly that) and "perangkat keras" for hardware
 // (docs/id/terminals.md). Two borrowings stay on purpose: "register" for a
 // cashier terminal (docs/id/terminals.md writes "register kasir") and "Memo",
@@ -48,9 +48,8 @@ export const pricing: PricingTier[] = [
     features: [
       { label: '1 lokasi', included: true },
       { label: '1 register', included: true },
-      { label: '1 ruang kerja gudang', included: true },
       { label: 'Riwayat penjualan 3 bulan', included: true },
-      { label: 'QRIS statis + dinamis', included: true },
+      { label: 'QRIS dinamis', included: true },
       { label: 'Sinkron cloud', included: false },
     ],
   },
@@ -77,8 +76,7 @@ export const pricing: PricingTier[] = [
     features: [
       { label: '1 lokasi', included: true },
       { label: '2 register', included: true },
-      { label: '2 ruang kerja gudang', included: true },
-      { label: 'QRIS statis + dinamis', included: true },
+      { label: 'e-wallet, kartu via Midtrans', included: true },
       { label: 'Dasbor Penjualan Harian', included: true },
       { label: 'Sinkron cloud', included: true },
     ],
@@ -109,7 +107,7 @@ export const pricing: PricingTier[] = [
       { label: '2 Layar Dapur (KDS)', included: true },
       { label: 'Laporan & analitik', included: true },
       { label: 'Memo', included: true },
-      { label: 'Kartu debit & kredit (Stripe)', included: true },
+      { label: 'Gateway Stripe', included: true },
       { label: 'Sinkron cloud', included: true },
     ],
   },
@@ -159,13 +157,49 @@ export const pricing: PricingTier[] = [
 export const featureRows: FeatureRow[] = [
   { label: 'Lokasi', values: { free: 1, plus: 1, pro: 2, premium: 5, enterprise: 'Tanpa batas' } },
   { label: 'Terminal (register) per lokasi', values: { free: 1, plus: 2, pro: 5, premium: 'Tanpa batas', enterprise: 'Tanpa batas' } },
-  { label: 'Ruang kerja gudang', values: { free: 1, plus: 2, pro: 3, premium: 'Tanpa batas', enterprise: 'Tanpa batas' } },
+  // Ruang kerja gudang menjadi fitur KHUSUS PREMIUM lewat keputusan pemilik
+  // 2026-09-29 — nol, bukan kuota yang menyusut, mengikuti konvensi baris Layar
+  // Dapur (KDS) di bawah (0 = paket ini tidak bisa membukanya). Lapisan
+  // penegakannya sudah ikut berpindah: `max_warehouses()` mengembalikan 0 di
+  // bawah Premium dan `allows_workspace_type("warehouse")` bernilai false di
+  // sana, daftar `allowed_types` di `tierQuotas` (Go) dan matriks dokumen
+  // membawa nol yang sama, dan pricing-tier-parity.test.ts membaca aksesor Rust
+  // itu lalu gagal kalau baris ini menyimpang.
+  { label: 'Ruang kerja gudang', values: { free: 0, plus: 0, pro: 0, premium: 'Tanpa batas', enterprise: 'Tanpa batas' } },
   { label: 'Layar Dapur (KDS)', values: { free: 0, plus: 0, pro: 2, premium: 'Tanpa batas', enterprise: 'Tanpa batas' } },
   { label: 'Max produk/menu', values: { free: 200, plus: 500, pro: 1000, premium: 10000, enterprise: 'Tanpa batas' } },
   { label: 'Staf pengguna', values: { free: 1, plus: 5, pro: 20, premium: 50, enterprise: 'Tanpa batas' } },
   { label: 'Riwayat penjualan', values: { free: '3 bulan', plus: '1 tahun', pro: '5 tahun', premium: 'Tanpa batas', enterprise: 'Tanpa batas' } },
-  { label: 'QRIS statis + dinamis', values: { free: true, plus: true, pro: true, premium: true, enterprise: true } },
-  { label: 'Kartu debit & kredit (Stripe)', values: { free: false, plus: false, pro: true, premium: true, enterprise: true } },
+  // Rel pembayaran. Otoritas: subscription-tiers.md §3 "Payments" dan
+  // SubscriptionTier::supports_qris / supports_stripe di
+  // crates/kasirmu-core/src/subscription/tier.rs — Stripe terbuka di Pro, dan
+  // gateway dompet/kartu Midtrans di Plus. QRIS nominal dinamis adalah
+  // pengecualian yang disengaja: keputusan pemilik 2026-09-29 membuatnya
+  // tersedia di paket Gratis, seperti yang sudah dikatakan halaman QRIS
+  // ("Keduanya tersedia di semua paket, termasuk Gratis") dan matriks lisensi di
+  // dokumen ("QRIS: ✓ (statis + dinamis)" di kolom Gratis). Tabel harga inilah
+  // yang menyimpang, bukan baris ini.
+  //
+  // ⚠️ LAPISAN PENEGAKAN BELUM BERUBAH. `supports_qris()` masih false untuk
+  // Free/OneTime dan POS masih menggerbangkan tender QRIS di balik prompt
+  // upgrade, jadi sampai itu mendarat, tanda ✓ ini mengiklankan rel yang ditolak
+  // aplikasi saat checkout. Perubahan diputuskan website-dulu; jangan dibaca
+  // sebagai bukti entitlement-nya ada, dan jangan dikembalikan tanpa keputusan
+  // yang sama. QRIS statis (tercetak) tidak butuh entitlement dan jalan di semua
+  // paket, jadi ia sengaja bukan baris bergerbang — dan bukan lagi butir kartu:
+  // kartu membawa baris QRIS dinamis, tabel membawa gerbangnya, dan satu baris
+  // yang dipakai untuk hal yang ada di semua paket tidak memberi tahu apa pun.
+  // Setiap baris di sini membawa tanda `*` yang merujuk ke salah satu dari tiga
+  // baris catatan kaki yang dirender di bawah tabel (pricingPage.qrisNote, .midtransNote,
+  // .stripeNote, sesuai urutan ini) — penanda tanpa catatan lebih buruk daripada
+  // tanpa penanda, jadi ketiganya ditambah dan dihapus bersamaan.
+  //
+  // Stripe juga membawa WIP: gateway-nya ditawarkan di Pro+ tetapi
+  // integrasinya belum siap dirilis, dan `stripeNote` menyatakannya supaya
+  // tanda ✓ tidak dibaca sebagai "sudah bisa dipakai hari ini".
+  { label: 'QRIS nominal dinamis*', values: { free: true, plus: true, pro: true, premium: true, enterprise: true } },
+  { label: 'Gateway Midtrans (e-wallet, kartu debit/kredit)*', values: { free: false, plus: true, pro: true, premium: true, enterprise: true } },
+  { label: 'Gateway Stripe (WIP)*', values: { free: false, plus: false, pro: true, premium: true, enterprise: true } },
   { label: 'Sinkron cloud', values: { free: false, plus: true, pro: true, premium: true, enterprise: true } },
   { label: 'Dasbor Penjualan Harian', values: { free: false, plus: true, pro: true, premium: true, enterprise: true } },
   { label: 'Laporan & analitik', values: { free: false, plus: false, pro: true, premium: true, enterprise: true } },

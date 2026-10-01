@@ -6,6 +6,7 @@ next: none | perf: N/A
 */
 //! Error type for the CRM domain.
 
+use kasirmu_core::db::namespaced::NamespaceError;
 use thiserror::Error;
 
 /// Errors that can originate in the customer relationship management domain.
@@ -14,6 +15,10 @@ pub enum CrmError {
     /// A database operation failed.
     #[error("database error: {0}")]
     Db(#[from] rusqlite::Error),
+
+    /// A namespace check rejected the statement (Phase 3 P3.2).
+    #[error("namespace error: {0}")]
+    Namespace(#[from] NamespaceError),
 
     /// A lookup by id returned no row.
     #[error("not found: {entity} {id}")]
@@ -45,35 +50,5 @@ impl CrmError {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn crm_error_validation_message() {
-        let err = CrmError::validation("name", "must not be empty");
-        assert!(matches!(
-            err,
-            CrmError::Validation { field, .. } if field == "name"
-        ));
-        assert_eq!(
-            format!("{err}"),
-            "validation error on name: must not be empty"
-        );
-    }
-
-    #[test]
-    fn crm_error_not_found_message() {
-        let err = CrmError::NotFound {
-            entity: "customer",
-            id: "bad-id".into(),
-        };
-        assert_eq!(format!("{err}"), "not found: customer bad-id");
-    }
-
-    #[test]
-    fn crm_error_from_rusqlite() {
-        let rusqlite_err = rusqlite::Error::QueryReturnedNoRows;
-        let err = CrmError::from(rusqlite_err);
-        assert!(matches!(err, CrmError::Db(_)));
-    }
-}
+#[path = "error_tests.rs"]
+mod tests;

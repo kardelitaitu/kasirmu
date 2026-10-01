@@ -96,41 +96,5 @@ pub fn to_png_with_logo(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn png_starts_with_png_magic() {
-        // Use the builder to produce a real payload string
-        let payload = crate::QrisBuilder::new()
-            .nmid("ID1020001234567")
-            .merchant_name("Test")
-            .merchant_city("Jakarta")
-            .merchant_category_code("5812")
-            .build()
-            .unwrap()
-            .to_qris_string();
-
-        let png = to_png(&payload, 300).unwrap();
-        assert_eq!(
-            &png[..4],
-            b"\x89PNG",
-            "output must start with PNG magic bytes"
-        );
-    }
-
-    #[test]
-    fn svg_contains_svg_tag() {
-        let payload = crate::QrisBuilder::new()
-            .nmid("ID1020001234567")
-            .merchant_name("Test")
-            .merchant_city("Jakarta")
-            .merchant_category_code("5812")
-            .build()
-            .unwrap()
-            .to_qris_string();
-
-        let svg = to_svg(&payload).unwrap();
-        assert!(svg.contains("<svg"), "output must contain an <svg> element");
-    }
-}
+#[path = "render_tests.rs"]
+mod tests;

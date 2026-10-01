@@ -1,19 +1,19 @@
 use super::*;
 use crate::migrations;
 
-fn fresh() -> (Store<'static>, String) {
-    let conn = migrations::fresh_db();
-    let conn: &'static rusqlite::Connection = Box::leak(Box::new(conn));
-    let store = Store::new(conn);
+/// The caller owns the connection, so this no longer `Box::leak`s a
+/// database per test to manufacture a `'static` (O-T03).
+fn fresh(db: &rusqlite::Connection) -> (Store<'_>, String) {
+    let store = Store::new(db);
 
     // Seed a role and user for FK compliance.
-    conn.execute_batch(
+    db.execute_batch(
         "INSERT INTO roles (id, name, description, permissions, created_at, updated_at)
          VALUES ('role-test', 'Test', 'Test', '[]', '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z');
          INSERT INTO users (id, username, pin_hash, display_name, role_id, created_at, updated_at)
          VALUES ('user-1', 'alice', 'hash', 'Alice', 'role-test', '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z');"
     ).unwrap();
-    seed_location_and_instances(conn);
+    seed_location_and_instances(db);
 
     (store, "user-1".into())
 }
@@ -72,8 +72,10 @@ fn plus_bundle_sub() -> TenantSubscription {
         expires_at: None,
         max_locations: 1,
         max_pos_instances: 2,
-        allowed_types_json:
-            r#"["store-pos","restaurant-pos","admin","warehouse","inventory","kds"]"#.into(),
+        // The bundle widens `kds` only. No Plus payload carries `warehouse`
+        // any more — Premium+ since 2026-09-29 — so this is what the license
+        // server mints for a Plus + restaurant_starter bundle today.
+        allowed_types_json: r#"["store-pos","restaurant-pos","admin","inventory","kds"]"#.into(),
         signature: "BOOTSTRAP_FREE".into(),
         signed_payload: String::new(),
         api_key: String::new(),
@@ -85,7 +87,8 @@ fn plus_bundle_sub() -> TenantSubscription {
 
 #[test]
 fn list_all_workspace_types_returns_seeded() {
-    let (store, _) = fresh();
+    let store_db = migrations::fresh_db();
+    let (store, _) = fresh(&store_db);
     let ws = store.list_all_workspace_types().unwrap();
     assert_eq!(ws.len(), 6);
     assert!(ws.iter().any(|w| w.key == "restaurant-pos"));
@@ -108,14 +111,16 @@ fn list_all_workspace_types_returns_seeded() {
 
 #[test]
 fn list_workspaces_legacy_owner_returns_all() {
-    let (store, _) = fresh();
+    let store_db = migrations::fresh_db();
+    let (store, _) = fresh(&store_db);
     let ws = store.list_workspaces_legacy("role-owner", None).unwrap();
     assert_eq!(ws.len(), 6);
 }
 
 #[test]
 fn list_workspaces_legacy_with_user_override() {
-    let (store, user_id) = fresh();
+    let store_db = migrations::fresh_db();
+    let (store, user_id) = fresh(&store_db);
     let before = store
         .list_workspaces_legacy("role-test", Some(&user_id))
         .unwrap();
@@ -142,7 +147,8 @@ fn list_workspaces_legacy_with_user_override() {
 
 #[test]
 fn list_workspace_types_returns_all() {
-    let (store, _) = fresh();
+    let store_db = migrations::fresh_db();
+    let (store, _) = fresh(&store_db);
     let types = store.list_workspace_types().unwrap();
     assert_eq!(types.len(), 6);
     assert!(types.iter().any(|t| t.layout_mode == "fullscreen"));
@@ -151,7 +157,8 @@ fn list_workspace_types_returns_all() {
 
 #[test]
 fn list_workspaces_owner_returns_instances_in_store() {
-    let (store, _) = fresh();
+    let store_db = migrations::fresh_db();
+    let (store, _) = fresh(&store_db);
     // Primary store has default instances seeded by migration.
     let dto = store
         .list_workspaces("role-owner", None, "default")
@@ -174,7 +181,8 @@ fn list_workspaces_auditor_returns_instances_in_store() {
     // must resolve the same workspace instances as the management roles
     // so it can reach its read-only screens (audit log, reports,
     // inventory) through the workspace picker.
-    let (store, _) = fresh();
+    let store_db = migrations::fresh_db();
+    let (store, _) = fresh(&store_db);
     let dto = store
         .list_workspaces("role-auditor", None, "default")
         .unwrap();
@@ -186,7 +194,8 @@ fn list_workspaces_auditor_returns_instances_in_store() {
 
 #[test]
 fn get_workspace_instance_returns_correct_dto() {
-    let (store, user_id) = fresh();
+    let store_db = migrations::fresh_db();
+    let (store, user_id) = fresh(&store_db);
     let dto = store
         .get_workspace_instance("default-restaurant-pos", Some(&user_id))
         .unwrap();
@@ -198,7 +207,8 @@ fn get_workspace_instance_returns_correct_dto() {
 
 #[test]
 fn create_workspace_instance_basic() {
-    let (store, _) = fresh();
+    let store_db = migrations::fresh_db();
+    let (store, _) = fresh(&store_db);
     let row = store
         .create_workspace_instance(
             "test-cashier-1",
@@ -222,9 +232,45 @@ fn create_workspace_instance_basic() {
     assert!(dto.iter().any(|w| w.instance_id == "test-cashier-1"));
 }
 
+/// MSL-50: `type_key` is validated non-empty but not against the FK target, so a
+/// bogus key leaks a raw `FOREIGN KEY constraint failed`.
+///
+/// `workspace_instances.type_key` is `REFERENCES workspace_types(key)` and the
+/// create path checks only `type_key.trim().is_empty()`. The bridge/UI supply a
+/// key from a picker, so this is latent rather than a live user action — but the
+/// shape is the one MSL-48/49 closed elsewhere, and a wrong key should name the
+/// field rather than read as a storage fault.
+#[test]
+fn create_instance_rejects_an_unknown_workspace_type() {
+    let store_db = migrations::fresh_db();
+    let (store, _) = fresh(&store_db);
+    let err = store
+        .create_workspace_instance_with_purpose(CreateWorkspaceInstanceArgs {
+            id: "ws-bogus".into(),
+            type_key: "not-a-workspace-type".into(),
+            store_id: "default".into(),
+            name: "Bogus".into(),
+            description: String::new(),
+            colour: None,
+            purpose_key: "general".into(),
+        })
+        .expect_err("an unknown workspace type must be refused");
+    match err {
+        CoreError::Validation { field, message } => {
+            assert_eq!(field, "type_key", "the error names the offend field");
+            assert!(
+                message.contains("not-a-workspace-type"),
+                "and echoes the rejected key: {message}"
+            );
+        }
+        other => panic!("expected a Validation naming type_key, got {other:?}"),
+    }
+}
+
 #[test]
 fn purpose_key_is_independent_from_type_and_name() {
-    let (store, _) = fresh();
+    let store_db = migrations::fresh_db();
+    let (store, _) = fresh(&store_db);
     store
         .create_workspace_instance_with_purpose(CreateWorkspaceInstanceArgs {
             id: "ws-checkout".into(),
@@ -259,7 +305,8 @@ fn purpose_key_is_independent_from_type_and_name() {
 
 #[test]
 fn create_workspace_instance_duplicate_fails() {
-    let (store, _) = fresh();
+    let store_db = migrations::fresh_db();
+    let (store, _) = fresh(&store_db);
     let result = store.create_workspace_instance(
         "default-restaurant-pos",
         "restaurant-pos",
@@ -268,12 +315,22 @@ fn create_workspace_instance_duplicate_fails() {
         "",
         None,
     );
-    assert!(result.is_err());
+    // MSL-82: this must name the id as a conflict, NOT surface the raw
+    // `UNIQUE constraint failed: workspace_instances.id` a bare INSERT would
+    // raise. `is_err()` alone passes for both, so the variant is the assertion.
+    match result.expect_err("a duplicate id must be refused") {
+        CoreError::Conflict { entity, field } => {
+            assert_eq!(entity, "workspace instance");
+            assert_eq!(field, "id");
+        }
+        other => panic!("expected Conflict on the id, got {other:?}"),
+    }
 }
 
 #[test]
 fn list_workspaces_with_user_override_instances() {
-    let (store, user_id) = fresh();
+    let store_db = migrations::fresh_db();
+    let (store, user_id) = fresh(&store_db);
 
     // No user override → falls back to role_workspace_types.
     let before = store
@@ -296,7 +353,8 @@ fn list_workspaces_with_user_override_instances() {
 
 #[test]
 fn set_user_workspace_instances_empty_clears() {
-    let (store, user_id) = fresh();
+    let store_db = migrations::fresh_db();
+    let (store, user_id) = fresh(&store_db);
     store
         .set_user_workspace_instances(&user_id, ["default-admin"], None)
         .unwrap();
@@ -312,7 +370,8 @@ fn set_user_workspace_instances_empty_clears() {
 
 #[test]
 fn list_workspaces_owner_without_store_access_sees_all() {
-    let (store, _) = fresh();
+    let store_db = migrations::fresh_db();
+    let (store, _) = fresh(&store_db);
     // role-owner with no user_location_access (Phase 1 single-store mode)
     let dto = store
         .list_workspaces("role-owner", None, "default")
@@ -322,7 +381,8 @@ fn list_workspaces_owner_without_store_access_sees_all() {
 
 #[test]
 fn list_all_instances_returns_all_in_store() {
-    let (store, _) = fresh();
+    let store_db = migrations::fresh_db();
+    let (store, _) = fresh(&store_db);
     let instances = store.list_all_instances("default").unwrap();
     assert_eq!(instances.len(), 5);
     assert!(instances.iter().any(|i| i.id == "default-kds"));
@@ -332,7 +392,8 @@ fn list_all_instances_returns_all_in_store() {
 
 #[test]
 fn list_workspaces_with_entitlement_filters_by_tier() {
-    let (store, _) = fresh();
+    let store_db = migrations::fresh_db();
+    let (store, _) = fresh(&store_db);
     // Free tier only allows restaurant-pos, store-pos, admin
     let free = sub_for_tier(SubscriptionTier::Free);
     let dto = store
@@ -353,7 +414,8 @@ fn list_workspaces_with_entitlement_filters_by_tier() {
 
 #[test]
 fn list_workspaces_with_entitlement_premium_sees_kds() {
-    let (store, _) = fresh();
+    let store_db = migrations::fresh_db();
+    let (store, _) = fresh(&store_db);
     // Premium tier includes KDS. Post ADR-18 §13-37 migration 091
     // renamed `workspace_types.key = 'inventory'` -> `'warehouse'`,
     // so the entitlement query checks 'warehouse' as the user-facing
@@ -371,7 +433,8 @@ fn list_workspaces_with_entitlement_premium_sees_kds() {
 
 #[test]
 fn list_workspaces_with_entitlement_enterprise_sees_all() {
-    let (store, _) = fresh();
+    let store_db = migrations::fresh_db();
+    let (store, _) = fresh(&store_db);
     let enterprise = sub_for_tier(SubscriptionTier::Enterprise);
     let dto = store
         .list_workspaces_with_entitlement("role-owner", None, "default", &enterprise)
@@ -381,7 +444,8 @@ fn list_workspaces_with_entitlement_enterprise_sees_all() {
 
 #[test]
 fn list_workspaces_with_entitlement_bundle_plus_sees_kds() {
-    let (store, _) = fresh();
+    let store_db = migrations::fresh_db();
+    let (store, _) = fresh(&store_db);
     // A Plus + restaurant_starter bundle subscriber's signed payload
     // lists kds — the listing must show the KDS workspace even though
     // the Plus TIER statically excludes it (C3.2).
@@ -393,12 +457,20 @@ fn list_workspaces_with_entitlement_bundle_plus_sees_kds() {
         dto.iter().any(|w| w.type_key == "kds"),
         "bundle subscriber must see the KDS workspace, got {dto:?}"
     );
-    assert_eq!(dto.len(), 5);
+    // Four, not five: the payload no longer carries `warehouse`, so a Plus
+    // bundle sees pos + restaurant-pos + admin + kds. The bundle widens the
+    // kds type only — warehouse is Premium+, bundle or not.
+    assert!(
+        !dto.iter().any(|w| w.type_key == "warehouse"),
+        "a Plus bundle must not expose the warehouse workspace: {dto:?}"
+    );
+    assert_eq!(dto.len(), 4);
 }
 
 #[test]
 fn list_workspaces_without_entitlement_sees_all() {
-    let (store, _) = fresh();
+    let store_db = migrations::fresh_db();
+    let (store, _) = fresh(&store_db);
     // Original list_workspaces without tier filtering should return all 5
     let dto = store
         .list_workspaces("role-owner", None, "default")
@@ -408,7 +480,8 @@ fn list_workspaces_without_entitlement_sees_all() {
 }
 #[test]
 fn count_active_instances_excludes_suspended() {
-    let (store, _) = fresh();
+    let store_db = migrations::fresh_db();
+    let (store, _) = fresh(&store_db);
     let initial = store.count_active_instances("default").unwrap();
     assert_eq!(initial, 5);
     // Archive one instance using the public wrapper.
@@ -419,7 +492,8 @@ fn count_active_instances_excludes_suspended() {
 
 #[test]
 fn update_workspace_instance_changes_editable_fields() {
-    let (store, _) = fresh();
+    let store_db = migrations::fresh_db();
+    let (store, _) = fresh(&store_db);
     // Seed a fresh instance to mutate.
     store
         .create_workspace_instance(
@@ -449,7 +523,8 @@ fn update_workspace_instance_changes_editable_fields() {
 
 #[test]
 fn update_workspace_instance_none_preserves_existing_fields() {
-    let (store, _) = fresh();
+    let store_db = migrations::fresh_db();
+    let (store, _) = fresh(&store_db);
     store
         .create_workspace_instance(
             "ws-preserve",
@@ -479,7 +554,8 @@ fn update_workspace_instance_none_preserves_existing_fields() {
 
 #[test]
 fn update_workspace_instance_missing_returns_not_found() {
-    let (store, _) = fresh();
+    let store_db = migrations::fresh_db();
+    let (store, _) = fresh(&store_db);
     let err = store
         .update_workspace_instance("does-not-exist", "X", Some("Y"), None)
         .unwrap_err();
@@ -488,7 +564,8 @@ fn update_workspace_instance_missing_returns_not_found() {
 
 #[test]
 fn owner_with_user_store_access_filtered_by_assigned_stores() {
-    let (store, user_id) = fresh();
+    let store_db = migrations::fresh_db();
+    let (store, user_id) = fresh(&store_db);
     // Create a second store profile so we have multiple stores.
     store
         .conn
@@ -541,7 +618,8 @@ fn owner_with_user_store_access_filtered_by_assigned_stores() {
 
 #[test]
 fn enforce_instance_quota_rejects_disallowed_type() {
-    let (store, _) = fresh();
+    let store_db = migrations::fresh_db();
+    let (store, _) = fresh(&store_db);
     let free = sub_for_tier(SubscriptionTier::Free);
     let result = store.enforce_instance_quota(&free, "kds", "default");
     assert!(result.is_err());
@@ -552,7 +630,8 @@ fn enforce_instance_quota_rejects_disallowed_type() {
 
 #[test]
 fn enforce_instance_quota_allows_type_but_fails_on_count() {
-    let (store, _) = fresh();
+    let store_db = migrations::fresh_db();
+    let (store, _) = fresh(&store_db);
     let free = sub_for_tier(SubscriptionTier::Free);
     // Free tier allows restaurant-pos but we have 5 active instances.
     // Free tier allows 1 max, so this should fail on count, not type.
@@ -569,7 +648,8 @@ fn enforce_instance_quota_non_pos_types_do_not_inflate_pos_count() {
     // (max_pos_instances = 1). The quota must count only POS-class types,
     // not every workspace type — otherwise a legacy kds/warehouse inflates
     // the register count and blocks legitimate POS creation.
-    let (store, _) = fresh();
+    let store_db = migrations::fresh_db();
+    let (store, _) = fresh(&store_db);
     let free = sub_for_tier(SubscriptionTier::Free);
     // Use a fresh store with only a kds instance (no POS instances).
     let store_id = "quota-test";
@@ -601,8 +681,9 @@ fn enforce_instance_quota_non_pos_types_do_not_inflate_pos_count() {
 }
 
 #[test]
-fn enforce_instance_quota_enforces_warehouse_limit() {
-    let (store, _) = fresh();
+fn enforce_instance_quota_enforces_warehouse_gate() {
+    let store_db = migrations::fresh_db();
+    let (store, _) = fresh(&store_db);
     let free = sub_for_tier(SubscriptionTier::Free);
     let plus = sub_for_tier(SubscriptionTier::Plus);
     let store_id = "wh-quota-test";
@@ -621,11 +702,20 @@ fn enforce_instance_quota_enforces_warehouse_limit() {
             .is_err()
     );
 
-    // Plus allows 2 warehouses: 0 existing allows creation
+    // Plus has NO warehouse entitlement at all since 2026-09-29 (Premium+), so
+    // the type check refuses it before any count is consulted — and Pro, which
+    // used to allow three, is refused for the same reason.
+    let pro = sub_for_tier(SubscriptionTier::Pro);
     assert!(
         store
             .enforce_instance_quota(&plus, "warehouse", store_id)
-            .is_ok()
+            .is_err()
+    );
+    assert!(
+        store
+            .enforce_instance_quota(&pro, "warehouse", store_id)
+            .is_err(),
+        "Pro is refused too — the warehouse workspace is Premium+"
     );
 
     // Add 1st warehouse instance
@@ -638,11 +728,12 @@ fn enforce_instance_quota_enforces_warehouse_limit() {
         )
         .unwrap();
 
-    // 1 warehouse exists; Plus (limit 2) still allows creation
+    // 1 legacy warehouse exists (the row below predates the gate): Plus is still
+    // refused, because the refusal is the TYPE gate now, not a count.
     assert!(
         store
             .enforce_instance_quota(&plus, "warehouse", store_id)
-            .is_ok()
+            .is_err()
     );
 
     // Add 2nd warehouse instance
@@ -664,18 +755,21 @@ fn enforce_instance_quota_enforces_warehouse_limit() {
         CoreError::SubscriptionLimitExceeded(msg) if msg.contains("warehouse")
     ));
 
-    // Pro tier allows 3 warehouses (2 exist currently)
-    let pro = sub_for_tier(SubscriptionTier::Pro);
+    // Premium is where the workspace starts: two legacy warehouses already exist
+    // and the unlimited tier still allows another.
+    let premium = sub_for_tier(SubscriptionTier::Premium);
     assert!(
         store
-            .enforce_instance_quota(&pro, "warehouse", store_id)
-            .is_ok()
+            .enforce_instance_quota(&premium, "warehouse", store_id)
+            .is_ok(),
+        "Premium must be able to open a warehouse"
     );
 }
 
 #[test]
 fn enforce_instance_quota_bundle_plus_allows_kds() {
-    let (store, _) = fresh();
+    let store_db = migrations::fresh_db();
+    let (store, _) = fresh(&store_db);
     // A fresh store id has zero active instances, so the type check is
     // the only gate — kds must pass for the bundle even at Plus tier.
     let sub = plus_bundle_sub();
@@ -699,7 +793,8 @@ fn enforce_instance_quota_bundle_plus_allows_kds() {
 
 #[test]
 fn auto_recover_restores_suspended_to_limit() {
-    let (store, _) = fresh();
+    let store_db = migrations::fresh_db();
+    let (store, _) = fresh(&store_db);
     // Suspend two instances manually. Post ADR-18 §13-37 migration 091
     // renamed workspace_instances.id 'default-inventory' -> 'default-warehouse'
     // (the matched-pair workaround for the workspace_types.key -> id rename
@@ -721,7 +816,8 @@ fn auto_recover_restores_suspended_to_limit() {
 
 #[test]
 fn auto_recover_respects_tier_limit() {
-    let (store, _) = fresh();
+    let store_db = migrations::fresh_db();
+    let (store, _) = fresh(&store_db);
     // Suspend one instance.
     store
         .conn
@@ -741,7 +837,8 @@ fn auto_recover_respects_tier_limit() {
 
 #[test]
 fn auto_recover_unlimited_restores_all() {
-    let (store, _) = fresh();
+    let store_db = migrations::fresh_db();
+    let (store, _) = fresh(&store_db);
     store
         .conn
         .execute(
@@ -761,7 +858,8 @@ fn auto_recover_unlimited_restores_all() {
 
 #[test]
 fn suspend_surplus_transitions_excess_to_suspended() {
-    let (store, _) = fresh();
+    let store_db = migrations::fresh_db();
+    let (store, _) = fresh(&store_db);
     // 5 active instances. Free tier allows 1. Surplus = 4.
     let free = SubscriptionTier::Free;
     let suspended = store.suspend_surplus_instances("default", &free).unwrap();
@@ -771,7 +869,8 @@ fn suspend_surplus_transitions_excess_to_suspended() {
 
 #[test]
 fn suspend_surplus_no_op_when_under_limit() {
-    let (store, _) = fresh();
+    let store_db = migrations::fresh_db();
+    let (store, _) = fresh(&store_db);
     // Premium allows 10, we only have 5 — nothing to suspend.
     let premium = SubscriptionTier::Premium;
     let suspended = store
@@ -783,7 +882,8 @@ fn suspend_surplus_no_op_when_under_limit() {
 
 #[test]
 fn suspend_surplus_unlimited_tier_no_op() {
-    let (store, _) = fresh();
+    let store_db = migrations::fresh_db();
+    let (store, _) = fresh(&store_db);
     let enterprise = SubscriptionTier::Enterprise;
     let suspended = store
         .suspend_surplus_instances("default", &enterprise)
@@ -793,7 +893,8 @@ fn suspend_surplus_unlimited_tier_no_op() {
 
 #[test]
 fn auto_recover_then_suspend_roundtrip() {
-    let (store, _) = fresh();
+    let store_db = migrations::fresh_db();
+    let (store, _) = fresh(&store_db);
     // Suspend all
     store
         .conn
@@ -843,7 +944,8 @@ fn fetch_instance(store: &Store<'_>, id: &str) -> WorkspaceInstanceRow {
 
 #[test]
 fn create_workspace_instance_cannot_nest_in_open_transaction() {
-    let (store, _) = fresh();
+    let store_db = migrations::fresh_db();
+    let (store, _) = fresh(&store_db);
     let conn = store.conn;
     let outer = conn.unchecked_transaction().unwrap();
     let tx_store = Store::new(&outer);
@@ -883,7 +985,8 @@ fn create_workspace_instance_cannot_nest_in_open_transaction() {
 fn direct_insert_on_outer_tx_persists_on_commit() {
     // The pattern apply_topology_diff uses: open one tx, run the
     // INSERT directly, commit once.
-    let (store, _) = fresh();
+    let store_db = migrations::fresh_db();
+    let (store, _) = fresh(&store_db);
     let conn = store.conn;
     let tx = conn.unchecked_transaction().unwrap();
 
@@ -906,7 +1009,8 @@ fn direct_insert_on_outer_tx_persists_on_commit() {
 fn direct_insert_on_outer_tx_rolls_back_on_drop() {
     // Dropping the outer tx without commit rolls everything back —
     // the atomicity guarantee apply_topology_diff relies on.
-    let (store, _) = fresh();
+    let store_db = migrations::fresh_db();
+    let (store, _) = fresh(&store_db);
     let conn = store.conn;
     {
         let tx = conn.unchecked_transaction().unwrap();
@@ -933,7 +1037,8 @@ fn direct_insert_on_outer_tx_rolls_back_on_drop() {
 fn mixed_create_update_archive_on_one_tx_commits_atomically() {
     // Audit #4 happy path: create + update + archive in one tx all
     // succeed and commit together (direct SQL, no nested tx).
-    let (store, _) = fresh();
+    let store_db = migrations::fresh_db();
+    let (store, _) = fresh(&store_db);
     let conn = store.conn;
     let tx = conn.unchecked_transaction().unwrap();
 
@@ -978,7 +1083,8 @@ fn mixed_create_update_archive_on_one_tx_commits_atomically() {
 fn failed_step_rolls_back_entire_diff_tx() {
     // Audit #4: if a later step fails, prior creates/updates must
     // roll back — no partial persistence.
-    let (store, _) = fresh();
+    let store_db = migrations::fresh_db();
+    let (store, _) = fresh(&store_db);
     let conn = store.conn;
     let tx = conn.unchecked_transaction().unwrap();
 
@@ -1017,7 +1123,8 @@ fn failed_step_rolls_back_entire_diff_tx() {
 fn update_does_not_change_type_key() {
     // Audit #1: a rename must not silently change the type. The
     // update path has no type_key parameter, so the type stays.
-    let (store, _) = fresh();
+    let store_db = migrations::fresh_db();
+    let (store, _) = fresh(&store_db);
     store
         .create_workspace_instance(
             "imm-type",
@@ -1043,7 +1150,8 @@ fn update_does_not_change_type_key() {
 
 #[test]
 fn update_does_not_change_store_id() {
-    let (store, _) = fresh();
+    let store_db = migrations::fresh_db();
+    let (store, _) = fresh(&store_db);
     store
         .create_workspace_instance("imm-store", "store-pos", "default", "Original", "", None)
         .unwrap();
@@ -1062,7 +1170,8 @@ fn update_does_not_change_store_id() {
 
 #[test]
 fn update_preserves_type_and_store_when_changing_other_fields() {
-    let (store, _) = fresh();
+    let store_db = migrations::fresh_db();
+    let (store, _) = fresh(&store_db);
     store
         .create_workspace_instance(
             "imm-full",
@@ -1095,7 +1204,8 @@ fn update_preserves_type_and_store_when_changing_other_fields() {
 #[test]
 fn update_cannot_move_instance_to_another_store() {
     // Even when a second store exists, update has no store_id param.
-    let (store, _) = fresh();
+    let store_db = migrations::fresh_db();
+    let (store, _) = fresh(&store_db);
     store
         .conn
         .execute(
@@ -1126,7 +1236,8 @@ fn update_coalesces_unchanged_fields_preserving_type_and_store() {
     // COALESCE contract: None for description/colour keeps existing
     // values — the mechanism that makes partial updates safe and
     // never clobbers type/store.
-    let (store, _) = fresh();
+    let store_db = migrations::fresh_db();
+    let (store, _) = fresh(&store_db);
     store
         .create_workspace_instance(
             "coalesce",
@@ -1154,7 +1265,8 @@ fn update_coalesces_unchanged_fields_preserving_type_and_store() {
 
 #[test]
 fn create_workspace_instance_rejects_empty_id() {
-    let (store, _) = fresh();
+    let store_db = migrations::fresh_db();
+    let (store, _) = fresh(&store_db);
     let err = store
         .create_workspace_instance("", "store-pos", "default", "Name", "desc", None)
         .unwrap_err();
@@ -1163,7 +1275,8 @@ fn create_workspace_instance_rejects_empty_id() {
 
 #[test]
 fn create_workspace_instance_rejects_empty_type_key() {
-    let (store, _) = fresh();
+    let store_db = migrations::fresh_db();
+    let (store, _) = fresh(&store_db);
     let err = store
         .create_workspace_instance("ws-1", "", "default", "Name", "desc", None)
         .unwrap_err();
@@ -1178,7 +1291,8 @@ fn create_workspace_instance_rejects_empty_type_key() {
 
 #[test]
 fn create_workspace_instance_rejects_empty_store_id() {
-    let (store, _) = fresh();
+    let store_db = migrations::fresh_db();
+    let (store, _) = fresh(&store_db);
     let err = store
         .create_workspace_instance("ws-1", "store-pos", "", "Name", "desc", None)
         .unwrap_err();
@@ -1193,7 +1307,8 @@ fn create_workspace_instance_rejects_empty_store_id() {
 
 #[test]
 fn create_workspace_instance_rejects_empty_name() {
-    let (store, _) = fresh();
+    let store_db = migrations::fresh_db();
+    let (store, _) = fresh(&store_db);
     let err = store
         .create_workspace_instance("ws-1", "store-pos", "default", "", "desc", None)
         .unwrap_err();
@@ -1202,7 +1317,8 @@ fn create_workspace_instance_rejects_empty_name() {
 
 #[test]
 fn update_workspace_instance_rejects_empty_name() {
-    let (store, _) = fresh();
+    let store_db = migrations::fresh_db();
+    let (store, _) = fresh(&store_db);
     store
         .create_workspace_instance("ws-1", "store-pos", "default", "Name", "desc", None)
         .unwrap();
@@ -1239,7 +1355,8 @@ fn seed_owner_user(conn: &rusqlite::Connection) {
 
 #[test]
 fn verify_instance_access_denies_unknown_user() {
-    let (store, _) = fresh();
+    let store_db = migrations::fresh_db();
+    let (store, _) = fresh(&store_db);
     // A ghost user id with the owner claim previously passed the owner
     // bypass (no `user_location_access` rows → single-store mode) and
     // would have minted a session for an identity that does not exist.
@@ -1256,7 +1373,8 @@ fn verify_instance_access_denies_unknown_user() {
 
 #[test]
 fn verify_instance_access_rejects_forged_owner_role() {
-    let (store, user_id) = fresh();
+    let store_db = migrations::fresh_db();
+    let (store, user_id) = fresh(&store_db);
     // user-1's ACTUAL role is role-test. Claiming role-owner must be
     // rejected even though the instance exists and is active.
     let ok = store
@@ -1270,7 +1388,8 @@ fn verify_instance_access_rejects_forged_owner_role() {
 
 #[test]
 fn verify_instance_access_denies_inactive_user() {
-    let (store, user_id) = fresh();
+    let store_db = migrations::fresh_db();
+    let (store, user_id) = fresh(&store_db);
     // Claim the user's REAL role AND grant an explicit instance
     // assignment: without the `is_active` guard, branch 2 would return
     // Ok(true), so this test uniquely pins the inactive check rather
@@ -1293,7 +1412,8 @@ fn verify_instance_access_denies_inactive_user() {
 
 #[test]
 fn verify_instance_access_allows_real_owner() {
-    let (store, _) = fresh();
+    let store_db = migrations::fresh_db();
+    let (store, _) = fresh(&store_db);
     seed_owner_user(store.conn);
     let ok = store
         .verify_instance_access(
@@ -1314,7 +1434,8 @@ fn verify_instance_access_allows_auditor() {
     // Auditor is a global read-only role — the session-open gate must
     // admit it into any active instance so it can reach its read-only
     // screens (the plan's "Auditor is global" claim).
-    let (store, _) = fresh();
+    let store_db = migrations::fresh_db();
+    let (store, _) = fresh(&store_db);
     seed_owner_user(store.conn);
     store
         .conn
@@ -1340,7 +1461,8 @@ fn verify_instance_access_allows_auditor() {
 
 #[test]
 fn verify_instance_access_allows_explicit_assignment_with_real_role() {
-    let (store, user_id) = fresh();
+    let store_db = migrations::fresh_db();
+    let (store, user_id) = fresh(&store_db);
     store
         .set_user_workspace_instances(&user_id, ["default-admin"], None)
         .unwrap();
@@ -1355,7 +1477,8 @@ fn verify_instance_access_allows_explicit_assignment_with_real_role() {
 
 #[test]
 fn verify_instance_access_multi_store_owner_limited_to_assigned_stores() {
-    let (store, _) = fresh();
+    let store_db = migrations::fresh_db();
+    let (store, _) = fresh(&store_db);
     seed_owner_user(store.conn);
     store
         .conn
@@ -1418,7 +1541,8 @@ fn list_workspaces_staff_without_assignments_returns_empty() {
     // user_workspace_instances or role_workspace_types rows the
     // listing must return empty (whereas before the change it returned
     // all 5 instances in the store).
-    let (store, _) = fresh();
+    let store_db = migrations::fresh_db();
+    let (store, _) = fresh(&store_db);
     let dto = store
         .list_workspaces("role-staff", None, "default")
         .unwrap();
@@ -1430,7 +1554,8 @@ fn list_workspaces_staff_without_assignments_returns_empty() {
 
 #[test]
 fn list_workspaces_staff_sees_only_explicitly_assigned_instances() {
-    let (store, user_id) = fresh();
+    let store_db = migrations::fresh_db();
+    let (store, user_id) = fresh(&store_db);
     // Give the user explicit assignment to kds and admin.
     store
         .set_user_workspace_instances(&user_id, ["default-kds", "default-admin"], None)
@@ -1449,7 +1574,8 @@ fn list_workspaces_staff_sees_only_explicitly_assigned_instances() {
 
 #[test]
 fn list_workspaces_staff_falls_back_to_role_workspace_types() {
-    let (store, _) = fresh();
+    let store_db = migrations::fresh_db();
+    let (store, _) = fresh(&store_db);
     // role_workspace_types.role_id is an FK to roles(id) — seed the
     // built-in roles so the role-staff row can reference it.
     store.seed_default_roles().unwrap();
@@ -1470,7 +1596,8 @@ fn list_workspaces_staff_falls_back_to_role_workspace_types() {
 
 #[test]
 fn verify_instance_access_staff_denies_unassigned_instance() {
-    let (store, _) = fresh();
+    let store_db = migrations::fresh_db();
+    let (store, _) = fresh(&store_db);
     store.seed_default_roles().unwrap();
     store
         .conn
@@ -1512,7 +1639,8 @@ fn verify_instance_access_staff_denies_unassigned_instance() {
 
 #[test]
 fn verify_instance_access_staff_falls_back_to_role_workspace_types() {
-    let (store, _) = fresh();
+    let store_db = migrations::fresh_db();
+    let (store, _) = fresh(&store_db);
     store.seed_default_roles().unwrap();
     store
         .conn
@@ -1572,7 +1700,8 @@ fn verify_instance_access_staff_falls_back_to_role_workspace_types() {
 
 #[test]
 fn list_workspaces_staff_respects_user_store_access_out_of_scope_store_denied() {
-    let (store, _) = fresh();
+    let store_db = migrations::fresh_db();
+    let (store, _) = fresh(&store_db);
     store.seed_default_roles().unwrap();
     store
         .conn
@@ -1637,7 +1766,8 @@ fn list_workspaces_staff_respects_user_store_access_out_of_scope_store_denied() 
 
 #[test]
 fn verify_instance_access_staff_respects_user_store_access_out_of_scope_denied() {
-    let (store, _) = fresh();
+    let store_db = migrations::fresh_db();
+    let (store, _) = fresh(&store_db);
     store.seed_default_roles().unwrap();
     store
         .conn
@@ -1702,7 +1832,8 @@ fn list_workspaces_with_entitlement_staff_filters_by_tier_after_assignment() {
     // Free tier allows restaurant-pos, store-pos, admin — but NOT kds.
     // A staff user explicitly assigned kds + store-pos must see only
     // store-pos after entitlement filtering (kds pruned by tier).
-    let (store, _user_id) = fresh();
+    let store_db = migrations::fresh_db();
+    let (store, _user_id) = fresh(&store_db);
     store.seed_default_roles().unwrap();
     store
         .conn
@@ -1747,7 +1878,8 @@ fn tier_max_kds_screens_matches_published_contract() {
 fn enforce_instance_quota_rejects_third_kds_on_pro() {
     // Pro allows 2 KDS screens — a third must be rejected with the
     // actionable KDS message, not the register or type message.
-    let (store, _) = fresh();
+    let store_db = migrations::fresh_db();
+    let (store, _) = fresh(&store_db);
     let pro = sub_for_tier(SubscriptionTier::Pro);
     // Force the kds type through the type allowlist (Pro allows it
     // statically, but sub_for_tier carries the bootstrap `[]` payload —
@@ -1780,7 +1912,8 @@ fn enforce_instance_quota_rejects_third_kds_on_pro() {
 
 #[test]
 fn enforce_instance_quota_allows_two_kds_on_pro() {
-    let (store, _) = fresh();
+    let store_db = migrations::fresh_db();
+    let (store, _) = fresh(&store_db);
     let pro = sub_for_tier(SubscriptionTier::Pro);
     let store_id = "kds-ok";
     store
@@ -1805,7 +1938,8 @@ fn enforce_instance_quota_allows_two_kds_on_pro() {
 
 #[test]
 fn enforce_instance_quota_kds_unlimited_on_premium() {
-    let (store, _) = fresh();
+    let store_db = migrations::fresh_db();
+    let (store, _) = fresh(&store_db);
     let premium = sub_for_tier(SubscriptionTier::Premium);
     let store_id = "kds-premium";
     store
@@ -1836,7 +1970,8 @@ fn enforce_instance_quota_bundle_plus_kds_gets_two_screen_budget() {
     // kds TYPE on Plus; the screen budget becomes Pro's 2 (a static 0 would
     // make the paid entitlement meaningless). Two screens pass, the third
     // is rejected with the KDS message.
-    let (store, _) = fresh();
+    let store_db = migrations::fresh_db();
+    let (store, _) = fresh(&store_db);
     let sub = plus_bundle_sub();
     let store_id = "kds-bundle";
     store
@@ -1870,7 +2005,8 @@ fn count_topology_nodes_excludes_archived_only() {
     // Only 'archived' removes a node. No tier cap exists for this
     // dimension (limit_for -> None ALWAYS), so these counters are purely
     // the read fan-out's inputs.
-    let (store, _) = fresh();
+    let store_db = migrations::fresh_db();
+    let (store, _) = fresh(&store_db);
     let store_id = "topo-count";
     store
         .conn
@@ -1907,7 +2043,8 @@ fn count_quota_suspended_instances_counts_only_suspended() {
     // The suspension half of the marker verdict: exactly the rows in the
     // 'quota_suspended' status — active rows are not suspended, and an
     // archived former-suspension is no longer reported.
-    let (store, _) = fresh();
+    let store_db = migrations::fresh_db();
+    let (store, _) = fresh(&store_db);
     let store_id = "susp-count";
     store
         .conn
@@ -1942,5 +2079,114 @@ fn count_quota_suspended_instances_counts_only_suspended() {
             .count_quota_suspended_instances("other-store")
             .unwrap(),
         0
+    );
+}
+
+/// The owner-bypass arm lists role ids by hand; they must be the CANONICAL ids,
+/// or a role the taxonomy defines silently loses the bypass.
+///
+/// `list_workspaces_inner` compared `role_id` against seven literals, three of
+/// which — `admin`, `manager`, `auditor` — are not role ids at all: every preset
+/// id in `platform_core::rbac::ROLE_PRESETS` is `role-`-prefixed. Those three arms
+/// were unreachable, and the four that are real retyped constants that already
+/// exist. A hand-written list of ids is the "two correct copies are still two
+/// copies" defect this codebase names elsewhere, and its failure mode is silent:
+/// a taxonomy change would not be a compile error here.
+#[test]
+fn the_workspace_bypass_ids_are_the_canonical_ones() {
+    let store_db = migrations::fresh_db();
+    let (store, _) = fresh(&store_db);
+
+    // Every id the taxonomy defines must be treated exactly as the bypass
+    // decides. The four bypassed roles resolve the full store listing (five
+    // seeded instances); staff and custom deliberately fall through to the
+    // assignment and role-type arms.
+    for (role, bypassed) in [
+        (platform_core::rbac::builtin_roles::OWNER, true),
+        (platform_core::rbac::builtin_roles::ADMIN, true),
+        (platform_core::rbac::builtin_roles::MANAGER, true),
+        (platform_core::rbac::builtin_roles::AUDITOR, true),
+        (platform_core::rbac::builtin_roles::STAFF, false),
+        (platform_core::rbac::builtin_roles::CUSTOM, false),
+    ] {
+        let dto = store.list_workspaces(role, None, DEFAULT_STORE).unwrap();
+        assert_eq!(
+            dto.len() == 5,
+            bypassed,
+            "role {role:?}: the bypass arm and the taxonomy disagree",
+        );
+    }
+
+    // The bare ids the old list carried are not roles, so their arms were dead.
+    for bogus in [BARE_ADMIN, BARE_MANAGER, BARE_AUDITOR] {
+        assert!(
+            !platform_core::rbac::is_builtin_role_id(bogus),
+            "{bogus:?} is not a role id, so its arm in the bypass was dead",
+        );
+    }
+}
+
+const DEFAULT_STORE: &str = "default";
+/// MSL-21: the SAME set is asserted directly on the shared predicate, so a copy
+/// cannot reintroduce a private list. `can_access_instance` and
+/// `list_workspaces_inner` now both call it, and this walks every preset id.
+#[test]
+fn the_bypass_predicate_admits_exactly_the_management_roles() {
+    use platform_core::rbac::{builtin_roles, role_bypasses_workspace_assignment};
+
+    let expected = [
+        (builtin_roles::OWNER, true),
+        (builtin_roles::ADMIN, true),
+        (builtin_roles::MANAGER, true),
+        (builtin_roles::AUDITOR, true),
+        // Staff and Custom must resolve through an assignment, never a blanket
+        // bypass — Staff especially: a checkout-only role seeing every workspace
+        // in the store is the precise thing the assignment model prevents.
+        (builtin_roles::STAFF, false),
+        (builtin_roles::CUSTOM, false),
+    ];
+    for (role, bypassed) in expected {
+        assert_eq!(
+            role_bypasses_workspace_assignment(role),
+            bypassed,
+            "predicate and taxonomy disagree about {role:?}",
+        );
+    }
+
+    // The three literals every hand-written copy carried are not roles.
+    for bogus in [BARE_ADMIN, BARE_MANAGER, BARE_AUDITOR] {
+        assert!(
+            !role_bypasses_workspace_assignment(bogus),
+            "{bogus:?} must not bypass"
+        );
+    }
+}
+const BARE_ADMIN: &str = "admin";
+const BARE_MANAGER: &str = "manager";
+const BARE_AUDITOR: &str = "auditor";
+
+#[test]
+fn list_workspaces_legacy_propagates_db_error_on_corrupt_user_workspace_row() {
+    let store_db = migrations::fresh_db();
+    let store = Store::new(&store_db);
+
+    // Insert user workspace with invalid blob in ws_key
+    store_db
+        .execute_batch("PRAGMA foreign_keys = OFF;")
+        .unwrap();
+    store_db
+        .execute(
+            "INSERT INTO user_workspaces (user_id, ws_key) VALUES ('user-corrupt', X'FFFF')",
+            [],
+        )
+        .unwrap();
+    store_db.execute_batch("PRAGMA foreign_keys = ON;").unwrap();
+
+    let err = store
+        .list_workspaces_legacy("role-custom", Some("user-corrupt"))
+        .expect_err("corrupt user_workspaces row must abort resolution with DB error");
+    assert!(
+        matches!(err, CoreError::Db(_)),
+        "expected CoreError::Db, got {err:?}"
     );
 }

@@ -266,7 +266,23 @@ export default function MultiStoreDashboardScreen() {
                     className={`multi-store-card ${store.is_primary ? 'multi-store-card--primary' : ''}`}
                     header={
                       <div className="multi-store-card-header">
-                        <span className="multi-store-card-name">{store.name}</span>
+                        <span className="multi-store-card-name">
+                          {store.name}
+                          {store.code && (
+                            <span
+                              className="multi-store-card-code"
+                              style={{
+                                marginLeft: 6,
+                                fontSize: '0.75rem',
+                                fontFamily: 'monospace',
+                                fontWeight: 'normal',
+                                opacity: 0.75,
+                              }}
+                            >
+                              #{store.code}
+                            </span>
+                          )}
+                        </span>
                         {store.is_primary && (
                           <span className="multi-store-card-badge"><Localized id="multi-store-badge-primary">Primary</Localized></span>
                         )}

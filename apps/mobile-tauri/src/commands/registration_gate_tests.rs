@@ -190,7 +190,29 @@ mod debt;
 /// separate floors and separate numbers, and only the registering commit's own shape — one
 /// that touched neither pin — is common to both. The provenance is the point: this pass
 /// records what landed, it does not approve it.
-const REGISTERED_FLOOR: usize = 342;
+///
+/// The 342 -> 343 step is C67 (2026-09-25), and it closes a **hole this pin itself had**:
+/// the leg allowed the tree to sit up to `REGISTERED_SLACK` (24) above the floor, so
+/// `af77f0144` (feat(mobile-tauri): register the role re-seed door on the tablet) added
+/// `setup::seed_default_roles_scoped` and **the floor, the ledger total and the tree all
+/// disagreed with nothing going red** — 343 parsed, 342 floor, 342 ledger, comfortably
+/// inside 342 + 24. The leg now compares the tree to the floor by EQUALITY, which is what
+/// makes this step visible at all; the slack still governs the ledger's distance from the
+/// tree, which is the claim it was written for. Verified before raising: `af77f0144`
+/// touches `commands/setup.rs` and its tests but NOT this file or the generated ledger, so
+/// the lag was real and unattributed rather than a mis-parse.
+///
+/// The 343 -> 345 step, 2026-09-29. `7e2ddcbe5` (feat(bridge): expose e-faktur stamping
+/// and pengganti endpoints) registered `history::stamp_faktur_pajak_scoped` and
+/// `history::create_faktur_pengganti_scoped` on BOTH shells and moved neither floor nor
+/// either ledger, so the desktop leg (475 -> 481) and this one were both red at HEAD. The
+/// same commit's tablet half is these two names and nothing else; verified by diffing the
+/// `generate_handler![` block against `ebdca2758`, which is the commit that last set this
+/// constant. Both arrive GATED on `SALES_PROCESS`, which is why the ledger's register
+/// (`registration_gate_debt.generated.rs`) did not move — the pair is a write door, and an
+/// already-gated arrival is exactly the case only this leg can see. Provenance recorded in
+/// docs/records/JOURNAL.md.
+const REGISTERED_FLOOR: usize = 345;
 /// How far the parsed count may rise without regenerating: names are added by ordinary
 /// feature work, so the floor is a lower bound plus slack and never an equality.
 /// Crossing the slack is the signal that the ledger needs regenerating in the same pass.
@@ -503,7 +525,7 @@ fn gated_bridge_stems() -> BTreeSet<String> {
         files.len(),
         dir.display()
     );
-    files
+    let mut stems: BTreeSet<String> = files
         .iter()
         .filter(|f| names_permission(&read(f)))
         .map(|f| {
@@ -512,7 +534,34 @@ fn gated_bridge_stems() -> BTreeSet<String> {
                 .to_string_lossy()
                 .to_string()
         })
-        .collect()
+        .collect();
+
+    // A module can also BE a directory, and then the namespace a shell wrapper names is the
+    // directory's while the permission calls sit in its children, so file stems lose it.
+    // Same defect the desktop copy carried until 2026-09-28; see that file for the measured
+    // evidence (the COR-7 split moved the POS and auth handlers into directories).
+    for f in &files {
+        let Ok(rel) = f.strip_prefix(&dir) else {
+            continue;
+        };
+        let mut components = rel.components();
+        let (Some(first), Some(_child)) = (components.next(), components.next()) else {
+            continue;
+        };
+        let module = first.as_os_str().to_string_lossy().to_string();
+        if stems.contains(&module) {
+            continue;
+        }
+        let module_dir = dir.join(&module);
+        if files
+            .iter()
+            .any(|g| g.starts_with(&module_dir) && names_permission(&read(g)))
+        {
+            stems.insert(module);
+        }
+    }
+
+    stems
 }
 
 fn run_sweep() -> Sweep {
@@ -822,6 +871,14 @@ pub struct ByDesignEntry {
 pub const BY_DESIGN_UNGATED: &[ByDesignEntry] = &[];
 
 /// Leg 1 — the floor. A glob that stopped matching must not pass by finding nothing.
+///
+/// C67: this leg used to allow the TREE to sit up to `REGISTERED_SLACK` above the floor
+/// (`pairs.len() <= REGISTERED_FLOOR + REGISTERED_SLACK`), which meant a registration
+/// could land without moving the floor — and `fc2ea1938` landed three that way while the
+/// floor and the ledger agreed with each other and both lagged the tree. The slack is NOT
+/// removed (it is what lets the generated ledger lag the tree between regenerations, which
+/// is a different and legitimate claim); it is moved to the comparison it was written for.
+/// The floor now reads the tree exactly, matching the desktop pin's contract.
 #[test]
 fn drift_pin_registration_floor_is_met() {
     let pairs = registered_names(LIB_RS);
@@ -842,11 +899,35 @@ fn drift_pin_registration_floor_is_met() {
          is now guarding a number nobody measured",
         debt::REGISTERED_TOTAL,
     );
+    // C67: an EQUALITY against the tree, not a slack-tolerant ceiling. The slack above the
+    // floor is precisely what let three registrations land unnoticed: at 24 it could absorb
+    // a whole slice, so the pin whose purpose is to NOTICE registrations was the one pin
+    // that could not. `REGISTERED_SLACK` still governs the ledger's distance from the tree
+    // (the leg below), which is the claim it was written for.
+    // C67: an EQUALITY against the tree, not a slack-tolerant ceiling. The slack above the
+    // floor is precisely what let a registration land unnoticed: at 24 it could absorb a
+    // whole slice, so the pin whose purpose is to NOTICE registrations was the one pin
+    // that could not. `REGISTERED_SLACK` still governs the ledger's distance from the tree
+    // (the leg below), which is the claim it was written for.
+    assert_eq!(
+        pairs.len(),
+        REGISTERED_FLOOR,
+        "PIN OF A KNOWN HAZARD, NOT AN ENDORSEMENT: lib.rs registers {} commands and this \
+         floor says {REGISTERED_FLOOR}. The floor reads the tree on purpose, so the only way \
+         to be red here is that names were registered -- and a command that arrives ALREADY \
+         GATED moves no ceiling and no ledger row, which makes this leg the only thing in the \
+         file able to see it. Raise the floor to {} in the same deliberate pass that names \
+         each addition in docs/records/JOURNAL.md; raising it records what landed, it does \
+         not approve it.",
+        pairs.len(),
+        pairs.len()
+    );
     assert!(
-        pairs.len() <= REGISTERED_FLOOR + REGISTERED_SLACK,
-        "the sweep parsed {} registered commands, more than {REGISTERED_SLACK} above the \
-         measured floor of {REGISTERED_FLOOR}: names were registered, and the ledger, the \
-         ceilings and this floor all need regenerating together in one deliberate pass.",
+        pairs.len().abs_diff(debt::REGISTERED_TOTAL) <= REGISTERED_SLACK,
+        "the generated ledger counts {} registered names while the tree counts {}, more \
+         than {REGISTERED_SLACK} apart: the ledger and this file are guarding separate \
+         measurements and need regenerating together in one deliberate pass.",
+        debt::REGISTERED_TOTAL,
         pairs.len()
     );
 }
@@ -1624,5 +1705,159 @@ fn drift_pin_guard_marker_vocabulary_is_closed() {
          miscounted as debt until you did) or to the exemption list with a reason (it is \
          not a gate). Vocabulary of guard names found: {}.",
         vocabulary.len(),
+    );
+}
+
+/// How many command bodies open the store BEFORE they gate, and the floor that
+/// stops the sweep from going quiet.
+///
+/// MEASURED 2026-09-24, the pass that fixed the `customers` five under R10's BR-X4:
+/// **69 bodies** resolve the session AND the store in one call (`state.resolve_scope`,
+/// `ctx.resolve_scope`) and only then name a permission, so the store is opened
+/// before the caller is authorised. `open_store` is not free — on a cache miss it
+/// creates the data directory, creates the database file and runs migrations
+/// (`platform/core/src/database/manager.rs:73-103`) — so an UNAUTHORIZED caller both
+/// triggers filesystem work and sees `Internal("opening store db")` where the bridge
+/// answers `PermissionDenied`. R10 rules the scope-aware, gate-first order
+/// authoritative and says the gate-order half is folded in explicitly, so this
+/// population is the remaining work rather than a park.
+///
+/// **FIXED DOWN TO 19 on 2026-09-25, the first sweep of that population.** The 69
+/// split by gate shape, measured rather than assumed: **50 gate via
+/// `require_permission_for_session`**, 9 via a caller-supplied-`user_id` helper, and
+/// 10 via a domain helper. The 50 share one exact textual form —
+/// `let (session, conn_arc) = state.resolve_scope(&session_token)?;` followed by the
+/// gate — because `resolve_scope` IS `resolve_session` + `open_store`
+/// (`state.rs:290-300`), so the split is mechanical: `resolve_session` → GATE →
+/// `resolve_store`. All 50 were converted, in 12 files, with no body needing a
+/// bespoke edit.
+///
+/// **SECOND SWEEP, 19 → 7 on 2026-09-25.** Of the 19, twelve were two whole
+/// families and are now done: `tax`'s seven doors and `history`'s five. Both
+/// were a KIND fix as well as an ORDER fix, and `history` is the sharper case —
+/// its five gate with `require_permission_for_user` over the STORE db, which
+/// carries no `users` rows at all, so the check could only ever deny; the bridge
+/// twin (`crates/kasirmu-bridge/src/history.rs:68`, `:169`, `:227`, `:248`,
+/// `:306`) uses the scope-aware `require_session_permission` for all five. They
+/// now do too, via the shell's `require_permission_for_session`.
+///
+/// **THIRD SWEEP, 7 → 0 on 2026-09-25: R10's gate-ORDER half is CLOSED.** The last
+/// seven fell into the two groups the previous note predicted, and both turned out
+/// to be the same edit after all — the helper each body called was a module-local
+/// wrapper that ignored its `user_id` and asked the GLOBAL db, so replacing the call
+/// with the shared `authz::require_permission_for_session` preserved the permission
+/// and added the scope, and the wrapper became dead code. Four such wrappers were
+/// deleted: `require_category_permission` (categories), `require_tax_permission`
+/// (tax, previous sweep), `require_inventory_count_permission`
+/// (inventory_counts), plus the direct `require_permission_for_user` calls in
+/// `products` and `history`.
+///
+/// `products` was the one KIND divergence left: its three write doors asked the
+/// STORE db while `crates/kasirmu-bridge/src/products.rs` asks the scope-aware gate
+/// (`:668`, `:674`, `:889`, `:895`, `:1006`). `categories` was NOT a divergence —
+/// the bridge's own write doors use the same non-scope-aware helper
+/// (`kasirmu-bridge/src/categories.rs:193`, `:221`, `:251`), so only the order
+/// moved there.
+///
+/// **The floor is now 0, and it is a pin rather than a target.** At zero the upper
+/// bound is the whole test: any body that opens the store before it gates fails the
+/// run, which is the regression this ratchet has been counting down toward since it
+/// was written at 69. The lower bound stays for the reason it always existed — a
+/// sweep that stops matching reports 0 from a broken pattern as readily as from a
+/// clean tree, and `bodies >= 0` alone cannot tell those apart, so the two-sided
+/// form is retained as documentation of that hazard even though it is now
+/// trivially true.
+///
+/// This is a RATCHET, not a fix: it pins the population so a new open-before-gate
+/// body cannot be added silently, and it fails when the count DROPS too, forcing the
+/// floor down in the same commit that fixes a body. That second leg is the one that
+/// matters — a floor that only checks an upper bound lets the sweep rot to zero and
+/// still pass, which is the failure mode this file's own header describes.
+const OPEN_BEFORE_GATE_FLOOR: usize = 0;
+
+/// Does this body call the combined session+store resolver before it names a
+/// permission?
+///
+/// Textual, matching the rest of this file: the combined helper's NAME is the
+/// signal, because `resolve_scope` is exactly the call that opens the store as a
+/// side effect of resolving the session.
+fn opens_store_before_gating(text: &str) -> bool {
+    // COMMENTS MUST GO FIRST, and this is not tidiness — the first draft of this
+    // test scored a false positive on every body the R10 fix had just repaired,
+    // because the explanatory comment beside the corrected call says "`resolve_scope`
+    // calls `open_store`, which ...". A naive `find("resolve_scope")` reads that
+    // prose as a call site, so the five fixed commands stayed flagged and the ratchet
+    // measured the comment, not the code. Strip each line at its `//` before matching.
+    let code: String = text
+        .lines()
+        .map(|l| l.split("//").next().unwrap_or(""))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let Some(scope_at) = code.find("resolve_scope") else {
+        return false;
+    };
+    let Some(perm_at) = code.find("require_") else {
+        return false;
+    };
+    // The resolver sits ABOVE the first guard name. A body that gates first and
+    // resolves after is the shape R10 wants, and is not counted here.
+    scope_at < perm_at
+}
+
+#[test]
+fn drift_pin_open_before_gate_population_matches_its_floor() {
+    let commands_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/commands");
+    let mut bodies = 0usize;
+    let mut by_file: BTreeMap<String, usize> = BTreeMap::new();
+
+    for path in rust_files(&commands_dir) {
+        let name = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or_default()
+            .to_string();
+        // Test files describe the surface; they are not it.
+        if name.ends_with("_tests.rs") {
+            continue;
+        }
+        let src = read(&path);
+        // Count at the `pub async fn` boundaries so a body is never merged with its
+        // neighbour, which would let one gated body hide an ungated one beside it.
+        let chunks: Vec<&str> = src
+            .split("pub async fn ")
+            .skip(1)
+            .map(|c| c.split("pub async fn ").next().unwrap_or(c))
+            .collect();
+        for chunk in chunks {
+            if opens_store_before_gating(chunk) {
+                bodies += 1;
+                *by_file.entry(name.clone()).or_default() += 1;
+            }
+        }
+    }
+
+    // ONE assertion, because the two bounds this replaces were only ever an
+    // exact-equality test written twice: `>= FLOOR` AND `<= FLOOR`. Splitting
+    // them cost a trivially-true leg whenever the floor sits at 0 (`usize >= 0`
+    // cannot fail), which clippy rejects — correctly, since a bound that cannot
+    // fail is not a ratchet.
+    //
+    // Equality keeps BOTH legs doing real work and keeps both diagnostics: a
+    // count that ROSE is a newly added open-before-gate body (the regression),
+    // and a count that DROPPED means the sweep stopped matching — either way the
+    // floor must move in the same commit, never be loosened to make this pass.
+    //
+    // NO SLACK, deliberately. An earlier draft allowed +4 and a mutation test
+    // caught it: reintroducing the defect in one command moved the count 75 -> 76,
+    // sailed under the bound, and the ratchet stayed green.
+    assert_eq!(
+        bodies, OPEN_BEFORE_GATE_FLOOR,
+        "the open-before-gate sweep found {bodies} bodies, but the pinned floor is \
+         {OPEN_BEFORE_GATE_FLOOR}. MORE means a newly added body inherits the defect \
+         R10 (BR-X4) is closing: resolve the session, GATE, then resolve the store. \
+         FEWER means the sweep stopped matching, not that its subject was repaired. \
+         Fixing bodies means lowering the floor in the same commit. Per-file census: \
+         {by_file:?}",
     );
 }

@@ -164,6 +164,21 @@ impl Store<'_> {
                 message: "type_key must not be empty".into(),
             });
         }
+        // MSL-50: membership, not just non-emptiness. `type_key` is
+        // `REFERENCES workspace_types(key)`, so an unknown key was rejected by the
+        // FK as an opaque storage failure — the same shape MSL-48/49 closed on
+        // the product and currency FKs. One indexed lookup names the field.
+        let known: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM workspace_types WHERE key = ?1",
+            params![type_key],
+            |row| row.get(0),
+        )?;
+        if known == 0 {
+            return Err(CoreError::Validation {
+                field: "type_key",
+                message: format!("unknown workspace type: {type_key:?}"),
+            });
+        }
         if store_id.trim().is_empty() {
             return Err(CoreError::Validation {
                 field: "store_id",
@@ -260,27 +275,24 @@ impl Store<'_> {
     ) -> Result<usize, CoreError> {
         let tx = self.conn.unchecked_transaction()?;
 
-        let limit = match tier.max_pos_instances() {
-            Some(n) => n,
-            None => {
-                // Unlimited — restore ALL QuotaSuspended instances.
-                let updated = tx.execute(
-                    "UPDATE workspace_instances
-                     SET status = 'active',
-                         updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
-                     WHERE location_id = ?1 AND status = 'quota_suspended'",
-                    params![store_id],
-                )?;
-                tx.commit()?;
-                if updated > 0 {
-                    tracing::info!(
-                        store_id = %store_id,
-                        restored = %updated,
-                        "unlimited tier — all suspended instances restored"
-                    );
-                }
-                return Ok(updated);
+        let Some(limit) = tier.max_pos_instances() else {
+            // Unlimited — restore ALL QuotaSuspended instances.
+            let updated = tx.execute(
+                "UPDATE workspace_instances
+                 SET status = 'active',
+                     updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                 WHERE location_id = ?1 AND status = 'quota_suspended'",
+                params![store_id],
+            )?;
+            tx.commit()?;
+            if updated > 0 {
+                tracing::info!(
+                    store_id = %store_id,
+                    restored = %updated,
+                    "unlimited tier — all suspended instances restored"
+                );
             }
+            return Ok(updated);
         };
 
         // Count already-active instances (they count toward the limit).
@@ -342,12 +354,9 @@ impl Store<'_> {
     ) -> Result<usize, CoreError> {
         let tx = self.conn.unchecked_transaction()?;
 
-        let limit = match tier.max_pos_instances() {
-            Some(n) => n,
-            None => {
-                tx.commit()?;
-                return Ok(0); // Unlimited — nothing to suspend
-            }
+        let Some(limit) = tier.max_pos_instances() else {
+            tx.commit()?;
+            return Ok(0); // Unlimited — nothing to suspend
         };
 
         let active_count: i64 = tx.query_row(

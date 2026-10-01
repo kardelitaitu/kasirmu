@@ -4,8 +4,9 @@ area: theming
 title: ADR #12: Whitelabel Branding System — Manifest-Driven Asset Pipeline & Multi-Tenant Theming
 status: Implemented (2026-07-15)
 ---
-<!-- Audit stamp: 2026-07-24 · Hermes-Agent · status: ACCURATE (0 findings, claims verified) · 3 brand templates (default/acme-tenant/beta-retail) confirmed; whitelabel/ dir is a helper (example-tenant/ + README.md), not a 4th brand; scripts/sync-branding.ps1 + whitelabel.ps1 + .Tests.ps1 + .Integration.Tests.ps1 all exist; all 3 manifest.json exist; ui/public/site.webmanifest + ui/src/features/design/brand-tokens.css + ui/src/frontend/shell/ThemeProvider.tsx (useBrand/deriveAccentPalette) present; 4th brand claim intentionally absent -->
+<!-- Superseded audit marker (2026-07-24, body kept verbatim) · Hermes-Agent · status: ACCURATE (0 findings, claims verified) · 3 brand templates (default/acme-tenant/beta-retail) confirmed; whitelabel/ dir is a helper (example-tenant/ + README.md), not a 4th brand; scripts/sync-branding.ps1 + whitelabel.ps1 + .Tests.ps1 + .Integration.Tests.ps1 all exist; all 3 manifest.json exist; ui/public/site.webmanifest + ui/src/features/design/brand-tokens.css + ui/src/frontend/shell/ThemeProvider.tsx (useBrand/deriveAccentPalette) present; 4th brand claim intentionally absent -->
 
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · ACCURATE, and this pass found the one thing the prior stamp could not have predicted: the `ui/src/frontend/` tree this ADR's theming layer lived in NO LONGER EXISTS. Not moved wholesale — the directory itself is gone. The 2026-07-24 stamp verified `ui/src/frontend/shell/ThemeProvider.tsx` (with `useBrand` and `deriveAccentPalette`) as present; that file is now `ui/src/app/ThemeProvider.tsx`. Every other anchor the stamp confirmed still holds: the three brand templates and their `manifest.json` files, the `whitelabel/` helper directory, all four `scripts/sync-branding*` / `whitelabel.ps1` entry points, `ui/public/site.webmanifest`, and `ui/src/features/design/brand-tokens.css`. · THIS IS THE THIRD DISTINCT TREE REORGANISATION THIS CAMPAIGN HAS MEASURED, and together they form a pattern worth stating plainly: `frontend/shell` (ADR-3's restructure, 2026-03-01) → `platform/ui` (the registries, by 2026-07-22) → `app` (by today), while the `crates/*`→`crates/kasirmu-*` and `apps/desktop-client`→`apps/desktop-tauri` renames happened in the same period. Six roots have moved in under six months. That is why so many documents in this campaign cite paths that no longer resolve, and why these stamps record the CURRENT location rather than only the finding. A reader auditing this ADR in six months should expect the same and should re-measure rather than trust this line. · Left as written otherwise: a 421-line implemented decision record whose body is the decision, and rewriting its paths would make it a status page. · The status checker reports no drift for this row; the prior stamp is retained and the stacked footer collapsed. -->
 # ADR #12: Whitelabel Branding System — Manifest-Driven Asset Pipeline & Multi-Tenant Theming
 
 **Status:** Implemented (2026-07-15)
@@ -415,7 +416,4 @@ A Tauri build script that reads the manifest and patches configs at compile time
 - `ui/src/frontend/shell/ThemeProvider.tsx` — Runtime palette derivation (alternative mechanism)
 - `docs/decisions/2026-03-01-frontend-restructure.md` — ADR #3: Frontend structure (consumer of branded assets)
 
-> last audited 09-08-26 by buffy
-> audit: Phase 1 Core Architecture & API Docs Audit; Phase 4 ADR Deep Audit
-> status: ACCURATE (0 findings) · verified accurate: cargo check passed, no structural orphans, no stale version headers
-> status: ACCURATE (verified against actual codebase)
+> last audited 29-09-26 by docs-auditor

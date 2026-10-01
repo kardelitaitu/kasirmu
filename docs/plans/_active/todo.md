@@ -1,5 +1,6 @@
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 694 lines, no audit stamp, no footer and no marker. It is a live improvement backlog, and the audit observation that matters most is not about its contents but about who depends on it. · SEVEN DOCUMENTS IN THIS TREE CITE A PATH THAT DOES NOT EXIST. `docs/plans/todo.md` was moved under `_active/`, where it now lives, and these seven still point at the old location: `docs/decisions/2026-08-18-adr39-midtrans-subscription-payments.md` (which names it as the source of its Phase C tracking), `docs/decisions/README.md` — the ADR index itself, the one place a reader is most likely to start — `docs/decisions/archived/2026-07-10-subscription-tier-entitlement.md`, `docs/decisions/archived/2026-07-20-free-trial-lifecycle-and-license-activation-workflow.md`, `docs/plans/_backlog/0.0.36-backlog.md`, `docs/records/README.md`, and `docs/specs/hardware-fingerprint-trial-lock.md` (which tracks its C2.1 item here). All seven have been audited in this campaign, and none carries a note that the path it cites is dead, because each audit checked the CLAIM the citation supports rather than the citation's resolvability — a real limit of the method, now measured rather than assumed. The same holds for `docs/records/JOURNAL.md`, which cites `docs/plans/notes.md` for the same reason. Not repaired here: fixing seven files from a backlog entry is a cross-cutting edit belonging to whoever owns the move, and doing it piecemeal from one backlog file would scatter the change. Recorded so it is a known, bounded, four-line fix rather than an open mystery. · WHAT IS TRUE OF THE FILE ITSELF: it is a July-31 improvement backlog, so its items are proposals rather than claims, and an item's presence says nothing about whether it was done. A backlog is the one document class where unchecked boxes are the correct state rather than a warning sign, and this pass does not read them as drift. · NOT re-measured: the individual improvement items and their status, which are the work of whoever runs the backlog. · No stamp existed; this is the first, and the footer is new rather than bumped. -->
 # Improvement Opportunities — July 31, 2026
-<!-- Audit stamp: 2026-09-09 · DSH · status: ACCURATE AFTER REPAIR (2 findings) · This is a dated plan (title "July 31, 2026", items stamped "Complete (2026-08-17)"), so nothing was deleted and no ✅ was downgraded — the completion records stand, and each now says whether the thing still runs. Findings were B3 and B5 asserting e2e-pr.yml in present tense: verified against the tree, .github/workflows/e2e-pr.yml.bak is what exists (renamed by 23c963303 on 2026-09-02, git log --name-status R100) and its pull_request branches:[main] + workflow_dispatch triggers are still readable in that inert file at .github/workflows/e2e-pr.yml.bak:24-39, so the original claims were true when written and are false today · Added the Currency note under the Legend, which is where a reader learns that ✅ ≠ enforced · Verified true and untouched: scripts/run-e2e.mjs exists, the ui/package.json e2e scripts exist, and dev-ci.yml:442 documents that e2e is deliberately outside static-gates · LEFT ALONE: the rest of the plan's forward-looking items (⏳/🔷) are proposals, not CI claims. -->
+<!-- Superseded audit marker (2026-09-09, body kept verbatim) · DSH · status: ACCURATE AFTER REPAIR (2 findings) · This is a dated plan (title "July 31, 2026", items stamped "Complete (2026-08-17)"), so nothing was deleted and no ✅ was downgraded — the completion records stand, and each now says whether the thing still runs. Findings were B3 and B5 asserting e2e-pr.yml in present tense: verified against the tree, .github/workflows/e2e-pr.yml.bak is what exists (renamed by 23c963303 on 2026-09-02, git log --name-status R100) and its pull_request branches:[main] + workflow_dispatch triggers are still readable in that inert file at .github/workflows/e2e-pr.yml.bak:24-39, so the original claims were true when written and are false today · Added the Currency note under the Legend, which is where a reader learns that ✅ ≠ enforced · Verified true and untouched: scripts/run-e2e.mjs exists, the ui/package.json e2e scripts exist, and dev-ci.yml:442 documents that e2e is deliberately outside static-gates · LEFT ALONE: the rest of the plan's forward-looking items (⏳/🔷) are proposals, not CI claims. -->
 
 > **Currency (2026-09-09, docs-auditor):** ✅ in this file means "the work was done", not "it still runs".
 > Every workflow this plan delivered is retired `.bak` — including
@@ -54,7 +55,9 @@ Current `kds.spec.ts` covers basic render + single advance. Missing:
 - Full lifecycle through all 4 statuses
 - Layout switching (Kanban ↔ Focus ↔ Metro)
 - Settings panel interaction (sound, thresholds)
-- Per-item line item status advance (TODO 3e)
+- Per-item line item status advance — pointer retired 2026-09-30: the coverage this bullet
+  asked for exists at `ui/e2e/e2e-kds-critical-path.spec.ts:182`, and the 3e ID it cited is
+  defined nowhere in this tree, so the pointer was unresolvable rather than outstanding.
 - History panel toggle
 
 **File:** `ui/e2e/e2e-kds-critical-path.spec.ts`
@@ -662,6 +665,51 @@ For each trigger:
 
 ---
 
+## 🔇 Phase D — Debt adopted from plans that are not in this tree
+
+> **Added 2026-09-30 (docs-auditor).** This section is not part of the July 31, 2026
+> backlog above. It exists because two code sites cite a debt ID that no tracked
+> document defined, and a citation that points at nothing is worse than no citation.
+
+### 4e — Make the `hardware_profiles` row the canonical hardware-settings store
+
+**Status:** DONE (2026-10-04) — the `hardware_profiles` row is now authoritative; the JSON file and the legacy settings store seed a missing row exactly once, and the precedence is pinned by tests in `crates/kasirmu-bridge/src/settings_tests.rs`. (Was: Open (2026-09-30, adopted from an untracked plan).)
+
+**Why:** Both hardware-settings readers document a three-step read order and mark the
+first step as not yet authoritative: `apps/desktop-tauri/src/commands/settings.rs:142`
+and `crates/kasirmu-bridge/src/settings.rs:270`. Each reads the `hardware_profiles`
+table, then falls back to `terminal_profiles/<id>.json`, then to a legacy SQLite
+settings store. While the JSON fallback stays live, two terminals that hold different
+profiles for the same id resolve differently depending on which fallback fires, and
+any process that can write the profile directory can still change a profile behind
+the database's back.
+
+**Why this entry exists:** the two sites above cite the ID `4e` as a `TODO`, but no
+tracked document defined it — the number came from a local plan that is not in this
+tree, so the citation resolved to nothing. The debt is real and the readers are
+already written, so the ID is adopted here instead of being deleted from the code.
+This heading is the definition both citations now resolve to.
+
+**File:** `apps/desktop-tauri/src/commands/settings.rs`,
+`crates/kasirmu-bridge/src/settings.rs`
+
+- [x] Make the `hardware_profiles` row authoritative: once a row exists for the
+      terminal id, neither the JSON file nor the legacy store is consulted. A present
+      row now ends the read even when its JSON is unreadable — the reader returns
+      defaults rather than resurrecting a superseded file value.
+- [x] Decide what happens when a terminal has no row — seed one from the JSON file
+      once, then stop reading that file. **Decision (2026-10-04):** with no row, the
+      reader tries the JSON file (seeding the row from it) and then the legacy SQLite
+      keys; whichever succeeds writes the row, and every later read short-circuits at
+      the row. The legacy branch also persists a row when nothing at all is stored,
+      so a terminal id is pinned to one row from its first read on.
+- [x] Pin the precedence order with a test, so a fallback added below the database
+      read cannot silently take priority later. Five behavioral tests drive the real
+      `get_hardware_settings` over a `TestBridge` (db-row-wins, json-seed-once,
+      legacy-seed, unreadable-row, no-source).
+
+---
+
 ### Verification Runbook (run before marking any Phase complete)
 
 ```powershell
@@ -691,4 +739,4 @@ npm run e2e
 > `ui/e2e/e2e-upgrade-trigger-flow.spec.ts`
 > covering: Free user hits 3-month history cap → sees blurred overlay → clicks upgrade → upgrade modal opens.
 
-> last audited 09-09-26 by docs-auditor
+> last audited 29-09-26 by docs-auditor

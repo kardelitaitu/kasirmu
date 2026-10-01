@@ -6,6 +6,7 @@ next: none | perf: N/A
 */
 //! Error type for the tax domain.
 
+use kasirmu_core::db::namespaced::NamespaceError;
 use thiserror::Error;
 
 /// Errors that can originate in the tax domain.
@@ -14,6 +15,10 @@ pub enum TaxError {
     /// A database operation failed.
     #[error("database error: {0}")]
     Db(#[from] rusqlite::Error),
+
+    /// A namespace check rejected the statement (Phase 3 P3.2).
+    #[error("namespace error: {0}")]
+    Namespace(#[from] NamespaceError),
 
     /// A lookup by id returned no row.
     #[error("not found: {entity} {id}")]
@@ -45,35 +50,5 @@ impl TaxError {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn tax_error_validation_message() {
-        let err = TaxError::validation("rate_bps", "rate must be positive");
-        assert!(matches!(
-            err,
-            TaxError::Validation { field, .. } if field == "rate_bps"
-        ));
-        assert_eq!(
-            format!("{err}"),
-            "validation error on rate_bps: rate must be positive"
-        );
-    }
-
-    #[test]
-    fn tax_error_not_found_message() {
-        let err = TaxError::NotFound {
-            entity: "tax_rate",
-            id: "bad-id".into(),
-        };
-        assert_eq!(format!("{err}"), "not found: tax_rate bad-id");
-    }
-
-    #[test]
-    fn tax_error_from_rusqlite() {
-        let rusqlite_err = rusqlite::Error::QueryReturnedNoRows;
-        let err = TaxError::from(rusqlite_err);
-        assert!(matches!(err, TaxError::Db(_)));
-    }
-}
+#[path = "error_tests.rs"]
+mod tests;

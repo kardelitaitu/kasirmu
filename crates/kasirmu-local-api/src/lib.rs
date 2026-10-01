@@ -1,4 +1,4 @@
-//! Headless loopback REST API for OZ-POS, extracted from
+//! Headless loopback REST API for kasir.mu, extracted from
 //! `apps/desktop-tauri/src/local_api.rs` (Agent 1, Phase 1.2).
 //!
 //! Owns the settings-driven enable/port/secret resolution, the dedicated
@@ -34,6 +34,8 @@
 //! not browser pages. `GET /api/openapi.json` serves
 //! `kasirmu_api::spec::local_spec()` — the shared contract with every
 //! operation tagged `x-oz-scope: "both"`.
+
+#![deny(unsafe_code)]
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -157,7 +159,11 @@ pub fn open_api_store_connection(
     db_manager
         .open_store(store_id)
         .map_err(|e| format!("preparing store db {store_id}: {e}"))?;
-    let path = db_manager.store_db_path(store_id);
+    // PC-1: the id is validated where it is joined into a filename, so this door cannot open a
+    // path the store id talked it into.
+    let path = db_manager
+        .checked_store_db_path(store_id)
+        .map_err(|e| format!("preparing store db {store_id}: {e}"))?;
     let conn = Connection::open(&path).map_err(|e| format!("opening {}: {e}", path.display()))?;
     conn.pragma_update(None, "foreign_keys", "ON")
         .map_err(|e| format!("enabling FK on {}: {e}", path.display()))?;
@@ -180,9 +186,9 @@ pub fn open_api_store_connection(
 /// A validation failure is deliberately NOT an error here. The router's own
 /// auth middleware owns the 401 taxonomy (`missing_token` / `invalid_token` /
 /// `token_expired`) and must keep owning it; this helper exists only so the
-/// guard below can ask what claims a token the REAL auth would accept carries
-/// - it never turns a rejection into a different rejection, only adds one of
-/// its own.
+/// guard below can ask what claims a token the REAL auth would accept carries.
+/// It never turns a rejection into a different rejection, only adds one of its
+/// own.
 async fn bearer_claims(
     headers: &axum::http::HeaderMap,
     secret: &str,
@@ -278,20 +284,41 @@ async fn mark_single_tenant(
 }
 
 /// Read `local_api.enabled` from the settings table.
-pub fn is_enabled(conn: &Connection) -> bool {
-    kasirmu_core::Settings::get(conn, SETTINGS_ENABLED)
-        .unwrap_or(None)
-        .as_deref()
-        == Some("1")
+///
+/// MSL-33: a failed READ is propagated, not answered `false`. The two used
+/// to be the same thing because `.unwrap_or(None)` mapped every
+/// `rusqlite::Error` to "no such key" — but this is the flag that decides
+/// whether an HTTP surface is exposed at all, and a wrong `false` is the one
+/// direction that is NOT safe here: it is silent (the merchant ticked the
+/// box and the API simply never came up) and it is the opposite of the
+/// sibling `load_or_create_secret`, which has always propagated the same
+/// read. The `local_api.enabled = "0"` case still answers `false` — that is a
+/// value, not a failure.
+pub fn is_enabled(conn: &Connection) -> Result<bool, String> {
+    let raw = kasirmu_core::Settings::get(conn, SETTINGS_ENABLED)
+        .map_err(|e| format!("reading {SETTINGS_ENABLED}: {e}"))?;
+    Ok(raw.as_deref() == Some("1"))
 }
 
-/// Read and validate `local_api.port`; falls back to [`DEFAULT_PORT`].
-pub fn resolve_port(conn: &Connection) -> u16 {
-    kasirmu_core::Settings::get(conn, SETTINGS_PORT)
-        .unwrap_or(None)
-        .and_then(|s| s.trim().parse::<u16>().ok())
+/// Read and validate `local_api.port`; falls back to [`DEFAULT_PORT`] when
+/// the key is absent or unparseable.
+///
+/// MSL-33: a failed READ propagates (same reasoning as [`is_enabled`]). An
+/// ABSENT or unparseable value still falls back to [`DEFAULT_PORT`] — that is
+/// a stored value this function is specified to reject, not a database fault,
+/// and it is what `resolve_port_defaults_and_validates` pins.
+pub fn resolve_port(conn: &Connection) -> Result<u16, String> {
+    let Some(raw) = kasirmu_core::Settings::get(conn, SETTINGS_PORT)
+        .map_err(|e| format!("reading {SETTINGS_PORT}: {e}"))?
+    else {
+        return Ok(DEFAULT_PORT);
+    };
+    Ok(raw
+        .trim()
+        .parse::<u16>()
+        .ok()
         .filter(|p| (1024..=65535).contains(p))
-        .unwrap_or(DEFAULT_PORT)
+        .unwrap_or(DEFAULT_PORT))
 }
 
 /// Generate a fresh per-install secret value (NOT persisted here).
@@ -308,15 +335,40 @@ fn new_secret() -> String {
 
 /// Load the per-install secret, generating and persisting one on first
 /// use.
+///
+/// **Encrypted at rest as of C14(a).** The value used to be written by a bare
+/// `Settings::set`, so it sat in cleartext in `settings.value` and in every
+/// unfiltered `.db` / `.backup.db` snapshot — while doubling as the token
+/// signing key and the operator admin key. Two things happen here now:
+///
+/// 1. A **legacy plaintext row is migrated in place** before it is read, so an
+///    existing install stops leaking on its next boot rather than waiting for an
+///    operator to rotate. The migration is idempotent and cannot double-encrypt:
+///    the ciphertext form (124 base64url chars) and the legacy form (64 lowercase
+///    hex chars) are disjoint on both length and alphabet.
+/// 2. A **newly generated** secret is written through the encrypting setter.
 pub fn load_or_create_secret(conn: &Connection) -> Result<String, String> {
-    if let Some(existing) = kasirmu_core::Settings::get(conn, SETTINGS_SECRET)
+    match platform_core::settings::Settings::migrate_local_api_secret(conn) {
+        Ok(true) => tracing::info!(
+            "local API: migrated the per-install signing secret to encrypted-at-rest storage (C14a)"
+        ),
+        Ok(false) => {}
+        // A failed migration must not stop the API loading its secret: the read
+        // below still works, and the next boot retries.
+        Err(e) => tracing::warn!(
+            error = %e,
+            "local API: could not migrate the signing secret to encrypted storage; continuing"
+        ),
+    }
+
+    if let Some(existing) = kasirmu_core::Settings::get_local_api_secret(conn)
         .map_err(|e| format!("reading {SETTINGS_SECRET}: {e}"))?
         .filter(|s| !s.trim().is_empty())
     {
         return Ok(existing);
     }
     let secret = new_secret();
-    kasirmu_core::Settings::set(conn, SETTINGS_SECRET, &secret)
+    kasirmu_core::Settings::set_local_api_secret(conn, &secret)
         .map_err(|e| format!("persisting {SETTINGS_SECRET}: {e}"))?;
     tracing::info!("local API: generated new per-install signing secret");
     Ok(secret)
@@ -329,7 +381,7 @@ pub fn load_or_create_secret(conn: &Connection) -> Result<String, String> {
 /// the recovery path when a backup carrying the old secret leaked).
 pub fn rotate_secret(conn: &Connection) -> Result<String, String> {
     let secret = new_secret();
-    kasirmu_core::Settings::set(conn, SETTINGS_SECRET, &secret)
+    kasirmu_core::Settings::set_local_api_secret(conn, &secret)
         .map_err(|e| format!("persisting {SETTINGS_SECRET}: {e}"))?;
     tracing::info!("local API: signing secret rotated — previously minted tokens are invalid");
     Ok(secret)

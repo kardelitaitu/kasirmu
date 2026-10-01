@@ -158,6 +158,17 @@
   color: var(--color-fg);
 }
 
+/* The `#S01` store-code chip beside a card name (MultiStoreDashboardScreen.tsx:273).
+ * Was styled inline; the rule gives it a spellable name the dead-class walk can
+ * grade. */
+.multi-store-card-code {
+  margin-left: var(--space-1);
+  font-size: var(--text-sm);
+  font-family: var(--font-mono);
+  font-weight: var(--font-weight-normal);
+  color: var(--color-fg-muted);
+}
+
 .multi-store-card-badge {
   font-size: var(--text-sm);
   font-weight: var(--font-weight-semibold);

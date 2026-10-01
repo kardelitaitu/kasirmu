@@ -63,6 +63,7 @@ const mockResult: MenuEngineeringResult = {
       margin_per_unit: 1700,
       total_margin_minor: 170000,
       total_revenue_minor: 250000,
+      currency: 'USD',
     },
     {
       product_id: 'p2',
@@ -74,6 +75,7 @@ const mockResult: MenuEngineeringResult = {
       margin_per_unit: 800,
       total_margin_minor: 64000,
       total_revenue_minor: 96000,
+      currency: 'USD',
     },
     {
       product_id: 'p3',
@@ -85,6 +87,7 @@ const mockResult: MenuEngineeringResult = {
       margin_per_unit: 200,
       total_margin_minor: 40000,
       total_revenue_minor: 60000,
+      currency: 'USD',
     },
     {
       product_id: 'p4',
@@ -96,6 +99,7 @@ const mockResult: MenuEngineeringResult = {
       margin_per_unit: 350,
       total_margin_minor: 10500,
       total_revenue_minor: 15000,
+      currency: 'USD',
     },
   ],
 };
@@ -488,6 +492,7 @@ describe('MenuEngineeringScreen', () => {
           margin_per_unit: 0,
           total_margin_minor: 0,
           total_revenue_minor: 0,
+          currency: 'USD',
         },
       ],
     });
@@ -574,5 +579,114 @@ describe('MenuEngineeringScreen', () => {
       expect(screen.getByText('SODA')).toBeTruthy();
       expect(screen.getByText('COFFEE')).toBeTruthy();
     });
+  });
+
+  // ── C22: rows are per (product, currency) ──────────────────────────────
+  //
+  // The screen used to format every amount with the workspace default, so a
+  // USD row rendered as "Rp 2,500" — a misstatement, not a rounding artefact.
+  // These tests pin the row's own code and the per-currency KPI buckets.
+
+  it("formats each row's amounts with the row's own currency, not the store default", async () => {
+    // Store default is USD (see the CurrencyContext mock), and one row is IDR.
+    vi.mocked(reportsApi.getMenuEngineering).mockResolvedValue({
+      median_volume: 50,
+      median_margin: 2500,
+      rows: [
+        {
+          product_id: 'p-usd',
+          sku: 'LATTE-US',
+          name: 'Latte (US)',
+          currency: 'USD',
+          total_volume: 10,
+          unit_price_minor: 700,
+          unit_cost_minor: 300,
+          margin_per_unit: 400,
+          total_margin_minor: 4000,
+          total_revenue_minor: 7000,
+        },
+        {
+          product_id: 'p-idr',
+          sku: 'LATTE-ID',
+          name: 'Latte (ID)',
+          currency: 'IDR',
+          total_volume: 10,
+          unit_price_minor: 700,
+          unit_cost_minor: 300,
+          margin_per_unit: 400,
+          total_margin_minor: 4000,
+          total_revenue_minor: 7000,
+        },
+      ],
+    });
+
+    renderWithLocales(<MenuEngineeringScreen />);
+
+    await waitFor(() => {
+      expect(screen.getByText('LATTE-US')).toBeTruthy();
+    });
+
+    // The IDR row must be labelled in rupiah. With the workspace default
+    // applied it would render as a dollar amount instead.
+    const idrMatches = screen.getAllByText(/Rp|IDR/);
+    expect(idrMatches.length).toBeGreaterThan(0);
+  });
+
+  it('buckets totals per currency instead of adding them into one KPI', async () => {
+    vi.mocked(reportsApi.getMenuEngineering).mockResolvedValue({
+      median_volume: 1,
+      median_margin: 100,
+      rows: [
+        {
+          product_id: 'p-usd',
+          sku: 'A-US',
+          name: 'A (US)',
+          currency: 'USD',
+          total_volume: 1,
+          unit_price_minor: 100,
+          unit_cost_minor: 0,
+          margin_per_unit: 100,
+          total_margin_minor: 100,
+          total_revenue_minor: 100,
+        },
+        {
+          product_id: 'p-idr',
+          sku: 'A-ID',
+          name: 'A (ID)',
+          currency: 'IDR',
+          total_volume: 1,
+          unit_price_minor: 100,
+          unit_cost_minor: 0,
+          margin_per_unit: 100,
+          total_margin_minor: 100,
+          total_revenue_minor: 100,
+        },
+      ],
+    });
+
+    renderWithLocales(<MenuEngineeringScreen />);
+
+    await waitFor(() => {
+      expect(screen.getByText('A-US')).toBeTruthy();
+    });
+
+    // Two currencies means two revenue cards, each labelled with its code.
+    // One card carrying 200 would be the old, meaningless sum.
+    expect(screen.getAllByText(/Total Revenue/).length).toBe(2);
+    // Each KPI card names the currency it is denominated in, and the codes
+    // are the rows' own -- not the workspace default, which is USD here.
+    expect(screen.getByText('Total Revenue IDR')).toBeTruthy();
+    expect(screen.getByText('Total Revenue USD')).toBeTruthy();
+    expect(screen.getByText('Total Margin IDR')).toBeTruthy();
+    expect(screen.getByText('Total Margin USD')).toBeTruthy();
+
+    // And the amounts themselves are formatted per code: IDR carries no
+    // decimals, so the same 100 minor units renders differently per currency.
+    // The workspace-default bug would have printed both as USD.
+    const idrCard = screen.getByText('Total Revenue IDR').parentElement;
+    const usdCard = screen.getByText('Total Revenue USD').parentElement;
+    expect(idrCard?.textContent).toContain('IDR');
+    expect(usdCard?.textContent).toContain('USD');
+    expect(idrCard?.textContent).not.toEqual(usdCard?.textContent);
   });
 });

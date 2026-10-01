@@ -81,7 +81,7 @@ Fix at the source, then re-sync — never in the copies:
 ```bash
 cd assets/branding/<brand>/desktop
 for f in *.png; do magick "$f" -depth 8 -type TrueColorAlpha PNG32:"$f.tmp" && mv "$f.tmp" "$f"; done
-cd /c/dev/ozpos && powershell -NoProfile -ExecutionPolicy Bypass -File scripts/sync-branding.ps1 -Brand default
+cd /c/dev/kasirmu && powershell -NoProfile -ExecutionPolicy Bypass -File scripts/sync-branding.ps1 -Brand default
 ```
 
 `-type TrueColorAlpha` matters: with `-depth 8` alone ImageMagick re-encodes 32×32 as

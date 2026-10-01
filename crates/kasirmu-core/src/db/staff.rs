@@ -2,11 +2,11 @@
 //!
 //! Key items: [`Store::create_user`], [`Store::update_user`],
 //! [`Store::require_permission`] and its scoped siblings, and
-//! [`Store::seed_default_roles`]. [`Store::authorize_with`] is the
+//! [`Store::seed_default_roles`]. `Store::authorize_with` is the
 //! deny-by-default resolver every gate funnels through.
 //!
 //! Role AUTHORING is not here: `create_role`, `update_role`, `soft_delete_role` and
-//! `role_reference_counts` live in [`super::roles`] behind that module's single
+//! `role_reference_counts` live in [`super::roles`](crate::db::roles) behind that module's single
 //! grant validator and preset-id guard. This module keeps the preset side only
 //! — [`Store::seed_default_roles`] upserts every `RolePreset` row and overwrites
 //! its grants, which is the very fact that guard refuses on — plus the two role
@@ -27,6 +27,7 @@ an audit stamp records what was true when it ran, so it is annotated, not edited
 
 use rusqlite::params;
 
+use crate::db::receipt_code::{EntityIndexKind, format_base62_index};
 use crate::downgrade::QuotaDimension;
 use crate::error::CoreError;
 use crate::subscription::SubscriptionTier;
@@ -55,6 +56,8 @@ pub struct LoginLimits {
 }
 
 // ── Preset role seeding + role reads (role AUTHORING: super::roles) ──────
+
+pub mod login;
 
 impl Store<'_> {
     /// Seed built-in roles from their presets.
@@ -252,7 +255,7 @@ impl Store<'_> {
     /// leakage from unlimited Free/Plus team accounts).
     ///
     /// When the tier's `max_staff_users()` cap is reached, returns
-    /// [`QuotaError::StaffLimit`] (surfaced as `SubscriptionLimitExceeded`,
+    /// [`QuotaError::StaffLimit`](crate::subscription::QuotaError::StaffLimit) (surfaced as `SubscriptionLimitExceeded`,
     /// which the UI maps to an upgrade CTA). Unlimited tiers (`None`) pass.
     pub fn enforce_staff_quota(&self, tier: &SubscriptionTier) -> Result<(), CoreError> {
         // W4-S1: decision centralized in `quota_gate`; same limit source
@@ -286,6 +289,25 @@ impl Store<'_> {
         }
     }
 
+    /// Read a user's index id (1..=14,776,335).
+    pub fn get_user_index_id(&self, user_id: &str) -> Result<Option<i64>, CoreError> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT index_id FROM users WHERE id = ?1")?;
+        let result = stmt.query_row(params![user_id], |row| row.get(0));
+        match result {
+            Ok(idx) => Ok(idx),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e.into()),
+        }
+    }
+
+    /// Read a staff member's Base62 badge code (e.g. "01", "02", "100").
+    pub fn get_staff_code(&self, user_id: &str) -> Result<Option<String>, CoreError> {
+        let idx = self.get_user_index_id(user_id)?;
+        Ok(idx.map(format_base62_index))
+    }
+
     /// The centralized fail-closed authorization gate (ADR #35 D3 / spec
     /// 0047): resolve `user_id` to their role and verify the role grants
     /// `required`.
@@ -297,7 +319,7 @@ impl Store<'_> {
     /// assignment fall back to `users.role_id`.
     pub fn require_permission(&self, user_id: &str, required: &str) -> Result<(), CoreError> {
         let assignment = self.assignment_for_user(user_id)?;
-        self.authorize_with(user_id, required, &assignment)
+        self.authorize_with(user_id, required, assignment.as_ref())
     }
 
     /// The scope-aware gate (ADR #35 D5 / spec 0048): same as
@@ -323,7 +345,7 @@ impl Store<'_> {
                 "branch/workspace out of scope for user {user_id}"
             )));
         }
-        self.authorize_with(user_id, required, &assignment)
+        self.authorize_with(user_id, required, assignment.as_ref())
     }
 
     /// The ADR #47 hierarchical-resource gate (ruling 2: the single scoped
@@ -370,7 +392,7 @@ impl Store<'_> {
                 )));
             }
         }
-        self.authorize_with(user_id, required, &assignment)
+        self.authorize_with(user_id, required, assignment.as_ref())
     }
 
     /// Shared gate body: registry deny-by-default, user resolution + active
@@ -380,7 +402,7 @@ impl Store<'_> {
         &self,
         user_id: &str,
         required: &str,
-        assignment: &Option<crate::db::assignments::Assignment>,
+        assignment: Option<&crate::db::assignments::Assignment>,
     ) -> Result<(), CoreError> {
         // Deny by default: an unregistered permission key is rejected even
         // for the global `"*"` Owner grant — the registry is the only
@@ -398,10 +420,7 @@ impl Store<'_> {
         }
         // The role resolves through the assignment when one exists; legacy
         // users without an assignment fall back to `users.role_id`.
-        let role_id = assignment
-            .as_ref()
-            .map(|a| a.role_id.as_str())
-            .unwrap_or(user.role_id.as_str());
+        let role_id = assignment.map_or(user.role_id.as_str(), |a| a.role_id.as_str());
         // Fail closed: an unresolvable role is a denial, never an internal
         // error (a role row deleted out from under a user must not surface
         // as a crash-adjacent 500 to the frontend).
@@ -539,11 +558,13 @@ impl Store<'_> {
 
         let id = uuid::Uuid::now_v7().to_string();
         let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+        let index_id =
+            self.allocate_entity_index_on_conn(self.conn, "default", EntityIndexKind::User, &now)?;
 
         self.conn.execute(
-            "INSERT INTO users (id, username, pin_hash, display_name, role_id, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-            params![id, username, pin_hash, display_name.trim(), role_id, now, now],
+            "INSERT INTO users (id, username, pin_hash, display_name, role_id, created_at, updated_at, index_id)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            params![id, username, pin_hash, display_name.trim(), role_id, now, now, index_id],
         )
         .map_err(|e| match e {
             rusqlite::Error::SqliteFailure(ref err, _)
@@ -742,7 +763,7 @@ impl Store<'_> {
             None
         };
         let rows = self.conn.execute(
-            "UPDATE users SET deleted_at = ?1, updated_at = ?1 \
+            "UPDATE users SET deleted_at = ?1, updated_at = ?1, index_id = NULL \
              WHERE id = ?2 AND deleted_at IS NULL",
             params![now, id],
         )?;
@@ -862,164 +883,14 @@ impl Store<'_> {
         )?;
         Ok(rows)
     }
-
-    // ── Login attempt rate limiting (persistent) ───────────────────
-    //
-    // STAFF-07 (audit-open-findings): per-account throttling is now combined with
-    // per-device and global abuse controls, and uses exponential backoff
-    // instead of a fixed short lock. All rows are persisted in
-    // `login_attempts` so lockouts survive app restarts.
-
-    /// Exponential backoff for a lockout: `base * 2^(strikes-1)` capped at
-    /// `max_secs`. `strikes` is how many times the limit has been breached
-    /// (1 = first lockout).
-    fn login_backoff_secs(base_secs: u64, strikes: usize, max_secs: u64) -> u64 {
-        let shift = strikes.saturating_sub(1).min(16);
-        base_secs.saturating_mul(1u64 << shift).min(max_secs).max(1)
-    }
-
-    /// Record a failed login attempt, enforcing per-account, per-device,
-    /// and global limits within a sliding window (STAFF-07).
-    ///
-    /// Returns `Ok(remaining)` when the attempt is recorded and the caller
-    /// may keep trying, or `Err(retry_after_secs)` when a limit is breached
-    /// and the caller must wait. Expired attempts are pruned on every call;
-    /// the data survives app restarts.
-    pub fn record_login_attempt_scoped(
-        &self,
-        username: &str,
-        device_id: Option<&str>,
-        limits: LoginLimits,
-    ) -> Result<Result<usize, u64>, CoreError> {
-        let max_attempts = limits.max_attempts;
-        let window_secs = limits.window_secs;
-        let device_max_attempts = limits.device_max_attempts;
-        let global_max_attempts = limits.global_max_attempts;
-        let max_backoff_secs = limits.max_backoff_secs;
-        let now = chrono::Utc::now().timestamp();
-        let window_start = now - window_secs as i64;
-
-        // Prune expired entries for the whole table (account + device +
-        // global counters all share the same window).
-        self.conn.execute(
-            "DELETE FROM login_attempts WHERE attempted_at < ?1",
-            params![window_start],
-        )?;
-
-        // ── Per-account limit ────────────────────────────────────
-        let account_count: i64 = self.conn.query_row(
-            "SELECT COUNT(*) FROM login_attempts WHERE username = ?1",
-            params![username],
-            |row| row.get(0),
-        )?;
-        if account_count >= max_attempts as i64 {
-            let strikes = (account_count as usize / max_attempts).max(1);
-            return Ok(Err(Self::login_backoff_secs(
-                window_secs,
-                strikes,
-                max_backoff_secs,
-            )));
-        }
-
-        // ── Per-device limit (across all usernames) ───────────────
-        if let Some(device) = device_id.filter(|d| !d.is_empty()) {
-            let device_count: i64 = self.conn.query_row(
-                "SELECT COUNT(*) FROM login_attempts WHERE device_id = ?1",
-                params![device],
-                |row| row.get(0),
-            )?;
-            if device_count >= device_max_attempts as i64 {
-                let strikes = (device_count as usize / device_max_attempts).max(1);
-                return Ok(Err(Self::login_backoff_secs(
-                    window_secs,
-                    strikes,
-                    max_backoff_secs,
-                )));
-            }
-        }
-
-        // ── Global abuse limit ────────────────────────────────────
-        let global_count: i64 =
-            self.conn
-                .query_row("SELECT COUNT(*) FROM login_attempts", [], |row| row.get(0))?;
-        if global_count >= global_max_attempts as i64 {
-            let strikes = (global_count as usize / global_max_attempts).max(1);
-            return Ok(Err(Self::login_backoff_secs(
-                window_secs,
-                strikes,
-                max_backoff_secs,
-            )));
-        }
-
-        // Record this attempt.
-        self.conn.execute(
-            "INSERT INTO login_attempts (id, username, device_id, attempted_at) VALUES (?1, ?2, ?3, ?4)",
-            params![uuid::Uuid::now_v7().to_string(), username, device_id, now],
-        )?;
-
-        // Re-check after recording to catch the push-over-the-limit case.
-        let new_count: i64 = self.conn.query_row(
-            "SELECT COUNT(*) FROM login_attempts WHERE username = ?1",
-            params![username],
-            |row| row.get(0),
-        )?;
-        if new_count >= max_attempts as i64 {
-            let strikes = (new_count as usize / max_attempts).max(1);
-            return Ok(Err(Self::login_backoff_secs(
-                window_secs,
-                strikes,
-                max_backoff_secs,
-            )));
-        }
-
-        let remaining = max_attempts.saturating_sub(new_count as usize);
-        Ok(Ok(remaining))
-    }
-
-    /// Record a failed login attempt with the legacy username-only
-    /// signature. Kept for callers that have no device context; delegates
-    /// to [`Self::record_login_attempt_scoped`] with device-independent
-    /// defaults so every path gets at least per-account protection.
-    pub fn record_login_attempt(
-        &self,
-        username: &str,
-        max_attempts: usize,
-        window_secs: u64,
-    ) -> Result<Result<usize, u64>, CoreError> {
-        self.record_login_attempt_scoped(
-            username,
-            None,
-            LoginLimits {
-                max_attempts,
-                window_secs,
-                device_max_attempts: max_attempts.saturating_mul(4),
-                global_max_attempts: max_attempts.saturating_mul(20),
-                max_backoff_secs: window_secs.saturating_mul(8),
-            },
-        )
-    }
-
-    /// Clear all recorded login attempts for `username` (call on
-    /// successful login or admin reset).
-    pub fn clear_login_attempts(&self, username: &str) -> Result<(), CoreError> {
-        self.conn.execute(
-            "DELETE FROM login_attempts WHERE username = ?1",
-            params![username],
-        )?;
-        Ok(())
-    }
-
-    /// Clear all recorded login attempts for a device (STAFF-07). Called on
-    /// successful login so a legitimate terminal is not held at a per-device
-    /// limit; does not touch other devices or global history.
-    pub fn clear_login_attempts_by_device(&self, device_id: &str) -> Result<(), CoreError> {
-        self.conn.execute(
-            "DELETE FROM login_attempts WHERE device_id = ?1",
-            params![device_id],
-        )?;
-        Ok(())
-    }
 }
+
+// ── Login attempt rate limiting (persistent) ──────────────────────────
+//
+// STAFF-07 (audit-open-findings): per-account throttling is combined with
+// per-device and global abuse controls and exponential backoff instead of a
+// fixed short lock. The implementation lives in the [`login`] submodule: all
+// rows are persisted in `login_attempts`, so lockouts survive app restarts.
 
 // ── Tests ─────────────────────────────────────────────────────────────
 

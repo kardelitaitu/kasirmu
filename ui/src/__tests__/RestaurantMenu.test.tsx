@@ -87,6 +87,12 @@ vi.mock('@/api/settings', () => ({
   getUserPreferencesScoped: (...args: unknown[]) => mockGetUserPreferences(...args),
   setUserPreferences: (...args: unknown[]) => mockSetUserPreferences(...args),
   setUserPreferencesScoped: (...args: unknown[]) => mockSetUserPreferences(...args),
+  getSettingScoped: vi.fn().mockResolvedValue(null),
+  setSettingScoped: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock('@/api/locations', () => ({
+  getPrimaryLocationScoped: vi.fn().mockResolvedValue(null),
 }));
 
 beforeEach(() => {

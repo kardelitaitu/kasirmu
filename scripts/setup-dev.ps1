@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    One-time developer environment setup for OZ-POS on Windows.
+    One-time developer environment setup for kasir.mu on Windows.
 
 .DESCRIPTION
     Automates the common onboarding steps:
@@ -38,7 +38,7 @@ if (-not (Test-Path "Cargo.toml")) {
 }
 
 Write-Host "============================================" -ForegroundColor Cyan
-Write-Host "  OZ-POS Developer Setup" -ForegroundColor Cyan
+Write-Host "  kasir.mu Developer Setup" -ForegroundColor Cyan
 Write-Host "  Workspace: $WorkspaceRoot" -ForegroundColor Cyan
 Write-Host "============================================" -ForegroundColor Cyan
 
@@ -112,7 +112,7 @@ step -Label "database migration" -Block {
 step -Label "migration idempotency" -Block {
     cargo run -p kasirmu-cli -- migrate
     Write-Host "  Idempotent -- second run succeeds"
-            Remove-Item -LiteralPath "kasir.db", "kasir.db-wal", "kasir.db-shm" -ErrorAction Ignore
+            Remove-Item -LiteralPath "var/kasir.db", "var/kasir.db-wal", "var/kasir.db-shm" -ErrorAction Ignore
 }
 
 # Step 6: Demo data seed (optional, skip if command not available)

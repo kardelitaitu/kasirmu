@@ -53,20 +53,39 @@ impl Store<'_> {
         locked_screen: Option<&str>,
     ) -> Result<(), CoreError> {
         // Verify the terminal exists.
-        let exists: bool = self
-            .conn
-            .query_row(
-                "SELECT COUNT(*) FROM terminals WHERE id = ?1",
-                params![terminal_id],
-                |row| row.get::<_, i64>(0),
-            )
-            .map(|c| c > 0)
-            .unwrap_or(false);
+        let count: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM terminals WHERE id = ?1",
+            params![terminal_id],
+            |row| row.get(0),
+        )?;
 
-        if !exists {
+        if count == 0 {
             return Err(CoreError::NotFound {
                 entity: "terminal",
                 id: terminal_id.to_owned(),
+            });
+        }
+
+        // MSL-52: the vocabulary is the schema's CHECK, and until this guard it was
+        // the ONLY thing enforcing it — the bridge checks non-emptiness only
+        // (`crates/kasirmu-bridge/src/terminals.rs:703`) and the UI types the field as
+        // a bare `string`, so an unknown value surfaced as a raw
+        // `CHECK constraint failed` naming no field.
+        // The front-end branches on `profileType === 'kds_kiosk'`
+        // (`useTerminalProfile.ts:79`), so the vocabulary is a real contract, and
+        // one lookup names the reject instead of leaking a storage fault.
+        const PROFILE_TYPES: [&str; 4] = [
+            "counter_pos",
+            "kds_kiosk",
+            "customer_display",
+            "unrestricted",
+        ];
+        if !PROFILE_TYPES.contains(&profile_type) {
+            return Err(CoreError::Validation {
+                field: "profile_type",
+                message: format!(
+                    "profile_type must be one of {PROFILE_TYPES:?}, got {profile_type:?}"
+                ),
             });
         }
 

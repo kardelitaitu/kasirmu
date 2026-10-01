@@ -6,6 +6,7 @@ next: none | perf: N/A
 */
 //! Error type for the settings domain.
 
+use kasirmu_core::db::namespaced::NamespaceError;
 use thiserror::Error;
 
 /// Errors that can originate in the settings domain.
@@ -14,6 +15,10 @@ pub enum SettingsError {
     /// A database operation failed.
     #[error("database error: {0}")]
     Db(#[from] rusqlite::Error),
+
+    /// A namespace check rejected the statement (Phase 3 P3.2).
+    #[error("namespace error: {0}")]
+    Namespace(#[from] NamespaceError),
 
     /// A lookup by key returned no row.
     #[error("not found: {entity} {id}")]
@@ -45,35 +50,5 @@ impl SettingsError {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn settings_error_validation_message() {
-        let err = SettingsError::validation("key", "must not be empty");
-        assert!(matches!(
-            err,
-            SettingsError::Validation { field, .. } if field == "key"
-        ));
-        assert_eq!(
-            format!("{err}"),
-            "validation error on key: must not be empty"
-        );
-    }
-
-    #[test]
-    fn settings_error_not_found_message() {
-        let err = SettingsError::NotFound {
-            entity: "setting",
-            id: "missing_key".into(),
-        };
-        assert_eq!(format!("{err}"), "not found: setting missing_key");
-    }
-
-    #[test]
-    fn settings_error_from_rusqlite() {
-        let rusqlite_err = rusqlite::Error::QueryReturnedNoRows;
-        let err = SettingsError::from(rusqlite_err);
-        assert!(matches!(err, SettingsError::Db(_)));
-    }
-}
+#[path = "error_tests.rs"]
+mod tests;

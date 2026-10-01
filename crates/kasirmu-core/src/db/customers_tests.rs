@@ -19,6 +19,116 @@ fn seed_customers(conn: &Connection) {
     ).unwrap();
 }
 
+// ── MSL-44: an invalid email/phone must not be STORED ───────────
+
+/// The store wrote the raw string to the column while every API surface
+/// reported `None`, so the bad value persisted invisibly.
+///
+/// `create_customer` and `update_customer` both bind `email`/`phone` straight
+/// into the INSERT/UPDATE, and only apply `Email::new(..).ok()` when building
+/// the returned struct — so an invalid address is written to disk and then
+/// reported as absent:
+///
+/// ```text
+/// PROBE returned email      = None
+/// PROBE stored   email      = Some("not-an-email")
+/// PROBE read-back           = None
+/// PROBE after-update stored = Some("also-bad")
+/// ```
+///
+/// Every current caller validates first (the bridge's and tablet's
+/// `validate_customer_fields`, and the CLI), so this is a latent trap rather
+/// than a live wrong answer — but it is the worst kind: the type system says
+/// the field is `None` in every direction while the column holds garbage, and
+/// any future reader of the raw column (a report, an export, a sync push)
+/// silently picks it up. The store already validates `name` itself, so it is
+/// the right layer for these two as well.
+#[test]
+fn an_invalid_email_is_stored_as_null_not_verbatim() {
+    let conn = fresh();
+    let s = store(&conn);
+
+    let c = s
+        .create_customer("X", Some("not-an-email"), None, None)
+        .unwrap();
+    assert!(c.email.is_none(), "the API reports no email");
+
+    // The COLUMN must agree with the API. Before the fix it held the raw string,
+    // so a reader of the raw column saw a value every caller believed absent.
+    let raw: Option<String> = conn
+        .query_row(
+            "SELECT email FROM customers WHERE id = ?1",
+            rusqlite::params![c.id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        raw, None,
+        "an unparseable email must be stored as NULL, not as the caller's raw string"
+    );
+    assert!(
+        s.get_customer(&c.id).unwrap().unwrap().email.is_none(),
+        "and the read path agrees"
+    );
+}
+
+#[test]
+fn an_invalid_phone_is_stored_as_null_not_verbatim() {
+    let conn = fresh();
+    let s = store(&conn);
+    let c = s
+        .create_customer("Bob", None, Some("+1-555-0102"), None)
+        .unwrap();
+
+    s.update_customer(&c.id, "Bob", None, Some("call me"), None)
+        .unwrap();
+
+    let raw: Option<String> = conn
+        .query_row(
+            "SELECT phone FROM customers WHERE id = ?1",
+            rusqlite::params![c.id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        raw, None,
+        "an unparseable phone must be stored as NULL, not as the caller's raw string"
+    );
+}
+
+/// A valid value still round-trips verbatim, trimmed — the property the fix must
+/// not break.
+#[test]
+fn a_valid_email_and_phone_are_stored_verbatim() {
+    let conn = fresh();
+    let s = store(&conn);
+    let c = s
+        .create_customer("Zoe", Some(" zoe@example.com "), Some("+1-555-0199"), None)
+        .unwrap();
+
+    assert_eq!(
+        c.email.as_ref().map(ToString::to_string).as_deref(),
+        Some("zoe@example.com")
+    );
+    assert_eq!(
+        c.phone.as_ref().map(ToString::to_string).as_deref(),
+        Some("+1-555-0199")
+    );
+    let (raw_e, raw_p): (Option<String>, Option<String>) = conn
+        .query_row(
+            "SELECT email, phone FROM customers WHERE id = ?1",
+            rusqlite::params![c.id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!(
+        raw_e.as_deref(),
+        Some("zoe@example.com"),
+        "trimmed, not raw"
+    );
+    assert_eq!(raw_p.as_deref(), Some("+1-555-0199"));
+}
+
 // ── List ────────────────────────────────────────────────────────
 
 #[test]
@@ -48,10 +158,13 @@ fn get_customer_found() {
     let c = store(&conn).get_customer("cust-1").unwrap().unwrap();
     assert_eq!(c.name, "Alice");
     assert_eq!(
-        c.email.as_ref().map(|e| e.as_str()),
+        c.email.as_ref().map(foundation::Email::as_str),
         Some("alice@example.com")
     );
-    assert_eq!(c.phone.as_ref().map(|p| p.as_str()), Some("+1-555-0101"));
+    assert_eq!(
+        c.phone.as_ref().map(foundation::Phone::as_str),
+        Some("+1-555-0101")
+    );
     assert_eq!(c.notes, "Regular");
 }
 
@@ -69,7 +182,10 @@ fn get_customer_nullable_fields() {
     let c = store(&conn).get_customer("cust-2").unwrap().unwrap();
     assert_eq!(c.name, "Bob");
     assert!(c.email.is_none());
-    assert_eq!(c.phone.as_ref().map(|p| p.as_str()), Some("+1-555-0102"));
+    assert_eq!(
+        c.phone.as_ref().map(foundation::Phone::as_str),
+        Some("+1-555-0102")
+    );
 }
 
 // ── Create ──────────────────────────────────────────────────────
@@ -99,8 +215,14 @@ fn create_customer_with_all_fields() {
         )
         .unwrap();
     assert_eq!(c.name, "Diana");
-    assert_eq!(c.email.as_ref().map(|e| e.as_str()), Some("diana@test.com"));
-    assert_eq!(c.phone.as_ref().map(|p| p.as_str()), Some("555-0100"));
+    assert_eq!(
+        c.email.as_ref().map(foundation::Email::as_str),
+        Some("diana@test.com")
+    );
+    assert_eq!(
+        c.phone.as_ref().map(foundation::Phone::as_str),
+        Some("555-0100")
+    );
     assert_eq!(c.notes, "Preferred");
     assert_eq!(c.loyalty_points, 0);
     assert_eq!(c.total_spent_minor, 0);
@@ -132,7 +254,7 @@ fn update_customer_basic() {
         .unwrap();
     assert_eq!(updated.name, "Alice Updated");
     assert_eq!(
-        updated.email.as_ref().map(|e| e.as_str()),
+        updated.email.as_ref().map(foundation::Email::as_str),
         Some("alice@new.com")
     );
     assert_eq!(updated.notes, "Changed");
@@ -174,6 +296,62 @@ fn delete_customer_not_found() {
     let conn = fresh();
     let err = store(&conn).delete_customer("nope").unwrap_err();
     assert!(matches!(err, CoreError::NotFound { .. }));
+}
+/// COR-23: a blocked delete must NAME what is holding the row.
+///
+/// The reference guard is the FK itself (`sales.customer_id` and
+/// `loyalty_accounts.customer_id`, both NO ACTION) and that is deliberate —
+/// CUST-11 wants the delete blocked rather than cascading. What was missing is
+/// only the reporting: the bare `DELETE` met a raw
+/// `FOREIGN KEY constraint failed` and reached the client as `CoreError::Db`,
+/// which names neither the customer nor the blocker, so a UI can only show a
+/// storage fault. `Conflict` is the right variant over `NotFound` because the
+/// customer genuinely exists.
+#[test]
+fn delete_customer_with_sales_is_a_named_conflict() {
+    let conn = fresh();
+    seed_customers(&conn);
+    conn.execute(
+        "INSERT INTO sales (id, total_minor, currency, line_count, status, customer_id,
+                          created_at, updated_at, subtotal_minor, tax_total_minor)
+         VALUES ('s-1', 2500, 'USD', 1, 'completed', 'cust-1',
+                 '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z', 2500, 0)",
+        [],
+    )
+    .unwrap();
+
+    let err = store(&conn).delete_customer("cust-1").unwrap_err();
+    let CoreError::Validation { field, message } = &err else {
+        panic!("a blocked delete must be a typed Validation, not a raw FK error: {err:?}");
+    };
+    assert_eq!(
+        *field, "customer_id",
+        "the field names the blocker, not the entity"
+    );
+    assert!(
+        message.contains("loyalty account") && message.contains("reassigned"),
+        "the message must say what is holding the row and what to do: {message}"
+    );
+    // And the row survives — the guard still blocks, only the message changed.
+    assert!(store(&conn).get_customer("cust-1").unwrap().is_some());
+}
+
+/// The loyalty half of the same guard, since it is a SECOND referrer and a
+/// mapping that only covered `sales` would report this one as a raw DB error.
+#[test]
+fn delete_customer_with_a_loyalty_account_is_the_same_named_conflict() {
+    let conn = fresh();
+    seed_customers(&conn);
+    store(&conn)
+        .get_or_create_loyalty_account("cust-1")
+        .unwrap();
+
+    let err = store(&conn).delete_customer("cust-1").unwrap_err();
+    assert!(
+        matches!(&err, CoreError::Validation { field, .. } if *field == "customer_id"),
+        "the loyalty referrer must produce the same typed refusal: {err:?}"
+    );
+    assert!(store(&conn).get_customer("cust-1").unwrap().is_some());
 }
 
 // ── Additional edge cases ─────────────────────────────────────
@@ -311,4 +489,110 @@ fn search_customers_no_match_returns_empty() {
         .unwrap();
     assert!(items.is_empty());
     assert_eq!(total, 0);
+}
+
+// ── Phase 5 P5.3: the crm-surface seam ───────────────────────────────
+
+/// The seam is the single writer of `total_spent_minor`: an accrual adds to
+/// the column (it does not overwrite), so two sales accumulate.
+#[test]
+fn accrue_lifetime_spend_accumulates_not_overwrites() {
+    let conn = fresh();
+    seed_customers(&conn);
+    Store::accrue_lifetime_spend_in_tx(&conn, "cust-1", 1500).unwrap();
+    Store::accrue_lifetime_spend_in_tx(&conn, "cust-1", 250).unwrap();
+    let spent: i64 = conn
+        .query_row(
+            "SELECT total_spent_minor FROM customers WHERE id = 'cust-1'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(spent, 1750);
+}
+
+/// A missing customer touches zero rows (the caller logs it non-fatal); it
+/// does not error, so the completion door never rolls back on it.
+#[test]
+fn accrue_lifetime_spend_missing_customer_is_zero_rows() {
+    let conn = fresh();
+    let rows = Store::accrue_lifetime_spend_in_tx(&conn, "nobody", 100).unwrap();
+    assert_eq!(rows, 0);
+}
+
+/// The reversal mirrors the accrual and clamps at zero: refunding more than
+/// was ever spent cannot drive lifetime spend negative.
+#[test]
+fn reverse_lifetime_spend_clamps_at_zero() {
+    let conn = fresh();
+    seed_customers(&conn);
+    Store::accrue_lifetime_spend_in_tx(&conn, "cust-1", 1000).unwrap();
+    Store::reverse_lifetime_spend_in_tx(&conn, "cust-1", 4000, "2025-02-01T00:00:00.000Z").unwrap();
+    let spent: i64 = conn
+        .query_row(
+            "SELECT total_spent_minor FROM customers WHERE id = 'cust-1'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(spent, 0, "refund must clamp, never go negative");
+}
+
+/// The loyalty-points projection copies the ledger balance onto the customer
+/// row, keyed by customer id.
+#[test]
+fn project_loyalty_points_copies_the_ledger_balance() {
+    let conn = fresh();
+    seed_customers(&conn);
+    conn.execute_batch(
+        "INSERT INTO loyalty_accounts (id, customer_id, tier_id, points, lifetime_points, created_at, updated_at)
+         VALUES ('acct-1', 'cust-1', 'tier-bronze', 42, 42, '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z');"
+    )
+    .unwrap();
+    Store::project_loyalty_points_in_tx(&conn, "cust-1").unwrap();
+    let points: i64 = conn
+        .query_row(
+            "SELECT loyalty_points FROM customers WHERE id = 'cust-1'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(points, 42);
+}
+
+/// The account-keyed projection shape resolves the customer through the
+/// account row (the refund-reversal path has only the account id).
+#[test]
+fn project_loyalty_points_for_account_resolves_customer() {
+    let conn = fresh();
+    seed_customers(&conn);
+    conn.execute_batch(
+        "INSERT INTO loyalty_accounts (id, customer_id, tier_id, points, lifetime_points, created_at, updated_at)
+         VALUES ('acct-2', 'cust-2', 'tier-bronze', 7, 7, '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z');"
+    )
+    .unwrap();
+    Store::project_loyalty_points_for_account_in_tx(&conn, "acct-2").unwrap();
+    let points: i64 = conn
+        .query_row(
+            "SELECT loyalty_points FROM customers WHERE id = 'cust-2'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(points, 7);
+}
+
+// ── Phase 5 P5.3: the seam is governed ───────────────────────────────
+
+/// The seam functions are core's only writers of `customers`, and `customers`
+/// is owned by the `crm` module. If the ownership map ever re-homes the table,
+/// this fails and names it, rather than letting the seam write a table no
+/// module claims.
+#[test]
+fn the_customer_seam_writes_a_table_crm_owns() {
+    assert_eq!(
+        crate::db::ownership::owner_of("customers"),
+        Some("crm"),
+        "the P5.3 seam writes `customers`; its owner is the crm module"
+    );
 }

@@ -2970,7 +2970,7 @@ const DISAGREEING_TAIL_BASELINE: Array<[string, string, number]> = [
   ["--color-bg", "ui/src/theme/reset.css", 1],
   ["--color-bg-hover", "ui/src/components/ConnectionStatus.css", 1],
   ["--color-bg-hover", "ui/src/features/auth/SessionLockScreen.css", 1],
-  ["--color-bg-hover", "ui/src/features/auth/StaffLoginScreen.css", 2],
+  ["--color-bg-hover", "ui/src/features/auth/StaffLoginScreen.css", 1],
   ["--color-bg-hover", "ui/src/features/sales/EodReportScreen.css", 2],
   ["--color-bg-hover", "ui/src/features/sales/widgets/widgets.css", 1],
   ["--color-bg-input", "ui/src/theme/reset.css", 2],
@@ -3212,6 +3212,16 @@ function lhWhere(key: string): string {
  * its `line-height: 1`; the segment centres its glyph with flex now, so the literal
  * became NO step rather than a --leading-* one. A deletion is still a move, and this
  * one is named here rather than left to read as a quiet green.
+ *
+ * Restated 2026-09-29: `1 @ ui/src/features/restaurant/RestaurantMenu.css` 1 -> 2.
+ * The restaurant search-clear button landed by the resto-pos work carries
+ * `line-height: 1` at :562, alongside the sidebar badge manager's at :251. Both are
+ * single-glyph controls (a status badge and an × clear button) that centre their
+ * glyph inside a fixed-height box, which is exactly what the 2026-09-19 note says
+ * cannot be expressed as a --leading-* step; the alternative to the literal is a
+ * flex centring, and neither control is a flex row today. Counted rather than
+ * expanded by a wildcard: the freeze is per (value @ sheet) pair, so a third site
+ * here still fails.
  */
 const LINE_HEIGHT_LITERAL_BASELINE: Array<[string, string, number]> = [
   ["1", "ui/src/components/QrisQrDisplay.css", 1],
@@ -3257,16 +3267,26 @@ const LINE_HEIGHT_LITERAL_BASELINE: Array<[string, string, number]> = [
   ["1", "ui/src/features/reports/CustomReportScreen.css", 1],
   ["1", "ui/src/features/reports/DashboardScreen.css", 1],
   ["1", "ui/src/features/reports/MenuEngineeringScreen.css", 1],
-  ["1", "ui/src/features/restaurant/RestaurantMenu.css", 1],
+  ["1", "ui/src/features/restaurant/RestaurantMenu.css", 2],
   ["1", "ui/src/features/retail/RetailPosScreen.css", 10],
   ["1.2", "ui/src/features/retail/RetailPosScreen.css", 3],
   ["1.3", "ui/src/features/retail/RetailPosScreen.css", 1],
   ["1.4", "ui/src/features/retail/RetailPosScreen.css", 3],
   ["1.8", "ui/src/features/retail/RetailPosScreen.css", 1],
+  // Decision recorded 2026-10-01: `line-height: 1` on `.pos-cart-table-select-btn`
+  // is deliberate optical tightening, not a prose measure -- the control is a
+  // flex-centred button whose height is padding + content, and `normal` (~1.2)
+  // would grow it. No --leading-* step is 1, so deleting the declaration would be
+  // a visual change rather than a token adoption; it is listed here instead.
+  ["1", "ui/src/features/sales/CartPanel.css", 1],
   ["1.4", "ui/src/features/sales/CartPanel.css", 2],
   ["1", "ui/src/features/sales/CartPanelCourseBar.css", 2],
   ["1", "ui/src/features/sales/CartPanelFooterTotals.css", 1],
-  ["1.3", "ui/src/features/sales/CartPanelLineItem.css", 1],
+  // 1 -> 3 on 2026-10-01: the sales lane added two more 1.3 declarations
+  // (:163, :486) beside the original at :541. 1.3 is not a --leading-* step
+  // (condensed 1.2 / tight 1.25 / snug 1.4 / normal 1.5 / relaxed 1.625), so
+  // there is no token to adopt and the freeze is restated instead.
+  ["1.3", "ui/src/features/sales/CartPanelLineItem.css", 3],
   ["1.6", "ui/src/features/sales/EodReportScreen.css", 1],
   ["1", "ui/src/features/sales/PaymentModal.css", 3],
   ["1.4", "ui/src/features/sales/PaymentModal.css", 1],
@@ -3275,7 +3295,11 @@ const LINE_HEIGHT_LITERAL_BASELINE: Array<[string, string, number]> = [
   ["1", "ui/src/features/sales/PromotionsModal.css", 1],
   ["1", "ui/src/features/sales/ReceiptPreview.css", 1],
   ["1.2", "ui/src/features/sales/ReceiptPreview.css", 2],
-  ["1.4", "ui/src/features/sales/ReceiptPreview.css", 1],
+  // The ["1.4", …, 1] row was REMOVED 2026-09-29, not moved: the note-printing
+  // change (c761e0fc0) added a second 1.4 site at :148, and both :141 and :148 now
+  // use `var(--leading-snug)` — the exact step the value already was. So this is a
+  // paid-down key rather than a count that drifted, which is why deleting the row
+  // here is the correct restatement the guard asks for.
   ["1.6", "ui/src/features/sales/ReceiptPreview.css", 1],
   ["1", "ui/src/features/sales/SalesHistoryScreen.css", 2],
   ["1.4", "ui/src/features/sales/StockShortfallDialog.css", 1],
@@ -3439,9 +3463,16 @@ const LEADING_STEP_DEFS: LeadingStepDef[] = existsSync(TOKENS_CSS)
   ? leadingStepDefsFromTokens(readFileSync(TOKENS_CSS, "utf-8"))
   : [];
 
-/** Measured at tip af4b27238 by the collector above: three steps, three values. */
+/** Measured at tip af4b27238 by the collector above: five steps, five values.
+ * Extended on 2026-09-25 (commit: fix(ui): repair pre-existing test failures):
+ *   --leading-condensed: 1.2  — display/hero headings (tight vertical rhythm)
+ *   --leading-snug: 1.4       — compact UI prose, error messages, captions
+ * Scale now: condensed (1.2) → tight (1.25) → snug (1.4) → normal (1.5) → relaxed (1.625)
+ */
 const LEADING_STEP_BASELINE: Array<[string, string]> = [
+  ["--leading-condensed", "1.2"],
   ["--leading-tight", "1.25"],
+  ["--leading-snug", "1.4"],
   ["--leading-normal", "1.5"],
   ["--leading-relaxed", "1.625"],
 ];

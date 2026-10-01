@@ -1101,7 +1101,14 @@ fn license_phone_is_denied_as_a_credential_and_refused_on_egress() {
 use platform_core::settings::Settings as ManagerProducer;
 
 const PLAT_RAW_RS: &str = include_str!("../../../../platform/core/src/settings/raw.rs");
+// The bridge lane split into a `settings/` module on 2026-09-28 and the two concerns this file sweeps
+// now live in DIFFERENT files: `settings.rs` keeps the doors and the literals (65), while the two
+// `manager_owned_key_refusal` calls the count leg expects moved to `settings/core.rs` (4 literals).
+// One const served both legs before the split, which is why the refusal count read 0 while the code
+// was intact. Two consts, one per concern, so neither can hide the other.
 const BRIDGE_SETTINGS_RS: &str = include_str!("../../../../crates/kasirmu-bridge/src/settings.rs");
+const BRIDGE_SETTINGS_CORE_RS: &str =
+    include_str!("../../../../crates/kasirmu-bridge/src/settings/core.rs");
 const TABLET_SETTINGS_RS: &str = include_str!("settings.rs");
 
 /// String literals in a file, comments removed, so prose cannot be counted
@@ -1246,6 +1253,9 @@ fn both_shell_lanes_take_the_manager_refusal_from_its_one_producer() {
     let mut carriers: Vec<String> = Vec::new();
     for (label, source) in [
         ("platform/core/src/settings/raw.rs", PLAT_RAW_RS),
+        // The literal sweep reads the shell, not `settings/core.rs`: measured 2026-09-28, the
+        // shell carries 65 string literals and core.rs only 4, and this leg asserts at least five
+        // to prove the include path resolves to a file that actually holds wording.
         ("crates/kasirmu-bridge/src/settings.rs", BRIDGE_SETTINGS_RS),
         (
             "apps/mobile-tauri/src/commands/settings.rs",
@@ -1298,8 +1308,8 @@ fn both_shell_lanes_take_the_manager_refusal_from_its_one_producer() {
             1usize,
         ),
         (
-            "crates/kasirmu-bridge/src/settings.rs",
-            BRIDGE_SETTINGS_RS,
+            "crates/kasirmu-bridge/src/settings/core.rs",
+            BRIDGE_SETTINGS_CORE_RS,
             "BridgeError::Invalid(refusal)",
             2usize,
         ),
@@ -2057,8 +2067,7 @@ async fn scoped_credit_sale_list_stays_open_to_a_session_with_sales_view() {
     assert!(
         !matches!(result, Err(AppError::PermissionDenied(_))),
         "list_credit_sales_scoped gates on sales:view, which this session holds; \
-         got {:?}",
-        result
+         got {result:?}"
     );
     assert!(
         result.is_ok(),

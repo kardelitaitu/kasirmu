@@ -30,6 +30,9 @@ pub enum PluginError {
     /// Plugin archive (.ozp) read or extraction error.
     #[error("archive error: {0}")]
     Archive(String),
+    /// Plugin signature verification failure (C2 / D7).
+    #[error("plugin signature error: {0}")]
+    Signature(String),
 }
 
 #[cfg(test)]

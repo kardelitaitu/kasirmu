@@ -5,7 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
-description = "OZ-POS Purchasing Module (stub): supplier records, purchase orders, goods receipt, and cost updates."
+description = "kasir.mu Purchasing Module (stub): supplier records, purchase orders, goods receipt, and cost updates."
 
 [lints]
 workspace = true

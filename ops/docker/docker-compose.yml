@@ -1,6 +1,6 @@
-# ── OZ-POS Full Stack — Docker Compose ───────────────────────────────
+# ── kasir.mu Full Stack — Docker Compose ───────────────────────────────
 #
-# Spins up the core OZ-POS backend in one command:
+# Spins up the core kasir.mu backend in one command:
 #   • pos-cloud-server — Rust headless sync & API binary
 #   • license-server  — Go/PocketBase license activation server
 #   • redis           — in-memory cache (product lookups, pub/sub)

@@ -4,10 +4,10 @@ use super::*;
 use crate::db::Store;
 use crate::migrations;
 
-fn store() -> Store<'static> {
-    let conn = migrations::fresh_db();
-    let conn: &'static rusqlite::Connection = Box::leak(Box::new(conn));
-    Store::new(conn)
+/// The caller owns the connection, so this no longer `Box::leak`s a
+/// database per test to manufacture a `'static` (O-T03).
+fn store(db: &rusqlite::Connection) -> Store<'_> {
+    Store::new(db)
 }
 
 const NOW: &str = "2026-09-26T10:15:00.000Z";
@@ -66,7 +66,7 @@ fn seed_claim_fixture(store: &Store<'_>, entity: &str, location_id: &str, sale_i
 }
 
 /// Manually open a write transaction and hand its handle to the claim.
-fn tx_of(store: &Store<'static>) -> rusqlite::Transaction<'static> {
+fn tx_of<'a>(store: &Store<'a>) -> rusqlite::Transaction<'a> {
     store.conn.unchecked_transaction().unwrap()
 }
 
@@ -85,7 +85,8 @@ fn stamped_number(store: &Store<'_>, sale_id: &str) -> Option<String> {
 
 #[test]
 fn fiscal_scheme_crud_round_trips() {
-    let store = store();
+    let store_db = migrations::fresh_db();
+    let store = store(&store_db);
     seed_entity(&store, "ent-1");
     store
         .conn
@@ -112,7 +113,8 @@ fn fiscal_scheme_crud_round_trips() {
 
 #[test]
 fn upsert_keeps_the_counter_when_policy_is_rewritten() {
-    let store = store();
+    let store_db = migrations::fresh_db();
+    let store = store(&store_db);
     seed_claim_fixture(&store, "ent-1", "loc-1", "sale-1");
     let tx = tx_of(&store);
     store
@@ -135,7 +137,8 @@ fn upsert_keeps_the_counter_when_policy_is_rewritten() {
 
 #[test]
 fn upsert_rejects_negative_padding() {
-    let store = store();
+    let store_db = migrations::fresh_db();
+    let store = store(&store_db);
     let err = store
         .upsert_document_number_sequence("ent-x", "receipt", "", ResetPeriod::Never, -1, NOW)
         .unwrap_err();
@@ -155,7 +158,8 @@ fn upsert_rejects_negative_padding() {
 
 #[test]
 fn claim_stamps_the_sale_and_returns_the_number() {
-    let store = store();
+    let store_db = migrations::fresh_db();
+    let store = store(&store_db);
     seed_claim_fixture(&store, "ent-1", "loc-1", "sale-1");
     let tx = tx_of(&store);
     let number = store
@@ -175,7 +179,8 @@ fn sequential_claims_within_one_transaction_draw_distinct_numbers() {
     // The supervisor's note-2 sibling: two sales in the SAME transaction
     // window draw DISTINCT numbers. Both claims run on ONE transaction
     // handle — this is the in-tx property, not a two-transaction sequence.
-    let store = store();
+    let store_db = migrations::fresh_db();
+    let store = store(&store_db);
     seed_claim_fixture(&store, "ent-1", "loc-1", "sale-1");
     seed_sale(&store, "sale-2");
     let tx = tx_of(&store);
@@ -194,7 +199,8 @@ fn sequential_claims_within_one_transaction_draw_distinct_numbers() {
 
 #[test]
 fn period_rollover_restarts_at_one() {
-    let store = store();
+    let store_db = migrations::fresh_db();
+    let store = store(&store_db);
     seed_claim_fixture(&store, "ent-1", "loc-1", "sale-1");
     let tx = tx_of(&store);
     store
@@ -215,7 +221,8 @@ fn period_rollover_restarts_at_one() {
 
 #[test]
 fn unconfigured_entity_stamps_nothing() {
-    let store = store();
+    let store_db = migrations::fresh_db();
+    let store = store(&store_db);
     // Entity exists but has NO series: the claim is a no-op, the sale is
     // untouched — an unconfigured deployment keeps today's behavior.
     seed_entity(&store, "ent-1");
@@ -232,7 +239,8 @@ fn unconfigured_entity_stamps_nothing() {
 
 #[test]
 fn unknown_location_stamps_nothing() {
-    let store = store();
+    let store_db = migrations::fresh_db();
+    let store = store(&store_db);
     let tx = tx_of(&store);
     let n = store
         .claim_statutory_number_for_sale(&tx, "sale-x", "no-such-loc", "receipt", NOW)
@@ -248,7 +256,8 @@ fn rollback_of_the_sale_transaction_consumes_no_number() {
     // A failed checkout rolls its transaction back; the claim was made
     // inside that same transaction, so the counter must be untouched and
     // the next successful sale gets the number the failed one "used".
-    let store = store();
+    let store_db = migrations::fresh_db();
+    let store = store(&store_db);
     seed_claim_fixture(&store, "ent-1", "loc-1", "sale-fail");
 
     let tx = tx_of(&store);
@@ -276,7 +285,8 @@ fn rollback_of_the_sale_transaction_consumes_no_number() {
 
 #[test]
 fn never_reset_series_carry_no_bucket_segment() {
-    let store = store();
+    let store_db = migrations::fresh_db();
+    let store = store(&store_db);
     seed_entity(&store, "ent-1");
     store
         .upsert_document_number_sequence("ent-1", "invoice", "F/", ResetPeriod::Never, 0, NOW)
@@ -313,14 +323,16 @@ fn seed_scheme(store: &Store<'_>, id: &str, entity: &str, code: &str, active: i6
 
 #[test]
 fn list_sequences_is_empty_before_configuration() {
-    let store = store();
+    let store_db = migrations::fresh_db();
+    let store = store(&store_db);
     assert!(store.list_document_number_sequences().unwrap().is_empty());
     assert!(store.list_fiscal_schemes().unwrap().is_empty());
 }
 
 #[test]
 fn list_sequences_orders_and_reports_the_live_counter() {
-    let store = store();
+    let store_db = migrations::fresh_db();
+    let store = store(&store_db);
     seed_entity(&store, "ent-1");
     store
         .upsert_document_number_sequence("ent-1", "receipt", "INV/", ResetPeriod::Monthly, 4, NOW)
@@ -350,7 +362,8 @@ fn list_sequences_orders_and_reports_the_live_counter() {
 
 #[test]
 fn per_entity_reader_isolates_its_entity() {
-    let store = store();
+    let store_db = migrations::fresh_db();
+    let store = store(&store_db);
     seed_entity(&store, "ent-1");
     seed_entity(&store, "ent-2");
     store
@@ -369,7 +382,8 @@ fn per_entity_reader_isolates_its_entity() {
 
 #[test]
 fn fiscal_scheme_reader_reports_active_and_inactive() {
-    let store = store();
+    let store_db = migrations::fresh_db();
+    let store = store(&store_db);
     seed_entity(&store, "ent-1");
     seed_scheme(&store, "sch-1", "ent-1", "id-faktur-pajak", 1);
     seed_scheme(&store, "sch-2", "ent-1", "legacy-e-faktur", 0);
@@ -403,7 +417,8 @@ fn stored_kinds(store: &Store<'_>, entity: &str) -> Vec<String> {
 
 #[test]
 fn an_unknown_document_kind_is_rejected_instead_of_opening_a_series() {
-    let store = store();
+    let store_db = migrations::fresh_db();
+    let store = store(&store_db);
     seed_entity(&store, "ent-typo");
     let err = store
         .upsert_document_number_sequence("ent-typo", "reciept", "", ResetPeriod::Never, 0, NOW)
@@ -426,7 +441,8 @@ fn an_unknown_document_kind_is_rejected_instead_of_opening_a_series() {
 
 #[test]
 fn a_capitalised_kind_normalises_instead_of_becoming_a_parallel_series() {
-    let store = store();
+    let store_db = migrations::fresh_db();
+    let store = store(&store_db);
     seed_entity(&store, "ent-case");
     store
         .upsert_document_number_sequence("ent-case", "RECEIPT", "NO.", ResetPeriod::Never, 4, NOW)
@@ -446,7 +462,8 @@ fn a_capitalised_kind_normalises_instead_of_becoming_a_parallel_series() {
 
 #[test]
 fn the_schema_refuses_a_kind_that_bypasses_core_validation() {
-    let store = store();
+    let store_db = migrations::fresh_db();
+    let store = store(&store_db);
     seed_entity(&store, "ent-db");
     let err = store
         .conn

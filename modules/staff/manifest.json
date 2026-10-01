@@ -8,5 +8,9 @@
     "staff:view",
     "staff:edit",
     "staff:auth"
+  ],
+  "capabilities": [
+    "read:staff",
+    "write:staff"
   ]
 }

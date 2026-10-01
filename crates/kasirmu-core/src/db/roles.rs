@@ -29,7 +29,7 @@
 //! (plus the trash's `restore_role`, `list_trashed_roles` and
 //! `purge_expired_roles`) and [`Store::role_reference_counts`]. A fifth write,
 //! `seed_default_roles`,
-//! deliberately stays in [`super::staff`] — it is the preset upsert this
+//! deliberately stays in [`super::staff`](crate::db::staff) — it is the preset upsert this
 //! module exists to keep callers away from, and it does not route through
 //! any of these four.
 
@@ -47,12 +47,64 @@ use crate::{Role, Store};
 /// thing it can be correct against.
 pub use platform_core::rbac::is_builtin_role_id;
 
-/// The tables that point at a role, in the order diagnostics list them.
+/// The tables that point at a role, in the order diagnostics list them, each
+/// with the predicate that decides whether a row is LIVE.
 ///
-/// Each declares `REFERENCES roles(id)` with the default NO ACTION, so
-/// SQLite would raise a bare constraint violation on any of them. Reading
-/// the counts first is what turns that into a message naming the referrer.
-const ROLE_REFERRERS: [&str; 4] = [
+/// Each declares `REFERENCES roles(id)` with the default NO ACTION, so SQLite
+/// would raise a bare constraint violation on any of them. Reading the counts
+/// first is what turns that into a message naming the referrer.
+///
+/// The `Option<&str>` half exists because the FOREIGN KEY and the LIVE row are
+/// not the same set, and `users` is the one table where they differ. A
+/// soft-deleted account keeps its `users` row — the trash stamps
+/// `deleted_at`, it never deletes, precisely so history keeps resolving — so
+/// counting raw rows let a trashed member pin a role in the trash for good:
+/// the authoring UI refused the delete, `role_holders` named nobody (it reads
+/// the live roster), and `purge_expired_roles` only ever purges roles that are
+/// ALREADY trashed. The role was undeletable for as long as the tombstone
+/// existed, which is forever.
+///
+/// `assignments` is the second such table, and it needs an EXISTS rather than
+/// a column test: the row carries no `deleted_at` of its own and is NOT
+/// `ON DELETE CASCADE` from `users` at migration time (a table-level `DELETE`
+/// rebuild cannot be ordered under the `inventory_*` / `audit_log` RESTRICT
+/// edges, so the intended cascade is not what is armed). A trashed member
+/// therefore keeps a real assignment row, and it is not decoration: the trash
+/// leaves `users` in place, so `assignment_for_user` still resolves it. An
+/// assignment belongs to its ACCOUNT, so it is live exactly when that account
+/// is — the same line `list_users` draws.
+///
+/// The two `role_*` grant tables declare no trash column and must NOT be
+/// given a predicate: a grant row is REMOVED when revoked, so the filter is
+/// `None` exactly where absence of the column means absence of the concept —
+/// writing `deleted_at IS NULL` against them is a runtime `SqlInputError`,
+/// not a harmless no-op.
+const ROLE_REFERRERS: [(&str, Option<&str>); 4] = [
+    ("users", Some("deleted_at IS NULL")),
+    (
+        "assignments",
+        Some(
+            "EXISTS (SELECT 1 FROM users u WHERE u.id = assignments.user_id AND u.deleted_at IS NULL)",
+        ),
+    ),
+    ("role_workspace_types", None),
+    ("role_workspaces", None),
+];
+
+/// The predicate that answers the FOREIGN KEY question rather than the
+/// roster one: does a row exist that would block a `DELETE FROM roles`?
+///
+/// It differs from [`ROLE_REFERRERS`] in exactly one place, and the difference
+/// is load-bearing for the sweep. No production path ever deletes a `users`
+/// row — the staff trash stamps `deleted_at` and the purge ANONYMISES the row
+/// in place (`purge_expired_users` is an `UPDATE`, and it does not clear
+/// `role_id`) — so a member who has ever held a role holds it in the FK view
+/// for the life of the database. The live-only predicate above is right for the
+/// authoring guard (a tombstone nobody can see must not pin a role forever) and
+/// wrong for the sweep, which has to ask whether the DELETE will actually
+/// succeed. Keeping the two censuses separate is what lets each say what it
+/// means: the guard reads [`ROLE_REFERRERS`], the sweep reads this.
+const ROLE_FK_REFERRERS: [&str; 4] = [
     "users",
     "assignments",
     "role_workspace_types",
@@ -174,6 +226,25 @@ impl Store<'_> {
         Self::role_references_on(self.conn, id)
     }
 
+    /// Whether any row in `ROLE_FK_REFERRERS` would block a `DELETE FROM roles`
+    /// for this id — the FK's question, not the roster's.
+    ///
+    /// Table names come from the constant, never from a caller, so the
+    /// interpolation adds no injection surface.
+    fn role_has_any_fk_referrer(conn: &Connection, id: &str) -> Result<bool, CoreError> {
+        for table in ROLE_FK_REFERRERS {
+            let held: bool = conn.query_row(
+                &format!("SELECT EXISTS (SELECT 1 FROM {table} WHERE role_id = ?1)"),
+                params![id],
+                |row| row.get(0),
+            )?;
+            if held {
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
+
     /// The referrer counts on any connection, so a caller already inside a
     /// transaction reads the same view its write will be judged against.
     fn role_references_on(
@@ -181,9 +252,12 @@ impl Store<'_> {
         id: &str,
     ) -> Result<Vec<(&'static str, i64)>, CoreError> {
         let mut out = Vec::new();
-        for table in ROLE_REFERRERS {
+        for (table, live) in ROLE_REFERRERS {
+            // The predicate comes from the table literal above, never from a
+            // caller, so the interpolation adds no injection surface.
+            let filter = live.map_or(String::new(), |p| format!(" AND {p}"));
             let count: i64 = conn.query_row(
-                &format!("SELECT COUNT(*) FROM {table} WHERE role_id = ?1"),
+                &format!("SELECT COUNT(*) FROM {table} WHERE role_id = ?1{filter}"),
                 params![id],
                 |row| row.get(0),
             )?;
@@ -210,7 +284,7 @@ impl Store<'_> {
 
     /// Insert a new authored role.
     ///
-    /// Preset ids are refused — see [`Store::reject_builtin_role_id`]. This is
+    /// Preset ids are refused — see `Store::reject_builtin_role_id`. This is
     /// the create-side half of the rule [`Store::update_role`] and
     /// [`Store::soft_delete_role`] already enforce: `seed_default_roles` upserts
     /// every `RolePreset` id and overwrites its grants, so a row minted at one
@@ -221,7 +295,7 @@ impl Store<'_> {
     /// command layer asked of itself, and the core write path would have
     /// accepted a preset id from any other caller.
     ///
-    /// Grants go through [`Store::validate_permission_grants`], the same rule
+    /// Grants go through `Store::validate_permission_grants`, the same rule
     /// `update_role` applies, so create and update can never disagree about
     /// what a legal permission list is.
     ///
@@ -231,7 +305,7 @@ impl Store<'_> {
     /// grant set; [`CoreError::Conflict`] when `id` or `name` collides with an
     /// existing row. Known imprecision, carried over unchanged from the
     /// pre-fold version rather than silently fixed here: SQLite reports both
-    /// as a bare constraint violation, and [`Store::map_role_conflict`] names
+    /// as a bare constraint violation, and `Store::map_role_conflict` names
     /// `field: "name"` for either. A duplicate `id` therefore surfaces as a
     /// name conflict. Changing that error shape is a separate call — it is
     /// what the authoring UI reads — so this commit documents it instead of
@@ -370,7 +444,7 @@ impl Store<'_> {
 
     /// How many accounts resolve to this role — the count, without the rows.
     ///
-    /// Built on the same [`HOLDERS_FROM_WHERE`] as [`Self::role_holders`],
+    /// Built on the same `HOLDERS_FROM_WHERE` as [`Self::role_holders`],
     /// deliberately: the "N accounts" a surface prints must never disagree
     /// with the list rendered beside it.
     ///
@@ -409,7 +483,7 @@ impl Store<'_> {
     /// read time has to hold on the write path too, or the registry stops
     /// being the only source of truth.
     ///
-    /// Preset ids are refused; see [`Store::reject_builtin_role_id`].
+    /// Preset ids are refused; see `Store::reject_builtin_role_id`.
     ///
     /// # Errors
     ///
@@ -617,6 +691,19 @@ impl Store<'_> {
     /// stayed on disk, so the sweep asks the table for the expired set directly.
     /// Fixed-width RFC 3339 millis, so comparing the strings compares the instants —
     /// the clock check in SQL's own vocabulary, and the same boundary the read uses.
+    ///
+    /// THE SECOND CENSUS. `role_references_on` above answers the GUARD question
+    /// ("does anything a person can still name reference this role?") and ignores
+    /// trashed and purged members on purpose. The FK answers a different one ("can
+    /// this row go?"), and a `users` row is never deleted — the purge anonymises it
+    /// in place and leaves `role_id` in it — so the two disagree exactly on a role
+    /// whose only referrer is a member in or past the trash. Deleting on the guard
+    /// answer alone met `SQLITE_CONSTRAINT_FOREIGNKEY`, and because the loop runs in
+    /// ONE transaction that aborted the whole sweep, not just the un-deletable row.
+    /// The sweep therefore consults `ROLE_FK_REFERRERS` first and leaves such a row
+    /// trashed rather than pretending it collected it. Reporting it as removed while
+    /// leaving it on disk would be the worse failure: the count is what an operator
+    /// reads to decide the sweep works.
     pub fn purge_expired_roles(&self) -> Result<usize, CoreError> {
         let cutoff = (chrono::Utc::now() - chrono::Duration::days(TRASH_RETENTION_DAYS))
             .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
@@ -631,6 +718,9 @@ impl Store<'_> {
         let mut removed = 0usize;
         for id in expired {
             if !Self::role_references_on(&tx, &id)?.is_empty() {
+                continue;
+            }
+            if Self::role_has_any_fk_referrer(&tx, &id)? {
                 continue;
             }
             removed += tx.execute("DELETE FROM roles WHERE id = ?1", params![id])?;

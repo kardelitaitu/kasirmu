@@ -116,21 +116,6 @@ pub async fn get_device_binding_scoped(
         .map_err(Into::into)
 }
 
-/// Register a new terminal.
-///
-/// **Deprecated for multi-store (ADR #7):** Use `register_terminal_scoped`.
-#[tauri::command]
-pub async fn register_terminal(
-    user_id: String,
-    args: RegisterTerminalArgs,
-    state: State<'_, AppState>,
-) -> Result<RegisterTerminalResult, AppError> {
-    let ctx = state.bridge_ctx();
-    kasirmu_bridge::terminals::register_terminal(&ctx, user_id, args)
-        .await
-        .map_err(Into::into)
-}
-
 /// Register a terminal in the store resolved from a session token. ADR #7.
 #[tauri::command]
 pub async fn register_terminal_scoped(

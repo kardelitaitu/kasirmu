@@ -6,7 +6,7 @@ next: none | perf: N/A
 */
 //! Domain error type for `kasirmu-core`.
 //!
-//! Library crates in OZ-POS use `thiserror` to define a typed error enum
+//! Library crates in kasir.mu use `thiserror` to define a typed error enum
 //! so consumers can match on variants. The enum is `#[non_exhaustive]`
 //! so we can add variants without breaking semver.
 
@@ -185,17 +185,15 @@ pub enum CoreError {
     },
 }
 
-impl From<modules_currency::CurrencyError> for CoreError {
-    fn from(e: modules_currency::CurrencyError) -> Self {
+impl From<platform_core::CurrencyError> for CoreError {
+    fn from(e: platform_core::CurrencyError) -> Self {
         match e {
-            modules_currency::CurrencyError::Db(err) => Self::Db(err),
-            modules_currency::CurrencyError::Platform(err) => Self::Platform(err),
-            modules_currency::CurrencyError::Validation { field, message } => {
+            platform_core::CurrencyError::Db(err) => Self::Db(err),
+            platform_core::CurrencyError::Platform(err) => Self::Platform(err),
+            platform_core::CurrencyError::Validation { field, message } => {
                 Self::Validation { field, message }
             }
-            modules_currency::CurrencyError::NotFound { entity, id } => {
-                Self::NotFound { entity, id }
-            }
+            platform_core::CurrencyError::NotFound { entity, id } => Self::NotFound { entity, id },
         }
     }
 }
@@ -207,6 +205,37 @@ impl From<kasirmu_crypto::CryptoError> for CoreError {
 }
 
 impl CoreError {
+    /// Whether retrying the exact same operation can ever succeed.
+    ///
+    /// A **permanent** error describes something decided by the *input or the
+    /// current state* — a malformed payload, a missing referenced row, or a
+    /// uniqueness/identity clash. Applying the identical bytes again produces
+    /// the identical error, so a caller that retries a poison item on a budget
+    /// only burns cycles.
+    ///
+    /// Only the three unambiguously input-decided kinds are permanent:
+    /// `Validation` (the bytes are malformed), `NotFound` (a referenced row
+    /// is absent) and `Conflict` (a uniqueness/identity clash).
+    ///
+    /// Everything else is treated as **transient** and keeps its retry budget:
+    /// database failures (`Db`), platform infrastructure errors (`Platform`), unexpected
+    /// internal failures (`Internal` — including a payload that fails
+    /// deserialization), money overflow (a different operand split can avoid
+    /// it) and stock contention (a peer may still report stock). Permission,
+    /// subscription and licence conditions are transient too: a role grant, a
+    /// renewal or an operator action can clear them, so they must not be
+    /// quarantined on first sight.
+    ///
+    /// The check is a whitelist of the three permanent kinds, so a newly added
+    /// `CoreError` variant is treated as transient (retryable) by default and
+    /// cannot silently start quarantining a new class of item.
+    pub fn is_permanent(&self) -> bool {
+        matches!(
+            self,
+            CoreError::Validation { .. } | CoreError::NotFound { .. } | CoreError::Conflict { .. }
+        )
+    }
+
     /// Map a `CoreError` to its [`CoreErrorKind`] discriminator.
     pub fn kind(&self) -> CoreErrorKind {
         match self {

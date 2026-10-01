@@ -5,7 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
-description = "OZ-POS Kitchen Module (stub): order firing, KDS ticket queue, course/table routing, prep SLA tracking."
+description = "kasir.mu Kitchen Module (stub): order firing, KDS ticket queue, course/table routing, prep SLA tracking."
 
 [lints]
 workspace = true

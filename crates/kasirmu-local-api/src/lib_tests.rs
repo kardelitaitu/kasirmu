@@ -11,25 +11,54 @@ fn temp_image_dir(tag: &str) -> PathBuf {
 #[test]
 fn resolve_port_defaults_and_validates() {
     let conn = kasirmu_core::migrations::fresh_db();
-    assert_eq!(resolve_port(&conn), DEFAULT_PORT);
+    assert_eq!(resolve_port(&conn).unwrap(), DEFAULT_PORT);
     kasirmu_core::Settings::set(&conn, SETTINGS_PORT, "8080").unwrap();
-    assert_eq!(resolve_port(&conn), 8080);
+    assert_eq!(resolve_port(&conn).unwrap(), 8080);
     // Below the registered range → default.
     kasirmu_core::Settings::set(&conn, SETTINGS_PORT, "80").unwrap();
-    assert_eq!(resolve_port(&conn), DEFAULT_PORT);
+    assert_eq!(resolve_port(&conn).unwrap(), DEFAULT_PORT);
     // Garbage → default.
     kasirmu_core::Settings::set(&conn, SETTINGS_PORT, "not-a-port").unwrap();
-    assert_eq!(resolve_port(&conn), DEFAULT_PORT);
+    assert_eq!(resolve_port(&conn).unwrap(), DEFAULT_PORT);
 }
 
 #[test]
 fn is_enabled_requires_explicit_one() {
     let conn = kasirmu_core::migrations::fresh_db();
-    assert!(!is_enabled(&conn), "default is off");
+    assert!(!is_enabled(&conn).unwrap(), "default is off");
     kasirmu_core::Settings::set(&conn, SETTINGS_ENABLED, "1").unwrap();
-    assert!(is_enabled(&conn));
+    assert!(is_enabled(&conn).unwrap());
     kasirmu_core::Settings::set(&conn, SETTINGS_ENABLED, "0").unwrap();
-    assert!(!is_enabled(&conn));
+    assert!(!is_enabled(&conn).unwrap());
+}
+
+// ── MSL-33: a settings READ failure is not a settings VALUE ──
+
+/// `local_api.enabled` decides whether an HTTP surface is exposed at all, so
+/// the two readings of the setting must not be confused:
+///
+/// * `"0"` is a VALUE. The merchant turned it off; the answer is `false`.
+/// * A database that cannot answer the read is a FAULT. Answering `false`
+///   makes it silent -- the box stays ticked, the API never comes up, and
+///   nothing anywhere says why.
+///
+/// `.unwrap_or(None)` collapsed the two. Renaming the table away fails the
+/// read while leaving the connection healthy, so the only variable under test
+/// is the swallow.
+#[test]
+fn a_failed_read_of_the_enabled_flag_is_not_answered_false() {
+    let conn = kasirmu_core::migrations::fresh_db();
+    conn.execute_batch("ALTER TABLE settings RENAME TO settings_hidden;")
+        .unwrap();
+
+    assert!(
+        is_enabled(&conn).is_err(),
+        "a failed read must not be answered `false` -- that is indistinguishable from the merchant disabling it"
+    );
+    assert!(
+        resolve_port(&conn).is_err(),
+        "a failed read must not silently substitute the default port"
+    );
 }
 
 #[test]
@@ -40,6 +69,78 @@ fn secret_is_generated_once_and_stable() {
     assert!(first.bytes().all(|b| b.is_ascii_hexdigit()));
     let second = load_or_create_secret(&conn).unwrap();
     assert_eq!(first, second, "second load must not rotate the secret");
+}
+
+/// **C14(a): the secret is ciphertext at rest, and a legacy plaintext row is
+/// migrated rather than bricked.**
+///
+/// The two halves pull against each other — the value must stop being cleartext
+/// in `settings.value`, *and* every already-shipped install must keep reading the
+/// secret it has — and the migration is what reconciles them. So both are
+/// asserted here, through the public door rather than by calling the helper.
+#[test]
+fn secret_is_encrypted_at_rest_and_a_legacy_plaintext_row_migrates() {
+    let conn = kasirmu_core::migrations::fresh_db();
+
+    // 1. A generated secret is NOT stored as itself.
+    let secret = load_or_create_secret(&conn).unwrap();
+    let stored = kasirmu_core::Settings::get(&conn, SETTINGS_SECRET)
+        .unwrap()
+        .expect("the row exists");
+    assert_ne!(
+        stored, secret,
+        "the secret must not sit in settings.value as cleartext"
+    );
+    assert_ne!(
+        stored.len(),
+        64,
+        "the stored form must be the ciphertext envelope, not the 64-char hex secret"
+    );
+    assert!(!stored.bytes().all(|b| b.is_ascii_hexdigit()));
+    assert_eq!(
+        load_or_create_secret(&conn).unwrap(),
+        secret,
+        "and it must still read back as the secret"
+    );
+
+    // 2. A LEGACY plaintext row — what every shipped install has — is migrated on
+    //    the next load, and the caller sees an unchanged value.
+    let legacy = "0123456789abcdef".repeat(4); // exactly 64 lowercase hex
+    kasirmu_core::Settings::set(&conn, SETTINGS_SECRET, &legacy).unwrap();
+    assert_eq!(
+        load_or_create_secret(&conn).unwrap(),
+        legacy,
+        "a legacy plaintext secret must still be returned — this is the case the \
+         generic fail-closed reader would have bricked"
+    );
+    let migrated = kasirmu_core::Settings::get(&conn, SETTINGS_SECRET)
+        .unwrap()
+        .expect("the row still exists");
+    assert_ne!(
+        migrated, legacy,
+        "the legacy plaintext row must have been re-persisted encrypted"
+    );
+
+    // The migration is idempotent: a second boot must not re-encrypt.
+    assert_eq!(load_or_create_secret(&conn).unwrap(), legacy);
+    assert_eq!(
+        kasirmu_core::Settings::get(&conn, SETTINGS_SECRET)
+            .unwrap()
+            .unwrap(),
+        migrated,
+        "a second boot must leave an already-encrypted row alone"
+    );
+
+    // 3. Rotation writes ciphertext too, and still reads back.
+    let rotated = rotate_secret(&conn).unwrap();
+    assert_ne!(rotated, legacy);
+    assert_eq!(load_or_create_secret(&conn).unwrap(), rotated);
+    assert_ne!(
+        kasirmu_core::Settings::get(&conn, SETTINGS_SECRET)
+            .unwrap()
+            .unwrap(),
+        rotated
+    );
 }
 
 #[tokio::test]
@@ -140,7 +241,7 @@ async fn server_serves_health_protected_routes_and_stops() {
         "local docs route must sit inside the security-headers layer"
     );
     let spec: serde_json::Value = resp.json().await.unwrap();
-    assert_eq!(spec["info"]["title"], "OZ-POS Local Terminal API");
+    assert_eq!(spec["info"]["title"], "kasir.mu Local Terminal API");
     assert_eq!(
         spec["servers"][0]["url"].as_str(),
         Some(format!("http://127.0.0.1:{}", handle.port).as_str())

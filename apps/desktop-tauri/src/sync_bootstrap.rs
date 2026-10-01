@@ -252,10 +252,36 @@ async fn resolve_terminal_credentials(
     // and re-paired under the current row id.
     {
         let conn = db.lock().await;
-        if let (Ok(Some(id)), Ok(Some(secret))) = (
-            Settings::get_sync_terminal_id(&conn),
-            Settings::get_sync_terminal_secret(&conn),
-        ) {
+        // A decrypt failure is NOT "unpaired". `get_sync_terminal_secret` fails
+        // closed on a value with ciphertext shape that decrypts under no
+        // derivation, and collapsing that into `None` — which a bare
+        // `if let (Ok(Some(id)), Ok(Some(secret)))` does — would silently
+        // re-pair, so the operator could not tell an UNREADABLE pairing from an
+        // ABSENT one. Logged at `error` for the same reason
+        // `platform/sync/src/daemon.rs` logs its own two reads; the
+        // fall-through to a fresh pair below is deliberate and unchanged, since
+        // a pairing that cannot be read is not one this device can reuse.
+        let stored_id = match Settings::get_sync_terminal_id(&conn) {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::error!(
+                    error = %e,
+                    "sync bootstrap: stored terminal id could not be read; re-pairing"
+                );
+                None
+            }
+        };
+        let stored_secret = match Settings::get_sync_terminal_secret(&conn) {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::error!(
+                    error = %e,
+                    "sync bootstrap: stored terminal secret could not be decrypted; re-pairing"
+                );
+                None
+            }
+        };
+        if let (Some(id), Some(secret)) = (stored_id, stored_secret) {
             let still_resolves = {
                 let store = kasirmu_core::Store::new(&conn);
                 store

@@ -257,8 +257,17 @@ const HIST_SALE: &str = "s-hist-1";
 const DENIED_TOKEN: &str = "tok-no-perm";
 const GRANTED_TOKEN: &str = "tok-granted";
 
-/// Global db seeded with the default roles; store-a holds the two roles and
-/// two users the doors are tested against, plus one sale row to identify.
+/// Global db seeded with the default roles AND the two test identities; store-a
+/// holds one sale row to identify.
+///
+/// **The identities moved to the global db on 2026-09-25, with the R10 fix.** They
+/// used to be seeded into the STORE db, because the doors then gated with
+/// `require_permission_for_user` against the store connection — the very shape R10
+/// calls the defect, since a store db carries no `users` rows in production
+/// (identity lives only in the global db) and the check could therefore only ever
+/// deny. The fixture had been arranged to match the broken gate. Under the
+/// scope-aware gate the identities belong where the product keeps them, and the
+/// `allow` leg of each test now proves the door finds them there.
 fn history_state() -> (AppState, tempfile::TempDir) {
     let conn = migrations::fresh_db();
     // ADR #56 §2.6: a migrated-only DB is UNPROVISIONED — no subscription row for the tier
@@ -268,6 +277,16 @@ fn history_state() -> (AppState, tempfile::TempDir) {
         let store = Store::new(&conn);
         store.seed_default_roles().unwrap();
     }
+    // Identity rows: GLOBAL db, where the scope-aware gate reads them.
+    conn.execute_batch(
+        r#"INSERT INTO roles (id, name, description, permissions, created_at, updated_at)
+         VALUES ('role-nope', 'Nope', 'Nothing granted', '[]', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z'),
+            ('role-full', 'Full', 'Both doors granted', '["sales:view","reports:export"]', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z');
+         INSERT INTO users (id, username, pin_hash, display_name, role_id, is_active, created_at, updated_at) VALUES
+            ('user-nope', 'nope', 'hash-not-a-real-pin', 'Nope', 'role-nope', 1, '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z'),
+            ('user-full', 'full', 'hash-not-a-real-pin', 'Full', 'role-full', 1, '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z');"#
+    )
+    .unwrap();
     let temp_dir = tempfile::tempdir().unwrap();
     let mut state = AppState::for_test_with_conn(conn);
     state.db_manager = StoreDatabaseManager::new(temp_dir.path().to_path_buf(), migrations::ALL);
@@ -277,13 +296,7 @@ fn history_state() -> (AppState, tempfile::TempDir) {
     // the tier/location gates read) has to be rebuilt here as well.
     kasirmu_core::migrations::seed_provisioned_baseline(&db);
     db.execute_batch(
-        r#"INSERT INTO roles (id, name, description, permissions, created_at, updated_at)
-         VALUES ('role-nope', 'Nope', 'Nothing granted', '[]', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z'),
-            ('role-full', 'Full', 'Both doors granted', '["sales:view","reports:export"]', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z');
-         INSERT INTO users (id, username, pin_hash, display_name, role_id, is_active, created_at, updated_at) VALUES
-            ('user-nope', 'nope', 'hash-not-a-real-pin', 'Nope', 'role-nope', 1, '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z'),
-            ('user-full', 'full', 'hash-not-a-real-pin', 'Full', 'role-full', 1, '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z');
-         INSERT INTO sales (id, total_minor, currency, line_count, status, user_id, created_at) VALUES
+        r#"INSERT INTO sales (id, total_minor, currency, line_count, status, user_id, created_at) VALUES
             ('s-hist-1', 12000, 'USD', 1, 'completed', 'user-full', '2026-07-10T09:00:00Z');"#
     )
     .unwrap();
@@ -336,14 +349,14 @@ async fn list_sales_scoped_requires_sales_view() {
     let app = mock_app(state);
 
     // Deny first: this is the leg a missing check cannot pass.
-    let denied = list_sales_scoped(DENIED_TOKEN.into(), app.state()).await;
+    let denied = list_sales_scoped(DENIED_TOKEN.into(), None, None, app.state()).await;
     let Err(AppError::PermissionDenied(message)) = denied else {
         panic!("list_sales_scoped let a session without sales:view through: {denied:?}")
     };
     assert_refusal_text("list_sales_scoped", &message);
 
     // Allow: the same door, same data, one role apart.
-    let allowed = list_sales_scoped(GRANTED_TOKEN.into(), app.state()).await;
+    let allowed = list_sales_scoped(GRANTED_TOKEN.into(), None, None, app.state()).await;
     assert!(
         allowed.is_ok(),
         "list_sales_scoped must still open for a session holding sales:view: {allowed:?}"

@@ -1,3 +1,4 @@
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file, with no prior stamp, footer or marker. It is a spec, one of the numbered series in this directory, and it proposes a read-only static checker that makes documented boundaries mechanically visible. · ITS DECISION FRAMING IS THE PART WORTH KEEPING, and it is better than most specs in this repository manage. The document asks for a checker that makes boundaries VISIBLE first, then adds a controlled strict mode, and it explicitly refuses to pretend that existing transitional debt is already resolved. That last clause is the whole design in one sentence: a boundary checker that fails on day one against a codebase mid-restructure gets disabled, and a boundary checker with a baseline gets adopted. · THE SUBSTRATE IS REAL, and this is the checkable part. The checker exists in the repository's script set with its own test suite and, crucially, with a CHECKED-IN BASELINE — the artefact that makes a boundary gate a ratchet rather than a moving target, and the same property this campaign verified as load-bearing when it checked the testid checker's baseline in an earlier round. The rule set the spec describes is also live: the platform-core boundary enforcement this campaign has met in several documents is the output of this spec, and the toolkit-purity rule that keeps the command bridge headless is one of its named boundaries. · A CROSS-DOCUMENT NOTE that gives the spec its context: the decision that made design rules enforceable rather than aspirational sits alongside it, and this campaign audited that decision two rounds ago. The spec and that decision together are the reason a claim like a crate may not depend on the UI toolkit is checkable at all, and a reader who wants the WHY should read both. · NOT re-measured: the rule set itself, the baseline's current debt count, or whether the checker passes today. Running it is the original work, and this stamp deliberately does not claim the gate is green. · No stamp existed; this is the first. -->
 # Architecture boundary checker v1
 
 ## 1. Decision requested
@@ -17,7 +18,7 @@ The Phase 1/2 audit verified:
 
 - The Cargo workspace contains 29 members.
 - `oz-core` has normal path dependencies on ten business modules and re-exports
-  module-owned models from `crates/oz-core/src/`.
+  module-owned models from `crates/kasirmu-core/src/`.
 - No broad runtime refactor should begin until dependency ownership is explicit.
 - Production UI code calls `invoke()` directly outside `ui/src/api/` in:
   - `ui/src/frontend/shell/UpdateBanner.tsx`
@@ -30,9 +31,9 @@ The Phase 1/2 audit verified:
 Relevant anchors:
 
 - `Cargo.toml`
-- `crates/oz-core/Cargo.toml`
-- `crates/oz-core/src/product.rs`
-- `crates/oz-core/src/db/settings.rs`
+- `crates/kasirmu-core/Cargo.toml`
+- `crates/kasirmu-core/src/product.rs`
+- `crates/kasirmu-core/src/db/settings.rs`
 - `ARCHITECTURE.md` Rule 2 and Rule 3
 - `docs/ARCHITECTURE.md` UI API rule
 
@@ -199,3 +200,5 @@ The pilot is removable by deleting the checker, test, baseline, and gate
 entries. It has no runtime or database impact. If the strict gate produces
 false positives, temporarily run it report-only while correcting the parser or
 policy; do not add broad wildcard baseline entries.
+
+> last audited 29-09-26 by docs-auditor

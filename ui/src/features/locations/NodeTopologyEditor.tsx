@@ -789,10 +789,16 @@ export default function NodeTopologyEditor({
    *  (resetTransientCanvasState clears it). */
   const nudgeSessionRef = useRef<{ nodeIds: Set<string>; lastNudgeAt: number } | null>(null);
 
-  // Premium is Pro-equivalent (backend max_warehouses / capacity both
-  // include it) — the spawn gate and the live validation must agree with
-  // the Apply boundary or a Premium install blocks its second Stock Room.
-  const isProAllowed = useMemo(() => ['pro', 'premium', 'enterprise'].includes(currentTier), [currentTier]);
+  // Which tiers may hold warehouse nodes at all. Premium and Enterprise only:
+  // the warehouse workspace moved to Premium+ on 2026-09-29, so `max_warehouses()`
+  // is 0 on Free/Plus/Pro and the Apply boundary (`validate_warehouse_quota`)
+  // refuses ANY warehouse node there. Renamed from `isProAllowed` in the same
+  // change — the old name answered "is this Pro?" for a question that is now
+  // about Premium, which is how the drift this file keeps re-learning starts.
+  const warehouseTierAllowed = useMemo(
+    () => ['premium', 'enterprise'].includes(currentTier),
+    [currentTier],
+  );
 
   // Slice A (saas-2 §J downgrade tail): warehouse over-limit readout. The count
   // comes from the editor's in-graph node state (no new IPC); the cap comes from
@@ -802,15 +808,16 @@ export default function NodeTopologyEditor({
     () => nodes.filter((n) => n.type === 'warehouse').length,
     [nodes],
   );
-  /** True when adding `extra` warehouse nodes would exceed the tier cap
-   *  (one warehouse per install below Pro). The palette spawn, Ctrl+D,
-   *  Ctrl+V, Alt+drag, and the mid-drag Alt conversion ALL share this gate
-   *  so no creation path can bypass it. Reads nodesRef for freshness inside
-   *  callbacks with stable deps. */
+  /** True when adding `extra` warehouse nodes would exceed the tier cap. The cap
+   *  is 0 below Premium (the workspace is Premium+ since 2026-09-29), so ANY
+   *  warehouse is refused there rather than the second one. The palette spawn,
+   *  Ctrl+D, Ctrl+V, Alt+drag, and the mid-drag Alt conversion ALL share this
+   *  gate so no creation path can bypass it. Reads nodesRef for freshness
+   *  inside callbacks with stable deps. */
   const wouldExceedWarehouseCap = useCallback(
     (extra: number) =>
-      !isProAllowed && nodesRef.current.filter((n) => n.type === 'warehouse').length + extra > 1,
-    [isProAllowed],
+      !warehouseTierAllowed && nodesRef.current.filter((n) => n.type === 'warehouse').length + extra > 0,
+    [warehouseTierAllowed],
   );
   /** Validate a pending duplicate/paste BEFORE any mutation: warehouses obey
    *  the Pro-tier cap. Returns the FTL toast id to refuse with, or null when
@@ -1860,7 +1867,7 @@ export default function NodeTopologyEditor({
     wiresRef,
     pushHistoryRef,
     nodeMap,
-    isProAllowed,
+    warehouseTierAllowed,
     addToast,
     l10n,
     cancelRelationshipPicker,
@@ -2140,8 +2147,7 @@ export default function NodeTopologyEditor({
           onRedo={popRedo}
           allowLegacyApply={allowLegacyApply}
           onAddNode={handleAddNode}
-          isProAllowed={isProAllowed}
-          hasWarehouse={nodes.some((n) => n.type === 'warehouse')}
+          warehouseTierAllowed={warehouseTierAllowed}
           onAutoLayout={autoLayout}
           wireRouting={wireRouting}
           onToggleWireRouting={() => setWireRouting((r) => (r === 'elbow' ? 'curved' : 'elbow'))}
@@ -2181,7 +2187,7 @@ export default function NodeTopologyEditor({
         >
           <TopologyStatusStrip
             bannerGraphLevel={bannerGraphLevel}
-            isProAllowed={isProAllowed}
+            warehouseTierAllowed={warehouseTierAllowed}
             hasCapacityMetadata={hasCapacityMetadata}
             caps={caps}
             warehouseCount={warehouseCount}
@@ -2453,7 +2459,7 @@ export default function NodeTopologyEditor({
             duplicateSelection={duplicateSelection}
             handleDeleteRequest={handleDeleteRequest}
             handleSetNodeMetadata={handleSetNodeMetadata}
-            isProAllowed={isProAllowed}
+            warehouseTierAllowed={warehouseTierAllowed}
             sessionToken={sessionToken}
             clearSelection={clearSelection}
           />

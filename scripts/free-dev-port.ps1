@@ -29,6 +29,34 @@ param (
 
 $ErrorActionPreference = 'Continue'
 
+# 0. Terminate any leftover desktop/tablet client processes from previous runs
+#    so they do not hold the SQLite database (kasir.db) or the WebView2 user data profile.
+Get-Process -Name kasirmu-app, kasirmu-mobile -ErrorAction SilentlyContinue | ForEach-Object {
+    try {
+        Stop-Process -Id $_.Id -Force -ErrorAction Stop
+        Write-Host ("[OK   ] Killed leftover client app: pid={0} ({1})" -f $_.Id, $_.ProcessName) `
+            -ForegroundColor Green
+    } catch {
+        Write-Host ("[WARN ] Could not kill pid={0} ({1}): {2}" -f $_.Id, $_.ProcessName, $_.Exception.Message) `
+            -ForegroundColor Yellow
+    }
+}
+
+# 0b. Terminate any orphaned Edge WebView2 renderer processes associated with mu.kasir.app
+#     so they do not hold EBWebView profile locks (HRESULT 0x800700AA / ERROR_BUSY).
+Get-CimInstance Win32_Process -Filter "Name = 'msedgewebview2.exe'" -ErrorAction SilentlyContinue |
+    Where-Object { $_.CommandLine -like "*mu.kasir.app*" } |
+    ForEach-Object {
+        try {
+            Stop-Process -Id $_.ProcessId -Force -ErrorAction Stop
+            Write-Host ("[OK   ] Killed leftover WebView2 renderer: pid={0}" -f $_.ProcessId) `
+                -ForegroundColor Green
+        } catch {
+            Write-Host ("[WARN ] Could not kill WebView2 pid={0}: {1}" -f $_.ProcessId, $_.Exception.Message) `
+                -ForegroundColor Yellow
+        }
+    }
+
 # 1. Fetch IPv4 + IPv6 connections on $Port, filter to listeners / bound sockets.
 #    Where-Object is used instead of the -State parameter on Get-NetTCPConnection
 #    so the script is portable across Windows 10/11 PowerShell versions.

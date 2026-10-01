@@ -10,8 +10,8 @@
 //! `list_scoped`), so a parity run needs `--map` or it compares nothing at all
 //! and reports the doors as `shell-only` facing five `bridge-only` twins.
 //!
-//! **Three doors are ported** — [`list_product_variants_scoped`],
-//! [`get_product_variant_scoped`] and [`delete_product_variant_scoped`]. Their
+//! **Three doors are ported** — [`list_product_variants_scoped`](crate::commands::product_variants::list_product_variants_scoped),
+//! [`get_product_variant_scoped`](crate::commands::product_variants::get_product_variant_scoped) and [`delete_product_variant_scoped`](crate::commands::product_variants::delete_product_variant_scoped). Their
 //! bodies were already statement-identical, and each names a permission
 //! (`PRODUCTS_READ` / `PRODUCTS_READ` / `PRODUCTS_DELETE`), so all three are
 //! case 1 and the delegation is ledger-neutral. Note the twins' argument order:
@@ -21,7 +21,7 @@
 //! compile.
 //!
 //! **Two doors are REFUSED on the log text, and nothing else.**
-//! [`create_product_variant_scoped`] and [`update_product_variant_scoped`] are
+//! [`create_product_variant_scoped`](crate::commands::product_variants::create_product_variant_scoped) and [`update_product_variant_scoped`](crate::commands::product_variants::update_product_variant_scoped) are
 //! otherwise statement-identical to their twins — same validation, same `Money`
 //! parse, same store call — but the bridge appends `" (scoped)"` where this
 //! shell logs `"product variant created"` (`:133` vs
@@ -30,7 +30,7 @@
 //! **decision rather than work**: reconcile the suffix and both become
 //! whole-body moves.
 //!
-//! [`delete_product_variant_scoped`] is the control case: its log line matches
+//! [`delete_product_variant_scoped`](crate::commands::product_variants::delete_product_variant_scoped) is the control case: its log line matches
 //! on both sides (`:212` / `:248`), which is exactly why it ports while its two
 //! siblings do not.
 
@@ -157,8 +157,9 @@ pub async fn create_product_variant_scoped(
         variant = variant.with_sort_order(order);
     }
 
-    let (session, conn_arc) = state.resolve_scope(&session_token)?;
+    let session = state.resolve_session(&session_token)?;
     require_permission_for_session(&state, &session, permissions::PRODUCTS_CREATE).await?;
+    let conn_arc = state.resolve_store(&session_token)?;
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
@@ -191,8 +192,9 @@ pub async fn update_product_variant_scoped(
 ) -> Result<UpdateProductVariantResult, AppError> {
     validate_not_empty("sku", &args.sku).map_err(|e| AppError::Invalid(e.to_string()))?;
 
-    let (session, conn_arc) = state.resolve_scope(&session_token)?;
+    let session = state.resolve_session(&session_token)?;
     require_permission_for_session(&state, &session, permissions::PRODUCTS_UPDATE).await?;
+    let conn_arc = state.resolve_store(&session_token)?;
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;

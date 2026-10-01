@@ -9,7 +9,7 @@
 //! 20260813_init.sql apply unchanged and no trigger carve-out is needed —
 //! the 20260920 exemption exists only for DELETE.
 //!
-//! Key type: [`SecurityEvent`]. Key constants: `SECURITY_ACTION_*`,
+//! Key type: [`SecurityEvent`](crate::db::audit_security::SecurityEvent). Key constants: `SECURITY_ACTION_*`,
 //! `SECURITY_REASON_*`, `SYSTEM_ACTOR`.
 //!
 //! Invariants:
@@ -180,9 +180,7 @@ impl SecurityEvent {
         device_id: Option<impl Into<String>>,
     ) -> Self {
         Self {
-            user_id: user_id
-                .map(str::to_string)
-                .unwrap_or_else(|| SYSTEM_ACTOR.into()),
+            user_id: user_id.map_or_else(|| SYSTEM_ACTOR.into(), str::to_string),
             username: username.into(),
             action: SECURITY_ACTION_LOGIN_FAILED,
             outcome: "failure",

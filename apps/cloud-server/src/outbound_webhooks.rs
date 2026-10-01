@@ -54,7 +54,9 @@ pub fn is_event_action(action: &str) -> bool {
 // ── Registry types ────────────────────────────────────────────────────
 
 /// A registered webhook endpoint. The signing `secret` is returned only
-/// at creation time; listings expose [`WebhookEndpoint::redacted`] views.
+/// at creation time; listings omit it entirely rather than returning a
+/// redacted copy (there is no `WebhookEndpoint::redacted` — the list
+/// handlers simply do not select the column).
 #[derive(Debug, Clone, Serialize)]
 pub struct WebhookEndpoint {
     pub id: String,

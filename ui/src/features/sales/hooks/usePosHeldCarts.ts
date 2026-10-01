@@ -2,10 +2,12 @@ import { useCallback, useEffect, useState } from 'react';
 import type { useToast } from '@/components/Toast';
 import { useWorkspaceScope } from '@/contexts/WorkspaceContext';
 import { useExitAnimation } from '@/hooks/useExitAnimation';
+import { parseAppError } from '@/utils/app-error';
 import {
   holdCartScoped,
   listOpenBillsScoped,
   getHeldCartScoped,
+  deleteHeldCartScoped,
   type HeldCartRow,
 } from '@/api/sales';
 import type { Promotion } from '@/api/promotions';
@@ -28,7 +30,10 @@ export interface UsePosHeldCartsParams {
   setAppliedPromotions: (promotions: Promotion[]) => void;
   setLines: (lines: CartLine[]) => void;
   setDiscount: (percent: number, label: string) => void;
+  tableNumber?: string;
   setTableNumber: (table: string) => void;
+  customerName?: string;
+  setCustomerName?: (name: string) => void;
 }
 
 /**
@@ -53,7 +58,10 @@ export function usePosHeldCarts({
   setAppliedPromotions,
   setLines,
   setDiscount,
+  tableNumber = '',
   setTableNumber,
+  customerName = '',
+  setCustomerName,
 }: UsePosHeldCartsParams) {
   // An open bill is a Restaurant POS concept: `list_open_bills_scoped` — its
   // only reader — refuses every other vertical in the bridge
@@ -90,8 +98,16 @@ export function usePosHeldCarts({
     listOpenBillsScoped(sessionToken)
       .then(setOpenBills)
       .catch((err: unknown) => {
-        const kind = (err as { kind?: string } | null)?.kind;
-        if (kind === 'invalidSession') return;
+        const appError = parseAppError(err);
+        const kind = appError?.kind ?? (err as { kind?: string } | null)?.kind;
+        const rawMessage = appError ? ('message' in appError ? appError.message : '') : String((err as Error)?.message ?? err ?? '');
+        // `invalidSession` — token expired; the session refresh handler will
+        // recover and re-trigger loadOpenBills automatically.
+        // `permissionDenied` — the session's type_key is not restaurant-pos;
+        // the isRestaurantPos guard above should have caught this, but may
+        // race during session initialisation. Either way it is not
+        // user-actionable, so swallow it silently.
+        if (kind === 'invalidSession' || kind === 'permissionDenied' || rawMessage.includes('permission denied') || rawMessage.includes('may not list open bills')) return;
         addToast({ message: 'Failed to load open bills', type: 'error' });
       });
   }, [addToast, sessionToken, isRestaurantPos]);
@@ -122,6 +138,8 @@ export function usePosHeldCarts({
     if (!subtotal || lines.length === 0) return;
     setOpeningBill(true);
     try {
+      const trimmedTable = (tableNumber ?? '').trim();
+      const trimmedName = (customerName || openBillName || '').trim();
       const cartData = JSON.stringify({
         lines: lines.map((l) => ({
           sku: l.sku,
@@ -132,30 +150,51 @@ export function usePosHeldCarts({
           // push, so the assignment must survive the hold.
           ...(l.courseId ? { courseId: l.courseId } : {}),
           ...(l.coursingStatus ? { coursingStatus: l.coursingStatus } : {}),
+          ...(l.modifiers && l.modifiers.length > 0 ? { modifiers: l.modifiers } : {}),
+          ...(l.note ? { note: l.note } : {}),
         })),
         discountPercent,
         discountLabel,
+        ...(trimmedTable ? { tableNumber: trimmedTable } : {}),
+        ...(trimmedName ? { customerName: trimmedName } : {}),
       });
+      const label = trimmedTable
+        ? (trimmedName ? `Table ${trimmedTable} (${trimmedName})` : `Table ${trimmedTable}`)
+        : (trimmedName ? trimmedName : `Open Bill #${Date.now()}`);
+
+      // If updating an already resumed open bill, delete the previous record first so we don't produce duplicate tabs
+      if (activeOpenBillId) {
+        await deleteHeldCartScoped(sessionToken, activeOpenBillId).catch(() => {});
+      }
+
       await holdCartScoped(sessionToken, {
-        label: openBillName.trim() || `Open Bill #${Date.now()}`,
+        label,
         cart_data: cartData,
         item_count: lines.length,
         total_minor: subtotal.minor_units,
         currency: subtotal.currency,
         bill_type: 'open_bill',
-        customer_name: openBillName.trim(),
+        customer_name: trimmedName || (trimmedTable ? `Table ${trimmedTable}` : ''),
       });
-    resetCart();
-    setAppliedPromotions([]);
-    openBillInputExit.requestClose();
-    setOpenBillName('');
-    loadOpenBills();
+      const wasUpdating = !!activeOpenBillId;
+      resetCart();
+      setTableNumber('');
+      setCustomerName?.('');
+      setActiveOpenBillId(null);
+      setAppliedPromotions([]);
+      openBillInputExit.requestClose();
+      setOpenBillName('');
+      loadOpenBills();
+      addToast({
+        message: wasUpdating ? `Tab for ${label} updated` : `Tab for ${label} saved`,
+        type: 'success',
+      });
     } catch {
       addToast({ message: 'Failed to save open bill', type: 'error' });
     } finally {
       setOpeningBill(false);
     }
-  }, [activeShift, lines, subtotal, openBillName, discountPercent, discountLabel, resetCart, loadOpenBills, addToast, openBillInputExit, sessionToken, setAppliedPromotions]);
+  }, [activeShift, lines, subtotal, customerName, openBillName, tableNumber, discountPercent, discountLabel, resetCart, setTableNumber, setCustomerName, activeOpenBillId, loadOpenBills, addToast, openBillInputExit, sessionToken, setAppliedPromotions]);
 
   const handleResumeOpenBill = useCallback(async (id: string) => {
     try {
@@ -163,7 +202,17 @@ export function usePosHeldCarts({
       if (!full) return;
       const data = JSON.parse(full.cart_data);
       if (data.lines && Array.isArray(data.lines)) {
-        setLines(data.lines.map((l: { sku: string; name?: string; qty: number; unit_price: { minor_units: number; currency: string }; category?: string; courseId?: CartLine['courseId']; coursingStatus?: CartLine['coursingStatus'] }) => ({
+        setLines(data.lines.map((l: {
+          sku: string;
+          name?: string;
+          qty: number;
+          unit_price: { minor_units: number; currency: string };
+          category?: string;
+          courseId?: CartLine['courseId'];
+          coursingStatus?: CartLine['coursingStatus'];
+          modifiers?: CartLine['modifiers'];
+          note?: string;
+        }) => ({
           id: `restored-${Date.now()}-${Math.random().toString(36).slice(2)}` as LineId,
           sku: l.sku as Sku,
           name: l.name,
@@ -174,6 +223,8 @@ export function usePosHeldCarts({
           // keeps its assignments (validated by the CourseId type below).
           ...(l.courseId ? { courseId: l.courseId } : {}),
           ...(l.coursingStatus ? { coursingStatus: l.coursingStatus } : {}),
+          ...(l.modifiers && l.modifiers.length > 0 ? { modifiers: l.modifiers } : {}),
+          ...(l.note ? { note: l.note } : {}),
         })));
       }
       if (typeof data.discountPercent === 'number') {
@@ -182,12 +233,20 @@ export function usePosHeldCarts({
       if (typeof data.tableNumber === 'string') {
         setTableNumber(data.tableNumber);
       }
-    setActiveOpenBillId(id);
-    openBillsExit.requestClose();
+      if (typeof data.customerName === 'string') {
+        setCustomerName?.(data.customerName);
+      } else if (full.customer_name) {
+        const cust = full.customer_name.replace(/^Table\s+\w+\s*[-–(]?\s*/i, '').replace(/\)$/, '');
+        if (cust && !cust.startsWith('Table ')) {
+          setCustomerName?.(cust);
+        }
+      }
+      setActiveOpenBillId(id);
+      openBillsExit.requestClose();
     } catch {
       addToast({ message: 'Failed to resume open bill', type: 'error' });
     }
-  }, [setLines, setDiscount, setTableNumber, addToast, openBillsExit, sessionToken]);
+  }, [setLines, setDiscount, setTableNumber, setCustomerName, addToast, openBillsExit, sessionToken]);
 
   return {
     activeOpenBillId,

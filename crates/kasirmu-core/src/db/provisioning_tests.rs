@@ -641,6 +641,72 @@ fn an_unsupported_timezone_is_rejected_and_names_the_accepted_values() {
     }
 }
 
+// ── MSL-43: the currency is validated on the write path too ──────
+
+/// The sibling of the C6b timezone fix, which closed the same gap one field
+/// over and left this one open.
+///
+/// `validate_provision_args` checks the timezone against the accepted set and
+/// documents why ("a free-text IANA name outside it resolves to UTC through the
+/// reporting path's fallback arm … which would silently report a Jakarta store
+/// in UTC"). `currency` is written by the same function into `locations.currency`
+/// AND into the store-wide `Settings::set_default_currency`, and is checked
+/// nowhere — not here, not in the bridge, not in the shell.
+///
+/// The field is documented as "ISO-4217 currency" on both the core args and the
+/// wire DTO, so the contract was stated and simply not enforced.
+#[test]
+fn an_unsupported_currency_is_rejected_and_names_the_field() {
+    let conn = fresh();
+    for bad in ["", " ", "US", "USDD", "12A", "us dollars"] {
+        let mut args = args_for("dev-cur-bad");
+        args.currency = bad.to_owned();
+        let err = provision_device(&conn, &args)
+            .expect_err("a malformed currency must be refused, not stored");
+        match err {
+            CoreError::Validation { field, .. } => {
+                assert_eq!(field, "currency", "the error must name the field");
+            }
+            other => panic!("expected a currency validation error, got {other:?}"),
+        }
+        // Rejected BEFORE the transaction, so no half-built terminal survives —
+        // and crucially no store-wide default currency was set.
+        assert!(!store(&conn).is_provisioned("dev-cur-bad").unwrap());
+        assert_eq!(
+            crate::Settings::get_default_currency(&conn)
+                .unwrap()
+                .as_deref(),
+            None,
+            "a refused provision must not have set the store default currency"
+        );
+    }
+}
+
+/// A valid code is stored verbatim and reaches the store setting, so the fix
+/// rejects only what the parser rejects.
+#[test]
+fn a_valid_currency_reaches_the_location_and_the_store_default() {
+    let conn = fresh();
+    let mut args = args_for("dev-cur-ok");
+    args.currency = "IDR".to_owned();
+    let out = provision_device(&conn, &args).unwrap();
+
+    let stored: String = conn
+        .query_row(
+            "SELECT currency FROM locations WHERE id = ?1",
+            rusqlite::params![out.location_id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(stored, "IDR");
+    assert_eq!(
+        crate::Settings::get_default_currency(&conn)
+            .unwrap()
+            .as_deref(),
+        Some("IDR")
+    );
+}
+
 #[test]
 fn location_kind_round_trips_and_rejects_unknown_values() {
     assert_eq!(LocationKind::Retail.as_str(), "retail");

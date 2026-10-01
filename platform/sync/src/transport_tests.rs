@@ -399,7 +399,7 @@ async fn push_items_returns_server_migrated_on_redirect() {
         Err(SyncError::ServerMigrated { new_url: url }) => {
             assert_eq!(url, new_url, "ServerMigrated should carry the new_url");
         }
-        other => panic!("expected SyncError::ServerMigrated, got {:?}", other),
+        other => panic!("expected SyncError::ServerMigrated, got {other:?}"),
     }
 }
 
@@ -415,7 +415,7 @@ async fn pull_updates_returns_server_migrated_on_redirect() {
         Err(SyncError::ServerMigrated { new_url: url }) => {
             assert_eq!(url, new_url, "ServerMigrated should carry the new_url");
         }
-        other => panic!("expected SyncError::ServerMigrated, got {:?}", other),
+        other => panic!("expected SyncError::ServerMigrated, got {other:?}"),
     }
 }
 
@@ -431,7 +431,7 @@ async fn fetch_snapshot_returns_server_migrated_on_redirect() {
         Err(SyncError::ServerMigrated { new_url: url }) => {
             assert_eq!(url, new_url, "ServerMigrated should carry the new_url");
         }
-        other => panic!("expected SyncError::ServerMigrated, got {:?}", other),
+        other => panic!("expected SyncError::ServerMigrated, got {other:?}"),
     }
 }
 

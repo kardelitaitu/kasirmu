@@ -138,7 +138,7 @@ const { invokeMock, defaultImpl, failCommands } = vi.hoisted(() => {
       return Promise.resolve({ primary_colour: '#4f46e5', logo_path: null, store_name: '' });
     }
     if (cmd === 'version_scoped') {
-      return Promise.resolve({ name: 'oz-pos', version: '0.0.4', rustVersion: '1.80', target: 'x86_64' });
+      return Promise.resolve({ name: 'kasirmu-app', version: '0.0.4', rustVersion: '1.80', target: 'x86_64' });
     }
     // Unscoped legacy twins — BrandProvider/SettingsContext hit these when no
     // session token is present (and BrandContext.tsx:54 always uses the
@@ -166,7 +166,7 @@ const { invokeMock, defaultImpl, failCommands } = vi.hoisted(() => {
       return Promise.resolve({ primary_colour: '#4f46e5', logo_path: null, store_name: '' });
     }
     if (cmd === 'version') {
-      return Promise.resolve({ name: 'oz-pos', version: '0.0.4', rustVersion: '1.80', target: 'x86_64' });
+      return Promise.resolve({ name: 'kasirmu-app', version: '0.0.4', rustVersion: '1.80', target: 'x86_64' });
     }
     return Promise.resolve(undefined);
   };
@@ -409,6 +409,12 @@ describe('SettingsPage admin shell — flat 14-page IA', () => {
       // whose feature list proves the body mounted (mocked IPC resolves each
       // verdict, so the <ul> is present).
       'system-diagnostics': ['settings-diagnostics-list'],
+      // Migrated 2026-09-29: the screen composes the real EdcTerminalsCard, the
+      // same way system-diagnostics composes DiagnosticsSection. The card's own
+      // classes are what proves the body mounted; with the mocked IPC resolving
+      // an empty terminal list, `.edc-terminals-card` is its root and
+      // `.edc-terminals-empty` is the state a device with no terminals shows.
+      'devices-connectivity': ['edc-terminals-card', 'edc-terminals-empty'],
     };
 
     for (const item of NAV_ITEMS) {

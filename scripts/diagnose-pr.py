@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-scripts/diagnose-pr.py — One-Shot PR Failure Diagnoser for OZ-POS
+scripts/diagnose-pr.py — One-Shot PR Failure Diagnoser for kasir.mu
 
 Extracts failed checks, fetches the exact failure log snippets from GitHub Actions,
 and outputs the exact local commands to reproduce and fix each failure.
@@ -68,7 +68,7 @@ def get_current_pr_number() -> Optional[str]:
 
 def get_pr_repo() -> str:
     out = run_cmd(["gh", "repo", "view", "--json", "nameWithOwner", "-q", ".nameWithOwner"])
-    return out if out else "kardelitaitu/oz-pos"
+    return out if out else "kardelitaitu/kasirmu"
 
 
 def map_reproduction_cmd(check_name: str) -> str:
@@ -79,7 +79,7 @@ def map_reproduction_cmd(check_name: str) -> str:
 
 
 def extract_job_id(link: str) -> Optional[str]:
-    # e.g. https://github.com/kardelitaitu/oz-pos/actions/runs/33259981926/job/99120143287
+    # e.g. https://github.com/kardelitaitu/kasirmu/actions/runs/33259981926/job/99120143287
     m = re.search(r"/job/(\d+)", link)
     return m.group(1) if m else None
 

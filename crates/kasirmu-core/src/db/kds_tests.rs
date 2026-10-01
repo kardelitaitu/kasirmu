@@ -259,6 +259,116 @@ fn update_kds_status_rejects_regression() {
     );
 }
 
+/// C18/C19: the status transition is a CHECK-THEN-WRITE and must be atomic.
+///
+/// `update_kds_status` reads the current status, validates the transition
+/// against it, then issues `UPDATE ... WHERE id = ?` -- unconditional on the
+/// status it just validated. A competing transition landing between the read
+/// and the write is therefore overwritten and the call reports success: a lost
+/// update on the column that drives the kitchen board and the prep timer.
+///
+/// Same shape as the already-fixed `update_po_status`
+/// (`purchase_orders.rs:354-365`), and fixed the same way. Without the
+/// compare-and-set this test fails because A overwrites B's transition.
+#[test]
+fn update_kds_status_race_cannot_overwrite_a_competing_transition() {
+    /// Set by A's busy handler -- i.e. A has passed its pre-read and is now
+    /// blocked on the write lock B holds.
+    static A_IS_BLOCKED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+    fn note_blocked(_attempts: i32) -> bool {
+        A_IS_BLOCKED.store(true, std::sync::atomic::Ordering::SeqCst);
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        true
+    }
+
+    let dir = std::env::temp_dir().join(format!("oz_kds_race_{}", uuid::Uuid::now_v7()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let db_path = dir.join("kasir.db");
+    let order_id = {
+        let file_conn = {
+            let mut file_conn = Connection::open(&db_path).unwrap();
+            {
+                let template = fresh();
+                let backup = rusqlite::backup::Backup::new(&template, &mut file_conn).unwrap();
+                backup
+                    .run_to_completion(10, std::time::Duration::from_millis(0), None)
+                    .unwrap();
+            }
+            file_conn
+                .pragma_update(None, "journal_mode", "WAL")
+                .unwrap();
+            file_conn
+                .pragma_update(None, "busy_timeout", "5000")
+                .unwrap();
+            file_conn
+        };
+        let s = store(&file_conn);
+        let (order, _sale) = seed_completed_sale_to_kds(&s);
+        // Move it to `preparing`, which is cancellable, so both transitions
+        // are individually legal and only the interleaving decides the loser.
+        s.update_kds_status(&order.id, "preparing").unwrap();
+        order.id
+    };
+
+    A_IS_BLOCKED.store(false, std::sync::atomic::Ordering::SeqCst);
+    let (locked_tx, locked_rx) = std::sync::mpsc::channel();
+    let rival = {
+        let db_path = db_path.clone();
+        let order_id = order_id.clone();
+        std::thread::spawn(move || {
+            let conn_b = Connection::open(&db_path).unwrap();
+            conn_b.pragma_update(None, "busy_timeout", "5000").unwrap();
+            let tx = conn_b.unchecked_transaction().unwrap();
+            let rows = tx
+                .execute(
+                    "UPDATE kds_orders SET status='ready' WHERE id=?1",
+                    rusqlite::params![order_id],
+                )
+                .unwrap();
+            assert_eq!(rows, 1, "the rival transition must touch the order");
+            locked_tx.send(()).unwrap();
+            // Hold the write lock until A is demonstrably blocked on it.
+            let mut waited = 0u64;
+            while !A_IS_BLOCKED.load(std::sync::atomic::Ordering::SeqCst) && waited < 5000 {
+                std::thread::sleep(std::time::Duration::from_millis(10));
+                waited += 10;
+            }
+            assert!(
+                A_IS_BLOCKED.load(std::sync::atomic::Ordering::SeqCst),
+                "A never reached its UPDATE: the interleaving was not established"
+            );
+            tx.commit().unwrap();
+        })
+    };
+
+    locked_rx.recv().unwrap();
+
+    // A: pre-read `preparing` -> wants `cancelled`. Its UPDATE blocks until B
+    // commits `ready`, then must REFUSE rather than overwrite.
+    let conn_a = Connection::open(&db_path).unwrap();
+    conn_a.pragma_update(None, "busy_timeout", "0").unwrap();
+    conn_a.busy_handler(Some(note_blocked)).unwrap();
+    let result = store(&conn_a).update_kds_status(&order_id, "cancelled");
+    rival.join().unwrap();
+
+    let final_status: String = conn_a
+        .query_row(
+            "SELECT status FROM kds_orders WHERE id=?1",
+            rusqlite::params![order_id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        final_status, "ready",
+        "B's committed transition must survive; A must not overwrite it"
+    );
+    assert!(
+        result.is_err(),
+        "A's transition no longer matched and must be refused, got: {result:?}"
+    );
+}
+
 /// RED: served is terminal — a served order must not go back to the queue.
 #[test]
 fn update_kds_status_served_is_terminal() {
@@ -445,7 +555,7 @@ fn list_kds_orders_with_status_filter() {
 
     for sid in [&sale_id1, &sale_id2] {
         let test_sale = Sale {
-            id: sid.to_string(),
+            id: sid.clone(),
             status: crate::SaleStatus::Completed,
             total: price(0),
             currency: usd(),
@@ -517,7 +627,7 @@ fn get_kds_queue_returns_pending_and_preparing() {
 
     for sid in [&sale_id1, &sale_id2, &sale_id3] {
         let test_sale = Sale {
-            id: sid.to_string(),
+            id: sid.clone(),
             status: crate::SaleStatus::Completed,
             total: price(0),
             currency: usd(),
@@ -635,7 +745,7 @@ fn display_number_increments_per_day() {
 
     for sid in [&sale_id1, &sale_id2] {
         let test_sale = Sale {
-            id: sid.to_string(),
+            id: sid.clone(),
             status: crate::SaleStatus::Completed,
             total: price(0),
             currency: usd(),
@@ -1064,7 +1174,7 @@ fn get_kds_queue_empty_zone_returns_unzoned_orders() {
             store_id: None,
             items_summary: format!("Order {suffix}"),
             item_count: 1,
-            kitchen_zone: zone.map(|z| z.to_string()),
+            kitchen_zone: zone.map(std::string::ToString::to_string),
             notes: String::new(),
             table_number: None,
             priority: false,
@@ -1698,7 +1808,7 @@ fn update_kds_order_items_rejects_empty_summary() {
     let err = s
         .update_kds_order_items(crate::UpdateKdsOrderItemsInput {
             id: "any-id".into(),
-            items_summary: "".into(),
+            items_summary: String::new(),
             item_count: 1,
             line_items: None,
         })
@@ -1732,7 +1842,7 @@ fn create_kds_order_rejects_empty_sale_id() {
     let s = store(&conn);
     let err = s
         .create_kds_order(CreateKdsOrderInput {
-            sale_id: "".into(),
+            sale_id: String::new(),
             store_id: None,
             items_summary: "Items".into(),
             item_count: 1,
@@ -1759,7 +1869,7 @@ fn create_kds_order_rejects_empty_items_summary() {
         .create_kds_order(CreateKdsOrderInput {
             sale_id: "sale-1".into(),
             store_id: None,
-            items_summary: "".into(),
+            items_summary: String::new(),
             item_count: 1,
             kitchen_zone: None,
             notes: String::new(),
@@ -1839,8 +1949,6 @@ fn register_kds_device_and_retrieve() {
         name: "Expo Screen".into(),
         restaurant_pos_id: "resto-1".into(),
         station_ids: vec!["station-grill".into(), "station-bar".into()],
-        pairing_token_hash: "hash-abc".into(),
-        pairing_expires_at: "2099-01-01T00:00:00.000Z".into(),
     };
     let device = s.register_kds_device(input).unwrap();
     assert!(!device.id.is_empty());
@@ -1873,24 +1981,18 @@ fn list_kds_devices_for_restaurant() {
         name: "Screen A".into(),
         restaurant_pos_id: "resto-1".into(),
         station_ids: vec![],
-        pairing_token_hash: "h1".into(),
-        pairing_expires_at: "2099-01-01".into(),
     })
     .unwrap();
     s.register_kds_device(RegisterKdsDeviceInput {
         name: "Screen B".into(),
         restaurant_pos_id: "resto-1".into(),
         station_ids: vec![],
-        pairing_token_hash: "h2".into(),
-        pairing_expires_at: "2099-01-01".into(),
     })
     .unwrap();
     s.register_kds_device(RegisterKdsDeviceInput {
         name: "Other Screen".into(),
         restaurant_pos_id: "resto-2".into(),
         station_ids: vec![],
-        pairing_token_hash: "h3".into(),
-        pairing_expires_at: "2099-01-01".into(),
     })
     .unwrap();
 
@@ -1909,8 +2011,6 @@ fn update_kds_device_status_connected() {
             name: "Test".into(),
             restaurant_pos_id: "resto-1".into(),
             station_ids: vec![],
-            pairing_token_hash: "h".into(),
-            pairing_expires_at: "2099-01-01".into(),
         })
         .unwrap();
 
@@ -1948,8 +2048,6 @@ fn deactivate_kds_device() {
             name: "Test".into(),
             restaurant_pos_id: "resto-1".into(),
             station_ids: vec![],
-            pairing_token_hash: "h".into(),
-            pairing_expires_at: "2099-01-01".into(),
         })
         .unwrap();
 
@@ -2105,8 +2203,6 @@ fn register_device_rejects_duplicate_name() {
         name: "Expo Screen".into(),
         restaurant_pos_id: "resto-1".into(),
         station_ids: vec![],
-        pairing_token_hash: "hash1".into(),
-        pairing_expires_at: "2099-01-01T00:00:00Z".into(),
     };
     s.register_kds_device(input.clone()).unwrap();
 
@@ -2125,8 +2221,6 @@ fn register_device_allows_same_name_different_restaurant() {
         name: "Expo Screen".into(),
         restaurant_pos_id: resto_id.into(),
         station_ids: vec![],
-        pairing_token_hash: "hash".into(),
-        pairing_expires_at: "2099-01-01T00:00:00Z".into(),
     };
 
     s.register_kds_device(make("resto-1")).unwrap();
@@ -2149,8 +2243,6 @@ fn get_devices_filtered_by_restaurant_pos() {
         name: name.into(),
         restaurant_pos_id: resto_id.into(),
         station_ids: vec![],
-        pairing_token_hash: "hash".into(),
-        pairing_expires_at: "2099-01-01T00:00:00Z".into(),
     };
 
     s.register_kds_device(make("KDS-1", "resto-1")).unwrap();
@@ -2176,8 +2268,6 @@ fn update_status_connected_to_disconnected() {
             name: "Test KDS".into(),
             restaurant_pos_id: "resto-1".into(),
             station_ids: vec![],
-            pairing_token_hash: "hash".into(),
-            pairing_expires_at: "2099-01-01T00:00:00Z".into(),
         })
         .unwrap();
     assert_eq!(
@@ -2214,8 +2304,6 @@ fn deactivate_device_no_longer_listed_as_active() {
             name: "Test KDS".into(),
             restaurant_pos_id: "resto-1".into(),
             station_ids: vec![],
-            pairing_token_hash: "hash".into(),
-            pairing_expires_at: "2099-01-01T00:00:00Z".into(),
         })
         .unwrap();
     assert!(device.is_active);
@@ -2387,83 +2475,62 @@ fn cleanup_old_kds_orders_preserves_pending_orders() {
     assert_eq!(remaining.len(), 2);
 }
 
-// ── Pairing Token Validation ──────────────────────────────────
-
+/// The retention BOUNDARY, which neither test above pins.
+///
+/// Both existing cleanup tests seed a fixed `.000Z` literal and a 365-day
+/// window, so the comparison they exercise is a whole year wide. This is the
+/// same class of comparison the memo retention sweep already paid for (a
+/// date-only cutoff against a millisecond column let a row's deletion slip
+/// by up to a day), so pin the boundary rather than a year: a row past
+/// `retention_days` must be pruned and a row a minute younger must survive.
+///
+/// NOT format-sensitive, and saying so matters more than the test does: a
+/// cutoff spelled `%S.%3fZ` renders byte-identically to `%S%.3fZ` (measured),
+/// and even a bare `%f` (NANOSECONDS, `…:03.310230200Z`) still passes — a
+/// one-second margin swamps a sub-millisecond spelling difference. So the
+/// cutoff's `%.3f` is correct but is NOT pinned by anything: no boundary I
+/// can write is tight enough to observe it, because the date-and-second
+/// prefix dominates the comparison and only the tail differs. Recorded as a
+/// known limitation rather than papered over — the value of this test is the
+/// retention boundary, which was genuinely untested.
 #[test]
-fn validate_pairing_token_accepts_valid_hash() {
+fn cleanup_old_kds_orders_prunes_exactly_at_the_retention_boundary() {
     let conn = fresh();
     let s = store(&conn);
-    seed_terminal(&conn, "resto-1", "Restaurant POS", "pc-1");
 
-    let device = s
-        .register_kds_device(crate::kds::RegisterKdsDeviceInput {
-            name: "Test KDS".into(),
-            restaurant_pos_id: "resto-1".into(),
-            station_ids: vec![],
-            pairing_token_hash: "correct-hash".into(),
-            pairing_expires_at: "2099-01-01T00:00:00Z".into(),
-        })
-        .unwrap();
+    // The cutoff is computed from Utc::now() inside the call, so express the
+    // fixtures as offsets from that same instant.
+    let at = |offset: chrono::Duration| {
+        (chrono::Utc::now() + offset)
+            .format("%Y-%m-%dT%H:%M:%S%.3fZ")
+            .to_string()
+    };
 
-    let result = s
-        .validate_pairing_token("correct-hash", &device.id)
-        .unwrap();
-    assert!(result);
-}
-
-#[test]
-fn validate_pairing_token_rejects_wrong_hash() {
-    let conn = fresh();
-    let s = store(&conn);
-    seed_terminal(&conn, "resto-1", "Restaurant POS", "pc-1");
-
-    let device = s
-        .register_kds_device(crate::kds::RegisterKdsDeviceInput {
-            name: "Test KDS".into(),
-            restaurant_pos_id: "resto-1".into(),
-            station_ids: vec![],
-            pairing_token_hash: "correct-hash".into(),
-            pairing_expires_at: "2099-01-01T00:00:00Z".into(),
-        })
-        .unwrap();
-
-    let err = s
-        .validate_pairing_token("wrong-hash", &device.id)
-        .unwrap_err();
-    assert!(matches!(err, crate::CoreError::Validation { field, .. } if field == "token_hash"));
-}
-
-#[test]
-fn validate_pairing_token_rejects_expired() {
-    let conn = fresh();
-    let s = store(&conn);
-    seed_terminal(&conn, "resto-1", "Restaurant POS", "pc-1");
-
-    let device = s
-        .register_kds_device(crate::kds::RegisterKdsDeviceInput {
-            name: "Test KDS".into(),
-            restaurant_pos_id: "resto-1".into(),
-            station_ids: vec![],
-            pairing_token_hash: "hash".into(),
-            pairing_expires_at: "2020-01-01T00:00:00Z".into(), // already expired
-        })
-        .unwrap();
-
-    let err = s.validate_pairing_token("hash", &device.id).unwrap_err();
-    assert!(
-        matches!(err, crate::CoreError::Validation { field, .. } if field == "pairing_expires_at")
+    // A second past the boundary: must go. Not exactly on it — the cutoff is
+    // re-derived from `Utc::now()` inside the call, so an exact-boundary row
+    // races its own microseconds. The format is the variable under test, and a
+    // one-second margin keeps it the only one.
+    let boundary = seed_kds_order_at(
+        &s,
+        &conn,
+        &at(chrono::Duration::days(-30) - chrono::Duration::seconds(1)),
+        "served",
     );
-}
+    // One minute inside the window: must stay.
+    let inside = seed_kds_order_at(
+        &s,
+        &conn,
+        &at(chrono::Duration::days(-30) + chrono::Duration::minutes(1)),
+        "served",
+    );
 
-#[test]
-fn validate_pairing_token_returns_false_for_missing_device() {
-    let conn = fresh();
-    let s = store(&conn);
-
-    let result = s
-        .validate_pairing_token("hash", "nonexistent-device")
-        .unwrap();
-    assert!(!result);
+    let deleted = s.cleanup_old_kds_orders(30).unwrap();
+    assert_eq!(
+        deleted, 1,
+        "the row past the boundary is old enough and the one a minute younger is not"
+    );
+    assert!(s.get_kds_order(&boundary.id).unwrap().is_none());
+    assert!(s.get_kds_order(&inside.id).unwrap().is_some());
 }
 
 // ── Zone-based routing with real product data ─────────────────
@@ -2563,16 +2630,12 @@ fn zone_based_routing_with_product_lookup() {
         name: "Grill Display".into(),
         restaurant_pos_id: "resto-1".into(),
         station_ids: vec!["grill".into()],
-        pairing_token_hash: "h1".into(),
-        pairing_expires_at: "2099-01-01T00:00:00Z".into(),
     })
     .unwrap();
     s.register_kds_device(crate::kds::RegisterKdsDeviceInput {
         name: "Bar Display".into(),
         restaurant_pos_id: "resto-1".into(),
         station_ids: vec!["bar".into()],
-        pairing_token_hash: "h2".into(),
-        pairing_expires_at: "2099-01-01T00:00:00Z".into(),
     })
     .unwrap();
 
@@ -2678,24 +2741,18 @@ fn zone_based_routing_only_matches_relevant_devices() {
         name: "Grill".into(),
         restaurant_pos_id: "resto-1".into(),
         station_ids: vec!["grill".into()],
-        pairing_token_hash: "h1".into(),
-        pairing_expires_at: "2099-01-01T00:00:00Z".into(),
     })
     .unwrap();
     s.register_kds_device(crate::kds::RegisterKdsDeviceInput {
         name: "Bar".into(),
         restaurant_pos_id: "resto-1".into(),
         station_ids: vec!["bar".into()],
-        pairing_token_hash: "h2".into(),
-        pairing_expires_at: "2099-01-01T00:00:00Z".into(),
     })
     .unwrap();
     s.register_kds_device(crate::kds::RegisterKdsDeviceInput {
         name: "Broadcast".into(),
         restaurant_pos_id: "resto-1".into(),
         station_ids: vec![], // broadcast mode
-        pairing_token_hash: "h3".into(),
-        pairing_expires_at: "2099-01-01T00:00:00Z".into(),
     })
     .unwrap();
 
@@ -2758,8 +2815,6 @@ fn mark_stale_devices_transitions_connected_to_stale() {
             name: "Test KDS".into(),
             restaurant_pos_id: "resto-1".into(),
             station_ids: vec![],
-            pairing_token_hash: "hash".into(),
-            pairing_expires_at: "2099-01-01T00:00:00Z".into(),
         })
         .unwrap();
 
@@ -2795,8 +2850,6 @@ fn mark_stale_devices_skips_already_disconnected() {
             name: "Test KDS".into(),
             restaurant_pos_id: "resto-1".into(),
             station_ids: vec![],
-            pairing_token_hash: "hash".into(),
-            pairing_expires_at: "2099-01-01T00:00:00Z".into(),
         })
         .unwrap();
 
@@ -2816,8 +2869,6 @@ fn deactivate_stale_devices_removes_long_offline_devices() {
             name: "Test KDS".into(),
             restaurant_pos_id: "resto-1".into(),
             station_ids: vec![],
-            pairing_token_hash: "hash".into(),
-            pairing_expires_at: "2099-01-01T00:00:00Z".into(),
         })
         .unwrap();
 
@@ -2845,8 +2896,6 @@ fn deactivate_stale_devices_skips_recently_stale() {
             name: "Test KDS".into(),
             restaurant_pos_id: "resto-1".into(),
             station_ids: vec![],
-            pairing_token_hash: "hash".into(),
-            pairing_expires_at: "2099-01-01T00:00:00Z".into(),
         })
         .unwrap();
 
@@ -2891,24 +2940,14 @@ fn e2e_enrollment_flow_register_validate_route_ack() {
     )
     .unwrap();
 
-    // 2. Generate a pairing token and hash it (simulating QR generation).
-    let token = "abcdef1234567890abcdef1234567890";
-    let token_hash = {
-        use sha2::{Digest, Sha256};
-        let mut hasher = Sha256::new();
-        hasher.update(token.as_bytes());
-        format!("{:x}", hasher.finalize())
-    };
-    let expires_at = "2099-01-01T00:00:00Z";
-
-    // 3. Register the KDS device with the hashed token.
+    // 2. Register the KDS device. (There is no pairing token to mint: the POS
+    // registers the screen, and nothing ever verified a token — see
+    // 20261014_kds_drop_pairing_tokens.sql.)
     let device = s
         .register_kds_device(crate::kds::RegisterKdsDeviceInput {
             name: "Grill Display".into(),
             restaurant_pos_id: "resto-1".into(),
             station_ids: vec!["grill".into()],
-            pairing_token_hash: token_hash.clone(),
-            pairing_expires_at: expires_at.into(),
         })
         .unwrap();
     assert!(device.is_active);
@@ -2917,15 +2956,7 @@ fn e2e_enrollment_flow_register_validate_route_ack() {
         crate::kds::KdsConnectionStatus::Disconnected
     );
 
-    // 4. Validate the pairing token — should succeed.
-    let valid = s.validate_pairing_token(&token_hash, &device.id).unwrap();
-    assert!(valid, "pairing token should be valid");
-
-    // 5. Validate with wrong hash — should fail.
-    let wrong = s.validate_pairing_token("wrong_hash", &device.id);
-    assert!(wrong.is_err(), "wrong hash should fail");
-
-    // 6. Simulate device connecting (update status to connected).
+    // 3. Simulate device connecting (update status to connected).
     s.update_kds_device_status(&device.id, crate::kds::KdsConnectionStatus::Connected)
         .unwrap();
     let fetched = s.get_kds_device(&device.id).unwrap().unwrap();
@@ -3081,7 +3112,7 @@ fn make_kds_order(s: &Store<'_>, sale_id: &str, zone: Option<&str>) -> crate::Kd
         store_id: None,
         items_summary: "Burger x1".into(),
         item_count: 1,
-        kitchen_zone: zone.map(|z| z.to_owned()),
+        kitchen_zone: zone.map(std::borrow::ToOwned::to_owned),
         notes: String::new(),
         table_number: None,
         priority: false,
@@ -3524,12 +3555,12 @@ fn void_pending_sale_cancels_kds_tickets_in_ghost_window() {
     );
 }
 
-/// TODO 1b: the fanout stamps each kitchen ticket with the dining table
+/// The fanout stamps each kitchen ticket with the dining table
 /// currently bound to the sale (`tables.active_sale_id`), so the KDS
-/// board can show "Table 4" instead of a bare ticket id. No test pinned
-/// this: a regression that drops the lookup would silently strip the
-/// table name from every zoned ticket. Pins both halves — the stamp
-/// lands when a table is assigned, and stays None when none is.
+/// board can show "Table 4" instead of a bare ticket id. A regression
+/// that drops the lookup would silently strip the table name from every
+/// zoned ticket, so this pins both halves — the stamp lands when a table
+/// is assigned, and stays None when none is.
 #[test]
 fn kds_fanout_stamps_table_number_from_assigned_table() {
     let conn = fresh();
@@ -3916,5 +3947,249 @@ fn cleanup_old_kds_orders_joins_a_caller_transaction() {
     assert!(
         children > 0,
         "the FK-ordered children must not be deleted while their order survives"
+    );
+}
+
+// ── A corrupt modifiers blob must not read as "no modifiers" ────────────
+//
+// `kds_line_items.modifiers_json` is nullable TEXT with NO CHECK / `json_valid`
+// constraint (20260813_init.sql:254), so nothing in the schema rejects a bad
+// value. `row_to_kds_line_item` parsed it with `.unwrap_or_default()`, which
+// made an unreadable blob byte-identical to the column's legitimate NULL —
+// i.e. to "this line has no modifiers". The kitchen screen then renders a plain
+// item and silently drops "no onions" / "extra cheese". That is the MOD-A
+// shape: the empty list is the code path for a DIFFERENT, wrong semantic, so
+// the default is not tolerant mapping — it is a lost instruction. Fail closed.
+
+#[test]
+fn a_corrupt_modifiers_blob_is_refused_not_read_as_no_modifiers() {
+    let conn = fresh();
+    let s = store(&conn);
+    let order = seed_kds_order_at(&s, &conn, "2026-01-01T10:00:00.000Z", "pending");
+    conn.execute(
+        "INSERT INTO kds_line_items (id, kds_order_id, sku, display_name, qty, line_position,
+                                     item_status, modifiers_json, created_at)
+         VALUES ('line-corrupt', ?1, 'STEAK', 'Steak', 1, 0, 'pending', 'not-a-json-array',
+                 '2026-01-01T10:00:00.000Z')",
+        rusqlite::params![order.id],
+    )
+    .unwrap();
+
+    let err = s
+        .get_kds_order_lines(&order.id)
+        .expect_err("an unreadable modifiers blob must not read as 'no modifiers'");
+    assert!(
+        format!("{err:?}").contains("modifiers") || matches!(err, CoreError::Db(_)),
+        "the refusal must surface the decode failure, got: {err:?}"
+    );
+}
+
+// ── A corrupt sale-line modifiers blob must not reach the ticket as [] ──
+//
+// The WRITE side of the same defect. `complete_sale_to_kds_fanout` copied each
+// sale line's modifiers into the ticket with
+// `.and_then(|j| serde_json::from_str(j).ok())`, so an unreadable
+// `sale_lines.modifiers_json` (nullable TEXT, no `json_valid` CHECK in
+// 20260813_init.sql) silently became `[]` BEFORE any row was written. The read
+// mapper fixed in `db/kds.rs` cannot catch this: the ticket it later reads
+// holds a perfectly valid empty array, so the kitchen sees a plain item. The
+// loss has to be refused where it happens.
+
+#[test]
+fn fanout_refuses_a_corrupt_sale_line_modifiers_blob() {
+    let conn = fresh();
+    let s = store(&conn);
+    seed_product(&conn, "STEAK", "Ribeye Steak");
+
+    let mut cart = Cart::new(usd());
+    cart.add_line(CartLine::new(Sku::new("STEAK"), 1, price(1500)))
+        .unwrap();
+    let sale = Sale::from_cart(&cart).unwrap();
+    s.create_sale(&sale).unwrap();
+
+    // The only way a sale line's modifiers blob is ever unreadable.
+    conn.execute(
+        "UPDATE sale_lines SET modifiers_json = 'not-a-json-array' WHERE sale_id = ?1",
+        rusqlite::params![sale.id],
+    )
+    .unwrap();
+
+    let result = s.complete_sale_to_kds(&sale.id, None);
+    assert!(
+        result.is_err(),
+        "a corrupt sale-line modifiers blob must fail the fanout rather than \
+         write a plain item, got: {result:?}"
+    );
+
+    // The fanout is one transaction: a refused build must leave no ticket
+    // behind (not a ticket whose line quietly lost its modifiers).
+    let tickets: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM kds_orders WHERE sale_id = ?1",
+            rusqlite::params![sale.id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        tickets, 0,
+        "a refused fanout must not leave a partial ticket"
+    );
+}
+
+// ── The eligibility lookup must not conflate "no product" with "unreadable" ──
+//
+// `product_type_by_sku` returns `Ok(None)` when the SKU simply has no product
+// row, and `Err` when the read itself fails. The fan-out's filter collapsed
+// both with `.ok().flatten()`, so a transient DB error made a PAID line
+// ineligible and it silently vanished from the kitchen ticket — no ticket, no
+// error, nothing for the kitchen to see. `Ok(None)` must still skip the line;
+// only an error may abort.
+
+/// The high-severity direction: an unreadable eligibility read must abort.
+#[test]
+fn fanout_refuses_when_the_eligibility_lookup_errors() {
+    let conn = fresh();
+    let s = store(&conn);
+    seed_product(&conn, "STEAK", "Ribeye Steak");
+
+    let mut cart = Cart::new(usd());
+    cart.add_line(CartLine::new(Sku::new("STEAK"), 1, price(1500)))
+        .unwrap();
+    let sale = Sale::from_cart(&cart).unwrap();
+    s.create_sale(&sale).unwrap();
+
+    // Make the eligibility read itself fail: the `products` table the lookup
+    // queries is gone (a corrupt/mismatched schema, the only way this SELECT
+    // errors). The line is restaurant-eligible, so the pre-fix code returned
+    // `Ok(vec![])` — a paid dish silently absent from every ticket.
+    conn.execute_batch("ALTER TABLE products RENAME TO products_hidden;")
+        .unwrap();
+
+    let result = s.complete_sale_to_kds(&sale.id, None);
+    assert!(
+        result.is_err(),
+        "an unreadable product_type read must abort the fan-out, not drop the line, got: {result:?}"
+    );
+}
+
+/// The distinction the fix must preserve: a SKU with NO product row is a
+/// legitimate "not a kitchen item" and is skipped, not an error.
+#[test]
+fn fanout_skips_a_line_whose_product_row_is_absent() {
+    let conn = fresh();
+    let s = store(&conn);
+
+    // `sale_lines.sku` carries no FK to `products` (20260813_init.sql:583), so
+    // a sale line may legitimately reference a SKU with no product row.
+    let mut cart = Cart::new(usd());
+    cart.add_line(CartLine::new(Sku::new("GHOST"), 1, price(500)))
+        .unwrap();
+    let sale = Sale::from_cart(&cart).unwrap();
+    s.create_sale(&sale).unwrap();
+
+    let orders = s
+        .complete_sale_to_kds(&sale.id, None)
+        .expect("an absent product row is a skip, not an error");
+    assert!(
+        orders.is_empty(),
+        "no product row means no kitchen ticket, got: {orders:?}"
+    );
+}
+
+// ── The zone lookup must not conflate "no zone" with "unreadable" ────────
+//
+// `product_kitchen_zone_by_sku` returns `Ok(None)` for a missing row / NULL
+// zone and `Err` when the read itself fails. The fan-out's grouping collapsed
+// them with `.ok()`, so an unreadable zone silently routed the line to the
+// UNZONED ticket instead of its real zone — the grill screen never saw it.
+// `Ok(None)` and an empty zone must still mean "unzoned"; only an error aborts.
+
+/// The bug: make ONLY the zone read fail, so the fan-out reaches the grouping
+/// step (the eligibility read of `product_type` still succeeds). Dropping just
+/// the `kitchen_zone` column is surgical to that one query.
+#[test]
+fn fanout_refuses_when_the_zone_lookup_errors() {
+    let conn = fresh();
+    let s = store(&conn);
+    seed_product(&conn, "STEAK", "Ribeye Steak");
+
+    let mut cart = Cart::new(usd());
+    cart.add_line(CartLine::new(Sku::new("STEAK"), 1, price(1500)))
+        .unwrap();
+    let sale = Sale::from_cart(&cart).unwrap();
+    s.create_sale(&sale).unwrap();
+
+    conn.execute_batch("ALTER TABLE products DROP COLUMN kitchen_zone;")
+        .unwrap();
+
+    let result = s.complete_sale_to_kds(&sale.id, None);
+    assert!(
+        result.is_err(),
+        "an unreadable kitchen_zone read must abort the fan-out, not route the line \
+         to the unzoned ticket, got: {result:?}"
+    );
+}
+
+/// The distinction the fix must preserve: a NULL zone and an explicitly empty
+/// zone are both legitimate "unzoned" and still group onto the unzoned ticket.
+#[test]
+fn fanout_routes_a_line_with_no_zone_to_the_unzoned_ticket() {
+    let conn = fresh();
+    let s = store(&conn);
+    // STEAK: kitchen_zone never set (NULL). SALAD: explicitly empty string.
+    seed_product(&conn, "STEAK", "Ribeye Steak");
+    seed_product_with_zone(&conn, "SALAD", "Garden Salad", "");
+
+    let mut cart = Cart::new(usd());
+    cart.add_line(CartLine::new(Sku::new("STEAK"), 1, price(1500)))
+        .unwrap();
+    cart.add_line(CartLine::new(Sku::new("SALAD"), 1, price(600)))
+        .unwrap();
+    let sale = Sale::from_cart(&cart).unwrap();
+    s.create_sale(&sale).unwrap();
+
+    let orders = s
+        .complete_sale_to_kds(&sale.id, None)
+        .expect("a missing zone is the unzoned ticket, not an error");
+    assert_eq!(
+        orders.len(),
+        1,
+        "both unzoned lines share one ticket, got: {orders:?}"
+    );
+    assert_eq!(orders[0].kitchen_zone, None);
+    assert_eq!(s.get_kds_order_lines(&orders[0].id).unwrap().len(), 2);
+}
+
+#[test]
+fn complete_sale_to_kds_propagates_db_error_when_resolving_product_name() {
+    let conn = fresh();
+    let s = store(&conn);
+    seed_product(&conn, "STEAK", "Ribeye Steak");
+
+    let mut cart = Cart::new(usd());
+    cart.add_line(CartLine::new(Sku::new("STEAK"), 1, price(1500)))
+        .unwrap();
+    let sale = Sale::from_cart(&cart).unwrap();
+    s.create_sale(&sale).unwrap();
+
+    // Verify healthy call resolves display name
+    let orders = s.complete_sale_to_kds(&sale.id, None).unwrap();
+    let lines = s.get_kds_order_lines(&orders[0].id).unwrap();
+    assert_eq!(lines[0].display_name, "Ribeye Steak");
+
+    // Create a second sale
+    let sale2 = Sale::from_cart(&cart).unwrap();
+    s.create_sale(&sale2).unwrap();
+
+    // Set products.name to a blob so reading String fails
+    conn.execute("UPDATE products SET name = X'FFFF' WHERE sku = 'STEAK'", [])
+        .unwrap();
+
+    let err = s
+        .complete_sale_to_kds(&sale2.id, None)
+        .expect_err("a database error reading product name must not silently fall back to raw SKU");
+    assert!(
+        matches!(err, CoreError::Db(_)),
+        "expected CoreError::Db, got {err:?}"
     );
 }

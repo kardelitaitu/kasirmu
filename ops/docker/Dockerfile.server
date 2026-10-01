@@ -1,4 +1,4 @@
-# ── OZ-POS Cloud Server ──────────────────────────────────────────────
+# ── kasir.mu Cloud Server ──────────────────────────────────────────────
 #
 # Multi-stage Dockerfile that builds the headless cloud-sync binary
 # (kasirmu-cloud) and packages it into a minimal runtime image.
@@ -59,6 +59,7 @@ COPY crates/kasirmu-bridge/Cargo.toml crates/kasirmu-bridge/
 COPY crates/qris-core/Cargo.toml crates/qris-core/
 COPY foundation/Cargo.toml foundation/
 COPY platform/core/Cargo.toml platform/core/
+COPY platform/instance-guard/Cargo.toml platform/instance-guard/
 COPY platform/kernel/Cargo.toml platform/kernel/
 COPY platform/startup/Cargo.toml platform/startup/
 COPY platform/sync/Cargo.toml platform/sync/
@@ -89,8 +90,17 @@ COPY apps/cloud-server/Cargo.toml apps/cloud-server/
 # line ~119 is the source of truth and fails the image on any error. The
 # unbounded `|| true` from the audit was replaced with an explicit, logged
 # best-effort marker so a broken cache layer is diagnosable while still
-# never blocking a valid image. Workspace/priming consistency is enforced
-# by scripts/verify-dockerfile-workspace.py in CI.
+# never blocking a valid image. Workspace/priming consistency is enforced by
+# scripts/verify-dockerfile-workspace.py in CI (dev-ci.yml, plus the local
+# matrix in scripts/check.sh).
+#
+# A 2026-09-29 edit briefly "corrected" this to say LOCAL MATRIX ONLY, on the strength
+# of open finding GI-4 in docs/records/audit-open-findings.md, which reported the
+# checker's only runner-shaped reference as the retired ci.yml.bak. That was WRONG: the
+# GI-4 census is a point-in-time measurement (11:46) and dev-ci.yml does invoke it. The
+# claim below was true when first written and stayed true. scripts/verify-runner-claims.py
+# now checks exactly this class -- prose asserting CI enforcement that no live workflow
+# provides -- and is what caught the regression.
 RUN mkdir -p crates/kasirmu-core/src crates/kasirmu-api/src crates/kasirmu-logging/src \
              crates/kasirmu-hal/src crates/kasirmu-lua/src crates/kasirmu-notification/src \
              crates/kasirmu-plugin/src crates/kasirmu-security/src crates/kasirmu-payment/src \
@@ -99,7 +109,7 @@ RUN mkdir -p crates/kasirmu-core/src crates/kasirmu-api/src crates/kasirmu-loggi
              crates/kasirmu-bridge/src \
              crates/qris-core/src \
              foundation/src \
-             platform/core/src platform/kernel/src platform/startup/src \
+             platform/core/src platform/instance-guard/src platform/kernel/src platform/startup/src \
              platform/sync/src \
              modules/sales/src modules/inventory/src \
              modules/crm/src modules/tax/src modules/settings/src \
@@ -127,6 +137,7 @@ RUN mkdir -p crates/kasirmu-core/src crates/kasirmu-api/src crates/kasirmu-loggi
     && echo "// dummy" > crates/qris-core/src/lib.rs \
     && echo "// dummy" > foundation/src/lib.rs \
     && echo "// dummy" > platform/core/src/lib.rs \
+    && echo "// dummy" > platform/instance-guard/src/lib.rs \
     && echo "// dummy" > platform/kernel/src/lib.rs \
     && echo "// dummy" > platform/startup/src/lib.rs \
     && echo "// dummy" > platform/sync/src/lib.rs \
@@ -146,9 +157,9 @@ RUN mkdir -p crates/kasirmu-core/src crates/kasirmu-api/src crates/kasirmu-loggi
     && echo "// dummy" > modules/purchasing/src/lib.rs \
     && echo "// dummy" > apps/cloud-server/src/main.rs \
     && echo "// dummy" > apps/desktop-tauri/src/main.rs \
-    && printf '[package]\nname = "kasirmu-app"\nversion = "0.0.39"\nedition = "2024"\n' > apps/desktop-tauri/Cargo.toml \
+    && printf '[package]\nname = "kasirmu-app"\nversion = "0.0.40"\nedition = "2024"\n' > apps/desktop-tauri/Cargo.toml \
     && echo "// dummy" > apps/mobile-tauri/src/main.rs \
-    && printf '[package]\nname = "kasirmu-mobile"\nversion = "0.0.39"\nedition = "2024"\n' > apps/mobile-tauri/Cargo.toml \
+    && printf '[package]\nname = "kasirmu-mobile"\nversion = "0.0.40"\nedition = "2024"\n' > apps/mobile-tauri/Cargo.toml \
     && (cargo build --package kasirmu-cloud --release > /tmp/prime.log 2>&1 \
         || { echo "WARN: dependency cache-priming build did not complete (best-effort; see /tmp/prime.log)"; }) \
     && true

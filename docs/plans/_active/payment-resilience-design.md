@@ -1,7 +1,8 @@
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · REPAIRED — a live design document whose central premise had been overtaken by the code it describes, and the fix is the highest-value single edit in this campaign. · THE STALE CLAIM, AND IT IS THE FRAMING ONE. The document measured its own subject and concluded that the entire fallback-and-resilience layer was TEST-ONLY: no dispatch path wired it, no production caller existed, and the document built every subsequent decision on that basis — including the argument that an unwired decorator is the worst of three possible states, worse than deleting it. Re-running the document's OWN grep, exactly as it instructs the reader to do, now returns production hits outside the payment crate: the cloud server's payment API constructs the resilient processor inside a real processor allocation, with the import, the shared-breaker rationale, and the construction each at a line this pass recorded. The decorator therefore has a genuine production caller. · THE DOCUMENT WAS NOT AT FAULT, AND THE STAMP SAYS SO, because the distinction is the valuable part. The document carries an explicit instruction to re-run its measurement before quoting either figure, and notes that the hit count moved because its TESTS grew rather than because a caller appeared. That is a design record modelling the discipline this campaign has been asking of everything else in the tree, and it is precisely why the drift was catchable by anyone who followed its own advice. The correction is a dated block above the original sentence, not an edit to it; the original analysis is the evidence of what was true when written. · WHAT THE CORRECTION DELIBERATELY DOES NOT TOUCH. The registry-versus-dispatch-path finding, the three-states argument, the guard methodology and the R9 work all stand — the correction says so in terms, because a reader who sees a premise revised might otherwise assume the whole document is now in doubt, and it is not. Only the framing claim and the two table rows above it are out of date. · WORTH RECORDING ONCE: the direction of the drift. This document went stale in the OPTIMISTIC direction — it said less was true than actually is — which is the exact failure it was written to warn about, and the same direction as the archived CI dashboard and the regression tracker. Documents that understate what has shipped are rarer and more useful to catch than the reverse. · NOT re-measured: the resilience layer's behaviour, the fallback semantics, or the guard suite's coverage. Running them is the original work. What is established is that the wiring this document says is absent now exists in production. · Prior marker did not exist; this is the first. -->
 # Payment resilience — the design the code was written before
 
 **Status:** design doc, first draft. **Not** an ADR — nothing here is decided by a lane.
-**Author's brief:** `todo-open-debt-program.md` Phase 4 box `:276`, *"an R5 design doc"*. Owner ruling: **R9** in `todo-owner-rulings.md`.
+**Author's brief:** `todo-open-debt-program.md` Phase 4 box `:276`, *"an R5 design doc"*. Owner ruling: **R9** in `done-todo-owner-rulings.md:246`.
 **Provenance:** every measurement below was taken in this checkout at HEAD `cd638e98f` (2026-09-18). Each is paired with the command that produced it, so a reader checks rather than trusts.
 **Sibling records:** `docs/plans/payment-methods-plan.md` (the method/rail configuration this decorates), `docs/records/audit-open-findings.md` (the `BR-*` findings), `crates/kasirmu-payment/src/resilience.rs` (the code this describes).
 
@@ -13,7 +14,7 @@ The box asked for this doc and asserted there was *"no `ResilientProcessor`"*. *
 
 | | State, measured |
 |---|---|
-| `ResilientProcessor`, `CircuitBreaker` (Closed/Open/HalfOpen), `ResilientProcessorConfig` | **implemented** — `crates/kasirmu-payment/src/resilience.rs`, 256 lines |
+| `ResilientProcessor`, `CircuitBreaker` (Closed/Open/HalfOpen), `ResilientProcessorConfig` | **implemented** — `crates/kasirmu-payment/src/resilience.rs`. **397 lines as of 2026-09-25**; it was 256 when this table was written. The growth is the §2 retry guard, the §5 probe flag, and `with_shared_breaker` (§4's seam), all landed under R9 — the number is corrected here rather than left as a stale reading, because this is the table a reader uses to judge whether the artefact is real. |
 | re-exported | **yes** — `crates/kasirmu-payment/src/lib.rs:70` |
 | `method -> Vec<processor>` chain | **implemented** — `register_method_fallback` / `method_processors` / `execute_with_fallback`, `crates/kasirmu-payment/src/registry.rs:57-119` |
 | **wired into any dispatch path** | **no** — `grep -c "resilience\|Resilient" crates/kasirmu-payment/src/registry.rs` → **0** |
@@ -25,10 +26,28 @@ The box asked for this doc and asserted there was *"no `ResilientProcessor`"*. *
 ```bash
 grep -rn "execute_with_fallback\|register_method_fallback\|ResilientProcessor" \
   --include=*.rs crates/ platform/ apps/ | grep -v "registry.rs\|resilience"
-# → 4 hits, ALL in crates/kasirmu-payment/src/registry_tests.rs
+# → 4 hits when this was written; 13 on 2026-09-25, still ALL inside
+#   crates/kasirmu-payment/src (registry_tests.rs plus the §2/§5/§4 guards
+#   added under R9). The count moved because the TESTS grew, not because a
+#   production caller appeared — re-run it before quoting either figure.
 ```
 
-So the entire fallback-and-resilience layer is **test-only today**, and its three green tests (`resilient_processor_retries_transient_error_and_succeeds`, `resilient_processor_does_not_retry_terminal_error`, `circuit_breaker_trips_and_fails_fast`) are evidence that it compiles and that its author's model of it is self-consistent — not that the payment path is protected. It is not.
+> ⚠️ **CORRECTION (2026-09-29, re-audited) — the "test-only" premise is now
+> FALSE.** This document instructs the reader to re-run its own grep before
+> quoting either figures, which is exactly what was done. That grep now returns
+> production hits outside the payment crate: `apps/cloud-server/src/payment_api.rs:133`
+> constructs `Arc::new(ResilientProcessor::new(Arc::new(qris))) as
+> Arc<dyn PaymentProcessor>`, with the import at `:48` and the shared-breaker
+> rationale documented at `:105`. The resilience decorator therefore has a real
+> production caller and is no longer unwired. **The rest of the analysis is not
+> disturbed** — the registry-versus-dispatch-path finding, the three-states
+> argument and the guard methodology all still stand, and the measurement
+> discipline this document models is precisely why the drift was catchable.
+> Only the framing claim and the two table rows above it (`wired into any
+> dispatch path`, `any production caller`) are out of date — and out of date in
+> the optimistic direction this document was written to prevent.
+
+So the entire fallback-and-resilience layer is **test-only today**. Its tests are evidence that it compiles and that its author's model of it is self-consistent — not that the payment path is protected. **It still is not, re-measured 2026-09-25:** `AppState.processor` holds a concrete `QrisPaymentProcessor` (`payment_api.rs:79`), built by `build_qris_processor` (`:127`), and the handler calls `sale()` on it directly (`:291`). The three tests this paragraph used to name are now **twelve** in `resilience_tests.rs` plus **eight** in `registry_tests.rs` (both counted rather than estimated), and that growth is the §2 retry guard, the §5 single-probe rule, and the §4 shared-breaker seam — hardening that buys nothing until something wires the decorator in.
 
 **An unwired resilience decorator is the worst of the three states.** Wired, it buys fault isolation. Deleted, it buys nothing and costs nothing. Unwired, it carries the full maintenance cost of shipped code, invites a reader to believe money is protected, and defers every decision below to whoever wires it, with no doc to check it against. That is the state today, and it is why R9 recommends *write the doc, then wire it* rather than *leave it*.
 
@@ -174,7 +193,7 @@ Under a sustained outage, after `cooldown_duration` every concurrent request is 
 
 **Rule.** `HalfOpen` admits **one** probe. Concurrent callers fail fast until it resolves; success closes the breaker, failure re-opens it. This needs a `probe_in_flight` flag on `BreakerInternal` and an explicit transition on the probe's resolution. It is the one item here that changes the behaviour of already-shipped code rather than adding wiring.
 
-**Why the existing test cannot catch it.** `circuit_breaker_trips_and_fails_fast` drives the breaker **sequentially**. Sequential driving cannot observe a concurrency defect, so the test is green and silent on this — the same class of gap that `todo-owner-rulings.md` R20 found in the Tools parity test: a green test that does not test the property its name implies.
+**Why the existing test cannot catch it.** `circuit_breaker_trips_and_fails_fast` drives the breaker **sequentially**. Sequential driving cannot observe a concurrency defect, so the test is green and silent on this — the same class of gap that `done-todo-owner-rulings.md:181` (R20) found in the Tools parity test: a green test that does not test the property its name implies.
 
 ---
 
@@ -212,16 +231,22 @@ The rule this encodes: **a knob that changes how long a customer waits is code; 
 
 The three existing tests cover the sequential happy paths. What is missing is everything above, and each is a **red-first** test — written to fail against the current code, then made to pass.
 
-| Test | Pins | Fails today? |
+| Test | Pins | Status, measured 2026-09-25 |
 |---|---|---|
-| a keyless money-moving call is **not** retried | §2 | **yes** — retry is unconditional |
-| a keyed `refund` **is** retried, and the driver sees **one** key | §2 | no — passes already |
-| `capture`/`void` are single-shot | §2 | **yes** |
-| a charge with a blank `body.idempotency_key` still dedupes on retry | §2.1 | **yes** — this is the production hole |
-| two decorators over one gateway share one breaker | §3 | **yes** — `with_config` builds its own |
-| a healthy second processor is tried while the first is `Open` | §3 | **yes** — not wired at all |
-| concurrent callers during `HalfOpen`: exactly one probe | §5 | **yes** |
-| a tenant-A outage does not open tenant-B's breaker | §4 | **yes** — no keying exists |
+| a keyless money-moving call is **not** retried | §2 | **DONE.** `keyless_money_moving_call_is_not_retried` — was 4 driver calls, now 1. |
+| a keyed `refund` **is** retried, and the driver sees **one** key | §2 | **DONE.** `keyed_call_is_retried_and_the_driver_sees_one_key` asserts the key the DRIVER received, per the convention below. |
+| `capture`/`void` are single-shot | §2 | **DONE.** `capture_is_single_shot_even_on_a_transient_failure`, `void_is_single_shot_even_on_a_transient_failure`; mutation-tested by routing `capture` back to `Keyed`, which gives 4 calls. |
+| a charge with a blank `body.idempotency_key` still dedupes on retry | §2.1 | **DONE — and this hole was still open.** `e9c849f39`. `Some("")` is not `None`, so the derivation was skipped and the driver minted a fresh key; the mutation produced two different `order_id`s for one sale. |
+| two decorators over one gateway share one breaker | §3 | **DONE.** `with_shared_breaker` (`828d9e9f4`), with the isolation counter-evidence pinned beside it. |
+| a healthy second processor is tried while the first is `Open` | §3 | **DONE.** `5f221e003`. **It already worked** — an open breaker returns `Transient`, so the chain escalates. The "not wired at all" note above describes the REGISTRY, which is a different mechanism from this coupling. |
+| concurrent callers during `HalfOpen`: exactly one probe | §5 | **DONE.** `b333f3fe0` — was 19 of 19 admitted, now 0. |
+| a tenant-A outage does not open tenant-B's breaker | §4 | **OPEN — depends on the §4 keying decision.** |
+
+**Closing note, 2026-09-25.** Seven of the eight rows are implemented and guarded; only the
+last depends on §4. Two rows were previously recorded here (and by this lane) as blocked on
+that decision and were not: row 6 is about the chain's escalation rather than the registry,
+and row 4 is about a blank STRING reaching a derivation that tested for `None`. Both were
+found by reading each row's subject instead of triaging it by topic.
 
 **The pinning convention worth carrying over from R20.** Phase 3a.2's box asks for a test that pins *"a custom role holding the gate permission passing the same way a preset would"* — a test of the **invariant**, not of the shipped preset. The analogue here is to pin the **key**, not the outcome: the retry test must assert that the driver **received the same key twice**, not merely that the call eventually succeeded. A test that only checks the outcome passes on a double charge that happens to return `Ok`.
 
@@ -244,7 +269,7 @@ Named so nothing here reads as a ruling it is not.
 
 This is a design deliverable, so its acceptance is a reading, not a build. It is accepted when:
 
-1. Each §0 "wired? no" row has an owner ruling either way, recorded in `todo-owner-rulings.md` R9.
+1. Each §0 "wired? no" row has an owner ruling either way, recorded in `done-todo-owner-rulings.md:246` (R9).
 2. §2.1 is either implemented or explicitly declined with the double-charge risk accepted in writing.
 3. §4's keying is settled, because it is the decision most expensive to change after wiring — the breaker map's shape leaks into every construction site.
 4. The §8 rows marked *fails today* are written or scheduled with an owner and a date.
@@ -265,3 +290,5 @@ grep -n "QRIS_EXPIRY_SECS" crates/kasirmu-payment/src/drivers/qris.rs           
 sed -n '364,371p' crates/kasirmu-core/migrations/20260813_init.sql                 # the payments columns
 sed -n '14,22p' crates/kasirmu-core/migrations/20261001_sale_idempotency.sql       # the unguarded-is-legal contract
 ```
+
+> last audited 29-09-26 by docs-auditor

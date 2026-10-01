@@ -4,24 +4,24 @@
 //! explain itself: `caps.supportsAnalytics === false` tells support nothing
 //! about whether the cause is the plan, the expiry, the location count, or
 //! the caller's role. This module is the single place that turns the raw
-//! facts behind those gates into a ranked [`FeatureVerdict`].
+//! facts behind those gates into a ranked [`FeatureVerdict`](crate::availability::FeatureVerdict).
 //!
-//! Key types: [`AvailabilityFeature`] (the v1 key set — exactly the surface
-//! the existing gates consume, no new flags), [`AvailabilityFacts`] (the
-//! inputs, gathered by the caller), and [`FeatureVerdict`] / [`VerdictDetail`]
-//! (the output). Entry point: [`explain_availability`].
+//! Key types: [`AvailabilityFeature`](crate::availability::AvailabilityFeature) (the v1 key set — exactly the surface
+//! the existing gates consume, no new flags), [`AvailabilityFacts`](crate::availability::AvailabilityFacts) (the
+//! inputs, gathered by the caller), and [`FeatureVerdict`](crate::availability::FeatureVerdict) / [`VerdictDetail`](crate::availability::VerdictDetail)
+//! (the output). Entry point: [`explain_availability`](crate::availability::explain_availability).
 //!
 //! Invariants:
 //!
 //! - **Pure.** No database, no clock, no network. Every input arrives in
-//!   [`AvailabilityFacts`], so the precedence table is exhaustively testable
+//!   [`AvailabilityFacts`](crate::availability::AvailabilityFacts), so the precedence table is exhaustively testable
 //!   without fixtures, and a verdict can never disagree with a live gate
 //!   because of a read that happened twice.
 //! - **One winner.** Only the highest-precedence denial is named. Lower
-//!   causes are still computed into [`VerdictDetail`] but never reported.
+//!   causes are still computed into [`VerdictDetail`](crate::availability::VerdictDetail) but never reported.
 //! - **Fixed precedence:** server_policy > lifecycle > tier > quota > role >
 //!   scope (todo-global-saas-3.md, Feature-flag observability design).
-//! - **Fail closed on unknown keys.** [`AvailabilityFeature::parse`] returns
+//! - **Fail closed on unknown keys.** [`AvailabilityFeature::parse`](crate::availability::AvailabilityFeature::parse) returns
 //!   `None` for anything unrecognized; an unknown key is never default-allow.
 //! - **`scope` cannot outrank `role`.** Role is evaluated first on purpose:
 //!   naming a location the caller cannot act on is worse than saying they
@@ -380,10 +380,9 @@ pub fn explain_availability(facts: &AvailabilityFacts<'_>) -> FeatureVerdict {
     // place the precedence ordering lives.
     let server_denies = facts.server_grant == Some(false);
     let server_grants = facts.server_grant == Some(true);
-    let lifecycle_denies = !matches!(
-        facts.state,
-        SubscriptionLifecycleState::Active | SubscriptionLifecycleState::Grace
-    );
+    // One definition, shared with `Entitlements::addon_grant_flows`, so the
+    // two answers to "does this state keep working" cannot drift apart.
+    let lifecycle_denies = !facts.state.grants_entitlements();
     let tier_denies = !server_grants && !feature.tier_allows(facts.tier);
     let limit = feature.tier_limit(facts.tier);
     let usage = feature.usage(facts.usage);

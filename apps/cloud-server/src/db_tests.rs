@@ -1,3 +1,11 @@
+// P2-6: `std::env::set_var` / `remove_var` are `unsafe` as of Rust 2024
+// because mutating the environment is unsound against concurrent readers.
+// These calls are TEST-ONLY and serialised by `serial_test::serial`, so the
+// crate-level `#![deny(unsafe_code)]` in `main.rs` holds for every shipping
+// path — the same file-scoped opt-out the repo uses at
+// `kasirmu-security/src/windows.rs:13`.
+#![allow(unsafe_code)]
+
 use super::*;
 use serial_test::serial;
 
@@ -74,6 +82,40 @@ fn sqlite_from_path_creates_db() {
     let pool = DbPool::connect_sqlite(path_str).unwrap();
     assert!(pool.is_sqlite());
     assert!(path.exists(), "database file should exist");
+}
+
+/// The default OZ_DB_PATH is now var/kasir.db, and rusqlite will not create a
+/// missing parent directory. Without this test the migration would pass CI, where
+/// the default is never opened, and fail on a fresh clone that has no var/.
+#[test]
+fn sqlite_creates_a_missing_parent_directory() {
+    let dir = tempfile::tempdir().unwrap();
+    let nested = dir.path().join("var").join("nested").join("kasir.db");
+    assert!(
+        !nested.parent().unwrap().exists(),
+        "precondition: parent is absent"
+    );
+    let pool = DbPool::connect_sqlite(nested.to_str().unwrap()).unwrap();
+    assert!(pool.is_sqlite());
+    assert!(nested.exists(), "database file should exist");
+    assert!(
+        dir.path().join("var").is_dir(),
+        "the parent directory should have been created"
+    );
+}
+
+/// A bare filename has an empty Path::parent(); create_dir_all("") fails, so the
+/// guard has to hold or every such open dies.
+#[test]
+fn sqlite_accepts_a_bare_filename_with_no_parent() {
+    let dir = tempfile::tempdir().unwrap();
+    let cwd = std::env::current_dir().unwrap();
+    std::env::set_current_dir(dir.path()).unwrap();
+    let result = DbPool::connect_sqlite("bare.db");
+    std::env::set_current_dir(cwd).unwrap();
+    let pool = result.unwrap();
+    assert!(pool.is_sqlite());
+    assert!(dir.path().join("bare.db").exists());
 }
 
 #[tokio::test]
@@ -239,6 +281,7 @@ fn db_error_from_core_error() {
 /// Uses `OZ_TEST_PG_URL` (set by CI's Postgres service), falling back
 /// to the local dev container on port 15432. Skipped when Postgres is
 /// not reachable.
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 async fn pg_integration_connect_and_create_tables() {
     let url = std::env::var("OZ_TEST_PG_URL")
@@ -247,7 +290,10 @@ async fn pg_integration_connect_and_create_tables() {
         Ok(p) => p,
         Err(e) => {
             eprintln!("PG integration test skipped: {e}");
+            #[cfg(not(feature = "pg-tests"))]
             return;
+            #[cfg(feature = "pg-tests")]
+            panic!("PG test enabled but the resource is unreachable - see the skip message above");
         }
     };
     assert!(pool.is_postgres());
@@ -310,6 +356,7 @@ async fn pg_integration_connect_and_create_tables() {
 /// second one must return `PoolError::Timeout` in ~5s (not block
 /// indefinitely). This is the SOTA guarantee behind Finding D: a stalled
 /// DB can no longer wedge every request.
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 async fn pg_integration_pool_get_fails_fast_when_exhausted() {
     let url = std::env::var("OZ_TEST_PG_URL")
@@ -319,7 +366,10 @@ async fn pg_integration_pool_get_fails_fast_when_exhausted() {
         Ok(_) => unreachable!("postgres:// URL returns Postgres"),
         Err(e) => {
             eprintln!("PG pool-timeout integration test skipped: {e}");
+            #[cfg(not(feature = "pg-tests"))]
             return;
+            #[cfg(feature = "pg-tests")]
+            panic!("PG test enabled but the resource is unreachable - see the skip message above");
         }
     };
 
@@ -370,6 +420,7 @@ async fn pg_integration_pool_get_fails_fast_when_exhausted() {
 ///
 /// Skips when Postgres is unreachable or the URL role lacks `CREATE
 /// DATABASE` (matching the established skip-if-unreachable pattern).
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 async fn pg_integration_apply_schema_can_be_skipped() {
     let url = std::env::var("OZ_TEST_PG_URL")
@@ -382,7 +433,10 @@ async fn pg_integration_apply_schema_can_be_skipped() {
         Ok(p) => p,
         Err(e) => {
             eprintln!("PG integration test skipped: {e}");
+            #[cfg(not(feature = "pg-tests"))]
             return;
+            #[cfg(feature = "pg-tests")]
+            panic!("PG test enabled but the resource is unreachable - see the skip message above");
         }
     };
     let admin = pool.pg_client().await.expect("pg_client should succeed");
@@ -400,7 +454,10 @@ async fn pg_integration_apply_schema_can_be_skipped() {
         .await
     {
         eprintln!("PG integration test skipped: cannot CREATE DATABASE ({e})");
+        #[cfg(not(feature = "pg-tests"))]
         return;
+        #[cfg(feature = "pg-tests")]
+        panic!("PG test enabled but the resource is unreachable - see the skip message above");
     }
 
     // Build the URL for the new database by swapping the path segment,
@@ -485,6 +542,7 @@ async fn pg_integration_apply_schema_can_be_skipped() {
 /// runs on a dedicated connection (`SET ROLE` never touches the shared
 /// pool), rows are namespaced per process for shared dev databases, and
 /// the test skips when Postgres is unreachable.
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 #[serial(pg_rls_cutover)]
 async fn pg_integration_rls_fails_closed() {
@@ -501,7 +559,10 @@ async fn pg_integration_rls_fails_closed() {
         Ok(p) => p,
         Err(e) => {
             eprintln!("PG integration test skipped: {e}");
+            #[cfg(not(feature = "pg-tests"))]
             return;
+            #[cfg(feature = "pg-tests")]
+            panic!("PG test enabled but the resource is unreachable - see the skip message above");
         }
     };
     let admin = admin_pool
@@ -518,7 +579,10 @@ async fn pg_integration_rls_fails_closed() {
         .await
     {
         eprintln!("PG integration test skipped: cannot CREATE DATABASE ({e})");
+        #[cfg(not(feature = "pg-tests"))]
         return;
+        #[cfg(feature = "pg-tests")]
+        panic!("PG test enabled but the resource is unreachable - see the skip message above");
     }
     drop(admin);
     let (base, query) = match url.split_once('?') {
@@ -536,7 +600,10 @@ async fn pg_integration_rls_fails_closed() {
         Ok(p) => p,
         Err(e) => {
             eprintln!("PG integration test skipped: {e}");
+            #[cfg(not(feature = "pg-tests"))]
             return;
+            #[cfg(feature = "pg-tests")]
+            panic!("PG test enabled but the resource is unreachable - see the skip message above");
         }
     };
     let client = pool.pg_client().await.expect("pg_client should succeed");
@@ -714,6 +781,7 @@ async fn pg_integration_rls_fails_closed() {
 ///    (the sync data layer's per-request `SET LOCAL`) the owner's rows
 ///    are visible again. This is exactly the mechanism the cutover
 ///    relies on for a non-superuser deployment role.
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 #[serial(pg_rls_cutover)]
 async fn pg_integration_rls_force_blocks_owner() {
@@ -743,7 +811,12 @@ async fn pg_integration_rls_force_blocks_owner() {
             Ok(p) => p,
             Err(e) => {
                 eprintln!("PG integration test skipped: {e}");
+                #[cfg(not(feature = "pg-tests"))]
                 return;
+                #[cfg(feature = "pg-tests")]
+                panic!(
+                    "PG test enabled but the resource is unreachable - see the skip message above"
+                );
             }
         };
         let admin = admin_pool
@@ -785,7 +858,10 @@ async fn pg_integration_rls_force_blocks_owner() {
             .await
         {
             eprintln!("PG integration test skipped: cannot CREATE DATABASE ({e})");
+            #[cfg(not(feature = "pg-tests"))]
             return;
+            #[cfg(feature = "pg-tests")]
+            panic!("PG test enabled but the resource is unreachable - see the skip message above");
         }
     }
     let (base, query) = match url.split_once('?') {
@@ -803,7 +879,10 @@ async fn pg_integration_rls_force_blocks_owner() {
         Ok(p) => p,
         Err(e) => {
             eprintln!("PG integration test skipped: {e}");
+            #[cfg(not(feature = "pg-tests"))]
             return;
+            #[cfg(feature = "pg-tests")]
+            panic!("PG test enabled but the resource is unreachable - see the skip message above");
         }
     };
     let client = pool.pg_client().await.expect("pg_client should succeed");
@@ -1071,6 +1150,7 @@ async fn pg_integration_rls_force_blocks_owner() {
 /// This is the behavior `RecyclingMethod::Fast`'s `is_closed()` probe
 /// relies on (SOTA finding F): deadpool 0.12 has no max_lifetime, so
 /// server-closed connections are detected reactively on checkout.
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 async fn pg_integration_stale_connection_recycled() {
     let url = std::env::var("OZ_TEST_PG_URL")
@@ -1080,7 +1160,10 @@ async fn pg_integration_stale_connection_recycled() {
         Ok(_) => unreachable!("postgres:// URL returns Postgres"),
         Err(e) => {
             eprintln!("PG stale-connection integration test skipped: {e}");
+            #[cfg(not(feature = "pg-tests"))]
             return;
+            #[cfg(feature = "pg-tests")]
+            panic!("PG test enabled but the resource is unreachable - see the skip message above");
         }
     };
 
@@ -1179,6 +1262,7 @@ fn test_cloud_config() -> crate::config::CloudServerConfig {
 /// Self-skips when Postgres is unreachable (the crate's established pattern),
 /// printing `PG integration test skipped: ...` so a skip is never mistaken for
 /// a pass.
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 #[serial(pg_rls_cutover)]
 async fn pg_integration_rls_posture_matches_the_live_server() {
@@ -1188,7 +1272,10 @@ async fn pg_integration_rls_posture_matches_the_live_server() {
         Ok(p) => p,
         Err(e) => {
             eprintln!("PG integration test skipped: {e}");
+            #[cfg(not(feature = "pg-tests"))]
             return;
+            #[cfg(feature = "pg-tests")]
+            panic!("PG test enabled but the resource is unreachable - see the skip message above");
         }
     };
     let client = pool.pg_client().await.expect("pg_client should succeed");
@@ -1380,6 +1467,7 @@ async fn pg_integration_rls_posture_matches_the_live_server() {
 /// Built with the crate's own router (`build_router`) and the same
 /// `CloudServerState` shape the PG branch uses in `main.rs`: a real PG pool plus
 /// the in-memory SQLite fallback that the PG branch never reads.
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 #[serial(pg_rls_cutover)]
 async fn pg_integration_health_reports_the_live_rls_posture() {
@@ -1390,11 +1478,17 @@ async fn pg_integration_health_reports_the_live_rls_posture() {
         Ok(DbPool::Postgres(p)) => p,
         Ok(DbPool::Sqlite(_)) => {
             eprintln!("PG integration test skipped: URL resolved to SQLite");
+            #[cfg(not(feature = "pg-tests"))]
             return;
+            #[cfg(feature = "pg-tests")]
+            panic!("PG test enabled but the resource is unreachable - see the skip message above");
         }
         Err(e) => {
             eprintln!("PG integration test skipped: {e}");
+            #[cfg(not(feature = "pg-tests"))]
             return;
+            #[cfg(feature = "pg-tests")]
+            panic!("PG test enabled but the resource is unreachable - see the skip message above");
         }
     };
 

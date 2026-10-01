@@ -1,3 +1,6 @@
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · Clean pass on substance — this is the most completely implemented ADR audited so far, and every anchor in it still resolves after the workspace restructure. Verified symbol by symbol rather than from the Status line: the formula and store layers exist where D3 says they should (`crates/kasirmu-core/src/popularity.rs` and `crates/kasirmu-core/src/db/popularity.rs` — the ADR itself records the deliberate move out of `oz-reporting`, and that move is still in force), the sales-side source `crates/kasirmu-reporting/src/daily_summary.rs` is present, the `product_activity` ledger is `crates/kasirmu-core/migrations/20260813_init.sql:380`, and the `popularity_score REAL NOT NULL DEFAULT 0` column is on `products` at `:457`. Every command the ADR names exists: `record_product_search_scoped` in `apps/desktop-tauri/src/commands/products.rs`, `get_category_popularity_scoped`, `get_category_popularity_trend_scoped` and `get_category_forecast_scoped` in `apps/desktop-tauri/src/commands/reports.rs`, and `recompute_all_popularity` in `crates/kasirmu-core/src/db/popularity.rs`. The D6 section's habit of marking each deferred item as implemented with its own date is what makes this ADR auditable at all — every one of those claims (breadth weighting, per-category standings, per-period trend, demand forecast, analytics export) is checkable, and the ones checked here hold. · REPAIRED: crate and app paths. The body cited `crates/oz-core/…`, `crates/oz-reporting/…` and the numbered migration `133_product_activity.sql`; those are pre-restructure names and the sequential migration series has been replaced by date-stamped files. Repaired in place, because a live ADR is a document engineers read while working — its paths are instructions, not evidence. · NOT re-measured: the D1 formula constants (0.6/0.3/0.1, λ=0.93, m=5, 90-day window) and the commit hashes, which are design intent and a historical record respectively. -->
+<!-- NOTE 2026-09-30 (Budak-Korporat): the stamp above asserts that the sales-side source `crates/kasirmu-reporting/src/daily_summary.rs` is present. It was present when the stamp was written on 2026-09-29; it was retired on 2026-09-30 under checklist C29 (zero external Rust callers, and it duplicated the live `kasirmu_core::db::reports`), so that one anchor is corrected here rather than edited in place — the stamp is the auditor's dated claim, and the correction belongs beside it. Every other anchor in the stamp was re-verified against the tree on 2026-09-30 and still resolves. -->
+
 ---
 num: 37
 area: products
@@ -22,10 +25,13 @@ Current state of each signal:
 
 1. **Sold** — durable history already exists. `sale_lines` (sku, qty) joined to
    `sales` (`status = 'completed'`, created_at) is the authoritative record,
-   and `query_top_products` in `crates/oz-reporting/src/daily_summary.rs`
-   (plus `Store::top_products` in `db/reports.rs`) already aggregates it. No
+   and `Store::top_products` in `db/reports.rs` already aggregates it. No
    new write path needed for the dominant signal — including historical
    backfill.
+   *(2026-09-30: this paragraph also named `query_top_products` in
+   `crates/kasirmu-reporting/src/daily_summary.rs`. That module was retired the
+   same day under checklist C29 — it had zero external callers and duplicated
+   `db/reports.rs` — so the live source is the one named above.)*
 2. **Searched** — nothing exists. Retail search is client-side filtering
    (`RetailPosScreen.tsx` searchQuery, `ProductLookupScreen.tsx`), so a search
    that results in a sale currently leaves no trace. Tracking requires a new
@@ -96,7 +102,7 @@ c′ = (mean_c × m + raw_c × v) / (m + v)     v = contributing event count, m 
 
 ### D3 — Storage, computation, and IPC
 
-One migration, `133_product_activity.sql` (registered in the `ALL` array,
+One migration, `product_activity` (dated-migration series; the table is now in `crates/kasirmu-core/migrations/20260813_init.sql:380`) (registered in the `ALL` array,
 unique prefix after 132):
 
 ```sql
@@ -115,7 +121,7 @@ ALTER TABLE products ADD COLUMN popularity_score REAL NOT NULL DEFAULT 0;
   history lets the formula be retuned later without a migration; the column
   makes sorting O(1) and rides through the existing PERF-08 catalog cache in
   `ProductDto`.
-- **`popularity.rs`** in `crates/oz-core` (not `crates/oz-reporting` as
+- **`popularity.rs`** in `crates/kasirmu-core` (not `crates/kasirmu-reporting` as
   originally scoped): `src/popularity.rs` holds the pure, unit-tested function
   `compute_score(units_by_day, searches_by_day, edits_by_day, catalog_mean)
   -> f64` implementing D1, and `db/popularity.rs` holds the store-layer
@@ -174,7 +180,7 @@ upsert imports only its snapshot columns, so `popularity_score` and
   is fair within a selected category; uncategorized products fall back to the
   global mean. The per-category evolution (2026-08-12) then surfaced those
   standings as a first-class report: `Store::category_popularity` in
-  `crates/oz-core/src/db/popularity.rs` returns every category's product
+  `crates/kasirmu-core/src/db/popularity.rs` returns every category's product
   count, mean score, ratio to the catalog average, and top-N products ranked
   by score with category-relative rank + percentile, exposed as
   `get_category_popularity_scoped` in both clients and rendered as the
@@ -256,11 +262,13 @@ history from product timestamps, so the default popularity sort is meaningful
 on first launch. Key commits: `e5cab0a9`, `2913d49c`, `be37eac1`
 (implementation), `33b44571` (backfill), `9c8bc6cd` (ADR location
 correction), `43bc280f` (per-category standings surface). Note the formula
-landed in `crates/oz-core/src/popularity.rs` with the recompute/ledger access
-in `crates/oz-core/src/db/popularity.rs`, not `crates/oz-reporting` as
+landed in `crates/kasirmu-core/src/popularity.rs` with the recompute/ledger access
+in `crates/kasirmu-core/src/db/popularity.rs`, not `crates/kasirmu-reporting` as
 originally scoped — the score is written by the store layer, so the formula
 sits beside that code. The D6 breadth weighting and per-category/per-period
 popularity items are all now implemented (see D6); the only remaining
 out-of-scope item is the demand-forecasting integration, and the analytics
 export path remains the external analytics tool's consumer of the local
 store DB.
+
+> last audited 29-09-26 by docs-auditor

@@ -12,6 +12,7 @@ export function useWorkspaceNav() {
 
   const goToWorkspacePicker = useCallback(() => {
     setActiveWorkspace(null);
+    window.location.hash = '';
   }, [setActiveWorkspace]);
 
   return { goToWorkspacePicker };

@@ -289,6 +289,34 @@ fn custom_report_tax_rates_dataset() {
 }
 
 #[test]
+fn custom_report_rejects_a_malformed_date_bound() {
+    // Every other date-bounded report validates its bounds with
+    // `check_date_bound` before the query runs, because SQLite compares a
+    // garbage boundary as a plain string: it matches no row and the report
+    // comes back EMPTY with no error at all — the failure shape this repo
+    // treats as the worst kind, since nothing errors and the numbers just read
+    // zero. This builder is the IPC door for a user-typed range
+    // (`build_custom_report_scoped`), and it forwarded the bounds unvalidated.
+    let conn = migrations::fresh_db();
+    let s = Store::new(&conn);
+    let req = CustomReportRequest {
+        dataset: "sales".to_string(),
+        columns: vec!["id".to_string()],
+        start_date: Some("2026-13-45".to_string()),
+        end_date: Some("2026-12-31".to_string()),
+        limit: None,
+        offset: None,
+    };
+    let err = s
+        .build_custom_report(req)
+        .expect_err("a malformed start_date must be rejected, not silently empty the report");
+    assert!(
+        matches!(err, CoreError::Validation { .. }),
+        "expected a validation error naming the bad bound, got {err:?}"
+    );
+}
+
+#[test]
 fn custom_report_shifts_dataset() {
     let conn = migrations::fresh_db();
     let s = Store::new(&conn);
@@ -367,6 +395,45 @@ fn custom_report_invalid_columns_filtered() {
     let resp = s.build_custom_report(req).unwrap();
     // Only "id" is in the whitelist
     assert_eq!(resp.columns, vec!["id"]);
+}
+
+#[test]
+fn custom_report_truncated_means_rows_were_withheld() {
+    // `truncated` answers "is there more than you asked for". Asking for
+    // exactly the number of rows that exist must say no: with the query
+    // fetching only `limit` rows, "everything was returned" and "there is
+    // more" are literally the same observation, so the flag has to be decided
+    // by asking for one row past the page.
+    let conn = migrations::fresh_db();
+    seed_sale(&conn, "A", 1, 100);
+    seed_sale(&conn, "B", 1, 100);
+    seed_sale(&conn, "C", 1, 100);
+    let s = Store::new(&conn);
+
+    let req = |limit: u32| CustomReportRequest {
+        dataset: "sales".to_string(),
+        columns: vec!["id".to_string()],
+        start_date: None,
+        end_date: None,
+        limit: Some(limit),
+        offset: None,
+    };
+
+    let exact = s.build_custom_report(req(3)).unwrap();
+    assert_eq!(exact.rows.len(), 3);
+    assert!(
+        !exact.truncated,
+        "a page that exactly fills the limit withheld nothing"
+    );
+
+    // The genuine truncation case must still report it, and still cap the page.
+    let capped = s.build_custom_report(req(2)).unwrap();
+    assert_eq!(
+        capped.rows.len(),
+        2,
+        "the page must stay capped at the limit"
+    );
+    assert!(capped.truncated, "a third row existed and was withheld");
 }
 
 #[test]
@@ -486,7 +553,7 @@ fn custom_report_unbounded_without_limit() {
 
     // Create 150 products to test unbounded results
     for i in 0..150 {
-        let sku = format!("PROD{:03}", i);
+        let sku = format!("PROD{i:03}");
         s.create_product(&sku, &sku, price(100), None, None, 100, None)
             .unwrap();
     }
@@ -513,7 +580,7 @@ fn custom_report_respects_limit() {
 
     // Create 150 products
     for i in 0..150 {
-        let sku = format!("PROD{:03}", i);
+        let sku = format!("PROD{i:03}");
         s.create_product(&sku, &sku, price(100), None, None, 100, None)
             .unwrap();
     }
@@ -543,7 +610,7 @@ fn custom_report_respects_offset_and_limit() {
 
     // Create 150 products
     for i in 0..150 {
-        let sku = format!("PROD{:03}", i);
+        let sku = format!("PROD{i:03}");
         s.create_product(&sku, &sku, price(100), None, None, 100, None)
             .unwrap();
     }
@@ -572,7 +639,7 @@ fn custom_report_limit_clamped_to_max() {
 
     // Create 150 products
     for i in 0..150 {
-        let sku = format!("PROD{:03}", i);
+        let sku = format!("PROD{i:03}");
         s.create_product(&sku, &sku, price(100), None, None, 100, None)
             .unwrap();
     }
@@ -602,4 +669,166 @@ fn csv_cell_escaping() {
     assert_eq!(csv_cell("hello"), "hello");
     assert_eq!(csv_cell("hello, world"), "\"hello, world\"");
     assert_eq!(csv_cell("say \"hi\""), "\"say \"\"hi\"\"\"");
+}
+
+/// The end-date bound must not drop the END DATE'S OWN rows.
+///
+/// The bound is a TEXT comparison against `sales.created_at`, which defaults to
+/// `strftime('%Y-%m-%dT%H:%M:%fZ', 'now')` — a `T` at index 10. The bound used to
+/// be `"{date} 23:59:59"`, whose index 10 is a SPACE, and `' '` (0x20) sorts
+/// below `'T'` (0x54): every row stamped on the end date compared GREATER than
+/// the bound and was silently dropped. A one-day custom report therefore came
+/// back empty while the row plainly existed — the worst shape of false negative
+/// in a report, because nothing errors and the totals just read zero.
+///
+/// The raw-SQL control is the point of the second assertion: it runs the exact
+/// old predicate and shows zero, so the test distinguishes the fixed code from
+/// the comparison that was actually wrong rather than from a broken fixture.
+#[test]
+fn a_custom_report_includes_rows_from_its_own_end_date() {
+    let conn = migrations::fresh_db();
+    let s = Store::new(&conn);
+    seed_sale(&conn, "sku-1", 1, 1000);
+    conn.execute(
+        "UPDATE sales SET created_at = '2026-06-15T10:00:00.000Z'",
+        [],
+    )
+    .unwrap();
+
+    let req = |start: Option<&str>, end: Option<&str>| CustomReportRequest {
+        dataset: "sales".into(),
+        columns: vec!["id".into()],
+        start_date: start.map(str::to_string),
+        end_date: end.map(str::to_string),
+        limit: None,
+        offset: None,
+    };
+
+    // The regression: the end date IS the row's own day.
+    let same_day = s
+        .build_custom_report(req(Some("2026-06-15"), Some("2026-06-15")))
+        .unwrap();
+    assert_eq!(
+        same_day.rows.len(),
+        1,
+        "a report ending on the row's own day must include it"
+    );
+
+    // A wider window still includes it, and a window AFTER the day still excludes it.
+    let month = s
+        .build_custom_report(req(Some("2026-06-01"), Some("2026-06-30")))
+        .unwrap();
+    assert_eq!(month.rows.len(), 1);
+
+    // The exclusive bound must not over-include: a row at midnight of the day
+    // AFTER the end date belongs to that next day, not to this range.
+    conn.execute(
+        "UPDATE sales SET created_at = '2026-06-16T00:00:00.000Z'",
+        [],
+    )
+    .unwrap();
+    let still_same_day = s
+        .build_custom_report(req(Some("2026-06-15"), Some("2026-06-15")))
+        .unwrap();
+    assert_eq!(
+        still_same_day.rows.len(),
+        0,
+        "the next day's midnight is outside a range ending 2026-06-15"
+    );
+    // Restore the stamp for the control below.
+    conn.execute(
+        "UPDATE sales SET created_at = '2026-06-15T10:00:00.000Z'",
+        [],
+    )
+    .unwrap();
+    let later = s
+        .build_custom_report(req(Some("2026-07-01"), Some("2026-07-31")))
+        .unwrap();
+    assert_eq!(later.rows.len(), 0, "a later window must not match");
+
+    // The old bound, verbatim, is what dropped the row — so this pins the
+    // MECHANISM and not merely the outcome.
+    let old_bound: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM sales
+              WHERE created_at >= '2026-06-15' AND created_at <= '2026-06-15 23:59:59'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        old_bound, 0,
+        "the space-separated bound is what excluded the row"
+    );
+}
+
+/// The export range is in STORE-LOCAL days, and agrees with the report screens.
+///
+/// REP-03: every date-bucketed report resolves the store's timezone and buckets
+/// on the LOCAL calendar day. This filter used to compare the raw UTC column
+/// against the operator's date, so an `Asia/Jakarta` (UTC+7) store disagreed
+/// with its own report screens about which day a late-evening sale belongs to:
+/// a sale at `2026-07-31T20:00:00.000Z` is 1 August locally, the reports path
+/// said August, and this filter said July.
+///
+/// The fix adopts the reports idiom — `DATE(col, tz) BETWEEN start AND end` — so
+/// the test asserts BOTH halves: the local day is right, and the two surfaces
+/// give the same answer. The second half matters on its own, because a future
+/// change could fix this filter into a third idiom that is locally correct and
+/// still inconsistent with the reports a user reads beside it.
+#[test]
+fn a_custom_report_filters_in_store_local_days() {
+    let conn = migrations::fresh_db();
+    migrations::seed_provisioned_baseline(&conn);
+    let s = Store::new(&conn);
+    // Configure a non-UTC store the way the setup wizard does.
+    conn.execute(
+        "UPDATE locations SET timezone = 'Asia/Jakarta' WHERE is_primary = 1",
+        [],
+    )
+    .unwrap();
+    assert_eq!(s.tz_modifier(), "+07:00", "the fixture store is UTC+7");
+
+    seed_sale(&conn, "sku-tz", 1, 1000);
+    // 20:00Z is 03:00 on 1 August in WIB, so the LOCAL day is 1 August.
+    conn.execute(
+        "UPDATE sales SET created_at = '2026-07-31T20:00:00.000Z'",
+        [],
+    )
+    .unwrap();
+
+    let req = |start: &str, end: &str| CustomReportRequest {
+        dataset: "sales".into(),
+        columns: vec!["id".into()],
+        start_date: Some(start.into()),
+        end_date: Some(end.into()),
+        limit: None,
+        offset: None,
+    };
+
+    let july = s
+        .build_custom_report(req("2026-07-01", "2026-07-31"))
+        .unwrap();
+    let august = s
+        .build_custom_report(req("2026-08-01", "2026-08-31"))
+        .unwrap();
+    assert_eq!(
+        (july.rows.len(), august.rows.len()),
+        (0, 1),
+        "the sale belongs to the LOCAL August, not to UTC July"
+    );
+
+    // And the report screens answer the same way for the same store and day.
+    assert_eq!(
+        (
+            s.payment_method_breakdown("2026-07-01", "2026-07-31")
+                .unwrap()
+                .len(),
+            s.payment_method_breakdown("2026-08-01", "2026-08-31")
+                .unwrap()
+                .len(),
+        ),
+        (0, 1),
+        "the export filter and the report screens must not disagree"
+    );
 }

@@ -71,6 +71,142 @@ fn adjust_stock(s: &Store<'_>, conn: &Connection, sku: &str, delta: i64) -> Resu
     Ok(result)
 }
 
+// ── MSL-45: a blank barcode must not occupy the UNIQUE slot ─────
+
+/// A whitespace barcode is stored verbatim, reported as absent, and then
+/// blocks every later blank barcode with a misleading conflict.
+///
+/// `create_product` binds the caller's raw string and applies
+/// `Barcode::new(..).ok()` only when building the returned struct, so:
+///
+/// ```text
+/// PROBE returned barcode = None            <- the API says "no barcode"
+/// PROBE stored   barcode = Some("   ")     <- the column holds whitespace
+/// PROBE second product   = Err(Conflict { field: "sku or barcode" })
+/// ```
+///
+/// `Barcode::new` rejects only empty/whitespace, so whitespace is the one
+/// trigger — and it is reachable: the products screen binds the raw field
+/// (its variant-management view) and passes `form.barcode || null`,
+/// where `"   "` is truthy and travels as a non-null value. The bridge does
+/// not validate the barcode on the write path either (it trims only for
+/// lookup, `products.rs:372`).
+///
+/// Two consequences, the second worse than the first: the value is invisible
+/// through the type system, AND because `uq_products_barcode` is UNIQUE it
+/// consumes the one slot — so the next product the operator saves with a
+/// blank barcode is refused with `Conflict { field: "sku or barcode" }` even
+/// though its SKU is unique. That is a user-facing dead end with an error
+/// that blames the wrong field.
+#[test]
+fn a_whitespace_barcode_is_stored_as_null_not_verbatim() {
+    let conn = fresh();
+    let s = store(&conn);
+
+    let a = s
+        .create_product("SKU-A", "A", price(100), None, Some("   "), 0, None)
+        .unwrap();
+    assert!(a.barcode.is_none(), "the API reports no barcode");
+
+    let raw: Option<String> = conn
+        .query_row(
+            "SELECT barcode FROM products WHERE sku = 'SKU-A'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        raw, None,
+        "a whitespace barcode must be stored as NULL, not occupy the unique slot"
+    );
+
+    // The symptom the operator sees: a second blank-barcode product must save.
+    let b = s.create_product("SKU-B", "B", price(100), None, Some("   "), 0, None);
+    assert!(
+        b.is_ok(),
+        "a second product with a blank barcode must save, not collide on a hidden value: {:?}",
+        b.err()
+    );
+}
+
+/// MSL-45 fixed the WRITE path; it did not migrate existing rows, and the
+/// migration that later rebuilt this table copies `barcode` verbatim into a
+/// bare `TEXT` column with no CHECK
+/// (`20260831_per_tenant_unique_rebuild.sql:167`). A database written before
+/// MSL-45 can therefore still hold a whitespace-only barcode — precisely the
+/// value the old path bound raw while every API surface reported `None`.
+///
+/// This pins the behaviour on that legacy data, which is the residue COR-14's
+/// warning exists for: the read path must report absence (never invent a
+/// barcode from unusable bytes) and must leave the stored value alone so a
+/// later repair can find it.
+#[test]
+fn a_legacy_whitespace_barcode_row_reads_as_absent() {
+    let conn = fresh();
+    let s = store(&conn);
+    s.create_product("SKU-LEGACY", "Legacy", price(100), None, None, 0, None)
+        .unwrap();
+
+    // Reproduce a row written by the pre-MSL-45 code path.
+    conn.execute(
+        "UPDATE products SET barcode = '   ' WHERE sku = 'SKU-LEGACY'",
+        [],
+    )
+    .unwrap();
+
+    let read = s.get_product("SKU-LEGACY").unwrap().unwrap();
+    assert!(
+        read.product.barcode.is_none(),
+        "an unrepresentable stored barcode must read as absent, not as garbage"
+    );
+
+    // The read must not have repaired or cleared the column behind our back.
+    let still: Option<String> = conn
+        .query_row(
+            "SELECT barcode FROM products WHERE sku = 'SKU-LEGACY'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        still.as_deref(),
+        Some("   "),
+        "reading a value we cannot represent must not mutate it"
+    );
+}
+
+/// A real barcode still round-trips, trimmed — the property the fix must keep.
+#[test]
+fn a_real_barcode_is_still_stored_and_lookupable() {
+    let conn = fresh();
+    let s = store(&conn);
+    s.create_product(
+        "SKU-C",
+        "C",
+        price(100),
+        None,
+        Some(" 5901234123457 "),
+        0,
+        None,
+    )
+    .unwrap();
+
+    let raw: Option<String> = conn
+        .query_row(
+            "SELECT barcode FROM products WHERE sku = 'SKU-C'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(raw.as_deref(), Some("5901234123457"), "trimmed, not raw");
+    assert!(
+        s.lookup_product_with_details_by_barcode("5901234123457")
+            .unwrap()
+            .is_some(),
+        "and the lookup the scanner uses still finds it"
+    );
+}
+
 fn usd() -> Currency {
     "USD".parse().unwrap()
 }
@@ -179,7 +315,7 @@ fn create_product_with_all_fields() {
         .unwrap();
     assert_eq!(p.category_id.as_deref(), Some("cat-drinks"));
     assert_eq!(
-        p.barcode.as_ref().map(|b| b.as_str()),
+        p.barcode.as_ref().map(foundation::Barcode::as_str),
         Some("1234567890123")
     );
     let qty = store(&conn).get_stock(&p.id).unwrap();
@@ -298,6 +434,48 @@ fn update_product_negative_price() {
         .update_product("DRINK-001", "X", price(-1), None, None, None, Some(1))
         .unwrap_err();
     assert!(matches!(err, CoreError::Validation { field, .. } if field == "price"));
+}
+/// COR-12: the 255-char ceiling must hold on BOTH doors.
+///
+/// `create_product_with_attributes` always refused a long name;
+/// `update_product` only refused an empty one, so an over-long name could enter
+/// by an edit that the create path would have rejected. The column is plain
+/// TEXT with no CHECK, so the guard is the whole rule rather than a backstop —
+/// which is why this asserts the two doors agree instead of only asserting one
+/// refusal. Every sibling module already applies its limit on both doors
+/// (customers, suppliers, staff, promotions); products was the outlier.
+#[test]
+fn update_product_refuses_the_name_length_the_create_path_already_did() {
+    let conn = fresh();
+    seed_everything(&conn);
+    let s = store(&conn);
+    let long = "x".repeat(256);
+
+    // The create door refuses it (pre-existing behaviour, pinned here so the
+    // two assertions cannot drift apart).
+    let create_err = s
+        .create_product("SKU-LONG", &long, price(1), None, None, 0, None)
+        .unwrap_err();
+    assert!(
+        matches!(create_err, CoreError::Validation { field, .. } if field == "name"),
+        "create must refuse the over-long name: {create_err:?}"
+    );
+
+    // And so does the update door, which is the COR-12 half.
+    let update_err = s
+        .update_product("DRINK-001", &long, price(1), None, None, None, Some(1))
+        .unwrap_err();
+    assert!(
+        matches!(update_err, CoreError::Validation { field, .. } if field == "name"),
+        "update must refuse the same name the create path refuses: {update_err:?}"
+    );
+
+    // Exactly 255 is still allowed — the ceiling is >255, not >=255, matching
+    // the create path and every sibling. A guard that refused the boundary
+    // would be a different rule than the one being restored.
+    let boundary = "y".repeat(255);
+    s.update_product("DRINK-001", &boundary, price(1), None, None, None, Some(1))
+        .expect("255 characters is exactly at the ceiling and must be accepted");
 }
 
 #[test]
@@ -654,10 +832,161 @@ fn create_and_list_product_variants() {
     // Verify price and barcode on first variant.
     assert_eq!(variants[0].price.unwrap().minor_units, 800);
     assert_eq!(
-        variants[0].barcode.as_ref().map(|b| b.as_str()),
+        variants[0]
+            .barcode
+            .as_ref()
+            .map(foundation::Barcode::as_str),
         Some("sm-barcode")
     );
     assert!(variants[0].is_active);
+}
+
+/// COR-14: a stored variant barcode that this build cannot represent must not
+/// vanish without trace.
+///
+/// `product_variants.barcode` is unconstrained `TEXT` — only the Rust write
+/// paths validate, and those store a `Barcode`'s trimmed string, so an empty
+/// value can only arrive through an import, a sync payload, or the
+/// per-tenant-uniqueness migration that copies rows. `Barcode::new` rejects
+/// exactly that input, and the mapper's `.ok()` turned the rejection into a
+/// silent `None` — the caller sees "no barcode" and cannot tell it apart from a
+/// genuinely absent one, while the unusable value stays in the column.
+///
+/// The contract is unchanged (`None` for an unrepresentable value, so no caller
+/// breaks); what is added is a `warn!` naming the SKU. This test pins the
+/// contract half, since a log line is not directly assertable here.
+#[test]
+fn an_unrepresentable_stored_barcode_still_reads_as_none() {
+    let conn = fresh();
+    seed_product_variant_parent(&conn);
+    let s = store(&conn);
+
+    let v = ProductVariant {
+        id: uuid::Uuid::now_v7().to_string(),
+        parent_sku: "PARENT-001".into(),
+        name: "Empty barcode".into(),
+        sku: "PARENT-001-NOBAR".into(),
+        price: Some(price(800)),
+        barcode: None,
+        sort_order: 1,
+        is_active: true,
+        created_at: "2025-01-01T00:00:00.000Z".into(),
+        updated_at: "2025-01-01T00:00:00.000Z".into(),
+    };
+    s.create_product_variant(&v).unwrap();
+
+    // Simulate a writer that bypassed validation (import / migration / sync).
+    conn.execute(
+        "UPDATE product_variants SET barcode = '   ' WHERE sku = ?1",
+        ["PARENT-001-NOBAR"],
+    )
+    .unwrap();
+
+    let read = s
+        .list_product_variants("PARENT-001")
+        .unwrap()
+        .into_iter()
+        .find(|x| x.sku == "PARENT-001-NOBAR")
+        .expect("the variant must still be listed");
+    assert!(
+        read.barcode.is_none(),
+        "an unrepresentable stored value reads as None, not as garbage"
+    );
+    // The value is still in the column — reading must not have destroyed it.
+    let still_stored: Option<String> = conn
+        .query_row(
+            "SELECT barcode FROM product_variants WHERE sku = ?1",
+            ["PARENT-001-NOBAR"],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        still_stored.as_deref(),
+        Some("   "),
+        "a read must never mutate the stored value it cannot represent"
+    );
+}
+
+/// The currency column has the same shape and the same fix (COR-14, second arm):
+/// a malformed code yields `None` on the price, never a fabricated zero.
+///
+/// The threshold is the SHAPE, not ISO-4217 membership: `Currency::from_str`
+/// accepts any three ASCII letters (`foundation/src/money.rs:119-123`), so
+/// `"ZZZ"` is a *valid* `Currency` and this test would be wrong to reject it —
+/// my first draft did exactly that and failed against correct code. Only a
+/// wrong length or a non-alphabetic byte is rejected. Recorded because the
+/// distinction matters: an unknown-but-well-formed code is representable and is
+/// deliberately preserved, not dropped.
+#[test]
+fn a_malformed_stored_currency_reads_as_no_price() {
+    let conn = fresh();
+    seed_product_variant_parent(&conn);
+    let s = store(&conn);
+
+    let v = ProductVariant {
+        id: uuid::Uuid::now_v7().to_string(),
+        parent_sku: "PARENT-001".into(),
+        name: "Odd currency".into(),
+        sku: "PARENT-001-ODD".into(),
+        price: Some(price(800)),
+        barcode: None,
+        sort_order: 1,
+        is_active: true,
+        created_at: "2025-01-01T00:00:00.000Z".into(),
+        updated_at: "2025-01-01T00:00:00.000Z".into(),
+    };
+    s.create_product_variant(&v).unwrap();
+    // Wrong shape: not three letters. (`'ZZZ'` would be accepted — see above.)
+    conn.execute(
+        "UPDATE product_variants SET currency = 'ZZ' WHERE sku = ?1",
+        ["PARENT-001-ODD"],
+    )
+    .unwrap();
+
+    let read = s
+        .list_product_variants("PARENT-001")
+        .unwrap()
+        .into_iter()
+        .find(|x| x.sku == "PARENT-001-ODD")
+        .expect("the variant must still be listed");
+    assert!(
+        read.price.is_none(),
+        "an unknown currency must yield no price, never a price in a wrong currency"
+    );
+}
+/// MSL-48 sibling: `product_variants.parent_sku` is the SAME FK shape
+/// (`REFERENCES products(sku)`), written from an untyped `String`, and reachable
+/// from the variant editor where the parent SKU is free text. A mistyped parent
+/// must name the product that is missing, not surface a bare FK failure.
+#[test]
+fn a_variant_naming_a_missing_parent_is_a_typed_error() {
+    let conn = fresh();
+    seed_product_variant_parent(&conn);
+    let s = store(&conn);
+
+    let v = ProductVariant {
+        id: uuid::Uuid::now_v7().to_string(),
+        parent_sku: "NO-SUCH-PARENT".into(),
+        name: "Small".into(),
+        sku: "NO-SUCH-PARENT-SMALL".into(),
+        price: Some(price(800)),
+        barcode: None,
+        sort_order: 1,
+        is_active: true,
+        created_at: "2025-01-01T00:00:00.000Z".into(),
+        updated_at: "2025-01-01T00:00:00.000Z".into(),
+    };
+
+    let err = s
+        .create_product_variant(&v)
+        .expect_err("a missing parent product must be refused");
+    match err {
+        CoreError::NotFound { entity, id } => {
+            assert_eq!(entity, "product", "the missing thing is a product");
+            assert_eq!(id, "NO-SUCH-PARENT", "and it names the SKU to fix");
+        }
+        other => panic!("expected NotFound naming the parent SKU, got {other:?}"),
+    }
 }
 
 #[test]
@@ -1327,6 +1656,78 @@ fn archive_movements_respects_max_groups() {
     let count2 = s.archive_stock_movements(30, 50).unwrap();
     assert_eq!(count2, 1, "second group archived");
 }
+/// The archive comparisons see stamps in the COLUMN's shape, not the cutoff's old
+/// one.
+///
+/// `stock_movements.created_at` defaults to
+/// `strftime('%Y-%m-%dT%H:%M:%fZ', 'now')` — 24 characters, `…:00.000Z` — and all
+/// three archive comparisons are lexical (`created_at < ?`). The cutoff used to be
+/// built with `SecondsFormat::Secs`, which renders `…:00Z`: 20 characters, no
+/// fractional part. At index 19 the cutoff then has `Z` (0x5A) where any stored row
+/// has `.` (0x2E), and `'.'` sorts BELOW `'Z'` — so a row in the same whole second
+/// as the cutoff still satisfies `<` and is archived early. Measured before the fix:
+/// a row stamped from the column's own `strftime` was archived by a ZERO-day window.
+///
+/// Every other archive test seeds `'2020-01-01T00:00:00Z'` — the very shape the
+/// cutoff was wrongly using — so their fixtures and their bound agreed with each
+/// other while both disagreed with the schema. These fixtures come from the
+/// column's own expression instead, which is what makes them able to disagree.
+///
+/// WHAT THIS DOES NOT PIN, stated because the neighbouring pass (MSL-55) mistook a
+/// wide-window test for a boundary test: the same-second case cannot be expressed
+/// deterministically through a whole-DAY parameter — the fixture and the cutoff both
+/// read the wall clock — so this asserts the shape of the fixtures and the stable
+/// day-scale behaviour, not the sub-second tie-break. The tie-break is verified by
+/// the type change and by measurement, not by an assertion here.
+#[test]
+fn archive_movements_compares_stamps_in_the_column_shape() {
+    let conn = fresh();
+    seed_everything(&conn);
+    let s = store(&conn);
+
+    // Fixtures in the COLUMN's shape, from the column's own expression.
+    let stamp = |offset_days: i64| -> String {
+        conn.query_row(
+            &format!("SELECT strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-{offset_days} days')"),
+            [],
+            |r| r.get(0),
+        )
+        .unwrap()
+    };
+    let old = stamp(90);
+    let recent = stamp(0);
+    assert_eq!(old.len(), 24, "fixture is in the column shape: {old}");
+    assert_eq!(recent.len(), 24, "fixture is in the column shape: {recent}");
+
+    for (id, when) in [("sm-old", &old), ("sm-new", &recent)] {
+        conn.execute(
+            "INSERT INTO stock_movements (id, item_id, delta, reason, store_id, created_at)
+             VALUES (?1, 'prod-1', 7, 'restock', '', ?2)",
+            rusqlite::params![id, when],
+        )
+        .unwrap();
+    }
+
+    // A 30-day window: the 90-day row goes, the one from this second does not.
+    let count = s.archive_stock_movements(30, 50).unwrap();
+    assert_eq!(count, 1, "the one item group with an old row is archived");
+
+    let remaining: Vec<String> = conn
+        .prepare("SELECT id FROM stock_movements ORDER BY id")
+        .unwrap()
+        .query_map([], |r| r.get(0))
+        .unwrap()
+        .collect::<Result<_, _>>()
+        .unwrap();
+    assert!(
+        remaining.contains(&"sm-new".to_string()),
+        "the row from this second survives: {remaining:?}"
+    );
+    assert!(
+        !remaining.contains(&"sm-old".to_string()),
+        "the 90-day-old row is gone: {remaining:?}"
+    );
+}
 
 #[test]
 fn archive_movements_does_not_archive_rollup_rows() {
@@ -1778,6 +2179,75 @@ fn threshold_triggers_alert_on_deduction_below_threshold() {
 }
 
 #[test]
+fn a_failing_threshold_check_does_not_block_the_stock_adjustment() {
+    let conn = fresh();
+    seed_everything(&conn);
+    let s = store(&conn);
+    let loc = crate::inventory::LocationId::from(crate::inventory::CANONICAL_DEFAULT_LOCATION_UUID);
+
+    let prod_id = s.product_id_by_sku("FOOD-001").unwrap().unwrap();
+    let tid = seed_with_threshold(
+        &conn,
+        &prod_id,
+        crate::inventory::CANONICAL_DEFAULT_LOCATION_UUID,
+        10,
+    );
+
+    // Force the threshold check to FAIL: a trigger aborting every insert into the
+    // alert table. This is the exact situation the non-fatal arm exists for, and it
+    // must not roll back the adjustment the caller asked for.
+    conn.execute_batch(
+        "CREATE TRIGGER test_block_alert_insert BEFORE INSERT ON stock_alert_events
+         BEGIN SELECT RAISE(ABORT, 'alert insert blocked for test'); END;",
+    )
+    .unwrap();
+
+    // Read the CANONICAL per-location surface, not `get_stock` (which reads the
+    // legacy cross-location aggregate and is 0 until the first aggregate write).
+    let qty_at = |conn: &rusqlite::Connection| -> i64 {
+        conn.query_row(
+            "SELECT qty FROM stock_summary WHERE item_id = ?1 AND location_id = ?2",
+            rusqlite::params![prod_id, crate::inventory::CANONICAL_DEFAULT_LOCATION_UUID],
+            |r| r.get(0),
+        )
+        .unwrap()
+    };
+    let before = qty_at(&conn);
+
+    let tx = conn.unchecked_transaction().unwrap();
+    let result = s.adjust_stock_at_location_with_reason(
+        &tx,
+        "FOOD-001",
+        -3,
+        &loc,
+        Some("sale"),
+        None,
+        None,
+        None,
+    );
+    assert!(
+        result.is_ok(),
+        "a failed threshold check must not fail the adjustment: {result:?}"
+    );
+    tx.commit().unwrap();
+
+    // The adjustment landed: the canonical per-location qty moved by the delta.
+    assert_eq!(
+        qty_at(&conn),
+        before - 3,
+        "the adjustment itself must be applied despite the alert failure"
+    );
+
+    // And no alert row exists -- which is exactly why the failure must be LOGGED
+    // rather than dropped: the low-stock list is now missing an entry.
+    assert_eq!(
+        count_active_alerts(&conn, &tid),
+        0,
+        "the blocked insert wrote nothing, the case MSL-26 now logs"
+    );
+}
+
+#[test]
 fn threshold_no_alert_when_above_threshold() {
     let conn = fresh();
     seed_everything(&conn);
@@ -2143,15 +2613,12 @@ fn seed_allow_negative_terminal(conn: &rusqlite::Connection) -> String {
     conn.execute_batch(&format!(
         "INSERT OR IGNORE INTO locations (id, name) VALUES ('store-neg', 'Neg Store');
          INSERT OR IGNORE INTO workspace_instances (id, type_key, location_id, name) \
-           VALUES ('{ws}', (SELECT key FROM workspace_types LIMIT 1), 'store-neg', 'NegTest');
+           VALUES ('{ws_inst_id}', (SELECT key FROM workspace_types LIMIT 1), 'store-neg', 'NegTest');
          INSERT OR IGNORE INTO workspace_inventory_locations \
            (id, instance_id, location_id, is_primary, allow_negative_stock, sort_order) \
-           VALUES ('wsl-{ws}', '{ws}', '{loc}', 1, 1, 0);
+           VALUES ('wsl-{ws_inst_id}', '{ws_inst_id}', '{loc}', 1, 1, 0);
          INSERT OR IGNORE INTO terminals (id, name, device_id, workspace_instance_id, created_at, updated_at) \
-           VALUES ('{term}', 'NegTerm', '{term}-dev', '{ws}', '{now}', '{now}');",
-        ws = ws_inst_id,
-        term = term_id,
-        loc = loc
+           VALUES ('{term_id}', 'NegTerm', '{term_id}-dev', '{ws_inst_id}', '{now}', '{now}');"
     ))
     .unwrap();
     term_id
@@ -2186,8 +2653,7 @@ fn negative_stock_event_fires_when_allow_negative_enabled() {
     // The deduction should succeed (allow_negative_stock = true).
     assert!(
         result.is_ok(),
-        "deduction should succeed with allow_negative_stock=true: {:?}",
-        result
+        "deduction should succeed with allow_negative_stock=true: {result:?}"
     );
     assert_eq!(result.unwrap(), -3, "stock should go to -3");
     tx.commit().unwrap();
@@ -2582,5 +3048,44 @@ fn update_product_variant_joins_a_caller_transaction() {
     assert_eq!(
         name, "Original",
         "a rolled-back caller must not keep the update"
+    );
+}
+
+// -- a details row that cannot be read must not map to a plausible default --
+
+/// `row_to_product_with_details` read `popularity_score` through `.unwrap_or(0.0)`.
+/// The column is `REAL NOT NULL DEFAULT 0`, so the default comes from the SCHEMA
+/// and the `unwrap_or` could only ever fire on a real read error -- a missing
+/// column, a type mismatch, a corrupt page -- replacing it with a plausible `0.0`.
+/// Every product listing and search goes through this mapper, so a bad read
+/// would have demoted the whole catalogue's popularity ordering to a tie, with
+/// no error anyone could act on.
+///
+/// The pin projects a row supplying the columns read with `?` and omitting
+/// `popularity_score`, so the only thing that can fail is the swallowed read.
+#[test]
+fn a_details_row_that_cannot_be_read_does_not_default_its_popularity_score() {
+    let conn = fresh();
+    let mut stmt = conn
+        .prepare(
+            "SELECT 'prod-x' AS id, 'SKU-X' AS sku, 'X' AS name, 100 AS price_minor, \
+                    'USD' AS currency, '2026-01-01' AS created_at, \
+                    '2026-01-01' AS updated_at, \
+                    '2026-01-01' AS price_updated_at, 'retail' AS product_type, \
+                    NULL AS category_id, NULL AS barcode, NULL AS brand, \
+                    NULL AS rack_location, NULL AS notes, NULL AS unit, \
+                    NULL AS default_supplier_id, NULL AS image_hash, \
+                    0 AS cost_minor, 1 AS version, 0 AS track_serial, \
+                    1 AS is_active, \
+                    'Drinks' AS category_name, 5 AS stock_qty",
+        )
+        .unwrap();
+    let mut rows = stmt.query([]).unwrap();
+    let row = rows.next().unwrap().unwrap();
+    let err = row_to_product_with_details(row)
+        .expect_err("a missing popularity_score must not default to 0.0");
+    assert!(
+        matches!(err, rusqlite::Error::InvalidColumnName(_)),
+        "expected the missing column to be named, got {err:?}"
     );
 }

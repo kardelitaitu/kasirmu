@@ -2,13 +2,17 @@
 last audited 25-07-26 by RSA-Agent (kasirmu-core slice B1: migrations)
 crate: kasirmu-core | status: SAFE | lint: CLEAN
 findings: forward-only contract documented; registry<->filesystem parity test pins completeness; test fresh_db snapshots via backup API with justified unwraps (test-harness scope); note: "// SAFETY:" comments here annotate safe code — recurring mislabel pattern (COR-6, with PAY-10)
-next: reword COR-6 comments | perf: N/A
+next: none | perf: N/A
+COR-6 FIXED 2026-10-04 — the six `// SAFETY:` comments in the snapshot/parity test
+helpers annotate `.unwrap()` on safe calls (in-memory SQLite opens, a Mutex
+lock, a backup copy), not unsafe blocks, so they are now `// `.unwrap()`
+reason:` comments; `grep SAFETY` in this file finds only real unsafe.
 */
-//! Migration definitions for OZ-POS.
+//! Migration definitions for kasir.mu.
 //!
 //! Migrations are `.sql` files under `crates/kasirmu-core/migrations/`. They are
 //! embedded at compile time via [`include_str!`] and run in the
-//! compile-time array order of [`ALL`](crate::migrations::ALL) on first startup by the generic
+//! compile-time array order of `ALL` (crate::migrations::ALL) on first startup by the generic
 //! runner in `platform-core`. The array order is canonical — not
 //! lexicographic filename order — and the registry↔filesystem parity test
 //! `migration_registry_matches_filesystem` ensures every `.sql` file has
@@ -416,6 +420,30 @@ pub const ALL: &[Migration] = &[
         id: "20261012_stock_summary_qty_nonnegative.sql",
         sql: include_str!("../migrations/20261012_stock_summary_qty_nonnegative.sql"),
     },
+    // KDS pairing tokens become single-use. Appended at the registry tail so
+    // no earlier migration reorders.
+    Migration {
+        id: "20261013_kds_pairing_consumption.sql",
+        sql: include_str!("../migrations/20261013_kds_pairing_consumption.sql"),
+    },
+    // ...and then removed entirely: nothing verified them. See the migration.
+    Migration {
+        id: "20261014_kds_drop_pairing_tokens.sql",
+        sql: include_str!("../migrations/20261014_kds_drop_pairing_tokens.sql"),
+    },
+    // Same shape as the drop above: a secret nothing could verify. See the migration.
+    Migration {
+        id: "20261015_gift_cards_drop_pin.sql",
+        sql: include_str!("../migrations/20261015_gift_cards_drop_pin.sql"),
+    },
+    // Cross-database FK removal on shifts: under multi-store isolation (ADR #4 /
+    // #7 / #35), users and terminals live in the global identity DB (kasir.db)
+    // while shifts lives in store-scoped databases. The FK constraints to empty
+    // store-db tables caused SQLite foreign key violations on shift creation.
+    Migration {
+        id: "20261016_shifts_drop_cross_db_fks.sql",
+        sql: include_str!("../migrations/20261016_shifts_drop_cross_db_fks.sql"),
+    },
 ];
 
 /// Postgres DDL for the full schema, parallel to the SQLite `init.sql`.
@@ -495,6 +523,24 @@ pub fn seed_provisioned_baseline(conn: &rusqlite::Connection) {
 /// snapshot via SQLite's page-level [`rusqlite::backup::Backup`] API —
 /// orders of magnitude faster than re-running `execute_batch` per test.
 ///
+/// The snapshot is behind a `Mutex` and that is load-bearing, not an
+/// oversight. `rusqlite::Connection` is `Send` but deliberately not `Sync`,
+/// and `Backup::new` takes a `RefCell` borrow on its source
+/// (`from.db.borrow_mut()`, rusqlite 0.31 `backup.rs:213`), so two threads
+/// handing out clones through one shared `&Connection` would race that
+/// `RefCell`. **An `RwLock` is not an optimisation here, it is a data race.**
+///
+/// Measured 2026-09-28, recorded so this is not "optimised" again on a
+/// guess: the 68-migration chain costs ~305 ms to apply and one clone costs
+/// ~3 ms of a 2 024 KiB snapshot, but 384 clones spread over N threads get
+/// *slower* past two threads — 1.15 s at 1 thread, 0.76 s at 2, 2.18 s at 8,
+/// 3.75 s at 32. Replacing this `Mutex` with a per-thread source did not
+/// lift that ceiling; it measured ~15% worse at 4+ threads. Whatever caps
+/// parallel DB construction sits below this function — most likely SQLite's
+/// global allocation mutex — so this lock is not what is holding the suite
+/// up, and swapping the 66-odd surviving `run` call sites over to
+/// `fresh_db()` needs no prerequisite work here.
+///
 /// The returned connection carries the same per-connection PRAGMAs
 /// [`run`] applies (see there for why each exists), except
 /// `journal_mode = WAL`: an in-memory database cannot use WAL — SQLite
@@ -542,18 +588,18 @@ pub fn fresh_db() -> rusqlite::Connection {
             })
         }
 
-        let conn = rusqlite::Connection::open_in_memory().unwrap(); // SAFETY: in-memory test DB open cannot fail; failure is a harness programming error (see fresh_db # Panics)
-        conn.execute_batch(cached_sql()).unwrap(); // SAFETY: SQL is compile-time embedded from `ALL`; syntax errors fail the test suite, not a live process
+        let conn = rusqlite::Connection::open_in_memory().unwrap(); // INVARIANT: in-memory test DB open cannot fail; failure is a harness programming error (see fresh_db # Panics)
+        conn.execute_batch(cached_sql()).unwrap(); // INVARIANT: SQL is compile-time embedded from `ALL`; syntax errors fail the test suite, not a live process
         Mutex::new(conn)
     });
 
-    let mut fresh = rusqlite::Connection::open_in_memory().unwrap(); // SAFETY: in-memory test DB open cannot fail (fresh_db # Panics)
+    let mut fresh = rusqlite::Connection::open_in_memory().unwrap(); // INVARIANT: in-memory test DB open cannot fail (fresh_db # Panics)
     {
-        let snapshot = SNAPSHOT.lock().unwrap(); // SAFETY: lock is only poisoned if the snapshot init closure panicked, which is a test harness bug
-        let backup = rusqlite::backup::Backup::new(&snapshot, &mut fresh).unwrap(); // SAFETY: both connections are valid in-memory SQLite handles; Backup::new cannot fail
+        let snapshot = SNAPSHOT.lock().unwrap(); // INVARIANT: lock is only poisoned if the snapshot init closure panicked, which is a test harness bug
+        let backup = rusqlite::backup::Backup::new(&snapshot, &mut fresh).unwrap(); // INVARIANT: both connections are valid in-memory SQLite handles; Backup::new cannot fail
         backup
             .run_to_completion(100, std::time::Duration::from_millis(0), None)
-            .unwrap(); // SAFETY: page copy between two in-memory DBs cannot fail at runtime
+            .unwrap(); // INVARIANT: page copy between two in-memory DBs cannot fail at runtime
     } // drop Backup (releases &mut fresh borrow), then drop MutexGuard
 
     // Mirror the per-connection PRAGMAs `run` applies. WAL is impossible

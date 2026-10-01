@@ -228,8 +228,7 @@ fn plugin_with_legit_scripts_still_loads() {
         let canonical_dir = std::fs::canonicalize(dir.path().join("good")).unwrap();
         assert!(
             script.starts_with(&canonical_dir),
-            "script {:?} must stay inside the plugin dir",
-            script
+            "script {script:?} must stay inside the plugin dir"
         );
     }
 }
@@ -242,4 +241,87 @@ fn plugin_with_missing_script_is_still_tolerated() {
     let registry = load_plugins(dir.path()).unwrap();
     assert_eq!(registry.len(), 1);
     assert!(registry.plugins[0].scripts.is_empty());
+}
+
+// ── C2: the fingerprint must cover the fields that decide behaviour ──
+
+/// The fingerprint's contract is to cover "every byte that determines
+/// behaviour" (see [`hash_plugin_set`]). `required_permissions` is such a byte:
+/// `PluginManager::new` builds each plugin's capability-gated `oz` table from
+/// exactly this list, so granting `cart:write` instead of `log:write` lets the
+/// plugin do something it could not do before — while the plugin id, version
+/// and every script byte stay identical.
+///
+/// This is the regression test for that gap. It is deliberately built from two
+/// real `load_plugins` runs over the same directory, so it exercises the
+/// shipping loader rather than a hand-built registry.
+#[test]
+fn fingerprint_covers_declared_permissions() {
+    let dir = tempfile::tempdir().unwrap();
+    let plugin_dir = dir.path().join("perm-plugin");
+    std::fs::create_dir(&plugin_dir).unwrap();
+    // Byte-identical script in both runs: the ONLY difference is the manifest's
+    // permission set.
+    std::fs::write(plugin_dir.join("main.lua"), "-- unchanged bytes").unwrap();
+    let manifest = |perms: &str| {
+        format!(
+            "[plugin]\nname = \"perm-plugin\"\nversion = \"1.0.0\"\n\n\
+             [capabilities]\nscripts = [\"main.lua\"]\n\n\
+             [permissions]\nrequired_permissions = [{perms}]\n"
+        )
+    };
+
+    std::fs::write(plugin_dir.join("plugin.toml"), manifest("\"log:write\"")).unwrap();
+    let narrow = hash_plugin_set(&load_plugins(dir.path()).unwrap());
+
+    std::fs::write(plugin_dir.join("plugin.toml"), manifest("\"cart:write\"")).unwrap();
+    let wide = hash_plugin_set(&load_plugins(dir.path()).unwrap());
+
+    assert_ne!(
+        narrow, wide,
+        "a permission change alters which `oz` bindings exist, so the fingerprint \
+         must change with it — otherwise a privilege escalation on disk reads as an \
+         unchanged plugin set"
+    );
+}
+
+/// The other half of the same contract: the permission fingerprint must not
+/// depend on declaration ORDER. `PluginManager::new` tests each permission with
+/// an independent `contains`, so `["cart:read", "cart:write"]` and
+/// `["cart:write", "cart:read"]` grant exactly the same bindings. Hashing the
+/// declared order would report a behaviour-identical reorder as a change —
+/// the same false-positive the id-sort at load time exists to prevent.
+#[test]
+fn fingerprint_is_stable_across_permission_order() {
+    let dir = tempfile::tempdir().unwrap();
+    let plugin_dir = dir.path().join("order-plugin");
+    std::fs::create_dir(&plugin_dir).unwrap();
+    std::fs::write(plugin_dir.join("main.lua"), "-- unchanged bytes").unwrap();
+    let manifest = |perms: &str| {
+        format!(
+            "[plugin]\nname = \"order-plugin\"\nversion = \"1.0.0\"\n\n\
+             [capabilities]\nscripts = [\"main.lua\"]\n\n\
+             [permissions]\nrequired_permissions = [{perms}]\n"
+        )
+    };
+
+    std::fs::write(
+        plugin_dir.join("plugin.toml"),
+        manifest("\"cart:read\", \"cart:write\""),
+    )
+    .unwrap();
+    let first = hash_plugin_set(&load_plugins(dir.path()).unwrap());
+
+    std::fs::write(
+        plugin_dir.join("plugin.toml"),
+        manifest("\"cart:write\", \"cart:read\""),
+    )
+    .unwrap();
+    let second = hash_plugin_set(&load_plugins(dir.path()).unwrap());
+
+    assert_eq!(
+        first, second,
+        "declaration order of required_permissions does not change the granted \
+         bindings, so it must not read as a changed plugin set"
+    );
 }

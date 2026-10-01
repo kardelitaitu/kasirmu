@@ -34,6 +34,12 @@ from pathlib import Path
 
 GETENV = re.compile(r'(?:Getenv|LookupEnv)\(\s*"([A-Z][A-Z0-9_]{3,})"\)')
 SHELLVAR = re.compile(r'\$\{?([A-Z][A-Z0-9_]{4,})')
+ENVRUST = re.compile(r'(?:env::var|env!)\(\s*"([A-Z][A-Z0-9_]{3,})"')
+# The repo's test convention (AGENTS.md 6.2) is a sibling `foo_tests.rs` beside `foo.rs`,
+# so the Go `_test.go` exclusion has a Rust twin. Skipping it matters: OZ_TEST_REDIS_URL is
+# read ONLY in redis_backend_tests.rs, and counting it would report an operator knob that
+# no operator can set.
+RUSTTEST = re.compile(r'_tests?\.rs$')
 PRAGMA = re.compile(r'env-doc:\s*ok\s*:', re.I)
 PREFIX = ('OZ_', 'PADDLE_', 'MIDTRANS_', 'LOGIN_', 'LICENSE_', 'OZPA_')
 DOC_GLOBS = ['apps/license-server/DEPLOY.md', 'docs/operations/go-live-checklist.md',
@@ -57,6 +63,19 @@ def code_names(r: Path):
             for m in GETENV.finditer(line):
                 if m.group(1).startswith(PREFIX):
                     out.setdefault(m.group(1), []).append('%s:%d' % (p.name, i))
+    # The Rust cloud server reads the same OZ_ namespace the Go server does, and
+    # .env.example documents both as 'the CURRENT unified runtime'. Scanning only the Go
+    # side made every Rust-only knob invisible here -- which is how MIDTRANS_QRIS_ACQUIRER,
+    # read in config.rs and carrying a production warning, reached this tree with no
+    # operator-facing description anywhere.
+    cs = r / 'apps' / 'cloud-server' / 'src'
+    if cs.is_dir():
+        for p in sorted(cs.rglob('*.rs')):
+            if is_rust_test(p):
+                continue
+            for i, line in enumerate(p.read_text(encoding='utf-8', errors='replace').splitlines(), 1):
+                for nm in parse_rs(line):
+                    out.setdefault(nm, []).append('%s:%d' % (p.relative_to(r).as_posix(), i))
     hc = r / 'apps' / 'unified' / 'healthcheck.sh'
     if hc.is_file():
         for i, line in enumerate(hc.read_text(encoding='utf-8', errors='replace').splitlines(), 1):
@@ -93,6 +112,26 @@ def parse_go(text):
                 out.append(m.group(1))
     return out
 
+def parse_rs(text):
+    """Rust `env::var`/`env!` reads. Mirrors parse_go/parse_sh so the self-test can
+    drive it with a string instead of the live cloud server."""
+    out = []
+    for line in text.splitlines():
+        if PRAGMA.search(line) or line.strip().startswith('//'):
+            continue
+        for m in ENVRUST.finditer(line):
+            if m.group(1).startswith(PREFIX):
+                out.append(m.group(1))
+    return out
+
+
+def is_rust_test(path) -> bool:
+    """Is this .rs file a test sibling? A predicate, not an inline `if`, so the
+    self-test can prove the exclusion with a synthetic path -- and so a new test file
+    layout cannot quietly widen the operator surface."""
+    return bool(RUSTTEST.search(path.name)) or 'tests' in path.parts
+
+
 def parse_sh(text):
     out = []
     for line in text.splitlines():
@@ -125,6 +164,21 @@ def self_test(r: Path) -> int:
     cases.append(('pragma-exempt name never enters the model',
                   'OZ_EXEMPT_BY_PRAGMA' not in names))
     real = [k for k in names if k not in docs_text(r)]
+    rs = parse_rs('fn a() { let _ = std::env::var("OZ_RUST_VAR_NAME"); }\n' +
+                 'fn b() { let _ = env!("OZ_RUST_COMPILE_NAME"); }\n' +
+                 'fn c() { let _ = std::env::var("OZ_RUST_EXEMPT_NAME"); } // env-doc: ok: probe\n' +
+                 '// std::env::var("OZ_RUST_IN_COMMENT")\n')
+    cases.append(('rust env::var parsed', 'OZ_RUST_VAR_NAME' in rs))
+    cases.append(('rust env! macro parsed', 'OZ_RUST_COMPILE_NAME' in rs))
+    cases.append(('pragma exempts a rust line', 'OZ_RUST_EXEMPT_NAME' not in rs))
+    cases.append(('commented rust line ignored', 'OZ_RUST_IN_COMMENT' not in rs))
+    from pathlib import PurePosixPath as _P
+    cases.append(('a _tests.rs sibling is excluded',
+                  is_rust_test(_P('a/b/redis_backend_tests.rs'))))
+    cases.append(('a plain production .rs is not excluded',
+                  not is_rust_test(_P('a/b/config.rs'))))
+    cases.append(('a tests/ directory is excluded',
+                  is_rust_test(_P('a/tests/helper.rs'))))
     cases.append(('live findings match check()', len(real) == len(check(r)[0])))
     bad = [n for n, ok in cases if not ok]
     if bad:

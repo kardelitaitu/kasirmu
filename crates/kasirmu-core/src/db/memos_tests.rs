@@ -15,11 +15,11 @@ fn long_ago() -> String {
 /// A provisioned store. See `migrations::seed_provisioned_baseline` for why
 /// the baseline rows are seeded here rather than shipped by the migration
 /// (ADR #56 §2.6).
-fn store() -> Store<'static> {
-    let conn = crate::migrations::fresh_db();
-    crate::migrations::seed_provisioned_baseline(&conn);
-    let conn: &'static rusqlite::Connection = Box::leak(Box::new(conn));
-    Store::new(conn)
+/// The caller owns the connection, so this no longer `Box::leak`s a
+/// database per test to manufacture a `'static` (O-T03).
+fn store(db: &rusqlite::Connection) -> Store<'_> {
+    crate::migrations::seed_provisioned_baseline(db);
+    Store::new(db)
 }
 
 /// Seed a terminal; `bound_location` sets `bound_location_id` (NULL for an
@@ -70,7 +70,10 @@ fn seed_location_with_tenant(store: &Store<'_>, id: &str, tenant_id: &str) {
 fn new_memo(tenant: &str, locations: &[&str]) -> NewMemo {
     NewMemo {
         tenant_id: tenant.into(),
-        location_ids: locations.iter().map(|s| s.to_string()).collect(),
+        location_ids: locations
+            .iter()
+            .map(std::string::ToString::to_string)
+            .collect(),
         author_user_id: "user-1".into(),
         author_role: "admin".into(),
         title: "Heads up".into(),
@@ -92,7 +95,8 @@ fn recipient_count(store: &Store<'_>, memo_id: &str) -> i64 {
 
 #[test]
 fn create_draft_sets_initial_state() {
-    let store = store();
+    let store_db = crate::migrations::fresh_db();
+    let store = store(&store_db);
     let memo = store.create_memo_draft(&new_memo("default", &[])).unwrap();
     assert_eq!(memo.status, MemoStatus::Draft);
     assert_eq!(memo.revision, 1);
@@ -110,7 +114,8 @@ fn create_persists_blank_title_as_empty_for_text_only_bubble() {
     // (owner direction, 2026-09-08), so the store persists a blank title as
     // the empty string instead of rejecting it — the column is NOT NULL but
     // carries no CHECK.
-    let store = store();
+    let store_db = crate::migrations::fresh_db();
+    let store = store(&store_db);
     let mut m = new_memo("default", &[]);
     m.title = "   ".into();
     let created = store.create_memo_draft(&m).unwrap();
@@ -128,7 +133,8 @@ fn create_persists_blank_title_as_empty_for_text_only_bubble() {
 
 #[test]
 fn create_trims_surrounding_whitespace_in_title_and_body() {
-    let store = store();
+    let store_db = crate::migrations::fresh_db();
+    let store = store(&store_db);
     let mut m = new_memo("default", &[]);
     m.title = "  Padded title  ".into();
     m.body = "  Padded body  ".into();
@@ -139,7 +145,8 @@ fn create_trims_surrounding_whitespace_in_title_and_body() {
 
 #[test]
 fn location_memo_scope_is_location() {
-    let store = store();
+    let store_db = crate::migrations::fresh_db();
+    let store = store(&store_db);
     // 'default' location exists in the seeded schema.
     let memo = store
         .create_memo_draft(&new_memo("default", &["default"]))
@@ -150,7 +157,8 @@ fn location_memo_scope_is_location() {
 
 #[test]
 fn publish_transitions_stamps_expiry_and_snapshots_revision() {
-    let store = store();
+    let store_db = crate::migrations::fresh_db();
+    let store = store(&store_db);
     // A publishable memo needs somewhere to go: the fan-out refuses zero
     // recipients, so every fixture that publishes seeds its terminal.
     seed_terminal(&store, "t1", None);
@@ -177,7 +185,8 @@ fn publish_transitions_stamps_expiry_and_snapshots_revision() {
 
 #[test]
 fn publish_fans_out_one_pending_recipient_per_terminal() {
-    let store = store();
+    let store_db = crate::migrations::fresh_db();
+    let store = store(&store_db);
     seed_terminal(&store, "t1", None);
     seed_terminal(&store, "t2", None);
     let memo = store.create_memo_draft(&new_memo("default", &[])).unwrap();
@@ -201,7 +210,8 @@ fn publish_populates_child_table_tenant_id() {
     // Convention + future-proofing: memo_revisions and memo_recipients carry a
     // denormalized tenant_id so they can be tenant-filtered by predicate and
     // covered by RLS (20260910), rather than relying solely on joining memos.
-    let store = store();
+    let store_db = crate::migrations::fresh_db();
+    let store = store(&store_db);
     seed_terminal(&store, "t1", None);
     let memo = store.create_memo_draft(&new_memo("default", &[])).unwrap();
     store.publish_memo("default", &memo.id).unwrap();
@@ -228,7 +238,8 @@ fn publish_populates_child_table_tenant_id() {
 
 #[test]
 fn location_memo_fans_out_only_bound_terminals() {
-    let store = store();
+    let store_db = crate::migrations::fresh_db();
+    let store = store(&store_db);
     seed_location(&store, "other-loc");
     seed_terminal(&store, "t-bound", Some("default"));
     seed_terminal(&store, "t-other", Some("other-loc"));
@@ -250,7 +261,8 @@ fn location_memo_reaches_a_terminal_mirrored_before_it_had_a_binding() {
     // fans out through bound_location_id. `publish_memo_scoped` already passes
     // the store's binding to `ensure_terminal_addressable`; this is the path
     // that binding has to survive.
-    let store = store();
+    let store_db = crate::migrations::fresh_db();
+    let store = store(&store_db);
     seed_terminal(&store, "t-mirrored", None);
 
     let memo = store
@@ -287,7 +299,8 @@ fn org_memo_fanout_excludes_other_tenants_terminals() {
     // hardcoded 'default' and `terminals` had no tenant_id. Both are closed:
     // two tenants, one location + terminal each, and the Organization Memo
     // published by tenant-a must reach only tenant-a's terminal.
-    let store = store();
+    let store_db = crate::migrations::fresh_db();
+    let store = store(&store_db);
     seed_location_with_tenant(&store, "loc-a", "tenant-a");
     seed_location_with_tenant(&store, "loc-b", "tenant-b");
     seed_terminal_with_tenant(&store, "term-a", Some("loc-a"), "tenant-a");
@@ -315,7 +328,8 @@ fn org_memo_fanout_still_reaches_unbound_terminals_of_same_tenant() {
     // unbound terminals of the memo's own tenant — they carry the 'default'
     // sentinel (20260912_terminals_tenant.sql) and the pre-narrowing behavior
     // (and memos_tests' dependence on it) expects them to receive Org Memos.
-    let store = store();
+    let store_db = crate::migrations::fresh_db();
+    let store = store(&store_db);
     seed_terminal_with_tenant(&store, "t-unbound", None, "default");
     let memo = store.create_memo_draft(&new_memo("default", &[])).unwrap();
     store.publish_memo("default", &memo.id).unwrap();
@@ -325,7 +339,8 @@ fn org_memo_fanout_still_reaches_unbound_terminals_of_same_tenant() {
 
 #[test]
 fn publish_twice_is_rejected() {
-    let store = store();
+    let store_db = crate::migrations::fresh_db();
+    let store = store(&store_db);
     seed_terminal(&store, "t1", None);
     let memo = store.create_memo_draft(&new_memo("default", &[])).unwrap();
     store.publish_memo("default", &memo.id).unwrap();
@@ -345,7 +360,8 @@ fn publish_is_refused_when_the_audience_resolves_to_no_terminal() {
     // reports — the author would see "published" while every terminal sees
     // nothing. The refusal rolls the whole transaction back, so the memo is
     // still a draft with no revision and no recipient.
-    let store = store();
+    let store_db = crate::migrations::fresh_db();
+    let store = store(&store_db);
     let memo = store.create_memo_draft(&new_memo("default", &[])).unwrap();
 
     let err = store.publish_memo("default", &memo.id).unwrap_err();
@@ -375,7 +391,8 @@ fn publish_is_refused_when_the_audience_resolves_to_no_terminal() {
 fn location_memo_whose_locations_hold_no_terminal_is_refused() {
     // The other zero-recipient route: the tenant has terminals, but none of them
     // is bound to a location the memo targets.
-    let store = store();
+    let store_db = crate::migrations::fresh_db();
+    let store = store(&store_db);
     seed_location(&store, "empty-loc");
     seed_terminal(&store, "t-unbound", None);
     let memo = store
@@ -395,7 +412,8 @@ fn location_memo_whose_locations_hold_no_terminal_is_refused() {
 
 #[test]
 fn stop_published_records_actor_and_time() {
-    let store = store();
+    let store_db = crate::migrations::fresh_db();
+    let store = store(&store_db);
     seed_terminal(&store, "t1", None);
     let memo = store.create_memo_draft(&new_memo("default", &[])).unwrap();
     store.publish_memo("default", &memo.id).unwrap();
@@ -408,7 +426,8 @@ fn stop_published_records_actor_and_time() {
 
 #[test]
 fn stop_draft_is_rejected() {
-    let store = store();
+    let store_db = crate::migrations::fresh_db();
+    let store = store(&store_db);
     let memo = store.create_memo_draft(&new_memo("default", &[])).unwrap();
     let err = store.stop_memo("default", &memo.id, "user-2").unwrap_err();
     assert!(matches!(
@@ -429,7 +448,8 @@ fn stop_after_expiry_is_rejected_and_writes_no_stop_metadata() {
     // stop_memo covers the same outcome for a memo that ends between the
     // read and the UPDATE (a daemon race no single-threaded test can
     // interleave — the same comment-documented precedent revise_memo set).
-    let store = store();
+    let store_db = crate::migrations::fresh_db();
+    let store = store(&store_db);
     seed_terminal(&store, "t1", None);
     let memo = store.create_memo_draft(&new_memo("default", &[])).unwrap();
     store.publish_memo("default", &memo.id).unwrap();
@@ -461,7 +481,8 @@ fn stop_after_expiry_is_rejected_and_writes_no_stop_metadata() {
 
 #[test]
 fn get_is_tenant_scoped() {
-    let store = store();
+    let store_db = crate::migrations::fresh_db();
+    let store = store(&store_db);
     let memo = store.create_memo_draft(&new_memo("default", &[])).unwrap();
     // A different tenant cannot see it.
     assert_eq!(store.get_memo("other-tenant", &memo.id).unwrap(), None);
@@ -476,7 +497,8 @@ fn get_is_tenant_scoped() {
 
 #[test]
 fn list_stacks_location_above_organization() {
-    let store = store();
+    let store_db = crate::migrations::fresh_db();
+    let store = store(&store_db);
     seed_terminal(&store, "t1", Some("default"));
     let org = store.create_memo_draft(&new_memo("default", &[])).unwrap();
     store.publish_memo("default", &org.id).unwrap();
@@ -497,7 +519,8 @@ fn list_stacks_location_above_organization() {
 
 #[test]
 fn list_excludes_expired_and_stopped() {
-    let store = store();
+    let store_db = crate::migrations::fresh_db();
+    let store = store(&store_db);
     seed_terminal(&store, "t1", None);
     let live = store.create_memo_draft(&new_memo("default", &[])).unwrap();
     store.publish_memo("default", &live.id).unwrap();
@@ -526,7 +549,8 @@ fn list_excludes_expired_and_stopped() {
 
 #[test]
 fn list_is_terminal_scoped() {
-    let store = store();
+    let store_db = crate::migrations::fresh_db();
+    let store = store(&store_db);
     seed_terminal(&store, "t1", None);
     seed_terminal(&store, "t2", None);
     let memo = store.create_memo_draft(&new_memo("default", &[])).unwrap();
@@ -558,7 +582,8 @@ fn list_is_terminal_scoped() {
 
 #[test]
 fn list_is_tenant_scoped() {
-    let store = store();
+    let store_db = crate::migrations::fresh_db();
+    let store = store(&store_db);
     seed_terminal(&store, "t1", None);
     let memo = store.create_memo_draft(&new_memo("default", &[])).unwrap();
     store.publish_memo("default", &memo.id).unwrap();
@@ -598,7 +623,8 @@ fn list_is_tenant_scoped() {
 
 #[test]
 fn mark_delivered_then_acknowledge() {
-    let store = store();
+    let store_db = crate::migrations::fresh_db();
+    let store = store(&store_db);
     seed_terminal(&store, "t1", None);
     let memo = store.create_memo_draft(&new_memo("default", &[])).unwrap();
     store.publish_memo("default", &memo.id).unwrap();
@@ -631,7 +657,8 @@ fn mark_delivered_then_acknowledge() {
 
 #[test]
 fn acknowledge_from_pending_backfills_delivered_at() {
-    let store = store();
+    let store_db = crate::migrations::fresh_db();
+    let store = store(&store_db);
     seed_terminal(&store, "t1", None);
     let memo = store.create_memo_draft(&new_memo("default", &[])).unwrap();
     store.publish_memo("default", &memo.id).unwrap();
@@ -654,7 +681,8 @@ fn acknowledge_from_pending_backfills_delivered_at() {
 
 #[test]
 fn ack_is_idempotent_and_rejects_unknown_recipient() {
-    let store = store();
+    let store_db = crate::migrations::fresh_db();
+    let store = store(&store_db);
     seed_terminal(&store, "t1", None);
     let memo = store.create_memo_draft(&new_memo("default", &[])).unwrap();
     store.publish_memo("default", &memo.id).unwrap();
@@ -678,7 +706,8 @@ fn ack_is_idempotent_and_rejects_unknown_recipient() {
 
 #[test]
 fn sweep_expired_transitions_past_due_memos() {
-    let store = store();
+    let store_db = crate::migrations::fresh_db();
+    let store = store(&store_db);
     seed_terminal(&store, "t1", None);
     let memo = store.create_memo_draft(&new_memo("default", &[])).unwrap();
     store.publish_memo("default", &memo.id).unwrap();
@@ -705,7 +734,8 @@ fn sweep_all_expired_spans_tenants() {
     // The daemon's global maintenance sweep tidies every tenant's past-due
     // memos in one pass (it is the system reclaiming its own rows, not a
     // user-facing read, so it carries no tenant filter).
-    let store = store();
+    let store_db = crate::migrations::fresh_db();
+    let store = store(&store_db);
     seed_terminal(&store, "t1", None);
     seed_terminal_with_tenant(&store, "t-other", None, "other-tenant");
     let a = store.create_memo_draft(&new_memo("default", &[])).unwrap();
@@ -748,7 +778,8 @@ fn sweep_all_expired_spans_tenants() {
 
 #[test]
 fn retention_sweep_archives_ended_memos_and_stamps_the_clock() {
-    let store = store();
+    let store_db = crate::migrations::fresh_db();
+    let store = store(&store_db);
     seed_terminal(&store, "t1", None);
     let expired = store.create_memo_draft(&new_memo("default", &[])).unwrap();
     store.publish_memo("default", &expired.id).unwrap();
@@ -808,7 +839,8 @@ fn retention_sweep_archives_ended_memos_and_stamps_the_clock() {
 
 #[test]
 fn retention_sweep_deletes_archives_only_past_the_window() {
-    let store = store();
+    let store_db = crate::migrations::fresh_db();
+    let store = store(&store_db);
     seed_terminal(&store, "t1", None);
     let memo = store.create_memo_draft(&new_memo("default", &[])).unwrap();
     store.publish_memo("default", &memo.id).unwrap();
@@ -870,7 +902,8 @@ fn retention_boundary_deletes_exactly_when_the_window_closes() {
     // SAME calendar date as the cutoff never compared `<=` and its deletion
     // slipped by up to a day. The cutoff is now computed in Rust as RFC3339,
     // so same-instant comparisons are exact.
-    let store = store();
+    let store_db = crate::migrations::fresh_db();
+    let store = store(&store_db);
     seed_terminal(&store, "t1", None);
 
     let archive_now = |store: &Store<'_>, memo_id: &str| {
@@ -940,7 +973,8 @@ fn retention_window_is_thirty_days_per_the_ruling() {
 
 #[test]
 fn location_delete_is_blocked_by_its_memos() {
-    let store = store();
+    let store_db = crate::migrations::fresh_db();
+    let store = store(&store_db);
     seed_location(&store, "del-loc");
     // A Location Memo must reach at least one terminal to be publishable at all,
     // so the terminal is bound to a SECOND location and `del-loc` itself stays
@@ -978,7 +1012,8 @@ fn location_delete_is_blocked_by_its_memos() {
 
 #[test]
 fn terminal_delete_is_blocked_by_its_recipients() {
-    let store = store();
+    let store_db = crate::migrations::fresh_db();
+    let store = store(&store_db);
     seed_terminal(&store, "t-del", None);
     let memo = store.create_memo_draft(&new_memo("default", &[])).unwrap();
     store.publish_memo("default", &memo.id).unwrap(); // org memo → recipient for t-del
@@ -1001,7 +1036,8 @@ fn terminal_delete_is_blocked_by_its_recipients() {
 fn parent_delete_still_works_without_memo_dependents() {
     // Positive control (mirrors CUST-11): RESTRICT must not over-block. A
     // Location/terminal with no Memo references is still deletable.
-    let store = store();
+    let store_db = crate::migrations::fresh_db();
+    let store = store(&store_db);
     seed_location(&store, "free-loc");
     seed_terminal(&store, "free-term", None);
     store
@@ -1019,7 +1055,8 @@ fn deleting_a_memo_still_cascades_to_its_children() {
     // The genuine child edges (memo_id -> memos) must REMAIN cascade: removing
     // a memo takes its revisions + recipients with it. Only the location and
     // terminal edges were changed to RESTRICT.
-    let store = store();
+    let store_db = crate::migrations::fresh_db();
+    let store = store(&store_db);
     seed_terminal(&store, "t1", None);
     let memo = store.create_memo_draft(&new_memo("default", &[])).unwrap();
     store.publish_memo("default", &memo.id).unwrap();
@@ -1056,7 +1093,8 @@ fn revision_count(store: &Store<'_>, memo_id: &str) -> i64 {
 
 #[test]
 fn revise_bumps_revision_and_preserves_history() {
-    let store = store();
+    let store_db = crate::migrations::fresh_db();
+    let store = store(&store_db);
     seed_terminal(&store, "t1", None);
     let memo = store.create_memo_draft(&new_memo("default", &[])).unwrap();
     let published = store.publish_memo("default", &memo.id).unwrap();
@@ -1096,7 +1134,8 @@ fn revise_bumps_revision_and_preserves_history() {
 
 #[test]
 fn revise_rejects_draft_and_terminal_states() {
-    let store = store();
+    let store_db = crate::migrations::fresh_db();
+    let store = store(&store_db);
     seed_terminal(&store, "t1", None);
     // Draft: not yet published, nothing to correct.
     let draft = store.create_memo_draft(&new_memo("default", &[])).unwrap();
@@ -1120,7 +1159,8 @@ fn revise_rejects_draft_and_terminal_states() {
 
 #[test]
 fn revise_rejects_blank_body_and_unknown_memo() {
-    let store = store();
+    let store_db = crate::migrations::fresh_db();
+    let store = store(&store_db);
     seed_terminal(&store, "t1", None);
     let memo = store.create_memo_draft(&new_memo("default", &[])).unwrap();
     store.publish_memo("default", &memo.id).unwrap();
@@ -1142,7 +1182,8 @@ fn revise_rejects_blank_body_and_unknown_memo() {
 
 #[test]
 fn revise_can_blank_the_title_and_trims_both_fields() {
-    let store = store();
+    let store_db = crate::migrations::fresh_db();
+    let store = store(&store_db);
     seed_terminal(&store, "t1", None);
     let memo = store.create_memo_draft(&new_memo("default", &[])).unwrap();
     store.publish_memo("default", &memo.id).unwrap();
@@ -1180,7 +1221,8 @@ fn memo_by(author: &str) -> NewMemo {
 
 #[test]
 fn list_authored_scopes_to_author_and_includes_drafts() {
-    let store = store();
+    let store_db = crate::migrations::fresh_db();
+    let store = store(&store_db);
     seed_terminal(&store, "t1", None);
     let draft = store.create_memo_draft(&memo_by("alice")).unwrap();
     let published = store.create_memo_draft(&memo_by("alice")).unwrap();
@@ -1224,7 +1266,8 @@ fn list_authored_scopes_to_author_and_includes_drafts() {
 
 #[test]
 fn list_authored_is_tenant_scoped() {
-    let store = store();
+    let store_db = crate::migrations::fresh_db();
+    let store = store(&store_db);
     store.create_memo_draft(&memo_by("alice")).unwrap();
     // Same author id, different tenant: the memo belongs to 'default', so a
     // query under another tenant returns nothing.
@@ -1240,7 +1283,8 @@ fn list_authored_is_tenant_scoped() {
 
 #[test]
 fn multi_location_memo_fans_out_to_every_targeted_location() {
-    let store = store();
+    let store_db = crate::migrations::fresh_db();
+    let store = store(&store_db);
     seed_location(&store, "loc-a");
     seed_location(&store, "loc-b");
     seed_location(&store, "loc-c"); // targeted by nothing
@@ -1278,7 +1322,8 @@ fn multi_location_memo_fans_out_to_every_targeted_location() {
 
 #[test]
 fn multi_location_targeting_normalizes_trims_and_dedupes() {
-    let store = store();
+    let store_db = crate::migrations::fresh_db();
+    let store = store(&store_db);
     seed_location(&store, "loc-a");
     let memo = store
         .create_memo_draft(&new_memo("default", &["loc-a", "  loc-a  ", "loc-a", ""]))
@@ -1301,7 +1346,8 @@ fn multi_location_targeting_normalizes_trims_and_dedupes() {
 
 #[test]
 fn multi_location_memo_is_rejected_when_a_target_does_not_exist() {
-    let store = store();
+    let store_db = crate::migrations::fresh_db();
+    let store = store(&store_db);
     seed_location(&store, "loc-real");
     let err = store
         .create_memo_draft(&new_memo("default", &["loc-real", "loc-ghost"]))
@@ -1320,7 +1366,8 @@ fn multi_location_memo_is_rejected_when_a_target_does_not_exist() {
 
 #[test]
 fn create_with_blank_targets_yields_an_organization_memo() {
-    let store = store();
+    let store_db = crate::migrations::fresh_db();
+    let store = store(&store_db);
     let memo = store
         .create_memo_draft(&new_memo("default", &["   ", ""]))
         .unwrap();
@@ -1333,7 +1380,8 @@ fn create_with_blank_targets_yields_an_organization_memo() {
 
 #[test]
 fn location_memo_still_sorts_above_organization() {
-    let store = store();
+    let store_db = crate::migrations::fresh_db();
+    let store = store(&store_db);
     seed_location(&store, "loc-order");
     seed_terminal(&store, "t-order", Some("loc-order"));
     let org = store.create_memo_draft(&new_memo("default", &[])).unwrap();
@@ -1365,7 +1413,8 @@ fn sync_snapshot_spans_tenants_whole_database_by_design() {
     // never the payload. If someone later "fixes" the unfiltered query by
     // adding a tenant filter without changing the push contract, this test
     // fails loudly and forces the decision to be re-made consciously.
-    let store = store();
+    let store_db = crate::migrations::fresh_db();
+    let store = store(&store_db);
     seed_terminal_with_tenant(&store, "t-a", None, "tenant-a");
     seed_terminal_with_tenant(&store, "t-b", None, "tenant-b");
 

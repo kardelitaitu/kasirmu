@@ -103,7 +103,7 @@ fn stripe_signature(payload: &[u8], secret: &str) -> String {
     let mut mac = HmacSha256::new_from_slice(secret.as_bytes()).unwrap();
     mac.update(&signed_bytes);
     let expected = hex::encode(mac.finalize().into_bytes());
-    format!("t={},v1={}", timestamp, expected)
+    format!("t={timestamp},v1={expected}")
 }
 
 // ── Stripe signature verification ─────────────────────────────
@@ -248,6 +248,43 @@ async fn lookup_sale_by_gateway_ref_not_found() {
     let result = lookup_sale_by_gateway_reference(&state, "pi_nonexistent").await;
     assert!(result.is_err());
     assert_eq!(result.unwrap_err().0, StatusCode::NOT_FOUND);
+}
+
+/// A failed read is NOT a missing sale. The pair with the test above is the rule:
+/// the 404 above is the honest answer to "we looked and there is nothing", and it
+/// must not also cover "we could not look".
+///
+/// **What the caller does with the answer.** Both webhook handlers treat this
+/// function's error as terminal and return it to the sender, so collapsing the two
+/// told Stripe or Square that a payment it had confirmed belongs to no sale we know
+/// of, when the truth was a broken table, a column mismatch or a locked database. The
+/// paid-for sale is then never finalised, and nothing anywhere reports a fault. A
+/// 500 is retryable by the sender; a 404 is a promise that we will never change our
+/// mind.
+#[tokio::test]
+async fn a_failed_sale_lookup_is_a_500_not_a_404() {
+    let state = test_state();
+    {
+        let conn = state.db.lock().await;
+        seed_payment(&conn, "pi_broken", "sale-broken");
+        // The mapping exists, so "no sale found" is not available as an answer.
+        conn.execute("DROP TABLE payments", [])
+            .expect("drop payments");
+    }
+
+    let (status, message) = lookup_sale_by_gateway_reference(&state, "pi_broken")
+        .await
+        .expect_err("a failed read must not be reported as a missing sale");
+    assert_eq!(
+        status,
+        StatusCode::INTERNAL_SERVER_ERROR,
+        "the sender must see a retryable failure, not a permanent 404"
+    );
+    assert!(
+        message.contains("failed to read the gateway reference mapping"),
+        "the message must say the READ failed, so an operator reading the webhook
+        log knows to look at the database: got {message:?}"
+    );
 }
 
 // ── Webhook endpoint integration ──────────────────────────────
@@ -588,7 +625,7 @@ async fn square_webhook_valid_signature_happy_path() {
 
     // Build Square signature
     let body_str = std::str::from_utf8(payload).unwrap();
-    let signed = format!("{}.{}.{}", url, body_str, timestamp);
+    let signed = format!("{url}.{body_str}.{timestamp}");
     let mut mac = HmacSha256::new_from_slice(secret.as_bytes()).unwrap();
     mac.update(signed.as_bytes());
     let signature = hex::encode(mac.finalize().into_bytes());
@@ -626,6 +663,7 @@ async fn square_webhook_valid_signature_happy_path() {
 /// Integration test against a live Postgres (the same Docker service
 /// `db.rs` uses, port 15432). Skips when unreachable, so the suite stays
 /// green on machines without a running Postgres.
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 async fn pg_integration_webhooks_read_write_postgres() {
     let url = std::env::var("OZ_TEST_PG_URL")
@@ -635,7 +673,10 @@ async fn pg_integration_webhooks_read_write_postgres() {
         Ok(_) => unreachable!("connect_postgres with a postgres:// URL returns Postgres"),
         Err(e) => {
             eprintln!("PG webhooks integration test skipped: {e}");
+            #[cfg(not(feature = "pg-tests"))]
             return;
+            #[cfg(feature = "pg-tests")]
+            panic!("PG test enabled but the resource is unreachable - see the skip message above");
         }
     };
     let state = CloudServerState {
@@ -826,6 +867,7 @@ async fn pg_integration_webhooks_read_write_postgres() {
 /// cluster-wide roles (oz_app, oz_webhook_resolver, oz_email_discovery)
 /// that the email tests also create/drop — concurrent CREATE/DROP ROLE
 /// on the shared cluster races.
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 #[serial(pg_rls_cutover)]
 async fn pg_integration_webhooks_restricted_role_after_cutover() {
@@ -840,7 +882,10 @@ async fn pg_integration_webhooks_restricted_role_after_cutover() {
         Ok(_) => unreachable!("connect_postgres with a postgres:// URL returns Postgres"),
         Err(e) => {
             eprintln!("PG webhook RLS test skipped: {e}");
+            #[cfg(not(feature = "pg-tests"))]
             return;
+            #[cfg(feature = "pg-tests")]
+            panic!("PG test enabled but the resource is unreachable - see the skip message above");
         }
     };
     let admin = pool.get().await.expect("admin client");
@@ -879,7 +924,10 @@ async fn pg_integration_webhooks_restricted_role_after_cutover() {
         .await
     {
         eprintln!("PG webhook RLS test skipped: cannot CREATE DATABASE ({e})");
+        #[cfg(not(feature = "pg-tests"))]
         return;
+        #[cfg(feature = "pg-tests")]
+        panic!("PG test enabled but the resource is unreachable - see the skip message above");
     }
 
     // URL for the throwaway DB (swap the path segment, keep any query).
@@ -1345,4 +1393,44 @@ fn midtrans_gross_parse_policy() {
     assert_eq!(midtrans_gross_to_minor("15000.50"), None);
     assert_eq!(midtrans_gross_to_minor("abc"), None);
     assert_eq!(midtrans_gross_to_minor(""), None);
+}
+
+/// The amount parser's EDGES: negative, multi-dot, signed and huge inputs.
+///
+/// **The existing `midtrans_gross_parse_policy` covers the happy shapes and the
+/// obvious rejections.** This pins the edges, because the parser's job is to feed
+/// an amount COMPARISON: `gross_to_minor(signed) == entry.amount_minor` decides
+/// whether a settlement is trusted (`webhooks/midtrans.rs:197-201`). A parser that
+/// accepted something it should not could make a mismatched settlement look equal.
+///
+/// Two of these would be exploitable if they returned `Some`:
+/// * `"-15000"` — `i64::from_str` ACCEPTS a leading minus, so a negative signed
+///   amount parses. It cannot equal a positive `amount_minor`, so the comparison
+///   still fails closed — but the parser's contract is a non-negative IDR amount and
+///   this documents that the caller relies on the comparison, not on the parse.
+/// * `"15000."` (trailing dot, empty fraction) — `frac` is `""`, which is not
+///   `"00"`, so it rejects. Correct, and worth pinning: a future `frac.is_empty()`
+///   allowance would silently widen the accepted set.
+#[test]
+fn midtrans_gross_parse_edges() {
+    // One dot only: a second dot must not be read as a valid fraction.
+    assert_eq!(midtrans_gross_to_minor("15000.00.00"), None);
+    // Trailing/dangling dot: empty fraction is not `"00"`.
+    assert_eq!(midtrans_gross_to_minor("15000."), None);
+    assert_eq!(midtrans_gross_to_minor(".00"), None);
+    // A zero-padded fraction is still a fraction, not whole Rupiah.
+    assert_eq!(midtrans_gross_to_minor("15000.000"), None);
+    // Spaces INSIDE the number are malformed, not trimmed away.
+    assert_eq!(midtrans_gross_to_minor("15 000.00"), None);
+    // Negative: `i64::from_str` accepts the sign, so this is `Some` — pinned as the
+    // measured behaviour. Safety comes from the positive `amount_minor` comparison
+    // in the webhook, NOT from the parser rejecting it. If a caller ever compares
+    // `abs()` or a negative, this test is the evidence that the guarantee was never
+    // the parser's.
+    assert_eq!(midtrans_gross_to_minor("-15000"), Some(-15000));
+    // Overflow past `i64` is rejected rather than wrapping.
+    assert_eq!(midtrans_gross_to_minor("99999999999999999999999999"), None);
+    // A plain zero is a legal parse; the webhook's own `amount_minor` guard is what
+    // keeps a zero-value charge from existing in the first place.
+    assert_eq!(midtrans_gross_to_minor("0"), Some(0));
 }

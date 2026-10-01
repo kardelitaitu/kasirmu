@@ -11,7 +11,9 @@
 //
 // Usage:  node scripts/generate-records-index.mjs          # write the index
 //         node scripts/generate-records-index.mjs --check   # drift guard, writes nothing
-// Output: docs/records/README.md (header + conventions are regenerated too)
+// Output: docs/records/README.md (header + conventions are regenerated too,
+//         EXCEPT a leading `<!-- ... -->` audit stamp, which is carried over
+//         verbatim — see leadingStamp() for why and what it does not cover)
 //
 // --check renders twice in-process, fails if the two renders differ (the
 // determinism self-proof that makes its exit code meaningful), then compares the
@@ -81,8 +83,31 @@ function areaFromSlug(slug) {
 // ── tiny YAML-ish front-matter parser (title/status/area keys) ─────────────
 function frontMatter(file) {
   const text = file.split(/[\r\n]+/);
-  if (text[0] !== '---') return null;
-  let i = 1;
+  // Skip a leading HTML comment block before looking for `---`.
+  //
+  // The docs-auditor campaign stamps every record it audits with a
+  // `<!-- Audit stamp: ... -->` comment on line 1. The ADRs it stamped then
+  // carried their YAML BELOW that comment, and this reader required `---` on the
+  // literal first line, so `num` became unreachable for exactly those files:
+  // ADR #37, #38 and #47 fell out of the numbered table and were reclassified as
+  // unnumbered records, which is how the freshness gate came to disagree with the
+  // committed index by three rows while every input file was correct. A stamp is
+  // provenance, not a front-matter delimiter, so it is stepped over rather than
+  // treated as content. Only comments are skipped — any other leading text still
+  // means "no front matter", which is the behaviour the rest of the tree relies on.
+  let start = 0;
+  if (text[0] !== '---') {
+    let i = 0;
+    let sawComment = false;
+    while (i < text.length && /^\s*<!--/.test(text[i])) {
+      sawComment = true;
+      while (i < text.length && !/-->/.test(text[i])) i++;
+      i++;
+    }
+    if (!sawComment || text[i] !== '---') return null;
+    start = i;
+  }
+  let i = start + 1;
   const out = {};
   while (i < text.length && text[i] !== '---') {
     const m = text[i].match(/^([A-Za-z_-]+):\s*(.*)$/);
@@ -189,6 +214,36 @@ function linkCell(label, href) {
 // and returns the index TEXT plus the per-section counts. It never writes —
 // the only write in this file is in main(), which is what lets --check render,
 // compare, and exit without touching the working tree.
+//
+// STAMP PRESERVATION (added 2026-09-29). A leading HTML comment AND a trailing
+// `> last audited …` footer are carried over verbatim from the committed file
+// instead of being dropped. Why this is not a hole in "header + conventions are
+// regenerated too" (:14): that contract is about the index this script AUTHORS —
+// its title, its generated-by banner, its sections and rows. An audit stamp and
+// its footer are not part of that; they are provenance about when a human last
+// checked the page, and this script has no way to know them. Dropping them made
+// the freshness gate and the audit campaign mutually exclusive: `2b345fea4`
+// stamped the file, which turned `--check` red, and the gate's own remedy ("run:
+// node scripts/generate-records-index.mjs") then deleted the stamp — a loop that
+// is silent because neither message mentions the other. The two ungated generated
+// files (`docs/README.md` via scripts/gen-summary.py, and the SEO review) both
+// carry stamps today precisely because nothing compares them to a generator;
+// preserving here gives this gated file the same reach.
+// Only a LEADING `<!-- ... -->` block and a TRAILING `> last audited …` line are
+// carried; anything else in the file is still fully regenerated, so a hand-edit
+// in the body still fails the gate exactly as before.
+const FOOTER_RE = /\n+> last audited [^\n]*\s*$/;
+
+function leadingStamp(text) {
+  const m = text.match(/^\s*(<!--[\s\S]*?-->)[ \t]*\r?\n/);
+  return m ? m[1].replace(/\r\n/g, '\n') : null;
+}
+
+function trailingFooter(text) {
+  const m = text.match(FOOTER_RE);
+  return m ? m[0].replace(/\r\n/g, '\n').replace(/^\n+/, '') : null;
+}
+
 function render() {
   EMITTED_LINKS.length = 0; // one registry per render; --check renders twice
   // ── build sections ─────────────────────────────────────────────────────────
@@ -509,7 +564,19 @@ function render() {
     [observability.length, 'observability'],
     [records.length, 'records'],
   ];
-  return { text, counts };
+  // Carry the committed file's leading audit stamp and trailing audit footer,
+  // if it has them. Read from disk on every render, so both of --check's renders
+  // agree and the comparison stays a pure function of (tree, committed stamp).
+  // A missing or stamp-less file yields nothing, so this is inert on a fresh clone.
+  const committed = existsSync(OUT) ? readFileSync(OUT, 'utf8') : '';
+  const stamp = leadingStamp(committed);
+  const footer = trailingFooter(committed);
+  const prefix = stamp ? stamp + '\n' : '';
+  // `text` already ends in '\n'; the footer follows one blank line and is the
+  // LAST line, with no trailing newline — matching what the audit campaign
+  // writes and what this file carried when the gate was wired.
+  const suffix = footer ? '\n' + footer : '';
+  return { text: prefix + text + suffix, counts };
 }
 
 // ── main ───────────────────────────────────────────────────────────────────

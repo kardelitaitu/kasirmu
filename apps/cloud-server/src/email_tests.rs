@@ -19,9 +19,9 @@ async fn generate_report_email_smoke() {
     let result = email_sender::generate_filtered_report_email(&store, &schedule, store_name);
     assert!(result.is_ok(), "should generate email: {:?}", result.err());
     let email = result.unwrap();
-    assert!(email.subject.contains("OZ-POS Report"));
+    assert!(email.subject.contains("kasir.mu Report"));
     assert!(email.html_body.contains("<table") || email.html_body.contains("<p>"));
-    assert!(email.text_body.contains("OZ-POS Report"));
+    assert!(email.text_body.contains("kasir.mu Report"));
 }
 
 #[tokio::test]

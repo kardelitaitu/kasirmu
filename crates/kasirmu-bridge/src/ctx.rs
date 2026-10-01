@@ -8,8 +8,8 @@
 //! outlive the state it points at. No tauri, gtk or webkit type appears in this
 //! module.
 //!
-//! Session/scope resolution ([`BridgeCtx::resolve_session`],
-//! [`BridgeCtx::resolve_scope`], [`BridgeCtx::resolve_store`]) and the authz
+//! Session/scope resolution ([`BridgeCtx::resolve_session`](crate::ctx::BridgeCtx::resolve_session),
+//! [`BridgeCtx::resolve_scope`](crate::ctx::BridgeCtx::resolve_scope), [`BridgeCtx::resolve_store`](crate::ctx::BridgeCtx::resolve_store)) and the authz
 //! helpers are verbatim ports of the `AppState` / `commands/authz.rs`
 //! behaviour: multi-KDS `restaurant_pos_id` binding, expired-token removal,
 //! and fail-closed scope denial.
@@ -38,6 +38,10 @@ use tokio::sync::{Mutex, MutexGuard, oneshot};
 use crate::error::BridgeError;
 
 #[cfg(test)]
+#[path = "gate_error_mapping_tests.rs"]
+mod gate_error_mapping_tests;
+
+#[cfg(test)]
 #[path = "session_revalidation_tests.rs"]
 mod session_revalidation_tests;
 
@@ -46,7 +50,7 @@ mod session_revalidation_tests;
 /// Wave D commands (kds, hardware, pos) broadcast UI events, but no tauri
 /// type may enter this crate: the shell implements this object-safe trait over
 /// its `AppHandle` (`commands/authz.rs::TauriEventSink`) and injects it as
-/// [`BridgeCtx::emitter`]. A recording mock serves headless tests, and `None`
+/// [`BridgeCtx::emitter`](crate::ctx::BridgeCtx::emitter). A recording mock serves headless tests, and `None`
 /// — the headless default — makes every emit a silent no-op, exactly matching
 /// the shell's `if let Some(app) = state.app.as_ref()` pattern: a lost UI
 /// event is never a command failure.
@@ -117,7 +121,7 @@ fn map_gate_error(e: kasirmu_core::CoreError) -> BridgeError {
 
 /// How long a token may keep resolving before the identity DB is re-read.
 ///
-/// [`BridgeCtx::resolve_session`] runs on every scoped command, so a read there
+/// [`BridgeCtx::resolve_session`](crate::ctx::BridgeCtx::resolve_session) runs on every scoped command, so a read there
 /// would put a query on the hottest path in the process. Instead the account
 /// behind a token is re-read at most once per window: a member trashed or
 /// deactivated by ANOTHER host sharing the identity DB stops resolving after at
@@ -188,7 +192,8 @@ impl<'a> BridgeCtx<'a> {
     /// scope (store, instance, type, user, role, terminal). Returns
     /// [`BridgeError::InvalidSession`] if the token is unknown, if the session
     /// has expired (TTL check), or if the account behind it is no longer on the
-    /// live roster (see [`ACCOUNT_REVALIDATION_WINDOW`]).
+    /// live roster (see `ACCOUNT_REVALIDATION_WINDOW`, a private const in this
+    /// module).
     ///
     /// Expired and revoked sessions are atomically removed from the store during
     /// resolution, so subsequent lookups also get `InvalidSession`.
@@ -401,16 +406,40 @@ impl<'a> BridgeCtx<'a> {
     /// Look up the store ID bound to a Restaurant POS terminal.
     ///
     /// Queries the global `terminals` table for the terminal's
-    /// `bound_location_id`. Used by [`BridgeCtx::resolve_scope`] when a
+    /// `bound_location_id`. Used by [`BridgeCtx::resolve_scope`](crate::ctx::BridgeCtx::resolve_scope) when a
     /// session carries a `restaurant_pos_id`.
     ///
-    /// Uses `blocking_lock()` on the tokio Mutex — safe here because the lock
-    /// is held for a single indexed SELECT (microseconds).
+    /// # Why this uses `try_lock`, not `blocking_lock`
     ///
-    /// Returns [`BridgeError::Invalid`] if the terminal is not found or has
-    /// no binding.
+    /// This is a sync `fn` reached from the async command bodies via
+    /// [`BridgeCtx::resolve_scope`](crate::ctx::BridgeCtx::resolve_scope), so the thread calling it is driving
+    /// async tasks. In tokio 1.49 `blocking_lock` is
+    /// `future::block_on(self.lock())`, whose first act is
+    /// `try_enter_blocking_region().expect(..)` — there is **no**
+    /// uncontended fast path, so calling it here was a guaranteed panic on
+    /// first use, not a parked worker. `audit.rs` documents the same bug
+    /// fixed on `require_audit_tier`; the previous comment ("safe here
+    /// because the lock is held for a single indexed SELECT") was the exact
+    /// reasoning that note rebuts — the critical-section duration is
+    /// irrelevant, the panic fires on entry.
+    ///
+    /// `try_lock` cannot panic. A busy identity DB yields
+    /// [`BridgeError::Invalid`](crate::error::BridgeError::Invalid), which `resolve_scope` already handles by
+    /// logging and falling back to `session.store_id`, so a contended lock
+    /// degrades to the documented default instead of aborting the till.
+    ///
+    /// Returns [`BridgeError::Invalid`](crate::error::BridgeError::Invalid) if the terminal is not found, has
+    /// no binding, or the global DB is momentarily busy.
     fn resolve_restaurant_pos_store(&self, restaurant_pos_id: &str) -> Result<String, BridgeError> {
-        let db = self.db.blocking_lock();
+        let db = match self.db.try_lock() {
+            Ok(db) => db,
+            Err(e) => {
+                return Err(BridgeError::Invalid(format!(
+                    "global DB busy while resolving restaurant POS \
+                     '{restaurant_pos_id}' binding: {e}"
+                )));
+            }
+        };
         let binding: Option<String> = db
             .query_row(
                 "SELECT bound_location_id FROM terminals WHERE id = ?1",
@@ -470,9 +499,9 @@ impl<'a> BridgeCtx<'a> {
     /// the role from the user, so a tampered front end cannot forge a
     /// different `role_id`, but no branch/workspace assignment is checked.
     /// Where a session-scoped check is wanted use
-    /// [`BridgeCtx::require_user_permission_scoped`] instead; where the
+    /// [`BridgeCtx::require_user_permission_scoped`](crate::ctx::BridgeCtx::require_user_permission_scoped) instead; where the
     /// caller's assignment must also COVER a resource use
-    /// [`BridgeCtx::require_permission_for_session_resource`].
+    /// [`BridgeCtx::require_permission_for_session_resource`](crate::ctx::BridgeCtx::require_permission_for_session_resource).
     ///
     /// # Errors
     ///
@@ -513,7 +542,7 @@ impl<'a> BridgeCtx<'a> {
     }
 
     /// The hierarchical session gate (ADR #47): what
-    /// [`BridgeCtx::require_session_permission`] enforces, PLUS the caller's
+    /// [`BridgeCtx::require_session_permission`](crate::ctx::BridgeCtx::require_session_permission) enforces, PLUS the caller's
     /// assignment must COVER the named resource.
     ///
     /// Coverage follows ruling 3's downward-only inheritance: an
@@ -551,7 +580,7 @@ impl<'a> BridgeCtx<'a> {
 
     /// Create a cache-aware [`Store`] over a locked connection.
     ///
-    /// Prefer [`BridgeCtx::store_with_tid`] when inventory-change pub/sub
+    /// Prefer [`BridgeCtx::store_with_tid`](crate::ctx::BridgeCtx::store_with_tid) when inventory-change pub/sub
     /// tagging matters: this sync form cannot await the `terminal_id` lock.
     pub fn store<'c>(&self, conn: &'c Connection) -> Store<'c> {
         Store::with_cache(conn, self.cache.clone())
@@ -560,7 +589,7 @@ impl<'a> BridgeCtx<'a> {
     /// Create a [`Store`] with the shared cache layer and a pre-acquired
     /// terminal identity for pub/sub message tagging.
     ///
-    /// Callers acquire the terminal id via [`BridgeCtx::terminal_id`] BEFORE
+    /// Callers acquire the terminal id via [`BridgeCtx::terminal_id`](crate::ctx::BridgeCtx::terminal_id) BEFORE
     /// locking the database, so the db guard never crosses an await point.
     pub fn store_with_tid<'c>(&self, conn: &'c Connection, tid: Option<String>) -> Store<'c> {
         Store::with_cache(conn, self.cache.clone()).with_terminal_id(tid)

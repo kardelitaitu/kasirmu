@@ -233,7 +233,11 @@ impl SyncStore {
                     ) {
                         Ok(_) => PushOutcome::Accepted,
                         Err(e) if e.to_string().contains("UNIQUE") => PushOutcome::Rejected {
-                            reason: format!("duplicate id: {}", item.id),
+                            reason: format!(
+                                "{} {}",
+                                kasirmu_core::sync_client::DUPLICATE_ID_REJECTION_PREFIX,
+                                item.id
+                            ),
                         },
                         Err(e) => PushOutcome::Rejected {
                             reason: format!("database error: {e}"),
@@ -307,7 +311,11 @@ impl SyncStore {
                         Ok(None) => {
                             let _ = tx.execute(&format!("RELEASE SAVEPOINT {sp}"), &[]).await;
                             PushOutcome::Rejected {
-                                reason: format!("duplicate id: {}", item.id),
+                                reason: format!(
+                                    "{} {}",
+                                    kasirmu_core::sync_client::DUPLICATE_ID_REJECTION_PREFIX,
+                                    item.id
+                                ),
                             }
                         }
                         Err(e) => {

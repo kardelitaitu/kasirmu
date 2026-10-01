@@ -110,10 +110,10 @@ fn filter_removes_unchecked_types() {
 
     let mut bundle = AnalyticsBundle {
         metadata: ExportMetadata {
-            exported_at: "".into(),
-            tenant_id: "".into(),
-            store_name: "".into(),
-            version: "".into(),
+            exported_at: String::new(),
+            tenant_id: String::new(),
+            store_name: String::new(),
+            version: String::new(),
         },
         daily_revenue: vec![crate::db::reports::DailyRevenueRow {
             date: "2026-01-01".into(),

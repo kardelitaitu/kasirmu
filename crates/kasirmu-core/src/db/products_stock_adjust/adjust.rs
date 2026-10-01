@@ -14,6 +14,7 @@
 //! recomputes the aggregate as the SUM over per-location rows.
 
 use super::*;
+use rusqlite::OptionalExtension;
 
 impl Store<'_> {
     /// Adjust stock with an explicit reason at a specific location (ADR-19 §3.1 canonical API).
@@ -70,7 +71,7 @@ impl Store<'_> {
     ///
     /// Every reader that must tell the two apart calls this: the Layer-1
     /// pre-check and the batch Phase-1 pre-read (via
-    /// [`Store::legacy_aware_location_qty`]), the legacy bridge gate below, and
+    /// `Store::legacy_aware_location_qty`), the legacy bridge gate below, and
     /// the sync dispatcher in `platform_sync::queue`. Public so that last one
     /// can reach it: the alternative was a fourth copy of the same EXISTS.
     pub fn product_has_location_rows(
@@ -119,7 +120,7 @@ impl Store<'_> {
                 rusqlite::params![product_id],
                 |row| row.get(0),
             )
-            .ok();
+            .optional()?;
         match legacy_qty {
             Some(legacy) if legacy != 0 => {
                 let sku: String = self
@@ -269,9 +270,10 @@ impl Store<'_> {
                 location_id.as_str(),
                 delta,
                 reason,
-                inventory_transaction_id.map(|id| id.as_str()),
-                terminal_id.map(|id| id.as_str()),
-                source_user_id.map(|id| id.as_str()),
+                inventory_transaction_id
+                    .map(crate::inventory_transaction::InventoryTransactionId::as_str),
+                terminal_id.map(foundation::TerminalId::as_str),
+                source_user_id.map(platform_core::staff::UserId::as_str),
                 now,
             ],
         )?;
@@ -334,15 +336,29 @@ impl Store<'_> {
         }
 
         // 4. Synchronous threshold check (ADR-18 §9e-ii).
-        // Errors are silent — threshold alerts are advisory and should not
-        // block the stock adjustment transaction.
-        let _ = self.check_stock_threshold_and_alert_in_tx(
+        //
+        // NON-FATAL by design: a threshold alert is advisory, so a failure here
+        // must not roll back the stock adjustment the caller asked for. But it is
+        // not SILENT (MSL-26) -- the previous `let _ = ...` dropped the error
+        // entirely, so an alert that never reached `stock_alert_events` left no
+        // evidence anywhere. The sibling legacy-inventory arm 10 lines above
+        // already logs its expected case, and `active_stock_alerts` reads this
+        // table to render the low-stock list, so a lost row is a lost warning.
+        if let Err(e) = Self::check_stock_threshold_and_alert_in_tx(
             tx,
             &product_id,
             location_id.as_str(),
             new_qty,
             &now,
-        );
+        ) {
+            tracing::warn!(
+                product_id = %product_id,
+                location_id = %location_id,
+                error = %e,
+                "stock threshold check failed; the adjustment is unaffected but no \
+                 alert row was written"
+            );
+        }
 
         if let Some(cache) = &self.cache {
             cache.invalidate_inventory(&product_id);
@@ -385,7 +401,6 @@ impl Store<'_> {
     /// per-location rows are left untouched. No `stock_movements` row is
     /// written: this materialises existing state, it is not a new delta.
     pub(crate) fn bridge_legacy_inventory_into_stock_summary_in_tx(
-        &self,
         tx: &rusqlite::Transaction<'_>,
         product_id: &str,
     ) -> Result<(), CoreError> {
@@ -398,7 +413,7 @@ impl Store<'_> {
                 rusqlite::params![product_id],
                 |row| row.get(0),
             )
-            .ok();
+            .optional()?;
         let legacy_qty = match legacy_qty {
             Some(q) if q != 0 => q,
             _ => return Ok(()),
@@ -432,8 +447,7 @@ impl Store<'_> {
     /// (deduped — no duplicate active alerts per threshold_id).
     /// If stock recovers above threshold: UPDATE any active/acknowledged
     /// alerts to `status = 'resolved'` (auto-resolve).
-    fn check_stock_threshold_and_alert_in_tx(
-        &self,
+    pub(crate) fn check_stock_threshold_and_alert_in_tx(
         tx: &rusqlite::Transaction<'_>,
         product_id: &str,
         location_id: &str,
@@ -441,7 +455,7 @@ impl Store<'_> {
         now: &str,
     ) -> Result<(), CoreError> {
         // Lookup: product+location specific, then product+global.
-        let threshold_row: Option<(String, i64)> = tx
+        let threshold_row: Option<(String, i64)> = match tx
             .query_row(
                 "SELECT id, threshold FROM stock_thresholds \
                  WHERE product_id = ?1 AND location_id = ?2 AND enabled = 1 \
@@ -449,21 +463,22 @@ impl Store<'_> {
                 rusqlite::params![product_id, location_id],
                 |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)),
             )
-            .ok()
-            .or_else(|| {
-                tx.query_row(
+            .optional()?
+        {
+            Some(row) => Some(row),
+            None => tx
+                .query_row(
                     "SELECT id, threshold FROM stock_thresholds \
                      WHERE product_id = ?1 AND location_id IS NULL AND enabled = 1 \
                      LIMIT 1",
                     rusqlite::params![product_id],
                     |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)),
                 )
-                .ok()
-            });
+                .optional()?,
+        };
 
-        let (threshold_id, threshold) = match threshold_row {
-            Some(row) => row,
-            None => return Ok(()), // No threshold configured — skip.
+        let Some((threshold_id, threshold)) = threshold_row else {
+            return Ok(());
         };
 
         // Check if stock went below threshold.
@@ -477,6 +492,7 @@ impl Store<'_> {
                     rusqlite::params![threshold_id],
                     |_| Ok(true),
                 )
+                .optional()?
                 .unwrap_or(false);
 
             if !existing {

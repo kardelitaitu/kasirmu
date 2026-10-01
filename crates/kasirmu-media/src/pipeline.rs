@@ -2,7 +2,7 @@
 last audited 25-07-26 by RSA-Agent (kasirmu-media slice A: pipeline deep read; M-1 FIXED 25-07-26)
 crate: kasirmu-media | status: SAFE | lint: CLEAN
 findings: M-1 FIXED — transform() now probes image dimensions header-only (ImageReader::into_dimensions, no pixel allocation) BEFORE any decode and enforces BOTH MediaLimits.max_side and max_pixels, closing the decompression-bomb gap (previously only max_input_bytes was checked). 2 new guard tests use shrunken limits so no large allocations happen in tests (26 tests pass). M-2 FIXED — transform() now decodes the source exactly ONCE into a DynamicImage and runs crop/compress/thumbnails on in-memory frames via the new auto_crop_img/compress_img/thumbnail_img stage variants (pre-fix: crop 1x, compress 1x, dims 1x, then 2x per preset, each stage re-encoded to JPEG and re-decoded by the next). Storage stub returns NotImplemented everywhere; promotion note: enforce key sanitization (no path separators/dotdot) when LocalStorage lands
-next: M-2 INFO | perf: decode once when perf matters
+next: none on M-1/M-2 (both FIXED, see findings — the previous `M-2 INFO` here contradicted the `M-2 FIXED` two lines up and read as pending work, corrected 2026-10-04). The one genuinely open item in this crate is the MediaStorage backend: every method returns NotImplemented until LocalStorage/ObjectStorage are implemented, and when they are the key must be sanitised (no path separators, no `..`) before it is joined to the root (MED-D) | perf: single decode per transform; storage layer not yet implemented
 */
 //! Media pipeline orchestrator.
 //!
@@ -105,15 +105,25 @@ impl<S: MediaStorage> MediaPipeline<S> {
     /// Returns the processed variants (original + one per preset). The
     /// caller decides where to store the bytes.
     ///
+    /// `crop_target` is the aspect-ratio box `CropMode::CenterCrop` and
+    /// `CropMode::Smart` crop to. It is required for those modes and ignored by
+    /// `CropMode::TrimBorders`. MED-A: this parameter used to be hard-coded
+    /// `None` internally, so the two target-based modes always returned
+    /// `InvalidDimensions` through the pipeline — only `TrimBorders` could ever
+    /// run.
+    ///
     /// # Errors
     ///
     /// [`MediaError::InvalidDimensions`] if the input exceeds the ingest
-    /// guardrails, or any stage error ([`MediaError::InvalidImage`]).
+    /// guardrails, if a target-based `crop_mode` is used without a
+    /// `crop_target`, or any stage error ([`MediaError::InvalidImage`]).
+    #[allow(clippy::too_many_arguments)]
     pub fn transform(
         &self,
         file_name: &str,
         input_bytes: &[u8],
         crop_mode: CropMode,
+        crop_target: Option<ImageDimensions>,
         target_format: ImageFormat,
         quality: Quality,
         presets: &[ThumbnailPreset],
@@ -164,7 +174,9 @@ impl<S: MediaStorage> MediaPipeline<S> {
             .map_err(|e| MediaError::InvalidImage(format!("decode: {e}")))?;
 
         // 1. Crop (normalise the frame first — cheap when no crop needed).
-        let cropped = crate::crop::auto_crop_img(img, crop_mode, None)?;
+        // MED-A: thread the caller's crop target through instead of hard-coding
+        // `None`, which made CenterCrop and Smart unreachable via the pipeline.
+        let cropped = crate::crop::auto_crop_img(img, crop_mode, crop_target)?;
         let dims = ImageDimensions::new(cropped.width(), cropped.height());
 
         // 2. Original variant at the target format/quality.
@@ -214,6 +226,7 @@ impl<S: MediaStorage> MediaPipeline<S> {
         file_name: &str,
         input_bytes: &[u8],
         crop_mode: CropMode,
+        crop_target: Option<ImageDimensions>,
         target_format: ImageFormat,
         quality: Quality,
         presets: &[ThumbnailPreset],
@@ -224,6 +237,7 @@ impl<S: MediaStorage> MediaPipeline<S> {
             file_name,
             input_bytes,
             crop_mode,
+            crop_target,
             target_format,
             quality,
             presets,

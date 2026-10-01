@@ -81,7 +81,7 @@ fn free_tier_reports_over_quota_after_a_downgrade() {
     let conn = fresh();
     seed(&conn);
     let s = store(&conn);
-    // Downgrade to Free: caps locations 1, registers 1, warehouses 1, staff 1, products 200.
+    // Downgrade to Free: caps locations 1, registers 1, warehouses 0, staff 1, products 200.
     let report = s.assess_downgrade(&SubscriptionTier::Free).unwrap();
 
     // Locations exactly at the cap: compliant but blocked from adding more.
@@ -89,16 +89,18 @@ fn free_tier_reports_over_quota_after_a_downgrade() {
     assert!(!loc.is_over_quota());
     assert!(loc.blocks_creation());
 
-    // Registers / warehouses / staff are strictly over (2 > 1).
-    for d in [
-        QuotaDimension::PosRegisters,
-        QuotaDimension::Warehouses,
-        QuotaDimension::Staff,
-    ] {
+    // Registers / staff are strictly over by 1 (2 > 1).
+    for d in [QuotaDimension::PosRegisters, QuotaDimension::Staff] {
         let u = report.usage(d).unwrap();
-        assert!(u.is_over_quota(), "{:?} should be over quota", d);
+        assert!(u.is_over_quota(), "{d:?} should be over quota");
         assert_eq!(u.excess(), 1);
     }
+
+    // Warehouses are over by 2, not 1: the Free cap is 0 because the
+    // warehouse workspace is Premium+.
+    let wh = report.usage(QuotaDimension::Warehouses).unwrap();
+    assert!(wh.is_over_quota(), "warehouses should be over quota");
+    assert_eq!(wh.excess(), 2);
 
     // Products (2) are far under the 200 cap.
     assert!(
@@ -109,7 +111,7 @@ fn free_tier_reports_over_quota_after_a_downgrade() {
     );
 
     assert!(report.is_over_quota());
-    assert_eq!(report.total_excess(), 3);
+    assert_eq!(report.total_excess(), 4);
     assert_eq!(report.over_quota_usages().count(), 3);
 }
 
@@ -215,7 +217,12 @@ fn persist_drops_markers_once_counts_fall_within_quota() {
         .unwrap(),
         4
     );
-    // Drive terminals and warehouses back to zero (under the Free cap of 1).
+    // Drive terminals and warehouses back to zero. Terminals fall under the
+    // Free cap of 1 and drop their marker; warehouses drop theirs too, but not
+    // because they fit — the Free warehouse cap is 0 (Premium+ only), and a
+    // zero cap with nothing in it is a dimension the tier does not include at
+    // all, so there is nothing to remediate and no row to write
+    // (`QuotaUsage::is_unincluded_dimension`).
     conn.execute("DELETE FROM terminals WHERE id IN ('t-1','t-2')", [])
         .unwrap();
     conn.execute(
@@ -233,5 +240,77 @@ fn persist_drops_markers_once_counts_fall_within_quota() {
         )
         .unwrap(),
         2
+    );
+}
+
+// ── MSL-38: the over-quota markers must use the gate's tier, not the clock's ──
+
+/// MSL-36 moved the creation gates onto the LEDGER tier. `persist_over_quota_markers`
+/// resolves the tier a SECOND time, for itself, from `effective_tier()` — the wall
+/// clock — and it is called from INSIDE those gates (`quota_gate.rs`,
+/// `locations.rs`, `products_crud.rs`, `staff.rs`, `workspaces_lifecycle.rs`).
+///
+/// So a creation can be refused against the ledger tier while the marker
+/// refresh, running two lines later in the same call, records markers computed
+/// against a different tier. Its own doc states the contract it breaks:
+/// "obtained the same way the creation gates get it".
+///
+/// The two clocks must disagree for this to be observable; a unit test cannot
+/// move the OS clock, so it moves the LEDGER forward — the same relative state a
+/// rollback produces.
+#[test]
+fn over_quota_markers_use_the_same_tier_as_the_gate() {
+    let conn = fresh();
+    seed(&conn);
+    let s = store(&conn);
+
+    // Premium, expiring 20 days ago in real time — inside Premium's 30-day
+    // grace, so the aligned-clock answer is Premium and no marker is due.
+    let ledger_now = chrono::Utc::now();
+    let expiry = ledger_now - chrono::Duration::days(20);
+    conn.execute(
+        "UPDATE tenant_subscription SET tier_key = 'premium', status = 'active', expires_at = ?1 WHERE tenant_id = 'default'",
+        rusqlite::params![expiry.to_rfc3339()],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO sales (id, status, total_minor, currency, line_count, created_at, updated_at) VALUES ('s1', 'completed', 1000, 'USD', 1, ?1, ?1)",
+        rusqlite::params![ledger_now.to_rfc3339()],
+    )
+    .unwrap();
+
+    // Aligned clocks: the gate and the markers both see Premium, so this is
+    // the baseline the fix must preserve — the seeded store is comfortably
+    // inside Premium on every dimension.
+    assert_eq!(s.resolve_tier_fail_closed().unwrap().tier_key(), "premium");
+    let baseline = s.persist_over_quota_markers().unwrap();
+    assert_eq!(
+        baseline.len(),
+        0,
+        "Premium fits the seeded store comfortably"
+    );
+
+    // Roll the ledger 40 days forward while the wall clock stays put: the
+    // grace window has provably lapsed, so the gate now enforces Free.
+    let rolled = ledger_now + chrono::Duration::days(40);
+    conn.execute(
+        "UPDATE sales SET created_at = ?1, updated_at = ?1 WHERE id = 's1'",
+        rusqlite::params![rolled.to_rfc3339()],
+    )
+    .unwrap();
+
+    assert_eq!(
+        s.resolve_tier_fail_closed().unwrap().tier_key(),
+        "free",
+        "the gate enforces Free once grace has lapsed"
+    );
+
+    // The markers must agree with that gate. The seeded store has 2 terminals,
+    // 2 active warehouses and 2 active staff — all over the Free caps — so a
+    // marker refresh at the GATE's tier cannot come back empty.
+    let markers = s.persist_over_quota_markers().unwrap();
+    assert!(
+        !markers.is_empty(),
+        "the marker refresh must use the gate's tier: Free caps are exceeded by the seeded store, so an empty refresh means the markers were computed against the wall clock's Premium"
     );
 }

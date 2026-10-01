@@ -70,7 +70,12 @@ impl MerchantAccountInfo {
     }
 
     /// Serialize this slot back to a QRIS top-level TLV segment.
-    pub(crate) fn to_tlv_string(&self) -> String {
+    ///
+    /// # Errors
+    ///
+    /// Propagates [`QrisError::FieldTooLong`] when any sub-tag value exceeds
+    /// the TLV's 99-byte length limit (QRIS-B).
+    pub(crate) fn to_tlv_string(&self) -> Result<String, QrisError> {
         let mut inner_fields: Vec<(u8, String)> = Vec::new();
         inner_fields.push((SUB_TAG_GUID, self.guid.clone()));
         if let Some(ref pan) = self.merchant_pan {
@@ -167,7 +172,12 @@ impl AdditionalData {
     }
 
     /// Serialize to the nested TLV string that becomes the value of tag 62.
-    pub(crate) fn to_nested_string(&self) -> String {
+    ///
+    /// # Errors
+    ///
+    /// Propagates [`QrisError::FieldTooLong`] when any sub-tag value exceeds
+    /// the TLV's 99-byte length limit (QRIS-B).
+    pub(crate) fn to_nested_string(&self) -> Result<String, QrisError> {
         let mut fields: Vec<(u8, String)> = Vec::new();
         macro_rules! push_opt {
             ($sub:expr, $field:expr) => {
@@ -188,10 +198,11 @@ impl AdditionalData {
             fields.push((*t, v.clone()));
         }
 
-        fields
-            .iter()
-            .map(|(t, v)| tlv::encode_field(*t, v))
-            .collect()
+        let mut out = String::new();
+        for (t, v) in &fields {
+            out.push_str(&tlv::encode_field(*t, v)?);
+        }
+        Ok(out)
     }
 
     /// Returns `true` if no fields are set.

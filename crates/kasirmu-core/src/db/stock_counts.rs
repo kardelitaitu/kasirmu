@@ -597,7 +597,7 @@ impl Store<'_> {
             // never underflowing one); a surplus credits the largest holder —
             // or the canonical default location when the product has no
             // per-location rows.
-            self.bridge_legacy_inventory_into_stock_summary_in_tx(&tx, &product_id)?;
+            Self::bridge_legacy_inventory_into_stock_summary_in_tx(&tx, &product_id)?;
             if delta != 0 {
                 let holders: Vec<(String, i64)> = {
                     let mut stmt = tx.prepare(
@@ -664,7 +664,7 @@ impl Store<'_> {
                 previous_qty,
                 adjusted_qty: counted_qty,
                 reason: format!("stock count {} ({})", count.count_number, line.notes),
-                created_by: completed_by.map(|s| s.to_owned()),
+                created_by: completed_by.map(std::borrow::ToOwned::to_owned),
                 created_at: now.clone(),
             };
 
@@ -719,8 +719,7 @@ impl Store<'_> {
                 "SELECT COALESCE(MAX(CAST(SUBSTR(count_number, ?2) AS INTEGER)), 0) FROM stock_counts WHERE count_number LIKE ?1",
                 params![format!("{prefix}%"), prefix.len() + 1],
                 |row| row.get(0),
-            )
-            .unwrap_or(0);
+            )?;
         Ok(format!("{}{:03}", prefix, max_seq + 1))
     }
 }

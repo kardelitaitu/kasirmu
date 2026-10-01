@@ -592,6 +592,25 @@ fn validate_provision_args(args: &ProvisionDeviceArgs) -> Result<(), CoreError> 
             ),
         });
     }
+    // MSL-43: the sibling of the timezone check above, which closed the same gap
+    // one field over and left this one open. `currency` is written into
+    // `locations.currency` AND into the store-wide
+    // `Settings::set_default_currency`, and was validated nowhere — not here,
+    // not in the bridge, not in the shell — while both the core args and the wire
+    // DTO document it as an "ISO-4217 currency". A malformed code therefore
+    // became the store's default money context rather than a field-named error.
+    //
+    // The parser is `Currency`'s own, the same rule MSL-42 applies to the plain
+    // location update, so all three writers of this vocabulary now agree.
+    if args.currency.trim().parse::<crate::Currency>().is_err() {
+        return Err(CoreError::Validation {
+            field: "currency",
+            message: format!(
+                "currency must be a 3-letter ISO-4217 code (got {:?})",
+                args.currency
+            ),
+        });
+    }
     if args.terminal_id.trim().is_empty() {
         return Err(CoreError::Validation {
             field: "terminal_id",
@@ -692,8 +711,7 @@ fn new_id() -> String {
     static COUNTER: AtomicU64 = AtomicU64::new(0);
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
+        .map_or(0, |d| d.as_nanos());
     let seq = COUNTER.fetch_add(1, Ordering::Relaxed);
     format!("loc-{nanos:032x}{seq:04x}")
 }

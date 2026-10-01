@@ -149,9 +149,51 @@ fn mark_push_failure_bumps_attempts() {
         )
         .unwrap();
     assert_eq!(attempts, 1);
-    // And peek must not return it (backoff pushed it out of the due window).
+
+    // The backoff is AWS full-jitter: `uniform(0, min(30min, 60s * 2^attempts))`.
+    // At attempts == 0 that is `uniform(0, 60)` seconds, so a draw of ZERO
+    // seconds schedules the row for NOW — and `peek_push_batch` selects
+    // `datetime(next_attempt_at) <= datetime('now')`, which is then TRUE.
+    //
+    // This assertion used to require an empty batch unconditionally, which made
+    // the test fail on roughly one run in sixty (measured: 1/60). The claim the
+    // code actually makes is weaker and still worth pinning: the row is never
+    // returned EARLY, and it is always scheduled at or after now.
+    let scheduled = {
+        let (next,): (String,) = conn
+            .query_row(
+                "SELECT next_attempt_at FROM image_push_queue WHERE hash = 'hash1'",
+                [],
+                |r| Ok((r.get(0)?,)),
+            )
+            .unwrap();
+        next
+    };
+    let (enqueued,): (String,) = conn
+        .query_row(
+            "SELECT enqueued_at FROM image_push_queue WHERE hash = 'hash1'",
+            [],
+            |r| Ok((r.get(0)?,)),
+        )
+        .unwrap();
+    assert!(
+        scheduled.as_str() >= enqueued.as_str(),
+        "a failed attempt must never schedule the row BEFORE it was enqueued \
+         (got next={scheduled} enqueued={enqueued})"
+    );
+
+    // And whenever the draw was non-zero, peek must exclude it. With a zero
+    // draw the row is legitimately due, so both answers are correct and the
+    // test asserts the disjunction the implementation actually guarantees.
     let batch = store.peek_push_batch(10).unwrap();
-    assert!(batch.is_empty());
+    if scheduled.as_str() > enqueued.as_str() {
+        assert!(
+            batch.is_empty(),
+            "a future next_attempt_at must keep the row out of the due batch"
+        );
+    } else {
+        assert_eq!(batch.len(), 1, "a zero-second backoff leaves the row due");
+    }
 }
 
 #[test]
@@ -247,4 +289,26 @@ fn image_refs_in_chunk_stays_under_the_sqlite_ceiling() {
     // SQLITE_MAX_VARIABLE_NUMBER: 32 766 on the bundled 3.4x, 999 pre-3.32.
     assert_eq!(SQLITE_MAX_VARIABLES, 999);
     assert!(IMAGE_REFS_IN_CHUNK + IMAGE_REFS_LEAD_PARAMS < SQLITE_MAX_VARIABLES);
+}
+
+#[test]
+fn mark_push_attempt_propagates_db_error_when_reading_attempts() {
+    let conn = fresh_db();
+    let store = Store::new(&conn);
+    store.enqueue_image_push("hash-err-1", 1024).unwrap();
+
+    // Corrupt the attempts column with a blob so reading i32 fails
+    conn.execute(
+        "UPDATE image_push_queue SET attempts = X'FFFF' WHERE hash = 'hash-err-1'",
+        [],
+    )
+    .unwrap();
+
+    let err = store
+        .mark_push_attempt("hash-err-1", false)
+        .expect_err("database error reading attempts must propagate, not fallback to (0,)");
+    assert!(
+        matches!(err, CoreError::Db(_)),
+        "expected CoreError::Db, got {err:?}"
+    );
 }

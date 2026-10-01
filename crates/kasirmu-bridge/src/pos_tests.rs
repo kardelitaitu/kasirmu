@@ -13,6 +13,127 @@ use kasirmu_core::session::SessionContext;
 use kasirmu_core::subscription::TenantSubscription;
 use kasirmu_core::workspace_type::RESTAURANT_POS;
 
+// ── Discount percent: the two doors must agree ──────────────────────
+
+/// A `discount_percent` above 100 must be handled the SAME way at both
+/// checkout doors.
+///
+/// `discount_percent` is an `i64` on the wire but `Percentage` holds a `u8`
+/// capped at 100, so the narrowing needs a decision. The PREVIEW door
+/// (`build_preview_cart`) clamps with `.min(100)`; the SHORTFALL CHECKOUT
+/// door cast raw (`args.discount_percent as u8`), and `as` TRUNCATES: 300
+/// becomes 44, 357 becomes 101, 256 becomes 0. So a caller sending 300 got
+/// a preview computed at 100% and a sale charged at 44% — the operator
+/// confirms one number and the customer is charged another.
+///
+/// 256 is the sharpest case: it truncates to 0, so the discount is silently
+/// DROPPED. `Percentage::new` returns `None` for anything over 100 and the
+/// deserializer REJECTS it with an error, so the truncating cast was the
+/// only path that could turn an out-of-range value into a wrong-but-valid
+/// one instead of a refusal.
+#[test]
+fn preview_and_shortfall_doors_treat_a_high_discount_percent_identically() {
+    let line = PreviewLineArgs {
+        sku: "SKU-1".into(),
+        qty: 1,
+        unit_price_minor: 10_000,
+        unit_price_currency: "USD".into(),
+    };
+
+    // The value the preview door resolves for an out-of-range percentage.
+    let preview_pct = build_preview_cart(std::slice::from_ref(&line), 300)
+        .expect("preview builds")
+        .discount_percent();
+    assert_eq!(
+        preview_pct, 100,
+        "the preview door clamps an over-100 percentage to the maximum"
+    );
+
+    // The checkout door must resolve the SAME value. Asserted at the helper...
+    assert_eq!(
+        checkout_discount_percent(300),
+        preview_pct,
+        "the checkout door must not alter the percentage the preview showed"
+    );
+    assert_eq!(checkout_discount_percent(256), 100, "256 must not become 0");
+    assert_eq!(checkout_discount_percent(0), 0);
+
+    // ...and then in SOURCE, because the helper alone proves nothing: the
+    // defect was a call site that bypassed the narrowing, and a behavioural
+    // test of the helper passes against the broken checkout door. Verified by
+    // restoring the raw cast and watching this file still pass without the
+    // scan below. Every narrowing of `discount_percent` to the `u8` the
+    // Percentage takes must therefore route through the one helper.
+    // WHITESPACE-NORMALISED, and that is the whole difficulty. The first version
+    // of this scan tested one LINE at a time, and a line-based scan can be
+    // evaded by FORMATTING ALONE: with the cast written as
+    //
+    //     foundation::Percentage::new(
+    //         (args.discount_percent) as u8,
+    //     )
+    //
+    // no single line contains both `Percentage::new(` and `discount_percent as
+    // u8`, so every predicate missed and the test passed with the truncating
+    // cast restored - verified by doing exactly that and watching it go green.
+    // EVERY FILE THAT CAN SPELL A DOOR IS SCANNED, and the two 2026-09-27
+    // `pos.rs` splits are why. The first moved the clamp's definition and the
+    // preview door into `pos/preview.rs`; the second moved the checkout half -
+    // including the second door - into `pos/checkout.rs`. A scan of `pos.rs`
+    // alone saw two occurrences and its own floor failed correctly. The
+    // invariant is "both doors route through the one clamp", a property of the
+    // `pos` MODULE, so the subject is every file that can spell a door - and
+    // that set changed twice in one day, which is the argument for the floor
+    // below rather than against it.
+    let src = concat!(
+        include_str!("pos.rs"),
+        "\n",
+        include_str!("pos/preview.rs"),
+        "\n",
+        include_str!("pos/checkout.rs"),
+    );
+    let flat: String = src.split_whitespace().collect::<Vec<_>>().join(" ");
+
+    // A FLOOR, so this cannot pass by finding nothing. A source scan whose
+    // subject disappears reads exactly like a clean sweep; that is the failure
+    // mode `license_writer_literals_are_swept_from_license_rs_not_from_a_transcription`
+    // guards against with its own `>= 5` assertion, and the same discipline is
+    // owed here. The shared clamp is defined once and called at two doors, so
+    // three occurrences is the floor a healthy tree must show. The re-export
+    // line in `pos.rs` is the fourth, which is why the floor stays comfortable
+    // across the split.
+    let call_sites = flat.matches("checkout_discount_percent").count();
+    assert!(
+        call_sites >= 3,
+        "expected the shared clamp to appear at least 3 times (definition + two doors) across pos.rs + pos/preview.rs, found {call_sites} - the scan is reading files that no longer spell it, so this test would pass vacuously"
+    );
+
+    // Every narrowing of the i64 wire field, in any formatting.
+    for (needle, what) in [
+        ("Percentage::new(discount_percent as u8)", "preview door"),
+        (
+            "Percentage::new(args.discount_percent as u8)",
+            "shortfall checkout door",
+        ),
+        (
+            "Percentage::new((args.discount_percent) as u8)",
+            "shortfall checkout door",
+        ),
+        ("Percentage::new((discount_percent) as u8)", "preview door"),
+    ] {
+        assert!(
+            !flat.contains(needle),
+            "{what} narrows discount_percent without the shared clamp, so an over-100 value truncates instead of clamping: {needle}"
+        );
+    }
+
+    // And the truncation trap itself, stated so a future edit cannot
+    // reintroduce it by "simplifying" the clamp away.
+    assert_eq!(300i64 as u8, 44, "as u8 truncates rather than clamps");
+    assert_eq!(
+        256i64 as u8, 0,
+        "256 truncates to 0 - the discount vanishes"
+    );
+}
 // -- The broken-seed leg for a PROPAGATING command (crate::testing, RULE at :217-221) --
 
 /// The settlement commands this file drives do NOT project a fail-closed
@@ -2008,6 +2129,14 @@ fn plugin_dir(name: &str, lua: &str, permissions: &[&str]) -> tempfile::TempDir 
     )
     .unwrap();
     std::fs::write(plugin_dir.join("script.lua"), lua).unwrap();
+    // Approve exactly what the manifest declares: the operator grant gate (C2)
+    // refuses a plugin whose permissions were never approved, and these tests
+    // are about the checkout money boundary, not about the gate itself.
+    std::fs::write(
+        dir.path().join("plugin-grants.json"),
+        format!("{{\"schema_version\":1,\"grants\":{{\"{name}\":[{perms}]}}}}"),
+    )
+    .unwrap();
     dir
 }
 

@@ -10,6 +10,7 @@ import type { MockHandler } from '../core/mockDispatcher';
 import { handlers } from '../core/mockDispatcher';
 import { MOCK_PRODUCTS } from './catalog';
 import { MOCK_CATEGORIES } from '../core/mockSeedData';
+import { MOCK_TIER_MAX_PRODUCTS, MOCK_TIER_NAMES, getMockTier, getMockTierCaps } from '../core/mockTier';
 
 function isoDays(startDate: string, endDate: string): string[] {
   const out: string[] = [];
@@ -21,34 +22,42 @@ function isoDays(startDate: string, endDate: string): string[] {
   return out;
 }
 
-/** The over-quota assessment fixture — one body shared by the unscoped and
- *  scoped command names (W6-C): the mock tenant is Premium with unlimited
- *  quotas, so nothing is over and no remediation row is legally possible. */
+/**
+ * The over-quota assessment fixture, shared by the unscoped and scoped command
+ * names (W6-C).
+ *
+ * The limits come from the one tier table, so switching tier in the DevToolbar
+ * is what makes this section reachable: pick Free and the finite caps apply.
+ * This replaced a hardcoded Premium row plus a comment telling the developer to
+ * hand-edit the file to see the Pro case — the toggle is that instruction,
+ * made permanent.
+ *
+ * section J B3: per-location marker rows stay empty HERE ON PURPOSE, not
+ * omitted. Markers are emitted by the real fan-out only when a PER-LOCATION cap
+ * is finite and exceeded (max_kds_screens or max_warehouses), and no tier has
+ * both a finite per-location cap and a usage above it in this fixture — the
+ * counts below are 0 or 1, and the tightest per-location cap is 1. Inventing a
+ * marker to make the section visible would demonstrate a state the product
+ * cannot reach, which is worse than no preview.
+ */
 function getMockOverQuotaReport(): {
   tierKey: string;
   tierName: string;
   usages: { dimension: string; limit: number | null; current: number }[];
   markers: never[];
 } {
+  const tier = getMockTier();
+  const caps = getMockTierCaps();
   return {
-    tierKey: 'premium',
-    tierName: 'Premium',
+    tierKey: tier,
+    tierName: MOCK_TIER_NAMES[tier],
     usages: [
-      { dimension: 'locations', limit: null, current: 1 },
-      { dimension: 'pos_registers', limit: null, current: 1 },
-      { dimension: 'warehouses', limit: null, current: 0 },
-      { dimension: 'staff', limit: null, current: 1 },
-      { dimension: 'products', limit: null, current: 0 },
+      { dimension: 'locations', limit: caps.maxLocations, current: 1 },
+      { dimension: 'pos_registers', limit: caps.maxPosInstances, current: 1 },
+      { dimension: 'warehouses', limit: caps.maxWarehouses, current: 0 },
+      { dimension: 'staff', limit: caps.maxStaffUsers, current: 1 },
+      { dimension: 'products', limit: MOCK_TIER_MAX_PRODUCTS[tier], current: 0 },
     ],
-    // section J B3: per-location marker rows are empty HERE ON PURPOSE, not
-    // omitted. This fixture reports the Premium tier, whose caps are unlimited
-    // (max_kds_screens and max_warehouses are both None), so the real fan-out
-    // cannot legally emit a single row: an unlimited cap never produces a
-    // marker. A mock that invented one to make the section visible would be worse
-    // than no preview, because it would demonstrate a state the product cannot
-    // reach. To see the section, change tierKey/tierName above to 'pro' and give
-    // the caps finite limits, then add rows whose resourceType is 'kds_screen' or
-    // 'warehouse' and whose resourceId is a mock location id.
     markers: [],
   };
 }
@@ -351,6 +360,9 @@ export const analyticsHandlers: Record<string, MockHandler> = {
         margin_per_unit: Math.floor(p.price.minor_units * 0.4),
         total_margin_minor: Math.floor(p.price.minor_units * 0.4) * (2 + (i * 5) % 40),
         total_revenue_minor: p.price.minor_units * (2 + (i * 5) % 40),
+        // C22: rows carry their own currency; the screen formats with it and
+        // would render 'undefined' money without it.
+        currency: p.price.currency,
       })),
       median_volume: 15,
       median_margin: 500_000,

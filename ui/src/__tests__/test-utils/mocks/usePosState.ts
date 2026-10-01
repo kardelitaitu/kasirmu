@@ -54,6 +54,7 @@ export interface UsePosStateMockShape {
   addProduct: ReturnType<typeof vi.fn>;
   removeLine: ReturnType<typeof vi.fn>;
   updateQty: ReturnType<typeof vi.fn>;
+  updateLineNote: ReturnType<typeof vi.fn>;
   setDiscount: ReturnType<typeof vi.fn>;
   updateLinePrice: ReturnType<typeof vi.fn>;
   setTipPercent: ReturnType<typeof vi.fn>;
@@ -107,6 +108,7 @@ export function createUsePosStateMock(overrides: UsePosStateMockOverrides = {}):
     addProduct: vi.fn(),
     removeLine: vi.fn(),
     updateQty: vi.fn(),
+    updateLineNote: vi.fn(),
     setDiscount: vi.fn(),
     updateLinePrice: vi.fn(),
     setTipPercent: vi.fn(),

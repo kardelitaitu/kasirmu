@@ -237,7 +237,29 @@ export default function TransactionLogScreen() {
                 <Fragment key={tx.id}>
                   <tr
                     className="log-row-expandable"
+                    // C24: this row IS a control (it toggles the detail
+                    // panel), so it needs the three things a clickable
+                    // non-button element owes a keyboard user: it can be
+                    // reached (tabIndex), it is announced as a control with
+                    // its state (role + aria-expanded) and it has a name
+                    // (aria-label, per row so a screen reader says WHICH
+                    // transaction). Enter and Space both activate, matching
+                    // the loyalty table's row (LoyaltyManagementScreen.tsx)
+                    // rather than inventing a second convention.
+                    tabIndex={0}
+                    role="button"
+                    aria-expanded={isExpanded}
+                    aria-label={l10n.getString(
+                      isExpanded ? 'inv-log-row-collapse-aria' : 'inv-log-row-expand-aria',
+                      { date: new Date(tx.created_at).toLocaleString(numLocale) },
+                    )}
                     onClick={() => handleRowClick(tx.id)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        void handleRowClick(tx.id);
+                      }
+                    }}
                   >
                     <td>{new Date(tx.created_at).toLocaleString(numLocale)}</td>
                     <td>

@@ -177,7 +177,7 @@ fn payment_debug_output() {
         gateway_response: None,
         idempotency_key: None,
     };
-    let debug = format!("{:?}", payment);
+    let debug = format!("{payment:?}");
     assert!(debug.contains("pay-1"));
     assert!(debug.contains("cash"));
 }
@@ -192,7 +192,7 @@ fn payment_split_arg_debug_output() {
         gateway_response: None,
         idempotency_key: None,
     };
-    let debug = format!("{:?}", split);
+    let debug = format!("{split:?}");
     assert!(debug.contains("card"));
     assert!(debug.contains("txn_123"));
 }

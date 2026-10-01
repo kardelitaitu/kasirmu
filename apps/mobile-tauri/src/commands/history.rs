@@ -8,11 +8,17 @@ use serde::Serialize;
 use tauri::{State, command};
 
 use kasirmu_core::Money;
+use kasirmu_core::db::faktur_pajak::FakturPajakInfo;
 use kasirmu_core::db::{DailySummaryRow, SalesByHourRow, Store};
 use kasirmu_core::permissions;
 use kasirmu_core::subscription::TenantSubscription;
 
-use crate::commands::authz::require_permission_for_user;
+pub use kasirmu_bridge::history::StampFakturPajakArgs;
+
+use crate::commands::authz::require_permission_for_session;
+// R3: the SAME window arithmetic the products door uses and that
+// `paginate()` implements in the UI, rather than a second paging rule here.
+use crate::commands::products::page_window;
 use crate::error::AppError;
 use crate::state::AppState;
 
@@ -258,32 +264,79 @@ pub async fn export_eod_report(state: State<'_, AppState>) -> Result<EodReport, 
 // ── Tests ──────────────────────────────────────────────────────────────
 
 /// Session-scoped variant of `list_sales`.
+///
+/// R3: `limit` and `offset` are **optional and additive**, mirroring
+/// `list_products_scoped`. A caller that passes neither gets every sale in
+/// the tier window, exactly as before. The return type stays
+/// `SaleListResponse` — the shape `ui/src/api/sales.ts` declares and the
+/// desktop shell shares — and only the `sales` array is windowed, so no
+/// existing consumer's contract moves.
+///
+/// `sales_history_capped` is reported for the TIER window, not the page, so
+/// a paged caller still sees the upgrade teaser.
+///
+/// # KNOWN LIMITATION — the DB read is unbounded (DEFERRED)
+///
+/// The window is applied in Rust, AFTER `Store::list_sales_with_history_cap`
+/// has read and materialised every sale in the tier window. **The IPC payload
+/// and the renderer are bounded; the query is not.** Deferred because the
+/// bound does not exist in `kasirmu-core`:
+///
+/// * `Store::list_sales_with_history_cap(&self, days: Option<i64>)
+///   -> Result<(Vec<Sale>, bool), CoreError>` (`crates/kasirmu-core/src/db/sales_crud.rs:288`)
+///   builds its clause from a `FROM …` fragment and forwards to the private
+///   `list_sales_sql` (`:302`), which appends no LIMIT. Its callers are
+///   `crates/kasirmu-bridge/src/history.rs:87` (the DESKTOP path), this file
+///   at `:68` and `:302`, and `crates/kasirmu-core/src/db/sales_tests.rs:149,158`.
+///   Five call sites, so adding `Option<u64>` bounds is feasible here — but it
+///   is still a signature change on a shared bridge path, so the safe form is
+///   the same sibling method (`…_paged`) rather than a param change.
+/// * The precedent to mirror already exists: `Store::list_sales_for_customer`
+///   runs a real `ORDER BY created_at DESC LIMIT ?2 OFFSET ?3`
+///   (`crates/kasirmu-core/src/db/sales_crud.rs:432`).
+///
+/// What bounds the read TODAY is the tier's history window
+/// (`sales_history_days()`: Free 3 months, Plus 1 year, Pro 5 years), which
+/// caps the row set by DATE, not by count — on an unlimited-history tier the
+/// materialised list is the whole history, and that is the case this deferral
+/// does not cover.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn list_sales_scoped(
     session_token: String,
+    limit: Option<u64>,
+    offset: Option<u64>,
     state: State<'_, AppState>,
 ) -> Result<SaleListResponse, AppError> {
-    let (session, conn_arc) = state.resolve_scope(&session_token)?;
+    let session = state.resolve_session(&session_token)?;
+    // R10 gate-KIND + gate-ORDER, 2026-09-25: adopt the scope-aware form the bridge
+    // twin uses, and run it BEFORE the store is opened. This door used to open the
+    // store first and then ask `require_permission_for_user` of the STORE db -- a db
+    // that carries no `users` rows (identity lives only in the global db), so the
+    // check could only ever deny, and it denied after `open_store` had already done
+    // filesystem work. `require_permission_for_session` asks the same permission of
+    // the global db and adds the branch/workspace scope, exactly as
+    // `kasirmu_bridge::history::list_sales_scoped` does.
+    require_permission_for_session(&state, &session, permissions::SALES_VIEW).await?;
+    let conn_arc = state.resolve_store(&session_token)?;
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
     let db = &*db_guard;
     let store = Store::new(&db);
-    // F-017, mirrored from the desktop bridge (`crates/kasirmu-bridge/src/history.rs`):
-    // a session-scoped twin must CHECK something, not just resolve a session.
-    // Same permission constant the desktop path already uses for list_sales, asked
-    // of the one gate helper this lane uses, so neither the permission name nor the
-    // rule is copied into this crate.
-    require_permission_for_user(&store, &session.user_id, permissions::SALES_VIEW)?;
     let sub = TenantSubscription::load(&db, "default")?
         .ok_or_else(|| AppError::Internal("default tenant subscription not found".into()))?;
     sub.verify_signature()?;
     let days = sub.effective_tier().sales_history_days();
     let (sales, capped) = store.list_sales_with_history_cap(days)?;
     drop(db);
+    // R3: window the tier-capped list. With no bounds this is a no-op, so the
+    // unpaged caller sees exactly the list it saw before.
+    let mut sales = sales;
+    let (start, end) = page_window(sales.len(), limit, offset);
+    let page = sales.drain(start..end).collect::<Vec<_>>();
     Ok(SaleListResponse {
-        sales: sales
+        sales: page
             .into_iter()
             .map(|s| SaleListItem {
                 id: s.id,
@@ -307,18 +360,14 @@ pub async fn get_sale_scoped(
     id: String,
     state: State<'_, AppState>,
 ) -> Result<Option<SaleDetail>, AppError> {
-    let (session, conn_arc) = state.resolve_scope(&session_token)?;
+    let session = state.resolve_session(&session_token)?;
+    require_permission_for_session(&state, &session, permissions::SALES_VIEW).await?;
+    let conn_arc = state.resolve_store(&session_token)?;
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
     let db = &*db_guard;
     let store = Store::new(&db);
-    // F-017, mirrored from the desktop bridge (`crates/kasirmu-bridge/src/history.rs`):
-    // a session-scoped twin must CHECK something, not just resolve a session.
-    // Same permission constant the desktop path already uses for get_sale, asked
-    // of the one gate helper this lane uses, so neither the permission name nor the
-    // rule is copied into this crate.
-    require_permission_for_user(&store, &session.user_id, permissions::SALES_VIEW)?;
     let sale = store.get_sale(&id)?;
     // F2-7: single-row getter on the detail door only (no list N+1).
     let tax_estimate_note = match &sale {
@@ -347,18 +396,14 @@ pub async fn export_daily_summary_scoped(
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<DailySummaryRow>, AppError> {
-    let (session, conn_arc) = state.resolve_scope(&session_token)?;
+    let session = state.resolve_session(&session_token)?;
+    require_permission_for_session(&state, &session, permissions::REPORTS_EXPORT).await?;
+    let conn_arc = state.resolve_store(&session_token)?;
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
     let db = &*db_guard;
     let store = Store::new(&db);
-    // F-017, mirrored from the desktop bridge (`crates/kasirmu-bridge/src/history.rs`):
-    // a session-scoped twin must CHECK something, not just resolve a session.
-    // Same permission constant the desktop path already uses for export_daily_summary, asked
-    // of the one gate helper this lane uses, so neither the permission name nor the
-    // rule is copied into this crate.
-    require_permission_for_user(&store, &session.user_id, permissions::REPORTS_EXPORT)?;
     let rows = store.export_daily_summary()?;
     drop(db);
     Ok(rows)
@@ -371,18 +416,14 @@ pub async fn export_sales_by_hour_scoped(
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<SalesByHourRow>, AppError> {
-    let (session, conn_arc) = state.resolve_scope(&session_token)?;
+    let session = state.resolve_session(&session_token)?;
+    require_permission_for_session(&state, &session, permissions::REPORTS_EXPORT).await?;
+    let conn_arc = state.resolve_store(&session_token)?;
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
     let db = &*db_guard;
     let store = Store::new(&db);
-    // F-017, mirrored from the desktop bridge (`crates/kasirmu-bridge/src/history.rs`):
-    // a session-scoped twin must CHECK something, not just resolve a session.
-    // Same permission constant the desktop path already uses for export_sales_by_hour, asked
-    // of the one gate helper this lane uses, so neither the permission name nor the
-    // rule is copied into this crate.
-    require_permission_for_user(&store, &session.user_id, permissions::REPORTS_EXPORT)?;
     let rows = store.export_sales_by_hour()?;
     drop(db);
     Ok(rows)
@@ -395,18 +436,14 @@ pub async fn export_eod_report_scoped(
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<EodReport, AppError> {
-    let (session, conn_arc) = state.resolve_scope(&session_token)?;
+    let session = state.resolve_session(&session_token)?;
+    require_permission_for_session(&state, &session, permissions::REPORTS_EXPORT).await?;
+    let conn_arc = state.resolve_store(&session_token)?;
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
     let db = &*db_guard;
     let store = Store::new(&db);
-    // F-017, mirrored from the desktop bridge (`crates/kasirmu-bridge/src/history.rs`):
-    // a session-scoped twin must CHECK something, not just resolve a session.
-    // Same permission constant the desktop path already uses for export_eod_report, asked
-    // of the one gate helper this lane uses, so neither the permission name nor the
-    // rule is copied into this crate.
-    require_permission_for_user(&store, &session.user_id, permissions::REPORTS_EXPORT)?;
 
     let daily = store.export_daily_summary()?;
     let hourly = store.export_sales_by_hour()?;
@@ -455,6 +492,55 @@ pub async fn export_eod_report_scoped(
         discount_total,
         hourly_breakdown: hourly,
     })
+}
+
+/// Stamp a DJP-approved NSFP onto a completed sale.
+///
+/// `needless_borrow` is allowed to match the five other `*_scoped` bodies above,
+/// which all pass `&db` where `db` is already `&Connection` (`let db = &*db_guard`).
+/// The non-scoped twins are NOT allowed the same lint: they hold a `MutexGuard`, so
+/// `&db` there is a genuine deref. `dropping_references` accompanies it because the
+/// guard is dropped explicitly on the scoped paths.
+#[allow(clippy::needless_borrow, dropping_references)]
+#[command]
+pub async fn stamp_faktur_pajak_scoped(
+    session_token: String,
+    args: StampFakturPajakArgs,
+    state: State<'_, AppState>,
+) -> Result<FakturPajakInfo, AppError> {
+    let session = state.resolve_session(&session_token)?;
+    require_permission_for_session(&state, &session, permissions::SALES_PROCESS).await?;
+    let conn_arc = state.resolve_store(&session_token)?;
+    let db_guard = conn_arc
+        .lock()
+        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
+    let db = &*db_guard;
+    let store = Store::new(&db);
+    let info =
+        store.stamp_faktur_pajak(&args.sale_id, &args.nsfp, args.kode_transaksi.as_deref())?;
+    Ok(info)
+}
+
+/// Create a Faktur Pengganti for an existing e-Faktur on a completed sale.
+///
+/// Same `allow` as the sibling scoped bodies — see `stamp_faktur_pajak_scoped`.
+#[allow(clippy::needless_borrow, dropping_references)]
+#[command]
+pub async fn create_faktur_pengganti_scoped(
+    session_token: String,
+    sale_id: String,
+    state: State<'_, AppState>,
+) -> Result<FakturPajakInfo, AppError> {
+    let session = state.resolve_session(&session_token)?;
+    require_permission_for_session(&state, &session, permissions::SALES_PROCESS).await?;
+    let conn_arc = state.resolve_store(&session_token)?;
+    let db_guard = conn_arc
+        .lock()
+        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
+    let db = &*db_guard;
+    let store = Store::new(&db);
+    let info = store.create_faktur_pengganti(&sale_id)?;
+    Ok(info)
 }
 
 #[cfg(test)]

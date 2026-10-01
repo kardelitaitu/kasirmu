@@ -5,12 +5,13 @@ scripts/verify-agents-mirrors.py — Keep the AGENTS.md mirrors telling the trut
 WHY THIS EXISTS
 ===============
 
-There are two copies of the agent rules: root `AGENTS.md` and
-`.agents/management/AGENTS.md` (moved there from `.agents/AGENTS.md` by
-`edd97e5c0`, which reorganized `.agents/` into subdirectories).
-A third, `.prime/AGENTS.md`, existed until 08-09-26 and was deleted with the `.prime/`
-tree; the per-mirror mutation table it needed went with it. `.agents/management/AGENTS.md`
-documents the hazard itself:
+ROOT `AGENTS.md` is the only copy of the agent rules today. Two others used to mirror it,
+and both are retired with the reason recorded rather than dropped silently:
+`.prime/AGENTS.md` was deleted with the `.prime/` tree on 08-09-26 (the per-mirror
+mutation table it needed went with it), and `.agents/management/AGENTS.md` -- moved there
+from `.agents/AGENTS.md` by `edd97e5c0`, the reorganisation that split `.agents/` into
+subdirectories -- was deleted on 2026-09-24 by `5ec0ca164`, a commit whose entire change
+was that one deletion. The retired copy documents the hazard itself:
 
   "scripts/bump-version.ps1 updates the *version* lines in these mirrors but
    nothing updates the *gate* list ... which is how all three drifted to different
@@ -52,7 +53,11 @@ WHAT IT CHECKS
      the two counts differ, only a claim that matches the working tree and contradicts
      the commit is a problem; anything else is another lane mid-edit, printed as a
      notice that cannot fail the run -- a permanent cross-repo red trains people to
-     ignore the gate.
+     ignore the gate. The count is read in the two shapes the mirrors actually write it
+     (claimed_step_count): the canonical "runs **N steps**" sentence, and the shorter
+     "- N steps" form the 2026-09-27 economy rewrite introduced, which is read only on a
+     line that also names the gate surface. Reading one shape and calling the other file
+     silent is what this rule did until 2026-09-29.
   1b. ENUMERATION MEMBERSHIP -- a mirror that lists the steps by name is checked
       against the hook's section NAMES, not only their count: seven wrong names still
       read as "seven steps", which is how a file can state the right number and
@@ -84,11 +89,12 @@ WHAT IT CHECKS
      "Job count: N" / "jobs: N", a restated "eleven (11) jobs", and a table cell) must
      equal the number of top-level jobs across the LIVE workflows -- or, when the claim
      names a workflow, that workflow's own count. The word table reaches fifteen, and
-     the patterns are BUILT from it so the two cannot drift. Six prose files carry the
-     number: the two MIRRORS plus scripts/check.sh, docs/operations/agent-gates.md and
-     CONTRIBUTING.md, and (added after a falsification pass measured them carrying the
-     same claim ungraded) docs/operations/agent-lanes.md, .agents/skills/pr-repair/
-     SKILL.md, .agents/skills/tdd/SKILL.md and docs/operations/ci-pipeline.md. The
+     the patterns are BUILT from it so the two cannot drift. Five prose files carry the
+     number: the MIRROR plus scripts/check.sh, docs/operations/agent-gates.md,
+     CONTRIBUTING.md and scripts/check.ps1, and (added after a falsification pass measured
+     them carrying the same claim ungraded) the four live carriers in JOB_PROSE_FILES:
+     docs/operations/agent-lanes.md, .agents/skills/pr-repair/SKILL.md,
+     .agents/skills/tdd/SKILL.md and docs/operations/ci-pipeline.md. The
      original three carried the WRONG total for two releases because nothing compared it
      to the real list. Ground truth is read per workflow, then summed.
   8. MIRROR TARGETS -- a claim naming a workflow ("mirrors .github/workflows/ci.yml",
@@ -149,6 +155,7 @@ from pathlib import Path
 if hasattr(sys.stdout, "buffer"):
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")  # type: ignore[attr-defined]
 
+
 # The root used when no path is given on the command line. Resolved through git FIRST:
 # the old constant was script-relative (Path(__file__).parent.parent), which is the
 # directory holding scripts/ -- right in a normal checkout and quietly WRONG in a worktree,
@@ -185,16 +192,35 @@ def resolve_root(start: Path | None = None) -> tuple[Path, str]:
 
 DEFAULT_ROOT, ROOT_SOURCE = resolve_root()
 
-MIRRORS = ["AGENTS.md", ".agents/management/AGENTS.md"]
+# ONE mirror, and the list is expected to shrink when a mirror is retired rather than
+# kept for company. `.agents/management/AGENTS.md` was deleted on 2026-09-24 by
+# 5ec0ca164, a commit whose whole change was that deletion, after being moved there from
+# `.agents/AGENTS.md` by edd97e5c0; `.prime/AGENTS.md` went with the `.prime/` tree on
+# 08-09-26. A retired path left in this list was not inert: the run reported
+# "<path>: missing", walk_counts() printed the walk as not-whole, and
+# scripts/bump-version.ps1 registered a MISSING FILE failure for the same path -- so the
+# gate was red for the five days between the deletion and this line, which is what a
+# deleted mirror SHOULD do until someone decides its fate.
+#
+# `apps/mobile-tauri/AGENTS.md` is the one other AGENTS.md in the tree and is NOT policed
+# here, deliberately, with the reason stated: it is an app brief (build recipe, signing,
+# JDK/NDK pins), not a second copy of these rules -- it carries no version lock and no
+# gate list for rules (1)/(4)/(5) to grade, and its CI claims are about the Android
+# workflow specifically. The file itself records the gap in its rev-3 stamp ("The
+# per-directory mirror is NOT policed"), which is the honest place for it; what is NOT
+# honest is a MIRRORS list of one that leaves a reader to guess whether the second
+# AGENTS.md on disk is one of these or something else.
+MIRRORS = ["AGENTS.md"]
 
-# Files whose prose states a job TOTAL, or scopes a gate to a CI job by name. The two
-# MIRRORS carry the rules; the other three carry the same claims in their own words --
-# scripts/check.sh in its gate headers, agent-gates.md in its "Jobs (N)" heading, and
-# CONTRIBUTING.md in the paragraph that warns contributors off a retired job. All three
+# Files whose prose states a job TOTAL, or scopes a gate to a CI job by name. The MIRROR
+# carries the rules; the other four carry the same claims in their own words --
+# scripts/check.sh in its gate headers, agent-gates.md in its "Jobs (N)" heading,
+# CONTRIBUTING.md in the paragraph that warns contributors off a retired job, and
+# scripts/check.ps1's header. All three
 # carried the wrong total for two releases (the audit that produced rule 7), and none of
 # them is a mirror, so a MIRRORS-only walk would leave the rot exactly where it was.
 PROSE_FILES = MIRRORS + ["scripts/check.sh", "docs/operations/agent-gates.md",
-                         "CONTRIBUTING.md", "scripts/check.ps1"]
+                         "CONTRIBUTING.md", "scripts/check.ps1", "scripts/lint-i18n.sh"]
 
 # The LIVE carriers of the same claims, measured rather than assumed: each is a file
 # that states a job total or a "mirrors <target>" TODAY, and none of them was policed.
@@ -418,7 +444,7 @@ def live_workflows(root: Path) -> dict[str, str]:
     """name -> text, for workflows GitHub actually executes (.bak is retired)."""
     d = root / ".github" / "workflows"
     return {p.name: io.open(p, encoding="utf-8", errors="replace").read()
-            for p in sorted(d.glob("*.yml"))}
+            for p in sorted(list(d.glob("*.yml")) + list(d.glob("*.yaml")))}
 
 
 def workflow_jobs(text: str) -> list[str]:
@@ -629,6 +655,58 @@ def pair_groups(m: re.Match) -> tuple[str | None, str]:
     return (m.group(2), m.group(3) or "")
 
 
+# Count claims about WORKFLOWS, not jobs. Added 2026-09-29 after three files
+# asserted the wrong number of live workflows for months:
+#   scripts/check.sh      "the two live ones are dev-ci.yml and release.yml"
+#   scripts/check.ps1     the same sentence, in the PowerShell twin
+#   scripts/lint-i18n.sh  "in .github/workflows/dev-ci.yml -- the only live workflow"
+# All three are in this file's policeable set, and rule (7) read none of them: the
+# existing total parser keys on the noun JOB, and a workflow count is a different claim.
+# android.yml was reinstated by a9dca0610 and website.yml was never retired, so "two"
+# has been wrong since the reinstatement.
+#
+# "ones" is accepted because that is the form the defects actually took -- "the two
+# live ones" reads naturally and says the same thing, so a parser that only accepts
+# "workflows" would have missed all three. It requires "live" in the same phrase, which
+# is what keeps it from matching an ordinary "the two ones below".
+# The capture is ([a-z]+|\d+) rather than \d+ because the shapes that actually
+# occurred are WORD numerals -- "There are two live workflows", "the four live workflow
+# files", "the one live workflow". A digits-only pattern parsed none of them, which the
+# self-test caught before this shipped. WORD_NUM does the filtering: a word that is not
+# a numeral ("the", "only") resolves to None and is skipped, so widening the capture
+# cannot match an ordinary sentence.
+# Only TWO patterns, because "the four live workflow files" is matched by the FIRST
+# one alone: workflows? stops at "workflow" and the trailing " files" is simply not
+# consumed. A third pattern for the "files" spelling looked necessary and was not --
+# it fired on the same text as the first, yielding the same claim twice and failing
+# the "exactly one claim per sentence" contract every other parser here keeps.
+WORKFLOW_COUNT_RES = [
+    re.compile(r"\b([a-z]+|\d+)\s+live\s+workflows?\b", re.I),
+    re.compile(r"\b([a-z]+|\d+)\s+live\s+ones?\b", re.I),
+]
+
+
+def workflow_count_claims(text: str) -> list[tuple[int, int]]:
+    """[(line, claimed live-workflow total)] -- the workflow-count sibling of
+    job_total_claims(). Deliberately narrower than its sibling: it requires the word
+    "live", because "the two workflows" can mean two named ones inside a paragraph and
+    is not a claim about what CI runs. HISTORICAL_MARKERS are skipped for the same
+    reason every other rule here skips them -- a dated record is evidence, not a claim.
+    """
+    out: list[tuple[int, int]] = []
+    for ln, line in enumerate(text.splitlines(), 1):
+        if any(marker in line.lower() for marker in HISTORICAL_MARKERS):
+            continue
+        for rx in WORKFLOW_COUNT_RES:
+            for m in rx.finditer(line):
+                n = WORD_NUM.get(m.group(1).lower())
+                if n is None and m.group(1).isdigit():
+                    n = int(m.group(1))
+                if n is not None:
+                    out.append((ln, n))
+    return out
+
+
 def contradictory_pairs(text: str) -> list[tuple[int, int, str]]:
     """[(line, claimed, reading)] where ONE claim was written two ways that disagree.
 
@@ -706,6 +784,26 @@ def job_total_findings(text: str, rel: str, wfs: dict[str, str],
             f"{word} where the numeral reads another value (phrase: {reading!r}), so the "
             "claim is graded on the word and the sentence is wrong either way")
     return findings
+
+
+def workflow_count_findings(text: str, rel: str, live_total: int) -> list[str]:
+    """Findings for a live-WORKFLOW count that disagrees with the tree.
+
+    The sibling of job_total_findings, and deliberately blind to which workflow is
+    named: "the two live ones are dev-ci.yml and release.yml" is a claim about how many
+    workflows run, not about one of them, so there is no scope to resolve. Graded
+    against the number of live .yml files at the top level of .github/workflows --
+    attic/*.yml.bak are retired by definition and are not counted.
+    """
+    out: list[str] = []
+    for ln, claimed in workflow_count_claims(text):
+        if not live_total:
+            out.append(f"{rel}:{ln}: claims {claimed} live workflows, but none could be"
+                       f" read -- this is a ground-truth gap, not a wrong number")
+        elif claimed != live_total:
+            out.append(f"{rel}:{ln}: claims {claimed} live workflows, but {live_total} are"
+                       f" live; count them with: ls .github/workflows/*.yml")
+    return out
 
 
 def mirror_target_findings(text: str, rel: str, wfs: dict[str, str],
@@ -1142,13 +1240,108 @@ def accepted_commit_types(root: Path) -> set[str]:
 
 
 # ── Mirror claims ───────────────────────────────────────────────────────────
+#
+# The gate count is stated in prose, and the prose shape is not fixed. Both mirrors used
+# to say "runs **seven steps**", which is all this reader knew; the 2026-09-27
+# roundtrip-economy rewrite replaced that in root AGENTS.md with two shorter forms --
+# "| Gates | ... - seven steps, §2. |" in the quick card, and "## 2. Pre-commit gates -
+# seven steps" as the section heading -- so the one file that states its count TWICE was
+# reported as "does not state how many pre-commit steps it runs". That is the finding
+# class this file calls the worst kind: it accuses an honest file and, in the same
+# sentence, hides whatever real drift sat behind it.
+#
+# TWO shapes, and the difference between them is the topic requirement:
+#   (1) the canonical sentence names the hook surface itself ("runs N steps"), so it is
+#       read wherever it appears;
+#   (2) the short form is a numeral immediately in front of the noun -- "seven steps",
+#       "seven-step", "7 steps" -- and a numeral next to "step" is NOT enough on its own,
+#       because "the save step", "Pre-commit step 5", "Steps 6 and 7" and ordinary
+#       numbered prose all have that shape. So shape (2) is read only on a line that ALSO
+#       names the gate surface (gate/gates/hook/hooks/pre-commit): that is where a claim
+#       about the hook's count lives, and it is not where a runbook's "three steps to
+#       reproduce" lives.
+# Both patterns expose group 1 = digits and group 2 = the word numeral, so one reader and
+# one writer serve both -- the group contract JOB_TOTAL_RES documents, for the same reason.
+CANONICAL_STEP_COUNT_RE = re.compile(
+    r"runs\s+\*{0,2}(?:(\d+)|(" + WORD_NUM_ALT + r"))\*{0,2}"
+    r"[\s-]*(?:\w+\s+)?steps?\b", re.I)
+SHORT_STEP_COUNT_RE = re.compile(
+    r"(?<![\w-])(?:(\d+)|(" + WORD_NUM_ALT + r"))[\s-]*steps?\b", re.I)
+GATE_TOPIC_RE = re.compile(r"\bgates?\b|\bhooks?\b|pre-commit", re.I)
+
+
+def step_count_claims(text: str):
+    """(line index, matched pattern, match) for every step-count claim in TEXT, in order.
+
+    The ONE walk that both the production reader and the self-test's writer use. Two
+    walks is how the fixtures drifted from the rule in the first place: the mutations
+    carried their own inline "runs **N steps**" regexes, the 2026-09-27 rewrite changed
+    the phrasing, every one of them became a silent no-op, and only the vacuous-mutation
+    guard noticed -- after the rules they exist to exercise had stopped being exercised
+    by anything.
+
+    A line whose own text marks it as history is skipped, for the reason every other rule
+    in this file skips one: a dated stamp recording an older count is evidence, and
+    reading it as a current claim would fail a file for documenting its own history. The
+    first pattern is tried before the second on each line, so the canonical sentence wins
+    over a short form on the same line.
+    """
+    for i, line in enumerate(text.split("\n")):
+        if any(marker in line.lower() for marker in HISTORICAL_MARKERS):
+            continue
+        for rx in (CANONICAL_STEP_COUNT_RE, SHORT_STEP_COUNT_RE):
+            if rx is SHORT_STEP_COUNT_RE and not GATE_TOPIC_RE.search(line):
+                continue
+            m = rx.search(line)
+            if m:
+                yield i, rx, m
+
 
 def claimed_step_count(text: str) -> int | None:
-    m = re.search(r"runs \*\*(?:(\d+)|(one|two|three|four|five|six|seven|eight|"
-                  r"nine|ten|eleven|twelve))[\s-]*(?:\w+\s+)?steps?\*\*", text)
-    if not m:
-        return None
-    return int(m.group(1)) if m.group(1) else WORD_NUM[m.group(2)]
+    """The pre-commit gate count TEXT claims, or None when it claims none.
+
+    The FIRST claim in file order is the one graded. In root AGENTS.md that is the file's
+    own audit stamp ("seven-step gate count named explicitly (§2)"), which sits above the
+    quick card and the §2 heading -- the other two statements of the same number. A mirror
+    that states none is reported by the caller, since a mirror is REQUIRED to state it,
+    unlike a skill where silence is fine.
+
+    KNOWN GAP: only the first statement is compared, so a mirror whose stamp says 8 while
+    its live prose still says 7 (or the reverse) is graded on whichever line comes first.
+    Grading every site needs a per-site line number threaded into verdict(), including its
+    diverging-hook branches; the gap is named here rather than half-closed by a second,
+    weaker comparison inside this reader.
+
+    KNOWN GAP, named rather than left to be rediscovered: shape (2) needs the gate surface
+    named on the SAME line, so a mirror that splits its claim across a line break
+    ("... - seven\nsteps, §2.") states a count this reader cannot see. No shipped file
+    breaks the claim that way, and relaxing the topic test to a window spanning lines is
+    how an unrelated "three steps" two lines above a "gate" heading starts reading as a
+    claim about the hook.
+    """
+    for _, _, m in step_count_claims(text):
+        digits, word = m.group(1), m.group(2)
+        n = int(digits) if digits else WORD_NUM.get((word or "").lower())
+        if n is not None:
+            return n
+    return None
+
+
+def _set_first_step_count(text: str, n: int) -> str:
+    """Rewrite the FIRST step-count claim in TEXT to N, keeping the sentence's shape.
+
+    The self-test's only writer of this number, kept beside the reader so the two cannot
+    disagree about WHERE the claim is -- which they did, silently, for two days: each
+    mutation carried its own inline regex, the phrasing changed underneath it, and a
+    fixture that stops moving the number reports a rule as proven while proving nothing.
+    """
+    word = {v: k for k, v in WORD_NUM.items()}.get(n, str(n))
+    lines = text.split("\n")
+    for i, _, m in step_count_claims(text):
+        old = m.group(1) or m.group(2)
+        lines[i] = lines[i][:m.start()] + m.group(0).replace(old, word, 1) + lines[i][m.end():]
+        return "\n".join(lines)
+    return text
 
 
 # Skill files state the gate count in prose rather than the mirrors' fixed sentence, so they
@@ -1319,13 +1512,29 @@ def local_only_claims(text: str) -> list[str]:
 
 
 def documented_commit_types(text: str) -> set[str]:
-    """The `<type>` list a mirror documents, from the bullet block under
-    "`<type>` must be one of"."""
+    """The `<type>` list a mirror documents, in either of the two shapes it has used.
+
+    (a) the bullet block under "`<type>` must be one of", which the original mirrors
+    carried; (b) the single inline sentence root AGENTS.md carries today -- "Types:
+    `feat` `fix` ... `audit`." Reading only (a) left the rule INERT on the file that
+    exists, and `if doc:` treats "no documented list" as "nothing to grade", so an
+    ungraded type list was indistinguishable from a correct one -- the same shape of
+    silent pass rule (1) had with the step count.
+
+    (a) is tried first because it is the wider evidence: it spans a paragraph rather than
+    one sentence. The inline form is bounded at the first blank line for the same reason,
+    so a code span in the next paragraph is not collected as a commit type.
+    """
     i = text.find("must be one of")
-    if i < 0:
+    if i >= 0:
+        block = text[i:i + 2000]
+        found = set(re.findall(r"^\s*-\s+`([a-z-]+)`", block, re.M))
+        if found:
+            return found
+    m = re.search(r"^.*?\bTypes?:\s*(.+)$", text, re.M)
+    if not m:
         return set()
-    block = text[i:i + 2000]
-    return set(re.findall(r"^\s*-\s+`([a-z-]+)`", block, re.M))
+    return set(re.findall(r"`([a-z-]+)`", text[m.start(1):].split("\n\n")[0]))
 
 
 # ── The check ───────────────────────────────────────────────────────────────
@@ -1646,6 +1855,7 @@ def scan(root: Path, head_hook_text: str | None = None,
         if not text:
             continue
         problems.extend(job_total_findings(text, rel, wfs, per_jobs))
+        problems.extend(workflow_count_findings(text, rel, len(wfs)))
         problems.extend(mirror_target_findings(text, rel, wfs, per_jobs))
 
     # (4) SKILL FILES. A mirror must state the count; a skill need not mention it at all.
@@ -1679,7 +1889,8 @@ def walk_counts(root: Path) -> dict:
     their unit, and the missing paths spelled out, so nothing has to be inferred.
     """
     missing = [rel for rel in ALWAYS_READ if not (root / rel).is_file()]
-    wfs = len(list((root / ".github" / "workflows").glob("*.yml")))
+    wfs = len(list((root / ".github" / "workflows").glob("*.yml"))
+             + list((root / ".github" / "workflows").glob("*.yaml")))
     skills = len(list((root / ".agents" / "skills").glob("*/SKILL.md")))
     found = len(ALWAYS_READ) - len(missing)
     return {"missing": missing, "total": len(ALWAYS_READ), "found": found,
@@ -1744,16 +1955,20 @@ def report(root: Path) -> int:
         for p in problems:
             print(f"    - {p}")
         return 1
-    # Derived, never asserted: this said "all three mirrors" while MIRRORS held
-    # three, and would have gone quietly false when .prime/AGENTS.md was deleted.
-    print(f"  all {len(MIRRORS)} mirrors agree with the repo")
+    # Derived, never asserted: this said "all three mirrors" while MIRRORS held three, and
+    # would have gone quietly false when .prime/AGENTS.md was deleted. It did not, because
+    # the sentence is built from the list -- after 5ec0ca164 retired the second copy it says
+    # "every policed mirror (1)" rather than naming a number the list no longer holds. The
+    # per-mirror count line printed above is the other half of that: a MIRRORS list that
+    # shrank by accident is visible here instead of being implied by a plural.
+    print(f"  every policed mirror ({len(MIRRORS)}) agrees with the repo")
     return 0
 
 
 # ── Self-test: mutate a copy and prove each check fires ─────────────────────
 
 def _plant_ci_claim(text, claim):
-    """Plant a FALSE CI-coverage claim ahead of an anchor both mirrors carry.
+    """Plant a FALSE CI-coverage claim ahead of an anchor the mirror carries.
 
     This replaced `_retarget_ci_claim`, which rewrote the true sentence "All <N> steps now
     have a CI backstop" into a false one. That was elegant while the mirrors carried the
@@ -1796,15 +2011,21 @@ MUTATIONS = [
      # not a substring of the inserted text either ("only by the opt-in local hook"), so a
      # real catch was being reported as MISSED.
      "verify-migration-column-types.py"),
+    # Re-anchored 2026-09-29: the mutation used to carry its own "runs **N steps**"
+    # regex, which the economy rewrite turned into a no-op. It now goes through
+    # _set_first_step_count(), the same walk claimed_step_count() reads, so the fixture
+    # cannot move a number the rule is not looking at.
     ("gate count off by one",
-     lambda t: re.sub(r"runs \*\*(?:eight|nine|ten|[a-z]+) steps\*\*",
-                      "runs **six steps**", t, count=1),
+     lambda t: _set_first_step_count(t, 6),
      "pre-commit steps"),
     ("version lock removed",
      lambda t: re.sub(r"locked at `[\d.]+`", "locked at `0.0.1`", t),
      "version lock"),
+    # Re-anchored 2026-09-29: the mirror's type list moved from a bullet block to one
+    # inline sentence, so a regex for the bullet form matched nothing. This drops `style`
+    # from whichever form the file carries; documented_commit_types() now reads both.
     ("commit type dropped from the list",
-     lambda t: re.sub(r"^\s*-\s+`style`[^\n]*\n", "", t, count=1, flags=re.M),
+     lambda t: re.sub(r"`style`[ \t]*\n?", "", t, count=1),
      "omits commit type"),
     ("phantom CI job cited",
      lambda t: t.replace("dev-ci.yml#static-gates", "dev-ci.yml#go-job", 1),
@@ -1816,11 +2037,15 @@ MUTATIONS = [
     # denial direction honest on the tree as it stands.
     # Re-anchored 2026-09-20: the old anchor ("Two workflows are live") was removed from the
     # mirrors, so the replace() was a no-op and the vacuous-mutation guard reported WRONG.
-    # The new anchor is a line both mirrors carry verbatim.
+    # Re-anchored AGAIN 2026-09-29: the 09-20 anchor ("Seven steps, each firing only on the
+    # paths it cares about") was itself removed by the economy rewrite's §2 head, and the
+    # no-op was reported as WRONG again -- which is the guard working, twice, on the same
+    # entry. The anchor is now text that exists in §2 today, and the plant is a denial the
+    # live dev-ci.yml contradicts, so the case grades the rule rather than the wording.
     ("push trigger falsely denied",
-     lambda t: t.replace("Seven steps, each firing only on the paths it cares about",
+     lambda t: t.replace("Each step fires only on the",
                          "Dev CI has no push trigger in dev-ci.yml. "
-                         "Seven steps, each firing only on the paths it cares about", 1),
+                         "Each step fires only on the", 1),
      "denies a push trigger"),
 ]
 
@@ -1850,7 +2075,8 @@ def make_fixture(src: Path, dst: Path) -> None:
     needed = ["Cargo.toml", ".githooks/pre-commit", ".githooks/commit-msg"]
     wfdir = src / ".github" / "workflows"
     if wfdir.is_dir():
-        needed += [f".github/workflows/{p.name}" for p in sorted(wfdir.glob("*.yml"))]
+        needed += [f".github/workflows/{p.name}"
+                   for p in sorted(list(wfdir.glob("*.yml")) + list(wfdir.glob("*.yaml")))]
     needed += MIRRORS
     # PROSE_FILES too, for the same reason the skills are: rules (7) and (8) read these
     # files, and a fixture that omits them would make those rules check nothing while
@@ -2035,17 +2261,13 @@ def _self_test_cases() -> int:
             (f"mirror claims the committed count ({n_committed}) while the worktree "
              f"holds {n_worktree} -- in-flight", n_committed, False),
         ):
-            word = {v: k for k, v in WORD_NUM.items()}.get(claim, str(claim))
             with tempfile.TemporaryDirectory() as td:
                 tmp = Path(td)
                 make_fixture(src, tmp)
                 io.open(tmp / ".githooks/pre-commit", "w", encoding="utf-8",
                         newline="\n").write(worktree_hook)
                 base_text = read(tmp, mirror_rel)
-                mutated = re.sub(
-                    r"runs \*\*(?:one|two|three|four|five|six|seven|eight|nine|ten|"
-                    r"eleven|twelve|\d+) steps\*\*",
-                    f"runs **{word} steps**", base_text, count=1)
+                mutated = _set_first_step_count(base_text, claim)
                 # Guard on the value the fixture actually states, not on the substitution
                 # having changed bytes: for the committed-count case the mirror may
                 # already carry that number, which is a valid fixture, not a dead anchor.
@@ -2207,7 +2429,16 @@ def _self_test_cases() -> int:
     base10 = read(src, rel10)
     mut10 = rename_item6(base10, "i18n lint")
     lines10 = mut10.splitlines()
-    lines10[28] = lines10[28] + "  (count corrected in this revision)"
+    # The marker belongs on ANOTHER ITEM of the same run -- that is what makes this case
+    # about per-item scope rather than about one line being skipped. It used to be a
+    # hardcoded index (lines10[28]), which pointed at item 1 only for as long as the
+    # mirror's line count stayed put; the items are located here instead, so a reformatted
+    # mirror cannot leave the marker on a line that is not part of the run at all, where
+    # the case would pass without testing anything.
+    first_item = next((i for i, l in enumerate(lines10)
+                       if ENUM_ITEM_RE.match(l) and BOLD_RE.search(l)), None)
+    if first_item is not None:
+        lines10[first_item] = lines10[first_item] + "  (count corrected in this revision)"
     mut10 = "\n".join(lines10)
     if mut10 == base10 or "i18n lint" not in mut10:
         print("  WRONG " + rel10 + ": case (10) anchored on nothing -- dead probe")
@@ -2232,7 +2463,7 @@ def _self_test_cases() -> int:
                 bad += 1
 
     # (11) A CLAIM WITH NOTHING BEHIND IT. The hole was measured, not assumed: the same
-    # seven steps rendered as a markdown table leaves both mirrors claiming a count while
+    # seven steps rendered as a markdown table leaves the mirror claiming a count while
     # the membership rule has no run to police, and printed nothing at all -- a file with
     # no checkable claim was indistinguishable from a file whose claim is true. This case
     # renders that table, plants the invented "i18n lint" label inside it, and asserts the
@@ -2426,14 +2657,14 @@ def _self_test_cases() -> int:
     # policed paths says so with numbers, an intact one stays silent so the pinned output
     # stays pinned.
     for desc, break_root, expect_line in (
-        ("three policed paths deleted", True, True),
+        ("the hook and every policed mirror deleted", True, True),
         ("intact fixture", False, False),
     ):
         with tempfile.TemporaryDirectory() as td:
             tmp = Path(td)
             make_fixture(src, tmp)
             if break_root:
-                for rel in (HOOK_REL, MIRRORS[0], MIRRORS[1]):
+                for rel in (HOOK_REL, *MIRRORS):
                     (tmp / rel).unlink(missing_ok=True)
             wc15 = walk_counts(tmp)
             out15 = io.StringIO()
@@ -2532,13 +2763,29 @@ def _self_test_cases() -> int:
         # sentence, so replacing it tests the rule; pointing at line 9 instead would test
         # the negation skip, which is a different rule and reads as a MISSED case.
         live_target = "`dev-ci.yml#website`"
-        cases17 = [
-            ("correct total passes",
-             f"{wf_name}'s eleven jobs", f"{wf_name}'s {wf_total} jobs",
-             False, None),
-            ("wrong total fails",
-             f"{wf_name}'s eleven jobs", f"{wf_name}'s {wf_total + 1} jobs",
-             True, "claims"),
+        # The total-claim needle is DERIVED from the file, never hardcoded. It read
+        # "eleven jobs" until 2026-09-24, when the split took the count to fourteen:
+        # the hardcoded needle then matched nothing and BOTH total cases reported
+        # "anchored on nothing" -- a fixture that had silently stopped exercising
+        # rule (7) while still printing a verdict. Deriving the needle means the next
+        # count change cannot rot it the same way.
+        total_m = re.search(rf"{re.escape(wf_name)}'s\s+[A-Za-z0-9]+\s+jobs", base17)
+        if total_m:
+            total_needle = total_m.group(0)
+            total_cases17 = [
+                ("correct total passes",
+                 total_needle, f"{wf_name}'s {wf_total} jobs",
+                 False, None),
+                ("wrong total fails",
+                 total_needle, f"{wf_name}'s {wf_total + 1} jobs",
+                 True, "claims"),
+            ]
+        else:
+            print(f"  WRONG {prose_rel}: case (17) cannot anchor a total claim -- no "
+                  f"\"{wf_name}'s <n> jobs\" in the file, so rule (7) is untested")
+            bad += 1
+            total_cases17 = []
+        cases17 = total_cases17 + [
             # A PASS case still has to change bytes, or the vacuous-mutation guard
             # reports it WRONG -- and rightly: a mutation that replaces a needle with
             # itself proves nothing about the rule. This one retargets the claim at
@@ -2696,6 +2943,32 @@ def _self_test_cases() -> int:
         print(f"  MISSED  {MIRRORS[0]:20s} these shapes still parse to no claim: {bad18c}")
         bad += 1
 
+    # (18f) A live-WORKFLOW COUNT. Rule (7) read JOB totals only, so "the two live
+    # ones are dev-ci.yml and release.yml" parsed to nothing -- and that sentence sat
+    # in scripts/check.sh and its PowerShell twin for months after android.yml was
+    # reinstated. Each shape below is one that was actually missed.
+    wf_bad = [
+        s for s, want in (
+            ("# the two live ones are dev-ci.yml and release.yml", 2),
+            ("# There are two live workflows, not three.", 2),
+            ("# the four live workflow files ship caddy and rust", 4),
+            ("# only the one live workflow runs this", 1),
+        ) if [c for _, c in workflow_count_claims(s)] != [want]
+    ]
+    # And the finding must FIRE, not merely parse: graded against four live workflows,
+    # a claim of two is a finding. A rule that parses but never reports is the
+    # "checker that cannot run looks exactly like one that found nothing" failure.
+    wf_fires = bool(workflow_count_findings(
+        "# the two live ones are dev-ci.yml and release.yml", "x.sh", 4))
+    wf_quiet = not workflow_count_findings("# there are four live workflows", "x.sh", 4)
+    if not wf_bad and wf_fires and wf_quiet:
+        print(f"  CAUGHT  {'workflow count':20s} four shapes parse, a wrong count FIRES, and a"
+              " correct one stays quiet")
+    else:
+        print(f"  MISSED  {'workflow count':20s} unparsed={wf_bad}, fires={wf_fires},"
+              f" quiet-on-correct={wf_quiet}")
+        bad += 1
+
     # (18d) A WORD RESTATED AS A NUMERAL. "eleven (11) jobs" read as nothing at all;
     # it must now read as ELEVEN -- and a pair that DISAGREES must be REPORTED as a
     # contradiction rather than silently resolved toward whichever half survived.
@@ -2733,6 +3006,38 @@ def _self_test_cases() -> int:
     else:
         print(f"  MISSED  {MIRRORS[0]:20s} bare job name: false finding on a live id="
               f"{silent_bare}, findings on an invented id={len(fire18e_fake)}")
+        bad += 1
+
+    # (19) THE TWO WIDENED READERS AND THE COUNT READER'S MARKER SKIP, both widened on
+    # 2026-09-29 because the mirrors' prose shape changed under them. Widening a reader
+    # reaches lines the narrow one could not -- a dated stamp states a count too -- so the
+    # count reader must READ a live line and IGNORE the same words on a line that marks
+    # itself as history, while the canonical "runs N steps" sentence must still be read with
+    # no gate word on its line at all. documented_commit_types() gained its second accepted
+    # shape for the same reason, and BOTH of its shapes are asserted here. Everything goes
+    # through the real parsers rather than a fixture, like (18b)-(18d), because the failure
+    # mode is a shape that stopped being read, not a fixture that stopped being found.
+    shapes19 = (
+        ("short count shape on a gate line", "| Gates | ... - six steps, §2. |", 6),
+        ("the same shape marked as history",
+         "| Gates | ... previously six steps, §2. |", None),
+        ("canonical sentence, no gate word", "The build runs six steps per commit.", 6),
+        ("a numeral beside 'steps', no gate word", "Publish in two steps.", None),
+    )
+    wrong19 = [(d, claimed_step_count(t), want) for d, t, want in shapes19
+               if claimed_step_count(t) != want]
+    block_form = "- `<type>` must be one of:\n  - `feat`\n  - `fix`\n  - `docs`\n"
+    inline_form = "Types: `feat` `fix` `docs`.\n"
+    types19 = {"feat", "fix", "docs"}
+    if not wrong19 and documented_commit_types(block_form) == types19 \
+            and documented_commit_types(inline_form) == types19:
+        print(f"  CAUGHT  {MIRRORS[0]:20s} both widened readers work: the count reader reads "
+              "either shape, stays silent without a gate word and on a historical line; the "
+              "type reader reads the bullet block and the inline sentence")
+    else:
+        print(f"  MISSED  {MIRRORS[0]:20s} a widened reader disagrees: count probes "
+              f"{wrong19}; block-form types {sorted(documented_commit_types(block_form))}; "
+              f"inline types {sorted(documented_commit_types(inline_form))}")
         bad += 1
 
     print(f"\n  {'self-test: all mutations caught' if not bad else f'{bad} gap(s)'}")

@@ -837,7 +837,11 @@ pub struct SyncStatusResponse {
     pub status: String,
     /// Server package version.
     pub version: String,
-    /// Number of items in the queue with status `pending`.
+    /// Number of items in the queue with status `pending`, or -1 when the count
+    /// could not be read. A client MUST treat -1 as unknown, never as an empty
+    /// queue: this is the signal a terminal polls to decide whether its backlog
+    /// is draining, so reading a failure as 0 stops the client retrying. Same
+    /// third state as `HealthResponse::sync_queue_depth`.
     pub pending_count: i64,
     /// Recommended heartbeat interval in seconds (P-3 tiered heartbeat).
     pub heartbeat_interval_secs: u64,

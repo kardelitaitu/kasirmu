@@ -12,12 +12,35 @@
 //! Split from `db/reports.rs` 13-09-26, behaviour unchanged — pure module
 //! decomposition, no logic edits.
 
+// P2-5: every cast here converts EXACT integer minor units to `f64` for one
+// division whose result is a PERCENTAGE (`part as f64 / whole as f64 * 100.0`).
+// A percentage is a ratio, not money — no monetary value is stored or summed in
+// floating point, and the i64 minor-unit totals remain the source of truth that
+// the ratio is derived FROM. `cast_precision_loss` is unactionable here for the
+// same reason it exists: it is warning that a 53-bit mantissa cannot hold every
+// i64, which is true and irrelevant to a two-significant-figure display value.
+#![allow(clippy::cast_precision_loss)]
+
 use rusqlite::params;
 
 use crate::db::Store;
 use crate::error::CoreError;
 
 use super::check_date_bound;
+
+/// The table-activity source shared by both turnover rollups: completed sales
+/// that carry a table number, counted per SALE.
+///
+/// `kds_orders` is unique on `(sale_id, kitchen_zone)`, so a sale routed to two
+/// kitchen zones has two tickets; `COUNT(*)` over them would report one party at
+/// one table as two turns. The `DISTINCT` and the predicate stay together here
+/// because two hand-copied versions drifting apart is what produced that bug
+/// twice.
+const TABLE_TURN_SOURCE: &str = "FROM kds_orders k
+             JOIN sales s ON k.sale_id = s.id
+             WHERE s.status = 'completed'
+               AND k.table_number IS NOT NULL AND k.table_number != ''
+               AND DATE(s.created_at, ?3) BETWEEN ?1 AND ?2";
 
 /// Hourly sales heatmap entry.
 #[derive(Debug, Clone, serde::Serialize)]
@@ -363,6 +386,11 @@ impl Store<'_> {
 
     /// Discount usage for a date range: share of discounted sales plus the
     /// most-redeemed discount codes.
+    ///
+    /// The code list buckets on the DISPLAYED label, not the raw column: an
+    /// unlabelled discount is stored either as NULL or as `''`, and both show
+    /// as `discount`, so grouping the raw column would report the same code
+    /// twice and spend two of the five slots on it.
     pub fn discounts_summary(
         &self,
         start_date: &str,
@@ -387,7 +415,7 @@ impl Store<'_> {
              FROM sales
              WHERE status = 'completed' AND discount_percent > 0
                AND DATE(created_at, ?3) BETWEEN ?1 AND ?2
-             GROUP BY discount_label
+             GROUP BY COALESCE(NULLIF(discount_label, ''), 'discount')
              ORDER BY redeemed_count DESC
              LIMIT 5",
         )?;
@@ -416,6 +444,11 @@ impl Store<'_> {
     /// is tracked through KDS orders carrying a table number; each completed
     /// sale with one represents a single table turn (takeaway orders without
     /// a table number are excluded).
+    ///
+    /// The turn is counted per SALE, not per KDS ticket: a sale whose items
+    /// span two kitchen zones fans out into one `kds_orders` row per zone
+    /// (`UNIQUE (sale_id, kitchen_zone)`), and counting tickets would report
+    /// one party at one table as two turns.
     pub fn table_turnover(
         &self,
         start_date: &str,
@@ -425,17 +458,13 @@ impl Store<'_> {
         check_date_bound("start_date", start_date)?;
         check_date_bound("end_date", end_date)?;
         let tz = self.tz_modifier();
-        let mut stmt = self.conn.prepare(
+        let mut stmt = self.conn.prepare(&format!(
             "SELECT DATE(s.created_at, ?3) AS date,
-                    COUNT(*) AS table_orders
-             FROM kds_orders k
-             JOIN sales s ON k.sale_id = s.id
-             WHERE s.status = 'completed'
-               AND k.table_number IS NOT NULL AND k.table_number != ''
-               AND DATE(s.created_at, ?3) BETWEEN ?1 AND ?2
+                    COUNT(DISTINCT s.id) AS table_orders
+             {TABLE_TURN_SOURCE}
              GROUP BY DATE(s.created_at, ?3)
-             ORDER BY date ASC",
-        )?;
+             ORDER BY date ASC"
+        ))?;
         let rows = stmt.query_map(params![start_date, end_date, tz], |row| {
             Ok(TableTurnoverRow {
                 date: row.get("date")?,
@@ -456,17 +485,13 @@ impl Store<'_> {
         check_date_bound("start_date", start_date)?;
         check_date_bound("end_date", end_date)?;
         let tz = self.tz_modifier();
-        let mut stmt = self.conn.prepare(
+        let mut stmt = self.conn.prepare(&format!(
             "SELECT CAST(strftime('%H', s.created_at, ?3) AS INTEGER) AS hour,
-                    COUNT(*) AS table_orders
-             FROM kds_orders k
-             JOIN sales s ON k.sale_id = s.id
-             WHERE s.status = 'completed'
-               AND k.table_number IS NOT NULL AND k.table_number != ''
-               AND DATE(s.created_at, ?3) BETWEEN ?1 AND ?2
+                    COUNT(DISTINCT s.id) AS table_orders
+             {TABLE_TURN_SOURCE}
              GROUP BY hour
-             ORDER BY hour ASC",
-        )?;
+             ORDER BY hour ASC"
+        ))?;
         let rows = stmt.query_map(params![start_date, end_date, tz], |row| {
             Ok(HourlyOccupancyRow {
                 hour: row.get("hour")?,

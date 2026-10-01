@@ -4,8 +4,9 @@ area: module-system
 title: ADR #1: Module System Design
 status: Implemented (2026-07-15)
 ---
-<!-- Audit stamp: 2026-07-22 · Hermes-Agent · status: ACCURATE (0 findings, 1 low-severity observation) · foundation/src/contracts.rs has Module trait (on_load/on_start/on_stop, ModuleResult) — matches ADR; Kernel in platform/kernel/src/kernel.rs:52 with register/load_all/start_all — matches; FeatureRegistry in crates/oz-core/src/features.rs:171 — matches; Status "Implemented (2026-07-15)" consistent with live module system · obs: ADR shows id()->&'static str but actual trait returns ModuleId (typed id) — design intent preserved, not a drift · Related links (ARCHITECTURE.md, RESTRUCTURING.md) valid -->
+<!-- Superseded audit marker (2026-07-22 · Hermes-Agent, body kept verbatim) · retained · status: ACCURATE (0 findings, 1 low-severity observation) · foundation/src/contracts.rs has Module trait (on_load/on_start/on_stop, ModuleResult) — matches ADR; Kernel in platform/kernel/src/kernel.rs:52 with register/load_all/start_all — matches; FeatureRegistry in crates/oz-core/src/features.rs:171 — matches; Status "Implemented (2026-07-15)" consistent with live module system · obs: ADR shows id()->&'static str but actual trait returns ModuleId (typed id) — design intent preserved, not a drift · Related links (ARCHITECTURE.md, RESTRUCTURING.md) valid -->
 
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 206 lines, with a prior stamp re-verified rather than replaced. ADR #1 is the oldest decision record in the directory and the one every later module-system document cites, so its standing matters more than its line count. · WHAT STILL VERIFIES is the design, not the coordinates. The module-lifecycle concept it establishes is the one the manifest specification and the domain-extraction ADR both elaborate, and the implementation it describes is live: `ModuleManifest::from_json` and `validate` are in `platform/kernel/src/manifest.rs`, and the trait foundation it points at is `foundation/src/contracts.rs`, one of the few roots the workspace restructure never renamed. That is a genuine survival result for a January decision record. · WHAT IS DATED, and left as written: it counts registered crates and locates them at `platform/startup/src/lib.rs:94-115`, and names the ten owning modules. Both are point-in-time facts about a workspace that now publishes 40 packages across four roots. A count in a foundational ADR is a snapshot of the moment it was written, and correcting it would suggest the decision was re-taken, which it was not. · THE ONE REASON THIS FILE EARNS A PASS DESPITE ITS PRIOR STAMP is that it is the citation root for the module-lifecycle chain — ADR #30 (domain extraction, audited in this same round), the manifest format spec (round 22), and the modular app plan (round 24) all rest on it. Where a foundational ADR's claims have been checked downstream and hold, that belongs on the root rather than being left for each citing document to re-verify. · NOT re-measured: the crate inventory and the proof-of-concept trait definitions the body quotes, which are design content describing an intended module contract. · Prior stamp retained as original evidence; footer re-dated to match the new stamp. -->
 # ADR #1: Module System Design
 
 **Status:** Implemented (2026-07-15)
@@ -200,7 +201,7 @@ Modules compiled to WebAssembly and loaded at runtime.
 - `ARCHITECTURE.md` — Target architecture
 - `RESTRUCTURING.md` — Phased migration plan
 
-> last audited 09-08-26 by buffy
+> last audited 29-09-26 by docs-auditor
 > audit: Phase 1 Core Architecture & API Docs Audit; Phase 4 ADR Deep Audit
 > status: ACCURATE (0 findings) · verified accurate: cargo check passed, no structural orphans, no stale version headers
 > status: ACCURATE (verified against actual codebase)

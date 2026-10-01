@@ -79,7 +79,7 @@ function makeCartPanelProps(
     handleCartPanelKeyDown: noop, cartSwipe: { onTouchStart: noop, onTouchEnd: noop },
     activeWorkspace: null, lines: [], deductionLocationName: null,
     handleDeductionBadgeClick: noop, deductionOverridden: false, shiftLoading: false,
-    activeShift: null, shiftNow: 0, handleCloseShiftClick: noop,
+    activeShift: null, shiftUnavailable: false, shiftNow: 0, handleCloseShiftClick: noop,
     handleOpenShiftClick: noop, isEnabled: () => false, setShowTables: noop,
     setShowSalesHistory: noop, setShowStockInquiry: noop, onNavigate: undefined,
     handleOpenSettings: noop, handleLock: noop, showTableNumberSetting: false,

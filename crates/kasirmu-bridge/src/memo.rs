@@ -21,11 +21,11 @@
 //! Terminal identity has one rule, not one per leg: sessions carry the DEVICE
 //! identity (the hostname) while every recipient row — local or cloud — keys on
 //! `terminals.id`, so the read, the ack and the tablet's cloud query all resolve
-//! through [`resolve_recipient_terminal_id`] rather than each translating the
+//! through [`resolve_recipient_terminal_id`](crate::memo::resolve_recipient_terminal_id) rather than each translating the
 //! session value themselves.
 //!
 //! The cloud ack's identity is the same rule applied to the credential:
-//! [`resolve_ack_client_credentials`] pairs the device with its resolved row id
+//! [`resolve_ack_client_credentials`](crate::memo::resolve_ack_client_credentials) pairs the device with its resolved row id
 //! as the pairing's `client_id`, so the token the server mints carries a
 //! `terminal_id` claim the ack endpoint can key a recipient row on.
 

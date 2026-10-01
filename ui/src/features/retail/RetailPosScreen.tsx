@@ -468,6 +468,7 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
   const [rowMenu, setRowMenu] = useState<ContextMenuState | null>(null);
 
   const loadProductsAndCategories = useCallback((token: string) => {
+    if (!token) return;
     // Abort any previous in-flight request to prevent race condition
     if (loadProductsAbortRef.current) {
       loadProductsAbortRef.current.abort();
@@ -852,6 +853,7 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
 
   const [storeSettings, setStoreSettings] = useState<StoreSettingsDto>({ name: '', address: '', taxId: '', currency: 'IDR', branch: '', logo: '' });
   useEffect(() => {
+    if (!sessionToken) return;
     let mounted = true;
     getStoreSettingsScoped(sessionToken).then((s) => { if (mounted) setStoreSettings(s); }).catch(() => { if (mounted) addToast({ message: requiredLocalized(l10nRef.current, 'retail-toast-failed-settings'), type: 'error' }); });
     return () => { mounted = false; };
@@ -887,6 +889,7 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
   );
 
   useEffect(() => {
+    if (!sessionToken) return;
     setActiveShift(null);
     setShiftLoading(true);
     getActiveShiftScoped(sessionToken)
@@ -971,8 +974,25 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
   const [discountRpInput, setDiscountRpInput] = useState('');
 
   const handleApplyDiscount = useCallback(() => {
-    const pct = Math.min(100, parseFloat(discountInput));
-    if (Number.isNaN(pct) || pct <= 0) return;
+    // Whole percentage only -- reject fractional input instead of silently
+    // truncating it. This is the same guard the main POS screen applies at
+    // features/sales/hooks/usePosCartActions.ts:206-207; the retail screen was
+    // the copy that drifted, and `parseFloat` + `Math.min(100, ...)` accepted
+    // what the canonical handler refuses.
+    //
+    // It matters because usePosState computes
+    // `Math.floor(subtotal.minor_units * (100 - discountPercent) / 100)`
+    // (usePosState.ts:228-236): a fractional percent silently truncates the
+    // DISCOUNTED TOTAL, so 33.7% charges a different amount than the cashier
+    // typed and the receipt shows a percent the total does not match. The
+    // `Math.min(100, ...)` also silently clamped an over-100 entry to a free
+    // sale instead of refusing it.
+    //
+    // The modal input is type="number" with min/max (RetailModals.tsx:494-502)
+    // but those are advisory -- they do not stop a fractional value being
+    // typed or pasted -- so the check has to live here.
+    const pct = Number(discountInput);
+    if (!Number.isInteger(pct) || pct < 1 || pct > 100) return;
     setDiscount(pct, '');
     setShowDiscount(false);
     setDiscountInput('');
@@ -987,7 +1007,30 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
     const rpMinor = parseMinorUnits(discountRpInput, minorUnitExponent(subtotal?.currency ?? 'IDR'));
     if (rpMinor === null || rpMinor <= 0 || !subtotal || subtotal.minor_units === 0) return;
     const capped = Math.min(subtotal.minor_units, rpMinor);
-    const pct = Math.round((capped / subtotal.minor_units) * 100 * 100) / 100;
+    // MONEY-05: project the typed AMOUNT to a percent WITHOUT rounding the
+    // ratio. `Math.round((capped / subtotal) * 100 * 100) / 100` rounded the
+    // ratio to two decimals, and usePosState recomputes the money from the
+    // percent -- so that rounding was a money error, in the UPWARD direction:
+    // 35 off a 20000-unit subtotal is a true 0.175%, rounded up to 0.18, and the
+    // cart charged 19963 instead of 19965, two units more than typed. Measured
+    // over subtotal 100..20000 and discounts 1..120 that costs up to 3 units,
+    // with the excess on 1194056 combinations.
+    //
+    // DOMAIN LIMIT, verified end to end so it is not re-derived: the discount is
+    // a WHOLE percent everywhere -- `Percentage(u8)` at
+    // foundation/src/percentage.rs:38, `discount_percent: i64` narrowed by
+    // checkout_discount_percent at crates/kasirmu-bridge/src/pos/preview.rs:176,
+    // and Math.round in setDiscount at usePosState.ts:287. Only 5058 of
+    // 14955150 (subtotal, amount) pairs up to 50000/300 map to a whole percent,
+    // so nearly every typed Rp amount is rounded on the way in, and 8829054 of
+    // those pairs charge the customer LESS than the cashier typed.
+    //
+    // That is the domain design, not a defect here, and the cart already shows
+    // the resulting percent (`Discount (0.2%)` via CartFooterTotals.tsx:115) so
+    // the rounding is visible after the fact. What IS fixed here is the extra
+    // error the ratio round added on top of it. If this tab is ever moved to
+    // store an amount, this projection is the line that stops rounding at all.
+    const pct = (capped * 100) / subtotal.minor_units;
     setDiscount(pct, '');
     setShowDiscount(false);
     setDiscountRpInput('');
@@ -1186,7 +1229,22 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
       if (hasCorruptLines) {
         addToast({ message: requiredLocalized(l10nRef.current, 'retail-toast-corrupt-cart'), type: 'error' });
       }
-      if (data['discountPercent']) setDiscount(data['discountPercent'] as number, (data['discountLabel'] as string) ?? '');
+      // typeof, not truthiness. This is the only field below that reached
+      // setDiscount unchecked, and it is the one the main POS already guards:
+      // `if (typeof data.discountPercent === 'number')` at
+      // features/sales/hooks/usePosHeldCarts.ts:209. A truthiness test also
+      // passes a STRING, and setDiscount does `Math.round(percent)` --
+      // Math.round('abc') is NaN, and Math.max(0, Math.min(100, NaN)) is
+      // still NaN because every comparison against NaN is false.
+      //
+      // NaN then fails `discountPercent <= 0` in usePosState (the guard that
+      // otherwise returns the subtotal unmodified) WITHOUT falling back to it:
+      // the memos carry on to `100 - NaN` and the cart total becomes NaN
+      // minor units. Every field above is validated and this one was not, in a
+      // loop whose whole purpose is recovering a cart from untrusted JSON.
+      if (typeof data['discountPercent'] === 'number') {
+        setDiscount(data['discountPercent'], (data['discountLabel'] as string) ?? '');
+      }
       await deleteHeldCartScoped(sessionToken, cartId);
       setHeldCartId(null);
       setShowHeldCartsList(false);
@@ -1767,6 +1825,24 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
       />
 
       {/* ── Item modifier modal ──────────── */}
+      {/*
+       * NOT WIRED, and deliberately left inert rather than half-wired.
+       *
+       * `groups={[]}` means the modal has nothing to select, so Confirm has
+       * nothing to return -- and onConfirm discards both arguments anyway.
+       * The retail Modifiers button in RetailCartPanel.tsx:305-315 therefore
+       * opens a dialog that cannot change the cart.
+       *
+       * The data is missing end to end, which is why this cannot be fixed
+       * here: `ProductDto` has no modifier field, `toProduct` (:49-61) cannot
+       * carry one, and crates/kasirmu-bridge/src/products.rs returns none.
+       * RetailMenu is the working reference -- RestaurantMenu.tsx:642 feeds
+       * real groups from `getProductModifierGroups` and :263 applies the
+       * returned price AND selections to the cart line.
+       *
+       * Wiring the button to an always-empty dialog is worse than the stub:
+       * it looks finished. Leave it inert until the backend read exists.
+       */}
       <ItemModifierModal
         open={!!modifierLine}
         productName={modifierLine?.name ?? modifierLine?.sku ?? ''}

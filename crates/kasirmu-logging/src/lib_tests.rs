@@ -87,10 +87,10 @@ fn cleanup_retention_empty_dir() {
 }
 
 #[test]
-fn logging_error_open_file_display() {
+fn logging_error_log_dir_unusable_display() {
     let inner = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "access denied");
-    let err = LoggingError::OpenFile(inner);
-    assert!(err.to_string().contains("could not open log file"));
+    let err = LoggingError::LogDirUnusable(inner);
+    assert!(err.to_string().contains("could not prepare log directory"));
     assert!(err.to_string().contains("access denied"));
 }
 
@@ -282,6 +282,86 @@ fn uuid_like() -> String {
         .unwrap_or_default()
         .as_nanos()
         .to_string()
+}
+
+// ── LOG-2: an unusable log directory is reported, not swallowed ─────
+
+/// A path that cannot be prepared must fail loudly rather than yielding an
+/// `Ok(())` with a writer that silently drops everything.
+///
+/// `try_init` only errors on a duplicate subscriber, so before this pre-flight
+/// an unwritable directory produced a non-blocking writer whose writes went
+/// nowhere while the caller was told file logging was on.
+#[test]
+fn unusable_log_dir_is_reported_before_the_subscriber_is_set() {
+    // A FILE where a directory is expected: create_dir_all fails with
+    // AlreadyExists/NotADirectory on every platform.
+    let dir = std::env::temp_dir().join(format!("kasirmu-logging-probe-{}", std::process::id()));
+    std::fs::write(&dir, b"i am a file, not a directory").unwrap();
+
+    let result = crate::try_init_with_file(dir.to_str().unwrap(), "probe", 0);
+    assert!(
+        result.is_err(),
+        "a log path that cannot be prepared must be an error, not a silent Ok"
+    );
+    assert!(
+        matches!(result, Err(LoggingError::LogDirUnusable(_))),
+        "expected LogDirUnusable, got {result:?}"
+    );
+
+    std::fs::remove_file(&dir).ok();
+}
+
+/// The pre-flight creates a missing directory, so the normal case still works.
+#[test]
+fn log_dir_is_created_when_missing() {
+    let base = std::env::temp_dir().join(format!("kasirmu-logging-mk-{}", std::process::id()));
+    let nested = base.join("a").join("b");
+    let _ = std::fs::remove_dir_all(&base);
+
+    // The helper is what try_init_with_file calls first.
+    crate::ensure_log_dir_writable(nested.to_str().unwrap())
+        .expect("a missing directory must be created");
+    assert!(nested.is_dir(), "the directory must now exist");
+
+    std::fs::remove_dir_all(&base).ok();
+}
+
+// ── Client initialiser: file sink first, stdout fallback ─────────────
+//
+// `try_init_with_file_or_stdout` is what both Tauri shells call. These two
+// cases pin the FALLBACK policy: an unusable directory must degrade to stdout
+// (reported on stderr) rather than surface `LogDirUnusable` to a shell that
+// has no one to give it to, and `None` must be the plain stdout path. Both run
+// under L1_LOCK because the global subscriber is process-wide, and both assert
+// only on WHICH error escapes — whether the subscriber was already taken by a
+// sibling test is not this function's contract.
+
+#[test]
+fn client_init_falls_back_to_stdout_when_the_dir_is_unusable() {
+    let _l1 = L1_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let path = std::env::temp_dir().join(format!("kasirmu-logging-client-{}", std::process::id()));
+    std::fs::write(&path, b"file where a directory belongs").unwrap();
+
+    let result = crate::try_init_with_file_or_stdout(Some(&path), "client", 0);
+
+    assert!(
+        !matches!(result, Err(LoggingError::LogDirUnusable(_))),
+        "an unusable dir must fall back to stdout, not escape as LogDirUnusable: {result:?}"
+    );
+    std::fs::remove_file(&path).ok();
+}
+
+#[test]
+fn client_init_without_a_dir_is_the_plain_stdout_path() {
+    let _l1 = L1_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+
+    let result = crate::try_init_with_file_or_stdout(None, "client", 0);
+
+    assert!(
+        !matches!(result, Err(LoggingError::LogDirUnusable(_))),
+        "None means no directory was requested, so LogDirUnusable is impossible: {result:?}"
+    );
 }
 
 // ── RUST_LOG handling: "not set" is not a parse failure ─────────────

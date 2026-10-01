@@ -1103,11 +1103,10 @@ fn update_po_status_race_cannot_overwrite_a_competing_transition() {
             // once the intended interleaving is established, or on the
             // deadline below.
             while !A_IS_BLOCKED.load(std::sync::atomic::Ordering::SeqCst) {
-                if B_WAITED_MS.load(std::sync::atomic::Ordering::SeqCst) > 10_000 {
-                    panic!(
-                        "A never reached its write lock within 10s — the forced interleaving was not established"
-                    );
-                }
+                assert!(
+                    B_WAITED_MS.load(std::sync::atomic::Ordering::SeqCst) <= 10_000,
+                    "A never reached its write lock within 10s — the forced interleaving was not established"
+                );
                 std::thread::sleep(std::time::Duration::from_millis(5));
                 B_WAITED_MS.fetch_add(5, std::sync::atomic::Ordering::SeqCst);
             }
@@ -1149,4 +1148,66 @@ fn update_po_status_race_cannot_overwrite_a_competing_transition() {
 
     drop(conn_a);
     let _ = std::fs::remove_dir_all(&dir);
+}
+/// COR-29: the `received + damaged` guard must not be defeated by integer wrap.
+///
+/// The guard is `received + damaged > qty`, and every input to it is unbounded:
+/// `purchase_order_lines.qty` has no CHECK or ceiling in the schema, and
+/// `received_qty`/`damaged_qty` arrive unvalidated from the bridge DTO. With
+/// `qty = i64::MAX`, `received = MAX - 1` and `damaged = 10`, the true sum is
+/// `MAX + 9`, which wraps to a NEGATIVE i64 — so `sum > qty` reads FALSE, the
+/// guard passes, and the over-receipt is persisted and stock-adjusted. A debug
+/// build would panic on the same input instead.
+///
+/// This is the same class the file already guards elsewhere: MONEY-05 notes that
+/// `CreatePoLineInput` "arrives over IPC (untrusted) and dev/test builds disable
+/// overflow checks, so a bare `*` silently wraps", and uses `checked_mul` /
+/// `checked_add`. This test pins the one bare `+` that was left.
+#[test]
+fn receive_refuses_a_receipt_whose_sum_would_overflow() {
+    let conn = fresh();
+    let sid = seed_supplier(&conn);
+    seed_product(&conn);
+    let s = store(&conn);
+
+    // An ordered line at the top of the i64 range — accepted, because creation
+    // only refuses a NEGATIVE qty.
+    let huge = i64::MAX;
+    let lines = vec![CreatePoLineInput {
+        sku: "prod-po".into(),
+        product_name: "Ordered".into(),
+        qty: huge,
+        unit_cost_minor: 0,
+    }];
+    let po = s
+        .create_purchase_order("PO-OVERFLOW", &sid, "", "", None, &lines)
+        .unwrap();
+    s.update_po_status(&po.order.id, "approved").unwrap();
+    let line_id = po.lines[0].id.clone();
+
+    // received + damaged overflows i64 while each is individually non-negative,
+    // so neither the negativity guard nor a wrapped comparison can stop it.
+    let err = s
+        .receive_purchase_order_with_lines(
+            &po.order.id,
+            &[ReceivePoLineInput {
+                line_id: line_id.clone(),
+                received_qty: i64::MAX - 1,
+                damaged_qty: 10,
+            }],
+        )
+        .unwrap_err();
+    assert!(
+        matches!(&err, CoreError::Validation { field, .. } if *field == "qty"),
+        "an overflowing receipt must be refused as a qty validation, got: {err:?}"
+    );
+
+    // Nothing was written: the order is still receivable and the line untouched.
+    let after = s.get_purchase_order(&po.order.id).unwrap().unwrap();
+    assert_eq!(
+        after.order.status, "approved",
+        "a refused receipt must not advance the order status"
+    );
+    assert_eq!(after.lines[0].received_qty, 0, "no partial write");
+    assert_eq!(after.lines[0].damaged_qty, 0, "no partial write");
 }

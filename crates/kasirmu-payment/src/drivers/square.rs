@@ -161,7 +161,7 @@ impl SquarePaymentProcessor {
     pub fn new_with_endpoint(api_key: &str, location_id: &str, api_base: &str) -> Self {
         let mut headers = HeaderMap::new();
         let mut auth_value =
-            HeaderValue::from_str(&format!("Bearer {}", api_key)).unwrap_or_else(|e| {
+            HeaderValue::from_str(&format!("Bearer {api_key}")).unwrap_or_else(|e| {
                 tracing::error!(error = %e, "invalid Square auth header — using placeholder");
                 HeaderValue::from_static("Bearer placeholder")
             });
@@ -298,21 +298,21 @@ impl SquarePaymentProcessor {
         if let Ok(err) = serde_json::from_str::<SquareErrorBody>(body) {
             let mut errors = err.errors;
             if errors.is_empty() {
-                PaymentError::Network(format!("square_error: HTTP {}", status))
+                PaymentError::Network(format!("square_error: HTTP {status}"))
             } else {
                 // Classify the most specific error from Square's error list
                 let first = errors.remove(0);
                 Self::classify_square_error(first.code.as_deref(), first.detail.as_deref())
             }
         } else {
-            PaymentError::Network(format!("HTTP {}: {}", status, body))
+            PaymentError::Network(format!("HTTP {status}: {body}"))
         }
     }
 
     /// Parse a successful Square response body into a [`PaymentData`].
     fn parse_payment(body: &str) -> Result<PaymentData, PaymentError> {
         let resp: PaymentResponse = serde_json::from_str(body).map_err(|e| {
-            PaymentError::Network(format!("failed to parse Payment: {} — body: {}", e, body))
+            PaymentError::Network(format!("failed to parse Payment: {e} — body: {body}"))
         })?;
         Ok(resp.payment)
     }
@@ -320,7 +320,7 @@ impl SquarePaymentProcessor {
     /// Parse a successful Square response body into a [`RefundData`].
     fn parse_refund(body: &str) -> Result<RefundData, PaymentError> {
         let resp: RefundResponse = serde_json::from_str(body).map_err(|e| {
-            PaymentError::Network(format!("failed to parse Refund: {} — body: {}", e, body))
+            PaymentError::Network(format!("failed to parse Refund: {e} — body: {body}"))
         })?;
         Ok(resp.refund)
     }
@@ -393,7 +393,7 @@ impl PaymentProcessor for SquarePaymentProcessor {
     }
 
     async fn capture(&self, transaction_id: &str) -> Result<PaymentResult, PaymentError> {
-        let path = format!("/payments/{}/complete", transaction_id);
+        let path = format!("/payments/{transaction_id}/complete");
         let (status, body_text) = self.post(&path, &serde_json::json!({})).await?;
         if !(200..300).contains(&status) {
             return Err(Self::parse_error(status, &body_text));
@@ -423,8 +423,7 @@ impl PaymentProcessor for SquarePaymentProcessor {
         let charged_amount = match amount {
             Some(a) => a,
             None => {
-                let (status, body_text) =
-                    self.get(&format!("/payments/{}", transaction_id)).await?;
+                let (status, body_text) = self.get(&format!("/payments/{transaction_id}")).await?;
                 if !(200..300).contains(&status) {
                     return Err(Self::parse_error(status, &body_text));
                 }
@@ -470,7 +469,7 @@ impl PaymentProcessor for SquarePaymentProcessor {
     }
 
     async fn void(&self, transaction_id: &str) -> Result<PaymentResult, PaymentError> {
-        let path = format!("/payments/{}/cancel", transaction_id);
+        let path = format!("/payments/{transaction_id}/cancel");
         let (status, body_text) = self.post(&path, &serde_json::json!({})).await?;
         if !(200..300).contains(&status) {
             return Err(Self::parse_error(status, &body_text));
@@ -489,7 +488,7 @@ impl PaymentProcessor for SquarePaymentProcessor {
     }
 
     async fn receipt(&self, transaction_id: &str) -> Result<PaymentReceipt, PaymentError> {
-        let path = format!("/payments/{}", transaction_id);
+        let path = format!("/payments/{transaction_id}");
         let (status, body_text) = self.get(&path).await?;
         if !(200..300).contains(&status) {
             return Err(Self::parse_error(status, &body_text));

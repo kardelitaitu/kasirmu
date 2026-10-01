@@ -17,7 +17,8 @@ use rusqlite::params;
 use serde::{Deserialize, Serialize};
 
 use crate::error::CoreError;
-use crate::workspace_type::{ADMIN, INVENTORY, RESTAURANT_POS, STORE_POS, WAREHOUSE};
+// The workspace-type consts are used by `subscription::tier` alone; the row type
+// and the lifecycle/quota code below need none of them.
 
 /// Maximum clock skew tolerance before detecting tampering (30 seconds).
 ///
@@ -80,289 +81,8 @@ impl InstanceStatus {
 
 // ── Subscription Tier ────────────────────────────────────────────────
 
-/// Subscription tiers with their quotas, capabilities, and feature entitlements.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum SubscriptionTier {
-    /// Free forever — 3-month sales history, 1 store, 1 register, 1 warehouse, offline-only.
-    Free,
-    /// 1-Time Perpetual License — 1 store, 1 register, 1 warehouse, offline-first.
-    ///
-    /// Deprecated: kept only for database back-compat (`from_db("one_time")`).
-    /// Do not use for new code — the canonical lineup is Free / Plus / Pro / Premium / Enterprise.
-    #[deprecated(
-        note = "legacy perpetual license — kept only for database back-compat; do not use for new code"
-    )]
-    OneTime,
-    /// Plus SaaS — 1 store, 2 registers, 2 warehouses, QRIS, cloud sync, Daily Sales Dashboard.
-    Plus,
-    /// Pro SaaS — 2 stores, 5 registers/store, 3 warehouses, analytics + KDS, Stripe + QRIS.
-    Pro,
-    /// Premium — 5 stores, unlimited registers/warehouses, loyalty program, Lua engine, priority support.
-    Premium,
-    /// Enterprise — unlimited stores/registers/warehouses, regional zones, custom ERP adaptors.
-    Enterprise,
-}
-
-#[allow(deprecated)] // OneTime is intentionally referenced for DB back-compat
-impl SubscriptionTier {
-    /// Parse from the database TEXT column.
-    pub fn from_db(s: &str) -> Self {
-        match s.to_lowercase().as_str() {
-            "free" | "trial" => Self::Free,
-            "one_time" | "perpetual" | "one-time" | "onetime" => Self::OneTime,
-            "plus" | "standard" => Self::Plus, // "standard" is a legacy alias for Plus
-            "pro" => Self::Pro,
-            "premium" => Self::Premium,
-            "enterprise" => Self::Enterprise,
-            _ => Self::Free,
-        }
-    }
-
-    /// Human-readable tier name.
-    pub fn name(&self) -> &'static str {
-        match self {
-            Self::Free => "Free",
-            Self::OneTime => "1-Time Perpetual",
-            Self::Plus => "Plus",
-            Self::Pro => "Pro",
-            Self::Premium => "Premium",
-            Self::Enterprise => "Enterprise",
-        }
-    }
-
-    /// Machine-readable tier key used in the DB and the UI
-    /// (`free`, `plus`, `pro`, `premium`, `enterprise`). The deprecated
-    /// `OneTime` variant is reported as `free` — its DB rows were always
-    /// treated as the free quota tier.
-    pub fn tier_key(&self) -> &'static str {
-        match self {
-            Self::Free | Self::OneTime => "free",
-            Self::Plus => "plus",
-            Self::Pro => "pro",
-            Self::Premium => "premium",
-            Self::Enterprise => "enterprise",
-        }
-    }
-
-    /// Maximum number of locations allowed for this tier.
-    /// C4.2: Premium allows up to 5 locations self-serve; more requires
-    /// Enterprise contract. Enterprise is unlimited.
-    pub fn max_locations(&self) -> Option<i64> {
-        match self {
-            Self::Free | Self::OneTime | Self::Plus => Some(1),
-            Self::Pro => Some(2),
-            Self::Premium => Some(5),
-            Self::Enterprise => None,
-        }
-    }
-
-    /// Deprecated compatibility alias, retained through the staged
-    /// migration; the last caller is gone — use
-    /// [`max_locations`](Self::max_locations).
-    #[deprecated(note = "use max_locations")]
-    pub fn max_stores(&self) -> Option<i64> {
-        self.max_locations()
-    }
-
-    /// Maximum POS register instances per location for this tier.
-    /// Returns `None` for unlimited (Premium / Enterprise).
-    pub fn max_pos_instances(&self) -> Option<i64> {
-        match self {
-            Self::Free | Self::OneTime => Some(1),
-            Self::Plus => Some(2),
-            Self::Pro => Some(5),
-            Self::Premium | Self::Enterprise => None,
-        }
-    }
-
-    /// Maximum inventory warehouse storage points allowed for this tier.
-    /// Returns `None` for unlimited (Premium / Enterprise).
-    pub fn max_warehouses(&self) -> Option<i64> {
-        match self {
-            Self::Free | Self::OneTime => Some(1),
-            Self::Plus => Some(2),
-            Self::Pro => Some(3),
-            Self::Premium | Self::Enterprise => None,
-        }
-    }
-
-    /// Maximum staff users allowed for this tier.
-    /// Returns `None` for unlimited (Premium / Enterprise).
-    /// Enforced pre-launch per subscription-tiers.md §9 item 1.
-    pub fn max_staff_users(&self) -> Option<i64> {
-        match self {
-            Self::Free | Self::OneTime => Some(1),
-            Self::Plus => Some(5),
-            Self::Pro => Some(20),
-            Self::Premium => Some(50),
-            Self::Enterprise => None,
-        }
-    }
-
-    /// Maximum products/menu items allowed for this tier
-    /// (subscription-tiers.md §Numeric Limits — published contract,
-    /// now enforced). Returns `None` for unlimited (Enterprise).
-    pub fn max_products(&self) -> Option<i64> {
-        match self {
-            Self::Free | Self::OneTime => Some(200),
-            Self::Plus => Some(500),
-            Self::Pro => Some(1_000),
-            Self::Premium => Some(10_000),
-            Self::Enterprise => None,
-        }
-    }
-
-    /// Maximum KDS (kitchen display) screens allowed for this tier
-    /// (subscription-tiers.md §Numeric Limits — published contract,
-    /// now enforced). Free/Plus cannot run KDS at all (also rejected by
-    /// `allows_workspace_type`); Pro is capped at 2; Premium/Enterprise
-    /// are unlimited (`None`).
-    pub fn max_kds_screens(&self) -> Option<i64> {
-        match self {
-            Self::Free | Self::OneTime | Self::Plus => Some(0),
-            Self::Pro => Some(2),
-            Self::Premium | Self::Enterprise => None,
-        }
-    }
-
-    /// How far back (in days) sales history can be viewed/exported.
-    /// Returns `None` for unlimited (Premium/Enterprise). Free/Plus/Pro
-    /// have capped history as a tier differentiator.
-    pub fn sales_history_days(&self) -> Option<i64> {
-        match self {
-            Self::Free | Self::OneTime => Some(90),   // 3 months
-            Self::Plus => Some(365),                  // 1 year
-            Self::Pro => Some(5 * 365),               // 5 years
-            Self::Premium | Self::Enterprise => None, // Unlimited
-        }
-    }
-
-    /// Tier audit-log retention window in days, measured from the event
-    /// timestamp (todo-global-saas-2.md §Audit baseline — the adopted
-    /// schedule the pricing page publishes).
-    ///
-    /// `None` means the tier has **no audit-log retention entitlement**:
-    /// Free keeps no tenant-facing audit logs, so the retention sweep
-    /// purges every row (and the read surface is gated off — see the
-    /// audit commands). Paid tiers retain the basic security-event set
-    /// for the published window; Enterprise's 3 years is the *default* —
-    /// a contracted override ships as a signed custom entitlement, not a
-    /// client-side fallback (same ruling as `offline_grace_days`).
-    ///
-    /// Note the deliberate inversion of `sales_history_days`' `None`
-    /// ("unlimited"): here `None` means "nothing retained", because no
-    /// tier carries an unlimited audit window.
-    #[must_use]
-    pub fn audit_retention_days(&self) -> Option<i64> {
-        match self {
-            Self::Free | Self::OneTime => None, // no retention entitlement
-            Self::Plus => Some(90),
-            Self::Pro => Some(180),
-            Self::Premium => Some(365),      // 1 year
-            Self::Enterprise => Some(1_095), // 3 years default
-        }
-    }
-
-    /// Whether this tier supports PostgreSQL background cloud database sync.
-    pub fn supports_cloud_sync(&self) -> bool {
-        match self {
-            Self::Free | Self::OneTime => false,
-            Self::Plus | Self::Pro | Self::Premium | Self::Enterprise => true,
-        }
-    }
-
-    /// Whether this tier supports dynamic QRIS payment processing (Midtrans).
-    pub fn supports_qris(&self) -> bool {
-        match self {
-            Self::Free | Self::OneTime => false,
-            Self::Plus | Self::Pro | Self::Premium | Self::Enterprise => true,
-        }
-    }
-
-    /// Whether this tier supports Stripe credit/debit card processing.
-    pub fn supports_stripe(&self) -> bool {
-        match self {
-            Self::Free | Self::OneTime | Self::Plus => false,
-            Self::Pro | Self::Premium | Self::Enterprise => true,
-        }
-    }
-
-    /// Whether this tier supports embedded Lua VM rule engine for custom promos.
-    pub fn supports_lua_engine(&self) -> bool {
-        match self {
-            Self::Free | Self::OneTime | Self::Plus | Self::Pro => false,
-            Self::Premium | Self::Enterprise => true,
-        }
-    }
-
-    /// Whether this tier supports multi-warehouse stock deduction fallback wires in Node Topology.
-    pub fn supports_multi_warehouse_fallback(&self) -> bool {
-        match self {
-            Self::Free | Self::OneTime | Self::Plus => false,
-            Self::Pro | Self::Premium | Self::Enterprise => true,
-        }
-    }
-
-    /// Whether this tier supports regional zone containers in Node Topology.
-    pub fn supports_regional_zones(&self) -> bool {
-        matches!(self, Self::Enterprise)
-    }
-
-    /// Whether this tier supports the loyalty program (points & tiers).
-    /// Premium/Enterprise only — Pro sees a locked teaser (§3, §6).
-    pub fn supports_loyalty(&self) -> bool {
-        matches!(self, Self::Premium | Self::Enterprise)
-    }
-
-    /// Whether this tier supports reports & analytics (`analytics:view`).
-    pub fn supports_analytics(&self) -> bool {
-        matches!(self, Self::Pro | Self::Premium | Self::Enterprise)
-    }
-
-    /// Whether this tier supports the Daily Sales Dashboard (Laporan Harian) —
-    /// the Plus hero feature; Free shows a blurred teaser instead.
-    pub fn supports_daily_dashboard(&self) -> bool {
-        matches!(
-            self,
-            Self::Plus | Self::Pro | Self::Premium | Self::Enterprise
-        )
-    }
-
-    /// Offline grace period in days before POS runtime locks read-only
-    /// (subscription-tiers.md §Numeric Limits + todo-global-saas-1.md §B:
-    /// Free/OneTime 7, Plus 14, Pro 14, Premium 30, Enterprise 60 — the
-    /// same numbers the pricing page publishes). Standard Enterprise uses
-    /// 60; a contract requiring a different window ships as a signed
-    /// custom override, not a client-side fallback.
-    pub fn offline_grace_days(&self) -> i64 {
-        match self {
-            Self::Free | Self::OneTime => 7,
-            Self::Plus | Self::Pro => 14,
-            Self::Premium => 30,
-            Self::Enterprise => 60,
-        }
-    }
-
-    /// Check whether this tier allows the given workspace type.
-    ///
-    /// `type_key` is a workspace vertical ([`crate::workspace_type`]), not a
-    /// terminal profile — the two are different axes.
-    pub fn allows_workspace_type(&self, type_key: &str) -> bool {
-        match self {
-            Self::Free | Self::OneTime => {
-                matches!(type_key, STORE_POS | RESTAURANT_POS | ADMIN)
-            }
-            // Plus unlocks inventory/warehouse but NOT kds (§3 Workspace Types).
-            Self::Plus => matches!(
-                type_key,
-                STORE_POS | RESTAURANT_POS | ADMIN | WAREHOUSE | INVENTORY
-            ),
-            // Pro and above unlock every workspace type, including KDS.
-            Self::Pro | Self::Premium | Self::Enterprise => true,
-        }
-    }
-}
+pub mod tier;
+pub use tier::SubscriptionTier;
 
 // ── Subscription Row ──────────────────────────────────────────────────
 
@@ -430,8 +150,10 @@ pub struct TenantSubscription {
 /// row, which need it to panic WITH. A derived `Debug` would still satisfy
 /// them, which is exactly why this hand-written one exists.
 ///
-/// House precedent: `modules/loyalty/src/models.rs` (`impl Debug for
-/// GiftCard`, redacting `pin` the same way).
+/// House precedent: `foundation/src/loyalty.rs` (`impl Debug for
+/// GiftCard`, which redacted its `pin` until that field was removed on
+/// 2026-09-29; the hand-written `Debug` there is the pattern, minus the
+/// redaction arm the removal retired).
 impl std::fmt::Debug for TenantSubscription {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("TenantSubscription")
@@ -580,17 +302,22 @@ impl TenantSubscription {
     /// In multi-store mode (Phase 2), this would iterate all store
     /// databases and return the global maximum.
     pub fn compute_max_ledger_timestamp(conn: &rusqlite::Connection) -> Result<String, CoreError> {
-        // Get the most recent timestamp from sales.
-        let max_sales: Option<String> = conn
-            .query_row("SELECT MAX(created_at) FROM sales", [], |row| row.get(0))
-            .unwrap_or(None);
+        // MSL-32: both reads propagate. `.unwrap_or(None)` mapped every
+        // `rusqlite::Error` to `None`, and `(None, None)` below is defined as
+        // "the ledger is empty" -- so a failure to READ the ledger was
+        // indistinguishable from an empty one and answered with `Utc::now()`.
+        // That is the wall clock: the guard would then compare the OS clock
+        // against itself and pass, and the fail-closed grace/tier callers would
+        // credit the subscription rather than degrade it. A failed read is not
+        // an empty ledger.
+        let max_sales: Option<String> =
+            conn.query_row("SELECT MAX(created_at) FROM sales", [], |row| row.get(0))?;
 
         // Get the most recent timestamp from audit_log.
-        let max_audit: Option<String> = conn
-            .query_row("SELECT MAX(created_at) FROM audit_log", [], |row| {
+        let max_audit: Option<String> =
+            conn.query_row("SELECT MAX(created_at) FROM audit_log", [], |row| {
                 row.get(0)
-            })
-            .unwrap_or(None);
+            })?;
 
         // Pick the maximum of the two ledger timestamps.
         let ledger_max = match (max_sales, max_audit) {
@@ -691,7 +418,25 @@ impl TenantSubscription {
         //
         // Both were one arm before ADR #58, and neither is a grace case — but
         // they are separate arms because the STATES they feed differ.
-        if self.status == "canceled" || self.status == "revoked" {
+        //
+        // MSL-13 adds `expired` and `paused` to this family. An EXPLICIT
+        // server-written verdict about the grant must beat the date arithmetic:
+        // the engine below derives a verdict from `expires_at`, while these four
+        // statuses ARE the verdict. (`grace_period` is deliberately absent — it
+        // is the server TELLING us the row is in grace, not out of it.)
+        //
+        // Before this arm, a row the server had marked `expired` while its
+        // `expires_at` was still in the future was "within grace", so
+        // `effective_tier` returned the PAID tier — and the quota gate
+        // (`quota_gate::resolve_tier_fail_closed`), `/api/v1` product routes and
+        // every `effective_tier()` reader granted full paid limits to a
+        // subscription the server had already ended. `lifecycle_state` reported
+        // `Expired` for the same row, which is what made the disagreement
+        // visible.
+        if matches!(
+            self.status.as_str(),
+            "canceled" | "revoked" | "expired" | "paused"
+        ) {
             return false;
         }
 
@@ -701,9 +446,8 @@ impl TenantSubscription {
         }
 
         // No expiry — lifetime/perpetual license.
-        let expires_at = match &self.expires_at {
-            Some(ts) => ts,
-            None => return true,
+        let Some(expires_at) = &self.expires_at else {
+            return true;
         };
 
         let expiry = match chrono::DateTime::parse_from_rfc3339(expires_at) {
@@ -828,7 +572,7 @@ impl TenantSubscription {
     ///
     /// Orthogonal to the tier on purpose: `SubscriptionTier::from_db("trial")`
     /// keeps resolving to Free, so this flag is the only thing that survives
-    /// the collapse. See [`Self::parsed_trial`] for the fail-closed contract.
+    /// the collapse. See `Self::parsed_trial` for the fail-closed contract.
     #[must_use]
     pub fn is_trial(&self) -> bool {
         self.parsed_trial().0
@@ -873,7 +617,7 @@ impl TenantSubscription {
     /// `"analytics"` is not a recognised key and silently does nothing.
     ///
     /// Parsed from the signed payload like [`Self::addons`] and
-    /// [`Self::parsed_trial`], so the signature covers it and no migration
+    /// `Self::parsed_trial`, so the signature covers it and no migration
     /// is needed.
     #[must_use]
     pub fn payload_features(&self) -> std::collections::HashMap<String, bool> {
@@ -961,11 +705,20 @@ impl TenantSubscription {
     /// `paused`, `canceled`, `revoked`, `expired`) map first; anything else
     /// is [`SubscriptionLifecycleState::Unavailable`] — unrecognized data
     /// must fail closed, not guess. An `active` row is then refined by
-    /// date, mirroring [`Self::is_within_grace_period`] exactly so the
-    /// reported state can never disagree with `effective_tier`: Free is
-    /// active forever, a missing expiry is a perpetual license, an
-    /// unparseable expiry fails closed as expired, and a paid row past its
-    /// expiry reports `Grace` until the tier's offline grace window ends.
+    /// date with the same arithmetic as [`Self::is_within_grace_period`], so
+    /// the two agree on every row EXCEPT where a status carries its own state.
+    /// This paragraph used to claim the two "can never disagree with
+    /// `effective_tier`"; they did, and
+    /// `lifecycle_state_and_grace_period_agree_except_for_the_documented_carve_outs`
+    /// measures it. The contract after MSL-13 is: Free is active forever, a
+    /// missing expiry is a perpetual license, an unparseable expiry fails
+    /// closed as expired, and a paid row past its expiry reports `Grace` until
+    /// the tier's offline grace window ends. The one remaining divergence is
+    /// `grace_period` — the server SAYS the row is in grace, which this
+    /// function reports directly, while the date arithmetic in
+    /// [`Self::is_within_grace_period`] knows nothing about that status and may
+    /// answer `false` once the date lapses. Prefer this lifecycle state for
+    /// anything user-facing.
     pub fn lifecycle_state(&self) -> SubscriptionLifecycleState {
         self.lifecycle_state_at(chrono::Utc::now())
     }
@@ -1133,6 +886,30 @@ pub enum SubscriptionLifecycleState {
 }
 
 impl SubscriptionLifecycleState {
+    /// Whether this state keeps the subscription's entitlements flowing.
+    ///
+    /// The whole point of this method is that the set `{Active, Grace}` was
+    /// written out THREE times — `entitlements::addon_grant_flows`,
+    /// `availability::explain_availability`'s `lifecycle_denies`, and the
+    /// verdict test — and three copies of one predicate are three chances for
+    /// them to drift. Every one of those sites now asks this question instead.
+    ///
+    /// `Grace` counts as flowing on purpose: it is the payment-retry window,
+    /// and the tier is still the paid one (`is_within_grace_period_at`), so a
+    /// merchant settling an invoice keeps working. The other five states —
+    /// `Expired`, `Canceled`, `Revoked`, `Paused`, `Unavailable` — do not:
+    /// `Paused`/`Canceled` are deliberately register-reverting (see
+    /// `pos_read_only`), `Revoked` is an abuse verdict, and `Unavailable` is the
+    /// fail-closed answer for a row that did not parse.
+    ///
+    /// Note this is the LIFECYCLE axis, not the quota axis: a flowing state can
+    /// still have its quota reached, and a caller wanting the tier's limits asks
+    /// `TenantSubscription::effective_tier` for them separately.
+    #[must_use]
+    pub fn grants_entitlements(&self) -> bool {
+        matches!(self, Self::Active | Self::Grace)
+    }
+
     /// Database/wire representation (snake_case, matches the serde form).
     pub fn as_str(&self) -> &'static str {
         match self {
@@ -1148,161 +925,8 @@ impl SubscriptionLifecycleState {
 }
 
 // ── Quota Enforcement ─────────────────────────────────────────────────
-
-/// Error type for quota-related failures, used by the subscription
-/// module to provide actionable upgrade messaging.
-#[derive(Debug)]
-pub enum QuotaError {
-    /// The tenant has reached their per-store register limit.
-    RegisterLimit {
-        /// The subscription tier name.
-        tier: String,
-        /// The maximum number allowed.
-        limit: i64,
-        /// The current usage count.
-        current: i64,
-    },
-    /// The tenant has reached their store count limit.
-    StoreLimit {
-        /// The subscription tier name.
-        tier: String,
-        /// The maximum number allowed.
-        limit: i64,
-        /// The current usage count.
-        current: i64,
-    },
-    /// The workspace type is not available on this tier.
-    TypeNotAllowed {
-        /// The subscription tier name.
-        tier: String,
-        /// The workspace type key that was rejected.
-        type_key: String,
-    },
-    /// The tenant has reached their staff-user limit (C1.1, §9 pre-launch item 1).
-    StaffLimit {
-        /// The subscription tier name.
-        tier: String,
-        /// The maximum number of staff users allowed.
-        limit: i64,
-        /// The current active staff count.
-        current: i64,
-    },
-    /// The tenant has reached their warehouse-location limit.
-    WarehouseLimit {
-        /// The subscription tier name.
-        tier: String,
-        /// The maximum number of warehouse locations allowed.
-        limit: i64,
-        /// The current active warehouse count.
-        current: i64,
-    },
-    /// The tenant has reached their product/menu-item limit
-    /// (subscription-tiers.md §Numeric Limits).
-    ProductLimit {
-        /// The subscription tier name.
-        tier: String,
-        /// The maximum number of products allowed.
-        limit: i64,
-        /// The current product count.
-        current: i64,
-    },
-    /// The tenant has reached their KDS screen limit
-    /// (subscription-tiers.md §Numeric Limits).
-    KdsScreenLimit {
-        /// The subscription tier name.
-        tier: String,
-        /// The maximum number of KDS screens allowed.
-        limit: i64,
-        /// The current active KDS screen count.
-        current: i64,
-    },
-}
-
-impl std::fmt::Display for QuotaError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::RegisterLimit {
-                tier,
-                limit,
-                current,
-            } => {
-                write!(
-                    f,
-                    "Your {tier} tier allows maximum {limit} registers per store. \
-                     This store already has {current}. Upgrade to add more."
-                )
-            }
-            Self::StoreLimit {
-                tier,
-                limit,
-                current,
-            } => {
-                write!(
-                    f,
-                    "Your {tier} tier allows maximum {limit} stores. \
-                     You currently have {current}. Upgrade to add more."
-                )
-            }
-            Self::TypeNotAllowed { tier, type_key } => {
-                write!(
-                    f,
-                    "The '{type_key}' workspace type requires a higher tier. \
-                     Your current tier is {tier}."
-                )
-            }
-            Self::StaffLimit {
-                tier,
-                limit,
-                current,
-            } => {
-                write!(
-                    f,
-                    "Your {tier} tier allows maximum {limit} staff users. \
-                     You currently have {current}. Upgrade to add more."
-                )
-            }
-            Self::WarehouseLimit {
-                tier,
-                limit,
-                current,
-            } => {
-                write!(
-                    f,
-                    "Your {tier} tier allows maximum {limit} warehouse locations. \
-                     You currently have {current}. Upgrade to add more."
-                )
-            }
-            Self::ProductLimit {
-                tier,
-                limit,
-                current,
-            } => {
-                write!(
-                    f,
-                    "Your {tier} tier allows maximum {limit} products. \
-                     You currently have {current}. Upgrade to add more."
-                )
-            }
-            Self::KdsScreenLimit {
-                tier,
-                limit,
-                current,
-            } => {
-                write!(
-                    f,
-                    "Your {tier} tier allows maximum {limit} KDS screens. \
-                     You currently have {current}. Upgrade to add more."
-                )
-            }
-        }
-    }
-}
-
-impl From<QuotaError> for CoreError {
-    fn from(e: QuotaError) -> Self {
-        CoreError::SubscriptionLimitExceeded(e.to_string())
-    }
-}
+pub mod quota;
+pub use quota::QuotaError;
 
 #[cfg(test)]
 #[path = "subscription_tests.rs"]

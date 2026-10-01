@@ -116,3 +116,69 @@ fn patch_stock_response_serialization() {
     assert!(json.contains("\"previous_qty\":50"));
     assert!(json.contains("\"new_qty\":40"));
 }
+
+// ── MSL-39: the product gate reads the ledger, not the device clock ──
+
+/// This router runs on the merchant's device (`kasirmu-local-api` mounts the
+/// same `router_with_openapi` over the local SQLite DB) and carries no
+/// `validate_clock_rollback` anywhere, so the wall clock here is the
+/// merchant's to roll back. The product-creation gate must therefore resolve
+/// the tier from the database's monotonic ledger time, exactly as the bridge
+/// gates do.
+///
+/// The handler builds its tier with the same two calls this test drives
+/// (`TenantSubscription::load` + `effective_tier_for_connection`), so pinning
+/// the divergence here keeps the gate honest without a router harness.
+#[test]
+fn the_product_gate_resolves_the_tier_from_the_ledger() {
+    use kasirmu_core::SubscriptionTier;
+    use kasirmu_core::subscription::TenantSubscription;
+
+    let conn = kasirmu_core::migrations::fresh_db();
+    let ledger_now = chrono::Utc::now();
+    let expiry = ledger_now - chrono::Duration::days(20);
+    conn.execute(
+        "INSERT INTO tenant_subscription (tenant_id, tier_key, status, expires_at, max_locations, max_pos_instances, allowed_types_json, signature, signed_payload, api_key, updated_at) VALUES (?1, ?2, ?3, ?4, 99, 99, '[]', 'BOOTSTRAP_FREE', '{}', '', '')",
+        rusqlite::params!["t-ledger", "premium", "active", expiry.to_rfc3339()],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO sales (id, status, total_minor, currency, line_count, created_at, updated_at) VALUES ('s1', 'completed', 1000, 'USD', 1, ?1, ?1)",
+        rusqlite::params![ledger_now.to_rfc3339()],
+    )
+    .unwrap();
+
+    let sub = TenantSubscription::load(&conn, "t-ledger")
+        .unwrap()
+        .unwrap();
+    assert!(
+        sub.verify_signature().is_ok(),
+        "the seeded sentinel verifies"
+    );
+
+    // Aligned clocks: inside Premium's grace, so the paid cap stands.
+    assert_eq!(
+        sub.effective_tier_for_connection(&conn),
+        SubscriptionTier::Premium,
+        "inside the grace window the paid tier stands"
+    );
+
+    // Roll the ledger past the grace window while the device clock stays put.
+    let rolled = ledger_now + chrono::Duration::days(40);
+    conn.execute(
+        "UPDATE sales SET created_at = ?1, updated_at = ?1 WHERE id = 's1'",
+        rusqlite::params![rolled.to_rfc3339()],
+    )
+    .unwrap();
+
+    assert_eq!(
+        sub.effective_tier_for_connection(&conn),
+        SubscriptionTier::Free,
+        "past grace the gate must fail closed to Free"
+    );
+    assert_eq!(
+        sub.effective_tier(),
+        SubscriptionTier::Premium,
+        "the wall-clock reader still grants Premium — the divergence this gate must not use"
+    );
+}

@@ -13,7 +13,7 @@ fn test_scheduler(cache_dir: &std::path::Path) -> ImagePushScheduler {
     ImagePushScheduler {
         db,
         cache_dir: cache_dir.to_path_buf(),
-        client: reqwest::Client::new(),
+        client: super::bounded_http_client(),
     }
 }
 
@@ -84,6 +84,45 @@ async fn drain_once_noop_when_queue_empty() {
     }
     sched.drain_once().await; // no HTTP attempt
     let _ = std::fs::remove_dir_all(&tmp);
+}
+
+/// A push-queue read that FAILS must not be treated as an empty queue.
+///
+/// `drain_once` read the batch with `.unwrap_or_default()`, so a failed read
+/// became an empty `pending`, the file loop below never ran, and the cycle ended
+/// having logged nothing -- indistinguishable from the genuinely-empty queue,
+/// which at least logs a `trace!`. Every other failure in this module logs
+/// (`warn!` when it degrades, `error!` when it is real), so a broken read was the
+/// one silent path and the image queue would simply stop draining with no operator
+/// signal anywhere.
+///
+/// This drives `read_push_batch`, the extracted helper, because `drain_once`
+/// returns early on BOTH the failure and the empty case -- so no assertion on the
+/// scheduler can tell them apart, and this crate has no tracing-capture harness to
+/// read the log. The helper's `None` is the distinction, which is why it was
+/// extracted rather than fixed in place.
+///
+/// NOTE: an earlier version of this pin drove `peek_push_batch` directly and
+/// asserted it errors on a dropped table. That passed BOTH before and after the
+/// fix -- it tested unchanged core code, not this defect -- so it was replaced.
+#[tokio::test]
+async fn read_push_batch_returns_none_when_the_queue_table_is_unreadable() {
+    let db = migrations::fresh_db();
+    let store = Store::new(&db);
+
+    // Happy path first, so the failure below is the only change.
+    let hash = "b".repeat(16);
+    store.enqueue_image_push(&hash, 16).unwrap();
+    let pending = read_push_batch(&store).expect("a readable queue must yield a batch");
+    assert_eq!(pending.len(), 1);
+
+    // Drop the table: the SELECT can no longer be prepared.
+    db.execute_batch("DROP TABLE image_push_queue;").unwrap();
+
+    assert!(
+        read_push_batch(&store).is_none(),
+        "an unreadable queue must be `None`, not an empty batch"
+    );
 }
 
 #[tokio::test]
@@ -166,4 +205,43 @@ fn batch_outcome_parse_marks_stored_as_success() {
         Some("rejected")
     );
     assert!(!map.contains_key("dddddddddddddddd"));
+}
+
+// ── COR-31: the scheduler's HTTP client must be bounded ─────────────
+
+/// The scheduler used a bare `reqwest::Client::new()`, which has NO
+/// timeout. In a daemon that is worse than in a request path: a hung
+/// POST to `/api/v1/images:batch` never returns, the drain loop never
+/// reaches its next tick, and the queue silently stops draining while
+/// the scheduler is still alive. `run_sync_cycle`'s cousin in
+/// `rate_sync.rs` carries the same warning.
+///
+/// Why an `include_str!` assertion and not a behavioural one: reqwest's
+/// `Client` does not expose its configured timeouts, so a bounded
+/// client and an unbounded one are indistinguishable at runtime. The
+/// coupling we care about is "the constructor builds through
+/// `Client::builder()` with an explicit timeout", which is a property
+/// of the source. (Same technique `apps/cloud-server/src/sync_api_tests.rs`
+/// uses for the sync-store source contract.)
+#[test]
+fn push_client_is_bounded_by_a_timeout() {
+    let src = include_str!("image_push.rs");
+    assert!(
+        src.contains("reqwest::Client::builder()"),
+        "the scheduler must build its client through Client::builder() so a timeout can be set",
+    );
+    assert!(
+        src.contains(".connect_timeout("),
+        "the scheduler's client must bound the connect phase",
+    );
+    assert!(
+        src.contains(".timeout("),
+        "the scheduler's client must bound the total request",
+    );
+    // The bare constructor must not survive anywhere in the file: a
+    // later edit that reintroduces it would restore the unbounded hang.
+    assert!(
+        !src.contains("client: reqwest::Client::new()"),
+        "the bare Client::new() in the constructor is the COR-31 defect; it must not come back",
+    );
 }

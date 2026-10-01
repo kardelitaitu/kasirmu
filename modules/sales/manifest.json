@@ -3,10 +3,17 @@
   "name": "Sales",
   "version": "1.0.0",
   "description": "Core point-of-sale module: cart management, checkout, payment processing, sales history, void/refund, held orders, end-of-day reports.",
-  "dependencies": ["inventory"],
+  "dependencies": [
+    "inventory"
+  ],
   "permissions": [
     "sales:void",
     "sales:refund",
     "reports:view"
+  ],
+  "capabilities": [
+    "read:inventory",
+    "read:sales",
+    "write:sales"
   ]
 }

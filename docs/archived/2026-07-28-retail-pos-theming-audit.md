@@ -1,6 +1,8 @@
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: VERIFIED-CLAIMS RE-CONFIRMED, body preserved unchanged · Audited on branch 0.0.40. The 2026-07-28 Buffy stamp above is the original verification record and is retained verbatim; this entry confirms it rather than restating it. The P0 fixes this audit closed are genuinely closed, checked in the file itself rather than trusted from the stamp: `ui/src/features/retail/RetailPosScreen.tsx` calls `useOptionalTheme` at line 36, and both `localStorage['retail-theme']` and `_setTheme` return ZERO matches — the shadow state, the private storage key and the dead setter the audit named are all gone. The P0 finding that POS-domain tokens were "DEFINED ZERO TIMES anywhere in `ui/src/`" is the one that must not be re-broken, and the file that now defines them is `ui/src/theme/tokens.css`. · TWO CURRENT-STATE NOTES recorded here rather than written into the body, because both sit inside the Verification Summary where they are statements about branch `0.0.24` and rewriting them would falsify that record: (1) the summary cites `ui/src/frontend/themes/tokens.css`, and that directory no longer exists — the token sheet is now `ui/src/theme/tokens.css`; (2) the summary says "The four `data-theme={theme}` sites all mirror the live global value", and the file now has exactly ONE, at line 1441 on the root `<div className="retail-pos">`. That is a consolidation, not a regression — one root-level site driven by the live global theme is strictly better than four, and it still satisfies this audit's intent that the POS sub-tree follow `<html data-theme>`. · The Findings sections (shadow theme state, undefined tokens, storage-key collision, the `hsl()` escapes, the dead setter) are the audit's evidence describing the PRE-FIX state and are left exactly as written, down to the commit `972e4b0c` that closed Step A. An audit whose findings are edited to match the fixed code is no longer an audit. · REPAIRED: the machine-read footer claimed "ACCURATE (0 findings) · … all file references valid" — but this file HAS findings, seven of them, which is its entire purpose, and its own cited token path no longer resolves. The false footer block is replaced with the single machine-read line; this is the same defect found in `docs/archived/code-quality-2026-07-20.md` and `docs/archived/i18n-todo.md`. · The author's 2026-07-28 marker is the only pre-existing stamp; it was kept, not replaced, because it is the verification of record for this audit. -->
+
 # Retail POS Theming Audit — 2026-07-28
 
-<!-- Audit stamp: 2026-07-28 · Buffy · status: VERIFIED (fix cycle closed) · branch: 0.0.24 -->
+<!-- Original audit marker (2026-07-28, kept verbatim — not superseded, it is the verification of record) · Buffy · status: VERIFIED (fix cycle closed) · branch: 0.0.24 -->
 <!-- Scope: ui/src/features/retail/RetailPosScreen.tsx + RetailPosScreen.css + sibling theme files -->
 
 ## Verification Summary
@@ -268,8 +270,5 @@ This audit doc is the only deliverable for 0.0.24's theming investigation. No co
    - Theme-adaptive: POS blends with the rest of the UI; primary colour shifts per theme.
 2. Should `localStorage['oz-pos-theme-v4']` be **retired in favour of themed session** so that POS stops writing its own `retail-theme`? (yes, implicit in Step A — drop the local key entirely).
 
-> last audited 09-08-26 by buffy
-> audit: Phase 1 Core Architecture & API Docs Audit
-
-> status: ACCURATE (0 findings) · verified accurate: cargo check passed, no structural orphans, no stale version headers, all file references valid
+> last audited 29-09-26 by docs-auditor
 

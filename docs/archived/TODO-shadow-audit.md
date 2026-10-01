@@ -1,6 +1,7 @@
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · The 2026-07-26 Hermes-Agent stamp above is retained verbatim and its claims re-verified: the noise-overlay selectors it names (`.card::after`, `.modal-panel::after`, `.staff-login-card::after`, `.noise-dither::after` in `components.css:270-275`) still stand, and the four CSS files it spot-checked all exist — `ui/src/features/workspaces/WorkspaceHome.css`, `ui/src/features/retail/RetailPosScreen.css`, `ui/src/features/tables/TableManagementScreen.css` and `ui/src/components/SettingsPopup.css`. Its characterisation of this file as "a living task list, not a code-claim doc" is the right call and this pass adopts it. · REPAIRED: the machine-read footer asserted "ACCURATE (0 findings) · … all file references valid" while the body is a 30-item UNCHECKED task list. Those are not compatible claims, and a footer that says "0 findings" is precisely the signal that stops a reader opening the document. The footer block is replaced with the single machine-read line. · LEFT ALONE deliberately: the 30 open items, their file→shadow-token mapping, the risk tiers, and the cited commit `9a5696b`. Checking boxes here would be inventing a completion state nobody recorded — an audit pass has no evidence that any of these surfaces were fixed, and a task list silently marked done is worse than one honestly open. Whether the banding work landed is a question for whoever owns the CSS, and the unchecked boxes are the correct record of what is currently known. · No paths in the list have rotted: the Phase 1/2/3 files were all confirmed to resolve, so the list is still actionable as written. -->
 # Shadow Banding Audit — Task List
 
-<!-- Audit stamp: 2026-07-26 · Hermes-Agent · status: ACCURATE (0 findings) · verified accurate: noise overlay covers .card::after/.modal-panel::after/.staff-login-card::after/.noise-dither::after in components.css:270-275 (matters §1 Phase 1 list matches those 4 base selectors); cited working-state commit 9a5696b exists ("fix(shadows): eliminate 8-bit GPU banding with single-layer uniform blur + noise dither"); files referenced (WorkspaceHome.css/RetailPosScreen.css/TableManagementScreen.css/SettingsPopup.css) exist; this is a living task list, not a code-claim doc -->
+<!-- Superseded audit stamp (2026-07-26, body kept verbatim) · Hermes-Agent · status: ACCURATE (0 findings) · verified accurate: noise overlay covers .card::after/.modal-panel::after/.staff-login-card::after/.noise-dither::after in components.css:270-275 (matters §1 Phase 1 list matches those 4 base selectors); cited working-state commit 9a5696b exists ("fix(shadows): eliminate 8-bit GPU banding with single-layer uniform blur + noise dither"); files referenced (WorkspaceHome.css/RetailPosScreen.css/TableManagementScreen.css/SettingsPopup.css) exist; this is a living task list, not a code-claim doc -->
 
 ## Noise overlay coverage gaps
 
@@ -65,8 +66,5 @@ For each file:
 ## Verified working state (current commit)
 - `9a5696b` — Base shadow tokens + ADR
 
-> last audited 09-08-26 by buffy
-> audit: Phase 1 Core Architecture & API Docs Audit
-
-> status: ACCURATE (0 findings) · verified accurate: cargo check passed, no structural orphans, no stale version headers, all file references valid
+> last audited 29-09-26 by docs-auditor
 

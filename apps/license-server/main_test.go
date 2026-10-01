@@ -184,13 +184,43 @@ func TestTierQuotas_Plus(t *testing.T) {
 	if maxPOS != 2 {
 		t.Errorf("plus max_pos_instances should be 2, got %d", maxPOS)
 	}
-	for _, want := range []string{"restaurant-pos", "store-pos", "admin", "inventory", "warehouse"} {
+	for _, want := range []string{"restaurant-pos", "store-pos", "admin", "inventory"} {
 		if !slices.Contains(allowedTypes, want) {
 			t.Errorf("plus allowed_types should include %q, got %v", want, allowedTypes)
 		}
 	}
 	if slices.Contains(allowedTypes, "kds") {
 		t.Errorf("plus must NOT allow kds (Pro+ only), got %v", allowedTypes)
+	}
+	if slices.Contains(allowedTypes, "warehouse") {
+		t.Errorf("plus must NOT allow warehouse (Premium+ only), got %v", allowedTypes)
+	}
+}
+
+// TestTierQuotas_WarehouseIsPremiumOnly pins the 2026-09-29 owner ruling: the
+// warehouse workspace type is issued to Premium and Enterprise alone, the same
+// change the website's pricing table publishes. It walks the tiers rather than
+// naming Pro, because the failure mode this guards against is a tier quietly
+// KEEPING the type — Pro carried it in its catch-all `all` list before the
+// ruling, which is exactly how a stale list goes unnoticed.
+func TestTierQuotas_WarehouseIsPremiumOnly(t *testing.T) {
+	for _, tier := range []string{"free", "plus", "pro"} {
+		for _, bundle := range []string{"", "restaurant_starter"} {
+			_, _, allowed := tierQuotas(tier, bundle)
+			if slices.Contains(allowed, "warehouse") {
+				t.Errorf("tier=%q bundle=%q must NOT allow warehouse (Premium+), got %v", tier, bundle, allowed)
+			}
+		}
+	}
+	for _, tier := range []string{"premium", "enterprise"} {
+		_, _, allowed := tierQuotas(tier, "")
+		if !slices.Contains(allowed, "warehouse") {
+			t.Errorf("tier=%q must allow warehouse, got %v", tier, allowed)
+		}
+	}
+	// An unknown tier falls through to the free block, which never had it.
+	if _, _, allowed := tierQuotas("mystery", ""); slices.Contains(allowed, "warehouse") {
+		t.Errorf("an unknown tier must not allow warehouse, got %v", allowed)
 	}
 }
 

@@ -23,7 +23,7 @@ use kasirmu_core::events::SettingsUpdated;
 use kasirmu_core::offline::OfflineQueueItem;
 use kasirmu_core::settings::Settings;
 
-use crate::daemon::SettingsChangedSink;
+use crate::daemon::{HasRunningFlag, RunningFlagGuard, SettingsChangedSink};
 use crate::pg_transport::PgTransport;
 use crate::queue::SyncQueue;
 use crate::{SyncError, SyncResult, import_snapshot};
@@ -45,6 +45,11 @@ const PG_STOP_GRACE: Duration = Duration::from_secs(30);
 /// workflows before running a single PG round-trip.
 const PG_WAKEUP_DEBOUNCE: Duration = Duration::from_millis(1_500);
 
+// The sentinel is defined once, in `daemon.rs` beside `DaemonStatus`; both
+// daemons share the value so a client cannot read one queue depth as 0 and the
+// other as unknown. Re-exported here to keep the `pg_daemon::PENDING_COUNT_UNKNOWN`
+// path this daemon's own code and tests use.
+pub use crate::daemon::PENDING_COUNT_UNKNOWN;
 /// Snapshot of the PG daemon's current state, observable via
 /// [`PgSyncDaemon::status`]. Serialized camelCase for the Tauri command
 /// boundary (the desktop client's `pg_sync_status` IPC returns this
@@ -62,8 +67,22 @@ pub struct PgDaemonStatus {
     pub last_pulled: usize,
     /// Error message from the last cycle, if any.
     pub last_error: Option<String>,
-    /// Number of items currently pending in the offline queue.
+    /// Number of items currently pending in the offline queue, or
+    /// [`PENDING_COUNT_UNKNOWN`] when the count could not be read.
+    ///
+    /// The third state exists because `0` is a real measurement of an empty
+    /// queue, and the same value must not also mean "the read failed". A
+    /// caller that reads a failure as `0` concludes the backlog is drained and
+    /// stops retrying — the same defect the HTTP `SyncStatusResponse::
+    /// pending_count` and `HealthResponse::sync_queue_depth` already avoid with
+    /// the `-1` sentinel.
     pub pending_count: i64,
+}
+
+impl HasRunningFlag for PgDaemonStatus {
+    fn running_mut(&mut self) -> &mut bool {
+        &mut self.running
+    }
 }
 
 /// A reference to a shared DB connection, used by the daemon to create
@@ -160,6 +179,9 @@ impl PgSyncDaemon {
 
         let (tx, rx) = watch::channel(false);
         let shutdown_slot = Arc::clone(&self.shutdown_tx);
+        // See SyncDaemon::start_inner: the guard identifies supersession by
+        // channel identity, so it needs its own handle to this run's sender.
+        let own_shutdown = tx.clone();
         *shutdown_slot.lock().await = Some(tx);
 
         let interval = self.interval;
@@ -173,6 +195,18 @@ impl PgSyncDaemon {
         }
 
         let worker = tokio::spawn(async move {
+            // C23: own the `running` flag for the whole life of this task, so a
+            // panic inside a tick clears it during unwinding. Clearing only
+            // after the loop, as this used to, is skipped entirely by a panic
+            // — leaving `running = true` and `start` refusing with "already
+            // running" until the process restarted. Same defect and same fix
+            // as `SyncDaemon`; see RunningFlagGuard.
+            let running_guard = RunningFlagGuard::arm(
+                Arc::clone(&daemon_status),
+                Arc::clone(&shutdown_slot),
+                own_shutdown,
+            );
+
             let mut rx = rx;
 
             tracing::info!(interval_ms = interval.as_millis(), "pg sync daemon started");
@@ -200,14 +234,9 @@ impl PgSyncDaemon {
                 }
             }
 
-            // Clear `running` only when this run still owns the shutdown
-            // slot: `stop()` consumes the sender before awaiting exit, so a
-            // slot that is `Some` again means a newer run took over and a
-            // stale task must not clobber the new run's status.
-            if shutdown_slot.lock().await.is_none() {
-                let mut s = daemon_status.write().await;
-                s.running = false;
-            }
+            // Clear on the orderly path; the guard's Drop covers a panic or
+            // an early return, which never reach this line.
+            running_guard.clear().await;
         });
 
         *self.worker.lock().await = Some(worker);
@@ -228,14 +257,28 @@ impl PgSyncDaemon {
                 let store = Store::new(&conn);
 
                 let enabled = Settings::is_pg_sync_enabled(&conn).unwrap_or(false);
-                let pending = store.list_pending_offline().unwrap_or_default();
+                // A queue read that failed must NOT collapse into an empty push
+                // list: `pending.is_empty()` gates the whole push phase below, so
+                // a failed read would skip the push and report a clean cycle while
+                // the durable backlog kept growing — indistinguishable from a
+                // healthy idle terminal. Propagate so it reaches `read_error`.
+                let pending = store.list_pending_offline().map_err(|e| {
+                    format!("could not read the offline queue; refusing to report an empty push list: {e}")
+                })?;
                 // SYNC-01 parity: the durable pull anchor (since + composite
                 // cursor) survives restarts and advances only after a page
                 // applied — never re-derive it from the local queue's synced
                 // timestamps (pulled remote items do not move those).
-                let pull_state = store.get_sync_pull_state().ok();
-                let pull_since = pull_state.as_ref().and_then(|s| s.since.clone());
-                let pull_cursor = pull_state.as_ref().and_then(|s| s.cursor.clone());
+                //
+                // An unreadable anchor must NOT default to `(None, None)`: that
+                // is the SAME state an operator rewind requests, so a read
+                // failure would silently force a full re-pull of the entire
+                // history every cycle. Propagate it to `read_error` instead.
+                let pull_state = store.get_sync_pull_state().map_err(|e| {
+                    format!("could not read the durable pull anchor; refusing to replay all history: {e}")
+                })?;
+                let pull_since = pull_state.since.clone();
+                let pull_cursor = pull_state.cursor.clone();
 
                 // Build the transport whenever PG sync is ENABLED — not only
                 // when there are pending items — so a pull-only terminal (a
@@ -244,35 +287,73 @@ impl PgSyncDaemon {
                 // unreachable on push-idle cycles, which would have starved
                 // relay terminals of remote updates.
                 let pg_config = if enabled {
+                    // These three carried `.unwrap_or_default().unwrap_or_default()`,
+                    // which collapses BOTH the `Result` error and the `None` into
+                    // `""` -- the same shape the password fix below documents: a
+                    // read failure is not an unset value, and an empty host/db/user
+                    // is presented to PostgreSQL as a blank connection target rather
+                    // than as the integrity failure it is. `Ok(None)` stays the ONE
+                    // legitimate absence and still becomes an empty string, because
+                    // that is what the transport expects for "not configured".
+                    //
+                    // Propagated with `?` like the two reads above, into the same
+                    // `read_error` channel.
                     let host = Settings::get_pg_sync_host(&conn)
-                        .unwrap_or_default()
+                        .map_err(|e| format!("could not read pg_sync.host: {e}"))?
                         .unwrap_or_default();
+                    // The port keeps its literal default, which is what an absent
+                    // setting already means; only a READ failure is fatal.
                     let port: String = Settings::get_pg_sync_port(&conn)
-                        .ok()
-                        .flatten()
+                        .map_err(|e| format!("could not read pg_sync.port: {e}"))?
                         .filter(|p| !p.is_empty())
                         .unwrap_or_else(|| "5432".into());
                     let dbname = Settings::get_pg_sync_dbname(&conn)
-                        .unwrap_or_default()
+                        .map_err(|e| format!("could not read pg_sync.dbname: {e}"))?
                         .unwrap_or_default();
                     let user = Settings::get_pg_sync_user(&conn)
-                        .unwrap_or_default()
+                        .map_err(|e| format!("could not read pg_sync.user: {e}"))?
                         .unwrap_or_default();
-                    let password = Settings::get_pg_sync_password(&conn)
-                        .unwrap_or_default()
-                        .unwrap_or_default();
+                    // A decrypt failure is NOT "no password set". The typed
+                    // getter fails closed on a value with ciphertext shape that
+                    // decrypts under no derivation; `.unwrap_or_default()`
+                    // collapsed that into an EMPTY password, so an integrity
+                    // failure was presented to PostgreSQL as a blank
+                    // credential -- the same silent degradation the fail-closed
+                    // getter exists to prevent, one layer up.
+                    let password = match Settings::get_pg_sync_password(&conn) {
+                        Ok(Some(p)) => p,
+                        Ok(None) => String::new(),
+                        Err(e) => {
+                            tracing::error!(
+                                error = %e,
+                                "pg_sync.password could not be decrypted; connecting with an empty password will fail"
+                            );
+                            String::new()
+                        }
+                    };
                     // TLS enforcement: when pg_sync.require_tls is set, the
                     // transport refuses plaintext connections (fail-closed
                     // for cloud PostgreSQL). Defaults to plaintext to match
                     // the historical NoTls transport.
-                    let require_tls = Settings::get_pg_sync_require_tls(&conn).unwrap_or(false);
+                    // Propagates for the same reason as the reads above, and with a
+                    // sharper consequence: `.unwrap_or(false)` turned a read FAILURE
+                    // into "TLS not required", i.e. it silently DOWNGRADED the
+                    // transport to plaintext -- the opposite of the fail-closed
+                    // intent this setting exists for.
+                    let require_tls = Settings::get_pg_sync_require_tls(&conn)
+                        .map_err(|e| format!("could not read pg_sync.require_tls: {e}"))?;
                     // The transport scopes every query to this tenant, so a
                     // shared multi-tenant database never leaks another
                     // tenant's rows to this terminal. Falls back to the
                     // local queue's tenant when the license setting is
                     // absent (pre-license installs).
+                    // Propagated, not defaulted: `.unwrap_or_default()` here turned a
+                    // read failure into "no tenant", which fell through the `or_else`
+                    // to the local queue's tenant and then to `"default"`. On a
+                    // shared multi-tenant remote that is a cross-tenant read, which
+                    // is exactly what the scoping passed to the transport prevents.
                     let tenant_id: String = Settings::get(&conn, "license.tenant_id")
-                        .unwrap_or_default()
+                        .map_err(|e| format!("could not read license.tenant_id: {e}"))?
                         .filter(|s| !s.is_empty())
                         .or_else(|| pending.first().map(|i| i.tenant_id.clone()))
                         .unwrap_or_else(|| "default".into());
@@ -313,11 +394,18 @@ impl PgSyncDaemon {
                     None
                 };
 
-                (pg_config, pending, pull_since, pull_cursor)
+                Ok::<_, String>((pg_config, pending, pull_since, pull_cursor))
             })
             .await
             {
-                Ok((cfg, pending, since, cursor)) => (cfg, pending, since, cursor, None),
+                Ok(Ok((cfg, pending, since, cursor))) => (cfg, pending, since, cursor, None),
+                // The queue read failed inside the blocking closure. Report it as
+                // the cycle's read error so `last_error` shows a failed read rather
+                // than a clean, idle-looking tick.
+                Ok(Err(msg)) => {
+                    tracing::error!(error = %msg, "pg sync daemon read phase failed");
+                    (None, Vec::new(), None, None, Some(msg))
+                }
                 Err(join_err) => {
                     let msg = format!("pg sync config read panicked: {join_err}");
                     tracing::error!(error = %msg, "pg sync daemon read phase failed");
@@ -431,6 +519,14 @@ impl PgSyncDaemon {
                             // be overwritten with our now-stale value. Both
                             // the read and the (skipped) write hold the same
                             // `blocking_lock()`, so nothing can interleave.
+                            // Fail-SAFE, not fail-blind: a failed re-read yields
+                            // `(None, None)`, which will not match the captured
+                            // `(prev_since, prev_cursor)` (unless both were already
+                            // `None`, the first-sync case), so `rewound` is true and
+                            // we retain the anchor without advancing. The worst case
+                            // is a spurious 'rewind detected'; it can never overwrite
+                            // a live anchor with a stale one. Contrast the anchor READ
+                            // at the top of the tick, which must error.
                             let durable = store
                                 .get_sync_pull_state()
                                 .unwrap_or_default();
@@ -530,15 +626,36 @@ impl PgSyncDaemon {
             }
         }
 
-        // Get pending count
+        // Get pending count. A read that fails reports PENDING_COUNT_UNKNOWN
+        // rather than 0: `pg_sync_status` feeds the operator's "is my backlog
+        // draining?" indicator, so answering 0 for a dropped table / poisoned
+        // lock / panicked worker tells a broken terminal its queue is empty.
+        // The two failure points are logged distinctly (the HTTP status path
+        // does the same for its four).
         let db_clone = db.clone();
-        let pending_count = tokio::task::spawn_blocking(move || {
+        let pending_count = match tokio::task::spawn_blocking(move || {
             let conn = db_clone.blocking_lock();
             let store = Store::new(&conn);
-            store.pending_offline_count().unwrap_or(0)
+            store.pending_offline_count()
         })
         .await
-        .unwrap_or(0);
+        {
+            Ok(Ok(count)) => count,
+            Ok(Err(e)) => {
+                tracing::warn!(
+                    error = %e,
+                    "pg sync status: could not read the offline queue depth; reporting unknown"
+                );
+                PENDING_COUNT_UNKNOWN
+            }
+            Err(e) => {
+                tracing::warn!(
+                    error = %e,
+                    "pg sync status: the queue-depth read panicked; reporting unknown"
+                );
+                PENDING_COUNT_UNKNOWN
+            }
+        };
 
         // Update daemon status
         let mut s = daemon_status.write().await;

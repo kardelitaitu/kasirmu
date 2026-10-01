@@ -6,9 +6,9 @@ next: none until Paddle integration | perf: N/A
 */
 //! Paddle payment processor — PLANNED (stub).
 //!
-//! Implements [`PaymentProcessor`] for Paddle (https://www.paddle.com),
-//! a merchant-of-record payments platform popular for SaaS subscriptions
-//! and digital goods.
+//! Implements [`PaymentProcessor`](crate::PaymentProcessor) for
+//! [Paddle](https://www.paddle.com), a merchant-of-record payments platform
+//! popular for SaaS subscriptions and digital goods.
 //!
 //! **Status: PLANNED — not yet implemented.**
 //!

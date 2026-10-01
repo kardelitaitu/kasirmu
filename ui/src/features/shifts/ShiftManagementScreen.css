@@ -709,6 +709,28 @@
   padding: var(--space-1) var(--space-2);
 }
 
+/* Warning, not danger, for the same reason as .payment-rate-unknown: the
+   drawer has not been shown to be short, the report simply never arrived. A
+   manager reconciling a till needs to see that this is an unanswered read
+   and not an empty shift. */
+.shift-mgmt-report-unknown {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--color-fg);
+  background: var(--color-warning-bg);
+  border: 1px solid var(--color-warning-dim);
+  border-radius: var(--radius-md);
+}
+
+.shift-mgmt-report-unknown > button {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
 /* ── Active shift actions (payout + close) ──────────── */
 
 .shift-mgmt-active-actions {

@@ -1,13 +1,13 @@
 //! Category command bodies (Wave A / S3) — the tauri-free half of
 //! `apps/desktop-tauri/src/commands/categories.rs`.
 //!
-//! Key functions: [`run_list_categories`] (pure `&Connection` body), and the
-//! session-scoped [`list_scoped`], [`create_scoped`], [`update_scoped`] and
-//! [`delete_scoped`] operations, each consuming a [`BridgeCtx`].
+//! Key functions: [`run_list_categories`](crate::categories::run_list_categories) (pure `&Connection` body), and the
+//! session-scoped [`list_scoped`](crate::categories::list_scoped), [`create_scoped`](crate::categories::create_scoped), [`update_scoped`](crate::categories::update_scoped) and
+//! [`delete_scoped`](crate::categories::delete_scoped) operations, each consuming a [`BridgeCtx`](crate::ctx::BridgeCtx).
 //!
 //! Gate order, store construction (`Store::new`, cache-free — as the shell
 //! used) and error paths are verbatim ports of the command bodies: a shim
-//! builds the context, calls one function here, and maps [`BridgeError`]
+//! builds the context, calls one function here, and maps [`BridgeError`](crate::error::BridgeError)
 //! back to `AppError` so the wire shape never moves.
 
 use serde::{Deserialize, Serialize};

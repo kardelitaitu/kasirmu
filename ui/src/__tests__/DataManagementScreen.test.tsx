@@ -77,15 +77,15 @@ vi.mock('@/components/Spinner', () => ({
 
 // ── Default API responses ─────────────────────────────────────────
 
-const defaultBackupStatus = { lastBackup: null, lastBackupSize: null };
-const defaultBackupResult = { path: '/backups/backup_2026.db', sizeBytes: 12_582_912 };
-const defaultExportResult = { path: '/exports/export_2026.kasirpkg', sizeBytes: 524_288, types: ['products', 'categories'] };
+const defaultBackupStatus = { last_backup: null, last_backup_size: null };
+const defaultBackupResult = { path: '/backups/backup_2026.db', size_bytes: 12_582_912 };
+const defaultExportResult = { path: '/exports/export_2026.kasirpkg', size_bytes: 524_288, types: ['products', 'categories'] };
 const defaultImportPreviewResult = {
-  storeName: 'Test Store', appVersion: '0.0.4',
-  createdAt: new Date('2026-01-15').toISOString(),
+  store_name: 'Test Store', app_version: '0.0.4',
+  created_at: new Date('2026-01-15').toISOString(),
   types: ['products', 'categories', 'sales'],
-  productCount: 120, categoryCount: 12, saleCount: 500,
-  customerCount: 50, userCount: 5, settingCount: 8,
+  product_count: 120, category_count: 12, sale_count: 500,
+  customer_count: 50, user_count: 5, setting_count: 8,
 };
 const defaultImportDataResult = {
   productsImported: 120, categoriesImported: 12, salesImported: 500,

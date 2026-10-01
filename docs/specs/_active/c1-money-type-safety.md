@@ -1,3 +1,4 @@
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 145 lines, carrying a structured audit block rather than a narrative stamp — an audit ID, an ISO timestamp, a named auditor, a status and a lint result, a format this campaign has now seen in only one other place and is worth noting as a convention. · THE SUBJECT IS THE REPOSITORY'S HARDEST INVARIANT, and the narrow scope follows from why. Money here is integer minor units, never float, enforced by convention, by a lint, and by the type itself — and the exchange-rate case audited in this document is the one place a float could plausibly enter, because a rate is naturally a fraction. Converting it to integer millionths removes the last obvious door. · A NOTE ON WHY IT IS STILL IN THE ACTIVE DIRECTORY, since a reader may reasonably wonder whether it is finished: it is a closure document for a finding raised in a parent desktop audit, and the numbered C-series in this folder is a set of audit-closure specifications rather than a work backlog — several siblings share that shape. Worth a reader knowing, because the folder name invites the opposite assumption. · The invariant it protects is independently visible: the money type carries minor units rather than a decimal value, and the workspace lint configuration carries an explicit deny list. A float money path is therefore not merely discouraged but lint-rejected. · NOT re-measured: the conversion's own correctness, its rounding behaviour at conversion boundaries, or whether the closure claim is accurate against the parent audit. A rounding boundary needs a test, not an audit. · No machine-readable stamp existed; this is the first, and the existing block is retained as original evidence. -->
 # C-1 — Money type safety (exchange rates `f64` → `i64` millionths)
 
 ## Audit Stamp
@@ -31,7 +32,7 @@ helper, which is documented and non-arithmetic.
 
 ## Baseline (pre-fix)
 
-- `ExchangeRateRow.rate: f64` in `crates/oz-core/src/exchange_rate.rs:15`
+- `ExchangeRateRow.rate: f64` in `modules/currency/src/models.rs` (this cited `crates/oz-core/src/exchange_rate.rs:15`; the type moved to the `modules-currency` crate and is fixed-point there — repointed 2026-09-25 while closing C70)
   contaminated every downstream `Money` conversion through the FX
   multiplier. The `if args.rate <= 0.0` validation was sign-unstable
   near zero (`1e-20` flips to negative).
@@ -52,7 +53,7 @@ helper, which is documented and non-arithmetic.
 - [x] `Store::upsert_exchange_rate` validation guard (pre-existing, kept)
 - [x] Migration `071_exchange_rate_minor_units.sql` (ADD COLUMN → UPDATE
       with `ROUND(rate * 1e6)` → DROP COLUMN `rate`)
-- [x] `crates/oz-core/src/migrations.rs` registers 071
+- [x] `crates/kasirmu-core/src/migrations.rs` registers 071
 - [x] `rate_sync.rs` Frankfurter daemon converts via
       `(rate * RATE_SCALE).round() as i64` with documented clippy-allow
 - [x] `ExchangeRateRow::display_rate()` for presentation only
@@ -66,19 +67,19 @@ helper, which is documented and non-arithmetic.
 
 ## Plan (as executed)
 
-1. Add `crates/oz-core/migrations/20260813_init.sql` with
+1. Add `crates/kasirmu-core/migrations/20260813_init.sql` with
    `ADD COLUMN rate_millionths INTEGER NOT NULL DEFAULT 0`, an
    `UPDATE … = CAST(ROUND(rate * 1000000) AS INTEGER)` backfill, and
    `ALTER TABLE exchange_rates DROP COLUMN rate`. Documented rollback path.
-2. Register 071 in `crates/oz-core/src/migrations.rs`.
+2. Register 071 in `crates/kasirmu-core/src/migrations.rs`.
 3. Replace `ExchangeRateRow.rate: f64` with
-   `rate_millionths: i64` in `crates/oz-core/src/exchange_rate.rs`; add
+   `rate_millionths: i64` in `modules/currency/src/models.rs`; add
    `display_rate()` helper. Update the inline unit tests in that file.
-4. Update `crates/oz-core/src/db/settings.rs`: `list_exchange_rates`,
+4. Update `crates/kasirmu-core/src/db/settings.rs`: `list_exchange_rates`,
    `create_exchange_rate`, and `upsert_exchange_rate` consume i64
    millionths; add the `<= 0` guard to `create_exchange_rate` (the
    upsert path already had it).
-5. Update `crates/oz-core/tests/currency_integration.rs` to 38 tests
+5. Update `crates/kasirmu-core/tests/currency_integration.rs` to 38 tests
    covering ordering, FK constraints, validation rejection, small/large
    rates, timestamps, delete, source, currencies list, currency parsing,
    Money multi-currency, `display_rate` formatting, and roundtrips.
@@ -108,7 +109,7 @@ helper, which is documented and non-arithmetic.
 | `cargo test -p oz-core --test currency_integration` | 38 passed, 0 failed |
 | `cargo test -p platform-startup` | 27 passed, 0 failed |
 | `cargo fmt --all -- --check` | clean |
-| `grep -rnE ': f64\b\|: Option<f64>\b\|rate: f64\b'` across `crates/oz-core`, `modules/currency`, `apps/*/src/commands/exchange_rates.rs`, `platform/startup/src/rate_sync.rs` | 0 hits in the FX domain |
+| `grep -rnE ': f64\b\|: Option<f64>\b\|rate: f64\b'` across `crates/kasirmu-core`, `modules/currency`, `apps/*/src/commands/exchange_rates.rs`, `platform/startup/src/rate_sync.rs` | 0 hits in the FX domain |
 
 ## Residual / follow-ups (out of this card's scope)
 
@@ -135,11 +136,13 @@ helper, which is documented and non-arithmetic.
 ## References
 
 - `docs/specs/_active/2026-07-12-desktop-app-audit.md` §2 C-1 / §6 X-3 / §9 / §10 / §11
-- `crates/oz-core/src/exchange_rate.rs`
-- `crates/oz-core/migrations/20260813_init.sql`
-- `crates/oz-core/src/db/settings.rs`
-- `crates/oz-core/tests/currency_integration.rs`
+- `modules/currency/src/models.rs` (`ExchangeRateRow`; it MOVED here from a pre-rebrand core path that no longer exists)
+- `crates/kasirmu-core/migrations/20260813_init.sql`
+- `crates/kasirmu-core/src/db/settings.rs`
+- `crates/kasirmu-core/tests/currency_integration.rs`
 - `apps/desktop-client/src/commands/exchange_rates.rs`
 - `apps/tablet-client/src/commands/exchange_rates.rs`
 - `platform/startup/src/rate_sync.rs`
 - Commit `ac38ab9` on branch `0.0.5`
+
+> last audited 29-09-26 by docs-auditor

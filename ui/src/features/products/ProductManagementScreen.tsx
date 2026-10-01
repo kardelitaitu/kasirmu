@@ -9,6 +9,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { Localized, useLocalization } from '@fluent/react';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
+import { usePagedList } from '@/hooks/usePagedList';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import {
   listProductsScoped,
@@ -105,6 +106,11 @@ export default function ProductManagementScreen() {
   const [selectedLocationName, setSelectedLocationName] = useState('Location');
   const [alertCount, setAlertCount] = useState(0);
   const [alertError, setAlertError] = useState(false);
+
+  // R3: bounded list data path. The table below renders one page, never the
+  // whole catalog, through the shared policy (`usePagedList` /
+  // `LIST_PAGE_SIZE`) rather than a second paging mechanism of its own.
+  const { page, total, pageItems, setPage } = usePagedList(products);
 
   const handleLocationChange = useCallback((locationId: string, locationName: string) => {
     setSelectedLocationId(locationId);
@@ -437,7 +443,7 @@ export default function ProductManagementScreen() {
                 </Localized>
               </tr>
             </thead>
-            <tbody>{products.map((p) => (
+            <tbody>{pageItems.map((p) => (
                 <tr key={p.sku}>
                   <td className="product-mgmt-cell-sku">{p.sku}</td>
                   <td>{p.name}</td>
@@ -507,6 +513,32 @@ export default function ProductManagementScreen() {
 </tbody>
           </table>
         </div>
+      )}
+
+      {/* R3: page navigation for the bounded table above. Hidden while the
+          dataset fits in one page, so a small catalog is unchanged. */}
+      {total > 1 && (
+        <nav className="pager-nav" aria-label={requiredLocalized(l10n, 'pagination-aria')}>
+          <Button
+            unstyled
+            className="pager-btn"
+            disabled={page === 0}
+            onClick={() => setPage((p) => p - 1)}
+            aria-label={requiredLocalized(l10n, 'previous-page-aria')}
+          >
+            &lsaquo;
+          </Button>
+          <span className="pager-info" aria-current="true">{page + 1} / {total}</span>
+          <Button
+            unstyled
+            className="pager-btn"
+            disabled={page >= total - 1}
+            onClick={() => setPage((p) => p + 1)}
+            aria-label={requiredLocalized(l10n, 'next-page-aria')}
+          >
+            &rsaquo;
+          </Button>
+        </nav>
       )}
 
       {deleteError && (

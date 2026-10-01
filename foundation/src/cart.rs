@@ -1,7 +1,7 @@
 /*
-last audited DD-MM-YY by DSH-Agent
+last audited (date unknown) by DSH-Agent
 crate: foundation (cart.rs) | status: SAFE | lint: CLEAN
-findings: exemplary — MONEY-AUDIT-3 fixes verified intact (CartLine::total fails closed on serde-bypassed qty<=0; discount_amount never masks with .or(Some(zero))); fixed discount capped via Money::min; debug_assert currency guards for direct-field mutation. COR-33 FIXED DD-MM-YY — ~850 lines of inline tests moved to sibling cart_tests.rs (per AGENTS.md: "never put unit tests inside production .rs files").
+findings: exemplary — MONEY-AUDIT-3 fixes verified intact (CartLine::total fails closed on serde-bypassed qty<=0; discount_amount never masks with .or(Some(zero))); fixed discount capped via Money::min; debug_assert currency guards for direct-field mutation. COR-33 FIXED (date unknown) — ~850 lines of inline tests moved to sibling cart_tests.rs (per AGENTS.md: "never put unit tests inside production .rs files").
 next: none | perf: discount folds lines once
 */
 //! Cart and CartLine — the in-memory sale pipeline.
@@ -223,7 +223,7 @@ impl Cart {
     /// Return the discount percentage as an integer (0–100).
     #[must_use]
     pub fn discount_percent(&self) -> i64 {
-        self.discount_percent.get() as i64
+        i64::from(self.discount_percent.get())
     }
     /// Return an optional label for the current discount.
     #[must_use]
@@ -267,8 +267,8 @@ impl Cart {
     pub fn add_line(&mut self, line: CartLine) -> Result<LineId, CartError> {
         if line.unit_price.currency != self.currency {
             return Err(CartError::CurrencyMismatch {
-                cart: currency_summary(&self.currency),
-                line: currency_summary(&line.unit_price.currency),
+                cart: currency_summary(self.currency),
+                line: currency_summary(line.unit_price.currency),
             });
         }
         let id = line.id;
@@ -372,7 +372,7 @@ impl Cart {
     }
 }
 
-fn currency_summary(c: &Currency) -> String {
+fn currency_summary(c: Currency) -> String {
     std::str::from_utf8(&c.0).unwrap_or("???").to_owned()
 }
 

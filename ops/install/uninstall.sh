@@ -12,7 +12,7 @@
 # Local app data (databases, settings) is preserved unless --purge is given.
 #
 # Usage:
-#   curl -fsSL https://github.com/kardelitaitu/oz-pos/releases/latest/download/uninstall.sh | bash
+#   curl -fsSL https://github.com/kardelitaitu/kasirmu/releases/latest/download/uninstall.sh | bash
 #   ./uninstall.sh
 #   ./uninstall.sh --purge
 #

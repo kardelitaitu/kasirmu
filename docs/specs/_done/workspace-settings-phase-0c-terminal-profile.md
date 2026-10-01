@@ -1,3 +1,6 @@
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · MIXED, and the honest split matters more than a single verdict. SHIPPED: `ui/src/hooks/useTerminalProfile.ts` exists, so the hook this phase exists to build is real. NOT FOUND: the schema document. The Plan's first step and the first acceptance criterion both require `docs/terminal-profile-schema.md` to define the full JSON schema with field types, defaults and validation rules, and a search of every tracked path matching "terminal-profile" returns only this spec itself — the document was never created. That is a real gap, not a path that moved: a schema file has no reason to be renamed, and the spec inlines the JSON shape so nothing else carries the contract. Recorded rather than written, because authoring a hardware-binding schema is design work the phase owner should own, and a guessed schema is worse than a known gap. · ALSO STALE: `platform/core/src/settings.rs` no longer exists as a file — the settings module was split into a directory (`platform/core/src/settings/` with `mod.rs`, `keys.rs`, `raw.rs`). Left in place in the Baseline/References, since those are records of the pre-fix layout. · The JSON schema block, the corruption-recovery rules (`.corrupted.{timestamp}.json`, three-phase backup/write/delete commit) and the per-platform storage paths are design content, left as written. · Same unchecked-criteria note as siblings. · No house stamp existed at the top of this file before this pass. -->
+<!-- dead-ref-prefix-ok: docs/terminal-profile-schema.md -->
+<!-- The schema doc this phase required was never created. Recorded as a gap in the stamp above, not repaired. -->
 # Phase 0c — `terminal_profile.json` Schema + `useTerminalProfile` Hook
 
 - **Status:** IMPLEMENTED (ADR #22 unified workspace settings shipped in 0.0.19; re-audited 2026-08-08 by docs-auditor)
@@ -127,4 +130,4 @@ Define a JSON file format for register-local hardware bindings (`terminal_profil
 
 > (status corrected to IMPLEMENTED).
 >
-> last audited 08-08-26 by docs-auditor
+> last audited 29-09-26 by docs-auditor

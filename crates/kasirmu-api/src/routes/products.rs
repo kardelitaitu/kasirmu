@@ -273,11 +273,17 @@ pub async fn create_product(
     // carries the tenant_subscription row (mirrored by the generated PG
     // schema), so the effective tier resolves here directly. An unknown
     // or tampered subscription fails closed at the Free cap.
+    // MSL-39: the LEDGER-aware reader. This router also runs ON the merchant's
+    // device (kasirmu-local-api mounts the same `router_with_openapi` over the
+    // local SQLite DB), so the wall clock here is the merchant's to roll back —
+    // and this surface has no `validate_clock_rollback` anywhere. Against the
+    // wall clock a rolled-back install keeps the paid product cap after its
+    // grace window lapsed; against the ledger it fails closed to Free.
     let tier = kasirmu_core::TenantSubscription::load(&db, tenant_id)
         .ok()
         .flatten()
         .map(|sub| match sub.verify_signature() {
-            Ok(()) => sub.effective_tier(),
+            Ok(()) => sub.effective_tier_for_connection(&db),
             Err(_) => kasirmu_core::SubscriptionTier::Free,
         })
         .unwrap_or(kasirmu_core::SubscriptionTier::Free);

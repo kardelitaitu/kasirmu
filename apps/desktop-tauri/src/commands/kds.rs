@@ -5,7 +5,7 @@
 //!
 //! All KDS commands require `kds:view` or `kds:update` permission.
 //!
-//! Bodies live in [`kasirmu_bridge::kds`]; each shim borrows a [`BridgeCtx`] from
+//! Bodies live in [`kasirmu_bridge::kds`]; each shim borrows a [`BridgeCtx`](kasirmu_bridge::ctx::BridgeCtx) from
 //! `AppState` and maps `BridgeError` back to `AppError` variant-for-variant so
 //! the wire shape is untouched. The pure topology helpers and the chit printers
 //! stay reachable from here (and from the sibling test mount) through `pub use`.
@@ -13,7 +13,7 @@
 //! kds-sync: the kitchen-transition shims are also the publish seam for the
 //! [`kasirmu_lan`] `KdsSyncEvent` LAN protocol (bridge/core must not depend on
 //! kasirmu-lan, so the events are published here) and keep
-//! [`AppState::kds_queue_cache`] fresh for reconnecting peers.
+//! [`AppState::kds_queue_cache`](crate::state::AppState::kds_queue_cache) fresh for reconnecting peers.
 
 use std::sync::Arc;
 
@@ -327,7 +327,7 @@ pub async fn print_kds_chit_scoped(
         .map_err(Into::into)
 }
 
-// ── KDS line items (TODO 2a) ────────────────────────────
+// ── KDS line items ─────────────────────────────────────
 
 /// Get all line items for a KDS order (scoped - ADR #7).
 ///

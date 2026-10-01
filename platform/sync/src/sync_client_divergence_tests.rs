@@ -27,9 +27,11 @@ use rusqlite::Connection;
 /// loudly if the two ever drift apart.
 const DUPLICATE_ID_PREFIX: &str = "duplicate id:";
 
-fn setup_store() -> Store<'static> {
-    let conn: &'static Connection = Box::leak(Box::new(migrations::fresh_db()));
-    Store::new(conn)
+/// The caller owns the connection: `Store::new` only needs a borrow, so
+/// this takes one instead of `Box::leak`ing a database per test to
+/// manufacture a `'static` (O-T03).
+fn setup_store(db: &Connection) -> Store<'_> {
+    Store::new(db)
 }
 
 /// One ADR-21 dispatch class, expressed as the input pair both consumers receive.
@@ -184,7 +186,8 @@ fn observe(store: &Store<'_>, local: &OfflineQueueItem) -> Observed {
 
 /// Consumer 1 - the manual / tablet push path, kasirmu_core::sync_client::apply_sync_outcomes.
 fn run_consumer_one(c: &Case) -> Observed {
-    let store = setup_store();
+    let store_db = migrations::fresh_db();
+    let store = setup_store(&store_db);
     let local = enqueue_local(&store, c);
     let result = apply_sync_outcomes(
         &store,
@@ -204,7 +207,8 @@ fn run_consumer_one(c: &Case) -> Observed {
 
 /// Consumer 2 - the daemon path, SyncQueue::apply_push_conflict into resolve_conflict.
 fn run_consumer_two(c: &Case) -> Observed {
-    let store = setup_store();
+    let store_db = migrations::fresh_db();
+    let store = setup_store(&store_db);
     let local = enqueue_local(&store, c);
     SyncQueue::new()
         .apply_push_conflict(&store, &local, &server_item(c))
@@ -311,19 +315,22 @@ fn stock_conflict_loses_a_delta_on_one_path_only() {
     );
 }
 
-/// Dossier item 1 - the missing re-enqueue bound, pinned as CURRENT BEHAVIOUR.
+/// Dossier item 1 - the re-enqueue bound, now CLOSED (fixed 2026-10-04).
 ///
 /// resolve_stock_crdt computes retry_count = max(local, remote)
-/// (platform/sync/src/conflict.rs:167) and carries the local tenant_id, but
-/// apply_resolution re-enqueues through Store::enqueue_offline
-/// (platform/sync/src/queue.rs:331), which persists action and payload only and
-/// builds a fresh row: retry_count 0, tenant "default", and a second new uuid
-/// replacing the one the resolver made. A conflict that keeps conflicting
-/// therefore resets to zero every cycle, forever, and a multi-store delta
-/// re-enqueues under the wrong tenant.
+/// (platform/sync/src/conflict.rs:167) and carries the local tenant_id. That
+/// winner identity used to be discarded: apply_resolution re-enqueued through
+/// Store::enqueue_offline, which persists action and payload only and builds a
+/// fresh row (retry_count 0, tenant "default", a second uuid) - so a conflict
+/// that kept conflicting reset to zero every cycle, forever, and a multi-store
+/// delta re-enqueued under the wrong tenant. `apply_resolution` now calls
+/// Store::enqueue_offline_preserving_item, which writes the winner's identity
+/// verbatim. This test was the pin that failed when the winner was picked; it
+/// now asserts the corrected behaviour.
 #[test]
-fn crdt_merge_reenqueue_discards_retry_count_and_tenant() {
-    let store = setup_store();
+fn crdt_merge_reenqueue_preserves_retry_count_and_tenant() {
+    let store_db = migrations::fresh_db();
+    let store = setup_store(&store_db);
     let row = store
         .enqueue_offline_with_tenant(CASES[0].action, CASES[0].local_payload, "store-a")
         .unwrap();
@@ -369,84 +376,159 @@ fn crdt_merge_reenqueue_discards_retry_count_and_tenant() {
     let requeued = &requeued[0];
 
     assert_eq!(
-        requeued.retry_count, 0,
-        "UNDECIDED: the computed max never reaches the database - queue.rs:331 persists action and payload only. This is the missing ceiling, pinned not endorsed"
+        requeued.retry_count, 4,
+        "the computed max reaches the database: apply_resolution preserves the winner's identity"
     );
     assert_eq!(
-        requeued.tenant_id, "default",
-        "UNDECIDED: a store-a delta re-enqueues under tenant default - same missing persistence, same line"
+        requeued.tenant_id, "store-a",
+        "a store-a delta re-enqueues under store-a, not the default tenant"
+    );
+    // The id must be the one the RESOLVER minted inside apply_resolution, not a
+    // fresh uuid from the enqueue helper. Re-resolving with the same inputs
+    // yields the same merged payload; the only unstable part is the minted id,
+    // so assert the requeued row is a *merge winner* by re-deriving it and
+    // comparing everything but that id.
+    let rederived = crate::conflict::resolve_conflict(&local, &remote).winner;
+    assert_eq!(
+        requeued.payload, rederived.payload,
+        "the persisted row is the merged winner (same CRDT envelope)"
+    );
+    assert_eq!(
+        requeued.origin_terminal_id, rederived.origin_terminal_id,
+        "the winner's originating terminal is preserved, not re-stamped"
     );
     assert_ne!(
-        requeued.id, winner.id,
-        "UNDECIDED: a second fresh uuid replaces the id the resolver built"
+        requeued.id, row.id,
+        "the requeued row is a NEW identity (the resolver's), not the consumed local row's"
     );
 }
 
-/// Dossier item 3 - the poison-item nesting, pinned cheaply.
+/// Dossier item 3 - the poison-item nesting, now CLOSED by a depth guard.
 ///
-/// resolve_stock_crdt wraps whatever payload it is handed, so a second conflict
-/// on a merged row nests the envelope. Depth one is consumable (queue.rs
-/// unwraps local and remote when merge_type is crdt_delta); depth two is not,
-/// because the inner local is itself an envelope and has no sku/delta. That
-/// deserialisation failure is the only thing stopping the loop today - there is
-/// no depth guard and no warning anywhere.
+/// resolve_stock_crdt used to wrap whatever payload it was handed, so a second
+/// conflict on a merged row nested the envelope: `{local: {local, remote,
+/// merge_type}, ...}`. Depth one was consumable (queue.rs unwraps local and
+/// remote when merge_type is crdt_delta); depth two was not, because the inner
+/// local was itself an envelope with no sku/delta, and that deserialisation
+/// failure - not a guard - was the only thing stopping a conflict loop. It was
+/// silent.
+///
+/// The resolver now FLATTENS instead of nesting, and a self-merge is
+/// IDEMPOTENT: merging a row with itself yields that row's facts once, never
+/// twice. Two identical deltas are the same fact here - they only ever arise
+/// from repeating one input, since two independent adjustments arrive on the
+/// distinct local/remote sides. Applying the repeats would double-count
+/// (adjust_stock is not idempotent by design). This pins both: the result is
+/// exactly one level deep, and a self-merge does not multiply its deltas.
 #[test]
-fn nested_crdt_envelope_fails_to_deserialize_at_depth_two() {
+fn re_merging_a_merged_envelope_stays_one_level_deep_and_idempotent() {
     let depth_one = crate::conflict::resolve_stock_crdt(
         &OfflineQueueItem::new("stock.adjusted", r#"{"sku":"COFFEE","delta":10}"#),
         &OfflineQueueItem::new("stock.adjusted", r#"{"sku":"COFFEE","delta":-3}"#),
     )
     .winner;
 
-    // Depth one: the merge arm can still read both sides.
+    // Depth one: the merge arm can read both sides.
     let v1: Value = serde_json::from_str(&depth_one.payload).unwrap();
     assert_eq!(v1["merge_type"], "crdt_delta");
-    let side: StockAdjustmentPayload = serde_json::from_value(v1["local"].clone()).unwrap();
-    assert_eq!(side.delta, 10, "UNDECIDED: depth one is consumable");
+    let as_delta = |v: &Value| -> StockAdjustmentPayload {
+        serde_json::from_value(v.clone()).expect("every carried side is a leaf stock delta")
+    };
+    assert_eq!(as_delta(&v1["local"]).delta, 10);
+    assert_eq!(as_delta(&v1["remote"]).delta, -3);
+    assert!(
+        v1.get("extra").is_none(),
+        "an ordinary merge needs no extras"
+    );
 
-    // Depth two: the merged row conflicts again, so it is handed back in.
+    // Depth two: the merged row conflicts again with ITSELF. It must NOT nest,
+    // and it must NOT double its own facts.
     let depth_two = crate::conflict::resolve_stock_crdt(&depth_one, &depth_one)
         .winner
         .payload;
     let v2: Value = serde_json::from_str(&depth_two).unwrap();
-    assert_eq!(
-        v2["merge_type"], "crdt_delta",
-        "UNDECIDED: the envelope nests silently, with no depth guard and no warning - the resolver wraps whatever payload it is handed"
-    );
-    let inner: Result<(), serde_json::Error> =
-        serde_json::from_value::<StockAdjustmentPayload>(v2["local"].clone()).map(|_| ());
+    assert_eq!(v2["merge_type"], "crdt_delta", "still an envelope");
+    assert_eq!(as_delta(&v2["local"]).delta, 10);
+    assert_eq!(as_delta(&v2["remote"]).delta, -3);
     assert!(
-        inner.is_err(),
-        "UNDECIDED: a depth-two payload fails to deserialize as StockAdjustmentPayload, and that failure is the only thing that stops the loop - got {:?}",
-        inner
+        v2["local"].get("merge_type").is_none(),
+        "a side is a leaf delta, never a nested envelope"
+    );
+    assert!(
+        v2.get("extra").is_none(),
+        "a self-merge is idempotent: the two facts are not repeated as extras"
+    );
+}
+
+/// A merge of two DIFFERENT envelopes must still carry every distinct fact.
+///
+/// The idempotence above must not collapse genuinely different deltas. Merging
+/// {+1} with {+2} yields both; merging that winner with {+3} yields all three,
+/// with the surplus riding in `extra` because the envelope keeps only two
+/// top-level sides.
+#[test]
+fn re_merging_distinct_envelopes_keeps_every_delta() {
+    let merged = |a: &str, b: &str| {
+        crate::conflict::resolve_stock_crdt(
+            &OfflineQueueItem::new("stock.adjusted", a),
+            &OfflineQueueItem::new("stock.adjusted", b),
+        )
+        .winner
+    };
+
+    let depth_one = merged(r#"{"sku":"SKU","delta":1}"#, r#"{"sku":"SKU","delta":2}"#);
+    // Merge that winner with a THIRD, distinct delta.
+    let depth_two = merged(&depth_one.payload, r#"{"sku":"SKU","delta":3}"#);
+    let v2: Value = serde_json::from_str(&depth_two.payload).unwrap();
+
+    let mut deltas: Vec<i64> = Vec::new();
+    for key in ["local", "remote"] {
+        deltas.push(
+            serde_json::from_value::<StockAdjustmentPayload>(v2[key].clone())
+                .unwrap()
+                .delta,
+        );
+    }
+    for extra in v2["extra"].as_array().into_iter().flatten() {
+        deltas.push(
+            serde_json::from_value::<StockAdjustmentPayload>(extra.clone())
+                .unwrap()
+                .delta,
+        );
+    }
+    deltas.sort_unstable();
+    assert_eq!(
+        deltas,
+        vec![1, 2, 3],
+        "every distinct delta survives; the surplus rides in extra"
     );
 }
 
 /// Row 5 - the duplicate-id Rejected, the one row with a live producer.
 ///
 /// This is NOT a conflict input: a real clash today arrives as
-/// Rejected { reason: "duplicate id: ..." }. Consumer 1 and the SQLite daemon
-/// (platform/sync/src/daemon.rs:208) share is_duplicate_id_rejection and both
-/// route it to synced. The PostgreSQL daemon (platform/sync/src/pg_daemon.rs:323)
-/// has no duplicate-id arm and routes the same reason to mark_offline_failed.
-/// That is a KNOWN PARITY GAP, not a fix, and it stays a code-reading claim: the
-/// arm is inline in run_once's spawn_blocking closure behind a real PgTransport,
-/// so pinning it would need a live PostgreSQL connection. It is recorded in
-/// docs/decisions/2026-07-20-sync-conflict-resolution-strategy.md, "Activation
-/// and Ownership" (appended in 1c6949975), which names it as the only divergence
-/// in the dossier with a plausible non-foreign trigger.
+/// Rejected { reason: "duplicate id: ..." }. ALL FOUR appliers now share
+/// is_duplicate_id_rejection and route it to synced:
+///   * consumer 1, sync_client::apply_sync_outcomes (crates/kasirmu-core/src/sync_client.rs:101)
+///   * the SQLite daemon, daemon::apply_push_results (platform/sync/src/daemon.rs:408)
+///   * the PostgreSQL daemon, pg_daemon::apply_push_outcomes (platform/sync/src/pg_daemon.rs:760)
+///   * the embedder, lib.rs::apply_push_outcomes (platform/sync/src/lib.rs:239)
 ///
-/// A SECOND such consumer was found 09-16-26 and appended to that same ADR
-/// section: platform/sync/src/lib.rs:561, the SyncEngine run_sync_cycle push
-/// loop, has no duplicate-id arm either — SyncQueue::mark_failed
-/// (platform/sync/src/queue.rs:268) is a bare delegate to
-/// store.mark_offline_failed, so the prefix is never consulted on that path and
-/// the row lands Failed rather than Synced. It has no in-repo production caller
-/// (lib_tests.rs and tests/integration_test.rs only), so its blast radius is an
-/// embedder rather than a shipped path.
+/// The two gaps this note USED to record as open are now closed, and each is
+/// pinned by a test rather than by reading:
+///   * the PostgreSQL daemon's arm was added by C48 and is pinned by
+///     pg_daemon_tests::pg_apply_push_outcomes_duplicate_id_replay_marks_synced
+///     (and its negative twin ..._genuine_rejection_marks_failed);
+///   * the SyncEngine arm was added in the same sweep and is pinned here plus
+///     in lib_tests.rs:1627.
+///
+/// docs/decisions/2026-07-20-sync-conflict-resolution-strategy.md, "Activation
+/// and Ownership" and its "Second parity gap" appendix, still describe both as
+/// open; that text is now historical (a reader should trust the arms above).
 #[test]
-fn duplicate_id_rejection_is_synced_here_and_recorded_as_a_parity_gap_there() {
-    let store = setup_store();
+fn duplicate_id_rejection_is_synced_on_all_four_appliers() {
+    let store_db = migrations::fresh_db();
+    let store = setup_store(&store_db);
     let local = enqueue_local(&store, &CASES[0]);
     let reason = format!("{}{}", DUPLICATE_ID_PREFIX, local.id);
 
@@ -469,7 +551,7 @@ fn duplicate_id_rejection_is_synced_here_and_recorded_as_a_parity_gap_there() {
     );
     assert_eq!(
         result.failed, 0,
-        "UNDECIDED: and not to the terminal failed state - pg_daemon.rs:323 does the opposite, see the ADR section named above"
+        "and not to the terminal failed state - all four appliers now share the predicate (pg_daemon.rs:760, lib.rs:239, daemon.rs:408)"
     );
     let row = store
         .list_all_offline()
@@ -485,7 +567,8 @@ fn duplicate_id_rejection_is_synced_here_and_recorded_as_a_parity_gap_there() {
 
     // A genuine rejection still fails, and fails terminally - the guard above is
     // narrow, not a blanket "never fail".
-    let store = setup_store();
+    let store_db = migrations::fresh_db();
+    let store = setup_store(&store_db);
     let other = enqueue_local(&store, &CASES[0]);
     let result = apply_sync_outcomes(
         &store,
@@ -508,10 +591,7 @@ fn duplicate_id_rejection_is_synced_here_and_recorded_as_a_parity_gap_there() {
 #[test]
 fn duplicate_id_prefix_has_not_drifted() {
     assert!(
-        kasirmu_core::sync_client::is_duplicate_id_rejection(&format!(
-            "{}abc",
-            DUPLICATE_ID_PREFIX
-        )),
+        kasirmu_core::sync_client::is_duplicate_id_rejection(&format!("{DUPLICATE_ID_PREFIX}abc")),
         "UNDECIDED: the mirrored prefix no longer matches DUPLICATE_ID_REJECTION_PREFIX - update this test and re-read the parity claim"
     );
     assert!(

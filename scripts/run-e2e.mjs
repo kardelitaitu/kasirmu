@@ -769,7 +769,7 @@ async function main() {
 
   try {
     console.log(`\n${BOLD}${CYAN}═══════════════════════════════════════${NC}`);
-    console.log(`${BOLD}${CYAN}  OZ-POS — E2E Test Suite${NC}`);
+    console.log(`${BOLD}${CYAN}  kasir.mu — E2E Test Suite${NC}`);
     console.log(`${BOLD}${CYAN}═══════════════════════════════════════${NC}\n`);
 
     // ── Step 1: Start Docker backend ──────────────────────────────

@@ -80,20 +80,16 @@ ARM_RE = re.compile(r'eprintln!\s*\(\s*"[^"]*skip', re.IGNORECASE)
 # ARM_CRATES bounds the membership, and a partition that sums correctly can still
 # be walking a silently narrowed population.
 #
-# Measured baseline: 68 arms across 12 test files in 3 crates. Moved 64 -> 66 -> 68 on
-# 2026-09-16: +2 when the migrate-bin tests gained a throwaway DB arm each, +2 more when
-# pg_integration_rls_force_blocks_owner (db_tests.rs) gained a CREATE-DATABASE arm and a
-# connect arm of its own for the same isolation. The assertion has fired on every one of
-# those edits, which is the only reason the number below is a measurement and not a memory.
-# Was 64 until
-# 2026-09-16, when the two migrate-bin PG tests gained a throwaway database and
-# each acquired a second skip arm ("cannot create throwaway DB") alongside its
-# original connect arm. The self-test's baseline assertion fired on that edit the
-# moment it was made -- which is the entire reason it asserts equality rather than
-# printing a count: a census that silently grows is as untrustworthy as one that
-# silently shrinks. Floor unchanged at 55; only the reference moved.
-ARM_FLOOR = 55  # headroom below 68: absorbs a legitimate conversion, fires on drift
-ARM_BASELINE = 68
+# Measured baseline: 88 arms across 16 test files in 3 crates. Moved 64 -> 66 -> 68 -> 84 -> 88:
+# +16 across cloud-server (quota detector, reconciliation, stock guard, trigger ports)
+# and platform-sync; then +4 measured 2026-09-27, driven by the kasirmu-api `pg.rs`
+# split (`crates/kasirmu-api/src/pg_tests.rs` alone holds 15) rather than by any
+# conversion of an arm. The floor is NOT moved with it: 88 received arms push the
+# census further above the floor, which is the direction this guard is meant to
+# tolerate, and re-raising the floor would erode the headroom that absorbs a
+# legitimate conversion.
+ARM_FLOOR = 65  # headroom below 88: absorbs a legitimate conversion, fires on drift
+ARM_BASELINE = 88
 # Per-crate membership: each crate that owns arms today must keep at least one.
 # Renaming a file survives this; a whole crate's arms going uncounted does not,
 # which is the "fix landed in one crate, 17 left behind" failure in another form.
@@ -222,6 +218,75 @@ def count_source_arms() -> tuple[int, dict[str, int]]:
     return sum(per_file.values()), per_file
 
 
+# ── The SILENT channel ──────────────────────────────────────────────────────
+# A second, separately-reported census. ARM_RE needs an `eprintln!` containing
+# "skip", so a test that abandons on a PG helper's `None` with a bare
+# `else { return; }` is INVISIBLE to the arm census above: it runs, gives up,
+# and is reported as a pass, without printing anything the census can count.
+# Eight such sites were found on 2026-09-28 and feature-gated; this channel
+# exists so the class cannot go unseen again.
+#
+# Reported as a NOTE, never as a FAIL, deliberately: these sites are legal
+# today (they are behind `pg-tests` gates), so a channel that failed on them
+# would be a permanently-red tool, which is the failure mode "a gate people
+# learn to ignore". What it buys is visibility: the number is printed every
+# run, next to the census that cannot see it.
+PG_HELPER_RE = re.compile(
+    r"\b(harness|throwaway_db|throwaway_test_pool|empty_throwaway_db|admin_client"
+    r"|pg_router_with_pool_size|raw_pool|connect_postgres|test_pool|pg_state)\s*\("
+)
+SILENT_ABANDON_RE = re.compile(r"else\s*\{[^}]{0,120}?\breturn\b", re.S)
+TEST_FN_RE = re.compile(r"^\s*#\[(?:tokio::)?test")
+# Matches the census's own visibility rule, so a site the arm census CAN see is
+# not double-reported here.
+SKIP_PRINT_RE = re.compile(r'eprintln!\s*\(\s*"[^"]*skip', re.IGNORECASE)
+# R13 (owner, 2026-09-20): the two Redis arms are left as they are by ruling.
+SILENT_EXCLUDE = ("redis_backend_tests.rs",)
+
+
+def silent_abandons_in(lines: list[str]) -> int:
+    """Count test fns that abandon on a PG helper with no skip message.
+
+    Operates on `lines` rather than a path so the self-test can plant both
+    directions as fixtures, the same way `counts_as_arm` is shared between the
+    tree walk and the self-test.
+    """
+    total = 0
+    for i, line in enumerate(lines):
+        if not TEST_FN_RE.match(line):
+            continue
+        body = "\n".join(lines[i : i + 60])
+        if not PG_HELPER_RE.search(body) or not SILENT_ABANDON_RE.search(body):
+            continue
+        if SKIP_PRINT_RE.search(body):
+            continue  # the arm census can see this one
+        total += 1
+    return total
+
+
+def count_silent_abandons() -> tuple[int, dict[str, int]]:
+    """Tree-wide counterpart to `count_source_arms`, over the same files."""
+    per_file: dict[str, int] = {}
+    for tree in SRC_TREES:
+        base = ROOT / tree
+        if not base.is_dir():
+            continue
+        for path in base.rglob("*.rs"):
+            rel = path.relative_to(ROOT).as_posix()
+            if "_tests" not in rel and "/tests/" not in rel:
+                continue
+            if rel.endswith(SILENT_EXCLUDE):
+                continue
+            try:
+                lines = path.read_text(encoding="utf-8").splitlines()
+            except (OSError, UnicodeDecodeError):
+                continue
+            hits = silent_abandons_in(lines)
+            if hits:
+                per_file[rel] = hits
+    return sum(per_file.values()), per_file
+
+
 def parse_log(text: str) -> dict:
     passed = failed = ignored = 0
     events: list[str] = []
@@ -324,6 +389,21 @@ def grade(text: str, arms: int, per_file: dict[str, int], *, proven: bool,
               f"{len({r.split('/')[0] + '/' + r.split('/')[1] for r in per_file})} crates"
               f" -- TREE-WIDE census, not the selected crate's (floor {ARM_FLOOR},"
               f" baseline {ARM_BASELINE})")
+
+    # The SILENT channel. Informational by design -- see its block above for
+    # why it is never a FAIL. Printed unconditionally, because a number nobody
+    # sees is the same as no number.
+    silent, silent_files = count_silent_abandons()
+    if silent:
+        worst = sorted(silent_files.items(), key=lambda kv: -kv[1])[:3]
+        where = ", ".join(f"{k.split('/')[-1]} {v}" for k, v in worst)
+        print(f"note  SILENT: {silent} test fn(s) abandon on a PG helper's `None`\n"
+              f"      with no skip message, so the census above cannot count them\n"
+              f"      (heaviest: {where}). Each one runs, gives up, and reports a\n"
+              f"      pass. They are `pg-tests`-gated today, which is why this is a\n"
+              f"      note and not a failure.")
+    else:
+        print("ok    SILENT: no test abandons on a PG helper without saying so")
 
     if not report["passed"] and not report["failed"]:
         print("FAIL  LOG: no `test result:` summary line found.")
@@ -618,6 +698,30 @@ def self_test() -> int:
     expect("print-and-continue keyring fallback is NOT counted as an arm",
            not any("kasirmu-security" in p for p in per_file))
 
+    # (3c) the SILENT channel -- both directions as fixtures, then the tree.
+    #      It reports the class the arm census is blind to: a test that gives up
+    #      on a PG helper without printing a skip, and so reads as a pass.
+    def silent_in(src: str) -> int:
+        return silent_abandons_in(src.splitlines())
+
+    expect("silent: a bare `else { return; }` after a PG helper IS counted",
+           silent_in('#[tokio::test]\nasync fn t() {\n'
+                     '    let Some(x) = harness("1").await else { return; };\n}') == 1)
+    expect("silent: a helper call that never abandons is NOT counted",
+           silent_in('#[tokio::test]\nasync fn t() {\n'
+                     '    let x = harness("1").await;\n}') == 0)
+    expect("silent: a site the arm census CAN see is NOT double-reported",
+           silent_in('#[tokio::test]\nasync fn t() {\n'
+                     '    let Some(x) = harness("1").await else {\n'
+                     '        eprintln!("PG test skipped");\n'
+                     '        return;\n'
+                     '    };\n}') == 0)
+    silent_tree, silent_files = count_silent_abandons()
+    expect(f"silent channel is non-vacuous on this tree (measured {silent_tree})",
+           silent_tree > 0)
+    expect("silent channel leaves the Redis arms R13 parked alone",
+           not any(p.endswith("redis_backend_tests.rs") for p in silent_files))
+
     # (3b) the arm-boundary and macro rules, as fixtures. These exist because
     #      `\bpanic!\b` cannot ever match -- `!` is non-word and `(` after it is
     #      too, so there is no boundary to assert -- which made an early version
@@ -743,9 +847,9 @@ def self_test() -> int:
 
     # A planted fake path must not satisfy membership (the rule is prefix-matched,
     # so an unrelated tree cannot silently stand in for a missing crate).
-    fake = {f"vendor/thing/{c}_tests.rs": 20 for c in ("a", "b", "c")}
+    fake = {f"vendor/thing/{c}_tests.rs": 30 for c in ("a", "b", "c")}
     expect("a fake tree cannot satisfy the crate membership rule",
-           len(source_findings(60, fake)) == len(ARM_CRATES))
+           len(source_findings(sum(fake.values()), fake)) == len(ARM_CRATES))
 
     # (5) grade() must fail on a zero census even with a clean log -- the
     #     vacuity this guard exists to catch.

@@ -1,0 +1,6 @@
+{
+  "schema_version": 1,
+  "grants": {
+    "example-discount": ["cart:read", "cart:write", "system:time", "log:write"]
+  }
+}

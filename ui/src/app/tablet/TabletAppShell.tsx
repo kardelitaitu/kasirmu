@@ -9,6 +9,7 @@ import { getPage, isPageAccessible, type PageRegistration } from '@/registries/p
 import PermissionDenied from '@/components/PermissionDenied';
 import { LazyBoundary } from '@/components/LazyBoundary';
 import { AppBootSplash } from '@/components/AppBootSplash';
+import { useSplashExit } from '@/hooks/useSplashExit';
 import MemoBanner from '@/features/memo/MemoBanner';
 import { isAnyAriaModalOpen, consumeShortcut } from '@/utils/modal-guard';
 import { useOrientation } from '@/hooks/useOrientation';
@@ -135,14 +136,19 @@ export default function TabletAppShell() {
   const prevWorkspaceRef = useRef(activeWorkspace);
   useEffect(() => {
     if (prevWorkspaceRef.current !== undefined && prevWorkspaceRef.current !== activeWorkspace) {
-      const workspaceRoute: Record<string, string> = {
-        'restaurant-pos': 'pos',
-        'store-pos': 'pos',
-        kds: 'kds',
-        warehouse: 'products',
-        admin: 'settings',
-      };
-      setCurrentRoute(workspaceRoute[activeWorkspace ?? ''] ?? 'pos');
+      if (!activeWorkspace) {
+        window.location.hash = '';
+        setCurrentRoute('pos');
+      } else {
+        const workspaceRoute: Record<string, string> = {
+          'restaurant-pos': 'pos',
+          'store-pos': 'pos',
+          kds: 'kds',
+          warehouse: 'products',
+          admin: 'settings',
+        };
+        setCurrentRoute(workspaceRoute[activeWorkspace] ?? 'pos');
+      }
     }
     prevWorkspaceRef.current = activeWorkspace;
   }, [activeWorkspace]);
@@ -235,6 +241,34 @@ export default function TabletAppShell() {
     setCurrentRoute(route);
   }, [userRole, userPermissions]);
 
+  // ── Hash-based routing, mirroring AppShell.tsx:350-395 ────────────────
+  //
+  // MEASURED DEFECT (fixed 2026-09-30). The provisioning flow's "Set up with a
+  // phone instead" button does `window.location.hash = '#/mobile-setup'`. On the
+  // DESKTOP shell that worked, because AppShell listens for hashchange and maps
+  // #/route onto the page registry. The TABLET shell had no such listener: it
+  // kept currentRoute at 'pos' and re-rendered the same provisioning form, so
+  // the button was a dead end for exactly the device it was written for — the
+  // merchant pressed it and nothing happened, forever.
+  //
+  // The e2e that pins it is mobile-setup-wizard.spec.ts ('unprovisioned tablet
+  // shell can navigate directly to mobile-setup wizard'). It had been failing
+  // since 43689705f introduced the button; the suite is not run on this
+  // project's normal gate, so it went unnoticed.
+  //
+  // The hash is read on mount as well as on change so a #/mobile-setup
+  // deep link / reload works, not only a live click.
+  useEffect(() => {
+    const syncFromHash = () => {
+      const raw = window.location.hash.replace(/^#\/?/, '').split('?')[0];
+      if (!raw) return;
+      if (getPage(raw)) setCurrentRoute(raw);
+    };
+    syncFromHash();
+    window.addEventListener('hashchange', syncFromHash);
+    return () => window.removeEventListener('hashchange', syncFromHash);
+  }, []);
+
   // ── Session lock: the shell owns the lock screen; screens only ask for it ──
   // Same `app:lock` contract as AppShell.tsx (the restaurant sidebar's "Lock
   // Terminal" and DevToolbar fire it). With no listener here a tablet lock
@@ -250,6 +284,11 @@ export default function TabletAppShell() {
     setIsLocked(false);
   }, []);
 
+  // Must be called unconditionally before any early return (rules-of-hooks).
+  // Returns splashMounted=false, splashExiting=false when loading is false,
+  // so calling it here (before the lock-screen and loading gates) is safe.
+  const { splashMounted, splashExiting } = useSplashExit(loading);
+
   // The lock screen takes precedence over every branch, exactly as the desktop
   // shell does: a locked terminal renders nothing else.
   if (isLocked && session) {
@@ -260,13 +299,13 @@ export default function TabletAppShell() {
     );
   }
 
-  if (loading) {
-    // Branded boot splash (stage 2) — mirrors the desktop shell gate
-    // and the static stage-1 splash from index.mobile.html.
-    return <AppBootSplash />;
-  }
+  // NOTE: no `if (loading) return <AppBootSplash />` here — see the identical
+  // note in AppShell.tsx. Two render sites at different tree positions made
+  // React unmount the booting splash and mount a fresh one on the flip, so the
+  // crossfade in `useSplashExit` faded a splash the user had never seen.
 
-  // ADR #58 §2.6: if the subscription is revoked, show the data-export screen
+  const renderActiveView = () => {
+    // ADR #58 §2.6: if the subscription is revoked, show the data-export screen
   // rather than the login screen. The merchant cannot log in but CAN
   // export their data via the no-session twin (export_data_without_session).
   if (subscriptionState === 'revoked') {
@@ -288,6 +327,48 @@ export default function TabletAppShell() {
         />
       </LazyBoundary>
     );
+  }
+
+  // Render the current page from the registry, or null if not found.
+  const pageRegistration = getPage(currentRoute);
+  const PageComponent = pageRegistration?.component ?? null;
+  const pageDenied = pageRegistration && !isPageAccessible(pageRegistration, userRole, userPermissions);
+
+  // Fullscreen pages render without the tab bar or active workspace requirement.
+  // When an unprovisioned tablet enters mobile-setup, completing the flow marks the device provisioned.
+  if (pageRegistration?.fullscreen) {
+    if (pageDenied) {
+      return (
+        <PermissionDenied
+          action={pageRegistration.label}
+          requiredRole={pageRegistration.requiredRole ?? ''}
+          requiredPermission={pageRegistration.requiredPermission}
+        />
+      );
+    }
+    const isCustomerKiosk = currentRoute === 'kiosk';
+    const FullscreenPageComponent = PageComponent as React.ComponentType<{ onProvisioned?: () => void }>;
+    return PageComponent ? (
+      <>
+        {!isCustomerKiosk && <MemoBanner />}
+        <div className="workspace-fullscreen" key={pageRegistration.screenGroup ?? currentRoute}>
+          {renderPageLayout(
+            <LazyBoundary>
+              <FullscreenPageComponent
+                onProvisioned={() => {
+                  setHasCompletedSetup(true);
+                  setHasAnyUsers(true);
+                  setCurrentRoute('pos');
+                  window.location.hash = '';
+                }}
+              />
+            </LazyBoundary>,
+            pageRegistration.layout,
+            orientation.isLandscape,
+          )}
+        </div>
+      </>
+    ) : null;
   }
 
   // ── First-run provisioning runs BEFORE the login gate (ADR #41 §2.1, ADR #56 §2.3) ──
@@ -405,10 +486,6 @@ export default function TabletAppShell() {
 
   // Sidebar-type workspaces (inventory, admin) — use TabletAppLayout
   // with a dynamic bottom tab bar from workspace_type_screens.
-  const pageRegistration = getPage(currentRoute);
-  const PageComponent = pageRegistration?.component ?? null;
-  const pageDenied = pageRegistration && !isPageAccessible(pageRegistration, userRole, userPermissions);
-
   return (
     <TabletAppLayout
       route={currentRoute}
@@ -436,5 +513,15 @@ export default function TabletAppShell() {
       {/* The modal portals itself, so it does not matter which branch hosts it. */}
       {settingsModal}
     </TabletAppLayout>
+  );
+  };
+
+  return (
+    <>
+      {splashMounted && <AppBootSplash exiting={splashExiting} />}
+      {/* Same single-site rule as the desktop shell: the splash is the only
+          thing on screen while booting, and the shell mounts behind it. */}
+      {!loading && renderActiveView()}
+    </>
   );
 }

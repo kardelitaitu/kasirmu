@@ -78,7 +78,7 @@ fn serde_roundtrip_negative_amount() {
 #[test]
 fn cash_payout_debug_output() {
     let p = CashPayout::new("shift-1", 5000, "drop");
-    let debug = format!("{:?}", p);
+    let debug = format!("{p:?}");
     assert!(debug.contains("shift-1"));
     assert!(debug.contains("5000"));
     assert!(debug.contains("drop"));

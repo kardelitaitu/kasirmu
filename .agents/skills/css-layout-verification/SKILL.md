@@ -1,6 +1,6 @@
 ---
 name: css-layout-verification
-description: Prove what an OZ-POS stylesheet actually does when jsdom cannot compute layout — which edge a fixed bar lands on, whether a strip overflows, whether a label is clipped or wrapped. Use when a layout claim is about effect rather than declaration, when a CSS-contract test passes but the UI looks wrong, when a declaration may be present yet inert, or before asserting that a stylesheet change fixes a visible defect.
+description: Prove what a kasir.mu stylesheet actually does when jsdom cannot compute layout — which edge a fixed bar lands on, whether a strip overflows, whether a label is clipped or wrapped. Use when a layout claim is about effect rather than declaration, when a CSS-contract test passes but the UI looks wrong, when a declaration may be present yet inert, or before asserting that a stylesheet change fixes a visible defect.
 ---
 
 <!-- Audit stamp: 2026-09-22 · Budak-Korporat · status: ACCURATE — 0 findings · Audited against branch `0.0.39` at `e56bf8307`, working tree clean. Re-measured this pass: all six paths the skill names exist — `ui/src/app/tablet/tablet.css`, `ui/src/app/tablet/TabletAppLayout.tsx`, `ui/src/__tests__/restaurantCardHeight.test.ts`, `ui/e2e/playwright.config.ts`, `ui/src/theme/tokens.css` and `ui/node_modules/@playwright/test`. The "declaration present and inert" trap is confirmed to have been REPAIRED in the code since the incident it narrates: `tablet.css:55-57` now reads `.tablet-shell .app-layout { display: flex; flex-direction: column; }` — `column`, not the dormant `column-reverse` — so the skill's history is accurate and its present tense is not a live defect. The ZoomContext claim was verified in source: `ui/src/contexts/ZoomContext.tsx:40-41` clamps `Math.max(14, Math.min(16, 16 * scale))` against a 1920px base, so 14px root and `40rem` = 560px both hold. The tablet viewport arithmetic is self-consistent (1920/1.75 = 1097, 1200/1.75 = 686). NOT re-measured (needs a headless Chromium run the audit did not perform): the 1024x1366 bar-position figures, the seven-tab width array `[53,75,93,73,131,100,79]`, and the 13-tab counterfactual. Those stand on their 2026-09-20 measurements. -->
@@ -48,7 +48,7 @@ repo is an untracked file a peer may commit.
 5. `require` by absolute path when the script lives outside the repo — `NODE_PATH` does not rescue a
    `require('@playwright/test')` from outside the package tree:
    ```js
-   const { chromium } = require('C:/dev/ozpos/ui/node_modules/@playwright/test');
+   const { chromium } = require('C:/dev/kasirmu/ui/node_modules/@playwright/test');
    ```
 
 Useful fields to return: `{barTop, barBottom, mainTop, mainBottom, vh}` and an `atBottom` flag computed

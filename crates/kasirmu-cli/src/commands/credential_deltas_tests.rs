@@ -533,7 +533,7 @@ fn a_database_with_no_settings_table_is_refused_naming_the_path() {
         "the refusal must name the path and the missing table, got: {msg}"
     );
     assert!(
-        msg.contains("oz backup"),
+        msg.contains("kasir backup"),
         "the refusal must name the way to take a copy, got: {msg}"
     );
 
@@ -577,7 +577,7 @@ fn the_report_keeps_ledger_and_settings_totals_apart_and_says_why() {
     }
     assert!(
         HELP_BYTES_NOT_CONTENT.contains("journal_mode=WAL")
-            && HELP_BYTES_NOT_CONTENT.contains("oz backup"),
+            && HELP_BYTES_NOT_CONTENT.contains("kasir backup"),
         "the byte-level caveat must name the pragma and the copy command"
     );
     assert!(
@@ -624,7 +624,7 @@ fn a_missing_db_path_is_refused_and_not_created() {
         "the refusal must say the create is the reason: {msg}"
     );
     assert!(
-        msg.contains("oz backup"),
+        msg.contains("kasir backup"),
         "the refusal must name the way to inspect a live store safely: {msg}"
     );
     assert!(
@@ -903,6 +903,97 @@ fn a_base64_shaped_plaintext_psk_reads_invalid_and_the_note_says_so() {
     assert!(
         EXCLUDED_ROWS_NOTE.contains("a plaintext that merely looks like base64"),
         "the report must disclose exactly this case: {EXCLUDED_ROWS_NOTE}"
+    );
+}
+
+// -- local_api.secret is ASKED as of C14a: one case per form it can produce ----
+
+/// A row written by C14a's encrypting setter (`Settings::set_local_api_secret`)
+/// must read ENCRYPTED. Before C14a this key sat in `sealed_in_another_lane`, so
+/// its row read "undeterminable(cannot be opened here)" — a label that named no
+/// bytes and left a live credential out of BOTH the encrypted and the cleartext
+/// headline. That is the false negative this move closes.
+#[test]
+fn a_sealed_local_api_secret_row_reads_encrypted_and_leaves_the_headline() {
+    use kasirmu_core::settings::keys::LOCAL_API_SECRET;
+    let conn = fresh_db();
+    let cipher = kasirmu_core::crypto::encrypt_local_api_secret(
+        "3f2a91c4e07b5d6812ab34cd56ef7890a1b2c3d4e5f60718293a4b5c6d7e8f90",
+    )
+    .unwrap();
+    Settings::set(&conn, LOCAL_API_SECRET, &cipher).unwrap();
+
+    let rows = scan_credential_settings(&conn).unwrap();
+    assert_eq!(rows.len(), 1, "local_api.secret is deny-listed: {rows:?}");
+    assert_eq!(
+        rows[0].forms,
+        vec![(StoredForm::Encrypted, 1)],
+        "a C14a-sealed secret must read ENCRYPTED, not the Indeterminate it used to get: {rows:?}"
+    );
+    assert_eq!(total_cleartext_rows(&rows), 0);
+    assert_eq!(total_encrypted_rows(&rows), 1);
+    assert_eq!(
+        total_excluded_rows(&rows),
+        0,
+        "resolved-encrypted is ANSWERED, not excluded; the two buckets must not merge"
+    );
+}
+
+/// The legacy form of this key is 64 lowercase hex characters (`new_secret`: 32
+/// random bytes, hex-encoded), which IS base64-shaped — so WITHOUT the positive
+/// discriminator it would read INVALID-CIPHERTEXT and VANISH from the cleartext
+/// headline. Unlike the generated-PSK case above, the tool CAN tell here, so it
+/// must count the row rather than decline it.
+#[test]
+fn a_legacy_hex_local_api_secret_reaches_the_headline_not_invalid() {
+    use kasirmu_core::settings::keys::LOCAL_API_SECRET;
+    let conn = fresh_db();
+    let legacy = "3f2a91c4e07b5d6812ab34cd56ef7890a1b2c3d4e5f60718293a4b5c6d7e8f90";
+    assert_eq!(
+        legacy.len(),
+        64,
+        "the fixture must be the real legacy shape"
+    );
+    Settings::set(&conn, LOCAL_API_SECRET, legacy).unwrap();
+
+    let rows = scan_credential_settings(&conn).unwrap();
+    assert_eq!(
+        rows[0].forms,
+        vec![(StoredForm::LegacyPlaintext, 1)],
+        "a pre-C14a hex secret is cleartext exposure and must be labelled so, NOT INVALID: {rows:?}"
+    );
+    assert_eq!(
+        total_cleartext_rows(&rows),
+        1,
+        "and it MUST reach the cleartext headline — that is the whole point of C14a's census move"
+    );
+    assert_eq!(total_encrypted_rows(&rows), 0);
+    assert_eq!(total_excluded_rows(&rows), 0);
+}
+
+/// The control that keeps the two cases above honest: a value that is base64-shaped
+/// and 64 chars long but NOT all-hex is a corrupt row, and must still read INVALID.
+/// Without this, `legacy_plaintext_shape` could be widened to "any 64 chars" and both
+/// cases above would stay green while the discriminator stopped discriminating.
+#[test]
+fn a_ciphertext_shaped_local_api_secret_that_is_not_hex_still_reads_invalid() {
+    use kasirmu_core::settings::keys::LOCAL_API_SECRET;
+    let conn = fresh_db();
+    // 64 chars, inside the base64 alphabet ('Z'), outside [0-9a-f]: undecryptable junk.
+    let corrupt = "ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ";
+    assert_eq!(corrupt.len(), 64);
+    Settings::set(&conn, LOCAL_API_SECRET, corrupt).unwrap();
+
+    let rows = scan_credential_settings(&conn).unwrap();
+    assert_eq!(
+        rows[0].forms,
+        vec![(StoredForm::Invalid, 1)],
+        "base64-shaped, undecryptable and non-hex is INVALID, never cleartext: {rows:?}"
+    );
+    assert_eq!(
+        total_cleartext_rows(&rows),
+        0,
+        "the ambiguity is not resolved into the cleartext headline"
     );
 }
 

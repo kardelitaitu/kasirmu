@@ -12,6 +12,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import type { ReactNode, ReactElement } from 'react';
 import { LocalizationProvider } from '@fluent/react';
 import { ToastProvider } from '@/components/Toast';
+import { WorkspaceContext, type WorkspaceContextValue } from '@/contexts/WorkspaceContext';
 import { TerminalPreferencesCard } from '@/features/settings/workspace-cards/TerminalPreferencesCard';
 
 // ── Fluent test l10n ───────────────────────────────────────────────
@@ -28,6 +29,10 @@ const testL10n = {
       'workspace-terminal-dark-mode': 'Dark Mode',
       'workspace-terminal-scale-zero': 'Auto-Zero Scale on Boot',
       'terminal-sound-volume-aria': 'Sound volume',
+      'settings-edc-default-select': 'Register Default EDC Terminal',
+      'settings-edc-default-auto': 'Auto (Earliest Created)',
+      'settings-edc-test': 'Test Connection',
+      'settings-edc-testing': 'Testing…',
       'save': 'Save',
     };
     return defaults[id] ?? id;
@@ -44,6 +49,7 @@ const mocks = vi.hoisted(() => ({
     soundVolume: 80,
     darkMode: false,
     scaleAutoZero: true,
+    defaultEdcTerminalId: '',
   },
   hwError: null as string | null,
 }));
@@ -88,13 +94,56 @@ vi.mock('@/hooks/useTerminalHardware', () => ({
   },
 }));
 
+vi.mock('@/api/edc', () => ({
+  listEdcTerminalsScoped: vi.fn().mockResolvedValue([
+    {
+      id: 'term_lane_1',
+      name: 'Counter Lane 1',
+      connectionType: 'wired',
+      transport: 'serial',
+      address: 'COM3',
+      vendor: 'ingenico',
+      model: 'iCT250',
+      isActive: true,
+      createdAt: '2026-01-01T00:00:00Z',
+      updatedAt: '2026-01-01T00:00:00Z',
+    },
+  ]),
+  edcTerminalStatusScoped: vi.fn().mockResolvedValue({
+    terminal_id: 'term_lane_1',
+    state: 'ready',
+    battery_pct: null,
+    last_seen_secs: 0,
+  }),
+}));
+
 // ── Helpers ─────────────────────────────────────────────────────────
+
+const mockWorkspaceValue: WorkspaceContextValue = {
+  activeWorkspace: 'pos',
+  setActiveWorkspace: vi.fn(),
+  activeInstance: null,
+  setActiveInstance: vi.fn(),
+  availableWorkspaces: [],
+  workspaceScreens: [],
+  loading: false,
+  error: null,
+  retry: vi.fn(),
+  lastWorkspace: null,
+  switchStore: vi.fn(),
+  resolvedStoreId: 'store-1',
+  sessionToken: 'test-session-token',
+  terminalId: 'term-1',
+  swapSessionToken: vi.fn(),
+};
 
 function Wrapper({ children }: { children: ReactNode }) {
   return (
     <LocalizationProvider l10n={testL10n}>
       <ToastProvider>
-        {children}
+        <WorkspaceContext.Provider value={mockWorkspaceValue}>
+          {children}
+        </WorkspaceContext.Provider>
       </ToastProvider>
     </LocalizationProvider>
   );
@@ -114,7 +163,7 @@ function renderCard(overrides: Record<string, unknown> = {}) {
 }
 
 beforeEach(() => {
-  Object.assign(mocks.localPrefs, { soundVolume: 80, darkMode: false, scaleAutoZero: true });
+  Object.assign(mocks.localPrefs, { soundVolume: 80, darkMode: false, scaleAutoZero: true, defaultEdcTerminalId: '' });
   mocks.hwError = null;
 });
 
@@ -263,6 +312,54 @@ describe('TerminalPreferencesCard', () => {
 
     // Revert back to original
     fireEvent.change(slider, { target: { value: '80' } });
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /save/i })).toBeDisabled();
+    });
+  });
+
+  // ── Default EDC terminal ─────────────────────────────────────
+
+  it('renders default EDC terminal select with initial value', () => {
+    renderCard();
+    const select = document.getElementById('term-edc-default') as HTMLSelectElement;
+    expect(select).not.toBeNull();
+    expect(select.value).toBe('');
+  });
+
+  it('changing default EDC terminal enables Save button', async () => {
+    renderCard();
+    expect(screen.getByRole('button', { name: /save/i })).toBeDisabled();
+
+    await waitFor(() => {
+      expect(screen.getByText(/Counter Lane 1/i)).toBeInTheDocument();
+    });
+
+    const select = document.getElementById('term-edc-default') as HTMLSelectElement;
+    select.value = 'term_lane_1';
+    fireEvent.change(select, { target: { value: 'term_lane_1' } });
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /save/i })).not.toBeDisabled();
+    });
+  });
+
+  it('reverting default EDC terminal disables Save button', async () => {
+    renderCard();
+    await waitFor(() => {
+      expect(screen.getByText(/Counter Lane 1/i)).toBeInTheDocument();
+    });
+
+    const select = document.getElementById('term-edc-default') as HTMLSelectElement;
+    select.value = 'term_lane_1';
+    fireEvent.change(select, { target: { value: 'term_lane_1' } });
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /save/i })).not.toBeDisabled();
+    });
+
+    select.value = '';
+    fireEvent.change(select, { target: { value: '' } });
+
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /save/i })).toBeDisabled();
     });

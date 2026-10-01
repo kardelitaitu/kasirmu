@@ -2046,14 +2046,16 @@ dependencies = [
 
 [[package]]
 name = "foundation"
-version = "0.0.39"
+version = "0.0.40"
 dependencies = [
  "anyhow",
+ "chrono",
  "proptest",
  "regex",
  "serde",
  "serde_json",
  "thiserror 1.0.69",
+ "tracing",
  "uuid",
 ]
 
@@ -3317,7 +3319,7 @@ dependencies = [
 
 [[package]]
 name = "kasirmu-api"
-version = "0.0.39"
+version = "0.0.40"
 dependencies = [
  "axum 0.8.9",
  "chrono",
@@ -3344,7 +3346,7 @@ dependencies = [
 
 [[package]]
 name = "kasirmu-app"
-version = "0.0.39"
+version = "0.0.40"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3352,6 +3354,7 @@ dependencies = [
  "hex",
  "hmac 0.12.1",
  "image 0.25.10",
+ "indexmap 1.9.3",
  "kasirmu-api",
  "kasirmu-bridge",
  "kasirmu-core",
@@ -3375,6 +3378,7 @@ dependencies = [
  "modules-terminal",
  "notify",
  "platform-core",
+ "platform-instance-guard",
  "platform-kernel",
  "platform-startup",
  "platform-sync",
@@ -3401,7 +3405,7 @@ dependencies = [
 
 [[package]]
 name = "kasirmu-bridge"
-version = "0.0.39"
+version = "0.0.40"
 dependencies = [
  "chrono",
  "foundation",
@@ -3409,6 +3413,7 @@ dependencies = [
  "hmac 0.12.1",
  "image 0.25.10",
  "kasirmu-core",
+ "kasirmu-crypto",
  "kasirmu-hal",
  "kasirmu-lua",
  "kasirmu-plugin",
@@ -3432,7 +3437,7 @@ dependencies = [
 
 [[package]]
 name = "kasirmu-cli"
-version = "0.0.39"
+version = "0.0.40"
 dependencies = [
  "anyhow",
  "argon2",
@@ -3442,6 +3447,7 @@ dependencies = [
  "embed-resource",
  "foundation",
  "kasirmu-core",
+ "kasirmu-security",
  "rand 0.8.6",
  "rusqlite",
  "serde",
@@ -3454,7 +3460,7 @@ dependencies = [
 
 [[package]]
 name = "kasirmu-cloud"
-version = "0.0.39"
+version = "0.0.40"
 dependencies = [
  "axum 0.8.9",
  "bytes",
@@ -3496,7 +3502,7 @@ dependencies = [
 
 [[package]]
 name = "kasirmu-core"
-version = "0.0.39"
+version = "0.0.40"
 dependencies = [
  "aead",
  "aes-gcm",
@@ -3509,14 +3515,7 @@ dependencies = [
  "kasirmu-crypto",
  "lettre",
  "mdns-sd",
- "modules-crm",
  "modules-currency",
- "modules-inventory",
- "modules-loyalty",
- "modules-sales",
- "modules-staff",
- "modules-tax",
- "modules-terminal",
  "platform-core",
  "proptest",
  "rand 0.8.6",
@@ -3528,6 +3527,7 @@ dependencies = [
  "serde_json",
  "serial_test",
  "sha2 0.10.9",
+ "tempfile",
  "thiserror 1.0.69",
  "tokio",
  "tracing",
@@ -3537,7 +3537,7 @@ dependencies = [
 
 [[package]]
 name = "kasirmu-crypto"
-version = "0.0.39"
+version = "0.0.40"
 dependencies = [
  "aes-gcm",
  "base64 0.22.1",
@@ -3550,7 +3550,7 @@ dependencies = [
 
 [[package]]
 name = "kasirmu-hal"
-version = "0.0.39"
+version = "0.0.40"
 dependencies = [
  "async-trait",
  "hex",
@@ -3567,7 +3567,7 @@ dependencies = [
 
 [[package]]
 name = "kasirmu-lan"
-version = "0.0.39"
+version = "0.0.40"
 dependencies = [
  "anyhow",
  "foundation",
@@ -3583,7 +3583,7 @@ dependencies = [
 
 [[package]]
 name = "kasirmu-local-api"
-version = "0.0.39"
+version = "0.0.40"
 dependencies = [
  "axum 0.8.9",
  "chrono",
@@ -3602,22 +3602,20 @@ dependencies = [
 
 [[package]]
 name = "kasirmu-logging"
-version = "0.0.39"
+version = "0.0.40"
 dependencies = [
  "chrono",
  "filetime",
- "libc",
  "thiserror 1.0.69",
  "tracing",
  "tracing-appender",
  "tracing-subscriber",
  "uuid",
- "windows-sys 0.59.0",
 ]
 
 [[package]]
 name = "kasirmu-lua"
-version = "0.0.39"
+version = "0.0.40"
 dependencies = [
  "mlua",
  "serde",
@@ -3628,7 +3626,7 @@ dependencies = [
 
 [[package]]
 name = "kasirmu-media"
-version = "0.0.39"
+version = "0.0.40"
 dependencies = [
  "async-trait",
  "image 0.25.10",
@@ -3639,13 +3637,14 @@ dependencies = [
 
 [[package]]
 name = "kasirmu-mobile"
-version = "0.0.39"
+version = "0.0.40"
 dependencies = [
  "anyhow",
  "chrono",
  "foundation",
  "hex",
  "hmac 0.12.1",
+ "indexmap 1.9.3",
  "kasirmu-bridge",
  "kasirmu-core",
  "kasirmu-hal",
@@ -3663,6 +3662,7 @@ dependencies = [
  "modules-tax",
  "modules-terminal",
  "platform-core",
+ "platform-instance-guard",
  "platform-kernel",
  "platform-startup",
  "rand 0.8.6",
@@ -3686,7 +3686,7 @@ dependencies = [
 
 [[package]]
 name = "kasirmu-notification"
-version = "0.0.39"
+version = "0.0.40"
 dependencies = [
  "async-trait",
  "foundation",
@@ -3707,7 +3707,7 @@ dependencies = [
 
 [[package]]
 name = "kasirmu-payment"
-version = "0.0.39"
+version = "0.0.40"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -3728,16 +3728,21 @@ dependencies = [
 
 [[package]]
 name = "kasirmu-plugin"
-version = "0.0.39"
+version = "0.0.40"
 dependencies = [
+ "base64 0.22.1",
  "chrono",
+ "hex",
  "kasirmu-lua",
  "mlua",
+ "rand 0.8.6",
  "regex",
+ "rsa",
  "rusqlite",
  "semver",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "tempfile",
  "thiserror 1.0.69",
  "toml 0.8.2",
@@ -3747,11 +3752,10 @@ dependencies = [
 
 [[package]]
 name = "kasirmu-reporting"
-version = "0.0.39"
+version = "0.0.40"
 dependencies = [
  "chrono",
  "kasirmu-core",
- "prometheus",
  "rusqlite",
  "serde",
  "serde_json",
@@ -3760,7 +3764,7 @@ dependencies = [
 
 [[package]]
 name = "kasirmu-security"
-version = "0.0.39"
+version = "0.0.40"
 dependencies = [
  "chrono",
  "hex",
@@ -4200,7 +4204,7 @@ dependencies = [
 
 [[package]]
 name = "modules-crm"
-version = "0.0.39"
+version = "0.0.40"
 dependencies = [
  "anyhow",
  "chrono",
@@ -4217,7 +4221,7 @@ dependencies = [
 
 [[package]]
 name = "modules-currency"
-version = "0.0.39"
+version = "0.0.40"
 dependencies = [
  "foundation",
  "kasirmu-core",
@@ -4233,7 +4237,7 @@ dependencies = [
 
 [[package]]
 name = "modules-giftcards"
-version = "0.0.39"
+version = "0.0.40"
 dependencies = [
  "anyhow",
  "foundation",
@@ -4246,7 +4250,7 @@ dependencies = [
 
 [[package]]
 name = "modules-inventory"
-version = "0.0.39"
+version = "0.0.40"
 dependencies = [
  "anyhow",
  "chrono",
@@ -4263,7 +4267,7 @@ dependencies = [
 
 [[package]]
 name = "modules-kitchen"
-version = "0.0.39"
+version = "0.0.40"
 dependencies = [
  "anyhow",
  "foundation",
@@ -4276,7 +4280,7 @@ dependencies = [
 
 [[package]]
 name = "modules-loyalty"
-version = "0.0.39"
+version = "0.0.40"
 dependencies = [
  "anyhow",
  "chrono",
@@ -4293,7 +4297,7 @@ dependencies = [
 
 [[package]]
 name = "modules-promotions"
-version = "0.0.39"
+version = "0.0.40"
 dependencies = [
  "anyhow",
  "foundation",
@@ -4306,7 +4310,7 @@ dependencies = [
 
 [[package]]
 name = "modules-purchasing"
-version = "0.0.39"
+version = "0.0.40"
 dependencies = [
  "anyhow",
  "foundation",
@@ -4319,24 +4323,17 @@ dependencies = [
 
 [[package]]
 name = "modules-reporting"
-version = "0.0.39"
+version = "0.0.40"
 dependencies = [
- "anyhow",
- "chrono",
  "foundation",
- "kasirmu-core",
  "platform-kernel",
- "rusqlite",
- "serde",
  "serde_json",
- "thiserror 1.0.69",
  "tracing",
- "uuid",
 ]
 
 [[package]]
 name = "modules-sales"
-version = "0.0.39"
+version = "0.0.40"
 dependencies = [
  "anyhow",
  "chrono",
@@ -4353,7 +4350,7 @@ dependencies = [
 
 [[package]]
 name = "modules-settings"
-version = "0.0.39"
+version = "0.0.40"
 dependencies = [
  "anyhow",
  "chrono",
@@ -4370,7 +4367,7 @@ dependencies = [
 
 [[package]]
 name = "modules-staff"
-version = "0.0.39"
+version = "0.0.40"
 dependencies = [
  "anyhow",
  "chrono",
@@ -4388,7 +4385,7 @@ dependencies = [
 
 [[package]]
 name = "modules-tax"
-version = "0.0.39"
+version = "0.0.40"
 dependencies = [
  "anyhow",
  "chrono",
@@ -4405,7 +4402,7 @@ dependencies = [
 
 [[package]]
 name = "modules-terminal"
-version = "0.0.39"
+version = "0.0.40"
 dependencies = [
  "anyhow",
  "chrono",
@@ -5230,7 +5227,7 @@ checksum = "19f132c84eca552bf34cab8ec81f1c1dcc229b811638f9d283dceabe58c5569e"
 
 [[package]]
 name = "platform-core"
-version = "0.0.39"
+version = "0.0.40"
 dependencies = [
  "argon2",
  "chrono",
@@ -5243,11 +5240,19 @@ dependencies = [
  "tempfile",
  "thiserror 1.0.69",
  "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "platform-instance-guard"
+version = "0.0.40"
+dependencies = [
+ "tracing",
 ]
 
 [[package]]
 name = "platform-kernel"
-version = "0.0.39"
+version = "0.0.40"
 dependencies = [
  "anyhow",
  "foundation",
@@ -5260,7 +5265,7 @@ dependencies = [
 
 [[package]]
 name = "platform-startup"
-version = "0.0.39"
+version = "0.0.40"
 dependencies = [
  "anyhow",
  "chrono",
@@ -5297,13 +5302,14 @@ dependencies = [
 
 [[package]]
 name = "platform-sync"
-version = "0.0.39"
+version = "0.0.40"
 dependencies = [
  "axum 0.8.9",
  "chrono",
  "deadpool-postgres",
  "foundation",
  "kasirmu-core",
+ "proptest",
  "rand 0.8.6",
  "reqwest 0.12.28",
  "rusqlite",

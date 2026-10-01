@@ -128,7 +128,7 @@ fn row_to_product_maps_full_row() {
     );
     assert_eq!(product.category_id.as_deref(), Some("cat-1"));
     assert_eq!(
-        product.barcode.as_ref().map(|b| b.as_str()),
+        product.barcode.as_ref().map(foundation::Barcode::as_str),
         Some("8991234567890")
     );
     assert!(product.track_serial);
@@ -191,4 +191,39 @@ fn row_to_product_fails_on_invalid_currency() {
     let mut rows = stmt.query([]).unwrap();
     let row = rows.next().unwrap().unwrap();
     assert!(row_to_product(row).is_err(), "invalid currency must error");
+}
+
+#[test]
+fn row_to_product_fails_when_a_read_column_is_missing() {
+    // The mapper reads ten columns through `unwrap_or(..)`, each of which turned
+    // a real read error into a plausible default: a missing column, a type
+    // mismatch or a corrupt page would have produced a product silently
+    // carrying `cost_minor: 0`, `version: 1` or `is_active: false` instead of an
+    // error. `row_to_product` maps EVERY product in every listing, so that is a
+    // wrong catalogue rather than one bad row.
+    //
+    // `row_to_product_defaults_optional_columns` above already proves the
+    // defaults that matter come from the SCHEMA (`version INTEGER NOT NULL
+    // DEFAULT 1`, `cost_minor INTEGER NOT NULL DEFAULT 0`, `is_active INTEGER
+    // NOT NULL DEFAULT 1`), so removing them from the mapper loses no default.
+    // This pin proves the reads now report their failure.
+    let conn = fresh();
+    let mut stmt = conn
+        .prepare(
+            // Every column read with `?` is supplied, so the ONLY thing that can
+            // fail is one of the ten that used `unwrap_or`.
+            "SELECT 'p-x' AS id, 'SKU-X' AS sku, 'X' AS name, 100 AS price_minor, \
+                    'USD' AS currency, '2026-01-01' AS created_at, \
+                    '2026-01-01' AS updated_at, \
+                    '2026-01-01' AS price_updated_at, \
+                    'retail' AS product_type, NULL AS category_id, NULL AS barcode",
+        )
+        .unwrap();
+    let mut rows = stmt.query([]).unwrap();
+    let row = rows.next().unwrap().unwrap();
+    let err = row_to_product(row).expect_err("a missing column must not default");
+    assert!(
+        matches!(err, rusqlite::Error::InvalidColumnName(_)),
+        "expected the missing column to be named, got {err:?}"
+    );
 }

@@ -101,6 +101,42 @@ const STORE_TYPES: { value: Preset; kind: LocationKind; emoji: string; labelId: 
   },
 ];
 
+/**
+ * The currency and timezone this terminal is provisioned with.
+ *
+ * These were hardcoded literals inside `provisionDevice({...})` — `'IDR'` and
+ * `'Asia/Jakarta'` — so a merchant in any other country had them silently
+ * chosen for them with nothing on screen saying so, and no way to see what
+ * their register was set to before they opened it. They are NOT editable here
+ * (that is a settings concern, not a first-run one), but they must be visible:
+ * a value the terminal will use should be disclosed, not merely sent.
+ *
+ * One constant, read by both the payload and the disclosure below, because a
+ * disclosure that quotes a DIFFERENT constant than the submit sends is worse
+ * than no disclosure at all.
+ */
+const PROVISION_CURRENCY = 'IDR';
+const PROVISION_TIMEZONE = 'Asia/Jakarta';
+
+/**
+ * One unmet requirement of the submit gate, and the control to focus for it.
+ *
+ * `labelId` is a Fluent id rather than a string: the explainer sits directly
+ * above the submit button on the first screen a merchant ever sees, so it has to
+ * translate like every other string on this card. `focusId` is the DOM id of the
+ * control that must change — the card runs well past the viewport on the terminal
+ * this ships to, so naming the problem is not enough unless the merchant is also
+ * moved to it.
+ */
+interface SubmitBlocker {
+  /** Stable key, also used as the rendered list item key. */
+  id: string;
+  labelId: string;
+  /** What a missing bundle key would leave on screen — readable copy, never an id. */
+  fallback: string;
+  focusId: string;
+}
+
 /** Whether a preset trades as a restaurant (so the kitchen display is created). */
 function kindForPreset(preset: Preset): LocationKind {
   return STORE_TYPES.find((t) => t.value === preset)?.kind ?? 'retail';
@@ -187,8 +223,16 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
   const [emailState, setEmailState] = useState<EmailState>('idle');
   const [codeSent, setCodeSent] = useState(false);
 
-  // Tablet pairing state
-  const [tabletTab, setTabletTab] = useState<'pair' | 'email'>('pair');
+  // Tablet pairing state.
+  //
+  // 'email' is the DEFAULT, not 'pair'. QR pairing asks the merchant to have a
+  // phone with the kasir.mu account ALREADY signed in, hold it over the terminal,
+  // and scan — a three-part precondition on the very first screen of setup, and
+  // the one a merchant setting up a single terminal alone simply cannot meet.
+  // The emailed code needs one thing (the account address) and works on any
+  // device. Both routes stay one tap apart, so QR is still reachable for the
+  // merchant who has a second device on the counter.
+  const [tabletTab, setTabletTab] = useState<'pair' | 'email'>('email');
   const [pairingSession, setPairingSession] = useState<PairingSessionStart | null>(null);
   const [pairingLoading, setPairingLoading] = useState(false);
   const [pairingExpired, setPairingExpired] = useState(false);
@@ -222,6 +266,22 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
         const expires = new Date(pairingSession.expires_at).getTime();
         if (Date.now() >= expires) {
           setPairingExpired(true);
+          // Mint the replacement IMMEDIATELY rather than waiting for a press.
+          //
+          // The expiry message used to be the only signal: the QR the merchant
+          // had already photographed or scanned was dead, and the merchant was
+          // told so 15 minutes after they walked away from the screen — they
+          // come back, find "Pairing code expired", and have to find and press
+          // "Refresh Code". Nothing at all appeared until the next 3s tick, so
+          // the very first reaction (scan the code again, because it used to
+          // work) failed for reasons nobody could see.
+          //
+          // A fresh session replaces the dead one in place: the view re-renders
+          // with a new QR and a new code badge, and the merchant's next scan
+          // works. If the refresh itself fails, `loadPairingSession` sets
+          // `pairingError` and the error branch offers "Refresh Code" by hand —
+          // so the automatic path never removes the manual escape.
+          void loadPairingSession();
           return;
         }
       }
@@ -252,7 +312,7 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
     }, 3000);
 
     return () => clearInterval(interval);
-  }, [provisionMode, tabletTab, pairingSession, pairingExpired, linkedAccount, addToast, l10n]);
+  }, [provisionMode, tabletTab, pairingSession, pairingExpired, linkedAccount, addToast, l10n, loadPairingSession]);
 
   const linkingBusy =
     link.kind === 'linking' || emailState === 'sending' || emailState === 'verifying';
@@ -330,6 +390,63 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
     ownerUsername.trim() !== '' &&
     pin.length >= 4 &&
     pin === confirmPin;
+
+  // ── Naming the submit gate ─────────────────────────────────────────
+  //
+  // A `disabled` button cannot be pressed, so every unmet clause of `canSubmit`
+  // above was a dead control with no stated reason: the merchant saw "Finish
+  // setup" greyed out and had to guess which of the seven requirements was
+  // still owed — and two of them (store type, PIN length) are not even fields
+  // they are looking at. The PIN mismatch was already called out inline; nothing
+  // else was.
+  //
+  // These blockers are DERIVED from the same values as `canSubmit` rather than
+  // kept in a parallel list, so the explainer cannot drift from the gate the way
+  // a second state machine would. Each carries the id of the control to focus,
+  // because on a card that measures ~900-1460px against a 768px viewport the
+  // missing field is usually off-screen: naming the problem is not enough if
+  // the merchant is not looking at the thing that must change.
+  const submitBlockers: SubmitBlocker[] = [
+    ...(provisionMode === 'linked' && !isLinked
+      ? [{ id: 'account', labelId: 'setup-provision-gate-account', fallback: 'Link an account, or pick "Offline only"', focusId: 'provision-account-box' }]
+      : []),
+    ...(storeType === null
+      ? [{ id: 'store-type', labelId: 'setup-provision-gate-store-type', fallback: 'Choose the kind of shop', focusId: STORE_TYPES[0] ? `provision-store-type-${STORE_TYPES[0].value}` : '' }]
+      : []),
+    ...(locationName.trim() === ''
+      ? [{ id: 'location', labelId: 'setup-provision-gate-location', fallback: 'Shop name', focusId: 'provision-location-name' }]
+      : []),
+    ...(ownerName.trim() === ''
+      ? [{ id: 'owner-name', labelId: 'setup-provision-gate-owner-name', fallback: 'Your name', focusId: 'provision-owner-name' }]
+      : []),
+    ...(ownerUsername.trim() === ''
+      ? [{ id: 'username', labelId: 'setup-provision-gate-username', fallback: 'Login name', focusId: 'provision-owner-username' }]
+      : []),
+    ...(pin.length < 4
+      ? [{ id: 'pin', labelId: 'setup-provision-gate-pin', fallback: 'A PIN of at least 4 digits', focusId: 'provision-pin' }]
+      : []),
+    ...(pin.length >= 4 && pin !== confirmPin
+      ? [{ id: 'pin-match', labelId: 'setup-provision-gate-pin-match', fallback: 'Both PINs the same', focusId: 'provision-pin-confirm' }]
+      : []),
+  ];
+
+  /**
+   * Move the merchant to the control that must change.
+   *
+   * `scrollIntoView` is feature-detected rather than called straight: jsdom does
+   * not implement it, and a focus helper that throws where it is not supported
+   * would take the test environment (and any embedded webview without it) down
+   * with it. `focus()` is what actually matters for a keyboard or screen-reader
+   * user — the scroll only decides whether they can see where they landed.
+   */
+  const focusField = useCallback((id: string) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (typeof el.scrollIntoView === 'function') {
+      el.scrollIntoView({ block: 'center' });
+    }
+    el.focus();
+  }, []);
 
   // ── Progress rail ──────────────────────────────────────────────────
   //
@@ -414,8 +531,8 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
         const result = await provisionDevice({
           terminal_id: terminalId,
           location_name: locationName.trim(),
-          currency: 'IDR',
-          timezone: 'Asia/Jakarta',
+          currency: PROVISION_CURRENCY,
+          timezone: PROVISION_TIMEZONE,
           owner_username: ownerUsername.trim(),
           owner_display_name: ownerName.trim(),
           owner_pin: pin,
@@ -465,7 +582,7 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
               which the three dots alone would. Completed steps carry a check,
               so the state is not conveyed by fill colour only. */}
           <nav className="provisioning-steps" aria-label={l10n.getString('setup-provision-step-progress', { current: '1', total: String(stepDone.length) })}>
-            <ol className="provisioning-step-list">
+            <ol className="provisioning-step-list" data-testid="provisioning-step-rail">
               {STEPS.map((step, i) => {
                 const done = stepDone[i];
                 const isCurrent = currentStep === i;
@@ -552,7 +669,7 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
 
         {/* Step 2: Account Linking (Shown only for Mode 2: Linked) */}
         {provisionMode === 'linked' && (
-          <section className="provisioning-account-box" aria-labelledby="provision-account-heading">
+          <section className="provisioning-account-box" aria-labelledby="provision-account-heading" id="provision-account-box">
             <h2 id="provision-account-heading" style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--font-weight-medium)', margin: 0 }}>
               <Localized id="setup-provision-account-section">kasir.mu Account</Localized>
             </h2>
@@ -560,13 +677,43 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
               <Localized id="setup-provision-account-hint">
                 Connect your device to your free account to enable automatic sync and license protection.
               </Localized>
+              {/* The QR route's precondition, stated before the merchant hits
+                  it. "Scan this QR code with your phone" reads as universal;
+                  it is not — it needs a phone already signed in to the account,
+                  which a merchant setting up one terminal alone does not have.
+                  QR stays available; this says what it costs before the tap. */}
+              <Localized id="setup-account-pair-requirement">
+                {' QR pairing needs a second phone signed in to your account.'}
+              </Localized>
             </p>
 
+            {/* Offline, on the linked path. The warning alone was a DEAD END
+                in effect: it said the account cannot be created or linked right
+                now, and every control that could change that was disabled —
+                Google, both tablet routes, the send and verify buttons. What
+                offline cannot do is block SETUP (`provision_device` is local
+                SQLite; see the module doc above), and the local mode below is a
+                one-click route to it. So the warning carries the way out, rather
+                than only the reason the way in is shut. */}
             {isOffline && (
-              <div className="provisioning-status-warn" role="alert">
-                <Localized id="setup-provision-offline-warn">
-                  Internet connection is required to create or link your account.
-                </Localized>
+              <div className="provisioning-status-warn" role="alert" data-testid="provision-offline-switch">
+                <p className="provisioning-status-warn-text">
+                  <Localized id="setup-provision-offline-warn">
+                    Internet connection is required to create or link your account.
+                  </Localized>
+                </p>
+                {provisionMode === 'linked' && (
+                  <Button
+                    variant="secondary"
+                    type="button"
+                    onClick={() => setProvisionMode('local')}
+                    data-testid="provision-offline-use-local"
+                  >
+                    <Localized id="setup-provision-offline-switch-local">
+                      Set up without an account instead
+                    </Localized>
+                  </Button>
+                )}
               </div>
             )}
 
@@ -602,6 +749,16 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
                     onClick={() => setTabletTab('email')}
                   >
                     <Localized id="setup-tab-email">Email Code</Localized>
+                  </button>
+                  <button
+                    type="button"
+                    className="provisioning-subtab"
+                    data-testid="provisioning-open-wizard-btn"
+                    onClick={() => {
+                      window.location.hash = '#/mobile-setup';
+                    }}
+                  >
+                    <Localized id="setup-tab-wizard">Setup Wizard</Localized>
                   </button>
                 </div>
 
@@ -817,6 +974,7 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
                 type="button"
                 className={`provisioning-store-type${storeType === t.value ? ' is-selected' : ''}`}
                 aria-pressed={storeType === t.value}
+                id={`provision-store-type-${t.value}`}
                 data-testid={"store-type-" + t.value}
                 onClick={() => setStoreType(t.value)}
               >
@@ -933,11 +1091,64 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
           </div>
         )}
 
+        {/* The submit gate, named. `role="status"` rather than "alert": this
+            REFLECTS the merchant's own progress and updates on every keystroke,
+            so it must be announced politely — an interrupting alert on each
+            character would talk over what they are typing. It sits beside the
+            button it explains, which is the one control on this card they are
+            guaranteed to be looking at. */}
+        {submitBlockers.length > 0 && (
+          <div className="provisioning-submit-blockers" role="status" data-testid="provision-submit-blockers">
+            <Localized id="setup-provision-gate-heading">
+              <p className="provisioning-submit-blockers-heading">
+                Still needed before you can finish setup:
+              </p>
+            </Localized>
+            <ul className="provisioning-submit-blockers-list">
+              {submitBlockers.map((b) => (
+                <li key={b.id}>
+                  <button
+                    type="button"
+                    className="provisioning-submit-blocker-link"
+                    onClick={() => focusField(b.focusId)}
+                  >
+                    <Localized id={b.labelId}>
+                      <span>{b.fallback}</span>
+                    </Localized>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
         <Button size="lg" type="submit" disabled={!canSubmit || busy} data-testid="provision-submit">
           <Localized id="setup-provision-submit">
             <span>Finish setup</span>
           </Localized>
         </Button>
+
+        {/* The locale the terminal is being provisioned WITH, stated before the
+            submit rather than discovered afterwards. `provisionDevice` has
+            always sent currency and timezone; until now the merchant was told
+            neither. Not an input — a disclosure, because a wrong guess found out
+            after the first sale is a merchant's problem to undo. */}
+        <p className="provisioning-locale-note" data-testid="provisioning-locale-note">
+          <Localized id="setup-provision-locale-note" vars={{ currency: PROVISION_CURRENCY, timezone: PROVISION_TIMEZONE }}>
+            {'Set up in { $currency } ({ $timezone }). You can change this later in Settings.'}
+          </Localized>
+        </p>
+
+        {/* Version and IP, matching every other setup and auth surface
+            (MobileSetupHub, MobileWelcomeScreen, the three auth modals,
+            StaffLoginScreen, LicenseActivationScreen). The footer was already
+            invented and agreed on; this flow is the one screen that omitted it,
+            so a merchant told their terminal's version on the next screen read a
+            different one here. Not localized: it is a version string and a legal
+            line, and every sibling surface renders it identically. */}
+        <p className="provisioning-footer" data-testid="provisioning-footer">
+          v0.0.40 • kasir.mu © 2026 All rights reserved.
+        </p>
       </form>
     </div>
   );

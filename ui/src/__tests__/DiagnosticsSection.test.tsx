@@ -383,7 +383,10 @@ describe('DiagnosticsSection', () => {
     await waitFor(() => {
       expect(screen.getByTestId('diagnostics-failed')).toBeInTheDocument();
     });
-    expect(screen.getByRole('alert')).toBeInTheDocument();
+    // Scoped by test id, not by role: this handler rejects EVERY command, so the
+    // deployment read below refuses too and the section now carries two alerts.
+    // A bare getByRole would have found both.
+    expect(screen.getByTestId('diagnostics-failed')).toHaveAttribute('role', 'alert');
   });
 
   it('fires no verdict calls without a session token', async () => {
@@ -517,5 +520,67 @@ describe('DiagnosticsSection', () => {
     const call = invokeMock.mock.calls.find(([cmd]) => cmd === 'get_deployment_info');
     expect(call).toBeDefined();
     expect((call?.[1] as { sessionToken: string }).sessionToken).toBe(HARNESS_SESSION_TOKEN);
+  });
+
+  // ── Unanswered deployment read ──────────────────────────────
+  //
+  // The defect: getDeploymentInfo(...).catch(() => setDeployment(null)) paired with
+  // a row rendering deployment?.appVersion ?? '' -- so a refused read printed a
+  // BLANK where the version goes. This section exists so support can tell a user
+  // which build they are on, and blank is not an answer. It is also identical to
+  // the seconds before the read lands. The verdicts already had a refusal state
+  // (failed); the version read did not, though the same Refresh button repairs
+  // both -- so one gesture has to re-issue both reads.
+
+  it('does not print a blank version when the read failed', async () => {
+    verdictHandler.set((cmd) =>
+      cmd === 'get_deployment_info'
+        ? Promise.reject(new Error('ipc down'))
+        : Promise.resolve(verdictFor('')),
+    );
+    renderSection();
+
+    // Await the ARRIVING alert. Asserting the version row is absent straight away
+    // passes vacuously: the row is not rendered while the read is in flight
+    // either, so that assertion would hold for a read that simply succeeded.
+    await waitFor(() => {
+      expect(screen.getByTestId('diagnostics-version-unknown')).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId('diagnostics-version')).not.toBeInTheDocument();
+    // The row carries role='alert' so the refusal is announced, not just shown.
+    // Asserted on the row rather than by a bare getByRole: the refresh hint above
+    // is ALSO role='alert', so a role query here is ambiguous by construction.
+    const unknownRow = screen.getByTestId('diagnostics-version-unknown');
+    expect(unknownRow).toHaveAttribute('role', 'alert');
+    expect(unknownRow).toHaveTextContent('Could not read the app version.');
+    expect(screen.queryByTestId('diagnostics-failed')).not.toBeInTheDocument();
+    // The verdicts are a SEPARATE read and they still answered: a refused version
+    // must not read as a failed section.
+    expect(screen.getAllByText('Available')).toHaveLength(ALL_KEYS.length);
+  });
+
+  it('recovers the version when Refresh re-issues the read', async () => {
+    let failing = true;
+    verdictHandler.set((cmd) =>
+      cmd === 'get_deployment_info'
+        ? (failing ? Promise.reject(new Error('ipc down')) : Promise.resolve({ appVersion: '0.0.41' }))
+        : Promise.resolve(verdictFor('')),
+    );
+    renderSection();
+    await waitFor(() => {
+      expect(screen.getByTestId('diagnostics-version-unknown')).toBeInTheDocument();
+    });
+
+    failing = false;
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
+
+    // The Refresh must re-issue BOTH reads. If it only re-ran the verdicts, the
+    // version would stay unknown behind a button that looked like it had worked.
+    await waitFor(() => {
+      expect(screen.getByTestId('diagnostics-version')).toHaveTextContent('0.0.41');
+    });
+    expect(screen.queryByTestId('diagnostics-version-unknown')).not.toBeInTheDocument();
+    const calls = invokeMock.mock.calls.filter(([cmd]) => cmd === 'get_deployment_info');
+    expect(calls).toHaveLength(2);
   });
 });

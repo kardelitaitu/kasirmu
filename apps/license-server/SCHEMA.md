@@ -2,7 +2,7 @@
 
 # License Server Schema Documentation
 
-This document describes the PocketBase collections and fields required for the OZ-POS License Server to function correctly. The schema has been simplified to act purely as an authenticator, delegating feature quotas to the client based on the assigned `tier_key`.
+This document describes the PocketBase collections and fields required for the kasir.mu License Server to function correctly. The schema has been simplified to act purely as an authenticator, delegating feature quotas to the client based on the assigned `tier_key`.
 
 ---
 

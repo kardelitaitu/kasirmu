@@ -117,6 +117,61 @@ fn refund_nonexistent_sale_fails() {
     assert!(result.is_err());
 }
 
+// ── C64: the completed-sale guard is what makes the clamp unreachable ──
+
+/// A NON-completed sale must be refused, and this guard is load-bearing
+/// rather than defensive.
+///
+/// WHY IT MATTERS BEYOND "bad input". `total_spent_minor` is an increment on
+/// completion (sales_lifecycle.rs:59) and a CLAMPED subtraction on refund
+/// (refunds.rs:1027), so refunding a sale that never completed reverses spend
+/// that was never accrued: the floor eats the reversal, and the later
+/// transition to completed then adds the FULL sale on top of a base that
+/// never absorbed the refund — a silent double-count.
+///
+/// That arithmetic is reachable in principle and is pinned in `kasirmu-core`
+/// by `the_refund_before_accrual_ordering_is_unreachable_and_the_floor_is_why_it_is_safe`.
+/// What makes it unreachable in PRACTICE is this check, and until now nothing
+/// tested it: every case in this file calls `store.create_refund` directly,
+/// which has no status predicate at all.
+#[test]
+fn process_refund_unchecked_refuses_a_sale_that_never_completed() {
+    let conn = fresh_conn();
+    seed_completed_sale(&conn);
+    // The exact ordering C64 describes: the sale exists but has not accrued.
+    conn.execute(
+        "UPDATE sales SET status = 'pending' WHERE id = 'sale-1'",
+        [],
+    )
+    .unwrap();
+
+    let lines = [RefundLineArg {
+        sale_line_id: "sl-1".into(),
+        sku: "COFFEE".into(),
+        qty: 1,
+        unit_price_minor: 350,
+        currency: "USD".into(),
+        line_total_minor: 350,
+    }];
+
+    let err = process_refund_unchecked(&conn, "sale-1", "too early", None, "user-1", &lines)
+        .expect_err("a pending sale must not be refundable");
+    assert!(
+        err.to_string().contains("only completed sales"),
+        "the refusal must name the rule, got: {err}"
+    );
+
+    // And nothing was written: the guard runs before any mutation.
+    let refund_rows: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM refunds WHERE sale_id = 'sale-1'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(refund_rows, 0, "a refused refund must leave no refunds row");
+}
+
 // ── DTO struct tests ─────────────────────────────────────────────
 
 #[test]

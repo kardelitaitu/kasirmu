@@ -1,3 +1,4 @@
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 324 lines, no audit stamp, no footer and no marker. It is the primary audit that the two companion documents in the same round cite — the option-B plan names it explicitly as its companion, and the retirement blocker deletion evidence traces back to it. Audited as the anchor of that cluster rather than in isolation, because a primary audit whose satellites have drifted is worth less than one whose satellites agree with it. · WHAT THE CLUSTER ESTABLISHES, verified directly rather than through the satellites: the wizard shell the audit recommended against is gone (`SetupWizard.tsx` and `SetupWizard.css` do not exist), its live replacement is `ui/src/features/setup/ProvisioningFlow.tsx` with its own stylesheet, and the boot gate that decides whether the shell or the provisioning flow renders still lives in the app shell — now at `ui/src/app/AppShell.tsx`, which lazy-loads `ProvisioningFlow` and carries the licence-verdict and setup-complete gate logic. That is where the cluster needs a current pointer: the shell was audited in earlier passes at `ui/src/frontend/shell/AppShell.tsx`, and the `frontend/` tree has since been reorganised to `app/` — the same move this campaign found in the ThemeProvider and the UI registries. · The audit's substantive finding is also the one the satellites independently confirm: the empty-feature-list provisioning defect, fixed before any wizard decision was taken, and the conclusion that the wizard's toggle UI duplicated a richer screen already in the product. Two documents reaching that conclusion separately is a stronger signal than one. · NOT re-measured: the audit's per-step wizard walkthrough, which is the original work and now describes a deleted component. That makes the document historical by nature — and the satellites, which record what replaced it, are the live reading. · No stamp existed; added, with footer. -->
 # Setup Wizard — Audit & Review
 
 **Date:** 2026-09-08 · **Scope:** `ui/src/features/setup/**`, its FTL keys, its CSS, its tests
@@ -322,3 +323,23 @@ would require amending that record first. Reported, not acted on.
    important safety behaviour and currently has no direct assertion I could find.
 
 *No code was changed by this audit.*
+
+> last audited 29-09-26 by docs-auditor
+>
+> **Recommendation 4 is closed (2026-09-30, DSH).** The offline hard-block has both halves now: the
+> unit suite covers it, and `ui/e2e/provisioning-offline.spec.ts` pins it from outside — linking
+> refused with a reason, the standalone path still completing, and a link earned online surviving a
+> dropped connection (`17ad9a0f3`). Recommendation 1 is likewise closed: the wizard was deleted in
+> `badd31d2e`, and its coverage was re-pointed rather than dropped.
+>
+> **What this audit missed entirely, and a later round found.** All five findings above name
+> `ProvisioningFlow` as the live path and treat it as sound. The reason a merchant could not get
+> past its first screen was never in this file: the server routes the live tablet calls pair with
+> were 404 on the deployed host, so no test of this component could ever have been green about it.
+> A component-level audit cannot see a deployment. The re-measurement is in
+> `setup-state-of-the-art.md` round 34 (the blocker) and round 35 (it is gone; the routes answer).
+> The five dead-end fixes this flow still needed — a named submit gate, an offline way out, a
+> pairing code that replaces itself, a default route a solo merchant can use, and a disclosed
+> currency/timezone — are in `bf5db7b94`.
+>
+> > last audited 30-09-26 by DSH (recommendation status; findings above unchanged) · last full audited 29-09-26 by docs-auditor

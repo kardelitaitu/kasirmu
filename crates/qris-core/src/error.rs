@@ -36,6 +36,16 @@ pub enum QrisError {
     #[error("missing mandatory tag {0:02}")]
     MissingTag(u8),
 
+    /// A field value is too long to encode — the TLV length field is exactly
+    /// two decimal digits, so 99 bytes is the hard ceiling (QRIS-A/B).
+    #[error("tag {tag:02} value is {len} bytes, exceeding the 99-byte TLV length limit")]
+    FieldTooLong {
+        /// The tag whose value did not fit.
+        tag: u8,
+        /// The value's length in bytes.
+        len: usize,
+    },
+
     /// The same top-level tag appears more than once.
     #[error("duplicate top-level tag {0:02}")]
     DuplicateTag(u8),

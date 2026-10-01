@@ -277,6 +277,66 @@ describe('RefundModal', () => {
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
   });
 
+
+  // ── Proration is ONE rule, not two ─────────────────────────────────
+  //
+  // The displayed total and the submitted payload used to disagree. The
+  // total showed the exact fraction `total_minor * qty / line.qty`; the payload
+  // rounded a UNIT price and multiplied it back. On the fixture below a line
+  // of 700 over 2 units taken as 1 displayed 3500 but submitted 3500 -- equal
+  // by luck -- so the fixture lines divide evenly and the defect is INVISIBLE
+  // on them. These cases use lines that do not divide evenly.
+
+  it('never refunds more than the line was sold for a full-line refund', async () => {
+    mockProcessRefund.mockResolvedValueOnce({ refundId: 'r1', refundedMinor: 0 });
+    // 999 over 7 units: rounding a unit price gives 143, and 143 * 7 = 1001,
+    // which is MORE than the line was originally worth.
+    const sale = {
+      ...mockSale,
+      lines: [{ id: 'line-x', sku: 'SKU-X', name: 'Bulk', qty: 7, unit_price: { minor_units: 143, currency: 'IDR' }, total_minor: 999, tax_amount: null, tax_rate_id: null }],
+    };
+    renderWithFluentSync(<RefundModal {...defaultProps} sale={sale} />, salesFtl, refundFtl);
+    fillReason('defective goods');
+    clickCheckbox(0);
+    clickSubmitRefund();
+
+    await waitFor(() => expect(mockProcessRefund).toHaveBeenCalled());
+    const lines = mockProcessRefund.mock.calls[0]![1].lines as Array<{ lineTotalMinor: number }>;
+    expect(lines[0]!.lineTotalMinor).toBe(999);
+    expect(lines[0]!.lineTotalMinor).toBeLessThanOrEqual(999);
+  });
+
+  it('refunds the same amount it displays for an uneven partial line', async () => {
+    mockProcessRefund.mockResolvedValueOnce({ refundId: 'r2', refundedMinor: 0 });
+    // 1000 over 7 units, 3 selected: exact share 428.57..., so the displayed
+    // total and the submitted amount must both be 429.
+    const sale = {
+      ...mockSale,
+      lines: [{ id: 'line-y', sku: 'SKU-Y', name: 'Bulk', qty: 7, unit_price: { minor_units: 143, currency: 'IDR' }, total_minor: 1000, tax_amount: null, tax_rate_id: null }],
+    };
+    renderWithFluentSync(<RefundModal {...defaultProps} sale={sale} />, salesFtl, refundFtl);
+    fillReason('defective goods');
+    clickCheckbox(0);
+
+    // The checkbox selects the WHOLE line; the qty is walked down with the
+    // minus button, which is the only qty control this dialog offers.
+    for (let i = 0; i < 4; i++) {
+      fireEvent.click(screen.getAllByRole('button', { name: /decrease/i })[0]!);
+    }
+    expect(screen.getByText('3')).toBeInTheDocument();
+
+    // No assertion on the DISPLAYED total here: formatMoney rounds, so the
+    // exact fraction 428.57... and the rounded share both render as 429. The
+    // display was never visibly wrong -- the defect is the amount SUBMITTED,
+    // which is what the next assertion pins. Reverting only the display to
+    // the exact fraction was measured and survives, because it is
+    // behaviourally equivalent.
+    clickSubmitRefund();
+    await waitFor(() => expect(mockProcessRefund).toHaveBeenCalled());
+    const lines = mockProcessRefund.mock.calls[0]![1].lines as Array<{ lineTotalMinor: number }>;
+    expect(lines[0]!.lineTotalMinor).toBe(429);
+  });
+
   it('does not close when modal panel is clicked', () => {
     const onClose = vi.fn();
     renderWithFluentSync(<RefundModal {...defaultProps} onClose={onClose} />, salesFtl, refundFtl);

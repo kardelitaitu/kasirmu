@@ -15,7 +15,7 @@
 //! therefore calls **our** `JNI_OnLoad` below, and we stash the VM. The
 //! desktop build never compiles any of this (`cfg(target_os = "android")`),
 //! so the host paths are untouched. If `JNI_OnLoad` somehow did not run, the
-//! transport fails with [`HalError::Bluetooth`] â€” it never panics.
+//! transport fails with [`HalError::Bluetooth`](crate::error::HalError::Bluetooth) â€” it never panics.
 //!
 //! # Threading
 //!
@@ -154,6 +154,12 @@ pub fn paired_devices() -> Result<Vec<BtPairedDevice>, HalError> {
             .call_method(&set, "toArray", "()[Ljava/lang/Object;", &[])?
             .l()?;
         let raw = array.as_raw();
+        // SAFETY: `raw` comes from `array_as_raw()` on a `JObject` this frame
+        // still owns — the local reference created by `call_method().l()?`
+        // above is alive for the whole statement. `JObjectArray::from_raw`
+        // only re-wraps the same pointer, and the `JObjectArray` it produces
+        // is consumed by `get_array_length`/`get_object_array_element` below
+        // while the local reference is still live, so it cannot outlive it.
         let array = unsafe { jni::objects::JObjectArray::from_raw(raw) };
         let len = env.get_array_length(&array)?;
         let mut devices = Vec::with_capacity(len.max(0) as usize);
@@ -324,6 +330,10 @@ impl Drop for BtRfcommStream {
 ///
 /// # Safety
 /// Invoked by the JVM; `vm` must be the pointer ART passed in.
+// SAFETY: `#[unsafe(no_mangle)]` is required for ART to resolve this symbol
+// by name at library load; it is not a Rust-side unsafety. The pointer
+// contract is stated in the `# Safety` section above and discharged by the
+// `JavaVM::from_raw` call below.
 #[unsafe(no_mangle)]
 pub extern "system" fn JNI_OnLoad(
     vm: *mut jni::sys::JavaVM,

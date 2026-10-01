@@ -1,17 +1,17 @@
 //! Security command bodies (Wave B / B3) — the tauri-free half of
 //! `apps/desktop-tauri/src/commands/security.rs`.
 //!
-//! Key functions: the thread-isolated keyring pipeline ([`with_keyring`],
+//! Key functions: the thread-isolated keyring pipeline ([`with_keyring`](crate::security::with_keyring),
 //! kept on `std::thread::spawn` so the platform Secret Service backends'
 //! private runtimes are never nested inside an async runtime), the two
-//! context-free command bodies ([`get_key_rotation_info`],
-//! [`rotate_encryption_key`] — they take no state and no session, exactly as
+//! context-free command bodies ([`get_key_rotation_info`](crate::security::get_key_rotation_info),
+//! [`rotate_encryption_key`](crate::security::rotate_encryption_key) — they take no state and no session, exactly as
 //! the shell defined them), the pure status/rotation steps, and the
-//! session-scoped variants, each consuming a [`BridgeCtx`] for the F-017
+//! session-scoped variants, each consuming a [`BridgeCtx`](crate::ctx::BridgeCtx) for the F-017
 //! `security:manage` gate.
 //!
 //! Gate order and error paths are verbatim ports of the command bodies.
-//! Keyring failures land on [`BridgeError::Internal`] because the shell's
+//! Keyring failures land on [`BridgeError::Internal`](crate::error::BridgeError::Internal) because the shell's
 //! `From<SecurityError> for AppError` produces exactly that variant and text,
 //! so the shim's variant-for-variant remap keeps the wire shape unchanged.
 
@@ -19,6 +19,7 @@ use serde::Serialize;
 
 use kasirmu_core::permissions;
 use kasirmu_security::Keyring;
+use kasirmu_security::install_key::InstallKeyResolution;
 
 use crate::ctx::BridgeCtx;
 use crate::error::BridgeError;
@@ -196,6 +197,165 @@ pub async fn rotate_encryption_key_scoped(
     ctx.require_session_permission(&session, permissions::SECURITY_MANAGE)
         .await?;
     rotate_encryption_key().await
+}
+
+/// Install the per-install at-rest key for this process (C1 slice S2b-2b).
+///
+/// Reads the keychain entry `oz-pos/at-rest-key.v1` (or generates it, once, on a
+/// durable keyring) and hands the secret to `kasirmu_crypto::set_install_key`, so
+/// every at-rest derivation in this process uses it. Call this **before the first
+/// credential is decrypted**; see the ordering note below.
+///
+/// # Synchronous on purpose
+///
+/// This is a boot-path call and Tauri's `.setup()` closure is synchronous, so
+/// there is no async context to await in and none to nest a keyring backend's
+/// private runtime inside. It therefore does the same thing
+/// [`with_keyring`] does — run the keyring
+/// operation on a dedicated OS thread — but by spawning and joining directly
+/// rather than through a oneshot channel. Calling `block_on` from the setup
+/// closure would be the alternative and is deliberately avoided: it would enter
+/// the runtime the Linux Secret Service backend must stay out of.
+///
+/// # This never fails boot, deliberately
+///
+/// A missing or unusable keychain is not an error here, because the whole feature
+/// is opt-in: with no key installed the six at-rest families derive exactly as
+/// they did before the seam existed (hazard H2). Every outcome is reported as a
+/// plain [`InstallKeyOutcome`] so the boot path can log it, and none of them is
+/// fatal. Making any of them fatal would stop a machine that worked yesterday
+/// from starting today.
+///
+/// # The H3 refusal is why this returns an outcome rather than a bool
+///
+/// `resolve_install_key` refuses to generate a key on a non-durable keyring (the
+/// in-memory fallback, which starts empty every boot). That refusal must be
+/// visible and distinct from "the keychain had nothing and we made one", because
+/// they mean opposite things to an operator.
+///
+/// # Ordering rule (do not move this call later)
+///
+/// The key must be installed **before the first decrypt of a portable credential**,
+/// or that read uses the legacy derivation and, on an install that already has
+/// keyed rows, returns a decryption failure for data that is intact. Installing it
+/// late is therefore worse than not installing it at all. The desktop shell calls
+/// this in its `setup` closure ahead of `AppState::new`.
+pub fn install_at_rest_key() -> InstallKeyOutcome {
+    use kasirmu_security::install_key::InstallKeySource as SecSource;
+
+    // The worker's result type. `InstallKeyOutcome` is not `Send`-constrained by
+    // anything but is a plain enum, so it crosses the join boundary fine.
+    let worker = std::thread::spawn(
+        || -> Result<(InstallKeyResolution, Option<[u8; 32]>), String> {
+            let keyring = kasirmu_security::default_keyring().map_err(|e| e.to_string())?;
+            resolve_at_rest_keys(keyring.as_ref())
+        },
+    );
+
+    // A panicked worker must not take the boot path down with it: the whole
+    // point of this function is that no keychain outcome is fatal.
+    let resolved = match worker.join() {
+        Ok(result) => result,
+        Err(_) => Err("the keychain worker thread panicked".to_string()),
+    };
+
+    let (current, previous) = match resolved {
+        Ok(pair) => pair,
+        Err(reason) => return InstallKeyOutcome::Unavailable(reason),
+    };
+
+    // Install the parked key FIRST, so both slots are populated before any decrypt
+    // runs. It is a READ candidate only — `portable_key` never consults it — so a
+    // write still always uses the current key.
+    if let Some(secret) = previous {
+        let installed_now = kasirmu_crypto::set_previous_install_key(secret);
+        tracing::warn!(
+            installed_now,
+            "at-rest key rotation in flight: the outgoing key is parked and installed as a read \
+             candidate; rows under it stay readable until `oz rekey` completes and retires it"
+        );
+    }
+
+    match current {
+        InstallKeyResolution::Ready { secret, source } => {
+            // `set_install_key` returning false means another boot path already
+            // installed this key — the documented non-failure (see its doc).
+            let installed_now = kasirmu_crypto::set_install_key(secret);
+            InstallKeyOutcome::Ready {
+                installed_now,
+                source: match source {
+                    SecSource::Loaded => InstallKeySource::Loaded,
+                    SecSource::Generated => InstallKeySource::Generated,
+                    // `InstallKeySource` is `#[non_exhaustive]` upstream, so a new
+                    // arm must not break this build. Treat an unknown origin as
+                    // `Generated`: that is the arm telling an operator the key did
+                    // not pre-exist, which is the more cautious reading.
+                    _ => InstallKeySource::Generated,
+                },
+            }
+        }
+        InstallKeyResolution::RefusedNonDurableKeyring => {
+            InstallKeyOutcome::RefusedNonDurableKeyring
+        }
+    }
+}
+
+/// Resolve BOTH at-rest keys from `keyring`: the current one, and the OUTGOING key
+/// parked by an in-flight rotation if there is one (C1 slice S2c).
+///
+/// Split out from [`install_at_rest_key`] so the resolution is testable without
+/// touching the process-global key slots: installing one in the unit-test binary
+/// would change the derivation for every sibling case, which is why the crypto
+/// crate's own tests drive the injectable cores instead.
+///
+/// A malformed entry in either slot is an error, not a `None`: the parked key may
+/// be the only thing that reads rows the sweep has not reached.
+fn resolve_at_rest_keys(
+    keyring: &dyn Keyring,
+) -> Result<(InstallKeyResolution, Option<[u8; 32]>), String> {
+    let current =
+        kasirmu_security::install_key::resolve_install_key(keyring).map_err(|e| e.to_string())?;
+    let previous = kasirmu_security::install_key::resolve_previous_install_key(keyring)
+        .map_err(|e| e.to_string())?;
+    Ok((current, previous))
+}
+
+/// How [`install_at_rest_key`] resolved, for the caller to log.
+///
+/// A plain data type rather than a `Result`, because **no arm is a failure the
+/// caller should propagate**: each one leaves the process on a well-defined
+/// derivation, and the operator-facing decision is what to log, not whether to
+/// abort.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum InstallKeyOutcome {
+    /// A key is installed. `installed_now` is false when a previous boot path
+    /// had already installed it (not an error).
+    Ready {
+        /// Whether this call performed the install.
+        installed_now: bool,
+        /// Whether the key was read from the keychain or freshly generated.
+        source: InstallKeySource,
+    },
+    /// No key was generated because the keyring is not durable (hazard H3).
+    /// The process stays on the previous derivation.
+    RefusedNonDurableKeyring,
+    /// The keychain could not be read or written. The process stays on the
+    /// previous derivation. Carries the reason for the log, never key material.
+    Unavailable(String),
+}
+
+/// Whether a per-install at-rest key was loaded or generated.
+///
+/// Mirrors `kasirmu_security::InstallKeySource` so a caller of this bridge
+/// function does not have to import the security crate, and so the mapping is
+/// exhaustive here (where the source enum is non-exhaustive upstream).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InstallKeySource {
+    /// The keychain already held a usable key.
+    Loaded,
+    /// No entry existed and a fresh key was generated and stored.
+    Generated,
 }
 
 #[cfg(test)]

@@ -31,7 +31,7 @@ vi.mock('@/api/license', () => ({
 }));
 
 vi.mock('@/api/system', () => ({
-  getVersion: () => Promise.resolve({ version: '0.0.28', name: 'oz-pos', rustVersion: '1.77', target: 'x86_64' }),
+  getVersion: () => Promise.resolve({ version: '0.0.28', name: 'kasirmu-app', rustVersion: '1.77', target: 'x86_64' }),
   getLocalIp: () => Promise.resolve('192.168.1.1'),
 }));
 

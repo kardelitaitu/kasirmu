@@ -49,6 +49,15 @@ fn remote_poison_sale(id: &str) -> OfflineQueueItem {
     item
 }
 
+/// A payload the sale arm cannot deserialize: [CoreError::Internal], which is
+/// TRANSIENT, so it keeps the three-attempt retry budget.
+fn remote_transient_sale(id: &str) -> OfflineQueueItem {
+    let mut item = OfflineQueueItem::new("complete_sale", "{not json");
+    item.id = id.into();
+    item.created_at = "2026-01-01T00:00:00.000Z".into();
+    item
+}
+
 #[test]
 fn snapshot_recovery_imports_before_resetting_anchor() {
     let conn = migrations::fresh_db();
@@ -190,7 +199,9 @@ fn apply_pulled_page_replay_is_idempotent() {
 fn apply_pulled_page_retains_anchor_on_retryable_failure() {
     let conn = migrations::fresh_db();
     let store = Store::new(&conn);
-    let page = vec![remote_poison_sale("pg-poison-1")];
+    // A malformed payload is Internal (transient), so the item stays
+    // retryable after one attempt and the anchor is retained.
+    let page = vec![remote_transient_sale("pg-poison-1")];
 
     let new_since = apply_pulled_page(&store, &page, None, &noop_settings_sink());
     assert!(
@@ -208,16 +219,14 @@ fn apply_pulled_page_retains_anchor_on_retryable_failure() {
 fn apply_pulled_page_dead_letters_then_advances() {
     let conn = migrations::fresh_db();
     let store = Store::new(&conn);
+    // A missing referenced product is a PERMANENT failure, so the item is
+    // quarantined on its first failure and the anchor advances at once.
     let page = vec![remote_poison_sale("pg-poison-2")];
 
-    // Attempts 1-2 retain the anchor; the 3rd dead-letters the item and
-    // allows the page anchor to advance.
-    assert!(apply_pulled_page(&store, &page, None, &noop_settings_sink()).is_none());
-    assert!(apply_pulled_page(&store, &page, None, &noop_settings_sink()).is_none());
     let new_since = apply_pulled_page(&store, &page, None, &noop_settings_sink());
     assert!(
         new_since.is_some(),
-        "dead-lettered item may advance the anchor"
+        "a permanent failure may advance the anchor on the first attempt"
     );
     assert!(
         store
@@ -580,7 +589,7 @@ fn large_batch_enqueue_10k_items() {
         store
             .enqueue_offline(
                 "product.created",
-                &format!(r#"{{"sku":"SKU-{}","name":"Item {}"}}"#, i, i),
+                &format!(r#"{{"sku":"SKU-{i}","name":"Item {i}"}}"#),
             )
             .unwrap();
     }
@@ -597,7 +606,7 @@ fn list_pending_returns_correct_items() {
 
     for i in 0..100 {
         store
-            .enqueue_offline("product.created", &format!(r#"{{"sku":"SKU-{}"}}"#, i))
+            .enqueue_offline("product.created", &format!(r#"{{"sku":"SKU-{i}"}}"#))
             .unwrap();
     }
 
@@ -616,6 +625,106 @@ fn pending_count_zero_when_empty() {
     let conn = migrations::fresh_db();
     let store = Store::new(&conn);
     assert_eq!(store.pending_offline_count().unwrap(), 0);
+}
+
+/// The sentinel exists so "the count could not be read" is not the same value
+/// as "the queue is genuinely empty". `pg_sync_status` feeds the operator's
+/// backlog indicator, and `-1` must never be confused with a drained queue.
+#[test]
+fn pending_count_unknown_sentinel_is_distinct_from_zero() {
+    assert_eq!(PENDING_COUNT_UNKNOWN, -1);
+    assert_ne!(
+        PENDING_COUNT_UNKNOWN, 0,
+        "unknown must be a value an empty queue can never produce"
+    );
+}
+
+/// The read path the daemon's tick calls genuinely fails when the table is
+/// gone — which is what makes the `-1` arm reachable rather than decorative.
+/// Before this, the tick collapsed exactly this error into `0` via
+/// `unwrap_or(0)`, so a dropped `offline_queue` table read as an idle queue.
+#[test]
+fn pending_offline_count_errors_when_the_table_is_missing() {
+    let conn = migrations::fresh_db();
+    conn.execute_batch("DROP TABLE offline_queue;").unwrap();
+    let store = Store::new(&conn);
+    assert!(
+        store.pending_offline_count().is_err(),
+        "a dropped offline_queue table must surface as an error, not as 0"
+    );
+}
+
+/// A tick whose queue read fails must report the failure, not a clean cycle.
+///
+/// The PG daemon gated its whole push phase on `!pending.is_empty()` and read
+/// the queue with `list_pending_offline().unwrap_or_default()`, so a dropped
+/// `offline_queue` flattened to an empty push list: the tick skipped the push,
+/// left `last_error` `None`, and told the operator everything was fine while
+/// the backlog only grew. The failure now reaches `read_error` → `last_error`.
+#[tokio::test]
+async fn tick_with_an_unreadable_queue_reports_an_error_not_a_clean_cycle() {
+    let db = setup_db();
+    // Drop the table the read needs, AFTER the schema is built. `fresh_db`
+    // runs migrations, so this is a runtime failure, not a bad fixture.
+    {
+        let db_clone = db.clone();
+        tokio::task::spawn_blocking(move || {
+            let conn = db_clone.blocking_lock();
+            conn.execute_batch("DROP TABLE offline_queue;").unwrap();
+        })
+        .await
+        .unwrap();
+    }
+
+    let daemon = PgSyncDaemon::with_interval(Duration::from_millis(30));
+    daemon.start(db).await;
+    tokio::time::sleep(Duration::from_millis(80)).await;
+
+    let status = daemon.status().await;
+    assert!(
+        status.last_sync_at.is_some(),
+        "the daemon must still have completed a tick"
+    );
+    assert!(
+        status.last_error.is_some(),
+        "an unreadable queue must surface on last_error, not read as a clean cycle"
+    );
+
+    daemon.stop().await;
+    tokio::time::sleep(Duration::from_millis(100)).await;
+}
+
+/// An unreadable pull anchor must surface on `last_error`, not silently force a
+/// full re-pull.
+///
+/// `(None, None)` is what an operator rewind asks for, so collapsing a read
+/// failure into it replays all history every cycle with nothing shown. The PG
+/// daemon now propagates the anchor-read error into `read_error`.
+#[tokio::test]
+async fn tick_with_an_unreadable_pull_anchor_reports_an_error() {
+    let db = setup_db();
+    {
+        let db_clone = db.clone();
+        tokio::task::spawn_blocking(move || {
+            let conn = db_clone.blocking_lock();
+            conn.execute_batch("DROP TABLE sync_pull_state;").unwrap();
+        })
+        .await
+        .unwrap();
+    }
+
+    let daemon = PgSyncDaemon::with_interval(Duration::from_millis(30));
+    daemon.start(db).await;
+    tokio::time::sleep(Duration::from_millis(80)).await;
+
+    let status = daemon.status().await;
+    assert!(
+        status.last_error.is_some(),
+        "an unreadable pull anchor must surface on last_error"
+    );
+
+    daemon.stop().await;
+    tokio::time::sleep(Duration::from_millis(100)).await;
 }
 
 // ── Graceful shutdown ──────────────────────────────────────────
@@ -712,7 +821,7 @@ async fn daemon_status_shows_pending_count_after_tick() {
             let store = Store::new(&conn);
             for i in 0..5 {
                 store
-                    .enqueue_offline("product.created", &format!(r#"{{"sku":"SKU-{}"}}"#, i))
+                    .enqueue_offline("product.created", &format!(r#"{{"sku":"SKU-{i}"}}"#))
                     .unwrap();
             }
         })
@@ -733,6 +842,59 @@ async fn daemon_status_shows_pending_count_after_tick() {
     // No PG configured, so items should still be pending
     assert_eq!(status.pending_count, 5);
     assert_eq!(status.last_pushed, 0);
+
+    daemon.stop().await;
+    tokio::time::sleep(Duration::from_millis(100)).await;
+}
+
+/// A pg_sync setting that cannot be READ must surface as the cycle's error.
+///
+/// The config block built its host/dbname/user with
+/// `.unwrap_or_default().unwrap_or_default()`, which collapsed BOTH the `Result`
+/// error and the `None` into `""` -- so a read failure was presented to
+/// PostgreSQL as a blank connection target rather than as the integrity failure
+/// it is. `pg_sync.require_tls` and `license.tenant_id` had the same shape, and
+/// those two were worse: `.unwrap_or(false)` silently DOWNGRADED the transport to
+/// plaintext, and the tenant default fell through to `"default"` -- a
+/// cross-tenant read on a shared remote, the exact thing the scoping exists to
+/// prevent. The neighbouring reads in this same closure already propagated into
+/// `read_error`; these now do too.
+///
+/// The trigger is a `settings.value` holding invalid UTF-8: SQLite TEXT is bytes,
+/// so it stores, and `row.get::<_, String>` then fails on it.
+#[tokio::test]
+async fn a_malformed_pg_sync_setting_surfaces_as_the_cycle_error() {
+    let db = setup_db();
+    {
+        let db_clone = db.clone();
+        tokio::task::spawn_blocking(move || {
+            let conn = db_clone.blocking_lock();
+            // PG sync ON, and a host whose stored value is not valid UTF-8.
+            Settings::set_pg_sync_enabled(&conn, true).unwrap();
+            conn.execute(
+                "INSERT INTO settings (key, value) VALUES ('pg_sync.host', CAST(x'80ff' AS TEXT)) \
+                 ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                [],
+            )
+            .unwrap();
+        })
+        .await
+        .unwrap();
+    }
+
+    let daemon = PgSyncDaemon::with_interval(Duration::from_millis(30));
+    daemon.start(db).await;
+    tokio::time::sleep(Duration::from_millis(80)).await;
+
+    let status = daemon.status().await;
+    let err = status
+        .last_error
+        .as_deref()
+        .expect("an unreadable pg_sync.host must surface, not become a blank host");
+    assert!(
+        err.contains("pg_sync.host"),
+        "the error must name the setting that failed, got: {err}"
+    );
 
     daemon.stop().await;
     tokio::time::sleep(Duration::from_millis(100)).await;

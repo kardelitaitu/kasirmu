@@ -1,4 +1,4 @@
-# build-docs.ps1 - Build the OZ-POS documentation portal (mdBook)
+# build-docs.ps1 - Build the kasir.mu documentation portal (mdBook)
 #
 # Pipeline (order matters):
 #   1. cargo doc        -> target/doc/
@@ -31,7 +31,7 @@ if (-not (Get-Command mdbook -ErrorAction SilentlyContinue)) {
 }
 
 Write-Host "==========================================" -ForegroundColor Cyan
-Write-Host " Building OZ-POS Documentation Portal" -ForegroundColor Cyan
+Write-Host " Building kasir.mu Documentation Portal" -ForegroundColor Cyan
 Write-Host "==========================================" -ForegroundColor Cyan
 
 if (-not $SkipRust) {

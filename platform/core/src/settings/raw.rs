@@ -63,8 +63,8 @@ impl Settings {
     /// [`IngestPolicy::PortablePackage`].
     ///
     /// `load_all` filtered through the ONE shared predicate,
-    /// [`keys::is_non_exportable_setting_key`], plus the lifecycle-manager
-    /// prefix rule ([`is_manager_owned_key`]). Nothing is restated here: the
+    /// [`is_non_exportable_setting_key`](crate::settings::keys::is_non_exportable_setting_key),
+    /// plus the lifecycle-manager prefix rule ([`is_manager_owned_key`]). Nothing is restated here: the
     /// credential/device list lives in `keys.rs` and is built from the key
     /// constants themselves.
     ///
@@ -761,9 +761,10 @@ impl IngestPolicyKind for IngestPolicy {
 /// own these keys write them locally, and filtering that would break them.
 ///
 /// The candidate is folded exactly as the credential half of the same ingest
-/// boolean folds it — [`keys::is_non_exportable_setting_key`] trims and
-/// ASCII-case-folds through `keys::normalised_candidate`, and so does this,
-/// against the SAME shared fold (it is `pub` in `keys.rs` because the two
+/// boolean folds it —
+/// [`is_non_exportable_setting_key`](crate::settings::keys::is_non_exportable_setting_key)
+/// trims and ASCII-case-folds through `keys::normalised_candidate`, and so does
+/// this, against the SAME shared fold (it is `pub` in `keys.rs` because the two
 /// callers of the fold sit on opposite sides of the crate boundary — this gate
 /// inside platform-core, the owner label in `crates/kasirmu-bridge/src/settings.rs`
 /// — and no second normalisation is written here). Before that, one
@@ -780,7 +781,24 @@ impl IngestPolicyKind for IngestPolicy {
 /// signature is unchanged and no caller moves.
 pub fn is_manager_owned_key(key: &str) -> bool {
     let candidate = crate::settings::keys::normalised_candidate(key);
-    candidate.starts_with("local_api.") || candidate.starts_with("lan_server.")
+    candidate.starts_with("local_api.")
+        || candidate.starts_with("lan_server.")
+        // MSL-17: the audit-retention sweep marker. This is not a manager key by
+        // prefix, but it is the SAME KIND of thing — a row the application writes
+        // for its own machinery, whose presence changes a SECURITY decision.
+        //
+        // `audit_log_immutable_delete` (migration 20260920) raises UNLESS this
+        // row exists, so whoever can write it can delete the audit trail. The
+        // sweep sets and clears it inside one transaction, which stops another
+        // connection seeing it coincidentally — but it does not stop an
+        // untrusted ingest lane from writing the key on its own connection and
+        // leaving it there. Both untrusted lanes admitted it before this line
+        // (measured: PortablePackage=true, RemoteSync=true), which made a
+        // `.kasirpkg` import a one-row path to erasing the audit log.
+        //
+        // `TrustedLocal` still admits it, because the sweep runs on the local
+        // connection and writes this key itself.
+        || candidate == crate::settings::keys::AUDIT_SWEEP_MARKER_KEY
 }
 
 /// Compile-time belt on the third list: a hazard name must be NEW to the guard,

@@ -9,7 +9,8 @@ init (both shared surfaces outside this work order's fence). Absent key reads
 as 0; a *corrupt* value is an error rather than a silent reset, because
 silently restarting the counter at 0 would order this terminal's next
 mutation before mutations it has already seen.
-next: callers should tick the daemon's mutation path | perf: N/A
+next: none | perf: N/A
+NOT WIRED 2026-10-04: no caller ticks a clock through this store. The daemon reads and writes the persisted counter by key (crate::crdt::CLOCK_KEY) directly through daemon_tick::persist_stamped_counter, which is why the counter survives a rejected push (94ca1bbd9). The store remains the correct home for a typed reader (load_clock) if the LamportClock path is ever adopted.
 */
 
 use kasirmu_core::Store;

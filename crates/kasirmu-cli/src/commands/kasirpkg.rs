@@ -162,7 +162,21 @@ pub(crate) fn run_export_kasirpkg(
     };
 
     let users = if wants("users") {
-        let usrs = store.list_users()?;
+        let mut usrs = store.list_users()?;
+        // The `pin_hash` column is selected by `Store::list_users` and the
+        // `User` struct serializes it, so a wholesale `to_value` would carry
+        // every staff account's Argon2 PHC verifier into a file designed to
+        // travel between installs. The value is DEAD WEIGHT on import — both
+        // import arms write `''` and land the user inactive — so it is blanked
+        // rather than omitted: omitting it fails
+        // `serde_json::from_value::<User>` (the field has no
+        // `#[serde(default)]`), and all three import sites swallow that with
+        // `if let Ok(..)`, which would silently skip every user while the
+        // command reported success. Blanking keeps the key present and the
+        // shape unchanged.
+        for u in &mut usrs {
+            u.pin_hash.clear();
+        }
         Some(
             serde_json::to_value(&usrs)
                 .ok()
@@ -229,7 +243,7 @@ pub(crate) fn run_export_kasirpkg(
 
     let store_name = store
         .get_store_name()?
-        .unwrap_or_else(|| "OZ-POS Store".into());
+        .unwrap_or_else(|| "kasir.mu Store".into());
 
     eprintln!("  encrypting with Argon2id + AES-256-GCM...");
     let kasirpkg_bytes = export_kasirpkg(
@@ -444,7 +458,24 @@ pub(crate) fn run_import_kasirpkg(
                         rusqlite::params![user.username, user.display_name, user.role_id, now, user.id],
                     )?;
                 } else {
-                    // PIN hash not included in export; imported users are inactive
+                    // The export DOES carry `pin_hash` — the users arm above
+                    // serializes `Store::list_users()` wholesale, whose SELECT
+                    // includes the column, and the payload is a pass-through.
+                    // (A comment here previously claimed the hash was absent
+                    // from the export; it is not.)
+                    //
+                    // This path deliberately does NOT use the exported value: a
+                    // fresh install must not inherit another install's
+                    // credential verifier, so the column is written empty and
+                    // the account lands INACTIVE — a PIN reset is required
+                    // before the member can log in.
+                    //
+                    // Removing `pin_hash` from the export therefore needs
+                    // `#[serde(default)]` on `User::pin_hash` FIRST: the field
+                    // has no default, so `serde_json::from_value::<User>` below
+                    // fails on a row that omits it and every user is silently
+                    // skipped. Pinned by
+                    // `modules/staff/src/models_tests.rs::user_deserialization_requires_pin_hash`.
                     tx.execute(
                         "INSERT INTO users (id, username, pin_hash, display_name, role_id, is_active, created_at, updated_at)
                          VALUES (?1, ?2, '', ?3, ?4, 0, ?5, ?6)",
@@ -468,12 +499,29 @@ pub(crate) fn run_import_kasirpkg(
     // reaches `Settings::set`. No raw `Settings::set` on this path is ever
     // reached by a key the policy would refuse.
     let mut settings_skipped = 0usize;
+    let mut settings_failed = 0usize;
     if let Some(ref settings) = payload.settings {
         for val in settings {
             match importable_settings_row(val) {
                 Some((key, value)) => {
-                    let _ = Settings::set(&tx, key, value);
-                    total += 1;
+                    // CLI-A: a FAILED write must not be counted as imported. The
+                    // previous `let _ = Settings::set(...)` discarded the error
+                    // and still incremented `total`, so the summary reported a
+                    // record the database never received. Every other data type
+                    // in this function propagates with `?`; a settings row is
+                    // admitted by policy and then may still fail, which is
+                    // neither a refusal nor a success.
+                    match Settings::set(&tx, key, value) {
+                        Ok(()) => total += 1,
+                        Err(e) => {
+                            settings_failed += 1;
+                            tracing::warn!(
+                                key = %key,
+                                error = %e,
+                                "settings row admitted by policy but failed to write"
+                            );
+                        }
+                    }
                 }
                 None => settings_skipped += 1,
             }
@@ -482,6 +530,12 @@ pub(crate) fn run_import_kasirpkg(
 
     tx.commit().context("committing import transaction")?;
 
+    if settings_failed > 0 {
+        eprintln!(
+            "  {settings_failed} settings row(s) FAILED to write (admitted by policy, rejected by \
+             the database) — the import is committed but those rows are missing; see the warnings above."
+        );
+    }
     if settings_skipped > 0 {
         eprintln!(
             "  {settings_skipped} settings row(s) skipped: secrets, device-bound ids \n             (machine_id, sync_terminal_id, local_api.secret, license.*, \n             gateway keys) and lifecycle-manager keys (local_api.*, lan_server.*) \n             never travel in a portable package (MED-2 / ingest policy)."

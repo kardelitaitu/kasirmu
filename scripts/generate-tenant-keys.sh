@@ -1,6 +1,6 @@
 #!/bin/bash
 # generate-tenant-keys.sh
-# ── OZ-POS Tenant Key Generator ─────────────────────────────────────
+# ── kasir.mu Tenant Key Generator ─────────────────────────────────────
 # Generates a cryptographically secure API key and formatted License Key
 # for manually registering a new tenant in PocketBase.
 #
@@ -26,7 +26,7 @@ case "$TIER" in
 esac
 
 echo -e "\033[0;36m====================================================\033[0m"
-echo -e "\033[0;36m  OZ-POS Tenant & License Key Generator\033[0m"
+echo -e "\033[0;36m  kasir.mu Tenant & License Key Generator\033[0m"
 echo -e "\033[0;36m====================================================\033[0m"
 echo ""
 

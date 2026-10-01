@@ -140,7 +140,32 @@ fn get_product_default_optional_fields_are_none() {
     assert!(p.default_supplier_id.is_none());
 }
 
-// NOTE: get_stock and adjust_stock_tx query `inventory.sku` and
-// `inventory.low_stock_threshold` columns which do not exist in the
-// current migration schema. These are planned-schema methods; their
-// tests will be added once the migration is applied.
+// ── P3.2/P3.5: the repository is namespace-checked ──────────────────────
+
+/// The wrap must not have widened the module's reach: its own table passes the
+/// ownership check, a foreign table through the same handle is refused.
+#[test]
+fn the_repository_is_scoped_to_its_own_namespace() {
+    use kasirmu_core::db::Store;
+    use kasirmu_core::db::namespaced::{Grants, ModuleId, NamespaceError, NamespacedStore};
+
+    let conn = fresh();
+    let ns = NamespacedStore::new(Store::new(&conn), ModuleId("inventory"), Grants::none());
+
+    ns.own()
+        .query("SELECT 1 FROM products", [], |row| row.get::<_, i64>(0))
+        .expect("inventory must be allowed to read its own table");
+
+    let err = ns
+        .own()
+        .query("SELECT 1 FROM sales", [], |row| row.get::<_, i64>(0))
+        .unwrap_err();
+    assert!(
+        matches!(err, NamespaceError::Foreign { ref table, .. } if table == "sales"),
+        "expected Foreign on sales, got {err:?}"
+    );
+}
+
+// NOTE: the get_stock/adjust_stock_tx pair
+// `inventory.sku` and `inventory.low_stock_threshold`, columns the migrations do not
+// carry, and had no caller left once InventoryService's wrappers went.

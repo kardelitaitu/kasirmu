@@ -195,9 +195,24 @@ pub fn template_load(
 pub fn template_list(conn: &Connection, topology_key: &str) -> Result<Vec<String>, BridgeError> {
     let prefix = template_key_prefix(topology_key);
     let mut stmt = conn.prepare("SELECT key FROM settings WHERE key LIKE ?1 || '%'")?;
+    // `filter_map(|r| r.ok())` silently DROPPED a key it could not read as TEXT.
+    // Reachable, and measured: a `TEXT` key holding invalid UTF-8 matches the SQL
+    // `LIKE` prefilter above (SQLite TEXT is bytes, and the comparison does not
+    // decode), so the row IS produced here -- and then failed this read and
+    // vanished. (A BLOB key cannot reach it: it does not match a TEXT `LIKE`.)
+    //
+    // The panel would then show a shorter list with no error, and every template
+    // name comes from this list -- so the merchant sees templates as missing while
+    // `template_load` still reads them fine by name. Same shape as the
+    // `filter_map(|r| r.ok())` that `list_workspaces` had to stop doing
+    // (db/workspaces_instances_tests.rs:33-41). Unlike `template_load`, which
+    // deliberately reports a CORRUPT VALUE as absent so one bad row cannot brick
+    // the panel (:172-174), an unreadable KEY is an error: the list is what the
+    // panel is built from, and there is no value to be absent.
     let names = stmt
         .query_map(rusqlite::params![prefix], |row| row.get::<_, String>(0))?
-        .filter_map(|r| r.ok())
+        .collect::<Result<Vec<_>, _>>()?
+        .into_iter()
         .filter_map(|key| {
             key.strip_prefix(&prefix)
                 .filter(|name| !name.is_empty() && !name.contains('/'))

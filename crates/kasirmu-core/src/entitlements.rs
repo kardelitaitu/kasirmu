@@ -9,9 +9,9 @@
 //! client, each copy free to drift from the others.
 //!
 //! Key types:
-//! - [`Entitlements`] — the read model, built from the signed
+//! - [`Entitlements`](crate::entitlements::Entitlements) — the read model, built from the signed
 //!   `TenantSubscription` row plus the usage counts the gates consult.
-//! - [`build_entitlements`] — the shared fail-closed row loader (missing /
+//! - [`build_entitlements`](crate::entitlements::build_entitlements) — the shared fail-closed row loader (missing /
 //!   tampered / unreadable yields `None`, which projects as Free +
 //!   `unavailable` rather than an error).
 //!
@@ -75,6 +75,38 @@ impl Entitlements {
         }
     }
 
+    /// MSL-36: the ledger-time sibling of [`Self::from_subscription`].
+    ///
+    /// `from_subscription` resolves the tier with `effective_tier()`, which
+    /// compares the paid window against `Utc::now()`. `effective_tier_for_connection`
+    /// instead compares it against the database's monotonic ledger time, which is
+    /// the whole point of that method: a merchant who rolls the OS clock back
+    /// makes the wall clock say the subscription is still inside its grace
+    /// window, and the wall-clock reader therefore grants the PAID tier to a
+    /// lapsed subscription. Use this constructor at any door that grants a
+    /// capability on the strength of the tier.
+    ///
+    /// Doors that already call `TenantSubscription::validate_clock_rollback`
+    /// immediately before loading the row are unaffected either way — the
+    /// rollback is detected and refused before a tier is read. This is for the
+    /// doors that do not, which is why both constructors exist rather than one.
+    #[must_use]
+    pub fn from_subscription_for_connection(
+        sub: &TenantSubscription,
+        conn: &rusqlite::Connection,
+        usage: UsageCounts,
+    ) -> Self {
+        Self {
+            tier: sub.effective_tier_for_connection(conn),
+            state: sub.lifecycle_state(),
+            loaded: true,
+            addons: sub.addons(),
+            is_trial: sub.is_trial(),
+            trial_ends_at: sub.trial_ends_at(),
+            usage,
+        }
+    }
+
     /// The fail-closed shape: Free entitlements on `unavailable`.
     ///
     /// Mirrors `load_capabilities`' contract exactly — the UI's error
@@ -111,12 +143,12 @@ impl Entitlements {
     /// Whether the add-on analytics grant can flow (C4.3): the
     /// subscription must be active or in grace — canceled/expired rows
     /// keep the downgraded answer.
+    ///
+    /// Delegates to the state's own predicate so this and the availability
+    /// verdict cannot disagree about which states flow.
     #[must_use]
     pub fn addon_grant_flows(&self) -> bool {
-        matches!(
-            self.state,
-            SubscriptionLifecycleState::Active | SubscriptionLifecycleState::Grace
-        )
+        self.state.grants_entitlements()
     }
 
     /// Project the caps DTO's location cap from this instance through
@@ -274,6 +306,18 @@ pub trait SubscriptionLoader {
     /// Load + signature-verify the tenant's subscription row; `None`
     /// for missing/tampered/unreadable (the caller fails closed).
     fn load_verified_subscription(&self) -> Option<TenantSubscription>;
+
+    /// Assemble the read model from a verified row, resolving the tier the way
+    /// this loader's backing store expects.
+    ///
+    /// MSL-37: the default keeps [`Entitlements::from_subscription`] (the wall
+    /// clock), which is right for a loader with no database behind it — the
+    /// unit-test loaders. A loader backed by a real connection overrides this to
+    /// resolve against the LEDGER, so the caps payload and the enforcement gates
+    /// cannot answer with two different tiers after a clock rollback.
+    fn entitlements_for(&self, sub: &TenantSubscription, usage: UsageCounts) -> Entitlements {
+        Entitlements::from_subscription(sub, usage)
+    }
 }
 
 impl SubscriptionLoader for crate::db::Store<'_> {
@@ -298,6 +342,14 @@ impl SubscriptionLoader for crate::db::Store<'_> {
             }
         }
     }
+
+    /// MSL-37: the ledger-aware assembly. This is the override that keeps the
+    /// caps DTO honest — it reads the same monotonic ledger time the creation
+    /// gates read, so a rolled-back OS clock cannot make the UI publish a paid
+    /// tier the gate will refuse.
+    fn entitlements_for(&self, sub: &TenantSubscription, usage: UsageCounts) -> Entitlements {
+        Entitlements::from_subscription_for_connection(sub, self.conn, usage)
+    }
 }
 
 /// Load the row fail-closed and assemble the read model.
@@ -320,7 +372,9 @@ pub fn build_entitlements<S: SubscriptionLoader + ?Sized>(
     let Some(sub) = loader.load_verified_subscription() else {
         return Entitlements::fail_closed(usage);
     };
-    let mut ent = Entitlements::from_subscription(&sub, usage);
+    // MSL-37: through the loader, so a database-backed loader resolves against
+    // the ledger (see `SubscriptionLoader::entitlements_for`).
+    let mut ent = loader.entitlements_for(&sub, usage);
     if debug_upgrade {
         ent.apply_debug_upgrade();
     }

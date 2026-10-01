@@ -1,4 +1,4 @@
-# cargo-nextest configuration for OZ-POS
+# cargo-nextest configuration for kasir.mu
 # Docs: https://nexte.st/book/configuration.html
 #
 # Usage:
@@ -42,7 +42,7 @@ slow-timeout = { period = "120s", terminate-after = 3 }
 # nothing, at a location nobody was told.
 [profile.default.junit]
 path = "junit.xml"
-report-name = "oz-pos-test"
+report-name = "kasirmu-test"
 
 # CI profile: stricter settings
 [profile.ci]
@@ -56,3 +56,34 @@ retries = { backoff = "exponential", count = 1, delay = "2s" }
 retries = 0
 test-threads = 4
 slow-timeout = { period = "30s", terminate-after = 1 }
+
+# ── The shared dev Postgres is ONE resource, and these tests mutate it ───────────────
+# Measured 2026-09-29 on a full workspace run: 19 tests failed and were then rescued by
+# the retry, every one of them kasirmu-cloud's Postgres integration tests (db_tests,
+# email_pg_tests, sync_store_tests, tests/pg_stock_guard, tests/pg_init_reconciliation,
+# tests/pg_trigger_ports). They are not nondeterministic -- they RACE. Several call
+# `PG_INIT`, which applies the whole schema to `public`, and others assert on that same
+# schema: `pg_integration_apply_schema_can_be_skipped` requires `public` to be EMPTY
+# (db_tests.rs:459) while its neighbours are filling it. Two at once is a self-inflicted
+# collision whose loser the retry rescues, which is exactly what the flake receipt
+# (scripts/verify-pg-tests-ran.py) exists to make visible -- the JUnit totals call all
+# 19 of them passes. Serialize them instead of paying for the retry.
+[test-groups.shared-postgres]
+max-threads = 1
+
+[[profile.default.overrides]]
+# Every test whose name contains `pg` reaches that one database, including the
+# integration binaries, whose names carry it too (`pg_trigger_ports::...`).
+#
+# AUDITED 2026-09-29 and the name filter was too narrow. The group was keyed on
+# `test(/pg/)`, which is a heuristic about NAMES. Measuring the criterion that actually
+# matters -- which tests connect with `apply_schema = true`, the flag that applies PG_INIT to
+# the shared public schema -- found webhooks_tests.rs (:634, :910), sync_api_tests.rs (:928,
+# :1873, :2430), prune_tests.rs, main_tests.rs and others doing exactly that with no `pg`
+# anywhere in their names. They were never serialized, so they could race the very tests this
+# group exists to protect. The filter is the PACKAGES that hold those tests: coarser, and true
+# by construction, where a name filter rots the moment someone writes a Postgres test without
+# `pg` in its name -- which is exactly how this hole opened.
+filter = 'test(/pg/) | package(kasirmu-cloud) | package(kasirmu-api) | package(platform-sync)'
+test-group = 'shared-postgres'
+

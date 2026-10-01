@@ -48,6 +48,22 @@
   overflow: hidden;
 }
 
+@keyframes ws-page-exit {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+}
+
+.workspace-home--exiting {
+  animation: ws-page-exit var(--duration-150) var(--ease-out) both;
+  pointer-events: none;
+}
+
 /* ── SR-only status ───────────────────────────────────────────────── */
 
 .ws-sr-status {
@@ -173,7 +189,9 @@
 
 /* ═══════════════════════════════════════════════════════════════════
  * Layer 2: Content Container
- * Split into header (8%) + main content (86%) + footer (6%).
+ * Split into header (8%) + main content (remaining). The footer box that
+ * took the last 6% was removed in 0.0.40 — .ws-main is flex:1, so it simply
+ * grows into that space.
  * ═══════════════════════════════════════════════════════════════════ */
 
 .ws-layer-content {
@@ -224,10 +242,35 @@
   overflow-x: hidden;
 }
 
-/* ── Footer box (bottom 8%) ─────────────────────────────────────── */
-
-.ws-footer {
-  flex: 0 0 6%;
+/*
+ * Clearance for the fixed memo stack — same mechanism as StaffManagementScreen.css,
+ * and for the same reason.
+ *
+ * MEASURED DEFECT (2026-09-30). The picker renders fullscreen, so none of the
+ * three scoped --memo-bottom-inset overrides reaches it and the stack falls back
+ * to the :root default. At the desktop 1366x768 the Tools grid is the last
+ * section, and the settings tool card — the ONLY route into the admin workspace,
+ * since the admin workspace is filtered out of the card grid — came to rest at
+ * y=627..693 with the stack occupying y=610..747 over the same 242px of x. The
+ * stack is pointer-events: none, but .memo-banner-open re-enables it on the
+ * bubble body, so document.elementFromPoint at the card's centre returned
+ * P.memo-banner-text and Playwright refused the click as intercepted. The admin
+ * workspace was unreachable from the picker on a desktop viewport with two
+ * memos pending — which is what ui/e2e/staff-trash.spec.ts:56 timed out on,
+ * 90 seconds of "waiting for element to be visible, enabled and stable".
+ *
+ * Reserving the stack's height here, inside .ws-main — the picker's only
+ * scrolling region — is what lets the last row scroll clear. A fourth
+ * --memo-bottom-inset override is REJECTED for the same reason the staff screen
+ * rejects it: the occluder here is a page row, not a pinned footer, and moving
+ * the stack only relocates the collision.
+ *
+ * Gated on the stack's presence, so a session with no memos pays no dead band.
+ */
+body:has(.memo-stack) .ws-main {
+  /* --space-6 gutter plus a full stack: MAX_STACK = 3 bubbles in
+     MemoBanner.tsx, measured at 215px at the 1024x1366 tablet profile. */
+  padding-bottom: calc(var(--space-6) + 215px);
 }
 
 /* ═══════════════════════════════════════════════════════════════════

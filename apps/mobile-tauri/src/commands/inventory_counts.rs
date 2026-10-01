@@ -9,11 +9,22 @@
 //! registration-gate debt ledger: each resolves a session and gates through the
 //! domain helper `require_inventory_count_permission`, which the sweep's
 //! classifier reads as a gate, so the sweep already calls them `Gated` and the
-//! delegation is ledger-neutral by construction. The gate is the **unscoped**
-//! `Store::require_permission(user_id, inventory_count)` on both sides
-//! (`crates/kasirmu-bridge/src/inventory_counts.rs:209-228` documents its helper as a
-//! port of the shell's), so the gate *kind* matches too — had it been the
-//! scope-aware form, this port would have tightened a gate and been refused.
+//! delegation is ledger-neutral by construction. At the time of the port the gate
+//! was the **unscoped** `Store::require_permission(user_id, inventory_count)` on
+//! both sides (`crates/kasirmu-bridge/src/inventory_counts.rs:209-228` documents its
+//! helper as a port of the shell's), so the gate *kind* matched too — had it been
+//! the scope-aware form, that port alone would have tightened a gate and been
+//! refused.
+//!
+//! **That premise moved on 2026-09-25, under R10.** The one door that stayed —
+//! `update_stock_count_status_scoped` — now gates with the scope-aware
+//! `authz::require_permission_for_session` BEFORE it opens the store, which closes
+//! the gate-ORDER half of R10 (BR-X4) for it and tightens the KIND to the form R10
+//! rules authoritative. The nine delegated doors are unaffected: they gate inside
+//! the bridge, on the bridge's own helper. So this module's surviving gate is now
+//! **stricter than** the nine it sits beside, and that asymmetry is R10's doing
+//! rather than an accident — a caller out of scope is refused on this door and
+//! admitted on the others until the bridge's helper is migrated too.
 //!
 //! **The one door that could not move.** `update_stock_count_status_scoped` stays
 //! here, because the bridge's twin accepts a transition this shell rejects — see
@@ -31,7 +42,7 @@ use tauri::{State, command};
 
 use kasirmu_core::{StockCount, StockCountStatus, Store};
 
-use crate::commands::authz::require_permission_for_user;
+use crate::commands::authz::require_permission_for_session;
 use crate::error::AppError;
 use crate::state::AppState;
 
@@ -74,22 +85,6 @@ fn difference(counted_qty: Option<i64>, expected_qty: i64) -> Result<i64, AppErr
         })
         .transpose()
         .map(|value| value.unwrap_or(0))
-}
-
-/// Verify that the authenticated user may manage physical inventory counts.
-///
-/// Kept because the one door that could not be delegated still calls it. The
-/// bridge has the same helper for the nine that could.
-async fn require_inventory_count_permission(
-    state: &AppState,
-    user_id: &str,
-) -> Result<(), AppError> {
-    let db = state.db.lock().await;
-    require_permission_for_user(
-        &Store::new(&db),
-        user_id,
-        kasirmu_core::permissions::INVENTORY_COUNT,
-    )
 }
 
 /// Read a count, requiring only that it exists.
@@ -265,8 +260,15 @@ pub async fn update_stock_count_status_scoped(
     status: String,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let (session, conn) = state.resolve_scope(&session_token)?;
-    require_inventory_count_permission(&state, &session.user_id).await?;
+    // R10 gate-ORDER, 2026-09-25: gate BEFORE the store is opened, and with the
+    // scope-aware form. `require_inventory_count_permission` asked the right
+    // permission of the right (global) db but not the caller's branch/workspace
+    // scope, and it could only run after `open_store` had already done filesystem
+    // work for a caller who might not be authorised.
+    let session = state.resolve_session(&session_token)?;
+    require_permission_for_session(&state, &session, kasirmu_core::permissions::INVENTORY_COUNT)
+        .await?;
+    let conn = state.resolve_store(&session_token)?;
     let db = conn
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;

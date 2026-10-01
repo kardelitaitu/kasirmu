@@ -3,7 +3,7 @@
 # The portal aggregates hand-written guides (docs/), ADRs (docs/decisions/),
 # rustdoc output (target/doc/) and TypeDoc output (ui/src). Generated content
 # is copied into docs/src/ before building — see the plan at
-# docs/plans/documentation-portal-plan.md for the full layout.
+# docs/plans/_active/documentation-portal-plan.md for the full layout.
 [book]
 title = "kasir.mu Documentation"
 authors = ["kasir.mu contributors"]

@@ -75,6 +75,7 @@ pub mod downgrade;
 pub mod gift_cards;
 /// Inventory management CRUD (locations, shifts, thresholds, transaction logs).
 pub mod inventory;
+pub mod inventory_seam;
 /// Kitchen Display System order CRUD.
 pub mod kds;
 /// KDS routing rules CRUD — per-restaurant explicit station assignments.
@@ -88,6 +89,11 @@ pub mod stripe;
 pub use offline::RemoteSyncFailure;
 /// EDC terminal configuration CRUD — PLANNED (stubs).
 pub mod edc_terminals;
+/// The `ReportingFacade` trait — the sanctioned cross-vertical read path
+/// (Phase 4 P4.2, ADR-62 D5).
+pub mod facade;
+/// Indonesian e-Faktur compliance repository (DJP Coretax / PER-11/PJ/2025).
+pub mod faktur_pajak;
 /// Fiscalization and statutory numbering — legal-entity schemes and the
 /// race-free document-number claim (slice 5).
 pub mod fiscal;
@@ -101,6 +107,10 @@ pub mod locations;
 pub mod media;
 /// Memo lifecycle repository — create/publish/stop, revisions, recipients.
 pub mod memos;
+/// A module-scoped, runtime-checked view over the shared connection (plan §7 Phase 2).
+pub mod namespaced;
+/// The generated table-ownership map (plan §7 single source).
+pub mod ownership;
 /// Accounts Payable (Hutang) repository — create/settle/age supplier debts.
 pub mod payables;
 /// Payment gateway configuration CRUD — PLANNED (stubs).
@@ -190,7 +200,7 @@ pub use shifts::{ShiftPaymentBreakdown, ShiftReport, ShiftSalesByHour};
 
 // ── Store ────────────────────────────────────────────────────────────
 
-/// Typed CRUD facade for the OZ-POS database.
+/// Typed CRUD facade for the kasir.mu database.
 ///
 /// > **ADR #30 Modularization Note**: New code should prefer invoking dedicated
 /// > domain repositories (e.g. `SalesRepository`, `InventoryRepository`, `CrmRepository`,
@@ -246,6 +256,7 @@ impl<'a> Store<'a> {
     }
 
     /// Set the terminal ID for pub/sub message tagging.
+    #[must_use]
     pub fn with_terminal_id(mut self, terminal_id: Option<String>) -> Self {
         self.terminal_id = terminal_id;
         self
@@ -615,17 +626,28 @@ pub(crate) fn row_to_product(row: &rusqlite::Row) -> rusqlite::Result<crate::Pro
         created_at: row.get("created_at")?,
         updated_at: row.get("updated_at")?,
         price_updated_at: row.get("price_updated_at")?,
-        track_serial: row.get("track_serial").unwrap_or(false),
+        // Every column the `products` table declares NOT NULL ... DEFAULT is read
+        // with `?`, not `unwrap_or`. rusqlite maps NULL to `None` for an
+        // `Option<T>` target and to the target's own type otherwise, so the
+        // `.unwrap_or(..)` forms bought nothing for a NULL — they only ever
+        // fired on a real error (a missing column, a type mismatch, a corrupt
+        // page) and replaced it with a plausible default. That is the worst
+        // shape in this family: `row_to_product` maps EVERY product in every
+        // listing, so one bad read would have produced a product silently
+        // carrying `cost_minor: 0` or `is_active: false` rather than an error.
+        // The nullable TEXT columns likewise need no help — `Option<String>`
+        // already reads NULL as `None`, which the comment above already says.
+        track_serial: row.get::<_, i64>("track_serial")? != 0,
         product_type,
-        version: row.get("version").unwrap_or(1),
-        cost_minor: row.get("cost_minor").unwrap_or(0),
-        brand: row.get("brand").unwrap_or(None),
-        rack_location: row.get("rack_location").unwrap_or(None),
-        notes: row.get("notes").unwrap_or(None),
-        unit: row.get("unit").unwrap_or(None),
-        is_active: row.get("is_active").unwrap_or(1i64) != 0,
-        default_supplier_id: row.get("default_supplier_id").unwrap_or(None),
-        image_hash: row.get("image_hash").unwrap_or(None),
+        version: row.get("version")?,
+        cost_minor: row.get("cost_minor")?,
+        brand: row.get("brand")?,
+        rack_location: row.get("rack_location")?,
+        notes: row.get("notes")?,
+        unit: row.get("unit")?,
+        is_active: row.get::<_, i64>("is_active")? != 0,
+        default_supplier_id: row.get("default_supplier_id")?,
+        image_hash: row.get("image_hash")?,
     })
 }
 

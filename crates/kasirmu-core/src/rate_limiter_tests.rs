@@ -421,3 +421,81 @@ fn lockout_one_user_does_not_affect_others() {
     assert_eq!(limiter.record_failure("charlie").unwrap(), 1);
     assert_eq!(limiter.record_failure("dave").unwrap(), 1);
 }
+
+// ── COR-2: the map must not grow without bound ───────────────────────
+
+/// COR-2 regression. The login form is unauthenticated, so the username is an
+/// attacker-controlled map key. Before the fix, `record_failure` inserted an
+/// entry per distinct name and removed none: the per-key vector was pruned but
+/// the key lived forever, so N requests with N distinct usernames leaked N
+/// entries for the life of the process.
+///
+/// A zero-length window makes every recorded attempt expire immediately, so the
+/// only reason a key could survive is the bug itself. With eviction the map is
+/// emptied on every call — the count stays at exactly 1 (the key just added, not
+/// yet revisited) no matter how many distinct names are thrown at it.
+#[test]
+fn distinct_usernames_do_not_accumulate_without_bound() {
+    let limiter = LoginRateLimiter::new(3, 0); // everything expires at once
+    for i in 0..10_000 {
+        limiter.record_failure(&format!("spray-{i}")).ok();
+    }
+    assert_eq!(
+        limiter.tracked_usernames(),
+        1,
+        "only the key added by the current call may remain; {0} entries would be the leak",
+        limiter.tracked_usernames()
+    );
+}
+
+/// The same property stated against a live window: usernames whose attempts have
+/// all aged out are dropped, so the tracked set is bounded by activity inside the
+/// window rather than by the process lifetime.
+#[test]
+fn expired_usernames_are_evicted_and_live_ones_are_kept() {
+    // 1-second window: long enough that a live entry is retained, short enough
+    // that the sleep below reliably expires it.
+    let limiter = LoginRateLimiter::new(3, 1);
+    limiter.record_failure("alice").ok();
+    limiter.record_failure("bob").ok();
+    assert_eq!(limiter.tracked_usernames(), 2, "both names are live");
+
+    std::thread::sleep(std::time::Duration::from_millis(1100));
+
+    // A brand-new name arrives; the sweep must drop the two expired ones.
+    limiter.record_failure("carol").ok();
+    assert_eq!(
+        limiter.tracked_usernames(),
+        1,
+        "alice and bob expired and must be gone; only carol remains"
+    );
+    // And the retained set really is carol: her lockout still works.
+    limiter.record_failure("carol").ok();
+    assert!(limiter.record_failure("carol").is_err());
+}
+
+/// Eviction must never drop a username that is still locked out — that would
+/// hand an attacker a free reset simply by waiting for an unrelated sweep.
+#[test]
+fn eviction_never_clears_a_live_lockout() {
+    let limiter = LoginRateLimiter::new(2, 3600); // 1-hour window
+    limiter.record_failure("alice").ok();
+    assert!(
+        limiter.record_failure("alice").is_err(),
+        "alice is locked out"
+    );
+
+    // Traffic from other names triggers the sweep repeatedly.
+    for i in 0..500 {
+        limiter.record_failure(&format!("noise-{i}")).ok();
+    }
+
+    assert!(
+        limiter.record_failure("alice").is_err(),
+        "alice's lockout must survive 500 sweeps"
+    );
+    assert!(
+        limiter.tracked_usernames() >= 1,
+        "alice's entry must still be tracked"
+    );
+}

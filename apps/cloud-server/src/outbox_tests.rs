@@ -250,6 +250,63 @@ async fn drain_receives_topic_and_payload() {
 
 // ── Backoff deadline helper ─────────────────────────────────────────
 
+/// The pre-epoch branch and the arithmetic it depends on.
+///
+/// `backoff_deadline` used `.unwrap_or_default()` on the clock read, so a
+/// pre-epoch clock produced `now = Duration::ZERO` and a deadline of
+/// 1970 + backoff -- a time long past. The drain selects on
+/// `next_attempt_at <= now`, so the entry was immediately eligible again and the
+/// outbox re-delivered in a tight loop until `max_attempts` was spent: seconds
+/// instead of backoff. Fail-OPEN on the one path backoff exists to slow down.
+///
+/// The clock branch itself cannot be reached from a test without injecting a
+/// pre-epoch `SystemTime`, so this pins the ARITHMETIC it delegates to, which is
+/// where the defect lived: `format_deadline` must derive the result from the
+/// `now` it is handed. With `Duration::ZERO` -- exactly what the pre-epoch branch
+/// passes now -- the deadline must still be in the FUTURE by the full amount,
+/// never at the epoch.
+#[test]
+fn a_zero_clock_origin_still_yields_a_future_backoff_deadline() {
+    let parse = |s: &str| chrono::DateTime::parse_from_rfc3339(s).unwrap();
+
+    let epoch = chrono::DateTime::parse_from_rfc3339("1970-01-01T00:00:00Z").unwrap();
+
+    // THE DISCRIMINATOR. The pre-epoch branch must use the CAP, not the
+    // attempt's own backoff: the old `.unwrap_or_default()` produced an
+    // already-elapsed deadline, which the drain's `next_attempt_at <= now`
+    // accepted immediately, so the outbox retried in a loop. An earlier version
+    // of this test asserted only `format_deadline`'s arithmetic and PASSED with
+    // the branch reverted to the per-attempt delay -- it could not see the
+    // choice, which is the entire fix. Verified RED by making this function
+    // return the per-attempt delay: left 240, right 3600.
+    let delay = pre_epoch_backoff_secs();
+    assert_eq!(
+        delay, BACKOFF_CAP_SECS,
+        "a broken clock must delay by the CAP, not by the attempt's own backoff"
+    );
+    assert!(
+        delay > (BACKOFF_BASE_SECS * 2u64.pow(1)).min(BACKOFF_CAP_SECS),
+        "the pre-epoch delay must exceed a first retry's backoff, or it barely differs from retrying now"
+    );
+
+    // And the arithmetic it feeds places that delay after the epoch, not at it.
+    let at_zero = parse(&format_deadline(Duration::ZERO, delay));
+    assert_eq!(
+        at_zero - epoch,
+        chrono::Duration::seconds(delay as i64),
+        "the deadline must be `delay` after the epoch, never ON it"
+    );
+
+    // Monotonic in the delay, which is the property the tight-retry loop violated.
+    let short = parse(&format_deadline(Duration::ZERO, 60));
+    let long = parse(&format_deadline(Duration::ZERO, 600));
+    assert!(short < long, "a larger delay must produce a later deadline");
+    assert!(
+        short > epoch,
+        "a non-zero delay must never land ON the epoch"
+    );
+}
+
 #[test]
 fn backoff_deadline_grows_and_caps() {
     // attempt 1 → 2 min, attempt 2 → 4 min, ... capped at 1 hour.
@@ -264,4 +321,72 @@ fn backoff_deadline_grows_and_caps() {
     let now = chrono::Utc::now();
     assert!(parse(&a10) <= now + chrono::Duration::hours(1));
     assert!(parse(&a10) >= now + chrono::Duration::minutes(59));
+}
+
+// ── C19: the claim is exclusive and uses the `delivering` state ─────
+
+/// A claimed row is marked `delivering` for the whole delivery, which is the
+/// state the module doc has always promised (`pending -> delivering ->
+/// delivered`) and which the CHECK constraint already allowed. Before C19 the
+/// SQLite drainer left the row `pending` across `deliver_fn`, so a second
+/// drainer overlapping that window selected and delivered the SAME row.
+///
+/// This asserts the observable half of that: while a delivery is in flight the
+/// row is NOT `pending`, so a concurrent drainer's `WHERE status = 'pending'`
+/// cannot see it.
+#[tokio::test]
+async fn a_row_is_delivering_while_its_delivery_is_in_flight() {
+    let conn = shared_conn();
+    let id = {
+        let db = conn.lock().await;
+        enqueue_sqlite(&db, "email_report", r#"{"to":"a@b.c"}"#, 5, 0).unwrap()
+    };
+
+    // A deliver_fn that blocks until released, so the drain is still in
+    // flight when we inspect the row.
+    let (tx, rx) = tokio::sync::oneshot::channel::<()>();
+    let rx = std::sync::Arc::new(tokio::sync::Mutex::new(Some(rx)));
+    let (entered_tx, entered_rx) = tokio::sync::oneshot::channel::<()>();
+    let entered_tx = std::sync::Arc::new(tokio::sync::Mutex::new(Some(entered_tx)));
+
+    let deliver = {
+        let rx = rx.clone();
+        let entered_tx = entered_tx.clone();
+        move |_c: SharedSqliteConn, _t: &str, _p: &str| {
+            let rx = rx.clone();
+            let entered_tx = entered_tx.clone();
+            Box::pin(async move {
+                if let Some(tx) = entered_tx.lock().await.take() {
+                    let _ = tx.send(());
+                }
+                if let Some(rx) = rx.lock().await.take() {
+                    let _ = rx.await;
+                }
+                Ok(())
+            }) as DeliverFuture
+        }
+    };
+
+    let conn_for_drain = conn.clone();
+    let drain = tokio::spawn(async move { drain_sqlite(&conn_for_drain, &deliver).await });
+
+    // Wait until the handler is running, i.e. the row has been claimed.
+    let _ = entered_rx.await;
+    {
+        let db = conn.lock().await;
+        assert_eq!(
+            get_entry(&db, &id).status,
+            "delivering",
+            "a claimed row must not still read as pending while its delivery runs"
+        );
+    }
+
+    // Release and let it settle.
+    let _ = tx.send(());
+    let processed = drain.await.expect("drain task").expect("drain ok");
+    assert_eq!(processed, 1);
+    {
+        let db = conn.lock().await;
+        assert_eq!(get_entry(&db, &id).status, "delivered");
+    }
 }

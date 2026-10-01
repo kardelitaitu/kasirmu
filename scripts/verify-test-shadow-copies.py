@@ -198,6 +198,18 @@ def collect_prod():
             for fn in files:
                 if not fn.endswith((".ts", ".tsx")):
                     continue
+                # A TEST file is never production, wherever it sits. Skipping the
+                # `__tests__` DIRECTORY alone missed the three suites that live
+                # beside their subject (`features/sales/payment/CardTenderPanel.test.tsx`,
+                # `useEdcTenderPhase.test.ts`, `usePosShifts.availability.test.tsx`):
+                # their directory is named after the feature, so they were collected
+                # as production and every sibling test declaring the same generic
+                # helper name (`Wrapper`, the LocalizationProvider wrapper) was
+                # reported as a shadow of CardTenderPanel.test.tsx — 14 findings,
+                # all test-vs-test, none of them a copy of production code. Same
+                # suffix test scripts/verify-feature-registry.py:201 already uses.
+                if fn.endswith((".test.ts", ".test.tsx", ".spec.ts", ".spec.tsx")):
+                    continue
                 path = os.path.join(root, fn)
                 text = read(path)
                 for m in FN_DEF.finditer(text):

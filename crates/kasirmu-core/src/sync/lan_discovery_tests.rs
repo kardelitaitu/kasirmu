@@ -71,7 +71,7 @@ fn build_service_info_empty_terminal_id() {
     let info = d.build_service_info().unwrap();
     // Empty terminal_id produces hostname ".local." — mdns-sd accepts
     // it but the service instance name will be empty.
-    assert!(info.get_fullname().starts_with("."));
+    assert!(info.get_fullname().starts_with('.'));
 }
 
 #[test]

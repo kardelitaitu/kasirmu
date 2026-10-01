@@ -164,6 +164,22 @@ def check_contract_copies() -> tuple[int, bool]:
     return 1, False
 
 
+def expected_kinds(contract: dict) -> list[str]:
+    """The node kinds a corpus must probe, derived from the contract ALONE.
+
+    Split out of check_corpus so a self-test can drive it with a dict and never touch
+    the matrix. The subtlety it encodes: the bare "workspace" kind is NOT probed on its
+    own -- the corpus probes one kind per endpoint workspace type, named
+    "workspace:<key>" -- so a flat filter alone would demand a kind the corpus is
+    never meant to contain, and skipping the expansion would demand nothing for the
+    endpoint types that DO need probing. Both halves are load-bearing and neither is
+    obvious from the call site, which is why it gets its own cases.
+    """
+    out = [k for k in contract.get("nodeKinds") or [] if k != "workspace"]
+    out += [f"workspace:{key}" for key in contract.get("endpointWorkspaceTypeKeys") or []]
+    return out
+
+
 def check_corpus(contract: dict) -> int:
     """Phase 2: the generated verdict corpus must match the contract's shape."""
     if not MATRIX.exists():
@@ -208,9 +224,8 @@ def check_corpus(contract: dict) -> int:
         )
 
     kinds = matrix.get("kinds") or []
-    expected_kinds = [k for k in contract.get("nodeKinds") or [] if k != "workspace"]
-    expected_kinds += [f"workspace:{key}" for key in contract.get("endpointWorkspaceTypeKeys") or []]
-    unprobed = [kind for kind in expected_kinds if kind not in kinds]
+    expected = expected_kinds(contract)
+    unprobed = [kind for kind in expected if kind not in kinds]
     if unprobed:
         problems.append(f"corpus does not probe declared kinds: {unprobed}")
 
@@ -278,5 +293,60 @@ def main() -> int:
     return copies or corpus
 
 
+def self_test() -> int:
+    """Liveness for expected_kinds(), the derivation phase 2's quiet leg rests on.
+
+    This gate runs in dev-ci (static-gates) and check.sh and had no test of any kind.
+    Phase 2 compares a GENERATED corpus against the contract; if the derived
+    "kinds that must be probed" list went wrong the gate would either demand a kind
+    the corpus is never meant to contain (noisy, at least visible) or demand nothing
+    for the endpoint workspace types that DO need probing (quiet -- the corpus would
+    look complete while proving nothing about the workspace types).
+
+    Pure: dicts in, list out. The matrix, the contract and the vendored copy are never
+    read, so this cannot damage the thing it polices.
+
+    Proven by mutation: dropping the `k != "workspace"` filter turns case 1 red.
+    """
+    bad: list[str] = []
+
+    def want(name: str, got, expect) -> None:
+        if got != expect:
+            bad.append(f"{name}: expected {expect!r}, got {got!r}")
+
+    # The load-bearing case: bare "workspace" is dropped, then re-added per endpoint
+    # key. Get either half wrong and this is the one that moves.
+    want("workspace is expanded, not filtered away",
+         expected_kinds({
+             "nodeKinds": ["store", "workspace", "product"],
+             "endpointWorkspaceTypeKeys": ["retail", "wholesale"],
+         }),
+         ["store", "product", "workspace:retail", "workspace:wholesale"])
+
+    # No endpoint keys means no workspace:<key> forms -- and, importantly, no bare
+    # "workspace" either.
+    want("no endpoint keys yields no workspace kinds",
+         expected_kinds({"nodeKinds": ["store", "workspace"]}),
+         ["store"])
+
+    # A contract with no nodeKinds at all must not invent any.
+    want("empty contract yields nothing",
+         expected_kinds({}), [])
+
+    # Absent keys are not an error: the corpus may predate the field.
+    want("missing keys are tolerated",
+         expected_kinds({"nodeKinds": ["store"]}), ["store"])
+    want("null lists are tolerated",
+         expected_kinds({"nodeKinds": None, "endpointWorkspaceTypeKeys": None}), [])
+
+    if bad:
+        print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
+        return 2
+    print("SELF-TEST OK (5 cases, no files touched)")
+    return 0
+
+
 if __name__ == "__main__":
+    if "--self-test" in sys.argv:
+        sys.exit(self_test())
     sys.exit(main())

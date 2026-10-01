@@ -36,6 +36,8 @@
 /* ── Card ────────────────────────────────────────────────────────── */
 
 .staff-login-card {
+  /* Prevent accidental text/image selection when clicking the card or dragging over the logo. */
+  user-select: none;
   position: relative;
   display: flex;
   flex-direction: column;
@@ -328,9 +330,10 @@
   color: var(--color-fg);
   text-align: center;
   letter-spacing: var(--tracking-wide);
-  transition:
-    border-color var(--duration-150) var(--ease-out),
-    outline var(--duration-150) var(--ease-out);
+  transition: border-color var(--duration-150) var(--ease-out);
+  /* outline deliberately NOT transitioned — animating it causes the ring to
+     flash through the browser default (white/transparent) before reaching
+     --color-accent. The ring appears instantly at the accent color instead. */
 }
 
 /* The username text field keeps its focus ring. The ring-free decision on this
@@ -408,12 +411,11 @@
   border: 2px solid var(--color-accent);
   border-top-color: transparent;
   border-radius: var(--radius-full);
-  animation: staff-login-spin var(--duration-600) var(--ease-linear) infinite;
+  /* Renamed to login-spin — defined inside prefers-reduced-motion so it
+     respects the user's motion preference (see animation block above). */
+  animation: login-spin var(--duration-600) var(--ease-linear) infinite;
 }
 
-@keyframes staff-login-spin {
-  to { transform: rotate(360deg); }
-}
 
 /* ── PIN section ─────────────────────────────────────────────────── */
 
@@ -679,71 +681,6 @@
   pointer-events: none;
 }
 
-/* ── Connection status pills (matches ConnectionStatus.css) ───── */
-
-.connection-status {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-1) var(--space-2);
-  background: var(--color-bg-elevated);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  font-size: var(--text-xs);
-  color: var(--color-fg-secondary);
-  opacity: 0.8;
-  appearance: none;
-  transition: all var(--duration-200) var(--ease-out);
-  user-select: none;
-}
-
-.connection-status:hover {
-  opacity: 1;
-  background: var(--color-bg-hover, var(--color-bg-surface));
-  border-color: var(--color-border-hover);
-}
-
-.status-indicator {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-
-.status-indicator.checking {
-  background-color: var(--color-warning);
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  .status-indicator.checking {
-    animation: cs-pulse var(--duration-1500) infinite var(--ease-in-out);
-  }
-}
-
-.status-indicator.online {
-  background-color: var(--color-success);
-  box-shadow: var(--shadow-glow-success);
-}
-
-.status-indicator.offline {
-  background-color: var(--color-danger);
-  box-shadow: var(--shadow-glow-danger);
-}
-
-.connection-label {
-  font-weight: 500;
-  letter-spacing: 0.5px;
-  text-transform: uppercase;
-}
-
-.connection-latency {
-  font-family: var(--font-mono);
-  color: var(--color-fg-secondary);
-@keyframes cs-pulse {
-  0% { opacity: 0.5; }
-  50% { opacity: 1; }
-  100% { opacity: 0.5; }
-}
 
 /* ── Short viewports: the card releases its fixed 540px floor ───────
  * ADR-0001 Slice 6. Ported from this screen's sibling, SessionLockScreen.css,

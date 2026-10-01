@@ -27,6 +27,7 @@ export function registerStaffFeature() {
     requiredRole: 'manager',
     requiredPermission: 'staff:read',
     fullscreen: true,
+    screenGroup: 'staff-management',
   });
   registerPage({
     route: 'roles',
@@ -35,6 +36,7 @@ export function registerStaffFeature() {
     requiredRole: 'manager',
     requiredPermission: 'staff:manage_roles',
     fullscreen: true,
+    screenGroup: 'staff-management',
   });
   // The trash is a third tab on the same page and the same component, gated on
   // the key its commands enforce. Deleted identities stay readable here, so the
@@ -47,5 +49,6 @@ export function registerStaffFeature() {
     requiredRole: 'manager',
     requiredPermission: 'staff:delete',
     fullscreen: true,
+    screenGroup: 'staff-management',
   });
 }

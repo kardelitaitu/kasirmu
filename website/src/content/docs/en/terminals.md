@@ -2,7 +2,7 @@
 title: Terminals
 description: Register and configure the devices that run kasir.mu.
 category: guides
-order: 8
+order: 5
 updated: "2026-09-09"
 ---
 
@@ -51,23 +51,41 @@ their spot needs.
 
 ## Device binding
 
-Bind a terminal to a store and a workspace instance so the device boots
+Bind a terminal to a location and a workspace instance so the device boots
 straight into that screen instead of the picker — a kitchen screen that is
-always the Kitchen Display, a counter that is always the Store POS. Clearing
+always the Kitchen Display, a counter that is always the Retail POS. Clearing
 the binding returns the device to the workspace picker.
 
 ## Terminal status
 
-The multi-store dashboard tracks **active**, **online**, and **total**
-terminals and shows terminal status per store, so you can see at a glance
+The multi-location dashboard tracks **active**, **online**, and **total**
+terminals and shows terminal status per location, so you can see at a glance
 which devices are up and working. Devices report in when they reconnect, and
 a terminal that has been offline shows up here before it causes a surprise
 at the counter.
 
+## Diagnostics
+
+**Settings → System → System Diagnostics** shows why each feature is
+available or locked for you right now — the same gates the app enforces,
+with the reason named. It is read-only and works offline. If a feature is
+silent or unavailable on a device, start there: it will say which gate is
+blocking it rather than leaving you to guess.
+
+Two gotchas worth knowing up front:
+
+- **Test prints use the last-saved layout.** In the Restaurant POS receipt
+  settings, the test-print button prints your *saved* layout — save your
+draft first or the test shows the old one.
+- **A terminal that looks offline** (silent printer, no signal) almost
+always needs a reconnect rather than a re-register. Check the terminal's
+name and its device identifier (hostname or MAC) and its online/active
+status in the dashboard before deleting and re-adding it.
+
 ## Terminals in the topology
 
-Terminals appear in the topology editor alongside your stores and
+Terminals appear in the topology editor alongside your locations and
 warehouses, and the layout syncs to every device on reconnect. See
-[Stores & Topology](../stores/) and [Workspaces](../workspaces/).
+[Locations & Topology](../location/) and [Workspaces](../workspaces/).
 
 > last audited 09-09-26 by docs-auditor

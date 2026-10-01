@@ -1,9 +1,9 @@
 <#
 .SYNOPSIS
-    OZ-POS Flamegraph Profiling Helper (Windows/PowerShell)
+    kasir.mu Flamegraph Profiling Helper (Windows/PowerShell)
 
 .DESCRIPTION
-    Wraps cargo-flamegraph with sane defaults for OZ-POS targets.
+    Wraps cargo-flamegraph with sane defaults for kasir.mu targets.
     Supports profiling benchmarks, binaries, and running processes by PID.
 
 .PARAMETER Bench
@@ -13,8 +13,10 @@
 .PARAMETER Binary
     Binary package name to profile (e.g. "kasirmu-app", "kasirmu-cloud", "kasirmu-mobile").
 
-.PARAMETER PID
-    Process ID of a running OZ-POS process to attach to. Requires Administrator privileges.
+.PARAMETER ProcessId
+    Process ID of a running kasir.mu process to attach to. Requires Administrator
+    privileges. Invoked as -PID, which is an alias rather than the parameter name;
+    see the note at the declaration.
 
 .PARAMETER Frequency
     Sampling frequency in Hz (default: 997, the prime-number default suggested by perf).
@@ -57,7 +59,14 @@ param(
     [string]$Binary = "",
 
     [Parameter(ParameterSetName = 'PID')]
-    [int]$PID = 0,
+    # NOT $PID. PowerShell defines $PID as a READ-ONLY automatic variable holding
+    # the current process id, so a parameter by that name cannot be bound at all --
+    # every invocation died with "Cannot overwrite variable PID because it is
+    # read-only or constant" before this script reached its first line of work.
+    # The alias keeps the documented call `profile.ps1 -PID 1234` working, which is
+    # what docs/benchmarks/baseline-2026-07-20.md:139 tells a reader to type.
+    [Alias('PID')]
+    [int]$ProcessId = 0,
 
     [Parameter(ParameterSetName = 'PID')]
     [Parameter(ParameterSetName = 'Bench')]
@@ -88,7 +97,12 @@ if ($Help -or $PSBoundParameters.Count -eq 0) {
 
 if ($List) {
     Write-Host "Available benchmark targets (crates/kasirmu-core/benches/):" -ForegroundColor Cyan
-    $benchDir = Join-Path $PSScriptRoot ".." "crates" "kasirmu-core" "benches"
+    # One -Path argument. Join-Path with ".." and more segments produces a CHILD PATH
+    # object whose ToString is bare "crates", and Get-ChildItem then receives three
+    # positional arguments instead of one -- so this listing failed with "A positional
+    # parameter cannot be found that accepts argument 'crates'" every time, which is
+    # the first thing docs/benchmarks/baseline-2026-07-20.md:99 tells a reader to run.
+    $benchDir = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot "..\crates\kasirmu-core\benches"))
     $benches = Get-ChildItem -Path $benchDir -Filter "*.rs" | Select-Object -ExpandProperty BaseName
     foreach ($b in $benches | Sort-Object) {
         Write-Host "  - $b" -ForegroundColor Green
@@ -99,7 +113,7 @@ if ($List) {
 }
 
 # ── Validate parameters ────────────────────────────────────────────────
-$hasTarget = ($Bench -ne "") -or ($Binary -ne "") -or ($PID -gt 0)
+$hasTarget = ($Bench -ne "") -or ($Binary -ne "") -or ($ProcessId -gt 0)
 if (-not $hasTarget) {
     Write-Host "ERROR: Specify one of -Bench, -Binary, or -PID." -ForegroundColor Red
     Write-Host "Run with -Help for usage details." -ForegroundColor Yellow
@@ -141,14 +155,14 @@ $outputFile = if ($Output -ne "") {
     "flamegraph-$Bench-$timestamp.svg"
 } elseif ($Binary -ne "") {
     "flamegraph-$Binary-$timestamp.svg"
-} elseif ($PID -gt 0) {
-    "flamegraph-pid$PID-$timestamp.svg"
+} elseif ($ProcessId -gt 0) {
+    "flamegraph-pid$ProcessId-$timestamp.svg"
 } else {
     "flamegraph-$timestamp.svg"
 }
 
 # ── Build cargo-flamegraph command ─────────────────────────────────────
-if ($PID -gt 0 -and $Root) {
+if ($ProcessId -gt 0 -and $Root) {
     Write-Host ""
     Write-Host "NOTE: PID profiling requires Administrator privileges." -ForegroundColor Yellow
     Write-Host "      Restart this script in an elevated PowerShell if needed." -ForegroundColor Yellow
@@ -157,7 +171,7 @@ if ($PID -gt 0 -and $Root) {
 
 Write-Host ""
 Write-Host "=============================================" -ForegroundColor Cyan
-Write-Host " OZ-POS Flamegraph Profiling" -ForegroundColor Cyan
+Write-Host " kasir.mu Flamegraph Profiling" -ForegroundColor Cyan
 Write-Host "=============================================" -ForegroundColor Cyan
 
 # Build argument array for cargo flamegraph (safe splatting, no Invoke-Expression)
@@ -173,13 +187,13 @@ if ($Bench -ne "") {
     Write-Host "  Freq:    $Frequency Hz" -ForegroundColor White
     Write-Host "  Output:  $outputFile" -ForegroundColor White
     $flamegraphArgs += '--bin', "$Binary"
-} elseif ($PID -gt 0) {
-    Write-Host "  Target:  PID $PID" -ForegroundColor White
+} elseif ($ProcessId -gt 0) {
+    Write-Host "  Target:  PID $ProcessId" -ForegroundColor White
     Write-Host "  Freq:    $Frequency Hz" -ForegroundColor White
     Write-Host "  Output:  $outputFile" -ForegroundColor White
     # On Windows, flamegraph --pid uses ETW (Event Tracing for Windows).
     # Requires Administrator privileges.
-    $flamegraphArgs += '--pid', "$PID"
+    $flamegraphArgs += '--pid', "$ProcessId"
 }
 
 $displayCmd = "cargo $($flamegraphArgs -join ' ')"
@@ -209,7 +223,7 @@ if ($LASTEXITCODE -eq 0) {
     Write-Host "ERROR: Flamegraph generation failed (exit code $LASTEXITCODE)." -ForegroundColor Red
     Write-Host ""
     Write-Host "Common issues:" -ForegroundColor Yellow
-    Write-Host "  - Missing debug symbols: Build with `profile.release.debug = 1`" -ForegroundColor Yellow
+    Write-Host '  - Missing debug symbols: Build with `profile.release.debug = 1`' -ForegroundColor Yellow
     Write-Host "  - PID profiling requires Administrator mode" -ForegroundColor Yellow
     Write-Host "  - Windows: Ensure Debugging Tools for Windows are installed" -ForegroundColor Yellow
     Write-Host "    (xperf.exe needs to be on PATH from Windows SDK or WPT)" -ForegroundColor Yellow

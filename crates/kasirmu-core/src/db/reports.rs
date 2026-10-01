@@ -3,10 +3,10 @@
 //! # Decomposition (13-09-26)
 //!
 //! The 1,314-line monolith split along its real seams into submodules:
-//! [`datetime`] (the REP-03 timezone/date-bound contract), [`revenue`]
-//! (daily/weekly/monthly aggregation), [`sales_summary`] (operational
+//! `datetime` (the REP-03 timezone/date-bound contract), `revenue`
+//! (daily/weekly/monthly aggregation), `sales_summary` (operational
 //! rollups: heatmap, tender split, voids, baskets, customers, discounts,
-//! table activity) and [`product_sales`] (top products, category
+//! table activity) and `product_sales` (top products, category
 //! breakdown, low-stock alerts and events, inventory turnover/trend).
 //! This file keeps only the module wiring and the re-exports callers
 //! resolve through it — `kasirmu_core::db::reports::<Name>` paths did not

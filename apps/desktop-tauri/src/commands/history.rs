@@ -23,8 +23,9 @@ use crate::error::AppError;
 use crate::state::AppState;
 
 pub use kasirmu_bridge::history::{
-    EodReport, PaymentBreakdown, SaleDetail, SaleListItem, SaleListResponse,
+    EodReport, PaymentBreakdown, SaleDetail, SaleListItem, SaleListResponse, StampFakturPajakArgs,
 };
+pub use kasirmu_core::db::faktur_pajak::FakturPajakInfo;
 
 /// List all sales for the store resolved from a session token.
 ///
@@ -98,6 +99,32 @@ pub async fn export_eod_report_scoped(
 ) -> Result<EodReport, AppError> {
     let ctx = state.bridge_ctx();
     kasirmu_bridge::history::export_eod_report_scoped(&ctx, &session_token)
+        .await
+        .map_err(Into::into)
+}
+
+/// Stamp a DJP-approved NSFP onto a completed sale.
+#[tauri::command]
+pub async fn stamp_faktur_pajak_scoped(
+    session_token: String,
+    args: StampFakturPajakArgs,
+    state: State<'_, AppState>,
+) -> Result<FakturPajakInfo, AppError> {
+    let ctx = state.bridge_ctx();
+    kasirmu_bridge::history::stamp_faktur_pajak_scoped(&ctx, &session_token, args)
+        .await
+        .map_err(Into::into)
+}
+
+/// Create a Faktur Pengganti for an existing e-Faktur on a completed sale.
+#[tauri::command]
+pub async fn create_faktur_pengganti_scoped(
+    session_token: String,
+    sale_id: String,
+    state: State<'_, AppState>,
+) -> Result<FakturPajakInfo, AppError> {
+    let ctx = state.bridge_ctx();
+    kasirmu_bridge::history::create_faktur_pengganti_scoped(&ctx, &session_token, &sale_id)
         .await
         .map_err(Into::into)
 }

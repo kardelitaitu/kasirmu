@@ -18,6 +18,8 @@ vi.mock('@/api/sales', () => ({
   printSalesReceipt: vi.fn(),
   listRefundsScoped: vi.fn(),
   voidSaleScoped: vi.fn(),
+  stampFakturPajakScoped: vi.fn(),
+  createFakturPenggantiScoped: vi.fn(),
 }));
 
 vi.mock('@/api/staff', () => ({
@@ -48,7 +50,15 @@ vi.mock('@/features/sales/RefundModal', () => ({
 }));
 
 import SalesHistoryScreen from '@/features/sales/SalesHistoryScreen';
-import { listSales, getSale, listSalesScoped, getSaleScoped, listRefundsScoped } from '@/api/sales';
+import {
+  listSales,
+  getSale,
+  listSalesScoped,
+  getSaleScoped,
+  listRefundsScoped,
+  stampFakturPajakScoped,
+  createFakturPenggantiScoped,
+} from '@/api/sales';
 import { listStaffScoped } from '@/api/staff';
 import { getSaleLineMarginsScoped } from '@/api/reports';
 
@@ -57,6 +67,8 @@ const mockGetSale = getSale as ReturnType<typeof vi.fn>;
 const mockListSalesScoped = listSalesScoped as ReturnType<typeof vi.fn>;
 const mockGetSaleScoped = getSaleScoped as ReturnType<typeof vi.fn>;
 const mockListRefunds = listRefundsScoped as ReturnType<typeof vi.fn>;
+const mockStampFakturPajakScoped = stampFakturPajakScoped as ReturnType<typeof vi.fn>;
+const mockCreateFakturPenggantiScoped = createFakturPenggantiScoped as ReturnType<typeof vi.fn>;
 const mockListStaff = listStaffScoped as ReturnType<typeof vi.fn>;
 const mockGetSaleLineMargins = getSaleLineMarginsScoped as ReturnType<typeof vi.fn>;
 
@@ -498,7 +510,7 @@ describe('SalesHistoryScreen', () => {
       mockListStaff.mockResolvedValue([]);
       renderWithProvidersSync(<SalesHistoryScreen />, salesFtl, sharedFtl);
       await waitFor(() => {
-        expect(mockListSalesScoped).toHaveBeenCalledWith('session-1');
+        expect(mockListSalesScoped).toHaveBeenCalledWith('session-1', 500);
       });
       expect(mockListSales).not.toHaveBeenCalled();
     });
@@ -525,5 +537,325 @@ describe('SalesHistoryScreen', () => {
       });
       expect(mockGetSale).not.toHaveBeenCalled();
     });
+  });
+
+  describe('Phase 6: e-Faktur integration (DJP Coretax / PER-11/PJ/2025)', () => {
+    it('renders e-Faktur badge on sales list item with fakturPajak', async () => {
+      const salesWithFp = [
+        {
+          ...sampleSales[0],
+          fakturPajak: '01002600000000123',
+        },
+      ];
+      mockListSalesScoped.mockResolvedValue({ sales: salesWithFp, salesHistoryCapped: false });
+      mockListStaff.mockResolvedValue([]);
+      renderWithProvidersSync(<SalesHistoryScreen />, salesFtl, sharedFtl);
+      await waitFor(() => {
+        expect(screen.getByText('e-Faktur')).toBeInTheDocument();
+      });
+    });
+
+    it('displays e-Faktur compliance info and creates faktur pengganti', async () => {
+      const user = userEvent.setup();
+      const fpDetail = {
+        ...sampleDetail,
+        fakturPajak: {
+          nsfp: '2600000000123',
+          kodeTransaksi: '01',
+          status: '00',
+          formatted: '01002600000000123',
+        },
+      };
+      mockListSalesScoped.mockResolvedValue({ sales: sampleSales, salesHistoryCapped: false });
+      mockListStaff.mockResolvedValue([]);
+      mockGetSaleScoped.mockResolvedValue(fpDetail);
+      mockListRefunds.mockResolvedValue([]);
+      mockCreateFakturPenggantiScoped.mockResolvedValue({
+        nsfp: '2600000000123',
+        kodeTransaksi: '01',
+        status: '01',
+        formatted: '01012600000000123',
+      });
+
+      renderWithProvidersSync(<SalesHistoryScreen />, salesFtl, sharedFtl);
+      await waitFor(() => {
+        expect(screen.getAllByText('View').length).toBeGreaterThan(0);
+      });
+      await user.click(screen.getAllByText('View')[0]!);
+
+      await waitFor(() => {
+        expect(screen.getByText('01002600000000123')).toBeInTheDocument();
+        expect(screen.getByText('Normal')).toBeInTheDocument();
+        expect(screen.getByText('Create Faktur Pengganti')).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByText('Create Faktur Pengganti'));
+      await waitFor(() => {
+        expect(mockCreateFakturPenggantiScoped).toHaveBeenCalledWith('session-1', sampleDetail.id);
+      });
+    });
+
+    it('stamps e-Faktur NSFP on unstamped sale', async () => {
+      const user = userEvent.setup();
+      mockListSalesScoped.mockResolvedValue({ sales: sampleSales, salesHistoryCapped: false });
+      mockListStaff.mockResolvedValue([]);
+      mockGetSaleScoped.mockResolvedValue(sampleDetail);
+      mockListRefunds.mockResolvedValue([]);
+      mockStampFakturPajakScoped.mockResolvedValue({
+        nsfp: '2600000000999',
+        kodeTransaksi: '01',
+        status: '00',
+        formatted: '01002600000000999',
+      });
+
+      renderWithProvidersSync(<SalesHistoryScreen />, salesFtl, sharedFtl);
+      await waitFor(() => {
+        expect(screen.getAllByText('View').length).toBeGreaterThan(0);
+      });
+      await user.click(screen.getAllByText('View')[0]!);
+
+      await waitFor(() => {
+        expect(screen.getByText('Belum ada e-Faktur (Unstamped)')).toBeInTheDocument();
+        expect(screen.getByText('Input e-Faktur NSFP')).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByText('Input e-Faktur NSFP'));
+      expect(screen.getByText('Input e-Faktur NSFP (DJP Coretax)')).toBeInTheDocument();
+
+      const nsfpInput = screen.getByLabelText('13-Digit NSFP');
+      await user.type(nsfpInput, '2600000000999');
+
+      await user.click(screen.getByRole('button', { name: 'Stamp e-Faktur' }));
+      await waitFor(() => {
+        expect(mockStampFakturPajakScoped).toHaveBeenCalledWith('session-1', {
+          saleId: sampleDetail.id,
+          nsfp: '2600000000999',
+          kodeTransaksi: '01',
+        });
+      });
+    });
+  });
+
+  // ── The refund read that did not answer ─────────────────────
+  //
+  // listRefundsScoped(...).catch(() => []) reported a FAILED read as "this sale
+  // was never refunded". The empty case is not a harmless mistake here: it
+  // hides the Refunded badge and the Previous Refunds section (the evidence), while
+  // the Refund button -- gated on sale status and session, never on this list --
+  // stays enabled. create_refund bounds a refund by the cumulative total already
+  // refunded (crates/kasirmu-core/src/db/refunds.rs:119-143), so the attempt is
+  // refused for a reason the operator cannot see on screen.
+
+  /** Open the detail modal for the first sample sale. */
+  async function openFirstSaleDetail() {
+    const user = userEvent.setup();
+    mockListSalesScoped.mockResolvedValue({ sales: [sampleSales[0]!], salesHistoryCapped: false });
+    mockGetSaleScoped.mockResolvedValue(sampleDetail);
+    renderWithProvidersSync(<SalesHistoryScreen />, salesFtl, sharedFtl);
+
+    await waitFor(() => {
+      expect(screen.getAllByText('View').length).toBeGreaterThan(0);
+    });
+    await user.click(screen.getAllByText('View')[0]!);
+    return user;
+  }
+
+  it('does not claim a sale was never refunded when the refund read failed', async () => {
+    mockListRefunds.mockRejectedValue(new Error('invoke failed'));
+    await openFirstSaleDetail();
+
+    // Wait for the ARRIVING state, never for an absence: before the detail opens,
+    // neither the badge nor the section is on screen either, so polling for their
+    // absence would pass without exercising anything.
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'Refunds for this sale could not be loaded',
+      );
+    });
+    // The badge claim AND the evidence section must both be absent, not merely
+    // accompanied by an error: each is gated on its own `!refundsUnknown`, so a
+    // fix that removed only one of the two gates passes this line for the other.
+    expect(screen.queryByText('Refunded')).not.toBeInTheDocument();
+    expect(screen.queryByText('Previous Refunds')).not.toBeInTheDocument();
+    // The action that would be refused for an invisible reason is not offered.
+    expect(screen.queryByText('Refund')).not.toBeInTheDocument();
+    // The detail itself still rendered -- only the refund read was unanswered.
+    // (The total label is split across elements by its <Localized> wrapper, so the
+    // footer action is the stable thing to anchor on.)
+    expect(screen.getByRole('button', { name: /reprint/i })).toBeInTheDocument();
+  });
+
+  it('offers the refund action again once a retry answers with no refunds', async () => {
+    mockListRefunds.mockRejectedValue(new Error('invoke failed'));
+    const user = await openFirstSaleDetail();
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'Refunds for this sale could not be loaded',
+      );
+    });
+
+    // The retry succeeds and answers [] -- a real answer now, not a swallowed throw.
+    mockListRefunds.mockResolvedValue([]);
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Refund')).toBeInTheDocument();
+    });
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    // Absence becomes a fact only now: nothing was refunded, and a read said so.
+    expect(screen.queryByText('Refunded')).not.toBeInTheDocument();
+    expect(screen.queryByText('Previous Refunds')).not.toBeInTheDocument();
+  });
+
+  // ── A margin read that did not answer ────────────────────────────────
+  //
+  // getSaleLineMarginsScoped(...).catch(() => []) reported a FAILED read as
+  // 'this sale has no line costs'. The Cost / Margin / Margin % columns are gated
+  // on the LENGTH of that list, so a failed read deleted three columns of a
+  // manager's profitability read in silence. The gap is not a formatting detail
+  // either: query_sale_lines_with_margin prefers the per-line cost snapshot and
+  // falls back to the product's CURRENT cost and then to 0
+  // (crates/kasirmu-reporting/src/margin.rs:93), so a genuinely unknown cost is
+  // itself a number that reads as a real one.
+
+  const oneMargin = [{
+    sale_line_id: 'line-1', sku: 'SKU-001', name: 'Widget', qty: 2,
+    unit_price_minor: 25000, line_total_minor: 50000,
+    unit_cost_minor: 15000, margin_minor: 20000, margin_percent: 40,
+  }];
+
+  it('does not hide the margin columns silently when the margin read failed', async () => {
+    mockListRefunds.mockResolvedValue([]);
+    mockGetSaleLineMargins.mockRejectedValue(new Error('invoke failed'));
+    await openFirstSaleDetail();
+
+    // Anchor on the ARRIVING alert, never on the absence of the columns: before
+    // the detail opens the table has no columns either, so a poll for their
+    // absence would pass without exercising anything.
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'Cost and margin for this sale could not be loaded',
+      );
+    });
+    // The columns stay gone -- a dash in a cost column would read as a cheaper
+    // line -- but the absence is now named rather than implied.
+    expect(screen.queryByText('Cost')).not.toBeInTheDocument();
+    expect(screen.queryByText('Margin %')).not.toBeInTheDocument();
+    // And only the margin read was unanswered: the detail itself is intact.
+    expect(screen.getByText('SKU-001')).toBeInTheDocument();
+  });
+
+  it('shows the margin columns again once a retry answers', async () => {
+    mockListRefunds.mockResolvedValue([]);
+    mockGetSaleLineMargins.mockRejectedValueOnce(new Error('invoke failed'));
+    const user = await openFirstSaleDetail();
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'Cost and margin for this sale could not be loaded',
+      );
+    });
+
+    mockGetSaleLineMargins.mockResolvedValue(oneMargin);
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Cost')).toBeInTheDocument();
+    });
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.getByText('Rp 15.000')).toBeInTheDocument();
+  });
+
+  it('warns that an export dropped the cost and margin for the sales it could not read', async () => {
+    const user = userEvent.setup();
+    mockListSalesScoped.mockResolvedValue({ sales: [sampleSales[0]!], salesHistoryCapped: false });
+    mockGetSaleLineMargins.mockRejectedValue(new Error('invoke failed'));
+    const createUrl = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:fake');
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    renderWithProvidersSync(<SalesHistoryScreen />, salesFtl, sharedFtl);
+
+    await waitFor(() => expect(screen.getByText('Export CSV')).toBeInTheDocument());
+    await user.click(screen.getByRole('button', { name: 'Export CSV' }));
+
+    // The file still lands -- the summary rows are worth having -- and the gap in
+    // it is named, because a blank cost cell in a CSV reads as a cost of zero.
+    await waitFor(() => expect(clickSpy).toHaveBeenCalled());
+    await waitFor(() => {
+      expect(screen.getByText(/Cost and margin could not be read for 1 sale/)).toBeInTheDocument();
+    });
+    createUrl.mockRestore();
+    clickSpy.mockRestore();
+  });
+
+  // MUTATION 1: drop the dash. `staffUnknown` is set on every settled read, so the
+  //   flag is the only thing separating 'the roster is empty' from 'we could not
+  //   ask'. Expected: BOTH new cases fail -- the dash disappears, the roster recovers.
+  // MUTATION 2: keep the flag but delete the ALERT. Restores the original
+  //   `[]`-on-failure shape minus the naming: truncated ids return to the table and
+  //   the filter reads as a single-cashier store with nothing on screen to say so.
+  //   Expected: the first new case fails, because nothing announces the gap.
+  // MUTATION 3: the alert without the dash. Proves the DASH is load-bearing, not
+  //   just the alert -- the same question the refund and margin blocks answered here.
+  //   Expected: the first new case fails on `user-1` being back on screen.
+
+  // ── The roster read that did not answer ─────────────────────
+  //
+  // listStaffScoped(sessionToken).catch(() => []) reported a FAILED read as
+  // 'this store has no other cashiers'. That is a claim about the WORLD, and one
+  // list feeds three of them on this screen: the Cashier filter, every name in the
+  // table, and the cashier column of the CSV export. A refused read is an EXPECTED
+  // outcome, not a malfunction -- list_staff_scoped requires permissions::STAFF_READ
+  // (crates/kasirmu-bridge/src/staff.rs:349), so a session allowed to read sales
+  // history can still be refused the roster.
+
+  it('says the roster is unknown instead of claiming a single-cashier store', async () => {
+    mockListSalesScoped.mockResolvedValue({ sales: [sampleSales[0]!], salesHistoryCapped: false });
+    mockListStaff.mockRejectedValue(new Error('permission denied'));
+    renderWithProvidersSync(<SalesHistoryScreen />, salesFtl, sharedFtl);
+
+    // Anchor on the ARRIVING alert, never on an absence: while `loading` is true
+    // neither the alert nor the names are on screen, so a poll for their absence
+    // would pass without exercising anything.
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'Cashier names could not be loaded',
+      );
+    });
+    // The name column must NOT be a truncated id: 'user-1'.slice(0, 8) is a
+    // different string that looks like a real name, and it reaches the export too.
+    expect(screen.queryByText('user-1')).not.toBeInTheDocument();
+    expect(screen.queryByText('Alice')).not.toBeInTheDocument();
+    // The sales themselves are unaffected -- only the roster read was unanswered.
+    expect(screen.getAllByText('View').length).toBeGreaterThan(0);
+  });
+
+  it('names the cashiers again once a retry answers', async () => {
+    const user = userEvent.setup();
+    mockListSalesScoped.mockResolvedValue({ sales: [sampleSales[0]!], salesHistoryCapped: false });
+    mockListStaff.mockRejectedValueOnce(new Error('permission denied'));
+    mockListStaff.mockResolvedValue(sampleStaff);
+    const { container } = renderWithProvidersSync(<SalesHistoryScreen />, salesFtl, sharedFtl);
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'Cashier names could not be loaded',
+      );
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
+
+    await waitFor(() => {
+      // Alice is on screen TWICE once the roster answers -- in the filter option
+      // and in the table cell -- so anchor on the CELL, which is the claim under
+      // test, rather than a bare getByText that throws on the second match.
+      const cells = container.querySelectorAll('.sales-history-cell-cashier');
+      expect(cells.length).toBeGreaterThan(0);
+      expect(cells[0]!.textContent).toBe('Alice');
+    });
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    // The filter is populated again, not merely the table.
+    expect(screen.getByRole('option', { name: 'Bob' })).toBeInTheDocument();
   });
 });

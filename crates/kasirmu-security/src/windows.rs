@@ -1,5 +1,5 @@
 /*
-last audited DD-MM-YY by DSH-Agent
+last audited (date unknown) by DSH-Agent
 crate: kasirmu-security (windows) | status: SAFE | lint: CLEAN
 findings: 8 unsafe blocks (not 6 — prior stamp miscount) — all with SAFETY comments (CredReadW, GetLastError×3, from_raw_parts+CredFree, zeroed FILETIME, CredWriteW, CredDeleteW). SEC-3 FIXED — zero-size CredentialBlob no longer passes a potentially-null pointer to from_raw_parts (uses &[] instead). CredFree called on every path. Module-level #[allow(unsafe_code)] is necessary for Win32 FFI; crate root #[deny(unsafe_code)] holds for all other files.
 next: none — SEC-3 closed | perf: FFI overhead negligible
@@ -146,6 +146,12 @@ impl Keyring for WindowsCredentialManager {
             )));
         }
         Ok(true)
+    }
+
+    /// Credential Manager persists across restarts, so a generated key survives
+    /// (C1 hazard H3). Opting in explicitly is the trait's fail-closed contract.
+    fn is_durable(&self) -> bool {
+        true
     }
 
     // `rotate_key` and `key_created_at` use the default implementations

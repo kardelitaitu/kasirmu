@@ -134,30 +134,34 @@ export function OpenBillsPanel({
               </button>
             </div>
             <div className="pos-held-list-body">
-              {openBills.length === 0 ? (
-                <p className="pos-held-list-empty">{l10n.getString('pos-open-bills-empty')}</p>
-              ) : (
-                openBills.map((ob) => (
-                  <div key={ob.id} className="pos-held-item">
-                    <div className="pos-held-item-info">
-                      <span className="pos-held-item-label">
-                        {ob.customer_name || ob.label}
-                      </span>
-                      <span className="pos-held-item-meta">
-                        {ob.item_count} item{ob.item_count !== 1 ? 's' : ''} &middot; {formatMoney({ minor_units: ob.total_minor, currency: ob.currency })} &middot; {new Date(ob.created_at).toLocaleString()}
-                      </span>
-                    </div>
-                    <button
-                      type="button"
-                      className="pos-held-item-resume"
-                      onClick={() => handleResumeOpenBill(ob.id)}
-                      aria-label={`${l10n.getString('pos-open-bills-resume')} ${ob.customer_name || ob.label}`}
-                    >
-                      {l10n.getString('pos-open-bills-resume')}
-                    </button>
+              {/*
+                R21 (owner, 2026-09-20): the EMPTY ARM of this list was deleted rather
+                than left dead. The overlay's only opener gates on
+                `openBills.length > 0` — `CartPanel.tsx:689` is the single
+                `setShowOpenBills(true)` call site — so at zero bills the list cannot be
+                opened and its empty state was unreachable UI: unverifiable and
+                impossible to regression-test. The string and the class went with it.
+              */}
+              {openBills.map((ob) => (
+                <div key={ob.id} className="pos-held-item">
+                  <div className="pos-held-item-info">
+                    <span className="pos-held-item-label">
+                      {ob.label || ob.customer_name}
+                    </span>
+                    <span className="pos-held-item-meta">
+                      {ob.item_count} item{ob.item_count !== 1 ? 's' : ''} &middot; {formatMoney({ minor_units: ob.total_minor, currency: ob.currency })} &middot; {new Date(ob.created_at).toLocaleString()}
+                    </span>
                   </div>
-                ))
-              )}
+                  <button
+                    type="button"
+                    className="pos-held-item-resume"
+                    onClick={() => handleResumeOpenBill(ob.id)}
+                    aria-label={`${l10n.getString('pos-open-bills-resume')} ${ob.label || ob.customer_name}`}
+                  >
+                    {l10n.getString('pos-open-bills-resume')}
+                  </button>
+                </div>
+              ))}
             </div>
           </div>
         </div>

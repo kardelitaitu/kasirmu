@@ -14,19 +14,23 @@ import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { FEATURES, useFeatures } from '@/hooks/useFeatures';
 import TableManagementScreen from '@/features/tables/TableManagementScreen';
 import SalesHistoryScreen from '@/features/sales/SalesHistoryScreen';
+import RestaurantReceiptsScreen from '@/features/restaurant/screens/RestaurantReceiptsScreen';
+import RestaurantPaymentsScreen from '@/features/restaurant/screens/RestaurantPaymentsScreen';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useWorkspaceNav } from '@/hooks/useWorkspaceNav';
 
-import { formatMoney, type LineId, type Product, type Sku } from '@/types/domain';
+import { formatMoney, type CartLine, type LineId, type Product, type Sku } from '@/types/domain';
 import { useSwipe } from '@/hooks/useSwipe';
 import {
   deleteHeldCartScoped,
 } from '@/api/sales';
-import { getReceiptSettingsScoped, getSettingScoped } from '@/api/settings';
+import { getReceiptSettingsScoped, getSettingScoped, getStoreSettingsScoped } from '@/api/settings';
+import { useOptionalCurrency } from '@/contexts/CurrencyContext';
 import type { CartTaxCacheState } from '@/hooks/useCartTax';
 import type { CartLineTaxInput } from '@/api/tax';
 import { lookupByBarcodeScoped, lookupProductBySkuScoped } from '@/api/products';
 import { lookupBundleBySku } from '@/api/bundles';
+import { listTablesScoped, updateTableStatusScoped } from '@/api/tables';
 import { expandBundleItems } from './bundleExpansion';
 import { CartTaxWatcher, createIdleTaxState } from '@/features/pos/components/CartTaxWatcher';
 import { CartPanel } from './components/CartPanel';
@@ -104,6 +108,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     removeLine,
     updateQty,
     updateLinePrice,
+    updateLineNote,
     fireCourse,
     fireAllCourses,
     assignCourse,
@@ -147,13 +152,27 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
       if (!raw) return;
       const data = JSON.parse(raw);
       if (data.lines && Array.isArray(data.lines)) {
-        setLines(data.lines.map((l: { sku: string; name?: string; category?: string; qty: number; unit_price: { minor_units: number; currency: string } }) => ({
+        setLines(data.lines.map((l: {
+          sku: string;
+          name?: string;
+          category?: string;
+          qty: number;
+          unit_price: { minor_units: number; currency: string };
+          courseId?: CartLine['courseId'];
+          coursingStatus?: CartLine['coursingStatus'];
+          modifiers?: CartLine['modifiers'];
+          note?: string;
+        }) => ({
           id: `restored-${Date.now()}-${Math.random().toString(36).slice(2)}` as LineId,
           sku: l.sku as Sku,
           name: l.name,
           category: l.category,
           qty: l.qty,
           unit_price: l.unit_price,
+          ...(l.courseId ? { courseId: l.courseId } : {}),
+          ...(l.coursingStatus ? { coursingStatus: l.coursingStatus } : {}),
+          ...(l.modifiers && l.modifiers.length > 0 ? { modifiers: l.modifiers } : {}),
+          ...(l.note ? { note: l.note } : {}),
         })));
       }
       if (typeof data.discountPercent === 'number') {
@@ -168,6 +187,12 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
       if (typeof data.serviceChargeEnabled === 'boolean') {
         setServiceCharge(data.serviceChargeEnabled, data.serviceChargePercent);
       }
+      if (typeof data.tableNumber === 'string') {
+        setTableNumber(data.tableNumber);
+      }
+      if (typeof data.customerName === 'string') {
+        setCustomerName(data.customerName);
+      }
       localStorage.removeItem(LOCKED_CART_KEY);
     } catch { /* ignore */ }
   }, [setLines, setDiscount, setAppliedPromotions, setTipPercent, setServiceCharge]);
@@ -175,12 +200,15 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   const [showTables, setShowTables] = useState(false);
   const [showSalesHistory, setShowSalesHistory] = useState(false);
   const [showStockInquiry, setShowStockInquiry] = useState(false);
+  const [showReceiptsSettings, setShowReceiptsSettings] = useState(false);
+  const [showPaymentsSettings, setShowPaymentsSettings] = useState(false);
   const [showPayment, setShowPayment] = useState(false);
   const [showDiscountInput, setShowDiscountInput] = useState(false);
   const [showPromotions, setShowPromotions] = useState(false);
   const [discountInput, setDiscountInput] = useState('');
   const [discountName, setDiscountName] = useState('');
   const [tableNumber, setTableNumber] = useState('');
+  const [customerName, setCustomerName] = useState('');
   const [showTableNumberSetting, setShowTableNumberSetting] = useState(false);
   // Restaurant coursing: `restaurant.course_firing` gates the firing bar +
   // per-line course chip. Defaults to the workspace check alone until the
@@ -273,9 +301,33 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     [],
   );
 
+  const [storeCurrency, setStoreCurrency] = useState<string>('IDR');
+  const currencyCtx = useOptionalCurrency();
+
+  useEffect(() => {
+    if (currencyCtx?.currency) {
+      setStoreCurrency(currencyCtx.currency);
+      return;
+    }
+    if (!sessionToken) return;
+    let cancelled = false;
+    getStoreSettingsScoped(sessionToken)
+      .then((settings) => {
+        if (!cancelled && settings.currency) {
+          setStoreCurrency(settings.currency);
+        }
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [sessionToken, currencyCtx?.currency]);
+
+  const activeCurrency = currencyCtx?.currency ?? storeCurrency ?? subtotal?.currency ?? 'IDR';
+
   const {
     activeShift,
     activeShiftRef,
+    shiftUnavailable,
+    shiftUnavailableRef,
     shiftLoading,
     shiftNow,
     setShowCloseShift,
@@ -298,7 +350,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     handleConfirmCloseShift,
     handleOpenShiftClick,
     handleConfirmOpenShift,
-  } = usePosShifts({ sessionToken, userId, lines, l10nRef });
+  } = usePosShifts({ sessionToken, userId, lines, l10nRef, currency: activeCurrency });
   // ── Cart actions: cart handle, deduction binding, add/qty/override ──
   const {
     overrideTarget,
@@ -329,6 +381,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     sessionToken,
     addToast,
     activeShiftRef,
+    shiftUnavailableRef,
     l10nRef,
     addProduct,
     updateQty,
@@ -350,7 +403,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     enabled: activeWorkspace !== 'restaurant-pos',
     sessionToken,
     onProductFound: useCallback(async (payload: BarcodeScannedPayload) => {
-      if (!activeShiftRef.current) {
+      if (!activeShiftRef.current && !shiftUnavailableRef.current) {
         addToast({ message: 'Open a shift first', type: 'warning' });
         return;
       }
@@ -395,7 +448,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
       } catch {
         // Silently ignore — the scanner will beep, user retries.
       }
-    }, [handleAddProduct, addToast, sessionToken, activeShiftRef, l10nRef]), // l10n via ref
+    }, [handleAddProduct, addToast, sessionToken, activeShiftRef, shiftUnavailableRef, l10nRef]), // l10n via ref
     onError: useCallback(
       (error: string) => {
         addToast({
@@ -412,18 +465,20 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   });
 
   const handlePay = useCallback(() => {
-    if (!activeShiftRef.current) {
+    // Same rule as the cart guard: an unreachable shift service must not
+    // block payment, because shifts are informational.
+    if (!activeShiftRef.current && !shiftUnavailableRef.current) {
       addToast({ message: 'Open a shift first', type: 'warning' });
       return;
     }
     if (!total) return;
     setShowPayment(true);
-  }, [total, addToast, activeShiftRef]);
+  }, [total, addToast, activeShiftRef, shiftUnavailableRef]);
 
   // P7-1: Swipe left on cart panel → open payment modal (tablet flow)
   const cartSwipe = useSwipe({
     onSwipeLeft: () => {
-      if (total && activeShiftRef.current) {
+      if (total && (activeShiftRef.current || shiftUnavailableRef.current)) {
         setShowPayment(true);
       }
     },
@@ -456,7 +511,10 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     setAppliedPromotions,
     setLines,
     setDiscount,
+    tableNumber,
     setTableNumber,
+    customerName,
+    setCustomerName,
   });
 
   const { handlePaymentComplete: customerDisplayPaymentComplete } = useCustomerDisplay({
@@ -508,9 +566,11 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
       loadOpenBills();
     }
     resetCart();
+    setTableNumber('');
+    setCustomerName('');
     // Also clear the customer-facing pole display.
     customerDisplayPaymentComplete();
-  }, [resetCart, customerDisplayPaymentComplete, activeOpenBillId, loadOpenBills, addToast, sessionToken, deductionLocationIdRef, setActiveOpenBillId, setCartId, setDeductionLocationName, setDeductionOverridden]);
+  }, [resetCart, setTableNumber, setCustomerName, customerDisplayPaymentComplete, activeOpenBillId, loadOpenBills, addToast, sessionToken, deductionLocationIdRef, setActiveOpenBillId, setCartId, setDeductionLocationName, setDeductionOverridden]);
 
   // ── Lock: save cart state to localStorage, then logout ───────────
 
@@ -524,6 +584,10 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
             category: l.category,
             qty: l.qty,
             unit_price: l.unit_price,
+            ...(l.courseId ? { courseId: l.courseId } : {}),
+            ...(l.coursingStatus ? { coursingStatus: l.coursingStatus } : {}),
+            ...(l.modifiers && l.modifiers.length > 0 ? { modifiers: l.modifiers } : {}),
+            ...(l.note ? { note: l.note } : {}),
           })),
           discountPercent,
           discountLabel,
@@ -531,6 +595,8 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
           tipPercent,
           serviceChargeEnabled,
           serviceChargePercent,
+          tableNumber,
+          customerName,
         };
         localStorage.setItem(LOCKED_CART_KEY, JSON.stringify(data));
       } else {
@@ -538,7 +604,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
       }
     } catch { /* storage quota or unavailable — ignore */ }
     logout();
-  }, [lines, discountPercent, discountLabel, appliedPromotions, tipPercent, serviceChargeEnabled, serviceChargePercent, logout]);
+  }, [lines, discountPercent, discountLabel, appliedPromotions, tipPercent, serviceChargeEnabled, serviceChargePercent, tableNumber, customerName, logout]);
 
   // ── Keyboard navigation (↑ / ↓ / + / − / Del / Enter) ─────────
   // Behaviour lives in useCartKeyboardNav; the cart-line ref Map and its
@@ -588,7 +654,27 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     return (
       <div className="pos-screen">
         <div style={{ flex: 1, overflow: 'auto' }}>
-          <TableManagementScreen />
+          <TableManagementScreen
+            onSelectTable={(tableName) => {
+              setTableNumber(tableName);
+              setShowTables(false);
+              // Mark the table as occupied in the backend when it is assigned
+              // to an active cart. Failure is non-fatal — the cart assignment
+              // (setTableNumber) already succeeded; the table status is cosmetic.
+              if (sessionToken) {
+                void listTablesScoped(sessionToken)
+                  .then((tables) => {
+                    const match = tables.find(
+                      (t) => t.name === tableName || t.id === tableName,
+                    );
+                    if (match && match.status !== 'occupied') {
+                      return updateTableStatusScoped(sessionToken, match.id, 'occupied');
+                    }
+                  })
+                  .catch(() => {});
+              }
+            }}
+          />
         </div>
         <div style={{ padding: '8px 16px', borderTop: '1px solid var(--color-border, #ddd)' }}>
           <button
@@ -646,6 +732,31 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     );
   }
 
+  // ── Sub-screen: Restaurant Receipts Settings ─────────────────
+  if (showReceiptsSettings) {
+    return (
+      <div className="pos-screen">
+        <div style={{ flex: 1, overflow: 'auto' }}>
+          <RestaurantReceiptsScreen
+            onBack={() => setShowReceiptsSettings(false)}
+            tablesEnabled={isEnabled(FEATURES.TABLE_MANAGEMENT)}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  // ── Sub-screen: Restaurant Payments Settings ─────────────────
+  if (showPaymentsSettings) {
+    return (
+      <div className="pos-screen">
+        <div style={{ flex: 1, overflow: 'auto' }}>
+          <RestaurantPaymentsScreen onBack={() => setShowPaymentsSettings(false)} />
+        </div>
+      </div>
+    );
+  }
+
   // ── Sub-screen: Settings (4-tab-routing) ──────────────────────
   // Same pattern as the desktop `RetailOptionsScreen`: four tabs
   // (Appearance / Features / Data / Sync) that route to the
@@ -681,7 +792,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     startResize, cartPanelRef, cartWidth, handleCartPanelKeyDown, cartSwipe, activeWorkspace,
   };
   const shiftRow = {
-    shiftLoading, activeShift, shiftNow, handleCloseShiftClick, handleOpenShiftClick,
+    shiftLoading, activeShift, shiftUnavailable, shiftNow, handleCloseShiftClick, handleOpenShiftClick,
     shiftErrorExit, closeShiftError,
   };
   const deductionBinding = {
@@ -692,10 +803,17 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     isEnabled, setShowTables, setShowSalesHistory, setShowStockInquiry,
     onNavigate, handleOpenSettings, handleLock,
   };
-  const tableNumberRow = { showTableNumberSetting, tableNumber, setTableNumber };
+  const tableNumberRow = {
+    showTableNumberSetting,
+    tableNumber,
+    setTableNumber,
+    customerName,
+    setCustomerName,
+  };
   const cartLineRows = {
     lines, fireCourse, fireAllCourses, assignCourse, setCartLineRef,
     handleRemoveLine, handleDecreaseQty, handleIncreaseQty,
+    updateLineNote,
     isManager, setOverrideTarget, ensureCart,
     animatedUndoStack, handleUndoRemove, handleDismissUndo,
     courseFiringEnabled,
@@ -714,6 +832,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   const checkoutRow = {
     handlePay, addToast, setShowOpenBillInput, setCartId, resetCart,
     setShowOpenBills, openBills,
+    activeOpenBillId, setActiveOpenBillId, handleOpenBill,
   };
   const cartPanelProps: CartPanelProps = {
     ...panelChrome, ...shiftRow, ...deductionBinding, ...hubNav, ...tableNumberRow,
@@ -737,6 +856,8 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     onOpenTables: () => setShowTables(true),
     onOpenHistory: () => setShowSalesHistory(true),
     onOpenKitchenDisplay: () => onNavigate?.('kds'),
+    onOpenReceipts: () => setShowReceiptsSettings(true),
+    onOpenPayments: () => setShowPaymentsSettings(true),
     onRequestExit: handleRequestExit,
   };
 
@@ -754,6 +875,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
             profile={restaurantProfile}
             onChangePhoto={() => { void handleChangePhoto(); }}
             onRequestExit={handleRequestExit}
+            isManager={isManager}
           />
         ) : (
           <ProductLookupScreen onAddProduct={handleAddProduct} />
@@ -846,11 +968,13 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
         closingShift={closingShift}
         setShowCloseShift={setShowCloseShift}
         handleConfirmCloseShift={handleConfirmCloseShift}
+        currency={activeCurrency}
       />
 
       <ShiftSummary
         shiftSummaryExit={shiftSummaryExit}
         closedShiftSummary={closedShiftSummary}
+        currency={activeCurrency}
       />
 
       <OpenShiftModal
@@ -859,6 +983,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
         setOpeningBalance={setOpeningBalance}
         openingShift={openingShift}
         handleConfirmOpenShift={handleConfirmOpenShift}
+        currency={activeCurrency}
       />
 
       {/* ── FastPIN Overlay (ADR-19 §17: badge click → manager override) ── */}

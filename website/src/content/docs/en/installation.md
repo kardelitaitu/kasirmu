@@ -2,7 +2,7 @@
 title: Installation
 description: Install kasir.mu on Windows, macOS, or Linux.
 category: gettingStarted
-order: 2
+order: 3
 updated: "2026-09-23"
 ---
 
@@ -29,7 +29,7 @@ WebView2 runtime, which ships with Windows 10 and 11.
 
 Download it from the [download page](../../download/) — no account is required.
 The installers themselves are published on
-[GitHub Releases](https://github.com/kardelitaitu/oz-pos/releases).
+[GitHub Releases](https://github.com/kardelitaitu/kasirmu/releases).
 
 **Windows** — run `kasir.mu_<version>_x64-setup.exe` (or the `.msi`) and follow
 the prompts. It installs for your user account and adds a kasir.mu entry to
@@ -37,9 +37,9 @@ the Start menu.
 
 ## First launch
 
-The setup wizard asks for your business name and default currency — both can
-be changed later in settings. The free plan starts on first launch; you can
-upgrade any time from Settings → License.
+The setup wizard asks for an account (or offline-only setup), the shop type,
+and an owner login — see [Setup Wizard](../setup-wizard/). The free plan
+starts on first launch; you can upgrade any time from Settings → License.
 
 ## Updates
 
@@ -52,4 +52,8 @@ reinstalled manually from the releases page.
 ## Next steps
 
 [Ring up your first sale](../first-sale/), or see [activation](../activation/)
-when you're ready to unlock more stores, QRIS payments, and cloud sync.
+when you're ready to unlock more locations, QRIS payments, and cloud sync.
+
+---
+
+Keep reading · **Previous:** [Quickstart](../quickstart/) · **Next:** [Setup Wizard](../setup-wizard/)

@@ -9,6 +9,7 @@ next: none | perf: N/A
 use rusqlite::{OptionalExtension, params};
 
 use crate::Terminal;
+use crate::db::receipt_code::{EntityIndexKind, format_base62_index};
 use crate::downgrade::QuotaDimension;
 use crate::error::CoreError;
 use crate::subscription::SubscriptionTier;
@@ -188,7 +189,7 @@ impl Store<'_> {
                 source.id,
                 source.name,
                 source.device_id,
-                source.is_active as i64,
+                i64::from(source.is_active),
                 source.metadata,
                 now,
                 tenant_id,
@@ -203,7 +204,7 @@ impl Store<'_> {
     /// a new terminal.
     ///
     /// When the tier's `max_pos_instances()` cap is reached, returns
-    /// [`QuotaError::RegisterLimit`]. Unlimited tiers (`None`) pass.
+    /// [`QuotaError::RegisterLimit`](crate::subscription::QuotaError::RegisterLimit). Unlimited tiers (`None`) pass.
     pub fn enforce_terminal_quota(&self, tier: &SubscriptionTier) -> Result<(), CoreError> {
         // W4-S1: decision centralized in `quota_gate`; same limit source
         // (`max_pos_instances`), same count, same `RegisterLimit` error.
@@ -243,20 +244,24 @@ impl Store<'_> {
         // create, the pre-auth provisioning path) keeps the legacy un-gated
         // behaviour — no arm, no veto.
         let tx = self.conn.unchecked_transaction()?;
+        let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+        let index_id =
+            self.allocate_entity_index(&tx, "default", EntityIndexKind::Terminal, &now)?;
         tx.execute(
             "INSERT INTO terminals (id, name, device_id, terminal_secret, is_active,
-                                    last_seen_at, metadata, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                                    last_seen_at, metadata, created_at, updated_at, index_id)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
             params![
                 terminal.id,
                 terminal.name,
                 terminal.device_id,
                 terminal.terminal_secret,
-                terminal.is_active as i64,
+                i64::from(terminal.is_active),
                 terminal.last_seen_at,
                 terminal.metadata,
                 terminal.created_at,
                 terminal.updated_at,
+                index_id,
             ],
         )?;
         let tier = self.take_armed_quota(QuotaDimension::PosRegisters);
@@ -279,6 +284,25 @@ impl Store<'_> {
         Ok(())
     }
 
+    /// Read a terminal's index id (1..=14,776,335).
+    pub fn get_terminal_index_id(&self, terminal_id: &str) -> Result<Option<i64>, CoreError> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT index_id FROM terminals WHERE id = ?1")?;
+        let result = stmt.query_row(params![terminal_id], |row| row.get(0));
+        match result {
+            Ok(idx) => Ok(idx),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e.into()),
+        }
+    }
+
+    /// Read a terminal's Base62 code (e.g. "01", "02", "100").
+    pub fn get_terminal_code(&self, terminal_id: &str) -> Result<Option<String>, CoreError> {
+        let idx = self.get_terminal_index_id(terminal_id)?;
+        Ok(idx.map(format_base62_index))
+    }
+
     /// Update an existing terminal.
     pub fn update_terminal(&self, terminal: &Terminal) -> Result<(), CoreError> {
         if terminal.name.trim().is_empty() {
@@ -296,7 +320,7 @@ impl Store<'_> {
                 terminal.name,
                 terminal.device_id,
                 terminal.terminal_secret,
-                terminal.is_active as i64,
+                i64::from(terminal.is_active),
                 terminal.last_seen_at,
                 terminal.metadata,
                 terminal.id,

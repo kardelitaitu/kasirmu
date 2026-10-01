@@ -11,6 +11,8 @@ next: none | perf: N/A
 //! Errors propagate as `anyhow::Result` so the process exit code reflects
 //! failure without a manual `std::process::exit`.
 
+#![deny(unsafe_code)]
+
 use anyhow::Result;
 
 fn main() -> Result<()> {

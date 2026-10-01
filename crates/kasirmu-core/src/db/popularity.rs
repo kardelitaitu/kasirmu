@@ -12,9 +12,22 @@ next: none | perf: grouped single-pass recompute
 //! a full-catalog pass recomputes every score and refreshes the catalog means
 //! cached in `settings`. Scores and the ledger are local-only (ADR #37 D4).
 
+// P2-5: same rationale as `crate::popularity` — this module reads the ledgers
+// and hands event COUNTS to the float scoring formula, so the casts into `f64`
+// are the intended representation and not a precision loss that matters. A
+// `top_categories` page size arrives as `i64` from the API and is clamped with
+// `.max(0)` before the `usize` cast, so the sign and wrap lints are already
+// guarded at the call site rather than by the conversion.
+#![allow(
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::cast_possible_wrap
+)]
+
 use std::collections::HashMap;
 
-use rusqlite::params;
+use rusqlite::{OptionalExtension, params};
 
 use crate::error::CoreError;
 use crate::popularity::{DayCount, compute_score, decayed_sum, total_events};
@@ -132,6 +145,47 @@ fn window_modifier() -> String {
     format!("-{} days", crate::popularity::WINDOW_DAYS)
 }
 
+/// Parse a trend bucket key into a date: `YYYY-MM-DD` for the daily and
+/// weekly buckets, `YYYY-MM` for the monthly one (anchored to the first of
+/// the month).
+///
+/// The per-period unit series only needs the periods in chronological order,
+/// but the key must still parse or the point is dropped from the series — a
+/// monthly key fed to the day parser alone silently empties the series and
+/// every monthly forecast collapses to zero.
+///
+/// Shared with the Postgres mirror (`apps/cloud-server`,
+/// `email_pg::popularity`) so the two implementations cannot drift on which
+/// bucket-key shapes the trend can emit.
+pub fn parse_period_start(period_start: &str) -> Option<chrono::NaiveDate> {
+    chrono::NaiveDate::parse_from_str(period_start, "%Y-%m-%d")
+        .ok()
+        .or_else(|| {
+            chrono::NaiveDate::parse_from_str(&format!("{period_start}-01"), "%Y-%m-%d").ok()
+        })
+}
+
+/// Cache a raw `settings` value (JSON or number string) inside an open
+/// transaction.
+///
+/// A free function rather than a method: the caller owns the transaction, so
+/// the means cache commits atomically with the scores it belongs to (a cache
+/// that survives a failed pass would smooth later single-SKU recomputes
+/// against means no stored score was built from).
+fn write_setting_in_tx(
+    tx: &rusqlite::Transaction<'_>,
+    key: &str,
+    value: &str,
+) -> Result<(), CoreError> {
+    let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+    tx.execute(
+        "INSERT INTO settings (key, value, updated_at) VALUES (?1, ?2, ?3)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+        params![key, value, now],
+    )?;
+    Ok(())
+}
+
 /// Accepted granularities for [`Store::category_popularity_trend`].
 pub const TREND_GRANULARITIES: [&str; 3] = ["daily", "weekly", "monthly"];
 
@@ -143,9 +197,12 @@ impl Store<'_> {
     /// points) to project the next period: day-of-week seasonality (via
     /// [`crate::popularity::seasonal_daily_forecast`]) for daily series of a
     /// full week or more, otherwise a plain linear fit
-    /// ([`crate::popularity::linear_forecast`]). Categories with a single
-    /// point fall back to their recent average; results sort by forecast
-    /// descending. Prototype-level forecast — the demand-forecasting
+    /// ([`crate::popularity::linear_forecast`]). All three
+    /// [`TREND_GRANULARITIES`] are supported; the monthly bucket keys are
+    /// `YYYY-MM` and are anchored to the first of the month (only the
+    /// per-period ordering and count matter to the fit). Categories with a
+    /// single point fall back to their recent average; results sort by
+    /// forecast descending. Prototype-level forecast — the demand-forecasting
     /// research (2026-07-20) may replace the fit with a learned model later.
     pub fn category_forecast(
         &self,
@@ -163,7 +220,7 @@ impl Store<'_> {
         // (category_id) → (name, chronological (period date, units) series).
         let mut groups: HashMap<String, ForecastSeries> = HashMap::new();
         for p in points {
-            let date = chrono::NaiveDate::parse_from_str(&p.period_start, "%Y-%m-%d").ok();
+            let date = parse_period_start(&p.period_start);
             let entry = groups
                 .entry(p.category_id.clone())
                 .or_insert((p.category_name, Vec::new()));
@@ -188,10 +245,10 @@ impl Store<'_> {
             // seasonality (weak Mondays, strong weekends); shorter or
             // weekly/monthly series use the plain linear fit.
             let f = if granularity == "daily" && tail.len() >= 7 {
-                let next = tail
-                    .last()
-                    .map(|(d, _)| *d + chrono::Duration::days(1))
-                    .unwrap_or_else(|| chrono::Utc::now().date_naive());
+                let next = tail.last().map_or_else(
+                    || chrono::Utc::now().date_naive(),
+                    |(d, _)| *d + chrono::Duration::days(1),
+                );
                 crate::popularity::seasonal_daily_forecast(&tail, next)
             } else {
                 let units: Vec<f64> = tail.iter().map(|(_, u)| *u).collect();
@@ -216,12 +273,14 @@ impl Store<'_> {
     /// Per-period popularity trend for the top `top_categories` categories.
     ///
     /// Buckets the sale/search/edit ledgers by `granularity` (`daily`,
-    /// `weekly`, `monthly`; the weekly bucket mirrors `weekly_revenue`'s
-    /// `DATE(created_at, 'weekday 0', '-7 days')`) over `[start_date,
+    /// `weekly`, `monthly`) over `[start_date,
     /// end_date]` and evaluates the ADR #37 blend per (period, category)
     /// with the raw period counts smoothed toward the cached category
     /// means — the same scale as the materialized `popularity_score`, so a
     /// category's trend line reads directly against its current standing.
+    /// Weekly buckets are Sunday-start (the Postgres twin mirrors that),
+    /// which deliberately differs from [`Store::weekly_revenue`]'s
+    /// Monday-first weeks.
     pub fn category_popularity_trend(
         &self,
         start_date: &str,
@@ -242,9 +301,17 @@ impl Store<'_> {
         // the activity query joins `products p` (which also has a
         // `created_at`), so the column must be explicit per query.
         let (s_period, a_period) = match granularity {
+            // Sunday-start weeks, with the shift FIRST: `'-6 days'` lands in
+            // the previous week and `'weekday 0'` then advances to that
+            // week's Sunday, so the boundary Sunday opens its own week. The
+            // reverse order (`'weekday 0', '-7 days'`) leaves a Sunday where
+            // it already is and then subtracts seven days, which reports
+            // every Sunday sale a week early — the defect
+            // [`Store::weekly_revenue`] documents for its own
+            // `'weekday 1', '-7 days'` form.
             "weekly" => (
-                format!("DATE(s.created_at, '{tz}', 'weekday 0', '-7 days')"),
-                format!("DATE(a.created_at, '{tz}', 'weekday 0', '-7 days')"),
+                format!("DATE(s.created_at, '{tz}', '-6 days', 'weekday 0')"),
+                format!("DATE(a.created_at, '{tz}', '-6 days', 'weekday 0')"),
             ),
             "monthly" => (
                 format!("strftime('%Y-%m', s.created_at, '{tz}')"),
@@ -351,7 +418,7 @@ impl Store<'_> {
             if !rank.contains_key(&cat) {
                 continue;
             }
-            let (ms, mq, me) = self.category_means(&cat).unwrap_or((0.0, 0.0, 0.0));
+            let (ms, mq, me) = self.category_means(&cat)?.unwrap_or((0.0, 0.0, 0.0));
             let score = crate::popularity::score_from_raw(
                 units as f64,
                 units as f64,
@@ -567,76 +634,100 @@ impl Store<'_> {
         Ok(out)
     }
 
-    /// Read a raw `settings` value (None when absent).
-    fn read_setting(&self, key: &str) -> Option<String> {
-        self.conn
+    /// Read a raw `settings` value (`None` when the key is absent).
+    ///
+    /// MSL-28: `.optional()?` rather than `.ok()`. A bare `.ok()` maps a DB
+    /// fault onto the same `None` as a genuinely absent key, so a broken read
+    /// reads as an empty cache and every fallback below it silently
+    /// substitutes a wrong (usually zero) mean — the same defect class as
+    /// MSL-27 in the category probe above. Only row-absence is `None`; a
+    /// fault propagates.
+    fn read_setting(&self, key: &str) -> Result<Option<String>, CoreError> {
+        Ok(self
+            .conn
             .query_row(
                 "SELECT value FROM settings WHERE key = ?1",
                 params![key],
                 |r| r.get::<_, String>(0),
             )
-            .ok()
+            .optional()?)
     }
 
     /// Read a cached catalog mean from `settings` (0.0 when absent).
-    fn read_mean(&self, key: &str) -> f64 {
-        self.read_setting(key)
+    fn read_mean(&self, key: &str) -> Result<f64, CoreError> {
+        Ok(self
+            .read_setting(key)?
             .and_then(|v| v.parse().ok())
-            .unwrap_or(0.0)
+            .unwrap_or(0.0))
     }
 
     /// Look up the cached smoothing means for a product's category.
     ///
     /// Returns the category's means when the per-category map (written by
     /// the last full pass) has an entry for it; falls back to the `""`
-    /// global entry, then to the legacy `MEAN_*` keys (fresh DB).
-    fn category_means(&self, category: &str) -> Option<(f64, f64, f64)> {
-        let raw = self.read_setting(CATEGORY_MEANS)?;
-        let map: serde_json::Value = serde_json::from_str(&raw).ok()?;
-        let entry = map.get(category).or_else(|| map.get(""))?;
-        Some((
-            entry.get("sales").and_then(|v| v.as_f64()).unwrap_or(0.0),
-            entry.get("search").and_then(|v| v.as_f64()).unwrap_or(0.0),
-            entry.get("edits").and_then(|v| v.as_f64()).unwrap_or(0.0),
-        ))
+    /// global entry, then to the legacy `MEAN_*` keys (fresh DB). An absent
+    /// or unparseable cache degrades to that fallback by design — it is a
+    /// locally rebuilt cache, not a source of truth — but a database fault
+    /// is an error, not a cache miss.
+    fn category_means(&self, category: &str) -> Result<Option<(f64, f64, f64)>, CoreError> {
+        let Some(raw) = self.read_setting(CATEGORY_MEANS)? else {
+            return Ok(None);
+        };
+        let Ok(map) = serde_json::from_str::<serde_json::Value>(&raw) else {
+            return Ok(None);
+        };
+        let Some(entry) = map.get(category).or_else(|| map.get("")) else {
+            return Ok(None);
+        };
+        Ok(Some((
+            entry
+                .get("sales")
+                .and_then(serde_json::Value::as_f64)
+                .unwrap_or(0.0),
+            entry
+                .get("search")
+                .and_then(serde_json::Value::as_f64)
+                .unwrap_or(0.0),
+            entry
+                .get("edits")
+                .and_then(serde_json::Value::as_f64)
+                .unwrap_or(0.0),
+        )))
     }
 
     /// Smoothing means for a single SKU: its category's cached means, else
     /// the global fallback.
-    fn sku_means(&self, sku: &str) -> (f64, f64, f64) {
+    fn sku_means(&self, sku: &str) -> Result<(f64, f64, f64), CoreError> {
+        // MSL-27: the probe must be .optional()? — a bare .ok() collapses a
+        // DB fault into None, which reads as "uncategorized": the SKU is
+        // then silently scored against the GLOBAL mean while the category
+        // cache it should have used sits unread. The getter names the
+        // column's nullability so a NULL category (the ordinary case) still
+        // resolves to None, and flatten() collapses row-missing and
+        // column-NULL into the same "no category" while a real fault
+        // propagates.
         let category: Option<String> = self
             .conn
             .query_row(
                 "SELECT category_id FROM products WHERE sku = ?1",
                 params![sku],
-                |r| r.get(0),
+                |r| r.get::<_, Option<String>>(0),
             )
-            .ok()
+            .optional()?
             .flatten();
-        if let Some(means) = category.as_deref().and_then(|cat| self.category_means(cat)) {
-            return means;
-        }
-        (
-            self.read_mean(MEAN_SALES),
-            self.read_mean(MEAN_SEARCH),
-            self.read_mean(MEAN_EDITS),
-        )
-    }
-
-    /// Cache a raw `settings` value (JSON or number string).
-    fn write_setting(&self, key: &str, value: &str) -> Result<(), CoreError> {
-        let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
-        self.conn.execute(
-            "INSERT INTO settings (key, value, updated_at) VALUES (?1, ?2, ?3)
-             ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
-            params![key, value, now],
-        )?;
-        Ok(())
-    }
-
-    /// Cache a catalog mean in `settings`.
-    fn write_mean(&self, key: &str, value: f64) -> Result<(), CoreError> {
-        self.write_setting(key, &value.to_string())
+        let means = match category.as_deref() {
+            Some(cat) => self.category_means(cat)?,
+            None => None,
+        };
+        Ok(if let Some(means) = means {
+            means
+        } else {
+            (
+                self.read_mean(MEAN_SALES)?,
+                self.read_mean(MEAN_SEARCH)?,
+                self.read_mean(MEAN_EDITS)?,
+            )
+        })
     }
 
     /// Record an acted-upon search (ADR #37 D2) and refresh the SKU's score.
@@ -660,7 +751,7 @@ impl Store<'_> {
         let distinct = self.sale_distinct_transactions(sku)?;
         let searches = self.activity_day_counts(sku, "search")?;
         let edits = self.activity_day_counts(sku, "edit")?;
-        let (mean_sales, mean_search, mean_edits) = self.sku_means(sku);
+        let (mean_sales, mean_search, mean_edits) = self.sku_means(sku)?;
         let score = compute_score(
             &sales,
             distinct,
@@ -766,9 +857,9 @@ impl Store<'_> {
             })?;
             for row in rows {
                 let (sku, category) = row?;
-                let s_events = sales.get(&sku).map(Vec::as_slice).unwrap_or(&[]);
-                let q_events = searches.get(&sku).map(Vec::as_slice).unwrap_or(&[]);
-                let e_events = edits.get(&sku).map(Vec::as_slice).unwrap_or(&[]);
+                let s_events: &[DayCount] = sales.get(&sku).map_or(&[], Vec::as_slice);
+                let q_events: &[DayCount] = searches.get(&sku).map_or(&[], Vec::as_slice);
+                let e_events: &[DayCount] = edits.get(&sku).map_or(&[], Vec::as_slice);
                 products.push((
                     sku,
                     category,
@@ -842,16 +933,19 @@ impl Store<'_> {
                 serde_json::json!({ "sales": ms, "search": mq, "edits": me }),
             );
         }
-        self.write_setting(
-            CATEGORY_MEANS,
-            &serde_json::Value::Object(cat_json).to_string(),
-        )?;
-        self.write_mean(MEAN_SALES, mean_sales)?;
-        self.write_mean(MEAN_SEARCH, mean_search)?;
-        self.write_mean(MEAN_EDITS, mean_edits)?;
+        let cat_means_json = serde_json::Value::Object(cat_json).to_string();
 
-        // ── Write scores (one transaction: the per-SKU updates are atomic) ─
+        // ── Means cache + scores in ONE transaction ───────────────────
+        // The cache and the scores are two views of the same pass, so they
+        // commit together: persisting the means before the score write leaves
+        // a failed pass with a cache ahead of the catalog, and every later
+        // single-SKU recompute then smooths against means that no stored score
+        // was built from.
         let tx = self.conn.unchecked_transaction()?;
+        write_setting_in_tx(&tx, CATEGORY_MEANS, &cat_means_json)?;
+        write_setting_in_tx(&tx, MEAN_SALES, &mean_sales.to_string())?;
+        write_setting_in_tx(&tx, MEAN_SEARCH, &mean_search.to_string())?;
+        write_setting_in_tx(&tx, MEAN_EDITS, &mean_edits.to_string())?;
         for (sku, category, sr, sv, qr, qv, er, ev) in products {
             let key = category.unwrap_or_default();
             let (ms, mq, me) =

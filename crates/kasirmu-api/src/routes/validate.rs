@@ -1,4 +1,4 @@
-//! Shared request-validation predicates for the OZ-POS API routes.
+//! Shared request-validation predicates for the kasir.mu API routes.
 //!
 //! Kept here so validation rules (e.g. the tenant-id charset) are defined
 //! once and reused across handlers instead of being copy-pasted per route.

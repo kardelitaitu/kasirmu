@@ -10,14 +10,22 @@ use super::*;
 use kasirmu_core::migrations;
 use rusqlite::Connection;
 
-fn setup_store() -> Store<'static> {
-    let conn: &'static Connection = Box::leak(Box::new(migrations::fresh_db()));
+/// A `Store` over a caller-owned connection.
+///
+/// This used to `Box::leak` one `fresh_db()` per call purely to manufacture a
+/// `'static` lifetime. `Store<'a>` borrows its connection for any `'a`, so the
+/// caller can own it and nothing needs `'static`. The leak kept ~2 MiB of
+/// SQLite alive for the life of the binary at each of the 77 call sites below
+/// — ~156 MiB held and never released, and a pattern five other test files
+/// copied. (O-T03.)
+fn setup_store(conn: &Connection) -> Store<'_> {
     Store::new(conn)
 }
 
 #[test]
 fn queue_empty_pending() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
     let pending = queue.list_pending(&store).unwrap();
     assert!(pending.is_empty());
@@ -25,7 +33,8 @@ fn queue_empty_pending() {
 
 #[test]
 fn queue_enqueue_and_list() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
     let item = queue
         .enqueue(&store, "complete_sale", r#"{"sale_id":"s1"}"#)
@@ -39,7 +48,8 @@ fn queue_enqueue_and_list() {
 
 #[test]
 fn queue_mark_synced() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
     let item = queue.enqueue(&store, "test", "{}").unwrap();
     queue.mark_synced(&store, &item.id).unwrap();
@@ -50,7 +60,8 @@ fn queue_mark_synced() {
 
 #[test]
 fn queue_mark_failed() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
     let item = queue.enqueue(&store, "test", "{}").unwrap();
     queue
@@ -63,14 +74,16 @@ fn queue_mark_failed() {
 
 #[test]
 fn queue_last_synced_at_none() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
     assert!(queue.last_synced_at(&store).unwrap().is_none());
 }
 
 #[test]
 fn queue_last_synced_at_after_sync() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
     let item = queue.enqueue(&store, "test", "{}").unwrap();
     queue.mark_synced(&store, &item.id).unwrap();
@@ -79,7 +92,8 @@ fn queue_last_synced_at_after_sync() {
 
 #[test]
 fn queue_delete_removes_item() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
     let item = queue.enqueue(&store, "test", "{}").unwrap();
     queue.delete(&store, &item.id).unwrap();
@@ -89,7 +103,8 @@ fn queue_delete_removes_item() {
 
 #[test]
 fn queue_delete_nonexistent_does_not_error() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
     let result = queue.delete(&store, "nonexistent-id");
     assert!(result.is_ok());
@@ -97,7 +112,8 @@ fn queue_delete_nonexistent_does_not_error() {
 
 #[test]
 fn queue_pending_count() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
     assert_eq!(queue.pending_count(&store).unwrap(), 0);
 
@@ -113,7 +129,8 @@ fn queue_pending_count() {
 
 #[test]
 fn queue_list_all_returns_all_statuses() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
     let item1 = queue.enqueue(&store, "a", "{}").unwrap();
     let _item2 = queue.enqueue(&store, "b", "{}").unwrap();
@@ -126,7 +143,8 @@ fn queue_list_all_returns_all_statuses() {
 
 #[test]
 fn queue_list_pending_returns_oldest_first() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
     let item1 = queue.enqueue(&store, "first", "{}").unwrap();
     let item2 = queue.enqueue(&store, "second", "{}").unwrap();
@@ -140,7 +158,8 @@ fn queue_list_pending_returns_oldest_first() {
 
 #[test]
 fn queue_enqueue_dedup_skips_duplicate() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
 
     let payload = r#"{"sale_id":"s-1"}"#;
@@ -160,7 +179,8 @@ fn queue_enqueue_dedup_skips_duplicate() {
 
 #[test]
 fn queue_enqueue_dedup_allows_different_payload() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
 
     let first = queue
@@ -179,7 +199,8 @@ fn queue_enqueue_dedup_allows_different_payload() {
 
 #[test]
 fn queue_enqueue_dedup_allows_different_action() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
 
     let payload = r#"{"id":"x"}"#;
@@ -200,7 +221,8 @@ fn queue_enqueue_dedup_cross_terminal_scenario() {
     // Simulate: Terminal A completes a sale and enqueues it.
     // That sale syncs to Terminal B, which also tries to enqueue
     // the exact same payload — the dedup should prevent duplicates.
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
 
     let payload = r#"{"sale_id":"s-cross-1","items":[{"sku":"COFFEE","qty":2}]}"#;
@@ -226,7 +248,8 @@ fn queue_enqueue_dedup_cross_terminal_scenario() {
 fn queue_enqueue_dedup_allows_after_mark_synced() {
     // After an item is synced, a new enqueue with the same payload
     // should not be deduped (only checks Pending items).
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
 
     let payload = r#"{"sale_id":"s-1"}"#;
@@ -251,7 +274,8 @@ fn queue_enqueue_dedup_allows_after_mark_synced() {
 
 #[test]
 fn queue_status_summary_empty() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
     let summary = queue.status_summary(&store).unwrap();
     assert_eq!(summary.pending_count, 0);
@@ -263,7 +287,8 @@ fn queue_status_summary_empty() {
 
 #[test]
 fn queue_status_summary_with_data() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
 
     let item1 = queue.enqueue(&store, "a", "{}").unwrap();
@@ -280,7 +305,8 @@ fn queue_status_summary_with_data() {
 
 #[test]
 fn queue_status_summary_after_mark_failed() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
 
     let item = queue.enqueue(&store, "test", "{}").unwrap();
@@ -294,7 +320,8 @@ fn queue_status_summary_after_mark_failed() {
 
 #[test]
 fn queue_last_synced_at_multiple_items() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
     let item1 = queue.enqueue(&store, "a", "{}").unwrap();
     let item2 = queue.enqueue(&store, "b", "{}").unwrap();
@@ -311,7 +338,8 @@ fn queue_last_synced_at_multiple_items() {
 
 #[test]
 fn queue_apply_resolution_local_wins() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
     let local = queue.enqueue(&store, "test", "{}").unwrap();
 
@@ -345,7 +373,8 @@ fn queue_apply_resolution_local_wins() {
 
 #[test]
 fn queue_apply_resolution_remote_wins() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
     let local = queue.enqueue(&store, "test", "{}").unwrap();
 
@@ -397,7 +426,8 @@ fn inventory_qty(store: &Store<'_>, sku: &str) -> i64 {
 
 #[test]
 fn apply_remote_complete_sale_deducts_stock() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     seed_product_and_inventory(&store);
     let queue = SyncQueue::new();
 
@@ -420,7 +450,8 @@ fn apply_remote_complete_sale_deducts_stock() {
 
 #[test]
 fn apply_remote_atomic_replay_changes_stock_once() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     seed_product_and_inventory(&store);
     let queue = SyncQueue::new();
     let remote = OfflineQueueItem {
@@ -438,7 +469,8 @@ fn apply_remote_atomic_replay_changes_stock_once() {
 
 #[test]
 fn apply_remote_atomic_failure_rolls_back_mutation_and_receipt() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     seed_product_and_inventory(&store);
     let queue = SyncQueue::new();
     let remote = OfflineQueueItem {
@@ -451,10 +483,38 @@ fn apply_remote_atomic_failure_rolls_back_mutation_and_receipt() {
     assert!(queue.apply_remote_atomic(&store, &remote).is_err());
     assert_eq!(inventory_qty(&store, "COFFEE"), 50);
     assert!(!store.is_remote_item_applied(&remote.id).unwrap());
-    assert!(!store.is_remote_failure_dead_lettered(&remote.id).unwrap());
+    // A missing referenced product is a PERMANENT failure: the identical
+    // bytes can never succeed, so the item is quarantined on its FIRST
+    // failure rather than burning the three-attempt budget
+    // (CoreError::is_permanent). A later replay is skipped without
+    // mutating state or advancing a receipt.
+    assert!(store.is_remote_failure_dead_lettered(&remote.id).unwrap());
+    assert!(!queue.apply_remote_atomic(&store, &remote).unwrap());
+}
 
-    // The third failed attempt quarantines the poison item. A later
-    // replay is skipped without mutating state or advancing a receipt.
+/// A malformed payload is [CoreError::Internal] - a TRANSIENT failure, since
+/// the same bytes may become reproducible after a client/version change - so
+/// it keeps the three-attempt budget and only then quarantines.
+#[test]
+fn apply_remote_atomic_transient_failure_burns_the_retry_budget() {
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
+    seed_product_and_inventory(&store);
+    let queue = SyncQueue::new();
+    let remote = OfflineQueueItem {
+        id: "remote-sale-malformed".into(),
+        action: "complete_sale".into(),
+        payload: "{not json".into(),
+        ..OfflineQueueItem::new("complete_sale", "{}")
+    };
+
+    assert!(queue.apply_remote_atomic(&store, &remote).is_err());
+    assert!(
+        !store.is_remote_failure_dead_lettered(&remote.id).unwrap(),
+        "a transient failure must stay retryable after one attempt"
+    );
+
+    // The third failed attempt quarantines it.
     assert!(queue.apply_remote_atomic(&store, &remote).is_err());
     assert!(queue.apply_remote_atomic(&store, &remote).is_err());
     assert!(store.is_remote_failure_dead_lettered(&remote.id).unwrap());
@@ -463,7 +523,8 @@ fn apply_remote_atomic_failure_rolls_back_mutation_and_receipt() {
 
 #[test]
 fn apply_remote_atomic_clears_stale_failure_after_success() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     seed_product_and_inventory(&store);
     let queue = SyncQueue::new();
     let remote = OfflineQueueItem {
@@ -491,7 +552,8 @@ fn apply_remote_atomic_clears_stale_failure_after_success() {
 
 #[test]
 fn apply_remote_atomic_rejects_conflicting_existing_product() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
     store
         .conn()
@@ -522,9 +584,75 @@ fn apply_remote_atomic_rejects_conflicting_existing_product() {
     );
 }
 
+/// A `product.created` replay must be recognized as idempotent for a product
+/// that is NOT `retail`, even though the producer's event carries no
+/// `product_type` at all.
+///
+/// `InventorySyncEnqueuer::handle` builds the queue payload from the
+/// `ProductCreated` domain event (`platform/startup/src/event_handlers.rs`),
+/// and that event has no `product_type` field (`foundation/src/events.rs`).
+/// The consumer defaulted the absent key to `"retail"` and then compared it
+/// against the stored row, so every pull replay of a `service` (or any
+/// non-retail) product looked like a same-SKU-different-payload conflict and
+/// was dead-lettered on `product:<sku>:create` after burning its retry budget.
+#[test]
+fn a_non_retail_product_replay_is_idempotent_despite_the_producers_missing_type() {
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
+    let queue = SyncQueue::new();
+    // The local row a `service` product create leaves behind.
+    store
+        .conn()
+        .execute(
+            "INSERT INTO products (id, sku, name, price_minor, currency, created_at, updated_at,
+                                      product_type, version)
+                 VALUES ('prod-svc', 'INSTALL', 'On-site install', 5000, 'USD',
+                         '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z', 'service', 1)",
+            [],
+        )
+        .unwrap();
+    // Byte-for-byte the shape `InventorySyncEnqueuer` enqueues: every key it
+    // sets, and no `product_type` key.
+    let payload = serde_json::json!({
+        "sku": "INSTALL",
+        "name": "On-site install",
+        "price_minor": 5000,
+        "currency": "USD",
+        "category_id": serde_json::Value::Null,
+        "barcode": serde_json::Value::Null,
+        "initial_stock": 0,
+    })
+    .to_string();
+    let remote = OfflineQueueItem::new("product.created", &payload);
+
+    assert!(
+        queue.apply_remote_atomic(&store, &remote).unwrap(),
+        "an identical replay must be recognized as already applied"
+    );
+    assert!(
+        store.is_remote_item_applied(&remote.id).unwrap(),
+        "the replay must be receipted, not dead-lettered"
+    );
+    assert!(
+        store.list_remote_failures().unwrap().is_empty(),
+        "a valid replay must not consume the dead-letter retry budget"
+    );
+    assert_eq!(
+        store
+            .get_product("INSTALL")
+            .unwrap()
+            .unwrap()
+            .product
+            .product_type,
+        kasirmu_core::ProductType::Service,
+        "the stored row must keep its real type"
+    );
+}
+
 #[test]
 fn apply_remote_stock_adjustment() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     seed_product_and_inventory(&store);
     let queue = SyncQueue::new();
 
@@ -553,7 +681,8 @@ fn apply_remote_stock_adjustment() {
 
 #[test]
 fn apply_remote_unknown_action_is_noop() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
     let remote = OfflineQueueItem::new("unknown.action", r#"{"data":"test"}"#);
     let result = queue.apply_remote(&store, &remote);
@@ -564,7 +693,8 @@ fn apply_remote_unknown_action_is_noop() {
 
 #[test]
 fn apply_remote_atomic_rejects_unknown_action_without_receipt() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
     let remote = OfflineQueueItem::new("unknown.action", r#"{\"data\":\"test\"}"#);
     assert!(queue.apply_remote_atomic(&store, &remote).is_err());
@@ -579,7 +709,8 @@ fn apply_remote_atomic_rejects_unknown_action_without_receipt() {
 /// it: transition the sale to completed.
 #[test]
 fn apply_remote_atomic_finalizes_pending_sale() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
 
     // Seed a pending sale the way the terminal's complete flow leaves it.
@@ -619,7 +750,8 @@ fn apply_remote_atomic_finalizes_pending_sale() {
 
 #[test]
 fn apply_remote_legacy_finalizes_pending_sale() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
 
     let sale_id = "sale-finalize-legacy";
@@ -668,7 +800,8 @@ fn remote_settings_update(id: &str) -> OfflineQueueItem {
 /// — today it errors as an unsupported action and gets quarantined.
 #[test]
 fn apply_remote_atomic_settings_update_writes_row_and_delta() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
     let remote = remote_settings_update("remote-setting-1");
 
@@ -701,7 +834,8 @@ fn apply_remote_atomic_settings_update_writes_row_and_delta() {
 /// the reporting variant; the legacy bool wrapper keeps old callers.
 #[test]
 fn apply_remote_atomic_full_surfaces_settings_change() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
     let remote = remote_settings_update("remote-setting-2");
 
@@ -718,7 +852,8 @@ fn apply_remote_atomic_full_surfaces_settings_change() {
 /// second change (the ledger skips it, so the outcome carries no change).
 #[test]
 fn apply_remote_atomic_full_replay_reports_no_settings_change() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
     let remote = remote_settings_update("remote-setting-3");
 
@@ -736,7 +871,8 @@ fn apply_remote_atomic_full_replay_reports_no_settings_change() {
 /// settings updates with the same row + delta semantics.
 #[test]
 fn apply_remote_settings_update_non_atomic() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
     let remote = remote_settings_update("remote-setting-4");
 
@@ -758,7 +894,8 @@ fn apply_remote_settings_update_non_atomic() {
 /// spelling) applies identically to `settings.update`.
 #[test]
 fn apply_remote_settings_change_alias() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
     let mut remote = remote_settings_update("remote-setting-5");
     remote.action = "settings.change".into();
@@ -781,7 +918,8 @@ fn apply_remote_settings_change_alias() {
 
 #[test]
 fn apply_remote_stock_movement_inserts_into_ledger() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     seed_product_and_inventory(&store);
     let queue = SyncQueue::new();
 
@@ -814,7 +952,8 @@ fn apply_remote_stock_movement_inserts_into_ledger() {
 
 #[test]
 fn apply_remote_stock_movement_negative_delta() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     seed_product_and_inventory(&store);
     let queue = SyncQueue::new();
 
@@ -841,7 +980,8 @@ fn apply_remote_stock_movement_negative_delta() {
 
 #[test]
 fn apply_remote_stock_movement_rebuilds_summary() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     seed_product_and_inventory(&store);
     let queue = SyncQueue::new();
 
@@ -885,7 +1025,8 @@ fn apply_remote_stock_movement_rebuilds_summary() {
 fn apply_push_conflict_routes_version_lww() {
     // A higher local product version must win, exactly as the
     // SyncEngine would resolve it (SYNC-02 shared service).
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
     let local = queue
         .enqueue(
@@ -922,7 +1063,8 @@ fn apply_push_conflict_routes_sale_status_dag() {
     // Completed must win over pending even when the local item is
     // NEWER — proves the daemon path can no longer discard an advanced
     // sale state via blanket "remote wins" (SYNC-02).
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
     let local = queue
         .enqueue(
@@ -959,7 +1101,8 @@ fn apply_push_conflict_routes_sale_status_dag() {
 /// inert and the ledger is still per-ITEM — the defect C3 set out to fix.
 #[test]
 fn applied_receipt_records_the_sale_effect_key() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     seed_product_and_inventory(&store);
     let queue = SyncQueue::new();
     let remote = OfflineQueueItem {
@@ -993,7 +1136,8 @@ fn applied_receipt_records_the_sale_effect_key() {
 /// effect-keyed ledger sees the deduction already recorded and skips it.
 #[test]
 fn redelivered_effect_under_a_different_item_id_is_not_reapplied() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     seed_product_and_inventory(&store);
     let queue = SyncQueue::new();
     let payload = r#"{"sale_id":"sale-dup","line_items":[{"sku":"COFFEE","qty":2}]}"#;
@@ -1030,7 +1174,8 @@ fn redelivered_effect_under_a_different_item_id_is_not_reapplied() {
 /// both receipts stay NULL (the partial index ignores NULL).
 #[test]
 fn effectless_arms_keep_the_delivery_only_behaviour() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     seed_product_and_inventory(&store);
     let queue = SyncQueue::new();
     let payload = r#"{"sku":"COFFEE","delta":10}"#;
@@ -1073,7 +1218,8 @@ fn effectless_arms_keep_the_delivery_only_behaviour() {
 
 #[test]
 fn apply_remote_consumes_crdt_merge_stock_adjusted() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     seed_product_and_inventory(&store);
     let queue = SyncQueue::new();
 
@@ -1094,7 +1240,8 @@ fn apply_remote_consumes_crdt_merge_stock_adjusted() {
 
 #[test]
 fn apply_remote_consumes_crdt_merge_stock_movement() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     seed_product_and_inventory(&store);
     let queue = SyncQueue::new();
 
@@ -1131,12 +1278,217 @@ fn apply_remote_consumes_crdt_merge_stock_movement() {
     );
 }
 
+/// A re-merged stock.movement envelope carries its surplus movement rows in
+/// `extra`. When the merge is over a row with itself those extras repeat the
+/// SAME movement ids — inserting them again must not abort the whole apply.
+#[test]
+fn apply_remote_tolerates_duplicate_ids_in_a_flattened_extra_array() {
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
+    seed_product_and_inventory(&store);
+    let queue = SyncQueue::new();
+
+    let side = serde_json::json!({
+        "id": "sm-dup-1", "item_id": "prod-coffee", "delta": 10,
+        "reason": "dup", "source_terminal_id": null,
+        "source_user_id": null, "store_id": "store-b",
+        "created_at": "2026-01-15T00:00:00Z"
+    });
+    // local/remote/extra all name the SAME movement id, as a re-merge of a
+    // one-row envelope with itself produces.
+    let merged = serde_json::json!({
+        "local": side,
+        "remote": side,
+        "extra": [side, side],
+        "merge_type": "crdt_delta"
+    })
+    .to_string();
+    let remote = OfflineQueueItem::new("stock.movement", &merged);
+
+    let result = queue.apply_remote(&store, &remote);
+    assert!(
+        result.is_ok(),
+        "a repeated movement id must be a no-op, not an apply failure: {result:?}"
+    );
+
+    // The row is present exactly once.
+    let movements = store.list_stock_movements("prod-coffee", 10, 0).unwrap();
+    let matching = movements.iter().filter(|m| m.id == "sm-dup-1").count();
+    assert_eq!(matching, 1, "the movement id is stored once");
+}
+
+/// A flattened stock.adjusted envelope repeats deltas across local/remote/
+/// extra when a merged row re-merges with itself. adjust_stock is NOT
+/// idempotent, so applying the repeats a second time double-counts them.
+#[test]
+fn apply_remote_does_not_double_count_repeated_stock_adjustments() {
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
+    seed_product_and_inventory(&store);
+    let queue = SyncQueue::new();
+
+    // Baseline seed quantity, then the winner of merging +10 with -3.
+    let base = inventory_qty(&store, "COFFEE");
+    let win = serde_json::json!({"sku": "COFFEE", "delta": 10});
+    let lose = serde_json::json!({"sku": "COFFEE", "delta": -3});
+    // Re-merge of that winner with itself: local/remote are the two facts,
+    // extra repeats both.
+    let merged = serde_json::json!({
+        "local": win,
+        "remote": lose,
+        "extra": [win, lose],
+        "merge_type": "crdt_delta"
+    })
+    .to_string();
+    let remote = OfflineQueueItem::new("stock.adjusted", &merged);
+
+    queue.apply_remote(&store, &remote).unwrap();
+
+    // The CRDT fact set is {+10, -3} exactly once: net +7.
+    assert_eq!(
+        inventory_qty(&store, "COFFEE"),
+        base + 7,
+        "repeated deltas in extra must not be applied twice"
+    );
+}
+
+/// Two movements with DIFFERENT ids but otherwise identical fields are two
+/// distinct facts - content dedupe must key on identity for movements, not on
+/// the serialised bytes alone.
+#[test]
+fn apply_remote_keeps_distinct_movements_that_share_their_fields() {
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
+    seed_product_and_inventory(&store);
+    let queue = SyncQueue::new();
+
+    let body = |id: &str| {
+        serde_json::json!({
+            "id": id, "item_id": "prod-coffee", "delta": 6,
+            "reason": "restock", "source_terminal_id": null,
+            "source_user_id": null, "store_id": "store-b",
+            "created_at": "2026-01-15T00:00:00Z"
+        })
+    };
+    // Same everything except the movement id: two genuine movements.
+    let merged = serde_json::json!({
+        "local": body("sm-a"),
+        "remote": body("sm-b"),
+        "merge_type": "crdt_delta"
+    })
+    .to_string();
+    let remote = OfflineQueueItem::new("stock.movement", &merged);
+
+    queue.apply_remote(&store, &remote).unwrap();
+
+    let movements = store.list_stock_movements("prod-coffee", 10, 0).unwrap();
+    let ids: Vec<&str> = movements.iter().map(|m| m.id.as_str()).collect();
+    assert!(ids.contains(&"sm-a"), "local movement must be applied");
+    assert!(
+        ids.contains(&"sm-b"),
+        "a second movement with its own id must NOT be deduped away"
+    );
+}
+
+/// Two identical payloads merge to an envelope with ONE fact; the appliers
+/// must consume it (they walk envelope_deltas, so an absent second side is
+/// fine) rather than fail on a null remote.
+#[test]
+fn apply_remote_consumes_a_merge_of_two_identical_payloads() {
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
+    seed_product_and_inventory(&store);
+    let queue = SyncQueue::new();
+
+    let base = inventory_qty(&store, "COFFEE");
+    let local = OfflineQueueItem::new("stock.adjusted", r#"{"sku":"COFFEE","delta":5}"#);
+    let remote = OfflineQueueItem::new("stock.adjusted", r#"{"sku":"COFFEE","delta":5}"#);
+    let merged = crate::conflict::resolve_stock_crdt(&local, &remote).winner;
+
+    queue.apply_remote(&store, &merged).unwrap();
+
+    // One fact, applied once: +5, not +10 and not a parse failure.
+    assert_eq!(inventory_qty(&store, "COFFEE"), base + 5);
+}
+
+/// A merge envelope can legitimately carry a null side (both inputs
+/// unparseable -> Null/Null, or one side unparseable -> local/Null). A null
+/// delta is "no fact", so the appliers must SKIP it rather than try to
+/// deserialise it and abort the whole apply.
+#[test]
+fn apply_remote_skips_a_null_side_in_a_merge_envelope() {
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
+    seed_product_and_inventory(&store);
+    let queue = SyncQueue::new();
+
+    let base = inventory_qty(&store, "COFFEE");
+    // local is a real adjustment, remote is null (the other replica had
+    // nothing parseable to offer).
+    let merged = serde_json::json!({
+        "local": { "sku": "COFFEE", "delta": 4 },
+        "remote": serde_json::Value::Null,
+        "merge_type": "crdt_delta"
+    })
+    .to_string();
+    let remote = OfflineQueueItem::new("stock.adjusted", &merged);
+
+    queue
+        .apply_remote(&store, &remote)
+        .expect("a null side must be skipped, not abort the apply");
+
+    assert_eq!(inventory_qty(&store, "COFFEE"), base + 4);
+}
+
+/// Both sides null is a valid merge of two unparseable inputs: there is no
+/// fact to apply, so the apply SUCCEEDS as a no-op (the resolver's own
+/// Null/Null shape - conflict_tests.rs).
+#[test]
+fn apply_remote_treats_both_null_sides_as_a_no_op() {
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
+    seed_product_and_inventory(&store);
+    let queue = SyncQueue::new();
+
+    let base = inventory_qty(&store, "COFFEE");
+    let merged = serde_json::json!({
+        "local": serde_json::Value::Null,
+        "remote": serde_json::Value::Null,
+        "merge_type": "crdt_delta"
+    })
+    .to_string();
+    let remote = OfflineQueueItem::new("stock.adjusted", &merged);
+
+    queue
+        .apply_remote(&store, &remote)
+        .expect("a merge with no fact to apply must still succeed");
+    assert_eq!(inventory_qty(&store, "COFFEE"), base);
+}
+
+/// A NON-envelope payload that is null is still a malformed item and must be
+/// reported, not silently swallowed - the null-skip only applies to a null
+/// SIDE inside an envelope.
+#[test]
+fn apply_remote_still_rejects_a_bare_null_payload() {
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
+    seed_product_and_inventory(&store);
+    let queue = SyncQueue::new();
+
+    let remote = OfflineQueueItem::new("stock.adjusted", "null");
+    assert!(
+        queue.apply_remote(&store, &remote).is_err(),
+        "a bare null stock payload is malformed and must fail visibly"
+    );
+}
+
 #[test]
 fn crdt_merge_end_to_end_resolve_to_apply() {
     // Full SYNC-05 path: resolve_conflict → apply_resolution (enqueue
     // merged winner) → apply_remote (consume merged payload). Both
     // deltas must survive the entire pipeline.
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     seed_product_and_inventory(&store);
     let queue = SyncQueue::new();
 
@@ -1275,7 +1627,8 @@ fn assert_location_scoped_merge(store: &Store<'_>, pid: &str) {
 /// apply_remote_in_tx stock.adjusted arm the daemon pull uses.
 #[test]
 fn apply_remote_atomic_crdt_envelope_applies_location_scoped_deltas() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let pid = seed_two_location_stock(&store);
     let winner = location_carrying_crdt_winner();
     assert!(
@@ -1291,7 +1644,8 @@ fn apply_remote_atomic_crdt_envelope_applies_location_scoped_deltas() {
 /// both pull arms must treat location_id identically (and correctly).
 #[test]
 fn apply_remote_crdt_envelope_applies_location_scoped_deltas() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let pid = seed_two_location_stock(&store);
     let winner = location_carrying_crdt_winner();
     SyncQueue::new().apply_remote(&store, &winner).unwrap();
@@ -1304,7 +1658,8 @@ fn apply_remote_crdt_envelope_applies_location_scoped_deltas() {
 /// legacy aggregate must stay the SUM over every stock_summary row.
 #[test]
 fn apply_remote_atomic_crdt_envelope_mixed_location_and_unscoped_sides() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let pid = seed_two_location_stock(&store);
     let local = OfflineQueueItem {
         id: "crdt-mixed-local".into(),
@@ -1380,7 +1735,8 @@ fn remote_settings_kv(id: &str, key: &str, value: &str) -> OfflineQueueItem {
 /// the arm called `Settings::set` with no predicate at all.
 #[test]
 fn remote_settings_update_refuses_machine_id_and_keeps_local_value() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
     Settings::set(store.conn(), "machine_id", "own-machine-fingerprint").unwrap();
 
@@ -1408,7 +1764,8 @@ fn remote_settings_update_refuses_machine_id_and_keeps_local_value() {
 /// HEAD.
 #[test]
 fn remote_settings_update_refuses_local_api_and_lan_server_keys() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
     Settings::set(store.conn(), "local_api.secret", "own-signing-secret").unwrap();
 
@@ -1437,7 +1794,8 @@ fn remote_settings_update_refuses_local_api_and_lan_server_keys() {
 /// logic.
 #[test]
 fn remote_settings_batch_continues_past_a_refused_key() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
     Settings::set(store.conn(), "machine_id", "own-machine-fingerprint").unwrap();
 
@@ -1498,7 +1856,8 @@ fn remote_settings_batch_continues_past_a_refused_key() {
 /// guard in the legacy settings arm to mean anything.
 #[test]
 fn legacy_apply_remote_leaves_a_refused_key_absent_from_the_database() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
 
     for (id, key) in [
@@ -1554,7 +1913,8 @@ fn legacy_apply_remote_leaves_a_refused_key_absent_from_the_database() {
 /// commit that turns it green.
 #[test]
 fn remote_settings_update_applies_a_key_the_exclusion_list_misses() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
     let planted = "https://sync-ingest-hazard.invalid/";
     let mine = "https://my-own-server.invalid/";
@@ -1632,7 +1992,8 @@ fn remote_settings_update_applies_a_key_the_exclusion_list_misses() {
 /// refuse while the wider allow-list is not.
 #[test]
 fn remote_settings_update_refuses_the_named_hazard_set() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
     // Six names, six legs. The count is the point: a set that quietly loses a
     // member is how the twelve stayed a twelve, so the list length is asserted
@@ -1700,7 +2061,8 @@ fn remote_settings_update_refuses_the_named_hazard_set() {
 /// ingestible_keys_cover_the_ui_egress_call_sites.
 #[test]
 fn remote_settings_still_applies_the_names_normal_operation_replicates() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
     let twelve = [
         ("leg-locale", "ui.locale", "id"),
@@ -1759,7 +2121,8 @@ fn remote_settings_still_applies_the_names_normal_operation_replicates() {
 /// red first. Green at HEAD and expected green after.
 #[test]
 fn remote_settings_refusal_legs_stay_closed_beside_the_hazard_set() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
     for (id, key) in [
         ("leg-token", "sync.auth_token"),
@@ -2101,7 +2464,8 @@ fn refund_payload_with_total(refund_id: &str, sale_id: &str, total_minor: i64) -
 /// terminal applied it.
 #[test]
 fn apply_remote_atomic_refund_reverses_customer_lifetime_spend_once() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     seed_product_and_inventory(&store);
     seed_refundable_sale(&store, "sale-spend-1", 1);
     deduct_one_coffee(&store);
@@ -2158,7 +2522,8 @@ fn apply_remote_atomic_refund_reverses_customer_lifetime_spend_once() {
 /// once; a re-apply is a no-op on all three.
 #[test]
 fn apply_remote_atomic_refund_credits_stock_once_and_replay_is_noop() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     seed_product_and_inventory(&store);
     seed_refundable_sale(&store, "sale-refund-1", 1);
     // The sale deducted 1 unit, so stock sits at 49 before the refund.
@@ -2198,7 +2563,8 @@ fn apply_remote_atomic_refund_credits_stock_once_and_replay_is_noop() {
 /// same source the originator stamped, so both terminals agree.
 #[test]
 fn apply_remote_atomic_refund_stamps_the_local_sale_tenant() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     seed_product_and_inventory(&store);
     seed_refundable_sale(&store, "sale-tenant-1", 1);
     deduct_one_coffee(&store);
@@ -2241,7 +2607,8 @@ fn apply_remote_atomic_refund_stamps_the_local_sale_tenant() {
 /// without fabricating a sales row.
 #[test]
 fn apply_remote_atomic_refund_without_the_sale_applies_the_effect() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     seed_product_and_inventory(&store);
     let queue = SyncQueue::new();
 
@@ -2263,10 +2630,135 @@ fn apply_remote_atomic_refund_without_the_sale_applies_the_effect() {
     assert_eq!(sales_row_count(&store), 0, "no sales row may be fabricated");
 }
 
+/// C64 closing evidence, sync side: the `refund_sale` with-sale arm REVERSES
+/// customer lifetime spend for ANY sale row it finds — it carries no status
+/// predicate — so its safety does not rest on the arm itself but on a
+/// TOPOLOGY invariant: no sync arm ever INSERTs a `sales` row.
+///
+/// The C64 investigation (commit 0adb58ddf) closed the item on the bridge
+/// guard alone (`process_refund_unchecked` refuses a non-completed sale).
+/// That guard is real, but a replicated refund does not pass through it. This
+/// test records the SECOND guard the sync lane relies on, so a future arm that
+/// starts materialising `sales` rows from the wire is caught here:
+///
+///   1. every arm that names a sale (`complete_sale`, `finalize_sale`,
+///      `void_sale`, `refund_sale`, `payment.recorded`) UPDATES or reads an
+///      existing row and is guarded so it never inserts one;
+///   2. an INCOMING `refund_sale` therefore finds a row only where a local
+///      checkout minted it, and that terminal had to complete the sale before
+///      its own bridge would enqueue the refund — so the accrual the reversal
+///      nets against is already present and the `MAX(..., 0)` floor cannot be
+///      reached;
+///   3. where no row exists the refund takes `credit_refund_effect_without_sale`
+///      (stock only, never customer spend).
+///
+/// The NULL status predicate is asserted directly so the trust boundary is
+/// visible rather than assumed: seed a PENDING sale row with an accrued base
+/// and the replicated refund still reverses the spend, exactly as it would for
+/// a completed one.
+#[test]
+fn apply_remote_atomic_refund_reverses_spend_for_any_status_and_never_mints_a_sale() {
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
+    seed_product_and_inventory(&store);
+    let queue = SyncQueue::new();
+
+    // A PENDING sale row (the shape the with-sale arm tests for) with the
+    // customer's spend already accrued, as if a local completion had run.
+    seed_sale_row(&store, "sale-pending-1", "pending");
+    store
+        .conn()
+        .execute(
+            "INSERT INTO customers (id, name, notes, total_spent_minor, created_at, updated_at) \
+             VALUES ('cust-1', 'Alice', '', 1000, '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')",
+            [],
+        )
+        .unwrap();
+    store
+        .conn()
+        .execute(
+            "UPDATE sales SET customer_id = 'cust-1', base_total_minor = 1000 \
+             WHERE id = 'sale-pending-1'",
+            [],
+        )
+        .unwrap();
+    assert_eq!(customer_total_spent(&store), 1000);
+
+    let remote = OfflineQueueItem::new(
+        "refund_sale",
+        refund_payload_with_total("refund-pending-1", "sale-pending-1", 400),
+    );
+    assert!(
+        queue
+            .apply_remote_atomic_full(&store, &remote)
+            .expect("a refund against an existing row applies")
+            .applied
+    );
+
+    // The arm reversed the spend WITHOUT asking the row's status: 1000 - 400.
+    assert_eq!(
+        customer_total_spent(&store),
+        600,
+        "the with-sale arm carries no status predicate — it nets against any row it finds"
+    );
+    assert_eq!(
+        sale_status(&store, "sale-pending-1"),
+        "pending",
+        "the refund must not transition the sale it reverses"
+    );
+    assert_eq!(
+        sales_row_count(&store),
+        1,
+        "exactly the row the test seeded — the arm mints none"
+    );
+}
+
+/// The other half of the C64 sync invariant: an incoming `refund_sale` for a
+/// sale this terminal has NO row for reverses NO customer spend, because it
+/// routes to `credit_refund_effect_without_sale` (stock only).
+///
+/// This is why the absent-sale topology is safe even though the with-sale arm
+/// has no status guard: the two arms partition on row EXISTENCE, and existence
+/// is exactly the terminal that already accrued.
+#[test]
+fn apply_remote_atomic_refund_without_a_row_reverses_no_spend() {
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
+    seed_product_and_inventory(&store);
+    // The customer exists with an accrued balance, but NO sale row does.
+    store
+        .conn()
+        .execute(
+            "INSERT INTO customers (id, name, notes, total_spent_minor, created_at, updated_at) \
+             VALUES ('cust-1', 'Alice', '', 1000, '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')",
+            [],
+        )
+        .unwrap();
+    let queue = SyncQueue::new();
+
+    let remote = OfflineQueueItem::new(
+        "refund_sale",
+        refund_payload_with_total("refund-orphan-2", "sale-not-here-2", 400),
+    );
+    assert!(
+        queue
+            .apply_remote_atomic_full(&store, &remote)
+            .expect("an absent sale is a topology fact, not a malformed payload")
+            .applied
+    );
+    assert_eq!(
+        customer_total_spent(&store),
+        1000,
+        "with no sale row the arm credits stock only and leaves spend untouched"
+    );
+    assert_eq!(sales_row_count(&store), 0, "no sales row may be fabricated");
+}
+
 /// C4: `void_sale` moves an active sale to voided, and a replay is a no-op.
 #[test]
 fn apply_remote_atomic_void_sale_moves_active_to_voided_and_replay_is_noop() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
     seed_sale_row(&store, "sale-void-1", "active");
 
@@ -2294,7 +2786,8 @@ fn apply_remote_atomic_void_sale_moves_active_to_voided_and_replay_is_noop() {
 /// dead-letter visibly instead of being consumed.
 #[test]
 fn apply_remote_atomic_void_of_a_completed_sale_is_a_conflict() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
     seed_sale_row(&store, "sale-done-1", "completed");
 
@@ -2313,7 +2806,8 @@ fn apply_remote_atomic_void_of_a_completed_sale_is_a_conflict() {
 /// re-application inserts none.
 #[test]
 fn apply_remote_atomic_payment_with_key_inserts_once_and_replay_inserts_none() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
     seed_sale_row(&store, "sale-pay-1", "completed");
 
@@ -2333,7 +2827,8 @@ fn apply_remote_atomic_payment_with_key_inserts_once_and_replay_inserts_none() {
 /// C4: without a key the payment's own primary key is the identity.
 #[test]
 fn apply_remote_atomic_payment_without_a_key_probes_its_id() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
     seed_sale_row(&store, "sale-pay-2", "completed");
 
@@ -2356,7 +2851,8 @@ fn apply_remote_atomic_payment_without_a_key_probes_its_id() {
 /// fabricated to make one fit).
 #[test]
 fn apply_remote_atomic_payment_without_the_sale_is_a_benign_noop() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
     let payload = r#"{"id":"pay-orphan","sale_id":"sale-not-here","method":"CASH","amount_minor":1000,"currency":"USD","created_at":"2026-01-01T00:00:00Z"}"#;
     let remote = OfflineQueueItem::new("payment.recorded", payload);
@@ -2369,7 +2865,8 @@ fn apply_remote_atomic_payment_without_the_sale_is_a_benign_noop() {
 /// three actions instead of warning them away.
 #[test]
 fn apply_remote_legacy_consumes_the_three_new_arms() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     seed_product_and_inventory(&store);
     seed_refundable_sale(&store, "sale-legacy-1", 1);
     deduct_one_coffee(&store);
@@ -2415,7 +2912,8 @@ fn apply_remote_legacy_consumes_the_three_new_arms() {
 /// every page, so the receipt is as much a part of the fix as the skip.
 #[test]
 fn pulled_item_originating_here_is_skipped_and_receipted() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     seed_product_and_inventory(&store);
     Settings::set(store.conn(), "sync_terminal_id", "term-this").unwrap();
     let queue = SyncQueue::new();
@@ -2467,7 +2965,8 @@ fn pulled_item_originating_here_is_skipped_and_receipted() {
 /// DIFFERENT terminal is exactly the case the arm exists for.
 #[test]
 fn pulled_item_originating_elsewhere_is_applied_once() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     seed_product_and_inventory(&store);
     Settings::set(store.conn(), "sync_terminal_id", "term-this").unwrap();
     let queue = SyncQueue::new();
@@ -2498,7 +2997,8 @@ fn pulled_item_originating_elsewhere_is_applied_once() {
 /// applied exactly as it was before this slice, even on a paired install.
 #[test]
 fn pulled_item_without_origin_is_applied_as_before() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     seed_product_and_inventory(&store);
     Settings::set(store.conn(), "sync_terminal_id", "term-this").unwrap();
     let queue = SyncQueue::new();
@@ -2518,11 +3018,96 @@ fn pulled_item_without_origin_is_applied_as_before() {
     assert_eq!(inventory_qty(&store, "COFFEE"), 48);
 }
 
+// ── C3: the acceptance round trip ────────────────────────────────────
+//
+// C3's "done when" is a ROUND TRIP, not an arm in isolation: push a
+// complete_sale through the real producer, pull that same item back onto
+// the terminal that pushed it, and assert stock moved exactly once. The
+// tests above prove the gate skips a synthetic remote item; this proves
+// the case the production path actually creates, end to end — the
+// producer stamps the origin, the pull carries it, and the applier
+// recognises its own work.
+
+/// The end-to-end C3 assertion: one sale, one deduction.
+///
+/// This is the shape the tablet hits. The checkout ENQUEUES its own sale
+/// (offline.rs `enqueue_sale_outbox_in_tx`, action "complete_sale"), the
+/// daemon pushes it, and the next pull hands the same row back. Before the
+/// origin gate, that second delivery deducted the stock again on the very
+/// inventory the sale had already reduced.
+#[test]
+#[allow(deprecated)] // adjust_stock is the exact call the complete_sale arm makes
+fn a_terminal_does_not_reapply_the_sale_it_pushed() {
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
+    seed_product_and_inventory(&store);
+    Settings::set(store.conn(), "sync_terminal_id", "term-this").unwrap();
+    let queue = SyncQueue::new();
+
+    // 1. The terminal completes a sale and the outbox enqueues it. The
+    //    producer stamps origin_terminal_id from the paired install, which
+    //    is the field the pull gate later reads.
+    let tx = store.conn().unchecked_transaction().unwrap();
+    kasirmu_core::db::Store::enqueue_offline_in_tx(
+        &tx,
+        "complete_sale",
+        r#"{"sale_id":"sale-roundtrip","line_items":[{"sku":"COFFEE","qty":2}]}"#,
+        "default",
+        kasirmu_core::offline::SyncPriority::Critical,
+    )
+    .unwrap();
+    tx.commit().unwrap();
+
+    // The enqueued row is this terminal's own work.
+    let pushed = queue.list_pending(&store).unwrap();
+    assert_eq!(pushed.len(), 1, "the sale must be queued for push");
+    assert_eq!(
+        pushed[0].origin_terminal_id.as_deref(),
+        Some("term-this"),
+        "the producer must stamp the origin, or the gate cannot see it"
+    );
+
+    // The sale's own deduction already happened locally.
+    let after_checkout = inventory_qty(&store, "COFFEE");
+    // THE SAME CALL the complete_sale arm itself makes (queue.rs apply_remote:
+    // `store.adjust_stock(&line.sku, -line.qty)`). Using the arm's own
+    // deduction is what makes the assertion meaningful: if the pull were
+    // applied, it would land an identical second deduction and the count
+    // below would be short by 2.
+    store.adjust_stock("COFFEE", -2).unwrap();
+    assert_eq!(inventory_qty(&store, "COFFEE"), after_checkout - 2);
+
+    // 2. That item comes back on a pull.
+    let remote = OfflineQueueItem {
+        id: pushed[0].id.clone(),
+        action: "complete_sale".into(),
+        payload: pushed[0].payload.clone(),
+        origin_terminal_id: Some("term-this".into()),
+        ..OfflineQueueItem::new("complete_sale", "{}")
+    };
+
+    // 3. It must NOT be applied, and the skip must be receipted.
+    assert!(
+        !queue.apply_remote_atomic(&store, &remote).unwrap(),
+        "a terminal must not re-apply the sale it pushed"
+    );
+    assert_eq!(
+        inventory_qty(&store, "COFFEE"),
+        after_checkout - 2,
+        "stock must have moved exactly once for this sale"
+    );
+    assert!(
+        store.is_remote_item_applied(&remote.id).unwrap(),
+        "the skip must be receipted, or every page re-attempts it"
+    );
+}
+
 /// The delivery receipt still short-circuits on its own, with the origin gate
 /// deliberately out of the way (a DIFFERENT terminal's item, re-pulled).
 #[test]
 fn already_receipted_item_still_short_circuits() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     seed_product_and_inventory(&store);
     Settings::set(store.conn(), "sync_terminal_id", "term-this").unwrap();
     let queue = SyncQueue::new();
@@ -2550,7 +3135,8 @@ fn already_receipted_item_still_short_circuits() {
 /// proves the deduction already happened on this inventory.
 #[test]
 fn complete_sale_arm_skips_a_sale_already_settled_here() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     seed_product_and_inventory(&store);
     Settings::set(store.conn(), "sync_terminal_id", "term-this").unwrap();
     store
@@ -2591,7 +3177,8 @@ fn complete_sale_arm_skips_a_sale_already_settled_here() {
 /// owes, and it must land.
 #[test]
 fn complete_sale_arm_applies_a_sale_settled_elsewhere() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     seed_product_and_inventory(&store);
     Settings::set(store.conn(), "sync_terminal_id", "term-this").unwrap();
     store

@@ -29,8 +29,14 @@ interface Props {
    * rule here.
    */
   searchDocs?: SearchDoc[];
+  /**
+   * Per-locale counterpart paths, forwarded to LocaleSwitcher. Only the guides
+   * layer passes it (via Base): its two locales do not share a path, so the
+   * switcher cannot derive the other locale's URL by swapping the prefix.
+   */
+  alternatePaths?: Record<string, string>;
 }
-const { searchDocs } = Astro.props;
+const { searchDocs, alternatePaths } = Astro.props;
 const locale = Astro.props.locale ?? Astro.currentLocale ?? 'en';
 // The search island's strings travel with the document, so the browser never
 // loads a locale dictionary (see src/i18n/labels.ts).
@@ -320,7 +326,7 @@ const login = getRelativeLocaleUrl(locale, 'login');
         )
       }
       <ThemeToggle locale={locale} />
-      <LocaleSwitcher locale={locale} />
+      <LocaleSwitcher locale={locale} alternatePaths={alternatePaths} />
       <a
         href={login}
         data-auth-nav

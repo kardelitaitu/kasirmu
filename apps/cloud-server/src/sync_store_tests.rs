@@ -14,29 +14,60 @@ fn fresh_db() -> Arc<Mutex<Connection>> {
 async fn throwaway_pool() -> Option<(deadpool_postgres::Pool, String)> {
     let url = std::env::var("OZ_TEST_PG_URL")
         .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:15432/postgres".into());
-    let config = tokio_postgres::Config::from_str(&url).ok()?;
+    // Every failure below is NAMED rather than reduced to `.ok()?`. That is not
+    // style: while this function swallowed its errors, a CI red could only ever
+    // print "cannot create throwaway DB", and the hardcoded-port bug above hid
+    // behind that for four CI runs because a refused connection and a failed
+    // CREATE DATABASE were indistinguishable in the log.
+    let config = match tokio_postgres::Config::from_str(&url) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("throwaway_pool: OZ_TEST_PG_URL is not a valid connection string: {e}");
+            return None;
+        }
+    };
     let admin_mgr = deadpool_postgres::Manager::new(config, tokio_postgres::NoTls);
-    let admin_pool = deadpool_postgres::Pool::builder(admin_mgr)
+    let admin_pool = match deadpool_postgres::Pool::builder(admin_mgr)
         .max_size(2)
         .build()
-        .ok()?;
-    let admin = admin_pool.get().await.ok()?;
+    {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("throwaway_pool: admin pool build failed: {e}");
+            return None;
+        }
+    };
+    let admin = match admin_pool.get().await {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("throwaway_pool: admin connection refused at {url}: {e}");
+            return None;
+        }
+    };
 
     // Clean up stale throwaway DBs from crashed runs.
-    let stale: Vec<String> = admin
+    let stale: Vec<String> = match admin
         .query(
             "SELECT datname FROM pg_database WHERE datname LIKE 'oz_sync_test_%'",
             &[],
         )
         .await
-        .ok()?
-        .iter()
-        .map(|r| r.get::<_, String>(0))
-        .collect();
+    {
+        Ok(rows) => rows.iter().map(|r| r.get::<_, String>(0)).collect(),
+        Err(e) => {
+            eprintln!("throwaway_pool: listing stale oz_sync_test_ databases failed: {e}");
+            return None;
+        }
+    };
     for d in &stale {
-        let _ = admin
+        if let Err(e) = admin
             .batch_execute(&format!("DROP DATABASE IF EXISTS {d} WITH (FORCE);"))
-            .await;
+            .await
+        {
+            // Non-fatal, as before: a leftover that will not drop is not a reason
+            // to fail this test -- but it is a reason to say so.
+            eprintln!("throwaway_pool: dropping stale {d} failed (continuing): {e}");
+        }
     }
 
     // `.simple()` (hex only): the name is interpolated as an unquoted
@@ -47,26 +78,62 @@ async fn throwaway_pool() -> Option<(deadpool_postgres::Pool, String)> {
         std::process::id(),
         uuid::Uuid::now_v7().simple()
     );
-    admin
+    if let Err(e) = admin
         .execute(&format!("CREATE DATABASE {db_name}"), &[])
         .await
-        .ok()?;
+    {
+        eprintln!("throwaway_pool: CREATE DATABASE {db_name} failed: {e}");
+        return None;
+    }
     drop(admin);
     drop(admin_pool);
 
     // Connect to the new DB and apply schema.
-    let db_url = format!("postgres://postgres:postgres@localhost:15432/{db_name}");
-    let db_config = tokio_postgres::Config::from_str(&db_url).ok()?;
+    //
+    // DERIVED from `url`, never hardcoded. This line read
+    // `postgres://postgres:postgres@localhost:15432/{db_name}` -- the local dev
+    // container's port -- while the admin connection above correctly used `url`.
+    // In CI `OZ_TEST_PG_URL` points at the service container on 5432, so the
+    // admin created the database on 5432 and this line then dialled 15432, where
+    // nothing listens. `.ok()?` swallowed the error and every caller reported
+    // "cannot create throwaway DB". That is a DETERMINISTIC failure, not a race:
+    // it only read as flaky because nextest's `fail-fast = { max-fail = 1 }`
+    // surfaced one victim per run, and a different one per shard. It was never
+    // seen before fda1412ac because the path router skipped this job entirely.
+    // Same shape as `kasirmu-api/src/pg_tests.rs`, which already did it right.
+    let (base, _old_db) = url
+        .rsplit_once('/')
+        .expect("OZ_TEST_PG_URL must carry a database path");
+    let db_url = format!("{base}/{db_name}");
+    let db_config = match tokio_postgres::Config::from_str(&db_url) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("throwaway_pool: derived url {db_url} is not a valid connection string: {e}");
+            return None;
+        }
+    };
     let mgr = deadpool_postgres::Manager::new(db_config, tokio_postgres::NoTls);
-    let pool = deadpool_postgres::Pool::builder(mgr)
-        .max_size(3)
-        .build()
-        .ok()?;
-    let client = pool.get().await.ok()?;
-    client
+    let pool = match deadpool_postgres::Pool::builder(mgr).max_size(3).build() {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("throwaway_pool: test-db pool build failed: {e}");
+            return None;
+        }
+    };
+    let client = match pool.get().await {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("throwaway_pool: connection to the new database {db_name} refused: {e}");
+            return None;
+        }
+    };
+    if let Err(e) = client
         .batch_execute(kasirmu_core::migrations::PG_INIT)
         .await
-        .ok()?;
+    {
+        eprintln!("throwaway_pool: applying PG_INIT to {db_name} failed: {e}");
+        return None;
+    }
     drop(client);
 
     Some((pool, db_name))
@@ -266,14 +333,113 @@ async fn store_push_batch_empty_returns_empty() {
     assert_eq!(store.pending_count("tenant-empty").await, 0);
 }
 
+/// A count that could not be read must not read as an empty queue.
+///
+/// `pending_count` is what every terminal polls on its heartbeat to decide
+/// whether its offline backlog is draining. Reporting a failed read as 0 tells
+/// the client everything has synced, so it stops retrying and the backlog is
+/// stranded. The two answers have to stay distinguishable, and dropping the
+/// table is the honest way to make the read fail — the row is proven readable
+/// first, so what the assertion below is about is the failure, not a fixture
+/// that never had data in it.
+#[tokio::test]
+async fn an_unreadable_queue_depth_is_unknown_not_an_empty_queue() {
+    let conn = fresh_db();
+    let store = SyncStore::sqlite(conn.clone());
+
+    let item = sample_item("depth-1");
+    assert!(matches!(
+        store.push_item(&item, "tenant-a").await.unwrap(),
+        PushOutcome::Accepted
+    ));
+    assert_eq!(
+        store.pending_count("tenant-a").await,
+        1,
+        "the count is readable before the schema is broken"
+    );
+
+    {
+        let guard = conn.lock().await;
+        guard
+            .execute("DROP TABLE offline_queue", [])
+            .expect("drop offline_queue");
+    }
+
+    assert_eq!(
+        store.pending_count("tenant-a").await,
+        SyncStore::PENDING_COUNT_UNKNOWN,
+        "a failed read must be unknown, not 0: 0 tells the client its backlog is empty"
+    );
+}
+
+/// A failed anchor min-scan must be REPORTED, not just skipped.
+///
+/// `oldest_created_at` returns `None` both when the queue is empty and when the
+/// min-scan failed, and the pull handler treats `None` as "skip the P-1
+/// anchor-expiry check". So a failed scan hands a client behind a pruned horizon a
+/// normal page instead of the 410 `anchor_expired`, and — the part that made this
+/// invisible — it LOWERS `SYNC_ANCHOR_EXPIRED_TOTAL`, the only signal that path
+/// has. A broken min-scan read as "fewer expiries", never as "the check stopped
+/// running".
+///
+/// Keeping `None` for both is deliberate (the pull must not fail on a min-scan),
+/// so the distinction is made loud instead: the counter must move. Every previous
+/// read in this file is proven readable first, so what the assertion below is about
+/// is the failure, not a fixture that never had data.
+#[tokio::test]
+async fn a_failed_anchor_min_scan_is_counted_not_silently_skipped() {
+    let conn = fresh_db();
+    let store = SyncStore::sqlite(conn.clone());
+
+    let item = sample_item("anchor-1");
+    assert!(matches!(
+        store.push_item(&item, "tenant-a").await.unwrap(),
+        PushOutcome::Accepted
+    ));
+    let before = crate::metrics::SYNC_ANCHOR_CHECK_SKIPPED_TOTAL.get();
+
+    // Readable first: a real timestamp, and NO skip counted.
+    assert!(
+        store.oldest_created_at("tenant-a").await.is_some(),
+        "the anchor is readable before the schema is broken"
+    );
+    assert_eq!(
+        crate::metrics::SYNC_ANCHOR_CHECK_SKIPPED_TOTAL.get(),
+        before,
+        "a successful scan must not count as a skip"
+    );
+
+    {
+        let guard = conn.lock().await;
+        guard
+            .execute("DROP TABLE offline_queue", [])
+            .expect("drop offline_queue");
+    }
+
+    // The value stays `None` (the pull must not fail), but the skip is counted.
+    assert!(
+        store.oldest_created_at("tenant-a").await.is_none(),
+        "a failed scan stays None so the pull proceeds"
+    );
+    assert_eq!(
+        crate::metrics::SYNC_ANCHOR_CHECK_SKIPPED_TOTAL.get(),
+        before + 1.0,
+        "a failed anchor min-scan must be counted, or it is indistinguishable from an empty queue"
+    );
+}
+
 /// Integration test against a live Postgres instance (the same Docker
 /// service `db.rs` uses, port 15432). Skips when unreachable, so the
 /// suite stays green on machines without a running Postgres.
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 async fn pg_integration_push_pull_plan_snapshot_roundtrip() {
     let Some((pool, db_name)) = throwaway_pool().await else {
         eprintln!("PG sync-store integration test skipped: cannot create throwaway DB");
+        #[cfg(not(feature = "pg-tests"))]
         return;
+        #[cfg(feature = "pg-tests")]
+        panic!("PG test enabled but the resource is unreachable - see the skip message above");
     };
 
     let tenant = format!("pg-sync-store-test-{}", uuid::Uuid::now_v7());
@@ -456,11 +622,15 @@ async fn pg_integration_push_pull_plan_snapshot_roundtrip() {
 /// a naive plain `INSERT` would abort the whole batch on the first
 /// UNIQUE violation, and every subsequent item would fail with "current
 /// transaction is aborted".
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 async fn pg_integration_push_batch_duplicate_in_middle_survives() {
     let Some((pool, db_name)) = throwaway_pool().await else {
         eprintln!("PG push-batch integration test skipped: cannot create throwaway DB");
+        #[cfg(not(feature = "pg-tests"))]
         return;
+        #[cfg(feature = "pg-tests")]
+        panic!("PG test enabled but the resource is unreachable - see the skip message above");
     };
     let tenant = format!("pg-batch-{}", uuid::Uuid::now_v7());
     let store = SyncStore::postgres(pool.clone());
@@ -520,11 +690,15 @@ async fn pg_integration_push_batch_duplicate_in_middle_survives() {
 /// A committed batch must be durable and visible to a FRESH connection —
 /// a `drop(tx)` (rollback) regression would pass within the batch's own
 /// transaction but fail here.
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 async fn pg_integration_push_batch_commit_visible_to_new_connection() {
     let Some((pool, db_name)) = throwaway_pool().await else {
         eprintln!("PG push-batch commit test skipped: cannot create throwaway DB");
+        #[cfg(not(feature = "pg-tests"))]
         return;
+        #[cfg(feature = "pg-tests")]
+        panic!("PG test enabled but the resource is unreachable - see the skip message above");
     };
     let tenant = format!("pg-batch-commit-{}", uuid::Uuid::now_v7());
     let store = SyncStore::postgres(pool.clone());
@@ -581,11 +755,15 @@ async fn pg_integration_push_batch_commit_visible_to_new_connection() {
 /// that raises on one specific payload to simulate a CHECK/trigger/NOT
 /// NULL failure, exactly the class of error `ON CONFLICT DO NOTHING`
 /// does NOT suppress.
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 async fn pg_integration_push_batch_data_error_does_not_abort_batch() {
     let Some((pool, db_name)) = throwaway_pool().await else {
         eprintln!("PG push-batch data-error test skipped: cannot create throwaway DB");
+        #[cfg(not(feature = "pg-tests"))]
         return;
+        #[cfg(feature = "pg-tests")]
+        panic!("PG test enabled but the resource is unreachable - see the skip message above");
     };
     let tenant = format!("pg-batch-err-{}", uuid::Uuid::now_v7());
     let store = SyncStore::postgres(pool.clone());
@@ -815,6 +993,214 @@ async fn sqlite_concurrent_gift_card_redemption_is_flagged_end_to_end() {
     );
 }
 
+/// C19(a): the `AutoMergeDeltas` policy is REACHABLE IN PRODUCTION and its
+/// decision was consumed by nobody -- a concurrent stock adjustment was resolved
+/// by writing ONE side's payload, dropping the other's delta.
+///
+/// Reachability, verified rather than assumed: `platform/startup/src/
+/// event_handlers.rs:199` enqueues `stock.adjusted` with a `delta`/`new_qty`
+/// payload, and `InventorySyncEnqueuer` is registered at startup
+/// (`platform/startup/src/lib.rs:161` and `:173`). `is_stock_entity` matches it,
+/// so `policy_for` returns `MergePolicy::AutoMergeDeltas` and `classify` returns
+/// `Decision::AutoMerge`. `detect_conflict` matched neither arm and fell through
+/// to "keep the stored payload", so the incoming adjustment vanished.
+///
+/// The policy's own doc names the intended outcome: "Additive deltas: both sides
+/// apply. Stock movements."
+#[tokio::test]
+async fn sqlite_concurrent_stock_adjustments_merge_their_deltas() {
+    let conn = fresh_db();
+    let store = SyncStore::sqlite(conn.clone());
+
+    // Two terminals each adjusted the same SKU by -1. Concurrent vectors, so
+    // this really does reach the policy table.
+    // `entity_id` is what `entity_id_of` reads, so both sides must name the SAME
+    // entity or they are compared as unrelated rows and no conflict is seen at all.
+    let first = platform_sync::crdt::stamp_payload(
+        &serde_json::json!({ "entity_id": "P1", "sku": "P1", "delta": -1, "new_qty": 9 })
+            .to_string(),
+        "t1",
+        1,
+    );
+    let second = platform_sync::crdt::stamp_payload(
+        &serde_json::json!({ "entity_id": "P1", "sku": "P1", "delta": -1, "new_qty": 9 })
+            .to_string(),
+        "t2",
+        1,
+    );
+
+    store
+        .push_batch(
+            &[detection_item("st-a", "stock.adjusted", &first)],
+            "tenant-a",
+        )
+        .await
+        .unwrap();
+    store
+        .push_batch(
+            &[detection_item("st-b", "stock.adjusted", &second)],
+            "tenant-a",
+        )
+        .await
+        .unwrap();
+
+    // An additive merge needs no human, so no review row is raised.
+    assert!(
+        store
+            .list_conflicts("tenant-a", None, None)
+            .await
+            .unwrap()
+            .is_empty(),
+        "additive deltas are the one policy that merges without review"
+    );
+
+    // The merged payload must carry BOTH deltas. Before the fix it carried
+    // whichever side happened to be written last, i.e. -1 instead of -2.
+    let live: String = {
+        let db = conn.lock().await;
+        db.query_row(
+            "SELECT last_payload FROM sync_entity_vectors \
+             WHERE tenant_id = 'tenant-a' AND entity_type = 'stock.adjusted' \
+               AND entity_id = 'P1'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("the entity row must exist after a resolving push")
+    };
+    let parsed: serde_json::Value = serde_json::from_str(&live).unwrap();
+    assert_eq!(
+        parsed["delta"].as_i64(),
+        Some(-2),
+        "both adjustments must apply: the deltas are additive (got: {live})"
+    );
+}
+
+/// The fallback half of the additive merge: a body that cannot be summed must
+/// NOT produce an invented number.
+///
+/// `delta` is the additive field the policy names, and if either side lacks a
+/// numeric one there is nothing to add. The conservative outcome is to keep the
+/// stored body -- never to write a quantity neither terminal reported, which is
+/// the failure mode a merge on unparseable input would introduce.
+#[tokio::test]
+async fn sqlite_auto_merge_falls_back_when_a_delta_is_not_a_number() {
+    let conn = fresh_db();
+    let store = SyncStore::sqlite(conn.clone());
+
+    let stored = platform_sync::crdt::stamp_payload(
+        &serde_json::json!({ "entity_id": "P2", "delta": -3, "sku": "P2" }).to_string(),
+        "t1",
+        1,
+    );
+    // A delta that is a STRING, so the sum is undefined rather than zero.
+    let incoming = platform_sync::crdt::stamp_payload(
+        &serde_json::json!({ "entity_id": "P2", "delta": "unparseable", "sku": "P2" }).to_string(),
+        "t2",
+        1,
+    );
+
+    for (id, payload) in [("am-a", &stored), ("am-b", &incoming)] {
+        store
+            .push_batch(&[detection_item(id, "stock.adjusted", payload)], "tenant-a")
+            .await
+            .unwrap();
+    }
+
+    let live: String = {
+        let db = conn.lock().await;
+        db.query_row(
+            "SELECT last_payload FROM sync_entity_vectors \
+             WHERE tenant_id = 'tenant-a' AND entity_type = 'stock.adjusted' \
+               AND entity_id = 'P2'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("the entity row must exist after a resolving push")
+    };
+    let parsed: serde_json::Value = serde_json::from_str(&live).unwrap();
+    assert_eq!(
+        parsed["delta"].as_i64(),
+        Some(-3),
+        "an unsummable pair keeps the stored delta rather than inventing one (got: {live})"
+    );
+    assert!(
+        !live.contains("unparseable"),
+        "the unsummable incoming body must not be written as if it merged"
+    );
+}
+
+/// C19: when `LastWriterWins` picks the STORED side, the incoming payload
+/// must NOT be persisted.
+///
+/// `classify` returns `Decision::LastWriterWins { winner_is_remote }`
+/// (`conflict_resolution.rs:246-249`), so the decision NAMES which side won.
+/// `detect_conflict` ignored that field and always saved `incoming_payload`,
+/// so a lost tie-break still overwrote the winner's body -- the silent
+/// one-side-discarded merge the policy table exists to prevent. A
+/// `catalog.updated` action classifies `LastWriterWins` (it matches neither
+/// the money, stock nor customer needles), and `{t1:2}` beats `{t2:1}` on
+/// event count, so the STORED side is this pair's winner.
+#[tokio::test]
+async fn sqlite_last_writer_wins_keeps_the_winner_and_never_clobbers_it() {
+    let conn = fresh_db();
+    let store = SyncStore::sqlite(conn.clone());
+
+    // Stored side saw two events, incoming one. `tie_break` compares the
+    // total event count first, so the stored side is the winner.
+    let stored_body = serde_json::json!({ "entity_id": "cat-1", "name": "winner" }).to_string();
+    let incoming_body = serde_json::json!({ "entity_id": "cat-1", "name": "loser" }).to_string();
+    let stored = platform_sync::crdt::stamp_payload(&stored_body, "t1", 2);
+    let incoming = platform_sync::crdt::stamp_payload(&incoming_body, "t2", 1);
+
+    store
+        .push_batch(
+            &[detection_item("cat-a", "catalog.updated", &stored)],
+            "tenant-a",
+        )
+        .await
+        .unwrap();
+    store
+        .push_batch(
+            &[detection_item("cat-b", "catalog.updated", &incoming)],
+            "tenant-a",
+        )
+        .await
+        .unwrap();
+
+    // Precondition: this pair resolves rather than flagging, so the
+    // assertion below is about the LastWriterWins path and not the flag one.
+    assert!(
+        store
+            .list_conflicts("tenant-a", None, None)
+            .await
+            .unwrap()
+            .is_empty(),
+        "last-writer-wins must not raise a review row"
+    );
+
+    // The winner's body must still be what is stored. Read the column the
+    // resolver writes, exactly as the neighbouring tests do.
+    let live: String = {
+        let db = conn.lock().await;
+        db.query_row(
+            "SELECT last_payload FROM sync_entity_vectors \
+             WHERE tenant_id = 'tenant-a' AND entity_type = 'catalog.updated' \
+               AND entity_id = 'cat-1'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("the entity row must exist after a resolving push")
+    };
+    assert!(
+        live.contains("winner"),
+        "the stored side won the tie-break, so its body must survive: {live}"
+    );
+    assert!(
+        !live.contains("loser"),
+        "the LOSING payload must not be persisted over the winner: {live}"
+    );
+}
+
 /// Causally ordered writes are not conflicts, however many terminals take
 /// part: each writer here has observed everything before it.
 #[tokio::test]
@@ -1021,11 +1407,15 @@ async fn sqlite_unstamped_payload_is_skipped_not_flagged() {
 /// visible only to its own tenant (and an UPDATE from another tenant matches
 /// 0 rows). What this test proves is that the PG arms execute at all —
 /// before it, none of the six methods had ever run against Postgres.
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 async fn pg_integration_conflict_detection_end_to_end() {
     let Some((pool, db_name)) = throwaway_pool().await else {
         eprintln!("PG conflict detection test skipped: cannot create throwaway DB");
+        #[cfg(not(feature = "pg-tests"))]
         return;
+        #[cfg(feature = "pg-tests")]
+        panic!("PG test enabled but the resource is unreachable - see the skip message above");
     };
     let tenant = format!("pg-conflict-{}", uuid::Uuid::now_v7());
     let store = SyncStore::postgres(pool.clone());
@@ -1120,11 +1510,15 @@ async fn pg_integration_conflict_detection_end_to_end() {
 /// persisted and read back: if `sync_entity_vectors` were unreadable under
 /// RLS, every push would look like the first and nothing would ever be
 /// concurrent — which is the same "no conflicts" result, reached wrongly.
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 async fn pg_integration_causally_ordered_pushes_never_flag() {
     let Some((pool, db_name)) = throwaway_pool().await else {
         eprintln!("PG ordered-push test skipped: cannot create throwaway DB");
+        #[cfg(not(feature = "pg-tests"))]
         return;
+        #[cfg(feature = "pg-tests")]
+        panic!("PG test enabled but the resource is unreachable - see the skip message above");
     };
     let tenant = format!("pg-ordered-{}", uuid::Uuid::now_v7());
     let store = SyncStore::postgres(pool.clone());
@@ -1190,11 +1584,15 @@ async fn pg_integration_causally_ordered_pushes_never_flag() {
 /// scripts/rls-cutover.sql. Drift in either is completely silent — the
 /// tables just stop being protected, or stop being reachable by `oz_app`,
 /// with no compile error and no failing test anywhere else.
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 async fn pg_integration_conflict_tables_enforce_tenant_isolation() {
     let Some((pool, db_name)) = throwaway_pool().await else {
         eprintln!("PG tenant-isolation test skipped: cannot create throwaway DB");
+        #[cfg(not(feature = "pg-tests"))]
         return;
+        #[cfg(feature = "pg-tests")]
+        panic!("PG test enabled but the resource is unreachable - see the skip message above");
     };
 
     // Roles are cluster-wide, not per-database, so the name must be unique
@@ -1671,4 +2069,84 @@ async fn sqlite_pull_filter_applies_to_all_three_query_shapes() {
         .await
         .unwrap();
     assert_eq!(limited.len(), 1, "LIMIT semantics are untouched");
+}
+
+/// The multi-row push fast path emits one statement per `MULTIROW_CHUNK` rows
+/// and rebuilds its returned-id multiset for each chunk. Every other test in
+/// this file pushes a handful of items, so nothing reaches the second
+/// statement — and an id that straddles the boundary must still be reported
+/// exactly once as `Accepted` and once as `Rejected`, the same as a duplicate
+/// inside one chunk.
+#[tokio::test]
+async fn sqlite_push_batch_keeps_outcomes_across_the_multirow_chunk_boundary() {
+    let conn = fresh_db();
+    let store = SyncStore::sqlite(conn.clone());
+
+    // 501 items: one full chunk, then one row into the next statement — the
+    // same id first and last, so the duplicate straddles the boundary.
+    let mut items: Vec<OfflineQueueItem> = (0..500)
+        .map(|i| sample_item(&format!("chunk-{i:04}")))
+        .collect();
+    items.push(sample_item("chunk-0000"));
+
+    let outcomes = store.push_batch(&items, "tenant-chunk").await.unwrap();
+    assert_eq!(outcomes.len(), 501, "one outcome per item, always");
+    assert!(
+        outcomes[..500]
+            .iter()
+            .all(|o| matches!(o, PushOutcome::Accepted)),
+        "the first chunk lands in full"
+    );
+    assert!(
+        matches!(&outcomes[500], PushOutcome::Rejected { .. }),
+        "the id repeated in the second chunk is a duplicate: {:?}",
+        outcomes[500]
+    );
+
+    let stored = store
+        .pull_items("tenant-chunk", None, None, None, 1000)
+        .await
+        .unwrap();
+    assert_eq!(stored.len(), 500, "501 pushes minus the one duplicate id");
+}
+
+/// SYNC-10: a row that cannot be decoded must fail the WHOLE pull rather than
+/// be skipped. A pull that silently drops the rows it could not read is
+/// indistinguishable from "there was nothing to sync" at the terminal, which
+/// then advances its cursor past data it never received.
+#[tokio::test]
+async fn sqlite_pull_fails_loudly_when_a_row_cannot_be_decoded() {
+    let conn = fresh_db();
+    let store = SyncStore::sqlite(conn.clone());
+    assert!(matches!(
+        store
+            .push_item(&sample_item("decode-good"), "tenant-decode")
+            .await
+            .unwrap(),
+        PushOutcome::Accepted
+    ));
+
+    // `retry_count` has INTEGER affinity: a non-numeric TEXT stores as TEXT
+    // and decodes as nothing the item type can hold.
+    {
+        let conn = conn.lock().await;
+        conn.execute(
+            "INSERT INTO offline_queue (id, action, payload, status, retry_count, created_at, tenant_id)
+             VALUES ('decode-bad', 'complete_sale', '{}', 'pending', 'not-a-number', '2026-01-01T00:00:00Z', 'tenant-decode')",
+            [],
+        )
+        .unwrap();
+    }
+
+    let err = store
+        .pull_items(
+            "tenant-decode",
+            None,
+            Some("2026-01-01T00:00:00Z"),
+            None,
+            501,
+        )
+        .await
+        .expect_err("an undecodable row must fail the pull, never vanish from it");
+    assert!(err.contains("row decode failed"), "got: {err}");
 }

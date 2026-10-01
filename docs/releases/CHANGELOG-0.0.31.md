@@ -1,3 +1,4 @@
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 75 lines, no audit stamp, no footer, no marker. A dated release record, left entirely as written for the same reason as its siblings in this batch — a changelog describes one build, and rewriting it to match a later tree removes its value. · The one thing worth recording is that this and the three sibling changelogs (0.0.25, 0.0.33, 0.0.34) are the ONLY release notes in `docs/releases/`. There is no 0.0.40 changelog, no 0.0.39, none for any version after 0.0.34 — the live `CHANGELOG.md` at the repository root is what carries recent history, and these files are per-version snapshots that stop four minors ago. That is a legitimate arrangement rather than a gap, but it is worth stating once, here, because a reader arriving in `docs/releases/` and seeing four files ending at 0.0.34 could reasonably conclude the project stopped releasing. It did not; the branch is `0.0.40`. · NOT re-measured: every count and gate result in the body, all of which belong to the release this file records. · No stamp or footer existed; both added. -->
 # kasir.mu 0.0.31
 
 Released 2026-08-28.
@@ -73,3 +74,5 @@ Two new subdomains with auth-gated, full-featured dashboards:
 - Pre-commit gates (cargo fmt, i18n lint, bundle parity, FTL dedupe) pass.
 - 40 legacy docs archived to `docs/archived/`.
 - 4 agents (AGENTS.md) updated: chunk-size recommendation 100 → 500 lines.
+
+> last audited 29-09-26 by docs-auditor

@@ -10,6 +10,11 @@ on:
 env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: -D warnings
+  # P2-4. Rustdoc does NOT read RUSTFLAGS, so a broken intra-doc link was never
+  # a CI failure until this pair landed. Consumed by the `rust-doc` job below --
+  # set here rather than on that job's step so it applies to any future rustdoc
+  # invocation (a `cargo test --doc` step would inherit it too).
+  RUSTDOCFLAGS: -D warnings
   SCCACHE_GHA_ENABLED: "true"
 
 defaults:
@@ -18,6 +23,27 @@ defaults:
 
 permissions:
   contents: read
+
+# ── Concurrency: cancel superseded PR runs, never a deploy ──────────────
+# This is the only workflow in the repository without one; `android.yml:43`
+# and `release.yml:67` both carry the pattern, so the absence here was an
+# oversight rather than a decision.
+#
+# `cancel-in-progress` is CONDITIONAL, and that condition is the whole point.
+# On a pull request a superseded run is pure waste -- this workflow's own
+# header measured three pushes to PR #95 at 75.2 runner-minutes, and the
+# response then was path routing, which reduces what each run does but never
+# stops a stale run from finishing. Cancelling it frees the runner for the
+# push that actually matters.
+#
+# On a push to `main` the same cancel would be a bug: `northflank-deploy`
+# fires from this workflow (`if:` at the deploy job), so cancelling a
+# superseded main run can kill a deploy mid-flight. `github.event_name ==
+# 'pull_request'` keeps that door shut -- a main run is never cancelled by a
+# later main run.
+concurrency:
+  group: dev-ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   # ── 0. Changes: path router ──────────────────────────────────────────
@@ -51,6 +77,7 @@ jobs:
       website: ${{ steps.route.outputs.website }}
       docs: ${{ steps.route.outputs.docs }}
       release: ${{ steps.route.outputs.release }}
+      go: ${{ steps.route.outputs.go }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -70,7 +97,7 @@ jobs:
           # as does a change to this workflow itself -- a filter bug must never
           # be able to hide the jobs it is supposed to gate.
           all() {
-            for k in rust ui i18n website docs release; do echo "$k=true" >> "$GITHUB_OUTPUT"; done
+            for k in rust ui i18n website docs release go; do echo "$k=true" >> "$GITHUB_OUTPUT"; done
             echo "  -> $1: running the full matrix"
             exit 0
           }
@@ -82,16 +109,49 @@ jobs:
           files=$(git diff --name-only "$BASE" "$HEAD_SHA")
           echo "changed files:"; echo "$files" | sed 's/^/    /'
 
-          if printf '%s\n' "$files" | grep -qE '^\.github/workflows/dev-ci\.yml$'; then
+          # The list is grepped once per bucket below. It is written to a file
+          # ONCE and every check reads that file, because the obvious form --
+          # `printf '%s\n' "$files" | grep -qE ...` -- is silently WRONG for any
+          # diff larger than the 64 KiB pipe buffer. `grep -q` exits at its FIRST
+          # match, closing the pipe while printf is still writing; printf then
+          # takes SIGPIPE, and `set -o pipefail` turns that into a failed
+          # pipeline, so the `||` branch runs and the bucket is reported ABSENT
+          # even though it matched. Measured 2026-09-30 on run 36682329958: a
+          # 1,729-file diff reported rust/docs/go/release all `false` while that
+          # same diff contained 548 `crates/`, 280 `docs/`, 73 `platform/` and 16
+          # `apps/license-server/` paths, and the job log carried five
+          # `printf: write error: Broken pipe` lines. It is a race, so which
+          # buckets go wrong varies run to run. A file argument has no writer
+          # that can be SIGPIPEd, which is why this is a file and not a here-
+          # string: bash may implement `<<<` with a pipe.
+          files_file="${RUNNER_TEMP:-${TMPDIR:-/tmp}}/dev-ci-changed-files.txt"
+          printf '%s\n' "$files" > "$files_file"
+
+          if grep -qE '^\.github/workflows/dev-ci\.yml$' "$files_file"; then
             all "this workflow changed"
           fi
 
           # Rust: every workspace member (crates/*, modules/*, platform/*,
           # foundation, the three apps, tools/fuzz, the updater compat check) plus
           # anything that changes how cargo resolves the build.
-          printf '%s\n' "$files" | grep -qE \
+          grep -qE \
             '^crates/|^modules/|^platform/|^foundation/|^apps/(cloud-server|desktop-tauri|mobile-tauri)/|^tools/fuzz/|^scripts/updater-compat-check/|^Cargo\.(toml|lock)$|^\.cargo/|^rust-toolchain' \
+            "$files_file" \
             && echo "rust=true"  >> "$GITHUB_OUTPUT" || echo "rust=false" >> "$GITHUB_OUTPUT"
+
+          # Go: `apps/license-server` is a SEPARATE Go module, not a cargo
+          # workspace member (the workspace's 39 members are crates/, modules/,
+          # platform/, foundation, qris-core and the three Tauri apps), so the
+          # `rust` rule above deliberately does not cover it.
+          #
+          # Before this rule existed `apps/license-server/**` matched NO bucket
+          # at all. That was harmless only by accident: the Go steps lived in
+          # `static-gates`, which carries no `if:` and therefore ran on every
+          # PR regardless. Splitting the Go steps into their own job without
+          # this output would have silently stopped checking Go on exactly the
+          # PRs that change it -- a gate that goes quiet is worse than no gate.
+          grep -qE '^apps/license-server/' "$files_file" \
+            && echo "go=true" >> "$GITHUB_OUTPUT" || echo "go=false" >> "$GITHUB_OUTPUT"
 
           # UI: `ui/` is the vitest suite's boundary, but it is NOT self-contained.
           # P9a moved the Fluent corpus to shared-ui/locales/ and ui/vite.config.ts
@@ -100,13 +160,14 @@ jobs:
           # i18n/barePlaceholderScan.ts read across that boundary. A bundle edit
           # can therefore break the suite at import time, so it must route here
           # as well as to i18n -- which is what scripts/test-ci-routing.sh pins.
-          printf '%s\n' "$files" | grep -qE '^ui/|^shared-ui/locales/' \
+          grep -qE '^ui/|^shared-ui/locales/' "$files_file" \
             && echo "ui=true" >> "$GITHUB_OUTPUT" || echo "ui=false" >> "$GITHUB_OUTPUT"
 
           # i18n: the .ftl bundles, any TSX/TS the parity scanner reads, and the
           # four scripts that implement the gates.
-          printf '%s\n' "$files" | grep -qE \
+          grep -qE \
             '^shared-ui/locales/|^ui/src/.*\.(ts|tsx)$|^scripts/lint-i18n\.sh$|^scripts/verify-bundle-parity\.py$|^scripts/dedupe-ftl\.py$|^scripts/verify-ftl-orphans\.py$' \
+            "$files_file" \
             && echo "i18n=true" >> "$GITHUB_OUTPUT" || echo "i18n=false" >> "$GITHUB_OUTPUT"
 
           # prototypes/ is not under website/, but its HTML ships VERBATIM:
@@ -117,7 +178,7 @@ jobs:
           # rule existed a prototypes-only PR matched no bucket at all and ran NO
           # job: not the test suite, not the post-build gate, so that page could
           # lose its h1 with nothing to notice it.
-          printf '%s\n' "$files" | grep -qE '^website/|^prototypes/' \
+          grep -qE '^website/|^prototypes/' "$files_file" \
             && echo "website=true" >> "$GITHUB_OUTPUT" || echo "website=false" >> "$GITHUB_OUTPUT"
 
           # Docs/CI truthfulness: the drift checker compares docs/operations/
@@ -126,8 +187,9 @@ jobs:
           # docs/ generally -- a docs-only PR is exactly the change that can make
           # the CI documentation lie, and before this output existed it ran
           # nothing at all.
-          printf '%s\n' "$files" | grep -qE \
+          grep -qE \
             '^docs/|^\.github/workflows/|^scripts/(gates\.json|verify-ci-docs-drift\.py|check\.sh|check-ui\.mjs)$' \
+            "$files_file" \
             && echo "docs=true" >> "$GITHUB_OUTPUT" || echo "docs=false" >> "$GITHUB_OUTPUT"
 
           # Release readiness. R36-11 was filed because the release workflow was
@@ -140,13 +202,14 @@ jobs:
           # `tauri.conf.json` is in here because it carries the updater `pubkey`:
           # rotate or typo that key and every client auto-update rejects the
           # signature, which is precisely what check-updater-compat.mjs detects.
-          printf '%s\n' "$files" | grep -qE \
+          grep -qE \
             '^scripts/(check-release-version|check-updater-compat|generate-latest-json|verify-updater-signature)\.mjs$|^scripts/updater-compat-check/|^apps/desktop-tauri/tauri\.conf\.json$|^apps/desktop-tauri/Cargo\.toml$|^\.github/workflows/release\.yml$|^docs/releases/' \
+            "$files_file" \
             && echo "release=true" >> "$GITHUB_OUTPUT" || echo "release=false" >> "$GITHUB_OUTPUT"
 
       - name: Decisions
         run: |
-          echo "rust=${{ steps.route.outputs.rust }} ui=${{ steps.route.outputs.ui }} i18n=${{ steps.route.outputs.i18n }} website=${{ steps.route.outputs.website }}"
+          echo "rust=${{ steps.route.outputs.rust }} ui=${{ steps.route.outputs.ui }} i18n=${{ steps.route.outputs.i18n }} website=${{ steps.route.outputs.website }} docs=${{ steps.route.outputs.docs }} release=${{ steps.route.outputs.release }} go=${{ steps.route.outputs.go }}"
 
   # ── 1. Website: check + test + build ─────────────────────────────────
   website:
@@ -187,7 +250,35 @@ jobs:
       - name: SEO / head check
         run: cd website && npm run check:seo
 
-  # ── 2. Cargo Check: Fast compilation check ────────────────────────────
+  # ── 2a. Rust Fmt: cheapest Rust verdict, in a job of its own ─────────
+  #
+  # WHY NOT A STEP IN cargo-check ANY MORE. It was one, and it was correctly
+  # placed FIRST there so a formatting nit failed before the multi-minute
+  # compile. But "first inside the job" is not "fast": measured on run
+  # 35913445291, cargo-check spends 44s before its first step runs -- checkout
+  # 4s, toolchain 1s, rust-cache 14s, the 10-package apt layer 26s, plus sccache
+  # and the dist stubs -- so the fmt verdict landed at ~50s.
+  #
+  # This job skips every one of those layers. `cargo fmt` parses sources and
+  # builds nothing, so it needs no apt packages, no cargo cache, no sccache and
+  # no `ui/dist*` stubs. The toolchain action still installs the rustfmt
+  # component, which is the whole toolchain cost. Expected verdict: ~15-20s.
+  #
+  # Gate: scripts/gates.json -> "rust-fmt".
+  rust-fmt:
+    name: Rust Fmt
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable
+        with:
+          components: rustfmt
+      - name: Cargo fmt check
+        run: cargo fmt --all -- --check
+
+  # ── 2b. Cargo Check: Fast compilation check ───────────────────────────
   cargo-check:
     name: Cargo Check
     runs-on: ubuntu-latest
@@ -196,9 +287,6 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable
-        with:
-          # Explicit: the fmt step below needs this binary.
-          components: rustfmt
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
@@ -214,13 +302,264 @@ jobs:
         run: |
           mkdir -p ui/dist ui/dist-mobile ui/dist-desktop
           touch ui/dist/index.html ui/dist-mobile/index.html ui/dist-desktop/index.html
-      # Runs before `cargo check` deliberately: it is ~2s warm, so a formatting
-      # nit fails fast instead of after a multi-minute compile. Gate:
-      # scripts/gates.json -> "rust-fmt".
-      - name: Cargo fmt check
-        run: cargo fmt --all -- --check
       - name: Cargo check workspace
         run: cargo check --workspace --all-targets --all-features
+
+  # ── 2b. Cargo Clippy: the lint gate that ran nowhere (C25) ───────────
+  #
+  # WHY THIS JOB EXISTS. clippy appeared in NO workflow -- 0 hits across
+  # .github/workflows/ -- while scripts/check.sh ran it and gates.json recorded
+  # it as required. gates.json:91 was honest about that ("a green CI says
+  # nothing about clippy"), so the registry was not lying; the enforcement was
+  # simply absent, and lint debt accumulated behind it: enabling this job found
+  # FOUR errors across three crates (an orphaned doc comment left by the F-018
+  # split, an orphaned doc in categories.rs, a redundant `clone` on a Copy
+  # type, a collapsible `if`, and a pair of bounds that were an equality test
+  # written twice, one leg of which could never fail). All are fixed in the
+  # commit that adds this job, so it starts green rather than red.
+  #
+  # Shape mirrors cargo-check deliberately: same path gate, same system
+  # dependencies, same frontend-dist stubs (tauri-build needs them), same
+  # rust-cache. It is NOT merged into cargo-check because a lint failure and a
+  # compile failure are different verdicts and a reader should see which one
+  # went red.
+  cargo-clippy:
+    name: Cargo Clippy
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Install system dependencies (Linux)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev \
+            librsvg2-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev \
+            libdbus-1-dev libudev-dev pkg-config
+      - uses: mozilla/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
+      - name: Prepare frontend dist stubs for Tauri macro
+        run: |
+          mkdir -p ui/dist ui/dist-mobile ui/dist-desktop
+          touch ui/dist/index.html ui/dist-mobile/index.html ui/dist-desktop/index.html
+      - name: Clippy workspace (deny warnings)
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+  # ── 3b. Rustdoc must be WARNING-FREE (P2-4) ──────────────────────────
+  #
+  # WHY THIS JOB EXISTS, and it is the same story as cargo-clippy above.
+  # `RUSTFLAGS: -D warnings` has sat in the env block since P2-1, but
+  # `RUSTDOCFLAGS` was never set to match -- and rustdoc does not read
+  # RUSTFLAGS. The result was a documented-but-unenforced surface: measured
+  # 2026-09-28, `cargo doc --workspace --no-deps` with
+  # `RUSTDOCFLAGS="-D warnings"` failed with **295 errors across 20 crates**.
+  # Five rounds of fixing brought it to zero, and SIX of those errors were not
+  # link noise but docs confidently describing something that did not exist:
+  # `KdsSyncEvent::OrderRecalled` (the variant is `Recalled`),
+  # `DriverRegistry::apply_config` (it is a free function),
+  # `BridgeError::NotFound` x3 (no such variant), `WebhookEndpoint::redacted`,
+  # and `get_setup_status` x2 (already marked REMOVED in the same file).
+  #
+  # WHY THE ENV VAR ALONE WOULD HAVE BEEN USELESS, which is why this job and
+  # the `RUSTDOCFLAGS` line below land in the SAME commit. Setting the variable
+  # with no `cargo doc` invocation anywhere in CI would have changed nothing --
+  # a dead setting that reads like a gate. That is the exact failure mode this
+  # repo has already been bitten by three times (uncompiled fuzz targets, an
+  # unwired PG self-test, unenforced coverage floors), so the declaration and
+  # its consumer ship together or not at all.
+  #
+  # WHY `--no-deps` AND WHY NO `--all-features`. `--no-deps` documents this
+  # workspace only; without it a dependency's own doc warnings would redden
+  # this job for a crate we do not own. Features are left at default because
+  # the acceptance command measured to zero is exactly this one -- adding
+  # `--all-features` would grade a different tree than the one proven clean,
+  # and would need its own measurement first.
+  #
+  # Shape mirrors cargo-clippy deliberately: same path gate, same system
+  # dependencies, same frontend-dist stubs, same rust-cache. It is NOT merged
+  # into cargo-check because a doc warning and a compile failure are different
+  # verdicts and a reader should see which one went red.
+  rust-doc:
+    name: Rustdoc (deny warnings)
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Install system dependencies (Linux)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev \
+            librsvg2-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev \
+            libdbus-1-dev libudev-dev pkg-config
+      - uses: mozilla/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
+      - name: Prepare frontend dist stubs for Tauri macro
+        run: |
+          mkdir -p ui/dist ui/dist-mobile ui/dist-desktop
+          touch ui/dist/index.html ui/dist-mobile/index.html ui/dist-desktop/index.html
+      - name: Rustdoc workspace (deny warnings)
+        run: cargo doc --workspace --no-deps
+
+  # ── 3b-pre. Fuzz targets must at least COMPILE (P0-3) ────────────────
+  #
+  # WHY THIS EXISTS. Seven fuzz targets sat in tools/fuzz compiled by nothing,
+  # and the rot that followed was invisible because nothing could get far enough
+  # to report it: all four path dependencies read `../foundation`,
+  # `../crates/kasirmu-lua`, `../crates/kasirmu-core`, `../crates/kasirmu-plugin`
+  # -- which resolve against tools/fuzz/Cargo.toml to tools/foundation et al.,
+  # directories that do not exist. `cargo fuzz build` therefore died at MANIFEST
+  # LOAD, before rustc was invoked, so there was no compile error to notice and
+  # no job to run one. The paths are `../../` now and this job is what keeps them
+  # honest.
+  #
+  # WHAT IT DOES NOT DO: run the fuzzers. libFuzzer + AddressSanitizer has no
+  # MSVC runtime in the nightly toolchain, so the sanitizer-linked RUN is
+  # Linux-runner work with a budget this job does not claim. Typechecking the
+  # targets is the half that catches the failure mode actually observed --
+  # unreachable targets -- and it is cheap. `--all-features` is load-bearing:
+  # cart_deser, kasirpkg_parse and manifest_parse live behind
+  # kasirmu-core-fuzz / kasirmu-plugin-fuzz, so a default-feature check would
+  # typecheck four of the seven and silently skip three.
+  #
+  # Gate: scripts/gates.json -> "fuzz-typecheck".
+  fuzz-typecheck:
+    name: Fuzz Targets Typecheck
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # nightly, because the fuzz crate's own rust-toolchain.toml pins it and
+      # `cargo fuzz` shells out without inheriting that pin.
+      - uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # nightly
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          workspaces: tools/fuzz
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      # The workspace .cargo/config.toml sets RUSTC_WRAPPER=sccache, so without
+      # this step cargo dies with "could not execute process `sccache ...`
+      # (never executed) / No such file or directory" before it reaches a single
+      # fuzz target. Every other Rust job in this workflow installs it; this one
+      # was the exception, which is why the job reported a build failure that was
+      # really a missing binary.
+      - uses: mozilla/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
+      - name: Typecheck fuzz targets (all features)
+        run: cargo check --bins --all-features
+        working-directory: tools/fuzz
+
+  # ── 3b. Per-crate coverage floors (P1-2) ─────────────────────────────
+  #
+  # WHY ITS OWN JOB. It runs the whole test suite under instrumentation,
+  # which is expensive and needs the same system libraries as cargo-nextest
+  # (the workspace links webkit2gtk, libusb and friends). Folding it into an
+  # existing job would either duplicate that setup or make one job's failure
+  # ambiguous between "tests failed" and "coverage dropped".
+  #
+  # WHY IT IS NOT PART OF cargo-nextest. Coverage is downstream of a green
+  # suite: `cargo llvm-cov` runs the tests itself and ABORTS on the first
+  # failure (measured 2026-09-27 -- an unrelated in-flight test failure in
+  # kasirmu-bridge aborted a full workspace run). Keeping it separate means a
+  # red coverage job always means coverage, never a test failure wearing a
+  # different name.
+  #
+  # The floors are a RATCHET, two points below the 2026-09-27 measurement,
+  # and live in scripts/coverage-floors.json rather than in prose -- see that
+  # file's _policy and _moving_a_floor notes, and the gate entry's _note.
+  #
+  # Gate: scripts/gates.json -> "coverage-floors".
+  coverage-floors:
+    name: Coverage Floors
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: oz_test
+          POSTGRES_PASSWORD: oz_test_password
+          POSTGRES_DB: oz_test_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 5
+    env:
+      OZ_TEST_PG_URL: postgres://oz_test:oz_test_password@localhost:5432/oz_test_db
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable
+        with:
+          components: llvm-tools-preview
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      # The workspace .cargo/config.toml sets RUSTC_WRAPPER=sccache, so every job
+      # that compiles Rust has to install it. This job was the last one that did
+      # not, and the failure was masked until the llvm-cov install above was
+      # fixed: cargo died with "could not execute process `sccache ...` (never
+      # executed) / No such file or directory" on the coverage run itself.
+      - uses: mozilla/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
+      - name: Install system dependencies (Linux)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev \
+            librsvg2-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev \
+            libdbus-1-dev libudev-dev pkg-config
+      - name: Prepare frontend dist stubs for Tauri macro
+        run: |
+          mkdir -p ui/dist ui/dist-mobile ui/dist-desktop
+          touch ui/dist/index.html ui/dist-mobile/index.html ui/dist-desktop/index.html
+      # `tool` is stated explicitly: pinned by SHA, the action cannot infer the
+      # tool from the ref, and a trailing comment is not reliably parsed --
+      # left implicit it warns "no tool specified", installs nothing, and the
+      # next step dies with "error: no such command: `llvm-cov`".
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@fa23953489c080190314742a9b907f8e97c6767c # cargo-llvm-cov
+        with:
+          tool: cargo-llvm-cov
+      # nextest, because the plain runner was racing the PG tests. `cargo llvm-cov`
+      # shells out to `cargo test`, which does NOT read .config/nextest.toml -- so
+      # `[test-groups.shared-postgres] max-threads = 1`, the serialization this repo
+      # already built for exactly these tests, did not apply here. This job then ran
+      # every PG case concurrently in one process, and each one drops every
+      # `oz_sync_test_%` database it finds as "stale" (sync_store_tests.rs:26), so
+      # siblings destroyed each other's databases. Observed 2026-10-01: this job
+      # failed on `pg_integration_rest_rls_non_owner` with deadpool's
+      # "Error occurred while creating a new object: db error" while nextest -- the
+      # runner that DOES read the config -- passed that test and failed a different
+      # PG test instead. `cargo llvm-cov nextest` internally calls `cargo nextest run`,
+      # so the group serialization applies and the flake receipt keeps working.
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@fa23953489c080190314742a9b907f8e97c6767c # v2
+        with:
+          tool: cargo-nextest
+      # Postgres is declared as a service above because kasirmu-cloud and
+      # platform/sync carry PG-gated cases that connect when OZ_TEST_PG_URL
+      # is set; without it those tests still PASS (they return early) but
+      # the lines they would have covered are missing, which would quietly
+      # depress the numbers instead of failing them.
+      - name: Coverage report
+        run: |
+          cargo llvm-cov nextest --workspace --all-features \
+            --exclude kasirmu-app --exclude kasirmu-mobile \
+            --json --output-path coverage-probe.json
+      - name: Grade against the floors
+        run: python3 scripts/verify-coverage-floors.py
 
   # ── 3. Cargo Nextest: Fast test execution ────────────────────────────
   cargo-nextest:
@@ -228,6 +567,19 @@ jobs:
     runs-on: ubuntu-latest
     needs: changes
     if: needs.changes.outputs.rust == 'true'
+    # Three shards, because the suite is the longest job in this workflow and
+    # the run -- not the build -- is what makes it long. `hash` rather than
+    # `count`: hash is deterministic, so a test keeps its shard as the list
+    # changes, which keeps cache reuse and flake history stable. Measured
+    # 2026-10-01 with `cargo nextest list --partition` over 10,835 tests:
+    # hash 3581 / 3581 / 3673 (2.6% spread), count 3641 / 3611 / 3583 (1.6%).
+    # The serialized shared-postgres group splits evenly either way (~280 each).
+    # `fail-fast: false` at the matrix level so one shard's red does not cancel
+    # the others and hide the rest of the failures.
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
     services:
       postgres:
         image: postgres:17-alpine
@@ -267,7 +619,9 @@ jobs:
         with:
           tool: cargo-nextest
       - name: Run Nextest
-        run: cargo nextest run --workspace --all-features
+        run: cargo nextest run --workspace --all-features --partition hash:${{ matrix.shard }}/3
+      - name: Check Nextest flake receipt
+        run: python3 scripts/verify-pg-tests-ran.py --nextest-junit target/nextest/default/junit.xml
 
   # ── 3b. Release-profile bridge tests ─────────────────────────────────
   #
@@ -359,6 +713,20 @@ jobs:
       # Gate: scripts/gates.json -> "exhaustive-deps-ratchet".
       - name: Exhaustive-deps ratchet
         run: python3 scripts/verify-exhaustive-deps.py
+      # This gate's own measure() cases, in the same job as the ratchet it proves --
+      # the convention stated at "IPC command parity self-test" (7c). Cheap: the cases
+      # are pure string parsing and read no file, so they do not need ui/node_modules
+      # the way the step above does.
+      #
+      # The failure they guard is the quiet one. This gate compares a regex count
+      # against a cap, so if RULE_RE ever stopped matching, measure() would return
+      # exhaustive-deps == 0, and 0 is under any cap: the ratchet would report CLEAN
+      # on a tree full of the stale-closure warnings it exists to hold down, and would
+      # never fail. Proven by mutation -- pointing RULE_RE at a pattern that cannot
+      # match turns the first case red with "got (3, 0)", warnings still counted and
+      # the rule counted as zero.
+      - name: Exhaustive-deps ratchet self-test
+        run: python3 scripts/verify-exhaustive-deps.py --self-test
       - name: Run Vitest
         run: cd ui && npm test
       # GitHub runners are always UTC, so the suite above can never catch a
@@ -380,6 +748,20 @@ jobs:
         run: cd ui && npm run bundle:check
       - name: Bundle budget (mobile)
         run: cd ui && npm run bundle:check:mobile
+      # check-font-claims.mjs re-runs the font lane's published claims and
+      # compares each against the expectation stated in the script. It had NO
+      # caller at all -- the only job that ever ran it was retired to
+      # attic/ci.yml.bak -- which is the failure its own header names: a
+      # documented check nobody executes becomes a description of a past run.
+      #
+      # It sits here, after the two bundle steps, rather than in static-gates,
+      # because two of its rows need what only this job has: ui/node_modules
+      # (the "sixteen rules" row spawns vitest) and ui/dist (the "built font
+      # surface" row reads the emitted font assets). Placed in static-gates it
+      # reported DRIFT on both for a missing instrument and failed the gate --
+      # a verdict about the runner, not about the claims.
+      - name: Font claims
+        run: node scripts/check-font-claims.mjs
 
   # ── 5. i18n: Fluent bundle quality gate ──────────────────────────────
   # Restored by the Fluent page audit. This step used to live in ci.yml, which
@@ -542,20 +924,93 @@ jobs:
       # manager-codebase-review-checklist.md, which a concurrent session was
       # actively writing during the audit (count grew 2 -> 7 mid-session as the
       # peer kept writing) -- racing it would have been the wrong move, and
-      # check.sh cannot host the leg either (step() exits on first failure). FLIP: drop continue-on-error and advisory_at, set the
-      # gate to required when check-dead-refs reports 0 -- the same arc
-      # ci-docs-drift took in R36-10, with the trigger written down.
+      # check.sh cannot host the leg either (step() exits on first failure).
+      # This was registered with that flip condition written down rather than
+      # implied -- the same arc ci-docs-drift took in R36-10 -- and it has now
+      # been taken. See the FLIPPED note below.
       # Gate: scripts/gates.json -> "dead-refs".
+      # FLIPPED TO BLOCKING 2026-09-25 (C62): the condition above was met.
+      # The audit register's 82 pre-rebrand paths were repointed to the real
+      # files, and the four remaining hits are deliberate absences (a quoted
+      # typo cited as evidence, a brief naming a directory that is gone, an
+      # illustrative non-test path, and prose quoting the dead names as the
+      # finding) -- each now carries the NEGATIVE_MARKERS wording the checker
+      # documents for that case. Measured before flipping: 9 -> 0.
       - name: Docs dead references
-        continue-on-error: true
         run: python3 .agents/skills/docs-auditor/scripts/check-dead-refs.py
 
-  # ── 7. Static gates that had no CI runner at all ──────────────────────
+      # The dead-ref checker's own cases, beside the gate it proves -- the convention
+      # stated at "IPC command parity self-test" (7c). Blocking, for the reason that
+      # comment gives: the step above, scripts/check.sh and scripts/run-pre-push.py all
+      # invoke the checker WITHOUT --self-test, so a regression in the LEG -- a
+      # source-relative path resolver that stops resolving, or a pragma rule that goes
+      # blind -- could sit broken while every gate stayed green. No bare run of the
+      # checker can see this class; only the self-test can.
+      - name: Docs dead references self-test
+        run: python3 .agents/skills/docs-auditor/scripts/check-dead-refs.py --self-test
+
+      # Gate: scripts/gates.json -> "api-surface". Green from day one (2026-09-29), when the
+      # page was repaired from 169 drifts to 0 in the same change that added this step. This
+      # checker exits 2, not 0, when it cannot parse an input, so a renamed registry or a
+      # missing page fails the job instead of reading as agreement.
+      - name: API reference surface
+        run: python3 .agents/skills/docs-auditor/scripts/check-api-surface.py
+
+      # Same convention and same reason as the step above. This one is the sharper case:
+      # the checker's four drift buckets are counted from generate_handler! and from the
+      # page, so a parser that stops matching the page's entry format would report an
+      # empty surface as agreement. Its classification was made a pure function on
+      # 2026-09-29 precisely so these cases need no filesystem; running them here is what
+      # makes that worth having.
+      - name: API reference surface self-test
+        run: python3 .agents/skills/docs-auditor/scripts/check-api-surface.py --self-test
+
+      # Gate: scripts/gates.json -> "auditor-selftests" ("Docs-auditor checkers still
+      # run", status required). Until this step existed that gate was enforced ONLY by
+      # scripts/check.sh, whose own header says it is not what git push runs -- so a
+      # checker that could no longer run was invisible to every merge. This runs the whole
+      # roster, which is what covers the five checkers that have no gate of their own
+      # (env-docs, adr-status, site-links, nav-paths, ci-claims). The two steps above stay
+      # because the convention is that a self-test lives BESIDE the gate it proves; this
+      # one is the backstop for the roster as a whole. scripts/check.sh still runs it
+      # locally, unchanged.
+      - name: Docs-auditor self-tests
+        run: sh scripts/check-auditor-selftests.sh
+
+  # ── 7a. Static Gates: the cheap, fast-red job ─────────────────────────
   # Six checks existed only in scripts/check.sh, which is manual and unhooked,
   # so nothing enforced them on a clone that skipped setup-dev.ps1. Each was run
   # locally and verified GREEN before being wired in -- the same discipline used
   # for R36-08 -- because adding a gate that already fails turns every unrelated
   # PR red.
+  #
+  # WHY THIS JOB WAS SPLIT (2026-09-24). It used to be ONE job of 31 steps, and
+  # it was the worst time-to-red surface in the workflow. Measured on run
+  # 35913445291 it took 10m40s, of which two steps were 534s -- 84% -- of the
+  # whole job: `Go test (short)` at 325s and `IPC command parity self-test` at
+  # 209s. Both reproduce (325s again in 35909736360; the self-test 216s there),
+  # so neither is noise.
+  #
+  # The cost was never the duration; it was the ORDER. Two reds from this one
+  # job, in the same hour: 35907505615 failed at step 4 (`Skill drift guard`) and
+  # reported in 33s, while 35909736360 failed at step 31 (`Scoped command
+  # coverage`) and took 10m43s -- on a step that executes in ZERO seconds,
+  # because it sat behind both of the expensive ones. A free gate must not be
+  # reachable only after ten minutes of unrelated work.
+  #
+  # So the two expensive families moved to jobs of their own -- 7b `go-gate` and
+  # 7c `ipc-parity` -- where they still block a merge but no longer gate the
+  # cheap verdicts. This job is now the fast-red workhorse: every step below
+  # measured 0-2s except the three whole-repo scans at the end (10-11s each), so
+  # a red here reports in about 20 seconds rather than ten minutes.
+  #
+  # The comment here used to justify the absent path-gate with "these are ~5s of
+  # pure Python/shell". That was measurably false even when written: the non-Go
+  # steps alone summed to ~4m49s, and the ten promoted self-tests to ~4m21s
+  # where the note claimed "~33s". Both claims are now REMOVED rather than
+  # corrected, because the steps they described no longer live in this job -- a
+  # stale cost claim is how this file ended up justifying a ten-minute gate with
+  # a five-second one.
   #
   # Deliberately NOT in this job:
   #   e2e -- needs the Docker backend; check.sh L203 states E2E is not run there
@@ -564,12 +1019,19 @@ jobs:
   # panic-inventory was excluded when this job was first written because it
   # FAILED, and is now included with its findings at zero -- see the step below.
   #
-  # Not path-gated: these are ~5s of pure Python/shell and they span rust, ui,
-  # go and docs, so routing them risks the same silent-skip failure mode the
-  # router test guards against.
+  # Still NOT path-gated, and that is now affordable rather than reckless: the
+  # job is ~1 minute and spans rust, ui, go and docs, so routing it would risk
+  # the silent-skip failure mode the router test guards against while saving
+  # almost nothing. The two jobs that DO cost minutes are the path-gated ones.
   # Gates: scripts/gates.json -> "architecture-boundaries",
   # "no-hardcoded-money-format", "windows-config", "skill-drift",
-  # "unified-healthcheck", "go".
+  # "unified-healthcheck", "panic-inventory", "release-workflow",
+  # "commit-subjects", "bundle-parity", "pg-schema-drift",
+  # "migration-column-types", "typecheck-gate", "eol-guard", "cbm-hook-guard",
+  # "test-shadow-copies", "invoke-token-parity", "topology-parity",
+  # "feature-registry", "plugin-guide-parity", "no-raw-params",
+  # "scoped-coverage", "scoped-ambient-reads-self-test",
+  # "unguarded-ambient-ipc-calls", "doc-uniqueness".
   static-gates:
     name: Static Gates
     runs-on: ubuntu-latest
@@ -584,14 +1046,47 @@ jobs:
           fetch-depth: 0
       - name: Architecture boundaries
         run: python3 scripts/verify-architecture-boundaries.py --strict
+      # The two SQLite maintenance scripts' own self-tests, beside the gate they
+      # protect and in the job that already runs their sibling self-tests
+      # (dev-ci.yml#static-gates). The defect they pin is a PATH one: MSYS2 does
+      # not translate a POSIX path embedded in a sqlite3 dot-command, so on a
+      # Windows/Git-Bash operator machine an absolute path made the restore abort
+      # at its own pre-restore safety step. On ubuntu-latest cygpath is absent, so
+      # the translator is a no-op and the self-test exercises the pass-through --
+      # these steps pin the RELATIVE form there and the absolute form on a
+      # Windows dev box; dropping the translator call is proven to fail both.
+      - name: DB backup script self-test
+        run: bash scripts/backup-db.sh --self-test
+      - name: DB restore script self-test
+        run: bash scripts/restore-db.sh --self-test
       - name: No hardcoded money formatting
         run: python3 scripts/verify-no-hardcoded-money-format.py
       - name: Windows config drift
         run: python3 scripts/verify-windows-config.py
       - name: Skill drift guard
         run: bash .agents/skills/skill-drift-guard/scripts/detect.sh --report
+      # The 32 bats tests that prove the guard above still detects what it claims
+      # to detect. They ran in ci.yml#skill-drift-tests until that workflow was
+      # retired, so for a while the only thing enforcing this guard was the guard.
+      - name: Skill drift guard self-tests
+        run: |
+          sudo apt-get install -y bats
+          bash .agents/skills/skill-drift-guard/scripts/run-tests.sh
+
+      # check-font-claims.mjs lives in dev-ci.yml#ui-test, not here: two of its
+      # rows need ui/node_modules (vitest) and ui/dist (the built font surface),
+      # and this job installs neither. Run from here it could only ever report
+      # DRIFT for a missing instrument -- the same convention the exhaustive-deps
+      # ratchet states above. See its step in ui-test.
+
       - name: Unified healthcheck script test
         run: sh apps/unified/test-healthcheck.sh
+      # Orphaned until 2026-09-26 (review 12.2): the script existed, worked and passed,
+      # while two source files and a plan asserted it ran "in CI" -- and the unified
+      # image was unbuildable for five days with nothing to notice. Same shape as the
+      # R36-11 release.yml finding below: a workflow that never runs cannot report.
+      - name: Dockerfile workspace parity
+        run: python3 scripts/verify-dockerfile-workspace.py
       # Restored to CI by R36-12. It was excluded from the first version of this
       # job because it FAILS, and adding a red gate would have turned every
       # unrelated PR red. The failures turned out to be the scanner's own bug --
@@ -600,6 +1095,64 @@ jobs:
       # at zero and its contract stable under `cargo fmt`.
       - name: "Panic inventory (ADR #33)"
         run: python3 scripts/scan-unwrap-panic.py
+      # P0-2. `verify-pg-tests-ran.py` is the only thing that reads nextest's
+      # <flakyFailure> -- the shape in which a retry-rescued failure is recorded
+      # while the report's own totals say failures="0". Its VERDICT runs in
+      # cargo-nextest (:374) against each run's JUnit file; its SELF-TEST ran
+      # nowhere, so a regression in the checker itself would have been invisible
+      # while every downstream grade still looked authoritative.
+      #
+      # That is not hypothetical: this step was added because the self-test was
+      # found RED -- the tree had grown to 88 skip arms while ARM_BASELINE still
+      # read 84, so the census guard had been firing on stale numbers. The
+      # checker grades a flake correctly only while its own census rules work,
+      # and a checker that cannot fail is the same decoration this whole
+      # checklist exists to remove.
+      - name: PG receipt checker self-test
+        run: python3 scripts/verify-pg-tests-ran.py --self-test
+      # A `TODO 2a` in a comment is graded by nothing: not the compiler, not the
+      # test suite, and not check-dead-refs.py, which checks packages and paths
+      # rather than debt ids. So two failures accumulated unobserved -- a marker
+      # whose work already shipped, and a marker whose id no plan ever defines.
+      # The first corpus run found 12 and 10 of them; they were repaired in the
+      # same change, which is the only reason this step is required from day one
+      # instead of advisory.
+      - name: Debt markers
+        run: python3 scripts/verify-debt-markers.py
+      # The self-test is its own step, not folded into the run above, because
+      # verify-selftests-wired.py and verify-selftest-sweep.py are what keep the
+      # pairing honest. A checker whose self-test nobody invokes is a checker
+      # whose rules can rot while every grade still looks authoritative.
+      - name: Debt marker checker self-test
+        run: python3 scripts/verify-debt-markers.py --self-test
+      # The browser SDK types claim in their own header to be derived from the
+      # published OpenAPI document. Nothing derived them, so five of the fifteen
+      # interfaces present on both sides had drifted -- one of them a token
+      # response typed as the envelope that carries it, which no compiler and no
+      # prose audit can see. Only names on BOTH sides are compared: the document
+      # describes two servers and types.ts describes the one the browser talks
+      # to, so comparing the populations would be a permanent red page.
+      # Required, not advisory, and green from day one because the repair landed
+      # in the commit before this one. A gate introduced against a red page gets
+      # muted, which is how check-api-surface.py sat unwired for three weeks.
+      - name: Client type drift
+        run: python3 scripts/check-client-type-drift.py
+      - name: Client type drift self-test
+        run: python3 scripts/check-client-type-drift.py --self-test
+      # A positional row-mapper read is coupled to its SELECT by nothing the
+      # compiler checks: reorder the projection and the fields swap values
+      # silently. One acknowledged mismatch is reported and does not fail this
+      # step -- see scripts/check-mapper-alignment.py for the record.
+      - name: Mapper alignment
+        run: python3 scripts/check-mapper-alignment.py
+      # The COR-7 per-attempt idempotency rules exist TWICE -- the implementation
+      # in kasirmu-bridge and a fork in the tablet shell -- and the fork drifted
+      # into a security defect: only the bridge refused a colon in the attempt id,
+      # which is what stops a crafted id forging another attempt's re-key LOOKUP
+      # key (fixed 1596631d2). A rule added to one fork without a cross-shell pin
+      # drifts silently; this pins the control set on both sides.
+      - name: Replay fork control set
+        run: python3 scripts/check-replay-fork.py
       # R36-11: release.yml was renamed to .bak with an empty commit message and
       # nothing noticed that tagging had stopped producing installers. A workflow
       # that never runs cannot report its own breakage, so this validates the
@@ -612,16 +1165,6 @@ jobs:
         run: python3 scripts/verify-release-workflow.py
       - name: Release workflow self-test
         run: python3 scripts/verify-release-workflow.py --self-test
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: apps/license-server/go.mod
-          cache-dependency-path: apps/license-server/go.sum
-      - name: Go fmt
-        run: test -z "$(gofmt -l apps/license-server)" || { gofmt -l apps/license-server; exit 1; }
-      - name: Go vet
-        run: go -C apps/license-server vet ./...
-      - name: Go test (short)
-        run: go -C apps/license-server test -short ./...
       # The commit-msg hook enforces the subject format locally, but
       # core.hooksPath is set by setup-dev.ps1 and is not versioned, so a fresh
       # clone that skips setup has no subject gate at all -- the hook's own header
@@ -677,6 +1220,17 @@ jobs:
             --include-getstring --include-nav-keys --include-key-fields \
             --include-dynamic-literals --include-id-maps --check-domain-pairs \
             --scan-dirs features,components,app,theme,registries,contexts,hooks
+
+      # This checker's own extractor cases, in the same job as the gate it proves --
+      # the convention stated at "IPC command parity self-test" (7c). Blocking, for
+      # the reason that comment gives. The failure specific to THIS gate is that its
+      # whole job is regex extraction: if a pattern stops matching, every extractor
+      # returns nothing, the step prints "0 missing key(s)" and goes green on a tree
+      # it is no longer reading. No bare run of the checker can see that class --
+      # the cases below were proven by mutation (a pattern that cannot match turns
+      # case 1 red with "expected [...], got []", exit 1).
+      - name: i18n bundle parity self-test
+        run: python3 scripts/verify-bundle-parity.py --self-test
       # These two lived in ci.yml, which 23c96330 retired to .bak, and neither was
       # ever restored -- so for two releases the ONLY guard was the opt-in
       # pre-commit hook. core.hooksPath is set by scripts/setup-dev.ps1 and is not
@@ -704,6 +1258,12 @@ jobs:
       # developer's machine could tell whether they still passed.
       - name: UI typecheck gate self-test
         run: bash scripts/test-typecheck-gate.sh
+      # The post-commit tripwire is a SECOND, independent typecheck guard. It was
+      # written but never wired to any runner, so nothing outside one developer's
+      # machine could tell whether the block was still in the hook, still above the
+      # four early `exit 0` paths, and still writing a verdict when npm ran.
+      - name: UI typecheck tripwire self-test
+        run: bash scripts/test-typecheck-tripwire.sh
       - name: EOL guard self-test
         run: bash scripts/test-eol-guard.sh
       # Gate: scripts/gates.json -> "cbm-hook-guard". Polices .githooks/post-commit,
@@ -712,12 +1272,207 @@ jobs:
       # place its resolution order and ghost guard can be re-checked on a clean box.
       - name: post-commit index guard self-test
         run: bash scripts/test-cbm-hook.sh
+      # The records-index generator RUNS in ci-docs-drift, which --check only
+      # proves it regenerates its own output faithfully. This test is what says
+      # its cell sanitizer still bites: it drives the live generator, then a
+      # frozen unfixed one that must FAIL the same exploit assertion. Unwired until
+      # now, so an escaping regression would have been invisible to every runner.
+      - name: Records index escaping self-test
+        run: bash scripts/test-records-index-escaping.sh
       - name: Test shadow copies
         run: python3 scripts/verify-test-shadow-copies.py
+      # The IPC parity pair moved to job 7c on 2026-09-24. Its self-test alone
+      # measured 209s and 216s on two runs, and it was gating this job's cheap
+      # verdicts behind three and a half minutes. The checker and its liveness
+      # proof stay together there, which is the same convention the self-test's
+      # own comment argued for ("beside the sibling that already runs this way").
+      - name: IPC invoke token parity
+        run: python3 scripts/verify-invoke-parity.py
+      - name: Topology template parity
+        run: python3 scripts/verify-topology-parity.py
+      # Phase 2's kind-derivation cases, in the same job as the gate they prove --
+      # the convention stated at "IPC command parity self-test" (7c). Pure: dicts in,
+      # list out, and the corpus and both contract copies are never read.
+      #
+      # The quiet failure they guard: phase 2 compares a GENERATED corpus against the
+      # contract, and "workspace" is not probed bare -- the corpus probes one kind per
+      # endpoint workspace type, as "workspace:<key>". Get that derivation wrong in
+      # the SKIPPING direction and the corpus looks complete while proving nothing
+      # about the endpoint types. Proven by mutation: dropping the filter turns the
+      # first case red, with the bare "workspace" reappearing in the wanted list.
+      - name: Topology template parity self-test
+        run: python3 scripts/verify-topology-parity.py --self-test
+      - name: Feature registry
+        run: python3 scripts/verify-feature-registry.py
+      - name: Plugin guide parity
+        run: python3 scripts/verify-plugin-guide-parity.py
+      # This checker's own parser cases, in the same job as the gate it proves --
+      # the convention stated at "IPC command parity self-test" (7c). Pure regex
+      # matching plus a read-only floor, so it needs nothing installed.
+      #
+      # The failure they guard is the quiet one. Every claim this gate makes is a
+      # regex match, and if OZ_SET stopped matching, implemented_bindings() would
+      # return an empty set -- so "implemented but not documented" would have
+      # nothing to complain about, and the gate would report parity on a plugin
+      # crate whose whole binding table it is no longer reading. Proven by mutation:
+      # a pattern that cannot match turns the OZ_SET case red with "got []".
+      - name: Plugin guide parity self-test
+        run: python3 scripts/verify-plugin-guide-parity.py --self-test
+
+      # The meta-gate. Added 2026-09-29 after a sweep found TEN verify-*.py declaring
+      # a --self-test that no runner invoked -- including one that had been printing
+      # "nothing calls this flag" in its own report. A self-test nobody runs rots in
+      # silence: the cases still pass by hand and nothing says nobody does.
+      #
+      # It is cheap (reads a few text files, no toolchain) and it is the step that makes
+      # the convention self-enforcing rather than advisory, so it lives here beside the
+      # other static checks rather than only in the manual matrix.
+      - name: Fluent dynamic families
+        run: python3 scripts/verify-fluent-dynamic-families.py
+      - name: Runner commands resolve
+        run: python3 scripts/verify-runner-commands.py
+      - name: Runner commands self-test
+        run: python3 scripts/verify-runner-commands.py --self-test
+      - name: Self-tests are wired
+        run: python3 scripts/verify-selftests-wired.py
+      - name: Self-tests are wired self-test
+        run: python3 scripts/verify-selftests-wired.py --self-test
+      # The settled-read verdict union had FOUR hand-copied declarations before this
+      # gate existed, none visible to any other check: each was type-correct, each
+      # passed the whole suite, and two documented the contract by citing a COPY of it
+      # at a line range that had already moved. CI runs it because the copies were
+      # found by reading, not by a gate -- which is exactly what should not be the
+      # only way a class of drift is ever found.
+      - name: Settled-read copies
+        run: python3 scripts/verify-settled-read-copies.py
+      - name: Settled-read copies self-test
+        run: python3 scripts/verify-settled-read-copies.py --self-test
+
+      # Both added 2026-09-29 after existing only as check.sh steps, which was the wrong
+      # side for gates whose entire subject is a file that silently does not run: a
+      # contributor who never runs the local matrix would have had neither.
+      #
+      # shell syntax: sh -n PARSES without executing, so it is safe here on a bare
+      # checkout and cannot have side effects. It is the one gate that protects
+      # check.sh and this workflow's own shell, so it belongs where a broken parse
+      # cannot hide.
+      - name: Shell syntax
+        run: python3 scripts/verify-shell-syntax.py
+      - name: Shell syntax self-test
+        run: python3 scripts/verify-shell-syntax.py --self-test
+      # PowerShell syntax: the same argument as the shell gate, for the language
+      # that has no shebang, so is_shell() cannot reach it. ubuntu-latest DOES ship
+      # PowerShell, so this runs for real rather than refusing -- the gate returns
+      # exit 2 when no host is found, and that would be visible here rather than
+      # silently skipped, which is the outcome the refusal exists to produce.
+      - name: PowerShell syntax
+        run: python3 scripts/verify-ps-syntax.py
+      - name: PowerShell syntax self-test
+        run: python3 scripts/verify-ps-syntax.py --self-test
+      # workflow syntax: catches a sibling workflow that stopped being valid YAML. It
+      # cannot catch THIS file -- if dev-ci.yml were unparseable, no job here would run
+      # to report it -- so its value is android.yml, website.yml and release.yml, and
+      # the local review window for a dev-ci.yml break.
+      - name: Workflow syntax
+        run: python3 scripts/verify-workflow-syntax.py
+      - name: Workflow syntax self-test
+        run: python3 scripts/verify-workflow-syntax.py --self-test
+      - name: No raw query params
+        run: bash scripts/verify-no-raw-params.sh
+      - name: Scoped command coverage
+        run: bash scripts/verify-scoped-coverage.sh
+      # ORDERING RULE FOR THIS JOB, and the reason these two sit last rather than
+      # where they used to. Every step above measured 0-2s; these two are whole-
+      # repo scans at 10s and 11s, so they are the most expensive thing left here
+      # and the least likely to be the first thing a PR breaks. Ascending cost,
+      # with the highest-signal structural gate (Architecture boundaries, 11s)
+      # kept first deliberately -- it catches a real boundary violation, and
+      # burying it would trade a 10-second saving for an extra fix-and-push cycle.
+      #
+      # `Scoped command coverage` above is the concrete case that motivated the
+      # rule: it is a ZERO-second gate that failed a real PR (35909736360) after
+      # 10m43s, purely because it ran last behind the Go test and the IPC
+      # self-test. It is still late in this job, but the job is now ~1 minute, so
+      # the worst case for it is ~55s instead of ten minutes.
+      - name: Scoped ambient reads self-test
+        run: python3 scripts/verify-scoped-reads.py --self-test
+      - name: Unguarded ambient IPC call sites
+        run: python3 scripts/verify-scoped-reads.py
+
+  # ── 7b. Go gate: the license-server module ────────────────────────────
+  #
+  # WHY ITS OWN JOB. `go test -short ./...` measured 325s on BOTH runs sampled
+  # (35913445291 and 35909736360 -- identical to the second), making it the
+  # single most expensive step in the old static-gates job and 51% of it. Here
+  # it blocks a merge exactly as before but no longer delays any other verdict.
+  #
+  # WHY IT IS PATH-GATED, AND WHY THAT IS SAFE. It carries an `if:` and the
+  # deploy job `needs` it, so the skip semantics matter. `northflank-deploy`
+  # cannot be skipped by this: the router's `all()` helper forces every route
+  # true for any non-PR event, and a deploy only ever happens on a push to main
+  # or a dispatch -- so on the only events that reach the deploy, `go` is true
+  # and this job runs. That is the same mechanism the deploy's own comment
+  # relies on for `static-gates`; what must NOT be done is dropping `go` from
+  # `all()` while keeping this `if:`, which would silently stop every deploy
+  # that does not touch Go.
+  #
+  # The route itself is new: `apps/license-server/**` matched NO bucket before,
+  # and was covered only because the Go steps happened to live in the ungated
+  # static-gates job. See the router's `go` rule.
+  #
+  # Gate: scripts/gates.json -> "go".
+  go-gate:
+    name: Go Gate (license-server)
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.go == 'true'
+    steps:
+      # Shallow clone is correct here: nothing in this job walks history.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: apps/license-server/go.mod
+          cache-dependency-path: apps/license-server/go.sum
+      - name: Go fmt
+        run: test -z "$(gofmt -l apps/license-server)" || { gofmt -l apps/license-server; exit 1; }
+      - name: Go vet
+        run: go -C apps/license-server vet ./...
+      - name: Go test (short)
+        run: go -C apps/license-server test -short ./...
+
+  # ── 7c. IPC parity: the checker and its liveness proof ────────────────
+  #
+  # WHY ITS OWN JOB. `IPC command parity self-test` measured 209s and 216s on
+  # the two runs sampled -- 33% of the old static-gates job, and the second
+  # largest single step in it. Both steps moved here together: the repo's
+  # convention is that a checker's `--self-test` lives beside the checker it
+  # proves (see `Scoped ambient reads self-test` in 7a), and splitting them
+  # would put the liveness proof in a different job from the gate it protects.
+  #
+  # ORDER MATTERS HERE. The real gate runs FIRST (29s), so an actual parity
+  # violation -- the case a contributor will hit -- reports about 3m30s before
+  # the self-test would have finished. The self-test answers a different
+  # question ("can this gate still fail at all?") and is correspondingly rarer,
+  # so it takes the slower slot.
+  #
+  # PATH GATE. `verify-ipc-parity.py` compares the renderer's invoked command
+  # strings against each shell's `generate_handler![]`, so it can only be broken
+  # by a change under `crates/`, `apps/*/src` or `ui/`. Gated on rust OR ui for
+  # that reason. Same deploy-safety argument as 7b: the router forces both true
+  # on any non-PR event, so a deploy can never skip this job.
+  #
+  # Gate: scripts/gates.json -> "ipc-parity".
+  ipc-parity:
+    name: IPC Parity
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.ui == 'true'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: IPC command parity
         run: python3 scripts/verify-ipc-parity.py
       # The parity checker's own liveness cases, beside the sibling that already runs
-      # this way ("Scoped ambient reads self-test", two steps below). Blocking: the
+      # this way ("Scoped ambient reads self-test", in 7a). Blocking: the
       # "IPC command parity" step above, scripts/check.sh and scripts/run-pre-push.py all
       # invoke the checker WITHOUT --self-test, so until this step existed a regression in the
       # LEG -- a parser that stops seeing the surface it claims to check, or a mask/guard
@@ -726,22 +1481,6 @@ jobs:
       # of the checker can see this class; only the self-test can. Gate: C55.
       - name: IPC command parity self-test
         run: python3 scripts/verify-ipc-parity.py --self-test
-      - name: IPC invoke token parity
-        run: python3 scripts/verify-invoke-parity.py
-      - name: Scoped ambient reads self-test
-        run: python3 scripts/verify-scoped-reads.py --self-test
-      - name: Unguarded ambient IPC call sites
-        run: python3 scripts/verify-scoped-reads.py
-      - name: Topology template parity
-        run: python3 scripts/verify-topology-parity.py
-      - name: Feature registry
-        run: python3 scripts/verify-feature-registry.py
-      - name: Plugin guide parity
-        run: python3 scripts/verify-plugin-guide-parity.py
-      - name: No raw query params
-        run: bash scripts/verify-no-raw-params.sh
-      - name: Scoped command coverage
-        run: bash scripts/verify-scoped-coverage.sh
 
   # ── 8. Release readiness ──────────────────────────────────────────────
   # R36-11's root cause was not only that release.yml was renamed to .bak with an
@@ -795,10 +1534,22 @@ jobs:
   northflank-deploy:
     name: Deploy Backend (Northflank)
     runs-on: ubuntu-latest
-    needs: [changes, website, cargo-check, cargo-nextest, ui-test, i18n, static-gates]
+    needs: [changes, website, rust-fmt, cargo-check, cargo-clippy, fuzz-typecheck, coverage-floors, cargo-nextest, ui-test, i18n, static-gates, go-gate, ipc-parity]
     # A skipped dependency skips this job, and nothing skips on a deploy run: the
     # `changes` router forces every route true for all non-PR events, and
     # `static-gates` carries no `if:` at all, so neither can quietly unblock one.
+    #
+    # The 2026-09-24 split added three jobs to this list -- `rust-fmt` (was a step
+    # in `cargo-check`), `go-gate` and `ipc-parity` (were steps in `static-gates`)
+    # -- because a job that stops being a step stops being in the `needs` chain.
+    # Leaving any of them out would have SILENTLY widened the deploy gate: the
+    # steps still run, still go red, and still block a merge, but would no longer
+    # block a production deploy. The invariant to preserve is that this list
+    # covers every job that gates a merge, and the two new path-gated jobs are
+    # safe here for the reason above -- the router's `all()` forces `go` and
+    # `rust`/`ui` true on exactly the events that reach this job, so neither can
+    # be skipped on a deploy run. Dropping `go` from `all()` while keeping
+    # `go-gate`'s `if:` would break that, so the two must move together.
     # What used to be claimed here is false: workflow_dispatch is NOT the only
     # non-PR event that can reach this job. `on.push` is declared at :6-7, so a
     # merge to `main` runs this workflow and the `if:` below deploys it.

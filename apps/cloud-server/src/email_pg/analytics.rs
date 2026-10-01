@@ -136,10 +136,19 @@ pub async fn export_analytics_bundle_pg(
 
 /// Compute revenue profit fields from a row (shared by the daily/weekly/
 /// monthly queries — same arithmetic as `kasirmu_core::db::reports`).
-fn revenue_profit_fields(total_minor: i64, cogs_minor: i64) -> (i64, i64, i64, f64) {
-    let gross_profit_minor = total_minor - cogs_minor;
-    let gross_margin_percent = if total_minor > 0 {
-        gross_profit_minor as f64 / total_minor as f64 * 100.0
+fn revenue_profit_fields(
+    total_minor: i64,
+    cogs_minor: i64,
+    refund_minor: i64,
+) -> (i64, i64, i64, f64) {
+    // REP-08 parity with kasirmu_core::db::reports: `cogs_minor` arrives already
+    // net of the returned goods' cost, so profit must be measured against
+    // revenue net of the refunds. Using the gross total would add the refund
+    // back exactly once and overstate profit on any day containing a refund.
+    let net_revenue_minor = total_minor - refund_minor;
+    let gross_profit_minor = net_revenue_minor - cogs_minor;
+    let gross_margin_percent = if net_revenue_minor > 0 {
+        gross_profit_minor as f64 / net_revenue_minor as f64 * 100.0
     } else {
         0.0
     };
@@ -171,10 +180,10 @@ pub async fn daily_revenue_pg(
             // REP-04 cloud parity: sales and refunds aggregate independently
             // and join FULL OUTER on (date, currency) — a refund-only day
             // must still produce a row, mirroring the local daily_revenue
-            // semantics exactly. COGS is a pre-aggregated CTE rather than
-            // the local correlated subquery: PG rejects subqueries that
-            // reference ungrouped outer columns (E42803), and joining an
-            // aggregate keyed on (date, currency) cannot multiply rows.
+            // semantics exactly. COGS and refund COGS are pre-aggregated CTEs
+            // (c and rc) rather than correlated subqueries: PG rejects
+            // subqueries that reference ungrouped outer columns (E42803),
+            // and joining aggregates keyed on (date, currency) cannot multiply rows.
             "WITH s AS (
                  SELECT to_char(s1.created_at::date, 'YYYY-MM-DD') AS d, s1.currency AS c,
                         SUM(s1.total_minor)::bigint AS t, COUNT(*) AS n
@@ -195,22 +204,34 @@ pub async fn daily_revenue_pg(
                    AND s3.created_at::date BETWEEN $1 AND $2
                  GROUP BY s3.created_at::date, s3.currency
              ),
+             rc AS (
+                 SELECT to_char(rf3.created_at::date, 'YYYY-MM-DD') AS d, rf3.currency AS c,
+                        SUM(COALESCE(sl3.cost_minor, p3.cost_minor, 0) * rl3.qty)::bigint AS rcost
+                 FROM refund_lines rl3
+                 JOIN refunds rf3 ON rf3.id = rl3.refund_id
+                 LEFT JOIN sale_lines sl3 ON sl3.id = rl3.sale_line_id
+                 LEFT JOIN products p3 ON p3.sku = sl3.sku AND p3.tenant_id = rf3.tenant_id
+                 WHERE rf3.tenant_id = $3
+                   AND rf3.created_at::date BETWEEN $1 AND $2
+                 GROUP BY rf3.created_at::date, rf3.currency
+             ),
              r AS (
-                 SELECT to_char(created_at::date, 'YYYY-MM-DD') AS d, currency AS c,
-                        SUM(total_minor)::bigint AS rf
-                 FROM refunds
-                 WHERE tenant_id = $3 AND created_at::date BETWEEN $1 AND $2
-                 GROUP BY created_at::date, currency
+                 SELECT to_char(rf1.created_at::date, 'YYYY-MM-DD') AS d, rf1.currency AS c,
+                        SUM(rf1.total_minor)::bigint AS rf
+                 FROM refunds rf1
+                 WHERE rf1.tenant_id = $3 AND rf1.created_at::date BETWEEN $1 AND $2
+                 GROUP BY rf1.created_at::date, rf1.currency
              )
              SELECT COALESCE(s.d, r.d) AS date,
                     COALESCE(s.t, 0)::bigint AS total_minor,
                     COALESCE(s.c, r.c) AS currency,
                     COALESCE(s.n, 0)::bigint AS sale_count,
-                    COALESCE(c.cogs, 0)::bigint AS cogs_minor,
+                    (COALESCE(c.cogs, 0) - COALESCE(rc.rcost, 0))::bigint AS cogs_minor,
                     COALESCE(r.rf, 0)::bigint AS refund_minor,
                     (COALESCE(s.t, 0) - COALESCE(r.rf, 0))::bigint AS net_revenue_minor
              FROM s FULL OUTER JOIN r ON s.d = r.d AND s.c = r.c
-             LEFT JOIN c ON c.d = s.d AND c.c = s.c
+             LEFT JOIN c ON c.d = COALESCE(s.d, r.d) AND c.c = COALESCE(s.c, r.c)
+             LEFT JOIN rc ON rc.d = COALESCE(s.d, r.d) AND rc.c = COALESCE(s.c, r.c)
              ORDER BY date ASC",
             &[&start, &end, &tenant],
         )
@@ -221,8 +242,9 @@ pub async fn daily_revenue_pg(
     for row in rows {
         let total_minor: i64 = row.get(1);
         let cogs_minor: i64 = row.get(4);
+        let refund_minor: i64 = row.get(5);
         let (total_minor, cogs_minor, gross_profit_minor, gross_margin_percent) =
-            revenue_profit_fields(total_minor, cogs_minor);
+            revenue_profit_fields(total_minor, cogs_minor, refund_minor);
         out.push(DailyRevenueRow {
             date: row.get(0),
             total_minor,
@@ -280,23 +302,36 @@ async fn weekly_revenue_pg(
                    AND s3.created_at::date BETWEEN $1 AND $2
                  GROUP BY date_trunc('week', s3.created_at::date), s3.currency
              ),
+             rc AS (
+                 SELECT to_char(date_trunc('week', rf3.created_at::date)::date, 'YYYY-MM-DD') AS d,
+                        rf3.currency AS c,
+                        SUM(COALESCE(sl3.cost_minor, p3.cost_minor, 0) * rl3.qty)::bigint AS rcost
+                 FROM refund_lines rl3
+                 JOIN refunds rf3 ON rf3.id = rl3.refund_id
+                 LEFT JOIN sale_lines sl3 ON sl3.id = rl3.sale_line_id
+                 LEFT JOIN products p3 ON p3.sku = sl3.sku AND p3.tenant_id = rf3.tenant_id
+                 WHERE rf3.tenant_id = $3
+                   AND rf3.created_at::date BETWEEN $1 AND $2
+                 GROUP BY date_trunc('week', rf3.created_at::date), rf3.currency
+             ),
              r AS (
-                 SELECT to_char(date_trunc('week', created_at::date)::date, 'YYYY-MM-DD') AS d,
-                        currency AS c,
-                        SUM(total_minor)::bigint AS rf
-                 FROM refunds
-                 WHERE tenant_id = $3 AND created_at::date BETWEEN $1 AND $2
-                 GROUP BY date_trunc('week', created_at::date), currency
+                 SELECT to_char(date_trunc('week', rf1.created_at::date)::date, 'YYYY-MM-DD') AS d,
+                        rf1.currency AS c,
+                        SUM(rf1.total_minor)::bigint AS rf
+                 FROM refunds rf1
+                 WHERE rf1.tenant_id = $3 AND rf1.created_at::date BETWEEN $1 AND $2
+                 GROUP BY date_trunc('week', rf1.created_at::date), rf1.currency
              )
              SELECT COALESCE(s.d, r.d) AS week_start,
                     COALESCE(s.t, 0)::bigint AS total_minor,
                     COALESCE(s.c, r.c) AS currency,
                     COALESCE(s.n, 0)::bigint AS sale_count,
-                    COALESCE(c.cogs, 0)::bigint AS cogs_minor,
+                    (COALESCE(c.cogs, 0) - COALESCE(rc.rcost, 0))::bigint AS cogs_minor,
                     COALESCE(r.rf, 0)::bigint AS refund_minor,
                     (COALESCE(s.t, 0) - COALESCE(r.rf, 0))::bigint AS net_revenue_minor
              FROM s FULL OUTER JOIN r ON s.d = r.d AND s.c = r.c
-             LEFT JOIN c ON c.d = s.d AND c.c = s.c
+             LEFT JOIN c ON c.d = COALESCE(s.d, r.d) AND c.c = COALESCE(s.c, r.c)
+             LEFT JOIN rc ON rc.d = COALESCE(s.d, r.d) AND rc.c = COALESCE(s.c, r.c)
              ORDER BY week_start ASC",
             &[&start, &end, &tenant],
         )
@@ -307,8 +342,9 @@ async fn weekly_revenue_pg(
     for row in rows {
         let total_minor: i64 = row.get(1);
         let cogs_minor: i64 = row.get(4);
+        let refund_minor: i64 = row.get(5);
         let (total_minor, cogs_minor, gross_profit_minor, gross_margin_percent) =
-            revenue_profit_fields(total_minor, cogs_minor);
+            revenue_profit_fields(total_minor, cogs_minor, refund_minor);
         out.push(WeeklyRevenueRow {
             week_start: row.get(0),
             total_minor,
@@ -364,22 +400,34 @@ async fn monthly_revenue_pg(
                    AND s3.created_at::date BETWEEN $1 AND $2
                  GROUP BY LEFT(s3.created_at, 7), s3.currency
              ),
+             rc AS (
+                 SELECT LEFT(rf3.created_at, 7) AS d, rf3.currency AS c,
+                        SUM(COALESCE(sl3.cost_minor, p3.cost_minor, 0) * rl3.qty)::bigint AS rcost
+                 FROM refund_lines rl3
+                 JOIN refunds rf3 ON rf3.id = rl3.refund_id
+                 LEFT JOIN sale_lines sl3 ON sl3.id = rl3.sale_line_id
+                 LEFT JOIN products p3 ON p3.sku = sl3.sku AND p3.tenant_id = rf3.tenant_id
+                 WHERE rf3.tenant_id = $3
+                   AND rf3.created_at::date BETWEEN $1 AND $2
+                 GROUP BY LEFT(rf3.created_at, 7), rf3.currency
+             ),
              r AS (
-                 SELECT LEFT(created_at, 7) AS d, currency AS c,
-                        SUM(total_minor)::bigint AS rf
-                 FROM refunds
-                 WHERE tenant_id = $3 AND created_at::date BETWEEN $1 AND $2
-                 GROUP BY LEFT(created_at, 7), currency
+                 SELECT LEFT(rf1.created_at, 7) AS d, rf1.currency AS c,
+                        SUM(rf1.total_minor)::bigint AS rf
+                 FROM refunds rf1
+                 WHERE rf1.tenant_id = $3 AND rf1.created_at::date BETWEEN $1 AND $2
+                 GROUP BY LEFT(rf1.created_at, 7), rf1.currency
              )
              SELECT COALESCE(s.d, r.d) AS month,
                     COALESCE(s.t, 0)::bigint AS total_minor,
                     COALESCE(s.c, r.c) AS currency,
                     COALESCE(s.n, 0)::bigint AS sale_count,
-                    COALESCE(c.cogs, 0)::bigint AS cogs_minor,
+                    (COALESCE(c.cogs, 0) - COALESCE(rc.rcost, 0))::bigint AS cogs_minor,
                     COALESCE(r.rf, 0)::bigint AS refund_minor,
                     (COALESCE(s.t, 0) - COALESCE(r.rf, 0))::bigint AS net_revenue_minor
              FROM s FULL OUTER JOIN r ON s.d = r.d AND s.c = r.c
-             LEFT JOIN c ON c.d = s.d AND c.c = s.c
+             LEFT JOIN c ON c.d = COALESCE(s.d, r.d) AND c.c = COALESCE(s.c, r.c)
+             LEFT JOIN rc ON rc.d = COALESCE(s.d, r.d) AND rc.c = COALESCE(s.c, r.c)
              ORDER BY month ASC",
             &[&start, &end, &tenant],
         )
@@ -390,8 +438,9 @@ async fn monthly_revenue_pg(
     for row in rows {
         let total_minor: i64 = row.get(1);
         let cogs_minor: i64 = row.get(4);
+        let refund_minor: i64 = row.get(5);
         let (total_minor, cogs_minor, gross_profit_minor, gross_margin_percent) =
-            revenue_profit_fields(total_minor, cogs_minor);
+            revenue_profit_fields(total_minor, cogs_minor, refund_minor);
         out.push(MonthlyRevenueRow {
             month: row.get(0),
             total_minor,
@@ -600,6 +649,12 @@ async fn category_breakdown_pg(
 }
 
 /// Per-location low-stock alerts using `stock_summary`.
+///
+/// The filter compares against the RESOLVED threshold (the same `COALESCE` the
+/// `threshold` column reports), so an enabled custom threshold replaces the
+/// default for the decision as well as the value — testing the default first
+/// returns rows whose own fields contradict them. Mirror of
+/// `kasirmu_core::db::reports::product_sales::Store::low_stock_alerts_at_location`.
 async fn low_stock_alerts_at_location_pg(
     pool: &Pool,
     location_id: &str,
@@ -631,13 +686,16 @@ async fn low_stock_alerts_at_location_pg(
              LEFT JOIN stock_summary ss
                 ON ss.item_id = p.id AND ss.location_id = $1
              WHERE p.tenant_id = $3
-               AND (COALESCE(ss.qty, 0) <= $2
-                    OR (SELECT 1 FROM stock_thresholds st
-                        WHERE st.product_id = p.id
-                          AND (st.location_id = $1 OR st.location_id IS NULL)
-                          AND st.enabled = 1
-                          AND COALESCE(ss.qty, 0) <= st.threshold
-                        LIMIT 1) = 1)
+               AND COALESCE(ss.qty, 0) <= COALESCE(
+                        (SELECT st.threshold FROM stock_thresholds st
+                         WHERE st.product_id = p.id
+                           AND st.location_id = $1 AND st.enabled = 1
+                         LIMIT 1),
+                        (SELECT st.threshold FROM stock_thresholds st
+                         WHERE st.product_id = p.id
+                           AND st.location_id IS NULL AND st.enabled = 1
+                         LIMIT 1),
+                        $2)
              ORDER BY current_qty ASC",
             &[&location_id, &default_threshold, &tenant],
         )

@@ -36,6 +36,7 @@
  * imports once for the whole modal — the same arrangement both siblings rely on.
  */
 import { Localized, useLocalization } from '@fluent/react';
+import type { EdcTerminalDto } from '@/api/edc';
 
 export interface CardTenderPanelProps {
   /** False when the site's rail list withholds the card terminal (agents-5 R1). */
@@ -48,6 +49,12 @@ export interface CardTenderPanelProps {
   autoQrPending: boolean;
   /** Start the card-present capture (the shell's `handleTerminalPay`). */
   onTerminalPay: () => void;
+  /** Available active card terminals (Option 4 / R4 multi-terminal support). */
+  terminals?: EdcTerminalDto[];
+  /** Currently selected terminal ID. */
+  selectedTerminalId?: string | null;
+  /** Callback to switch selected terminal. */
+  onSelectTerminal?: (terminalId: string) => void;
 }
 
 /** The card method panel: the pay-on-terminal button, gated on the EDC rail. */
@@ -57,11 +64,15 @@ export default function CardTenderPanel({
   terminalPending,
   autoQrPending,
   onTerminalPay,
+  terminals,
+  selectedTerminalId,
+  onSelectTerminal,
 }: CardTenderPanelProps) {
   const { l10n } = useLocalization();
 
-
   if (!terminalOffered) return null;
+
+  const hasMultipleTerminals = (terminals?.length ?? 0) > 1;
 
   return (
     <div className="payment-edc-section">
@@ -70,6 +81,33 @@ export default function CardTenderPanel({
           Charge the total on the connected card terminal — tap, insert or swipe.
         </p>
       </Localized>
+
+      {hasMultipleTerminals && (
+        <div className="payment-edc-terminals" style={{ marginBottom: '1rem' }}>
+          <div style={{ fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.375rem', color: 'var(--text-color, #333)' }}>
+            <Localized id="payment-edc-select-terminal">Select Card Terminal</Localized>:
+          </div>
+          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }} role="radiogroup" aria-label={l10n.getString('payment-edc-select-terminal')}>
+            {terminals!.map((t) => {
+              const isSelected = selectedTerminalId === t.id;
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={isSelected}
+                  className={`btn btn--sm ${isSelected ? 'btn--primary' : 'btn--secondary'}`}
+                  onClick={() => onSelectTerminal?.(t.id)}
+                  disabled={processing || terminalPending || autoQrPending}
+                >
+                  {t.name}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       <button
         type="button"
         className="payment-edc-btn"

@@ -80,7 +80,7 @@ pub(crate) fn run_sale_get(store: &Store<'_>, id: &str, format: &str) -> Result<
                 );
                 println!("ID:           {}", sale.id);
                 println!("Status:       {:?}", sale.status);
-                println!("Total:        {}", total_str);
+                println!("Total:        {total_str}");
                 println!("Line count:   {}", sale.line_count);
                 println!(
                     "Currency:     {}",

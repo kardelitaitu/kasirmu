@@ -1,3 +1,3 @@
-//! Sale domain type — re-exported from `modules_sales`.
+//! Sale domain type — re-exported from `foundation` (moved down 2026-09-28, ADR-61 / C26).
 
-pub use modules_sales::models::{Sale, SaleLine, default_version};
+pub use foundation::sales::{Sale, SaleLine, default_version};

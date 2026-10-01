@@ -158,11 +158,18 @@ impl Store<'_> {
         store_id: &str,
         created_at: &str,
     ) -> Result<(), CoreError> {
+        // Replay-safe: a movement's id IS its identity, so re-inserting the
+        // same row is a no-op rather than an error. The daemon's replay ledger
+        // normally blocks a repeated ITEM, but a flattened CRDT envelope
+        // legitimately repeats ids across its `local`/`remote`/`extra`
+        // deltas (a re-merge of a row with itself), and a UNIQUE violation
+        // there would abort the entire apply.
         conn.execute(
             "INSERT INTO stock_movements (id, item_id, delta, reason,
                                           source_terminal_id, source_user_id,
                                           store_id, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+             ON CONFLICT(id) DO NOTHING",
             params![
                 id,
                 item_id,
@@ -230,6 +237,38 @@ impl Store<'_> {
         barcode: Option<&str>,
         initial_stock: i64,
         product_type: &str,
+    ) -> Result<bool, CoreError> {
+        self.create_product_if_absent_with_tx(
+            tx,
+            sku,
+            name,
+            price,
+            category_id,
+            barcode,
+            initial_stock,
+            Some(product_type),
+        )
+    }
+
+    /// [`Self::create_product_if_absent_in_tx`] with an OPTIONAL product type.
+    ///
+    /// `None` means the caller's payload did not carry a type at all — the
+    /// `product.created` sync payload cannot, because the `ProductCreated`
+    /// domain event has no such field (see `foundation/src/events.rs`). An
+    /// absent type must not be compared against the stored row and must not be
+    /// written, or an identical replay of a `service` product looks like a
+    /// same-SKU-different-payload conflict and is dead-lettered.
+    #[allow(clippy::too_many_arguments)]
+    pub fn create_product_if_absent_with_tx(
+        &self,
+        tx: &rusqlite::Transaction<'_>,
+        sku: &str,
+        name: &str,
+        price: Money,
+        category_id: Option<&str>,
+        barcode: Option<&str>,
+        initial_stock: i64,
+        product_type: Option<&str>,
     ) -> Result<bool, CoreError> {
         if sku.trim().is_empty() {
             return Err(CoreError::Validation {
@@ -316,7 +355,7 @@ impl Store<'_> {
                     && existing_currency == cur_str
                     && existing_category.as_deref() == category_id
                     && existing_barcode.as_deref() == barcode
-                    && existing_type == product_type;
+                    && product_type.is_none_or(|t| existing_type == t);
                 // `initial_stock` is write-once creation metadata. Current
                 // inventory is mutable, so it is intentionally not compared
                 // when recognizing a replay of an already-existing SKU.
@@ -347,11 +386,16 @@ impl Store<'_> {
                 category_id,
                 barcode,
                 now,
-                product_type,
+                // An absent type falls back to the column's own default,
+                // which `create_product_if_absent_in_tx`'s callers already
+                // apply; this path only has to avoid writing a type the
+                // payload never carried when the row is created by a replay.
+                product_type.unwrap_or("retail"),
             ],
         )?;
 
-        if inserted == 0 || initial_stock == 0 || product_type == "service" {
+        let is_service = product_type == Some("service");
+        if inserted == 0 || initial_stock == 0 || is_service {
             return Ok(inserted == 1);
         }
 
@@ -438,6 +482,22 @@ impl Store<'_> {
             new_qty,
             &now,
         )?;
+
+        // Invalidate the read cache, exactly as the non-tx sibling
+        // `adjust_stock_with_reason` does. Without this the sync-replay path
+        // left a STALE cached quantity: `get_stock` serves the cache first and
+        // POPULATES it on miss, so one read before a replayed adjustment was
+        // enough to poison it — measured 10 served against a database of 6, a
+        // phantom 4 units a register would sell against stock it does not have.
+        // The invalidation has to happen even though the write is inside the
+        // caller transaction: `get_stock` consults the cache before it ever
+        // reaches the database, so a cache entry outliving the transaction is
+        // read regardless of what the transaction did.
+        if let Some(cache) = &self.cache {
+            cache.invalidate_inventory(&product_id);
+            cache.publish_inventory_change(&product_id, sku, new_qty, self.terminal_id.as_deref());
+        }
+
         Ok(new_qty)
     }
 

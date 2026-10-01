@@ -7,7 +7,8 @@ so replicas converge regardless of arrival order — this is the property the
 merge relies on; `compare` is the standard four-way classification and treats
 a missing terminal as counter 0, which makes an unseen peer correctly
 concurrent with (not dominated by) a vector that has never heard of it.
-next: consumed by Agent 2's conflict detector | perf: O(terminals)
+next: none | perf: O(terminals)
+CONSUMED 2026-10-04: apps/cloud-server/src/conflict_resolution.rs imports CausalOrder/VersionVector and matches all four orderings; apps/cloud-server/src/sync_store/conflicts.rs calls observe/compare. The detector this note awaited exists.
 */
 //!
 //! A [`crate::crdt::LamportClock`] yields a total order but cannot tell

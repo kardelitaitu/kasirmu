@@ -246,13 +246,23 @@ pub async fn set_brand_logo_path_scoped(
     let session = ctx.resolve_session(session_token)?;
     ctx.require_session_permission(&session, permissions::SETTINGS_EDIT)
         .await?;
-    ctx.resolve_scope(session_token)?;
+    // The logo lives in the session's STORE database, where its reader
+    // `get_brand_settings_scoped` and its two sibling setters already read and
+    // write. Writing the global identity db — as this used to — made the picked
+    // logo write-only: the renderer reads the store, so the value vanished with
+    // no error. `resolve_scope` was already called here; it opened the store
+    // and threw the connection away. Bind it instead.
+    let (_session, _conn) = ctx.resolve_scope(session_token)?;
     if let Some(ref app_data) = app_data {
         let validated = validate_logo_path(app_data, path)?;
-        let conn = ctx.lock_global().await;
+        let conn = _conn
+            .lock()
+            .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
         Ok(Settings::set_brand_logo_path(&conn, &validated)?)
     } else {
-        let conn = ctx.lock_global().await;
+        let conn = _conn
+            .lock()
+            .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
         Ok(Settings::set_brand_logo_path(&conn, path)?)
     }
 }

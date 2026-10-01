@@ -261,7 +261,7 @@ vi.mock('@/api/tables', () => ({
 }));
 
 import AnalyticsScreen from '@/features/analytics/AnalyticsScreen';
-import { nextExpandedKey, daysInCurrentMonth, monthCalendarGrid, smartScale, cardGranularity, cardRange } from '@/features/analytics/utils/dateRangePresets';
+import { nextExpandedKey, monthCalendarGrid, smartScale, cardGranularity, cardRange } from '@/features/analytics/utils/dateRangePresets';
 import { useSubscription } from '@/contexts/SubscriptionContext';
 import { makeSubscriptionCaps } from '@/__tests__/test-utils/mocks/subscriptionCaps';
 import { yearlyHeatmapColumns, rangeForGranularity, isoToday } from '@/features/analytics/analytics-data';
@@ -867,7 +867,17 @@ describe('AnalyticsScreen layout shell', () => {
     await flushRecalc();
     const filled = heatmap()?.querySelectorAll('.analytics-heat-cell[data-intensity]').length ?? 0;
     const total = cellCount();
-    expect(filled).toBe(daysInCurrentMonth());
+    // The expected day count is computed with plain UTC arithmetic on the STORE
+    // anchor, NOT by calling daysInCurrentMonth() and NOT from new Date().
+    // daysInCurrentMonth reads the DEVICE calendar, so on a host that has rolled
+    // over while the store has not it names the wrong month — and asserting a
+    // wrong-but-self-consistent value is exactly the R36-01 defect class this
+    // file already documents at the quick-preset test above.
+    const storeToday = new Date().toISOString().slice(0, 10); // UTC == store fallback
+    const storeYear = Number(storeToday.slice(0, 4));
+    const storeMonth = Number(storeToday.slice(5, 7)); // 1-based
+    const storeDaysInMonth = new Date(Date.UTC(storeYear, storeMonth, 0)).getUTCDate();
+    expect(filled).toBe(storeDaysInMonth);
     expect(filled).toBeGreaterThanOrEqual(28);
     expect(filled).toBeLessThanOrEqual(31);
     expect(total % 7).toBe(0); // complete calendar weeks
@@ -925,7 +935,13 @@ describe('AnalyticsScreen layout shell', () => {
     // (analytics-month-*) for the current month's column header.
     fireEvent.click(screen.getByRole('radio', { name: 'Yearly' }));
     await flushRecalc();
-    const monthAbbr = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][new Date().getMonth()]!;
+    // The column header is the STORE's current month, so the expected
+    // abbreviation is derived from the UTC calendar (== the store fallback
+    // anchor), not from new Date().getMonth(). A host already in the next month
+    // has no column to name, and getAllByText would fail there while the UI is
+    // correct.
+    const storeMonth = Number(new Date().toISOString().slice(5, 7)) - 1;
+    const monthAbbr = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][storeMonth]!;
     expect(screen.getAllByText(monthAbbr).length).toBeGreaterThan(0);
   });
 

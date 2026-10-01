@@ -28,223 +28,14 @@ use crate::db::Store;
 use crate::error::CoreError;
 use crate::offline::OfflineQueueItem;
 
-/// Per-item outcome returned by the server's `POST /api/sync/push`.
-///
-/// The single definition of this type: `platform_sync::transport` re-exports
-/// it (`pub use kasirmu_core::sync_client::PushOutcome`), so both the
-/// `kasirmu_core::sync_client::PushOutcome` and the
-/// `platform_sync::transport::PushOutcome` import paths resolve to this enum.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "outcome", rename_all = "snake_case")]
-pub enum PushOutcome {
-    /// Item was accepted and applied by the server.
-    Accepted,
-    /// Item conflicted with the server version.
-    Conflict(OfflineQueueItem),
-    /// Item was rejected with a reason.
-    Rejected {
-        /// Human-readable rejection reason from the server.
-        reason: String,
-    },
-}
-
-/// Server response envelope for push.
-#[derive(Debug, Clone, Deserialize)]
-struct PushResponse {
-    results: Vec<PushOutcome>,
-}
-
-/// Prefix the cloud server puts on the `Rejected` reason when a pushed item's
-/// id already exists (`apps/cloud-server/src/sync_store.rs` `push_batch`,
-/// `format!("duplicate id: {}", item.id)`).
-///
-/// A duplicate id is NOT a rejection: item ids are client-generated UUIDs
-/// assigned once at enqueue, so the only way the server already holds an id is
-/// that THIS item was pushed before — the canonical case being a crash between
-/// the server insert and the local `mark_offline_synced`, then a re-push on
-/// recovery. The data is safely on the server; the correct local state is
-/// `synced`, not a terminal `failed`. The server itself agrees: it labels
-/// duplicate-id outcomes `"conflict"` (not `"rejected"`) in its push metrics
-/// (`sync_api.rs`). Both the immediate [`apply_sync_outcomes`] and the daemon's
-/// `apply_push_results` route these to synced via this predicate.
-pub const DUPLICATE_ID_REJECTION_PREFIX: &str = "duplicate id:";
-
-/// Whether a `Rejected` reason is an idempotent-replay duplicate (already on
-/// the server) rather than a genuine rejection.
-pub fn is_duplicate_id_rejection(reason: &str) -> bool {
-    reason.starts_with(DUPLICATE_ID_REJECTION_PREFIX)
-}
-
-/// Result of a single sync attempt.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SyncAttemptResult {
-    /// Number of items successfully synced.
-    pub synced: usize,
-    /// Number of items that failed to sync.
-    pub failed: usize,
-    /// Error message if the entire sync failed (e.g. network error).
-    pub error: Option<String>,
-    /// The server rejected the attempt because this tenant is on the
-    /// `free` plan (ADR sync-plan-gating). The UI shows an upgrade prompt
-    /// and queued items stay `pending` — they are valid, just gated.
-    #[serde(default)]
-    pub plan_required: bool,
-}
-
-/// Typed HTTP error from the sync client (ADR sync-auth-hardening P1/P4).
-///
-/// 401 responses are split so callers can refresh the stored token and retry
-/// exactly once when it EXPIRED, while treating a genuinely invalid key as a
-/// configuration problem that must not be masked by a refresh.
-#[derive(Debug, thiserror::Error)]
-pub enum SyncHttpError {
-    /// The server said the token expired (HTTP 401 + `token_expired`, or a
-    /// bare 401 from an older server). Safe to refresh the API key and
-    /// retry once.
-    #[error("sync server rejected authentication: token expired (HTTP 401)")]
-    AuthExpired,
-
-    /// The server said the token is invalid or missing (HTTP 401 +
-    /// `invalid_token` / `missing_token`). A configuration problem — do NOT
-    /// refresh; surface the error.
-    #[error("sync server rejected authentication: invalid token (HTTP 401)")]
-    AuthInvalid,
-
-    /// The tenant is on the `free` plan and cloud sync is gated
-    /// (HTTP 403 + `plan_required`, ADR sync-plan-gating). Terminal: do
-    /// NOT refresh, retry, or quarantine — surface the upgrade prompt.
-    #[error("cloud sync requires a paid plan (HTTP 403 plan_required)")]
-    PlanRequired,
-
-    /// The server returned a non-2xx status other than 401.
-    #[error("sync server returned {status}: {body}")]
-    Server {
-        /// HTTP status code.
-        status: u16,
-        /// Response body for diagnostics.
-        body: String,
-    },
-
-    /// The request failed at the network layer (connect, timeout, DNS).
-    #[error("sync request failed: {0}")]
-    Network(String),
-
-    /// The response could not be parsed.
-    #[error("sync response parse failed: {0}")]
-    Parse(String),
-
-    /// The HTTP client could not be constructed.
-    #[error("failed to build HTTP client: {0}")]
-    Client(String),
-}
-
-/// Classify a 401 response body (ADR sync-auth-hardening P4).
-///
-/// Servers with structured errors say `token_expired` / `invalid_token` /
-/// `missing_token`. A bare 401 (older server) is treated as stale auth so
-/// the refresh-and-retry behaviour from P1 keeps working.
-fn classify_401(body: &str) -> SyncHttpError {
-    if body.contains("token_expired") {
-        SyncHttpError::AuthExpired
-    } else if body.contains("invalid_token") || body.contains("missing_token") {
-        SyncHttpError::AuthInvalid
-    } else {
-        SyncHttpError::AuthExpired
-    }
-}
-
-/// Classify a non-2xx HTTP status into a typed [`SyncHttpError`]
-/// (ADR sync-auth-hardening P4 + ADR sync-plan-gating).
-///
-/// Used by both `send_items_to_server` and `fetch_snapshot_from_server` so
-/// the push and pull paths agree on 401/403 semantics:
-///
-/// - `401` → `AuthExpired` / `AuthInvalid` (refresh only on expiry).
-/// - `403` + `plan_required` → `PlanRequired` (terminal — no refresh,
-///   no retry, no quarantine).
-/// - anything else → `Server { status, body }`.
-fn classify_http_status(status: u16, body: &str) -> SyncHttpError {
-    if status == reqwest::StatusCode::UNAUTHORIZED.as_u16() {
-        classify_401(body)
-    } else if status == reqwest::StatusCode::FORBIDDEN.as_u16() && body.contains("plan_required") {
-        SyncHttpError::PlanRequired
-    } else {
-        SyncHttpError::Server {
-            status,
-            body: body.to_owned(),
-        }
-    }
-}
-
-/// Result of a `pull_snapshot` round-trip.
-///
-/// The three counts tell the UI how many rows landed in the local
-/// cache for each domain (products, tax rates, users). `error` is
-/// populated when the entire pull failed at the network or decode
-/// stage — partial successes are surfaced as `Ok` with the per-domain
-/// counts.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PullResult {
-    /// Number of products upserted from the server snapshot.
-    pub products_pulled: usize,
-    /// Number of tax rates upserted from the server snapshot.
-    pub tax_rates_pulled: usize,
-    /// Number of users upserted from the server snapshot.
-    pub users_pulled: usize,
-    /// Error message if the entire pull failed (e.g. network error).
-    pub error: Option<String>,
-}
-
-/// Result of a health-check ping to the cloud server.
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PingResult {
-    /// Whether the server responded successfully.
-    pub ok: bool,
-    /// Status text (e.g. "Connected", "Connection refused", etc.).
-    pub status: String,
-    /// Round-trip latency in milliseconds, if the ping succeeded.
-    pub latency_ms: Option<u64>,
-}
-
-/// Format an ISO-8601 expiry timestamp as a human-readable relative duration.
-///
-/// Returns strings like "in 2 hours", "in 3 days", "in 5 minutes", or
-/// the raw timestamp if parsing fails.
-#[cfg(feature = "sync-http")]
-fn format_expiry(iso: &str) -> String {
-    // Try RFC 3339 first (the most common ISO-8601 variant from APIs).
-    let expiry = match chrono::DateTime::parse_from_rfc3339(iso) {
-        Ok(dt) => dt,
-        Err(_) => return format!("expires {iso}"),
-    };
-    let now = chrono::Utc::now();
-    let dur = expiry.signed_duration_since(now);
-
-    if dur.num_seconds() <= 0 {
-        return "expired".into();
-    }
-
-    let mins = dur.num_minutes();
-    let hours = dur.num_hours();
-    let days = dur.num_days();
-
-    if days >= 2 {
-        format!("expires in {days} days")
-    } else if days == 1 {
-        "expires in 1 day".into()
-    } else if hours >= 2 {
-        format!("expires in {hours} hours")
-    } else if hours == 1 {
-        "expires in 1 hour".into()
-    } else if mins >= 2 {
-        format!("expires in {mins} minutes")
-    } else if mins == 1 {
-        "expires in 1 minute".into()
-    } else {
-        "expires in less than a minute".into()
-    }
-}
+pub mod types;
+pub use types::{
+    DUPLICATE_ID_REJECTION_PREFIX, PingResult, PullResult, PushOutcome, SyncAttemptResult,
+    SyncHttpError, is_duplicate_id_rejection,
+};
+// Internal to the wire types; the push path here and the sibling `sync_pull`
+// module call them, but nothing outside the crate does.
+use types::{PushResponse, classify_http_status, format_expiry};
 
 #[path = "sync_auth.rs"]
 mod sync_auth;
@@ -357,7 +148,55 @@ pub fn apply_sync_outcomes(
     })
 }
 
+/// The result for a push batch that could not be DELIVERED.
+///
+/// A transport failure is not a verdict on any item in the batch: the server
+/// never saw them. Every push entry point must therefore report the error and
+/// leave the queue untouched, so the next retry cycle re-lists the same items.
+///
+/// This exists as one shared function because the three shells (`kasirmu-core`,
+/// `kasirmu-bridge`, `apps/mobile-tauri`) each had their own copy of the arm,
+/// and all three had the destructive one — `mark_all_failed`.
+///
+/// **Why `mark_all_failed` is the wrong answer here.** It writes
+/// `status = 'failed'`, and nothing in this repo ever writes `status = 'pending'`
+/// again (no such `UPDATE` exists), while `list_pending_offline` selects
+/// `status = 'pending'` only. A `failed` push item is therefore TERMINAL: the
+/// queued sale never reaches the cloud again, silently and permanently. That is
+/// the correct outcome for an item the server *examined and rejected*
+/// ([`apply_sync_outcomes`], `PushOutcome::Rejected`) and the wrong one for a
+/// dropped connection, a 502 from a restarting container, or a build with
+/// `sync-http` compiled out.
+///
+/// The SQLite daemon already behaves this way (`daemon_tick.rs`: `Err(e) =>
+/// { pushed = 0; ... }`, and its post-auth-refresh retry returns
+/// `(0, Some(err))`), so this aligns the immediate path with the daemon.
+/// `mark_all_failed` is kept for callers that genuinely hold a per-item verdict.
+pub fn undelivered_batch(error: &SyncHttpError) -> SyncAttemptResult {
+    // The plan gate is a distinct, non-error state the UI renders as an upgrade
+    // prompt rather than a fault; it keeps its own flag and wording.
+    if matches!(error, SyncHttpError::PlanRequired) {
+        return SyncAttemptResult {
+            synced: 0,
+            failed: 0,
+            error: Some("cloud sync requires a paid plan".into()),
+            plan_required: true,
+        };
+    }
+    SyncAttemptResult {
+        synced: 0,
+        failed: 0,
+        error: Some(error.to_string()),
+        plan_required: false,
+    }
+}
+
 /// Mark all pending items as failed with the given error message.
+///
+/// **Only for callers holding a per-item verdict.** `failed` is terminal for a
+/// push item — nothing writes `status = 'pending'` again — so using this for a
+/// batch that was never delivered loses the queue. Use [`undelivered_batch`]
+/// for transport failures.
 pub fn mark_all_failed(
     store: &Store,
     pending: &[OfflineQueueItem],
@@ -404,7 +243,24 @@ pub fn sync_pending(store: &Store, config: &SyncConfig) -> Result<SyncAttemptRes
             error: Some("cloud sync requires a paid plan".into()),
             plan_required: true,
         }),
-        Err(e) => mark_all_failed(store, &pending, &e.to_string()),
+        // A TRANSPORT error is not a verdict on the item, so it must not be
+        // recorded as one. `mark_all_failed` writes `status = 'failed'`, and
+        // nothing in this repo ever writes `status = 'pending'` again, while
+        // `list_pending_offline` selects `status = 'pending'` only — so a
+        // `failed` push item is TERMINAL and the queued sale never reaches the
+        // cloud again. That is the right answer for a server that looked at the
+        // item and rejected it (`apply_sync_outcomes`, `Rejected`), and the
+        // wrong one for a dropped connection, a 502 from a restarting
+        // container, or a build with `sync-http` compiled out.
+        //
+        // The SQLite daemon already takes this position on the identical
+        // failure (`daemon_tick.rs`: `Err(e) => { pushed = 0; ... }`, and its
+        // retry helper returns `(0, Some(err))`), and so does the plan-gate arm
+        // directly above. This arm was the outlier: same transient condition,
+        // opposite policy, and the destructive one. Reporting the error while
+        // leaving the items `pending` keeps the retry cycle intact — the next
+        // cycle re-lists them and tries again.
+        Err(e) => Ok(undelivered_batch(&e)),
     }
 }
 
@@ -442,9 +298,35 @@ pub fn sync_pending(store: &Store, config: &SyncConfig) -> Result<SyncAttemptRes
 /// still pin the behaviour.
 #[cfg(any(not(feature = "sync-http"), test))]
 fn push_outcomes_without_http() -> Result<Vec<PushOutcome>, SyncHttpError> {
-    Err(SyncHttpError::Client(
-        "sync-http feature is disabled".into(),
-    ))
+    Err(sync_http_disabled_error())
+}
+
+/// The ONE expression of "this build has no HTTP", for every disabled stub.
+///
+/// # Why this exists (C53)
+///
+/// C51 extracted the push path's disabled decision and, in doing so, left the
+/// rule expressed in six places: `ack_memo_on_server`,
+/// `fetch_active_memos_from_server`, `qris_charge_on_server`,
+/// `qris_status_from_server`, `push_outcomes_without_http` and
+/// `sync_pull::fetch_snapshot_from_server` each carried their own copy of the
+/// same literal. A change to the wording, the error type, or the advice given
+/// to an operator therefore had to be made six times, and the sixth would be
+/// missed -- which is the copy-drift trap C51's own delegation pin exists to
+/// close, one layer up from where it was applied.
+///
+/// Note the message is a CONTRACT, not cosmetic: `sync_client_tests.rs` and
+/// the mobile/bridge error paths assert on it, so unifying the production
+/// sites is what lets those assertions keep meaning something.
+///
+/// Compiled when the feature is off (where the stubs need it) or under
+/// `test`, matching `push_outcomes_without_http`'s own gating: a
+/// default build carries no dead code, and a default `cargo test` can still
+/// reach the disabled decision, because `--no-default-features` does not
+/// compile this crate at all.
+#[cfg(any(not(feature = "sync-http"), test))]
+pub(crate) fn sync_http_disabled_error() -> SyncHttpError {
+    SyncHttpError::Client("sync-http feature is disabled".into())
 }
 
 /// Blocking variant of send_items_to_server — only for spawn_blocking contexts.
@@ -707,9 +589,7 @@ pub async fn ack_memo_on_server(
     _memo_id: &str,
     _user_id: Option<&str>,
 ) -> Result<MemoAckCloud, SyncHttpError> {
-    Err(SyncHttpError::Client(
-        "sync-http feature is disabled".into(),
-    ))
+    Err(sync_http_disabled_error())
 }
 
 /// Push the tenant's complete memo state to the cloud via
@@ -861,9 +741,7 @@ pub async fn fetch_active_memos_from_server(
     config: &SyncConfig,
     _terminal_id: &str,
 ) -> Result<ActiveMemosCloudResponse, SyncHttpError> {
-    Err(SyncHttpError::Client(
-        "sync-http feature is disabled".into(),
-    ))
+    Err(sync_http_disabled_error())
 }
 
 // ── QRIS Auto (dynamic Midtrans charge via the cloud) ───────────────
@@ -974,9 +852,7 @@ pub async fn qris_charge_on_server(
     _amount_minor: i64,
     _idempotency_key: Option<&str>,
 ) -> Result<QrisChargeResult, SyncHttpError> {
-    Err(SyncHttpError::Client(
-        "sync-http feature is disabled".into(),
-    ))
+    Err(sync_http_disabled_error())
 }
 
 /// Poll one QRIS charge's settlement status from the cloud (async). A 404
@@ -1027,9 +903,7 @@ pub async fn qris_status_from_server(
     _config: &SyncConfig,
     _order_id: &str,
 ) -> Result<QrisStatusResult, SyncHttpError> {
-    Err(SyncHttpError::Client(
-        "sync-http feature is disabled".into(),
-    ))
+    Err(sync_http_disabled_error())
 }
 
 #[cfg(test)]

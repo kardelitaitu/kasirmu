@@ -143,7 +143,7 @@ export function wireConnectRefusal(
   target: Pick<TopologyNodeData, 'id' | 'type'>,
   targetPort: PortName,
   option: Pick<WireRelationshipOption, 'toPortId' | 'relationshipType'>,
-  context: { isProAllowed: boolean; existingStockWires: readonly TopologyWireData[] },
+  context: { warehouseTierAllowed: boolean; existingStockWires: readonly TopologyWireData[] },
 ): WireConnectRefusal | null {
   const duplicate = wires.some(
     (w) =>
@@ -176,7 +176,7 @@ export function wireConnectRefusal(
   if (
     option.relationshipType === 'stock-routing'
     && context.existingStockWires.length >= 1
-    && !context.isProAllowed
+    && !context.warehouseTierAllowed
   ) {
     return { reason: 'stock-routing-limit' };
   }

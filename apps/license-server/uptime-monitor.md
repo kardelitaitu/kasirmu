@@ -104,14 +104,14 @@ Read-write API key: UptimeRobot → **Integrations & API → API**.
 # 1 — liveness monitor (type 1 = HTTP(s))
 curl -X POST "https://api.uptimerobot.com/v2/newMonitor" \
   -d "api_key=<READ-WRITE-KEY>&format=json" \
-  -d "friendly_name=OZ-POS license - liveness" \
+  -d "friendly_name=kasir.mu license - liveness" \
   -d "url=https://<license-host>/api/health" \
   -d "type=1&interval=5&alert_contact=<CONTACT_ID>"
 
 # 2 — SMTP verified keyword monitor (type 2 = Keyword, keyword_type 1 = exists)
 curl -X POST "https://api.uptimerobot.com/v2/newMonitor" \
   -d "api_key=<READ-WRITE-KEY>&format=json" \
-  -d "friendly_name=OZ-POS license - SMTP sender verified" \
+  -d "friendly_name=kasir.mu license - SMTP sender verified" \
   -d "url=https://<license-host>/api/health" \
   -d "type=2&interval=5" \
   -d "keyword_type=1&keyword_value=%22verified%22:false" \

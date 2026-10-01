@@ -102,6 +102,7 @@ fn shift_open_empty_user_rejected() {
 #[test]
 fn shift_open_nonexistent_user_rejected() {
     let conn = setup();
+    seed_users(&conn);
     let s = store(&conn);
 
     let err = s.open_shift("user-ghost", None, 100).unwrap_err();
@@ -109,6 +110,21 @@ fn shift_open_nonexistent_user_rejected() {
         matches!(err, kasirmu_core::CoreError::Validation { field, .. } if field == "user_id"),
         "expected Validation error for nonexistent user, got: {err}"
     );
+}
+
+#[test]
+fn shift_open_succeeds_in_store_db_without_local_users() {
+    let conn = setup();
+    // In store-scoped DBs, users table is empty; authorization was performed upstream.
+    let s = store(&conn);
+
+    let shift = s
+        .open_shift("scoped-user-123", Some("term-front"), 50000)
+        .unwrap();
+    assert_eq!(shift.user_id, "scoped-user-123");
+    assert_eq!(shift.terminal_id.as_deref(), Some("term-front"));
+    assert_eq!(shift.opening_balance_minor, 50000);
+    assert_eq!(shift.status, "open");
 }
 
 // ── Close shift ───────────────────────────────────────────────────────

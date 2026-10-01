@@ -70,6 +70,27 @@ const EXPECTED_KEYS: Record<string, string> = {
   'settings-sidebar-expanded': 'features/settings/SettingsNavTree.tsx',
   'settings-sidebar-width': 'features/settings/SettingsNavTree.tsx',
   'smtp_config': 'features/settings/EmailReportSettings.tsx',
+  // Restaurant receipt print-preview preferences. The screen reads the same
+  // seven through get_setting as a fallback, but the localStorage copy is what
+  // makes a preview toggle survive a reload before the setting round-trips.
+  'resto_rcpt_font_size': 'features/restaurant/screens/RestaurantReceiptsScreen.tsx',
+  'resto_rcpt_show_code': 'features/restaurant/screens/RestaurantReceiptsScreen.tsx',
+  'resto_rcpt_show_dt': 'features/restaurant/screens/RestaurantReceiptsScreen.tsx',
+  'resto_rcpt_show_staff': 'features/restaurant/screens/RestaurantReceiptsScreen.tsx',
+  'resto_rcpt_show_footer': 'features/restaurant/screens/RestaurantReceiptsScreen.tsx',
+  'resto_rcpt_tax_rate': 'features/restaurant/screens/RestaurantReceiptsScreen.tsx',
+  'resto_rcpt_logo': 'features/restaurant/screens/RestaurantReceiptsScreen.tsx',
+  // The 2-column receipt header's three editable lines (f2c3339c3).
+  'resto_rcpt_header_title': 'features/restaurant/screens/RestaurantReceiptsScreen.tsx',
+  'resto_rcpt_header_line1': 'features/restaurant/screens/RestaurantReceiptsScreen.tsx',
+  'resto_rcpt_header_line2': 'features/restaurant/screens/RestaurantReceiptsScreen.tsx',
+  // Where the logo sits in the 2-column header (left / right).
+  'resto_rcpt_logo_pos': 'features/restaurant/screens/RestaurantReceiptsScreen.tsx',
+  // Whether per-item order notes print on the receipt (c761e0fc0).
+  'resto_rcpt_show_item_notes': 'features/restaurant/screens/RestaurantReceiptsScreen.tsx',
+  // Receipt amount formatting toggles (2cab71f40): thousands separator and decimals.
+  'resto_rcpt_thousands_sep': 'features/restaurant/screens/RestaurantReceiptsScreen.tsx',
+  'resto_rcpt_show_decimals': 'features/restaurant/screens/RestaurantReceiptsScreen.tsx',
 
   // Analytics
   'card': 'features/analytics/analytics-cache.ts',
@@ -88,6 +109,11 @@ const EXPECTED_KEYS: Record<string, string> = {
   // Workspaces
   'workspace-last-used': 'features/workspaces/WorkspaceHome.tsx',
   'workspace-pins': 'features/workspaces/WorkspaceHome.tsx',
+
+  // Settings keys that happen to end in _KEY. rate_sync.enabled is stored through
+  // get_setting, NOT localStorage, but KEY_DECL matches any const name ending in _KEY,
+  // so it is pinned here deliberately rather than renaming an idiomatic constant.
+  'rate_sync.enabled': 'features/currency/ExchangeRateScreen.tsx',
 
   // Auth
   'oz-last-login': 'features/auth/StaffLoginScreen.tsx',
@@ -112,6 +138,10 @@ const EXPECTED_KEYS: Record<string, string> = {
   'oz-dev-mock:topology-revisions': 'dev-mock/core/mockDatabase.ts',
   'oz-dev-mock:user-prefs': 'dev-mock/core/mockDatabase.ts',
   'oz-dev-mock:workspaces': 'dev-mock/core/mockDatabase.ts',
+  // The DevToolbar's tier switch. Dev-only, but persisted on purpose: the
+  // selection has to outlive the reload that switch performs, or every tier
+  // change would bounce straight back to the default.
+  'kasirmu-dev-tier': 'dev-mock/core/mockTier.ts',
 };
 
 const KEY_DECL =

@@ -15,6 +15,10 @@
 //!   an account or lock out a POS till (ADR #57 §2.4 response policy).
 //! - Cooldown: 7 days minimum between repeat alerts for the same tenant and condition.
 //! - Fail-safe logging: unconfigured SMTP logs at WARN without recording cooldown.
+//! - A read that could not run is never reported as a clean result: enumeration,
+//!   the per-axis counts and the whole scan all return `Err` / `Result` rather
+//!   than an empty list or a `0` count, because both are the HEALTHY answer and
+//!   a detector that has gone blind must not look like a detector that saw nothing.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -148,46 +152,72 @@ pub fn resolve_tenant_tier_sqlite(
 }
 
 /// Count products for a tenant on SQLite.
-pub fn count_tenant_products_sqlite(conn: &rusqlite::Connection, tenant_id: &str) -> i64 {
+///
+/// Returns `Err` when the count could not be read. The caller's predicate is
+/// `count > cap`, so a failed read collapsing to `0` reports the tenant as
+/// COMPLIANT -- a missing table or locked database would silence this axis for
+/// the tenant entirely. The PG sibling (`count_tenant_products_pg`) already
+/// propagates, so this is the SQLite half of the same rule.
+pub fn count_tenant_products_sqlite(
+    conn: &rusqlite::Connection,
+    tenant_id: &str,
+) -> Result<i64, rusqlite::Error> {
     conn.query_row(
         "SELECT COUNT(*) FROM products WHERE tenant_id = ?1",
         params![tenant_id],
         |row| row.get::<_, i64>(0),
     )
-    .unwrap_or(0)
 }
 
 /// Count active staff users (excluding owner) for a tenant on SQLite.
-pub fn count_tenant_staff_sqlite(conn: &rusqlite::Connection, tenant_id: &str) -> i64 {
+///
+/// Returns `Err` when the count could not be read, for the same reason as
+/// [`count_tenant_products_sqlite`]: `0` is the compliant answer.
+pub fn count_tenant_staff_sqlite(
+    conn: &rusqlite::Connection,
+    tenant_id: &str,
+) -> Result<i64, rusqlite::Error> {
     conn.query_row(
         "SELECT COUNT(*) FROM users WHERE tenant_id = ?1 AND is_active = 1 AND role_id != ?2",
         params![tenant_id, kasirmu_core::builtin_roles::OWNER],
         |row| row.get::<_, i64>(0),
     )
-    .unwrap_or(0)
 }
 
 /// Count locations for a tenant on SQLite.
-pub fn count_tenant_locations_sqlite(conn: &rusqlite::Connection, tenant_id: &str) -> i64 {
+///
+/// Returns `Err` when the count could not be read, for the same reason as
+/// [`count_tenant_products_sqlite`]. Note this is the DEVICE path in the C36
+/// sense: the cloud cannot see these rows, but the shared function is still
+/// the one that must not answer `0` for a failed read.
+pub fn count_tenant_locations_sqlite(
+    conn: &rusqlite::Connection,
+    tenant_id: &str,
+) -> Result<i64, rusqlite::Error> {
     conn.query_row(
         "SELECT COUNT(*) FROM locations WHERE tenant_id = ?1",
         params![tenant_id],
         |row| row.get::<_, i64>(0),
     )
-    .unwrap_or(0)
 }
 
 /// Check quota violations for a single tenant on SQLite.
+///
+/// Returns `Err` when any count could not be read. A failure here used to be
+/// invisible: each `count_tenant_*` collapsed to `0`, the predicate is
+/// `0 > cap`, and the result was a tenant reported COMPLIANT because a read
+/// failed. The PG sibling (`check_tenant_quota_pg`) propagates the same way, so
+/// the two backends now agree on what a broken read means.
 pub fn check_tenant_quota_sqlite(
     conn: &rusqlite::Connection,
     tenant_id: &str,
-) -> Vec<TenantQuotaViolation> {
+) -> Result<Vec<TenantQuotaViolation>, rusqlite::Error> {
     let tier = resolve_tenant_tier_sqlite(conn, tenant_id);
     let mut violations = Vec::new();
 
     // Check products axis
     if let Some(cap) = tier.max_products() {
-        let count = count_tenant_products_sqlite(conn, tenant_id);
+        let count = count_tenant_products_sqlite(conn, tenant_id)?;
         if count > cap {
             violations.push(TenantQuotaViolation {
                 tenant_id: tenant_id.to_string(),
@@ -201,7 +231,7 @@ pub fn check_tenant_quota_sqlite(
 
     // Check staff axis
     if let Some(cap) = tier.max_staff_users() {
-        let count = count_tenant_staff_sqlite(conn, tenant_id);
+        let count = count_tenant_staff_sqlite(conn, tenant_id)?;
         if count > cap {
             violations.push(TenantQuotaViolation {
                 tenant_id: tenant_id.to_string(),
@@ -215,7 +245,7 @@ pub fn check_tenant_quota_sqlite(
 
     // Check locations axis
     if let Some(cap) = tier.max_locations() {
-        let count = count_tenant_locations_sqlite(conn, tenant_id);
+        let count = count_tenant_locations_sqlite(conn, tenant_id)?;
         if count > cap {
             violations.push(TenantQuotaViolation {
                 tenant_id: tenant_id.to_string(),
@@ -227,23 +257,30 @@ pub fn check_tenant_quota_sqlite(
         }
     }
 
-    violations
+    Ok(violations)
 }
 
 /// Enumerate distinct active tenants on SQLite.
-pub fn enumerate_active_tenants_sqlite(conn: &rusqlite::Connection) -> Vec<String> {
+///
+/// Returns an `Err` when the enumeration itself could not run. The alternative --
+/// returning an empty list -- is indistinguishable from a deployment with exactly
+/// one tenant and no rows anywhere, so a broken scan would silently stop flagging
+/// EVERY tenant, and a quota detector that reports nothing is indistinguishable from
+/// one that found nothing.
+pub fn enumerate_active_tenants_sqlite(
+    conn: &rusqlite::Connection,
+) -> Result<Vec<String>, rusqlite::Error> {
     let mut tenants = Vec::new();
     let query = "SELECT DISTINCT tenant_id FROM tenant_plans \
                  UNION SELECT DISTINCT tenant_id FROM products \
                  UNION SELECT DISTINCT tenant_id FROM users \
                  UNION SELECT DISTINCT tenant_id FROM locations";
-    if let Ok(mut stmt) = conn.prepare(query)
-        && let Ok(rows) = stmt.query_map([], |row| row.get::<_, String>(0))
-    {
-        for row in rows.flatten() {
-            if !row.trim().is_empty() {
-                tenants.push(row);
-            }
+    let mut stmt = conn.prepare(query)?;
+    let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
+    for row in rows {
+        let tenant_id = row?;
+        if !tenant_id.trim().is_empty() {
+            tenants.push(tenant_id);
         }
     }
     if !tenants.iter().any(|t| t == "default") {
@@ -251,17 +288,23 @@ pub fn enumerate_active_tenants_sqlite(conn: &rusqlite::Connection) -> Vec<Strin
     }
     tenants.sort();
     tenants.dedup();
-    tenants
+    Ok(tenants)
 }
 
 /// Scan all active tenants on SQLite and return all quota violations.
-pub fn scan_all_tenants_quota_sqlite(conn: &rusqlite::Connection) -> Vec<TenantQuotaViolation> {
-    let tenants = enumerate_active_tenants_sqlite(conn);
+///
+/// Returns an `Err` when the scan could not be completed. See
+/// [`enumerate_active_tenants_sqlite`] for why an empty list is not an acceptable
+/// answer to a failed scan.
+pub fn scan_all_tenants_quota_sqlite(
+    conn: &rusqlite::Connection,
+) -> Result<Vec<TenantQuotaViolation>, rusqlite::Error> {
+    let tenants = enumerate_active_tenants_sqlite(conn)?;
     let mut all_violations = Vec::new();
     for tenant_id in &tenants {
-        all_violations.extend(check_tenant_quota_sqlite(conn, tenant_id));
+        all_violations.extend(check_tenant_quota_sqlite(conn, tenant_id)?);
     }
-    all_violations
+    Ok(all_violations)
 }
 
 // ── PostgreSQL Queries ───────────────────────────────────────────────
@@ -579,12 +622,22 @@ pub async fn run_quota_scan_cycle_sqlite(
     state: &QuotaAlertState,
 ) {
     let db = db.clone();
-    let violations = tokio::task::spawn_blocking(move || {
+    let violations = match tokio::task::spawn_blocking(move || {
         let conn = db.blocking_lock();
         scan_all_tenants_quota_sqlite(&conn)
     })
     .await
-    .unwrap_or_default();
+    {
+        Ok(Ok(v)) => v,
+        Ok(Err(e)) => {
+            error!(error = %e, "quota_detector (sqlite): scan cycle failed");
+            return;
+        }
+        Err(e) => {
+            error!(error = %e, "quota_detector (sqlite): scan task failed to run");
+            return;
+        }
+    };
 
     let now = Instant::now();
     for v in &violations {

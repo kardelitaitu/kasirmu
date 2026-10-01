@@ -94,9 +94,30 @@ describe('CartActionBar', () => {
     // Accessible name = the *_aria message, visible text = the Localized id.
     expect(clearBtn().textContent).toBe('Clear');
     expect(payBtn().textContent).toBe('Charge');
-    expect(openBillBtn().textContent).toBe('Open Bill');
+    expect(openBillBtn().textContent).toBe('Save Tab');
     // Clear mirrors its aria-label into title (CartActionBar.tsx:43).
     expect(clearBtn().getAttribute('title')).toBe('Clear all items from cart');
+  });
+
+  it('renders Update Tab when an open bill is active', () => {
+    const deductionLocationIdRef: MutableRefObject<string | null> = {
+      current: 'loc-7',
+    };
+    const props: CartActionBarProps = {
+      activeShift: OPEN_SHIFT,
+      handlePay: vi.fn(),
+      addToast: vi.fn(() => 'toast-1'),
+      setShowOpenBillInput: vi.fn(),
+      setCartId: vi.fn(),
+      deductionLocationIdRef,
+      setDeductionLocationName: vi.fn(),
+      setDeductionOverridden: vi.fn(),
+      resetCart: vi.fn(),
+      activeOpenBillId: 'bill-123',
+    };
+    render(withFluent(<CartActionBar {...props} />, salesFtl));
+    const updateBtn = screen.getByRole('button', { name: 'Update open tab for this table' });
+    expect(updateBtn.textContent).toBe('Update Tab');
   });
 
   it('disables Pay on the no-shift precondition and blocks handlePay', () => {

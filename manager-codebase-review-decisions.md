@@ -1,4 +1,20 @@
-# Owner Decisions - D1 to D11
+# Owner Decisions - D1 to D14
+
+**Date:** 2026-09-24 (rulings); **status surface reconciled against the tree 2026-09-30.** **Version:** 0.0.40.
+**Status: all 14 decisions are settled, and NOTHING IS OPEN — 9 implemented and verified in the tree (D1, D2,
+D3, D4, D5, D7, D8, D9, D11), and 5 answered by ruling (D10, D12, D13, D14, and D6 on 2026-09-30, whose
+recommendation was REVERSED). D6 was the last genuine owner ask; answering it unblocked C29, the final
+unchecked item on the checklist.**
+
+**Why this paragraph was rewritten, because the drift ran in BOTH directions and that is the finding.**
+The previous version read *"D1-D11 are ruled — none is open … D12, D13 and D14 … ARE open — they are
+asks, not rulings"*. Both halves were wrong. All three of D12–D14 were answered on 2026-09-29 and only
+the index had not caught up; and going the other way, every status cell for D1–D9 and D11 advertised a
+live High-severity risk while the recommendation had **already been carried out and verified**. Two
+concrete examples of the cost: **D8's cell said "a required gate is red on main right now"** while
+`check-unified-routes.mjs` exits 0 and its recorded blind spot is closed; and **D12's answer closed C35
+a day before the checklist noticed**, leaving a phantom P1 in the open count. Each status cell below now
+carries either a ✅ with the evidence that settles it, or a ⬜ naming the single blocker.
 
 Companion to manager-codebase-review.md and manager-codebase-review-checklist.md. Each decision was analysed by a worker that traced the code before forming a view; every option below is priced against facts cited as file:line, and the recommendation is the manager's, not the analyst's. Three of these analyses **changed the review's own advice**, and those corrections are recorded at the end.
 
@@ -6,17 +22,20 @@ Companion to manager-codebase-review.md and manager-codebase-review-checklist.md
 
 | # | Decision | Recommendation | Effort | Urgency |
 |---|---|---|---|---|
-| D1 | At-rest key scheme | Per-install keychain key **with re-encrypt on write**, preconditioned on a branch-tolerant reader | M (blocked on the reader) | High - exposure is live wherever the key is unset, which is everywhere |
-| D2 | Tenant isolation | Ship the cutover **and** the oz_app role switch together; FORCE as the documented follow-up; add a boot assertion | S-M, ops change | High - a shipped profile connects as superuser |
-| D3 | Architecture rule vs tier order | Close the currency edge + a named rule for the 7 type shims now; move the types into foundation later | S now, L later | Deadline: **2026-11-07** |
-| D4 | qris-core licence | Make it **proprietary** (publish = false, clarify entry, fix README) | XS | Medium - irreversible the moment anyone publishes |
-| D5 | In-app restore | **Safe-mode restore on boot**, gated and integrity-checked; keep the CLI; do not auto-restore | M | High - the tablet operator has no shell at all |
-| D6 | LAN KDS | **Retire kasirmu-lan** from the shipped path; keep the in-app KDS board | S (workspace exclude) | Medium |
-| D7 | Plugin trust | **Signed/checksummed manifest + operator grant + gated hot-reload**, and delete the dead capability flags | M | High - the plug-in load path is unverified today |
-| D8 | Deployment shape | **Fix the unified routing** and widen the drift checker; unified is what production runs | S | High - a required gate is red on main right now |
-| D11 | `allow_negative_stock` vs the missing CHECK | **Keep the feature and enforce conditionally (A)** - an unconditional `qty >= 0` silently re-enables the guard the flag exists to opt out of, and ADR #17 plus the UI depend on it | M (migration + a `TRIGGER_MAP` PG port) | High - the briefed fix would have broken a shipped, documented, cashier-facing feature |
-| D10 | The locations quota axis | **Pin it now (C), make it real (A) when the sync vocabulary is next touched** - the tier limit is currently unenforceable by construction; choose A or B on whether `max_locations` is a sold term or an aspiration | XS for the pin, M for A | High - a published tier limit whose enforcement number is a constant zero |
-| D9 | Desktop tenancy | **The desktop store DB is single-tenant by construction; the cloud applies the tenant at ingest** - do not thread a tenant into the terminal writers | S-M at the ingest boundary | High - the cloud quota detector scores a paying tenant 0 locations and the popularity roll-up reads nothing, both silently |
+| D1 | At-rest key scheme | Per-install keychain key **with re-encrypt on write**, preconditioned on a branch-tolerant reader | M (blocked on the reader) | ✅ **SETTLED 2026-09-30 — implemented.** `install_key.rs` (generate / park / promote / retire / resume) plus the `oz rekey` sweep; the branch-tolerant reader (`decrypt_or_fail_closed`) landed **first**, so option B's bricking mode never occurred. C1 ticked. |
+| D2 | Tenant isolation | Ship the cutover **and** the oz_app role switch together; FORCE as the documented follow-up; add a boot assertion | S-M, ops change | ✅ **SETTLED 2026-09-30 — implemented.** `scripts/rls-cutover.sql` + the `oz_app` role; the boot assertion is live (`main.rs:367` -> `RlsPosture`, logged **and** on `/health`). FORCE stays the follow-up, as sequenced. |
+| D3 | Architecture rule vs tier order | Close the currency edge + a named rule for the 7 type shims now; move the types into foundation later | S now, L later | ✅ **SETTLED 2026-09-30 — implemented, PAST the recommendation.** ADR-61 closed **all eight** edges; the baseline is `{"entries": []}` and the checker reports 0 findings — **the 2026-11-07 deadline has nothing left to expire.** |
+| D4 | qris-core licence | Make it **proprietary** (publish = false, clarify entry, fix README) | XS | ✅ **SETTLED 2026-09-30 — implemented.** `publish = false` (`ae68e8dde`, workspace-inherited by qris-core) and the README already states Proprietary / not published. |
+| D5 | In-app restore | **Safe-mode restore on boot**, gated and integrity-checked; keep the CLI; do not auto-restore | M | ✅ **SETTLED 2026-09-30 — implemented, both shells.** The bridge writes `<db>.restore-request.json`; `recovery.rs` consumes it **before the DB opens** (desktop `:89`, mobile `:94`). Option D was not shipped. |
+| D6 | LAN KDS | ~~Retire kasirmu-lan from the shipped path~~ **REVERSED — keep it, and label it honestly** | S (doc only) | ✅ **ANSWERED 2026-09-30 — option B REVERSED; the surface is KEPT under D13's class rule.** The recommendation rested on "no client in either shell", which is true about *clients* and silent about the *server*: desktop spawns `LanEventForwarder` **unconditionally at boot** (`lib.rs:948-979`) and subscribes three handlers, so the crate is neither redundant nor inert — it is *unwired-but-implemented*, the KEEP half of D13's rule. Its proposed mechanism was broken too (the crate inherits `workspace = true`, so a workspace `exclude` fails). C29 unblocked and ticked. |
+| D7 | Plugin trust | **Signed/checksummed manifest + operator grant + gated hot-reload**, and delete the dead capability flags | M | ✅ **SETTLED 2026-09-30 — implemented.** `signature.rs` (RSA PKCS#1 v1.5 / SHA-256), `grants.rs` (operator grant store), and `manager.rs:215` **refuses the load** on verification failure. |
+| D8 | Deployment shape | **Fix the unified routing** and widen the drift checker; unified is what production runs | S | ✅ **SETTLED 2026-09-30 — implemented.** `check-unified-routes.mjs` exits **0** (7 prefixes), and the blind spot is closed: it now reads `routeConstants` from every non-test `.go`. The "gate is red on main right now" line was stale. |
+| D11 | `allow_negative_stock` vs the missing CHECK | **Keep the feature and enforce conditionally (A)** - an unconditional `qty >= 0` silently re-enables the guard the flag exists to opt out of, and ADR #17 plus the UI depend on it | M (migration + a `TRIGGER_MAP` PG port) | ✅ **SETTLED 2026-09-30 — implemented, BOTH backends.** SQLite `20261012_stock_summary_qty_nonnegative.sql` + the PG `stock_summary_qty_nonnegative_fn()` triggers, conditional on `allow_negative_stock` exactly as option A specified. |
+| D10 | The locations quota axis | **Pin it now (C), make it real (A) when the sync vocabulary is next touched** - the tier limit is currently unenforceable by construction; choose A or B on whether `max_locations` is a sold term or an aspiration | XS for the pin, M for A | ✅ **ANSWERED 2026-09-29.** C now (the inert-axis pin), A when the sync vocabulary is next touched; **B declined** — `max_locations` stays published, treated as a term owed. |
+| D9 | Desktop tenancy | **The desktop store DB is single-tenant by construction; the cloud applies the tenant at ingest** - do not thread a tenant into the terminal writers | S-M at the ingest boundary | ✅ **SETTLED 2026-09-30 — ruling in force, enforcement verified.** `check_tenant_integrity` runs at session boot (`session.rs:418`), so option B would be a boot failure; the ingest-side work is deferred to D10's sync-vocabulary trigger **by design**. |
+| **D12** | **C35: build the terminal-tenant parameterization, or drop it?** | **Drop it, or re-scope to D9's ingest boundary** — C35's scheduled shape is the one D9 rules out, and it would make the app refuse to boot | XS to decide; S-M if re-scoped to ingest | ✅ **ANSWERED 2026-09-29** — option A: C35 closed as superseded by D9, with its premise retracted on the record. C35's checkbox stayed stale until 2026-09-30; it is now ticked. |
+| **D13** | **Inert-but-intended surface: delete or keep?** | **Per-surface ruling needed** — `register_scale`, the syslog/eventlog/file sinks and `kasirmu-media` reach nothing, but each has a different reason and one is a documented Phase-2 seam | S per surface | ✅ **ANSWERED 2026-09-29** — class rule: *redundant-and-inert is deleted; unwired-but-implemented is kept and labelled*. Deletions landed 2026-09-29; the **labelling** landed 2026-09-30 (`d603af082`). C29 is now blocked on D6 alone. |
+| **D14** | **C14(b): split the local-API admin key from the signing secret, and build the surface it needs?** | **A or C, never B** — splitting without the operator surface is inert AND doubles the plaintext copies | M–L if C | ✅ **ANSWERED 2026-09-29** — option A: the conflation is **accepted** with its reachability written down (loopback-only, empty CORS, no IPC surface); option B refused on the record. |
 
 ---
 
@@ -41,6 +60,8 @@ Blast radius: 7 write sites across 6 storage locations - settings.sync_api_key, 
 
 **Recommendation: D.** It is the only option that closes the exposure without a credential re-entry campaign. **The precondition is the whole cost:** make the reader branch-tolerant - try the master derivation, then the legacy one - *before* any key is generated, or the first install to receive a key bricks itself exactly as option B does. Per-install keys are safe for the supported sync and export lanes, because all five credential keys sit on SECRET_KEY_DENY_LIST and never cross a machine boundary that way.
 
+**ANSWERED 2026-09-30 — option D is IMPLEMENTED, and the precondition was met BEFORE any key was generated, which the recommendation called the whole cost.** `crates/kasirmu-security/src/install_key.rs` holds the per-install key with the full lifecycle — generate, park, promote, retire — plus `begin_install_key_rotation`, `retire_previous_install_key` and `resume_install_key_rotation` (the resumable half was added 2026-09-30, because refusing to *begin* a rotation while a key was parked left an interrupted operator with no way forward). Re-encrypt-on-write is the `oz rekey` sweep (`crates/kasirmu-cli/src/commands/rekey.rs`), which walks all eight install-key-derived families across three row shapes inside one transaction and verifies before it retires the parked key. **The branch-tolerant reader landed FIRST**, which is why option B's bricking failure mode never occurred: `decrypt_or_fail_closed` (`platform/core/src/settings/typed.rs`) is the shared gate, and the six getters that use it are the authoritative fail-closed credential set. Checklist **C1 is ticked** with all six slices and the follow-up naming their commits. **No new owner input was required — the answer was already carried out.**
+
 ---
 
 ## D2 - Has any PostgreSQL deployment run the RLS cutover, and what should happen now?
@@ -64,6 +85,8 @@ CI proves the **mechanism** only: a test runs the real script verbatim against a
 
 **Recommendation: B with D folded in.** Ship the cutover and the oz_app switch together, keep FORCE as the follow-up the runbook already prescribes, and add a boot-time rolsuper / relforcerowsecurity assertion in the same release so the next operator learns the state from the system rather than from a document. Do **not** run A alone.
 
+**ANSWERED 2026-09-30 — B with D folded in is IMPLEMENTED.** The cutover ships as `scripts/rls-cutover.sql`; the app runs as the restricted post-cutover role (`apps/cloud-server/src/config.rs:54` documents `oz_app`, and `db.rs:161`/`:316` explain that the post-cutover role has DML grants only, so re-running the DDL fails — which is the `OZ_APPLY_SCHEMA=0` operator detail this ask flagged). **The boot assertion is live, not merely written:** `apps/cloud-server/src/main.rs:367` calls `report_rls_posture(pg_pool)`, built on `db::RlsPosture::from_facts`, which reads `pg_roles.rolsuper` for the current user and counts protected tables with `relforcerowsecurity` (`db.rs:565-571`). It is logged **and** surfaced on `/health` (`main.rs:565`, `:596`), so the next operator learns the state from the system rather than from a document — the stated purpose of folding D in. `db_rls_tests.rs` exercises the verdict ids against `oz_app`. **What this does not claim:** FORCE remains the documented follow-up, exactly as option B sequenced it; this bullet records that the assertion and the role switch landed, not that FORCE is on.
+
 ---
 
 ## D3 - Architecture rule versus tier order
@@ -83,6 +106,10 @@ Of the eight grandfathered edges, seven are one-line re-exports and one is real:
 
 **Recommendation: C plus a named rule for the seven, before 2026-11-07; B after.** Do the cheap real fix now (delete the delegation, repoint the residual callers, drop the dependency line), and add one named non-expiring rule so the remaining edges are an accepted pattern rather than debt that expires again. Then, on your own schedule, move the types into foundation, delete the eleven shims, and delete both the rule and its entries. Do not do D.
 
+**ANSWERED 2026-09-30 — the recommendation is not merely implemented, it is BEATEN, and ADR-61 records how.** The recommendation sequenced C now, a named rule for the seven, and B "on your own schedule". What actually landed is **all three**: the currency edge was closed at the call sites (C, tracked as C26); the named rule exists as **`core-type-shim`** in the checker's `RULES` dict, whose hint reads *"Re-export-only edge (C26/D3): kasirmu-core re-exports modules-*/ types and mentions nothing else. Move the shared types to foundation, then delete the Cargo edge"* (A's first half); and **all seven type shims were removed as well (B)** — `docs/decisions/2026-09-28-adr61-architecture-boundary-rule-tiers.md` states all eight edges are closed and the baseline emptied.
+
+**Re-measured 2026-09-30, and the deadline this decision was racing is moot:** `scripts/architecture-boundaries-baseline.json` is now `{"entries": []}`, and `python scripts/verify-architecture-boundaries.py` reports **0 tracked transitional findings, 0 new/expired blocking findings, 0 stale baseline entries, 0 baseline entries** (population: 40 crates, 585 dependency edges, 1107 files below the application layer, 1070 app-layer `.rs` files). So **the 2026-11-07 expiry has nothing left to expire.** One detail worth keeping, because it is the part a future maintainer would get wrong: the types moved **UP into `platform-core`**, not down into `foundation`, because the foundation route would have produced a dependency cycle — and `kasirmu-core` still names `modules-currency`, but only under `[dev-dependencies]`, which the checker ignores by design.
+
 ---
 
 ## D4 - Is qris-core meant to be publishable?
@@ -100,6 +127,8 @@ Nothing duplicates it, and nothing needs it: the live QRIS path is entirely Midt
 
 **Recommendation: A.** Zero consumers and zero offline role today means the permissive metadata can only leak proprietary code, while the code itself is worth keeping for the listener plan. Fix the manifest, add the deny.toml clarification, and correct the README badges and licence lines so the repository stops contradicting itself.
 
+**ANSWERED 2026-09-30 — option A is IMPLEMENTED, all three parts.** `publish = false` landed in commit `ae68e8dde` ("chore(cargo): prevent accidental publishing of internal crates") as a **workspace-root default** (`Cargo.toml:42`), which `crates/qris-core/Cargo.toml:7` inherits through `publish.workspace = true` — so the manifest half is closed by inheritance rather than by a per-crate line, which is why a reader grepping the crate's own manifest for `publish = false` would not find it. The README half is closed too: `crates/qris-core/README.md` carries the Proprietary badge (`:3`) and a licence section reading *"Proprietary and Confidential … this crate is not published and is not open source"* (`:89-92`), so the MIT metadata that used to contradict the root LICENSE is gone. **The irreversible risk this decision was about is therefore already removed** — the repository no longer contradicts itself, and the code is kept for the notification-listener plan as option A intended.
+
 ---
 
 ## D5 - Is in-app restore a product feature, or an ops procedure?
@@ -116,6 +145,8 @@ Meanwhile the tablet is where the operator is: on Android the default backup liv
 | **D. Automatic restore when an update fails** | None today | The code cannot even find its own backup, and auto-replacing a database converts a recoverable bug into data loss |
 
 **Recommendation: C, with A's gating.** A safe-mode boot flag is the only option that respects the real constraint - a shared connection that twelve daemons hold and cannot be joined - while still giving a tablet operator a path. Gate it on DATA_EXPORT, run check_integrity on the candidate **before** any copy, require typed confirmation, and make the new backup write to a temporary name so a failure cannot destroy the previous one. Keep the CLI as the documented fallback and do not ship D.
+
+**ANSWERED 2026-09-30 — option C is IMPLEMENTED, in BOTH shells.** The split is exactly the one the recommendation describes. The bridge **never performs a restore**: `crates/kasirmu-bridge/src/data/restore.rs` writes `<db>.restore-request.json` beside the live database (`RESTORE_REQUEST_SUFFIX`, and its module doc says so in its first line), and the **boot path consumes it before the database opens** — `apps/desktop-tauri/src/recovery.rs:89` and `apps/mobile-tauri/src/recovery.rs:94` are each documented as *"Consume `<db_path>.restore-request.json` if one is pending."* That is the whole point of C: it sidesteps the shared `Arc<Mutex<Connection>>` that twelve detached daemons hold and cannot be joined, by making restore pre-boot by nature. The CLI remains the documented fallback as required, and **option D (automatic restore) was not shipped.** The Android half is the one that mattered — the tablet operator has no shell, which is why B alone was refused.
 
 ---
 
@@ -136,6 +167,20 @@ Worse, the forwarder starts **unconditionally** at boot on every desktop install
 
 **Recommendation: B.** Retire the crate from the shipped path with a one-line workspace exclude so the removal is reversible, keep the in-app KDS board (it works today and is the only KDS that has ever had a client), and record the offline-kitchen scenario as an explicit non-goal rather than an unfinished feature.
 
+**ANSWERED 2026-09-30 — the recommendation is REVERSED. The surface is KEPT, not retired: `kasirmu-lan` is ruled a KEEP-and-label surface under D13's class rule, and C29 unblocks on that ruling.**
+
+**Why it is reversed — this corrects the deciding facts rather than changing a mind.** Option B rested on *"LAN KDS has no client in either shell."* That sentence is true about **clients** and silent about the **server**, and the server is running. Measured on the tree: `apps/desktop-tauri/src/lib.rs:948-979` constructs `LanEventForwarder`, calls `platform_startup::spawn_daemon("LAN event forwarder", forwarder.run())` **unconditionally at boot**, and subscribes three event-bus handlers (`sale.completed`, `order.course_fired`, `kds.sync`). So the crate is neither inert nor redundant: nothing else in the tree performs LAN event transport, and this one executes on every desktop install.
+
+**D13's class rule decides it, and D13 is the later ruling.** *"redundant-and-inert is DELETED; unwired-but-implemented is KEPT and labelled honestly."* `kasirmu-lan` is **unwired-but-implemented** — the KEEP half of that rule by definition. D13's own list of KEEP surfaces does not name it, but D13 was answering a different question (the *inert* surfaces); the class rule it established covers this one.
+
+**The asymmetry is what actually settles it.** Keeping costs one doc line and is fully reversible. Retiring destroys 4,115 lines of hardened, audited work — the Noise_XXpsk3 transport, the DC-1 constant-time PSK compare, the DC-2 bounded replay buffers, the device-keyed replay validated against a real tablet — plus the boot wiring, the three handler subscriptions and the live test harness. A decision reversible on one side and destructive on the other belongs on **product** grounds, not on a cleanup list.
+
+**A second, independent defect in the recommendation: its mechanism does not work.** Option B proposed "a one-line workspace exclude so the removal is reversible". `crates/kasirmu-lan/Cargo.toml:3-11` inherits `version`, `edition`, `rust-version`, `license`, `publish` and `[lints]` as `workspace = true`, so excluding the crate while leaving the directory in place fails with an inheriting-from-workspace-root error. This is the same defect already proven for `kasirmu-media` in a scratch workspace and recorded on C29 — the remedy is not a one-liner, and the "reversible" half was never available as described.
+
+**What this ruling does NOT decide.** It does not declare LAN KDS a shipped feature. Nothing consumes it, the PSK has no production writer and no UI, and the discovery payload ships an empty device list — those facts stand. **Retiring remains legitimate if the product direction is dropped**, but that call must be made on product grounds ("we are not doing LAN KDS"), not because an audit list labelled the surface inert. If it is made, the removal is the multi-site job C29 prices, not a workspace exclude.
+
+**Consequence:** C29 is unblocked and ticked, and the crate doc now carries the honest wiring status so the next reader is not misled the way this ledger was.
+
 ---
 
 ## D7 - How much plugin trust is acceptable?
@@ -155,6 +200,10 @@ Note two corrections to the review's framing: **no ADR states a plugin story** (
 
 **Recommendation: B, with D folded in.** The sandbox holds and the only real use is a pure function, so the defect is unverified loading and silent hot-swapping, not in-process execution. **Smallest reversible first step:** checksum the plugin directory at load and refuse the hot-swap when verification fails, keeping the previous set running with a visible error. Land the two live money bugs in the same pass - SALES_DISCOUNT on the plugin discount path, and a bounded tax rate - because they cost less than any trust redesign and are wrong today.
 
+**ANSWERED 2026-09-30 — option B is IMPLEMENTED, and the gate is wired rather than merely available.** `crates/kasirmu-plugin/src/` now holds the four pieces the recommendation named: **`signature.rs`** (RSA PKCS#1 v1.5 over SHA-256, exposing `verify_plugin_signature` and `verify_plugin`), **`manifest.rs`**, **`package.rs`**, and **`grants.rs`** — the operator grant store (`GRANTS_FILE_NAME` = `plugin-grants.json`), schema-versioned so that a dropped field cannot be read as "nothing granted", which would be a fail-open.
+
+**The refusal path is real:** `manager.rs:215` verifies each plugin's directory, id, version, declared permissions and scripts before loading, and on any failure returns `PluginError::Signature("plugin signature verification failed — refused. {detail}")` — i.e. the hot-swap is refused rather than the plugin being loaded unverified. **`grants.rs` is honest about its own limit, and that is worth preserving:** it records that `plugin-grants.json` sits inside the plugins directory, so anyone able to add a plugin can add a grant for it — *"what this buys is that a plugin whose grant was never recorded cannot run at all"*, and tamper **resistance** is a separate property needing a store the plugin author cannot write.
+
 ---
 
 ## D8 - Which deployment shape ships?
@@ -171,6 +220,8 @@ The routing gap is therefore live production breakage, and it is now measurable:
 | **D. Unified only; delete the two-service path** | One shape, one truth | Deletes the self-managed path the compose and gateway example exist for |
 
 **Recommendation: A.** Add the two missing carve-outs and make the checker read the Go path constants rather than one file's literals - then the required gate that is red today becomes the thing that keeps this fixed. Decide separately (this is a product question, not a code one) whether the self-managed VPS path stays supported; if it does, the docs must say which shape each path gets.
+
+**ANSWERED 2026-09-30 — option A is IMPLEMENTED, and BOTH halves of it.** **Re-measured, not quoted:** `node scripts/check-unified-routes.mjs` now exits **0**, reporting *"unified-routes: OK — 7 licence-server route prefix(es), each resolving to :8080"* (`/api/v1/{admin,desktop,license,midtrans,paddle,pairing,web}/*`). So the pairing carve-out that this ask recorded as missing is in the tree. **The blind spot is closed as well**, which was the harder half: the checker no longer derives prefixes from one file's string literals — it reads **every** non-test `.go` in `apps/license-server`, builds a `routeConstants` map from `fooPath = "/api/…"` declarations wherever they live, and resolves each `se.Router.*` registration argument through it, refusing with exit 2 if any argument stays unresolved. That landed in `65f69112f` ("fix(unified): route licence-server pairing and midtrans endpoints to :8080"), and the file's own header now says *"route constants live in the file that owns the handler"*. **The single stale claim this bullet corrects: the table said a required gate was red on main — it is green.**
 
 ---
 
@@ -200,6 +251,8 @@ The routing gap is therefore live production breakage, and it is now measurable:
 
 **Recommendation: A, refined - and do not start B.** Facts 7 and 8 sharpen A into something cheaper than it first looked: the ingest pattern already exists in production (`sync_store/pg.rs` stamps `offline_queue` from the request's JWT claim), so A is not new machinery, it is adding seven tables to machinery that already runs. But facts 7 also says something a decision has to face before any code moves: those tables have **no sync action at all**, so the detector's number is very likely zero because the table is empty in the database it reads, not because the rows are mis-stamped. An investigation is running that answers the two versions of that question ((a) is the cloud's SQLite the operator's own store file or a cloud-local copy that never saw customer rows; (b) is the count therefore correct-by-accident on a self-hosted single-tenant cloud, or permanently zero). **The sequence that follows is: answer (a)/(b); if the cloud is genuinely multi-tenant and needs these numbers, add the sync actions and let the existing ingest stamp the tenant; if it is not, stop counting a table the cloud cannot see and say so in the plan's own terms.** What must NOT happen either way is stamping a tenant on the terminal - facts 1, 2, 3 and 6 rule it out, and `check_tenant_integrity` would refuse the next boot. The schema states the intent, the boot check enforces it, and the value genuinely does not exist on the terminal - so B would mean inventing a tenant on the desktop to satisfy a cloud query, which is the failure mode every worker this round refused to commit. A also has the right shape for the evidence: the tenant is already known at the registration boundary (`sync_terminals.tenant_id`), and it is the cloud that needs the number, not the terminal. **Confirm A against the pending researcher finding on the outbox tenant before scoping it** - if the outbox already carries a real tenant, A is a small ingest change; if it carries another literal, A is a small sync-boundary change. Either way A is smaller than B, and unlike B it does not require contradicting a documented invariant.
 
+**ANSWERED 2026-09-30 — option A is the ruling in force, and its enforcement half is verifiable in the tree.** The design claim is enforced rather than asserted: `check_tenant_integrity` still runs at session boot (`crates/kasirmu-bridge/src/auth/session.rs:418`, documented at `:336` as re-running "on the single already-open tenant DB"), so a desktop install that stamped a real tenant on some rows would be a **boot failure** — which is what makes option B refused rather than merely discouraged. **The follow-on work is deferred BY DESIGN, not dropped:** D10's answer sequences the locations axis as *"A when the sync vocabulary is next touched"*, so the ingest-side change D9 names is waiting on that trigger rather than on an owner. **The gap this bullet closes is bookkeeping only:** D12's own answer already treats D9 as a ruling (*"D9 already rules the FK wall unreachable"*), so D9 was settled in practice while carrying no ANSWERED block — which is precisely how C35 and D8 also sat stale. **What must not happen either way remains exactly what D9 says: no tenant is stamped on the terminal.**
+
 **What this does NOT decide.** `crates/kasirmu-core/src/db/edc_terminals.rs:193` (`create_edc_terminal`) has **zero production callers** - every reference is a test - so a tenant parameter there would be an unexercised shape, not a fix. Leave it, and decide separately whether a create-EDC command should exist at all. And `apps/desktop-tauri/src/state.rs:410` (`seed_primary_store`) seeds the fixed `id = 'default'` row during startup, before any session, licence read or claim is in scope: under option A that is correct as written and needs no change.
 
 ---
@@ -224,6 +277,16 @@ The routing gap is therefore live production breakage, and it is now measurable:
 | **C. Leave it and document it** | Keep the query and the entitlement, add a comment and a pinning test recording that the axis is inert | Zero risk; the finding is durable and the next reader is warned | Ships a tier limit that is provably unenforceable, which is the same class of defect as the stale doc comments this review is full of |
 
 **Recommendation: C now, A when the sync vocabulary is next touched, B only if the entitlement is being retired anyway.** The pin (option C) costs one comment and one test and is already dispatched - it is strictly better than the status quo and blocks nothing. The real choice between A and B is commercial, not technical: **if `max_locations` is a sold term, A is owed to the customer; if it is aspirational, B is owed to the truth.** What should not persist either way is a published limit whose enforcement number is a constant zero. I am not guessing this one - it touches pricing copy, which I cannot see from the code.
+
+**ANSWERED 2026-09-29: the recommendation is taken, and it settles the A-vs-B half.**
+`max_locations` **stays published**, so it is treated as a term the product owes rather
+than an aspiration to withdraw: **B is declined.** The sequencing is **C now** (the
+inert-axis pin, already dispatched) and **A when the sync vocabulary is next touched** -
+locations gains a route into PostgreSQL at that point so the count has something to
+count and the over-quota alert can actually fire. Until A lands, the honest statement
+remains that the axis is inert by construction and the alert cannot fire; C's comment
+and pinning test are what keep that readable. **No further owner input is needed on
+D10.**
 
 ---
 
@@ -261,6 +324,10 @@ So the review was right about the dead code and **wrong about the fix**. An unco
 
 **What this does NOT change.** The two failing tests are NOT stale and must not be weakened to make a constraint pass - they are the only tests pinning a shipped feature, and deleting them would have been the 'weaken a test to pass' failure this workstream has otherwise avoided. The C12 variance report (bdaffa47) remains the right way to surface a rollup that disagrees with the ledger; a CHECK on a materialised rollup constrains the rollup, never the ledger.
 
+**ANSWERED 2026-09-30 — option A is IMPLEMENTED on BOTH backends, and the migration the option priced exists.** The conditional guard is in the tree twice, once per engine. **SQLite** ships it as its own migration, `crates/kasirmu-core/migrations/20261012_stock_summary_qty_nonnegative.sql` (`SELECT RAISE(ABORT, 'negative stock requires allow_negative_stock on the location binding')` at `:71` and `:84`). **PostgreSQL** carries the equivalent plpgsql function `stock_summary_qty_nonnegative_fn()` with `BEFORE INSERT` and `BEFORE UPDATE` triggers on `stock_summary` (`20260813_init.pg.sql:3169-3193`).
+
+**The condition is exactly the one the option specified, and it is the non-obvious part:** it raises only when the row is negative **AND** a binding exists for that location **AND** **no** binding for that location has `allow_negative_stock = 1`. So the shipped cashier-facing opt-out keeps working, ADR #17 is honoured, and a writer that bypasses the Rust guard can no longer write a negative for a location that never opted in — which is the backstop the review asked for. **Option B (retire the feature) was not taken, as recommended**, and option C (fix the comments only, ship no backstop) was not settled for.
+
 ---
 
 ## Corrections to the review that these analyses forced
@@ -270,3 +337,175 @@ So the review was right about the dead code and **wrong about the fix**. An unco
 3. **Section 12.1 said nothing compares the route table to the proxy.** Something does now - a required checker - and it is failing on the current tree, which is a stronger and more actionable fact than the absence of a check. The checker's blind spot (it cannot see path constants) is the new finding.
 
 Everything above was established read-only: no build, no test execution, no deploy, and no code change. Counts cited here are file and grep readings, not executed-case totals.
+
+---
+
+# Open asks - D12 to D14
+
+Added 2026-09-29. **These are asks, not rulings** — each names one decision that is genuinely the owner's to make, and each currently blocks a named checklist item. They are recorded here rather than only in a report so the ask survives the session that raised it.
+
+## D12 - C35: build the terminal-tenant parameterization, or drop it?
+
+**Why this is here.** C35 schedules adding an explicit `tenant_id: &str` parameter to four catalog-child writers so a composite FK wall cannot fire, and its own text says the shape was *"decided by the D9 analysis and NOT to be re-litigated"*. **That citation is wrong, and D9 says the opposite.** D9's recommendation is *"A, refined - and do not start B"*, where option B is *"Thread a tenant into `SessionContext` and the writers"* — which is C35's shape verbatim. D9 then rules what must not happen: *"What must NOT happen either way is stamping a tenant on the terminal - facts 1, 2, 3 and 6 rule it out, and `check_tenant_integrity` would refuse the next boot. ... B would mean inventing a tenant on the desktop to satisfy a cloud query."*
+
+**The price of getting this wrong is a non-booting app, not a style disagreement.** `check_tenant_integrity` (`crates/kasirmu-core/src/db/mod.rs:529-555`) returns `CoreError::Internal("foreign-tenant rows detected in desktop store database — refusing to start: ...")` and is called on the boot path in all three shells (`apps/desktop-tauri/src/state.rs:265`, `apps/mobile-tauri/src/state.rs:211`, `crates/kasirmu-bridge/src/auth/session.rs:418`). A precise caveat: that check scans only `products` and `users`, so stamping the four CHILDREN would not trip it directly — but their composite FKs are against `products(tenant_id, ...)`, so a child stamped while its parent stays `'default'` cannot satisfy its own FK. Either route is unsafe.
+
+**The hazard C35 exists to prevent cannot fire today**, which C35's own evidence establishes: exactly one site changes a `products` row's tenant (`crates/kasirmu-api/src/routes/products.rs:312-315`) and it writes no child, and the four children appear in neither the sync vocabulary nor the PG copy surface.
+
+| Option | What it means | Pros | Cons |
+|---|---|---|---|
+| **A. Close C35 as superseded** | D9 already rules the FK wall unreachable and names the ingest boundary as the remedy; record it and stop carrying a P1 | Zero risk; removes an item whose premise is satisfied by doing nothing; ends the mis-citation | If a future writer ever stamps a parent, the wall becomes reachable and the item would need re-opening |
+| **B. Re-scope C35 to D9's ingest boundary** | Add the four children to the sync vocabulary and let the existing ingest stamp the tenant (`sync_store/pg.rs:39-45`, `:76-87`) | The only reading under which C35 is still real work; **no writer signature changes at all**; matches D9 | Different job from the one written, so the item needs rewriting rather than resuming |
+| **C. Build it as written** | Thread a tenant into the terminal writers | None identified | **Refused by D9, and would make the app refuse to boot.** Not recommended under any reading |
+
+**Recommendation: A or B, and not C.** I am not taking this unilaterally because it changes what a P1 item means — A retires it, B rewrites it. **One caveat, stated so this is not over-read:** D9's own text says *"Confirm A against the pending researcher finding on the outbox tenant before scoping it"*, and D9's (a)/(b) investigation was recorded as running. If that finding landed and changed the ruling, this ask should be re-checked against it.
+
+**ANSWERED 2026-09-29: option A — C35 is closed as superseded by D9.** The caveat above
+has since been resolved and it does not change the ruling, so it is not an open dependency
+any more: the outbox carries the **sale's** tenant (`offline/enqueue.rs:247`, `:311`, `:365`,
+`:402` all read `COALESCE(tenant_id, 'default') FROM sales`), and on the desktop the sale row
+is `'default'` — i.e. another literal, which is D9's *second* branch, so the remedy is the
+ingest boundary and C stays refused. **C35's premise — that D9 had already decided the
+parameterization — is retracted**, and the item closes with that retraction on the record
+rather than being silently dropped. The FK wall stays unreachable until some writer stamps a
+parent row, which D9 forbids; if one ever appears this re-opens on **that code trigger**, not
+on an owner answer. D12 needs no further owner input.
+
+## D13 - Inert-but-intended surface: delete it, or keep it?
+
+**Why this is here.** C29's own re-verification moved every candidate from "mechanical deletion" to "needs a decision": one is a documented Phase-2 seam, one is test-pinned, and one is a multi-file removal with a live Dockerfile dependency. **Two of the four candidates have since been deleted** (`44e7be9cd`, 2026-09-29: `register_scale` and the empty `commands/plugins.rs`), so this ask is now smaller than the item records and is stated against what remains.
+
+**What is being asked.** Not "is this dead?" (measured: yes) but "is inert-but-intended surface a thing this codebase keeps?" If the answer is yes, C29 should be closed as by-design with the remaining census recorded; if no, each remaining surface needs its own deletion, and they are not interchangeable:
+
+| Surface | Status | What makes it different |
+|---|---|---|
+| `register_scale` | **DELETED** (`44e7be9cd`) | Was the Phase-2 wiring point; its read side (`scale()`/`scale_ids()`) stays live in production, verified by `scale_tests.rs` |
+| Empty `commands/plugins.rs` | **DELETED** (`44e7be9cd`) | Was the cheapest of the four, as predicted |
+| **syslog / eventlog sinks** | **STILL PRESENT — genuinely unpinned** | The FILE-log initialisers are **test-pinned** (`lib_tests.rs:201,229,257,302` call them directly, so deleting breaks that file's COMPILE); only `syslog.rs:81 init_syslog` and `eventlog.rs:55 init_eventlog` are unpinned, and **each module carries a `no_run` doctest** (`syslog.rs:20`, `eventlog.rs:21`) that names it, so removal must take the module, its tests and the doc example together |
+| **`kasirmu-media`** | **STILL PRESENT — zero code dependents** | The item's "dummy hole" claim was **FALSE** and is corrected in the checklist: this is debt, not a contradiction. **The workspace-`exclude` remedy is also factually wrong** — the manifest inherits `workspace = true` for six keys, so excluding it without deleting the directory fails outright. The real removal is ~11 edit sites across 7 files (root `Cargo.toml:63`, the crate directory, `deny.toml:142-146`, three Dockerfile lines, `ARCHITECTURE.md:405`) |
+
+**Recommendation: one ruling covers the remaining two only if the answer is "keep inert surface".** If it is "delete", the order is the two logging sinks first (self-contained, but remember the doctest and the test-pinned FILE variants are a different group), then `kasirmu-media` (the multi-file one, and the one where a documented Phase-2 seam means deleting it is a statement that Phase 2 is not happening). **Note also that C29's own "(13)" count matches nothing** — the item names 7 surfaces and `manager-codebase-review.md` §13's table has 10 rows, so any ruling should also settle which list is authoritative.
+
+**ANSWERED 2026-09-29: the codebase does not keep inert surface — but "inert" and "unwired"
+are not the same thing, and the two remaining candidates fall on different sides of that line.**
+
+- **syslog / eventlog sinks → DELETE.** Zero callers, and **redundant**: both shells already
+  call `try_init()` (stdout), which the container and the system already capture, so nothing
+  is lost by removing them. The `no_run` doctest at `syslog.rs:20` / `eventlog.rs:21`
+  advertises a usage that does not exist — the defect class this review is about. Removal
+  takes the module, its `#[path]` test sibling and the `pub mod` declaration together.
+- **`kasirmu-media` → KEEP, reclassified from "Phase-2 seam" to "implemented-but-unwired".**
+  This is the deliberate, conservative half. Its transforms are implemented and audited
+  (`thumbnail`/`compress`/`crop`, crate status SAFE), it is the **only** image pipeline in the
+  tree, and the product needs product photos whether or not a plan schedules it — so deleting
+  it discards capability rather than resolving a contradiction. What is *not* defensible is
+  its own doc advertising a Phase 2 that no plan contains, so that claim is corrected
+  instead. Its removal, if ever wanted, remains the ~11-site/7-file job this ask priced (root
+  `Cargo.toml:63`, `deny.toml:142-146`, three lines in **each** of the two Dockerfiles,
+  `ARCHITECTURE.md:409`).
+
+**Applied by class, not by list.** `todo-optimize-crates.md:709` measures `kasirmu-reporting`
+in the *same* class as `kasirmu-media` ("no production caller — own tests only"), yet C29's
+list omits it. So the ruling above is stated as a **rule** — *redundant-and-inert is deleted;
+unwired-but-implemented is kept and labelled honestly* — and the next candidate is judged by
+that rule rather than by whether a list happened to name it. **Also settled, because this ask
+asked for it:** the "(13)" is a **section pointer**, not a count, and §13's table holds **11**
+rows (see the verification addendum above), so there is no list-authority question left open.
+
+## D14 - C14(b): split the local-API admin key from the signing secret? And build the surface it needs?
+
+**Why this is here.** C14(b) is one of the two clauses of C14 that are still open, and it is **not** an engineering blocker — it is a product-surface decision. The finding is real and confirmed at source this pass: `crates/kasirmu-local-api/src/lib.rs:431` and `:434` clone **the same string** into two capability tiers (`admin_key: Some(secret.clone())`, `api_secret: secret.clone()`), so possessing either grants the other. `api_secret` is the HS256 signing key that validates every minted token; `admin_key` is the operator header checked across the admin routes. Those are different authorities over one secret.
+
+**The trap, which is why this needs a ruling rather than a patch.** A technically safe migration *is* expressible — keep `api_secret` on the existing `local_api.secret` so already-minted JWTs keep verifying, add `local_api.admin_key`, seed it from the old secret on first run — and **it buys nothing**: every existing install would hold `admin_key == api_secret` forever, so the split is inert until the two can actually diverge. Worse, a half-split puts a **second plaintext copy of the same secret** into `settings.value`, doubling the at-rest and `.backup.db` exposure (verified this pass: no `local_api.admin_key` or `SETTINGS_ADMIN_KEY` exists anywhere in the tree, so there is still exactly one key).
+
+So (b) is only worth doing **together with** the operator surface that lets the keys diverge — a new IPC command, a Settings control, and locale strings. That surface does not exist, which makes this a product decision, not a refactor.
+
+**A second, sharper question the implementer must not answer by accident: what does the existing "Rotate secret" button rotate?** One button (`ui/src/features/settings/sections/LocalApiSection.tsx:298-311`) today rotates both roles, and its warning says it "invalidates every minted token immediately and changes the operator key". With two keys it must either rotate both (buying nothing) or one (a silent behaviour change leaving the other un-rotatable). **And an invariant that must be written down before any code: the SIGNING key keeps the old value and the NEW key is the admin key.** Reversed, every minted token dies on rotation.
+
+| Option | What it means | Pros | Cons |
+|---|---|---|---|
+| **A. Leave it** | Record the conflation as accepted for a loopback-only, default-off, zero-IPC surface | Zero risk; matches every shipped configuration; the reachability is genuinely near-nil (binds `127.0.0.1`, empty CORS, requires `local_api.enabled == "1"`, and is exposed through no Tauri command) | One secret still grants two authorities, and the whole-file `.backup.db` copy carries it in plaintext |
+| **B. Split now, no surface** | Add `local_api.admin_key` and seed it from the old secret | Mechanically safe; already-minted tokens keep verifying | **The split is inert forever** on existing installs, and it adds a second plaintext copy of the same secret — strictly worse until the keys can differ |
+| **C. Split WITH the operator surface** | Add the key, the seed migration, an IPC command, a Settings control and strings, and decide the rotation semantics | The only option that makes the split mean anything; closes (b) properly | The largest of the three; needs the two questions above answered first |
+
+**Recommendation: A or C — not B, which is the one option that costs exposure and buys nothing.** I am not choosing between A and C unilaterally, because C commits to building a Settings surface and to a rotation-semantics change, and both are product calls. **Separately: C14(a) is NOT part of this ask** — it is one-way dependent on C1's S2b landing and is tracked there.
+
+**ANSWERED 2026-09-29: option A — the conflation is accepted, and (b) is closed as
+deliberately not worth doing.** The reason is that the split buys nothing without the
+operator surface, and building that surface (option C) is a product commitment to a new
+Settings control plus a rotation-semantics change that no shipped configuration needs: the
+local API binds `127.0.0.1`, CORS is empty, it requires `local_api.enabled == "1"`, and it is
+exposed through no Tauri command. **Option B is refused on the record** — it is the one
+option that adds a *second* plaintext copy of the same secret to `settings.value` and to
+every `.backup.db` while the two keys can never diverge. The finding is kept rather than
+dropped: the conflation is now an **accepted** risk with its reachability written down, which
+is a different thing from an unnoticed one. If a future feature exposes the local API beyond
+loopback, this re-opens on that trigger. **C14(a) is separate and is now unblocked** — C1 S2b
+landed (S2b-2a `f2932f6f8`, the bridge half of S2b-2b `625c47290`), which was its stated
+dependency. D14 needs no further owner input.
+
+---
+
+## Verification addendum to the open asks (2026-09-29)
+
+Read-only, and deliberately **not a ruling** — D12, D13 and D14 remain the owner's to
+decide. This pass re-measured two factual claims the asks rest on; one of them is stale.
+
+### D12 — its own caveat is now resolved, and the resolution does not change the ask
+
+D12's caveat is *"Confirm A against the pending researcher finding on the outbox tenant
+before scoping it."* That finding is now available from source.
+
+`crates/kasirmu-core/src/db/offline/enqueue.rs` is the only writer of `offline_queue`, and
+it has two lanes:
+
+- **The sale lane** — `enqueue_sale_outbox_in_tx:241`, `enqueue_refund_outbox_in_tx:306`,
+  `enqueue_void_sale_outbox_in_tx:360`, `enqueue_payment_recorded_outbox_in_tx:393` — reads
+  the tenant from the sale row (`SELECT COALESCE(tenant_id, 'default') FROM sales WHERE id = ?1`,
+  e.g. `:247`). So the outbox carries **the sale's tenant**, not a hardcoded literal.
+- **The scoped lane** — `enqueue_offline_scoped:91` — takes `tenant_id` as a required
+  caller argument; the priority helper `enqueue_offline_priority:77` still hardcodes
+  `"default"`, which the module documents as a known pre-existing bug.
+
+On the **desktop** the sale row's tenant is `'default'` (D9 facts 1–2: the store DB is
+single-tenant by construction), so the desktop outbox carries `'default'` in practice —
+i.e. **another literal, not a real per-tenant value.** That is the second branch of D9's
+own sequencing: *"if it carries another literal, A is a small sync-boundary change."*
+
+**Consequence:** the caveat resolves in the direction that *strengthens* the
+recommendation. The remedy is the ingest boundary — `apps/cloud-server/src/sync_store/pg.rs:39-45`
+and `:76-87` already stamp `offline_queue` from the authenticated request's JWT claim via
+the `oz.tenant_id` GUC — and option C (stamping a tenant on the terminal) is refuted by the
+same measurement. **A or B, not C, unchanged; A is now the better-supported of the two.**
+
+### D13 — the closing claim about C29's "(13)" is stale
+
+D13's last sentence says *"C29's own '(13)' count matches nothing … §13's table has 10
+rows."* Both halves were already corrected in the checklist on 2026-09-27
+(`manager-codebase-review-checklist.md:445`), and this pass confirms the correction:
+
+- **"(13)" is not a count — it is a SECTION POINTER.** §13 of `manager-codebase-review.md`
+  is titled "Declared, documented, and inert" (`:455`), and C29 uses the same parenthetical
+  convention throughout (`(6.7)`, `(14.1)`, `(10.2)`). There is nothing to reconcile.
+- **§13's table holds 11 data rows, not 10.** Verified by line count: header at `:459`,
+  separator at `:460`, data rows at `:461`–`:471`.
+
+So D13's final clause — *"any ruling should also settle which list is authoritative"* — asks
+the owner to settle a question that is already settled. The real D13 question (delete vs
+keep the two remaining surfaces) stands unchanged, as does the recommendation to rule on
+them separately.
+
+### D14 — the source claims re-verified
+
+- `crates/kasirmu-local-api/src/lib.rs:431` (`admin_key: Some(secret.clone())`) and `:434`
+  (`api_secret: secret.clone()`) clone one `secret` into two authorities. Confirmed.
+- **No `local_api.admin_key` and no `SETTINGS_ADMIN_KEY` exists anywhere in the tree** — the
+  only `admin_key` hit in the crate is the clone above, so there is still exactly one key.
+  Confirmed.
+- The "Rotate secret" control (`ui/src/features/settings/sections/LocalApiSection.tsx:296-311`)
+  warns *"Rotating invalidates every minted token immediately and changes the operator key."*
+  Confirmed — one button rotates both roles today.
+
+**Note on sequencing, recorded so it is not lost:** D14's text says C14(a) is *"one-way
+dependent on C1's S2b landing."* C1 S2b has now landed — S2b-2a in `f2932f6f8` and the
+bridge half of S2b-2b in `625c47290` — so C14(a) is no longer waiting on it.

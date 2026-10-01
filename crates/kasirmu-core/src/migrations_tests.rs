@@ -1,9 +1,55 @@
 use super::*;
+use std::sync::{LazyLock, Mutex};
+use std::time::Duration;
 
 fn fresh() -> rusqlite::Connection {
     let conn = rusqlite::Connection::open_in_memory().unwrap();
     conn.execute_batch("PRAGMA foreign_keys = ON").unwrap();
     conn
+}
+
+/// The whole registry applied once, kept as the source for per-iteration
+/// clones.
+///
+/// Two sweeps in this file iterate all 68 migrations and, on every iteration,
+/// replay the registry (or a growing prefix of it) from an empty database.
+/// That first apply is *byte-identical* each time — same pages, same
+/// `schema_migrations` rows, same stored checksums, which is exactly what the
+/// drift assertions read — so replaying it 68 times bought nothing. A SQLite
+/// `Backup` page copy of one apply reproduces it for ~3 ms instead of ~305 ms
+/// (both measured; see todo-optimize-crates.md §11F).
+///
+/// Behind a `Mutex` because `rusqlite::Connection` is `Send` but not `Sync`,
+/// and `Backup::new` takes a `RefCell` borrow on its source — a `RwLock` would
+/// be a data race, not an optimisation. Contention is irrelevant here: these
+/// sweeps run their iterations sequentially.
+static FINAL_SCHEMA: LazyLock<Mutex<rusqlite::Connection>> = LazyLock::new(|| {
+    let mut conn = fresh();
+    platform_core::database::run(&mut conn, ALL)
+        .expect("applying the full registry to build the test snapshot");
+    Mutex::new(conn)
+});
+
+/// A byte-identical copy of `src`.
+///
+/// Restores `foreign_keys = ON` explicitly: it is a per-connection setting, so
+/// a `Backup` does not carry it across, and `fresh()` sets it — without it a
+/// migration that violates a foreign key would succeed here and silently
+/// weaken every drift verdict in these sweeps.
+fn clone_db(src: &rusqlite::Connection) -> rusqlite::Connection {
+    let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+    rusqlite::backup::Backup::new(src, &mut conn)
+        .unwrap()
+        .run_to_completion(100, Duration::from_millis(0), None)
+        .unwrap();
+    conn.execute_batch("PRAGMA foreign_keys = ON").unwrap();
+    conn
+}
+
+/// A byte-identical copy of [`FINAL_SCHEMA`].
+fn final_schema() -> rusqlite::Connection {
+    let master = FINAL_SCHEMA.lock().unwrap();
+    clone_db(&master)
 }
 
 #[test]
@@ -192,6 +238,14 @@ fn cosmetic_edit_to_any_migration_re_applies_cleanly() {
         "20260831_loyalty_multiplier_fixedpoint.sql",
         "20260906_rename_store_to_location.sql",
         "20260913_memo_locations.sql",
+        // DB-03 one-shot: SQLite has no `DROP COLUMN IF EXISTS`, so re-applying
+        // this against a schema where the columns are already gone fails with
+        // "no such column". Forward-only by construction; a drifted database
+        // needs the backup-plus-repair procedure, not a re-apply.
+        "20261014_kds_drop_pairing_tokens.sql",
+        // Same DB-03 class, same reason: a plain `DROP COLUMN pin`, with no
+        // `IF EXISTS` form available. Forward-only.
+        "20261015_gift_cards_drop_pin.sql",
     ];
 
     // Built once: every iteration must compare the same bytes against the
@@ -205,6 +259,10 @@ fn cosmetic_edit_to_any_migration_re_applies_cleanly() {
         .collect();
 
     let mut not_reappliable: Vec<String> = Vec::new();
+    // NOT built incrementally — see the note at the bottom of this file. In
+    // short: `platform_core::database::run` refuses to extend a database with a
+    // slice that does not cover the migrations it has already recorded, so the
+    // prefix has to be replayed from an empty database on every iteration.
     for index in 0..ALL.len() {
         let id = ALL[index].id;
         // Applying the prefix and then editing its last entry reproduces the
@@ -363,6 +421,12 @@ fn every_migration_re_applies_against_the_final_schema() {
         "20260906_rename_store_to_location.sql",
         "20260911_memo_fk_restrict.sql",
         "20260913_memo_locations.sql",
+        // Same DB-03 reason as the list above: a column drop cannot be
+        // re-applied once the column is gone, and SQLite offers no
+        // `IF EXISTS` form to make it idempotent.
+        "20261014_kds_drop_pairing_tokens.sql",
+        // Same class again — see the prefix sweep's entry for this id.
+        "20261015_gift_cards_drop_pin.sql",
     ];
 
     let mut not_reappliable: Vec<String> = Vec::new();
@@ -386,11 +450,11 @@ fn every_migration_re_applies_against_the_final_schema() {
             })
             .collect();
 
-        let mut conn = fresh();
         // The whole registry first: the re-apply below runs against the *final*
         // schema, exactly as it does for a database whose init script drifted.
-        platform_core::database::run(&mut conn, ALL)
-            .unwrap_or_else(|err| panic!("applying the full registry failed: {err}"));
+        // That apply is identical on every iteration, so it is cloned from one
+        // cached apply rather than replayed 68 times — see `final_schema`.
+        let mut conn = final_schema();
 
         let before = stored_checksum(&conn, id);
         match platform_core::database::run(&mut conn, &drifted) {
@@ -1381,7 +1445,7 @@ fn scoped_row_ids(conn: &rusqlite::Connection, table: &str, store: &str) -> Vec<
         .unwrap();
     stmt.query_map(rusqlite::params![store], |row| row.get(0))
         .unwrap()
-        .filter_map(|r| r.ok())
+        .filter_map(std::result::Result::ok)
         .collect()
 }
 
@@ -1396,7 +1460,7 @@ fn global_row_ids(conn: &rusqlite::Connection, table: &str) -> Vec<String> {
         .unwrap();
     stmt.query_map([], |row| row.get(0))
         .unwrap()
-        .filter_map(|r| r.ok())
+        .filter_map(std::result::Result::ok)
         .collect()
 }
 
@@ -2221,7 +2285,7 @@ fn migration_registry_matches_filesystem() {
     let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("migrations");
     let mut files: Vec<String> = std::fs::read_dir(&dir)
         .expect("migrations directory must exist")
-        .filter_map(|e| e.ok())
+        .filter_map(std::result::Result::ok)
         .map(|e| e.file_name().to_string_lossy().into_owned())
         .filter(|n| n.ends_with(".sql") && !n.ends_with(".pg.sql"))
         .collect();
@@ -3015,7 +3079,7 @@ fn a_terminal_without_the_legacy_signal_is_never_backfilled() {
 
 /// The registry position of the migration under test, so the pre-index leg
 /// below is expressed as "everything except this migration" rather than as a
-/// brittle \`ALL.len() - 1\`.
+/// brittle `ALL.len() - 1`.
 fn open_shift_uniqueness_position() -> usize {
     ALL.iter()
         .position(|m| m.id == "20261011_open_shift_uniqueness.sql")
@@ -3028,7 +3092,7 @@ fn open_shift_uniqueness_sql() -> &'static str {
     ALL[open_shift_uniqueness_position()].sql
 }
 
-/// One user, so a raw \`shifts\` INSERT has a row for its FK to resolve.
+/// One user, so a raw `shifts` INSERT has a row for its FK to resolve.
 fn seed_shift_user(conn: &rusqlite::Connection, user_id: &str) {
     conn.execute(
         "INSERT OR IGNORE INTO roles (id, name) VALUES ('role-osu', 'Open Shift Test')",
@@ -3044,9 +3108,9 @@ fn seed_shift_user(conn: &rusqlite::Connection, user_id: &str) {
 }
 
 /// 1. A fresh database accepts the index, and it is the PARTIAL one — the
-///    \`WHERE status = 'open'\` clause is in the stored SQL, so closed shifts
+///    `WHERE status = 'open'` clause is in the stored SQL, so closed shifts
 ///    are outside the constraint (a table-wide UNIQUE would refuse the second
-///    day's shift). \`migration_surface_pins\` covers the count; this pins the
+///    day's shift). `migration_surface_pins` covers the count; this pins the
 ///    shape.
 #[test]
 fn open_shift_uniqueness_index_is_partial_on_open_status() {
@@ -3078,7 +3142,7 @@ fn open_shift_uniqueness_index_is_partial_on_open_status() {
 }
 
 /// 2. THE GUARD BITES, proved through raw SQL so it is the INDEX under test and
-///    not \`Store::open_shift\`.
+///    not `Store::open_shift`.
 ///
 ///    Leg A is the negative control and the reason this test is honest: the same
 ///    statement runs against a database built from the registry WITHOUT this
@@ -3173,7 +3237,7 @@ fn open_shift_uniqueness_index_bites_on_raw_sql() {
 
 /// 3. THE MIGRATION CANNOT BRICK AN EXISTING STORE.
 ///
-///    A store written before \`open_shift\` was atomic can already hold two open
+///    A store written before `open_shift` was atomic can already hold two open
 ///    shifts for one user. If the CREATE ran against that state it would fail,
 ///    and the app would not start — so the reconciliation must close the extras
 ///    FIRST. This test builds the FINAL schema (the whole registry), plants the
@@ -3454,3 +3518,33 @@ fn stock_summary_negative_guard_is_not_an_unconditional_check() {
         "D11: no quarantine table — existing negatives are legitimate and are never repaired"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Why `cosmetic_edit_to_any_migration_re_applies_cleanly` replays a growing
+// prefix instead of extending one master connection (measured 2026-09-28).
+//
+// The obvious optimisation is to keep a master connection, apply `ALL[index]`
+// to it on iteration `index`, and clone — turning a sum of 68 prefix replays
+// into one chain plus 68 clones. It was tried and it does not work:
+//
+//   platform_core::database::run(&mut master, &ALL[index..=index])
+//
+// fails on the second-listed migration with
+//
+//   internal error: 1 recorded migration(s) are newer than this build knows
+//   (e.g. 20260815_tenant_unique_indexes.sql; this build's newest is
+//   20260814_*.sql), so this database was migrated by a later release.
+//   Refusing to run: its schema may already have been renamed or dropped by
+//   migrations this binary cannot see, which surfaces later as a confusing
+//   `no such table` in whatever opens first.
+//
+// `run` treats the slice it is handed as "the registry this build knows", so a
+// sub-slice makes every already-recorded migration look like it came from a
+// later release. That guard is deliberate and correct — do not weaken it to
+// make this test cheaper. `ALL` is also not in lexical id order, which is why
+// a one-element slice trips it on the very first step rather than later.
+//
+// `every_migration_re_applies_against_the_final_schema` has no such problem:
+// its first apply is always the *whole* registry and therefore byte-identical
+// every iteration, so it clones one cached apply via `final_schema()` instead.
+// ---------------------------------------------------------------------------

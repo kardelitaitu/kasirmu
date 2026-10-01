@@ -139,46 +139,6 @@ pub const DEBT_LEDGER: &[(&str, &str)] = &[
         "subscription::get_subscription_capabilities",
         "no_session_resolution",
     ),
-    (
-        "topology::load_topology",
-        "resolves_session_names_no_permission",
-    ),
-    (
-        "topology::can_save_topology",
-        "resolves_session_names_no_permission",
-    ),
-    (
-        "topology::apply_topology_diff",
-        "resolves_session_names_no_permission",
-    ),
-    (
-        "topology::list_topology_revisions",
-        "resolves_session_names_no_permission",
-    ),
-    (
-        "topology::load_topology_revision",
-        "resolves_session_names_no_permission",
-    ),
-    (
-        "topology::pin_topology_revision",
-        "resolves_session_names_no_permission",
-    ),
-    (
-        "topology::save_topology_template",
-        "resolves_session_names_no_permission",
-    ),
-    (
-        "topology::load_topology_template",
-        "resolves_session_names_no_permission",
-    ),
-    (
-        "topology::list_topology_templates",
-        "resolves_session_names_no_permission",
-    ),
-    (
-        "topology::delete_topology_template",
-        "resolves_session_names_no_permission",
-    ),
     ("settings::get_setting", "no_session_resolution"),
     ("settings::gateway_status", "no_session_resolution"),
     (
@@ -208,7 +168,7 @@ pub const DEBT_LEDGER: &[(&str, &str)] = &[
 /// Re-read 22-09-26: regenerated to 468 with the floor's raise for the staff/role trash's
 /// five gated commands. 74 debt rows before and after, which is the measurement saying they
 /// arrived already gated.)
-pub const REGISTERED_TOTAL: usize = 475;
+pub const REGISTERED_TOTAL: usize = 481;
 
 /// Debt entries today: the ceiling the ledger may only shrink under.
 /// 70 -> 69: `security::rotate_encryption_key` was deregistered, and its ledger row

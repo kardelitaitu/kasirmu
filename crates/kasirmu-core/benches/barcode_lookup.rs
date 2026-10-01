@@ -19,19 +19,18 @@ fn price(minor: i64) -> Money {
     }
 }
 
-fn setup_store_with_products(count: usize) -> Store<'static> {
-    let mut conn = rusqlite::Connection::open_in_memory().unwrap();
-    conn.pragma_update(None, "foreign_keys", "ON").unwrap();
-    kasirmu_core::migrations::run(&mut conn).unwrap();
-    let conn: &'static rusqlite::Connection = Box::leak(Box::new(conn));
-    let store = Store::new(conn);
+// The caller owns the connection; no `Box::leak` to manufacture a
+// `'static` for the `Store` (O-T03). `fresh_db()` also replaces the
+// 68-migration replay with a ~3 ms snapshot clone.
+fn setup_store_with_products(count: usize, db: &rusqlite::Connection) -> Store<'_> {
+    let store = Store::new(db);
 
     for i in 0..count {
-        let sku = format!("SKU-{:05}", i);
+        let sku = format!("SKU-{i:05}");
         store
             .create_product(
                 &sku,
-                &format!("Product {}", i),
+                &format!("Product {i}"),
                 price(1000),
                 None,
                 None,
@@ -45,7 +44,8 @@ fn setup_store_with_products(count: usize) -> Store<'static> {
 }
 
 fn bench_barcode_lookup(c: &mut Criterion) {
-    let store = setup_store_with_products(1000);
+    let store_db = kasirmu_core::migrations::fresh_db();
+    let store = setup_store_with_products(1000, &store_db);
     let _ = store.get_product("SKU-00000");
 
     c.bench_function("barcode_lookup_1000_products", |b| {
@@ -57,7 +57,8 @@ fn bench_barcode_lookup(c: &mut Criterion) {
 }
 
 fn bench_barcode_lookup_cache_hit(c: &mut Criterion) {
-    let store = setup_store_with_products(1000);
+    let store_db = kasirmu_core::migrations::fresh_db();
+    let store = setup_store_with_products(1000, &store_db);
     let _ = store.get_product("SKU-00001");
 
     c.bench_function("barcode_lookup_cache_hit", |b| {
@@ -69,7 +70,8 @@ fn bench_barcode_lookup_cache_hit(c: &mut Criterion) {
 }
 
 fn bench_barcode_lookup_miss(c: &mut Criterion) {
-    let store = setup_store_with_products(100);
+    let store_db = kasirmu_core::migrations::fresh_db();
+    let store = setup_store_with_products(100, &store_db);
 
     c.bench_function("barcode_lookup_miss", |b| {
         b.iter(|| {

@@ -1,0 +1,15 @@
+[package]
+name = "platform-instance-guard"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Process-level single-instance guard shared by the desktop and tablet shells: a Win32 named mutex on Windows, a no-op elsewhere."
+
+# Inherits [workspace.lints] from the root Cargo.toml (missing_docs = warn).
+[lints]
+workspace = true
+
+[dependencies]
+tracing = { workspace = true }

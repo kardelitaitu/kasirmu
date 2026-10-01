@@ -91,7 +91,7 @@ fn validate_rejects_each_missing_required_field() {
         let err = p.validate().unwrap_err();
         match err {
             CoreError::Validation { field: f, .. } => {
-                assert_eq!(f, field, "missing {field} must report that field")
+                assert_eq!(f, field, "missing {field} must report that field");
             }
             other => panic!("expected Validation for {field}, got {other:?}"),
         }
@@ -585,6 +585,47 @@ fn user_with_unreadable_seals(conn: &rusqlite::Connection, store: &Store) -> cra
     )
     .unwrap();
     user
+}
+
+#[test]
+fn an_unreadable_seal_is_reported_as_corruption_not_as_an_empty_field() {
+    let conn = migrations::fresh_db();
+    insert_role(&conn, "role-viewer", &["sales:view"]);
+    let store = Store::new(&conn);
+    let user = user_with_unreadable_seals(&conn, &store);
+
+    // The display read still fails closed: nothing unsafe is rendered.
+    let profile = store.get_user_profile(&user.id).unwrap().unwrap();
+    assert!(profile.national_id.is_none());
+    assert!(profile.monthly_take_home_minor.is_none());
+
+    // …but the corruption is now distinguishable from an empty column.
+    assert!(
+        store.user_profile_has_unreadable_seal(&user.id).unwrap(),
+        "a present-but-unopenable seal must be reported, not silently read as empty"
+    );
+}
+
+#[test]
+fn an_empty_or_readable_profile_reports_no_unreadable_seal() {
+    let conn = migrations::fresh_db();
+    insert_role(&conn, "role-viewer", &["sales:view"]);
+    let store = Store::new(&conn);
+    let user = store
+        .create_user_with_profile("alice", "h", "A", "role-viewer", &complete_profile(), None)
+        .unwrap();
+
+    // A healthy, fully-sealed profile: nothing to report.
+    assert!(!store.user_profile_has_unreadable_seal(&user.id).unwrap());
+
+    // An EMPTY column (not a corrupt one) is the other state COR-24 names and
+    // must NOT be reported as corruption.
+    conn.execute(
+        "UPDATE users SET national_id = '', monthly_take_home_minor = '' WHERE id = ?1",
+        params![user.id],
+    )
+    .unwrap();
+    assert!(!store.user_profile_has_unreadable_seal(&user.id).unwrap());
 }
 
 #[test]

@@ -158,4 +158,63 @@ describe('useAnimatedModal', () => {
     });
     expect(result.current.mounted).toBe(false);
   });
+
+  // ── Reopen DURING the exit window ─────────────────────────────────
+  //
+  // The two tests above reopen only AFTER the 200ms unmount, which is why
+  // they passed while this one fails. Reopening inside the window is a
+  // different transition: React runs the previous effect's cleanup (so the
+  // pending unmount is cancelled and `mounted` survives), but the close
+  // branch `return`s before `prevShow.current = show`, so the ref still
+  // reads `true`. On the reopen neither branch matches, nothing clears
+  // `exiting`, and the surface is left wearing its `--exiting` class —
+  // whose keyframes are declared `animation: … forwards` — i.e. pinned at
+  // opacity 0 with the focus trap disabled (`mOpen && !eOpen`).
+  //
+  // ShiftManagementScreen owns five modals driven by this hook
+  // (ShiftManagementScreen.tsx:213-217); a fast second tap on a tablet
+  // lands squarely inside the window.
+  it('cancels the exit when show flips back true DURING the exit window', () => {
+    const { result, rerender } = renderHook(
+      ({ show }) => useAnimatedModal(show),
+      { initialProps: { show: true } },
+    );
+
+    expect(result.current).toEqual({ mounted: true, exiting: false });
+
+    // Close — starts the exit and schedules the unmount.
+    rerender({ show: false });
+    expect(result.current).toEqual({ mounted: true, exiting: true });
+
+    // Reopen 50ms into the 200ms window.
+    rerender({ show: true });
+    act(() => {
+      vi.advanceTimersByTime(50);
+    });
+
+    // The surface must be fully live again: mounted, and NOT stuck exiting.
+    expect(result.current.mounted).toBe(true);
+    expect(result.current.exiting).toBe(false);
+  });
+
+  it('survives a reopen-during-exit and then closes cleanly a second time', () => {
+    const { result, rerender } = renderHook(
+      ({ show }) => useAnimatedModal(show),
+      { initialProps: { show: true } },
+    );
+
+    rerender({ show: false });
+    rerender({ show: true });
+    act(() => {
+      vi.advanceTimersByTime(50);
+    });
+    expect(result.current).toEqual({ mounted: true, exiting: false });
+
+    // Second close, past the full duration, must still unmount.
+    rerender({ show: false });
+    act(() => {
+      vi.advanceTimersByTime(200);
+    });
+    expect(result.current).toEqual({ mounted: false, exiting: false });
+  });
 });

@@ -2,7 +2,7 @@
 
 # Whitelabel Tenant Templates
 
-This directory contains template structures for creating whitelabel / multi-tenant brand configurations for OZ-POS.
+This directory contains template structures for creating whitelabel / multi-tenant brand configurations for kasir.mu.
 
 ## Purpose
 

@@ -4,6 +4,7 @@ area: products
 title: ADR #36: Retail POS Product Attributes — Cost, Brand, Rack, Notes + Configurable Columns
 status: Implemented (2026-08-12)
 ---
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 295 lines, with no prior stamp, footer or marker. It is a small, specific product decision, and its status line is unqualified — Implemented, with a date — which is the clearest signal a decision record can give and therefore the easiest to check. · IT CHECKS OUT, IN THE PLACE A READER WOULD LOOK. The schema's product definition carries exactly the attributes the title names: a brand column, a rack-location column, and a notes column, sitting together in the product table rather than in a side table. A decision that says a product has a rack location and a schema where that column lives on the product is a decision that landed; the more common failure is the attribute ending up in a related table with a join, which is a different design with different query costs and a different migration story. · THE SCOPING IS WHAT MAKES IT READABLE, and it is worth naming because a retail point-of-sale product has an enormous possible attribute set — colour, size, expiry, batch, serial, allergen, origin, weight, dimensions — and a decision that tried to cover them would be neither implementable nor reviewable. This one names four and adds a configurable-columns concept, which is the escape hatch: the fixed columns are the ones every shop needs and the system must know the meaning of, and the configurable ones are everything else. That is a maintainable shape, and it is the same instinct the boundary checker used when it named a small set of mechanically enforced invariants instead of a large set of aspirational ones. · A NOTE ON WHAT THIS DECISION SITS ON TOP OF, because the cost attribute is not a neutral addition. The repository treats money as integer minor units, never floating point, and a cost price added to a product is money. A reader implementing against this decision should be pairing it with the money-closure specification audited in this campaign rather than treating it as a plain text column, because the type discipline is enforced by a lint and by convention rather than by the database. That connection is not made in this document and is worth the reader knowing. · NOT re-measured: whether the configurable-columns mechanism is implemented as described, or whether the cost attribute round-trips through the pricing path correctly. Those are the implementation; the status line and the schema are the claim of record, and both hold. · No stamp existed; this is the first. -->
 # ADR #36: Retail POS Product Attributes — Cost, Brand, Rack, Notes + Configurable Columns
 
 Date: 2026-08-11
@@ -293,3 +294,66 @@ per-location total, and the visible-column set persists per user via the
 `retail.visible_columns` preference. Follow-on HPP work (margin reporting,
 cost snapshot at checkout — migrations 134/135) extends this ADR's cost data
 across the reporting surface; see commits `5a030f67`–`788bf2fa`.
+
+## An attribute that cannot be READ is not an attribute that was never set (appended 2026-10-04)
+
+This decision added the attribute columns (`brand`, `rack_location`, `notes`, `unit`,
+`default_supplier_id`, and the earlier `track_serial` / `version` / `cost_minor` / `is_active`),
+and it named `row_to_product` as the core model that reads them. That mapper read ten of them
+through `unwrap_or(..)`.
+
+**None of those calls supplied a default.** rusqlite maps NULL to `None` for an `Option<T>`
+target, and every NOT NULL column here carries its default in the SCHEMA (`track_serial INTEGER
+NOT NULL DEFAULT 0`, `version INTEGER NOT NULL DEFAULT 1`, `cost_minor INTEGER NOT NULL DEFAULT
+0`, `is_active INTEGER NOT NULL DEFAULT 1`). So the `unwrap_or(..)` forms only ever fired on a
+real error — a missing column, a type mismatch, a corrupt page — and replaced it with a
+plausible value.
+
+**The mapper's own neighbour said so.** `product_type_str` is read with `?` under the comment
+"Use Option<String> for nullable column — reads NULL as None rather than swallowing errors via
+`.ok()`". Ten lines below, six nullable TEXT columns did exactly what that comment forbids. Same
+signal as the receipt footer and the staff row mapper: **when one function handles one kind of
+read two ways, the divergent one is the bug.**
+
+**Why this is the highest-reach instance.** `row_to_product` maps every product in every listing
+and is the mapper behind `products_crud`'s list, search and get-by-sku/get-by-barcode paths. A
+single bad read would have produced a catalogue of products silently carrying `cost_minor: 0`
+or `is_active: false` — a wrong price basis or a product hidden from sale — rather than an error
+anyone could act on.
+
+All ten reads now propagate; `track_serial` and `is_active` read as `i64` and compare, which is
+what `unwrap_or(false)` / `unwrap_or(1i64)` were already doing. Pinned by
+`row_to_product_fails_when_a_read_column_is_missing`, which projects a row supplying every
+`?`-read column and omitting the rest. Verified RED with the swallows restored — the mapper
+returned a COMPLETE `Product` (`track_serial: false, version: 1, cost_minor: 0, is_active: true`)
+from a projection that supplied almost none of its columns — and GREEN with the fix.
+
+## The sweep that closed the family, and the one that mattered most (2026-10-04, `9c2c8dddf`)
+
+The section above fixed `row_to_product`. Sweeping every other row mapper in the core db layer for
+the same shape left four `row.get(..).unwrap_or(..)` calls in three mappers, all now propagating:
+`popularity_score` in `row_to_product_with_details`, `version` in `Store::row_to_sale_header`, and
+`notes` in three `InventoryTransaction` mappers. In each case the default was already in the
+schema (`popularity_score REAL NOT NULL DEFAULT 0`, `version INTEGER NOT NULL DEFAULT 1`, `notes
+TEXT NOT NULL DEFAULT ''`), so the `unwrap_or` only ever fired on a real read error.
+
+**The sales one is the most serious instance of this family found so far, and it is worth saying
+why.** `version` is not display data — it is the optimistic-concurrency token that the
+compare-and-set updates key on. Defaulting it handed the caller a **fabricated `version: 1`**: a
+CAS that either silently matches the wrong row state or refuses a correct write, on money-bearing
+records, with no error anywhere.
+
+**And the mapper's own doc already forbade it.** `row_to_sale_header`'s doc records that
+`list_sales_by_user` "deliberately keeps its own strict variant (propagating rather than defaulting
+a NULL discount/version)" — and that strict variant reads `version` with `?` at
+`sales_crud.rs:399`. Four lines of documentation explaining exactly why the shared mapper must not
+default, directly above a mapper that did.
+
+**The sweep is now closed for this crate**, which is the useful outcome beyond these four lines:
+`grep -rn 'row\.get(..)\.unwrap_or' crates/kasirmu-core/src/db` returns no production hits. The
+practical rule the whole exercise settles on: **a default belongs in the schema or in the typed
+getter that owns it, never in the mapper that reads the row.** Written one layer above the layer
+that already owns it, an `unwrap_or` is not a default — it is a swallow wearing a default's
+clothes, and it fires on precisely the reads you most want to hear about.
+
+> last audited 29-09-26 by docs-auditor

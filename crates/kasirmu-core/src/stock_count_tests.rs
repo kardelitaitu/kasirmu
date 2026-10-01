@@ -160,7 +160,7 @@ fn stock_count_serde_completed() {
 #[test]
 fn stock_count_debug() {
     let sc = make_stock_count();
-    let debug = format!("{:?}", sc);
+    let debug = format!("{sc:?}");
     assert!(debug.contains("CNT-20260706-001"));
     assert!(debug.contains("Draft"));
 }
@@ -218,7 +218,7 @@ fn stock_count_line_overcount() {
 #[test]
 fn stock_count_line_debug() {
     let line = make_count_line();
-    let debug = format!("{:?}", line);
+    let debug = format!("{line:?}");
     assert!(debug.contains("COFFEE"));
     assert!(debug.contains("Espresso"));
 }
@@ -263,7 +263,7 @@ fn stock_adjustment_standalone_no_count() {
 #[test]
 fn stock_adjustment_debug() {
     let adj = make_adjustment();
-    let debug = format!("{:?}", adj);
+    let debug = format!("{adj:?}");
     assert!(debug.contains("COFFEE"));
     assert!(debug.contains("correction"));
 }

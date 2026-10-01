@@ -18,7 +18,8 @@ use super::{
     AvailabilityFacts, AvailabilityFeature, AvailabilityReason, FeatureVerdict, UsageCounts,
     explain_availability,
 };
-use crate::subscription::{SubscriptionLifecycleState, SubscriptionTier};
+use crate::entitlements::Entitlements;
+use crate::subscription::{SubscriptionLifecycleState, SubscriptionTier, TenantSubscription};
 
 /// A probe case: one feature plus the tiers that grant and withhold it.
 ///
@@ -56,11 +57,36 @@ fn cases() -> Vec<Case> {
     for f in quota {
         // Free supplies a finite limit so the quota knob has something to
         // reach; the tier source cannot deny a quota family at any tier.
+        //
+        // Warehouses are the exception. Their only finite cap is 0, on the
+        // tiers that do not include the workspace at all (Free/Plus/Pro), and
+        // a 0 cap is already reached at zero usage — there is no "one below
+        // the limit" state to probe. So the warehouse case baselines on
+        // Premium (unlimited, so the clean ground is available) against a Free
+        // withholding tier, and its quota arm is pinned separately by
+        // `warehouse_quota_denies_on_every_tier_that_does_not_include_it`.
+        let warehouse = f == F::Warehouses;
         out.push(Case {
             feature: f,
-            granting: &SubscriptionTier::Free,
-            withholding: &SubscriptionTier::Free,
-            label: "free",
+            granting: if warehouse {
+                &SubscriptionTier::Premium
+            } else {
+                &SubscriptionTier::Free
+            },
+            // Also Premium for warehouses, NOT Free. The probe infers "this
+            // source is able to deny" from a single-source denial, so the
+            // withholding tier must not itself fail the quota arm: on Free the
+            // 0 warehouse cap already denies, which would make the Tier probe
+            // come back unavailable for a reason that is not Tier at all.
+            // (Quota families are never denied by the tier flag anyway —
+            // `tier_allows` answers true for all four — so this arm is inert
+            // for every quota case and only the confounding matters.)
+            withholding: if warehouse {
+                &SubscriptionTier::Premium
+            } else {
+                &SubscriptionTier::Free
+            },
+            label: if warehouse { "premium" } else { "free" },
         });
     }
     out.push(Case {
@@ -234,6 +260,41 @@ fn parse_rejects_unknown_keys_rather_than_defaulting_open() {
             AvailabilityFeature::parse(key),
             None,
             "{key} must not parse"
+        );
+    }
+}
+
+#[test]
+fn warehouse_quota_denies_on_every_tier_that_does_not_include_it() {
+    // Owner ruling 2026-09-29 (matching the website's pricing row): the
+    // warehouse workspace is Premium and up, so every lower tier carries a
+    // ZERO warehouse cap. A zero cap is reached at zero usage, which means the
+    // quota arm denies before a single warehouse exists — and it denies as
+    // `Quota`, not `Tier`, because quota families have no tier boolean.
+    for tier in [
+        SubscriptionTier::Free,
+        SubscriptionTier::Plus,
+        SubscriptionTier::Pro,
+    ] {
+        let facts = AvailabilityFacts::baseline(AvailabilityFeature::Warehouses, &tier);
+        assert_eq!(facts.usage.warehouses, 0);
+        let verdict = explain_availability(&facts);
+        assert!(!verdict.available, "{tier:?} must not offer warehouses");
+        assert_eq!(
+            verdict.reason,
+            Some(AvailabilityReason::Quota),
+            "{tier:?} denies warehouses through the zero cap, not the tier flag"
+        );
+        assert_eq!(verdict.detail.limit, Some(0));
+    }
+    // Premium and Enterprise are unlimited: no count can deny them, and the
+    // clean-ground probe the precedence walk uses depends on that.
+    for tier in [SubscriptionTier::Premium, SubscriptionTier::Enterprise] {
+        let mut facts = AvailabilityFacts::baseline(AvailabilityFeature::Warehouses, &tier);
+        facts.usage.warehouses = i64::MAX;
+        assert!(
+            explain_availability(&facts).available,
+            "{tier:?} must allow warehouses at any count"
         );
     }
 }
@@ -428,4 +489,71 @@ fn verdict_serializes_camel_case_for_the_ipc_wire() {
         detail.get("expiresAt").is_some() && detail.get("graceUntil").is_some(),
         "detail keys must be camelCase, got {detail}"
     );
+}
+/// The one shared predicate behind the lifecycle arm: every state is either
+/// explicitly flowing or explicitly denied, and no variant is left to inherit
+/// an answer silently.
+///
+/// `explain_availability`'s `lifecycle_denies` and
+/// `Entitlements::addon_grant_flows` are two consumers of ONE decision, and
+/// before `grants_entitlements` each wrote the set `{Active, Grace}` out
+/// separately. An allow-list absorbs a new enum variant with no compile error,
+/// so a future `SubscriptionLifecycleState` would have inherited "denied" in
+/// both places without anyone choosing it — the hazard
+/// `revoked_denies_availability_exactly_like_canceled_does` already documents
+/// for one variant. This walks ALL of them.
+#[test]
+fn every_lifecycle_state_declares_whether_it_grants_entitlements() {
+    // Named one by one, so adding a variant is a compile error HERE rather
+    // than a silently-passing test.
+    let all = [
+        SubscriptionLifecycleState::Active,
+        SubscriptionLifecycleState::Grace,
+        SubscriptionLifecycleState::Expired,
+        SubscriptionLifecycleState::Canceled,
+        SubscriptionLifecycleState::Revoked,
+        SubscriptionLifecycleState::Paused,
+        SubscriptionLifecycleState::Unavailable,
+    ];
+    let flowing: Vec<&str> = all
+        .iter()
+        .filter(|s| s.grants_entitlements())
+        .map(super::super::subscription::SubscriptionLifecycleState::as_str)
+        .collect();
+    assert_eq!(
+        flowing,
+        vec!["active", "grace"],
+        "a state changing sides here changes what every gate in the app allows",
+    );
+
+    // Each consumer must agree with it, because agreeing is why it exists.
+    for state in all {
+        // The COLUMN vocabulary, not `as_str()` (the wire form): the reader
+        // matches the server's status strings and `Grace` is `grace_period`
+        // there. See `lifecycle_state_as_str_is_the_wire_form_not_the_status_
+        // column_vocabulary`.
+        let column_status = match &state {
+            SubscriptionLifecycleState::Grace => "grace_period",
+            other => other.as_str(),
+        };
+        let sub = TenantSubscription {
+            tenant_id: "default".into(),
+            tier: SubscriptionTier::Premium,
+            status: column_status.into(),
+            expires_at: Some((chrono::Utc::now() + chrono::Duration::days(30)).to_rfc3339()),
+            max_locations: 99,
+            max_pos_instances: 99,
+            allowed_types_json: "[]".into(),
+            signature: String::new(),
+            signed_payload: String::new(),
+            api_key: String::new(),
+            updated_at: String::new(),
+        };
+        let ent = Entitlements::from_subscription(&sub, UsageCounts::default());
+        assert_eq!(
+            ent.addon_grant_flows(),
+            state.grants_entitlements(),
+            "Entitlements and the shared predicate disagree about {state:?}",
+        );
+    }
 }

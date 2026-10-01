@@ -1,19 +1,18 @@
 use super::*;
 use crate::migrations;
 use crate::settings::Settings;
-use rusqlite::Connection;
 
-fn setup() -> Store<'static> {
-    let mut conn = Connection::open_in_memory().unwrap();
-    conn.pragma_update(None, "foreign_keys", "ON").unwrap();
-    migrations::run(&mut conn).unwrap();
-    let conn: &'static Connection = Box::leak(Box::new(conn));
-    Store::new(conn)
+/// The caller owns the connection, so this no longer `Box::leak`s a
+/// database per test to manufacture a `'static` (O-T03).
+fn setup(db: &rusqlite::Connection) -> Store<'_> {
+    // O-T01: snapshot clone (~3 ms) rather than a 68-migration replay (~305 ms).
+    Store::new(db)
 }
 
 #[test]
 fn sync_pending_empty_queue() {
-    let store = setup();
+    let store_db = migrations::fresh_db();
+    let store = setup(&store_db);
     let config = SyncConfig {
         server_url: "http://localhost:3099".into(),
         api_key: None,
@@ -26,14 +25,16 @@ fn sync_pending_empty_queue() {
 
 #[test]
 fn sync_config_from_settings_disabled() {
-    let store = setup();
+    let store_db = migrations::fresh_db();
+    let store = setup(&store_db);
     let config = SyncConfig::from_settings(&store).unwrap();
     assert!(config.is_none());
 }
 
 #[test]
 fn sync_pending_marks_items_synced() {
-    let store = setup();
+    let store_db = migrations::fresh_db();
+    let store = setup(&store_db);
     let _item = store
         .enqueue_offline("complete_sale", r#"{"test": true}"#)
         .unwrap();
@@ -43,17 +44,28 @@ fn sync_pending_marks_items_synced() {
         api_key: None,
     };
     // No server running locally — sync should fail with a transport error.
+    //
+    // This case used to assert `failed == 1` and `status == Failed`. That was
+    // the destructive policy: `failed` is TERMINAL for a push item (nothing
+    // writes `status = 'pending'` again anywhere in the repo), so recording a
+    // transport error as a verdict stranded the queued sale forever. The
+    // daemon never did this, and neither does the plan-gate arm above. See
+    // `sync_pending_keeps_items_pending_on_a_transport_error`.
     let result = sync_pending(&store, &config).unwrap();
     assert_eq!(result.synced, 0);
-    assert_eq!(result.failed, 1);
+    assert_eq!(result.failed, 0, "a transport error is not a verdict");
     assert!(result.error.is_some(), "should report a network error");
 
-    // Item should be marked as failed (no longer pending).
+    // The item stays in the retry set, and is never labelled a failure.
     let pending = store.list_pending_offline().unwrap();
-    assert!(pending.is_empty(), "failed item is no longer pending");
+    assert_eq!(pending.len(), 1, "item stays pending for the next cycle");
     let all = store.list_all_offline().unwrap();
-    assert_eq!(all.len(), 1, "item still in queue with failed status");
-    assert_eq!(all[0].status, crate::offline::OfflineQueueStatus::Failed);
+    assert_eq!(all.len(), 1, "item still in queue");
+    assert_eq!(
+        all[0].status,
+        crate::offline::OfflineQueueStatus::Pending,
+        "a dropped connection must not mark the item failed"
+    );
 }
 
 /// ADR sync-plan-gating: the legacy blocking path must ALSO treat a
@@ -80,7 +92,8 @@ fn sync_pending_plan_required_keeps_items_pending() {
         let _ = stream.write_all(response.as_bytes());
     });
 
-    let store = setup();
+    let store_db = migrations::fresh_db();
+    let store = setup(&store_db);
     store
         .enqueue_offline("complete_sale", r#"{"id":"blocking-plan-gate"}"#)
         .unwrap();
@@ -182,7 +195,8 @@ fn fetch_tenant_plan_reports_server_error() {
 
 #[test]
 fn sync_pending_multiple_items() {
-    let store = setup();
+    let store_db = migrations::fresh_db();
+    let store = setup(&store_db);
     store
         .enqueue_offline("complete_sale", r#"{"id":1}"#)
         .unwrap();
@@ -195,15 +209,27 @@ fn sync_pending_multiple_items() {
         api_key: None,
     };
     let result = sync_pending(&store, &config).unwrap();
-    // No server running — all items fail.
+    // No server running — the batch cannot be delivered, so it reports an
+    // error and leaves BOTH items pending for the next cycle (see
+    // `sync_pending_keeps_items_pending_on_a_transport_error`). Counting them
+    // as failures would mark the whole queue terminal on one dropped packet.
     assert_eq!(result.synced, 0);
-    assert_eq!(result.failed, 2);
+    assert_eq!(
+        result.failed, 0,
+        "a transport error is not a per-item verdict"
+    );
     assert!(result.error.is_some(), "should report a network error");
+    assert_eq!(
+        store.list_pending_offline().unwrap().len(),
+        2,
+        "both items must remain retryable"
+    );
 }
 
 #[test]
 fn sync_config_from_settings_enabled_with_url() {
-    let store = setup();
+    let store_db = migrations::fresh_db();
+    let store = setup(&store_db);
     let conn = store.conn();
     Settings::set_sync_enabled(conn, true).unwrap();
     Settings::set_sync_server_url(conn, "http://sync.example.com").unwrap();
@@ -215,7 +241,8 @@ fn sync_config_from_settings_enabled_with_url() {
 
 #[test]
 fn sync_config_from_settings_enabled_no_url() {
-    let store = setup();
+    let store_db = migrations::fresh_db();
+    let store = setup(&store_db);
     let conn = store.conn();
     Settings::set_sync_enabled(conn, true).unwrap();
     // Don't set a URL
@@ -225,7 +252,8 @@ fn sync_config_from_settings_enabled_no_url() {
 
 #[test]
 fn sync_config_from_settings_enabled_empty_url() {
-    let store = setup();
+    let store_db = migrations::fresh_db();
+    let store = setup(&store_db);
     let conn = store.conn();
     Settings::set_sync_enabled(conn, true).unwrap();
     Settings::set_sync_server_url(conn, "").unwrap();
@@ -236,7 +264,8 @@ fn sync_config_from_settings_enabled_empty_url() {
 
 #[test]
 fn sync_config_from_settings_with_api_key() {
-    let store = setup();
+    let store_db = migrations::fresh_db();
+    let store = setup(&store_db);
     let conn = store.conn();
     Settings::set_sync_enabled(conn, true).unwrap();
     Settings::set_sync_server_url(conn, "http://sync.example.com").unwrap();
@@ -255,7 +284,8 @@ fn sync_config_from_settings_with_api_key() {
 
 #[test]
 fn apply_sync_outcomes_accepted_marks_synced() {
-    let store = setup();
+    let store_db = migrations::fresh_db();
+    let store = setup(&store_db);
     let items = [
         store
             .enqueue_offline("complete_sale", r#"{"id":1}"#)
@@ -278,7 +308,8 @@ fn apply_sync_outcomes_accepted_marks_synced() {
 
 #[test]
 fn apply_sync_outcomes_rejected_marks_failed() {
-    let store = setup();
+    let store_db = migrations::fresh_db();
+    let store = setup(&store_db);
     let items = [store
         .enqueue_offline("complete_sale", r#"{"id":1}"#)
         .unwrap()];
@@ -302,7 +333,8 @@ fn apply_sync_outcomes_duplicate_id_rejection_marks_synced() {
     // item (crash between server-insert and local mark-synced, then re-push).
     // The mutation is safe on the server, so the item must become `synced`,
     // NOT a terminal `failed` (push-side failed items have no requeue path).
-    let store = setup();
+    let store_db = migrations::fresh_db();
+    let store = setup(&store_db);
     let items = [store
         .enqueue_offline("complete_sale", r#"{"id":1}"#)
         .unwrap()];
@@ -327,7 +359,8 @@ fn apply_sync_outcomes_duplicate_id_rejection_marks_synced() {
 fn apply_sync_outcomes_genuine_rejection_still_marks_failed() {
     // Guard the boundary: a Rejected that merely CONTAINS "duplicate id" but
     // does not start with the exact prefix is still a genuine failure.
-    let store = setup();
+    let store_db = migrations::fresh_db();
+    let store = setup(&store_db);
     let items = [store
         .enqueue_offline("complete_sale", r#"{"id":1}"#)
         .unwrap()];
@@ -344,7 +377,8 @@ fn apply_sync_outcomes_genuine_rejection_still_marks_failed() {
 
 #[test]
 fn apply_sync_outcomes_conflict_resolves_with_server_copy_wins() {
-    let store = setup();
+    let store_db = migrations::fresh_db();
+    let store = setup(&store_db);
     let local = store
         .enqueue_offline("complete_sale", r#"{"id":1}"#)
         .unwrap();
@@ -398,7 +432,8 @@ fn apply_sync_outcomes_truncates_on_outcome_len_mismatch() {
     // retry caller must re-list them next cycle. This pins the
     // current contract so a future refactor can't silently mark them
     // synced without an outcome.
-    let store = setup();
+    let store_db = migrations::fresh_db();
+    let store = setup(&store_db);
     let items = [
         store
             .enqueue_offline("complete_sale", r#"{"id":1}"#)
@@ -477,7 +512,8 @@ fn snapshot_user_with_pin_hash_is_rejected() {
 
 #[test]
 fn apply_snapshot_writes_placeholder_pin_hash_for_new_users() {
-    let store = setup();
+    let store_db = migrations::fresh_db();
+    let store = setup(&store_db);
     // Seed a role so the users FK is satisfied.
     store
         .conn()
@@ -517,7 +553,8 @@ fn apply_snapshot_writes_placeholder_pin_hash_for_new_users() {
 
 #[test]
 fn apply_snapshot_preserves_existing_local_pin_hash_on_conflict() {
-    let store = setup();
+    let store_db = migrations::fresh_db();
+    let store = setup(&store_db);
     store
         .conn()
         .execute(
@@ -582,7 +619,7 @@ fn sync_attempt_result_debug() {
         error: Some("network error".into()),
         plan_required: false,
     };
-    let debug = format!("{:?}", result);
+    let debug = format!("{result:?}");
     assert!(debug.contains("synced: 5"));
     assert!(debug.contains("failed: 1"));
 }
@@ -770,7 +807,8 @@ fn pull_lands_a_scoped_rate_and_the_branch_prices_only_its_location() {
     // THE test that closes the hazard: before the four columns travelled, this
     // payload arrived unscoped and the Jakarta rate answered for every
     // location. Now the scoped row applies where it belongs and nowhere else.
-    let store = setup();
+    let store_db = migrations::fresh_db();
+    let store = setup(&store_db);
     seed_scope(&store, "ent-a", "loc-jkt");
     let result = pull(
         &store,
@@ -825,7 +863,8 @@ fn pull_lands_a_legacy_payload_as_the_tenant_global_row() {
     // server predating 20260921 — lands as the tenant-global legacy row, which
     // is what every such row already is. Absence is not an error and not
     // "unknown scope".
-    let store = setup();
+    let store_db = migrations::fresh_db();
+    let store = setup(&store_db);
     seed_scope(&store, "ent-a", "loc-a");
     let result = pull(
         &store,
@@ -849,7 +888,8 @@ fn pull_refuses_a_scoped_rate_whose_target_is_absent_locally() {
     // for one location to the tenant-global answer. The FK would reject the
     // write anyway, and unlike the products path this does NOT roll back the
     // whole pull — the deviation is documented on the helper in sync_pull.rs.
-    let store = setup();
+    let store_db = migrations::fresh_db();
+    let store = setup(&store_db);
     seed_scope(&store, "ent-a", "loc-a");
     let result = pull(
         &store,
@@ -887,7 +927,8 @@ fn pull_clears_a_stale_scope_when_the_server_row_is_unscoped() {
     // The ON CONFLICT assignments are unconditional, not COALESCE: a pull makes
     // the server authoritative, so a scope REMOVED at the hub must clear here.
     // COALESCE would keep a dead location scope alive forever.
-    let store = setup();
+    let store_db = migrations::fresh_db();
+    let store = setup(&store_db);
     seed_scope(&store, "ent-a", "loc-a");
     store
         .conn()
@@ -980,5 +1021,257 @@ fn both_push_entry_points_share_the_disabled_decision() {
     assert!(
         !stub.contains("PushOutcome::Accepted"),
         "the disabled stub must never construct a fake Accepted outcome"
+    );
+}
+
+// ── C53: one disabled-capability rule, not six copies ────────────────
+//
+// The C51 extraction gave the push path a single decision
+// (`push_outcomes_without_http`) and this pins the same property for its
+// siblings. Six stubs carried the SAME literal message in their own bodies,
+// so a change to the wording, the error type, or the advice given to an
+// operator had to be made six times — and one would be missed. That is the
+// copy-drift trap C51's delegation pin already exists to close; this widens
+// it from one function to the whole disabled-capability family.
+
+/// The shared decision must be an error that names the cause.
+#[test]
+fn the_disabled_capability_error_names_the_cause() {
+    let err = sync_http_disabled_error();
+    assert!(matches!(err, SyncHttpError::Client(_)));
+    assert!(
+        err.to_string().contains("sync-http feature is disabled"),
+        "the message must name the cause, got: {err}"
+    );
+}
+
+/// Every disabled sibling must DELEGATE to the one rule.
+///
+/// Asserted on the source text rather than by calling each stub, because the
+/// stubs are feature-gated and a default test run cannot reach four of them —
+/// the same reason C51's pin reads the file. A body that re-inlined its own
+/// `SyncHttpError::Client("...".into())` would satisfy a behavioural test
+/// (same message, same variant) while restoring exactly the drift this fixes,
+/// so the assertion is on the SHAPE.
+#[test]
+fn every_disabled_sibling_delegates_to_the_one_rule() {
+    let src = include_str!("sync_client.rs");
+    let siblings = [
+        "ack_memo_on_server",
+        "fetch_active_memos_from_server",
+        "qris_charge_on_server",
+        "qris_status_from_server",
+    ];
+    for name in siblings {
+        // The disabled stub is the LAST declaration (the feature-gated real
+        // one comes first), matching the convention C51's pin established.
+        let stub = src
+            .split(&format!("pub async fn {name}("))
+            .last()
+            .unwrap_or_else(|| panic!("{name} must exist in sync_client.rs"));
+        // Stop at the closing brace of the stub's own body, which sits at
+        // column 0 (the function's items are indented). A plain "\n}" split
+        // matched an earlier nested brace and truncated the body to nothing,
+        // which made the failure message useless -- and, worse, would have
+        // made a re-inlined literal in a LATER part of the body invisible.
+        let body = stub.split("\n}").next().unwrap_or(stub);
+        assert!(
+            body.contains("sync_http_disabled_error()"),
+            "{name}'s disabled stub must delegate to the shared rule, not \
+             reimplement it; body was:\n{body}"
+        );
+        assert!(
+            !body.contains("\"sync-http feature is disabled\".into()"),
+            "{name}'s disabled stub must NOT inline the message literal"
+        );
+    }
+}
+
+/// The pull sibling must delegate too, and must use the shared VARIANT.
+///
+/// C53 flagged this one explicitly ("decide whether it should unify or stay
+/// distinct, and say why"). It unified: it returned `SyncHttpError::Network`
+/// where the other five returned `Client`, and a build with no HTTP is not a
+/// network failure — nothing is attempted. No caller branches on the variant
+/// (the only variant-naming match is `Err(AuthExpired)`; the rest is a
+/// catch-all `e.to_string()`), so nothing is lost by agreeing, while the
+/// message an operator sees now has ONE author.
+#[test]
+fn the_pull_stub_delegates_to_the_shared_rule_and_variant() {
+    let src = include_str!("sync_pull.rs");
+    let stub = src
+        .split("pub async fn fetch_snapshot_from_server(")
+        .last()
+        .expect("the disabled pull stub must exist in sync_pull.rs");
+    let body = stub.split("\n}").next().unwrap_or(stub);
+    assert!(
+        body.contains("sync_http_disabled_error()"),
+        "the pull stub must delegate to the shared rule; body was:\n{body}"
+    );
+    assert!(
+        !body.contains("SyncHttpError::Network"),
+        "a disabled build must not report a NETWORK failure — no request is \
+         attempted; body was:\n{body}"
+    );
+    assert!(
+        !body.contains("cannot pull snapshot from server"),
+        "the pull-only second phrasing must be gone, so the message has one author"
+    );
+}
+
+// ── Derived sync URL (ADR #55: auth and sync are one origin) ─────────
+
+#[test]
+fn derive_requires_an_unset_url() {
+    // The same invariant `should_auto_provision` encodes for the debug path:
+    // an operator's value always wins, and "unconfigured" includes a blank
+    // row, not just a missing one.
+    assert!(should_derive_sync_url(None));
+    assert!(should_derive_sync_url(Some("")));
+    assert!(should_derive_sync_url(Some("   ")));
+    assert!(!should_derive_sync_url(Some("https://license.kasir.mu")));
+    assert!(!should_derive_sync_url(Some("http://localhost:3099")));
+}
+
+#[test]
+fn derive_writes_the_origin_when_nothing_is_configured() {
+    let store_db = migrations::fresh_db();
+    let store = setup(&store_db);
+    let wrote = derive_sync_url_if_unset(store.conn(), "https://license.kasir.mu").unwrap();
+    assert!(
+        wrote,
+        "a fresh install has no URL, so the origin must be stored"
+    );
+    assert_eq!(
+        Settings::get_sync_server_url(store.conn())
+            .unwrap()
+            .as_deref(),
+        Some("https://license.kasir.mu")
+    );
+}
+
+#[test]
+fn derive_leaves_an_operator_url_untouched() {
+    let store_db = migrations::fresh_db();
+    let store = setup(&store_db);
+    Settings::set_sync_server_url(store.conn(), "https://shop.example.test").unwrap();
+
+    let wrote = derive_sync_url_if_unset(store.conn(), "https://license.kasir.mu").unwrap();
+    assert!(!wrote, "a configured URL must never be overwritten");
+    assert_eq!(
+        Settings::get_sync_server_url(store.conn())
+            .unwrap()
+            .as_deref(),
+        Some("https://shop.example.test"),
+        "the operator's value must survive derivation"
+    );
+}
+
+#[test]
+fn derive_is_idempotent() {
+    let store_db = migrations::fresh_db();
+    let store = setup(&store_db);
+    assert!(derive_sync_url_if_unset(store.conn(), "https://license.kasir.mu").unwrap());
+    assert!(
+        !derive_sync_url_if_unset(store.conn(), "https://license.kasir.mu").unwrap(),
+        "a second call with the URL already stored must write nothing"
+    );
+}
+
+#[test]
+fn derive_refuses_an_empty_origin() {
+    // An empty origin is unconfigured, not a value to store — writing it
+    // would leave a blank URL that looks configured to a later reader.
+    let store_db = migrations::fresh_db();
+    let store = setup(&store_db);
+    assert!(!derive_sync_url_if_unset(store.conn(), "").unwrap());
+    assert!(!derive_sync_url_if_unset(store.conn(), "   ").unwrap());
+    assert_eq!(Settings::get_sync_server_url(store.conn()).unwrap(), None);
+}
+
+#[test]
+fn derived_url_alone_does_not_start_sync() {
+    // The §4 trap, pinned as a test. Storing the URL must leave sync
+    // disabled, because the status probe asks a PUBLIC endpoint: an install
+    // with a URL and no working credential would draw a green pill while
+    // every push 401'd. Derivation is safe only while it starts nothing.
+    let store_db = migrations::fresh_db();
+    let store = setup(&store_db);
+    assert!(derive_sync_url_if_unset(store.conn(), "https://license.kasir.mu").unwrap());
+
+    assert!(
+        !Settings::is_sync_enabled(store.conn()).unwrap(),
+        "derivation must not enable sync"
+    );
+    assert!(
+        SyncConfig::from_settings(&store).unwrap().is_none(),
+        "sync must still refuse to start: enabled is false even though a URL exists"
+    );
+}
+
+#[test]
+fn probe_auth_reports_unauthenticated_without_a_key() {
+    // No stored credential means there is nothing to refuse, so the verdict
+    // must be Unauthenticated and never Rejected — reporting a refusal that
+    // never happened is the false-green lie in the other direction.
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let health = rt.block_on(probe_sync_auth("https://license.kasir.mu", None));
+    assert_eq!(health, SyncAuthHealth::Unauthenticated);
+    let health = rt.block_on(probe_sync_auth("https://license.kasir.mu", Some("")));
+    assert_eq!(health, SyncAuthHealth::Unauthenticated);
+}
+/// A TRANSPORT error is not a verdict on the item, so it must not be recorded
+/// as one.
+///
+/// `mark_all_failed` sets `status = 'failed'`, and nothing in this repo ever
+/// writes `status = 'pending'` again (verified: no `SET status = 'pending'`
+/// exists anywhere). `list_pending_offline` selects `status = 'pending'` only,
+/// so a `failed` push item is terminal: the queued sale never reaches the cloud
+/// again, silently. Two other places in this crate already say so in prose —
+/// `apply_sync_outcomes` ("push-side `failed` items have no requeue path") and
+/// the SQLite daemon ("push-side failed items are terminal (no requeue)").
+///
+/// The daemon therefore leaves items `pending` on a transport error
+/// (`daemon_tick.rs:107` -> `(0, Some(retry_err.to_string()))` and its
+/// `Err(e)` arm at `:291`), and the plan-gate arm here does the same on purpose
+/// ("a plan gate is not a failure"). A dropped connection, a 502 from a
+/// restarting container, or a build with `sync-http` compiled out are the SAME
+/// kind of transient condition and must not destroy the queue.
+#[test]
+fn sync_pending_keeps_items_pending_on_a_transport_error() {
+    let store_db = migrations::fresh_db();
+    let store = setup(&store_db);
+    store
+        .enqueue_offline("complete_sale", r#"{"id":"transient"}"#)
+        .unwrap();
+
+    // Nothing is listening on this port: a pure transport failure.
+    let config = SyncConfig {
+        server_url: "http://localhost:3099".into(),
+        api_key: None,
+    };
+    let result = sync_pending(&store, &config).unwrap();
+
+    assert_eq!(result.synced, 0);
+    assert!(
+        result.error.is_some(),
+        "the transport error must still be reported"
+    );
+
+    // The load-bearing assertion: the item is still reachable by the next
+    // retry cycle.
+    let pending = store.list_pending_offline().unwrap();
+    assert_eq!(
+        pending.len(),
+        1,
+        "a transient transport error must leave the item PENDING, not failed: \
+         `failed` is terminal here (nothing writes status back to 'pending'), so \
+         marking it failed loses the queued sale permanently"
+    );
+    let all = store.list_all_offline().unwrap();
+    assert_eq!(
+        all[0].status,
+        crate::offline::OfflineQueueStatus::Pending,
+        "a dropped connection is not a verdict on the item"
     );
 }

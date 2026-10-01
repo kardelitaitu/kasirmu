@@ -232,7 +232,7 @@ fn update_sync_settings_debug() {
         api_key: None,
         enabled: true,
     };
-    let debug = format!("{:?}", args);
+    let debug = format!("{args:?}");
     assert!(debug.contains("url"));
 }
 
@@ -749,4 +749,185 @@ async fn sync_run_scoped_marks_store_queue_and_leaves_global_untouched() {
             "global offline_queue must not receive scoped marks, got {items:?}"
         );
     }
+}
+
+// ── Scoped pull applies the snapshot to the STORE, not the global one ──
+//
+// `sync_pull_scoped`'s Phase 1 reads its sync config from the session's store
+// db (`resolve_store`), and its sibling `sync_run_scoped` above was already
+// fixed to write its outcomes to the store for exactly this reason. Phase 3 of
+// the pull was not: it still locked `state.db` (the global connection), so a
+// pulled catalog landed in a file the scoped readers never open. The tablet's
+// `list_products_scoped` reads the store, `create_product_scoped` writes the
+// store, and the desktop twin applies the same snapshot to the store — so the
+// screen reported "pulled N" while the product list never changed. Both
+// assertions below pin the invariant; the second catches the original bug.
+
+#[tokio::test]
+async fn sync_pull_applies_the_snapshot_to_the_store_not_the_global_db() {
+    use crate::state::AppState;
+    use kasirmu_core::Store;
+    use kasirmu_core::auth;
+    use kasirmu_core::migrations;
+    use kasirmu_core::session::SessionContext;
+    use platform_core::StoreDatabaseManager;
+    use tauri::Manager as _;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpListener;
+
+    // Fake snapshot server: one GET /api/sync/snapshot, one product row.
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let server_url = format!("http://{}", listener.local_addr().unwrap());
+    let task = tokio::spawn(async move {
+        let Ok((mut socket, _)) = listener.accept().await else {
+            return;
+        };
+        let mut buffer = vec![0_u8; 16 * 1024];
+        let _ = socket.read(&mut buffer).await;
+        let body = r#"{"products":[{"sku":"SYNC-PULL-1","name":"Pulled","price_minor":500,"currency":"USD"}],"tax_rates":[],"users":[]}"#;
+        let response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+            body.len(),
+            body
+        );
+        let _ = socket.write_all(response.as_bytes()).await;
+    });
+
+    // Global db carries identity only; the scoped store db is a separate file.
+    let conn = migrations::fresh_db();
+    let sync_user_id = {
+        let store = Store::new(&conn);
+        store.seed_default_roles().unwrap();
+        let hash = auth::hash_pin("1234").unwrap();
+        store
+            .create_user("sync-admin", &hash, "Sync Admin", "role-owner")
+            .unwrap()
+            .id
+    };
+
+    let temp_dir = tempfile::tempdir().unwrap();
+    let mut state = AppState::for_test_with_conn(conn);
+    state.db_manager = StoreDatabaseManager::new(temp_dir.path().to_path_buf(), migrations::ALL);
+    state.session_store.write().unwrap().insert(
+        "scoped-sync-token".into(),
+        SessionContext::new(
+            sync_user_id,
+            "role-owner".into(),
+            "terminal-1".into(),
+            "store-a".into(),
+            "instance-1".into(),
+            "restaurant-pos".into(),
+            None,
+            0,
+        ),
+    );
+    let app = tauri::test::mock_builder()
+        .manage(state)
+        .build(tauri::generate_context!())
+        .unwrap();
+
+    // Configure sync through the STORE db — the same db Phase 1 reads.
+    {
+        let state = app.state::<AppState>();
+        let conn_arc = state.resolve_store("scoped-sync-token").unwrap();
+        let db_guard = conn_arc.lock().unwrap();
+        update_sync_settings_data(
+            &db_guard,
+            &UpdateSyncSettingsArgs {
+                server_url: Some(server_url),
+                api_key: Some("test-jwt".into()),
+                enabled: true,
+            },
+        )
+        .unwrap();
+    }
+
+    let result = sync_pull_scoped(
+        "scoped-sync-token".into(),
+        SyncPullArgs {
+            confirm_destructive: true,
+        },
+        app.state(),
+    )
+    .await
+    .unwrap();
+    task.await.unwrap();
+
+    assert_eq!(
+        result.products_pulled, 1,
+        "the server snapshot carried one product"
+    );
+    assert!(result.error.is_none(), "pull must not report an error");
+
+    // Assertion 1 — the pulled product is in the STORE db the scoped
+    // catalog reads.
+    {
+        let state = app.state::<AppState>();
+        let conn_arc = state.resolve_store("scoped-sync-token").unwrap();
+        let db_guard = conn_arc.lock().unwrap();
+        let count: i64 = db_guard
+            .query_row(
+                "SELECT COUNT(*) FROM products WHERE sku = 'SYNC-PULL-1'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            count, 1,
+            "a pulled product must land in the store db list_products_scoped reads"
+        );
+    }
+
+    // Assertion 2 — the GLOBAL database is untouched. This is the assertion
+    // that would have caught the original bug: Phase 3 used to write here.
+    {
+        let state = app.state::<AppState>();
+        let db = state.db.lock().await;
+        let count: i64 = db
+            .query_row(
+                "SELECT COUNT(*) FROM products WHERE sku = 'SYNC-PULL-1'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            count, 0,
+            "the global catalog must not receive the scoped pull's snapshot"
+        );
+    }
+}
+
+// ── COR-31: the conflict commands' HTTP client must be bounded ──────
+
+/// `list_sync_conflicts_scoped` and `resolve_sync_conflict_scoped` built
+/// their requests with a bare `reqwest::Client::new()`, which has NO
+/// timeout. These are user-initiated UI calls (the operator taps the
+/// conflict queue and then resolves a row), so an unbounded hang pins the
+/// command forever and the spinner never clears.
+///
+/// Why an `include_str!` assertion and not a behavioural one: reqwest's
+/// `Client` does not expose its configured timeouts, so a bounded client
+/// and an unbounded one are indistinguishable at runtime. The coupling is
+/// "both conflict commands go through a `Client::builder()` that sets a
+/// timeout", which is a property of the source.
+#[test]
+fn sync_conflict_commands_use_a_bounded_client() {
+    let src = include_str!("sync.rs");
+    assert!(
+        src.contains("bounded_conflict_client()"),
+        "both conflict commands must build their client through the bounded helper",
+    );
+    assert!(
+        src.contains(".connect_timeout(") && src.contains(".timeout("),
+        "the conflict client must bound both the connect phase and the total request",
+    );
+    // The bounded helper keeps a `reqwest::Client::new()` FALLBACK for the
+    // (unreachable in practice) builder failure, matching rate_sync.rs and
+    // the payment drivers; what must not come back is a bare `Client::new()`
+    // used directly as the request builder.
+    assert!(
+        !src.contains("reqwest::Client::new().get(")
+            && !src.contains("reqwest::Client::new()\n        .post("),
+        "a bare Client::new() request builder has no timeout; the conflict commands must not reintroduce it",
+    );
 }

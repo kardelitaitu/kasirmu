@@ -573,6 +573,28 @@ impl Settings {
         )?)
     }
 
+    /// Get the local REST API's per-install signing secret (transparently
+    /// decrypted). `None` when the operator has never enabled the API.
+    ///
+    /// C14(a): before this family existed the value was cleartext in
+    /// `settings.value`. The read is branch-tolerant and passes the *legacy
+    /// plaintext shape* (64 lowercase hex chars) through — see
+    /// [`platform_core::settings::Settings::get_local_api_secret`] for why this
+    /// family needs its own fallback rather than the shared fail-closed one.
+    pub fn get_local_api_secret(conn: &Connection) -> Result<Option<String>, CoreError> {
+        Ok(platform_core::settings::Settings::get_local_api_secret(
+            conn,
+        )?)
+    }
+
+    /// Set the local REST API's per-install signing secret (transparently
+    /// encrypted at rest).
+    pub fn set_local_api_secret(conn: &Connection, secret: &str) -> Result<(), CoreError> {
+        Ok(platform_core::settings::Settings::set_local_api_secret(
+            conn, secret,
+        )?)
+    }
+
     /// Get the exchange rate sync interval in minutes.
     pub fn get_rate_sync_interval(conn: &Connection) -> Result<String, CoreError> {
         Ok(platform_core::settings::Settings::get_rate_sync_interval(

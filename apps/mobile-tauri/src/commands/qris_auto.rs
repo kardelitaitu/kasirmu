@@ -49,8 +49,9 @@ pub async fn qris_auto_charge_scoped(
     args: QrisAutoChargeArgs,
     state: State<'_, AppState>,
 ) -> Result<QrisAutoChargeDto, AppError> {
-    let (session, conn_arc) = state.resolve_scope(&session_token)?;
+    let session = state.resolve_session(&session_token)?;
     require_permission_for_session(&state, &session, permissions::SALES_PROCESS).await?;
+    let conn_arc = state.resolve_store(&session_token)?;
     let config = {
         let db_guard = conn_arc
             .lock()
@@ -83,8 +84,9 @@ pub async fn qris_auto_status_scoped(
     args: QrisAutoStatusArgs,
     state: State<'_, AppState>,
 ) -> Result<QrisAutoStatusDto, AppError> {
-    let (session, conn_arc) = state.resolve_scope(&session_token)?;
+    let session = state.resolve_session(&session_token)?;
     require_permission_for_session(&state, &session, permissions::SALES_PROCESS).await?;
+    let conn_arc = state.resolve_store(&session_token)?;
     let config = {
         let db_guard = conn_arc
             .lock()

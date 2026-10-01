@@ -1,3 +1,6 @@
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · Clean pass — the deliverable is fully present and countable. All five shared card components exist exactly where the Plan says to put them, under `ui/src/features/settings/workspace-cards/`: `WorkspaceStorePosSettings.tsx`, `WorkspaceRestaurantPosSettings.tsx`, `WorkspaceKdsSettings.tsx`, `WorkspaceInventorySettings.tsx` and `TerminalPreferencesCard.tsx`. A sixth, `StoreInfoCard.tsx`, sits alongside them — it is not in this phase's scope but is credited to Phase 2, which is where it is checked. The `WorkspaceCardProps` design (sessionToken / locationId / terminalId / variant / onSaved, with terminalId required for the modal variant) is a sound contract and the cards that consume it exist, so the interface is load-bearing rather than aspirational. The card directory did not exist at Baseline, as recorded. Same unchecked-criteria note as the sibling 0-phase files: Status says IMPLEMENTED while every acceptance box is open. I did not tick them — confirming the artifacts exist is not the same as running the typecheck/lint/unit/E2E suites the boxes assert, and a ticked box is a claim about a verification I did not perform. -->
+<!-- dead-ref-prefix-ok: ui/src/features/kds/KdsSettingsPanel.tsx -->
+<!-- Cited as the KDS field source of truth; the component has since been renamed or removed. Recorded in the stamp above. -->
 # Phase 1 — Shared Cards & Local Profile
 
 - **Status:** IMPLEMENTED (ADR #22 unified workspace settings shipped in 0.0.19; re-audited 2026-08-08 by docs-auditor)
@@ -112,4 +115,4 @@ export interface WorkspaceCardProps {
 
 > (status corrected to IMPLEMENTED).
 >
-> last audited 08-08-26 by docs-auditor
+> last audited 29-09-26 by docs-auditor

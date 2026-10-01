@@ -159,7 +159,7 @@ def find_var_references(filepath: Path) -> list[tuple[int, str, str | None]]:
 
 def main():
     print("=" * 72)
-    print("  OZ-POS CSS Token Compliance Scanner")
+    print("  kasir.mu CSS Token Compliance Scanner")
     print("=" * 72)
     print()
 

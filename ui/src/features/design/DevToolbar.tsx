@@ -6,6 +6,13 @@ import { createMemoScoped, publishMemoScoped, type MemoDuration } from '@/api/me
 import { listLocationsScoped } from '@/api/locations';
 import { parseAppError } from '@/utils/app-error';
 import { devLog } from '@/utils/devLog';
+import {
+  MOCK_TIER_KEYS,
+  MOCK_TIER_NAMES,
+  getMockTier,
+  setMockTier,
+  type MockTierKey,
+} from '@/dev-mock/core/mockTier';
 import './DevToolbar.css';
 
 /**
@@ -66,7 +73,7 @@ const THEMES: ThemeOption[] = [
   { key: 'dark', label: 'Dark', icon: <MoonIcon />, swatches: ['#080e16', '#5a9fd4', '#cddff0'] },
 ];
 
-const STORAGE_POS = 'oz-pos-dev-toolbar-pos';
+const STORAGE_POS = 'kasirmu-dev-toolbar-pos';
 
 // The toolbar is a fixed 256×256 panel (DevToolbar.css). Clamping keeps
 // at least the drag handle on-screen: without it, a position saved on a
@@ -323,6 +330,28 @@ export function DevToolbar() {
     }
   }, [sessionToken, spawning]);
 
+  // Mirrors the mock's resolution order (see getMockTier) so the button shows
+  // the tier actually being served, including one arriving via ?tier=. Read in
+  // a lazy initialiser, not the render body, because the mock reads window at
+  // CALL time and the DevToolbar mounts before navigation settles.
+  const [tier, setTier] = useState<MockTierKey>(() => getMockTier());
+
+  /**
+   * Switch the served tier and reload.
+   *
+   * The reload is load-bearing, not a shortcut. Everything downstream of the
+   * tier — boot status, caps, gates, the settings rows — is fetched once when
+   * its screen mounts, so writing the new value alone would leave the app
+   * describing the previous tier until the user happened to navigate away and
+   * back. Reloading makes the whole preview consistent with the selection in
+   * one step, which is the entire point of the switch.
+   */
+  const chooseTier = useCallback((next: MockTierKey) => {
+    setMockTier(next);
+    setTier(next);
+    window.location.reload();
+  }, []);
+
   const style: React.CSSProperties | undefined =
     pos.x !== -1 || pos.y !== -1
       ? { left: pos.x, top: pos.y, bottom: undefined, right: undefined }
@@ -355,6 +384,27 @@ export function DevToolbar() {
             >
               {t.icon}
               <span>{t.label}</span>
+            </button>
+          ))}
+        </div>
+
+        <p className="dev-toolbar-label">Tier</p>
+        <div
+          className="dev-toolbar-themes dev-toolbar-tier-row"
+          role="radiogroup"
+          aria-label="Subscription tier"
+        >
+          {MOCK_TIER_KEYS.map((key) => (
+            <button
+              key={key}
+              type="button"
+              className={`dev-toolbar-theme-btn${tier === key ? ' dev-toolbar-theme-btn--active' : ''}`}
+              onClick={() => chooseTier(key)}
+              role="radio"
+              aria-checked={tier === key}
+              aria-label={`${MOCK_TIER_NAMES[key]} tier`}
+            >
+              <span>{MOCK_TIER_NAMES[key]}</span>
             </button>
           ))}
         </div>

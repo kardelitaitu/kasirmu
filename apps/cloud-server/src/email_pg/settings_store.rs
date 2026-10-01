@@ -110,5 +110,5 @@ pub async fn get_report_schedule_pg(
 pub async fn get_store_name_pg(pool: &Pool, tenant: &str) -> Result<String, String> {
     Ok(get_setting_scoped_pg(pool, "store.name", tenant)
         .await?
-        .unwrap_or_else(|| "OZ-POS Store".to_string()))
+        .unwrap_or_else(|| "kasir.mu Store".to_string()))
 }

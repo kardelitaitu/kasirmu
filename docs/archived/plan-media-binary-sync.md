@@ -1,3 +1,4 @@
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · Clean pass, and worth recording that a plan this old is still accurate — this file was the only one in this batch with NO audit stamp and NO footer at all, so nothing had ever checked it. Every anchor the design depends on is real and was located: the `media_assets` and `media_thumbnails` tables exist, defined in `crates/kasirmu-core/migrations/20260824_media_edc.sql:18` and carried into the base schema at `crates/kasirmu-core/migrations/20260813_init.pg.sql:1703`; `content_hash` is a real field the pipeline uses (`crates/kasirmu-media/src/pipeline.rs`, with tests in `pipeline_tests.rs`); the `MediaLimits` guard this plan specifies (`max_input_bytes`, `max_pixels`, `max_side`) exists in the same crate; and the RLS reference in rule 4 points at a script that is still present, `scripts/generate-pg-migration.py`. So the central decision — metadata rows flow through the sync engine, bytes never do — was not only followed but is still the shape of the code. · NOT re-measured: the three Open items (object-storage credential config surface, cloud-side thumbnail job, CDN invalidation) are tracked work, not claims about what exists, and this file lives in `docs/archived/` so its items are informational rather than live. The settings keys it reserves (`media.storage_backend`, `media.root_path`) are named as reserved, which is a proposal. · No stamp or footer existed on this file before this pass. -->
 # Media Binary Sync Strategy — PLANNED
 
 **Status:** PLANNED — design decision made now, so the `media_assets` schema,
@@ -51,3 +52,5 @@ row replication stream.**
   `media.storage_backend`, `media.root_path`).
 - Background job on cloud for post-upload thumbnail generation (async pipeline).
 - CDN / cache invalidation after asset replacement or deletion.
+
+> last audited 29-09-26 by docs-auditor

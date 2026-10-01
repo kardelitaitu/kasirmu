@@ -21,6 +21,7 @@ import { Card } from '@/components/Card';
 import { Button } from '@/components/Button';
 import { Skeleton } from '@/components/Skeleton';
 import { deriveAsyncPhase } from '@/utils/retry-state';
+import { settleRead } from '@/utils/settle-read';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import './OfflineQueueScreen.css';
 
@@ -87,28 +88,9 @@ function formatRelativeTime(iso: string | null): { fluentKey: string; fluentArgs
 // ── Component ───────────────────────────────────────────────────────
 
 /** Offline queue screen — view pending, synced, and failed offline operations with retry and delete capabilities. */
-/**
- * One settled read: `ok: false` records UNKNOWN — never a borrowed fact.
- *
- * Copied from the sanctioned shape at ui/src/app/AppShell.tsx:87-94.
- * The point is not the try/catch, it is what the CALLER is allowed to write
- * afterwards: on `ok: false` there is no value, so a failure cannot be stored
- * as — or rendered as — an answer the call was never able to produce. The
- * console line is what makes the two cases tellable apart later; a swallowed
- * throw and a pending read look identical from the screen, and only one of
- * them is a fact about the queue.
- */
-async function settleRead<T>(
-  label: string,
-  read: Promise<T>,
-): Promise<{ ok: true; value: T } | { ok: false }> {
-  try {
-    return { ok: true, value: await read };
-  } catch (err) {
-    console.error(`[offline-queue] ${label} read failed — recording unknown:`, err);
-    return { ok: false };
-  }
-}
+// `settleRead` is the shared answered-or-unknown read contract:
+// ui/src/utils/settle-read.ts. It used to be copied here from app/AppShell.tsx,
+// and four more screens grew their own copy before it moved.
 
 export default function OfflineQueueScreen() {
   const { l10n } = useLocalization();

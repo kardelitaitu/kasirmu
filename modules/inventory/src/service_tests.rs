@@ -45,7 +45,7 @@ fn get_product_returns_correct_price() {
     assert_eq!(p.price.minor_units, 99999);
 }
 
-// NOTE: get_stock and adjust_stock depend on inventory.sku and
-// inventory.low_stock_threshold columns which are planned-schema columns
-// not yet in the current migration. Tests will be added when the
-// migration is applied.
+// NOTE: the sibling get_stock/adjust_stock pair used to live here with a note saying
+// their columns were planned-schema and their tests would come later. Measured 2026-09-29:
+// they had no caller anywhere, so they were removed from service.rs instead -- unreachable
+// code cannot be covered, and it was holding this crate below its coverage floor.

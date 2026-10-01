@@ -8,6 +8,8 @@ next: none | perf: N/A
 
 use super::dependency::collect_dependencies;
 use super::types::ModuleStatus;
+use crate::capability::{Capability, CapabilityRegistry, ModuleCapabilities};
+use crate::context::KernelContext;
 use crate::error::KernelError;
 use crate::event_bus::EventBus;
 use foundation::contracts::{Module, Service};
@@ -37,6 +39,8 @@ pub struct Kernel {
     started_service_ids: Vec<&'static str>,
     /// In-process event bus for module-to-module communication.
     event_bus: EventBus,
+    /// Declared and granted capabilities per module (Phase 2).
+    capabilities: CapabilityRegistry,
 }
 
 impl Kernel {
@@ -50,6 +54,7 @@ impl Kernel {
             started: false,
             started_service_ids: Vec::new(),
             event_bus: EventBus::new(),
+            capabilities: CapabilityRegistry::new(),
         }
     }
 
@@ -108,6 +113,99 @@ impl Kernel {
         }
 
         self.register(module)
+    }
+
+    // ── Capabilities (Phase 2) ──
+
+    /// Declare the capabilities a module requires and the capabilities it is
+    /// granted. Replaces any previous declaration for that module.
+    ///
+    /// This is deliberately explicit: requirement and grant are two separate
+    /// sets, and boot fails when a requirement is not covered by a grant (see
+    /// [`verify_capabilities`](Self::verify_capabilities)). A module that
+    /// declares nothing is unaffected.
+    pub fn declare_capabilities(&mut self, module: &'static str, declared: ModuleCapabilities) {
+        debug!(
+            module,
+            required = declared.required().len(),
+            granted = declared.granted().len(),
+            "declaring module capabilities"
+        );
+        self.capabilities.register(module, declared);
+    }
+
+    /// The kernel's capability registry.
+    #[must_use]
+    pub fn capabilities(&self) -> &CapabilityRegistry {
+        &self.capabilities
+    }
+
+    /// A per-module context over the capability registry.
+    #[must_use]
+    pub fn context_for(&self, module: &'static str) -> KernelContext<'_> {
+        KernelContext::new(module, &self.capabilities)
+    }
+
+    /// Declare, from a manifest capability list, each entry as both required
+    /// and granted. A manifest that lists a capability is asserting the module
+    /// may use it.
+    ///
+    /// # Errors
+    /// Returns [`KernelError::InvalidCapability`] for a malformed string.
+    pub fn declare_from_manifest(
+        &mut self,
+        module: &'static str,
+        manifest_capabilities: &[String],
+    ) -> Result<(), KernelError> {
+        let mut declared = ModuleCapabilities::none();
+        for raw in manifest_capabilities {
+            let cap = Capability::parse(raw)?;
+            declared = declared.require(cap.clone()).grant(cap);
+        }
+        self.declare_capabilities(module, declared);
+        Ok(())
+    }
+
+    /// Verify that every declared capability is granted, and that every
+    /// namespace grant a module declares names a module it depends on.
+    ///
+    /// # Errors
+    /// Returns [`KernelError::MissingCapability`] naming the first module
+    /// (in id order) with an ungranted requirement, or
+    /// [`KernelError::UndeclaredNamespaceGrant`] naming the first module
+    /// (in id order) whose `namespace_grants()` includes a module it does not
+    /// declare in `dependencies()`.
+    pub fn verify_capabilities(&self) -> Result<(), KernelError> {
+        self.capabilities.verify_all()?;
+        self.verify_namespace_grants()
+    }
+
+    /// Reject a module whose `namespace_grants()` names a module it does not
+    /// depend on (Phase 4 P4.1).
+    ///
+    /// Deterministic: registered module ids are visited in sorted order, so the
+    /// error names the first offender.
+    ///
+    /// # Errors
+    /// [`KernelError::UndeclaredNamespaceGrant`] for the first offender.
+    fn verify_namespace_grants(&self) -> Result<(), KernelError> {
+        let mut ids: Vec<&'static str> = self.modules.keys().copied().collect();
+        ids.sort_unstable();
+        for id in ids {
+            let Some(module) = self.modules.get(id) else {
+                continue;
+            };
+            let deps = module.dependencies();
+            for granted in module.namespace_grants() {
+                if !deps.contains(granted) {
+                    return Err(KernelError::UndeclaredNamespaceGrant {
+                        module: id,
+                        granted,
+                    });
+                }
+            }
+        }
+        Ok(())
     }
 
     /// Register a service with the kernel.
@@ -174,6 +272,11 @@ impl Kernel {
         let order = self.resolve_dependencies()?;
         info!("loading {} modules in dependency order", order.len());
 
+        // Phase 2: fail fast before any on_load runs if a module requires a
+        // capability it was not granted. Checking before the loop means a
+        // half-loaded system never exists.
+        self.verify_capabilities()?;
+
         for &id in &order {
             // Skip modules that already loaded successfully — this makes
             // load_all idempotent across retries after a partial failure
@@ -202,6 +305,13 @@ impl Kernel {
                 operation: "load",
                 source: e,
             })?;
+            // Phase 2: hand the module its (capability-scoped) context. The
+            // borrow is released before the status update because the status
+            // map and modules map are disjoint fields, but Rust's borrow
+            // checker sees one &mut self — so build the context, call, then
+            // drop the module borrow.
+            let ctx = KernelContext::new(id, &self.capabilities);
+            module.on_context(&ctx);
             self.statuses.insert(id, ModuleStatus::Loaded);
         }
 
@@ -594,6 +704,64 @@ impl Kernel {
         &self.event_bus
     }
 
+    /// Subscribe a module's event handler, gated on a capability.
+    ///
+    /// The module must have been *granted* `capability` (a
+    /// `namespace:action` string, e.g. `read:sales`). Two cases are
+    /// deliberately distinct:
+    ///
+    /// * The module declares **no** capabilities at all — the legacy,
+    ///   pre-Phase-2 shape. Subscription is allowed, but a deprecation
+    ///   warning names the module so the migration is observable rather
+    ///   than silent. This is the plan's "legacy access still works
+    ///   during migration".
+    /// * The module declares some capability set and does not hold this
+    ///   one — the subscription is **refused** with
+    ///   [`KernelError::MissingCapability`]. A module cannot listen on
+    ///   another vertical's event without holding the grant.
+    ///
+    /// The handler is registered with module ownership, so stopping the
+    /// module unsubscribes it (see [`EventBus::subscribe_for_module`]).
+    ///
+    /// # Errors
+    /// Returns [`KernelError::MissingCapability`] when the module declares
+    /// capabilities but has not been granted this one.
+    pub fn subscribe_gated<E>(
+        &self,
+        module: &'static str,
+        topic: &'static str,
+        capability: &str,
+        handler: Box<dyn foundation::contracts::EventHandler<E>>,
+    ) -> Result<(), KernelError>
+    where
+        E: foundation::contracts::DomainEvent + 'static,
+    {
+        match self.capabilities.get(module) {
+            // Legacy module: no capability declaration at all. Allowed with a
+            // warning so the gap shows up in boot logs instead of going
+            // unnoticed until the manifest is hardened.
+            None => {
+                tracing::warn!(
+                    module,
+                    topic,
+                    "module subscribes without declaring capabilities; \
+                     legacy access is allowed during migration but should be \
+                     declared in the module manifest"
+                );
+            }
+            Some(caps) => {
+                if !caps.granted().iter().any(|c| c.as_str() == capability) {
+                    return Err(KernelError::MissingCapability {
+                        module,
+                        missing: capability.to_string(),
+                    });
+                }
+            }
+        }
+        self.event_bus.subscribe_for_module(module, topic, handler);
+        Ok(())
+    }
+
     // ── State queries ─────────────────────────────────────────────
 
     /// Whether `load_all` has been called.
@@ -612,3 +780,7 @@ impl Default for Kernel {
         Self::new()
     }
 }
+
+#[cfg(test)]
+#[path = "capability_lifecycle_tests.rs"]
+mod capability_lifecycle_tests;

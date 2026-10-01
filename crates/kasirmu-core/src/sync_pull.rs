@@ -244,11 +244,26 @@ pub async fn fetch_snapshot_from_server(config: &SyncConfig) -> Result<Snapshot,
 }
 
 /// Stub used when `sync-http` feature is disabled.
+///
+/// C53: this was the ONE sibling that did not match the rest — it returned
+/// [`SyncHttpError::Network`] with a longer, pull-specific message, where the
+/// other five returned [`SyncHttpError::Client`] with the plain one. The
+/// divergence is unified here, deliberately, for two reasons established by
+/// reading the callers rather than by preference:
+///
+/// 1. **A build with no HTTP is not a network failure.** `Network` means a
+///    request was attempted and failed; nothing is attempted here. `Client`
+///    is the honest variant, and it is the one every sibling already used.
+/// 2. **No caller branches on the variant.** The only match on the pull
+///    result that names a variant is `matches!(snapshot, Err(AuthExpired))`
+///    (crates/kasirmu-bridge/src/sync.rs:954); the error is otherwise consumed
+///    by a catch-all `Err(e) => Some(e.to_string())` (:1056-1061). So the
+///    variant carries no behaviour for a caller to lose — but the MESSAGE
+///    does reach an operator through that `to_string()`, which is why the
+///    wording is now the shared one and not a pull-only second phrasing.
 #[cfg(not(feature = "sync-http"))]
 pub async fn fetch_snapshot_from_server(_config: &SyncConfig) -> Result<Snapshot, SyncHttpError> {
-    Err(SyncHttpError::Network(
-        "sync-http feature is disabled; cannot pull snapshot from server".into(),
-    ))
+    Err(crate::sync_client::sync_http_disabled_error())
 }
 
 /// Apply a fetched snapshot to the local database inside a single
@@ -324,13 +339,13 @@ fn upsert_products(
             p.updated_at,
             p.price_updated_at,
             now,
-            p.track_serial as i64,
+            i64::from(p.track_serial),
             p.store_id,
             p.brand,
             p.rack_location,
             p.notes,
             p.unit,
-            p.is_active as i64,
+            i64::from(p.is_active),
         ])?;
         count += 1;
     }
@@ -425,8 +440,8 @@ fn upsert_tax_rates(
             r.id,
             r.name,
             r.rate_bps,
-            r.is_default as i64,
-            r.is_inclusive as i64,
+            i64::from(r.is_default),
+            i64::from(r.is_inclusive),
             r.created_at,
             r.updated_at,
             now,
@@ -489,7 +504,7 @@ fn upsert_users(tx: &rusqlite::Transaction<'_>, rows: &[SnapshotUser]) -> Result
             SNAPSHOT_PIN_HASH_PLACEHOLDER, // ?3 — never a real verifier
             u.display_name,                // ?4
             u.role_id,                     // ?5
-            u.is_active as i64,            // ?6
+            i64::from(u.is_active),        // ?6
             u.created_at,                  // ?7
             u.updated_at,                  // ?8
             now,                           // ?9 — default for created_at / updated_at

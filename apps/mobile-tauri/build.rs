@@ -1,10 +1,21 @@
-//! Tablet-client build script: runs `tauri_build::build()`.
+//! Tablet-client build script: runs `tauri_build::try_build(...)` with an explicit
+//! Windows manifest (`level="asInvoker"` + Common-Controls v6).
 //!
 //! Windows manifest embedding for test binaries is deliberately NOT done
 //! here — see the comment inside `main` for why it lives in `src/lib.rs`.
 
 fn main() {
-    tauri_build::build();
+    let mut windows = tauri_build::WindowsAttributes::new();
+    windows = windows.app_manifest(include_str!("app.manifest"));
+    let attrs = tauri_build::Attributes::new().windows_attributes(windows);
+
+    // INVARIANT: a build-script failure is not recoverable at runtime — there is
+    // no running program to degrade, and `try_build` failing means the manifest
+    // could not be embedded, so launching without it would silently reintroduce
+    // the UAC elevation prompt this script exists to prevent. Aborting the build
+    // with the underlying error is the correct outcome; a `Result` path here
+    // would have nowhere to propagate to.
+    tauri_build::try_build(attrs).expect("failed to run tauri-build");
 
     // The manifest embedding for test binaries is handled via a
     // `.drectve` linker directive section in `src/lib.rs` (gated on

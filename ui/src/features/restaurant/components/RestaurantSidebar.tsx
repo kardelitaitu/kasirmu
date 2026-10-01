@@ -25,6 +25,8 @@ import { animDuration } from '@/utils/animation';
 import { hueFromName } from '@/utils/color';
 import { useWorkspaceNav } from '@/hooks/useWorkspaceNav';
 import { useVersionStatus } from '@/hooks/useVersionStatus';
+import { useAuth } from '@/contexts/AuthContext';
+import { isRovingKey, computeRovingIndex } from './sidebarLogic';
 
 /** The signed-in cashier, as the sidebar header shows them. */
 export interface RestaurantSidebarProfile {
@@ -51,6 +53,9 @@ export interface RestaurantSidebarActions {
   onOpenTables: () => void;
   onOpenHistory: () => void;
   onOpenKitchenDisplay: () => void;
+  /** Full-page configuration sub-screens */
+  onOpenReceipts?: () => void;
+  onOpenPayments?: () => void;
   /** Request exit from workspace; handled by host to check shifts. */
   onRequestExit?: () => void;
 }
@@ -70,6 +75,8 @@ export interface RestaurantSidebarProps {
    * host with no upload path does not get a button that does nothing.
    */
   onChangePhoto?: (() => void) | undefined;
+  /** Override manager permissions (defaults to useAuth().isManager). */
+  isManager?: boolean | undefined;
 }
 
 // ── Row glyphs ─────────────────────────────────────────────────────────
@@ -127,6 +134,27 @@ const LockGlyph = () => (
   </svg>
 );
 
+const LockSmallGlyph = () => (
+  <svg {...GLYPH} width={12} height={12}>
+    <rect x="4" y="10" width="16" height="11" rx="2" />
+    <path d="M8 10V7a4 4 0 0 1 8 0v3" />
+  </svg>
+);
+
+const ReceiptGlyph = () => (
+  <svg {...GLYPH}>
+    <path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z" />
+    <path d="M8 7h8M8 11h8M8 15h5" />
+  </svg>
+);
+
+const PaymentGlyph = () => (
+  <svg {...GLYPH}>
+    <rect x="2" y="5" width="20" height="14" rx="2" />
+    <line x1="2" y1="10" x2="22" y2="10" />
+  </svg>
+);
+
 const ExitGlyph = () => (
   <svg {...GLYPH}>
     <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
@@ -164,8 +192,11 @@ export function RestaurantSidebar({
   triggerRef,
   profile,
   onChangePhoto,
+  isManager: isManagerProp,
 }: RestaurantSidebarProps) {
   const { l10n } = useLocalization();
+  const { isManager: authIsManager } = useAuth();
+  const effectiveIsManager = isManagerProp ?? authIsManager;
   // The live app version, from the ONE shared probe (`StatusBar` reads the same
   // singleton, so this adds no second updater check). Not a hardcoded string:
   // the login footer's `v0.0.39` is already duplicated in three files.
@@ -197,10 +228,10 @@ export function RestaurantSidebar({
 
   useEffect(() => {
     if (!exiting) {
-      if (exitTimerRef.current !== null) {
-        clearTimeout(exitTimerRef.current);
-        exitTimerRef.current = null;
-      }
+      // No stale timer to clear here: `exitTimerRef.current` is nulled either
+      // by the timer callback (before it calls setExiting(false)) or by the
+      // effect's own cleanup on transition, so it is always null by the time
+      // `exiting` is false.
       return;
     }
     exitTimerRef.current = setTimeout(() => {
@@ -259,28 +290,24 @@ export function RestaurantSidebar({
   }, [open, onOpenChange, sidebarRef, triggerRef]);
 
   const handleSidebarKeyDown = useCallback((e: React.KeyboardEvent<HTMLButtonElement>) => {
-    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp' && e.key !== 'Home' && e.key !== 'End') return;
+    if (!isRovingKey(e.key)) return;
     const items = Array.from(
       sidebarRef.current?.querySelectorAll<HTMLButtonElement>('button.restaurant-sidebar-item') ?? [],
     );
-    if (items.length === 0) return;
-    const current = items.indexOf(e.currentTarget);
-    const next = e.key === 'Home'
-      ? 0
-      : e.key === 'End'
-        ? items.length - 1
-        : e.key === 'ArrowDown'
-          ? (current + 1 + items.length) % items.length
-          : (current - 1 + items.length) % items.length;
+    // `computeRovingIndex` returns `null` for an empty row list (the
+    // empty-tablist case, unit-tested at the pure-logic layer) — then
+    // `next ?? -1` points past the list, `items[-1]` is `undefined`, and
+    // `?.focus()` skips it. No branch is needed here.
+    const next = computeRovingIndex(items.indexOf(e.currentTarget), items.length, e.key);
     e.preventDefault();
-    items[next]?.focus();
+    items[next ?? -1]?.focus();
   }, [sidebarRef]);
 
   const avatar = profile ? (
     <ProductThumb
       hash={profile.avatarHash}
       name={profile.displayName}
-      size={38}
+      size={48}
       shape="circle"
       lazy={false}
       hue={hueFromName(profile.displayName)}
@@ -406,6 +433,54 @@ export function RestaurantSidebar({
               <KitchenGlyph />
             </Tile>
             <Localized id="kds-title"><span>Kitchen Display</span></Localized>
+          </button>
+          <button
+            type="button"
+            className={`restaurant-sidebar-item${!effectiveIsManager ? ' restaurant-sidebar-item--disabled' : ''}`}
+            disabled={!effectiveIsManager}
+            onKeyDown={handleSidebarKeyDown}
+            aria-label={l10n.getString('restaurant-sidebar-receipts')}
+            onClick={() => {
+              // The button is disabled for non-managers, so a non-manager
+              // click can never reach here; no guard is needed.
+              cartActions.onOpenReceipts?.();
+              onOpenChange(false);
+            }}
+          >
+            <Tile>
+              <ReceiptGlyph />
+            </Tile>
+            <Localized id="restaurant-sidebar-receipts"><span>Receipts</span></Localized>
+            {!effectiveIsManager && (
+              <span className="restaurant-sidebar-badge-manager">
+                <LockSmallGlyph />
+                <Localized id="restaurant-manager-required"><span>Manager+</span></Localized>
+              </span>
+            )}
+          </button>
+          <button
+            type="button"
+            className={`restaurant-sidebar-item${!effectiveIsManager ? ' restaurant-sidebar-item--disabled' : ''}`}
+            disabled={!effectiveIsManager}
+            onKeyDown={handleSidebarKeyDown}
+            aria-label={l10n.getString('restaurant-sidebar-payments')}
+            onClick={() => {
+              // The button is disabled for non-managers, so a non-manager
+              // click can never reach here; no guard is needed.
+              cartActions.onOpenPayments?.();
+              onOpenChange(false);
+            }}
+          >
+            <Tile>
+              <PaymentGlyph />
+            </Tile>
+            <Localized id="restaurant-sidebar-payments"><span>Payments</span></Localized>
+            {!effectiveIsManager && (
+              <span className="restaurant-sidebar-badge-manager">
+                <LockSmallGlyph />
+                <Localized id="restaurant-manager-required"><span>Manager+</span></Localized>
+              </span>
+            )}
           </button>
           <div className="restaurant-sidebar-divider" role="separator" />
         </>

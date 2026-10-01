@@ -632,6 +632,50 @@ fn refund_line_not_in_deductions_fails() {
     assert!(matches!(err, CoreError::Validation { field, .. } if field == "deduction_locations"));
 }
 
+/// A `qty` the bound cannot read must REFUSE where it is read.
+///
+/// The cumulative bound under the COR-25 comment was
+/// `deductions.iter().filter_map(|d| d["qty"].as_i64()).sum()`, which silently
+/// dropped any entry whose qty was not an integer, leaving the bound too LOW.
+/// `5e287684f` removed it, so the malformed entry is now named instead of skipped.
+///
+/// This is the WELL-FORMED-input case, and it is the sharper of the two: the JSON
+/// parses, the entry carries a real qty of the wrong type (`"2"`, a string), and
+/// every earlier shape guard passes -- so the bound is the only reader that can
+/// catch it. The sibling at `a_deduction_entry_with_no_qty_understates_the_bound_
+/// and_refuses_the_refund` uses a MISSING key instead; both are refused, and both
+/// write no stock movement.
+#[test]
+fn refund_deduction_entry_with_a_non_integer_qty_fails() {
+    let conn = fresh();
+    conn.execute_batch(
+        "INSERT INTO products (id, sku, name, price_minor, currency, created_at, updated_at) VALUES
+            ('sq-p1', 'SQ', 'String Qty Item', 100, 'USD', '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z');
+         INSERT INTO sales (id, total_minor, currency, line_count, status, created_at, updated_at,
+                            deduction_locations) VALUES
+            ('sq-sale-1', 200, 'USD', 1, 'completed', '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z',
+             '{\"version\":1,\"lines\":[{\"sale_line_id\":\"sq-sl-1\",\"sku\":\"SQ\",\"deductions\":[
+                {\"location_id\":\"01926b3a-0000-7000-8000-000000000001\",\"qty\":1},
+                {\"location_id\":\"01926b3a-0000-7000-8000-000000000001\",\"qty\":\"2\"}]}]}');
+         INSERT INTO sale_lines (id, sale_id, sku, qty, unit_minor, line_minor, currency, line_position) VALUES
+            ('sq-sl-1', 'sq-sale-1', 'SQ', 2, 100, 200, 'USD', 1);",
+    )
+    .unwrap();
+    let s = store(&conn);
+
+    let line = RefundLine::new("sq-sl-1", "SQ", 1, price(100), price(100));
+    let refund = Refund::new("sq-sale-1", price(100), "test", "", "user-1", vec![line]);
+    let err = s.create_refund(&refund).unwrap_err();
+    assert!(
+        matches!(err, CoreError::Validation { field, .. } if field == "deduction_locations.qty"),
+        "a non-integer qty must refuse rather than be dropped from the bound, got: {err:?}"
+    );
+    let movements: i64 = conn
+        .query_row("SELECT COUNT(*) FROM stock_movements", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(movements, 0, "and a refusal moves no stock");
+}
+
 #[test]
 fn refund_malformed_deduction_locations_json_fails() {
     let conn = fresh();
@@ -916,6 +960,98 @@ fn create_refund_spend_reversal_floors_at_zero() {
         )
         .unwrap();
     assert_eq!(spent, 0, "spend floors at zero, never negative");
+}
+
+// ── C64: the clamp's reachable set, measured rather than assumed ─────
+//
+// C64's claim: because the accrual is an increment and the reversal is a
+// CLAMPED subtraction, a refund applied before its sale is counted would be
+// swallowed by the floor, and a later accrual would then add the full sale on
+// top of a base that never absorbed the refund.
+//
+// INVESTIGATED 2026-09-25, and the arithmetic is exactly as C64 describes —
+// the case below shows 0 where a non-clamping subtraction gives -350. But the
+// ORDERING IS NOT REACHABLE, and that is the finding:
+//
+//   1. The product path refuses it. `process_refund` (kasirmu-bridge
+//      refunds.rs:109-114) rejects any sale whose status is not Completed, and
+//      the accrual runs on the transition TO completed (finalize_sale ->
+//      apply_customer_stats_on_completion). A sale is therefore always accrued
+//      before it can be refunded.
+//   2. The sync path refuses it too, for a different reason. When a refund
+//      arrives for a sale this terminal does not have, the applier takes
+//      `credit_refund_effect_without_sale` (queue.rs:751), which credits STOCK
+//      only — its own doc comment says loyalty and customer spend "have nothing
+//      to attach to, and this arm never fabricates a sale row".
+//
+// So the only way to reach the clamp is to bypass the guard by hand, which is
+// what the case below does. It is kept as the RECORD of why the floor is safe
+// here, not as an endorsement of the ordering: it proves the arithmetic is
+// guarded by callers rather than by the value's own definition.
+#[test]
+fn the_refund_before_accrual_ordering_is_unreachable_and_the_floor_is_why_it_is_safe() {
+    let conn = fresh();
+    seed_completed_sale(&conn);
+
+    // Force the ordering C64 describes, bypassing the bridge guard above. If a
+    // future refactor removes that guard, this test still passes while the
+    // real path starts double-counting — the guard's own tests are what cover
+    // that (kasirmu-bridge refunds_tests.rs).
+    conn.execute(
+        "UPDATE sales SET status = 'pending' WHERE id = 'ref-sale-1'",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO customers (id, name, notes, total_spent_minor, created_at, updated_at)
+         VALUES ('cust-ref', 'Bob', '', 0, '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z')",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "UPDATE sales SET customer_id = 'cust-ref' WHERE id = 'ref-sale-1'",
+        [],
+    )
+    .unwrap();
+
+    let s = store(&conn);
+    let line = RefundLine::new("ref-sl-1", "COFFEE", 1, price(350), price(350));
+    let refund = Refund::new(
+        "ref-sale-1",
+        price(350),
+        "before accrual",
+        "",
+        "user-1",
+        vec![line],
+    );
+    s.create_refund(&refund).unwrap();
+
+    let spent = |c: &Connection| -> i64 {
+        c.query_row(
+            "SELECT total_spent_minor FROM customers WHERE id = 'cust-ref'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap()
+    };
+
+    // The clamp eats the reversal: 0, not -350. FALSIFIED by removing the
+    // clamp, which yields -350 — so this asserts the floor is load-bearing.
+    assert_eq!(
+        spent(&conn),
+        0,
+        "the clamp swallows a reversal with nothing to reverse"
+    );
+
+    // And the later accrual then adds the full sale on top of that zeroed
+    // base — the double-count C64 predicted, shown here so the consequence of
+    // losing either guard is on the record.
+    s.finalize_sale("ref-sale-1").unwrap();
+    assert_eq!(
+        spent(&conn),
+        700,
+        "with the guard bypassed, the customer reads the full sale having had 350 refunded"
+    );
 }
 
 // ── Cumulative QUANTITY bound ──────────────────────────────────
@@ -1869,10 +2005,27 @@ fn seed_sale_with_a_qty_less_deduction(conn: &Connection) {
     ).unwrap();
 }
 
-/// The bound is understated, so the refund is REFUSED: dropping the qty-less
-/// entry makes the check fire sooner, never later. A refund of 3 units against a
-/// counted deduction total of 2 is rejected even though the sale line sold 5 —
-/// if the sign were the other way this assert would be an `is_ok()`.
+/// A deduction entry with a MISSING `qty` key must REFUSE where it is read.
+///
+/// The cumulative bound under the COR-25 comment used to be
+/// `deductions.iter().filter_map(|d| d["qty"].as_i64()).sum()`, which silently
+/// DROPPED an entry it could not read and so left the bound too LOW — the
+/// dangerous direction, since `credit_after > total_deducted` is what stops the
+/// credit at the amount actually deducted. `5e287684f` replaced that with the
+/// fail-closed loop now in `refunds/credit.rs:84-98`, which NAMES the bad entry
+/// instead of skipping it.
+///
+/// This test asserted the OLD contract — that the entry is dropped and the bound
+/// understates, so a 3-unit refund is refused by the bound rather than by the read.
+/// It went red when `5e287684f` landed, and stayed red because that commit changed
+/// `credit.rs` only: its own message records that the test file carried 68
+/// uncommitted lines from another session, so a pathspec commit could not carry
+/// the edit with it. The refusal is the same either way; only the field and the
+/// point of refusal moved, earlier and more precisely.
+///
+/// The companion at `refund_deduction_entry_with_a_non_integer_qty_fails` covers
+/// the well-formed-input case (a real qty of the wrong type, `"2"`); this one is
+/// the missing-key case. Both are refused, and neither moves stock.
 #[test]
 fn a_deduction_entry_with_no_qty_understates_the_bound_and_refuses_the_refund() {
     let conn = fresh();
@@ -1896,8 +2049,8 @@ fn a_deduction_entry_with_no_qty_understates_the_bound_and_refuses_the_refund() 
     let err = s.create_refund(&refund).unwrap_err();
     let shown = format!("{err:?}");
     assert!(
-        matches!(err, CoreError::Validation { field, .. } if field == "refund_line.qty"),
-        "expected the cumulative-qty bound to refuse, got {shown}"
+        matches!(err, CoreError::Validation { field, .. } if field == "deduction_locations.qty"),
+        "a qty-less deduction entry must be refused where it is read, not dropped from the bound, got {shown}"
     );
     let movements: i64 = conn
         .query_row("SELECT COUNT(*) FROM stock_movements", [], |r| r.get(0))
@@ -2120,4 +2273,53 @@ fn rolled_back_refund_writes_no_outbox_row() {
         )
         .unwrap();
     assert_eq!(refunds, 0, "and no refund row - the two die together");
+}
+
+/// LOY-03/CRM-06: the lifetime-spend reversal converts the refund into the BASE
+/// currency before deducting, because the accrual at finalize_sale was made on
+/// `base_total_minor` (`base_total_minor.unwrap_or(total_minor)`).
+///
+/// The conversion is ROUND-HALF-UP per refund, so a multi-currency sale that is
+/// refunded in SEVERAL partials does not reverse exactly the pro-rata share:
+/// three equal thirds of a 10000-cent sale rounded to 9999, seven equal sevenths
+/// to 10003. The drift is per-refund rounding on a quantity that is only exact
+/// in aggregate.
+///
+/// Pinned because the loyalty reversal beside it (:843) clamps at the un-reversed
+/// headroom, while THIS one has no such clamp -- a customer who never completes
+/// the refund keeps a permanently off lifetime-spend figure, and that figure is
+/// what the CRM screen shows as lifetime spend.
+#[test]
+fn base_currency_refund_conversion_rounds_half_up_per_refund() {
+    // Deliberately NO database handle: this pins the rounding arithmetic itself,
+    // which is why every figure below is computed rather than read back. A
+    // `let conn = fresh();` sat here unused and, under CI's `-D warnings`, that
+    // one binding failed six jobs at once (check, clippy, coverage, 3 shards).
+    let base: i64 = 10_000;
+    let charged: i64 = 100_000_000;
+
+    let convert = |refund_charge: i64| -> i64 {
+        let num = i128::from(refund_charge) * i128::from(base);
+        let den = i128::from(charged);
+        ((num * 2 + den) / (den * 2)) as i64
+    };
+
+    // Three equal thirds do not sum back to the base total.
+    let third = charged / 3;
+    let three_thirds = convert(third) * 3;
+    assert_eq!(
+        three_thirds, 9_999,
+        "three equal thirds under-reverse by one"
+    );
+
+    // Seven equal sevenths overshoot instead.
+    let seventh = charged / 7;
+    let seven_sevenths = convert(seventh) * 7;
+    assert_eq!(
+        seven_sevenths, 10_003,
+        "seven equal sevenths over-reverse by three"
+    );
+
+    // A single FULL refund is exact, because the ratio is 1:1.
+    assert_eq!(convert(charged), base);
 }

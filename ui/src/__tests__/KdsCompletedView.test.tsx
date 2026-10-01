@@ -13,6 +13,14 @@ vi.mock('@/api/kds', () => ({
   listKdsOrdersScoped: (_token: string, _status?: string) => mockList(),
 }));
 
+// The view resolves the store's IANA zone before it files a ticket into a
+// day bucket (the buckets are the store's calendar days, not the device's).
+// The unit cases in KdsCompletedViewBucketForOffset.test.ts pin the mapping
+// itself; this mock only keeps the component from reaching for a real invoke.
+vi.mock('@/api/locations', () => ({
+  getPrimaryLocationScoped: () => Promise.resolve({ timezone: 'UTC' }),
+}));
+
 vi.mock('@/contexts/WorkspaceContext', () => ({
   useWorkspace: () => ({ sessionToken: 'test-token' }),
 }));

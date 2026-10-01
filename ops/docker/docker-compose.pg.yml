@@ -1,4 +1,4 @@
-# ── OZ-POS PostgreSQL Override — Enterprise profile ─────────────────
+# ── kasir.mu PostgreSQL Override — Enterprise profile ─────────────────
 #
 # Merged with the base stack when PostgreSQL is required (DOCKER-04):
 #

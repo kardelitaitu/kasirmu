@@ -29,9 +29,34 @@ interface Props {
    * free of the payload.
    */
   searchDocs?: SearchDoc[];
+  /**
+   * Per-locale counterpart paths for hreflang, forwarded to SiteHead. Only the
+   * guides layer passes it — it is the one surface whose two locales do not
+   * share a path (`/id/panduan/` ↔ `/en/guides/`). See src/lib/guides.ts.
+   */
+  alternatePaths?: Record<string, string>;
+  /**
+   * `og:type`. Content articles pass 'article' — the guides layer renders
+   * through this layout rather than a docs-specific one, so it needs the same
+   * escape hatch DocsLayout has.
+   */
+  ogType?: 'website' | 'article';
+  /** ISO date for `article:modified_time`; only emitted when ogType==='article'. */
+  articleUpdatedAt?: string;
 }
 
-const { title, description, noindex, locale: localeOverride, offerPrice = '0', offerCurrency, searchDocs } = Astro.props;
+const {
+  title,
+  description,
+  noindex,
+  locale: localeOverride,
+  offerPrice = '0',
+  offerCurrency,
+  searchDocs,
+  alternatePaths,
+  ogType,
+  articleUpdatedAt,
+} = Astro.props;
 const locale = localeOverride ?? Astro.currentLocale ?? 'en';
 const resolvedCurrency = offerCurrency ?? (locale === 'id' ? 'IDR' : 'USD');
 const desc = description ?? t(locale, 'meta.description');
@@ -40,7 +65,15 @@ const desc = description ?? t(locale, 'meta.description');
 <!doctype html>
 <html lang={locale}>
   <head>
-    <SiteHead title={title} description={desc} noindex={noindex} locale={locale}>
+    <SiteHead
+      title={title}
+      description={desc}
+      noindex={noindex}
+      locale={locale}
+      alternatePaths={alternatePaths}
+      ogType={ogType}
+      articleUpdatedAt={articleUpdatedAt}
+    >
       <script type="application/ld+json" is:inline set:html={JSON.stringify({
         "@context": "https://schema.org",
         "@type": "SoftwareApplication",
@@ -62,13 +95,14 @@ const desc = description ?? t(locale, 'meta.description');
         "logo": "https://kasir.mu/favicon.svg",
         // sameAs lists profiles that IDENTIFY this entity elsewhere. It used to
         // be ["https://kasir.mu"] — a self-reference, which tells Google nothing
-        // and is the one value that can never be a valid sameAs target. The
-        // community Discord is currently the only real profile this project
-        // owns: the four social icons in Footer.astro still point at the
-        // platforms' own homepages (https://x.com, https://www.instagram.com,
-        // …), not at kasir.mu accounts, so they must NOT be listed here — doing
-        // so would assert that kasir.mu IS x.com. Add each real profile URL to
-        // this array when it exists. See the SEO review, §3.1.
+        // and is the one value that can never be a valid sameAs target.
+        //
+        // Discord is the only real profile this project owns. Four icons in
+        // Footer.astro (X, Instagram, Facebook, Telegram) pointed at the
+        // platforms' own homepages and were removed on 2026-09-24 — listing
+        // them here would have asserted that kasir.mu IS x.com. Add each real
+        // profile URL to this array AND to the footer row in the same change,
+        // when one exists. See the SEO review §3.1 and audit finding T8/D4.
         "sameAs": ["https://discord.gg/NdWDgEzNxx"],
         "contactPoint": {
           "@type": "ContactPoint",
@@ -96,7 +130,7 @@ const desc = description ?? t(locale, 'meta.description');
     >
       {t(locale, 'nav.skipToContent')}
     </a>
-    <Header locale={locale} searchDocs={searchDocs} />
+    <Header locale={locale} searchDocs={searchDocs} alternatePaths={alternatePaths} />
     <main id="main" class="flex-1">
       <slot />
     </main>

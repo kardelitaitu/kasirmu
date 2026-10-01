@@ -401,6 +401,91 @@ async fn cloud_health_reports_queue_depth() {
     assert!(!json["last_sync_at"].is_null());
 }
 
+/// An unreadable queue depth must not borrow the answer of an IDLE queue.
+///
+/// **0 is the value an operator is watching for a stalled sync.** They look at
+/// `/health`, see `sync_queue_depth: 0`, and conclude the queue is draining. The
+/// SQLite arm read the depth with `.unwrap_or(0)`, so a dropped `offline_queue`
+/// table, a corrupt page or a locked database produced exactly that value: the
+/// health signal for "sync has stopped" is identical to the health signal for
+/// "sync has nothing to do". `rls_posture` already models this third state as
+/// `"unknown"`; the depth now uses `-1` for the same reason.
+#[tokio::test]
+async fn an_unreadable_queue_depth_reports_unknown_not_zero() {
+    let state = CloudServerState {
+        db: Arc::new(Mutex::new(fresh_db())),
+        pg: None,
+        started_at: Instant::now(),
+        health_depth_cache: HealthDepthCache::default(),
+        stripe_webhook_secret: None,
+        square_webhook_signature_key: None,
+        square_webhook_url: None,
+        midtrans_server_key: None,
+        midtrans_sandbox: false,
+        midtrans_qris_acquirer: None,
+    };
+    let app = build_router(
+        state.clone(),
+        crate::rate_limit::RateLimiterState::new(),
+        &test_config(),
+        None,
+    );
+
+    // An idle but healthy queue really does report 0. That is the value the
+    // broken read must NOT be allowed to reuse.
+    let req = Request::builder()
+        .uri("/health")
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    let body = resp.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(
+        json["sync_queue_depth"], 0,
+        "precondition: a readable queue with no pending items really is 0"
+    );
+
+    // Now make the depth unreadable. A SECOND state is built rather than cloning
+    // the first, because `health_depth_cache` lives in the state and the probe
+    // above legitimately cached 0 for 10s. Cloning would serve that cached 0 and
+    // the case would pass without ever reaching the query.
+    let broken = CloudServerState {
+        db: state.db.clone(),
+        pg: None,
+        started_at: Instant::now(),
+        health_depth_cache: HealthDepthCache::default(),
+        stripe_webhook_secret: None,
+        square_webhook_signature_key: None,
+        square_webhook_url: None,
+        midtrans_server_key: None,
+        midtrans_sandbox: false,
+        midtrans_qris_acquirer: None,
+    };
+    {
+        let conn = broken.db.lock().await;
+        conn.execute("DROP TABLE offline_queue", [])
+            .expect("drop offline_queue");
+    }
+    let app2 = build_router(
+        broken,
+        crate::rate_limit::RateLimiterState::new(),
+        &test_config(),
+        None,
+    );
+    let req2 = Request::builder()
+        .uri("/health")
+        .body(Body::empty())
+        .unwrap();
+    let resp2 = app2.oneshot(req2).await.unwrap();
+    let body2 = resp2.into_body().collect().await.unwrap().to_bytes();
+    let json2: serde_json::Value = serde_json::from_slice(&body2).unwrap();
+    assert_eq!(
+        json2["sync_queue_depth"], -1,
+        "a depth that could not be read must report unknown. Reporting 0 here
+        tells an operator watching a stalled sync that the queue is simply empty"
+    );
+}
+
 #[tokio::test]
 async fn cloud_health_reports_last_sync_at() {
     let state = CloudServerState {
@@ -918,7 +1003,7 @@ fn lifecycle_stripe_signature(payload: &[u8], secret: &str) -> String {
     let mut mac = Hmac::<Sha256>::new_from_slice(secret.as_bytes()).unwrap();
     mac.update(&signed_bytes);
     let expected = hex::encode(mac.finalize().into_bytes());
-    format!("t={},v1={}", timestamp, expected)
+    format!("t={timestamp},v1={expected}")
 }
 
 /// Health must fail fast under pool saturation (Bug 3). The Docker
@@ -927,6 +1012,7 @@ fn lifecycle_stripe_signature(payload: &[u8], secret: &str) -> String {
 /// container would be marked unhealthy and restarted during a burst.
 /// The health path bounds its wait to 2s and returns a degraded
 /// (db_connected: false) response instead.
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 async fn pg_integration_health_fails_fast_when_pool_exhausted() {
     let url = std::env::var("OZ_TEST_PG_URL")
@@ -936,7 +1022,10 @@ async fn pg_integration_health_fails_fast_when_pool_exhausted() {
         Ok(_) => unreachable!("postgres:// URL returns Postgres"),
         Err(e) => {
             eprintln!("PG health-under-saturation integration test skipped: {e}");
+            #[cfg(not(feature = "pg-tests"))]
             return;
+            #[cfg(feature = "pg-tests")]
+            panic!("PG test enabled but the resource is unreachable - see the skip message above");
         }
     };
     let state = CloudServerState {
@@ -997,6 +1086,7 @@ async fn pg_integration_health_fails_fast_when_pool_exhausted() {
 /// constant O(n) cost on the free-tier CPU budget, exactly the class of
 /// waste the SOTA pass eliminated elsewhere. The index must exist in
 /// PG_INIT so the query is an index scan.
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 async fn pg_integration_health_last_sync_query_is_indexed() {
     let url = std::env::var("OZ_TEST_PG_URL")
@@ -1006,7 +1096,10 @@ async fn pg_integration_health_last_sync_query_is_indexed() {
         Ok(_) => unreachable!("connect_postgres with a postgres:// URL returns Postgres"),
         Err(e) => {
             eprintln!("PG health-index integration test skipped: {e}");
+            #[cfg(not(feature = "pg-tests"))]
             return;
+            #[cfg(feature = "pg-tests")]
+            panic!("PG test enabled but the resource is unreachable - see the skip message above");
         }
     };
 

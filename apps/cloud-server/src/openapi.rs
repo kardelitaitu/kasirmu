@@ -1,4 +1,4 @@
-//! OpenAPI 3.1 API documentation for the OZ-POS cloud server.
+//! OpenAPI 3.1 API documentation for the kasir.mu cloud server.
 //!
 //! The shared surface (`x-oz-scope: "both"`) lives in
 //! `kasirmu_api::spec::base_spec()` — the single source of truth also served
@@ -28,9 +28,9 @@ use serde_json::{Value, json};
 /// `x-oz-scope` (base paths `"both"`, cloud paths `"cloud"`).
 pub fn openapi_spec() -> Value {
     let mut spec = kasirmu_api::spec::base_spec();
-    spec["info"]["title"] = json!("OZ-POS Cloud Server API");
+    spec["info"]["title"] = json!("kasir.mu Cloud Server API");
     spec["info"]["description"] = json!(
-        "REST API for the OZ-POS point-of-sale cloud sync server.\n\n\
+        "REST API for the kasir.mu point-of-sale cloud sync server.\n\n\
          ## Authentication\nMost endpoints require a JWT bearer token from \
          `POST /api/v1/tokens`. Pass it as `Authorization: Bearer <token>`.\n\n\
          ## Endpoint scope\nEvery operation carries `x-oz-scope`: `both` means \
@@ -112,7 +112,7 @@ pub fn swagger_ui_html() -> Html<String> {
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>OZ-POS API Docs — Swagger UI</title>
+    <title>kasir.mu API Docs — Swagger UI</title>
     <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css" />
     <style>
         html {{ box-sizing: border-box; overflow-y: scroll; }}
@@ -173,7 +173,7 @@ pub fn scalar_html() -> Html<String> {
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>OZ-POS API Docs — Scalar</title>
+    <title>kasir.mu API Docs — Scalar</title>
     <style>
         body { margin: 0; padding: 0; }
     </style>

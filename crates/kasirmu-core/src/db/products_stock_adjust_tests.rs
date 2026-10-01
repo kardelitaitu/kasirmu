@@ -811,7 +811,11 @@ fn rebuild_scope_survives_a_catalog_larger_than_the_chunk() {
             |r| r.get(0),
         )
         .unwrap();
-    assert_eq!(healed, count as i64, "no chunk may be skipped by the heal");
+    assert_eq!(
+        healed,
+        i64::try_from(count).expect("fixture count fits i64"),
+        "no chunk may be skipped by the heal"
+    );
     let stale: i64 = conn
         .query_row("SELECT COUNT(*) FROM inventory WHERE qty <> 60", [], |r| {
             r.get(0)
@@ -825,10 +829,73 @@ fn rebuild_scope_survives_a_catalog_larger_than_the_chunk() {
             |r| r.get(0),
         )
         .unwrap();
-    assert_eq!(distinct, count as i64, "and no product lost its rows");
+    assert_eq!(
+        distinct,
+        i64::try_from(count).expect("fixture count fits i64"),
+        "and no product lost its rows"
+    );
     // The suite pays for a thousand-product fixture; keep that bounded.
     assert!(
         elapsed.as_secs() < 30,
         "chunked rebuild over {count} products took {elapsed:?}"
+    );
+}
+
+#[test]
+fn bridge_legacy_inventory_propagates_db_error_when_reading_inventory() {
+    let conn = fresh();
+    let pid = seed_product(&conn, "SKU-LEGACY-BRIDGE");
+    seed_legacy_inventory(&conn, &pid, 50);
+
+    // Corrupt the inventory qty column with a blob so reading i64 fails
+    conn.execute(
+        "UPDATE inventory SET qty = X'FFFF' WHERE product_id = ?1",
+        params![&pid],
+    )
+    .unwrap();
+
+    let tx = conn.unchecked_transaction().unwrap();
+    let err = Store::bridge_legacy_inventory_into_stock_summary_in_tx(&tx, &pid)
+        .expect_err("a database error reading legacy inventory must not silently be ignored");
+    assert!(
+        matches!(err, CoreError::Db(_)),
+        "expected CoreError::Db, got {err:?}"
+    );
+}
+
+#[test]
+fn check_stock_threshold_and_alert_propagates_db_error() {
+    let conn = fresh();
+    let pid = seed_product(&conn, "SKU-ALERT-ERR");
+    let loc_id = "loc-err-test";
+    seed_location(&conn, loc_id, "Error Location");
+
+    // Insert a valid stock threshold
+    conn.execute(
+        "INSERT INTO stock_thresholds (id, product_id, location_id, threshold, enabled)
+         VALUES ('th-err-1', ?1, ?2, 10, 1)",
+        params![&pid, loc_id],
+    )
+    .unwrap();
+
+    // Corrupt threshold column with a blob
+    conn.execute(
+        "UPDATE stock_thresholds SET threshold = X'FFFF' WHERE id = 'th-err-1'",
+        [],
+    )
+    .unwrap();
+
+    let tx = conn.unchecked_transaction().unwrap();
+    let err = Store::check_stock_threshold_and_alert_in_tx(
+        &tx,
+        &pid,
+        loc_id,
+        5,
+        "2025-01-01T00:00:00.000Z",
+    )
+    .expect_err("database error reading threshold must propagate");
+    assert!(
+        matches!(err, CoreError::Db(_)),
+        "expected CoreError::Db, got {err:?}"
     );
 }

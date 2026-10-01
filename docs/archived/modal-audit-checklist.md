@@ -1,6 +1,8 @@
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: REPAIRED (2 broken path references) — otherwise ACCURATE · Audited on branch 0.0.40. The 2026-07-29 Buffy marker above is the original of this LIVING checklist and is retained verbatim and re-labelled rather than superseded — this document is meant to keep being used, so the fact that it was established from the retail POS audit, the feature-modal sweep and the PaymentModal audit is part of its provenance, not a superseded claim. · THE REPAIR: the checklist pointed its modal-token section AND its verification command at `ui/src/theme/tokens.css`, and that directory no longer exists. The token sheet is now `ui/src/theme/tokens.css`. This one mattered more than a stale prose reference, because line 158 is a command an author is meant to RUN — `grep -n "color-pos-modal-" ui/src/theme/tokens.css` — and a checklist whose verification step fails on a moved path trains its readers to ignore it. Both occurrences were repaired. · EVERYTHING ELSE VERIFIED, and this is a checklist whose correctness is entirely in its API references, so all of them were checked: `useFocusTrap` exists at `ui/src/hooks/useFocusTrap.ts` and is exported at line 57, so the documented signature `useFocusTrap(ref, activeCondition, closeCallback)` and the import path `@/hooks/useFocusTrap` are live; `useExitAnimation` exists at `ui/src/hooks/useExitAnimation.ts`, backing section 9; the `--color-pos-modal-*` tokens the Good/Bad example contrasts genuinely exist, with 30 references in `ui/src/theme/tokens.css`; and `isAnyOverlayOpen()`, which section 11 tells authors to guard modal-opening callbacks with, is real — it is used in `ui/src/features/retail/RetailPosScreen.tsx`. The `skip-to-main` Fluent id in section 5 is consistent with the skip-link tests that now exist (`ui/src/__tests__/skipToContent.test.tsx`). · REPAIRED: the false "ACCURATE (0 findings)" footer, the same defect found across this archived batch — on a file that plainly contains findings, because finding and fixing them is its entire purpose. · LEFT ALONE: all eleven sections, the Bad/Good code samples, and the audit runbook. A checklist's value is that it is copied and followed; its examples describe patterns, not this repository's current components, so they were left exactly as written. · The mechanical greps in the Quick check assume a POSIX shell, which is the documented way to run them in this repo (Git bash by full path, per the project rules) — noted so a Windows reader does not read the commands as broken. · No docs-auditor stamp or footer existed on this file before this pass. -->
+
 # Modal & Overlay Audit Checklist
 
-<!-- Audit stamp: 2026-07-29 · Buffy · status: LIVING · branch: 0.0.24 -->
+<!-- Original audit marker (2026-07-29, kept verbatim — this is a LIVING checklist, not superseded) · Buffy · status: LIVING · branch: 0.0.24 -->
 <!-- Scope: any .tsx modal/overlay component + its .css file in ui/src/features/ -->
 <!-- Established from: retail POS audit (11 findings), feature-modal sweep (8 modals), PaymentModal audit (6 fixes) -->
 
@@ -144,7 +146,7 @@ useFocusTrap(panelRef, modalExit.shouldRender && !modalExit.exiting, modalExit.r
 }
 ```
 
-**Available modal tokens** (defined at `:root` in `ui/src/frontend/themes/tokens.css`, with light/dark/default variants):
+**Available modal tokens** (defined at `:root` in `ui/src/theme/tokens.css`, with light/dark/default variants):
 | Token | Purpose |
 |-------|---------|
 | `--color-pos-modal-overlay` | Backdrop background |
@@ -155,7 +157,7 @@ useFocusTrap(panelRef, modalExit.shouldRender && !modalExit.exiting, modalExit.r
 
 **Verify tokens are globally available:**
 ```bash
-grep -n "color-pos-modal-" ui/src/frontend/themes/tokens.css
+grep -n "color-pos-modal-" ui/src/theme/tokens.css
 ```
 All tokens should appear in `:root`, `[data-theme="light"]`, and `[data-theme="dark"]` blocks.
 
@@ -367,8 +369,5 @@ useFocusTrap(nestedPanelRef, showCustomerSearch, () => setShowCustomerSearch(fal
 6. **Typecheck**: `cd ui && npm run typecheck` — must be clean
 7. **Bundle parity**: `cd ui && npm run lint` (or commit — pre-commit hook runs `verify-bundle-parity`)
 
-> last audited 09-08-26 by buffy
-> audit: Phase 1 Core Architecture & API Docs Audit
-
-> status: ACCURATE (0 findings) · verified accurate: cargo check passed, no structural orphans, no stale version headers, all file references valid
+> last audited 29-09-26 by docs-auditor
 

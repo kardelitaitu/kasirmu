@@ -142,6 +142,38 @@ async fn push_items_empty_list_handles_missing_server() {
     }
 }
 
+// ── Identity channel: builder terminal id, no vector stamping ─────
+
+/// The PG path carries terminal identity through `origin_terminal_id`,
+/// set by `with_terminal_id`, NOT through a `_vector` stamp. The module
+/// header's 'Vector stamping' note explains why: `_vector` has exactly
+/// one reader (the cloud HTTP push handler, `sync_store.rs`), and a
+/// direct-PG push never passes through it.
+///
+/// This pins the builder as the identity channel: `with_terminal_id`
+/// returns a usable transport for both `None` (unpaired) and `Some`
+/// (paired). If the identity channel ever changes shape, this fails and
+/// the note gets re-read before the change ships.
+#[test]
+fn pg_transport_identity_channel_is_the_terminal_builder() {
+    for identity in [None, Some("term-pg".to_string())] {
+        let transport =
+            PgTransport::new("localhost", 5432, "db", "u", "p", "default").expect("pool creation");
+        // The builder is #[must_use]; assigning it proves it returns the
+        // transport type and that both identity states are accepted.
+        let transport = transport.with_terminal_id(identity.clone());
+        // A paired transport is still Debug-printable without leaking the
+        // identity (Debug redaction stays in force through the builder).
+        let rendered = format!("{transport:?}");
+        if let Some(id) = &identity {
+            assert!(
+                !rendered.contains(id),
+                "terminal identity must not appear in Debug output"
+            );
+        }
+    }
+}
+
 // ── Anchor expiry ───────────────────────────────────────────────────
 
 #[test]
@@ -449,6 +481,7 @@ async fn pull_updates_both_with_and_without_since() {
 /// transport is a DIRECT connection (bypasses the HTTP server + auth),
 /// so without an explicit tenant scope a shared database leaks every
 /// tenant's offline_queue rows to any terminal.
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 async fn pull_updates_scopes_to_tenant() {
     let url = std::env::var("OZ_TEST_PG_URL")
@@ -461,7 +494,10 @@ async fn pull_updates_scopes_to_tenant() {
         Ok(t) => t,
         Err(_) => {
             eprintln!("tenant isolation test skipped: cannot create raw pool");
+            #[cfg(not(feature = "pg-tests"))]
             return;
+            #[cfg(feature = "pg-tests")]
+            panic!("PG test enabled but the resource is unreachable - see the skip message above");
         }
     };
     let pool = transport.pool.clone();
@@ -469,7 +505,10 @@ async fn pull_updates_scopes_to_tenant() {
         Ok(c) => c,
         Err(e) => {
             eprintln!("tenant isolation test skipped: {e}");
+            #[cfg(not(feature = "pg-tests"))]
             return;
+            #[cfg(feature = "pg-tests")]
+            panic!("PG test enabled but the resource is unreachable - see the skip message above");
         }
     };
 
@@ -524,6 +563,7 @@ async fn pull_updates_scopes_to_tenant() {
 ///
 /// Skips (does not fail) when the disposable PostgreSQL is unreachable, in
 /// the same style as the tenant-isolation test above.
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 async fn pull_updates_excludes_self_origin_rows() {
     let url = std::env::var("OZ_TEST_PG_URL")
@@ -534,7 +574,10 @@ async fn pull_updates_excludes_self_origin_rows() {
         Ok(t) => t,
         Err(_) => {
             eprintln!("origin-filter test skipped: cannot create raw pool");
+            #[cfg(not(feature = "pg-tests"))]
             return;
+            #[cfg(feature = "pg-tests")]
+            panic!("PG test enabled but the resource is unreachable - see the skip message above");
         }
     };
     let pool = transport_a.pool.clone();
@@ -549,7 +592,10 @@ async fn pull_updates_excludes_self_origin_rows() {
         Ok(c) => c,
         Err(e) => {
             eprintln!("origin-filter test skipped: {e}");
+            #[cfg(not(feature = "pg-tests"))]
             return;
+            #[cfg(feature = "pg-tests")]
+            panic!("PG test enabled but the resource is unreachable - see the skip message above");
         }
     };
 
@@ -636,6 +682,7 @@ async fn pull_updates_excludes_self_origin_rows() {
 
 /// RED: `fetch_snapshot` must scope products/tax_rates/users to the
 /// tenant. Same direct-connection leak as pull.
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 async fn fetch_snapshot_scopes_to_tenant() {
     let url = std::env::var("OZ_TEST_PG_URL")
@@ -647,7 +694,10 @@ async fn fetch_snapshot_scopes_to_tenant() {
         Ok(t) => t,
         Err(_) => {
             eprintln!("snapshot isolation test skipped: cannot create raw pool");
+            #[cfg(not(feature = "pg-tests"))]
             return;
+            #[cfg(feature = "pg-tests")]
+            panic!("PG test enabled but the resource is unreachable - see the skip message above");
         }
     };
     let pool = transport.pool.clone();
@@ -655,7 +705,10 @@ async fn fetch_snapshot_scopes_to_tenant() {
         Ok(c) => c,
         Err(e) => {
             eprintln!("snapshot isolation test skipped: {e}");
+            #[cfg(not(feature = "pg-tests"))]
             return;
+            #[cfg(feature = "pg-tests")]
+            panic!("PG test enabled but the resource is unreachable - see the skip message above");
         }
     };
 

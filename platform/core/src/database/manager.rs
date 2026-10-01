@@ -3,7 +3,7 @@
 last audited 25-07-26 by RSA-Agent (platform-core slice E: database manager deep read)
 crate: platform-core | status: SAFE | lint: CLEAN
 findings: clean — cache-guard-held check-then-insert (TOCTOU-safe, documented), idempotent migration recovery on open (partial-failure tested), FK/WAL pragmas, per-store isolation tests; PC-1 INFO: store_db_path interpolates store_id into the filename without sanitization (data_dir.join(format!()) line 161) — snapshot-imported ids could path-traverse file creation; ids are UUID-minted in normal flows
-next: sanitize/validate store ids before path join (PC-1) | perf: cached Arc connections
+next: none — PC-1 closed 2026-09-28: the id is validated at the join (is_safe_store_id / checked_store_db_path), and the open, exists and delete doors all go through it | perf: cached Arc connections
 */
 //!
 //! Manages per-store SQLite database files alongside the global
@@ -92,23 +92,25 @@ impl StoreDatabaseManager {
     /// Migrations are always run on open — this recovers from
     /// partially-failed previous creations (the runner is idempotent).
     fn open_or_create_connection(&self, store_id: &str) -> Result<Connection, PlatformError> {
-        let path = self.store_db_path(store_id);
+        // PC-1: this is the door that CREATES a file at the joined path, so the id is checked
+        // here and not only in `delete_store_db`, where it used to be the whole guard.
+        let path = self.checked_store_db_path(store_id)?;
 
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).map_err(|e| {
-                PlatformError::Internal(format!("creating data dir {:?}: {e}", parent))
+                PlatformError::Internal(format!("creating data dir {parent:?}: {e}"))
             })?;
         }
 
         let is_new = !path.exists();
         let mut conn = Connection::open(&path)
-            .map_err(|e| PlatformError::Internal(format!("opening store db {:?}: {e}", path)))?;
+            .map_err(|e| PlatformError::Internal(format!("opening store db {path:?}: {e}")))?;
         conn.pragma_update(None, "foreign_keys", "ON")
-            .map_err(|e| PlatformError::Internal(format!("enabling FK on {:?}: {e}", path)))?;
+            .map_err(|e| PlatformError::Internal(format!("enabling FK on {path:?}: {e}")))?;
 
         if is_new {
             conn.pragma_update(None, "journal_mode", "WAL")
-                .map_err(|e| PlatformError::Internal(format!("enabling WAL on {:?}: {e}", path)))?;
+                .map_err(|e| PlatformError::Internal(format!("enabling WAL on {path:?}: {e}")))?;
             tracing::info!(store_id, path = %path.display(), "creating store database");
         }
 
@@ -162,14 +164,49 @@ impl StoreDatabaseManager {
         tracing::info!(count, "all store databases closed");
     }
 
+    /// Is this store id safe to interpolate into a database filename?
+    ///
+    /// PC-1: `store-<id>.sqlite` puts the id straight into a path. The predicate used to live
+    /// inline in [`Self::delete_store_db`], which was the only door that checked — the open path
+    /// and `store_db_exists` reached the same join unguarded. One definition, at the join, so a
+    /// new door cannot be added without it.
+    #[must_use]
+    pub fn is_safe_store_id(store_id: &str) -> bool {
+        !store_id.is_empty()
+            && store_id.len() <= 128
+            && !store_id.contains("..")
+            && store_id
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
+    }
+
     /// Get the filesystem path for a store's database file.
+    ///
+    /// The raw join, kept for tests and for callers that have already validated. Everything that
+    /// touches the filesystem goes through [`Self::checked_store_db_path`] instead.
     pub fn store_db_path(&self, store_id: &str) -> PathBuf {
         self.data_dir.join(format!("store-{store_id}.sqlite"))
     }
 
+    /// The path for a store, or an error naming an id that cannot be one.
+    pub fn checked_store_db_path(&self, store_id: &str) -> Result<PathBuf, PlatformError> {
+        if !Self::is_safe_store_id(store_id) {
+            return Err(PlatformError::Internal(format!(
+                "refused store id {store_id:?}: a store id is 1..=128 characters of alphanumeric, \
+                 '-', '_' or '.', and never contains '..', because it names a file inside the \
+                 data directory"
+            )));
+        }
+        Ok(self.store_db_path(store_id))
+    }
+
     /// Check if a store's database file exists on disk.
+    ///
+    /// An id that cannot name a store names no file, so `false` is the honest answer — and it
+    /// keeps the callers that use this as a guard from being where a bad id surfaces.
     pub fn store_db_exists(&self, store_id: &str) -> bool {
-        self.store_db_path(store_id).exists()
+        self.checked_store_db_path(store_id)
+            .is_ok_and(|path| path.exists())
     }
 
     /// Delete a store's database file and its WAL/SHM sidecars.
@@ -188,13 +225,9 @@ impl StoreDatabaseManager {
     /// an unsafe id is refused before any filesystem call. Policy — which stores
     /// may be deleted at all — stays with the caller.
     pub fn delete_store_db(&self, store_id: &str) -> Result<(), PlatformError> {
-        let safe_id = !store_id.is_empty()
-            && store_id.len() <= 128
-            && !store_id.contains("..")
-            && store_id
-                .chars()
-                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'));
-        if !safe_id {
+        // The predicate moved to `is_safe_store_id`; this door keeps its own wording because
+        // "refused to delete" is the sentence an operator needs when a delete does not happen.
+        if !Self::is_safe_store_id(store_id) {
             return Err(PlatformError::Internal(format!(
                 "refused to delete store database: unsafe store id {store_id:?}"
             )));
@@ -232,202 +265,9 @@ impl StoreDatabaseManager {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn make_migrations() -> &'static [Migration] {
-        Box::leak(Box::new(vec![Migration {
-            id: "001_test.sql",
-            sql: "CREATE TABLE test_table (id INTEGER PRIMARY KEY, name TEXT)",
-        }]))
-    }
-
-    fn setup() -> (StoreDatabaseManager, tempfile::TempDir) {
-        let dir = tempfile::tempdir().unwrap();
-        let data_dir = dir.path().to_path_buf();
-
-        let manager = StoreDatabaseManager::new(data_dir, make_migrations());
-        (manager, dir)
-    }
-
-    #[test]
-    fn create_store_db_creates_file() {
-        let (manager, _dir) = setup();
-        manager.create_store_db("store-1").unwrap();
-        assert!(manager.store_db_exists("store-1"));
-    }
-
-    #[test]
-    fn create_store_db_idempotent() {
-        let (manager, _dir) = setup();
-        manager.create_store_db("store-1").unwrap();
-        manager.create_store_db("store-1").unwrap();
-    }
-
-    #[test]
-    fn open_store_creates_db_lazily() {
-        let (manager, _dir) = setup();
-        assert!(!manager.store_db_exists("store-2"));
-        {
-            let arc = manager.open_store("store-2").unwrap();
-            let conn = arc.lock().unwrap();
-            let exists: i64 = conn
-                .query_row(
-                    "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='test_table'",
-                    [],
-                    |r| r.get(0),
-                )
-                .unwrap();
-            assert_eq!(exists, 1);
-        }
-        assert!(manager.store_db_exists("store-2"));
-    }
-
-    #[test]
-    fn open_store_returns_cached_connection() {
-        let (manager, _dir) = setup();
-        manager.create_store_db("store-1").unwrap();
-
-        let arc1 = manager.open_store("store-1").unwrap();
-        let arc2 = manager.open_store("store-1").unwrap();
-        assert!(Arc::ptr_eq(&arc1, &arc2));
-
-        let ids = manager.open_store_ids();
-        assert_eq!(ids.len(), 1);
-        assert!(ids.contains(&"store-1".to_string()));
-    }
-
-    #[test]
-    fn close_store_removes_from_cache() {
-        let (manager, _dir) = setup();
-        manager.create_store_db("store-1").unwrap();
-        {
-            let _arc = manager.open_store("store-1").unwrap();
-        }
-        assert_eq!(manager.open_store_ids().len(), 1);
-        manager.close_store("store-1");
-        assert_eq!(manager.open_store_ids().len(), 0);
-    }
-
-    #[test]
-    fn close_all_clears_cache() {
-        let (manager, _dir) = setup();
-        manager.create_store_db("store-a").unwrap();
-        manager.create_store_db("store-b").unwrap();
-        {
-            let _a = manager.open_store("store-a").unwrap();
-            let _b = manager.open_store("store-b").unwrap();
-        }
-        assert_eq!(manager.open_store_ids().len(), 2);
-        manager.close_all();
-        assert_eq!(manager.open_store_ids().len(), 0);
-    }
-
-    #[test]
-    fn store_db_path_uses_correct_naming() {
-        let (manager, _dir) = setup();
-        let path = manager.store_db_path("downtown");
-        assert!(path.to_str().unwrap().contains("store-downtown.sqlite"));
-    }
-
-    #[test]
-    fn store_db_exists_initially_false() {
-        let (manager, _dir) = setup();
-        assert!(!manager.store_db_exists("nonexistent"));
-    }
-
-    #[test]
-    fn data_is_isolated_between_stores() {
-        let (manager, _dir) = setup();
-        manager.create_store_db("store-a").unwrap();
-        manager.create_store_db("store-b").unwrap();
-
-        {
-            let arc = manager.open_store("store-a").unwrap();
-            let conn = arc.lock().unwrap();
-            conn.execute("INSERT INTO test_table (id, name) VALUES (1, 'Apple')", [])
-                .unwrap();
-        }
-        {
-            let arc = manager.open_store("store-b").unwrap();
-            let conn = arc.lock().unwrap();
-            conn.execute("INSERT INTO test_table (id, name) VALUES (1, 'Banana')", [])
-                .unwrap();
-        }
-        {
-            let arc = manager.open_store("store-a").unwrap();
-            let conn = arc.lock().unwrap();
-            let name: String = conn
-                .query_row("SELECT name FROM test_table WHERE id = 1", [], |r| r.get(0))
-                .unwrap();
-            assert_eq!(name, "Apple");
-        }
-        {
-            let arc = manager.open_store("store-b").unwrap();
-            let conn = arc.lock().unwrap();
-            let name: String = conn
-                .query_row("SELECT name FROM test_table WHERE id = 1", [], |r| r.get(0))
-                .unwrap();
-            assert_eq!(name, "Banana");
-        }
-    }
-
-    #[test]
-    fn migrations_recover_from_partial_failure() {
-        let (manager, _dir) = setup();
-        let path = manager.store_db_path("store-recover");
-
-        // Simulate a partially-created DB file (exists but has no tables).
-        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-        let conn = Connection::open(&path).unwrap();
-        conn.pragma_update(None, "foreign_keys", "ON").unwrap();
-        // Don't run migrations — simulate a crash during creation.
-        drop(conn);
-
-        assert!(path.exists());
-
-        // Now open_store should detect the file, run migrations, and succeed.
-        let arc = manager.open_store("store-recover").unwrap();
-        let conn = arc.lock().unwrap();
-        let exists: i64 = conn
-            .query_row(
-                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='test_table'",
-                [],
-                |r| r.get(0),
-            )
-            .unwrap();
-        assert_eq!(exists, 1);
-    }
-
-    #[test]
-    fn open_store_propagates_error_not_silent_in_memory_fallback() {
-        // Bug #1: open_store caught errors in or_insert_with and fell back
-        // to an in-memory connection, silently losing all data. After the fix,
-        // errors from open_or_create_connection must propagate to the caller.
-        //
-        // Trigger the error by using a regular file as the data_dir —
-        // create_dir_all inside open_or_create_connection will fail because
-        // the "directory" is actually a file.
-        let dir = tempfile::tempdir().unwrap();
-        let file_path = dir.path().join("blocker");
-        std::fs::write(&file_path, b"block").unwrap();
-        // Now file_path is a file, not a directory. When open_or_create_connection
-        // calls create_dir_all on file_path.join("store-X.sqlite").parent(),
-        // it'll fail because the parent exists as a file.
-        let manager = StoreDatabaseManager::new(file_path, make_migrations());
-        let result = manager.open_store("test-store");
-        assert!(
-            result.is_err(),
-            "Bug #1: open_store must propagate errors, \
-             not silently return an in-memory fallback"
-        );
-    }
-}
-
-// New tests live in a sibling file per AGENTS.md ("never put unit tests inside
-// production .rs files"). The inline `mod tests` above predates that rule and is
-// left alone rather than expanded.
+// Unit tests live in a sibling file per AGENTS.md ("never put unit tests
+// inside production .rs files"). Both the lifecycle tests that used to sit
+// in an inline `mod tests` block here and the delete-path tests live there.
 #[cfg(test)]
 #[path = "manager_tests.rs"]
 mod manager_tests;

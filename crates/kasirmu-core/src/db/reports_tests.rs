@@ -1,3 +1,9 @@
+// P2-5: `float_cmp` assertions on aggregator output that the reports compute
+// from integer minor units — a percentage of an exact total, or a zero. These
+// compare against literals the code produces exactly, so an epsilon would make
+// the assertion weaker, not safer.
+#![allow(clippy::float_cmp)]
+
 use crate::db::Store;
 use crate::db::products::{CreateProductAttributes, UpdateProductAttributes};
 use crate::kds::CreateKdsOrderInput;
@@ -63,6 +69,38 @@ fn seed_completed_sale(conn: &Connection, sku: &str, qty: i64, unit_minor: i64) 
     sale.id
 }
 
+/// Refund `qty` units of `sku` from `sale_id` (REP-08).
+///
+/// Partial refunds are the interesting case: the returned units go back into
+/// stock, so their cost must leave COGS while the units that stayed sold keep
+/// theirs. The helper refunds a quantity ON A NAMED LINE so the join back to
+/// `sale_lines.cost_minor` is exercised the way production does it.
+fn refund_units(conn: &Connection, sale_id: &str, sku: &str, qty: i64, unit_minor: i64) {
+    let s = store(conn);
+    let sale_line_id: String = conn
+        .query_row(
+            "SELECT id FROM sale_lines WHERE sale_id = ?1 AND sku = ?2",
+            params![sale_id, sku],
+            |r| r.get(0),
+        )
+        .unwrap();
+    let line = crate::RefundLine::new(
+        sale_line_id,
+        sku,
+        qty,
+        price(unit_minor),
+        price(unit_minor * qty),
+    );
+    let refund = crate::Refund::new(
+        sale_id,
+        price(unit_minor * qty),
+        "test",
+        "",
+        "u1",
+        vec![line],
+    );
+    s.create_refund(&refund).unwrap();
+}
 // ── Daily revenue ──────────────────────────────────────────────
 
 #[test]
@@ -120,6 +158,79 @@ fn daily_revenue_gross_profit_from_product_costs() {
     );
 }
 
+// ── REP-08: refunded cost must leave COGS ──────────────────────
+
+#[test]
+fn daily_revenue_nets_refunded_cost_out_of_gross_profit() {
+    let conn = fresh();
+    insert_user(&conn, "u1");
+    let sale_id = seed_completed_sale(&conn, "SHIRT", 4, 1000);
+    conn.execute(
+        "UPDATE products SET cost_minor = 400 WHERE sku = 'SHIRT'",
+        [],
+    )
+    .unwrap();
+    // Snapshot the cost the way checkout does, so the join back is meaningful.
+    conn.execute(
+        "UPDATE sale_lines SET cost_minor = 400 WHERE sale_id = ?1",
+        params![sale_id],
+    )
+    .unwrap();
+
+    // Refund 1 of the 4 units.
+    refund_units(&conn, &sale_id, "SHIRT", 1, 1000);
+
+    let rows = store(&conn)
+        .daily_revenue("2000-01-01", "2099-12-31")
+        .unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].total_minor, 4000);
+    assert_eq!(rows[0].refund_minor, 1000);
+    assert_eq!(rows[0].net_revenue_minor, 3000);
+    // 3 units remain sold at 400 each; the refunded unit's cost is gone.
+    assert_eq!(
+        rows[0].cogs_minor, 1200,
+        "refunded units must not stay in COGS - got {}",
+        rows[0].cogs_minor
+    );
+    assert_eq!(rows[0].gross_profit_minor, 1800);
+}
+
+#[test]
+fn daily_revenue_full_refund_removes_all_cost() {
+    let conn = fresh();
+    insert_user(&conn, "u1");
+    let sale_id = seed_completed_sale(&conn, "SHIRT", 2, 1000);
+    conn.execute(
+        "UPDATE sale_lines SET cost_minor = 300 WHERE sale_id = ?1",
+        params![sale_id],
+    )
+    .unwrap();
+    refund_units(&conn, &sale_id, "SHIRT", 2, 1000);
+    let rows = store(&conn)
+        .daily_revenue("2000-01-01", "2099-12-31")
+        .unwrap();
+    assert_eq!(rows[0].cogs_minor, 0, "a fully refunded sale has no COGS");
+    assert_eq!(rows[0].gross_profit_minor, 0);
+}
+
+#[test]
+fn weekly_revenue_nets_refunded_cost_out_of_gross_profit() {
+    let conn = fresh();
+    insert_user(&conn, "u1");
+    let sale_id = seed_completed_sale(&conn, "SHIRT", 4, 1000);
+    conn.execute(
+        "UPDATE sale_lines SET cost_minor = 400 WHERE sale_id = ?1",
+        params![sale_id],
+    )
+    .unwrap();
+    refund_units(&conn, &sale_id, "SHIRT", 1, 1000);
+    let rows = store(&conn)
+        .weekly_revenue("2000-01-01", "2099-12-31")
+        .unwrap();
+    assert_eq!(rows[0].cogs_minor, 1200);
+    assert_eq!(rows[0].gross_profit_minor, 1800);
+}
 // ── Weekly revenue ─────────────────────────────────────────────
 
 #[test]
@@ -592,6 +703,54 @@ fn low_stock_alerts_at_location_respects_custom_threshold() {
         rows[0].threshold, 10,
         "custom threshold should override default"
     );
+}
+
+#[test]
+fn low_stock_alerts_at_location_does_not_fall_back_to_the_default_over_a_custom_threshold() {
+    // The documented contract is that a configured threshold REPLACES the
+    // default. With a custom threshold of 4 and 5 units on hand the product is
+    // not low, yet the default branch (`qty <= default`) still fires and
+    // returns a row whose own fields contradict the filter — `current_qty: 5`
+    // against `threshold: 4` — raising a false low-stock alert.
+    let conn = fresh();
+    let s = store(&conn);
+    let money = Money {
+        minor_units: 100,
+        currency: usd(),
+    };
+    let prod = s
+        .create_product("CALM", "Calm Stock Item", money, None, None, 5, None)
+        .unwrap();
+    let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+    conn.execute(
+        "INSERT INTO stock_thresholds (id, product_id, location_id, threshold, enabled, created_at, updated_at)
+         VALUES (?1, ?2, NULL, 4, 1, ?3, ?3)",
+        rusqlite::params![uuid::Uuid::now_v7().to_string(), prod.id, now],
+    )
+    .unwrap();
+
+    let rows = s
+        .low_stock_alerts_at_location(crate::inventory::CANONICAL_DEFAULT_LOCATION_UUID, 10)
+        .unwrap();
+    assert!(
+        rows.is_empty(),
+        "custom threshold 4 with 5 on hand is not low stock, got {rows:?}"
+    );
+
+    // The default must still apply where no threshold is configured.
+    s.create_product("PLAIN", "Plain Stock Item", money, None, None, 5, None)
+        .unwrap();
+    let rows = s
+        .low_stock_alerts_at_location(crate::inventory::CANONICAL_DEFAULT_LOCATION_UUID, 10)
+        .unwrap();
+    assert_eq!(
+        rows.len(),
+        1,
+        "the default still governs unconfigured products"
+    );
+    assert_eq!(rows[0].sku, "PLAIN");
+    assert_eq!(rows[0].current_qty, 5);
+    assert_eq!(rows[0].threshold, 10);
 }
 
 // ── Active stock alerts ────────────────────────────────────────
@@ -1478,6 +1637,31 @@ fn discounts_summary_counts_and_lists_codes() {
     assert_eq!(row.codes[0].redeemed_count, 2);
 }
 
+#[test]
+fn discounts_summary_treats_null_and_empty_labels_as_one_bucket() {
+    // `discount_label` is a nullable TEXT column, and an unlabelled discount
+    // can be stored either way (NULL from a cart with no label, '' from an
+    // empty one). Both DISPLAY as `discount`, so both must GROUP as
+    // `discount`: grouping the raw column splits the same code into two rows
+    // with an identical label and spends two of the five slots on it.
+    let conn = fresh();
+    conn.execute_batch(
+        "INSERT INTO sales (id, total_minor, currency, line_count, status, discount_percent, discount_label, created_at) VALUES
+            ('n1', 1000, 'USD', 1, 'completed', 10, NULL,        '2026-07-10T09:00:00Z'),
+            ('e1', 1000, 'USD', 1, 'completed', 10, '',          '2026-07-11T09:00:00Z'),
+            ('w1', 500,  'USD', 1, 'completed', 20, 'WELCOME10', '2026-07-12T09:00:00Z');",
+    )
+    .unwrap();
+    let row = store(&conn)
+        .discounts_summary("2026-07-01", "2026-07-31")
+        .unwrap();
+    assert_eq!(row.codes.len(), 2, "codes: {:?}", row.codes);
+    assert_eq!(row.codes[0].label, "discount");
+    assert_eq!(row.codes[0].redeemed_count, 2);
+    assert_eq!(row.codes[1].label, "WELCOME10");
+    assert_eq!(row.codes[1].redeemed_count, 1);
+}
+
 // ── Inventory turnover + trend ─────────────────────────────────
 
 #[test]
@@ -1591,6 +1775,37 @@ fn table_turnover_counts_completed_table_orders() {
 }
 
 #[test]
+fn table_turnover_counts_one_turn_per_table_not_per_kitchen_ticket() {
+    // `kds_orders` is UNIQUE on (sale_id, kitchen_zone) because a sale whose
+    // items span two zones FANS OUT into one ticket per zone. Those tickets
+    // are still one party at one table, so a per-ticket COUNT double-counts
+    // the table turn.
+    let conn = fresh();
+    let s = store(&conn);
+    let sale_id = seed_completed_sale(&conn, "PLATTER", 1, 24000);
+    for zone in ["grill", "bar"] {
+        s.create_kds_order(CreateKdsOrderInput {
+            sale_id: sale_id.clone(),
+            store_id: None,
+            items_summary: "x".into(),
+            item_count: 1,
+            kitchen_zone: Some(zone.into()),
+            notes: String::new(),
+            table_number: Some("T5".into()),
+            priority: false,
+        })
+        .unwrap();
+    }
+
+    let rows = s.table_turnover("2000-01-01", "2099-12-31").unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(
+        rows[0].table_orders, 1,
+        "one sale at one table is one turn, however many kitchen zones it fanned out to"
+    );
+}
+
+#[test]
 fn hourly_table_activity_groups_completed_table_orders_by_hour() {
     let conn = fresh();
     let s = store(&conn);
@@ -1641,6 +1856,38 @@ fn hourly_table_activity_groups_completed_table_orders_by_hour() {
     assert_eq!(rows[0].table_orders, 1);
     assert_eq!(rows[1].hour, 12);
     assert_eq!(rows[1].table_orders, 1);
+}
+
+#[test]
+fn hourly_table_activity_counts_one_turn_per_table_not_per_kitchen_ticket() {
+    // Same fan-out as `table_turnover`: the occupancy curve must count the
+    // party once, not once per kitchen zone it routed to.
+    let conn = fresh();
+    let s = store(&conn);
+    let sale_id = seed_completed_sale(&conn, "PLATTER", 1, 24000);
+    conn.execute(
+        "UPDATE sales SET created_at = ?1 WHERE id = ?2",
+        params!["2026-01-01T19:15:00.000Z", sale_id],
+    )
+    .unwrap();
+    for zone in ["grill", "bar"] {
+        s.create_kds_order(CreateKdsOrderInput {
+            sale_id: sale_id.clone(),
+            store_id: None,
+            items_summary: "x".into(),
+            item_count: 1,
+            kitchen_zone: Some(zone.into()),
+            notes: String::new(),
+            table_number: Some("T5".into()),
+            priority: false,
+        })
+        .unwrap();
+    }
+
+    let rows = s.hourly_table_activity("2000-01-01", "2099-12-31").unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].hour, 19);
+    assert_eq!(rows[0].table_orders, 1);
 }
 
 #[test]

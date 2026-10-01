@@ -200,7 +200,68 @@ async function redeem(pointsToType?: string) {
   }
 }
 
-describe('PaymentModal loyalty / points-redeem block (characterization)', () => {
+  // ── Session loss must not leave a discount nobody can cancel ─────────
+  //
+  // PaymentModalProps.sessionToken is OPTIONAL, and PosScreen spreads it
+  // conditionally: `{...(sessionToken ? { sessionToken } : {})}`. The modal
+  // stays mounted across that change (`{total && <PaymentModal ...>}` does not
+  // depend on the token), so the prop can go from `tok-1` to undefined WHILE
+  // the modal is open, with a redeemed discount already live.
+  //
+  // Two effects owned `loyaltyDiscount` and both returned early on a missing
+  // token WITHOUT clearing it:
+  //
+  //   :467  if (!sessionToken) { setLoyaltyAccount(null); return; }
+  //   :507  if (!sessionToken) return;
+  //
+  // The reset at the top of that effect is guarded by
+  // `!redeemPoints || pointsToRedeem <= 0`, and a token loss changes neither, so
+  // the discount SURVIVED -- the failure the comment above :456 names exactly:
+  // "a discount that moves Total Due while nothing on screen can cancel it".
+  //
+  // Uses `rerender` so the SAME component instance sees the prop change, which
+  // is what PosScreen does. Rendering a second modal would mount fresh state and
+  // pass vacuously.
+  it('drops a redeemed loyalty discount when the session token goes away', async () => {
+    mockGetLoyaltyAccount.mockResolvedValue(account(500));
+    mockGetPointsValue.mockImplementation(async (_t: string, p: number) => valueFor(p));
+
+    const withToken = (token?: string) => (
+      <ToastProvider>
+        <PaymentModal
+          open
+          {...(token ? { sessionToken: token } : {})}
+          selectedCustomer={CUSTOMER}
+          lineItems={[line]}
+          total={usd(10000)}
+          userId="test-user-id"
+          onComplete={vi.fn()}
+          onClose={vi.fn()}
+        />
+      </ToastProvider>
+    );
+
+    const view = await renderInAct(withFluent(withToken('tok-1'), salesFtl));
+    await redeem('250');
+
+    // The discount is live: Total Due has moved off the undiscounted total.
+    // `money(...)` is the PRODUCTION formatter, per this file's money law: never
+    // a hand-typed decimal. The undiscounted total is money(10000).
+    await waitFor(() => {
+      expect(totalAmount()!.textContent).not.toBe(money(10000));
+    });
+
+    // The session clears. Same instance, prop removed.
+    await renderInAct(withFluent(withToken(undefined), salesFtl));
+    view.rerender(withFluent(withToken(undefined), salesFtl));
+
+    // The discount must be gone with the session that earned it.
+    await waitFor(() => {
+      expect(totalAmount()!.textContent).toBe(money(10000));
+    });
+  });
+
+  describe('PaymentModal loyalty / points-redeem block (characterization)', () => {
   // COMPOSITE pin - and it is NOT sufficient on its own. It asserts the SHELL's
   // render condition, which says nothing about what the panel would do if
   // something else mounted it. L14 is the caller-independent half of the same

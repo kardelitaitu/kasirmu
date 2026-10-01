@@ -45,7 +45,7 @@
 //! destination — `create_backup(db_path)` — so they write wherever the shell's own
 //! `default_backup_path` lands, which on Android is inside the app's private storage
 //! with no way for the operator to reach it. That is why the tablet got its own
-//! command instead of a contract change to the desktop's: [`create_backup_to`] takes
+//! command instead of a contract change to the desktop's: [`create_backup_to`](kasirmu_bridge::data::create_backup_to) takes
 //! the cache path the UI bridged from the save dialog's `content://` URI and writes
 //! there, then the UI walks the bytes out — the same two-leg cross as `export_data`
 //! (see `todo-tablet-dialog-content-uri.md` §3.3). The owner chose the tablet-only

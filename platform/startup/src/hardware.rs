@@ -6,18 +6,21 @@ next: implement HID POS reads in drivers/scale.rs before wiring any scale; baud_
 */
 //! Startup hardware registration — the missing write side of the HAL registry.
 //!
-//! The UI already lets an operator save a [`TerminalProfile`] describing
-//! their printer, kitchen printer, scanner and scale, and an `edc_terminals`
-//! table holds their card terminals. Until now nothing read either back into
-//! drivers, so `AppState` held an empty [`DriverRegistry`] and every hardware
-//! command resolved `None`.
+//! The UI already lets an operator save a
+//! [`TerminalProfile`](platform_core::terminal_profile::TerminalProfile)
+//! describing their printer, kitchen printer, scanner and scale, and an
+//! `edc_terminals` table holds their card terminals. Until now nothing read
+//! either back into drivers, so `AppState` held an empty
+//! [`DriverRegistry`](kasirmu_hal::DriverRegistry) and every hardware command
+//! resolved `None`.
 //!
-//! [`load_profile`] reads the profile the same way the settings command
-//! does — database first, JSON file as fallback — and
-//! [`register_hardware`] maps it onto [`HardwareConfig`] and applies it.
-//! [`register_card_terminals`] does the same for terminal rows. Both
-//! mappings are pure where they can be, so they are testable without a
-//! device.
+//! [`load_profile`](crate::hardware::load_profile) reads the profile the same
+//! way the settings command does — database first, JSON file as fallback — and
+//! [`register_hardware`](crate::hardware::register_hardware) maps it onto
+//! [`HardwareConfig`](kasirmu_hal::bootstrap::HardwareConfig) and applies it.
+//! [`register_card_terminals`](crate::hardware::register_card_terminals) does
+//! the same for terminal rows. Both mappings are pure where they can be, so
+//! they are testable without a device.
 
 use std::path::Path;
 
@@ -165,7 +168,7 @@ pub async fn register_hardware(
 
 /// The registry id the EDC commands resolve when no terminal is named.
 ///
-/// Mirrors `oz_pos_app::commands::edc::DEFAULT_TERMINAL_ID`; duplicated
+/// Mirrors `kasirmu_bridge::edc::DEFAULT_TERMINAL_ID`; duplicated
 /// because platform-startup must not depend on an app crate. A desktop test
 /// asserts the two stay equal.
 pub const DEFAULT_TERMINAL_ID: &str = "default";
@@ -180,20 +183,27 @@ fn terminal_connection(
     row: &EdcTerminalConfig,
 ) -> Option<kasirmu_hal::bootstrap::TerminalConnection> {
     use kasirmu_hal::bootstrap::TerminalConnection;
-    match (
-        row.connection_type.as_str(),
-        row.transport.as_str(),
-        row.address.trim(),
-    ) {
-        (_, _, "") => None,
-        ("wired", "serial" | "usb", address) => Some(TerminalConnection::Wired {
+    let address = row.address.trim();
+    if address.is_empty() {
+        return None;
+    }
+    if address.starts_with("loopback")
+        || row.vendor.as_deref() == Some("loopback")
+        || row.vendor.as_deref() == Some("simulator")
+    {
+        return Some(TerminalConnection::Loopback {
+            address: address.to_owned(),
+        });
+    }
+    match (row.connection_type.as_str(), row.transport.as_str()) {
+        ("wired", "serial" | "usb") => Some(TerminalConnection::Wired {
             port: address.to_owned(),
             baud: kasirmu_hal::drivers::edc::wired::DEFAULT_BAUD,
         }),
-        ("wireless", "bluetooth", address) => Some(TerminalConnection::Wireless {
+        ("wireless", "bluetooth") => Some(TerminalConnection::Wireless {
             target: WirelessTarget::Bluetooth(address.to_owned()),
         }),
-        ("wireless", "tcp", address) => Some(TerminalConnection::Wireless {
+        ("wireless", "tcp") => Some(TerminalConnection::Wireless {
             target: WirelessTarget::Network(address.to_owned()),
         }),
         _ => None,
@@ -202,16 +212,30 @@ fn terminal_connection(
 
 /// Register every card terminal the operator configured.
 ///
-/// Each row is registered under its own database id, and the first row in
-/// the slice is additionally bound to [`DEFAULT_TERMINAL_ID`] — the string
-/// the EDC commands look up. Without that alias the commands still resolve
-/// `None`, because a UUID row id is not the name `terminal("default")` asks
-/// for. The alias is interim, not design: `edc_terminals` has no
-/// `is_default` column, so "which terminal is this register's" is answered
-/// by creation order until the column exists or the commands take a
-/// `terminal_id`. Callers must pass rows already ordered by
-/// `list_active_edc_terminals()`, never `DriverRegistry::terminal_ids()`,
-/// which iterates a `HashMap` and would make the choice vary per restart.
+/// Each row is registered under its own database id, and one row is
+/// additionally bound to [`DEFAULT_TERMINAL_ID`] — the string the EDC
+/// commands look up. Without that alias the commands still resolve `None`,
+/// because a UUID row id is not the name `terminal("default")` asks for.
+///
+/// # Which row wins, and why that is no longer the caller's problem
+///
+/// The alias is interim, not design: `edc_terminals` has no `is_default`
+/// column, so "which terminal is this register's" is answered by creation
+/// order until the column exists or the commands take an explicit
+/// `terminal_id` (owner question R4).
+///
+/// Until 2026-09-28 that order was taken from the *slice*, so a caller who
+/// passed rows in anything other than creation order bound a **different
+/// terminal on every restart** — the `DriverRegistry::terminal_ids()` case,
+/// which iterates a `HashMap`. The function now derives the winner itself from
+/// `(created_at, id)`, the same key `list_active_edc_terminals()` sorts on, so
+/// the same set of rows always binds the same terminal regardless of the order
+/// they arrive in. Callers no longer have to care, and the footgun is gone
+/// rather than documented.
+///
+/// Both fields are strings from the same writer — an ISO-8601 UTC stamp and a
+/// UUID v7 — so a lexicographic compare is a chronological one here. It would
+/// not be if a row ever carried a non-UTC or non-zero-padded offset.
 pub async fn register_card_terminals(
     registry: &DriverRegistry,
     rows: &[EdcTerminalConfig],
@@ -221,6 +245,9 @@ pub async fn register_card_terminals(
     // the same device, not rows[0] which may have been rejected.
     let mut default_terminal: Option<(kasirmu_hal::bootstrap::TerminalConnection, DeviceInfo)> =
         None;
+    // Sort key of the row currently winning, so the alias follows the row DATA
+    // rather than the slice position. `None` means nothing has claimed it yet.
+    let mut default_key: Option<(&str, &str)> = None;
 
     for row in rows {
         let Some(connection) = terminal_connection(row) else {
@@ -238,10 +265,13 @@ pub async fn register_card_terminals(
             row.model.clone().unwrap_or_else(|| "card".into()),
             &row.address,
         );
-        // The first *registrable* row claims the default id, not merely the
-        // first row: an unpairable row earlier in the table would otherwise
-        // leave the register with no terminal at all.
-        if default_terminal.is_none() {
+        // The earliest-created *registrable* row claims the default id, not
+        // merely the first one offered. An unpairable row cannot claim it at
+        // all — the `continue` above has already skipped it — so a dead row
+        // earlier in the table no longer leaves the register with no terminal.
+        let key = (row.created_at.as_str(), row.id.as_str());
+        if default_key.is_none_or(|best| key < best) {
+            default_key = Some(key);
             default_terminal = Some((connection.clone(), info.clone()));
         }
 
