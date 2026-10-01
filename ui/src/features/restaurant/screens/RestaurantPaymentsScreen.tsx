@@ -1030,51 +1030,53 @@ export function RestaurantPaymentsScreen({
             })}
 
             {/* ── Add Custom Payment Rail Card ───────────────────── */}
-            <Card
-              shadow="sm"
-              header={
-                <div className="restaurant-settings-card-header">
-                  <div>
-                    <h2 className="settings-section-title">
-                      <Localized id="restaurant-payment-rails-heading">Add Custom Payment Rail</Localized>
-                    </h2>
-                    <p>
-                      <Localized id="restaurant-payment-rails-sub">
-                        Register additional digital payment options and tender codes
-                      </Localized>
-                    </p>
+            <div className="resto-payment-card-add-rail">
+              <Card
+                shadow="sm"
+                header={
+                  <div className="restaurant-settings-card-header">
+                    <div>
+                      <h2 className="settings-section-title">
+                        <Localized id="restaurant-payment-rails-heading">Add Custom Payment Rail</Localized>
+                      </h2>
+                      <p>
+                        <Localized id="restaurant-payment-rails-sub">
+                          Register additional digital payment options and tender codes
+                        </Localized>
+                      </p>
+                    </div>
+                  </div>
+                }
+              >
+                <div className="settings-form">
+                  <div className="restaurant-rail-add">
+                    <input
+                      type="text"
+                      className="settings-input"
+                      value={newCode}
+                      onChange={(e) => setNewCode(e.target.value)}
+                      placeholder="e.g. ovo, shopeepay, debit_mandiri"
+                      aria-label="New rail code"
+                    />
+                    <input
+                      type="text"
+                      className="settings-input"
+                      value={newLabel}
+                      onChange={(e) => setNewLabel(e.target.value)}
+                      placeholder="e.g. OVO E-Wallet"
+                      aria-label="New rail display label"
+                    />
+                    <Button
+                      variant="secondary"
+                      onClick={handleAddCustomRail}
+                      disabled={!newCode.trim() || !newLabel.trim()}
+                    >
+                      <Localized id="settings-localpay-add">Add rail</Localized>
+                    </Button>
                   </div>
                 </div>
-              }
-            >
-              <div className="settings-form">
-                <div className="restaurant-rail-add">
-                  <input
-                    type="text"
-                    className="settings-input"
-                    value={newCode}
-                    onChange={(e) => setNewCode(e.target.value)}
-                    placeholder="e.g. ovo, shopeepay, debit_mandiri"
-                    aria-label="New rail code"
-                  />
-                  <input
-                    type="text"
-                    className="settings-input"
-                    value={newLabel}
-                    onChange={(e) => setNewLabel(e.target.value)}
-                    placeholder="e.g. OVO E-Wallet"
-                    aria-label="New rail display label"
-                  />
-                  <Button
-                    variant="secondary"
-                    onClick={handleAddCustomRail}
-                    disabled={!newCode.trim() || !newLabel.trim()}
-                  >
-                    <Localized id="settings-localpay-add">Add rail</Localized>
-                  </Button>
-                </div>
-              </div>
-            </Card>
+              </Card>
+            </div>
 
           </div>
         )}
