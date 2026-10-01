@@ -25,7 +25,6 @@ import { registerPurchasingFeature } from './purchasing/register';
 import { registerStockTransfersFeature } from './stock-transfers/register';
 import { registerWarehouseFeature } from './warehouse/register';
 import { registerMemoFeature } from './memo/register';
-import { registerMobileSetupFeature } from './setup/mobile/register';
 
 /**
  * Register all UI features, pages, navigation items, and widgets.
@@ -102,5 +101,4 @@ export function registerAllFeatures() {
   registerStockTransfersFeature();
   registerWarehouseFeature();
   registerMemoFeature();
-  registerMobileSetupFeature();
 }

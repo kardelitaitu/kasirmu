@@ -99,7 +99,6 @@ setup-mode-linked-title = Link your kasir.mu account
 setup-mode-linked-desc = Sign up or sign in to attach this terminal to your account, for multi-device sync, cloud backup, and your plan.
 setup-tab-pair = QR Pairing
 setup-tab-email = Email Code
-setup-tab-wizard = Setup Wizard
 setup-provision-store-type = What kind of shop is this?
 setup-store-type-simple-retail = Shop
 setup-store-type-simple-retail-blurb = Barcode, cash, receipt, inventory, tax
@@ -151,28 +150,21 @@ setup-account-verifying = Checking the code…
 setup-account-send-failed = Could not send the code. Check the address and try again.
 setup-account-verify-failed = That code did not work. Check it and try again, or resend.
 
-
 # Accessible name for a feature toggle row. The code used to write
 # `Toggle ${f.label}`, which concatenated the English word "Toggle" with the
 # *unlocalized* array entry, so a screen reader announced "Toggle Inventory
 # Tracking" to an Indonesian user even though the visible label was correct.
 
-
-
 setup-features-toggle-aria =
     .aria-label = Toggle { $label }
 
-
 # QRIS setup gate (C1 Free→Plus trigger — onboarding)
-
 
 # Feature names (short — for review tags)
 
 # Feature full labels (for toggle rows)
 
 # Feature descriptions
-
-
 
     [one] feature enabled
     *[other] features enabled
@@ -1046,7 +1038,6 @@ settings-localpay-empty-list = No rails recorded yet — add the ones this site 
 settings-localpay-scope-location = Set at this site
 settings-localpay-scope-legal-entity = Market default (legal entity)
 
-
 # ── Diagnostics (feature-availability verdicts) ──
 settings-diagnostics-title = Diagnostics
 settings-diagnostics-intro = Why each feature is available or locked for you right now — the same gates the app enforces, with the reason named. Read-only, works offline.
@@ -1081,7 +1072,6 @@ settings-diagnostics-detail-expires = Expires: { $expiresAt }
 settings-diagnostics-detail-grace = Grace until: { $graceUntil }
 settings-diagnostics-deployment-version = App version: { $version }
 settings-diagnostics-deployment-unknown = Could not read the app version.
-
 
 # ── Receipt format (receipt-format axis, Business Defaults screen) ──
 settings-rcptfmt-title = Receipt format
@@ -1159,51 +1149,6 @@ settings-fiscalnum-overview-col-prefix = Prefix
 settings-fiscalnum-overview-col-current = Last number
 settings-fiscalnum-overview-col-updated = Updated
 
-# ── Mobile Setup Wizard & Welcome Flow (Figma spec 720x1280) ──
-setup-mobile-welcome-cta = Setup Wizard →
-setup-mobile-welcome-guide = 2-minute device configuration guide
-setup-mobile-welcome-signup = Sign up
-setup-mobile-welcome-signup-hint = Don't have a license? Create an account first
-setup-mobile-welcome-blurb = Modern, all-in-one POS solution for sales, inventory management, thermal printing, and automatic real-time revenue tracking.
-
-setup-mobile-hub-title = Setup New Device
-setup-mobile-hub-subtitle = Modern, fast & offline-first POS and inventory system for retail stores, cafes & restaurants.
-setup-mobile-feature-offline = Works 100% Offline Without Internet Connection
-setup-mobile-feature-printer = Bluetooth Thermal Receipt Printing
-setup-mobile-feature-multidevice = Multi-Device & Local Sync via WiFi / LAN
-setup-mobile-feature-reports = Automatic Real-time Stock, Cash & Revenue Reports
-setup-mobile-hub-connect-hint = Connect store to sync catalog, staff & transaction reports
-setup-mobile-auth-google-title = Sign in with Google Account
-setup-mobile-auth-google-desc = Safe, fast, and automated cloud backup to Google Drive
-setup-mobile-auth-email-title = Sign in with Email & Password
-setup-mobile-auth-email-desc = Use registered Owner, Store Manager, or Cashier account
-setup-mobile-auth-qr-title = Connect via QR Code / Login Code
-setup-mobile-auth-qr-desc = Scan QR with owner/admin account
-setup-mobile-hub-footer = Don't have a Kasirmu account? Contact sales@kasirmu.com or register at kasirmu.id
-
-setup-mobile-back = Back
-setup-mobile-back-to-device = Set up on this device instead
-setup-mobile-google-title = Choose an account to continue
-setup-mobile-google-subtitle = to Kasir.mu Sync & Cloud Backup
-setup-mobile-google-privacy = Kasir.mu only requests permission to sync your Google profile. Your sales and transaction data remain stored privately on the local device.
-
-setup-mobile-email-intro = Enter account credentials to connect store catalog & stock data:
-setup-mobile-email-forgot = Forgot password?
-setup-mobile-email-submit = Sign In →
-setup-mobile-email-security = 🔒 End-to-end 256-bit SSL encrypted connection & stored locally on device
-
-setup-mobile-qr-reticle-hint = Ensure QR code is inside the frame
-setup-mobile-qr-guide-title = QR Code Instructions
-setup-mobile-qr-step1 = 1. Open dashboard.kasir.mu in your browser
-setup-mobile-qr-step2 = 2. Sign in with owner account
-setup-mobile-qr-step3 = 3. Click 'Pair New Device' button to display QR code pairing
-setup-mobile-code-guide-title = Login Code Instructions
-setup-mobile-code-step1 = 1. Open kasir.mu in your browser
-setup-mobile-code-step2 = 2. Sign in with owner account
-setup-mobile-code-step3 = Click this link:
-setup-mobile-code-copy = Copy
-setup-mobile-code-copied = Copied!
-
 # EDC Terminals Settings
 settings-edc-title = EDC Card Terminals
 settings-edc-description = Configure physical EDC payment terminals for card processing.
@@ -1241,4 +1186,3 @@ settings-edc-default-auto = Auto (Earliest Created)
 settings-edc-saved = EDC Terminal saved successfully.
 settings-edc-deleted = EDC Terminal deleted.
 settings-edc-delete-confirm = Are you sure you want to delete this EDC terminal?
-

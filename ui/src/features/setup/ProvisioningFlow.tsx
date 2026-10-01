@@ -760,16 +760,15 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
                   >
                     <Localized id="setup-tab-email">Email Code</Localized>
                   </button>
-                  <button
-                    type="button"
-                    className="provisioning-subtab"
-                    data-testid="provisioning-open-wizard-btn"
-                    onClick={() => {
-                      window.location.hash = '#/mobile-setup';
-                    }}
-                  >
-                    <Localized id="setup-tab-wizard">Setup Wizard</Localized>
-                  </button>
+                  {/* The third tab here was "Setup Wizard", which set
+                      #/mobile-setup and handed the merchant to a second wizard
+                      (MobileWelcomeFlow -> MobileSetupHub). That one made no
+                      backend calls at all: it called onProvisioned the moment a
+                      Google account was "selected" or an email "submitted", so
+                      on a real tablet the shell marked hasCompletedSetup with no
+                      store, no owner and no PIN. It was retired with the rest of
+                      features/setup/mobile -- this flow IS the setup wizard, on
+                      every surface. */}
                 </div>
 
                 {tabletTab === 'pair' ? (
@@ -1150,8 +1149,7 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
         </p>
 
         {/* Version and IP, matching every other setup and auth surface
-            (MobileSetupHub, MobileWelcomeScreen, the three auth modals,
-            StaffLoginScreen, LicenseActivationScreen). The footer was already
+            (StaffLoginScreen, LicenseActivationScreen). The footer was already
             invented and agreed on; this flow is the one screen that omitted it,
             so a merchant told their terminal's version on the next screen read a
             different one here. Not localized: it is a version string and a legal

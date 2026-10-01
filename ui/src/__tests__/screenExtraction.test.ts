@@ -335,18 +335,6 @@ const SCREENS: ScreenEntry[] = [
     // utility sheet, not a class this feature's own sheet should have to own.
     parentCss: ['../theme/components.css'],
   },
-  {
-    name: 'MobileWelcomeFlow',
-    tsx: 'setup/mobile/MobileWelcomeFlow.tsx',
-    additionalTsx: [
-      'setup/mobile/MobileWelcomeScreen.tsx',
-      'setup/mobile/MobileSetupHub.tsx',
-      'setup/mobile/MobileGoogleAuthModal.tsx',
-      'setup/mobile/MobileEmailAuthModal.tsx',
-      'setup/mobile/MobileQrPairingModal.tsx',
-    ],
-    css: ['setup/mobile/MobileWelcomeFlow.module.css'],
-  },
 
   // ── Customers ─────────────────────────────────────────
   {

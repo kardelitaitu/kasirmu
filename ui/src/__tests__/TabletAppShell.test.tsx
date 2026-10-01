@@ -626,23 +626,24 @@ describe('TabletAppShell — routing', () => {
     });
   });
 
-  // ── Hash routing (the '#/mobile-setup' contract) ──────────────────
+  // ── Hash routing (fullscreen pages via the page registry) ──────────
   //
-  // The provisioning flow's "Set up with a phone instead" button navigates by
-  // setting window.location.hash, not by calling handleNavigate — it lives in a
-  // different component and has no access to the shell. The desktop shell has
-  // listened for hashchange since AppShell.tsx:350; the tablet shell had no
-  // listener, so on a tablet that button changed the URL and rendered nothing.
-  // These pin both halves: the live change and the mount-time deep link.
+  // Deep links and in-page navigation set window.location.hash directly rather
+  // than calling handleNavigate — the hash producer lives in another component
+  // and has no access to the shell. The desktop shell has listened for
+  // hashchange since AppShell.tsx:350; the tablet shell had no listener, so on
+  // a tablet a deep link changed the URL and rendered nothing. These pin three
+  // halves: the live change, the mount-time deep link, and the cleared-hash
+  // exit.
 
   describe('hash routing', () => {
     beforeEach(() => {
       clearPages();
       registerPage({ route: 'pos', component: () => null, label: 'POS Terminal' });
       registerPage({
-        route: 'mobile-setup',
-        component: () => <div data-testid="mobile-setup-page">Mobile Setup</div>,
-        label: 'Mobile Setup Wizard',
+        route: 'fullpage-stub',
+        component: () => <div data-testid="fullpage-stub">Fullscreen Page</div>,
+        label: 'Fullscreen Stub',
         fullscreen: true,
       });
       window.location.hash = '';
@@ -659,30 +660,30 @@ describe('TabletAppShell — routing', () => {
       });
 
       await act(async () => {
-        window.location.hash = '#/mobile-setup';
+        window.location.hash = '#/fullpage-stub';
         window.dispatchEvent(new HashChangeEvent('hashchange'));
       });
 
-      expect(await screen.findByTestId('mobile-setup-page')).toBeInTheDocument();
+      expect(await screen.findByTestId('fullpage-stub')).toBeInTheDocument();
       // Fullscreen: no tab bar around it.
       expect(screen.queryByTestId('memo-banner-mount')).toBeInTheDocument();
     });
 
     it('reads a deep-linked hash on mount, not only on change', async () => {
-      window.location.hash = '#/mobile-setup';
+      window.location.hash = '#/fullpage-stub';
       try {
         await renderWithProviders(<TabletAppShell />, sharedFtl);
-        expect(await screen.findByTestId('mobile-setup-page')).toBeInTheDocument();
+        expect(await screen.findByTestId('fullpage-stub')).toBeInTheDocument();
       } finally {
         window.location.hash = '';
       }
     });
 
     // The tablet copy of syncFromHash used to `return` on an empty hash, so the
-    // sequence below — enter mobile-setup, then clear the hash — left the
-    // merchant stranded on the phone wizard with no way back to the tablet.
-    // AppShell's copy has handled a cleared hash since the hash router was
-    // added; this pins the tablet to the same contract.
+    // sequence below — enter a fullscreen page, then clear the hash — left the
+    // merchant stranded there with no way back. AppShell's copy has handled a
+    // cleared hash since the hash router was added; this pins the tablet to the
+    // same contract.
     it('returns to the shell when the hash is cleared from a fullscreen page', async () => {
       await renderWithProviders(<TabletAppShell />, sharedFtl);
       await waitFor(() => {
@@ -690,17 +691,17 @@ describe('TabletAppShell — routing', () => {
       });
 
       await act(async () => {
-        window.location.hash = '#/mobile-setup';
+        window.location.hash = '#/fullpage-stub';
         window.dispatchEvent(new HashChangeEvent('hashchange'));
       });
-      expect(await screen.findByTestId('mobile-setup-page')).toBeInTheDocument();
+      expect(await screen.findByTestId('fullpage-stub')).toBeInTheDocument();
 
       await act(async () => {
         window.location.hash = '';
         window.dispatchEvent(new HashChangeEvent('hashchange'));
       });
 
-      expect(screen.queryByTestId('mobile-setup-page')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('fullpage-stub')).not.toBeInTheDocument();
       expect(screen.getByTestId('workspace-home')).toBeInTheDocument();
     });
 
