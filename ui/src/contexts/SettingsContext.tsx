@@ -206,6 +206,25 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
   const mountedRef = useRef(true);
   // A monotonic token, so only the LATEST load may write into `settings`.
   //
+  // THIS IS THE FOURTH FIX FOR ONE SHAPE, and the shape has no gate. The first
+  // three: CurrencyContext.refresh (51c86e9e8), BrandContext
+  // .refreshBrandSettings (184fcc75e) and ShiftBar's location/shift load
+  // (88415f10f) -- the last because the stale location id is what
+  // `start_inventory_shift` receives and core never checks it belongs to the
+  // store. In every case an effect whose dependency list names sessionToken
+  // re-ran on a store switch, two reads overlapped, and the slower landed last.
+  //
+  // IF YOU WRITE A NEW ONE, the test must make the stale read resolve with
+  // DISTINCTLY DIFFERENT values. Returning the same ones makes the test pass with
+  // the guard REMOVED -- that cost two mutations each in Currency and Settings.
+  //
+  // A gate was attempted and deliberately NOT shipped: scanning ui/src for the
+  // shape reports 41 sites, most of them false positives (a `setInterval` inside a
+  // poll, a store switcher's own setter), and a gate that over-reports gets
+  // disabled. The sibling verify-settled-read-copies.py stops the READ verdict
+  // being re-declared because that shape is exact; this one is not. Deciding which
+  // of the 41 overlap and matter is a human reading what the written value drives.
+  //
   // `loadAll` depends on sessionToken, so the initial-load effect below re-runs
   // on every STORE SWITCH and those reads overlap. `mountedRef` only guards
   // unmount -- it stays true across a switch -- so a slower read from the previous
