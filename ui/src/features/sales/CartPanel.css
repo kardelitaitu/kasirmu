@@ -388,8 +388,8 @@
   justify-content: space-between;
   gap: var(--space-2);
   padding: var(--space-2) var(--space-4);
-  background: var(--color-accent-subtle, rgba(245, 158, 11, 0.1));
-  border-bottom: 1px solid var(--color-accent-border, rgba(245, 158, 11, 0.3));
+  background: var(--color-accent-subtle);
+  border-bottom: 1px solid var(--color-accent);
   font-size: var(--text-xs);
 }
 
@@ -403,7 +403,7 @@
 }
 
 .pos-cart-active-tab-dot {
-  color: var(--color-accent, #f59e0b);
+  color: var(--color-accent);
   font-size: 0.75rem;
 }
 

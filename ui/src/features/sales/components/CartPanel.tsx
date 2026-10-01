@@ -699,7 +699,6 @@ export function CartPanel({
                 className="pos-cart-undo-dismiss"
                 onClick={handleDismissUndo}
                 aria-label={l10n.getString('pos-cart-undo-dismiss-aria')}
-                title={l10n.getString('pos-cart-undo-dismiss')}
               >
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="14" height="14" aria-hidden="true">
                   <line x1="18" y1="6" x2="6" y2="18" />
