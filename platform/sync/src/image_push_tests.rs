@@ -86,6 +86,45 @@ async fn drain_once_noop_when_queue_empty() {
     let _ = std::fs::remove_dir_all(&tmp);
 }
 
+/// A push-queue read that FAILS must not be treated as an empty queue.
+///
+/// `drain_once` read the batch with `.unwrap_or_default()`, so a failed read
+/// became an empty `pending`, the file loop below never ran, and the cycle ended
+/// having logged nothing -- indistinguishable from the genuinely-empty queue,
+/// which at least logs a `trace!`. Every other failure in this module logs
+/// (`warn!` when it degrades, `error!` when it is real), so a broken read was the
+/// one silent path and the image queue would simply stop draining with no operator
+/// signal anywhere.
+///
+/// This drives `read_push_batch`, the extracted helper, because `drain_once`
+/// returns early on BOTH the failure and the empty case -- so no assertion on the
+/// scheduler can tell them apart, and this crate has no tracing-capture harness to
+/// read the log. The helper's `None` is the distinction, which is why it was
+/// extracted rather than fixed in place.
+///
+/// NOTE: an earlier version of this pin drove `peek_push_batch` directly and
+/// asserted it errors on a dropped table. That passed BOTH before and after the
+/// fix -- it tested unchanged core code, not this defect -- so it was replaced.
+#[tokio::test]
+async fn read_push_batch_returns_none_when_the_queue_table_is_unreadable() {
+    let db = migrations::fresh_db();
+    let store = Store::new(&db);
+
+    // Happy path first, so the failure below is the only change.
+    let hash = "b".repeat(16);
+    store.enqueue_image_push(&hash, 16).unwrap();
+    let pending = read_push_batch(&store).expect("a readable queue must yield a batch");
+    assert_eq!(pending.len(), 1);
+
+    // Drop the table: the SELECT can no longer be prepared.
+    db.execute_batch("DROP TABLE image_push_queue;").unwrap();
+
+    assert!(
+        read_push_batch(&store).is_none(),
+        "an unreadable queue must be `None`, not an empty batch"
+    );
+}
+
 #[tokio::test]
 async fn drain_once_enqueues_and_marks_failed_on_network_error() {
     // A dead port (127.0.0.1:1) makes the POST fail → all hashes marked

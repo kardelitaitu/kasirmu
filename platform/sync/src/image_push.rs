@@ -94,6 +94,39 @@ pub struct ImagePushScheduler {
     client: reqwest::Client,
 }
 
+/// Peek the next push batch, returning `None` when the read FAILED.
+///
+/// This existed inline as `store.peek_push_batch(..).unwrap_or_default()`, which
+/// made a failed read indistinguishable from an empty queue: `pending` came back
+/// empty, the file loop never ran, and the cycle ended having logged nothing (the
+/// genuinely-empty case logs a `trace!`). Every other failure in this module logs
+/// -- `warn!` when it degrades, `error!` when it is real -- so a broken read sat as
+/// the one silent path, and the image queue would simply stop draining with no
+/// operator signal.
+///
+/// It is a free function so the failure is OBSERVABLE: `drain_once` returns early
+/// either way, so no assertion on the scheduler can tell the two apart, and there
+/// is no tracing-capture harness in this crate to read the log. Returning `None`
+/// makes the distinction testable without adding a dependency.
+///
+/// The batch is a data path, not a config read, so this takes the treatment
+/// `read_config_and_pending` gives `list_pending_offline`: log loudly and skip THIS
+/// cycle rather than pretend it was empty. The next tick retries and nothing is
+/// marked, so no work is lost.
+fn read_push_batch(store: &Store<'_>) -> Option<Vec<(String, i64, i32)>> {
+    match store.peek_push_batch(batch_max_images()) {
+        Ok(pending) => Some(pending),
+        Err(e) => {
+            tracing::error!(
+                error = %e,
+                "image push: could not read the push queue; skipping this cycle \
+                 rather than treating it as empty"
+            );
+            None
+        }
+    }
+}
+
 impl ImagePushScheduler {
     /// Create a new scheduler.
     ///
@@ -133,9 +166,12 @@ impl ImagePushScheduler {
             let db = self.db.lock().await;
             let store = Store::new(&db);
             let config = SyncConfig::from_settings(&store).ok().flatten();
-            let pending = store
-                .peek_push_batch(batch_max_images())
-                .unwrap_or_default();
+            // `read_push_batch` refuses on a failed read instead of returning an
+            // empty batch; `None` here means the read FAILED, which is not the same
+            // thing as a queue with nothing due.
+            let Some(pending) = read_push_batch(&store) else {
+                return;
+            };
             (config, pending)
         };
 
