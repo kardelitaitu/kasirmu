@@ -847,3 +847,78 @@ fn next_count_number_propagates_db_error() {
         "expected CoreError::Db, got {err:?}"
     );
 }
+
+/// THE RESIDUAL, pinned so it is a test rather than folklore.
+///
+/// `update_count_line` takes the whole row and SETs `counted_qty` absolutely.
+/// There is no version, no `WHERE counted_qty = <observed>` and no delta form,
+/// so a caller that read-modify-writes (`counted + 1`, which is exactly what
+/// `WarehouseCountFlow.resolveScan` does per barcode scan) loses an update when
+/// two writes overlap: both read 5, both write 6, and the count is 6 rather
+/// than 7. This is the SERVER half of the race the UI guard in
+/// `WarehouseCountFlow.tsx` closes on its side; that guard serialises the
+/// client's own scans but cannot help two terminals counting the same sheet.
+///
+/// Asserted here so the behaviour is explicit: the store does NOT merge, and
+/// the last write wins outright. The fix is a compare-and-set
+/// (`WHERE ... AND counted_qty IS ?2`) or an `increment_count_line`, both of
+/// which need either a caller-supplied observed value or a new core entry
+/// point -- feature work, not a repair, and not done here.
+///
+/// When that fix lands this test is what should change, not just pass: the two
+/// writes below would have to produce 7.
+#[test]
+fn two_overlapping_count_writes_lose_one_count() {
+    let conn = fresh_conn();
+    let store = Store::new(&conn);
+    let count_id = uuid::Uuid::now_v7().to_string();
+    let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+
+    let count = StockCount {
+        id: count_id.clone(),
+        count_number: "CNT-RACE".into(),
+        status: StockCountStatus::InProgress,
+        count_type: CountType::Spot,
+        notes: String::new(),
+        counted_by: None,
+        created_at: now.clone(),
+        completed_at: None,
+        updated_at: now.clone(),
+    };
+    store.create_stock_count(&count).unwrap();
+
+    let line = StockCountLine {
+        id: uuid::Uuid::now_v7().to_string(),
+        count_id: count_id.clone(),
+        sku: "RACE-SKU".into(),
+        product_name: "Race Product".into(),
+        expected_qty: 100,
+        counted_qty: Some(5),
+        difference: -95,
+        notes: String::new(),
+    };
+    store.add_count_line(&line).unwrap();
+
+    // Both terminals observed 5 before either wrote. `difference` is validated
+    // against `counted_qty - expected_qty` by the store (:6 - 100 = -94), so it
+    // moves with the count rather than being copied from the seed row.
+    let terminal_a = StockCountLine {
+        counted_qty: Some(6),
+        difference: -94,
+        ..line.clone()
+    };
+    let terminal_b = StockCountLine {
+        counted_qty: Some(6),
+        difference: -94,
+        ..line.clone()
+    };
+    store.update_count_line(&terminal_a).unwrap();
+    store.update_count_line(&terminal_b).unwrap();
+
+    let stored = store.get_count_lines(&count_id).unwrap();
+    assert_eq!(
+        stored[0].counted_qty,
+        Some(6),
+        "LAST WRITE WINS OUTRIGHT: two scans of one count produce 6, not 7"
+    );
+}
