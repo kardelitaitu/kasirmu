@@ -60,9 +60,25 @@ use super::{
 // a PRODUCT ruling -- a cashier who taps "pay" after a voided attempt either gets
 // a new sale or a message -- so it is not decided here. What is recorded is that
 // the two shells disagree today, that the disagreement is reachable, and that
-// the epoch counter the bridge relies on does not exist on this side. Adopting the
-// bridge's behaviour means porting `count_rekey_settlements` and `rekey_stem`
-// here, not just flipping the three returns.
+// the epoch counter the bridge relies on does not exist on this side.
+//
+// HOW TO CLOSE IT, verified rather than guessed. The desktop shell does not fork
+// these rules at all: `apps/desktop-tauri/src/commands/pos.rs:42` imports
+// `shortfall_line_unit_price`, `stamp_attempt_split_keys` and `tax_scope_now` from
+// `kasirmu_bridge::pos`, and its `line_unit_price` / `run_override_line_price_unchecked`
+// are one-line `map_err(Into::into)` shims over the bridge bodies (:45-63). So this
+// shell is the only fork of this pair, and the bridge is the single implementation
+// to converge on -- the tablet has no reason to be a second source of truth.
+//
+// The helpers are reachable in principle: `replay_verdict` takes
+// `(&rusqlite::Connection, Option<&str>, Option<&str>, Option<&CartId>)` and this
+// shell already holds a `rusqlite::Connection` behind `store`, so the only real
+// obstacle is VISIBILITY. Today `mod replay` is `pub(super)` (pos/checkout.rs:166)
+// and its members are `pub(super)` / `pub(in crate::pos)`, so they are invisible
+// outside the bridge crate. Closing the drift is therefore: widen those visibilities,
+// re-export from `kasirmu_bridge::pos`, map `BridgeError` into `AppError` at the
+// call site, and delete the four helpers below -- not re-porting the logic, which is
+// how the two drifted apart in the first place.
 
 /// The checkout attempt id this submission wants guarded, normalised.
 ///
