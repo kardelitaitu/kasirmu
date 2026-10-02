@@ -105,7 +105,17 @@ def parse_ci(files):
             m = re.match("^  ([A-Za-z][A-Za-z0-9_-]*):", l)
             if not m or m.group(1) in NOT_JOB:
                 continue
-            body = NL.join(lines[i:i + 80])
+            # Bound the body by the NEXT job key, not by a fixed line count.
+            # A job's steps:/uses: can sit arbitrarily far below its key -
+            # northflank-deploy is 98 lines down - and a fixed 80-line window
+            # drops such a job from the live set, after which the checker
+            # reports every correct reference to it as a phantom claim.
+            end = len(lines)
+            for k in range(i + 1, len(lines)):
+                if re.match("^  [A-Za-z][A-Za-z0-9_-]*:", lines[k]):
+                    end = k
+                    break
+            body = NL.join(lines[i:end])
             if re.search("^    (steps|uses|services):", body, re.M):
                 found.add(m.group(1))
                 for sm in re.finditer("^      - name: (.+)$", body, re.M):
