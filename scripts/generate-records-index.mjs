@@ -400,28 +400,25 @@ function render() {
       })
     : [];
 
-  // ── scattered docs list (kept explicit — they have no folder pattern) ──────
-  // 2026-08-31 audit: the standalone audit reports moved from docs/ root to
-  // docs/archived/ (retirement pass). Update the list here when one moves.
-  // 2026-08-31 retirement pass #2: the three remaining repo-root docs
-  // (unify-auth-and-sync, the GLM-5.3 crates audit, and the GLM-5.3 Tauri app
-  // review journal) joined them; every citation was rewritten to the new path.
-  const scattered = [
-    'docs/archived/2026-07-28-retail-pos-theming-audit.md',
-    'docs/archived/2026-07-29-retail-pos-ux-audit.md',
-    'docs/archived/2026-08-15-unify-auth-and-sync.md',
-    'docs/archived/2026-08-30-glm-5.3-tauri-app-review.md',
-    'docs/archived/2026-08-31-glm-5.3f-crates-audit.md',
-    'docs/archived/code-quality-2026-07-20.md',
-    'docs/archived/database-optimization-2026-07-20.md',
-    'docs/archived/dev-experience-2026-07-20.md',
-    'docs/archived/dev-mock-state-audit.md',
-    'docs/archived/ui-state-audit-2026-07-20.md',
-    'docs/archived/modal-audit-checklist.md',
-    'docs/archived/TODO-shadow-audit.md',
-    'docs/archived/plan-product-images-review.md',
-    'docs/archived/design-exceptions.md',
-  ].filter((p) => existsSync(join(ROOT, p))).map((p) => readRecord(join(ROOT, p)));
+  // ── scattered docs list — RETIRED 2026-10-02, empty and self-explanatory ────
+  // This list once held 14 standalone audit reports by explicit path, because
+  // they had no folder pattern to be found by. Two moves dissolved that problem:
+  //
+  //   1. B1 moved docs/archived/ wholesale into docs/records/ (see the tombstone
+  //      at docs/archived/README.md). docs/archived/ is now a one-file stub.
+  //   2. B2 folded docs/audits/ into docs/records/audits/, keeping its
+  //      frontend/ seo/ setup/ skills/ subfolders.
+  //
+  // Every one of those 14 files therefore lives under docs/records/ now, and the
+  // records scan walks that tree RECURSIVELY — so they are already indexed, and
+  // were verified to be before this list was emptied. Repointing the entries at
+  // their new paths would have indexed all 14 TWICE, once under Engineering
+  // Records and once here. The honest end state is an empty list.
+  //
+  // Note the old code did not break when the paths went stale: the
+  // .filter(existsSync) below dropped all 14 silently, so the section had been
+  // reporting "0 scattered" for a while with no gate able to say why.
+  const scattered = [];
 
   // ── emit ───────────────────────────────────────────────────────────────────
   const L = [];
