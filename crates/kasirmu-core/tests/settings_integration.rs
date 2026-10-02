@@ -1508,3 +1508,38 @@ fn currency_settings_persist_after_prune_stale_features() {
         "suffix"
     );
 }
+
+#[test]
+fn test_regional_scope_chain_resolution() {
+    let conn = setup();
+    let s = store(&conn);
+
+    // 1. Seed legal entity with country_code and currency
+    conn.execute(
+        "INSERT INTO legal_entities (id, tenant_id, name, legal_name, country_code, currency, timezone, locale)
+         VALUES ('ent-global-sg', 'default', 'SG Entity Pte Ltd', 'SG Entity Pte Ltd', 'SG', 'SGD', 'Asia/Singapore', 'en-SG')",
+        [],
+    )
+    .unwrap();
+
+    // 2. Seed location linked to that entity, with blank currency (inheriting)
+    conn.execute(
+        "INSERT INTO locations (id, name, tenant_id, legal_entity_id, currency, timezone, locale)
+         VALUES ('loc-orchard', 'Orchard Branch', 'default', 'ent-global-sg', '', 'Asia/Singapore', '')",
+        [],
+    )
+    .unwrap();
+
+    // 3. Resolve regional config and assert inheritance
+    let cfg = s.regional_config_for_location("loc-orchard").unwrap();
+    assert_eq!(cfg.country_code, Some("SG".to_string()));
+    assert_eq!(cfg.currency.value, "SGD");
+    assert_eq!(cfg.currency.scope, kasirmu_core::regional::ConfigScope::LegalEntity);
+
+    // 4. Load ActiveMarketProfile and verify market facts match inherited profile
+    let profile = kasirmu_core::load_active_market_profile(&conn, "loc-orchard").unwrap();
+    assert_eq!(profile.country_code, "SG");
+    assert_eq!(profile.currency, "SGD");
+    assert_eq!(profile.tax_regime, "LOCAL/SG");
+}
+

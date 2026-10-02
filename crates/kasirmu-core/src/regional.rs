@@ -600,10 +600,12 @@ pub fn load_active_market_profile(
     location_id: &str,
 ) -> Result<ActiveMarketProfile, crate::CoreError> {
     use rusqlite::OptionalExtension;
-    // ── 1. Location + legal entity ────────────────────────────────────────
+    // ── 1. Location + legal entity (Location -> Legal Entity inheritance) ──
     let row: Option<(String, String, String, String, String)> = conn
         .query_row(
-            "SELECT l.currency, l.timezone, l.locale,
+            "SELECT COALESCE(NULLIF(l.currency, ''), NULLIF(le.currency, ''), '') AS currency,
+                    COALESCE(NULLIF(l.timezone, ''), NULLIF(le.timezone, ''), '') AS timezone,
+                    COALESCE(NULLIF(l.locale, ''), NULLIF(le.locale, ''), '') AS locale,
                     COALESCE(l.legal_entity_id, '') AS legal_entity_id,
                     COALESCE(le.country_code, '') AS country_code
              FROM locations l

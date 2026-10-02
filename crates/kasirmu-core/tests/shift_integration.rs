@@ -494,3 +494,66 @@ fn shift_close_missing_user_scoped() {
     let closed = s.close_shift(&shift.id, 200, None).unwrap();
     assert!(closed.is_closed());
 }
+
+#[test]
+fn test_shift_locks_regional_settings() {
+    let conn = setup();
+    seed_users(&conn);
+    let s = store(&conn);
+
+    // Seed location
+    conn.execute(
+        "INSERT INTO locations (id, name, tenant_id, currency, timezone, locale)
+         VALUES ('loc-shift-test', 'Shift Store', 'default', 'IDR', 'Asia/Jakarta', 'id-ID')",
+        [],
+    )
+    .unwrap();
+
+    // Seed terminal bound to this location
+    conn.execute(
+        "INSERT INTO terminals (id, name, device_id, bound_location_id, created_at, updated_at)
+         VALUES ('term-shift-test', 'Register 1', 'dev-st-1', 'loc-shift-test', '2026-10-02T00:00:00.000Z', '2026-10-02T00:00:00.000Z')",
+        [],
+    )
+    .unwrap();
+
+    // 1. Open shift for this terminal
+    let shift = s.open_shift("user-alice", Some("term-shift-test"), 1000).unwrap();
+    assert_eq!(shift.status, "open");
+
+    // 2. Attempt to update regional settings to change currency from IDR to USD
+    let err = s
+        .update_regional_config_for_location("loc-shift-test", "id-ID", "Asia/Jakarta", "USD", "")
+        .expect_err("mutating currency while shift is open must be blocked");
+
+    assert!(
+        matches!(
+            err,
+            kasirmu_core::CoreError::Validation { field: "regional_settings", .. }
+        ),
+        "expected CoreError::Validation on regional_settings, got {err:?}"
+    );
+
+    // Also attempt via location profile update
+    let err_loc = s
+        .update_location_profile("loc-shift-test", "Shift Store", "Address", "", "USD", "Asia/Jakarta")
+        .expect_err("mutating currency via location profile while shift is open must be blocked");
+    assert!(
+        matches!(
+            err_loc,
+            kasirmu_core::CoreError::Validation { field: "regional_settings", .. }
+        ),
+        "expected CoreError::Validation on regional_settings, got {err_loc:?}"
+    );
+
+    // 3. Close the shift
+    let closed = s.close_shift(&shift.id, 1000, None).unwrap();
+    assert!(closed.is_closed());
+
+    // 4. Re-attempt update; assert successful mutation
+    let updated = s
+        .update_regional_config_for_location("loc-shift-test", "id-ID", "Asia/Jakarta", "USD", "")
+        .expect("mutation must succeed once all shifts are closed");
+    assert_eq!(updated.currency.value, "USD");
+}
+

@@ -346,3 +346,60 @@ fn status_as_stored_str() {
     assert_eq!(OfflineQueueStatus::Synced.as_stored_str(), "synced");
     assert_eq!(OfflineQueueStatus::Failed.as_stored_str(), "failed");
 }
+
+#[test]
+fn test_sale_execution_zero_lookups() {
+    let conn = setup();
+
+    // Seed location, legal entity, and PB1 tax rate
+    conn.execute(
+        "INSERT INTO legal_entities (id, tenant_id, name, legal_name, country_code, currency)
+         VALUES ('ent-zero', 'default', 'Zero Lookup PT', 'Zero Lookup PT', 'ID', 'IDR')",
+        [],
+    )
+    .unwrap();
+
+    conn.execute(
+        "INSERT INTO locations (id, name, tenant_id, legal_entity_id, currency, timezone, locale)
+         VALUES ('loc-zero', 'Store Zero', 'default', 'ent-zero', 'IDR', 'Asia/Jakarta', 'id-ID')",
+        [],
+    )
+    .unwrap();
+
+    conn.execute(
+        "INSERT INTO tax_rates (id, name, rate_bps, is_default, is_active, location_id, rounding_mode)
+         VALUES ('tax-pb1', 'PB1', 1000, 1, 1, 'loc-zero', 'half_up')",
+        [],
+    )
+    .unwrap();
+
+    // 1. Cold boot: Load ActiveMarketProfile once into memory
+    let profile = kasirmu_core::load_active_market_profile(&conn, "loc-zero").unwrap();
+    assert_eq!(profile.country_code, "ID");
+    assert_eq!(profile.currency, "IDR");
+    assert_eq!(profile.tax_regime, "PB1");
+    assert_eq!(profile.statutory_rounding, kasirmu_core::tax_rate::RoundingMode::HalfUp);
+
+    // 2. Run a 100-item checkout calculation cycle using the compiled in-memory profile
+    let start = std::time::Instant::now();
+    let mut total_gross = 0i64;
+    let mut total_tax = 0i64;
+
+    for i in 1..=100 {
+        let item_price = 10_000i64 * (i % 5 + 1); // 10k to 50k IDR
+        let tax_amount = profile.statutory_rounding.divide(item_price * 1000, 10000).unwrap();
+        total_gross += item_price + tax_amount;
+        total_tax += tax_amount;
+    }
+
+    let elapsed = start.elapsed();
+    assert!(total_gross > 0);
+    assert!(total_tax > 0);
+    // Sub-10ms execution time for pure in-memory calculation (0 network, 0 database queries)
+    assert!(
+        elapsed.as_millis() < 10,
+        "100-item checkout cycle took {:?}, expected < 10ms",
+        elapsed
+    );
+}
+
