@@ -23,7 +23,7 @@
 | [`observability/`](./observability/) | Logging, error handling, metrics | [`logging-2026-07-20.md`](./observability/logging-2026-07-20.md) |
 | [`benchmarks/`](./benchmarks/) | Performance benchmarks and regression tracking | [`baseline-2026-07-21.md`](./benchmarks/baseline-2026-07-21.md) |
 | [`audits/`](./audits/) | Audit reports — full audits of the docs system, the API reference, CSS verification, and SEO/crawler reviews | [`2026-09-28-docs-audit.md`](./audits/2026-09-28-docs-audit.md); [`frontend/css-verification.md`](./audits/frontend/css-verification.md) — no linter sees `.css` |
-| [`archived/`](./archived/) | Truly retired documents — completed/superseded audits, old plans, obsolete guides | *(26 files; the 2026-08-31 retirement pass moved the last three repo-root docs here — see [`records/`](./records/) index)* |
+| [`archived/`](./archived/) | Truly retired documents — completed/superseded audits, old plans, obsolete guides | *(the 2026-08-31 retirement pass moved the last three repo-root docs here — see [`records/`](./records/) index. Do not quote a file count here; derive it with `ls docs/archived/*.md \| wc -l` — a quoted figure here has now rotted twice.)* |
 | [`plans/`](./plans/) | Active improvement plans | [`northflank-p1-p7-plan.md`](./plans/_active/northflank-p1-p7-plan.md) |
 
 ## Quick links
@@ -41,11 +41,19 @@
 ## Conventions
 
 - **ADR naming (new records):** `YYYY-MM-DD-adrNN-<slug>.md` in `decisions/` — the
-  `adrNN` segment is required for anything added from here on. Only 13 of the 66 files
-  currently in `decisions/` carry it; the other 53 predate the convention and are **not
-  drift to be renamed**. Highest number in use: adr47. (Corrected 09-09-26: this read 64/51
-  and was already wrong when written — `git ls-tree 04407b60e -- docs/decisions` counts 66
-  tracked `.md` files, 13 with the segment.)
+  `adrNN` segment is required for anything added from here on. Most files in `decisions/`
+  predate the convention and are **not drift to be renamed**. **Every number in this bullet is
+  derived, not quoted**, because a quoted one has rotted three times now:
+  - total files — `ls docs/decisions/*.md | wc -l`
+  - files carrying the `adrNN` segment — `ls docs/decisions/ | grep -c 'adr[0-9]'`
+  - highest number in use — `ls docs/decisions/ | grep -oE 'adr[0-9]+' | sed 's/adr//' | sort -n | tail -1`
+
+  (History, kept deliberately: this bullet read *"Only 13 of the 66 files … the other 53 …
+  Highest number in use: adr47"* and was **already wrong when written** — the 09-09-26 correction
+  below recorded that `git ls-tree 04407b60e -- docs/decisions` counted 66 tracked `.md` files,
+  13 with the segment. By 2026-10-02 it had drifted again to 81 files, 30 with the segment,
+  highest `adr63`. Fixing the number would have been the third restatement of a value that goes
+  stale on every ADR; the derivation commands above are the fix.)
 - **Spec phases:** `workspace-settings-phase-<N>-<slug>.md` in `specs/`
 - **Audit findings:** tracked in [`records/audit-open-findings.md`](./records/audit-open-findings.md)
 
@@ -144,3 +152,12 @@ branch, kept on purpose and recorded as such in the script rather than quietly r
 > that note. Not an audit: the directory is new and its contents are founder-side working
 > drafts, not documentation of shipped behaviour. Content carries its own status markers
 > (`[UNVERIFIED]`/`[PENDING]`/`[DECIDED]`) — see [`legal/README.md`](./legal/README.md).
+>
+> **Correction (02-10-26, todo-docs-restructure.md §4 A5):** the `archived/` row claimed **26 files**
+> against an actual **28**, and the ADR-naming bullet claimed **"13 of the 66 files … highest adr47"**
+> against an actual **30 of 81, highest `adr63`**. This is the *third* time a hand-quoted count in
+> this file was found stale — the 08-09-26 note below records the second. Both were therefore
+> **replaced with derivation commands rather than restated**, on the same principle this file
+> already uses elsewhere ("Re-derive both numbers rather than quoting these", README tech table).
+> No other live number in this file was changed; the counts inside the dated audit notes are
+> records of what past audits measured and are deliberately left alone.
