@@ -543,6 +543,34 @@ Running the test in the background returned **25/25 PASS**. **The lesson: a hang
 is not evidence of a defect in your change** — and the processes were left alone, because three of
 the four were not mine to kill.
 
+### 6f — the fourth *scope* fix, and what it does and does not do
+
+`scripts/verify-doc-uniqueness.py` had the same disease as §6d's three, in a fourth place. Its
+`archived` classifier matched `/archived/`, which after B1 is a **one-file tombstone** — so the
+24 superseded copies now living in `docs/records/superseded/` and `docs/records/audits/` read as
+**live documents** to the duplicate-authority check. Fixed `980c97c00` by widening the prefix set.
+
+**What this does NOT change, stated plainly: whether something is caught.** A superseded/live pair
+where both copies claim authority is flagged either way. I checked this rather than assuming it —
+the two branches are different code paths (one reports *"an archived copy and a live copy both claim"*,
+the other *"both claim to be THE source of truth but their content differs"*).
+
+**What it DOES change: the diagnosis, and therefore the remedy.** With the widening the tool reports
+the archive/live case correctly, whose fix is *"mark the archive copy historical in its first lines"*.
+Without it the same pair is reported as two live docs, whose fix reads *"one must be marked superseded
+or deleted"* — which is wrong advice for a file that is *meant* to sit beside the live one. Modest,
+but it is the difference between a message that names the problem and one that does not.
+
+**Also honest about how it was verified, because the first two attempts were worthless:**
+1. Creating two untracked probe files proved nothing — `scan()` iterates `tracked_files()`, which
+   is `git ls-files`; untracked files are invisible to it. And `git add` on a shared checkout is
+   barred by §7.3.
+2. The second attempt declared a probe path and then never created the file, so it hit *"unreadable
+   duplicate"* — which the harness filtered out, producing a clean-looking **false negative**.
+3. What worked: import the real module, monkeypatch `tracked_files()` to return real on-disk paths,
+   and read the branch that fires. **A self-test that cannot fail is not a self-test** — the second
+   attempt could not have failed, and would have "passed" while proving the opposite.
+
 ### 6e — §6a reconciled against what actually happened: the list over-claimed, and missed the worst one
 
 §6a was written in round 3 as a *static* prediction — "these ~15 script files must change". Measured
