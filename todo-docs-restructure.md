@@ -586,16 +586,27 @@ where to look; do not treat it as the set of places that are broken.**
       (`docs/releases/*.md` copy) — fixed in `d00c08653`, proved by *executing* the copy and counting
       the 10 files that now land. This is the clearest case in the plan of a guardrail that reads
       absolute and is not.
-- [ ] `docs/book.toml` (1) — **D1**
-- [ ] `ui/package.json` (1) — `typedoc --out ../docs/src/api/ts`. Points *into*`docs/src/` (D1), not a moving dir.
-- [ ] `crates/kasirmu-api/Cargo.toml` (1) — a **provenance comment**, not metadata. Goes stale; harmless.
-- [ ] `website/public/robots.txt` (1) — a **comment**, and already stale: it cites
-      `docs/records/seo-robots-llms-review-19-09-26.md`, which does not exist (the file is at
-      `docs/audits/seo/…`). **No published URL is at risk.** Fix opportunistically.
-- [ ] 1-hit scripts to confirm individually: `apply-fluent-patch.py`, `verify-bundle-parity.py`,
-      `scan-locale-crossings.py`, `scan-fluent-hardcoded.py`, `test-runner-labels.py`,
-      `translate-stub.py`, `verify-ipc-parity.py`, `verify-scoped-coverage.sh`, `verify-ftl-orphans.py`,
-      `verify-scoped-reads.py`, `verify-fluent-dynamic-families.py`
+- [x] `docs/book.toml` — **0 hits.** D1; the mdBook config never moved.
+- [x] `ui/package.json` — **0 hits.** `typedoc --out ../docs/src/api/ts` points *into* `docs/src/`
+      (D1), which is not a moving directory. The original "1 hit" was this plan's own pattern
+      matching a path it was never going to move.
+- [x] `crates/kasirmu-api/Cargo.toml` — **repointed.** Its single hit was a **provenance comment**
+      citing a doc that moved; now `docs/records/audits/2026-08-15-unify-auth-and-sync.md`.
+- [x] `website/public/robots.txt` — **0 hits** for the moving directories. Its stale comment (a
+      citation of a `seo-robots-llms-review` path that never resolved) is **not** a published URL and
+      not a link, so nothing in the served site depends on it. Left alone deliberately: editing
+      content that is served verbatim, to tidy a citation, is not a trade worth making unasked.
+- [x] **The "1-hit scripts" list — confirmed individually, and the list itself was wrong.** All
+      eleven measured: `apply-fluent-patch.py`, `verify-bundle-parity.py`,
+      `scan-locale-crossings.py`, `scan-fluent-hardcoded.py`, `verify-ipc-parity.py`,
+      `verify-scoped-coverage.sh`, `verify-ftl-orphans.py`, `verify-scoped-reads.py`,
+      `verify-fluent-dynamic-families.py` — **nine of eleven have ZERO hits** and never held a
+      moving-directory reference. The two that do (`test-runner-labels.py`, `translate-stub.py`) are a
+      test-scenario string and a docstring citation, both prose.
+      **Honest total for the whole list: 2 prose mentions, 0 functional references.** A plan section
+      that names eleven files for individual confirmation when nine have nothing to confirm is its own
+      kind of drift. The original "1 hit each" came from a broader round-1 pattern that also matched
+      `docs/src/`.
 
 ## 7. Per-file verification protocol
 
@@ -630,8 +641,12 @@ predicted, not what was needed — the two launch-test guides carried **3** occu
       valid; B3 left it alone, correctly
 - [x] ~~`docs/archived/2026-08-30-glm-5.3-tauri-app-review.md`~~ (1) — moved to
       `records/audits/` in B1 and repointed twice since (B1 depth, B3 findings path)
-- [ ] `docs/decisions/2026-09-11-adr51-sealed-settings-ingest-policy.md` (1)
-- [ ] `docs/archived/2026-08-30-glm-5.3-tauri-app-review.md` (1)
+- [x] `docs/decisions/2026-09-11-adr51-sealed-settings-ingest-policy.md` — **never needed a fix.**
+      Its link pointed at a file that did not move; B3 left it alone, correctly. Closed as a *correct
+      decision*, not as a task performed.
+- [x] ~~`docs/archived/2026-08-30-glm-5.3-tauri-app-review.md`~~ — **the path in this list no longer
+      exists.** The file is `docs/records/audits/2026-08-30-glm-5.3-tauri-app-review.md` (B1) and has
+      been repointed twice since: once for depth in B1, once for the findings path in B3.
 
 The other 30 breaking links are in `docs/records/README.md` and are **regenerated, not fixed**.
 
