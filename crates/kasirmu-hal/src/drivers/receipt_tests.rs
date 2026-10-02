@@ -19,6 +19,7 @@ fn sample_receipt() -> SalesReceipt {
             name: "OZ MART".into(),
             address: "123 Main Street / Springfield, IL 62701".into(),
             tax_id: Some("12-3456789".into()),
+            tax_id_label: Some("NPWP".into()),
         },
         date: "01 Jan 2026".into(),
         receipt_number: "REC-001".into(),
@@ -344,6 +345,7 @@ fn sales_receipt_prints_idr_without_trailing_decimal() {
             name: "TOKO OZ".into(),
             address: "Jl. Melati 1 / Jakarta".into(),
             tax_id: None,
+            tax_id_label: None,
         },
         date: "01 Jan 2026".into(),
         receipt_number: "REC-IDR".into(),
@@ -698,5 +700,18 @@ fn prints_menu_order_note_under_item() {
     assert!(
         text.contains("  pedas"),
         "receipt must print menu order note under item: {text}"
+    );
+}
+
+#[test]
+fn sales_receipt_contains_dynamic_tax_id_label() {
+    let mut receipt = sample_receipt();
+    receipt.store.tax_id = Some("99-8888777".into());
+    receipt.store.tax_id_label = Some("GST Reg No".into());
+    let data = format_sales_receipt(&receipt, &default_config());
+    let text = String::from_utf8_lossy(&data);
+    assert!(
+        text.contains("GST Reg No: 99-8888777"),
+        "receipt must print dynamic tax id label: {text}"
     );
 }

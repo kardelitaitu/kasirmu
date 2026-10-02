@@ -142,6 +142,8 @@ pub struct StoreInfo {
     pub address: String,
     /// Optional tax registration number.
     pub tax_id: Option<String>,
+    /// Optional tax registration label (e.g. "NPWP", "GST Reg No", "Tax ID").
+    pub tax_id_label: Option<String>,
 }
 
 // ── Line item ────────────────────────────────────────────
@@ -422,7 +424,8 @@ pub fn format_sales_receipt(r: &SalesReceipt, config: &ReceiptConfig) -> Vec<u8>
         }
     }
     if let Some(ref tax_id) = r.store.tax_id {
-        b.center(&format!("NPWP: {tax_id}"));
+        let label = r.store.tax_id_label.as_deref().unwrap_or("Tax ID");
+        b.center(&format!("{label}: {tax_id}"));
     }
     if let Some(ref fp) = r.faktur_pajak {
         b.center(&format!("Faktur Pajak: {fp}"));
