@@ -108,7 +108,7 @@ fi
 # RELEASE-07: one canonical changelog source = CHANGELOG.md. The generated
 # per-version file is the reviewed DRAFT; the version gate (step below)
 # fails unless CHANGELOG.md carries a "## [X.Y.Z]" heading for the tag.
-CHANGELOG_FILE="docs/releases/CHANGELOG-${NEW_VERSION}.md"
+CHANGELOG_FILE="docs/records/releases/CHANGELOG-${NEW_VERSION}.md"
 if [ "$DRY_RUN" != "true" ]; then
   cat > "$CHANGELOG_FILE" << EOF
 # $NEW_VERSION
@@ -126,7 +126,7 @@ EOF
       /^## \[/ && !done {
         print "## [" v "] — " d
         print ""
-        print "Release notes: see docs/releases/CHANGELOG-" v ".md (reviewed before tagging)."
+        print "Release notes: see docs/records/releases/CHANGELOG-" v ".md (reviewed before tagging)."
         print ""
         print "---"
         print ""

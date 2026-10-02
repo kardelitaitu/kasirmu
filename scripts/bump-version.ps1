@@ -240,7 +240,7 @@ if (-not (Test-Path $changelogPath)) {
         } elseif ($DryRun) {
             Write-Host "WOULD INSERT: $changelogPath ($heading)"
         } else {
-            $block = "$heading`r`n`r`nRelease notes: see docs/releases/CHANGELOG-$TargetVersion.md (reviewed before tagging).`r`n`r`n---`r`n`r`n"
+            $block = "$heading`r`n`r`nRelease notes: see docs/records/releases/CHANGELOG-$TargetVersion.md (reviewed before tagging).`r`n`r`n---`r`n`r`n"
             $updated = $content.Substring(0, $insertAfter.Index) + $block + $content.Substring($insertAfter.Index)
             [System.IO.File]::WriteAllText($changelogPath, $updated, (New-Object System.Text.UTF8Encoding($false)))
             Write-Host "Updated: $changelogPath (inserted $heading)"
