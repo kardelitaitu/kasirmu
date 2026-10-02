@@ -75,7 +75,7 @@ if (Test-Path "$BookSrc\decisions") { Remove-Item -Recurse -Force "$BookSrc\deci
 if (Test-Path "$BookSrc\releases") { Remove-Item -Recurse -Force "$BookSrc\releases" }
 if (Test-Path "$BookSrc\operations") { Remove-Item -Recurse -Force "$BookSrc\operations" }
 New-Item -ItemType Directory -Force -Path "$BookSrc\guides", "$BookSrc\decisions\archived", "$BookSrc\releases", "$BookSrc\operations" | Out-Null
-Copy-Item (Join-Path $WorkspaceRoot "docs\guides\*.md") "$BookSrc\guides\" -ErrorAction SilentlyContinue
+Copy-Item (Join-Path $WorkspaceRoot "docs\guides\*") "$BookSrc\guides\" -Recurse -ErrorAction SilentlyContinue
 Copy-Item (Join-Path $WorkspaceRoot "docs\decisions\*.md") "$BookSrc\decisions\" -ErrorAction SilentlyContinue
 Copy-Item (Join-Path $WorkspaceRoot "docs\decisions\archived\*.md") "$BookSrc\decisions\archived\" -ErrorAction SilentlyContinue
 Copy-Item (Join-Path $WorkspaceRoot "docs\records\releases\*.md") "$BookSrc\releases\" -ErrorAction SilentlyContinue
