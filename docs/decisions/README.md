@@ -186,7 +186,7 @@ authoritative record.
   so the files, status lines, the cells above and the in-body claims were corrected together
   (line counts preserved — cross-file line anchors still hold). The superseded labels live
   in git history; the method and the second, unfixed date cluster are recorded in
-  `docs/audits/documentation-audit-23-09-26.md`.
+  `docs/records/audits/documentation-audit-23-09-26.md`.
 - **`TODO.md` no longer exists at the repo root.** It was moved to
   `docs/plans/todo.md` by `f3d9cca60` ("tidy up project root files into docs, dev, and
   scripts") — a pure rename, content intact, so every `TODO.md` C-phase citation went dead

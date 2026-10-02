@@ -177,7 +177,7 @@ $env:KASIRMU_MASTER_KEY                  # at-rest master key (64 hex); OZ_MASTE
 *Missing `node_modules`: `cd ui && npm ci --no-audit --no-fund`.*
 
 - **No linter sees `.css`** — never cite `eslint` for a stylesheet. Verify with the
-  five walker suites; command and caveats: `docs/audits/frontend/css-verification.md`.
+  five walker suites; command and caveats: `docs/records/audits/frontend/css-verification.md`.
 
 ### 5.2 Rust backend
 

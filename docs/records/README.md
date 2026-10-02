@@ -100,7 +100,7 @@ Unified registry for architectural decisions (ADRs), audits, verifications, meas
 - [ADR: Topology Phase 9 — Stock Routing Consumer](../decisions/2026-08-09-topology-phase9-stock-routing.md)
 
 **general:**
-- [1. Core Architecture: “Global Kernel + Region Packs”](../decisions/2026-10-02-adr64-global-kernel-and-region-pack.md)
+- [this is rough plan, need to reviewed and standarized with our other ADR format](../decisions/2026-10-02-adr64-global-kernel-and-region-pack.md)
 
 ## Engineering Records (`docs/records/`)
 
@@ -126,15 +126,31 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | sync | [Unify Auth & Sync to Northflank](audits/2026-08-15-unify-auth-and-sync.md) | Archived (2026-08-31) — implemented; live procedure is docs/operations/runbook.md |
 | architecture | [GLM-5.3 Tauri App Review — Journal](audits/2026-08-30-glm-5.3-tauri-app-review.md) | Archived (2026-08-31) — all 11 sectors reviewed; 53 findings remediated |
 | architecture | [kasir.mu Full Crate Audit — GLM 5.3-Flash (RSA)](audits/2026-08-31-glm-5.3f-crates-audit.md) | Archived (2026-08-31) — campaign fully closed (sections 1–46), no open findings |
+| general | [api-reference.md — Full Audit (anchor-by-anchor, full audit mode)](audits/2026-09-28-api-reference-audit.md) | — |
+| general | [docs/ Folder Audit — 2026-09-28](audits/2026-09-28-docs-audit.md) | — |
+| general | [Desktop launch failure — root cause: a Low Mandatory Level ACL on the checkout](audits/2026-09-29-desktop-launch-integrity-label.md) | — |
 | theming | [Shadow Banding Audit — Task List](audits/TODO-shadow-audit.md) | — |
 | quality | [Code Quality Audit — 0.0.14](audits/code-quality-2026-07-20.md) | — |
 | database | [Database Optimization Audit — 2026-07-20](audits/database-optimization-2026-07-20.md) | — |
 | general | [kasir.mu Design Exceptions Register](audits/design-exceptions.md) | — |
 | quality | [Developer Experience Audit — 2026-07-20](audits/dev-experience-2026-07-20.md) | — |
 | ui | [Dev-Mock Reload-State Audit](audits/dev-mock-state-audit.md) | — |
+| general | [Documentation audit — the docs system itself — 23-09-26](audits/documentation-audit-23-09-26.md) | — |
+| theming | [Agent Ops Handbook — CSS Verification](audits/frontend/css-verification.md) | — |
+| general | [Fluent Page Audit — Full Journal](audits/frontend/fluent-page-audit.md) | — |
 | ui | [Modal & Overlay Audit Checklist](audits/modal-audit-checklist.md) | — |
 | products | [Product Image Storage Plan - Review Summary](audits/plan-product-images-review.md) | — |
+| general | [SEO audit — kasir.mu marketing site (on-page, technical, content)](audits/seo/seo-audit-19-09-26.md) | — |
+| general | [SEO review — robots.txt and llms.txt (kasir.mu)](audits/seo/seo-robots-llms-review-19-09-26.md) | — |
+| general | [Setup wizard + login/signup — state-of-the-art working notes](audits/setup/setup-state-of-the-art.md) | — |
+| general | [Setup Wizard — Audit & Review](audits/setup/setup-wizard-audit.md) | — |
+| general | [Setup wizard — decision record and plans](audits/setup/setup-wizard-option-b-plan.md) | — |
+| general | [Wizard retirement — RESOLVED](audits/setup/setup-wizard-retirement-blocker.md) | — |
+| general | [Skill audit — .agents/skills/ — 18-09-26](audits/skills/skill-audit-18-09-26.md) | — |
+| general | [Skill audit — .agents/skills/ — 22-09-26](audits/skills/skill-audit-22-09-26.md) | — |
 | ui | [UI State Audit — 0.0.14](audits/ui-state-audit-2026-07-20.md) | — |
+| general | [MANAGER-2 JOURNAL - POS-SCREEN. LIVE STATE BLOCK (authoritative head, READ FIRST)](campaigns/manager-2-journal-posscreen.md) | — |
+| general | [MANAGER-2 CURRENT-STATE LEDGER (condensed; authoritative head - READ THIS FIRST)](campaigns/manager-2-journal.md) | — |
 | sync | [Sync settings ingest admits and the redirect that carries them](snapshots/2026-09-12-sync-settings-ingest-and-redirect-census.md) | — |
 | general | [ADR #51 From the Other Side — the Admitted Set and the Redirect's Second Writer](snapshots/2026-09-13-adr51-admitted-set-and-blind-sides.md) | — |
 | ui | [Appraisal: todo-review-type.md (Local-First & Frontend Architecture)](snapshots/2026-09-15-frontend-architecture-todo-appraisal.md) | — |
@@ -161,25 +177,6 @@ same scan that lists the other documentation directories; `README.md` itself is 
 ## Audit Reports
 
 The per-sector audit reports were consolidated into [**Audit Open Findings**](./audit-open-findings.md) (current); fully-remediated sectors are closed by the commits recorded there.
-
-## Audit Reports (`docs/audits/`)
-
-| Area | Title | Status |
-| --- | --- | --- |
-| general | [api-reference.md — Full Audit (anchor-by-anchor, full audit mode)](../audits/2026-09-28-api-reference-audit.md) | — |
-| general | [docs/ Folder Audit — 2026-09-28](../audits/2026-09-28-docs-audit.md) | — |
-| general | [Desktop launch failure — root cause: a Low Mandatory Level ACL on the checkout](../audits/2026-09-29-desktop-launch-integrity-label.md) | — |
-| general | [Documentation audit — the docs system itself — 23-09-26](../audits/documentation-audit-23-09-26.md) | — |
-| frontend | [Agent Ops Handbook — CSS Verification](../audits/frontend/css-verification.md) | — |
-| frontend | [Fluent Page Audit — Full Journal](../audits/frontend/fluent-page-audit.md) | — |
-| seo | [SEO audit — kasir.mu marketing site (on-page, technical, content)](../audits/seo/seo-audit-19-09-26.md) | — |
-| seo | [SEO review — robots.txt and llms.txt (kasir.mu)](../audits/seo/seo-robots-llms-review-19-09-26.md) | — |
-| setup | [Setup wizard + login/signup — state-of-the-art working notes](../audits/setup/setup-state-of-the-art.md) | in progress. Round 1 corrected a bad commit and landed one UX improvement. |
-| setup | [Setup Wizard — Audit & Review](../audits/setup/setup-wizard-audit.md) | — |
-| setup | [Setup wizard — decision record and plans](../audits/setup/setup-wizard-option-b-plan.md) | — |
-| setup | [Wizard retirement — RESOLVED](../audits/setup/setup-wizard-retirement-blocker.md) | — |
-| skills | [Skill audit — .agents/skills/ — 18-09-26](../audits/skills/skill-audit-18-09-26.md) | — |
-| skills | [Skill audit — .agents/skills/ — 22-09-26](../audits/skills/skill-audit-22-09-26.md) | — |
 
 ## Scattered Audit Reports (`docs/`)
 
