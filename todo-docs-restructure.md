@@ -29,15 +29,20 @@ this plan and the 14 `done-*.md` moves on `0.0.40` only. This copy is the `0.0.4
 
 Three defects, in descending order of cost.
 
-**1.1 — Weight, not layout.** AGENTS.md E4 mandates *read whole files, one call, ≤2,000 lines*. Four files
-make that impossible:
+**1.1 — Weight, not layout.** AGENTS.md E4 mandates *read whole files, one call, ≤2,000 lines*.
+This opened as **four** files; the work has since cleared two of them, so the measured state is:
 
-| File | Size | State |
-|---|---:|---|
-| `docs/records/JOURNAL.md` | **1,338 KB** | ✅ **split — §4 A1** |
-| `docs/archived/manager-2-journal.md` | **690 KB** | ⏸ **deferred — §4 A1** |
-| `docs/plans/_active/notes.md` | 343 KB | open — §4 A2 |
-| `docs/plans/_backlog/0.0.36-backlog.md` | 294 KB | open — §4 A2 |
+| File | Size | Lines | Over the 2,000 cap? | State |
+|---|---:|---:|---|---|
+| `docs/records/journal/JOURNAL.md` | 6 KB | **55** | no | was 1,338 KB / 13,433 lines — **split** (§4 A1); what remains is the index |
+| `docs/records/campaigns/manager-2-journal.md` | 690 KB | 2,752 | **yes** | ⏸ deferred with measured reasons (§4 A1) |
+| `docs/plans/_backlog/0.0.36-backlog.md` | 294 KB | **4,560** | **yes** | open — never in any batch (§4 A2 covers `notes.md` only) |
+| `docs/plans/_active/notes.md` | 343 KB | 1,821 | **no** | open, but **not an E4 violation** — the problem is its name and stale H1, not its length (§4 A2) |
+
+> **Both counts here were wrong when first written**, in opposite directions. `notes.md` was
+> listed as an E4 violation on its 343 KB size without anyone counting its lines — it is under
+> the cap. `0.0.36-backlog.md` is the **worse** file at 4,560 lines and appears in **no batch**;
+> §4 A2 only ever covered `notes.md`. E4 counts **lines**, not bytes.
 
 2.6 MB of markdown where the rule is *read it all*. Every agent either breaks E4 or spends its whole
 context on a file it needed one paragraph from. This is a running cost and it is the highest-value
