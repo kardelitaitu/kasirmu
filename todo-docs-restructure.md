@@ -46,8 +46,8 @@ audits have **six homes** (`audits/`, `security/`, `observability/`, `architectu
 
 **1.3 — Two name collisions across the archive boundary.** Both files exist; neither path says which
 is current:
-- `docs/archived/ci-pipeline.md` vs `docs/operations/ci-pipeline.md`
-- `docs/archived/benchmarks.md` vs `docs/benchmarks/`
+- `docs/archived/ci-pipeline.md` vs `docs/operations/ci-pipeline.md` — **RESOLVED 2026-10-02, A4**
+- `docs/archived/benchmarks.md` vs `docs/benchmarks/` — **RESOLVED 2026-10-02, A4**
 
 ## 2. Invariants — what must stay true
 
@@ -177,11 +177,24 @@ surface-level reaction to a repeated number and is **withdrawn**.
       reproduces on purpose**, not a defect to remove — so nothing in `docs/README.md` needed to change
       for A3, and this bullet's old note about "updating the same commit" is **withdrawn with the plan**.
 
-### A4 — Remove the two ambiguous filenames
+### A4 — Remove the two ambiguous filenames · **DONE, date-stamped not deleted**
 
-- [ ] `docs/archived/ci-pipeline.md` — delete or date-stamp. `docs/operations/ci-pipeline.md` is current.
-- [ ] `docs/archived/benchmarks.md` — delete or date-stamp. `docs/benchmarks/` is current.
-- [ ] **Verify:** `check-dead-refs.py` exits 0; no doc cites the deleted names as live paths.
+**Deletion was rejected on measurement.** Both files carry audit stamps and supersession markers —
+`archived/ci-pipeline.md` is stamped *"HISTORICAL RECORD — describes a CI shape that no longer
+exists"*, and `docs/operations/ci-pipeline.md` declares itself the *"single source of truth"*.
+Deleting a stamped record destroys audit history — the same trade refused in A5.3.
+
+- [x] `docs/archived/ci-pipeline.md` → **`docs/archived/2026-08-17-ci-pipeline.md`** (its own
+      *"Last updated: 2026-08-17"*). Content **byte-identical**: `083407ad5` before and after.
+- [x] `docs/archived/benchmarks.md` → **`docs/archived/2026-07-22-benchmarks.md`** (its supersession
+      marker date). Content **byte-identical**: `f4305617` before and after.
+      Date-**prefix** chosen to match the dominant convention in `docs/archived/` — these two were
+      the exceptions.
+- [x] Repointed the **one** external reference, `docs/guides/product/ROADMAP.md:536`.
+- [x] **Collision resolved:** `ci-pipeline.md` now resolves to exactly one file
+      (`docs/operations/ci-pipeline.md`); the bare basename `benchmarks.md` no longer exists.
+- [x] **Verified:** both sources clean before moving · `git mv` exit 0 ×2 · post-move hashes equal
+      pre-move hashes · `check-dead-refs.py` exit 0 · `git show --stat` shows two 100% renames.
 
 ### A5 — Resolve the three loose ends · **1 of 3 done**
 
