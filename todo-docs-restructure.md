@@ -988,6 +988,43 @@ query result. Rewriting either would falsify a record.
 **Operating note, cost me a cleanup:** `detect.sh` writes `./skill-drift-report.md` to the **repo
 root**, and that path is **not gitignored** — so running the project's own detector creates a
 fifth root-policy finding. Delete it after reading, and re-check `verify-root-policy.py` afterwards.
+### 6o — tooling prose still names the old tree; **no gate is broken**
+
+§6n asked whether the *docs* drifted after the moves. This asks the same of the **tools' own
+prose** — comments and docstrings under `scripts/` and `.agents/skills/`, which is where a
+maintainer's belief about the tree is written down.
+
+| Scope | Stale path mentions |
+|---|---:|
+| `scripts/` + `.agents/skills/` comments and docstrings | **47** across 24 files |
+| …that are **live** (a runner command or CI step, not prose) | **0** |
+
+**Zero functional breaks.** `check.sh`, `build-docs.sh`, `release.sh`, `bump-version.ps1`,
+`coverage.sh` and `dev-ci.yml` were checked line-by-line with comment lines excluded: no command
+points at a moved path. That is the result that matters — the six tooling breaks §6c–§6g caught
+the functional ones, and nothing new has appeared since.
+
+**Two live prose claims fixed** (`6d9cca67a`):
+
+- `scripts/check-font-claims.mjs` credits its claims to `docs/plans/notes.md`; the file is now
+  `docs/plans/_active/notes.md`.
+- `scripts/check-testid.mjs` says it implements `docs/plans/todo-testid-checker-spec.md`; the
+  file is now `docs/plans/_done/done-testid-checker-spec.md` — **renamed without the `todo-`
+  token**, because §7.4 earns `done-` by running the acceptance command. Worth knowing before
+  assuming `done-todo-*` is the pattern.
+
+**The rest are historical and must stay.** `verify-agents-mirrors.py` names `.agents/AGENTS.md`
+six times — describing the reorganisation that moved it *out* of `.agents/`, so the file's
+**absence** there is the claim. `verify-debt-markers.py` describes the B4b move in past tense.
+Same rule as §6j: a path inside a record of what happened is evidence, not drift.
+
+**A measurement error worth recording, because it flattered the method.** The first pass reported
+**4** and I wrote it up as a precision win over an earlier 65. It was a bug: the comment-strip
+regex `^(?:#+|//+|\*|--)\s?(.*)$` matches the **whole** line, and `sub("", s)` replaced all of
+it with nothing — so every `#` and `//` comment was blanked before the path scan ran, and only
+`*` lines were ever examined. **65 → 4 was under-counting, not precision.** The correct filter
+removes the leading marker and keeps the body; that reports 47. **A dramatic number is a reason
+to re-read the code that produced it**, especially when it flatters the finding.
 ## 9. B5 (NEW, 2026-10-02) — the worst E4 violation, measured, **not** actioned
 
 `0.0.36-backlog.md` surfaced in §1.1's own audit: **4,560 lines / 294 KB**, the largest file in the
