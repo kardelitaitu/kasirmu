@@ -575,6 +575,12 @@ if should_run refs; then
       case "$ref" in
         src|ui|crates|hal|src-tauri|AGENTS.md|README.md|WHITEPAPER.md|ARCHITECTURE.md|ROADMAP.md) continue ;;
         async|await|pub|fn|let|mut|use|match|impl|trait) continue ;;   # Rust keywords
+        # adb subcommands. Same class as the Rust keywords above: the guide's
+        # trigger sentence reads `adb devices` ... `adb shell` ... `screencap` and
+        # `adb pull`, and only `screencap` loses its prefix in that voice, so it
+        # alone reached the skill-ref heuristic. Same sentence names
+        # `android-adb-connect` as the skill, one clause later.
+        screencap|screencap-pull|pull|exec-out|forward|reverse) continue ;;
       esac
       FINDINGS[refs]+="onboarding-guide: possible missing skill ref \`${ref}\`"$'\n'
     done < <(grep -oE '`[a-z][a-z-]+`' "$og" 2>/dev/null | sort -u | \
