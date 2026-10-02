@@ -774,6 +774,44 @@ command is RUN **and PASSED**. It ran, and it did not pass. What blocks it is a 
 structure, a concurrent session's uncommitted deletion, and five root files that are not a docs
 problem at all.
 
+### 8a — Pre-rebrand `oz-*` citations: 1,291 found, **1 file actually wrong**
+
+A sweep of every tracked markdown for path-shaped tokens with the pre-rebrand prefix:
+
+| | Count |
+|---|---:|
+| `oz-*` path tokens found | 1,291 |
+| …that resolve today | **0** |
+| …distinct dead paths | 346 |
+
+**The obvious move — rewrite all 1,291 — would have been wrong in ~1,208 cases.** They sit in
+journal entries, ADRs, `.agents/planning/` journals and `.agents/archived/` plans, where the old
+path is *correct*: it is what the file was called when the sentence was written. Repointing them
+would rewrite what happened to match what exists today, destroying the only evidence that the
+rename happened. The runbook's own audit stamp is the model — it names `crates/oz-core/…` precisely
+because it is recording a 2026-09-08 finding.
+
+Narrowed to the folders §5 calls **live**, 11 files carried 83 refs. **All 11 carry an audit
+stamp** — each is deliberately curated as history. Two examples settle it on inspection:
+
+- **`docs/specs/_active/c1-money-type-safety.md:35`** already self-documents it: *"this cited
+  `crates/oz-core/src/exchange_rate.rs:15`; the type moved."* A dated correction, correctly kept.
+- **`docs/plans/_active/payment-methods-plan.md`** is titled *"Planning Notes"*, dated
+  **2026-09-03**, and its stamp says it *"records a design session rather than a
+  specification"*. Its findings table was measured that day, when the crates were `oz-core`.
+
+**The one genuine live claim was an operational runbook.** `docs/security/INCIDENT_RESPONSE.md` — a
+document someone follows *during an incident* — had two **body-text** references to
+`crates/oz-core/src/db/audit.rs` and `audit_security.rs`, neither of which exists. Fixed
+`ce6b988bd`, after verifying the `kasirmu-core` paths exist. Its third reference sits inside its
+audit stamp and was deliberately left.
+
+**Rule this establishes: an audit stamp is what distinguishes a historical citation from a live
+one.** A pre-rebrand path *outside* a stamp is drift; *inside* one it is evidence. Nothing checks
+this today, and that is the gap worth naming rather than closing — a checker would need the same
+exemption logic `check-dead-refs.py` already uses for dated folders and plan tokens, and writing
+it is a policy decision, not a mechanical one.
+
 ## 9. Out of scope — rejected on purpose
 
 - **No topic reorganisation.** The tree is already organised by function ([docs/README.md:6](docs/README.md:6)).
