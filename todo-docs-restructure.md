@@ -752,11 +752,22 @@ allowlisting scratch would make a gate permanently approve of junk.
 **Step 6 aborts at step 01, `verify-root-policy.py`: 7 stray root files.** One of the original eight
 **was mine** — `todo-docs-restructure.md` itself. That allowlist is **names-not-patterns** (*"adding
 one is a decision"*) and already carries nine plan docs, so the correct fix was to name this one
-beside them: **`0aa3528ca`, 8 findings to 7.** The seven left are `README-3.md`,
-`todo-android-updater.md` and `todo-beta-testing-january-2027.md` (all pre-existing), plus
-`SENTINEL_STASH.txt`, `ser.txt`, `kasir.db` and `kasir.pre-migration.bak` (another session's
-scratch and local artifacts). **Those belong deleted or gitignored, not allowlisted** — allowlisting
-scratch would make a gate permanently approve of junk.
+beside them: **`0aa3528ca`, 8 findings to 7.** The seven left are `todo-android-updater.md`
+and `todo-beta-testing-january-2027.md` (pre-existing root plan docs), plus `SENTINEL_STASH.txt`,
+`ser.txt`, `kasir.db` and `kasir.pre-migration.bak` (another session's scratch and local
+artifacts). **Those belong deleted or gitignored, not allowlisted** — allowlisting scratch would
+make a gate permanently approve of junk.
+
+**Correction, 2026-10-02:** the seventh entry was `README-3.md`, and this plan twice called it *"a
+duplicate of README.md"* without ever comparing the two. **It is not a duplicate.** `README.md` is
+the investor-facing product overview; `README-3.md` was the **developer-facing technical README**,
+and it is the **only** document in the repository carrying a Technology Stack table or a repo-root
+Repository Structure tree. Worse, it had **zero inbound links** — an actively-maintained
+(measured 2026-09-29) document, unreachable, under a merge-conflict name (`README-2` had been
+deleted), flagged by the root policy. Renamed to **`README-technical.md`** and cross-linked from
+`README.md` (`c6b06dbae`, 100% rename, 4 links repointed). **Lesson: I asserted a duplicate
+relationship twice without measuring it — the same error this plan has repeatedly corrected
+elsewhere.**
 
 **So this file stays `todo-docs-restructure.md`.** §7.4: `done-` is earned only when the acceptance
 command is RUN **and PASSED**. It ran, and it did not pass. What blocks it is a pre-existing heading
@@ -788,8 +799,17 @@ problem at all.
 2. **Confirm `docs/audits/` is a record folder, not a live one.** Phase B2 moves all 14 files. The
    alternative is that audits stay a claim surface and only `archived/` folds into `records/` — which is
    a materially smaller plan.
-3. **`docs/coverage/` and `docs/src/`** — `docs/src/` is settled (D1, generated, leave it). `coverage/`
-   is one generated report; delete or move.
+3. **`docs/coverage/` and `docs/src/`** — both settled 2026-10-02: `docs/coverage/` moved to
+   `records/benchmarks/coverage-report-2026-07-20.md` (`82186f28e`), and `docs/src/` is generated
+   (D1, leave it).
+4. **Two allowlist edits in `scripts/verify-root-policy.py`, outstanding:**
+   - **add `README-technical.md`** — renamed from `README-3.md` on 2026-10-02 (`c6b06dbae`). It is a
+     legitimate root human-entry file; without the entry the root-policy gate keeps flagging it.
+   - **remove `README-2.md`** — that file was deleted long ago and the entry is stale. I found it in
+     the stale-allowlist sweep and left it as "not mine"; it is now confirmed dead.
+   **Not done because that file had another session's uncommitted changes at the time**, and
+   AGENTS.md §7.3 forbids editing a path dirty with someone else's content — a pathspec commit takes
+   the working-tree copy and would have swept their work into mine.
 
 ## 11. Incident — a concurrent session switched branches mid-plan
 
