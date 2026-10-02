@@ -2,7 +2,7 @@
 
 **Status:** OPEN · **now on branch `0.0.41`** · updated 2026-10-02
 **Token:** `todo-` — `done-` is earned only when §8's acceptance command is RUN and PASSED (AGENTS.md §7.4).
-**⚠️ Read §11 first.** A concurrent session ran `git checkout 0.0.40 → 0.0.41` mid-plan, which left
+**⚠️ Read §12 first.** A concurrent session ran `git checkout 0.0.40 → 0.0.41` mid-plan, which left
 this plan and the 14 `done-*.md` moves on `0.0.40` only. This copy is the `0.0.41` continuation.
 
 ---
@@ -12,7 +12,7 @@ this plan and the 14 `done-*.md` moves on `0.0.40` only. This copy is the `0.0.4
 | | |
 |---|---|
 | **Goal** | Make "can I act on this?" answerable from the file's path. |
-| **Not the goal** | A prettier tree. Topic reorganisation is explicitly rejected — see §9. |
+| **Not the goal** | A prettier tree. Topic reorganisation is explicitly rejected — see §10. |
 | **Files moved** | **115**, measured 2026-10-02 as everything under `docs/records/*/` plus `docs/plans/_done/`. This card said **93** until then — it was a forecast written before the `done-*` root move, the coverage report and the two loose-end files landed. Re-derive: |
 
   ```bash
@@ -830,7 +830,7 @@ this today, and that is the gap worth naming rather than closing — a checker w
 exemption logic `check-dead-refs.py` already uses for dated folders and plan tokens, and writing
 it is a policy decision, not a mechanical one.
 
-## 12. B5 (NEW, 2026-10-02) — the worst E4 violation, measured, **not** actioned
+## 9. B5 (NEW, 2026-10-02) — the worst E4 violation, measured, **not** actioned
 
 `0.0.36-backlog.md` surfaced in §1.1's own audit: **4,560 lines / 294 KB**, the largest file in the
 tree and **in no batch**. Measured shape:
@@ -869,14 +869,14 @@ Re-derive the size rather than trusting this table:
 wc -l docs/plans/_backlog/0.0.36-backlog.md
 ```
 
-## 13. Out of scope — rejected on purpose
+## 10. Out of scope — rejected on purpose
 
 - **No topic reorganisation.** The tree is already organised by function ([docs/README.md:6](docs/README.md:6)).
   Re-cutting it by subject would churn all 292 files, break the most links, and buy nothing §1.2 does not
   already give.
 - **No move of the 8 live `todo-*`/`plan-*` docs at the repo root.** AGENTS.md §7.4 says plan renames
   happen in place at the root; `docs/plans/_active/` is the other half of that question and it is the
-  owner's call. **See §10.**
+  owner's call. **See §11.**
 - **No move of `manager-codebase-review{,-checklist,-decisions}.md`.** The stamps on
   [docs/archived/manager-2-journal.md](docs/archived/manager-2-journal.md) record that two agents both
   signed "Manager-2" and split files between them, with an explicit *never merge, rename or tidy these
@@ -886,7 +886,7 @@ wc -l docs/plans/_backlog/0.0.36-backlog.md
   path; the spec-number overlap carries 134 references including 18 in `CHANGELOG.md`. Both are
   recorded rather than renumbered, because a published identifier is not ours to renumber.
 
-## 10. Open questions for the owner
+## 11. Open questions for the owner
 
 1. **Do the 8 live root `todo-*`/`plan-*` docs also move to `docs/plans/_active/`?** This decides
    whether AGENTS.md §7.4's "renames happen in place at the repo root" survives or is rewritten. Blocking
@@ -919,7 +919,7 @@ wc -l docs/plans/_backlog/0.0.36-backlog.md
    therefore clean *of docs*; `scripts/check.sh` now fails at step 01 for reasons unrelated to this
    plan.
 
-## 11. Incident — a concurrent session switched branches mid-plan
+## 12. Incident — a concurrent session switched branches mid-plan
 
 Recorded because it changes what "done" means here, and because **AGENTS.md §7.1 forbids switching
 branches.** I did not switch; another session did.
@@ -937,7 +937,7 @@ branches.** I did not switch; another session did.
   and `docs/records/superseded/reporting-facade-inventory.md:214`. `done-todo-rebrand.md`'s sibling
   link to `done-todo-rebrand-2.md` needed nothing — both moved together. `check-dead-refs.py`:
   **0 unresolved**, self-test run first.
-  **Why it was deferred and then done.** §10 Q1 (do live plan docs belong at the root?) was unanswered,
+  **Why it was deferred and then done.** §11 Q1 (do live plan docs belong at the root?) was unanswered,
   so redoing it unilaterally was the wrong call *at the time*. The owner then asked for it directly,
   which is a different act entirely: §7.4 bars moving **another session's uncommitted** plan file,
   and all 15 were committed and clean. **Asking is not stalling** — the first pass declined on the
