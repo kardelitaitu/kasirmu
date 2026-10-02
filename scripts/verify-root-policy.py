@@ -68,11 +68,12 @@ ROOT_FILE_ALLOWLIST = frozenset({
     # this gate the only thing reporting them. Both are the class named above, not
     # scratch: `plan-c1-install-key-s2b-s2c.md` is TRACKED (landed with 461b04c25 /
     # 73109ee91) and carries the `plan-` token its §7.4 exemption requires;
-    # `todo-modular-scaffolding.md` is the same shape and keeps the `todo-` token.
-    # Recorded rather than renamed: §7.4 makes the name shared state, and moving
-    # another lane's plan file to satisfy a checker would be the wrong repair.
+    # `done-todo-modular-scaffolding.md` is the same shape and still carries the
+    # `todo-` token its §7.4 exemption needs. It was renamed on 2026-10-02 once
+    # its own acceptance command ran and passed (3543 core tests, all governance
+    # gates green), which is what §7.4 says earns the `done-` prefix.
     "plan-c1-install-key-s2b-s2c.md",
-    "todo-modular-scaffolding.md",
+    "done-todo-modular-scaffolding.md",
     # Measured exception (§5): not a duplicate of scripts/stats.json —
     # scripts/stats.ps1 and scripts/check.ps1 read this name.
     "stats.json",

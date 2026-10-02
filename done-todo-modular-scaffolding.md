@@ -1,7 +1,7 @@
 # Modular Scaffolding Plan
 
 **Project:** `kasirmu`  
-**Document:** `todo-modular-scaffolding.md`  
+**Document:** `done-todo-modular-scaffolding.md`  
 **Status:** All phases delivered (0–5) — re-verified on `0.0.41`  
 **Last Reviewed:** 2026-10-02  
 
