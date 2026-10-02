@@ -1545,6 +1545,8 @@ pub fn run() {
             commands::regional::get_regional_config_scoped,
             // Regional configuration write path (slice 3, saas-2 design).
             commands::regional::set_regional_config_scoped,
+            // Active market profile (slice 7, cold-boot locked profile).
+            commands::regional::get_active_market_profile_scoped,
             // Local payment methods (slice 6, saas-2 design).
             commands::local_payment::get_local_payment_methods_scoped,
             commands::local_payment::set_local_payment_methods_scoped,

@@ -165,7 +165,7 @@ mod debt;
 /// the pre-raise assertion reported `left: 481, right: 485`, and the four `+` lines in
 /// that commit's `lib.rs` diff are exactly the four names — the delta and the cause
 /// agree. Provenance recorded in docs/records/JOURNAL.md.
-const REGISTERED_FLOOR: usize = 485;
+const REGISTERED_FLOOR: usize = 486;
 /// How far the GENERATED ledger's total may lag the tree before the ledger is overdue a
 /// regeneration. It is not slack on this floor — the floor is measured, not padded — and
 /// the hard pin on the ledger's own rows is
