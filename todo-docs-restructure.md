@@ -949,6 +949,45 @@ command is RUN **and PASSED**. It ran, and it did not pass. What blocks it is a 
 structure, a concurrent session's uncommitted deletion, and five root files that are not a docs
 problem at all.
 
+### 6n — the skills tree drifted, and the repo already had a tool for it that I did not use
+
+§5 moved 115 files. Skills are a **live instruction surface** — they tell agents where to read and
+what to append — so this restructure could break them, and no gate covers `.agents/`.
+
+**I hand-rolled a sweep first, and it was far worse than the repo's own instrument:**
+
+| | Result |
+|---|---:|
+| my regex sweep | **167** "dead" `docs/` references |
+| `.agents/skills/skill-drift-guard/scripts/detect.sh` | **3** path findings |
+
+Most of my 167 were **examples inside the very skill that explains the checker** — `docs/sub/page.md`,
+`docs/g.md`, `docs/guide.md`, `docs/sub/target.md` are illustrative, not real. **The tool existed; I
+should have run it first.** That is now §6h's lesson recurring in a new costume: reach for the
+project's instrument before writing your own.
+
+**One real defect, and I caused it.** `tdd/SKILL.md:132` instructed an agent to
+`docs/records/JOURNAL.md`: *append a dated entry* — a path that stopped existing when §5 B3 split
+the journal into `records/journal/JOURNAL-part-1..8.md`. Repointed, with the index-vs-parts
+distinction spelled out so the next reader does not append to the index. `34904e42a`.
+
+**The two `codebase-memory` hits are deliberate.** One sits inside a *superseded audit stamp*
+(2026-09-22); the other is past tense — *"matches whose top hits were …"* — describing a prior
+query result. Rewriting either would falsify a record.
+
+**Left for the owner, on purpose:**
+
+- **Four skills claim version `0.0.40` while the lock is `0.0.41`** (`pr-create-pull-request`,
+  `pr-repair`, `project-scaffold`, `tdd`), plus `project-scaffold` quoting it as a *Cargo.toml*
+  value. That is real drift, but it sits directly on the version lock — AGENTS.md §3 is
+  **"NEVER modify version numbers"**, and this spans four files. Flagged, not touched.
+- **`onboarding-guide` references a skill named `screencap`**, which is no longer in the catalog.
+  Screenshots now belong to `android-adb-connect` (adb screencap) *or* `android-ui-automation`
+  (CDP capture), and which one is correct depends on intent. An owner call, not a guess.
+
+**Operating note, cost me a cleanup:** `detect.sh` writes `./skill-drift-report.md` to the **repo
+root**, and that path is **not gitignored** — so running the project's own detector creates a
+fifth root-policy finding. Delete it after reading, and re-check `verify-root-policy.py` afterwards.
 ## 9. B5 (NEW, 2026-10-02) — the worst E4 violation, measured, **not** actioned
 
 `0.0.36-backlog.md` surfaced in §1.1's own audit: **4,560 lines / 294 KB**, the largest file in the
