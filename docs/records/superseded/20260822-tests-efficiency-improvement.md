@@ -34,7 +34,7 @@ A fast test suite is a force multiplier:
 |----------|--------------|
 | Rust unit tests (per-crate `*_tests.rs` + inline `#[cfg(test)]`) | Production code behaviour changes (unless they exist solely to speed tests up) |
 | Rust integration tests (`tests/` dirs) | CI runner/hardware provisioning |
-| Rust doctests | Test **coverage** improvements (separate effort — see `docs/coverage/README.md`) |
+| Rust doctests | Test **coverage** improvements (separate effort — see `docs/records/benchmarks/coverage-report-2026-07-20.md`) |
 | UI Vitest suite (389 files: `ui/src/__tests__/`) | Writing new tests (this doc is about *speed of existing tests*) |
 | UI a11y suite (`npm run test:a11y`) | |
 | E2E Playwright specs (`ui/e2e/`, 26 specs) | |
@@ -439,7 +439,7 @@ Run from `ui/`: `npm run test:e2e -- <spec>` or the managed `npm run e2e` pipeli
 
 ## 10. Related documents
 
-- `docs/coverage/README.md` — coverage reports & tooling (coverage is out of scope here)
+- `docs/records/benchmarks/coverage-report-2026-07-20.md` — coverage reports & tooling (coverage is out of scope here)
 - `scripts/check.sh` — the local pre-push gate this campaign optimizes
 - `scripts/check-ui.mjs` — UI gate runner (`npm run check:all`)
 - `ui/vite.config.ts` — Vitest pool/parallelism/timeout configuration

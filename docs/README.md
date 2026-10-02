@@ -153,6 +153,15 @@ branch, kept on purpose and recorded as such in the script rather than quietly r
 > drafts, not documentation of shipped behaviour. Content carries its own status markers
 > (`[UNVERIFIED]`/`[PENDING]`/`[DECIDED]`) — see [`legal/README.md`](./legal/README.md).
 >
+> **Correction (02-10-26, todo-docs-restructure.md §4 A5.1–A5.2):** the note above lists `coverage/`
+> among "3 unlisted dirs" still excluded from this index. **`docs/coverage/` no longer exists** —
+> its single generated report moved to [`records/benchmarks/coverage-report-2026-07-20.md`](./records/benchmarks/coverage-report-2026-07-20.md)
+> and the folder was removed. The two genuinely-excluded dirs are now `src/` + `theme/` (the mdBook
+> portal, D1). The note itself is left unedited because it is a dated record of what that audit
+> measured. A second loose end closed in the same pass: `docs/audit-receipt-settings.md` — a real
+> audit report sitting at the `docs/` root with **zero** inbound references — moved to
+> [`records/audits/audit-receipt-settings.md`](./records/audits/audit-receipt-settings.md).
+>
 > **Correction (02-10-26, todo-docs-restructure.md §4 A5):** the `archived/` row claimed **26 files**
 > against an actual **28**, and the ADR-naming bullet claimed **"13 of the 66 files … highest adr47"**
 > against an actual **30 of 81, highest `adr63`**. This is the *third* time a hand-quoted count in

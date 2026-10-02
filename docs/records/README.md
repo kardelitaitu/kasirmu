@@ -121,6 +121,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [docs/ Folder Audit — 2026-09-28](audits/2026-09-28-docs-audit.md) | — |
 | general | [Desktop launch failure — root cause: a Low Mandatory Level ACL on the checkout](audits/2026-09-29-desktop-launch-integrity-label.md) | — |
 | theming | [Shadow Banding Audit — Task List](audits/TODO-shadow-audit.md) | — |
+| general | [Audit — Receipt Settings (resto-pos → Receipts) & Settings → Business Defaults](audits/audit-receipt-settings.md) | — |
 | quality | [Code Quality Audit — 0.0.14](audits/code-quality-2026-07-20.md) | — |
 | database | [Database Optimization Audit — 2026-07-20](audits/database-optimization-2026-07-20.md) | — |
 | general | [kasir.mu Design Exceptions Register](audits/design-exceptions.md) | — |
@@ -154,6 +155,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [Performance Benchmarks — 0.0.14](benchmarks/2026-07-20.md) | — |
 | general | [kasir.mu Performance Baselines — 2026-07-20](benchmarks/baseline-2026-07-20.md) | — |
 | general | [kasir.mu Performance Baselines — 2026-07-21](benchmarks/baseline-2026-07-21.md) | — |
+| reporting | [Coverage Report — kasir.mu](benchmarks/coverage-report-2026-07-20.md) | — |
 | products | [Benchmark Regression Tracking](benchmarks/regression-tracking.md) | — |
 | general | [MANAGER-2 JOURNAL - POS-SCREEN. LIVE STATE BLOCK (authoritative head, READ FIRST)](campaigns/manager-2-journal-posscreen.md) | — |
 | general | [MANAGER-2 CURRENT-STATE LEDGER (condensed; authoritative head - READ THIS FIRST)](campaigns/manager-2-journal.md) | — |
