@@ -78,7 +78,7 @@ New-Item -ItemType Directory -Force -Path "$BookSrc\guides", "$BookSrc\decisions
 Copy-Item (Join-Path $WorkspaceRoot "docs\guides\*.md") "$BookSrc\guides\" -ErrorAction SilentlyContinue
 Copy-Item (Join-Path $WorkspaceRoot "docs\decisions\*.md") "$BookSrc\decisions\" -ErrorAction SilentlyContinue
 Copy-Item (Join-Path $WorkspaceRoot "docs\decisions\archived\*.md") "$BookSrc\decisions\archived\" -ErrorAction SilentlyContinue
-Copy-Item (Join-Path $WorkspaceRoot "docs\releases\*.md") "$BookSrc\releases\" -ErrorAction SilentlyContinue
+Copy-Item (Join-Path $WorkspaceRoot "docs\records\releases\*.md") "$BookSrc\releases\" -ErrorAction SilentlyContinue
 Copy-Item (Join-Path $WorkspaceRoot "docs\operations\*.md") "$BookSrc\operations\" -ErrorAction SilentlyContinue
 Write-Host "[SUCCESS] guides + ADRs + releases + operations copied into docs/src/" -ForegroundColor Green
 
