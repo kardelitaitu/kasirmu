@@ -11,7 +11,7 @@ Rules: [{"file": "...", "rules": [{"old","new","count"}], "expect_absent": ["...
 Paths are repo-relative and use forward slashes.
 """
 # Promoted from the 2026-09-03 Fluent page audit; see
-# docs/records/fluent-page-audit.md for why this check exists.
+# docs/records/audits/frontend/fluent-page-audit.md for why this check exists.
 
 from __future__ import annotations
 

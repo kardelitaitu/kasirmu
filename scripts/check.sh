@@ -428,7 +428,7 @@ step "client type drift self-test" "python3 scripts/check-client-type-drift.py -
 # compares the Nth column against the field name.
 # One acknowledged mismatch is REPORTED each run and does not fail it: the source
 # column above is a product ruling, not a repair, and the record lives in
-# docs/records/JOURNAL.md (2026-10-04, a3c871787). The suppression is keyed by
+# docs/records/journal/JOURNAL.md (2026-10-04, a3c871787). The suppression is keyed by
 # (file, field), so any OTHER mapper with the same defect still fails.
 # Exits 2 on a refused --roots list, so a starved corpus never reads as clean.
 step "mapper alignment" "python3 scripts/check-mapper-alignment.py" python3 scripts/check-mapper-alignment.py
@@ -804,7 +804,7 @@ step "updater signature self-test" "node scripts/verify-updater-signature.mjs --
 # is deliberately ungated for good rather than pending a gate". Its non-zero exit is a
 # REPORT, not a verdict, so a blocking step here would fail every run on a decision that
 # was taken on purpose. Same shape as the docker-digests gate. Provenance and the full
-# reasoning: docs/records/audit-open-findings.md, finding GI-4.
+# reasoning: docs/records/findings/audit-open-findings.md, finding GI-4.
 step "quota coverage self-test" "bash scripts/verify-quota-coverage.sh --self-test" bash scripts/verify-quota-coverage.sh --self-test
 
 # The two SQLite maintenance scripts carry a --self-test each, because the defect
@@ -883,7 +883,7 @@ fi
 # apps/unified/test-healthcheck.sh).
 step "healthcheck script test" "sh apps/unified/test-healthcheck.sh" sh apps/unified/test-healthcheck.sh
 
-# ── CI docs drift (AUDIT-27 CI-08) — docs/ci-pipeline.md must stay in
+# ── CI docs drift (AUDIT-27 CI-08) — docs/operations/ci-pipeline.md must stay in
 # sync with the workflows and the local runner gate vocabulary. The gate
 # names + status derive from scripts/gates.json (the single source of
 # truth shared with ci.yml, nightly.yml, and check:all). Mirrors the

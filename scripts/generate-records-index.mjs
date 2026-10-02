@@ -290,14 +290,14 @@ function render() {
   numbered.sort((a, b) => a.num - b.num);
 
   // ── audit section ──────────────────────────────────────────────────────────
-  // After the sector reports were consolidated into docs/records/audit-open-findings.md,
+  // After the sector reports were consolidated into docs/records/findings/audit-open-findings.md,
   // the registry points at that summary instead of the per-sector files. If the
   // `audit/` folder still exists (e.g. mid-migration), list its files; otherwise
   // emit the pointer to the consolidated summary.
   //
   // DECISION 2026-09-13, left in deliberately rather than repointed or deleted:
   // root `audit/` is gone — `0689d5652` (docs: unify audit + decision records, add
-  // area tags + generator) deleted it and created docs/records/audit-open-findings.md
+  // area tags + generator) deleted it and created docs/records/findings/audit-open-findings.md
   // in the same commit, which is also the commit that wrote this script. So the
   // existsSync() below has never been true in this file's history: the branch is
   // inert and the `else` is the live path. It is NOT a stale pointer to fix, and

@@ -668,7 +668,7 @@ fi
 #
 # Mirrors Check 9 against every `*.md` file outside `.agents/skills/` so
 # the audit-footer convention enforced for skills also fires for human-
-# maintained docs (CONTRIBUTING.md, AGENTS.md, docs/QUICKSTART.md, crate/app/
+# maintained docs (CONTRIBUTING.md, AGENTS.md, docs/guides/developer/QUICKSTART.md, crate/app/
 # module README.md files, etc.). The audit-date format is a project-wide
 # convention — its drift would re-accumulate silently without this check.
 # Format fixes are ALWAYS manual — same reasoning as Check 9.
