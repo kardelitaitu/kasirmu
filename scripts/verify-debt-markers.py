@@ -141,8 +141,25 @@ ROOT_RECORDS = {"CHANGELOG.md", "JOURNAL.md", "SUMMARY.md"}
 #
 # So a citation is exempt from MARKERS and keeps its power to DEFINE. The
 # asymmetry is the whole point: quoting a debt is not owing it.
+# Two entries were dropped 2026-10-02, and both were dropped for the same
+# reason — they named a directory that matches nothing:
+#
+#   docs/releases/   moved wholesale to docs/records/releases/ (B4b), which
+#                    docs/records/ already covers, so no coverage was lost.
+#   docs/specs/_archive/   did not exist before this work either — a pre-existing
+#                    dead entry, found by the same audit rather than caused by it.
+#
+# docs/archived/ stays for one more reason than the others: it still exists, as a
+# one-file tombstone (README.md) explaining where its 28 documents went. The
+# exemption is now near-vacuous rather than wrong, and the tombstone is a real
+# path a reader can be sent to.
+#
+# This list is a SCOPE, and a scope entry that silently matches nothing is the
+# same blindness as a stale input list elsewhere in this repo: the gate cannot
+# tell "I checked and found no markers" from "I looked somewhere that no longer
+# exists". Re-derive it whenever a directory moves.
 CITATION_DIRS = ("docs/records/", "docs/archived/", "docs/decisions/",
-                 "docs/releases/", "docs/specs/_done/", "docs/specs/_archive/",
+                 "docs/specs/_done/",
                  ".agents/planning/", ".agents/reviews/")
 CITATION_FILES = ("orchestrator-journal.md", "pr_body.md", "skill-drift-report.md")
 
