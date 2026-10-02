@@ -82,7 +82,7 @@ market has to pass, and each is currently unproven.
 
 | # | Seam | State, measured | Fails how, when exercised |
 |---|---|---|---|
-| 1 | **A certification module under the kernel** — a `modules/fiscal-*` crate implementing `foundation::contracts::Module` (`ADR-59` §2.3) | **Never built.** 14 registered crates, 10 substantive, none market-specific | Dependency edges or a signing key are unavailable to a module; or the release matrix cannot ship a per-market binary |
+| 1 | **A certification module under the kernel** — a `modules/fiscal-*` crate implementing `foundation::contracts::Module` (ADR-59 §2.3) | **Never built.** 14 registered crates, 10 substantive, none market-specific | Dependency edges or a signing key are unavailable to a module; or the release matrix cannot ship a per-market binary |
 | 2 | **A second locale through Fluent** | 54 `.ftl` files, one language | Missing keys, plural/select-rule differences, or a receipt template that cannot render the script |
 | 3 | **The tender classification across markets** (ADR-64 D1) | TO BUILD | A rail that needs neither of D1's four modes, or a kind the seven-value set cannot hold |
 | 4 | **An integrity chain over the D4 transitions** | TO BUILD, and D2 says not yet | The hash cannot be computed offline-first, or the chain forks on a replayed sync packet |
@@ -115,7 +115,7 @@ rows above either green or explicitly waived with the reason written.
   `audit_log_immutable_delete` trigger, both engines
 - `apps/cloud-server/tests/pg_trigger_ports.rs:175` — the PG port parity test
 - `docs/security/data-residency-and-retention.md:66` — both engines raise on DELETE
-- `crates/kasirmu-core/src/db/fiscal.rs` — the gap-free counter ADR-59 §2.2.3 cites
+- `crates/kasirmu-core/src/db/fiscal.rs` — the gap-free counter ADR-59 §2.3 cites
 - `foundation/src/contracts.rs` — the `Module` contract a certification crate implements
 - `shared-ui/locales/` — 54 `.ftl` files, `(default)` + `id` only
 - `AGENTS.md` §6.3 — @fluent/react is the localisation standard
