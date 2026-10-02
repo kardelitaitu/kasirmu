@@ -415,6 +415,19 @@ Host-side attempts that do **not** help (all measured no-ops): both adb clients;
 and `connect` fails, the remaining variable is on the phone. `_adb-tls-pairing._tcp` appears in mDNS
 only while the pairing window is open.
 
+### Two traps that live in `android-adb-connect`, not here
+
+Connecting is a subject in its own right and the full recipe is in the `android-adb-connect`
+skill. Two of its traps bite during build and install work too, so they are named here and
+documented there — do not duplicate the prose:
+
+- **Git Bash rewrites remote `/sdcard/...` paths.** `adb shell screencap -p /sdcard/x.png`
+  and every `adb pull /sdcard/...` fail with a Windows path in the error message, which
+  looks like a device failure and is not. Fix: `export MSYS_NO_PATHCONV=1` once per shell.
+- **Every Bash call starts a fresh adb daemon**, so `adb devices` is empty for the first
+  2–16 s and `adb shell` dies with `no devices/emulators found`. Wait for the device at the
+  top of every call; do not re-pair over this.
+
 ---
 
 ## 6. Do not "fix" the sandbox delete shim
