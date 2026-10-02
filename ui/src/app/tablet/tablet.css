@@ -469,5 +469,28 @@
   .tablet-shell .app-layout {
     /* Portrait contract asserted, not restated — see header. */
   }
+
+  /* Workspace grid: 2 columns portrait, 3 landscape (owner request). The base
+     rule in WorkspaceHome.css is a fixed repeat(3, 1fr) whose width fallback
+     starts at 1100px. Measured on the 23073RPBFG (density 280, DPR 1.75): the
+     CSS viewport is 1200/1.75 = 685.7px portrait and 1920/1.75 = 1097.1px
+     landscape — the landscape width lands THREE PIXELS under that fallback,
+     so the width rule out-specifies the base here in BOTH orientations and
+     held the grid at 2 columns after rotation. The branch lives HERE per
+     ADR-0001 Slice 4 (the shell owns every orientation decision); the feature
+     sheet keeps no orientation literal of its own. First applied in
+     b9d1208fe and dropped by the rebrand sweep — restored with its landscape
+     half. */
+  .tablet-shell .workspace-grid,
+  .tablet-shell .workspace-skeleton-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (orientation: landscape) {
+  .tablet-shell .workspace-grid,
+  .tablet-shell .workspace-skeleton-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
 }
 
