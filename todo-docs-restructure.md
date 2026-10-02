@@ -869,6 +869,44 @@ Re-derive the size rather than trusting this table:
 wc -l docs/plans/_backlog/0.0.36-backlog.md
 ```
 
+### 6h — a sweep for undated numeric claims, and its measured precision
+
+Every rot defect found in the last several rounds had the same shape: **a number written once and
+never re-measured.** Finding them one at a time, prompted by something else, is luck. So: sweep.
+
+```bash
+# every <number> <countable noun> in tracked markdown
+git grep -nE '\b[0-9]{1,5} (files?|lines?|references?|findings?|docs?|records?|crates?|tests?)' -- '*.md'
+```
+
+| Scope | Candidates |
+|---|---:|
+| all tracked markdown | 2,143 across 218 files |
+| minus dated records (journals, `campaigns/`, `_done/`, `_active/` plans, `CHANGELOG.md`, `.agents/`) | **74 across ~30 files** |
+
+**The precision is poor, and saying so is the point.** Spot-checking the 74 found that most are
+fine — three false-positive classes, all of which a human reader clears instantly:
+
+- **derived by reference** — README.md's *"1,334,821 lines … across 5,954 source files"* links to
+  the generated `stats.json`; it is derived, just not by a command quoted inline.
+- **dated notes quoting the old value** — `docs/README.md`'s own correction note names the wrong
+  *"26 files"* and *"66 files"* precisely because it is recording what was wrong.
+- **rules, not measurements** — AGENTS.md's *"production `.rs` files under 1,000 lines"* is a
+  standard, and quoting no date is correct.
+
+**Hit rate: 2 real defects in 74 candidates.** `ARCHITECTURE.md:460` claimed the workspace had
+**39** packages (*"17 crates, 14 modules, 4 platform dirs, foundation, 3 apps"*). `cargo metadata
+--no-deps` reports **40** — `platform/instance-guard` landed on 2026-09-29 and nothing updated it.
+Same figure twice in the root plan `todo-optimize-crates.md`. Both fixed with the derivation inline,
+so they cannot rot the same way twice. (`df5f299bb`.)
+
+**Conclusion: this is a diagnostic, not a backlog.** Treating 74 candidates as 74 defects would be
+noise, and "add a date to every number" is not a policy anyone should adopt — most numbers in this
+repo are measurements of a moment, not standing facts. What the sweep buys is a way to check **one
+named document** cheaply. The defects it actually finds are the ones on documents people navigate
+by, and those still surface one at a time.
+
+### 6i — superseded
 ## 10. Out of scope — rejected on purpose
 
 - **No topic reorganisation.** The tree is already organised by function ([docs/README.md:6](docs/README.md:6)).
