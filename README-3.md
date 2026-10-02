@@ -162,11 +162,11 @@ kasir.mu/
 ├─ .github/workflows/        # live workflows — never quote a count, run `ls .github/workflows/*.yml`
 │   └─ attic/                # ← the retired *.yml.bak files
 │
-└─ <root files>              # see §5 of done-todo-project-folder-restructure.md — only what a tool looks up BY NAME at the project root,
+└─ <root files>              # see §5 of docs/plans/_done/done-todo-project-folder-restructure.md — only what a tool looks up BY NAME at the project root,
                               # plus the four human entry points
 ```
 
-> **Why this shape.** The five-tier Rust workspace (`foundation/` → `platform/` → `modules/` → `crates/` → `apps/`) is sound and deliberately structured; `Cargo.toml` documents the glob-vs-explicit member split and it should be left alone. What was *not* sound: the UI had two competing shared component libraries, `ui/src/frontend/` was a half-built scaffold whose name described nothing, the repo root had accumulated files that belong in directories, and the architecture docs described a tree that no longer exists. Full context: [`done-todo-project-folder-restructure.md`](./done-todo-project-folder-restructure.md) — 13 phases, principles, accepted and declined designs.
+> **Why this shape.** The five-tier Rust workspace (`foundation/` → `platform/` → `modules/` → `crates/` → `apps/`) is sound and deliberately structured; `Cargo.toml` documents the glob-vs-explicit member split and it should be left alone. What was *not* sound: the UI had two competing shared component libraries, `ui/src/frontend/` was a half-built scaffold whose name described nothing, the repo root had accumulated files that belong in directories, and the architecture docs described a tree that no longer exists. Full context: [`done-todo-project-folder-restructure.md`](./docs/plans/_done/done-todo-project-folder-restructure.md) — 13 phases, principles, accepted and declined designs.
 
 ---
 
