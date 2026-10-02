@@ -213,15 +213,24 @@ Deleting a stamped record destroys audit history — the same trade refused in A
       **Verified:** self-test OK (41 cases) first · `check-dead-refs.py` exit 0 ·
       `check-orphans.py --file docs/README.md` exit 0 (clean).
 
-- [ ] `docs/coverage/README.md` (1 file, 66 lines) — **deferred to Phase B.** A *generated* report
+- [x] `docs/coverage/README.md` → **`docs/records/benchmarks/coverage-report-2026-07-20.md`** (`82186f28e`, 100% rename).
+      It was **date-stamped on the way in**, applying A4's lesson: a bare `README.md` inside a records
+      folder is a name that says nothing, and this is a point-in-time measurement.
+      ~~**deferred to Phase B.** A *generated* report
       (*"Generated: 2026-07-20"*) carrying a `dead-ref-prefix-ok` pragma, cited by 2 other docs. A5
       says "fold into `record/`" — but that directory does not exist until Phase B (and B0 later
   renamed the target to `records/`), so this is a
       **sequencing bug in this plan**, not a judgement call. Folds in at B4.
 
-- [ ] `docs/audit-receipt-settings.md` (1 file, 80 lines) — **deferred to Phase B.** A real audit
-      report (a BLOCKER finding, 9 KB) sitting loose at the `docs/` root with **zero inbound
-      references** — it should have been in `docs/audits/` all along. That is a B2 move.
+- [x] `docs/audit-receipt-settings.md` → **`docs/records/audits/audit-receipt-settings.md`**
+      (`82186f28e`, 100% rename). A real audit report — a BLOCKER finding, 80 lines — sitting loose at
+      the `docs/` root with **zero inbound references**. It belonged under `audits/` from the start;
+      B2 was where it should have gone and A5 is where it actually landed.
+
+**A5 is now 3 of 3.** Both deferred items were blocked by a **sequencing bug in this plan**, not by a
+judgement call: §4 said "fold into `record/`" while §5 created `records/` three batches later. Phase B
+had to finish before the last two boxes could be ticked — the cost of numbering steps before the steps
+they depend on exist.
 
 ## 5. Phase B — the move
 
@@ -427,6 +436,33 @@ below used one combined pattern, so the per-file hit count is not yet attributed
       `docs/operations/agent-gates.md`, `docs/records/sqlite-pg-roles.md`
 - [ ] **AGENTS.md §5.1** — names `docs/audits/frontend/css-verification.md`
 - [ ] `docs/README.md` — the curated directory table (9 hits)
+
+### 6c — FOUND AFTER the moves: 51 stale script refs, and ONE real functional break
+
+§6a's list was written as a *prediction*. Measured after B1–B4 and A5, `scripts/` carries **51 stale
+`docs/` path references across 18 files**, plus 2 in CI workflows. Most are harmless; **one is not**:
+
+- 🔴 **`scripts/build-docs.sh:51` — `cp "$WORKSPACE_ROOT"/docs/releases/*.md "$BOOK_SRC/releases/" 2>/dev/null || true`.**
+  `docs/releases/` **no longer exists** (B4b). The mdBook portal's releases section is now silently
+  empty, and `2>/dev/null || true` swallows the failure exactly as designed — which is precisely why
+  it went unnoticed. This is the only *functional* break in the whole move, and it is in a file §3's
+  **D1** marks *do not touch*. D1 protects `docs/src/` from being *moved*; it does not exempt a
+  **consumer** that must be repointed. `build-docs.ps1` needs the same fix.
+- 🟡 **`scripts/generate-records-index.mjs` — 14 of its 21 hits are a hardcoded `scattered` list**
+  (`docs/archived/*.md`, lines 410–423), every path now stale. That is why every run reports
+  **0 scattered** and **0 audits**. The other 7 are comments and section headers.
+- 🟢 Comments and stale prose in `gen-summary.py` (3), `verify-debt-markers.py` (4),
+  `verify-doc-uniqueness.py` (3), `verify-ci-docs-drift.py` (3) + its test (2), `find-oldest-md.sh` (2),
+  `profile.ps1` (2), `release.sh` (2), `test-ci-routing.sh` (2), and 5 one-line scripts — **no gate
+  fails on any of them**, but they now name directories that do not exist.
+- ⚪ `.github/workflows/release.yml:7` and `dev-ci.yml:206` — **comments**.
+- ⚪ `.github/workflows/attic/nightly.yml.bak` — inert backup, excluded by the repo's own convention.
+
+**Why the gates did not catch the 🔴.** Every gate in §2 is green: `check-dead-refs` audits *markdown*,
+not shell; `generate-records-index --check` compares the index against its own generator, so a
+generator whose input list is stale produces a *self-consistent* wrong answer. **This is the one
+failure mode in this whole plan that no existing check can see**, and it is the argument for fixing
+§6 explicitly rather than trusting a green board.
 
 ### 6b — Confirmed incidental, no change
 
