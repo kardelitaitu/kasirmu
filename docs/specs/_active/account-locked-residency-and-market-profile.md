@@ -1,8 +1,8 @@
-<!-- Spec: Account-Locked Data Residency & Store-Locked Market Profile · 2026-10-02 · status: DRAFT · owner: Architecture / Core -->
+<!-- Spec: Account-Locked Data Residency & Store-Locked Market Profile · 2026-10-02 · status: IMPLEMENTED · owner: Architecture / Core -->
 
 # Account-Locked Data Residency & Store-Locked Market Profile
 
-> **Status: REVIEWED.**  
+> **Status: ACCEPTED & TESTED.**  
 > **Date:** 2026-10-02 · Recorded against branch `0.0.41`  
 > **Governing ADRs:** [ADR-59 (Regional Topology & Modular Delivery)](../../decisions/2026-09-21-adr59-regional-topology-and-modular-delivery.md), [ADR-56 (First-Run Provisioning)](../../decisions/2026-09-21-adr56-first-run-provisioning.md), [ADR-48 (Timezone Representation)](../../decisions/2026-09-09-adr48-timezone-representation.md), [ADR-64 (Tender Vocabulary & Offline State)](../../decisions/2026-10-02-adr64-tender-vocabulary-and-offline-tender-state.md).  
 > **Implementation Target:** `crates/kasirmu-core/src/regional.rs`, `platform/kernel/`, `apps/desktop-tauri/src/commands/`, `ui/src/contexts/WorkspaceContext.tsx`.
