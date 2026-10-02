@@ -54,7 +54,7 @@ pub rate: f64,                       // line 54, CreateExchangeRateArgs
 if args.rate <= 0.0 { /* reject */ } // line 65 — float-comparison validation
 ```
 
-**Why critical:** Violates [`rust-backend` rule #1](../../../AGENTS.md#1-rust-standards) ("Money is always `i64` minor units, never `f32`/`f64`"). Exchange rates feed `Money::checked_add`/`from_major` conversions; their float source contaminates every downstream multiplication. The `<= 0.0` check is also non-deterministic near zero (`1e-20` flips to negative).
+**Why critical:** Violates the Money rule in [AGENTS.md §6.1](../../../AGENTS.md#61-rust) ("Money is always `i64` minor units, never `f32`/`f64`"). Exchange rates feed `Money::checked_add`/`from_major` conversions; their float source contaminates every downstream multiplication. The `<= 0.0` check is also non-deterministic near zero (`1e-20` flips to negative).
 
 **Fix:** Replace `f64` with `i64` minor units (e.g. `rate_millionths` or `rate_scaled_by_1_000_000`). Update `<= 0.0` to `<= 0`. Update the DB column type (`exchange_rate.rate` SQL schema in `oz-core`). Re-validate every consumer (`cart.rs` multi-currency paths, frontend `formatMoney` on cross-currency totals, reporting aggregates).
 
