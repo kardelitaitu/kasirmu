@@ -54,7 +54,7 @@ the .ftl bundle; the wiring is one step beside it. Whoever lands the translation
 do both, and can confirm the gap is closed by running this file directly.
 """
 # Promoted from the 2026-09-03 Fluent page audit; see
-# docs/records/fluent-page-audit.md for why this check exists.
+# docs/records/audits/frontend/fluent-page-audit.md for why this check exists.
 
 from __future__ import annotations
 

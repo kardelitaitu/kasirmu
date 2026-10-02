@@ -110,8 +110,8 @@ check "ui lockfile"         "rust=false ui=true i18n=false website=false docs=fa
 check "ftl bundle"          "rust=false ui=true i18n=true website=false docs=false release=false"  "shared-ui/locales/en/reports.ftl"
 check "website only"        "rust=false ui=false i18n=false website=true docs=false release=false" "website/src/pages/index.astro"
 # prototypes/ is outside website/ but its HTML is copied into
-# website/public/dev/ verbatim by scripts/sync-dev-files.mjs on prebuild, so it
-# reaches the build and check:seo's heading rule. Pinned because before this
+# website/public/dev/ verbatim on prebuild, so it reaches the build and
+# check:seo's heading rule. Pinned because before this
 # rule the path matched NO bucket and a prototypes-only PR ran no job at all.
 check "prototype html"      "rust=false ui=false i18n=false website=true docs=false release=false" "prototypes/kds-prototype.html"
 # Go is its own bucket because apps/license-server is a SEPARATE Go module, not a

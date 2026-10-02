@@ -74,7 +74,7 @@ violations=0
 #      establishing. They authenticate against the tenant the DEVICE already holds
 #      (`kasirmu_core::desktop_link` → the resolved server origin), which is
 #      per-install rather than per-store, so there is no store to resolve. Recorded
-#      as legitimate ungated pre-auth doors in docs/records/JOURNAL.md by 7a5292530
+#      as legitimate ungated pre-auth doors in docs/records/journal/JOURNAL.md by 7a5292530
 #      (the same slice that raised the registration-gate debt ceiling 75 → 78); this
 #      entry is the scoped-coverage half of that same ruling, added 2026-09-24.
 #      The three restore commands — `list_restore_candidates`, `restore_status`,

@@ -130,11 +130,11 @@ ROOT_RECORDS = {"CHANGELOG.md", "JOURNAL.md", "SUMMARY.md"}
 
 # The two roles of a record have to be separated, because a dated document can do
 # one of them and must not do the other. It can ORIGINATE a debt ID:
-# docs/archived/tauri-security-audit.md:162 is the plan that makes
+# docs/records/superseded/tauri-security-audit.md:162 is the plan that makes
 # `TODO(L-1)` in apps/mobile-tauri/src/lib.rs:884 resolvable, so exempting
 # that directory outright would convert a live, correctly cited security marker
 # into a finding and send someone to "fix" a citation that is already right.
-# It cannot ASSERT one. docs/records/JOURNAL.md:1961 quotes
+# It cannot ASSERT one. docs/records/journal/JOURNAL.md:1961 quotes
 # "(TODO 3f)" in a dated entry about work since completed, and the only way to
 # satisfy the gate there is to edit the journal, which destroys the evidence
 # and changes what happened on 2026-08-06 into what happens today.
@@ -267,7 +267,7 @@ def is_citation(rel: str) -> bool:
     Exempting the directory outright, the obvious version of this rule, is
     wrong in the other direction and was caught before it shipped: it would have
     left apps/mobile-tauri/src/lib.rs:884 unresolvable, because
-    docs/archived/tauri-security-audit.md:162 is the only definition of L-1
+    docs/records/superseded/tauri-security-audit.md:162 is the only definition of L-1
     anywhere in the tree. A live, correctly cited security marker would have been
     reported as a dangling pointer, which is the finding that trains people to
     mute the tool.
