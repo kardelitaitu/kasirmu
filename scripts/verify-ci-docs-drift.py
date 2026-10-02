@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 r"""
 scripts/verify-ci-docs-drift.py — Catch CI documentation drift between
-docs/operations/ci-pipeline.md, docs/releases/checklist.md, the workflow
-definitions, and the local runners.
+docs/operations/ci-pipeline.md, docs/records/releases/checklist.md, the
+workflow definitions, and the local runners. (The release checklist moved
+from docs/releases/ to docs/records/releases/ on 2026-10-02; RELEASE_CHECKLIST
+below resolves the new path with a fallback to the old one.)
 
 WHY
 ===
@@ -1334,7 +1336,7 @@ def main() -> int:
         print()
     if checklist_problems:
         print(
-            f"  RELEASE CHECKLIST JOB LIST (docs/releases/checklist.md disagrees "
+            f"  RELEASE CHECKLIST JOB LIST (docs/records/releases/checklist.md disagrees "
             f"with dev-ci.yml) — {len(checklist_problems)}:"
         )
         for p in checklist_problems:
