@@ -106,7 +106,15 @@ same scan that lists the other documentation directories; `README.md` itself is 
 
 | Area | Title | Status |
 | --- | --- | --- |
-| general | [JOURNAL](JOURNAL.md) | — |
+| general | [Engineering Journal - part 1 of 8](JOURNAL-part-1.md) | — |
+| general | [Engineering Journal - part 2 of 8](JOURNAL-part-2.md) | — |
+| general | [Engineering Journal - part 3 of 8](JOURNAL-part-3.md) | — |
+| general | [Engineering Journal - part 4 of 8](JOURNAL-part-4.md) | — |
+| general | [Engineering Journal - part 5 of 8](JOURNAL-part-5.md) | — |
+| general | [Engineering Journal - part 6 of 8](JOURNAL-part-6.md) | — |
+| general | [Engineering Journal - part 7 of 8](JOURNAL-part-7.md) | — |
+| general | [Engineering Journal - part 8 of 8](JOURNAL-part-8.md) | — |
+| general | [Engineering Journal - index](JOURNAL.md) | — |
 | general | [ADR #7 Conditional Scoping — the Fallback Class](adr7-conditional-scoping-fallback-class.md) | — |
 | general | [Audit Closed Findings — Archive](audit-closed-findings.md) | — |
 | general | [Audit Open Findings — Consolidated](audit-open-findings.md) | — |
