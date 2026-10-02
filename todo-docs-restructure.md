@@ -1,9 +1,31 @@
 # todo-docs-restructure.md — split `docs/` into claims and records
 
-**Status:** OPEN · **now on branch `0.0.41`** · updated 2026-10-02
-**Token:** `todo-` — `done-` is earned only when §8's acceptance command is RUN and PASSED (AGENTS.md §7.4).
-**⚠️ Read §12 first.** A concurrent session ran `git checkout 0.0.40 → 0.0.41` mid-plan, which left
-this plan and the 14 `done-*.md` moves on `0.0.40` only. This copy is the `0.0.41` continuation.
+**Status (2026-10-02): the documentation work is DONE. Three items await an owner decision, and the
+acceptance gate is blocked by files that are not documentation.**
+
+| | |
+|---|---|
+| Phase A + B | **complete** — 115 files moved, 5 functional tooling breaks found and fixed |
+| Acceptance §8 | **5 of 6 steps pass** |
+| Acceptance step 6 | blocked by **4 scratch files another session owns** (`SENTINEL_STASH.txt`, `ser.txt`, `kasir.db`, `kasir.pre-migration.bak`) — **not mine to delete** |
+| `scripts/check.sh` | fails at step 01 on exactly those four; the gate is **correct** (§8a) |
+
+**The three open items, all blocked with measured reasons — none is a documentation defect:**
+
+1. **`docs/plans/_active/notes.md` rename** — blocked by **coordination**. Another session has
+   committed to this file and its directory **three times today** (`2c54d9774` touches it). The
+   rename itself is cheap — zero files reference it by name. §4 A2.
+2. **`records/campaigns/manager-2-journal.md` split** — blocked by **judgement**: ownership
+   stamps, 6 external line-number citations, a 1,830-line `##` gap. §4 A1.
+3. **`plans/_backlog/0.0.36-backlog.md` (4,560 lines)** — scoped with measurements, decision
+   recorded **not** taken; extracting R36-20 leaves two files over cap. §9.
+
+**Start here:** §0 scope card (corrected counts) · §8a acceptance run · §12 the branch-switch
+incident, which stranded two commits on `0.0.40`. Findings from the move itself are in §6–§9.
+
+**Token:** `todo-` — `done-` is earned only when §8's acceptance command is RUN **and PASSED**
+(AGENTS.md §7.4). It was run; step 6 cannot pass until the four scratch files above are cleared by
+their owner.
 
 ---
 
