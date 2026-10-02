@@ -86,8 +86,16 @@ def archived_decisions() -> list[str]:
 
 
 def releases() -> list[str]:
-    """Release checklists and process docs under docs/releases/."""
-    rel = DOCS / "releases"
+    """Release checklists and process docs under docs/records/releases/.
+
+    Repointed 2026-10-02 when docs/releases/ moved to docs/records/releases/.
+    The old path is not a directory any more, so the is_dir() guard below was
+    returning [] and the book silently lost all 10 release chapters -- the tool
+    printed "0 releases" and exited 0, so nothing failed. Same family as the
+    build-docs.sh copy fixed in the same pass: both feed the same mdBook portal,
+    and fixing one half does not fix the other.
+    """
+    rel = DOCS / "records" / "releases"
     if not rel.is_dir():
         return []
     return [
