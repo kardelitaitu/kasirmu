@@ -498,7 +498,19 @@ comments were the residue) turned up **two more**, both more serious than the fi
   this one would have quietly switched off a gate in CI, which is precisely the failure
   `dev-ci.yml`'s own comment at line 147 calls *"worse than no gate"*.
 
-**Why no gate caught any of the three.** Every gate in §2 was green throughout. `check-dead-refs`
+- 🔴 **`scripts/verify-runner-claims.py` — FIXED `13ff89458`. THE FOURTH, AND THE ONLY ONE THAT
+  TURNED A GATE RED.** `SKIP_DIRS` prunes by **directory name** during `os.walk`, and its list
+  contained `"archived"`. When B1 moved 28 documents out of `docs/archived/` into
+  `docs/records/`, the prune stopped matching — and a **dated audit's** claim
+  (`verify-docker-persistence.sh is run in CI`) started being graded as a live claim. The checker
+  went **RED** on `docs/records/audits/2026-08-31-glm-5.3f-crates-audit.md`. Fixed by pruning
+  `records` too, which is the tool's own stated intent: *a record of what was true on a given day
+  is not drift.* Back to **5 CI-enforcement claims checked, all hold**, self-test OK.
+  **This one is the exception that proves the pattern.** The other three stayed green while being
+  wrong, which is why they took reading to find. This one announced itself — and it is still the most
+  valuable finding in this section, because **a red gate is information and a green gate is not.**
+
+**Why no gate caught the first three.** Every gate in §2 was green throughout. `check-dead-refs`
 audits *markdown*, not shell or YAML. `generate-records-index --check` compares the index against
 its own generator, so a generator whose input list is stale produces a *self-consistent* wrong
 answer. And `test-ci-routing.sh` passed 24/24 **with a path that no longer existed** — it was
