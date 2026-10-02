@@ -5,6 +5,9 @@ findings: 0 unsafe blocks (earlier risk sweep counted comment text "no unsafe" â
 next: none â€” storage persistence still planned | perf: decode-once pipeline; N/A elsewhere
 */
 #![deny(unsafe_code)]
+// `async_trait` generates Box<dyn Future> decorated with #[must_use] on methods
+// whose signatures already return Result, triggering Clippy's double_must_use lint.
+#![allow(clippy::double_must_use)]
 
 //! Image processing utilities for kasir.mu.
 //!

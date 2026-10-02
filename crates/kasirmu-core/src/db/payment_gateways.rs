@@ -8,8 +8,8 @@
 //! `kasirmu_crypto::encrypt_payment_gateway_config` and decrypted transparently on read.
 //!
 //! Main types:
-//! - [`PaymentGatewayConfig`]: The persisted gateway row with decrypted configuration.
-//! - [`UpsertPaymentGateway`]: Input payload for creating or updating a gateway.
+//! - `PaymentGatewayConfig`: The persisted gateway row with decrypted configuration.
+//! - `UpsertPaymentGateway`: Input payload for creating or updating a gateway.
 //!
 //! Invariants:
 //! - Gateway names are case-insensitive and normalized to lowercase.
