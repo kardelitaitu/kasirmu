@@ -1401,7 +1401,7 @@ describe('ProvisioningFlow (ADR #56 §2.3 / §2.5)', () => {
     // the one screen that omitted it, so a merchant told their version on the
     // next screen read a different one here.
     expect(screen.getByTestId('provisioning-footer')).toHaveTextContent(
-      'v0.0.40 • kasir.mu © 2026 All rights reserved.',
+      'v0.0.41 • kasir.mu © 2026 All rights reserved.',
     );
   });
 });

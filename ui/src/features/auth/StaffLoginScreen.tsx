@@ -622,7 +622,7 @@ export default function StaffLoginScreen() {
       {/* ── Footer: version + copyright + sync status ────── */}
       <div className="staff-login-footer">
         <div className="staff-login-footer-left">
-          <span className="staff-login-footer-version">v0.0.40</span>
+          <span className="staff-login-footer-version">v0.0.41</span>
           <Localized id="staff-login-copyright">
             <span className="staff-login-footer-copyright">&copy; 2026 kasir.mu. All rights reserved.</span>
           </Localized>

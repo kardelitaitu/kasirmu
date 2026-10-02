@@ -1215,7 +1215,7 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
             different one here. Not localized: it is a version string and a legal
             line, and every sibling surface renders it identically. */}
         <p className="provisioning-footer" data-testid="provisioning-footer">
-          v0.0.40 • kasir.mu © 2026 All rights reserved.
+          v0.0.41 • kasir.mu © 2026 All rights reserved.
         </p>
       </form>
     </div>

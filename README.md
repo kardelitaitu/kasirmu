@@ -46,7 +46,7 @@
 | **Automated test suite** | **9,026 Rust `#[test]` functions** and **623 frontend test files** | [`README-3.md`](./README-3.md) |
 | **Test code volume** | **>508,000 lines of test code** (>50% of the entire codebase is automated verification) | [`stats.json`](./stats.json) |
 | **Development model** | **Solo developer — 95% of code authored and verified with AI** | [Section 4 below](#4-engineering-scale--the-ai-native-development-model) |
-| **Current release** | **v0.0.40** (all 6 roadmap phases delivered) | [Status below](#6-20-phase-strategic-platform-roadmap) |
+| **Current release** | **v0.0.41** (all 6 roadmap phases delivered) | [Status below](#6-20-phase-strategic-platform-roadmap) |
 
 ---
 
@@ -314,7 +314,7 @@ The kasir.mu platform is architected around a structured 20-phase master roadmap
 | **19** | **Embedded Merchant Micro-Financing** | Cash-flow underwriting scoring, revenue-based working capital financing integration for MSMEs | **Expected Q3 2028** |
 | **20** | **Global Emerging Markets Mesh** | Regional Southeast Asia expansion (Philippines, Vietnam, Thailand), multi-currency mesh, local tax engines | **Expected Q4 2028** |
 
-### Transparent gap disclosure (v0.0.40 current state)
+### Transparent gap disclosure (v0.0.41 current state)
 
 We believe in radical transparency:
 - **Platform readiness (Windows-only production today):** As of today, the **Windows 10/11 desktop application is the only working production-ready build**. The Android tablet APK (`apps/mobile-tauri`) and Linux builds are in active development (application shell and UI are scaffolded, with physical device testing and hardware binding currently in progress).

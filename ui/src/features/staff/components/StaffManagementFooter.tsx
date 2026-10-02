@@ -168,7 +168,7 @@ export function StaffManagementFooter({
           </>
         )}
         <span className="staff-mgmt-footer-version" data-testid="staff-footer-version">
-          v0.0.40
+          v0.0.41
         </span>
       </div>
     </footer>
