@@ -150,6 +150,10 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [Skill audit — .agents/skills/ — 18-09-26](audits/skills/skill-audit-18-09-26.md) | — |
 | general | [Skill audit — .agents/skills/ — 22-09-26](audits/skills/skill-audit-22-09-26.md) | — |
 | ui | [UI State Audit — 0.0.14](audits/ui-state-audit-2026-07-20.md) | — |
+| general | [Performance Benchmarks — 0.0.14](benchmarks/2026-07-20.md) | — |
+| general | [kasir.mu Performance Baselines — 2026-07-20](benchmarks/baseline-2026-07-20.md) | — |
+| general | [kasir.mu Performance Baselines — 2026-07-21](benchmarks/baseline-2026-07-21.md) | — |
+| products | [Benchmark Regression Tracking](benchmarks/regression-tracking.md) | — |
 | general | [MANAGER-2 JOURNAL - POS-SCREEN. LIVE STATE BLOCK (authoritative head, READ FIRST)](campaigns/manager-2-journal-posscreen.md) | — |
 | general | [MANAGER-2 CURRENT-STATE LEDGER (condensed; authoritative head - READ THIS FIRST)](campaigns/manager-2-journal.md) | — |
 | general | [Audit Closed Findings — Archive](findings/audit-closed-findings.md) | — |
@@ -163,6 +167,16 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [Engineering Journal - part 7 of 8](journal/JOURNAL-part-7.md) | — |
 | general | [Engineering Journal - part 8 of 8](journal/JOURNAL-part-8.md) | — |
 | general | [Engineering Journal - index](journal/JOURNAL.md) | — |
+| general | [kasir.mu 0.0.25](releases/CHANGELOG-0.0.25.md) | — |
+| general | [kasir.mu 0.0.31](releases/CHANGELOG-0.0.31.md) | — |
+| general | [Changelog — kasir.mu 0.0.33](releases/CHANGELOG-0.0.33.md) | — |
+| general | [Changelog — kasir.mu 0.0.34](releases/CHANGELOG-0.0.34.md) | — |
+| general | [Changelog — kasir.mu 0.0.36](releases/CHANGELOG-0.0.36.md) | — |
+| general | [Release Checklist — kasir.mu](releases/checklist.md) | — |
+| release | [First-Release Runbook — kasir.mu](releases/first-release-runbook.md) | — |
+| general | [Mobile Release Checklist](releases/mobile-checklist.md) | — |
+| release | [Release Process — kasir.mu](releases/release-process.md) | — |
+| general | [SignPath Onboarding — Free Windows Code Signing](releases/signpath-onboarding.md) | — |
 | sync | [Sync settings ingest admits and the redirect that carries them](snapshots/2026-09-12-sync-settings-ingest-and-redirect-census.md) | — |
 | general | [ADR #51 From the Other Side — the Admitted Set and the Redirect's Second Writer](snapshots/2026-09-13-adr51-admitted-set-and-blind-sides.md) | — |
 | ui | [Appraisal: todo-review-type.md (Local-First & Frontend Architecture)](snapshots/2026-09-15-frontend-architecture-todo-appraisal.md) | — |

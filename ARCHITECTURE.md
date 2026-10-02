@@ -663,7 +663,7 @@ Every module must contain:
 - `README.md` — Purpose, usage, configuration
 
 Version history lives in the single root `CHANGELOG.md` (plus per-release
-`CHANGELOG-0.0.XX.md` files under `docs/releases/`). A per-module
+`CHANGELOG-0.0.XX.md` files under `docs/records/releases/`). A per-module
 `CHANGELOG.md` was previously required here; 0 of 14 modules carried one and
 no tooling reads them, so the rule was dropped by the 2026-09-23 documentation
 audit rather than kept as a requirement nothing satisfies.
