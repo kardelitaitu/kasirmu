@@ -519,13 +519,13 @@ This document defines the phased delivery plan for kasir.mu. Each phase has a cl
 - [ ] Custom report builder (drag-and-drop columns)
 
 ### Accessibility & i18n
-- [x] WCAG-2.1 AA audit checklist (`docs/archived/a11y.md`)
+- [x] WCAG-2.1 AA audit checklist (`docs/records/superseded/a11y.md`)
 - [x] ARIA labels on all interactive elements
 - [x] `shared-ui/locales/*.ftl` — English per-feature bundles
 - [x] `shared-ui/locales/*.id.ftl` — Bahasa Indonesia per-feature bundles
 - [x] Per-feature bundles × 2 locales — **the arithmetic no longer closes.** `ls shared-ui/locales/*.ftl | wc -l` → **54** files (measured 2026-09-23), so either the bundle count rose or some files have no twin. The `× 2 = 50` form is not re-derivable without a grouping command, which does not exist here; the 54 is re-derivable and is the number to trust.
 - [x] `@fluent/react` integration — no hardcoded strings in JSX
-- [x] `docs/archived/a11y.md` — accessibility compliance checklist
+- [x] `docs/records/superseded/a11y.md` — accessibility compliance checklist
 - [x] Lighthouse a11y score ≥ 90 on all pages — **NOT a CI gate, and this box is checked on a measurement nobody can re-derive from this checkout.** `scripts/gates.json` records the `lighthouse` gate as `"status": "retired"` ("Lighthouse a11y audit ran in ci.yml#lighthouse only"), and `ci.yml` is `ci.yml.bak`. Corrected 2026-09-23 (C30): the parenthetical claimed a CI gate that does not run.
 - [x] UI fully translated in English + Bahasa Indonesia — **re-derive the counts, both are stale.** `ls shared-ui/locales/*.ftl | wc -l` → 54 files (measured 2026-09-23), not 50. The "25 per-feature bundles" figure is unverified from this checkout: a bundle pair is only countable by grouping filenames into en/id twins, and this runbook-style count has no command that produces it — treat 25 as unsupported rather than confirmed.
 - [x] Thai locale removed — not a target market
