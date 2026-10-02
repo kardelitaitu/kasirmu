@@ -1,7 +1,7 @@
 ---
 num: 64
 area: payments
-title: "ADR-64: The Tender Vocabulary and the Offline Tender State — one method name per payment, and no electronic tender settles on trust"
+title: "ADR-64: The Tender Vocabulary and the Offline Tender State — one classification per payment, and no electronic tender settles on trust"
 status: Proposed (2026-10-02) — every decision below is TO BUILD; nothing in this record has landed
 ---
 
@@ -43,7 +43,8 @@ and the two TypeScript unions are byte-identical duplicates — a second place t
 `credit`, `pay_later`. Its §1.1 records the hardcoded UI array as fact #1 — re-measured today it
 is **still hardcoded, still six values, and contains none of** `qris_manual`, `bank_transfer`,
 `card_debit`, `card_credit`, `ewallet` or `pay_later`. The plan is the decision; this record does
-not re-open it, it supplies the missing constraint that makes it enforceable (D1).
+not re-open it. It supplies the shape that makes it survive a second market (D1), which the plan's
+flat list does not on its own.
 
 **1.3 A tender has no state.** The lifecycle the draft proposed does not exist. What exists:
 
@@ -83,34 +84,66 @@ Paddle stub.
 
 ## 2. Decision
 
-**D1 — `payments.method` is the tender vocabulary, and it becomes CHECK-constrained.** The eleven
-values decided in `payment-methods-plan.md` §3 are the closed set, plus `other`. The constraint
-ships as a **new migration**: `20260813_init.sql` is applied in deployed databases and is not
-edited. SQLite requires the table-rebuild shape (`CREATE TABLE …_new` / `INSERT … SELECT` /
-`DROP` / `ALTER … RENAME`), and `20260928_document_kind_check.sql:31-55` is the in-tree precedent
-for that rebuild, down to its CHECK list. The migration **backfills**: any existing `method` value
-outside the closed set maps to `other` rather than being left to trip the constraint, and each
-remap is logged.
+**D1 — a payment carries a classification in two country-neutral closed sets plus a rail, and
+separately a merchant-chosen label.** The eleven values in `payment-methods-plan.md` §3 are a list
+of **market instances, not tender kinds**. A CHECK over that list would make every new market cost
+a SQLite table rebuild — a per-market tax, which is the opposite of what this record is for. They
+factor cleanly:
+
+| Decided value | `method_kind` | `method_mode` | `rail_code` |
+|---|---|---|---|
+| `cash` | `cash` | `physical` | NULL |
+| `card`, `card_debit`, `card_credit` | `card` | `online` | NULL — the EDC device, not a rail |
+| `qris_manual` | `qr` | `manual` | `QRIS_STATIC` |
+| `qris` | `qr` | `online` | `QRIS_DYNAMIC` |
+| `ewallet` | `wallet` | `online` | market row |
+| `bank_transfer` | `bank_transfer` | `manual` | NULL |
+| `open_bill`, `pay_later` | `deferred` | `deferred` | NULL |
+
+- `method_kind` — CHECK over **`cash | card | qr | wallet | bank_transfer | deferred | other`**
+- `method_mode` — CHECK over **`physical | manual | online | deferred`**
+- `rail_code TEXT NULL` — resolves to `local_payment_methods.rail_code`
+  (`20260924_local_payment_methods.sql:45`)
+- `method` **stays**, as the merchant's *label* for the tender: what the receipt prints, what the
+  cashier saw. Free text by design — a label is not a classification.
+
+**The property that justifies the split: a new market adds `local_payment_methods` rows, not a
+migration.** A printed PIX QR is `kind=qr, mode=manual, rail=PIX_RECEBIDO`; a static UPI QR is
+`kind=qr, mode=manual, rail=UPI_STATIC`; PromptPay is `kind=qr, mode=online, rail=PROMPTPAY`.
+Neither CHECK changes. `method_kind='other'` is **not** the old escape hatch — it requires a
+`rail_code` resolving to a configured market row, so "other" becomes a rail the merchant declared
+rather than a string nothing validates.
+
+**Migration shape.** Additive columns plus the rebuild (`CREATE TABLE …_new` / `INSERT … SELECT` /
+`DROP` / `ALTER … RENAME`; precedent `20260928_document_kind_check.sql:31-55`), with
+`migrations.rs` registry order updated. The backfill maps every existing row through the table
+above; an unrecognised `method` becomes `kind='other', mode='manual', rail_code=NULL` **and is
+logged**, because silently reclassifying historical money is the one failure this migration can
+cause. `method` is retained so the backfill is lossless and nothing breaks on day one: reports
+(`db/reports/sales_summary.rs`) and shift reconciliation that compare against `"cash"` keep
+working until they move to `method_kind` deliberately. Measured, and it lowers the risk:
+**no statement in `crates/kasirmu-core/migrations/` filters on `method`**.
 
 **D2 — The Rust enums stop being vocabularies and become presentation types.** Neither
 `foundation::PaymentMethod` nor `kasirmu_payment::PaymentMethod` is the system of record, and
 neither serde spelling (`kebab-case`, `PascalCase`) survives the DB boundary. Each keeps its
 current shape in this decision — widening either is a separate, larger change — and gains an
-explicit doc statement of which of the eleven it can express (**`Card` alone**; neither can
-express `qris_manual` vs `qris`, `card_debit` vs `card_credit`, or `pay_later`) and of the wire
-spelling it produces. **A tender read out of the DB is a String matched against the D1 set, not an
-enum decode.** The duplicated TypeScript unions become one shared type in the same change: two
-copies of a union about to grow from six values to eleven is the failure mode, not a style choice.
+explicit doc statement of which of D1's kinds it can express (**`Card` alone**; neither can
+express `qr` manual vs online, `card` debit vs credit, or `deferred`) and of the wire spelling it
+produces. **A tender read out of the DB is D1's classification — `method_kind` + `method_mode` +
+`rail_code` — not an enum decode; `method` is its label.** The duplicated TypeScript unions become
+one shared type in the same change: two copies of a union about to grow from six values to eleven
+is the failure mode, not a style choice.
 
 **D3 — Method, rail and gateway stay three things, and the draft's `PaymentRail` trait is
 declined.** A **method** is what the cashier records on a sale; a **rail** is what moves the money
-(`local_payment_methods.rail_code`); a **gateway** is the counterparty
-(`payment_gateways.name`). The draft's six-method trait is declined because four of its six already
-have named owners — `refund` and `capture` by `PaymentProcessor` (`processor.rs:102`, `:73`),
-signature verification by `WebhookVerifier` (`webhook.rs:36`), settlement reconciliation by
-`payment_settlements` (`20260825_payment_infra.sql:24-37`) — and because `payment_methods()` on a
-rail is the category error this record exists to stop. What survives is a **registry keyed by
-rail**, which `PaymentProcessorRegistry` already is: `register_method_fallback(method, chain)` and
+(`local_payment_methods.rail_code`); a **gateway** is the counterparty (`payment_gateways.name`).
+The draft's six-method trait is declined because four of its six already have named owners —
+`refund` and `capture` by `PaymentProcessor` (`processor.rs:102`, `:73`), signature verification by
+`WebhookVerifier` (`webhook.rs:36`), settlement reconciliation by `payment_settlements`
+(`20260825_payment_infra.sql:24-37`) — and because `payment_methods()` on a rail is the category
+error this record exists to stop. What survives is a **registry keyed by rail**, which
+`PaymentProcessorRegistry` already is: `register_method_fallback(method, chain)` and
 `execute_with_fallback` (`registry.rs:59-163`). The remaining work is **wiring** —
 `build_from_config` is a PLANNED stub returning `Unsupported` for every gateway
 (`registry.rs:171-178`) — not a new trait. **One collision this decision does not fix and a later
@@ -142,6 +175,16 @@ taps confirm — a UI state, not a second payment. The plan's "settled immediate
 the reconciliation report by D5's `confirmed` → `settled` promotion. **The plan is not edited by
 this decision**; this record names the conflict so the next reader of either file sees it.
 
+**§2.1 — Why this is the compliance anchor, not merely the offline rule.** The tender state machine
+is the one place in the POS where an event has an unambiguous, ordered, persisted point of no
+return, and a fiscal integrity chain (`previous_receipt_hash`) needs exactly that. **Where the
+chain attaches is this record's to decide** — it attaches here, on the payment/sale state
+transition, because a chain built on document *numbering* proves order without proving content.
+`unconfirmed` is also the fact a regulator asks about first: a receipt issued for a payment nothing
+corroborated. **The chain itself is neither built nor decided here** — ADR-65 owns whether it ships
+and against which market, and ADR-59 §2.4's rule (do not build against an imagined market) still
+binds.
+
 **D5 — Reconciliation owns the `confirmed` → `settled` edge; its scheduler is not decided here.**
 `payment_settlements` exists with four guarded states and `expected_minor` / `actual_minor`
 (`20260825_payment_infra.sql:24-37`); a daily sweep against it is the natural promoter. **Who
@@ -152,30 +195,35 @@ lists the scheduler among the six things it does not decide (§9 item 2).
 gateway → merchant, and kasir.mu charges a subscription. The one flow where money passes through us
 is **our own** Midtrans subscription billing (ADR-39) — us paying ourselves, explicitly outside
 this rule. Operational consequence, and the reason D4's `unconfirmed` is rare rather than
-universal: **no `payment_gateways` row is required for `cash`, `qris_manual`, `open_bill`,
+universal: **no `payment_gateways` row is required for `cash`, a static QR, `open_bill`,
 `credit` or `pay_later`**, so those tenders work on a terminal that has never synced.
 
 ## 3. Consequences
 
-- **Good:** one name per payment, checked by the database. A new rail cannot arrive with a
-  spelling that disagrees between Rust, TypeScript and the ledger. The offline case becomes a
-  first-class value instead of a boolean meaning "a QR exists".
+- **Good:** one classification per payment, checked by the database, in a form a new market
+  extends with **rows instead of migrations**. The offline case becomes a first-class value instead
+  of a boolean meaning "a QR exists", and it is the anchor a fiscal chain can attach to (§2.1).
 - **Cost, accepted:** two migrations, each a SQLite table rebuild with a backfill (D1, D4); a
-  shared TypeScript type plus two import rewrites (D2); a plan document that now contradicts this
-  record on one line (§1.4). The rebuild is the known-expensive shape, and D1 names the precedent
-  rather than rediscovering it.
-- **Cost, named:** `qris_manual` gains a confirm tap it does not have today. Real cashier
+  shared TypeScript type plus two import rewrites (D2); reports and shift reconciliation migrate
+  from `method` to `method_kind` when they are next touched, not all at once (D1); a plan document
+  that now contradicts this record on one line (§1.4). The rebuild is the known-expensive shape,
+  and D1 names the precedent rather than rediscovering it.
+- **Cost, named:** a static-QR tender gains a confirm tap it does not have today. Real cashier
   friction, bought with a truthful ledger. That is the price of D4 and it is not free.
 - **Not decided here:** the reconciliation scheduler (D5 — the resilience design owns it); breaker
   keying (`payment-resilience-design.md` §4, option (b) recommended); whether `capture` / `void`
   grow an idempotency parameter (§9 item 5, a trait change); a SQLite counterpart for
   `payment_gateways` (§9 item 3). This record touches none of them.
+- **Not decided here:** whether a fiscal integrity chain ships at all, and against which market —
+  ADR-65.
 - **Not decided here:** the region pack. ADR-59 §1.6 and §2.3 already rule that a market profile
   is data with no lifecycle and that only certification/signing is module-shaped. Building
   `plugins/regions/<cc>/` would re-open a decision that record closed, in the direction it closed
   it against.
 - **Verification required before this may be called Implemented:** the D1 and D4 migrations run
-  clean against a database seeded with each of the eleven values **and** with an out-of-set legacy
+  clean against a database seeded with one row per line of D1's table, with an out-of-set legacy
+  label, and with a **second market seeded as `local_payment_methods` rows only** — which is the
+  proof that adding a market needs no migration; the classification backfill asserted value by
   value; `migrations.rs` registry order updated;
   `python3 scripts/generate-pg-migration.py` re-run so `20260813_init.pg.sql` carries both CHECKs
   (pre-commit step 5 fails on drift); `cargo test -p kasirmu-core` green; `npm run lint` and
@@ -209,14 +257,16 @@ universal: **no `payment_gateways` row is required for `cash`, `qris_manual`, `o
   unconstrained `method`; `:371` the empty gateway columns
 - `crates/kasirmu-core/migrations/20260825_payment_infra.sql:24-37` — `payment_settlements` and
   its CHECK
-- `crates/kasirmu-core/migrations/20260924_local_payment_methods.sql:40-52`, `:17-28` — the rail
-  axis and its three separations
+- `crates/kasirmu-core/migrations/20260924_local_payment_methods.sql:40-52`, `:17-28`, `:45` —
+  the rail axis, its three separations, and the `rail_code` column D1 joins to
 - `crates/kasirmu-core/migrations/20260928_document_kind_check.sql:31-55` — the rebuild precedent
+- `crates/kasirmu-core/src/db/reports/sales_summary.rs` — the `payment_method` reader D1 defers
 - `docs/plans/_active/payment-methods-plan.md` §1.1 (fact #1), §1.3, §3 — the decided vocabulary
   and the line D4 contradicts
 - `docs/plans/_active/payment-resilience-design.md` §1.3 (two different `idempotency_key`), §2,
   §6, §9 — the sibling owning reconciliation, keying and the scheduler
-- ADR-59 §1.6, §2.3, §4 — market profiles as data; ADR-39 — our own subscription billing
+- ADR-59 §1.6, §2.3, §2.4, §4 — market profiles as data; ADR-39 — our own subscription billing;
+  ADR-65 — whether a fiscal chain ships
 - `docs/decisions/2026-10-02-global-kernel-and-region-pack-strategy.md` — the demoted draft
 
 > last audited 02-10-26 by DSH

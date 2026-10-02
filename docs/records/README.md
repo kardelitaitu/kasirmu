@@ -68,7 +68,8 @@ Unified registry for architectural decisions (ADRs), audits, verifications, meas
 | 61 | architecture | [ADR-61: Architecture Boundary Rule Tiers — a named rule for re-export-only edges and a governed expiry](../decisions/2026-09-28-adr61-architecture-boundary-rule-tiers.md) | Implemented (2026-09-28) — the core-type-shim rule, the quarter-renewal invariant and the baseline re-tier, the currency edge closure and all seven type-shim edges closed and the baseline emptied (0 tracked findings); the deadline that made the seven shims is sequenced, not done |
 | 62 | architecture | [ADR-62: Module Seam Taxonomy — command contributors, projection subscribers, and the reporting-facade exception](../decisions/2026-09-30-adr62-module-seam-taxonomy.md) | Accepted (2026-09-30) — the taxonomy is written and grounded in the Phase 0 handler census; the check that enforces it (a handler_type classification gate) is not built |
 | 63 | architecture | [ADR-63: The EventSink Seam — grading R10 #3 with a rule that arrived at zero](../decisions/2026-10-01-adr63-event-sink-seam.md) | Implemented (2026-10-04) — rule event-sink-seam landed in scripts/verify-architecture-boundaries.py at zero findings with no baseline; the four remaining raw-handle broadcasts were routed through BridgeCtx::emitter; R10's other three invariants are disposed of by measurement (D6 — #1 a written convention, #2/#4 struck) |
-| 64 | payments | [ADR-64: The Tender Vocabulary and the Offline Tender State — one method name per payment, and no electronic tender sett…](../decisions/2026-10-02-adr64-tender-vocabulary-and-offline-tender-state.md) | Proposed (2026-10-02) — every decision below is TO BUILD; nothing in this record has landed |
+| 64 | payments | [ADR-64: The Tender Vocabulary and the Offline Tender State — one classification per payment, and no electronic tender s…](../decisions/2026-10-02-adr64-tender-vocabulary-and-offline-tender-state.md) | Proposed (2026-10-02) — every decision below is TO BUILD; nothing in this record has landed |
+| 65 | compliance | [ADR-65: The Compliance Chain — where fiscal integrity attaches, and the three seams a second market will exercise](../decisions/2026-10-02-adr65-compliance-chain.md) | Proposed (2026-10-02) — the anchor point is decided; no chain, no certification module and no second locale is built |
 
 ### Research Notes
 
@@ -190,15 +191,26 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [kasir.mu — Performance Benchmarks](superseded/2026-07-22-benchmarks.md) | — |
 | release | [CI Pipeline Dashboard — kasir.mu](superseded/2026-08-17-ci-pipeline.md) | — |
 | release | [Test Efficiency Improvement — Plan & Journal (2026-08-22)](superseded/20260822-tests-efficiency-improvement.md) | — |
+| general | [Modular Application Master Plan: Feature-Based Configuration & Execution Roadmap](superseded/MODULAR_APP_PLAN.md) | — |
 | accessibility | [kasir.mu — Accessibility (a11y) Compliance](superseded/a11y.md) | — |
 | general | [kasir.mu API Client SDK](superseded/api-client.md) | — |
+| general | [Phase 0 — Module Handler Truthfulness Census](superseded/handler-census-phase0.md) | — |
 | general | [i18n followup: 4 untranslated Indonesian bundles](superseded/i18n-todo.md) | — |
 | inventory | [Multi-KDS Architecture Plan for Single Location (kasir.mu Specific)](superseded/multi_kds_one_location_support.md) | — |
 | inventory | [Multi-POS Architecture Plan for Single Location (kasir.mu Specific)](superseded/multi_pos_one_location_support.md) | — |
+| general | [NamespacedStore — API Draft (Phase 2, design only)](superseded/namespaced-store-api-draft.md) | — |
+| general | [Phase 1 Implementation Tickets — Modular Scaffolding](superseded/phase1-implementation-tickets.md) | — |
+| general | [Phase 2 Implementation Tickets — Module Context and Registry Hardening](superseded/phase2-implementation-tickets.md) | — |
+| general | [Phase 3 Implementation Tickets — Vertical Extraction](superseded/phase3-implementation-tickets.md) | — |
+| general | [Phase 4 Implementation Tickets — Strict Namespace Firewall](superseded/phase4-implementation-tickets.md) | — |
+| general | [Phase 5 Implementation Tickets — Core Extraction and the Inventory Seam](superseded/phase5-implementation-tickets.md) | — |
 | sync | [Media Binary Sync Strategy — PLANNED](superseded/plan-media-binary-sync.md) | — |
 | products | [Plan: Product Image Storage System](superseded/plan-product-images.md) | — |
+| inventory | [Reporting facade inventory (T5, Phase 1)](superseded/reporting-facade-inventory.md) | — |
 | release | [SQLCipher At-Rest Encryption Migration Plan](superseded/sqlcipher-migration-plan.md) | — |
 | security | [kasir.mu Tauri Security Audit](superseded/tauri-security-audit.md) | — |
+| general | [Design: Course/Modifier Data Pipeline — POS → KDS](superseded/workspace-editor-implementation.md) | — |
+| general | [Workspace Instance Architecture — Analysis & Recommendation](superseded/workspace-instance-analysis.md) | — |
 
 ## Audit Reports
 
