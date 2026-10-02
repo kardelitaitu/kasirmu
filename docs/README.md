@@ -19,12 +19,28 @@
 | [`legal/`](./legal/) | Corporate and compliance documents, scoped by jurisdiction | [`README.md`](./legal/README.md) — jurisdiction index; [`id/`](./legal/id/) — PT Perorangan (Indonesia) |
 | [`guides/`](./guides/) | Reference documentation — architecture, user/admin guides, whitepapers, roadmaps | [`ARCHITECTURE.md`](../ARCHITECTURE.md) — at repo root, canonical since 2026-09-23 |
 | [`architecture/`](./architecture/) | **Live design truth only** since 2026-10-02 — the canonical architecture document, the critical-path invariants and their enforcing tests, UX guidelines, module boot order and the namespace firewall/governance rules. The 11 dated plans, phase tickets, drafts and inventories moved to [`records/superseded/`](./records/superseded/) | [`CRITICAL_PATH_INVARIANTS.md`](./architecture/CRITICAL_PATH_INVARIANTS.md) — stock ≥ 0, sale total, refund ≤ settled, sync convergence |
-| ~~[`releases/`](./releases/)~~ | **Removed 2026-10-02.** Changelogs, release process and checklists moved to [`records/releases/`](./records/releases/) | [`CHANGELOG-0.0.33.md`](./records/releases/CHANGELOG-0.0.33.md) |
-| ~~[`observability/`](./observability/)~~ | **Removed 2026-10-02.** Its two system-analysis reports moved to [`records/audits/observability/`](./records/audits/observability/). The generator's *System Analysis / Observability* section header is emitted from the directory name and is now empty — a known cosmetic artefact of the move, recorded in `todo-docs-restructure.md` §5 B4. | [`logging-2026-07-20.md`](./records/audits/observability/logging-2026-07-20.md) |
-| ~~[`benchmarks/`](./benchmarks/)~~ | **Removed 2026-10-02.** Performance baselines and regression tracking moved to [`records/benchmarks/`](./records/benchmarks/) | [`baseline-2026-07-21.md`](./records/benchmarks/baseline-2026-07-21.md) |
-| ~~[`audits/`](./audits/)~~ | **Removed 2026-10-02.** All 14 audit reports moved to [`records/audits/`](./records/audits/), keeping their `frontend/`, `seo/`, `setup/` and `skills/` subfolders. Side effect: `scripts/generate-records-index.mjs` classified audits by scanning `docs/audits/`, so its dedicated *Audit Reports* section is now empty — the files are all still indexed, under **Engineering Records** instead. | [`2026-09-28-docs-audit.md`](./records/audits/2026-09-28-docs-audit.md); [`frontend/css-verification.md`](./records/audits/frontend/css-verification.md) — no linter sees `.css` |
-| ~~[`archived/`](./archived/)~~ | **Removed 2026-10-02.** Its 26 ordinary files moved to [`records/audits/`](./records/audits/) and [`records/superseded/`](./records/superseded/); the two agent campaign journals moved to [`records/campaigns/`](./records/campaigns/) in two separate commits, never batched together. "Archived" is no longer a location — it is a *state*, expressed by which `records/` subfolder a file lives in. | — |
+| [`archived/`](./archived/) | A one-file **tombstone** — retired 2026-10-02. Its documents moved into `records/` (see the note below); the stub remains so older references still resolve | [`README.md`](./archived/README.md) |
 | [`plans/`](./plans/) | Active improvement plans | [`northflank-p1-p7-plan.md`](./plans/_active/northflank-p1-p7-plan.md) |
+
+> **Restructured 2026-10-02** (`todo-docs-restructure.md` §5). This table is a **navigation
+> surface**, so it now lists **only directories that exist**. Five struck-through `Removed
+> 2026-10-02` rows had accumulated in it — `releases/`, `observability/`, `benchmarks/`,
+> `audits/`, `archived/` — and were taken out: an index that grows a dead row per move stops
+> being an index. The migration, once:
+>
+> | Retired | Now |
+> |---|---|
+> | `releases/` (10 files) | [`records/releases/`](./records/releases/) |
+> | `observability/` (2) | [`records/audits/observability/`](./records/audits/observability/) |
+> | `benchmarks/` (4) | [`records/benchmarks/`](./records/benchmarks/) |
+> | `audits/` (14) | [`records/audits/`](./records/audits/) |
+> | `archived/` (26 + 2 journals) | [`records/audits/`](./records/audits/), [`records/superseded/`](./records/superseded/), [`records/campaigns/`](./records/campaigns/) |
+> | `coverage/` (1) | [`records/benchmarks/coverage-report-2026-07-20.md`](./records/benchmarks/coverage-report-2026-07-20.md) |
+>
+> `docs/archived/` survives as a **one-file tombstone** and is listed above for that reason.
+> **The counts in the dated audit notes further down are historical and deliberately left
+> unedited** — they record what those audits measured on their dates; do not read them as
+> current.
 
 ## Quick links
 
