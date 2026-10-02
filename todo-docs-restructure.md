@@ -506,9 +506,9 @@ comments were the residue) turned up **two more**, both more serious than the fi
 - 🔴 **`scripts/verify-runner-claims.py` — FIXED `13ff89458`. THE FOURTH, AND THE ONLY ONE THAT
   TURNED A GATE RED.** `SKIP_DIRS` prunes by **directory name** during `os.walk`, and its list
   contained `"archived"`. When B1 moved 28 documents out of `docs/archived/` into
-  `docs/records/`, the prune stopped matching — and a **dated audit's** claim
-  (`verify-docker-persistence.sh is run in CI`) started being graded as a live claim. The checker
-  went **RED** on `docs/records/audits/2026-08-31-glm-5.3f-crates-audit.md`. Fixed by pruning
+  `docs/records/`, the prune stopped matching — and a **dated audit's** CI-enforcement claim
+  started being graded as a live one. The checker went **RED** on
+  `docs/records/audits/2026-08-31-glm-5.3f-crates-audit.md`. Fixed by pruning
   `records` too, which is the tool's own stated intent: *a record of what was true on a given day
   is not drift.* Back to **5 CI-enforcement claims checked, all hold**, self-test OK.
   **This one is the exception that proves the pattern.** The other three stayed green while being
