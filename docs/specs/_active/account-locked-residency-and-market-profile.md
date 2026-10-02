@@ -2,7 +2,7 @@
 
 # Account-Locked Data Residency & Store-Locked Market Profile
 
-> **Status: DRAFT / SPEC-READY.**  
+> **Status: REVIEWED.**  
 > **Date:** 2026-10-02 · Recorded against branch `0.0.41`  
 > **Governing ADRs:** [ADR-59 (Regional Topology & Modular Delivery)](../../decisions/2026-09-21-adr59-regional-topology-and-modular-delivery.md), [ADR-56 (First-Run Provisioning)](../../decisions/2026-09-21-adr56-first-run-provisioning.md), [ADR-48 (Timezone Representation)](../../decisions/2026-09-09-adr48-timezone-representation.md), [ADR-64 (Tender Vocabulary & Offline State)](../../decisions/2026-10-02-adr64-tender-vocabulary-and-offline-tender-state.md).  
 > **Implementation Target:** `crates/kasirmu-core/src/regional.rs`, `platform/kernel/`, `apps/desktop-tauri/src/commands/`, `ui/src/contexts/WorkspaceContext.tsx`.
@@ -106,8 +106,16 @@ pub fn verify_regional_mutation_allowed(
     tx: &rusqlite::Transaction,
     location_id: &str,
 ) -> Result<(), CoreError> {
+    // `shifts` has no `location_id` column — join through `terminals`
+    // (terminals.location_id references inventory_locations.id).
+    // If a future migration adds `location_id` directly to `shifts`, this
+    // query should be simplified to a single-table predicate.
     let mut stmt = tx.prepare_cached(
-        "SELECT id FROM shifts WHERE location_id = ?1 AND closed_at IS NULL LIMIT 1"
+        "SELECT s.id FROM shifts s
+         JOIN terminals t ON t.id = s.terminal_id
+         WHERE t.location_id = ?1
+           AND s.closed_at IS NULL
+         LIMIT 1"
     )?;
     
     if stmt.exists([location_id])? {
@@ -150,11 +158,15 @@ The implementation must pass three automated test cases:
    - Mock all network connections to disconnect (`assert_offline`).
    - Run a 100-item checkout cycle with PB1 tax calculation and receipt rendering.
    - Assert zero network requests and sub-10ms total execution time.
+   - Runner: `cargo test -p kasirmu-core --test offline_integration test_sale_execution_zero_lookups`
 2. **Test Shift-Immunity Lock (`test_shift_locks_regional_settings`):**
    - Open a shift for Location `loc-1`.
    - Attempt to call `update_regional_settings` to change currency from `IDR` to `USD`.
    - Assert `CoreError::Validation` is returned with code `ShiftInProgress`.
    - Close the shift.
    - Re-attempt `update_regional_settings`; assert successful mutation and audit event emission.
+   - Runner: `cargo test -p kasirmu-core --test shift_integration test_shift_locks_regional_settings`
 3. **Test Scope-Chain Fallback (`test_regional_scope_chain_resolution`):**
    - Verify that an unset location correctly inherits currency and country from its parent `LegalEntity` without requiring manual duplication.
+   - Runner: `cargo test -p kasirmu-core --test settings_integration test_regional_scope_chain_resolution`
+
