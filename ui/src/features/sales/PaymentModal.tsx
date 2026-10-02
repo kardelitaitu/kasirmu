@@ -43,7 +43,8 @@ import type { PaymentModalProps } from './payment/types';
 import { classifyRetry, plainErrorMessage } from '@/utils/app-error';
 import './PaymentModal.css';
 
-type PaymentMethod = 'cash' | 'card' | 'qris' | 'other' | 'open_bill' | 'credit';
+import type { PaymentMethod } from '@/api/types/payment';
+export type { PaymentMethod };
 
 /**
  * The Fluent message that carries each tender's visible name. TOTAL over
@@ -67,10 +68,16 @@ type PaymentMethod = 'cash' | 'card' | 'qris' | 'other' | 'open_bill' | 'credit'
 const PAYMENT_METHOD_MESSAGE_IDS: Record<PaymentMethod, string> = {
   cash: 'payment-method-cash',
   card: 'payment-method-card',
+  card_debit: 'payment-method-card-debit',
+  card_credit: 'payment-method-card-credit',
+  qris_manual: 'payment-method-qris-manual',
   qris: 'payment-method-qris',
-  other: 'payment-other-placeholder',
+  bank_transfer: 'payment-method-bank-transfer',
+  ewallet: 'payment-method-ewallet',
   open_bill: 'payment-open-bill',
   credit: 'payment-method-credit',
+  pay_later: 'payment-method-pay-later',
+  other: 'payment-other-placeholder',
 };
 
 // PaymentModalProps moved to ./payment/types (slice S1 of the contract-first
