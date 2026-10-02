@@ -24,7 +24,24 @@ E4: *read whole files, one call, up to 2,000 lines*. At 13,433 lines the journal
 
 ## Reading a legacy JOURNAL.md:<line> citation
 
-Twenty citations of the form JOURNAL.md:11057 exist in other documents, most of them in other agents journals under .agents/planning/ and .agents/reviews/. They were deliberately **not** repointed: this is a shared checkout and those are other sessions records. They still resolve, by lookup - find the row above whose pre-split range contains the cited line, then read that line offset within the part. Example: JOURNAL.md:11057 falls in part 7 (10169-12153), so it is part 7 line 889.
+Citations of the form `JOURNAL.md:<line>` exist in other documents, most of them in other agents' journals under `.agents/planning/` and `.agents/reviews/`. They were deliberately **not** repointed: this is a shared checkout and those are other sessions' records. They still resolve, by lookup — find the row above whose pre-split range contains the cited line, then read that line offset **within the part**.
+
+Worked example: `JOURNAL.md:11057` falls in part 7 (10169-12153), so it is **part 7 line 897**.
+
+The offset is **not** `cited - first`: each part carries an 8-line header, so it is
+`cited - first + 9`. (This example originally said **889** — exactly the header length short,
+because the offset forgot to add it. Found by measuring the real header on 2026-10-02 rather than
+trusting the arithmetic I had written.)
+
+Do not quote a citation count here either; re-derive it:
+
+```bash
+git grep -ohE 'JOURNAL\.md:[0-9]+' -- '*.md' | wc -l
+```
+
+`-o` is required: without it the pipeline counts matching **lines** (13) rather than
+**occurrences** (21), because several files cite more than one line per line of prose. Getting this
+wrong twice in two documents is the reason it is now written down here.
 
 ## Ordering caveat
 
