@@ -71,7 +71,7 @@ is current:
       and the mdBook portal's source. [docs/README.md:114-118](docs/README.md:114) records that the
       mdBook config was archived once and then **restored**; this has already been got wrong.
 - [ ] **D2** `docs/archived/manager-2-journal.md` and `manager-2-journal-posscreen.md` — move to
-      `record/campaigns/` **together and separately**. Their own stamps: *"NEVER write the sibling's
+      `records/campaigns/` **together and separately**. Their own stamps: *"NEVER write the sibling's
       file"*, *"must not merge, rename or 'tidy' the two files together"*. Two agents both signed
       "Manager-2" and split the work between them. **Do not batch these with anything.**
 - [ ] **D3** `.agents/skills/**` — that is `skill-drift-guard`'s scope, not this plan's.
@@ -126,7 +126,7 @@ Independent of the reorg. Four small commits, all reversible, none needing the �
     document whose stated purpose is to be re-read precisely, every turn.
   - Structure resists a clean cut: `##` boundaries leave a **1,830-line gap** (h2 at 512 → 2342).
   **Revisit only if a live need appears** — e.g. an agent that must re-read it mid-task. D2 still
-  governs: it and `manager-2-journal-posscreen.md` move to `record/campaigns/` **together in Phase B,
+  governs: it and `manager-2-journal-posscreen.md` move to `records/campaigns/` **together in Phase B,
   and never in the same batch as each other.**
 
 ### A2 — Resolve `docs/plans/_active/notes.md` · **BLOCKED ON OWNER**
@@ -215,7 +215,8 @@ Deleting a stamped record destroys audit history — the same trade refused in A
 
 - [ ] `docs/coverage/README.md` (1 file, 66 lines) — **deferred to Phase B.** A *generated* report
       (*"Generated: 2026-07-20"*) carrying a `dead-ref-prefix-ok` pragma, cited by 2 other docs. A5
-      says "fold into `record/`" — but `record/` does not exist until Phase B, so this is a
+      says "fold into `record/`" — but that directory does not exist until Phase B (and B0 later
+  renamed the target to `records/`), so this is a
       **sequencing bug in this plan**, not a judgement call. Folds in at B4.
 
 - [ ] `docs/audit-receipt-settings.md` (1 file, 80 lines) — **deferred to Phase B.** A real audit
@@ -223,6 +224,29 @@ Deleting a stamped record destroys audit history — the same trade refused in A
       references** — it should have been in `docs/audits/` all along. That is a B2 move.
 
 ## 5. Phase B — the move
+
+> ### ⚠️ B0 — a naming collision the plan did not anticipate, settled 2026-10-02
+>
+> §5 originally named the target **`docs/record/`** (singular) while the live directory it is meant
+> to absorb is **`docs/records/`** (plural). B1 would create `record/` while B3 still needs
+> `records/` — a window where `docs/records/audits/` and `docs/record/audits/` are two different
+> directories one letter apart, both holding record trees, in a shared checkout.
+>
+> **Settled: the parent stays `docs/records/`.** It already exists, it already fronts the generated
+> index, and it *is* the top-level record boundary §1.2 asked for. The lifecycle subfolders go
+> **under** it rather than beside it:
+>
+> ```
+> docs/records/
+> ├── README.md          generated — output path UNCHANGED
+> ├── audits/  findings/  snapshots/  benchmarks/
+> ├── releases/  journal/  campaigns/  superseded/
+> ```
+>
+> Strictly less disruptive, removes the one-letter hazard, and **leaves the generator's output path
+> alone** (D4) — which retires the single largest tooling risk in §6 (`generate-records-index.mjs`,
+> 31 hardcoded hits) without editing that file at all. The thesis is unchanged: *can I act on this?* is
+> answered by the path, and `docs/records/audits/` answers it as well as `docs/record/audits/`.
 
 Target shape:
 
@@ -239,58 +263,65 @@ docs/
 
 Batch order is by ascending tooling entanglement. Each batch is one commit.
 
-### B1 — `docs/archived/` → `record/` (28 files) · lowest link count
+### B1 — `docs/archived/` → `docs/records/` (28 files) · lowest link count
 
-- [ ] → `record/campaigns/` (2, **D2 — batch separately**): `manager-2-journal.md`, `manager-2-journal-posscreen.md`
-- [ ] → `record/audits/` (14): `2026-07-28-retail-pos-theming-audit.md`, `2026-07-29-retail-pos-ux-audit.md`,
+**Split into three commits, not one.** D2 forbids the two manager journals sharing a batch with
+*each other* — and they are 690 KB and 90 KB, so they dominate the batch. Order: the 26 ordinary
+files, then each journal alone.
+
+- [ ] → `records/campaigns/` (2, **D2 — batch separately**): `manager-2-journal.md`, `manager-2-journal-posscreen.md`
+- [ ] → `records/audits/` (14): `2026-07-28-retail-pos-theming-audit.md`, `2026-07-29-retail-pos-ux-audit.md`,
       `2026-08-15-unify-auth-and-sync.md`, `2026-08-30-glm-5.3-tauri-app-review.md`,
       `2026-08-31-glm-5.3f-crates-audit.md`, `code-quality-2026-07-20.md`, `database-optimization-2026-07-20.md`,
       `dev-experience-2026-07-20.md`, `dev-mock-state-audit.md`, `ui-state-audit-2026-07-20.md`,
       `modal-audit-checklist.md`, `TODO-shadow-audit.md`, `design-exceptions.md`, `plan-product-images-review.md`
-- [ ] → `record/superseded/` (12): `20260822-tests-efficiency-improvement.md`, `a11y.md`, `api-client.md`,
+- [ ] → `records/superseded/` (12): `20260822-tests-efficiency-improvement.md`, `a11y.md`, `api-client.md`,
       `benchmarks.md`, `ci-pipeline.md`, `i18n-todo.md`, `multi_kds_one_location_support.md`,
       `multi_pos_one_location_support.md`, `plan-media-binary-sync.md`, `plan-product-images.md`,
       `sqlcipher-migration-plan.md`, `tauri-security-audit.md`
 
-### B2 — `docs/audits/` → `record/audits/` (14 files)
+### B2 — `docs/audits/` → `records/audits/` (14 files)
 
 - [ ] `2026-09-28-api-reference-audit.md`, `2026-09-28-docs-audit.md`, `2026-09-29-desktop-launch-integrity-label.md`,
       `documentation-audit-23-09-26.md`
-- [ ] `frontend/` → `record/audits/frontend/`: `css-verification.md`, `fluent-page-audit.md`
-- [ ] `seo/` → `record/audits/seo/`: `seo-audit-19-09-26.md`, `seo-robots-llms-review-19-09-26.md`
-- [ ] `setup/` → `record/audits/setup/`: `setup-state-of-the-art.md`, `setup-wizard-audit.md`,
+- [ ] `frontend/` → `records/audits/frontend/`: `css-verification.md`, `fluent-page-audit.md`
+- [ ] `seo/` → `records/audits/seo/`: `seo-audit-19-09-26.md`, `seo-robots-llms-review-19-09-26.md`
+- [ ] `setup/` → `records/audits/setup/`: `setup-state-of-the-art.md`, `setup-wizard-audit.md`,
       `setup-wizard-option-b-plan.md`, `setup-wizard-retirement-blocker.md`
-- [ ] `skills/` → `record/audits/skills/`: `skill-audit-18-09-26.md`, `skill-audit-22-09-26.md`
+- [ ] `skills/` → `records/audits/skills/`: `skill-audit-18-09-26.md`, `skill-audit-22-09-26.md`
 - [ ] ⚠️ `docs/audits/frontend/css-verification.md` is named **by path in two places that this plan
       must update in the same commit**: `.agents/skills/docs-auditor/SKILL.md` and **AGENTS.md §5.1**.
 
-### B3 — `docs/records/` → `record/` (15 files) · the entangled one
+### B3 — the remaining `docs/records/` files (6 files) · **much cheaper after B0**
 
-- [ ] `audit-open-findings.md`, `audit-closed-findings.md` → `record/findings/`
-- [ ] `snapshots/` (8) → `record/snapshots/`: `2026-09-12-sync-settings-ingest-and-redirect-census.md`,
+- [ ] `audit-open-findings.md`, `audit-closed-findings.md` → `records/findings/`
+- [ ] `snapshots/` (8) → `records/snapshots/`: `2026-09-12-sync-settings-ingest-and-redirect-census.md`,
       `2026-09-13-adr51-admitted-set-and-blind-sides.md`, `2026-09-15-frontend-architecture-todo-appraisal.md`,
       `2026-09-20-audit-android-shell.md`, `2026-09-21-license-ratelimit-collapse.md`,
       `2026-09-21-migration-init-drift-bricked-startup.md`, `2026-09-21-tablet-ui-driving-method.md`,
       `2026-09-28-rustfmt-gate-red.md`
 - [ ] `sqlite-pg-roles.md`, `statutory-rounding-and-estimate-stamps.md`, `adr7-conditional-scoping-fallback-class.md`
-      → `record/`
-- [ ] `README.md` → **the generator's output path changes; it is never `git mv`d** (D4)
-- [ ] **`JOURNAL.md` + the 8 parts move as ONE set** (split 2026-10-02, §4 A1) → `record/journal/`.
+      → **stay at `records/`** — already the record home, no move needed
+- [x] ~~`README.md` → the generator's output path changes; it is never `git mv`d~~ — **retired by B0**.
+      The output path no longer moves, so **D4 is satisfied by doing nothing**, and the largest item
+      in §6 (`generate-records-index.mjs`, 31 hardcoded hits) needs **no edit at all** — only its scan
+      list grows by the new subfolders, which it already walks recursively.
+- [ ] **`JOURNAL.md` + the 8 parts move as ONE set** (split 2026-10-02, §4 A1) → `records/journal/`.
       The parts are only useful next to their index; the index's line map is useless without them.
 - [ ] Depths are unchanged, so `../decisions/…` and `../../scripts/…` inside the generated index keep
       resolving. Only `../audits/…` and `../archived/…` need regenerating — which the generator does.
 
 ### B4 — remaining splits
 
-- [ ] `docs/security/` (9 of 12) → `record/audits/security/`: `audit-2026-07-20.md`,
+- [ ] `docs/security/` (9 of 12) → `records/audits/security/`: `audit-2026-07-20.md`,
       `audit-admin-login-flow.md`, `audit-login-flow-final.md`, `hardening-2026-07-20.md`,
       `license-audit-2026-07-20.md`, `lua-sandbox-audit.md`, `review-admin-dashboard-long-term.md`,
       `sast-2026-07-20.md`, `security-audit-completion.md`
       — **stays live (3):** `INCIDENT_RESPONSE.md`, `PCI-DSS_CHECKLIST.md`, `data-residency-and-retention.md`
-- [ ] `docs/observability/` (2) → `record/audits/observability/`: `error-handling-2026-07-20.md`, `logging-2026-07-20.md`
-- [ ] `docs/benchmarks/` (4) → `record/benchmarks/`
-- [ ] `docs/releases/` (10) → `record/releases/`
-- [ ] `docs/architecture/` (11 of 17) → `record/superseded/`: `MODULAR_APP_PLAN.md`, `handler-census-phase0.md`,
+- [ ] `docs/observability/` (2) → `records/audits/observability/`: `error-handling-2026-07-20.md`, `logging-2026-07-20.md`
+- [ ] `docs/benchmarks/` (4) → `records/benchmarks/`
+- [ ] `docs/releases/` (10) → `records/releases/`
+- [ ] `docs/architecture/` (11 of 17) → `records/superseded/`: `MODULAR_APP_PLAN.md`, `handler-census-phase0.md`,
       `namespaced-store-api-draft.md`, `phase1-implementation-tickets.md` … `phase5-implementation-tickets.md`,
       `reporting-facade-inventory.md`, `workspace-editor-implementation.md`, `workspace-instance-analysis.md`
       — **stays live (6):** `ARCHITECTURE.md`, `CRITICAL_PATH_INVARIANTS.md`, `UX_GUIDELINES.md`,
@@ -406,7 +437,7 @@ to WSL and hangs.
    whether AGENTS.md §7.4's "renames happen in place at the repo root" survives or is rewritten. Blocking
    for nothing in Phase A or B; it is the same two-homes problem this plan's §1.2 addresses elsewhere.
 2. **Confirm `docs/audits/` is a record folder, not a live one.** Phase B2 moves all 14 files. The
-   alternative is that audits stay a claim surface and only `archived/` folds into `record/` — which is
+   alternative is that audits stay a claim surface and only `archived/` folds into `records/` — which is
    a materially smaller plan.
 3. **`docs/coverage/` and `docs/src/`** — `docs/src/` is settled (D1, generated, leave it). `coverage/`
    is one generated report; delete or move.
