@@ -30,7 +30,7 @@ This skill defines the standardized workflow for opening new pull requests again
 | 3 | **Base branch is always `main`.** | All PRs in kasir.mu target `main` unless the user explicitly specifies another target. PRs are opened **from the current active branch only** — the repo policy forbids creating or switching branches. |
 | 4 | **Never `git push` without explicit user permission.** | Before pushing local commits or branch to remote, you MUST present the plan to the user and obtain explicit push authorization. |
 | 5 | **Local verification first.** | Ensure relevant tests (`cargo test`, `npm run typecheck`, `scripts/lint-i18n.sh`) and pre-commit gates pass before creating the PR. |
-| 6 | **Version is locked at `0.0.40`.** | Never bump or change version numbers in manifest files. |
+| 6 | **A version is locked — read the current value from `Cargo.toml` (`[workspace.package]`).** Do not hardcode it here: a number written in this file silently goes stale at the next bump, and the skill-drift guard flags it. | Never bump or change version numbers in manifest files. |
 
 ---
 

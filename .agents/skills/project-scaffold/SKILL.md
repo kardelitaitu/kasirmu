@@ -55,7 +55,9 @@ members = [
 ]
 
 [workspace.package]
-version = "0.0.40"          # locked — do not bump without an explicit order
+version = "<read from the repo lock>"   # copy Cargo.toml's [workspace.package] version verbatim;
+                              # never invent one here — a scaffolded manifest at the wrong
+                              # version is a drift nobody notices until release time
 edition = "2024"
 rust-version = "1.88"       # axum/tower-http deps (time 0.3.47+) require ≥ 1.88
 license = "SEE LICENSE IN LICENSE"   # proprietary — NOT open source
@@ -283,7 +285,7 @@ Jobs (all on `ubuntu-latest`, Node pinned to **24**):
 
 ## Local verification
 
-- **`.githooks/pre-commit`** runs on every commit. **Source of truth is the hook itself — `grep -n '^# ──' .githooks/pre-commit` — and [`AGENTS.md`](../../../AGENTS.md) § Quick Setup enumerates every step with its rationale.** As of 0.0.40 there are seven: LF normalization, staged bundle parity, FTL dedupe, migration column-type lint, PG schema drift guard, Go, and FTL orphan lint (heavy UI typecheck and Vitest i18n are offloaded to pre-push and CI). cargo fmt was a pre-commit step until 2026-09-13, when it was removed — it ran `cargo fmt --all` workspace-wide under concurrent agents, reformating other sessions' in-flight `.rs` files; formatting is now check-only in pre-push/CI/`check.sh`/`release.sh`. `scripts/verify-agents-mirrors.py` now polices skill files against the hook, so a restated count that disagrees is a red build rather than a wrong belief.
+- **`.githooks/pre-commit`** runs on every commit. **Source of truth is the hook itself — `grep -n '^# ──' .githooks/pre-commit` — and [`AGENTS.md`](../../../AGENTS.md) § Quick Setup enumerates every step with its rationale.** There are seven: LF normalization, staged bundle parity, FTL dedupe, migration column-type lint, PG schema drift guard, Go, and FTL orphan lint (heavy UI typecheck and Vitest i18n are offloaded to pre-push and CI). cargo fmt was a pre-commit step until 2026-09-13, when it was removed — it ran `cargo fmt --all` workspace-wide under concurrent agents, reformating other sessions' in-flight `.rs` files; formatting is now check-only in pre-push/CI/`check.sh`/`release.sh`. `scripts/verify-agents-mirrors.py` now polices skill files against the hook, so a restated count that disagrees is a red build rather than a wrong belief.
 - **`scripts/check.sh`** (POSIX) / **`scripts/check.ps1`** (Windows) mirror the full verification matrix for pre-push use — fmt, workspace clippy with `-D warnings`, repo-specific boundary gates (no-raw-params, scoped coverage, IPC parity, architecture boundaries), i18n, and the UI suite. Run the relevant script before pushing; CI runs on Linux only, so a local pass is what protects the other platforms.
 
 Run these before pushing. The CI workflow is the merge gate, but a local pass catches the bulk of issues.

@@ -154,5 +154,3 @@ flowchart TD
 The `kasir.mu` server design is not an accidental microservice-versus-monolith debate; it is an **intentional strategic moat**:
 * It trades away junior-developer familiarity and rapid throwaway prototyping.
 * In exchange, it achieves **unrivaled operational margins (<1% cloud cost)**, **zero-downtime offline reliability for store owners**, and **massive capital efficiency** that legacy competitors cannot match without destroying their own legacy businesses.
-
-> last audited 02-10-26 by Product & Systems Architecture Review

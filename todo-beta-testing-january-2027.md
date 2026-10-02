@@ -115,5 +115,3 @@ A merchant is considered successfully graduated from Beta when:
 2. **Zero Financial Discrepancies:** End-of-day cash drawer totals match the system financial report down to the exact Rupiah (`i64` Money).
 3. **Hardware Reliability:** Thermal printer prints 100% of receipts without requiring app or device restarts.
 4. **Frictionless Sync:** All offline transactions sync to the central cloud dashboard within 60 seconds of reconnecting to the internet.
-
-> last audited 02-10-26 by Product & Release Engineering
