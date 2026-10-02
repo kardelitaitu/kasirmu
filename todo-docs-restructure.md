@@ -830,7 +830,46 @@ this today, and that is the gap worth naming rather than closing — a checker w
 exemption logic `check-dead-refs.py` already uses for dated folders and plan tokens, and writing
 it is a policy decision, not a mechanical one.
 
-## 9. Out of scope — rejected on purpose
+## 12. B5 (NEW, 2026-10-02) — the worst E4 violation, measured, **not** actioned
+
+`0.0.36-backlog.md` surfaced in §1.1's own audit: **4,560 lines / 294 KB**, the largest file in the
+tree and **in no batch**. Measured shape:
+
+| | |
+|---|---:|
+| H2 sections | 27 (1 index + 26 items) |
+| Items marked ✅ or CLOSED | **18 of 26** |
+| Largest section | **R36-20 — 2,212 lines** (L2092–4304) |
+| Next largest | R36-21 at 196 lines |
+| Citations of this file **by line number** | **0** |
+
+**Why it was not split this round, rather than "could not be":**
+
+1. **R36-20 has no clean internal boundary.** Its 9 `###` subsections are front-loaded
+   (L2096–L2316), after which L2317–L4235 is **1,919 lines of unbroken narrative** — scan
+   revisions, false-positive analysis, a "remaining 5" assessment. Extracting it yields a
+   2,348-line backlog *and* a 2,212-line file: **both still over the 2,000 cap.** Two files
+   half-fixed is worse than one honestly oversized file.
+2. **It is an audit-stamped provenance record.** Its header documents that every item was
+   verified against `cca9e5d0` while opening PR #95. Section surgery on that trades
+   verifiable provenance for line counts.
+3. **The live/record split cuts the wrong way for item IDs.** 18 of 26 items are resolved, so by
+   this plan's own axis most of the file belongs in `records/`. But splitting by status would
+   scatter `R36-01`…`R36-21` across two folders, and an item that reopens would have to move
+   back. **Traceability of the ID beats the classification.**
+
+**Owner decision:** whether to (a) extract R36-20 anyway and accept two files over cap,
+(b) split the file by ID range into `_backlog/0.0.36-backlog-{a,b}.md` on a chosen boundary,
+accepting that R36-20 must itself be cut at an arbitrary point, or (c) leave it — it is a dated
+record, it is audit-stamped, and **no gate reads it**.
+
+Re-derive the size rather than trusting this table:
+
+```bash
+wc -l docs/plans/_backlog/0.0.36-backlog.md
+```
+
+## 13. Out of scope — rejected on purpose
 
 - **No topic reorganisation.** The tree is already organised by function ([docs/README.md:6](docs/README.md:6)).
   Re-cutting it by subject would churn all 292 files, break the most links, and buy nothing §1.2 does not
