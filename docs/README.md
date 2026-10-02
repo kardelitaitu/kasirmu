@@ -12,7 +12,7 @@
 | Directory | Purpose | Key files |
 |-----------|---------|-----------|
 | [`decisions/`](./decisions/) | Architectural Decision Records (ADRs) — numbered ADRs, research notes, phased implementation docs, and the implementation-status table | [`README.md`](./decisions/README.md) — status table with deviations |
-| [`records/`](./records/) | Unified registry — generated index of ADRs, research notes, phased docs and observability reports | [`README.md`](./records/README.md) — generated; [`audit-open-findings.md`](./records/audit-open-findings.md) |
+| [`records/`](./records/) | **Records** — anything that was true on a date and is not a live claim. Holds the generated index plus lifecycle subfolders: `audits/` (audit reports), `superseded/` (retired docs, old plans, obsolete guides), `journal/`, `campaigns/`, `findings/`, `snapshots/`, `benchmarks/`, `releases/` | [`README.md`](./records/README.md) — generated, never hand-edited; [`audit-open-findings.md`](./records/audit-open-findings.md) |
 | [`specs/`](./specs/) | Active and completed specs — workspace-settings phases, audit plans, module manifests | [`_active/`](./specs/_active/) — in-progress specs |
 | [`operations/`](./operations/) | Production runbook, deployment guides, platform build/test guides | [`runbook.md`](./operations/runbook.md) — unified Northflank deployment runbook |
 | [`security/`](./security/) | Security audits, checklists, hardening guides, incident response, data-governance policy | [`PCI-DSS_CHECKLIST.md`](./security/PCI-DSS_CHECKLIST.md), [`data-residency-and-retention.md`](./security/data-residency-and-retention.md) |
@@ -23,7 +23,7 @@
 | [`observability/`](./observability/) | Logging, error handling, metrics | [`logging-2026-07-20.md`](./observability/logging-2026-07-20.md) |
 | [`benchmarks/`](./benchmarks/) | Performance benchmarks and regression tracking | [`baseline-2026-07-21.md`](./benchmarks/baseline-2026-07-21.md) |
 | [`audits/`](./audits/) | Audit reports — full audits of the docs system, the API reference, CSS verification, and SEO/crawler reviews | [`2026-09-28-docs-audit.md`](./audits/2026-09-28-docs-audit.md); [`frontend/css-verification.md`](./audits/frontend/css-verification.md) — no linter sees `.css` |
-| [`archived/`](./archived/) | Truly retired documents — completed/superseded audits, old plans, obsolete guides | *(the 2026-08-31 retirement pass moved the last three repo-root docs here — see [`records/`](./records/) index. Do not quote a file count here; derive it with `ls docs/archived/*.md \| wc -l` — a quoted figure here has now rotted twice.)* |
+| [`archived/`](./archived/) | Truly retired documents — completed/superseded audits, old plans, obsolete guides. **Retiring 2026-10-02: its 26 ordinary files have moved to [`records/audits/`](./records/audits/) and [`records/superseded/`](./records/superseded/); the two agent journals here move to [`records/campaigns/`](./records/campaigns/) next, after which this folder is removed.** | *(`ls docs/archived/*.md \| wc -l` — do not quote a count here; a quoted one has rotted twice.)* |
 | [`plans/`](./plans/) | Active improvement plans | [`northflank-p1-p7-plan.md`](./plans/_active/northflank-p1-p7-plan.md) |
 
 ## Quick links

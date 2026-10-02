@@ -67,7 +67,7 @@ Unified registry for architectural decisions (ADRs), audits, verifications, meas
 | 60 | frontend-architecture | [ADR-60: Orientation & Adaptive Layout Strategy — the hybrid ladder (shell media queries, container queries, a declared…](../decisions/2026-09-21-adr60-orientation-and-adaptive-layout-strategy.md) | Implemented (2026-09-21) — all four tiers landed and gated; 7 sheets migrated |
 | 61 | architecture | [ADR-61: Architecture Boundary Rule Tiers — a named rule for re-export-only edges and a governed expiry](../decisions/2026-09-28-adr61-architecture-boundary-rule-tiers.md) | Implemented (2026-09-28) — the core-type-shim rule, the quarter-renewal invariant and the baseline re-tier, the currency edge closure and all seven type-shim edges closed and the baseline emptied (0 tracked findings); the deadline that made the seven shims is sequenced, not done |
 | 62 | architecture | [ADR-62: Module Seam Taxonomy — command contributors, projection subscribers, and the reporting-facade exception](../decisions/2026-09-30-adr62-module-seam-taxonomy.md) | Accepted (2026-09-30) — the taxonomy is written and grounded in the Phase 0 handler census; the check that enforces it (a handler_type classification gate) is not built |
-| 63 | architecture | [ADR-63: The EventSink Seam — grading R10 #3 with a rule that arrived at zero](../decisions/2026-10-04-adr63-event-sink-seam.md) | Implemented (2026-10-04) — rule event-sink-seam landed in scripts/verify-architecture-boundaries.py at zero findings with no baseline; the four remaining raw-handle broadcasts were routed through BridgeCtx::emitter; R10's other three invariants are disposed of by measurement (D6 — #1 a written convention, #2/#4 struck) |
+| 63 | architecture | [ADR-63: The EventSink Seam — grading R10 #3 with a rule that arrived at zero](../decisions/2026-10-01-adr63-event-sink-seam.md) | Implemented (2026-10-04) — rule event-sink-seam landed in scripts/verify-architecture-boundaries.py at zero findings with no baseline; the four remaining raw-handle broadcasts were routed through BridgeCtx::emitter; R10's other three invariants are disposed of by measurement (D6 — #1 a written convention, #2/#4 struck) |
 
 ### Research Notes
 
@@ -99,6 +99,9 @@ Unified registry for architectural decisions (ADRs), audits, verifications, meas
 - [ADR: Topology Phase 8 — KDS Fan-Out](../decisions/2026-08-09-topology-phase8-kds-fanout.md)
 - [ADR: Topology Phase 9 — Stock Routing Consumer](../decisions/2026-08-09-topology-phase9-stock-routing.md)
 
+**general:**
+- [1. Core Architecture: “Global Kernel + Region Packs”](../decisions/2026-10-02-adr64-global-kernel-and-region-pack.md)
+
 ## Engineering Records (`docs/records/`)
 
 Measurement records, journals and standing analyses filed beside this index. They are indexed by the
@@ -118,6 +121,20 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [ADR #7 Conditional Scoping — the Fallback Class](adr7-conditional-scoping-fallback-class.md) | — |
 | general | [Audit Closed Findings — Archive](audit-closed-findings.md) | — |
 | general | [Audit Open Findings — Consolidated](audit-open-findings.md) | — |
+| theming | [Retail POS Theming Audit — 2026-07-28](audits/2026-07-28-retail-pos-theming-audit.md) | — |
+| ui | [Retail POS UX Audit — 2026-07-29](audits/2026-07-29-retail-pos-ux-audit.md) | — |
+| sync | [Unify Auth & Sync to Northflank](audits/2026-08-15-unify-auth-and-sync.md) | Archived (2026-08-31) — implemented; live procedure is docs/operations/runbook.md |
+| architecture | [GLM-5.3 Tauri App Review — Journal](audits/2026-08-30-glm-5.3-tauri-app-review.md) | Archived (2026-08-31) — all 11 sectors reviewed; 53 findings remediated |
+| architecture | [kasir.mu Full Crate Audit — GLM 5.3-Flash (RSA)](audits/2026-08-31-glm-5.3f-crates-audit.md) | Archived (2026-08-31) — campaign fully closed (sections 1–46), no open findings |
+| theming | [Shadow Banding Audit — Task List](audits/TODO-shadow-audit.md) | — |
+| quality | [Code Quality Audit — 0.0.14](audits/code-quality-2026-07-20.md) | — |
+| database | [Database Optimization Audit — 2026-07-20](audits/database-optimization-2026-07-20.md) | — |
+| general | [kasir.mu Design Exceptions Register](audits/design-exceptions.md) | — |
+| quality | [Developer Experience Audit — 2026-07-20](audits/dev-experience-2026-07-20.md) | — |
+| ui | [Dev-Mock Reload-State Audit](audits/dev-mock-state-audit.md) | — |
+| ui | [Modal & Overlay Audit Checklist](audits/modal-audit-checklist.md) | — |
+| products | [Product Image Storage Plan - Review Summary](audits/plan-product-images-review.md) | — |
+| ui | [UI State Audit — 0.0.14](audits/ui-state-audit-2026-07-20.md) | — |
 | sync | [Sync settings ingest admits and the redirect that carries them](snapshots/2026-09-12-sync-settings-ingest-and-redirect-census.md) | — |
 | general | [ADR #51 From the Other Side — the Admitted Set and the Redirect's Second Writer](snapshots/2026-09-13-adr51-admitted-set-and-blind-sides.md) | — |
 | ui | [Appraisal: todo-review-type.md (Local-First & Frontend Architecture)](snapshots/2026-09-15-frontend-architecture-todo-appraisal.md) | — |
@@ -128,6 +145,18 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [The formatting gate is red — 50 rustfmt diffs on committed code](snapshots/2026-09-28-rustfmt-gate-red.md) | — |
 | staff | [SQLite / Postgres Roles](sqlite-pg-roles.md) | — |
 | money | [Statutory Rounding & Tax-Estimate Stamps](statutory-rounding-and-estimate-stamps.md) | — |
+| general | [kasir.mu — Performance Benchmarks](superseded/2026-07-22-benchmarks.md) | — |
+| release | [CI Pipeline Dashboard — kasir.mu](superseded/2026-08-17-ci-pipeline.md) | — |
+| release | [Test Efficiency Improvement — Plan & Journal (2026-08-22)](superseded/20260822-tests-efficiency-improvement.md) | — |
+| accessibility | [kasir.mu — Accessibility (a11y) Compliance](superseded/a11y.md) | — |
+| general | [kasir.mu API Client SDK](superseded/api-client.md) | — |
+| general | [i18n followup: 4 untranslated Indonesian bundles](superseded/i18n-todo.md) | — |
+| inventory | [Multi-KDS Architecture Plan for Single Location (kasir.mu Specific)](superseded/multi_kds_one_location_support.md) | — |
+| inventory | [Multi-POS Architecture Plan for Single Location (kasir.mu Specific)](superseded/multi_pos_one_location_support.md) | — |
+| sync | [Media Binary Sync Strategy — PLANNED](superseded/plan-media-binary-sync.md) | — |
+| products | [Plan: Product Image Storage System](superseded/plan-product-images.md) | — |
+| release | [SQLCipher At-Rest Encryption Migration Plan](superseded/sqlcipher-migration-plan.md) | — |
+| security | [kasir.mu Tauri Security Audit](superseded/tauri-security-audit.md) | — |
 
 ## Audit Reports
 
@@ -154,20 +183,6 @@ The per-sector audit reports were consolidated into [**Audit Open Findings**](./
 
 ## Scattered Audit Reports (`docs/`)
 
-- **theming** — [Retail POS Theming Audit — 2026-07-28](../archived/2026-07-28-retail-pos-theming-audit.md)
-- **ui** — [Retail POS UX Audit — 2026-07-29](../archived/2026-07-29-retail-pos-ux-audit.md)
-- **sync** — [Unify Auth & Sync to Northflank](../archived/2026-08-15-unify-auth-and-sync.md)
-- **architecture** — [GLM-5.3 Tauri App Review — Journal](../archived/2026-08-30-glm-5.3-tauri-app-review.md)
-- **architecture** — [kasir.mu Full Crate Audit — GLM 5.3-Flash (RSA)](../archived/2026-08-31-glm-5.3f-crates-audit.md)
-- **quality** — [Code Quality Audit — 0.0.14](../archived/code-quality-2026-07-20.md)
-- **database** — [Database Optimization Audit — 2026-07-20](../archived/database-optimization-2026-07-20.md)
-- **quality** — [Developer Experience Audit — 2026-07-20](../archived/dev-experience-2026-07-20.md)
-- **ui** — [Dev-Mock Reload-State Audit](../archived/dev-mock-state-audit.md)
-- **ui** — [UI State Audit — 0.0.14](../archived/ui-state-audit-2026-07-20.md)
-- **ui** — [Modal & Overlay Audit Checklist](../archived/modal-audit-checklist.md)
-- **theming** — [Shadow Banding Audit — Task List](../archived/TODO-shadow-audit.md)
-- **products** — [Product Image Storage Plan - Review Summary](../archived/plan-product-images-review.md)
-- **general** — [kasir.mu Design Exceptions Register](../archived/design-exceptions.md)
 
 ## System Analysis / Observability (`docs/observability/`)
 
