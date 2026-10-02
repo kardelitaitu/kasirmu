@@ -129,27 +129,53 @@ Independent of the reorg. Four small commits, all reversible, none needing the �
   governs: it and `manager-2-journal-posscreen.md` move to `record/campaigns/` **together in Phase B,
   and never in the same batch as each other.**
 
-### A2 — Resolve `docs/plans/_active/notes.md`
+### A2 — Resolve `docs/plans/_active/notes.md` · **BLOCKED ON OWNER**
 
-- [ ] 343 KB, unnamed, sitting in the **live** plan folder. Split it, or move it to
-      `docs/plans/_backlog/` under a real name. It is not a plan and must not read as one.
-- [ ] **Verify:** no file in `docs/plans/_active/` exceeds 2,000 lines;
-      `verify-debt-markers.py` still exits 0; inbound links repointed.
+**The premise was wrong on measurement, and the remaining fix is a rename, which §7.4 puts in the
+"ask first" column. Not done unilaterally.**
 
-### A3 — Kill the numbering collisions (pure edits, no moves)
+- **It does not need splitting: 1,821 lines, already under E4's 2,000 cap.** The 343 KB is long
+  *lines*, not many of them. Splitting it would treat a number that was never a violation.
+- **It must not move to `_backlog/`: its own header says otherwise** — *"this file stays a live index
+  rather than a stale backlog."* Moving it would contradict the document being moved.
+- **It has zero markdown links.** 20 files merely *mention* the string. A rename breaks no link, and
+  being a pure rename it would **preserve every line number** — 16 files cite `notes.md:NNNN`.
+- **It is not a plan:** 109 `##` sections, **125 ✅ markers, 0 open checkboxes**. It is an accumulated
+  cross-lane findings index. Its own H1 — *"Analytics cards — deferred items needing visual
+  confirmation"* — is **itself stale**: the file has grown to 44+ items covering `TabletAppLayout`,
+  release-branch collisions and a `STALE-CLEANING SWEEP`.
+- **So the real defect is the name and the stale H1** — and `notes.md` carries **no lifecycle token**,
+  which is why `check-dead-refs.py` audits it as a live claim instead of exempting it.
 
-- [ ] **ADR #43 is issued twice** — React-only UI decision and Cloud Sync Scale-Out
-      ([docs/records/README.md:49](docs/records/README.md:49), [:50](docs/records/README.md:50)).
-      **#16 is free** in the sequence (1–15, 17–22…). Renumber React-only → **#16**.
-- [ ] **Specs `0046`, `0047`, `0049` each exist twice** — loose files in `specs/_active/` and
-      directories in `specs/_done/`, different subjects. **0050+ are free.** Renumber:
-      `0046b-product-menu-images.md` → `0052-`, `0047-openapi-drift-guard-and-read-tiers.md` → `0050-`,
-      `0049-edge-relay-network.md` → `0051-`.
-- [ ] **Verify:** `python3 .agents/skills/docs-auditor/scripts/check-adr-status.py` exits 0;
-      `check-orphans.py` exits 0; `generate-records-index.mjs --check` exits 0;
-      no remaining duplicate ADR number (the generator emits a duplicate-#43 quirk **by design** — this
-      removes the cause, so that section of [docs/README.md:98-100](docs/README.md:98) becomes stale and
-      must be updated in the same commit).
+**Owner decision needed:** rename to something like
+`todo-audit-and-analytics-deferred-index.md` (token-bearing, so `check-dead-refs` exempts it) and
+retitle the H1. §7.4: *"the name is shared state, like the index."*
+
+- [ ] **Verify once renamed:** `verify-debt-markers.py` exit 0 · `check-dead-refs.py` exit 0 · the 16
+      line-number citations still resolve (a pure rename keeps them valid) · 20 bare mentions updated.
+
+### A3 — Kill the numbering collisions · **NOT DONE: wrong trade on measurement**
+
+The collisions are real. **Renumbering them is not the fix**, for reasons unknown when this was written:
+
+- **ADR #43 is already a documented, tolerated state, not an undiscovered bug.**
+  [docs/decisions/README.md:31-36](docs/decisions/README.md) names both files and explains the
+  collision in prose, and `check-adr-status.py` **resolves table rows by file path** so each `#43` row
+  checks its own file — it exits **0 by design**, not despite the duplicate.
+- **A published ADR number is an immutable identifier.** Renumbering React-only → `#16` would break
+  **33 references across 12 files** — `ARCHITECTURE.md`, `CHANGELOG.md`, the decision's own file, and
+  two files under `.agents/` that belong to other sessions.
+- **The spec collision is worse: 134 references**, 33 of them in `JOURNAL-part-4.md` and **18 in
+  `CHANGELOG.md`** — a historical record that must not be rewritten to tidy a number.
+
+**Nothing was renumbered, and nothing was left silently broken**: the ADR half is already documented
+where a reader looks, and the spec half is now recorded here. The original suggestion was a
+surface-level reaction to a repeated number and is **withdrawn**.
+
+- [x] **Verified current state:** `check-adr-status.py` → *"0 status drift finding(s) across 57
+      hand-table row(s)"*, exit 0. The duplicate row the generator emits is a **documented quirk it
+      reproduces on purpose**, not a defect to remove — so nothing in `docs/README.md` needed to change
+      for A3, and this bullet's old note about "updating the same commit" is **withdrawn with the plan**.
 
 ### A4 — Remove the two ambiguous filenames
 
@@ -157,14 +183,31 @@ Independent of the reorg. Four small commits, all reversible, none needing the �
 - [ ] `docs/archived/benchmarks.md` — delete or date-stamp. `docs/benchmarks/` is current.
 - [ ] **Verify:** `check-dead-refs.py` exits 0; no doc cites the deleted names as live paths.
 
-### A5 — Resolve the three loose ends
+### A5 — Resolve the three loose ends · **1 of 3 done**
 
-- [ ] `docs/coverage/README.md` (1 file) — fold into `record/` or delete.
-- [ ] `docs/audit-receipt-settings.md` (1 file) — fold into `record/audits/` or delete.
-- [ ] `docs/README.md:26` says `archived/` holds "26 files"; it holds 28. **Drop hand-counted numbers
-      from curated indexes entirely** — this drift was found and fixed once already
-      ([docs/README.md:107](docs/README.md:107)), and recurred. Link the directory; do not count it.
-- [ ] **Verify:** `check-dead-refs.py` exits 0; `docs/README.md` contains no integer file counts.
+- [x] **Hand-counted numbers in `docs/README.md` — FIXED, `9138b15c2`, 2026-10-02.** Three stale
+      facts, not one:
+      - `archived/` claimed **26 files**, actually **28**.
+      - the ADR bullet claimed **"13 of the 66 files … the other 53"**, actually **30 of 81**.
+      - the same bullet claimed **"Highest number in use: adr47"**, actually **`adr63`**.
+      **All three were replaced with derivation commands, not restated** — `ls docs/decisions/*.md |
+      wc -l`, `ls docs/decisions/ | grep -c 'adr[0-9]'`, and a `sort -n | tail -1` for the highest.
+      Restating "28" would have been the third value to rot; the repo already uses this pattern
+      (*"Re-derive both numbers rather than quoting these"*, README tech table).
+      The counts **inside the dated audit notes were deliberately left alone** — they record what past
+      audits measured, and rewriting them would falsify the audit history. A dated correction block was
+      appended in the file's established `> **Correction (02-10-26):**` style.
+      **Verified:** self-test OK (41 cases) first · `check-dead-refs.py` exit 0 ·
+      `check-orphans.py --file docs/README.md` exit 0 (clean).
+
+- [ ] `docs/coverage/README.md` (1 file, 66 lines) — **deferred to Phase B.** A *generated* report
+      (*"Generated: 2026-07-20"*) carrying a `dead-ref-prefix-ok` pragma, cited by 2 other docs. A5
+      says "fold into `record/`" — but `record/` does not exist until Phase B, so this is a
+      **sequencing bug in this plan**, not a judgement call. Folds in at B4.
+
+- [ ] `docs/audit-receipt-settings.md` (1 file, 80 lines) — **deferred to Phase B.** A real audit
+      report (a BLOCKER finding, 9 KB) sitting loose at the `docs/` root with **zero inbound
+      references** — it should have been in `docs/audits/` all along. That is a B2 move.
 
 ## 5. Phase B — the move
 
@@ -339,9 +382,10 @@ to WSL and hangs.
   [docs/archived/manager-2-journal.md](docs/archived/manager-2-journal.md) record that two agents both
   signed "Manager-2" and split files between them, with an explicit *never merge, rename or tidy these
   together*. That hazard annotation is honoured.
-- **No fix to ADR #43's duplicate-row quirk beyond A3.** `docs/README.md:98-100` documents the generator
-  reproducing it **on purpose**; A3 removes the cause, so that paragraph must be updated in the same commit
-  — but the dead branch in the script stays, as its own comment says it should.
+- **No renumbering of ADRs or specs.** See §4 A3: the ADR #43 duplicate is already documented in
+  `docs/decisions/README.md` and already handled by `check-adr-status.py`, which resolves rows by file
+  path; the spec-number overlap carries 134 references including 18 in `CHANGELOG.md`. Both are
+  recorded rather than renumbered, because a published identifier is not ours to renumber.
 
 ## 10. Open questions for the owner
 
