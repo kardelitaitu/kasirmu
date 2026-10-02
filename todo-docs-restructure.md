@@ -543,6 +543,24 @@ Running the test in the background returned **25/25 PASS**. **The lesson: a hang
 is not evidence of a defect in your change** — and the processes were left alone, because three of
 the four were not mine to kill.
 
+### 6g — the index was publishing two empty sections, and both were my debt
+
+`generate-records-index.mjs` guarded its `docs/audits/` section with `if (docsAudits.length)` but
+left `scattered` and `observability` **unguarded**. Both then rendered a heading over nothing:
+`## Scattered Audit Reports` with zero lines, and `## System Analysis / Observability` as a table
+header with no data rows. Neither was pre-existing breakage — `scattered` went empty because **I**
+emptied that list in `48fad0afa`, and `docs/observability/` was retired by **my** B4a. Both fixed
+in `95b9c8603`; the index goes from 6 sections to 4, all carrying content, `--check` exit 0, record
+count unchanged at 102.
+
+Worth stating plainly: *an empty section is worse than an absent one*, because a reader cannot
+distinguish "nothing qualified" from "this class no longer exists". That is the same
+self-healing-silence family as §6c's `.filter(existsSync)` — a generator that emits structure for
+input that is gone, and reports success while doing it.
+
+Also repointed one prose citation of a moved document: `scripts/translate-stub.py:7` cited
+`docs/archived/i18n-todo.md`, which is now `docs/records/superseded/i18n-todo.md`.
+
 ### 6f — the fourth *scope* fix, and what it does and does not do
 
 `scripts/verify-doc-uniqueness.py` had the same disease as §6d's three, in a fourth place. Its
