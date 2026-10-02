@@ -504,6 +504,36 @@ below used one combined pattern, so the per-file hit count is not yet attributed
 **Not on this list, and both had to change:** `.github/workflows/dev-ci.yml` and
 `scripts/verify-root-policy.py`. See §6e.
 
+### 6b — Confirmed incidental, no change
+
+- [x] `scripts/build-docs.sh` (8) and `scripts/build-docs.ps1` (8) — **D1 said "must not
+      change" and this plan CHANGED them, correctly.** D1 protects `docs/src/` from being *moved*; it
+      does not exempt a **consumer** that must be **repointed**. Both had a functional break
+      (`docs/releases/*.md` copy) — fixed in `d00c08653`, proved by *executing* the copy and counting
+      the 10 files that now land. This is the clearest case in the plan of a guardrail that reads
+      absolute and is not.
+- [x] `docs/book.toml` — **0 hits.** D1; the mdBook config never moved.
+- [x] `ui/package.json` — **0 hits.** `typedoc --out ../docs/src/api/ts` points *into* `docs/src/`
+      (D1), which is not a moving directory. The original "1 hit" was this plan's own pattern
+      matching a path it was never going to move.
+- [x] `crates/kasirmu-api/Cargo.toml` — **repointed.** Its single hit was a **provenance comment**
+      citing a doc that moved; now `docs/records/audits/2026-08-15-unify-auth-and-sync.md`.
+- [x] `website/public/robots.txt` — **0 hits** for the moving directories. Its stale comment (a
+      citation of a `seo-robots-llms-review` path that never resolved) is **not** a published URL and
+      not a link, so nothing in the served site depends on it. Left alone deliberately: editing
+      content that is served verbatim, to tidy a citation, is not a trade worth making unasked.
+- [x] **The "1-hit scripts" list — confirmed individually, and the list itself was wrong.** All
+      eleven measured: `apply-fluent-patch.py`, `verify-bundle-parity.py`,
+      `scan-locale-crossings.py`, `scan-fluent-hardcoded.py`, `verify-ipc-parity.py`,
+      `verify-scoped-coverage.sh`, `verify-ftl-orphans.py`, `verify-scoped-reads.py`,
+      `verify-fluent-dynamic-families.py` — **nine of eleven have ZERO hits** and never held a
+      moving-directory reference. The two that do (`test-runner-labels.py`, `translate-stub.py`) are a
+      test-scenario string and a docstring citation, both prose.
+      **Honest total for the whole list: 2 prose mentions, 0 functional references.** A plan section
+      that names eleven files for individual confirmation when nine have nothing to confirm is its own
+      kind of drift. The original "1 hit each" came from a broader round-1 pattern that also matched
+      `docs/src/`.
+
 ### 6c — FOUND AFTER the moves: 51 stale script refs, and ONE real functional break
 
 > **Superseded count.** This heading says **ONE** functional break and was written when that was all
@@ -612,52 +642,6 @@ Running the test in the background returned **25/25 PASS**. **The lesson: a hang
 is not evidence of a defect in your change** — and the processes were left alone, because three of
 the four were not mine to kill.
 
-### 6g — the index was publishing two empty sections, and both were my debt
-
-`generate-records-index.mjs` guarded its `docs/audits/` section with `if (docsAudits.length)` but
-left `scattered` and `observability` **unguarded**. Both then rendered a heading over nothing:
-`## Scattered Audit Reports` with zero lines, and `## System Analysis / Observability` as a table
-header with no data rows. Neither was pre-existing breakage — `scattered` went empty because **I**
-emptied that list in `48fad0afa`, and `docs/observability/` was retired by **my** B4a. Both fixed
-in `95b9c8603`; the index goes from 6 sections to 4, all carrying content, `--check` exit 0, record
-count unchanged at 102.
-
-Worth stating plainly: *an empty section is worse than an absent one*, because a reader cannot
-distinguish "nothing qualified" from "this class no longer exists". That is the same
-self-healing-silence family as §6c's `.filter(existsSync)` — a generator that emits structure for
-input that is gone, and reports success while doing it.
-
-Also repointed one prose citation of a moved document: `scripts/translate-stub.py:7` cited
-`docs/archived/i18n-todo.md`, which is now `docs/records/superseded/i18n-todo.md`.
-
-### 6f — the fourth *scope* fix, and what it does and does not do
-
-`scripts/verify-doc-uniqueness.py` had the same disease as §6d's three, in a fourth place. Its
-`archived` classifier matched `/archived/`, which after B1 is a **one-file tombstone** — so the
-24 superseded copies now living in `docs/records/superseded/` and `docs/records/audits/` read as
-**live documents** to the duplicate-authority check. Fixed `980c97c00` by widening the prefix set.
-
-**What this does NOT change, stated plainly: whether something is caught.** A superseded/live pair
-where both copies claim authority is flagged either way. I checked this rather than assuming it —
-the two branches are different code paths (one reports *"an archived copy and a live copy both claim"*,
-the other *"both claim to be THE source of truth but their content differs"*).
-
-**What it DOES change: the diagnosis, and therefore the remedy.** With the widening the tool reports
-the archive/live case correctly, whose fix is *"mark the archive copy historical in its first lines"*.
-Without it the same pair is reported as two live docs, whose fix reads *"one must be marked superseded
-or deleted"* — which is wrong advice for a file that is *meant* to sit beside the live one. Modest,
-but it is the difference between a message that names the problem and one that does not.
-
-**Also honest about how it was verified, because the first two attempts were worthless:**
-1. Creating two untracked probe files proved nothing — `scan()` iterates `tracked_files()`, which
-   is `git ls-files`; untracked files are invisible to it. And `git add` on a shared checkout is
-   barred by §7.3.
-2. The second attempt declared a probe path and then never created the file, so it hit *"unreadable
-   duplicate"* — which the harness filtered out, producing a clean-looking **false negative**.
-3. What worked: import the real module, monkeypatch `tracked_files()` to return real on-disk paths,
-   and read the branch that fires. **A self-test that cannot fail is not a self-test** — the second
-   attempt could not have failed, and would have "passed" while proving the opposite.
-
 ### 6e — §6a reconciled against what actually happened: the list over-claimed, and missed the worst one
 
 §6a was written in round 3 as a *static* prediction — "these ~15 script files must change". Measured
@@ -693,35 +677,126 @@ three breaks that mattered — `dev-ci.yml`, `release.sh`, `verify-runner-claims
 found by *asking what breaks* after each move, never by the list. **Keep the list as a checklist of
 where to look; do not treat it as the set of places that are broken.**
 
-### 6b — Confirmed incidental, no change
+### 6f — the fourth *scope* fix, and what it does and does not do
 
-- [x] `scripts/build-docs.sh` (8) and `scripts/build-docs.ps1` (8) — **D1 said "must not
-      change" and this plan CHANGED them, correctly.** D1 protects `docs/src/` from being *moved*; it
-      does not exempt a **consumer** that must be **repointed**. Both had a functional break
-      (`docs/releases/*.md` copy) — fixed in `d00c08653`, proved by *executing* the copy and counting
-      the 10 files that now land. This is the clearest case in the plan of a guardrail that reads
-      absolute and is not.
-- [x] `docs/book.toml` — **0 hits.** D1; the mdBook config never moved.
-- [x] `ui/package.json` — **0 hits.** `typedoc --out ../docs/src/api/ts` points *into* `docs/src/`
-      (D1), which is not a moving directory. The original "1 hit" was this plan's own pattern
-      matching a path it was never going to move.
-- [x] `crates/kasirmu-api/Cargo.toml` — **repointed.** Its single hit was a **provenance comment**
-      citing a doc that moved; now `docs/records/audits/2026-08-15-unify-auth-and-sync.md`.
-- [x] `website/public/robots.txt` — **0 hits** for the moving directories. Its stale comment (a
-      citation of a `seo-robots-llms-review` path that never resolved) is **not** a published URL and
-      not a link, so nothing in the served site depends on it. Left alone deliberately: editing
-      content that is served verbatim, to tidy a citation, is not a trade worth making unasked.
-- [x] **The "1-hit scripts" list — confirmed individually, and the list itself was wrong.** All
-      eleven measured: `apply-fluent-patch.py`, `verify-bundle-parity.py`,
-      `scan-locale-crossings.py`, `scan-fluent-hardcoded.py`, `verify-ipc-parity.py`,
-      `verify-scoped-coverage.sh`, `verify-ftl-orphans.py`, `verify-scoped-reads.py`,
-      `verify-fluent-dynamic-families.py` — **nine of eleven have ZERO hits** and never held a
-      moving-directory reference. The two that do (`test-runner-labels.py`, `translate-stub.py`) are a
-      test-scenario string and a docstring citation, both prose.
-      **Honest total for the whole list: 2 prose mentions, 0 functional references.** A plan section
-      that names eleven files for individual confirmation when nine have nothing to confirm is its own
-      kind of drift. The original "1 hit each" came from a broader round-1 pattern that also matched
-      `docs/src/`.
+`scripts/verify-doc-uniqueness.py` had the same disease as §6d's three, in a fourth place. Its
+`archived` classifier matched `/archived/`, which after B1 is a **one-file tombstone** — so the
+24 superseded copies now living in `docs/records/superseded/` and `docs/records/audits/` read as
+**live documents** to the duplicate-authority check. Fixed `980c97c00` by widening the prefix set.
+
+**What this does NOT change, stated plainly: whether something is caught.** A superseded/live pair
+where both copies claim authority is flagged either way. I checked this rather than assuming it —
+the two branches are different code paths (one reports *"an archived copy and a live copy both claim"*,
+the other *"both claim to be THE source of truth but their content differs"*).
+
+**What it DOES change: the diagnosis, and therefore the remedy.** With the widening the tool reports
+the archive/live case correctly, whose fix is *"mark the archive copy historical in its first lines"*.
+Without it the same pair is reported as two live docs, whose fix reads *"one must be marked superseded
+or deleted"* — which is wrong advice for a file that is *meant* to sit beside the live one. Modest,
+but it is the difference between a message that names the problem and one that does not.
+
+**Also honest about how it was verified, because the first two attempts were worthless:**
+1. Creating two untracked probe files proved nothing — `scan()` iterates `tracked_files()`, which
+   is `git ls-files`; untracked files are invisible to it. And `git add` on a shared checkout is
+   barred by §7.3.
+2. The second attempt declared a probe path and then never created the file, so it hit *"unreadable
+   duplicate"* — which the harness filtered out, producing a clean-looking **false negative**.
+3. What worked: import the real module, monkeypatch `tracked_files()` to return real on-disk paths,
+   and read the branch that fires. **A self-test that cannot fail is not a self-test** — the second
+   attempt could not have failed, and would have "passed" while proving the opposite.
+
+### 6g — the index was publishing two empty sections, and both were my debt
+
+`generate-records-index.mjs` guarded its `docs/audits/` section with `if (docsAudits.length)` but
+left `scattered` and `observability` **unguarded**. Both then rendered a heading over nothing:
+`## Scattered Audit Reports` with zero lines, and `## System Analysis / Observability` as a table
+header with no data rows. Neither was pre-existing breakage — `scattered` went empty because **I**
+emptied that list in `48fad0afa`, and `docs/observability/` was retired by **my** B4a. Both fixed
+in `95b9c8603`; the index goes from 6 sections to 4, all carrying content, `--check` exit 0, record
+count unchanged at 102.
+
+Worth stating plainly: *an empty section is worse than an absent one*, because a reader cannot
+distinguish "nothing qualified" from "this class no longer exists". That is the same
+self-healing-silence family as §6c's `.filter(existsSync)` — a generator that emits structure for
+input that is gone, and reports success while doing it.
+
+Also repointed one prose citation of a moved document: `scripts/translate-stub.py:7` cited
+`docs/archived/i18n-todo.md`, which is now `docs/records/superseded/i18n-todo.md`.
+
+### 6j — Pre-rebrand `oz-*` citations: 1,291 found, **1 file actually wrong**
+
+A sweep of every tracked markdown for path-shaped tokens with the pre-rebrand prefix:
+
+| | Count |
+|---|---:|
+| `oz-*` path tokens found | 1,291 |
+| …that resolve today | **0** |
+| …distinct dead paths | 346 |
+
+**The obvious move — rewrite all 1,291 — would have been wrong in ~1,208 cases.** They sit in
+journal entries, ADRs, `.agents/planning/` journals and `.agents/archived/` plans, where the old
+path is *correct*: it is what the file was called when the sentence was written. Repointing them
+would rewrite what happened to match what exists today, destroying the only evidence that the
+rename happened. The runbook's own audit stamp is the model — it names `crates/oz-core/…` precisely
+because it is recording a 2026-09-08 finding.
+
+Narrowed to the folders §5 calls **live**, 11 files carried 83 refs. **All 11 carry an audit
+stamp** — each is deliberately curated as history. Two examples settle it on inspection:
+
+- **`docs/specs/_active/c1-money-type-safety.md:35`** already self-documents it: *"this cited
+  `crates/oz-core/src/exchange_rate.rs:15`; the type moved."* A dated correction, correctly kept.
+- **`docs/plans/_active/payment-methods-plan.md`** is titled *"Planning Notes"*, dated
+  **2026-09-03**, and its stamp says it *"records a design session rather than a
+  specification"*. Its findings table was measured that day, when the crates were `oz-core`.
+
+**The one genuine live claim was an operational runbook.** `docs/security/INCIDENT_RESPONSE.md` — a
+document someone follows *during an incident* — had two **body-text** references to
+`crates/oz-core/src/db/audit.rs` and `audit_security.rs`, neither of which exists. Fixed
+`ce6b988bd`, after verifying the `kasirmu-core` paths exist. Its third reference sits inside its
+audit stamp and was deliberately left.
+
+**Rule this establishes: an audit stamp is what distinguishes a historical citation from a live
+one.** A pre-rebrand path *outside* a stamp is drift; *inside* one it is evidence. Nothing checks
+this today, and that is the gap worth naming rather than closing — a checker would need the same
+exemption logic `check-dead-refs.py` already uses for dated folders and plan tokens, and writing
+it is a policy decision, not a mechanical one.
+
+### 6k — a sweep for undated numeric claims, and its measured precision
+
+Every rot defect found in the last several rounds had the same shape: **a number written once and
+never re-measured.** Finding them one at a time, prompted by something else, is luck. So: sweep.
+
+```bash
+# every <number> <countable noun> in tracked markdown
+git grep -nE '\b[0-9]{1,5} (files?|lines?|references?|findings?|docs?|records?|crates?|tests?)' -- '*.md'
+```
+
+| Scope | Candidates |
+|---|---:|
+| all tracked markdown | 2,143 across 218 files |
+| minus dated records (journals, `campaigns/`, `_done/`, `_active/` plans, `CHANGELOG.md`, `.agents/`) | **74 across ~30 files** |
+
+**The precision is poor, and saying so is the point.** Spot-checking the 74 found that most are
+fine — three false-positive classes, all of which a human reader clears instantly:
+
+- **derived by reference** — README.md's *"1,334,821 lines … across 5,954 source files"* links to
+  the generated `stats.json`; it is derived, just not by a command quoted inline.
+- **dated notes quoting the old value** — `docs/README.md`'s own correction note names the wrong
+  *"26 files"* and *"66 files"* precisely because it is recording what was wrong.
+- **rules, not measurements** — AGENTS.md's *"production `.rs` files under 1,000 lines"* is a
+  standard, and quoting no date is correct.
+
+**Hit rate: 2 real defects in 74 candidates.** `ARCHITECTURE.md:460` claimed the workspace had
+**39** packages (*"17 crates, 14 modules, 4 platform dirs, foundation, 3 apps"*). `cargo metadata
+--no-deps` reports **40** — `platform/instance-guard` landed on 2026-09-29 and nothing updated it.
+Same figure twice in the root plan `todo-optimize-crates.md`. Both fixed with the derivation inline,
+so they cannot rot the same way twice. (`df5f299bb`.)
+
+**Conclusion: this is a diagnostic, not a backlog.** Treating 74 candidates as 74 defects would be
+noise, and "add a date to every number" is not a policy anyone should adopt — most numbers in this
+repo are measurements of a moment, not standing facts. What the sweep buys is a way to check **one
+named document** cheaply. The defects it actually finds are the ones on documents people navigate
+by, and those still surface one at a time.
 
 ## 7. Per-file verification protocol
 
@@ -843,44 +918,6 @@ command is RUN **and PASSED**. It ran, and it did not pass. What blocks it is a 
 structure, a concurrent session's uncommitted deletion, and five root files that are not a docs
 problem at all.
 
-### 6j — Pre-rebrand `oz-*` citations: 1,291 found, **1 file actually wrong**
-
-A sweep of every tracked markdown for path-shaped tokens with the pre-rebrand prefix:
-
-| | Count |
-|---|---:|
-| `oz-*` path tokens found | 1,291 |
-| …that resolve today | **0** |
-| …distinct dead paths | 346 |
-
-**The obvious move — rewrite all 1,291 — would have been wrong in ~1,208 cases.** They sit in
-journal entries, ADRs, `.agents/planning/` journals and `.agents/archived/` plans, where the old
-path is *correct*: it is what the file was called when the sentence was written. Repointing them
-would rewrite what happened to match what exists today, destroying the only evidence that the
-rename happened. The runbook's own audit stamp is the model — it names `crates/oz-core/…` precisely
-because it is recording a 2026-09-08 finding.
-
-Narrowed to the folders §5 calls **live**, 11 files carried 83 refs. **All 11 carry an audit
-stamp** — each is deliberately curated as history. Two examples settle it on inspection:
-
-- **`docs/specs/_active/c1-money-type-safety.md:35`** already self-documents it: *"this cited
-  `crates/oz-core/src/exchange_rate.rs:15`; the type moved."* A dated correction, correctly kept.
-- **`docs/plans/_active/payment-methods-plan.md`** is titled *"Planning Notes"*, dated
-  **2026-09-03**, and its stamp says it *"records a design session rather than a
-  specification"*. Its findings table was measured that day, when the crates were `oz-core`.
-
-**The one genuine live claim was an operational runbook.** `docs/security/INCIDENT_RESPONSE.md` — a
-document someone follows *during an incident* — had two **body-text** references to
-`crates/oz-core/src/db/audit.rs` and `audit_security.rs`, neither of which exists. Fixed
-`ce6b988bd`, after verifying the `kasirmu-core` paths exist. Its third reference sits inside its
-audit stamp and was deliberately left.
-
-**Rule this establishes: an audit stamp is what distinguishes a historical citation from a live
-one.** A pre-rebrand path *outside* a stamp is drift; *inside* one it is evidence. Nothing checks
-this today, and that is the gap worth naming rather than closing — a checker would need the same
-exemption logic `check-dead-refs.py` already uses for dated folders and plan tokens, and writing
-it is a policy decision, not a mechanical one.
-
 ## 9. B5 (NEW, 2026-10-02) — the worst E4 violation, measured, **not** actioned
 
 `0.0.36-backlog.md` surfaced in §1.1's own audit: **4,560 lines / 294 KB**, the largest file in the
@@ -920,44 +957,6 @@ Re-derive the size rather than trusting this table:
 wc -l docs/plans/_backlog/0.0.36-backlog.md
 ```
 
-### 6k — a sweep for undated numeric claims, and its measured precision
-
-Every rot defect found in the last several rounds had the same shape: **a number written once and
-never re-measured.** Finding them one at a time, prompted by something else, is luck. So: sweep.
-
-```bash
-# every <number> <countable noun> in tracked markdown
-git grep -nE '\b[0-9]{1,5} (files?|lines?|references?|findings?|docs?|records?|crates?|tests?)' -- '*.md'
-```
-
-| Scope | Candidates |
-|---|---:|
-| all tracked markdown | 2,143 across 218 files |
-| minus dated records (journals, `campaigns/`, `_done/`, `_active/` plans, `CHANGELOG.md`, `.agents/`) | **74 across ~30 files** |
-
-**The precision is poor, and saying so is the point.** Spot-checking the 74 found that most are
-fine — three false-positive classes, all of which a human reader clears instantly:
-
-- **derived by reference** — README.md's *"1,334,821 lines … across 5,954 source files"* links to
-  the generated `stats.json`; it is derived, just not by a command quoted inline.
-- **dated notes quoting the old value** — `docs/README.md`'s own correction note names the wrong
-  *"26 files"* and *"66 files"* precisely because it is recording what was wrong.
-- **rules, not measurements** — AGENTS.md's *"production `.rs` files under 1,000 lines"* is a
-  standard, and quoting no date is correct.
-
-**Hit rate: 2 real defects in 74 candidates.** `ARCHITECTURE.md:460` claimed the workspace had
-**39** packages (*"17 crates, 14 modules, 4 platform dirs, foundation, 3 apps"*). `cargo metadata
---no-deps` reports **40** — `platform/instance-guard` landed on 2026-09-29 and nothing updated it.
-Same figure twice in the root plan `todo-optimize-crates.md`. Both fixed with the derivation inline,
-so they cannot rot the same way twice. (`df5f299bb`.)
-
-**Conclusion: this is a diagnostic, not a backlog.** Treating 74 candidates as 74 defects would be
-noise, and "add a date to every number" is not a policy anyone should adopt — most numbers in this
-repo are measurements of a moment, not standing facts. What the sweep buys is a way to check **one
-named document** cheaply. The defects it actually finds are the ones on documents people navigate
-by, and those still surface one at a time.
-
-### 6l — superseded
 ## 10. Out of scope — rejected on purpose
 
 - **No topic reorganisation.** The tree is already organised by function ([docs/README.md:6](docs/README.md:6)).
