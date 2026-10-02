@@ -5,7 +5,8 @@ acceptance gate is blocked by files that are not documentation.**
 
 | | |
 |---|---|
-| Phase A + B | **complete** — 115 files moved, 5 functional tooling breaks found and fixed |
+| Phase A + B | **complete** — 115 files moved, **8 functional breaks** the move caused, all found and fixed |
+| Checker defects found while auditing | **3**, a different class — `check-nav-paths.py` crashed on Windows console encoding; `check-ci-claims.py` dropped jobs whose `steps:` sat past an 80-line window, then reported a *correct* runbook as lying; `verify-plugin-guide-parity.py` read only one of two CLI docs and compared kebab-case against un-kebabed names |
 | Acceptance §8 | **5 of 6 steps pass** |
 | Acceptance step 6 | blocked by **4 scratch files another session owns** (`SENTINEL_STASH.txt`, `ser.txt`, `kasir.db`, `kasir.pre-migration.bak`) — **not mine to delete** |
 | `scripts/check.sh` | fails at step 01 on exactly those four; the gate is **correct** (§8a) |
