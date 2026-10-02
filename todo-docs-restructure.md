@@ -13,9 +13,15 @@ this plan and the 14 `done-*.md` moves on `0.0.40` only. This copy is the `0.0.4
 |---|---|
 | **Goal** | Make "can I act on this?" answerable from the file's path. |
 | **Not the goal** | A prettier tree. Topic reorganisation is explicitly rejected — see §9. |
-| **Files moved** | 93 |
-| **Link fixes by hand** | 7 links in 6 files (30 of the 38 breaking links are in a generated file) |
-| **Tooling files touched** | ~20 of 31 (11 confirmed incidental) |
+| **Files moved** | **115**, measured 2026-10-02 as everything under `docs/records/*/` plus `docs/plans/_done/`. This card said **93** until then — it was a forecast written before the `done-*` root move, the coverage report and the two loose-end files landed. Re-derive: |
+
+  ```bash
+  find docs/records/*/ docs/plans/_done/ -name '*.md' | wc -l
+  ```
+
+| **Link fixes by hand** | 7 links in 6 files (30 of the 38 breaking links were in a generated file, which repaired itself) |
+| **Tooling files touched** | See §6e — the *predicted* 15 script files needed 8 changes, and 2 more needed changes that were **not on the list** (`.github/workflows/dev-ci.yml`, `scripts/verify-root-policy.py`). Prediction was right on neither breadth nor the worst case. |
+| **Functional breaks found** | **5** — §6d/§6f/§6g. One turned a gate red; the other four stayed green while being wrong. |
 | **Batch count** | 4, each independently committable and revertible |
 | **Blast radius** | Enumerable. Measured, not estimated — §6. |
 
@@ -444,6 +450,13 @@ below used one combined pattern, so the per-file hit count is not yet attributed
 
 ### 6c — FOUND AFTER the moves: 51 stale script refs, and ONE real functional break
 
+> **Superseded count.** This heading says **ONE** functional break and was written when that was all
+> I had found. It is now **FIVE** — `build-docs.sh`/`.ps1` (here), `release.sh` + `bump-version.ps1`
+> (§6d), `dev-ci.yml` (§6d), `verify-runner-claims.py` (§6d) and `gen-summary.py` + the `guides/`
+> glob (§6g). Only one of them turned a gate red. **Kept as written because the heading is the
+> record of what I knew at the time**, which is the point of a dated finding; the running total is in
+> §0.
+
 §6a's list was written as a *prediction*. Measured after B1–B4 and A5, `scripts/` carries **51 stale
 `docs/` path references across 18 files**, plus 2 in CI workflows. Most are harmless; **one is not**:
 
@@ -479,7 +492,7 @@ below used one combined pattern, so the per-file hit count is not yet attributed
 - ⚪ `.github/workflows/release.yml:7` and `dev-ci.yml:206` — **comments**.
 - ⚪ `.github/workflows/attic/nightly.yml.bak` — inert backup, excluded by the repo's own convention.
 
-### 6d — THREE functional breaks, not one — all found by reading, none by a gate
+### 6d — THREE more functional breaks (§6c found the first) — all found by reading, none by a gate
 
 The 🔴 was not a single defect. Auditing the 21 *non-comment* stale references (rather than assuming
 comments were the residue) turned up **two more**, both more serious than the first:
