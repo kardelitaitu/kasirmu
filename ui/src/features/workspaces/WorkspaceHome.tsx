@@ -777,6 +777,13 @@ export default function WorkspaceHome() {
                     </button>
                   </div>
                 </div>
+                {toolGroups.length > 0 && (
+                  <ToolsCategoryGrid
+                    groups={toolGroups}
+                    onNavigate={handleShortcutNav}
+                    getAriaLabel={(key) => l10n.getString(key)}
+                  />
+                )}
               </div>
             ) : isStaffRole ? (
               // A staff user with no assigned workspace has nothing to do
