@@ -820,7 +820,12 @@ export interface PrintSalesReceiptArgs {
   payments: PaymentDto[];
   tableNumber?: string;
   /** Phase 6: 17-digit DJP Faktur Pajak string ({kodeTransaksi}{status}{nsfp}) or null. */
-  fakturPajak?: string | null;
+  fakturPajak?: string | null | undefined;
+  storeName?: string | undefined;
+  taxId?: string | null | undefined;
+  taxIdLabel?: string | null | undefined;
+  taxRegime?: string | null | undefined;
+  statutoryRounding?: string | null | undefined;
 }
 
 /** Result of a receipt print request. */

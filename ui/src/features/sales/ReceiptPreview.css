@@ -49,6 +49,12 @@
   color: var(--color-fg);
 }
 
+.receipt-preview-tax-id {
+  font-size: var(--text-xs);
+  color: var(--color-fg-secondary);
+  margin-bottom: var(--space-1);
+}
+
 .receipt-preview-receipt-info {
   display: flex;
   justify-content: space-between;

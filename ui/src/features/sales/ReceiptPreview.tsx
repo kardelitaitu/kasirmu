@@ -62,8 +62,13 @@ export default function ReceiptPreview({
         {/* ── Store Header ── */}
         <div className="receipt-preview-header">
           <div className="receipt-preview-store-name">
-            {l10n.getString('receipt-preview-store-name', null, 'kasir.mu Store')}
+            {receipt.storeName || l10n.getString('receipt-preview-store-name', null, 'kasir.mu Store')}
           </div>
+          {receipt.taxId && (
+            <div className="receipt-preview-tax-id">
+              {receipt.taxIdLabel || 'Tax ID'}: {receipt.taxId}
+            </div>
+          )}
           <div className="receipt-preview-receipt-info">
             <span className="receipt-preview-date">{receipt.date}</span>
             <span className="receipt-preview-receipt-number">{receipt.receiptNumber}</span>
@@ -118,7 +123,9 @@ export default function ReceiptPreview({
           {receipt.tax && (
             <div className="receipt-preview-total-line">
               <span className="receipt-preview-total-label">
-                {l10n.getString('receipt-preview-tax', null, 'TAX:')}
+                {receipt.taxRegime
+                  ? `${receipt.taxRegime}:`
+                  : l10n.getString('receipt-preview-tax', null, 'TAX:')}
               </span>
               <span className="receipt-preview-total-value">
                 {formatMoney(dtoToMoney(receipt.tax))}

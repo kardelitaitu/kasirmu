@@ -777,6 +777,7 @@ retryCurrencyLoad,
             },
           ],
           tableNumber,
+          marketProfile: activeMarketProfile,
         }));
       } catch {
         // Sale fetch may fail in edge cases — non-blocking.
@@ -1130,6 +1131,7 @@ retryCurrencyLoad,
                 },
               ],
           tableNumber,
+          marketProfile: activeMarketProfile,
         });
         // Store receipt data for preview (user chooses to print or skip)
         setReceiptArgs(receiptData);
@@ -1430,6 +1432,11 @@ retryCurrencyLoad,
                       },
                     ],
                 ...(tableNumber ? { tableNumber } : {}),
+                ...(activeMarketProfile ? {
+                  taxIdLabel: activeMarketProfile.country_code === 'ID' ? 'NPWP' : activeMarketProfile.country_code === 'SG' ? 'GST Reg No' : 'Tax ID',
+                  taxRegime: activeMarketProfile.tax_regime !== 'NONE' ? activeMarketProfile.tax_regime : undefined,
+                  statutoryRounding: activeMarketProfile.statutory_rounding,
+                } : {}),
               };
               setReceiptArgs(receiptData);
             } catch {

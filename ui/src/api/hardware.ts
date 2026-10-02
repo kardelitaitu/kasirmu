@@ -64,7 +64,12 @@ export interface PrintSalesReceiptArgs {
   }[];
   tableNumber?: string | null;
   /** Phase 6: optional 17-digit DJP Faktur Pajak string. */
-  fakturPajak?: string | null;
+  fakturPajak?: string | null | undefined;
+  storeName?: string | undefined;
+  taxId?: string | null | undefined;
+  taxIdLabel?: string | null | undefined;
+  taxRegime?: string | null | undefined;
+  statutoryRounding?: string | null | undefined;
 }
 
 /** Print a structured sales receipt (scoped — ADR #7). */
