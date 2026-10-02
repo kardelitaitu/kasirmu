@@ -109,7 +109,7 @@ mod debt;
 /// and it arrives UNGATED — the wizard reads the store-type presets before any session
 /// exists, the class `setup::get_first_run_state` and `setup::provision_device` have always
 /// occupied. So this step moves the floor, the debt ceiling and the class-1 count together
-/// and records the reason in docs/records/JOURNAL.md, which is what the ceiling pin asks of
+/// and records the reason in docs/records/journal/JOURNAL.md, which is what the ceiling pin asks of
 /// a RISE. The provenance is the point: this pass records what landed, it does not approve
 /// it.
 ///
@@ -133,7 +133,7 @@ mod debt;
 /// from `LicenseActivationScreen` — the pre-session boot gate — and each one either
 /// creates the session a permission would be checked against or is the step immediately
 /// before it. So this step moves the floor, the debt ceiling and the class-1 count
-/// together and records the reason in docs/records/JOURNAL.md, which is what the ceiling
+/// together and records the reason in docs/records/journal/JOURNAL.md, which is what the ceiling
 /// pin asks of a RISE. The provenance is the point: this pass records what landed, it
 /// does not approve it.
 ///
@@ -154,7 +154,7 @@ mod debt;
 /// `history::*` carries `SALES_PROCESS`, so the regeneration below rewrote only
 /// `REGISTERED_TOTAL` (475 -> 481) and left all 68 debt rows identical. That is why
 /// this step touches the floor alone: there is no new debt to record, only new
-/// registrations to count. Provenance recorded in docs/records/JOURNAL.md.
+/// registrations to count. Provenance recorded in docs/records/journal/JOURNAL.md.
 ///
 /// 481 -> 485, for `a5212ca5f` (feat(payments): persist payment gateways with
 /// at-rest encryption and wire frontend settings), which registered FOUR names in
@@ -164,7 +164,7 @@ mod debt;
 /// there is no new debt row, only new registrations to count. Measured, not assumed:
 /// the pre-raise assertion reported `left: 481, right: 485`, and the four `+` lines in
 /// that commit's `lib.rs` diff are exactly the four names — the delta and the cause
-/// agree. Provenance recorded in docs/records/JOURNAL.md.
+/// agree. Provenance recorded in docs/records/journal/JOURNAL.md.
 const REGISTERED_FLOOR: usize = 486;
 /// How far the GENERATED ledger's total may lag the tree before the ledger is overdue a
 /// regeneration. It is not slack on this floor — the floor is measured, not padded — and
@@ -856,7 +856,7 @@ fn drift_pin_registration_floor_is_met() {
          only way to be red here is that names were registered — and a command that arrives \
          ALREADY GATED moves no ceiling and no ledger row, which makes this leg the only \
          thing in the file able to see it. Raise the floor to {measured} in the same \
-         deliberate pass that names each addition in docs/records/JOURNAL.md; raising it \
+         deliberate pass that names each addition in docs/records/journal/JOURNAL.md; raising it \
          records what landed, it does not approve it.",
     );
     assert!(
@@ -933,7 +933,7 @@ fn drift_pin_three_way_partition_is_complete_and_sums() {
         "the generated ledger disagrees with the sweep. Ungated now and NOT on the ledger \
          ({} names, first few {:?}); on the ledger but no longer ungated ({} names, first \
          few {:?}). The first set is new debt and needs its reason in \
-         docs/records/JOURNAL.md; the second is debt paid and left behind. Regenerate the \
+         docs/records/journal/JOURNAL.md; the second is debt paid and left behind. Regenerate the \
          file either way rather than hand-editing it.",
         new_holes.len(),
         new_holes.iter().take(6).collect::<Vec<_>>(),
@@ -996,7 +996,7 @@ fn drift_pin_debt_ceilings_only_shrink() {
         "PIN OF A KNOWN HAZARD, NOT AN ENDORSEMENT: {} ungated registered commands \
          against a ceiling of {}. Debt leaves this list and never joins it, so a rise \
          means a newly registered command shipped ungated: record the reason in \
-         docs/records/JOURNAL.md before the number moves.",
+         docs/records/journal/JOURNAL.md before the number moves.",
         ungated,
         debt::DEBT_CEILING,
     );
@@ -1044,7 +1044,7 @@ fn drift_pin_debt_ceilings_only_shrink() {
          without a permission check, which is a class-1 door becoming a class-2 door and \
          empties one ceiling while filling the other. Either gate it, or move its ledger \
          row to the true class AND raise that ceiling deliberately, naming the decision in \
-         docs/records/JOURNAL.md.",
+         docs/records/journal/JOURNAL.md.",
         debt::NO_SESSION_RESOLUTION,
         debt::RESOLVES_SESSION_NAMES_NO_PERMISSION,
         if migrated.is_empty() {
@@ -1128,7 +1128,7 @@ fn drift_pin_generated_ledger_is_the_sweeps_own_output() {
             "registration_gate_debt.generated.rs disagrees with this sweep. Regenerate it \
              rather than editing it:\n  {REGENERATE_ENV}=1 cargo test -p kasirmu-app --lib \
              drift_pin_generated_ledger_is_the_sweeps_own_output -- --nocapture\n\
-             New debt needs its reason in docs/records/JOURNAL.md and a ceiling that still \
+             New debt needs its reason in docs/records/journal/JOURNAL.md and a ceiling that still \
              covers it; paid debt needs its row deleted in the same pass that lowers the \
              ceiling. The disagreement:\n{diff}"
         );

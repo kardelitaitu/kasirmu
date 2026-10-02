@@ -36,7 +36,7 @@ pub fn openapi_spec() -> Value {
          ## Endpoint scope\nEvery operation carries `x-oz-scope`: `both` means \
          the endpoint is also served by the desktop app's loopback local API \
          (Settings → Local API); `cloud` means cloud-server-only (sync, \
-         webhooks, docs UI, host health/metrics). See docs/guides/EXTENDING.md.\n\n\
+         webhooks, docs UI, host health/metrics). See docs/guides/developer/EXTENDING.md.\n\n\
          ## Versioning\nThe API is versioned by URL path prefix (`/api/v1/`). \
          Breaking changes will ship under a new version prefix (`/api/v2/`) — \
          the old version remains available for at least 6 months after the new \
