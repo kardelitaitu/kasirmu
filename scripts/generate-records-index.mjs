@@ -524,22 +524,35 @@ function render() {
   }
 
   // ── Scattered audit reports ──
-  L.push('## Scattered Audit Reports (`docs/`)');
-  L.push('');
-  for (const r of scattered) {
-    L.push(`- **${r.area}** — [${r.title}](${relFromRecords(r.file)})`);
+  // Guarded like the docs/audits/ section above: an empty section is worse than an
+  // absent one, because a reader cannot tell "nothing qualified" from "this class
+  // does not exist any more". The list was emptied on 2026-10-02 when every file
+  // it named moved under docs/records/ (and the generator started scanning that
+  // tree recursively), so the header outlived its content by one commit.
+  if (scattered.length) {
+    L.push('## Scattered Audit Reports (`docs/`)');
+    L.push('');
+    for (const r of scattered) {
+      L.push(`- **${r.area}** — [${r.title}](${relFromRecords(r.file)})`);
+    }
+    L.push('');
   }
-  L.push('');
 
-  // ── Observability ──
-  L.push('## System Analysis / Observability (`docs/observability/`)');
-  L.push('');
-  L.push(row(['Area', 'Title', 'Status']));
-  L.push(row(['---', '---', '---']));
-  for (const r of observability) {
-    L.push(row([mdCell(r.area), linkCell(r.title, relFromRecords(r.file)), mdCell(r.status)]));
+  // -- Observability --
+  // Guarded for the same reason as the section above. docs/observability/ was
+  // retired on 2026-10-02 (its two reports moved to
+  // docs/records/audits/observability/), and the unguarded header left a table
+  // with a header row and no data beneath it.
+  if (observability.length) {
+    L.push('## System Analysis / Observability (docs/observability/)');
+    L.push('');
+    L.push(row(['Area', 'Title', 'Status']));
+    L.push(row(['---', '---', '---']));
+    for (const r of observability) {
+      L.push(row([mdCell(r.area), linkCell(r.title, relFromRecords(r.file)), mdCell(r.status)]));
+    }
+    L.push('');
   }
-  L.push('');
 
   // ── Conventions ──
   L.push('## Conventions');

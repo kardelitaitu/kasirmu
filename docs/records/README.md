@@ -218,14 +218,6 @@ same scan that lists the other documentation directories; `README.md` itself is 
 
 The per-sector audit reports were consolidated into [**Audit Open Findings**](./audit-open-findings.md) (generated — run the script again); fully-remediated sectors are closed by the commits recorded there.
 
-## Scattered Audit Reports (`docs/`)
-
-
-## System Analysis / Observability (`docs/observability/`)
-
-| Area | Title | Status |
-| --- | --- | --- |
-
 ## Conventions
 
 - **ADR naming:** `YYYY-MM-DD-adrNN-<slug>.md` in `docs/decisions/`
