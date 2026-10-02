@@ -474,11 +474,45 @@ below used one combined pattern, so the per-file hit count is not yet attributed
 - ⚪ `.github/workflows/release.yml:7` and `dev-ci.yml:206` — **comments**.
 - ⚪ `.github/workflows/attic/nightly.yml.bak` — inert backup, excluded by the repo's own convention.
 
-**Why the gates did not catch the 🔴.** Every gate in §2 is green: `check-dead-refs` audits *markdown*,
-not shell; `generate-records-index --check` compares the index against its own generator, so a
-generator whose input list is stale produces a *self-consistent* wrong answer. **This is the one
-failure mode in this whole plan that no existing check can see**, and it is the argument for fixing
-§6 explicitly rather than trusting a green board.
+### 6d — THREE functional breaks, not one — all found by reading, none by a gate
+
+The 🔴 was not a single defect. Auditing the 21 *non-comment* stale references (rather than assuming
+comments were the residue) turned up **two more**, both more serious than the first:
+
+- 🔴 **`scripts/release.sh:111` — FIXED `9fd33e279`.** `CHANGELOG_FILE="docs/releases/CHANGELOG-${NEW_VERSION}.md"`
+  then `cat > "$CHANGELOG_FILE"`. The directory was emptied in B4b, so **the release redirect
+  failed**, and `git add … "$CHANGELOG_FILE" 2>/dev/null || true` at line 162 swallowed the
+  missing file exactly as `build-docs` had swallowed its own. **Proved:** the redirect was executed
+  for real against `docs/records/releases/` and the probe file was written, then removed.
+  `bump-version.ps1:243` emits the same stale path as *text* into every `CHANGELOG.md` heading it
+  inserts — also repointed, because that text lands in git history permanently.
+- 🔴 **`.github/workflows/dev-ci.yml:206` — FIXED `e85eaf368`.** The **release-readiness bucket**
+  keyed on `^docs/releases/`. With release docs moved to `docs/records/releases/`, **editing any
+  release document would have stopped triggering the release job** — the signing chain and
+  updater-compat checks would go unexercised, on exactly the changes most likely to break them.
+  The `docs` bucket keys on `^docs/` and was unaffected. Widened to `^docs/(records/)?releases/`.
+  **Verified through the real router**, not a regex: `scripts/test-ci-routing.sh` extracts the
+  Route step body out of the live workflow file and runs each case through it — **25/25 correct**
+  (was 24/24; the added case pins the legacy path so a future revert cannot silently un-route it).
+  **This is the one that mattered most.** The other two produce an empty copy or a failed write;
+  this one would have quietly switched off a gate in CI, which is precisely the failure
+  `dev-ci.yml`'s own comment at line 147 calls *"worse than no gate"*.
+
+**Why no gate caught any of the three.** Every gate in §2 was green throughout. `check-dead-refs`
+audits *markdown*, not shell or YAML. `generate-records-index --check` compares the index against
+its own generator, so a generator whose input list is stale produces a *self-consistent* wrong
+answer. And `test-ci-routing.sh` passed 24/24 **with a path that no longer existed** — it was
+testing the router's shape, not the repo's reality. **The lesson is not "add more gates"; it is
+that a green board was never evidence about scripts and workflows, and only reading them found
+this class.**
+
+**A process note, recorded because it nearly cost a commit.** The `dev-ci.yml` fix was applied and
+the routing test then *appeared* to hang — twice. The cause was **another session's concurrent git
+activity**, not the change: four unrelated processes were alive (a `git fsmonitor--daemon`, the
+website `npm run dev` server, and a git chain spawned seconds earlier by a different session).
+Running the test in the background returned **25/25 PASS**. **The lesson: a hang under concurrency
+is not evidence of a defect in your change** — and the processes were left alone, because three of
+the four were not mine to kill.
 
 ### 6b — Confirmed incidental, no change
 
