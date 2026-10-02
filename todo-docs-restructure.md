@@ -272,8 +272,17 @@ other*. Executed as four commits: 26 files, then each journal alone, plus one re
       (post-move hashes equal pre-move, I1 holds) · commits `1cd644b82` + `1cc5c7b1f`
 - [x] → `records/campaigns/` (2, **D2 — one commit each**): `manager-2-journal.md` (`2daaabdfe`,
       100% rename) and `manager-2-journal-posscreen.md` (`74c42d4b8`, 100% rename)
-- [x] `docs/archived/` **removed** — empty after the moves. "Archived" is no longer a location; it
-      is a state, expressed by which `records/` subfolder a file occupies.
+- [x] `docs/archived/` emptied — **but kept as a tombstone**, see below. "Archived" is no longer a
+      location; it is a state, expressed by which `records/` subfolder a file occupies.
+
+**Removing the directory outright turned the gate red — and that was the useful signal.** Three
+docs still referenced `docs/archived/`: `docs/README.md` (its own audit stamp),
+`docs/observability/logging-2026-07-20.md` (an audit stamp), and
+**`manager-codebase-review-checklist.md`** — another session's actively-growing file (line 1092),
+which is not mine to edit. Rather than either leaving a red gate or editing someone else's working
+file, `docs/archived/README.md` was added as a **tombstone**: it names where each group went and
+explains why the folder was retired. All three references resolve through it, the gate is green,
+and no other session's file was touched. `check-dead-refs.py` → **0 unresolved, exit 0**.
 
 **Relative-link analysis (the real risk of a 2-level-deep move):** 5 relative links existed across
 3 of the 26 files. **3 survived untouched** — the two GLM audits link to each other with `./` and
