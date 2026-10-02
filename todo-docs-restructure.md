@@ -843,7 +843,7 @@ command is RUN **and PASSED**. It ran, and it did not pass. What blocks it is a 
 structure, a concurrent session's uncommitted deletion, and five root files that are not a docs
 problem at all.
 
-### 8a — Pre-rebrand `oz-*` citations: 1,291 found, **1 file actually wrong**
+### 6j — Pre-rebrand `oz-*` citations: 1,291 found, **1 file actually wrong**
 
 A sweep of every tracked markdown for path-shaped tokens with the pre-rebrand prefix:
 
@@ -920,7 +920,7 @@ Re-derive the size rather than trusting this table:
 wc -l docs/plans/_backlog/0.0.36-backlog.md
 ```
 
-### 6h — a sweep for undated numeric claims, and its measured precision
+### 6k — a sweep for undated numeric claims, and its measured precision
 
 Every rot defect found in the last several rounds had the same shape: **a number written once and
 never re-measured.** Finding them one at a time, prompted by something else, is luck. So: sweep.
@@ -957,7 +957,7 @@ repo are measurements of a moment, not standing facts. What the sweep buys is a 
 named document** cheaply. The defects it actually finds are the ones on documents people navigate
 by, and those still surface one at a time.
 
-### 6i — superseded
+### 6l — superseded
 ## 10. Out of scope — rejected on purpose
 
 - **No topic reorganisation.** The tree is already organised by function ([docs/README.md:6](docs/README.md:6)).
