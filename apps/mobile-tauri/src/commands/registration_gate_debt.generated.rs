@@ -279,7 +279,7 @@ pub const DEBT_LEDGER: &[(&str, &str)] = &[
 /// Re-read 23-09-26: 342, with the floor raised to it in the same pass that absorbed the
 /// three `desktop_link` email sign-in commands — 92 debt rows, up from 89. The floor, this
 /// total and `DEBT_CEILING` all move together; the generator writes only this number.
-pub const REGISTERED_TOTAL: usize = 345;
+pub const REGISTERED_TOTAL: usize = 349;
 
 /// Debt entries today: the ceiling the ledger may only shrink under.
 ///

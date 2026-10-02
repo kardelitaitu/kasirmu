@@ -212,7 +212,16 @@ mod debt;
 /// (`registration_gate_debt.generated.rs`) did not move — the pair is a write door, and an
 /// already-gated arrival is exactly the case only this leg can see. Provenance recorded in
 /// docs/records/JOURNAL.md.
-const REGISTERED_FLOOR: usize = 345;
+///
+/// The 345 -> 349 step, 2026-10-02. Four payment gateway commands were registered in
+/// `apps/mobile-tauri/src/lib.rs` for parity with desktop:
+/// `local_payment::get_payment_gateway_config_scoped`,
+/// `local_payment::list_payment_gateways_scoped`,
+/// `local_payment::set_payment_gateway_config_scoped`, and
+/// `local_payment::delete_payment_gateway_scoped`. All four arrive already gated,
+/// so they move no debt ledger row or ceiling, making this registration floor
+/// the only check that observes them. Provenance recorded in docs/records/JOURNAL.md.
+const REGISTERED_FLOOR: usize = 349;
 /// How far the parsed count may rise without regenerating: names are added by ordinary
 /// feature work, so the floor is a lower bound plus slack and never an equality.
 /// Crossing the slack is the signal that the ledger needs regenerating in the same pass.
