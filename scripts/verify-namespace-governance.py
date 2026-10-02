@@ -131,7 +131,7 @@ from typing import Any
 # ownership opinion from anywhere else. Reporting owns no tables: it reads
 # through the sanctioned facade (ADR-62 D5).
 TABLE_OWNERS: dict[str, tuple[str, ...]] = {
-    "sales": ("sales", "sale_lines"),
+    "sales": ("sales", "sale_lines", "payments"),
     "inventory": ("products", "product_recipes", "inventory", "stock_summary"),
     "crm": ("customers",),
     "settings": ("settings",),
@@ -1407,10 +1407,18 @@ def render_table_owners(owners: dict[str, tuple[str, ...]]) -> str:
     lines = ["TABLE_OWNERS: dict[str, tuple[str, ...]] = {"]
     for module, tables in owners.items():
         inner = ", ".join(f'"{table}"' for table in tables)
-        if tables:
-            lines.append(f'    "{module}": ({inner},)')
-        else:
-            lines.append(f'    "{module}": (),')
+        # Two commas matter here, and this function used to get both wrong.
+        # (1) The comma that ENDS each dict entry: putting it inside the
+        #     parens instead leaves consecutive entries with no separator, so
+        #     --emit-ownership writes Python that no longer imports and takes
+        #     every other gate in check.sh down with it.
+        # (2) A ONE-element tuple needs its own trailing comma -- ("customers")
+        #     is just a str, so dropping it turns TABLE_OWNERS["crm"] into the
+        #     characters 'c','u','s',... and the drift report degenerates into
+        #     one line per letter. Pinned by the self_test cases below.
+        if len(tables) == 1:
+            inner += ","
+        lines.append(f'    "{module}": ({inner}),')
     lines.append("}")
     return "\n".join(lines)
 
@@ -1903,6 +1911,23 @@ def self_test() -> int:
     check("render_table_owners round-trips an empty module",
           render_table_owners({"reporting": ()}).splitlines()[-2].strip(),
           '"reporting": (),')
+    # The empty-module case above is the ONE branch that was already correct,
+    # which is why both bugs survived: nothing exercised a populated entry.
+    check("render_table_owners terminates a populated entry",
+          render_table_owners({"sales": ("sales", "payments")}).splitlines()[-2].strip(),
+          '"sales": ("sales", "payments"),')
+    check("render_table_owners keeps a one-element entry a tuple",
+          render_table_owners({"crm": ("customers",)}).splitlines()[-2].strip(),
+          '"crm": ("customers",),')
+    try:
+        compile(render_table_owners({"sales": ("sales", "payments"),
+                                     "crm": ("customers",),
+                                     "reporting": ()}),
+                "<rendered TABLE_OWNERS>", "exec")
+        rendered_compiles = True
+    except SyntaxError:
+        rendered_compiles = False
+    check("render_table_owners emits a literal Python can parse", rendered_compiles, True)
 
     if failures:
         print("verify-namespace-governance: self-test FAILED", file=sys.stderr)
