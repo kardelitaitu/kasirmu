@@ -484,6 +484,127 @@ impl crate::db::Store<'_> {
 
         Ok(Some(number))
     }
+
+    /// Read the statutory document number stamped on a sale, if any.
+    pub fn sale_statutory_number(&self, sale_id: &str) -> Result<Option<String>, CoreError> {
+        let number: Option<Option<String>> = self
+            .conn
+            .query_row(
+                "SELECT statutory_number FROM sales WHERE id = ?1",
+                params![sale_id],
+                |row| row.get(0),
+            )
+            .optional()?;
+        Ok(number.flatten())
+    }
+
+    /// Issue a formal statutory Tax Invoice for a sale.
+    ///
+    /// Claims the next sequential number from the legal entity's `invoice`
+    /// document number sequence (`document_kind = 'invoice'`) and stamps it onto
+    /// `sales.statutory_number` inside an explicit transaction.
+    ///
+    /// Idempotency: if the sale already carries an issued invoice number matching
+    /// the sequence prefix, the existing number is returned without consuming another
+    /// counter value.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CoreError::NotFound`] if the sale does not exist.
+    /// Returns [`CoreError::Validation`] if the sale is voided, or if no legal entity
+    /// or invoice sequence is configured for `location_id`.
+    pub fn issue_tax_invoice_for_sale(
+        &self,
+        sale_id: &str,
+        location_id: &str,
+        now: &str,
+    ) -> Result<String, CoreError> {
+        let tx = self.conn.unchecked_transaction()?;
+
+        // Verify sale existence and status
+        let status: Option<String> = tx
+            .query_row(
+                "SELECT status FROM sales WHERE id = ?1",
+                params![sale_id],
+                |row| row.get(0),
+            )
+            .optional()?;
+
+        let Some(status) = status else {
+            return Err(CoreError::NotFound {
+                entity: "sale",
+                id: sale_id.to_owned(),
+            });
+        };
+
+        if status == "voided" {
+            return Err(CoreError::Validation {
+                field: "sale_status",
+                message: "Cannot issue tax invoice for a voided sale".into(),
+            });
+        }
+
+        // Check if an entity and invoice sequence exist
+        let entity_id: Option<String> = tx
+            .query_row(
+                "SELECT legal_entity_id FROM locations WHERE id = ?1",
+                params![location_id],
+                |row| row.get(0),
+            )
+            .optional()?;
+
+        let Some(entity_id) = entity_id else {
+            return Err(CoreError::Validation {
+                field: "location",
+                message: format!("Location '{location_id}' is not linked to any legal entity"),
+            });
+        };
+
+        let seq = self
+            .document_number_sequence(&entity_id, "invoice")?
+            .ok_or_else(|| CoreError::Validation {
+                field: "document_number_sequences",
+                message: format!(
+                    "No statutory invoice sequence configured for legal entity '{entity_id}'"
+                ),
+            })?;
+
+        // Idempotency: check if sale already carries an invoice number matching the prefix
+        let existing: Option<String> = tx
+            .query_row(
+                "SELECT statutory_number FROM sales WHERE id = ?1",
+                params![sale_id],
+                |row| row.get(0),
+            )
+            .optional()?
+            .flatten();
+
+        if let Some(existing_num) = existing {
+            if !seq.prefix.is_empty() && existing_num.starts_with(&seq.prefix) {
+                return Ok(existing_num);
+            }
+        }
+
+        let claimed = self.claim_statutory_number_for_sale(
+            &tx,
+            sale_id,
+            location_id,
+            "invoice",
+            now,
+        )?;
+
+        let Some(invoice_number) = claimed else {
+            return Err(CoreError::Validation {
+                field: "document_number_sequences",
+                message: format!(
+                    "Failed to issue statutory invoice number for location '{location_id}'"
+                ),
+            });
+        };
+
+        tx.commit()?;
+        Ok(invoice_number)
+    }
 }
 
 #[cfg(test)]

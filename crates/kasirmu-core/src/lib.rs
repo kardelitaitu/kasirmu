@@ -353,6 +353,7 @@ pub use regional::{
     ActiveMarketProfile, ConfigScope, RegionalConfig, RegionalLayer, RegionalValue,
     load_active_market_profile, verify_regional_mutation_allowed,
 };
+pub use db::fiscal::{DocumentKind, DocumentNumberSequence, FiscalScheme, ResetPeriod};
 pub use sale::{Sale, SaleLine};
 pub use sale_deduction::{
     CompleteSaleResult, LocationAllocation, LocationStock, PartialStockResult, ResolvedShortfall,

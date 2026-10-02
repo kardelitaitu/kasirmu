@@ -559,3 +559,114 @@ fn concurrent_claims_never_issue_the_same_number() {
     drop(conn);
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+// ── issue_tax_invoice_for_sale & sale_statutory_number ───────────────
+
+#[test]
+fn sale_statutory_number_reads_stamped_number() {
+    let store_db = migrations::fresh_db();
+    let store = store(&store_db);
+    seed_claim_fixture(&store, "ent-read", "loc-read", "sale-read");
+
+    // Initially none
+    assert_eq!(store.sale_statutory_number("sale-read").unwrap(), None);
+
+    // After claim
+    let tx = tx_of(&store);
+    store
+        .claim_statutory_number_for_sale(&tx, "sale-read", "loc-read", "receipt", NOW)
+        .unwrap();
+    tx.commit().unwrap();
+
+    assert_eq!(
+        store.sale_statutory_number("sale-read").unwrap().as_deref(),
+        Some("INV/2026-09/0001")
+    );
+}
+
+#[test]
+fn issue_tax_invoice_for_sale_claims_number_and_is_idempotent() {
+    let store_db = migrations::fresh_db();
+    let store = store(&store_db);
+    seed_entity(&store, "ent-inv");
+    seed_location(&store, "loc-inv", "ent-inv");
+    seed_sale(&store, "sale-inv-1");
+
+    store
+        .upsert_document_number_sequence("ent-inv", "invoice", "TAX-INV/", ResetPeriod::Never, 5, NOW)
+        .unwrap();
+
+    // 1. Issue invoice for sale-inv-1
+    let inv1 = store
+        .issue_tax_invoice_for_sale("sale-inv-1", "loc-inv", NOW)
+        .unwrap();
+    assert_eq!(inv1, "TAX-INV/00001");
+    assert_eq!(
+        store.sale_statutory_number("sale-inv-1").unwrap().as_deref(),
+        Some("TAX-INV/00001")
+    );
+
+    // 2. Idempotent re-issue returns the same number without consuming another counter
+    let inv1_again = store
+        .issue_tax_invoice_for_sale("sale-inv-1", "loc-inv", NOW)
+        .unwrap();
+    assert_eq!(inv1_again, "TAX-INV/00001");
+
+    let seq = store
+        .document_number_sequence("ent-inv", "invoice")
+        .unwrap()
+        .unwrap();
+    assert_eq!(seq.current_value, 1, "counter must not have advanced for idempotent call");
+
+    // 3. Issue for a second sale advances counter
+    seed_sale(&store, "sale-inv-2");
+    let inv2 = store
+        .issue_tax_invoice_for_sale("sale-inv-2", "loc-inv", NOW)
+        .unwrap();
+    assert_eq!(inv2, "TAX-INV/00002");
+}
+
+#[test]
+fn issue_tax_invoice_rejects_voided_sale() {
+    let store_db = migrations::fresh_db();
+    let store = store(&store_db);
+    seed_entity(&store, "ent-void");
+    seed_location(&store, "loc-void", "ent-void");
+    seed_sale(&store, "sale-void");
+
+    store
+        .upsert_document_number_sequence("ent-void", "invoice", "TI/", ResetPeriod::Never, 0, NOW)
+        .unwrap();
+
+    store
+        .conn
+        .execute("UPDATE sales SET status = 'voided' WHERE id = 'sale-void'", [])
+        .unwrap();
+
+    let err = store
+        .issue_tax_invoice_for_sale("sale-void", "loc-void", NOW)
+        .unwrap_err();
+    match err {
+        CoreError::Validation { field, .. } => assert_eq!(field, "sale_status"),
+        other => panic!("expected Validation error on sale_status, got {other:?}"),
+    }
+}
+
+#[test]
+fn issue_tax_invoice_rejects_when_sequence_unconfigured() {
+    let store_db = migrations::fresh_db();
+    let store = store(&store_db);
+    seed_entity(&store, "ent-unconf");
+    seed_location(&store, "loc-unconf", "ent-unconf");
+    seed_sale(&store, "sale-unconf");
+
+    // Entity exists, but NO invoice sequence is configured
+    let err = store
+        .issue_tax_invoice_for_sale("sale-unconf", "loc-unconf", NOW)
+        .unwrap_err();
+    match err {
+        CoreError::Validation { field, .. } => assert_eq!(field, "document_number_sequences"),
+        other => panic!("expected Validation on document_number_sequences, got {other:?}"),
+    }
+}
+
