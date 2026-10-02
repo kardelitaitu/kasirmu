@@ -3,7 +3,7 @@
 [![Code Size](https://img.shields.io/badge/code%20size-1%2C334.8k%20lines-blue?style=flat-square)](./stats.json)
 [![Server Cost](https://img.shields.io/badge/server%20cost-%3C1%25%20of%20revenue-success?style=flat-square)](#side-a-slashing-server-costs-to-under-1-of-gross-revenue-for-the-business)
 [![Rust Coverage](https://img.shields.io/badge/rust%20coverage-73.9%25-brightgreen?style=flat-square)](./scripts/coverage-floors.json)
-[![Tests](https://img.shields.io/badge/tests-9%2C000%2B%20rust%20%7C%20620%2B%20ui-orange?style=flat-square)](./README-3.md)
+[![Tests](https://img.shields.io/badge/tests-9%2C000%2B%20rust%20%7C%20620%2B%20ui-orange?style=flat-square)](./README-technical.md)
 [![Built with AI](https://img.shields.io/badge/development-solo%20dev%20%7C%2095%25%20AI%20written-purple?style=flat-square)](#4-engineering-scale--the-ai-native-development-model)
 
 > **Point-of-sale software that runs on the hardware you already own and needs no connection
@@ -12,8 +12,13 @@
 >
 > **How to read this page.** This is the product and technical overview: what kasir.mu does for a merchant,
 > how the architecture and economics work, and what is deliberately not built yet. The engineering README is
-> [`README-3.md`](./README-3.md) — architecture, commands, and verified figures. Pricing and quotas
-> below are quoted exactly as [`docs/guides/user/subscription-tiers.md`](./docs/guides/user/subscription-tiers.md)
+> [`README-technical.md`](./README-technical.md) — architecture, commands, and verified
+> figures. *(Renamed from `README-3.md` on 2026-10-02: that name was a merge-conflict suffix and
+> **nothing in the repository linked to it** — it is the only home of the Technology Stack table and
+> the repo-root Repository Structure tree, and it was unreachable. Its content is current and
+> actively maintained; only the name was wrong.)*
+> Pricing and quotas below are quoted exactly as
+> [`docs/guides/user/subscription-tiers.md`](./docs/guides/user/subscription-tiers.md)
 > writes them, and that file is the authority when the two ever disagree.
 
 ---
@@ -39,11 +44,11 @@
 | Dimension | Specification | Reference |
 |---|---|---|
 | **Codebase size** | **1,334,821 lines of code** across **5,954 files** | [`stats.json`](./stats.json) |
-| **Core technology stack** | Native Rust backend + Tauri v2 native shell + React 18 / TypeScript frontend | [`README-3.md`](./README-3.md) |
+| **Core technology stack** | Native Rust backend + Tauri v2 native shell + React 18 / TypeScript frontend | [`README-technical.md`](./README-technical.md) |
 | **Local database** | SQLite (rusqlite WAL mode) on each terminal; zero server round-trips during checkout | [`docs/architecture/`](./docs/architecture/) |
 | **Cloud database** | PostgreSQL sync receiver with asynchronous outbox delta replication | [`crates/kasirmu-core/`](./crates/kasirmu-core/) |
 | **Test coverage** | **73.9% measured Rust workspace line coverage** (99.4% in `foundation`, 83.8% in `kasirmu-core`) | [`scripts/coverage-floors.json`](./scripts/coverage-floors.json) |
-| **Automated test suite** | **9,026 Rust `#[test]` functions** and **623 frontend test files** | [`README-3.md`](./README-3.md) |
+| **Automated test suite** | **9,026 Rust `#[test]` functions** and **623 frontend test files** | [`README-technical.md`](./README-technical.md) |
 | **Test code volume** | **>508,000 lines of test code** (>50% of the entire codebase is automated verification) | [`stats.json`](./stats.json) |
 | **Development model** | **Solo developer — 95% of code authored and verified with AI** | [Section 4 below](#4-engineering-scale--the-ai-native-development-model) |
 | **Current release** | **v0.0.41** (all 6 roadmap phases delivered) | [Status below](#6-20-phase-strategic-platform-roadmap) |
@@ -348,7 +353,7 @@ cd ui && npm ci --no-audit --no-fund && cd ..
 cd apps/desktop-tauri && cargo tauri dev
 ```
 
-For full architecture deep-dives, verified commands, and CI gate reproduction, see [`README-3.md`](./README-3.md) and [`docs/guides/developer/QUICKSTART.md`](./docs/guides/developer/QUICKSTART.md).
+For full architecture deep-dives, verified commands, and CI gate reproduction, see [`README-technical.md`](./README-technical.md) and [`docs/guides/developer/QUICKSTART.md`](./docs/guides/developer/QUICKSTART.md).
 
 ---
 
@@ -371,7 +376,7 @@ For comprehensive technical, financial, and market documentation, see:
 ## 9. Next steps & engagement
 
 ### For developers & contributors
-- **Explore verified architecture:** Inspect the engineering specification in [`README-3.md`](./README-3.md).
+- **Explore verified architecture:** Inspect the engineering specification in [`README-technical.md`](./README-technical.md).
 - **Run locally:** Follow the quickstart instructions above or in [`docs/guides/developer/QUICKSTART.md`](./docs/guides/developer/QUICKSTART.md).
 - **Inspect automated tests:** Run `cargo test --workspace` (9,026 tests) or Vitest (623 frontend test suites).
 
