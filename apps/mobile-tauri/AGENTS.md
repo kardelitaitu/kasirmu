@@ -263,7 +263,7 @@ it: 26.9 MB matches the 25.8 MB arm64 `.so` plus packaging, whereas the four-ABI
 `apk/universal/release/app-universal-release.apk` measured 2026-09-20 is **104,737,268 B** and
 ships `arm64-v8a`, `armeabi-v7a`, `x86` and `x86_64`. A four-ABI *debug* APK is far larger again —
 the four debug `.so` under `target/` sum to 577,077,264 B, and the audit records the resulting APK
-at ~583 MB (`docs/records/2026-09-20-audit-android-shell.md`, H5). Add `--target aarch64` to either
+at ~583 MB (`docs/records/snapshots/2026-09-20-audit-android-shell.md`, H5). Add `--target aarch64` to either
 command to reproduce the table.
 
 The gap is debug info, not code. `[profile.dev]` had `debug = true`, which put **413.5 MB** of
