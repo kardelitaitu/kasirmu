@@ -2,9 +2,41 @@
 
 **Project:** `kasirmu`  
 **Document:** `todo-modular-scaffolding.md`  
-**Status:** Updated after codebase review — see the correction marker below  
-**Last Reviewed:** 2026-09-29  
+**Status:** All phases delivered (0–5) — re-verified on `0.0.41`  
+**Last Reviewed:** 2026-10-02  
 
+> **Progress note (2026-10-02, Phase 5 re-verified on `0.0.41`; the plan is closed).** Phase 5 landed —
+> P5.1–P5.5, all DONE (`docs/architecture/phase5-implementation-tickets.md`) — and this pass re-verified
+> every claim against **this** branch rather than an earlier one, because a branch switch between
+> sessions had left two governance gates red while this journal still described the work as open.
+>
+> Verified on `0.0.41`:
+>
+> - **P5.1** `sales_lifecycle_tests.rs` declares `FOREIGN_WRITES = ["customers"]` against
+>   `MODULE_DEPENDENCIES = ["inventory", "crm"]`; all four declaration/mutation tests present.
+> - **P5.2** no `FROM products` / `FROM stock_summary` / `FROM workspace_inventory_locations` remains in
+>   `sales_lifecycle.rs`; that SQL lives in `db::inventory_seam` (`db/mod.rs:78`).
+> - **P5.3** `db::customers` carries all four crm-seam entry points (`db/mod.rs:71`).
+> - **P5.4** `payments` is under the `sales` owner in `modules/ownership.json`, and `db/ownership.rs`
+>   matches it.
+> - **P5.5** firewall §7 lists no "BOM deduction" gap.
+>
+> The Phase 4 claims were re-confirmed here too, since two of its boxes had been left unticked:
+> `NamespacedStore::raw()` is deleted, `ReportingFacade` is defined and routed
+> (`crates/kasirmu-core/src/db/facade.rs:36`), and `Kernel::verify_namespace_grants`
+> (`platform/kernel/src/kernel/lifecycle.rs:191`, called at `:180`) rejects at boot any grant a
+> module's manifest does not declare — pinned by `platform/startup/tests/boot_capability.rs`.
+>
+> `cargo test -p kasirmu-core --lib` over the lifecycle, inventory-seam, crm-seam, facade,
+> namespaced and sale-deduction suites: **129 passed, 0 failed**. All five gates named in §11
+> (`core-size-ratchet`, `namespace-governance --strict`, handler classification `--check`,
+> `capability-parity`, plugin gate) exit 0.
+>
+> Two gates were **red on `0.0.41` when this pass began**, and both are fixed: `core-size-ratchet`
+> (37176 measured against a 36814 ceiling) in `4b565d267`, and `ownership map parity` (P5.4 moved
+> `payments` without updating the checker's `TABLE_OWNERS`) in `42788cf3d` — whose `--emit-ownership`
+> repair was itself broken in two independent ways and had clearly never been run.
+>
 > **Correction (2026-10-02, from the Phase 0 census).** One factual claim in this plan was
 > falsified against the working tree: `InventoryStockHandler` was described as active (is not orphaned /
 > performs BOM deduction / must be retained). It is in fact **dead/test-only** — never registered or
@@ -679,7 +711,7 @@ Acceptance criteria:
 
 Tasks:
 
-- [x] Inventory all registered module handlers. *(2026-10-03: `scripts/verify-namespace-governance.py --census` reports 15 registered handler impls.)*
+- [x] Inventory all registered module handlers. *(2026-10-03: `scripts/verify-namespace-governance.py --census` reports **12 registered handler types**. Corrected 2026-10-02: this said 15, which conflated two counts. 15 is the number of `impl EventHandler<...> for` BLOCKS — `InventorySyncEnqueuer` implements it for two event types and `AuditLogHandler` for three — while the registry is type-keyed and `--census` reports 12 impl types. Coverage was complete either way; only the number was wrong.)*
 - [x] Identify live handlers, dead handlers, and duplicate responsibilities. *(2026-10-03: `docs/architecture/handler-census-phase0.md`.)*
 - [x] Confirm `InventoryStockHandler` status against the census *(2026-10-02: confirmed dead/test-only; reworded to drop the "remains active" presumption).*
 - [x] Confirm `SaleCompletedReporter` status and remove or document if dead. *(2026-10-03: removed under MSL-11 and documented in `docs/architecture/handler-census-phase0.md` §4 and `modules/reporting/README.md`.)*
@@ -746,7 +778,7 @@ Tasks:
   - logger
   - clock
   - transaction coordinator
-- [x] Migrate module initialization to use `ModuleContext`. *(2026-10-03: `Kernel::load_all` delivers `KernelContext` via `on_context` (`platform/kernel/src/kernel/lifecycle.rs:281`); no vertical overrides the hook yet because each adds the accessors it needs as it migrates.)*
+- [x] Migrate module initialization to use `ModuleContext`. *(2026-10-03: `Kernel::load_all` delivers `KernelContext` via `on_context` (`platform/kernel/src/kernel/lifecycle.rs:314`); no vertical overrides the hook yet because each adds the accessors it needs as it migrates.)*
 - [x] Keep legacy shared-connection access available behind compatibility adapters. *(2026-10-03: `NamespacedStore::raw()` was the compatibility hatch; it was removed 2026-10-03 in Phase 4 P4.3, ahead of schedule.)*
 - [x] Add tests proving modules cannot acquire ungranted capabilities. *(2026-10-03: `capability_tests.rs` 16, `capability_lifecycle_tests.rs` 8, `platform/startup/tests/boot_capability.rs` 4.)*
 - [x] Make module registration fail fast when required capabilities are missing. *(2026-10-03: `verify_capabilities()` runs before any `on_load`; `KernelError::MissingCapability` names module + capability.)*
@@ -781,7 +813,7 @@ Suggested extraction order:
 Tasks:
 
 - [x] Move owned SQL into module repositories. *(2026-10-03: seven modules routed through `NamespacedStore::own()` — settings, terminal, tax, staff, crm, inventory, sales (P3.2), plus loyalty's declared grant (P3.3).)*
-- [~] Move owned domain types into module crates. *(Partial, 2026-10-03: the module repositories already own their DTOs; the remaining `kasirmu-core` domain logic — the cross-vertical BOM deduction in `crates/kasirmu-core/src/db/sales_lifecycle.rs` — needs the ownership map lifted into core and is Phase 4 work.)*
+- [x] Move owned domain types into module crates. *(2026-10-02: closed by Phase 5. The cross-vertical BOM/recipe deduction in `crates/kasirmu-core/src/db/sales_lifecycle.rs` now reads through `db::inventory_seam` (P5.2) and writes `customers` through the crm seam in `db::customers` (P5.3), with `payments` sales-owned (P5.4). No lift of the ownership map was needed — `db/ownership.rs` was already in core, which is the correction P5.1 recorded and §14 repeated as stale.)*
 - [x] Keep cross-vertical reads behind facades. *(2026-10-03: 0 undeclared edges; the one remaining cross-vertical read (loyalty → `gift_cards`) is a declared grant in `modules/loyalty/manifest.json`.)*
 - [x] Add boundary tests for each extracted vertical. *(2026-10-03: each wrapped module has an own-passes / foreign-refused test in its `repository_tests.rs`.)*
 - [x] Ratchet `kasirmu-core` line count downward. *(2026-10-03: `scripts/verify-core-size.py` + `scripts/core-size-baseline.json`, ceiling 36590, gate `core-size-ratchet`.)*
@@ -916,11 +948,11 @@ The modular scaffolding effort is complete when:
 - [x] Dead handlers are removed only after census. *(2026-10-03.)*
 - [x] `ModuleContext` exists and is used by modules. *(2026-10-03: exists and is delivered to every module via `on_context`; individual verticals adopt accessors as they migrate.)*
 - [x] `NamespacedStore` exists. *(2026-10-02: `crates/kasirmu-core/src/db/namespaced.rs`.)*
-- [ ] Strict namespace enforcement is active.
-- [ ] Reporting uses the sanctioned facade.
+- [x] Strict namespace enforcement is active. *(2026-10-02, re-verified on `0.0.41`: `NamespacedStore::raw()` is deleted, `namespace-governance --strict` exits 0, and `Kernel::verify_namespace_grants` — `platform/kernel/src/kernel/lifecycle.rs:191`, called at `:180` — rejects at boot any grant a module's manifest does not declare, pinned by `platform/startup/tests/boot_capability.rs`.)*
+- [x] Reporting uses the sanctioned facade. *(2026-10-02, re-verified on `0.0.41`: the `ReportingFacade` trait is defined and routed at `crates/kasirmu-core/src/db/facade.rs:36`, covered by `db/facade_tests.rs`.)*
 - [x] No new cross-vertical raw SQL is introduced outside approved facades. *(2026-10-03: `verify-namespace-governance.py` Rule 1, gate `namespace-governance` — fails on a new edge; the one existing edge is frozen and granted.)*
-- [ ] `kasirmu-core` no longer contains major vertical business logic.
-- [x] CI enforces core size ratchet. *(2026-10-03: gate `core-size-ratchet`.)*
+- [x] `kasirmu-core` no longer contains major vertical business logic. *(2026-10-02: closed by Phase 5, P5.1–P5.5, re-verified on `0.0.41`. The one cross-vertical path running ungoverned inside core — the sale settlement in `crates/kasirmu-core/src/db/sales_lifecycle.rs` — now has every foreign statement behind a seam: reads in `db::inventory_seam` (P5.2), the `customers` accrual in `db::customers` (P5.3), and the `payments` INSERT is an own-table write now that P5.4 assigned it to `sales`. Mutation tests fail if a statement is re-inlined.)*
+- [x] CI enforces core size ratchet. *(2026-10-02: gate `core-size-ratchet`, green at ceiling 37176. It was **red** on `0.0.41` when this pass began — 37176 measured against a 36814 ceiling — repaired in `4b565d267`.)*
 - [x] CI enforces handler classification. *(2026-10-03: `verify-namespace-governance.py` Rule 2 vs `scripts/handler-classification.json`.)*
 - [x] CI enforces capability declarations. *(2026-10-03: `verify_capabilities()` fails boot on an ungranted capability, proven by `platform/startup/tests/boot_capability.rs`; manifest/schema parity is a `platform-kernel` test.)*
 - [x] Lua remains the plugin runtime. *(ADR 9.4; WASM deferred.)*
@@ -931,20 +963,26 @@ The modular scaffolding effort is complete when:
 
 ## 14. Immediate Next Actions
 
-Phases 0–4 are delivered (see §15). The only structural item the enforcement work could not
-close is a *core extraction*:
+**None. Phases 0–5 are delivered** (see §15) and every §13 box is ticked with evidence.
 
-1. **Route the cross-vertical sale settlement behind the module seams.**
-   `crates/kasirmu-core/src/db/sales_lifecycle.rs` deducts stock and consumes recipe ingredients, but
-   it runs in core, so no module boundary governs those statements. The ownership map is *already* in
-   core (`crates/kasirmu-core/src/db/ownership.rs`, the generated single source), so the work is not a
-   “lift” — it is routing the stock mutation behind the `inventory` seam and the customer accrual
-   behind the `crm` seam, with the foreign writes declared and checked. This is the remaining half of
-   the plan’s §10 “Move owned domain types” item, marked PARTIAL in Phase 3. Scoped as Phase 5:
-   `docs/architecture/phase5-implementation-tickets.md`.
+The one structural item that stood open — routing the cross-vertical sale settlement in
+`crates/kasirmu-core/src/db/sales_lifecycle.rs` behind the module seams — closed as Phase 5
+(P5.1–P5.5). This section previously described that work as outstanding, and called the ownership map
+something that still had to be “lifted into core”. Both were stale: the map was already core
+(`crates/kasirmu-core/src/db/ownership.rs`, generated from `modules/ownership.json`), which is the
+very correction P5.1 recorded and §14 itself repeated.
 
-Everything else the plan listed (the handler census, the seam-taxonomy ADR, the soft governance
-rules, `NamespacedStore`, the Phase 1–4 tickets) is delivered.
+What remains is deliberately *not* scaffolding, and belongs outside this plan:
+
+- **Ordinary vertical extraction.** `crates/kasirmu-core/src/db/payment_gateways.rs` — the largest
+  single growth in core — and the cloud-export code still live in core. Moving them would let the
+  `core-size-ratchet` ceiling come *down* rather than be re-emitted, which is the ratchet’s intent.
+- **The general caveat in firewall §7.** `NamespacedStore` is enforced only where a module routes its
+  SQL through it, so nothing yet stops a module taking a bare `&Connection` and reaching a table the
+  static gate cannot see.
+
+Everything this plan listed is delivered: the handler census, the seam-taxonomy ADR, the soft
+governance rules, `NamespacedStore`, and the Phase 1–5 tickets.
 ---
 
 ## 15. Final Status
@@ -952,8 +990,9 @@ rules, `NamespacedStore`, the Phase 1–4 tickets) is delivered.
 The modular scaffolding plan is aligned with the current codebase, and its delivery status as of
 2026-10-03 is:
 
-- **Phase 0 — Truthfulness Census: DONE.** `docs/architecture/handler-census-phase0.md`; 15 registered
-  handler impls classified in `scripts/handler-classification.json`.
+- **Phase 0 — Truthfulness Census: DONE.** `docs/architecture/handler-census-phase0.md`; 12 registered
+  handler types classified in `scripts/handler-classification.json` (12 types; 15 is the count of
+  `impl EventHandler<...> for` blocks, since two types implement the trait for several events).
 - **Phase 1 — Seam Taxonomy and Soft Governance: DONE.** ADR-62
   (`docs/decisions/2026-09-30-adr62-module-seam-taxonomy.md`), the governance doc, and the soft
   `namespace-governance` gate.
@@ -961,10 +1000,14 @@ The modular scaffolding plan is aligned with the current codebase, and its deliv
   capability registry and its boot-path test; `docs/architecture/module-boot-sequence.md`.
 - **Phase 3 — Vertical Extraction: DONE.** Seven modules wrapped on `NamespacedStore`, loyalty's
   gift-card read a declared grant, the dead reporting surface retired, and the `core-size-ratchet` gate
-  (ceiling 36590) — `docs/architecture/phase3-implementation-tickets.md`.
+  (ceiling 36590 at the time; now 37176) — `docs/architecture/phase3-implementation-tickets.md`.
 - **Phase 4 — Strict Namespace Firewall: DONE.** The `ReportingFacade` trait, `raw()` removal,
   cross-vertical denial tests, `--strict` gate, firewall completion doc, and manifest-derived repository
   grants with a boot-time undeclared-grant rejection — `docs/architecture/phase4-implementation-tickets.md`.
+- **Phase 5 — Core Extraction and the Inventory Seam: DONE.** The sale settlement's foreign reads
+  behind `db::inventory_seam`, the customer accrual behind `db::customers`, `payments` assigned to
+  `sales`, and the sale path's foreign-write declaration pinned by mutation tests —
+  `docs/architecture/phase5-implementation-tickets.md`. Re-verified on `0.0.41`.
 
 Standing invariants (unchanged):
 
@@ -973,4 +1016,7 @@ Standing invariants (unchanged):
 - `InventoryStockHandler` is retained as a classified test-only type (the Phase 0 census corrected the
   earlier "active" claim).
 - Lua remains the plugin runtime; WASM is explicitly deferred.
-- Reporting has a formal cross-vertical read path; the `ReportingFacade` trait is Phase 4 work.
+- Reporting has a formal cross-vertical read path: the `ReportingFacade` trait is delivered
+  (P4.2, `crates/kasirmu-core/src/db/facade.rs:36`), not outstanding.
+- `kasirmu-core` ends this plan at **37176 production lines** (ceiling re-emitted on `0.0.41` in
+  `4b565d267`); the ratchet counts down from there.
