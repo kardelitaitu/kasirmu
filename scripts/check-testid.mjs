@@ -2,7 +2,8 @@
 /**
  * scripts/check-testid.mjs -- data-testid compliance gate.
  *
- * Implements docs/plans/todo-testid-checker-spec.md (frozen). Scans `ui/src`
+ * Implements docs/plans/_done/done-testid-checker-spec.md (frozen; renamed from
+ * todo-testid-checker-spec.md when its acceptance command passed). Scans `ui/src`
  * source files only -- never tests, e2e, dev-mock or test-utils -- and asserts:
  *
  *   R1  every normalized literal matches ^[a-z0-9]+(-[a-z0-9]+)*$
