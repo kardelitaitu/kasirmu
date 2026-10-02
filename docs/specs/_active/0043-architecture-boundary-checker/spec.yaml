@@ -11,11 +11,11 @@ scope:
   - scripts/check.sh
   - scripts/check.ps1
   - scripts/gates.json
-  - docs/ci-pipeline.md
-  - docs/ARCHITECTURE.md
+  - docs/operations/ci-pipeline.md
+  - ARCHITECTURE.md
 non_goals:
   - Changing runtime behavior
-  - Refactoring oz-core or business modules
+  - Refactoring kasirmu-core or business modules
   - Changing the Tauri command surface
   - Redesigning the event bus or sync engine
   - Forcing desktop/tablet feature parity
