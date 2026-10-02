@@ -334,24 +334,39 @@ name **both** sides; git's staged rename is not automatically carried by a paths
 **The I4 lesson from B1 held.** The commit pathspec named **both** the new and the old paths, so all
 14 landed as `100%` renames in one commit and `git diff --cached --name-only` was empty afterwards.
 
-### B3 — the remaining `docs/records/` files (6 files) · **much cheaper after B0**
+### B3 — `docs/records/` subfolders · **DONE, `2a9b73e22`**
 
-- [ ] `audit-open-findings.md`, `audit-closed-findings.md` → `records/findings/`
-- [ ] `snapshots/` (8) → `records/snapshots/`: `2026-09-12-sync-settings-ingest-and-redirect-census.md`,
-      `2026-09-13-adr51-admitted-set-and-blind-sides.md`, `2026-09-15-frontend-architecture-todo-appraisal.md`,
-      `2026-09-20-audit-android-shell.md`, `2026-09-21-license-ratelimit-collapse.md`,
-      `2026-09-21-migration-init-drift-bricked-startup.md`, `2026-09-21-tablet-ui-driving-method.md`,
-      `2026-09-28-rustfmt-gate-red.md`
-- [ ] `sqlite-pg-roles.md`, `statutory-rounding-and-estimate-stamps.md`, `adr7-conditional-scoping-fallback-class.md`
-      → **stay at `records/`** — already the record home, no move needed
+- [x] `audit-open-findings.md`, `audit-closed-findings.md` → `records/findings/`
+- [x] **`JOURNAL.md` + the 8 parts → `records/journal/`** as one set. 11 files, **10 at `100%` rename**
+      and `audit-open-findings.md` at `99%` (it carried the one link repair). All 11 **byte-identical**
+      pre/post move, I1 held.
+- [x] `snapshots/` (8) → **already at `records/snapshots/`** — no move was ever needed; the original
+      enumeration listed work that did not exist.
+- [x] `sqlite-pg-roles.md`, `statutory-rounding-and-estimate-stamps.md`, `adr7-conditional-scoping-fallback-class.md`
+      → **stay at `records/`** — already the record home, no move needed.
 - [x] ~~`README.md` → the generator's output path changes; it is never `git mv`d~~ — **retired by B0**.
-      The output path no longer moves, so **D4 is satisfied by doing nothing**, and the largest item
-      in §6 (`generate-records-index.mjs`, 31 hardcoded hits) needs **no edit at all** — only its scan
-      list grows by the new subfolders, which it already walks recursively.
-- [ ] **`JOURNAL.md` + the 8 parts move as ONE set** (split 2026-10-02, §4 A1) → `records/journal/`.
-      The parts are only useful next to their index; the index's line map is useless without them.
-- [ ] Depths are unchanged, so `../decisions/…` and `../../scripts/…` inside the generated index keep
-      resolving. Only `../audits/…` and `../archived/…` need regenerating — which the generator does.
+      The output path never moved, so **D4 is satisfied by doing nothing**, and the largest item in §6
+      (`generate-records-index.mjs`, 31 hardcoded hits) needed **no edit at all** — only its scan list
+      grew, which it already walks recursively.
+
+**Five link fixes, and one of them was a pre-existing defect.** B1 deferred this move precisely
+because the pair looked expensive; in the event it cost **5**, not the 10 estimated:
+- `records/findings/audit-open-findings.md:184` — `./fluent-page-audit.md` →
+  `../audits/frontend/fluent-page-audit.md`. **This link was already broken before either move** —
+  the file has been at `audits/frontend/` since B2 and before that at `docs/audits/frontend/`, so the
+  bare `./` form never resolved. It survived `check-dead-refs.py` only because everything under
+  `docs/records/` is skipped as a dated record. Found by reading the file, not by a gate.
+- `docs/README.md` ×2 (directory table + Conventions) → `./records/findings/audit-open-findings.md`
+- `records/audits/2026-08-30-glm-5.3-tauri-app-review.md:15` — the link B1 wrote as
+  `../audit-open-findings.md` and deliberately deferred updating to this batch → `../findings/…`
+- `docs/decisions/2026-09-11-adr49-headless-command-bridge.md:108` → `../records/findings/…`
+
+The 7 internal links between the pair (`./audit-closed-findings.md` ×5, `./audit-open-findings.md` ×2)
+needed no change — they are siblings and moved together. The 5 links inside the **generated** index
+self-healed on regeneration.
+
+**The B1 deferral was the right call and cost nothing.** Deferring one link for a round in order to
+measure the real blast radius is cheaper than guessing it at 10.
 
 ### B4 — remaining splits
 
