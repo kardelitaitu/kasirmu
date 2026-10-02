@@ -368,21 +368,40 @@ self-healed on regeneration.
 **The B1 deferral was the right call and cost nothing.** Deferring one link for a round in order to
 measure the real blast radius is cheaper than guessing it at 10.
 
-### B4 — remaining splits
+### B4 — remaining splits · **DONE — Phase B complete**
 
-- [ ] `docs/security/` (9 of 12) → `records/audits/security/`: `audit-2026-07-20.md`,
-      `audit-admin-login-flow.md`, `audit-login-flow-final.md`, `hardening-2026-07-20.md`,
-      `license-audit-2026-07-20.md`, `lua-sandbox-audit.md`, `review-admin-dashboard-long-term.md`,
-      `sast-2026-07-20.md`, `security-audit-completion.md`
-      — **stays live (3):** `INCIDENT_RESPONSE.md`, `PCI-DSS_CHECKLIST.md`, `data-residency-and-retention.md`
-- [ ] `docs/observability/` (2) → `records/audits/observability/`: `error-handling-2026-07-20.md`, `logging-2026-07-20.md`
-- [ ] `docs/benchmarks/` (4) → `records/benchmarks/`
-- [ ] `docs/releases/` (10) → `records/releases/`
-- [ ] `docs/architecture/` (11 of 17) → `records/superseded/`: `MODULAR_APP_PLAN.md`, `handler-census-phase0.md`,
-      `namespaced-store-api-draft.md`, `phase1-implementation-tickets.md` … `phase5-implementation-tickets.md`,
-      `reporting-facade-inventory.md`, `workspace-editor-implementation.md`, `workspace-instance-analysis.md`
-      — **stays live (6):** `ARCHITECTURE.md`, `CRITICAL_PATH_INVARIANTS.md`, `UX_GUIDELINES.md`,
-      `module-boot-sequence.md`, `module-namespace-firewall.md`, `module-namespace-governance.md`
+Run as three sub-batches, because one 36-file batch would have put every failure mode in a single commit.
+
+- [x] **B4a** `cd8d671a6` — `docs/security/` (9 of 12) → `records/audits/security/`, and
+      `docs/observability/` (2) → `records/audits/observability/`. **All 11 at `100%` rename.**
+      `docs/observability/` removed. `docs/security/` retains its 3 policy docs.
+- [x] **B4b** `afca83144` — `docs/benchmarks/` (4) → `records/benchmarks/`, `docs/releases/` (10) →
+      `records/releases/`. 13 at `100%`, `CHANGELOG-0.0.36.md` at `99%` (2 links). Both folders removed.
+- [x] **B4c** `45e1cd520` — `docs/architecture/` (11 of 17) → `records/superseded/`. 10 at `100%`,
+      `reporting-facade-inventory.md` at `97%` (3 links). `docs/architecture/` retains its 6 live docs.
+
+**Two of the seven originally-predicted hand-fixes landed here, exactly as forecast.** §6's
+blast-radius measurement named `guides/platform/windows-launch-test.md` (2) and `linux-launch-test.md`
+(2) as links that would break on the `releases/` move. Both fired — at **3 occurrences each**, not 2.
+The original measurement was right about the files and about the count *class*, and the checker found
+the extras. That is the argument for measuring a blast radius first and then letting a gate confirm it.
+
+**A method that earned its keep: move, then ask the checker.** Predicting which of ~110 references
+would break was repeatedly wrong (B1: 10 estimated, 5 real; B3: 10 estimated, 5 real). Moving first
+and running `check-dead-refs.py --verbose` named every break exactly, for a fraction of the effort.
+B4a broke **3** links out of 53 mentions of `docs/security/` — because most pointed at the 3 files that
+stayed, or at files that never existed (`EMERGENCY_CONTACTS.md`, `COMMS_TEMPLATES.md`,
+`LICENSE-ENCRYPTION.md`).
+
+**One self-inflicted error, caught by reading rather than by a gate.** Repointing
+`reporting-facade-inventory.md:214`, I rewrote the target as `todo-modular-scaffolding.md` on the
+assumption the file had been renamed. It had not — it is still `done-todo-modular-scaffolding.md`, and
+my edit made the link text and its target disagree. Found by re-reading the line before the gate ran,
+not by the gate.
+
+**Recorded side effect:** the generator's *System Analysis / Observability* section is emitted from the
+directory name `docs/observability/`, which no longer exists, so that section is now **empty** and the
+report reports `0 observability`. Cosmetic, noted in `docs/README.md` rather than left unexplained.
 
 ## 6. Tooling checklist
 
