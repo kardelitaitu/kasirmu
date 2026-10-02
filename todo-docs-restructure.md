@@ -422,25 +422,25 @@ report reports `0 observability`. Cosmetic, noted in `docs/README.md` rather tha
 31 files carry a hardcoded `docs/<dir>/`. **Each must be confirmed individually** — the measurement
 below used one combined pattern, so the per-file hit count is not yet attributed to a specific directory.
 
-### 6a — Must change (confirmed load-bearing)
+### 6a — originally a prediction; reconciled in §6e. **8 of 15 changed, 7 needed nothing.**
 
-- [ ] `scripts/generate-records-index.mjs` — **31 hits**, a third of all tooling risk. Directory list,
-      `AREA_KEYWORDS`, and the **output path** (D4).
-- [ ] `scripts/gen-summary.py` — 10
-- [ ] `scripts/test-records-index-escaping.sh` — 6 · **guards the generator; not in the §9 tools table**
-- [ ] `scripts/verify-debt-markers.py` — 5 · **this is what enforces the §7.4 plan-token rule**
-- [ ] `scripts/check.sh` — 4
-- [ ] `scripts/gates.json` — 4
-- [ ] `scripts/verify-doc-uniqueness.py` — 4
-- [ ] `scripts/verify-ci-docs-drift.py` — 3
-- [ ] `scripts/__tests__/verify-ci-docs-drift.test.mjs` — 2 · **guards the guard**
-- [ ] `scripts/check-mapper-alignment.py` — 2 · `scripts/find-oldest-md.sh` — 2
-- [ ] `scripts/profile.ps1` — 2 · `scripts/test-ci-routing.sh` — 2 · `scripts/release.sh` — 2
-- [ ] `scripts/bump-version.ps1` — 1
-- [ ] `.agents/skills/docs-auditor/SKILL.md` — names `docs/audits/frontend/css-verification.md`,
-      `docs/operations/agent-gates.md`, `docs/records/sqlite-pg-roles.md`
-- [ ] **AGENTS.md §5.1** — names `docs/audits/frontend/css-verification.md`
-- [ ] `docs/README.md` — the curated directory table (9 hits)
+- [x] `scripts/generate-records-index.mjs` — `48fad0afa` (stale `scattered` list retired; the
+      **output path never moved**, which is why its 31 predicted hits cost one edit)
+- [x] `scripts/gen-summary.py` — `85501cc3b` · **the 5th functional break, found last round**
+- [x] `scripts/verify-debt-markers.py` — `eab1c09f9` (dead `CITATION_DIRS` entries dropped)
+- [x] `scripts/verify-ci-docs-drift.py` — `bb82984a9` (prose only; **another session had already
+      fixed the logic** with a dual-path `RELEASE_CHECKLIST`)
+- [x] `scripts/test-ci-routing.sh` — `e85eaf368` (added a case pinning the legacy release path)
+- [x] `scripts/release.sh` — `9fd33e279` · `scripts/bump-version.ps1` — `9fd33e279`
+- [x] `.agents/skills/docs-auditor/SKILL.md` — `afca83144` (one stale path. It does **not** name
+      `css-verification.md`, contrary to this list — see §6e)
+- [x] **AGENTS.md §5.1** — repointed in B2 (`a0c4f7b90`) · `docs/README.md` — repointed in B2
+- [x] Needed **nothing**: `test-records-index-escaping.sh`, `check.sh`, `gates.json`,
+      `verify-doc-uniqueness.py`, `__tests__/verify-ci-docs-drift.test.mjs`,
+      `check-mapper-alignment.py`, `find-oldest-md.sh`, `profile.ps1`
+
+**Not on this list, and both had to change:** `.github/workflows/dev-ci.yml` and
+`scripts/verify-root-policy.py`. See §6e.
 
 ### 6c — FOUND AFTER the moves: 51 stale script refs, and ONE real functional break
 
@@ -551,7 +551,7 @@ against the nine commits that carried the tooling work, the record is:
 | | Count |
 |---|---:|
 | §6a script files predicted to need changing | 15 |
-| …that actually needed changing | **7** |
+| …that actually needed changing | **8** |
 | …that needed nothing | 8 |
 | **Tooling files that DID need changing and were NOT in §6a** | **2** |
 
