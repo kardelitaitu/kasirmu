@@ -60,6 +60,10 @@ ROOT_FILE_ALLOWLIST = frozenset({
     # Owner plan docs, same class as the two above: named individually on purpose,
     # because the allowlist is names-not-patterns so adding one is a decision.
     "todo-android-4gb-optimization-audit.md", "todo-optimize-crates.md",
+    # todo-docs-restructure.md — the docs/ restructure plan (A1-A5, B0-B4). Same
+    # class: an owner plan doc at the root, added deliberately per AGENTS.md 7.4,
+    # which puts plan files at the root and exempts `todo-` names in check-dead-refs.
+    "todo-docs-restructure.md",
     "manager-codebase-review-checklist.md",
     "manager-codebase-review-decisions.md",
     "manager-codebase-review.md",
