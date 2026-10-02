@@ -286,6 +286,25 @@ impl Store<'_> {
                 ),
             })?
             .to_string();
+        let (old_currency, old_timezone): (String, String) = self
+            .conn
+            .query_row(
+                "SELECT currency, timezone FROM locations WHERE id = ?1",
+                params![id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .map_err(|err| match err {
+                rusqlite::Error::QueryReturnedNoRows => CoreError::NotFound {
+                    entity: "location_profile",
+                    id: id.to_owned(),
+                },
+                other => CoreError::Db(other),
+            })?;
+
+        if old_currency != currency || old_timezone != timezone {
+            crate::regional::verify_regional_mutation_allowed(self.conn, id)?;
+        }
+
         let affected = self.conn.execute(
             "UPDATE locations SET name = ?1, address = ?2, tax_id = ?3,
              currency = ?4, timezone = ?5, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
