@@ -802,14 +802,21 @@ problem at all.
 3. **`docs/coverage/` and `docs/src/`** — both settled 2026-10-02: `docs/coverage/` moved to
    `records/benchmarks/coverage-report-2026-07-20.md` (`82186f28e`), and `docs/src/` is generated
    (D1, leave it).
-4. **Two allowlist edits in `scripts/verify-root-policy.py`, outstanding:**
-   - **add `README-technical.md`** — renamed from `README-3.md` on 2026-10-02 (`c6b06dbae`). It is a
-     legitimate root human-entry file; without the entry the root-policy gate keeps flagging it.
-   - **remove `README-2.md`** — that file was deleted long ago and the entry is stale. I found it in
-     the stale-allowlist sweep and left it as "not mine"; it is now confirmed dead.
-   **Not done because that file had another session's uncommitted changes at the time**, and
-   AGENTS.md §7.3 forbids editing a path dirty with someone else's content — a pathspec commit takes
-   the working-tree copy and would have swept their work into mine.
+4. **Allowlist `todo-android-updater.md` and `todo-beta-testing-january-2027.md`.** These are the
+   only root findings now under my control: the other four are another session's scratch. Both are
+   **tracked root plan docs of the same class as nine already in the allowlist**, and
+   `scripts/verify-root-policy.py` already sets the precedent in its own comment — *"Two in-flight
+   plan docs that were left out of their own commits, which made this gate the only thing reporting
+   them"* — for exactly this case. Left to the owner because the file says adding one *"is a decision"*.
+   With these two, the root-policy finding count would fall from **6 to 4**, all four being scratch
+   that belongs deleted or gitignored.
+
+   **Correction, 2026-10-02:** this question previously claimed the allowlist edits were *blocked* by
+   another session's uncommitted changes to `verify-root-policy.py`. **They were not.** I read the
+   ` M` as dirty content without comparing it — and the worktree hash was byte-identical to HEAD.
+   It was the **stale stat-cache entry** that has been misleading me since the JOURNAL split. Done
+   in `873f8feb4`: added `README-technical.md`, removed the dead `README-2.md`, **7 findings to 6**.
+   **Lesson: an ` M` is a claim, not a fact — hash it before acting on it or refusing to.**
 
 ## 11. Incident — a concurrent session switched branches mid-plan
 
