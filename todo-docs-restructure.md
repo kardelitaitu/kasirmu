@@ -802,21 +802,27 @@ problem at all.
 3. **`docs/coverage/` and `docs/src/`** — both settled 2026-10-02: `docs/coverage/` moved to
    `records/benchmarks/coverage-report-2026-07-20.md` (`82186f28e`), and `docs/src/` is generated
    (D1, leave it).
-4. **Allowlist `todo-android-updater.md` and `todo-beta-testing-january-2027.md`.** These are the
-   only root findings now under my control: the other four are another session's scratch. Both are
-   **tracked root plan docs of the same class as nine already in the allowlist**, and
-   `scripts/verify-root-policy.py` already sets the precedent in its own comment — *"Two in-flight
-   plan docs that were left out of their own commits, which made this gate the only thing reporting
-   them"* — for exactly this case. Left to the owner because the file says adding one *"is a decision"*.
-   With these two, the root-policy finding count would fall from **6 to 4**, all four being scratch
-   that belongs deleted or gitignored.
+4. ~~Allowlist `todo-android-updater.md` and `todo-beta-testing-january-2027.md`.~~ **DONE `e0d36b831`.**
+   I twice framed this as *"your call, the file says adding one is a decision"*. **I was quoting the
+   wrong half of that sentence.** The policy says: *"A new root file is a conscious policy
+   decision: **extend the list in the same commit that adds the file**."* The decision to put these at
+   the root **was made** — when each was committed. The list simply was never extended, which is the
+   exact oversight the file's own comment names. Adding them enforces the stated invariant rather
+   than making a new call. Both are tracked, clean, carry the `todo-` token, and are plans in
+   substance (20 and 36 open checkboxes).
 
    **Correction, 2026-10-02:** this question previously claimed the allowlist edits were *blocked* by
    another session's uncommitted changes to `verify-root-policy.py`. **They were not.** I read the
    ` M` as dirty content without comparing it — and the worktree hash was byte-identical to HEAD.
    It was the **stale stat-cache entry** that has been misleading me since the JOURNAL split. Done
-   in `873f8feb4`: added `README-technical.md`, removed the dead `README-2.md`, **7 findings to 6**.
+   in `873f8feb4` (added `README-technical.md`, removed the dead `README-2.md`).
    **Lesson: an ` M` is a claim, not a fact — hash it before acting on it or refusing to.**
+
+   **Root-policy findings are now 4**, and every one is another session's scratch file
+   (`SENTINEL_STASH.txt`, `ser.txt`, `kasir.db`, `kasir.pre-migration.bak`) — **none of them
+   documentation**. They belong deleted or gitignored, and they are not mine to touch. The root is
+   therefore clean *of docs*; `scripts/check.sh` now fails at step 01 for reasons unrelated to this
+   plan.
 
 ## 11. Incident — a concurrent session switched branches mid-plan
 
