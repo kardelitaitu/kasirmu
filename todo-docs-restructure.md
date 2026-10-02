@@ -582,11 +582,47 @@ $py = (Get-Command python3 -ErrorAction SilentlyContinue) ? 'python3' : 'python'
 & $py .agents/skills/docs-auditor/scripts/check-orphans.py;                 if ($LASTEXITCODE) { exit 1 }
 & $py .agents/skills/docs-auditor/scripts/check-adr-status.py;              if ($LASTEXITCODE) { exit 1 }
 node scripts/generate-records-index.mjs --check;                           if ($LASTEXITCODE) { exit 1 }
-& 'C:Program FilesGitinash.exe' -c 'bash scripts/check.sh';          if ($LASTEXITCODE) { exit 1 }
+& 'C:\Program Files\Git\bin\bash.exe' -c 'bash scripts/check.sh';          if ($LASTEXITCODE) { exit 1 }
 ```
 
 `bash scripts/check.sh` must go through Git's bash by full path (AGENTS.md §5) — bare `bash` resolves
-to WSL and hangs.
+to WSL and hangs. *(That line was itself wrong until 2026-10-02: the path had been written
+without its backslashes, so the acceptance command **as printed could not have run at all** — the
+`b` in `bin` and `bash` had become literal backspace bytes. Found only because the run below
+was attempted. Fixed first, then run.)*
+
+### 8a — RUN 2026-10-02: **5 of 6 pass. The 6th fails on findings that are not this plan's.**
+
+| # | Step | Result |
+|---|---|---|
+| 1 | `check-dead-refs.py --self-test` | **PASS** — 41 cases |
+| 2 | `check-dead-refs.py` | **PASS** — 0 unresolved across 13 live docs |
+| 3 | `check-orphans.py` | FAIL — exit 1 |
+| 4 | `check-adr-status.py` | **PASS** — 0 drift across 59 rows |
+| 5 | `generate-records-index.mjs --check` | **PASS** — 102 records |
+| 6 | `scripts/check.sh` | FAIL — exit 1, aborts at step 01 in 1.3s |
+
+**Step 3 has two causes, neither of them this plan's:**
+- **3 scan errors** for `docs/decisions/2026-10-04-adr63-event-sink-seam.md` — a tracked file another
+  session has deleted in its working tree and not committed. Clears when they land.
+- **3 pre-existing findings** in `plan-c1-install-key-s2b-s2c.md` (h2 to h4 skips at :167, :193,
+  :237). Triaged per the skill's own rule — *judge before fixing* — and they are genuine: each
+  `####` has a **bold paragraph** for a parent rather than a real heading. Cosmetic, but a 3-line
+  change inside another session's plan doc. **Left alone deliberately.**
+
+**Step 6 aborts at step 01, `verify-root-policy.py`: 7 stray root files.** One of the original eight
+**was mine** — `todo-docs-restructure.md` itself. That allowlist is **names-not-patterns** (*"adding
+one is a decision"*) and already carries nine plan docs, so the correct fix was to name this one
+beside them: **`0aa3528ca`, 8 findings to 7.** The seven left are `README-3.md`,
+`todo-android-updater.md` and `todo-beta-testing-january-2027.md` (all pre-existing), plus
+`SENTINEL_STASH.txt`, `ser.txt`, `kasir.db` and `kasir.pre-migration.bak` (another session's
+scratch and local artifacts). **Those belong deleted or gitignored, not allowlisted** — allowlisting
+scratch would make a gate permanently approve of junk.
+
+**So this file stays `todo-docs-restructure.md`.** §7.4: `done-` is earned only when the acceptance
+command is RUN **and PASSED**. It ran, and it did not pass. What blocks it is a pre-existing heading
+structure, a concurrent session's uncommitted deletion, and five root files that are not a docs
+problem at all.
 
 ## 9. Out of scope — rejected on purpose
 
