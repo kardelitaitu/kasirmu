@@ -104,10 +104,12 @@ implementation-status walkthrough.
 | 60 | [Orientation & Adaptive Layout Strategy — the hybrid ladder (shell media queries, container queries, a declared escape hatch, and a walker gate)](./2026-09-21-adr60-orientation-and-adaptive-layout-strategy.md) | Implemented (2026-09-21) — all four tiers landed and gated; 7 sheets migrated |
 | 61 | [Architecture Boundary Rule Tiers — a named rule for re-export-only edges and a governed expiry](./2026-09-28-adr61-architecture-boundary-rule-tiers.md) | Implemented (2026-09-28) — the core-type-shim rule, the quarter-renewal invariant, the baseline re-tier, the currency edge closure and all seven type-shim edges closed and the baseline emptied to 0 tracked findings |
 | 62 | [Module Seam Taxonomy — command contributors, projection subscribers, and the reporting-facade exception](./2026-09-30-adr62-module-seam-taxonomy.md) | Accepted (2026-09-30) — the taxonomy is written and grounded in the Phase 0 handler census; the check that enforces it (a handler_type classification gate) is not built |
-| 63 | [The EventSink Seam — grading R10 #3 with a rule that arrived at zero](./2026-10-04-adr63-event-sink-seam.md) | Implemented (2026-10-04) — rule `event-sink-seam` landed at zero findings with no baseline; the four remaining raw-handle broadcasts were routed through BridgeCtx::emitter; R10's other three invariants disposed of by measurement (D6) |
+| 63 | [The EventSink Seam — grading R10 #3 with a rule that arrived at zero](./2026-10-01-adr63-event-sink-seam.md) | Implemented (2026-10-04) — rule `event-sink-seam` landed at zero findings with no baseline; the four remaining raw-handle broadcasts were routed through BridgeCtx::emitter; R10's other three invariants disposed of by measurement (D6) |
+| 64 | [The Tender Vocabulary and the Offline Tender State — one method name per payment, and no electronic tender settles on trust](./2026-10-02-adr64-tender-vocabulary-and-offline-tender-state.md) | Proposed (2026-10-02) — every decision D1–D6 is TO BUILD; §1 measurements taken in this checkout on branch `0.0.41` |
 
 ## Research notes
 
+- [Global Kernel and Region Packs — strategy note](./2026-10-02-global-kernel-and-region-pack-strategy.md) — the demoted ADR-64 draft; decides nothing, defers to ADR-59
 - [On-Device ML for Demand Forecasting](./2026-07-20-ai-demand-forecasting-research.md)
 - [Cloud Warehouse Analytics Export](./2026-07-20-cloud-warehouse-analytics-research.md)
 - [CRDT-Based Conflict-Free Replication](./2026-07-20-crdt-sync-research.md)
