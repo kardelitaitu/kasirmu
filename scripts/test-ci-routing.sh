@@ -128,7 +128,12 @@ check "docs only"           "rust=false ui=false i18n=false website=false docs=t
 # docs/releases/ matches BOTH rules. Pinned deliberately: it is the one path that
 # legitimately belongs to two buckets, and a router that made them mutually
 # exclusive would silently stop checking release docs for drift.
-check "release doc (both)"  "rust=false ui=false i18n=false website=false docs=true release=true"  "docs/releases/checklist.md"
+check "release doc (both)"  "rust=false ui=false i18n=false website=false docs=true release=true"  "docs/records/releases/checklist.md"
+# The legacy shape is pinned too: docs/releases/ moved to docs/records/releases/ on
+# 2026-10-02, and the router must keep matching both so a revert cannot quietly
+# stop exercising the release chain. This case failed until the pattern was
+# widened to ^docs/(records/)?releases/ -- see todo-docs-restructure.md 6c.
+check "release doc (legacy)" "rust=false ui=false i18n=false website=false docs=true release=true"  "docs/releases/checklist.md"
 check "gate manifest"       "rust=false ui=false i18n=false website=false docs=true release=false" "scripts/gates.json"
 check "drift checker"       "rust=false ui=false i18n=false website=false docs=true release=false" "scripts/verify-ci-docs-drift.py"
 # Release toolchain. Each of these can break a shipped auto-update while every

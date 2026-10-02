@@ -203,7 +203,7 @@ jobs:
           # rotate or typo that key and every client auto-update rejects the
           # signature, which is precisely what check-updater-compat.mjs detects.
           grep -qE \
-            '^scripts/(check-release-version|check-updater-compat|generate-latest-json|verify-updater-signature)\.mjs$|^scripts/updater-compat-check/|^apps/desktop-tauri/tauri\.conf\.json$|^apps/desktop-tauri/Cargo\.toml$|^\.github/workflows/release\.yml$|^docs/releases/' \
+            '^scripts/(check-release-version|check-updater-compat|generate-latest-json|verify-updater-signature)\.mjs$|^scripts/updater-compat-check/|^apps/desktop-tauri/tauri\.conf\.json$|^apps/desktop-tauri/Cargo\.toml$|^\.github/workflows/release\.yml$|^docs/(records/)?releases/' \
             "$files_file" \
             && echo "release=true" >> "$GITHUB_OUTPUT" || echo "release=false" >> "$GITHUB_OUTPUT"
 
