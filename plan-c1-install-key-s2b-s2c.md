@@ -164,7 +164,7 @@ desktop `apps/desktop-tauri/src/lib.rs` setup closure, mobile `:114`. Each resol
 *Gate:* boot with no keychain entry generates and logs; boot with a durable-unavailable
 keyring falls back and logs; H2/H3/H4 tests green.
 
-#### S2b-2a — the keychain-half prerequisite ✅ **DONE 2026-09-29** (commit `f2932f6f8`)
+### S2b-2a — the keychain-half prerequisite ✅ **DONE 2026-09-29** (commit `f2932f6f8`)
 
 **The slice as written above was not implementable, and this is why.** It requires the
 shells to "generate one only when the keyring is durable" — but nothing could answer that
@@ -190,7 +190,7 @@ it — `kasirmu-crypto` and `kasirmu-security` are deliberate siblings):
 
 The audit stamp's "88 tests pass" was already 6 low; corrected to the measured 100.
 
-#### S2b-2b — the boot half ✅ **DONE 2026-09-29** (commits `625c47290`, `5813b9208`)
+### S2b-2b — the boot half ✅ **DONE 2026-09-29** (commits `625c47290`, `5813b9208`)
 
 Wiring `resolve_install_key` into the two shells' setup closures.
 
@@ -234,7 +234,7 @@ New CLI subcommand re-writes every at-rest row under a newly rotated key. Needs
 *Gate:* a fixture with rows under legacy + install keys rekeys and reads back; an
 interrupted rekey leaves every row readable under the old key.
 
-#### S2c — the ordering, ruled 2026-09-29: park the OLD key, promote the NEW one
+### S2c — the ordering, ruled 2026-09-29: park the OLD key, promote the NEW one
 
 **The ordering originally written above — "park the new key, re-encrypt under it,
 promote" — cannot satisfy this slice's own gate**, and the reason is a property of the
