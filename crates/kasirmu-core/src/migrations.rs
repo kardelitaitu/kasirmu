@@ -444,6 +444,11 @@ pub const ALL: &[Migration] = &[
         id: "20261016_shifts_drop_cross_db_fks.sql",
         sql: include_str!("../migrations/20261016_shifts_drop_cross_db_fks.sql"),
     },
+    // ADR-64 (D1 & D5): payments.method and payments.gateway_status closed sets.
+    Migration {
+        id: "20261017_payments_method_check.sql",
+        sql: include_str!("../migrations/20261017_payments_method_check.sql"),
+    },
 ];
 
 /// Postgres DDL for the full schema, parallel to the SQLite `init.sql`.

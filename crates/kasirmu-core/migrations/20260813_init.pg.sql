@@ -165,6 +165,15 @@ BEGIN
         EXECUTE format('ALTER TABLE public.%I RENAME TO %I', 'shifts_new', 'shifts');
     END IF;
 
+    -- 'payments_new' -> 'payments'   (20261017_payments_method_check.sql)
+    IF EXISTS (SELECT 1 FROM information_schema.tables
+                WHERE table_schema = 'public' AND table_name = 'payments_new')
+       AND NOT EXISTS (SELECT 1 FROM information_schema.tables
+                WHERE table_schema = 'public' AND table_name = 'payments')
+    THEN
+        EXECUTE format('ALTER TABLE public.%I RENAME TO %I', 'payments_new', 'payments');
+    END IF;
+
     -- 'user_location_access'.'store_id' -> 'location_id'   (20260906_rename_store_to_location.sql)
     IF EXISTS (SELECT 1 FROM information_schema.columns
                 WHERE table_schema = 'public' AND table_name = 'user_location_access'
@@ -1188,18 +1197,6 @@ BEGIN
             ('loyalty_transactions', 'txn_type', 'TEXT', NULL::text, true),
             ('loyalty_transactions', 'description', 'TEXT', NULL::text, true),
             ('loyalty_transactions', 'created_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
-            ('payments', 'id', 'TEXT', NULL::text, true),
-            ('payments', 'sale_id', 'TEXT', NULL::text, true),
-            ('payments', 'method', 'TEXT', NULL::text, true),
-            ('payments', 'amount_minor', 'BIGINT', NULL::text, true),
-            ('payments', 'currency', 'TEXT', NULL::text, true),
-            ('payments', 'created_at', 'TEXT', NULL::text, true),
-            ('payments', 'gateway_reference', 'TEXT', NULL::text, false),
-            ('payments', 'gateway_status', 'TEXT', NULL::text, false),
-            ('payments', 'gateway_response', 'TEXT', NULL::text, false),
-            ('payments', 'settled_at', 'TEXT', NULL::text, false),
-            ('payments', 'settled_by', 'TEXT', NULL::text, false),
-            ('payments', 'idempotency_key', 'TEXT', NULL::text, false),
             ('promotion_applications', 'id', 'TEXT', NULL::text, true),
             ('promotion_applications', 'promotion_id', 'TEXT', NULL::text, true),
             ('promotion_applications', 'sale_id', 'TEXT', NULL::text, true),
@@ -1254,6 +1251,18 @@ BEGIN
             ('tables', 'sort_order', 'BIGINT', '0', true),
             ('tables', 'created_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
             ('tables', 'updated_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('payments', 'id', 'TEXT', NULL::text, true),
+            ('payments', 'sale_id', 'TEXT', NULL::text, true),
+            ('payments', 'method', 'TEXT', NULL::text, true),
+            ('payments', 'amount_minor', 'BIGINT', NULL::text, true),
+            ('payments', 'currency', 'TEXT', NULL::text, true),
+            ('payments', 'created_at', 'TEXT', NULL::text, true),
+            ('payments', 'gateway_reference', 'TEXT', NULL::text, false),
+            ('payments', 'gateway_status', 'TEXT', NULL::text, false),
+            ('payments', 'gateway_response', 'TEXT', NULL::text, false),
+            ('payments', 'settled_at', 'TEXT', NULL::text, false),
+            ('payments', 'settled_by', 'TEXT', NULL::text, false),
+            ('payments', 'idempotency_key', 'TEXT', NULL::text, false),
             ('inventory_transactions', 'id', 'TEXT', NULL::text, true),
             ('inventory_transactions', 'type', 'TEXT', NULL::text, true),
             ('inventory_transactions', 'location_id', 'TEXT', NULL::text, true),
@@ -2890,17 +2899,6 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_loyalty_redeem_sale
     ON loyalty_transactions(account_id, sale_id)
     WHERE sale_id IS NOT NULL AND txn_type = 'redeem';
 
-CREATE TABLE IF NOT EXISTS payments (
-    id          TEXT PRIMARY KEY,
-    sale_id     TEXT NOT NULL REFERENCES sales(id) ON DELETE CASCADE,
-    method      TEXT NOT NULL,
-    amount_minor BIGINT NOT NULL,
-    currency    TEXT NOT NULL,
-    created_at  TEXT NOT NULL
-, gateway_reference TEXT, gateway_status TEXT, gateway_response TEXT, settled_at TEXT, settled_by TEXT, idempotency_key TEXT);
-
-CREATE UNIQUE INDEX IF NOT EXISTS idx_payments_idempotency_key ON payments(idempotency_key);
-
 CREATE TABLE IF NOT EXISTS promotion_applications (
     id          TEXT PRIMARY KEY,
     promotion_id TEXT NOT NULL REFERENCES promotions(id),
@@ -2964,6 +2962,30 @@ CREATE TABLE IF NOT EXISTS tables (
     created_at      TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
     updated_at      TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'))
 );
+
+CREATE TABLE IF NOT EXISTS "payments" (
+    id                TEXT PRIMARY KEY,
+    sale_id           TEXT NOT NULL REFERENCES sales(id) ON DELETE CASCADE,
+    method            TEXT NOT NULL CHECK (method IN (
+        'cash', 'card', 'card_debit', 'card_credit',
+        'qris_manual', 'qris', 'bank_transfer', 'ewallet',
+        'open_bill', 'credit', 'pay_later', 'other'
+    )),
+    amount_minor      BIGINT NOT NULL,
+    currency          TEXT NOT NULL,
+    created_at        TEXT NOT NULL,
+    gateway_reference TEXT,
+    gateway_status    TEXT CHECK (gateway_status IN (
+        'pending', 'authorized', 'confirmed', 'settled',
+        'failed', 'refunded', 'chargeback'
+    ) OR gateway_status IS NULL),
+    gateway_response  TEXT,
+    settled_at        TEXT,
+    settled_by        TEXT,
+    idempotency_key   TEXT
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_payments_idempotency_key ON payments(idempotency_key);
 
 CREATE TABLE IF NOT EXISTS inventory_transactions (
     id                TEXT PRIMARY KEY,                              -- UUID v7

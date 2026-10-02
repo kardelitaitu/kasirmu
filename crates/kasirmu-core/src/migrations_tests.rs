@@ -3548,3 +3548,76 @@ fn stock_summary_negative_guard_is_not_an_unconditional_check() {
 // its first apply is always the *whole* registry and therefore byte-identical
 // every iteration, so it clones one cached apply via `final_schema()` instead.
 // ---------------------------------------------------------------------------
+
+#[test]
+fn payments_method_check_and_gateway_status_constraints_enforced() {
+    let conn = fresh_db();
+
+    // Seed a dummy sale for FK
+    conn.execute(
+        "INSERT OR IGNORE INTO sales (id, total_minor, currency, line_count, status)
+         VALUES ('sale-pm-test', 1000, 'IDR', 1, 'completed')",
+        [],
+    )
+    .unwrap();
+
+    let valid_methods = [
+        "cash", "card", "card_debit", "card_credit",
+        "qris_manual", "qris", "bank_transfer", "ewallet",
+        "open_bill", "credit", "pay_later", "other",
+    ];
+
+    for (i, method) in valid_methods.iter().enumerate() {
+        let res = conn.execute(
+            "INSERT INTO payments (id, sale_id, method, amount_minor, currency, created_at)
+             VALUES (?1, 'sale-pm-test', ?2, 1000, 'IDR', '2026-10-02T00:00:00.000Z')",
+            rusqlite::params![format!("pay-valid-{i}"), method],
+        );
+        assert!(res.is_ok(), "valid method {method} must succeed: {res:?}");
+    }
+
+    // Invalid method must be rejected by CHECK constraint
+    for invalid in ["bitcoin", "cheque", "stripe_direct", "CASH", ""] {
+        let res = conn.execute(
+            "INSERT INTO payments (id, sale_id, method, amount_minor, currency, created_at)
+             VALUES (?1, 'sale-pm-test', ?2, 1000, 'IDR', '2026-10-02T00:00:00.000Z')",
+            rusqlite::params![format!("pay-invalid-{invalid}"), invalid],
+        );
+        assert!(res.is_err(), "invalid method {invalid} must be rejected by CHECK constraint");
+    }
+
+    let valid_statuses = [
+        "pending", "authorized", "confirmed", "settled",
+        "failed", "refunded", "chargeback",
+    ];
+
+    for (i, status) in valid_statuses.iter().enumerate() {
+        let res = conn.execute(
+            "INSERT INTO payments (id, sale_id, method, amount_minor, currency, created_at, gateway_status)
+             VALUES (?1, 'sale-pm-test', 'card', 1000, 'IDR', '2026-10-02T00:00:00.000Z', ?2)",
+            rusqlite::params![format!("pay-status-{i}"), status],
+        );
+        assert!(res.is_ok(), "valid gateway_status {status} must succeed: {res:?}");
+    }
+
+    // Invalid gateway_status must be rejected
+    for invalid_status in ["processing", "waiting", "PENDING", "unknown"] {
+        let res = conn.execute(
+            "INSERT INTO payments (id, sale_id, method, amount_minor, currency, created_at, gateway_status)
+             VALUES (?1, 'sale-pm-test', 'card', 1000, 'IDR', '2026-10-02T00:00:00.000Z', ?2)",
+            rusqlite::params![format!("pay-status-inv-{invalid_status}"), invalid_status],
+        );
+        assert!(res.is_err(), "invalid gateway_status {invalid_status} must be rejected");
+    }
+
+    // Reconstructed indexes must exist on payments
+    let index_count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND tbl_name = 'payments'
+             AND name IN ('idx_payments_idempotency_key', 'idx_payments_sale_id')",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(index_count, 2, "both idx_payments_idempotency_key and idx_payments_sale_id must exist");
+}
