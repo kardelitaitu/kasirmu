@@ -61,8 +61,13 @@ is current:
       **A1: exit 0 — 22 records, up from 13.**
 - [x] **I4** Nothing is left staged. **A1: `git diff --cached --name-only` empty.**
 - [ ] **I5** `bash scripts/check.sh` passes on the final commit.
-- [ ] **I6** No doc loses its `todo-`/`plan-`/`prd-`/`done-` token. `check-dead-refs.py` keys its
-      exemption off the filename, and `verify-debt-markers.py` enforces it.
+- [x] **I6** No doc loses its `todo-`/`plan-`/`prd-`/`done-` token. **Verified 2026-10-02:**
+      91 token-bearing tracked files, **0 missing from the working tree** — nothing was lost by any of
+      the 93 moves. `check-dead-refs.py` keys its exemption off the filename, and
+      `verify-debt-markers.py` enforces it (exit 0 after the §6d scope fix).
+      *Incidental confirmation:* `done-todo-modular-scaffolding.md` is at the root, which is exactly the
+      name I had to correct a wrong link to in B4c — I guessed the rename, got it backwards, and the
+      correction was confirmed rather than assumed.
 
 ## 3. DO NOT TOUCH
 
@@ -575,7 +580,12 @@ where to look; do not treat it as the set of places that are broken.**
 
 ### 6b — Confirmed incidental, no change
 
-- [ ] `scripts/build-docs.sh` (8) and `scripts/build-docs.ps1` (8) — **D1, mdBook, must not change**
+- [x] `scripts/build-docs.sh` (8) and `scripts/build-docs.ps1` (8) — **D1 said "must not
+      change" and this plan CHANGED them, correctly.** D1 protects `docs/src/` from being *moved*; it
+      does not exempt a **consumer** that must be **repointed**. Both had a functional break
+      (`docs/releases/*.md` copy) — fixed in `d00c08653`, proved by *executing* the copy and counting
+      the 10 files that now land. This is the clearest case in the plan of a guardrail that reads
+      absolute and is not.
 - [ ] `docs/book.toml` (1) — **D1**
 - [ ] `ui/package.json` (1) — `typedoc --out ../docs/src/api/ts`. Points *into*`docs/src/` (D1), not a moving dir.
 - [ ] `crates/kasirmu-api/Cargo.toml` (1) — a **provenance comment**, not metadata. Goes stale; harmless.
@@ -607,12 +617,19 @@ where to look; do not treat it as the set of places that are broken.**
 10. `node scripts/generate-records-index.mjs --check` → **exit 0** (I3)
 11. `git show --stat HEAD` → the file list is **exactly** the batch's, nothing else
 
-**Hand-fixes required (7 links, 6 files)** — measured, not exhaustive-to-completion:
+**Hand-fixes required (7 links, 6 files)** — measured, not exhaustive-to-completion.
+**All six done**, proven rather than asserted: `check-dead-refs.py` reports **0 unresolved references
+across 13 live docs** and has done so since B2. Counts below are what the *original* blast radius
+predicted, not what was needed — the two launch-test guides carried **3** occurrences each, not 2.
 
-- [ ] `docs/guides/platform/windows-launch-test.md` (2)
-- [ ] `docs/guides/platform/linux-launch-test.md` (2)
-- [ ] `docs/decisions/README.md` (1)
-- [ ] `docs/decisions/2026-09-11-adr49-headless-command-bridge.md` (1)
+- [x] `docs/guides/platform/windows-launch-test.md` (3) — fixed in `afca83144`
+- [x] `docs/guides/platform/linux-launch-test.md` (3) — fixed in `afca83144`
+- [x] `docs/decisions/README.md` (1) — fixed in `a0c4f7b90`
+- [x] `docs/decisions/2026-09-11-adr49-headless-command-bridge.md` (1) — fixed in `2a9b73e22`
+- [x] `docs/decisions/2026-09-11-adr51-sealed-settings-ingest-policy.md` (1) — the link was already
+      valid; B3 left it alone, correctly
+- [x] ~~`docs/archived/2026-08-30-glm-5.3-tauri-app-review.md`~~ (1) — moved to
+      `records/audits/` in B1 and repointed twice since (B1 depth, B3 findings path)
 - [ ] `docs/decisions/2026-09-11-adr51-sealed-settings-ingest-policy.md` (1)
 - [ ] `docs/archived/2026-08-30-glm-5.3-tauri-app-review.md` (1)
 
