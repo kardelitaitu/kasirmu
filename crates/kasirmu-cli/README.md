@@ -18,7 +18,7 @@ CLI tool for kasir.mu maintenance — migrations, backup, export, and data CRUD.
 | `kasir user list\|get\|create` | User CRUD (username, pin_hash, display_name, role_id) |
 | `kasir backup --output <path>` | Online SQLite backup to a file |
 | `kasir restore --input <path>` | Restore DB from a backup file (file copy) |
-| `kasir export <daily-summary\|sales-by-hour>` | CSV report written to stdout |
+| `kasir export-csv <kind>` | CSV report for a time window, written to stdout (scaffold — `kind` e.g. `daily-summary`) |
 | `kasir export --output <path> --password <pw>` | Encrypted `.kasirpkg` export (Argon2id + AES-256-GCM); `--types` selects data kinds |
 | `kasir import --input <path> --password <pw>` | Decrypt and inspect a `.kasirpkg` file; `--dry-run` reads metadata without writing |
 | `kasir seed-demo [--retail\|--restaurant\|--all] [--days <n>]` | Seed demo data for analytics and report development (default 90 days) |
@@ -29,7 +29,9 @@ CLI tool for kasir.mu maintenance — migrations, backup, export, and data CRUD.
 
 ## Notes
 
-- DB path defaults to `./kasir.db`; use `--db <path>` (global flag) to override.
+- DB path defaults to `var/kasir.db`; use `--db <path>` (global flag) to override. It used to
+  default to `./kasir.db` — the local SQLite default moved under `var/` on 2026-10-01 (`0aba04b35`),
+  and this line was stale until now.
 - Prices and monetary values are `i64` minor units (e.g. `350` for $3.50).
 - `kasir import` writes the decrypted payload (products, categories, sales, customers, users, settings) inside a single transaction (sale imports go through the tx-aware `Store::create_sale_in_tx`); `--dry-run` prints metadata and writes nothing. **Settings are filtered, not copied**: every settings row is run through the shared platform-core predicate `is_non_exportable_setting_key`, so credential and device-bound keys are withheld by `export` and SKIPPED by `import` (the count of skipped rows goes to stderr) while ordinary settings such as `store.name` and `currency.default` still travel with their values. The predicate lives in platform core, not in the CLI, so the desktop and tablet export lanes apply the same rule. This filters `.kasirpkg` settings only — a whole-file `.db` or `.backup.db` snapshot is not filtered and still carries everything.
 
