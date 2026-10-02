@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "description": "Handler classification registry for the soft namespace-governance rule (docs/architecture/module-namespace-governance.md, Rule 2). Every EventHandler impl a production file declares must appear here with one of the ADR-62 D4 categories. The populating classification is the Phase 0 census (docs/architecture/handler-census-phase0.md §3); scripts/verify-namespace-governance.py fails when a NEW impl type is absent, and deliberately does not re-grade existing rows.",
+  "description": "Handler classification registry for the soft namespace-governance rule (docs/architecture/module-namespace-governance.md, Rule 2). Every EventHandler impl a production file declares must appear here with one of the ADR-62 D4 categories. The populating classification is the Phase 0 census (docs/records/superseded/handler-census-phase0.md §3); scripts/verify-namespace-governance.py fails when a NEW impl type is absent, and deliberately does not re-grade existing rows.",
   "categories": {
     "command_contributor": "Runs synchronously in the sale transaction and may reject it (ADR-62 D1/D2).",
     "projection_subscriber": "Runs after commit, derives a projection, may not reject the sale (ADR-62 D1/D3).",

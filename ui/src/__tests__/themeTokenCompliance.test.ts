@@ -1348,7 +1348,7 @@ const UNDECLARED_LEAD_FAMILIES: Array<{ name: string; file: string; reason: stri
       + 'example-tenant) -- none of which the app bundles. Whether that costs anything is '
       + 'an open question this rule does NOT answer: `var(--brand-font-family)` has 0 '
       + 'references anywhere in ui, apps, crates or website, so the slot is currently '
-      + 'written and never read -- see docs/plans/notes.md item 32. Bundling tenant faces '
+      + 'written and never read -- see docs/plans/_active/notes.md item 32. Bundling tenant faces '
       + 'or deleting the slot is a branding decision (docs/decisions/'
       + '2026-07-15-whitelabel-branding-system.md), not this plan\'s.',
   },
@@ -3131,7 +3131,7 @@ describe("literal tail vs block relation", () => {
 
 /* ── Appended at the bottom 2026-09-15: the leading-token FREEZE, not a rule ──
  *
- * docs/plans/notes.md item 10 (:1360) parks the question this guard
+ * docs/plans/_active/notes.md item 10 (:1360) parks the question this guard
  * deliberately does NOT answer: is the three-step --leading-* scale a target
  * the UI normalises onto, or a convention literals are allowed to take? :1364
  * says answer the scale question before funding any sweep, so this block
@@ -3540,7 +3540,7 @@ describe("leading-token freeze -- appended closes (definition values, a fourth s
       const nowNames = [...LEADING_STEP_VALUES.keys()].sort();
       expect(
         nowNames,
-        "the --leading-* namespace gained or lost a step. A FOURTH step is not drift and is not this guard's to rule on: item 10 (docs/plans/notes.md :1360) parks the scale question with the owner, so a new spelling has to be said out loud and restated here WITH that decision:",
+        "the --leading-* namespace gained or lost a step. A FOURTH step is not drift and is not this guard's to rule on: item 10 (docs/plans/_active/notes.md :1360) parks the scale question with the owner, so a new spelling has to be said out loud and restated here WITH that decision:",
       ).toEqual(frozenNames);
       for (const [name, values] of LEADING_STEP_VALUES) {
         const frozen = LEADING_STEP_BASELINE.find(([n]) => n === name)?.[1] ?? "(unfrozen)";

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Verify the kasirmu-core production line count stays at or below its baseline.
 
-Phase 3 P3.4 (docs/architecture/phase3-implementation-tickets.md section 5).
+Phase 3 P3.4 (docs/records/superseded/phase3-implementation-tickets.md section 5).
 The plan Core Size Ratchet (section 11.1) needs a measured ceiling: extraction
 can otherwise be undone by new logic landing back in core with nothing to notice.
 
