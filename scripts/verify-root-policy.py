@@ -52,11 +52,11 @@ ROOT_FILE_ALLOWLIST = frozenset({
     ".tarpaulin.toml", ".env.example",
     # Human entry points.
     "README.md", "CHANGELOG.md", "CONTRIBUTING.md", "LICENSE", "AGENTS.md",
-    "ARCHITECTURE.md", "DSH.md", "done-todo-rebrand.md", "done-todo-rebrand-2.md",
-    "done-todo-tablet-device-verify.md", "done-todo-tablet-dialog-content-uri.md",
-    "done-todo-project-folder-restructure.md",
+    "ARCHITECTURE.md", "DSH.md",
+
+
     "todo-open-debt-program.md", "todo-review-type.md",
-    "done-todo-owner-rulings.md", "done-todo-sync-endpoint-derivation.md",
+
     # Owner plan docs, same class as the two above: named individually on purpose,
     # because the allowlist is names-not-patterns so adding one is a decision.
     "todo-android-4gb-optimization-audit.md", "todo-optimize-crates.md",
@@ -77,7 +77,7 @@ ROOT_FILE_ALLOWLIST = frozenset({
     # its own acceptance command ran and passed (3543 core tests, all governance
     # gates green), which is what §7.4 says earns the `done-` prefix.
     "plan-c1-install-key-s2b-s2c.md",
-    "done-todo-modular-scaffolding.md",
+
     # Measured exception (§5): not a duplicate of scripts/stats.json —
     # scripts/stats.ps1 and scripts/check.ps1 read this name.
     "stats.json",
@@ -97,13 +97,13 @@ ROOT_FILE_ALLOWLIST = frozenset({
     "C-dev-encapsule.db",
     # Owner plan docs that earned their `done-` rename; same class as the done-todo-*
     # names above, added when the sweep caught them (2026-09-28).
-    "done-mobile-setupwizard.md",
-    "done-todo-codebase-reliability.md",
-    "done-todo-open-debt-agents-1.md",
-    "done-todo-open-debt-agents-2.md",
-    "done-todo-open-debt-agents-3.md",
-    "done-todo-open-debt-agents-4.md",
-    "done-todo-open-debt-agents-5.md",
+
+
+
+
+
+
+
 })
 
 # Directories the empty-dir sweep must not descend into. `.git` is git's own;
