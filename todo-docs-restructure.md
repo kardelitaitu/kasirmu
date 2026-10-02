@@ -305,17 +305,34 @@ landed as `create mode` rather than renames. Caught immediately by the protocol'
 that followed did land as proper 100% renames. The lesson: for a `git mv` batch, the pathspec must
 name **both** sides; git's staged rename is not automatically carried by a pathspec commit.
 
-### B2 — `docs/audits/` → `records/audits/` (14 files)
+### B2 — `docs/audits/` → `records/audits/` (14 files) · **DONE, `a0c4f7b90`**
 
-- [ ] `2026-09-28-api-reference-audit.md`, `2026-09-28-docs-audit.md`, `2026-09-29-desktop-launch-integrity-label.md`,
-      `documentation-audit-23-09-26.md`
-- [ ] `frontend/` → `records/audits/frontend/`: `css-verification.md`, `fluent-page-audit.md`
-- [ ] `seo/` → `records/audits/seo/`: `seo-audit-19-09-26.md`, `seo-robots-llms-review-19-09-26.md`
-- [ ] `setup/` → `records/audits/setup/`: `setup-state-of-the-art.md`, `setup-wizard-audit.md`,
-      `setup-wizard-option-b-plan.md`, `setup-wizard-retirement-blocker.md`
-- [ ] `skills/` → `records/audits/skills/`: `skill-audit-18-09-26.md`, `skill-audit-22-09-26.md`
-- [ ] ⚠️ `docs/audits/frontend/css-verification.md` is named **by path in two places that this plan
-      must update in the same commit**: `.agents/skills/docs-auditor/SKILL.md` and **AGENTS.md §5.1**.
+- [x] 14 files moved, **all 14 recorded as `100%` renames in a single commit**, subfolder structure
+      preserved (`frontend/`, `seo/`, `setup/`, `skills/`). `docs/audits/` removed.
+- [x] **0 relative links needed fixing.** Only 2 existed: one inside a `<!-- dead-ref: ok -->` pragma
+      example (not a real reference), and one sibling `./seo-robots-llms-review-19-09-26.md` between
+      two `seo/` files that moved to the same folder together.
+- [x] **11 path literals repointed across 8 files**, including **AGENTS.md §5.1** and
+      `docs/operations/agent-gates.md`, which name `frontend/css-verification.md`. Because these are
+      **repo-root-relative literals**, one repoint is correct regardless of where the *citing* file
+      later lives — so `audit-closed-findings.md` (moving in B3) and `MODULAR_APP_PLAN.md` (B4) were
+      fixed now and need no second pass.
+- [x] **Correction to §6:** this plan claimed `css-verification.md` is named in
+      `.agents/skills/docs-auditor/SKILL.md`. **It is not** — grep found it in `AGENTS.md` §5.1 and
+      eight other files, but not in the skill. Only AGENTS.md needed the paired update.
+- [x] **A silent failure caught:** a PowerShell `Select-String` bulk scan over `git ls-files` returned
+      **0** references to `docs/audits/` where grep found **29**. The scan had been failing silently
+      and reporting a clean result. Per the plan's own rule — *never trust a zero-reference claim* —
+      it was re-measured with the grep tool before anything was moved. **A scan reporting zero is a
+      claim, not a finding.**
+- [x] **Side effect recorded:** `generate-records-index.mjs` classified audits by scanning
+      `docs/audits/`, so its dedicated *Audit Reports* section is now **empty** and the files appear
+      under **Engineering Records** instead — records went **48 → 64** (48 + 14 audits + 2 campaigns).
+      All 28 rows are still indexed; only the section heading changed. Noted in the `docs/README.md`
+      table rather than left for a reader to puzzle over.
+
+**The I4 lesson from B1 held.** The commit pathspec named **both** the new and the old paths, so all
+14 landed as `100%` renames in one commit and `git diff --cached --name-only` was empty afterwards.
 
 ### B3 — the remaining `docs/records/` files (6 files) · **much cheaper after B0**
 
