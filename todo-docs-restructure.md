@@ -1,0 +1,387 @@
+# todo-docs-restructure.md — split `docs/` into claims and records
+
+**Status:** OPEN · **now on branch `0.0.41`** · updated 2026-10-02
+**Token:** `todo-` — `done-` is earned only when §8's acceptance command is RUN and PASSED (AGENTS.md §7.4).
+**⚠️ Read §11 first.** A concurrent session ran `git checkout 0.0.40 → 0.0.41` mid-plan, which left
+this plan and the 14 `done-*.md` moves on `0.0.40` only. This copy is the `0.0.41` continuation.
+
+---
+
+## 0. Scope card
+
+| | |
+|---|---|
+| **Goal** | Make "can I act on this?" answerable from the file's path. |
+| **Not the goal** | A prettier tree. Topic reorganisation is explicitly rejected — see §9. |
+| **Files moved** | 93 |
+| **Link fixes by hand** | 7 links in 6 files (30 of the 38 breaking links are in a generated file) |
+| **Tooling files touched** | ~20 of 31 (11 confirmed incidental) |
+| **Batch count** | 4, each independently committable and revertible |
+| **Blast radius** | Enumerable. Measured, not estimated — §6. |
+
+## 1. What is actually wrong
+
+Three defects, in descending order of cost.
+
+**1.1 — Weight, not layout.** AGENTS.md E4 mandates *read whole files, one call, ≤2,000 lines*. Four files
+make that impossible:
+
+| File | Size | State |
+|---|---:|---|
+| `docs/records/JOURNAL.md` | **1,338 KB** | ✅ **split — §4 A1** |
+| `docs/archived/manager-2-journal.md` | **690 KB** | ⏸ **deferred — §4 A1** |
+| `docs/plans/_active/notes.md` | 343 KB | open — §4 A2 |
+| `docs/plans/_backlog/0.0.36-backlog.md` | 294 KB | open — §4 A2 |
+
+2.6 MB of markdown where the rule is *read it all*. Every agent either breaks E4 or spends its whole
+context on a file it needed one paragraph from. This is a running cost and it is the highest-value
+thing on this list.
+
+**1.2 — "Record" is a state, not a directory.** `check-dead-refs.py` asks *live doc or dated record?*
+The tree asks *what topic?*. The layout and the gates answer different questions. Concretely:
+audits have **six homes** (`audits/`, `security/`, `observability/`, `architecture/`, `archived/`,
+`records/`); the generator already calls them *"Scattered Audit Reports"*
+(`docs/records/README.md:147`); and "finished" is spelled four ways — `archived/`,
+`decisions/archived/`, `plans/_done/`, `specs/_done/`.
+
+**1.3 — Two name collisions across the archive boundary.** Both files exist; neither path says which
+is current:
+- `docs/archived/ci-pipeline.md` vs `docs/operations/ci-pipeline.md`
+- `docs/archived/benchmarks.md` vs `docs/benchmarks/`
+
+## 2. Invariants — what must stay true
+
+- [x] **I1** Every move is a `100%` rename. No file's bytes change during the move phase.
+      *(Phase A does not move; A1's split is a split, not a move — see its conservation figures.)*
+- [x] **I2** `check-dead-refs.py` reports 0 unresolved references, **and its `--self-test` passes**
+      before that number is believed — a checker whose first run is clean may be silently blind, and
+      this repo has been bitten by exactly that five times in `check-dead-refs.py`'s own history.
+      **A1: self-test OK, 41 cases, run first. Real run: 0 unresolved.**
+- [x] **I3** `node scripts/generate-records-index.mjs --check` exits 0.
+      **A1: exit 0 — 22 records, up from 13.**
+- [x] **I4** Nothing is left staged. **A1: `git diff --cached --name-only` empty.**
+- [ ] **I5** `bash scripts/check.sh` passes on the final commit.
+- [ ] **I6** No doc loses its `todo-`/`plan-`/`prd-`/`done-` token. `check-dead-refs.py` keys its
+      exemption off the filename, and `verify-debt-markers.py` enforces it.
+
+## 3. DO NOT TOUCH
+
+- [ ] **D1** `docs/src/` + `docs/book.toml` + `scripts/build-docs.sh` / `.ps1` — **17 tooling hits.**
+      `docs/src/` is a **generated** directory (`ui/package.json` runs `typedoc --out ../docs/src/api/ts`)
+      and the mdBook portal's source. [docs/README.md:114-118](docs/README.md:114) records that the
+      mdBook config was archived once and then **restored**; this has already been got wrong.
+- [ ] **D2** `docs/archived/manager-2-journal.md` and `manager-2-journal-posscreen.md` — move to
+      `record/campaigns/` **together and separately**. Their own stamps: *"NEVER write the sibling's
+      file"*, *"must not merge, rename or 'tidy' the two files together"*. Two agents both signed
+      "Manager-2" and split the work between them. **Do not batch these with anything.**
+- [ ] **D3** `.agents/skills/**` — that is `skill-drift-guard`'s scope, not this plan's.
+- [ ] **D4** `docs/records/README.md` — **generated, never hand-edited.** Its new home is decided by the
+      generator's output path, not by `git mv`.
+
+## 4. Phase A — zero-move fixes
+
+Independent of the reorg. Four small commits, all reversible, none needing the §6 checklist.
+
+### A1 — Split the two giant journals
+
+**1 of 2 done.**
+
+- [x] **`docs/records/JOURNAL.md` — SPLIT, `05dcb632b`, 2026-10-02.** ✅
+  - **Not by year, and the plan's original by-year intent was wrong.** The file is **not**
+    chronologically ordered: it descends 2026-10-02 → 2026-07-02 by line 2389, then jumps *back* to
+    2026-08-07 and climbs to 2026-10-06. It is a **merge of several source journals**. A by-month
+    split would have required *reordering*, which risks invalidating the `file:line` citations the
+    entries themselves make. **Contiguous and order-preserving instead**, at `##` boundaries:
+    **8 parts**, `docs/records/JOURNAL-part-{1..8}.md`, max **1,996 lines** (E4's cap is 2,000).
+    `JOURNAL.md` remains as a **33-line index** carrying the line→part map.
+  - **Conservation:** body **1,369,815 → 1,369,814 bytes (delta 1)**; body lines **13,429 → 13,429**.
+    The 1-byte delta is a single `###`→`##` promotion at old line 5077, *forced* because old lines
+    3089–6265 contain **no `##` at all** (202 `###` instead) — a pure-`##` split would have left a
+    3,177-line part, over the cap.
+  - Whole-journal audit stamp (old lines 1–3) and the `> last audited` footer (old line 13433) moved to
+    the **index**, not left stranded inside part 1 and part 8.
+  - **20 external `JOURNAL.md:<line>` citations deliberately NOT repointed.** 8 of their 11 citing
+    files are other sessions' records under `.agents/planning/`, `.agents/reviews/` and
+    `.agents/archived/`. On a shared checkout, editing another agent's journal to suit a docs reorg is
+    the wrong trade. **They still resolve** — the index carries the line→part map and a worked example
+    (`JOURNAL.md:11057` → part 7, line 889). This map is now the plan's standing mechanism for the
+    whole move, not a one-off.
+  - **Verified:** self-test OK (41 cases) *before* the real run · `check-dead-refs.py` exit 0 ·
+    `check-orphans.py --file` exit 0 on all 9 files · `generate-records-index.mjs --check` exit 0 ·
+    `git show --stat` = exactly our 10 files · nothing left staged.
+  - Two pre-existing control characters (2× `0x08` in old part 6, 2× `0x09` in old part 5) were
+    **confirmed present at HEAD before the split** and carried through untouched. I1 holds.
+  - The pre-commit line-ending hook rewrote the parts to LF on disk; `git diff --stat` against HEAD is
+    **empty**, so this is not an outstanding change.
+
+- [ ] **`docs/archived/manager-2-journal.md` — DEFERRED 2026-10-02, not cancelled.** Measured:
+  2,752 lines / 690 KB. It clears **neither** test that justified splitting `JOURNAL.md`:
+  - It is a **single completed campaign's ledger**, cited by 12 files (vs 40+ for `JOURNAL.md`), and
+    **no tooling reads it**. Its size costs nothing on a normal task.
+  - It carries a **prior auditor's explicit warning against tidying it**, and the ownership note that
+    keeps the two agents' work apart lives in its *sibling*. Splitting one while leaving the other
+    whole is precisely the asymmetry that warning guards.
+  - **6 external `manager-2-journal.md:<line>` citations** (4 in `.agents/`, 2 in
+    `docs/records/audit-open-findings.md`) would each need a line-map lookup — indirection in a
+    document whose stated purpose is to be re-read precisely, every turn.
+  - Structure resists a clean cut: `##` boundaries leave a **1,830-line gap** (h2 at 512 → 2342).
+  **Revisit only if a live need appears** — e.g. an agent that must re-read it mid-task. D2 still
+  governs: it and `manager-2-journal-posscreen.md` move to `record/campaigns/` **together in Phase B,
+  and never in the same batch as each other.**
+
+### A2 — Resolve `docs/plans/_active/notes.md`
+
+- [ ] 343 KB, unnamed, sitting in the **live** plan folder. Split it, or move it to
+      `docs/plans/_backlog/` under a real name. It is not a plan and must not read as one.
+- [ ] **Verify:** no file in `docs/plans/_active/` exceeds 2,000 lines;
+      `verify-debt-markers.py` still exits 0; inbound links repointed.
+
+### A3 — Kill the numbering collisions (pure edits, no moves)
+
+- [ ] **ADR #43 is issued twice** — React-only UI decision and Cloud Sync Scale-Out
+      ([docs/records/README.md:49](docs/records/README.md:49), [:50](docs/records/README.md:50)).
+      **#16 is free** in the sequence (1–15, 17–22…). Renumber React-only → **#16**.
+- [ ] **Specs `0046`, `0047`, `0049` each exist twice** — loose files in `specs/_active/` and
+      directories in `specs/_done/`, different subjects. **0050+ are free.** Renumber:
+      `0046b-product-menu-images.md` → `0052-`, `0047-openapi-drift-guard-and-read-tiers.md` → `0050-`,
+      `0049-edge-relay-network.md` → `0051-`.
+- [ ] **Verify:** `python3 .agents/skills/docs-auditor/scripts/check-adr-status.py` exits 0;
+      `check-orphans.py` exits 0; `generate-records-index.mjs --check` exits 0;
+      no remaining duplicate ADR number (the generator emits a duplicate-#43 quirk **by design** — this
+      removes the cause, so that section of [docs/README.md:98-100](docs/README.md:98) becomes stale and
+      must be updated in the same commit).
+
+### A4 — Remove the two ambiguous filenames
+
+- [ ] `docs/archived/ci-pipeline.md` — delete or date-stamp. `docs/operations/ci-pipeline.md` is current.
+- [ ] `docs/archived/benchmarks.md` — delete or date-stamp. `docs/benchmarks/` is current.
+- [ ] **Verify:** `check-dead-refs.py` exits 0; no doc cites the deleted names as live paths.
+
+### A5 — Resolve the three loose ends
+
+- [ ] `docs/coverage/README.md` (1 file) — fold into `record/` or delete.
+- [ ] `docs/audit-receipt-settings.md` (1 file) — fold into `record/audits/` or delete.
+- [ ] `docs/README.md:26` says `archived/` holds "26 files"; it holds 28. **Drop hand-counted numbers
+      from curated indexes entirely** — this drift was found and fixed once already
+      ([docs/README.md:107](docs/README.md:107)), and recurred. Link the directory; do not count it.
+- [ ] **Verify:** `check-dead-refs.py` exits 0; `docs/README.md` contains no integer file counts.
+
+## 5. Phase B — the move
+
+Target shape:
+
+```
+docs/
+├── README.md              the live/record contract, stated once
+├── architecture/  guides/  operations/  security/  legal/  decisions/     CLAIMS
+├── specs/  plans/                                                        IN FLIGHT
+└── record/                                                              RECORDS
+    ├── README.md          generated
+    ├── audits/ findings/ snapshots/ benchmarks/ releases/
+    ├── journal/ campaigns/ superseded/
+```
+
+Batch order is by ascending tooling entanglement. Each batch is one commit.
+
+### B1 — `docs/archived/` → `record/` (28 files) · lowest link count
+
+- [ ] → `record/campaigns/` (2, **D2 — batch separately**): `manager-2-journal.md`, `manager-2-journal-posscreen.md`
+- [ ] → `record/audits/` (14): `2026-07-28-retail-pos-theming-audit.md`, `2026-07-29-retail-pos-ux-audit.md`,
+      `2026-08-15-unify-auth-and-sync.md`, `2026-08-30-glm-5.3-tauri-app-review.md`,
+      `2026-08-31-glm-5.3f-crates-audit.md`, `code-quality-2026-07-20.md`, `database-optimization-2026-07-20.md`,
+      `dev-experience-2026-07-20.md`, `dev-mock-state-audit.md`, `ui-state-audit-2026-07-20.md`,
+      `modal-audit-checklist.md`, `TODO-shadow-audit.md`, `design-exceptions.md`, `plan-product-images-review.md`
+- [ ] → `record/superseded/` (12): `20260822-tests-efficiency-improvement.md`, `a11y.md`, `api-client.md`,
+      `benchmarks.md`, `ci-pipeline.md`, `i18n-todo.md`, `multi_kds_one_location_support.md`,
+      `multi_pos_one_location_support.md`, `plan-media-binary-sync.md`, `plan-product-images.md`,
+      `sqlcipher-migration-plan.md`, `tauri-security-audit.md`
+
+### B2 — `docs/audits/` → `record/audits/` (14 files)
+
+- [ ] `2026-09-28-api-reference-audit.md`, `2026-09-28-docs-audit.md`, `2026-09-29-desktop-launch-integrity-label.md`,
+      `documentation-audit-23-09-26.md`
+- [ ] `frontend/` → `record/audits/frontend/`: `css-verification.md`, `fluent-page-audit.md`
+- [ ] `seo/` → `record/audits/seo/`: `seo-audit-19-09-26.md`, `seo-robots-llms-review-19-09-26.md`
+- [ ] `setup/` → `record/audits/setup/`: `setup-state-of-the-art.md`, `setup-wizard-audit.md`,
+      `setup-wizard-option-b-plan.md`, `setup-wizard-retirement-blocker.md`
+- [ ] `skills/` → `record/audits/skills/`: `skill-audit-18-09-26.md`, `skill-audit-22-09-26.md`
+- [ ] ⚠️ `docs/audits/frontend/css-verification.md` is named **by path in two places that this plan
+      must update in the same commit**: `.agents/skills/docs-auditor/SKILL.md` and **AGENTS.md §5.1**.
+
+### B3 — `docs/records/` → `record/` (15 files) · the entangled one
+
+- [ ] `audit-open-findings.md`, `audit-closed-findings.md` → `record/findings/`
+- [ ] `snapshots/` (8) → `record/snapshots/`: `2026-09-12-sync-settings-ingest-and-redirect-census.md`,
+      `2026-09-13-adr51-admitted-set-and-blind-sides.md`, `2026-09-15-frontend-architecture-todo-appraisal.md`,
+      `2026-09-20-audit-android-shell.md`, `2026-09-21-license-ratelimit-collapse.md`,
+      `2026-09-21-migration-init-drift-bricked-startup.md`, `2026-09-21-tablet-ui-driving-method.md`,
+      `2026-09-28-rustfmt-gate-red.md`
+- [ ] `sqlite-pg-roles.md`, `statutory-rounding-and-estimate-stamps.md`, `adr7-conditional-scoping-fallback-class.md`
+      → `record/`
+- [ ] `README.md` → **the generator's output path changes; it is never `git mv`d** (D4)
+- [ ] **`JOURNAL.md` + the 8 parts move as ONE set** (split 2026-10-02, §4 A1) → `record/journal/`.
+      The parts are only useful next to their index; the index's line map is useless without them.
+- [ ] Depths are unchanged, so `../decisions/…` and `../../scripts/…` inside the generated index keep
+      resolving. Only `../audits/…` and `../archived/…` need regenerating — which the generator does.
+
+### B4 — remaining splits
+
+- [ ] `docs/security/` (9 of 12) → `record/audits/security/`: `audit-2026-07-20.md`,
+      `audit-admin-login-flow.md`, `audit-login-flow-final.md`, `hardening-2026-07-20.md`,
+      `license-audit-2026-07-20.md`, `lua-sandbox-audit.md`, `review-admin-dashboard-long-term.md`,
+      `sast-2026-07-20.md`, `security-audit-completion.md`
+      — **stays live (3):** `INCIDENT_RESPONSE.md`, `PCI-DSS_CHECKLIST.md`, `data-residency-and-retention.md`
+- [ ] `docs/observability/` (2) → `record/audits/observability/`: `error-handling-2026-07-20.md`, `logging-2026-07-20.md`
+- [ ] `docs/benchmarks/` (4) → `record/benchmarks/`
+- [ ] `docs/releases/` (10) → `record/releases/`
+- [ ] `docs/architecture/` (11 of 17) → `record/superseded/`: `MODULAR_APP_PLAN.md`, `handler-census-phase0.md`,
+      `namespaced-store-api-draft.md`, `phase1-implementation-tickets.md` … `phase5-implementation-tickets.md`,
+      `reporting-facade-inventory.md`, `workspace-editor-implementation.md`, `workspace-instance-analysis.md`
+      — **stays live (6):** `ARCHITECTURE.md`, `CRITICAL_PATH_INVARIANTS.md`, `UX_GUIDELINES.md`,
+      `module-boot-sequence.md`, `module-namespace-firewall.md`, `module-namespace-governance.md`
+
+## 6. Tooling checklist
+
+31 files carry a hardcoded `docs/<dir>/`. **Each must be confirmed individually** — the measurement
+below used one combined pattern, so the per-file hit count is not yet attributed to a specific directory.
+
+### 6a — Must change (confirmed load-bearing)
+
+- [ ] `scripts/generate-records-index.mjs` — **31 hits**, a third of all tooling risk. Directory list,
+      `AREA_KEYWORDS`, and the **output path** (D4).
+- [ ] `scripts/gen-summary.py` — 10
+- [ ] `scripts/test-records-index-escaping.sh` — 6 · **guards the generator; not in the §9 tools table**
+- [ ] `scripts/verify-debt-markers.py` — 5 · **this is what enforces the §7.4 plan-token rule**
+- [ ] `scripts/check.sh` — 4
+- [ ] `scripts/gates.json` — 4
+- [ ] `scripts/verify-doc-uniqueness.py` — 4
+- [ ] `scripts/verify-ci-docs-drift.py` — 3
+- [ ] `scripts/__tests__/verify-ci-docs-drift.test.mjs` — 2 · **guards the guard**
+- [ ] `scripts/check-mapper-alignment.py` — 2 · `scripts/find-oldest-md.sh` — 2
+- [ ] `scripts/profile.ps1` — 2 · `scripts/test-ci-routing.sh` — 2 · `scripts/release.sh` — 2
+- [ ] `scripts/bump-version.ps1` — 1
+- [ ] `.agents/skills/docs-auditor/SKILL.md` — names `docs/audits/frontend/css-verification.md`,
+      `docs/operations/agent-gates.md`, `docs/records/sqlite-pg-roles.md`
+- [ ] **AGENTS.md §5.1** — names `docs/audits/frontend/css-verification.md`
+- [ ] `docs/README.md` — the curated directory table (9 hits)
+
+### 6b — Confirmed incidental, no change
+
+- [ ] `scripts/build-docs.sh` (8) and `scripts/build-docs.ps1` (8) — **D1, mdBook, must not change**
+- [ ] `docs/book.toml` (1) — **D1**
+- [ ] `ui/package.json` (1) — `typedoc --out ../docs/src/api/ts`. Points *into*`docs/src/` (D1), not a moving dir.
+- [ ] `crates/kasirmu-api/Cargo.toml` (1) — a **provenance comment**, not metadata. Goes stale; harmless.
+- [ ] `website/public/robots.txt` (1) — a **comment**, and already stale: it cites
+      `docs/records/seo-robots-llms-review-19-09-26.md`, which does not exist (the file is at
+      `docs/audits/seo/…`). **No published URL is at risk.** Fix opportunistically.
+- [ ] 1-hit scripts to confirm individually: `apply-fluent-patch.py`, `verify-bundle-parity.py`,
+      `scan-locale-crossings.py`, `scan-fluent-hardcoded.py`, `test-runner-labels.py`,
+      `translate-stub.py`, `verify-ipc-parity.py`, `verify-scoped-coverage.sh`, `verify-ftl-orphans.py`,
+      `verify-scoped-reads.py`, `verify-fluent-dynamic-families.py`
+
+## 7. Per-file verification protocol
+
+**Per file, every time.** This is the core of the plan — no file moves without all six.
+
+1. `git --no-optional-locks status --porcelain -- <src>` → **empty**. Dirty means another session owns it; stop.
+2. Scan for inbound links: `\]\([^)]*<basename>\)` and bare `docs/…/<basename>`. Record every hit.
+3. `git mv -- <src> <dst>`
+4. `git hash-object <dst>` **== the hash captured in step 1**. Proves I1 — bytes unchanged.
+5. `git show --stat HEAD` shows `rename <src> => <dst> (100%)`.
+6. `git diff --cached --name-only` → **empty** (I4 — never leave anything staged, not even your own).
+
+**Per batch, after the last file.**
+
+7. `python3 .agents/skills/docs-auditor/scripts/check-dead-refs.py --self-test` → **OK** (I2 — run this
+   *first*; it is 41 cases and takes seconds)
+8. `python3 .agents/skills/docs-auditor/scripts/check-dead-refs.py` → **0 unresolved**
+9. `python3 .agents/skills/docs-auditor/scripts/check-orphans.py` → **exit 0**
+10. `node scripts/generate-records-index.mjs --check` → **exit 0** (I3)
+11. `git show --stat HEAD` → the file list is **exactly** the batch's, nothing else
+
+**Hand-fixes required (7 links, 6 files)** — measured, not exhaustive-to-completion:
+
+- [ ] `docs/guides/platform/windows-launch-test.md` (2)
+- [ ] `docs/guides/platform/linux-launch-test.md` (2)
+- [ ] `docs/decisions/README.md` (1)
+- [ ] `docs/decisions/2026-09-11-adr49-headless-command-bridge.md` (1)
+- [ ] `docs/decisions/2026-09-11-adr51-sealed-settings-ingest-policy.md` (1)
+- [ ] `docs/archived/2026-08-30-glm-5.3-tauri-app-review.md` (1)
+
+The other 30 breaking links are in `docs/records/README.md` and are **regenerated, not fixed**.
+
+## 8. Acceptance
+
+The command that must be RUN and PASSED before this file may be renamed `done-todo-docs-restructure.md`:
+
+```powershell
+$py = (Get-Command python3 -ErrorAction SilentlyContinue) ? 'python3' : 'python'
+& $py .agents/skills/docs-auditor/scripts/check-dead-refs.py --self-test; if ($LASTEXITCODE) { exit 1 }
+& $py .agents/skills/docs-auditor/scripts/check-dead-refs.py;              if ($LASTEXITCODE) { exit 1 }
+& $py .agents/skills/docs-auditor/scripts/check-orphans.py;                 if ($LASTEXITCODE) { exit 1 }
+& $py .agents/skills/docs-auditor/scripts/check-adr-status.py;              if ($LASTEXITCODE) { exit 1 }
+node scripts/generate-records-index.mjs --check;                           if ($LASTEXITCODE) { exit 1 }
+& 'C:Program FilesGitinash.exe' -c 'bash scripts/check.sh';          if ($LASTEXITCODE) { exit 1 }
+```
+
+`bash scripts/check.sh` must go through Git's bash by full path (AGENTS.md §5) — bare `bash` resolves
+to WSL and hangs.
+
+## 9. Out of scope — rejected on purpose
+
+- **No topic reorganisation.** The tree is already organised by function ([docs/README.md:6](docs/README.md:6)).
+  Re-cutting it by subject would churn all 292 files, break the most links, and buy nothing §1.2 does not
+  already give.
+- **No move of the 8 live `todo-*`/`plan-*` docs at the repo root.** AGENTS.md §7.4 says plan renames
+  happen in place at the root; `docs/plans/_active/` is the other half of that question and it is the
+  owner's call. **See §10.**
+- **No move of `manager-codebase-review{,-checklist,-decisions}.md`.** The stamps on
+  [docs/archived/manager-2-journal.md](docs/archived/manager-2-journal.md) record that two agents both
+  signed "Manager-2" and split files between them, with an explicit *never merge, rename or tidy these
+  together*. That hazard annotation is honoured.
+- **No fix to ADR #43's duplicate-row quirk beyond A3.** `docs/README.md:98-100` documents the generator
+  reproducing it **on purpose**; A3 removes the cause, so that paragraph must be updated in the same commit
+  — but the dead branch in the script stays, as its own comment says it should.
+
+## 10. Open questions for the owner
+
+1. **Do the 8 live root `todo-*`/`plan-*` docs also move to `docs/plans/_active/`?** This decides
+   whether AGENTS.md §7.4's "renames happen in place at the repo root" survives or is rewritten. Blocking
+   for nothing in Phase A or B; it is the same two-homes problem this plan's §1.2 addresses elsewhere.
+2. **Confirm `docs/audits/` is a record folder, not a live one.** Phase B2 moves all 14 files. The
+   alternative is that audits stay a claim surface and only `archived/` folds into `record/` — which is
+   a materially smaller plan.
+3. **`docs/coverage/` and `docs/src/`** — `docs/src/` is settled (D1, generated, leave it). `coverage/`
+   is one generated report; delete or move.
+
+## 11. Incident — a concurrent session switched branches mid-plan
+
+Recorded because it changes what "done" means here, and because **AGENTS.md §7.1 forbids switching
+branches.** I did not switch; another session did.
+
+```
+05dcb632b HEAD@{0}  docs(records): split engineering journal   <- on 0.0.41, SAFE
+6b0548f38 HEAD@{1}  checkout: moving from 0.0.40 to 0.0.41     <- ANOTHER SESSION
+5cf046caa HEAD@{2}  docs(plans): add restructuring plan        <- stranded on 0.0.40
+044cba1ec HEAD@{6}  docs(plans): archive 14 done-* docs        <- stranded on 0.0.40
+```
+
+- **Not in this branch's history, recoverable on `0.0.40`** (both verified ancestors of `0.0.40`,
+  objects intact): the 14 `done-*.md` → `docs/plans/_done/` move, and the original copy of this plan.
+  On `0.0.41` the 14 files are **back at the repo root** and `docs/plans/_done/` holds 1 file.
+  **Not re-applied unilaterally** — §10 Q1 is unanswered, and redoing a move the owner may resolve
+  differently is not a call this plan should make alone. Flagged for the owner instead.
+- **Safe on this branch:** the journal split `05dcb632b`. Its baseline was verified rather than
+  assumed — `0.0.41`'s `JOURNAL.md` is **byte-identical** to `0.0.40`'s (13,433 lines each), so the
+  split preserved the correct source and the index's line map is valid here.
+- **This branch is `0.0.41`, not the `0.0.40` the plan was authored against. No version number was
+  edited by this work** — the bump belongs to the concurrent session.
+- **Another session currently has uncommitted work** in `modules/inventory/src/repository{,_tests}.rs`,
+  `scripts/bump-version.ps1`, `ui/src/app/tablet/tablet.css`. Do not sweep these into a docs commit.
+- **Standing rule adopted:** if the branch moves mid-plan, re-verify the reachability of the plan's own
+  commits before continuing, and **never switch branches to recover them** (§7.1).
+
+---
+
+> Phase A is independent, reversible, and pays for itself. **A1 is done; A1b is deferred with
+> reasons; A2 is next.**
