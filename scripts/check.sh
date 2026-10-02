@@ -960,6 +960,18 @@ step "adr status drift" "python3 .agents/skills/docs-auditor/scripts/check-adr-s
 # them x public/ files and _redirects sources -- and resolves each markdown link
 # against it. Green from day one (38 content docs). Gate: scripts/gates.json -> "site-links".
 step "site links" "python3 .agents/skills/docs-auditor/scripts/check-site-links.py" python3 .agents/skills/docs-auditor/scripts/check-site-links.py
+# Two docs-auditor checkers that existed but nothing invoked — the same failure
+# mode the script-tests leg above records, where a suite sits red for an unknown
+# period precisely because no runner reaches it. Both were green before being
+# wired (measured 2026-10-02), so this locks in current state and makes future
+# drift fail a gate instead of waiting to be noticed. check-orphans.py has been
+# run manually every round of the docs restructure; that is not enforcement.
+# The other two dormant checkers stay unwired on purpose: check-nav-paths.py
+# and check-ci-claims.py each report false positives today (rename stamps and
+# dated records respectively), so wiring them now would turn the gate red for
+# reasons that are documented, not real. Fix the detectors first, then wire them.
+step "docs orphans" "python3 .agents/skills/docs-auditor/scripts/check-orphans.py" python3 .agents/skills/docs-auditor/scripts/check-orphans.py
+step "audit stamps" "python3 .agents/skills/docs-auditor/scripts/check-audit-stamps.py" python3 .agents/skills/docs-auditor/scripts/check-audit-stamps.py
 # scripts/__tests__/*.test.mjs is a whole suite that ui/package.json exposes as
 # `npm run test:scripts` and that NOTHING invoked -- not the hook, not CI, not check.sh.
 # It had been red for an unknown period for exactly that reason: verify-ci-docs-drift.test.mjs

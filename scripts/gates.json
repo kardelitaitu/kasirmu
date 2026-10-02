@@ -1640,6 +1640,28 @@
         "workflow": "dev-ci.yml",
         "job": "static-gates"
       }
+    },
+    {
+      "id": "docs-orphans",
+      "label": "Docs orphans (unreachable documents)",
+      "status": "required",
+      "runners": {
+        "check.sh": [
+          "docs orphans"
+        ]
+      },
+      "_note": "Wired 2026-10-02. check-orphans.py shipped in the docs-auditor skill and was invoked by nothing — not check.sh, not CI, not the hook. It had been run manually once per round of the docs restructure, which is diligence, not enforcement: nothing would have failed if a document became unreachable. Green on the day it was wired (0 findings), so wiring it changes no current verdict and makes future unreachable-document drift fail a gate."
+    },
+    {
+      "id": "audit-stamps",
+      "label": "Audit stamp / footer agreement",
+      "status": "required",
+      "runners": {
+        "check.sh": [
+          "audit stamps"
+        ]
+      },
+      "_note": "Wired 2026-10-02, same reasoning as docs-orphans. check-audit-stamps.py grades the AGENTS.md footer convention (> last audited DD-MM-YY by <name>) against each document's own stamp, so a footer that under-reports its audit fails. It caught one real defect on the day it was first run (onboarding-guide's footer still read 22-09-26 after its stamp was bumped to 2026-10-02, fixed in c70242335). Left out of CI deliberately: it reads the working tree, which a runner's checkout legitimately differs from, exactly as the checker that repaired its own Windows encoding crash noted."
     }
   ]
 }
