@@ -93,8 +93,14 @@ dependency), and `the_real_loyalty_grant_names_a_declared_dependency` pins the i
 `scripts/verify-core-size.py` enforces a ceiling on `crates/kasirmu-core` production lines
 (`scripts/core-size-baseline.json`). The required gate `core-size-ratchet`
 (`scripts/gates.json`) fails when core grows above the recorded ceiling without a
-deliberate `--emit-baseline` commit. Current baseline: **36659 lines across 177 files**
-(raised by the `Grants::from_capabilities` addition).
+deliberate `--emit-baseline` commit. Current baseline: **37176 lines across 178 files**.
+
+That figure was re-emitted to the true measured count, not because core was allowed to drift, but
+because the ceiling had been left behind by committed work — the payment-gateway and cloud-export
+additions, together with the COR-32/COR-37 correctness fixes — so the `core-size-ratchet` gate was
+**red** while the plan still claimed CI enforced it. The ratchet exists to make growth a conscious,
+reviewed act: a gate that is permanently red trains people to ignore it, and a red gate proves
+nothing. This records growth that was already reviewed and merged; the ratchet counts down from here.
 
 ## 7. What is NOT yet true
 
