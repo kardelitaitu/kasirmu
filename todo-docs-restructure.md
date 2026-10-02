@@ -71,16 +71,16 @@ is current:
 
 ## 3. DO NOT TOUCH
 
-- [ ] **D1** `docs/src/` + `docs/book.toml` + `scripts/build-docs.sh` / `.ps1` — **17 tooling hits.**
+- **D1 (standing constraint, not a task)** `docs/src/` + `docs/book.toml` + `scripts/build-docs.sh` / `.ps1` — **17 tooling hits.**
       `docs/src/` is a **generated** directory (`ui/package.json` runs `typedoc --out ../docs/src/api/ts`)
       and the mdBook portal's source. [docs/README.md:114-118](docs/README.md:114) records that the
       mdBook config was archived once and then **restored**; this has already been got wrong.
-- [ ] **D2** `docs/archived/manager-2-journal.md` and `manager-2-journal-posscreen.md` — move to
+- **D2 (standing constraint, not a task)** `docs/archived/manager-2-journal.md` and `manager-2-journal-posscreen.md` — move to
       `records/campaigns/` **together and separately**. Their own stamps: *"NEVER write the sibling's
       file"*, *"must not merge, rename or 'tidy' the two files together"*. Two agents both signed
       "Manager-2" and split the work between them. **Do not batch these with anything.**
-- [ ] **D3** `.agents/skills/**` — that is `skill-drift-guard`'s scope, not this plan's.
-- [ ] **D4** `docs/records/README.md` — **generated, never hand-edited.** Its new home is decided by the
+- **D3 (standing constraint, not a task)** `.agents/skills/**` — that is `skill-drift-guard`'s scope, not this plan's.
+- **D4 (standing constraint, not a task)** `docs/records/README.md` — **generated, never hand-edited.** Its new home is decided by the
       generator's output path, not by `git mv`.
 
 ## 4. Phase A — zero-move fixes
