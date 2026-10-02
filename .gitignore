@@ -305,3 +305,16 @@ manager-journal.md
 /.tmp
 /.agent-tmp/
 /.probe/
+# 2026-10-02: untracked scratch found sitting in the tree on 0.0.41. Kept on
+# disk, out of status, following the /.codebuddy/ and /.probe/ precedent above.
+# /ui/target/ is a genuine gap rather than one-off litter: lines 2-8 already
+# ignore target/ for the root and for every Rust workspace, and the UI workspace
+# was simply missed. The rest are captured command output and a pre-migration
+# database backup -- section 7.3 forbids committing SQLite databases outright.
+# SENTINEL_STASH.txt is deliberately NOT listed: it is an orphan probe whose
+# whole purpose is to stay visible in `git status`, so ignoring it would defeat
+# whatever check it is serving.
+/ui/target/
+/ser.txt
+/ui/e2e-final.txt
+/kasir.pre-migration.bak
