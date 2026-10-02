@@ -481,13 +481,21 @@
      sheet keeps no orientation literal of its own. First applied in
      b9d1208fe and dropped by the rebrand sweep — restored with its landscape
      half. */
-  .tablet-shell .workspace-grid,
-  .tablet-shell .workspace-skeleton-grid {
+  /* The wrapper is .workspace-home-wrapper (TabletAppShell.tsx:445), NOT
+     inside .tablet-shell: the home screen renders before any workspace is
+     active, outside TabletAppLayout. An earlier fix keyed on
+     `.tablet-shell .workspace-grid` and therefore never matched here — the
+     width fallback in WorkspaceHome.css kept ruling, which is why the grid
+     stayed at 2 columns in landscape after that fix shipped. */
+  .workspace-home-wrapper .workspace-grid,
+  .workspace-home-wrapper .workspace-skeleton-grid {
     grid-template-columns: repeat(2, 1fr);
   }
 }
 
 @media (orientation: landscape) {
+  .workspace-home-wrapper .workspace-grid,
+  .workspace-home-wrapper .workspace-skeleton-grid,
   .tablet-shell .workspace-grid,
   .tablet-shell .workspace-skeleton-grid {
     grid-template-columns: repeat(3, 1fr);
