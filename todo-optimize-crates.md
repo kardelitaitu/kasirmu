@@ -10,7 +10,7 @@ test-sleep floor). No code touched, no axis chosen.
 
 ## 0. Scope — "our crates", stated so the fence cannot drift later
 
-**In scope (39 workspace members).** `Cargo.toml` globs `crates/*`, `modules/*`, `platform/*`
+**In scope (40 workspace members.** Re-derive with `cargo metadata --no-deps --format-version 1 | jq '.packages | length'`; this read 39 until `platform/instance-guard` landed on 2026-09-29.)** `Cargo.toml` globs `crates/*`, `modules/*`, `platform/*`
 and lists `foundation`, `apps/cloud-server`, `apps/desktop-tauri`, `apps/mobile-tauri`
 explicitly. Those 39 manifests are the whole subject of this todo.
 
@@ -1263,7 +1263,7 @@ were measured on branch `0.0.40` on 2026-09-25 in this checkout.
 
 ### 10A. The crate graph, measured — and it contradicts §5 axis D
 
-39 workspace members, **154 internal edges** (130 normal, 24 dev-only).
+40 workspace members, **154 internal edges** (130 normal, 24 dev-only).
 
 **Zero dependency cycles.** None on normal+build edges, and none even when dev-edges are included.
 DFS over both graphs.

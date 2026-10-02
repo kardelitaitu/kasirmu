@@ -457,7 +457,7 @@ kasir.mu/
 │
 ├─ ARCHITECTURE.md    This file
 ├─ AGENTS.md           AI agent configuration
-└─ Cargo.toml          Workspace definition — 39 packages resolve from the glob members (17 crates, 14 modules, 4 platform dirs, foundation, 3 apps)
+└─ Cargo.toml          Workspace definition — 40 packages resolve from the glob members (17 crates, 14 modules, 5 platform dirs, foundation, 3 apps) — re-derive with `cargo metadata --no-deps --format-version 1 | jq '.packages | length'`; this said 39/4 until `platform/instance-guard` landed on 2026-09-29
 ```
 
 ---
