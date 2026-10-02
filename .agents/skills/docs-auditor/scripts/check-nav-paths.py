@@ -34,6 +34,10 @@ ARROW = re.compile(r'\*\*\s*([^*\u2192\n]+?)\s*(?:\u2192|->)\s*([^*\u2192\n]+?)\
 ITEM = re.compile(r'registerNavItem\(\{(.*?)\n\s*\}\);', re.S)
 STR = re.compile(r"(label|route|section|i18nKey|key):\s*'([^']+)'")
 SETTINGS_PARENTS = {'settings', 'pengaturan'}
+# A blockquote line that OPENS a dated stamp: '> 2026-09-30 - ...' or
+# '> last audited 08-09-26 by ...'. Only the opening line decides; the block
+# then runs until the first non-quoted line.
+STAMP_OPEN = re.compile(r'^>\s*(?:\*\*last audited\b|\d{4}-\d{2}-\d{2}\b)')
 
 def repo_root():
     o = subprocess.run(['git', 'rev-parse', '--show-toplevel'], stdout=subprocess.PIPE, text=True, errors='replace')
@@ -95,7 +99,23 @@ def build(r: Path, locale: str):
 def check_docs(pages, nav, tree, label):
     out = []
     for name, text in pages:
+        in_stamp = False
         for i, line in enumerate(text.splitlines(), 1):
+            s = line.lstrip()
+            quoted = s.startswith('>')
+            # A blockquote that OPENS with a date is an audit/change stamp, and a
+            # stamp records a rename rather than instructing a navigation. The
+            # customer rename sweep writes the old and new name in exactly the
+            # shape this checker reads as a nav path, which is why both findings
+            # were false. Narrow on purpose: skipping every blockquote would also
+            # skip any real nav instruction someone put in a quote.
+            if quoted:
+                if not in_stamp:
+                    in_stamp = bool(STAMP_OPEN.match(s))
+            else:
+                in_stamp = False
+            if in_stamp:
+                continue
             for m in ARROW.finditer(line):
                 par, child = m.group(1).strip(), m.group(2).strip()
                 if len(child) > 40 or len(par) > 40:

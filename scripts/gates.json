@@ -1662,6 +1662,28 @@
         ]
       },
       "_note": "Wired 2026-10-02, same reasoning as docs-orphans. check-audit-stamps.py grades the AGENTS.md footer convention (> last audited DD-MM-YY by <name>) against each document's own stamp, so a footer that under-reports its audit fails. It caught one real defect on the day it was first run (onboarding-guide's footer still read 22-09-26 after its stamp was bumped to 2026-10-02, fixed in c70242335). Left out of CI deliberately: it reads the working tree, which a runner's checkout legitimately differs from, exactly as the checker that repaired its own Windows encoding crash noted."
+    },
+    {
+      "id": "nav-paths",
+      "label": "Customer-doc navigation paths",
+      "status": "required",
+      "runners": {
+        "check.sh": [
+          "nav paths"
+        ]
+      },
+      "_note": "Wired 2026-10-02, after repairing the detector rather than before. The checker grades bolded '**Parent -> Child**' pairs in the bilingual customer docs against the UI nav model, and both of its findings were false: the 2026-09-30 customer rename sweep records '**Store -> Location**' in exactly the shape a nav instruction takes. It now treats a blockquote opening with a date as a change stamp and skips the rest of that block. Deliberately narrow - a three-way control pins that a quote NOT opening with a date is still graded - because skipping every blockquote would also skip a real nav instruction. Also fixed earlier the same day: the human-readable output crashed on Windows, where cp1252 cannot encode the arrow, so the checker could never show what it found."
+    },
+    {
+      "id": "ci-claims",
+      "label": "CI claims in documentation",
+      "status": "required",
+      "runners": {
+        "check.sh": [
+          "ci claims"
+        ]
+      },
+      "_note": "Wired 2026-10-02, after the same repair-then-wire order. The checker grades CI job and step names asserted in prose against the live workflows. All seven of its findings were inside docs/records/superseded/ and docs/records/audits/ - dated records describing the retired ci-pipeline doc - so those folders joined SKIP_DIR, mirroring ARCHIVE_PREFIXES in verify-doc-uniqueness.py. Scan scope measured before and after: 473 docs to 410, the 63 dated records excluded, 410 still graded. Its 80-line lookahead was also a bug worth naming: northflank-deploy carries its steps: 98 lines below its key, so the job fell out of the live set and a CORRECT runbook was reported as claiming a job no workflow defines."
     }
   ]
 }

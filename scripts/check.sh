@@ -966,12 +966,17 @@ step "site links" "python3 .agents/skills/docs-auditor/scripts/check-site-links.
 # wired (measured 2026-10-02), so this locks in current state and makes future
 # drift fail a gate instead of waiting to be noticed. check-orphans.py has been
 # run manually every round of the docs restructure; that is not enforcement.
-# The other two dormant checkers stay unwired on purpose: check-nav-paths.py
-# and check-ci-claims.py each report false positives today (rename stamps and
-# dated records respectively), so wiring them now would turn the gate red for
-# reasons that are documented, not real. Fix the detectors first, then wire them.
+# The other two were repaired and wired the same day, in the order this note
+# set out: fix the detector first, then wire it. check-nav-paths.py learned that
+# a blockquote opening with a date is a change stamp rather than a nav
+# instruction; check-ci-claims.py learned that docs/records/superseded/ and
+# docs/records/audits/ are dated records, mirroring verify-doc-uniqueness.py's
+# ARCHIVE_PREFIXES. Both reported only false positives before that, so wiring
+# them without the repair would have turned the gate red for documented reasons.
 step "docs orphans" "python3 .agents/skills/docs-auditor/scripts/check-orphans.py" python3 .agents/skills/docs-auditor/scripts/check-orphans.py
 step "audit stamps" "python3 .agents/skills/docs-auditor/scripts/check-audit-stamps.py" python3 .agents/skills/docs-auditor/scripts/check-audit-stamps.py
+step "nav paths" "python3 .agents/skills/docs-auditor/scripts/check-nav-paths.py" python3 .agents/skills/docs-auditor/scripts/check-nav-paths.py
+step "ci claims" "python3 .agents/skills/docs-auditor/scripts/check-ci-claims.py" python3 .agents/skills/docs-auditor/scripts/check-ci-claims.py
 # scripts/__tests__/*.test.mjs is a whole suite that ui/package.json exposes as
 # `npm run test:scripts` and that NOTHING invoked -- not the hook, not CI, not check.sh.
 # It had been red for an unknown period for exactly that reason: verify-ci-docs-drift.test.mjs

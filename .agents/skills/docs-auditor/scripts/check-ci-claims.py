@@ -49,7 +49,16 @@ NOT_JOB = set(["push", "pull_request", "workflow_dispatch", "workflow_call", "sc
               "deployments", "inputs", "outputs", "container", "secrets"])
 STOP_WORDS = set(["yml", "bak", "sh", "py", "rs", "md", "ci", "true", "false", "main",
                   "tag", "ok", "the", "job", "step", "gate"])
-SKIP_DIR = ("docs/archived", "/archived", "node_modules", "references", "target/", "dist/")
+# Dated-record folders join the skip list 2026-10-02. `docs/records/superseded/`
+# and `docs/records/audits/` are records of what was true on a date, exactly as
+# `docs/archived/` already was, so a job name they describe (`check`, `docs`,
+# `required` in the retired ci-pipeline doc) is evidence, not a live claim. This
+# mirrors ARCHIVE_PREFIXES in scripts/verify-doc-uniqueness.py — same class, same
+# treatment. Before the addition this checker reported 7 findings, every one of
+# them inside a dated record, which is the §6p case: a number that looks like a
+# backlog and is not.
+SKIP_DIR = ("docs/archived", "/archived", "docs/records/superseded",
+            "docs/records/audits", "node_modules", "references", "target/", "dist/")
 BACKUP_SUFFIX = (".md.bak", ".bak")
 # Manager journals are NAMED manager-journal-<topic>.md - the token LEADS, it does not close
 # the name. A suffix test for "-journal.md" therefore matched none of the live corpus: the
