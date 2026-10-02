@@ -17,7 +17,7 @@ import { reciprocalMillionths } from '@/api/currency';
 import { listCustomersScoped, type CustomerDto } from '@/api/customers';
 import { getLoyaltyAccount, redeemLoyaltyPoints, getPointsValue, type LoyaltyAccountWithDetails } from '@/api/loyalty';
 import QrisQrDisplay from '@/components/QrisQrDisplay';
-import { railOffered, staticQrisPayload, useLocalPaymentRails, visibleMethods } from './useLocalPaymentRails';
+import { railOffered, staticQrisPayload, useLocalPaymentRails, visibleMethods, resolveTenderDisplayName } from './useLocalPaymentRails';
 import { useActiveMarketProfile } from '@/hooks/useActiveMarketProfile';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { useSwipe } from '@/hooks/useSwipe';
@@ -771,7 +771,7 @@ retryCurrencyLoad,
           // do differ: a gateway sale is a single QRIS tender with no change.
           payments: [
             {
-              method: 'QRIS',
+              method: resolveTenderDisplayName('qris', paymentRails, activeMarketProfile, 'QRIS'),
               amount: { minorUnits: effectiveTotalInCartCurrency, currency: cartCurrency },
               change: null,
             },
@@ -833,7 +833,7 @@ retryCurrencyLoad,
     },
     [sessionToken, lineItemsInCartCurrency, cartCurrency, tableNumber, addToast,
      loyaltyAccount, redeemPoints, loyaltyDiscount, selectedCustomer, effectiveTotalInCartCurrency,
-     publishFiredCourses, activeMarketProfile],
+     publishFiredCourses, activeMarketProfile, paymentRails],
   );
 
   // ── Manual QRIS (gateway tender, cashier-asserted reference) ─────────
@@ -1044,7 +1044,9 @@ retryCurrencyLoad,
         ? 'split'
         : method === 'other'
           ? otherLabel.trim() || 'OTHER'
-          : method.toUpperCase();
+          : method === 'qris'
+            ? resolveTenderDisplayName('qris', paymentRails, activeMarketProfile, 'QRIS')
+            : method.toUpperCase();
 
       const serialNumberArgs: SerialNumberArg[] | undefined = serialNumbers
         ? Object.entries(serialNumbers)
@@ -1183,7 +1185,7 @@ retryCurrencyLoad,
     } finally {
       setProcessing(false);
     }
-  }, [method, customerName, lineItems, discountPercent, discountLabel, promotionIds, splitMode, splits, otherLabel, change, sessionToken, selectedCustomer, loyaltyAccount, redeemPoints, loyaltyDiscount, serialNumbers, tableNumber, addToast, classifyError, l10n, cartCurrency, effectiveTotalInCartCurrency, lineItemsInCartCurrency, tenderedMinorInCartCurrency, total.currency, total.minor_units, tenderSnapshot, taxEstimated, publishFiredCourses, activeMarketProfile]);
+  }, [method, customerName, lineItems, discountPercent, discountLabel, promotionIds, splitMode, splits, otherLabel, change, sessionToken, selectedCustomer, loyaltyAccount, redeemPoints, loyaltyDiscount, serialNumbers, tableNumber, addToast, classifyError, l10n, cartCurrency, effectiveTotalInCartCurrency, lineItemsInCartCurrency, tenderedMinorInCartCurrency, total.currency, total.minor_units, tenderSnapshot, taxEstimated, publishFiredCourses, activeMarketProfile, paymentRails]);
 
   useEffect(() => {
     if (!done) return;
@@ -1712,7 +1714,9 @@ retryCurrencyLoad,
                           onChange={() => setMethod(m)}
                         />
                         <span className="payment-method-name">
-                          {requiredLocalized(l10n, PAYMENT_METHOD_MESSAGE_IDS[m])}
+                          {m === 'qris'
+                            ? resolveTenderDisplayName('qris', paymentRails, activeMarketProfile, requiredLocalized(l10n, PAYMENT_METHOD_MESSAGE_IDS[m]))
+                            : requiredLocalized(l10n, PAYMENT_METHOD_MESSAGE_IDS[m])}
                         </span>
                       </label>
                     ))}

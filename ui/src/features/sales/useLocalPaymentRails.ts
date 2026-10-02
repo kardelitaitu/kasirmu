@@ -96,6 +96,37 @@ export function visibleMethods(
 }
 
 /**
+ * Resolve the dynamic market tender label for a method.
+ *
+ * For electronic/QR rails (e.g. `qris`), priority order:
+ *  1. Custom display label on the active `local_payment_methods` rail (e.g. "PayNow", "PromptPay", "PIX").
+ *  2. Statutory/national QR scheme mapped from `ActiveMarketProfile.country_code` (e.g. SG -> "PayNow / SGQR", MY -> "DuitNow QR", TH -> "PromptPay", IN -> "UPI", BR -> "PIX", non-ID -> "QR Code").
+ *  3. Localized default string (e.g. "QRIS").
+ */
+export function resolveTenderDisplayName(
+  method: string,
+  rails: LocalPaymentRail[] | null,
+  marketProfile: ActiveMarketProfile | null | undefined,
+  fallback: string,
+): string {
+  if (method === 'qris' || method.toLowerCase() === 'qris') {
+    const rail = rails?.find((r) => r.rail_code === 'qris');
+    if (rail?.label && rail.label.trim().length > 0) {
+      return rail.label.trim();
+    }
+    const cc = marketProfile?.country_code?.toUpperCase();
+    if (cc === 'SG') return 'PayNow / SGQR';
+    if (cc === 'MY') return 'DuitNow QR';
+    if (cc === 'TH') return 'PromptPay';
+    if (cc === 'IN') return 'UPI';
+    if (cc === 'BR') return 'PIX';
+    if (cc && cc !== 'ID') return 'QR Code';
+    return fallback;
+  }
+  return fallback;
+}
+
+/**
  * The merchant static-QR payload for manual QRIS, or null when no
  * non-empty string is configured. Parse/serialize semantics live with
  * the wire model (`api/local-payment`); this is the checkout's view.
