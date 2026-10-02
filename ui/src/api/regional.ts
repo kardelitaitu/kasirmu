@@ -91,3 +91,38 @@ export const REGIONAL_TIMEZONE_PRESETS: readonly string[] = [
   'Asia/Makassar',
   'Asia/Jayapura',
 ] as const;
+
+/**
+ * Statutory tax rounding mode matching `foundation::tax::RoundingMode` wire names.
+ */
+export type StatutoryRoundingMode = 'half_up' | 'truncate';
+
+/**
+ * The compiled, locked market profile governing local checkout.
+ *
+ * Initialized once from SQLite on cold boot; zero runtime database reads
+ * during the sale lifecycle. Carried in Tauri application state and re-loaded
+ * only when the shift-immunity lock permits.
+ */
+export interface ActiveMarketProfile {
+  location_id: string;
+  legal_entity_id: string;
+  country_code: string;
+  currency: string;
+  default_locale: string;
+  timezone: string;
+  tax_regime: string;
+  statutory_rounding: StatutoryRoundingMode;
+  enabled_payment_rails: string[];
+}
+
+/**
+ * Load the compiled, locked market profile for one location (ADR #7 scoped,
+ * gated `settings:read` server-side).
+ */
+export const getActiveMarketProfileScoped = (
+  sessionToken: string,
+  locationId: string,
+): Promise<ActiveMarketProfile> =>
+  loggedInvoke<ActiveMarketProfile>('get_active_market_profile_scoped', { sessionToken, locationId });
+

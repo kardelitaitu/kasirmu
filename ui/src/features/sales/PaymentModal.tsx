@@ -18,6 +18,7 @@ import { listCustomersScoped, type CustomerDto } from '@/api/customers';
 import { getLoyaltyAccount, redeemLoyaltyPoints, getPointsValue, type LoyaltyAccountWithDetails } from '@/api/loyalty';
 import QrisQrDisplay from '@/components/QrisQrDisplay';
 import { railOffered, staticQrisPayload, useLocalPaymentRails, visibleMethods } from './useLocalPaymentRails';
+import { useActiveMarketProfile } from '@/hooks/useActiveMarketProfile';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { useSwipe } from '@/hooks/useSwipe';
 import { useKeyboardAvoidance } from '@/hooks/useKeyboardAvoidance';
@@ -121,6 +122,7 @@ export default function PaymentModal({
   // surface for "does this location offer QRIS" (the master doc's
   // payment:* keys were never implemented). Fail-open until loaded.
   const { rails: paymentRails } = useLocalPaymentRails(sessionToken);
+  const { profile: activeMarketProfile } = useActiveMarketProfile(sessionToken);
   // visibleMethods() owns which tabs the tender list offers; the two reads
   // below are the gates that live OUTSIDE that list -- qrisOffered also kicks
   // the selection back to cash when a reload withholds QRIS, and edcOffered
@@ -1693,7 +1695,7 @@ retryCurrencyLoad,
                     <legend className="payment-section-title">Payment Method</legend>
                   </Localized>
                   <div className="payment-method-options">
-                    {visibleMethods(paymentRails).map((m) => (
+                    {visibleMethods(paymentRails, activeMarketProfile).map((m) => (
                       <label key={m} className="payment-method-label" data-testid="quick-pay-button">
                         <input
                           type="radio"

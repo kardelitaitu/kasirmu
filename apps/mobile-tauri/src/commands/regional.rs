@@ -113,6 +113,27 @@ pub async fn set_regional_config_scoped(
     Ok(config)
 }
 
+/// Load the compiled, locked market profile for one location.
+///
+/// Resolves the session's store database (ADR #7), checks `settings:read`
+/// inline, and loads the active profile from core in a single read pass.
+#[tauri::command]
+pub async fn get_active_market_profile_scoped(
+    location_id: String,
+    session_token: String,
+    state: State<'_, AppState>,
+) -> Result<kasirmu_core::ActiveMarketProfile, AppError> {
+    let session = state.resolve_session(&session_token)?;
+    require_permission_for_session(&state, &session, permissions::SETTINGS_READ).await?;
+    let conn = state.resolve_store(&session_token)?;
+    let conn = conn
+        .lock()
+        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
+    let profile = kasirmu_core::load_active_market_profile(&conn, &location_id)?;
+    Ok(profile)
+}
+
 #[cfg(test)]
 #[path = "regional_tests.rs"]
 mod tests;
+

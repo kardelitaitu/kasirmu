@@ -19,6 +19,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { getLocalPaymentMethodsScoped, readStaticQrPayload, type LocalPaymentRail } from '@/api/local-payment';
 import { getPrimaryLocationScoped } from '@/api/locations';
+import type { ActiveMarketProfile } from '@/api/regional';
 
 export interface LocalPaymentRails {
   /** null while loading / no session / error; the effective list otherwise. */
@@ -69,14 +70,29 @@ const TENDER_RAILS: ReadonlyArray<{ method: TenderMethod; railCode: string | nul
 ];
 
 /**
- * The tender tabs to offer for `rails`, in operator order. Same list the
- * modal hardcoded, now named: an entry survives unless a non-empty rail
+ * The tender tabs to offer for `rails` and optional `marketProfile`, in operator order.
+ * Same list the modal hardcoded, now named: an entry survives unless a non-empty rail
  * list answers that its `railCode` is withheld.
  */
-export function visibleMethods(rails: LocalPaymentRail[] | null): TenderMethod[] {
-  return TENDER_RAILS.filter(
+export function visibleMethods(
+  rails: LocalPaymentRail[] | null,
+  marketProfile?: ActiveMarketProfile | null,
+): TenderMethod[] {
+  const methods = TENDER_RAILS.filter(
     ({ railCode }) => railCode === null || railOffered(rails, railCode),
   ).map(({ method }) => method);
+
+  if (marketProfile && Array.isArray(marketProfile.enabled_payment_rails) && marketProfile.enabled_payment_rails.length > 0) {
+    return methods.filter((m) => {
+      const rail = TENDER_RAILS.find((t) => t.method === m);
+      if (!rail || rail.railCode === null) {
+        return true;
+      }
+      return marketProfile.enabled_payment_rails.includes(rail.railCode);
+    });
+  }
+
+  return methods;
 }
 
 /**
