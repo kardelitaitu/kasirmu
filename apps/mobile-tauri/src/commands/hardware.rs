@@ -79,6 +79,21 @@ pub struct PrintSalesReceiptArgs {
     #[serde(default)]
     /// Optional 17-digit DJP Faktur Pajak string.
     pub faktur_pajak: Option<String>,
+    #[serde(default)]
+    /// Optional store name override.
+    pub store_name: Option<String>,
+    #[serde(default)]
+    /// Optional tax registration number.
+    pub tax_id: Option<String>,
+    #[serde(default)]
+    /// Optional tax registration label (e.g. NPWP, GST Reg No, Tax ID).
+    pub tax_id_label: Option<String>,
+    #[serde(default)]
+    /// Optional tax regime (e.g. PB1, PPN, LOCAL/SG).
+    pub tax_regime: Option<String>,
+    #[serde(default)]
+    /// Optional statutory rounding mode.
+    pub statutory_rounding: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -327,15 +342,35 @@ pub async fn print_sales_receipt_scoped(
             barcode_enabled: false,
             payment_link_template: None,
         };
-        (
-            cfg,
-            receipt::StoreInfo {
-                name: store_name,
-                address: store_address,
-                tax_id: store_tax_id,
-            },
-        )
+        let tax_id_label = effective
+            .content
+            .as_ref()
+            .and_then(|c| c.tax_id_label.clone());
+        let store_info = receipt::StoreInfo {
+            name: store_name,
+            address: store_address,
+            tax_id: store_tax_id,
+            tax_id_label,
+        };
+        (cfg, store_info)
     }; // db_guard dropped here
+
+    let mut store_info = store_info;
+    if let Some(ref name) = args.store_name {
+        if !name.is_empty() {
+            store_info.name = name.clone();
+        }
+    }
+    if let Some(ref tax_id) = args.tax_id {
+        if !tax_id.is_empty() {
+            store_info.tax_id = Some(tax_id.clone());
+        }
+    }
+    if let Some(ref label) = args.tax_id_label {
+        if !label.is_empty() {
+            store_info.tax_id_label = Some(label.clone());
+        }
+    }
 
     let receipt = receipt::SalesReceipt {
         store: store_info,
