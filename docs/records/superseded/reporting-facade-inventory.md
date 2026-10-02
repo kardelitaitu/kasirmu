@@ -2,8 +2,8 @@
 
 **Status:** DONE 2026-10-02. Written by ticket T5 of
 [phase1-implementation-tickets.md](./phase1-implementation-tickets.md). Companion to
-[module-namespace-governance.md](./module-namespace-governance.md) (Rule 1) and
-[ADR-62](../decisions/2026-09-30-adr62-module-seam-taxonomy.md) D5.
+[module-namespace-governance.md](../../architecture/module-namespace-governance.md) (Rule 1) and
+[ADR-62](../../decisions/2026-09-30-adr62-module-seam-taxonomy.md) D5.
 
 ## 1. Why this document exists
 
@@ -211,4 +211,4 @@ but the map's silence is a real gap the T5 inventory surfaces for the Phase 2 st
 - `crates/kasirmu-bridge/src/reports.rs` — the live scoped consumer surface (~37 functions).
 - `modules/reporting/src/lib.rs` — the module shell that remains after P3.1 retired the bypass edge.
 - [docs/architecture/namespaced-store-api-draft.md](namespaced-store-api-draft.md) §5 row 2.4 — the migration this stages.
-- [done-todo-modular-scaffolding.md](../../done-todo-modular-scaffolding.md) §9.5 — the plan paragraph being reconciled.
+- [done-todo-modular-scaffolding.md](../../../../done-todo-modular-scaffolding.md) §9.5 — the plan paragraph being reconciled.

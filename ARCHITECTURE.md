@@ -646,7 +646,7 @@ cd apps/desktop-tauri && cargo tauri dev       # launches Tauri dev window
 - Additional business logic can be scripted in Lua files placed in a `scripts/` directory (Phase 3).
 - Payment gateway integrations can be introduced as separate crates linked to `kasirmu-core`.
 - New REST endpoints go in `crates/kasirmu-api/src/routes/` and are registered in `lib.rs`.
-- See [MODULAR_APP_PLAN.md](./docs/architecture/MODULAR_APP_PLAN.md) for detailed execution roadmaps covering dynamic module lifecycle hot-reloading (`platform/kernel`), LAN peer-to-peer KDS sync, and Docker containerized cloud server deployments (`apps/cloud-server`).
+- See [MODULAR_APP_PLAN.md](./docs/records/superseded/MODULAR_APP_PLAN.md) for detailed execution roadmaps covering dynamic module lifecycle hot-reloading (`platform/kernel`), LAN peer-to-peer KDS sync, and Docker containerized cloud server deployments (`apps/cloud-server`).
 
 ---
 

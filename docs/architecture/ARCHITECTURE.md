@@ -17,7 +17,7 @@ What moved, and where to find it:
 | Directory Layout | root file's § Repository Structure (Target) + § Project Layout (Current State) — this copy's tree was stale and was not merged |
 | Overview, five-layer stack summary | root file's § Core Goals / § Technology Stack; the audited five-layer narrative also lives in [`guides/product/WHITEPAPER.md`](../guides/product/WHITEPAPER.md) |
 
-Sibling documents in this directory ([`MODULAR_APP_PLAN.md`](./MODULAR_APP_PLAN.md)) are
+Sibling documents in this directory ([`MODULAR_APP_PLAN.md`](../records/superseded/MODULAR_APP_PLAN.md)) are
 unaffected — only this file moved its authority.
 
 Stub written 2026-09-23 by the documentation audit, which verified every ported claim's

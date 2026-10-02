@@ -275,7 +275,7 @@ Module-level truth (`modules/`): 10 active (`inventory`, `crm`, `tax`, `settings
 
 Latest release: **v0.0.40** (on branch `0.0.40`).
 
-See [ROADMAP.md](./docs/guides/product/ROADMAP.md) for the full phased delivery plan, and [MODULAR_APP_PLAN.md](./docs/architecture/MODULAR_APP_PLAN.md) for detailed granular checklists covering feature presets, restaurant workflows, LAN KDS discovery, and Docker cloud server containerization (`apps/cloud-server`).
+See [ROADMAP.md](./docs/guides/product/ROADMAP.md) for the full phased delivery plan, and [MODULAR_APP_PLAN.md](./docs/records/superseded/MODULAR_APP_PLAN.md) for detailed granular checklists covering feature presets, restaurant workflows, LAN KDS discovery, and Docker cloud server containerization (`apps/cloud-server`).
 
 ---
 

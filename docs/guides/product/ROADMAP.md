@@ -834,7 +834,7 @@ Phase 17 (P2P Mesh) ──► Phase 18 (Franchise Fleet) ──► Phase 19 (Mic
 On-Features can be activated at any phase once the core infrastructure is in place.
 
 > [!NOTE]
-> For granular, step-by-step checklists covering admin feature configuration, restaurant workflows (`Resto POS + KDS + Inventory`), LAN peer-to-peer sync, and Docker containerized cloud server deployments (`apps/cloud-server`), see **[MODULAR_APP_PLAN.md](../../architecture/MODULAR_APP_PLAN.md)**.
+> For granular, step-by-step checklists covering admin feature configuration, restaurant workflows (`Resto POS + KDS + Inventory`), LAN peer-to-peer sync, and Docker containerized cloud server deployments (`apps/cloud-server`), see **[MODULAR_APP_PLAN.md](../../records/superseded/MODULAR_APP_PLAN.md)**.
 
 ---
 
