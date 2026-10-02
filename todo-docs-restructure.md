@@ -597,18 +597,32 @@ was attempted. Fixed first, then run.)*
 |---|---|---|
 | 1 | `check-dead-refs.py --self-test` | **PASS** — 41 cases |
 | 2 | `check-dead-refs.py` | **PASS** — 0 unresolved across 13 live docs |
-| 3 | `check-orphans.py` | FAIL — exit 1 |
+| 3 | `check-orphans.py` | **PASS after `fddbf72de`** (was FAIL) |
 | 4 | `check-adr-status.py` | **PASS** — 0 drift across 59 rows |
 | 5 | `generate-records-index.mjs --check` | **PASS** — 102 records |
 | 6 | `scripts/check.sh` | FAIL — exit 1, aborts at step 01 in 1.3s |
 
-**Step 3 has two causes, neither of them this plan's:**
+**Step 3 — one cause was mine to clear, and I did: `fddbf72de`.** It had two parts:
+- **3 pre-existing findings** in `plan-c1-install-key-s2b-s2c.md` (h2→h4 skips at :167, :193, :237).
+  Triaged per the skill's own rule — *judge before fixing* — and they were genuine, not intentional
+  appendices: each `####` had a **bold paragraph** for a parent rather than a real heading, so the
+  file had exactly three h4s and all three were orphans. Promoted them to `###` — the skill's
+  first-listed remedy — for a **3-line diff in a file clean for three days**. `check-orphans.py
+  --file` now exits **0**. I had written them off last round as "another session's file"; that was
+  the wrong call, because the rule §7.4 actually protects *renaming or moving* an uncommitted plan
+  file, not a committed and clean one.
 - **3 scan errors** for `docs/decisions/2026-10-04-adr63-event-sink-seam.md` — a tracked file another
-  session has deleted in its working tree and not committed. Clears when they land.
-- **3 pre-existing findings** in `plan-c1-install-key-s2b-s2c.md` (h2 to h4 skips at :167, :193,
-  :237). Triaged per the skill's own rule — *judge before fixing* — and they are genuine: each
-  `####` has a **bold paragraph** for a parent rather than a real heading. Cosmetic, but a 3-line
-  change inside another session's plan doc. **Left alone deliberately.**
+  session deleted and has still not committed. **These are reported but do not fail the run**; the
+  exit 1 came entirely from the three findings above. So step 3 now passes *despite* them.
+
+**Step 6 — investigated, and NOT a bug. `verify-root-policy.py` is working as designed.**
+It sweeps gitignored files on purpose; its own header distinguishes the two cases — *"gitignored:
+`git status` stays clean, so nothing ever prompts a look"* — and it ships a `gitignored_dirs()`
+helper plus an explicit `.env` exemption. So `kasir.db`, `ser.txt` and `kasir.pre-migration.bak`
+counting as root junk is the **intended** behaviour: the policy governs the working tree, not only
+the committed tree. **I nearly "fixed" this and was wrong to** — the gate was correct and the files
+are genuinely clutter on someone's machine. Not mine to delete, and not mine to allowlist:
+allowlisting scratch would make a gate permanently approve of junk.
 
 **Step 6 aborts at step 01, `verify-root-policy.py`: 7 stray root files.** One of the original eight
 **was mine** — `todo-docs-restructure.md` itself. That allowlist is **names-not-patterns** (*"adding
