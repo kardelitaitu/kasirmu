@@ -9,7 +9,8 @@ Four real findings produced this check, all in one session:
     exists only in ci.yml.bak.
   - ui/e2e/README.md described the e2e job in a retired workflow in present tense. No live
     workflow defines e2e, and AGENTS.md itself says E2E is not enforced in CI.
-  - docs/releases/checklist.md made the OPPOSITE error: it dismissed release-validate as
+  - docs/records/releases/checklist.md (then at docs/releases/) made the OPPOSITE error: it
+  dismissed release-validate as
     dead because release.yml had once been renamed to .bak and was later restored, so the
     doc denied a gate that really does run.
 
