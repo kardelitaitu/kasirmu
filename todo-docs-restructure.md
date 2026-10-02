@@ -447,10 +447,26 @@ below used one combined pattern, so the per-file hit count is not yet attributed
   empty, and `2>/dev/null || true` swallows the failure exactly as designed — which is precisely why
   it went unnoticed. This is the only *functional* break in the whole move, and it is in a file §3's
   **D1** marks *do not touch*. D1 protects `docs/src/` from being *moved*; it does not exempt a
-  **consumer** that must be repointed. `build-docs.ps1` needs the same fix.
-- 🟡 **`scripts/generate-records-index.mjs` — 14 of its 21 hits are a hardcoded `scattered` list**
-  (`docs/archived/*.md`, lines 410–423), every path now stale. That is why every run reports
-  **0 scattered** and **0 audits**. The other 7 are comments and section headers.
+  **consumer** that must be repointed.
+- ✅ **FIXED `d00c08653` — proved, not assumed.** The old path yields **0 files**; the new
+  `docs/records/releases/` yields **10**; and executing the fixed copy actually landed **10 files**
+  in a simulated book source. `build-docs.ps1` got the same one-token fix, plus a stale
+  `docs/archived/` comment. This was the **only functional break in the entire move** — every other
+  stale reference found was a comment or a self-healing dead list.
+- 🟡 **`scripts/generate-records-index.mjs` — 14 of its 21 hits were a hardcoded `scattered` list**
+  (`docs/archived/*.md`, lines 410–423), every path stale. That is why every run reported **0 scattered**.
+  **FIXED `48fad0afa`** — the list is now empty, with the reasoning recorded in a comment beside it.
+  **Why emptied rather than repointed:** all 14 files now live under `docs/records/`, which the
+  records scan already walks **recursively**. They were verified present in the index *before* the
+  change, so repointing would have indexed all 14 **twice**. Two independent proofs it cost nothing:
+  the record count held at **102** across the change, and `docs/records/README.md` did not appear in
+  the commit at all — regenerating produced byte-identical output.
+  **Why it never broke:** the old code carried `.filter((p) => existsSync(…))`, so stale paths were
+  **silently dropped**. Self-healing, and therefore invisible to every gate. The remaining 7 hits in
+  that file are comments and section headers — including the now-empty *Audit Reports
+  (`docs/audits/`)* and *System Analysis / Observability (`docs/observability/`)* headings, both
+  emitted from directory names that no longer exist. Left as recorded artefacts rather than turned
+  into new behaviour this late in the plan.
 - 🟢 Comments and stale prose in `gen-summary.py` (3), `verify-debt-markers.py` (4),
   `verify-doc-uniqueness.py` (3), `verify-ci-docs-drift.py` (3) + its test (2), `find-oldest-md.sh` (2),
   `profile.ps1` (2), `release.sh` (2), `test-ci-routing.sh` (2), and 5 one-line scripts — **no gate
