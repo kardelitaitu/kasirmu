@@ -105,7 +105,7 @@ variants and strings. **Pre-existing defects are PRESERVED AND REPORTED, never f
 inside an extraction** — a bug repaired under a `refactor` commit is an unreviewed
 behaviour change. Gates that are not scope-aware **stay not scope-aware**; an extraction is
 not the place to widen a gate. What the rule preserved is registered, one line per item,
-in [`docs/records/audit-open-findings.md`](../records/audit-open-findings.md)
+in [`docs/records/audit-open-findings.md`](../records/findings/audit-open-findings.md)
 §*Bridge extraction (`crates/oz-bridge`)*.
 
 ## Consequences

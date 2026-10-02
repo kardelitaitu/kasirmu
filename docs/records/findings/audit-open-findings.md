@@ -181,7 +181,7 @@ Surfaced while making the loyalty fixed-point migration land on both engines; th
 
 ## i18n — Fluent localization (`PARTIALLY REMEDIATED 2026-09-03`)
 
-Full working journal, per-phase evidence and the retracted claims: [`fluent-page-audit.md`](./fluent-page-audit.md).
+Full working journal, per-phase evidence and the retracted claims: [`fluent-page-audit.md`](../audits/frontend/fluent-page-audit.md).
 
 Closed by that audit: the parity gate's scope (1 surface / `features/**` only → 6 surfaces / all of `ui/src`), its promotion from `--report-only` to fail-closed, 14 phantom keys, 74 hardcoded sites, the PO-Receive label bug, two screen-reader names built from raw keys or unlocalized array entries, 16 split en/id locale pairs, the stray `ui/locales/` bundle, and the missing CI job.
 

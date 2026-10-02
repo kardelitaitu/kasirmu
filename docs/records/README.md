@@ -68,6 +68,7 @@ Unified registry for architectural decisions (ADRs), audits, verifications, meas
 | 61 | architecture | [ADR-61: Architecture Boundary Rule Tiers — a named rule for re-export-only edges and a governed expiry](../decisions/2026-09-28-adr61-architecture-boundary-rule-tiers.md) | Implemented (2026-09-28) — the core-type-shim rule, the quarter-renewal invariant and the baseline re-tier, the currency edge closure and all seven type-shim edges closed and the baseline emptied (0 tracked findings); the deadline that made the seven shims is sequenced, not done |
 | 62 | architecture | [ADR-62: Module Seam Taxonomy — command contributors, projection subscribers, and the reporting-facade exception](../decisions/2026-09-30-adr62-module-seam-taxonomy.md) | Accepted (2026-09-30) — the taxonomy is written and grounded in the Phase 0 handler census; the check that enforces it (a handler_type classification gate) is not built |
 | 63 | architecture | [ADR-63: The EventSink Seam — grading R10 #3 with a rule that arrived at zero](../decisions/2026-10-01-adr63-event-sink-seam.md) | Implemented (2026-10-04) — rule event-sink-seam landed in scripts/verify-architecture-boundaries.py at zero findings with no baseline; the four remaining raw-handle broadcasts were routed through BridgeCtx::emitter; R10's other three invariants are disposed of by measurement (D6 — #1 a written convention, #2/#4 struck) |
+| 64 | payments | [ADR-64: The Tender Vocabulary and the Offline Tender State — one method name per payment, and no electronic tender sett…](../decisions/2026-10-02-adr64-tender-vocabulary-and-offline-tender-state.md) | Proposed (2026-10-02) — every decision below is TO BUILD; nothing in this record has landed |
 
 ### Research Notes
 
@@ -100,7 +101,7 @@ Unified registry for architectural decisions (ADRs), audits, verifications, meas
 - [ADR: Topology Phase 9 — Stock Routing Consumer](../decisions/2026-08-09-topology-phase9-stock-routing.md)
 
 **general:**
-- [this is rough plan, need to reviewed and standarized with our other ADR format](../decisions/2026-10-02-adr64-global-kernel-and-region-pack.md)
+- [Global Kernel and Region Packs — strategy note](../decisions/2026-10-02-global-kernel-and-region-pack-strategy.md)
 
 ## Engineering Records (`docs/records/`)
 
@@ -109,18 +110,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 
 | Area | Title | Status |
 | --- | --- | --- |
-| general | [Engineering Journal - part 1 of 8](JOURNAL-part-1.md) | — |
-| general | [Engineering Journal - part 2 of 8](JOURNAL-part-2.md) | — |
-| general | [Engineering Journal - part 3 of 8](JOURNAL-part-3.md) | — |
-| general | [Engineering Journal - part 4 of 8](JOURNAL-part-4.md) | — |
-| general | [Engineering Journal - part 5 of 8](JOURNAL-part-5.md) | — |
-| general | [Engineering Journal - part 6 of 8](JOURNAL-part-6.md) | — |
-| general | [Engineering Journal - part 7 of 8](JOURNAL-part-7.md) | — |
-| general | [Engineering Journal - part 8 of 8](JOURNAL-part-8.md) | — |
-| general | [Engineering Journal - index](JOURNAL.md) | — |
 | general | [ADR #7 Conditional Scoping — the Fallback Class](adr7-conditional-scoping-fallback-class.md) | — |
-| general | [Audit Closed Findings — Archive](audit-closed-findings.md) | — |
-| general | [Audit Open Findings — Consolidated](audit-open-findings.md) | — |
 | theming | [Retail POS Theming Audit — 2026-07-28](audits/2026-07-28-retail-pos-theming-audit.md) | — |
 | ui | [Retail POS UX Audit — 2026-07-29](audits/2026-07-29-retail-pos-ux-audit.md) | — |
 | sync | [Unify Auth & Sync to Northflank](audits/2026-08-15-unify-auth-and-sync.md) | Archived (2026-08-31) — implemented; live procedure is docs/operations/runbook.md |
@@ -151,6 +141,17 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | ui | [UI State Audit — 0.0.14](audits/ui-state-audit-2026-07-20.md) | — |
 | general | [MANAGER-2 JOURNAL - POS-SCREEN. LIVE STATE BLOCK (authoritative head, READ FIRST)](campaigns/manager-2-journal-posscreen.md) | — |
 | general | [MANAGER-2 CURRENT-STATE LEDGER (condensed; authoritative head - READ THIS FIRST)](campaigns/manager-2-journal.md) | — |
+| general | [Audit Closed Findings — Archive](findings/audit-closed-findings.md) | — |
+| general | [Audit Open Findings — Consolidated](findings/audit-open-findings.md) | — |
+| general | [Engineering Journal - part 1 of 8](journal/JOURNAL-part-1.md) | — |
+| general | [Engineering Journal - part 2 of 8](journal/JOURNAL-part-2.md) | — |
+| general | [Engineering Journal - part 3 of 8](journal/JOURNAL-part-3.md) | — |
+| general | [Engineering Journal - part 4 of 8](journal/JOURNAL-part-4.md) | — |
+| general | [Engineering Journal - part 5 of 8](journal/JOURNAL-part-5.md) | — |
+| general | [Engineering Journal - part 6 of 8](journal/JOURNAL-part-6.md) | — |
+| general | [Engineering Journal - part 7 of 8](journal/JOURNAL-part-7.md) | — |
+| general | [Engineering Journal - part 8 of 8](journal/JOURNAL-part-8.md) | — |
+| general | [Engineering Journal - index](journal/JOURNAL.md) | — |
 | sync | [Sync settings ingest admits and the redirect that carries them](snapshots/2026-09-12-sync-settings-ingest-and-redirect-census.md) | — |
 | general | [ADR #51 From the Other Side — the Admitted Set and the Redirect's Second Writer](snapshots/2026-09-13-adr51-admitted-set-and-blind-sides.md) | — |
 | ui | [Appraisal: todo-review-type.md (Local-First & Frontend Architecture)](snapshots/2026-09-15-frontend-architecture-todo-appraisal.md) | — |
@@ -176,7 +177,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 
 ## Audit Reports
 
-The per-sector audit reports were consolidated into [**Audit Open Findings**](./audit-open-findings.md) (current); fully-remediated sectors are closed by the commits recorded there.
+The per-sector audit reports were consolidated into [**Audit Open Findings**](./audit-open-findings.md) (generated — run the script again); fully-remediated sectors are closed by the commits recorded there.
 
 ## Scattered Audit Reports (`docs/`)
 

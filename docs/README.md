@@ -12,7 +12,7 @@
 | Directory | Purpose | Key files |
 |-----------|---------|-----------|
 | [`decisions/`](./decisions/) | Architectural Decision Records (ADRs) — numbered ADRs, research notes, phased implementation docs, and the implementation-status table | [`README.md`](./decisions/README.md) — status table with deviations |
-| [`records/`](./records/) | **Records** — anything that was true on a date and is not a live claim. Holds the generated index plus lifecycle subfolders: `audits/` (audit reports), `superseded/` (retired docs, old plans, obsolete guides), `journal/`, `campaigns/`, `findings/`, `snapshots/`, `benchmarks/`, `releases/` | [`README.md`](./records/README.md) — generated, never hand-edited; [`audit-open-findings.md`](./records/audit-open-findings.md) |
+| [`records/`](./records/) | **Records** — anything that was true on a date and is not a live claim. Holds the generated index plus lifecycle subfolders: `audits/` (audit reports), `superseded/` (retired docs, old plans, obsolete guides), `journal/`, `campaigns/`, `findings/`, `snapshots/`, `benchmarks/`, `releases/` | [`README.md`](./records/README.md) — generated, never hand-edited; [`audit-open-findings.md`](./records/findings/audit-open-findings.md) |
 | [`specs/`](./specs/) | Active and completed specs — workspace-settings phases, audit plans, module manifests | [`_active/`](./specs/_active/) — in-progress specs |
 | [`operations/`](./operations/) | Production runbook, deployment guides, platform build/test guides | [`runbook.md`](./operations/runbook.md) — unified Northflank deployment runbook |
 | [`security/`](./security/) | Security audits, checklists, hardening guides, incident response, data-governance policy | [`PCI-DSS_CHECKLIST.md`](./security/PCI-DSS_CHECKLIST.md), [`data-residency-and-retention.md`](./security/data-residency-and-retention.md) |
@@ -55,7 +55,7 @@
   highest `adr63`. Fixing the number would have been the third restatement of a value that goes
   stale on every ADR; the derivation commands above are the fix.)
 - **Spec phases:** `workspace-settings-phase-<N>-<slug>.md` in `specs/`
-- **Audit findings:** tracked in [`records/audit-open-findings.md`](./records/audit-open-findings.md)
+- **Audit findings:** tracked in [`records/audit-open-findings.md`](./records/findings/audit-open-findings.md)
 
 ### The records index is generated, and nothing enforces its freshness
 
