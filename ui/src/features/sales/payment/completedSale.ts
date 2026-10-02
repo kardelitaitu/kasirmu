@@ -102,7 +102,7 @@ export function buildCompletedSaleReceipt({
     date: new Date().toLocaleDateString('en-US', {
       year: 'numeric', month: 'short', day: 'numeric',
     }),
-    receiptNumber: `SALE-${saleId}`,
+    receiptNumber: completedSale?.displayCode ?? `SALE-${saleId}`,
     items: cartLines.map((line, i) => {
       const computedLine = completedSale?.lines?.[i];
       const tax = computedLine?.tax_amount
