@@ -176,6 +176,35 @@ pub async fn set_scoped(
     )?)
 }
 
+/// Read the compiled, locked market profile for one location of the
+/// session's store (regional slice 7 — cold-boot profile).
+///
+/// Permission gate: `settings:read`, the same gate as [`get_scoped`].
+/// The profile is resolved in a single read pass and returned as-is;
+/// no caching occurs inside the bridge — the shell caches the result in
+/// Tauri application state.
+///
+/// # Errors
+///
+/// Returns [`BridgeError::InvalidSession`] for an unknown/expired token,
+/// [`BridgeError::PermissionDenied`] without `settings:read`,
+/// [`BridgeError::Internal`] when the store lock is poisoned, and
+/// [`BridgeError::Core`] on DB errors (including `NotFound` for a missing
+/// location).
+pub async fn get_active_market_profile(
+    ctx: &BridgeCtx<'_>,
+    session_token: &str,
+    location_id: &str,
+) -> Result<kasirmu_core::ActiveMarketProfile, BridgeError> {
+    let (session, conn) = ctx.resolve_scope(session_token)?;
+    ctx.require_session_permission(&session, kasirmu_core::permissions::SETTINGS_READ)
+        .await?;
+    let db = conn
+        .lock()
+        .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
+    kasirmu_core::load_active_market_profile(&db, location_id).map_err(BridgeError::from)
+}
+
 #[cfg(test)]
 #[path = "regional_tests.rs"]
 mod tests;

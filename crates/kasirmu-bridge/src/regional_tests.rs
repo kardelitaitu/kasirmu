@@ -453,3 +453,61 @@ async fn set_regional_config_scoped_denies_staff_without_settings_edit() {
 
     assert!(matches!(result, Err(BridgeError::PermissionDenied(_))));
 }
+
+// ── ActiveMarketProfile bridge ────────────────────────────────────────
+
+/// `get_active_market_profile` returns the compiled profile for the seeded
+/// default location — currencies, locale, timezone, enabled rails — gated on
+/// `settings:read`.
+#[tokio::test]
+async fn get_active_market_profile_returns_profile_for_default_location() {
+    let conn = temp_conn();
+    seed_owner(&conn);
+    let bridge = flow_bridge(conn, store_manager());
+    owner_session(&bridge, "owner-tok");
+
+    let profile = get_active_market_profile(&bridge.ctx(), "owner-tok", "default")
+        .await
+        .unwrap();
+
+    assert_eq!(profile.location_id, "default");
+    // The seeded default location has a legal entity.
+    assert!(!profile.legal_entity_id.is_empty());
+    // The default location seeds USD/UTC/en-US (sentinels).
+    assert_eq!(profile.currency, "USD");
+    assert_eq!(profile.timezone, "UTC");
+}
+
+/// A session without `settings:read` is denied — typed `PermissionDenied`.
+#[tokio::test]
+async fn get_active_market_profile_denies_without_settings_read() {
+    let conn = temp_conn();
+    {
+        let store = Store::new(&conn);
+        store.seed_default_roles().unwrap();
+    }
+    conn.execute_batch(
+        "INSERT INTO roles (id, name, description, permissions, created_at, updated_at)
+         VALUES ('role-lite2', 'Lite2', 'Limited', '[\"sales:view\"]', '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z');
+         INSERT INTO users (id, username, pin_hash, display_name, role_id, is_active, created_at, updated_at)
+         VALUES ('user-lite2', 'lite2', 'hash', 'Lite2 User', 'role-lite2', 1, '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z');",
+    )
+    .unwrap();
+    let bridge = flow_bridge(conn, store_manager());
+    bridge.sessions().write().unwrap().insert(
+        "lite2-tok".into(),
+        SessionContext::new(
+            "user-lite2".into(),
+            "role-lite2".into(),
+            "terminal-1".into(),
+            "default".into(),
+            "instance-1".into(),
+            "pos".into(),
+            None,
+            0,
+        ),
+    );
+
+    let result = get_active_market_profile(&bridge.ctx(), "lite2-tok", "default").await;
+    assert!(matches!(result, Err(BridgeError::PermissionDenied(_))));
+}
