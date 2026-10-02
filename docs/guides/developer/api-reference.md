@@ -630,12 +630,14 @@ Three layers of one receipt format: the terminal override, the workspace layout 
 - **`set_receipt_content_scoped`** [D+T] — Replace the primary legal entity's statutory content record and return the freshly effective format.
 - **`set_receipt_layout_scoped`** [D+T] — Replace the workspace-layer layout record for the session's store db.
 
-### `commands::regional` (2)
+### `commands::regional` (3)
 
-Regional slice 2/3 — the per-location regional configuration, read and write.
+Regional slice 2/3 — the per-location regional configuration, read and write — and slice 7, the
+compiled cold-boot market profile.
 
 - **`get_regional_config_scoped`** [D+T] — Read the effective regional configuration for one location of the session's store.
 - **`set_regional_config_scoped`** [D+T] — Write the regional configuration for one location of the session's store.
+- **`get_active_market_profile_scoped`** [D] — Read the compiled, locked market profile for one location of the session's store. Gate `settings:read` in `kasirmu_bridge::regional`; loaded once on cold boot and cached in application state, so **zero database reads happen during the sale lifecycle**. Desktop-only: registered in `apps/desktop-tauri`, not in the tablet shell.
 
 ### `commands::reports` (24)
 
