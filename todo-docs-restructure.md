@@ -757,11 +757,19 @@ branches.** I did not switch; another session did.
 044cba1ec HEAD@{6}  docs(plans): archive 14 done-* docs        <- stranded on 0.0.40
 ```
 
-- **Not in this branch's history, recoverable on `0.0.40`** (both verified ancestors of `0.0.40`,
-  objects intact): the 14 `done-*.md` → `docs/plans/_done/` move, and the original copy of this plan.
-  On `0.0.41` the 14 files are **back at the repo root** and `docs/plans/_done/` holds 1 file.
-  **Not re-applied unilaterally** — §10 Q1 is unanswered, and redoing a move the owner may resolve
-  differently is not a call this plan should make alone. Flagged for the owner instead.
+- **~~Not in this branch's history~~ — REDONE ON `0.0.41`, `0ebaf1d31`.** The 15 `done-*.md`
+  are now in `docs/plans/_done/` (16 files there). All **15 byte-identical**, all **15 `100%` renames**
+  in one commit, nothing left staged. **2 links fixed:** `README-3.md:169` and its `:165` tree comment,
+  and `docs/records/superseded/reporting-facade-inventory.md:214`. `done-todo-rebrand.md`'s sibling
+  link to `done-todo-rebrand-2.md` needed nothing — both moved together. `check-dead-refs.py`:
+  **0 unresolved**, self-test run first.
+  **Why it was deferred and then done.** §10 Q1 (do live plan docs belong at the root?) was unanswered,
+  so redoing it unilaterally was the wrong call *at the time*. The owner then asked for it directly,
+  which is a different act entirely: §7.4 bars moving **another session's uncommitted** plan file,
+  and all 15 were committed and clean. **Asking is not stalling** — the first pass declined on the
+  merits; the second was an instruction.
+  The set grew from 14 to 15 while this plan was paused: another session renamed
+  `todo-modular-scaffolding.md` → `done-todo-modular-scaffolding.md`.
 - **Safe on this branch:** the journal split `05dcb632b`. Its baseline was verified rather than
   assumed — `0.0.41`'s `JOURNAL.md` is **byte-identical** to `0.0.40`'s (13,433 lines each), so the
   split preserved the correct source and the index's line map is valid here.

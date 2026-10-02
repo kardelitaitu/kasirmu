@@ -26,7 +26,9 @@ ABSENCE, and they stay correct no matter what gets wired later -- a checker can 
 gain a runner, never lose one. Flagging those is how a gate cries wolf on the repo's own
 historical records, which is the mistake that sank two earlier attempts this session.
 
-Also exempt: files under docs/archived, .github/workflows/attic, and dated baselines.
+Also exempt: files under docs/records/ and docs/archived/, .github/workflows/attic, and dated
+baselines. (docs/records/ was added 2026-10-02 when docs/archived/ was retired and became a
+one-file tombstone; this docstring had not been updated and had stopped describing SKIP_DIRS.)
 Those are evidence. A record of what was true on a given day is not drift, and rewriting
 one to match today destroys the only evidence that it ever differed.
 
