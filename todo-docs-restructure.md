@@ -526,6 +526,41 @@ Running the test in the background returned **25/25 PASS**. **The lesson: a hang
 is not evidence of a defect in your change** — and the processes were left alone, because three of
 the four were not mine to kill.
 
+### 6e — §6a reconciled against what actually happened: the list over-claimed, and missed the worst one
+
+§6a was written in round 3 as a *static* prediction — "these ~15 script files must change". Measured
+against the nine commits that carried the tooling work, the record is:
+
+| | Count |
+|---|---:|
+| §6a script files predicted to need changing | 15 |
+| …that actually needed changing | **7** |
+| …that needed nothing | 8 |
+| **Tooling files that DID need changing and were NOT in §6a** | **2** |
+
+The 8 that needed nothing were harmless: `gen-summary.py`, `test-records-index-escaping.sh`,
+`check.sh`, `gates.json`, `verify-doc-uniqueness.py`, `check-mapper-alignment.py`,
+`find-oldest-md.sh`, `profile.ps1`. B0 is why — settling the target directory at
+`docs/records/` meant the generator's *output path* never moved, and with it the single largest
+item on the list evaporated without an edit.
+
+**The two §6a missed are the two that mattered, and one of them is the most consequential find in
+this plan:**
+
+- **`.github/workflows/dev-ci.yml`** — the release-readiness route bucket keyed on
+  `^docs/releases/`, so editing any moved release document would have **stopped triggering the
+  release job**. A static scan of *scripts* never looked at CI, and §6 — written before the moves —
+  listed workflows only as *"add a gates.json record and a ci-pipeline row"*, never as *"this pattern
+  will match nothing"*.
+- **`scripts/verify-root-policy.py`** — named this very plan doc as a stray root file.
+
+**What this says about a predicted blast radius.** §6a was right about *breadth* being the risk and
+wrong in **both directions**: it named 8 files that were fine and missed 2 that were not, one of them
+load-bearing for a CI gate. A list derived from reading scripts is a hypothesis about scripts. The
+three breaks that mattered — `dev-ci.yml`, `release.sh`, `verify-runner-claims.py` — were all
+found by *asking what breaks* after each move, never by the list. **Keep the list as a checklist of
+where to look; do not treat it as the set of places that are broken.**
+
 ### 6b — Confirmed incidental, no change
 
 - [ ] `scripts/build-docs.sh` (8) and `scripts/build-docs.ps1` (8) — **D1, mdBook, must not change**
