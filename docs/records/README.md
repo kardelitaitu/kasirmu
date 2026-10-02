@@ -129,7 +129,18 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | theming | [Agent Ops Handbook — CSS Verification](audits/frontend/css-verification.md) | — |
 | general | [Fluent Page Audit — Full Journal](audits/frontend/fluent-page-audit.md) | — |
 | ui | [Modal & Overlay Audit Checklist](audits/modal-audit-checklist.md) | — |
+| observability | [Error Handling Audit — 0.0.14](audits/observability/error-handling-2026-07-20.md) | — |
+| observability | [Structured Logging & Observability — 0.0.14](audits/observability/logging-2026-07-20.md) | — |
 | products | [Product Image Storage Plan - Review Summary](audits/plan-product-images-review.md) | — |
+| general | [Dependency Audit — 2026-07-20](audits/security/audit-2026-07-20.md) | — |
+| general | [Security Audit: Admin Dashboard Login Flow](audits/security/audit-admin-login-flow.md) | — |
+| security | [Login Flow Audit — Admin + User Dashboard (Final Pass)](audits/security/audit-login-flow-final.md) | — |
+| general | [Input Validation & Rate Limiting — 0.0.14 Hardening](audits/security/hardening-2026-07-20.md) | — |
+| subscription | [License Audit — 2026-07-20](audits/security/license-audit-2026-07-20.md) | — |
+| general | [Lua Sandbox Security Audit — P0-1](audits/security/lua-sandbox-audit.md) | — |
+| website | [Admin Dashboard Review — Long-Term Sustainability Report](audits/security/review-admin-dashboard-long-term.md) | — |
+| general | [SAST Audit — 2026-07-20](audits/security/sast-2026-07-20.md) | — |
+| security | [kasir.mu Security Audit — Completion Summary](audits/security/security-audit-completion.md) | — |
 | general | [SEO audit — kasir.mu marketing site (on-page, technical, content)](audits/seo/seo-audit-19-09-26.md) | — |
 | general | [SEO review — robots.txt and llms.txt (kasir.mu)](audits/seo/seo-robots-llms-review-19-09-26.md) | — |
 | general | [Setup wizard + login/signup — state-of-the-art working notes](audits/setup/setup-state-of-the-art.md) | — |
@@ -186,8 +197,6 @@ The per-sector audit reports were consolidated into [**Audit Open Findings**](./
 
 | Area | Title | Status |
 | --- | --- | --- |
-| observability | [Error Handling Audit — 0.0.14](../observability/error-handling-2026-07-20.md) | — |
-| observability | [Structured Logging & Observability — 0.0.14](../observability/logging-2026-07-20.md) | ✅ tracing already integrated. JSON output + correlation IDs available. File rotation via tracing-appender configured. |
 
 ## Conventions
 

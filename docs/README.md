@@ -20,7 +20,7 @@
 | [`guides/`](./guides/) | Reference documentation — architecture, user/admin guides, whitepapers, roadmaps | [`ARCHITECTURE.md`](../ARCHITECTURE.md) — at repo root, canonical since 2026-09-23 |
 | [`architecture/`](./architecture/) | Cross-cutting design docs — the critical-path invariants and their enforcing tests, plus modular-app and workspace plans | [`CRITICAL_PATH_INVARIANTS.md`](./architecture/CRITICAL_PATH_INVARIANTS.md) — stock ≥ 0, sale total, refund ≤ settled, sync convergence |
 | [`releases/`](./releases/) | Changelogs, release process, checklists | [`CHANGELOG-0.0.33.md`](./releases/CHANGELOG-0.0.33.md) |
-| [`observability/`](./observability/) | Logging, error handling, metrics | [`logging-2026-07-20.md`](./observability/logging-2026-07-20.md) |
+| ~~[`observability/`](./observability/)~~ | **Removed 2026-10-02.** Its two system-analysis reports moved to [`records/audits/observability/`](./records/audits/observability/). The generator's *System Analysis / Observability* section header is emitted from the directory name and is now empty — a known cosmetic artefact of the move, recorded in `todo-docs-restructure.md` §5 B4. | [`logging-2026-07-20.md`](./records/audits/observability/logging-2026-07-20.md) |
 | [`benchmarks/`](./benchmarks/) | Performance benchmarks and regression tracking | [`baseline-2026-07-21.md`](./benchmarks/baseline-2026-07-21.md) |
 | ~~[`audits/`](./audits/)~~ | **Removed 2026-10-02.** All 14 audit reports moved to [`records/audits/`](./records/audits/), keeping their `frontend/`, `seo/`, `setup/` and `skills/` subfolders. Side effect: `scripts/generate-records-index.mjs` classified audits by scanning `docs/audits/`, so its dedicated *Audit Reports* section is now empty — the files are all still indexed, under **Engineering Records** instead. | [`2026-09-28-docs-audit.md`](./records/audits/2026-09-28-docs-audit.md); [`frontend/css-verification.md`](./records/audits/frontend/css-verification.md) — no linter sees `.css` |
 | ~~[`archived/`](./archived/)~~ | **Removed 2026-10-02.** Its 26 ordinary files moved to [`records/audits/`](./records/audits/) and [`records/superseded/`](./records/superseded/); the two agent campaign journals moved to [`records/campaigns/`](./records/campaigns/) in two separate commits, never batched together. "Archived" is no longer a location — it is a *state*, expressed by which `records/` subfolder a file lives in. | — |
@@ -33,7 +33,7 @@
 - [CI Pipeline](./operations/ci-pipeline.md) — job matrix, gate policy, local verification
 - [PCI-DSS Checklist](./security/PCI-DSS_CHECKLIST.md) — compliance status
 - [Data Residency & Retention](./security/data-residency-and-retention.md) — where data lives, retention schedule, deletion/export handling
-- [Security Audit Completion](./security/security-audit-completion.md) — final report
+- [Security Audit Completion](./records/audits/security/security-audit-completion.md) — final report
 - [Architecture](../ARCHITECTURE.md) — system overview (canonical; the former `guides/` copy was merged into it 2026-09-23 and is now a pointer stub)
 - [Extending kasir.mu](./guides/developer/EXTENDING.md) — scripting & integration surfaces (REST API, Lua plugins, CLI)
 - [Quickstart](./guides/developer/QUICKSTART.md) — getting started
