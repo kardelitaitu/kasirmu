@@ -510,6 +510,18 @@ comments were the residue) turned up **two more**, both more serious than the fi
   wrong, which is why they took reading to find. This one announced itself — and it is still the most
   valuable finding in this section, because **a red gate is information and a green gate is not.**
 
+- 🔴 **`scripts/gen-summary.py` — FIXED `85501cc3b`. THE FIFTH, AND THE ONE A GREEN EXIT CODE
+  ALMOST HID.** Its `releases()` globbed `docs/releases/`, which B4b emptied, so the
+  `is_dir()` guard returned `[]` and the mdBook portal's **SUMMARY index** silently lost all 10
+  release chapters. The tool printed **`0 releases` and exited 0** — a green run with the wrong
+  answer, which is this whole section's theme in one line. Caught by *reading its own output* rather
+  than its exit code. Now **`10 releases`**.
+  **The uncomfortable part: this is the same portal `build-docs.sh` feeds, and I had already fixed
+  that half one round earlier without noticing the index half.** Both write into `docs/src/`, both
+  were broken by the same move, and fixing one gave no signal about the other — because the fix's
+  verification (`10 files copied`) could only ever see its own output. **Two consumers, one
+  breakage, and no gate covers either.**
+
 **Why no gate caught the first three.** Every gate in §2 was green throughout. `check-dead-refs`
 audits *markdown*, not shell or YAML. `generate-records-index --check` compares the index against
 its own generator, so a generator whose input list is stale produces a *self-consistent* wrong
