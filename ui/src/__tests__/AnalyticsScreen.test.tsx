@@ -1604,6 +1604,7 @@ describe('AnalyticsScreen layout shell', () => {
 
   it('serves an identical query from the cache without a recalc skeleton', async () => {
     vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-06-15T10:00:00Z'));
     renderWithFluentSync(<AnalyticsScreen />, analyticsFtl, sharedFtl, reportsFtl);
 
     // First visit (weekly default): cache miss → recalc skeleton
@@ -1624,6 +1625,7 @@ describe('AnalyticsScreen layout shell', () => {
 
   it('revalidates an identical query after the TTL expires (stale-while-revalidate)', async () => {
     vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-06-15T10:00:00Z'));
     renderWithFluentSync(<AnalyticsScreen />, analyticsFtl, sharedFtl, reportsFtl);
     await flushRecalc();
 
@@ -1653,6 +1655,7 @@ describe('AnalyticsScreen layout shell', () => {
 
   it('refresh always refetches even when the query is cached', async () => {
     vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-06-15T10:00:00Z'));
     renderWithFluentSync(<AnalyticsScreen />, analyticsFtl, sharedFtl, reportsFtl);
     await flushRecalc();
 
