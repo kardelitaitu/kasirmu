@@ -999,10 +999,22 @@ maintainer's belief about the tree is written down.
 | `scripts/` + `.agents/skills/` comments and docstrings | **47** across 24 files |
 | …that are **live** (a runner command or CI step, not prose) | **0** |
 
-**Zero functional breaks.** `check.sh`, `build-docs.sh`, `release.sh`, `bump-version.ps1`,
-`coverage.sh` and `dev-ci.yml` were checked line-by-line with comment lines excluded: no command
-points at a moved path. That is the result that matters — the six tooling breaks §6c–§6g caught
-the functional ones, and nothing new has appeared since.
+**Zero functional breaks** — first measured on a hand-picked six (`check.sh`, `build-docs.sh`,
+`release.sh`, `bump-version.ps1`, `coverage.sh`, `dev-ci.yml`), then **re-measured exhaustively over
+all 1,077 tracked code and config files**: 195 non-comment stale references, and every one is either
+a self-test fixture (`modules/x/src/repository.rs`, `apps/foo/src/main.rs`, `docs/plan.md`) or a
+**`cwd`-relative reference that is correct in context** — `website/package.json`'s
+`"node scripts/prebuild.mjs"` runs with cwd `website/`, so it resolves.
+
+**That cwd class is the one I got wrong**, and it cost two rounds of false confidence: I searched
+only the repo-root `scripts/` for `sync-dev-files.mjs`, did not find it, and concluded the prototypes
+mirror had no generator. `website/scripts/sync-dev-files.mjs` existed the whole time and is invoked by
+`website/scripts/prebuild.mjs` phase 1. I also wrote "never committed" from an empty
+`git log --diff-filter=D` — the right answer was *wrong path*. Retracted in `68d73b32e`.
+
+**The diagnostic that would have caught it:** when a referenced path does not resolve, look for its
+**basename elsewhere in the tree** before concluding the thing is gone. That is a concept search; a
+literal `grep` for the name only proves the *name* is absent, not the file.
 
 **Two live prose claims fixed** (`6d9cca67a`):
 
