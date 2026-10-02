@@ -39,9 +39,14 @@ Do not quote a citation count here either; re-derive it:
 git grep -ohE 'JOURNAL\.md:[0-9]+' -- '*.md' | wc -l
 ```
 
-`-o` is required: without it the pipeline counts matching **lines** (13) rather than
-**occurrences** (21), because several files cite more than one line per line of prose. Getting this
-wrong twice in two documents is the reason it is now written down here.
+That currently reports **14**. `-o` is defensive rather than currently load-bearing: no line in the
+repo cites this form twice, so `git grep -n` happens to give the same answer. It is kept because
+`-o` is what makes the count *mean* occurrences, and the sibling command in `docs/specs/README.md`
+**does** need it — there, `-c` reports 18 where the true count is 23.
+
+(An earlier version of this note claimed `-o` was required here and quoted 13 against 21. Both
+numbers were wrong — they came from comparing a `git grep` line count against a Python regex that
+also matched colon-less forms like `journal.md 2026`. Corrected 2026-10-02 by measuring.)
 
 ## Ordering caveat
 
