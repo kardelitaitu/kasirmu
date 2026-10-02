@@ -3,15 +3,18 @@ title: Payments & QRIS
 description: Accept cash and QRIS on every plan — static and dynamic QR, no extra hardware.
 category: guides
 order: 1
-updated: "2026-09-17"
+updated: "2026-10-01"
 ---
 
 ## Payment methods
 
 - **Cash** — available today. Enter the amount tendered and the change is
   calculated for you.
-- **Debit** — coming soon.
-- **Credit** — coming soon.
+- **Card** — available today. Record a debit or credit card payment by hand,
+  or — when a card terminal (EDC) is configured for the location — send the
+  total to the connected terminal and let the customer tap or insert on it.
+  The terminal button appears only when the site's rail list offers one;
+  without it, the manual card entry still works.
 - **QRIS** — available on every plan, including Free. Two ways to use it:
   - **Dynamic QR** — the checkout shows a QR code with the transaction amount
     (via Midtrans); the customer scans it, settlement status is polled
@@ -19,11 +22,15 @@ updated: "2026-09-17"
   - **Static QR (manual)** — show your own store QR sticker (stored NMID
     payload); the cashier records a cashier-asserted reference and the
     server read-back reconciles it for the receipt.
-- **E-wallet** — coming soon.
+- **Credit** — available today. A **Credit Sale** takes no payment at the
+  counter: the sale is recorded against a named customer (required) and
+  shows up in the credit list with reminders and an outstanding balance.
+- **E-wallet** — coming soon: the checkout has no e-wallet tender yet.
 
-Debit, credit, and e-wallets follow the same pattern as QRIS: the sale is
-recorded immediately and reconciled when the gateway responds, so a gateway
-timeout never blocks the counter.
+QRIS settles asynchronously — the sale is recorded immediately and
+reconciled when the gateway responds, so a gateway timeout never blocks the
+counter. The payment modal also supports **split tender** (pay one cart
+across several methods) and **multi-currency** payment.
 
 ## Open bills
 

@@ -3,7 +3,7 @@ title: Peran Pengguna
 description: Lima preset izin menentukan apa yang bisa dilakukan dan dilihat setiap akun staf.
 category: guides
 order: 6
-updated: "2026-09-19"
+updated: "2026-10-01"
 ---
 
 <!-- Audit stamp: 2026-09-19 · DSH · status: ACCURATE AFTER REPAIR (3 findings) · 2026-09-19 RE-AUDIT: Staff management dan pembuatan peran kini menjadi halaman layar penuh tersendiri — ui/src/features/staff/register.tsx:20-33 mendaftarkan kedua rute dengan fullscreen: true dan tidak lagi memanggil registerNavItem, sehingga AppShell merendernya tanpa AppLayout dan bilah sisi tidak memuat keduanya. Kedua penunjuk "di bagian Alat pada bilah sisi" di halaman ini karena itu salah dan dialihkan ke kartu Staff Management di kisi Tools pemilih ruang kerja dan ke tombol Roles di halaman Staf. Diverifikasi pada aplikasi yang berjalan: seksi Tools di bilah sisi memuat Terminal, Fitur, Data, Log Audit, Security Trail, Antrian Offline, Shift, Memo — tanpa Staf maupun Peran. · 2026-09-08 · DSH · status: PARTIALLY REPAIRED - UNREVIEWED TRANSLATION (2 findings) · Indonesian counterpart of en/user-roles.md, first audit evidence. · Two corrections applied, both factual pointers rather than prose: Pengaturan -> Staf was wrong (Staff is registered in ui/src/features/staff/register.tsx with section: tools, label nav-section-tools = Alat; ui/src/features/settings/ contains no route reference to staff at all), and the Custom bullet read as though custom roles did not exist yet. Role authoring is shipped and routed - route roles, label Peran, gated manager AND staff:manage_roles. Both replacement sentences use the app's own localized labels from shared.id.ftl (Alat, Staf, Peran) rather than invented terms. · CAVEAT, deliberately not hidden: the two replacement sentences are Indonesian I composed from the surrounding text's patterns, NOT a translation by a native speaker or the product's copywriter. The rest of this page is untouched. If a reviewer disagrees with the phrasing, correct the wording - the underlying facts (where Staff lives, that role authoring exists and is gated on staff:manage_roles) are verified against the code and should not be reverted. · NOT ported from the English page: the new Authoring custom roles section (grant registry, the two delete guards, role holders). That is real copywriting and belongs to whoever owns this locale. Page parity is otherwise intact: 17 en, 17 id. -->
@@ -117,4 +117,9 @@ Empat celah dalam rencana telah ditutup:
   yang nyata — Kasir/Dapur yang pensiun sudah hilang di mana pun, termasuk
   lencana peran, ikon, dan pemilih ruang kerja.
 
+> Re-audit kesegaran 01-10-26: nol drift. ROLE_PRESETS tetap enam; kedua
+> rute staf masih fullscreen (staff/register.tsx); semua gerbang yang
+> disebut halaman terverifikasi: manager pada pelanggan/riwayat/dashboard,
+> analytics + analytics:view, layar Peran dengan staff:manage_roles
+> (rbac.rs:440).
 > last audited 19-09-26 by docs-auditor

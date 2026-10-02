@@ -3,15 +3,19 @@ title: Pembayaran & QRIS
 description: Terima tunai dan QRIS di semua paket — QR statis dan QR dinamis, tanpa perangkat tambahan.
 category: guides
 order: 1
-updated: "2026-09-17"
+updated: "2026-10-01"
 ---
 
 ## Metode pembayaran
 
 - **Tunai** — tersedia hari ini. Masukkan jumlah yang dibayarkan dan
   kembalian dihitung otomatis.
-- **Debit** — segera hadir.
-- **Kredit** — segera hadir.
+- **Kartu** — tersedia hari ini. Catat pembayaran kartu debit atau kredit
+  secara manual, atau — bila terminal kartu (EDC) dikonfigurasi untuk
+  lokasi — kirim total ke terminal yang tersambung dan biarkan pelanggan
+  menempel atau memasukkan kartu di sana. Tombol terminal hanya muncul bila
+  daftar rail situs menawarkannya; tanpanya, input kartu manual tetap
+  berfungsi.
 - **QRIS** — tersedia di semua paket, termasuk Gratis. Dua cara pakai:
   - **QR dinamis** — kasir menampilkan kode QR dengan nominal transaksi
     (via Midtrans), pelanggan pindai, status settlement dipolling otomatis
@@ -19,11 +23,17 @@ updated: "2026-09-17"
   - **QR statis (manual)** — tampilkan stiker QR toko Anda sendiri
     (payload NMID tersimpan); kasir mencatat referensi yang ditegaskan
     kasir dan merekonsiliasi dari server untuk struk.
-- **E-wallet** — segera hadir.
+- **Kredit** — tersedia hari ini. **Penjualan Kredit** tidak mengambil
+  pembayaran di konter: transaksi dicatat atas nama pelanggan (wajib) dan
+  muncul di daftar kredit dengan pengingat serta saldo yang masih
+  terutang.
+- **E-wallet** — segera hadir: kasir belum memiliki tender e-wallet.
 
-Debit, kredit, dan e-wallet mengikuti pola yang sama seperti QRIS: transaksi
-dicatat segera dan direkonsiliasi saat gateway merespons, sehingga timeout
-gateway tidak pernah memblokir kasir.
+QRIS menyelesaikan secara asinkron — transaksi dicatat segera dan
+direkonsiliasi saat gateway merespons, sehingga timeout gateway tidak
+pernah memblokir kasir. Modal pembayaran juga mendukung **pembayaran
+terbagi** (bayar satu keranjang lintas beberapa metode) dan pembayaran
+**multi-mata uang**.
 
 ## Tagihan terbuka
 
