@@ -141,11 +141,40 @@ Independent of the reorg. Four small commits, all reversible, none needing the �
     `docs/records/audit-open-findings.md`) would each need a line-map lookup — indirection in a
     document whose stated purpose is to be re-read precisely, every turn.
   - Structure resists a clean cut: `##` boundaries leave a **1,830-line gap** (h2 at 512 → 2342).
-  **Revisit only if a live need appears** — e.g. an agent that must re-read it mid-task. D2 still
+  **Concurrency re-checked 2026-10-02 (contrast with A2):** `git log` shows both campaign journals
+  have been touched **only by this plan's own move commits** (`2daaabdfe`, `74c42d4b8`). No other
+  session is editing them. So this deferral rests **entirely on content grounds** — the ownership
+  stamps, the 6 external line-number citations, the 1,830-line `##` gap — and none of those would
+  change if someone else were editing it. **That is the difference between this item and A2: A2 is
+  blocked by coordination, this one by judgement.**
+- **Revisit only if a live need appears** — e.g. an agent that must re-read it mid-task. D2 still
   governs: it and `manager-2-journal-posscreen.md` move to `records/campaigns/` **together in Phase B,
   and never in the same batch as each other.**
 
-### A2 — Resolve `docs/plans/_active/notes.md` · **BLOCKED ON OWNER**
+### A2 — Resolve `docs/plans/_active/notes.md` · **BLOCKED — and the reason is sharper than it looked**
+
+> **Re-checked 2026-10-02, after two prior rounds deferred this as *"§7.4 puts plan filenames in ask
+> first."* That is the general rule and it is true, but it is not the decisive fact.** The file is
+> **tracked and clean**, so §7.4's actual wording — *"never rename or move another session's
+> **uncommitted** plan file"* — does not bar it on its own terms.
+>
+> **The decisive fact: another session is actively working this file and this directory.**
+>
+> | Commit | Date | Subject |
+> |---|---|---|
+> | `2c54d9774` | **2026-10-02** | *fix(ci): raise tablet registration floor to 349 and recount font claim gates* — **touches `notes.md`** |
+> | `2b6d1a432` | 2026-09-30 | *fix(notes): recount the no-ci gate class as 14, and explain the movement* |
+> | `db41d0d8c` | 2026-10-02 | *harden ADR-64 active plan with audit findings and FTL parity guards* |
+> | `7e4475261` | 2026-10-02 | *record active plan for ADR-64 and global expansion backlog* |
+>
+> `docs/plans/_active/` has taken **three commits from another session today**. Renaming a file inside a
+> directory under hourly churn is how a rename is lost — they commit against it, or I against their
+> next edit. **This is the reason to leave it alone, and it is a coordination reason, not a
+> documentation one.** Re-check the table above before revisiting; if `notes.md` has been untouched for
+> a while, the rename is cheap.
+>
+> Also worth knowing: **zero files reference `notes.md` by name.** Nothing links to it, which is
+> precisely why the meaningless name has gone unnoticed — and why renaming it would break nothing.
 
 **The premise was wrong on measurement, and the remaining fix is a rename, which §7.4 puts in the
 "ask first" column. Not done unilaterally.**
