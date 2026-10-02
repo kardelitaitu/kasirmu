@@ -276,4 +276,32 @@ describe('ReceiptPreview', () => {
     // The finder patterns at corners exercise the boundary check on lines 250
     expect(qrVisual?.querySelector('svg')).toBeInTheDocument();
   });
+
+  // ── Market profile & fiscal fields coverage ──
+  it('renders dynamic store name and custom tax registration label', async () => {
+    const marketReceipt: PrintSalesReceiptArgs = {
+      ...mockReceipt,
+      storeName: 'Marina Bay Retail SG',
+      taxId: 'M90372819X',
+      taxIdLabel: 'GST Reg No',
+      receiptNumber: '01-02-261002-05-000123',
+    };
+
+    await renderWithFluent(<ReceiptPreview {...defaultProps} receipt={marketReceipt} />);
+
+    expect(screen.getByText('Marina Bay Retail SG')).toBeInTheDocument();
+    expect(screen.getByText('GST Reg No: M90372819X')).toBeInTheDocument();
+    expect(screen.getByText('01-02-261002-05-000123')).toBeInTheDocument();
+  });
+
+  it('renders tax regime descriptor in tax line when provided', async () => {
+    const regimeReceipt: PrintSalesReceiptArgs = {
+      ...mockReceipt,
+      taxRegime: 'PB1',
+    };
+
+    await renderWithFluent(<ReceiptPreview {...defaultProps} receipt={regimeReceipt} />);
+
+    expect(screen.getByText('PB1:')).toBeInTheDocument();
+  });
 });
