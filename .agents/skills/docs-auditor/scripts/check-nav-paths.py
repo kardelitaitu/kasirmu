@@ -154,6 +154,18 @@ def self_test():
     return 0
 
 def main():
+    # A Windows console defaults to cp1252, which cannot encode the arrows and
+    # curly quotes that findings are built from. print() then raises
+    # UnicodeEncodeError and this checker reports a traceback instead of its
+    # findings - the exit code survives, but a human running it locally sees
+    # nothing useful, and --json only worked because it escapes non-ASCII.
+    # Force UTF-8 with a replace fallback so a character that still cannot map
+    # degrades to '?' rather than killing the run.
+    for _stream in (sys.stdout, sys.stderr):
+        try:
+            _stream.reconfigure(encoding='utf-8', errors='replace')
+        except AttributeError:
+            pass
     ap = argparse.ArgumentParser()
     ap.add_argument('--json', action='store_true')
     ap.add_argument('--self-test', action='store_true')
