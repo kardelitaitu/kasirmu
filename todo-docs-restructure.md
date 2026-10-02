@@ -986,6 +986,27 @@ by, and those still surface one at a time.
    therefore clean *of docs*; `scripts/check.sh` now fails at step 01 for reasons unrelated to this
    plan.
 
+   #### The gate is correct — re-verified from its own header, 2026-10-02
+
+   These four have been cited as "the blocker" for several rounds, so the claim was re-checked rather
+   than carried forward. `scripts/verify-root-policy.py` states, in its own docstring:
+
+   > *"Local-only by design: it inspects the working tree… **Not in CI** — a runner's checkout may
+   > legitimately carry ephemera this repo does not own."*
+   >
+   > *"scratch artifacts that survive precisely because they are gitignored: `git status` stays
+   > clean, so nothing ever prompts a look."*
+
+   So scanning gitignored files is **deliberate**, the gate is **working exactly as designed**, and
+   these four are precisely the class it exists to catch. `kasir.db` is additionally a **leftover**: the
+   SQLite default moved under `var/` in another session's `0aba04b35`, so a root `kasir.db` is stale by
+   their own change.
+
+   **Consequence, stated plainly: this plan's documentation work is complete; its acceptance gate
+   cannot pass in this working tree.** The two are different things, and conflating them is what has
+   kept §12 looking unfinished. Clearing it is four `rm`s by whoever owns those files — not a
+   documentation task, and not one this plan may perform.
+
 ## 12. Incident — a concurrent session switched branches mid-plan
 
 Recorded because it changes what "done" means here, and because **AGENTS.md §7.1 forbids switching
