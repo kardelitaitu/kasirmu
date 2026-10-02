@@ -1037,6 +1037,35 @@ it with nothing — so every `#` and `//` comment was blanked before the path sc
 `*` lines were ever examined. **65 → 4 was under-counting, not precision.** The correct filter
 removes the leading marker and keeps the body; that reports 47. **A dramatic number is a reason
 to re-read the code that produced it**, especially when it flatters the finding.
+### 6p — the largest stale-path class was one my own sweep could not see
+
+§6o swept comments and docstrings in `scripts/` and `.agents/skills/`. Its filter matched `#`, `//`,
+`*` and `--`. **Markdown comments are `<!-- … -->`, which none of those match** — and every audit
+stamp and correction note in every `SKILL.md`, `ARCHITECTURE.md` and spec file is exactly that.
+The sweep had a blind spot precisely where this repo keeps its oldest claims.
+
+| Scope | Stale paths |
+|---|---:|
+| HTML comments across all tracked markdown | **108** across 73 distinct |
+
+**And the answer to "what should I do with 108" is: nothing.** They are audit stamps, and a stamp
+is a dated record of what an auditor found. The spot-check confirms the rule rather than straining
+it:
+
+- `docs/src/intro.md`'s stamp says *"`docs/book.toml` line 6 points readers to
+  `docs/plans/documentation-portal-plan.md`"* — a claim about a **live** file, not history.
+  `docs/book.toml:6` now reads `docs/plans/_active/documentation-portal-plan.md`, which resolves. The
+  stamp records the defect as it stood on 2026-09-29 and is **correct as written**.
+- The rest name pre-rebrand crates and pre-rename app directories inside stamps that predate both.
+
+**Two things this changes.** First, `.toml` was in **no** sweep — `docs/book.toml` was never scanned
+by any of them. Second, and more useful: **the count is not a backlog.** Sorting 108 stale paths by
+"is this a record or a live claim?" is the same move that turned the 47-mention tooling sweep into 8
+real fixes and 20 spec.yaml paths into 3. **A number this large is a prompt to classify, not to fix.**
+
+**Rule, now stated once and applied everywhere (§6j, §6o, §6p):** *a path inside a dated record is
+evidence; a path in a live claim is drift.* The discriminator is not the file — it is whether the
+sentence is about **what was** or about **what is**.
 ## 9. B5 (NEW, 2026-10-02) — the worst E4 violation, measured, **not** actioned
 
 `0.0.36-backlog.md` surfaced in §1.1's own audit: **4,560 lines / 294 KB**, the largest file in the
