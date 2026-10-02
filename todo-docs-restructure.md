@@ -263,22 +263,38 @@ docs/
 
 Batch order is by ascending tooling entanglement. Each batch is one commit.
 
-### B1 — `docs/archived/` → `docs/records/` (28 files) · lowest link count
+### B1 — `docs/archived/` → `docs/records/` (28 files) · **DONE, folder removed**
 
-**Split into three commits, not one.** D2 forbids the two manager journals sharing a batch with
-*each other* — and they are 690 KB and 90 KB, so they dominate the batch. Order: the 26 ordinary
-files, then each journal alone.
+**Split into commits, not one** — D2 forbids the two manager journals sharing a batch with *each
+other*. Executed as four commits: 26 files, then each journal alone, plus one repair (below).
 
-- [ ] → `records/campaigns/` (2, **D2 — batch separately**): `manager-2-journal.md`, `manager-2-journal-posscreen.md`
-- [ ] → `records/audits/` (14): `2026-07-28-retail-pos-theming-audit.md`, `2026-07-29-retail-pos-ux-audit.md`,
-      `2026-08-15-unify-auth-and-sync.md`, `2026-08-30-glm-5.3-tauri-app-review.md`,
-      `2026-08-31-glm-5.3f-crates-audit.md`, `code-quality-2026-07-20.md`, `database-optimization-2026-07-20.md`,
-      `dev-experience-2026-07-20.md`, `dev-mock-state-audit.md`, `ui-state-audit-2026-07-20.md`,
-      `modal-audit-checklist.md`, `TODO-shadow-audit.md`, `design-exceptions.md`, `plan-product-images-review.md`
-- [ ] → `records/superseded/` (12): `20260822-tests-efficiency-improvement.md`, `a11y.md`, `api-client.md`,
-      `benchmarks.md`, `ci-pipeline.md`, `i18n-todo.md`, `multi_kds_one_location_support.md`,
-      `multi_pos_one_location_support.md`, `plan-media-binary-sync.md`, `plan-product-images.md`,
-      `sqlcipher-migration-plan.md`, `tauri-security-audit.md`
+- [x] → `records/audits/` (14) · [x] → `records/superseded/` (12) · **all 26 byte-identical**
+      (post-move hashes equal pre-move, I1 holds) · commits `1cd644b82` + `1cc5c7b1f`
+- [x] → `records/campaigns/` (2, **D2 — one commit each**): `manager-2-journal.md` (`2daaabdfe`,
+      100% rename) and `manager-2-journal-posscreen.md` (`74c42d4b8`, 100% rename)
+- [x] `docs/archived/` **removed** — empty after the moves. "Archived" is no longer a location; it
+      is a state, expressed by which `records/` subfolder a file occupies.
+
+**Relative-link analysis (the real risk of a 2-level-deep move):** 5 relative links existed across
+3 of the 26 files. **3 survived untouched** — the two GLM audits link to each other with `./` and
+moved to the same folder together. **2 needed fixing:**
+- `records/audits/2026-08-15-unify-auth-and-sync.md:12` — `../operations/runbook.md` → `../../`
+- `records/audits/2026-08-30-glm-5.3-tauri-app-review.md:15` — `../records/audit-open-findings.md`
+  → `../audit-open-findings.md`
+
+**A judgement call worth recording:** the second link points at `audit-open-findings.md`, which B3
+moves to `records/findings/`. Pulling that move forward to keep one link valid would have cost
+**10 hand-fixes** (2 sibling links each way inside the pair, `docs/README.md` ×2, `adr49` ×1, this
+one) — more work than B1 itself. It was left for B3, and the link written in a form that is correct
+today. B3 updates it when the target moves.
+
+**A mistake worth recording — I broke my own invariant I4.** The first commit's pathspec captured
+only the 26 *new* paths, so the 26 *deletions* of the old paths were left staged and the commit
+landed as `create mode` rather than renames. Caught immediately by the protocol's step 6
+(`git diff --cached --name-only`), repaired with a follow-up commit naming the old paths —
+**never amend** (§7.3). Net result across the two commits is a correct move, and the journal moves
+that followed did land as proper 100% renames. The lesson: for a `git mv` batch, the pathspec must
+name **both** sides; git's staged rename is not automatically carried by a pathspec commit.
 
 ### B2 — `docs/audits/` → `records/audits/` (14 files)
 

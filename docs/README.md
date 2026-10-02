@@ -23,7 +23,7 @@
 | [`observability/`](./observability/) | Logging, error handling, metrics | [`logging-2026-07-20.md`](./observability/logging-2026-07-20.md) |
 | [`benchmarks/`](./benchmarks/) | Performance benchmarks and regression tracking | [`baseline-2026-07-21.md`](./benchmarks/baseline-2026-07-21.md) |
 | [`audits/`](./audits/) | Audit reports — full audits of the docs system, the API reference, CSS verification, and SEO/crawler reviews | [`2026-09-28-docs-audit.md`](./audits/2026-09-28-docs-audit.md); [`frontend/css-verification.md`](./audits/frontend/css-verification.md) — no linter sees `.css` |
-| [`archived/`](./archived/) | Truly retired documents — completed/superseded audits, old plans, obsolete guides. **Retiring 2026-10-02: its 26 ordinary files have moved to [`records/audits/`](./records/audits/) and [`records/superseded/`](./records/superseded/); the two agent journals here move to [`records/campaigns/`](./records/campaigns/) next, after which this folder is removed.** | *(`ls docs/archived/*.md \| wc -l` — do not quote a count here; a quoted one has rotted twice.)* |
+| ~~[`archived/`](./archived/)~~ | **Removed 2026-10-02.** Its 26 ordinary files moved to [`records/audits/`](./records/audits/) and [`records/superseded/`](./records/superseded/); the two agent campaign journals moved to [`records/campaigns/`](./records/campaigns/) in two separate commits, never batched together. "Archived" is no longer a location — it is a *state*, expressed by which `records/` subfolder a file lives in. | — |
 | [`plans/`](./plans/) | Active improvement plans | [`northflank-p1-p7-plan.md`](./plans/_active/northflank-p1-p7-plan.md) |
 
 ## Quick links
