@@ -349,7 +349,10 @@ pub use purchase_order::{PurchaseOrder, PurchaseOrderLine, PurchaseOrderWithLine
 pub use rate_limiter::LoginRateLimiter;
 pub use recipe::RecipeItem;
 pub use refund::{Refund, RefundLine};
-pub use regional::{ConfigScope, RegionalConfig, RegionalLayer, RegionalValue};
+pub use regional::{
+    ActiveMarketProfile, ConfigScope, RegionalConfig, RegionalLayer, RegionalValue,
+    load_active_market_profile, verify_regional_mutation_allowed,
+};
 pub use sale::{Sale, SaleLine};
 pub use sale_deduction::{
     CompleteSaleResult, LocationAllocation, LocationStock, PartialStockResult, ResolvedShortfall,

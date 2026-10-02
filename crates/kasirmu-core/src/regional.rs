@@ -553,6 +553,207 @@ fn pick(
     RegionalValue::new(default, ConfigScope::BuiltIn)
 }
 
+/// The compiled, locked market profile governing local checkout.
+///
+/// Initialized once from SQLite on cold boot; zero runtime database reads
+/// during the sale lifecycle. Carried in Tauri application state and re-loaded
+/// only when the shift-immunity lock permits (see
+/// [`verify_regional_mutation_allowed`]).
+///
+/// `enabled_payment_rails` is the `rail_code` whitelist from
+/// `local_payment_methods` (scope `legal_entity` then `location`, the same
+/// entity→location precedence the rest of the regional chain uses).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ActiveMarketProfile {
+    /// The location this profile was resolved for.
+    pub location_id: String,
+    /// The legal entity owning the location, when the link is populated.
+    pub legal_entity_id: String,
+    /// ISO-3166 alpha-2 country code (e.g. `"ID"`, `"SG"`).
+    pub country_code: String,
+    /// ISO-4217 currency code (e.g. `"IDR"`, `"SGD"`).
+    pub currency: String,
+    /// Primary BCP-47 locale tag (e.g. `"id-ID"`).
+    pub default_locale: String,
+    /// Authoritative IANA timezone (e.g. `"Asia/Jakarta"`).
+    pub timezone: String,
+    /// Human-readable tax regime descriptor (e.g. `"PB1"`, `"PPN"`, `"NONE"`).
+    pub tax_regime: String,
+    /// Statutory rounding mode from the winning tax-rate row, or `HalfUp`
+    /// when no active rate is configured.
+    pub statutory_rounding: RoundingMode,
+    /// Whitelist of active local tender `rail_code` values in precedence order
+    /// (e.g. `["cash", "qris", "card"]`). Built from `local_payment_methods`
+    /// where `is_enabled = 1`, entity rows first then location overrides.
+    pub enabled_payment_rails: Vec<String>,
+}
+
+/// Load and compile the [`ActiveMarketProfile`] for `location_id` from the
+/// local SQLite database in a single read pass.
+///
+/// Call this once on cold boot; the result is placed in Tauri application
+/// state and never re-read during a sale. Returns
+/// [`crate::CoreError::NotFound`] when the location or its legal entity is
+/// missing.
+pub fn load_active_market_profile(
+    conn: &rusqlite::Connection,
+    location_id: &str,
+) -> Result<ActiveMarketProfile, crate::CoreError> {
+    use rusqlite::OptionalExtension;
+    // ── 1. Location + legal entity ────────────────────────────────────────
+    let row: Option<(String, String, String, String, String)> = conn
+        .query_row(
+            "SELECT l.currency, l.timezone, l.locale,
+                    COALESCE(l.legal_entity_id, '') AS legal_entity_id,
+                    COALESCE(le.country_code, '') AS country_code
+             FROM locations l
+             LEFT JOIN legal_entities le ON le.id = l.legal_entity_id
+             WHERE l.id = ?1",
+            rusqlite::params![location_id],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
+        )
+        .optional()
+        .map_err(crate::CoreError::Db)?;
+
+    let (currency, timezone, locale, legal_entity_id, country_code) =
+        row.ok_or_else(|| crate::CoreError::NotFound {
+            entity: "location",
+            id: location_id.to_owned(),
+        })?;
+
+    // ── 2. Tax regime (name only; rounding from tax-rate row) ────────────
+    // Derive a human-readable regime tag from the country_code convention.
+    // This is intentionally a lightweight label, not a fiscal engine — the
+    // implementation plan (ADR-64) introduces the full fiscal engine later.
+    let tax_regime = if country_code.eq_ignore_ascii_case("ID") {
+        "PB1".to_owned()
+    } else if country_code.is_empty() {
+        "NONE".to_owned()
+    } else {
+        format!("LOCAL/{country_code}")
+    };
+
+    // ── 3. Statutory rounding from the active tax rate ────────────────────
+    // Query the first active rate covering this location (location-scoped
+    // wins; entity-scoped next; global last — mirrors the tax resolver).
+    let rounding: Option<String> = conn
+        .query_row(
+            "SELECT COALESCE(rounding_mode, '') FROM tax_rates
+             WHERE is_active = 1
+               AND (
+                 location_id = ?1
+                 OR (legal_entity_id = ?2 AND location_id IS NULL)
+                 OR (legal_entity_id IS NULL AND location_id IS NULL)
+               )
+             ORDER BY
+               CASE WHEN location_id = ?1 THEN 0
+                    WHEN legal_entity_id = ?2 THEN 1
+                    ELSE 2 END,
+               is_default DESC
+             LIMIT 1",
+            rusqlite::params![location_id, legal_entity_id],
+            |r| r.get(0),
+        )
+        .optional()
+        .map_err(crate::CoreError::Db)?
+        .flatten();
+
+    let statutory_rounding = match rounding.as_deref() {
+        Some("truncate") => RoundingMode::Truncate,
+        _ => RoundingMode::HalfUp,
+    };
+
+    // ── 4. Enabled payment rails (entity → location precedence) ──────────
+    let mut stmt = conn
+        .prepare(
+            "SELECT lpm.rail_code, lpm.scope_type
+             FROM local_payment_methods lpm
+             WHERE lpm.is_enabled = 1
+               AND (
+                 (lpm.scope_type = 'legal_entity' AND lpm.scope_id = ?1)
+                 OR (lpm.scope_type = 'location'   AND lpm.scope_id = ?2)
+               )
+             ORDER BY
+               CASE lpm.scope_type WHEN 'location' THEN 0 ELSE 1 END,
+               lpm.label, lpm.rail_code",
+        )
+        .map_err(crate::CoreError::Db)?;
+
+    let rails: Vec<String> = stmt
+        .query_map(
+            rusqlite::params![legal_entity_id, location_id],
+            |row| row.get(0),
+        )
+        .map_err(crate::CoreError::Db)?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    // Deduplicate while preserving location-wins-over-entity order:
+    // location rows come first (ORDER BY scope_type), so the first occurrence
+    // of a rail_code is the authoritative one.
+    let mut seen = std::collections::HashSet::new();
+    let enabled_payment_rails: Vec<String> = rails
+        .into_iter()
+        .filter(|code| seen.insert(code.clone()))
+        .collect();
+
+    Ok(ActiveMarketProfile {
+        location_id: location_id.to_owned(),
+        legal_entity_id,
+        country_code,
+        currency,
+        default_locale: locale,
+        timezone,
+        tax_regime,
+        statutory_rounding,
+        enabled_payment_rails,
+    })
+}
+
+/// Guard regional mutation while a shift is open for `location_id`.
+///
+/// Looks up the location via the `terminals.bound_location_id` column
+/// (renamed from `bound_store_id` in migration
+/// `20260906_rename_store_to_location.sql`). If any shift for the location
+/// has `closed_at IS NULL` the mutation is rejected with
+/// [`crate::CoreError::Validation`] on `field = "regional_settings"`.
+///
+/// This is a read-only guard, not a write: call it inside the same
+/// transaction as the write that follows.
+pub fn verify_regional_mutation_allowed(
+    conn: &rusqlite::Connection,
+    location_id: &str,
+) -> Result<(), crate::CoreError> {
+    use rusqlite::OptionalExtension;
+    // `shifts` has no `location_id` column — join through `terminals`.
+    // `terminals.bound_location_id` (renamed from `bound_store_id` in
+    // migration 20260906_rename_store_to_location.sql) is the FK to
+    // `inventory_locations.id`. If a future migration adds `location_id`
+    // directly to `shifts`, simplify to a single-table predicate.
+    let open: Option<String> = conn
+        .query_row(
+            "SELECT s.id FROM shifts s
+             JOIN terminals t ON t.id = s.terminal_id
+             WHERE t.bound_location_id = ?1
+               AND s.closed_at IS NULL
+             LIMIT 1",
+            rusqlite::params![location_id],
+            |r| r.get(0),
+        )
+        .optional()
+        .map_err(crate::CoreError::Db)?;
+
+    if open.is_some() {
+        return Err(crate::CoreError::Validation {
+            field: "regional_settings",
+            message: "Cannot modify currency, country, or tax regime while a \
+                      cashier shift is active. Close all open shifts first."
+                .into(),
+        });
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 #[path = "regional_tests.rs"]
 mod tests;
