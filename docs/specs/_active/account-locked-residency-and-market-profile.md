@@ -106,14 +106,16 @@ pub fn verify_regional_mutation_allowed(
     tx: &rusqlite::Transaction,
     location_id: &str,
 ) -> Result<(), CoreError> {
-    // `shifts` has no `location_id` column — join through `terminals`
-    // (terminals.location_id references inventory_locations.id).
-    // If a future migration adds `location_id` directly to `shifts`, this
-    // query should be simplified to a single-table predicate.
+    // `shifts` has no `location_id` column — join through `terminals`.
+    // `terminals.bound_location_id` (renamed from `bound_store_id` in
+    // migration 20260906_rename_store_to_location.sql) is the FK to
+    // `inventory_locations.id`. If a future migration adds `location_id`
+    // directly to `shifts`, this query can be simplified to a single-table
+    // predicate.
     let mut stmt = tx.prepare_cached(
         "SELECT s.id FROM shifts s
          JOIN terminals t ON t.id = s.terminal_id
-         WHERE t.location_id = ?1
+         WHERE t.bound_location_id = ?1
            AND s.closed_at IS NULL
          LIMIT 1"
     )?;
@@ -162,7 +164,7 @@ The implementation must pass three automated test cases:
 2. **Test Shift-Immunity Lock (`test_shift_locks_regional_settings`):**
    - Open a shift for Location `loc-1`.
    - Attempt to call `update_regional_settings` to change currency from `IDR` to `USD`.
-   - Assert `CoreError::Validation` is returned with code `ShiftInProgress`.
+   - Assert `CoreError::Validation { field: "regional_settings", .. }` is returned (there is no `code` field on this variant; discriminate by `field` name).
    - Close the shift.
    - Re-attempt `update_regional_settings`; assert successful mutation and audit event emission.
    - Runner: `cargo test -p kasirmu-core --test shift_integration test_shift_locks_regional_settings`
