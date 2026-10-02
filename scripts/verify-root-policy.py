@@ -51,8 +51,13 @@ ROOT_FILE_ALLOWLIST = frozenset({
     ".gitleaks.toml", ".trivyignore", ".cbmignore", ".mcp.json",
     ".tarpaulin.toml", ".env.example",
     # Human entry points.
-    "README.md", "CHANGELOG.md", "CONTRIBUTING.md", "LICENSE", "AGENTS.md",
-    "ARCHITECTURE.md", "DSH.md",
+    # README-technical.md is the developer-facing technical README (repository
+    # structure, technology stack, commands). It was README-3.md until
+    # 2026-10-02 -- a merge-conflict suffix -- and it is the ONLY document in the
+    # repo carrying a Technology Stack table or a repo-root Repository Structure
+    # tree, so it belongs with the entry points, not beside README.md.
+    "README.md", "README-technical.md", "CHANGELOG.md", "CONTRIBUTING.md",
+    "LICENSE", "AGENTS.md", "ARCHITECTURE.md", "DSH.md",
 
 
     "todo-open-debt-program.md", "todo-review-type.md",
@@ -67,7 +72,6 @@ ROOT_FILE_ALLOWLIST = frozenset({
     "manager-codebase-review-checklist.md",
     "manager-codebase-review-decisions.md",
     "manager-codebase-review.md",
-    "README-2.md",
     # Two in-flight plan docs that were left out of their own commits, which made
     # this gate the only thing reporting them. Both are the class named above, not
     # scratch: `plan-c1-install-key-s2b-s2c.md` is TRACKED (landed with 461b04c25 /
