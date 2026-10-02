@@ -58,7 +58,7 @@ use reqwest::header::{AUTHORIZATION, CONTENT_TYPE, HeaderMap, HeaderValue};
 
 use crate::PaymentProcessor;
 use crate::error::PaymentError;
-use crate::types::{PaymentMethod, PaymentReceipt, PaymentRequest, PaymentResult};
+use crate::types::{PaymentMethod, PaymentPhase, PaymentReceipt, PaymentRequest, PaymentResult};
 
 /// Base URL for the Midtrans API (production).
 const MIDTRANS_API_BASE: &str = "https://api.midtrans.com/v2";
@@ -575,6 +575,7 @@ impl PaymentProcessor for QrisPaymentProcessor {
 
         Ok(PaymentResult {
             success: charge.status_code == "201" || charge.status_code == "200",
+            phase: PaymentPhase::Issued,
             transaction_id: Some(charge.order_id),
             auth_code: None,
             amount_charged: amount,
@@ -600,6 +601,7 @@ impl PaymentProcessor for QrisPaymentProcessor {
 
         Ok(PaymentResult {
             success: tx.transaction_status == "settlement" || tx.transaction_status == "capture",
+            phase: PaymentPhase::Confirmed,
             transaction_id: Some(tx.transaction_id),
             auth_code: None,
             amount_charged: amount,
@@ -644,6 +646,7 @@ impl PaymentProcessor for QrisPaymentProcessor {
 
         Ok(PaymentResult {
             success: true,
+            phase: PaymentPhase::Issued,
             transaction_id: Some(charge.order_id),
             auth_code: None,
             amount_charged: amount,
@@ -719,6 +722,7 @@ impl PaymentProcessor for QrisPaymentProcessor {
 
         Ok(PaymentResult {
             success: refund.status_code == "200",
+            phase: PaymentPhase::Confirmed,
             transaction_id: Some(refund.transaction_id),
             auth_code: None,
             amount_charged: Money {
@@ -755,6 +759,7 @@ impl PaymentProcessor for QrisPaymentProcessor {
 
         Ok(PaymentResult {
             success: cancel.status_code == "200",
+            phase: PaymentPhase::Confirmed,
             transaction_id: Some(cancel.transaction_id),
             auth_code: None,
             amount_charged: Money::zero(Currency(*b"IDR")),

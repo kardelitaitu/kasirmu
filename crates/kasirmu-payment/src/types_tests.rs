@@ -43,15 +43,18 @@ fn payment_request_has_required_fields() {
 fn payment_result_success_vs_failure() {
     let ok = PaymentResult {
         success: true,
+        phase: PaymentPhase::Confirmed,
         transaction_id: Some("txn_123".into()),
         auth_code: Some("AUTH01".into()),
         amount_charged: Money::from_major(10, usd()).unwrap(),
         message: Some("approved".into()),
     };
     assert!(ok.success);
+    assert_eq!(ok.phase, PaymentPhase::Confirmed);
 
     let fail = PaymentResult {
         success: false,
+        phase: PaymentPhase::Confirmed,
         transaction_id: None,
         auth_code: None,
         amount_charged: Money::from_major(10, usd()).unwrap(),
@@ -92,10 +95,60 @@ fn payment_method_serde_roundtrip() {
 fn payment_result_debug() {
     let r = PaymentResult {
         success: true,
+        phase: PaymentPhase::Confirmed,
         transaction_id: None,
         auth_code: None,
         amount_charged: Money::zero(usd()),
         message: None,
     };
     assert!(!format!("{r:?}").is_empty());
+}
+
+#[test]
+fn payment_phase_and_tender_state_serde_roundtrip() {
+    let phases = [PaymentPhase::Issued, PaymentPhase::Confirmed];
+    for p in &phases {
+        let json = serde_json::to_string(p).unwrap();
+        let back: PaymentPhase = serde_json::from_str(&json).unwrap();
+        assert_eq!(*p, back);
+    }
+
+    let states = [
+        TenderState::Pending,
+        TenderState::Authorized,
+        TenderState::Confirmed,
+        TenderState::Settled,
+        TenderState::Failed,
+        TenderState::Voided,
+        TenderState::Refunded,
+        TenderState::Disputed,
+        TenderState::Unconfirmed,
+    ];
+    for s in &states {
+        let json = serde_json::to_string(s).unwrap();
+        let back: TenderState = serde_json::from_str(&json).unwrap();
+        assert_eq!(*s, back);
+    }
+}
+
+#[test]
+fn payment_result_constructors() {
+    let issued = PaymentResult::issued(
+        Some("qr_order_123".into()),
+        Money::from_major(50, usd()).unwrap(),
+        Some("SCAN_QR|123".into()),
+    );
+    assert!(issued.success);
+    assert_eq!(issued.phase, PaymentPhase::Issued);
+    assert_eq!(issued.transaction_id.as_deref(), Some("qr_order_123"));
+
+    let confirmed = PaymentResult::confirmed(
+        true,
+        Some("tx_999".into()),
+        Some("AUTH_OK".into()),
+        Money::from_major(50, usd()).unwrap(),
+        Some("settled".into()),
+    );
+    assert!(confirmed.success);
+    assert_eq!(confirmed.phase, PaymentPhase::Confirmed);
 }

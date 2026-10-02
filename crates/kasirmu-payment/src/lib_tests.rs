@@ -209,6 +209,7 @@ fn payment_request_minimal() {
 fn payment_result_debug_success() {
     let r = PaymentResult {
         success: true,
+        phase: PaymentPhase::Confirmed,
         transaction_id: Some("txn_123".into()),
         auth_code: Some("AUTH01".into()),
         amount_charged: foundation::Money {
@@ -226,6 +227,7 @@ fn payment_result_debug_success() {
 fn payment_result_debug_failure() {
     let r = PaymentResult {
         success: false,
+        phase: PaymentPhase::Confirmed,
         transaction_id: None,
         auth_code: None,
         amount_charged: foundation::Money {
@@ -243,6 +245,7 @@ fn payment_result_debug_failure() {
 fn payment_result_success_vs_failure() {
     let ok = PaymentResult {
         success: true,
+        phase: PaymentPhase::Confirmed,
         transaction_id: Some("txn_ok".into()),
         auth_code: Some("AUTH01".into()),
         amount_charged: foundation::Money {
@@ -256,6 +259,7 @@ fn payment_result_success_vs_failure() {
 
     let fail = PaymentResult {
         success: false,
+        phase: PaymentPhase::Confirmed,
         transaction_id: None,
         auth_code: None,
         amount_charged: foundation::Money {

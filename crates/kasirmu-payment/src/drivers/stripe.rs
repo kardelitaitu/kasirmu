@@ -30,7 +30,7 @@ use reqwest::header::{AUTHORIZATION, CONTENT_TYPE, HeaderMap, HeaderValue};
 
 use crate::PaymentProcessor;
 use crate::error::PaymentError;
-use crate::types::{PaymentMethod, PaymentReceipt, PaymentRequest, PaymentResult};
+use crate::types::{PaymentMethod, PaymentPhase, PaymentReceipt, PaymentRequest, PaymentResult};
 
 /// Default base URL for the Stripe API.
 const STRIPE_API_BASE: &str = "https://api.stripe.com/v1";
@@ -400,6 +400,7 @@ impl PaymentProcessor for StripePaymentProcessor {
 
         Ok(PaymentResult {
             success,
+            phase: PaymentPhase::Confirmed,
             transaction_id: Some(intent.id),
             auth_code: None,
             amount_charged: amount,
@@ -427,6 +428,7 @@ impl PaymentProcessor for StripePaymentProcessor {
 
         Ok(PaymentResult {
             success,
+            phase: PaymentPhase::Confirmed,
             transaction_id: Some(intent.id),
             auth_code: None,
             amount_charged: amount,
@@ -471,6 +473,7 @@ impl PaymentProcessor for StripePaymentProcessor {
 
         Ok(PaymentResult {
             success: refund.status == "succeeded",
+            phase: PaymentPhase::Confirmed,
             transaction_id: Some(refund.id),
             auth_code: None,
             amount_charged: amount,
@@ -497,6 +500,7 @@ impl PaymentProcessor for StripePaymentProcessor {
 
         Ok(PaymentResult {
             success,
+            phase: PaymentPhase::Confirmed,
             transaction_id: Some(intent.id),
             auth_code: None,
             amount_charged: amount,

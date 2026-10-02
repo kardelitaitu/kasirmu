@@ -80,7 +80,7 @@ pub use error::{ErrorClass, PaymentError};
 pub use processor::PaymentProcessor;
 pub use registry::PaymentProcessorRegistry;
 pub use resilience::{CircuitBreaker, CircuitState, ResilientProcessor, ResilientProcessorConfig};
-pub use types::{PaymentMethod, PaymentReceipt, PaymentRequest, PaymentResult};
+pub use types::{PaymentMethod, PaymentPhase, PaymentReceipt, PaymentRequest, PaymentResult, TenderState};
 pub use webhook::{UnverifiedWebhookGuard, WebhookEvent, WebhookVerifier};
 
 #[cfg(test)]

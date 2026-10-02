@@ -26,7 +26,7 @@ use uuid::Uuid;
 
 use crate::PaymentProcessor;
 use crate::error::PaymentError;
-use crate::types::{PaymentMethod, PaymentReceipt, PaymentRequest, PaymentResult};
+use crate::types::{PaymentMethod, PaymentPhase, PaymentReceipt, PaymentRequest, PaymentResult};
 
 /// Default base URL for the Square API.
 const SQUARE_API_BASE: &str = "https://connect.squareup.com/v2";
@@ -385,6 +385,7 @@ impl PaymentProcessor for SquarePaymentProcessor {
 
         Ok(PaymentResult {
             success,
+            phase: PaymentPhase::Confirmed,
             transaction_id: Some(payment.id),
             auth_code: None,
             amount_charged: amount,
@@ -404,6 +405,7 @@ impl PaymentProcessor for SquarePaymentProcessor {
 
         Ok(PaymentResult {
             success,
+            phase: PaymentPhase::Confirmed,
             transaction_id: Some(payment.id),
             auth_code: None,
             amount_charged: amount,
@@ -461,6 +463,7 @@ impl PaymentProcessor for SquarePaymentProcessor {
             success: refund.status == "COMPLETED"
                 || refund.status == "APPROVED"
                 || refund.status == "PENDING",
+            phase: PaymentPhase::Confirmed,
             transaction_id: Some(refund.id),
             auth_code: None,
             amount_charged: refund_amount,
@@ -480,6 +483,7 @@ impl PaymentProcessor for SquarePaymentProcessor {
 
         Ok(PaymentResult {
             success,
+            phase: PaymentPhase::Confirmed,
             transaction_id: Some(payment.id),
             auth_code: None,
             amount_charged: amount,

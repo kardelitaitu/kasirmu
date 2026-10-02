@@ -83,7 +83,17 @@ impl std::fmt::Display for InvalidTransition {
 
 impl std::error::Error for InvalidTransition {}
 
-/// Payment method enumeration.
+/// Payment method enumeration used for coarse presentation and IPC transport.
+///
+/// # Architecture Note (ADR-64 D1 & D2)
+///
+/// This enum is a presentation and transport type, NOT the database
+/// persistence authority. Database rows in `payments.method` are strictly
+/// validated against the 12-member closed set (`cash`, `card`, `card_debit`,
+/// `card_credit`, `qris_manual`, `qris`, `bank_transfer`, `ewallet`,
+/// `open_bill`, `credit`, `pay_later`, `other`) via SQLite CHECK constraints.
+/// Neither kebab-case nor PascalCase serde spellings cross the persistence
+/// boundary directly.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum PaymentMethod {
