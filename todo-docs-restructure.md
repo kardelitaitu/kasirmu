@@ -798,6 +798,37 @@ repo are measurements of a moment, not standing facts. What the sweep buys is a 
 named document** cheaply. The defects it actually finds are the ones on documents people navigate
 by, and those still surface one at a time.
 
+### 6m — anchor links are checked by nothing, and any checker for them needs GitHub's exact slug rule
+
+`check-dead-refs.py` **strips `#fragments`**, so `file.md#section` is validated for the *file* and
+never for the *heading*. A document whose sections get renumbered keeps perfect dead links.
+
+**This bit the repo directly.** `docs/specs/_active/2026-07-12-desktop-app-audit.md:57` cited
+`AGENTS.md#1-rust-standards`. AGENTS.md §1 is now *"Economy protocol — roundtrips are the scarce
+resource"*; the anchor has been dead since that section was renumbered. Repointed to
+`AGENTS.md#61-rust`, where the Money rule now lives (`153f0bd94`).
+
+**One real defect across the whole tree.** The sweep is:
+
+```bash
+# every intra-document anchor link, for a manual pass
+git grep -ohE '\]\(#[a-z0-9-]+\)' -- '*.md' | sort -u
+```
+
+**Getting the detector right took two corrections, and that is the useful part.** My first slugger
+collapsed whitespace runs with `\s+`, giving `1-purpose-scope` where GitHub gives
+`1-purpose--scope` — it replaces **each** space with a hyphen, so a run of spaces becomes a run of
+hyphens. That one bug turned **16 candidates into noise**, and acting on it would have 'fixed' 15
+perfectly good links. The second: I converted `_` to `-`, but GitHub **keeps** underscores, which
+wrongly flagged `docker-deployment.md`'s `msys_no_pathconv` anchor.
+
+The one remaining hit is not a link: `documentation-audit-23-09-26.md` contains `[x](#frag)` inside
+backticks, describing the checker's own behaviour. **A sweep that reports a document describing
+links is reporting on itself.**
+
+**Net: anchor links are a genuine blind spot worth ~1 defect — but a checker for it must implement
+GitHub's slug rule exactly, or it will drown real findings in its own false positives.** Same lesson
+as §6h: a low-precision diagnostic is worse than none, because it teaches people to ignore it.
 ## 7. Per-file verification protocol
 
 **Per file, every time.** This is the core of the plan — no file moves without all six.
