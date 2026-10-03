@@ -1125,6 +1125,65 @@ It is not lost, only attributed to the wrong change.
 **To finish:** once the peer's `WorkspaceHome.tsx` edits are committed, commit this session's notice
 JSX from that file with a pathspec line. Nothing else is outstanding.
 
+## ROUND 13: the notice's condition was too narrow, and the widening is proven
+
+The round-12 notice fired on `subscriptionState === 'unavailable'`. That was **wrong**, and reading
+`toolLock` rather than the state enum is what showed it. The authoritative open set is three states
+(`ui/src/features/workspaces/WorkspaceHome.tsx:419-423`):
+
+```ts
+const validityOpen =
+  subscriptionState === 'active' ||
+  subscriptionState === 'grace' ||
+  subscriptionState === 'loading';
+if (!validityOpen) return 'subscription';   // every tool
+```
+
+So **five** states lock every tool: `unavailable`, `expired`, `canceled`, `paused` and `revoked`
+(`ui/src/api/subscription.ts:12-19` declares all seven). Of those, only `revoked` is handled
+upstream — `TabletAppShell.tsx:362` renders `RevokedScreen` before this screen — so an **expired,
+canceled or paused** subscription reaches `WorkspaceHome` and locks all 17 cards. Keying on
+`unavailable` alone left the notice **silent in exactly the cases it exists for.**
+
+The condition is now the complement of `validityOpen`, minus the `revoked` exclusion that the
+upstream screen already owns:
+
+```tsx
+{subscriptionState !== 'active' &&
+  subscriptionState !== 'grace' &&
+  subscriptionState !== 'loading' &&
+  subscriptionState !== 'revoked' && (
+```
+
+### Proven on the device with the state that used to be silent
+
+Not inferred — the untested state was constructed. With the app stopped, the device's
+`kasir.db` was pulled and given a single row, `tenant_id='default'`, `tier_key='free'`,
+`status='expired'`, `signature='BOOTSTRAP_FREE'`, then pushed back and the app relaunched:
+
+| Reading | Value |
+|---|---|
+| `get_subscription_capabilities` | `{state: "expired", status: "expired", tier: "free"}` |
+| locked tool cards | 17 |
+| **notice** | **"This terminal has no active licence. Tools below stay locked until it is activated."** |
+
+Before the widening this screen rendered 17 locked cards with **no explanation at all** — the exact
+defect this work exists to remove, for the states a real merchant is most likely to hit (an expired
+or cancelled subscription). The screenshot at this state shows the notice band above `WORKSPACES`,
+the three workspace cards, and every tool locked with its tier caption.
+
+The device was then restored to the true provisioned state (`unavailable`, no subscription row) from
+the database saved before the test.
+
+### What this changes about the round-12 entry above
+
+Round 12 recorded the notice as implemented and verified. It was verified **only for `unavailable`**,
+which is the one state the debug device happens to report. The condition was wrong for four other
+states, and the round-12 verification could not have caught that — a device in one state cannot
+demonstrate coverage of five. The generalisable lesson: a fix keyed on one enum member was verified
+against an instance of that member, and the check that found the gap was reading the **predicate
+the fix had to mirror**, not the enum it was drawn from.
+
 ## Evidence retention
 
 Device-side files pulled during this pass: `kasir.db` (+wal) and `store-default.sqlite` (+wal) in
