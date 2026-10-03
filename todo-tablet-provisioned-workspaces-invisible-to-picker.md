@@ -673,6 +673,26 @@ removed it. **Round 6 removed it**, so the device now carries the true provision
 table above records the re-measurement. Read the round-3 column as "the mechanism, isolated by
 adding one row", not as what a merchant receives.
 
+### A fix was drafted and REVERTED — recorded so it is not re-derived
+
+Two candidates were tried this round and both were withdrawn. Writing them down because each looks
+reasonable from the outside and the reasons they fail are not visible from the diff:
+
+1. **Add a tablet-side warning when the gate admits an unlicensed install.** The desktop does
+   exactly this (`AppShell.tsx:293-298` — *"License is inactive. Please renew from Settings."*),
+   and the tablet's equivalent condition is its exact complement, so the tablet is silently missing
+   a warning the desktop has. Implemented, then reverted: on a debug build the branch CANNOT fire
+   (the debug arm makes `licenceUsable` true), so it is unverifiable on the only device available,
+   and it does not lift the lock-out — it only explains it. Adding unverifiable code on a licence
+   path is the class of change this report argues against elsewhere.
+
+2. **Register `activate_license` on the tablet.** Round 7 established the capability already exists
+   in the shared bridge and the desktop command is a 12-line shim. Not attempted: it is the product
+   decision described below, and shipping it without that decision would put a self-service licence
+   activation path on Android that nobody asked for.
+
+The useful output of the attempt is the correction it produced: it showed the gate is behaving as
+designed and the disagreement is in the capabilities read, which is where a real fix belongs.
 ## Acceptance for a repair
 
 Two behaviours must BOTH hold, and the second is the one that keeps the fix safe:
