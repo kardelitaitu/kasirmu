@@ -233,9 +233,11 @@ if (!validityOpen) return 'subscription';   // every tool, including the free on
 ```
 
 `unavailable` is not in that set, so the FIRST gate rejects all 17 tools before the tier check
-(`:425`) is ever reached. The measured `features: {}` also shows the tier carries no entitlements
-at all, so even a repair of the state would leave `maxWarehouses: 0` / `maxKdsScreens: 0`
-blocking two of the four provisioned workspaces.
+(`:425`) is ever reached — the state alone accounts for the blanked-out tools, which the
+experiment below confirms rather than assumes. The measured `features: {}` is a separate and
+genuine fact about this tier, not part of this lock: it is why `maxWarehouses: 0` and
+`maxKdsScreens: 0`, and those caps are what the 7 remaining locks report after the state is
+repaired (see the experiment's second point).
 
 ## Note on intent
 
@@ -244,8 +246,42 @@ ADR-56 §2.4 (§2.4 at `docs/decisions/2026-09-21-adr56-first-run-provisioning.m
 still run. A `local` install that locks all 17 tools is the opposite of that decision, so the
 missing row reads as an un-implemented step rather than a deliberate denial.
 
-## Acceptance for a repair
+## Confirmed by experiment on the device (2026-10-03)
 
+The diagnosis above was tested rather than argued. With the app force-stopped, the device's
+`kasir.db` was pulled, a single row was inserted mirroring what `seed_provisioned_baseline`
+writes (`tier_key='free'`, `status='active'`, `signature='BOOTSTRAP_FREE'`), the WAL was
+checkpointed, and the file was pushed back. Nothing else changed. The app was then relaunched and
+logged in.
+
+| Reading | No row (as provisioned) | With the sentinel row |
+|---|---|---|
+| `get_subscription_capabilities.status` | `"unavailable"` | **`"active"`** |
+| `…state` | `"unavailable"` | **`"active"`** |
+| `…tier` | `free` | `free` (unchanged) |
+| `…features` | `{}` | `{}` (unchanged) |
+| locked tool cards | **17 of 17** | **7 of 17** |
+| unlocked tool cards | 0 | **10** |
+
+Two things this settles:
+
+1. **The state string is what locks.** `tier` and `features` are identical in both readings, so
+   the 10 tools that unlocked did so purely because `state` moved `unavailable` -> `active`. The
+   gate at `WorkspaceHome.tsx:419-423` reads the state, not the tier, and the fix belongs on the
+   capabilities path.
+2. **The remaining 7 locks are correct.** They render specific tier captions — "Requires Pro
+   plan" (Memos, Analytics, Reports), "Requires Premium plan" (Promotions, Audit Log), "Requires
+   Plus plan" (Cloud Sync), and Data — rather than the blanket "Subscription inactive". That is
+   Free behaving as Free, and it is the control showing the experiment did not simply unlock
+   everything.
+
+**Topology Editor unlocked in this state**, which matters: it is the one tool that can create the
+workspaces Defect 1 hides. So the two defects are not merely co-located — repairing this one
+restores the operator's only route around the other.
+
+**The device was left in this state deliberately.** It is a reproducibility aid, not a fix: the
+row is a hand-inserted sentinel on one tablet, invisible to any build, and a `pm clear` removes it.
+## Acceptance for a repair
 Two behaviours must BOTH hold, and the second is the one that keeps the fix safe:
 
 1. **The lock lifts.** On a device provisioned offline, the home screen renders tool cards that
