@@ -938,6 +938,26 @@ body:has(.memo-stack) .ws-layer-content {
   line-height: var(--leading-relaxed);
 }
 
+/* ── Licence notice ────────────────────────────────────────────────
+ * Non-blocking: the boot gate admits a provisioned install whose licence
+ * is not usable, and appShellBootGate.test.tsx rule 4 requires that state
+ * be surfaced rather than blocked. Advisory tone — it states the cause of
+ * the locked cards below, it does not take the screen. */
+
+.workspace-licence-notice {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-warning);
+  border-radius: var(--radius-md);
+  background: var(--color-warning-bg);
+  color: var(--color-fg);
+  font-size: var(--text-sm);
+  line-height: 1.4;
+}
+
 /* ── Error state ─────────────────────────────────────────────────── */
 
 .workspace-error {
@@ -1444,9 +1464,17 @@ body:has(.memo-stack) .ws-layer-content {
    localized minimum-tier badge, and is not clickable"). */
 
 .workspace-tool-card--locked {
+  /* Positioning context for the tier badge pinned to the bottom-right. */
+  position: relative;
   cursor: default;
   opacity: 0.62;
   background: var(--color-bg-surface);
+  /* Reserve the badge's corner. The badge is 1rem tall and sits --space-2 off
+     the bottom edge, so it occupies the band 8..24px above the card's bottom
+     border; without this padding that band overlaps the description's second
+     line on a short card. Measured against the badge heights in
+     assets/tier-badges/manifest.json (40px at 1x, scaled to 1rem here). */
+  padding-bottom: var(--space-6);
 }
 
 .workspace-tool-card--locked .workspace-tool-icon {
@@ -1467,6 +1495,29 @@ body:has(.memo-stack) .ws-layer-content {
   line-height: var(--leading-tight);
   white-space: nowrap;
   width: fit-content;
+}
+
+/* ── Tier badge: the plan a locked card needs, bottom-right ─── */
+/* Generated artwork from assets/tier-badges/svg/ (see utils/tierBadge.ts).
+   It states the PLAN; the pill above states the REASON. The card's own 0.62
+   opacity dims the badge with everything else, which is intended: the card is
+   still greyed out, and the badge must not read as an enabled control. */
+
+.workspace-tool-tier-badge {
+  position: absolute;
+  right: var(--space-3);
+  bottom: var(--space-2);
+  display: inline-flex;
+  align-items: center;
+  line-height: 0;
+}
+
+/* Height drives the scale; the width follows from each badge's own viewBox
+   ratio, so ENTERPRISE (162x40) stays undistorted where PRO (78x40) would. */
+.workspace-tool-tier-badge img {
+  display: block;
+  height: 1rem;
+  width: auto;
 }
 
 /* ── Add workspace card (+) ───────────────────────────────── */

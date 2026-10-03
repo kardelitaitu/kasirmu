@@ -906,6 +906,69 @@ describe('WorkspaceHome', () => {
       expect(staffCard).not.toBeNull();
       expect(screen.getAllByText('Subscription inactive').length).toBeGreaterThanOrEqual(1);
     });
+
+    // ── Plan badge on a lifecycle-locked card (2026-10-03) ──────────
+    //
+    // Measured on a provisioned tablet with no subscription row: the
+    // lifecycle gate shut all 17 cards and every one carried the identical
+    // "Subscription inactive" caption, so the plan a merchant must buy was
+    // invisible on the very screen whose job is to sell it. A locked card now
+    // carries the plan as generated badge artwork pinned bottom-right, and the
+    // reason as a pill — without unlocking anything.
+    //
+    // The assertions are on the badge's intrinsic width/height rather than its
+    // `src`, because how the SVG resolves is the bundler's business (a hashed
+    // asset path under the inline threshold becomes a data URI, and vice
+    // versa). The dimensions are the part that is ours.
+
+    it('states the reason as a pill and the plan as a badge', async () => {
+      mockSubscription('enterprise', 'grace');
+      await renderHomeWithTools();
+      const memoCard = screen
+        .getByText('Memos')
+        .closest('[data-testid="workspace-tool-card-locked"]');
+      if (!memoCard) throw new Error('Memos should render as a locked card in grace');
+      // One pill for the reason, one badge for the plan.
+      expect(memoCard.querySelectorAll('.workspace-tool-lock-badge').length).toBe(1);
+      expect(memoCard.textContent).toContain('Subscription inactive');
+      const badge = memoCard.querySelector('.workspace-tool-tier-badge img');
+      if (!badge) throw new Error('Memos should carry a plan badge in grace');
+      // Memos is Pro; the manifest gives that badge a 78x40 viewBox.
+      expect(badge.getAttribute('width')).toBe('78');
+      expect(badge.getAttribute('height')).toBe('40');
+      // Decorative artwork: the accessible statement is the sr-only text.
+      expect(badge.getAttribute('alt')).toBe('');
+      expect(memoCard.textContent).toContain('Requires Pro plan');
+      // The caption changed; the gate did not.
+      expect(memoCard.getAttribute('aria-disabled')).toBe('true');
+    });
+
+    it('adds no plan badge to a free-tier card the lifecycle gate locked', async () => {
+      mockSubscription('enterprise', 'expired');
+      await renderHomeWithTools();
+      const staffCard = screen
+        .getByText('Staff Management')
+        .closest('[data-testid="workspace-tool-card-locked"]');
+      if (!staffCard) throw new Error('Staff Management should render as a locked card');
+      // Reason only — there is no plan to name.
+      expect(staffCard.querySelectorAll('.workspace-tool-lock-badge').length).toBe(1);
+      expect(staffCard.querySelectorAll('.workspace-tool-tier-badge').length).toBe(0);
+      expect(staffCard.textContent).toContain('Subscription inactive');
+    });
+
+    it('lets the badge alone state the plan when the tier is the reason', async () => {
+      mockSubscription('plus');
+      await renderHomeWithTools();
+      const memoCard = screen
+        .getByText('Memos')
+        .closest('[data-testid="workspace-tool-card-locked"]');
+      if (!memoCard) throw new Error('Memos should render as a locked card on Plus');
+      // The tier IS the reason, so no pill repeats it in words — but the badge
+      // must still be there, or the card would explain nothing at all.
+      expect(memoCard.querySelectorAll('.workspace-tool-lock-badge').length).toBe(0);
+      expect(memoCard.querySelectorAll('.workspace-tool-tier-badge').length).toBe(1);
+      expect(memoCard.textContent).toContain('Requires Pro plan');
+    });
   });
 
   // ── Logout confirmation ────────────────────────────────────
