@@ -82,8 +82,13 @@ static SYNC_WAKEUP_HOOK: std::sync::OnceLock<std::sync::Arc<tokio::sync::Notify>
 
 /// JNI bridge called by `mu.kasir.mobile.SyncWorker` to trigger an immediate
 /// background sync drain when Android WorkManager fires.
+// Edition 2024 makes `unsafe_attr_outside_unsafe` a hard error, so the
+// attribute has to be `#[unsafe(no_mangle)]`. A host build never reaches this
+// line — the `target_os = "android"` cfg above excludes it — which is why
+// `cargo check -p kasirmu-mobile` stays green while the Android cross-build
+// fails on it. Both JNI entry points below need the same form.
 #[cfg(all(not(test), target_os = "android"))]
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "system" fn Java_mu_kasir_mobile_SyncWorker_00024Companion_nativeNudgeSync(
     _env: *mut std::ffi::c_void,
     _class: *mut std::ffi::c_void,
@@ -95,7 +100,7 @@ pub unsafe extern "system" fn Java_mu_kasir_mobile_SyncWorker_00024Companion_nat
 
 /// Fallback JNI symbol for direct static invocation.
 #[cfg(all(not(test), target_os = "android"))]
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "system" fn Java_mu_kasir_mobile_SyncWorker_nativeNudgeSync(
     _env: *mut std::ffi::c_void,
     _class: *mut std::ffi::c_void,
