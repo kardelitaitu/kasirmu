@@ -2380,6 +2380,17 @@ caches at mount, and precisely what it keeps reporting after the row appears.
 - **Rounds 4-20's root-cause sections remain as history.** They describe a defect that was real at the
   time and has since been fixed; they do not describe this device's current state.
 
+### Confirmed from the code as well as the device
+
+The stale-provider claim was checked in the source, not left as an inference from behaviour. `git grep`
+over `ui/src` for `refresh()` finds exactly **one** call belonging to this context —
+`SubscriptionContext.tsx:71`, the mount effect. Every other hit is a different context's own
+`refresh` (`CurrencyContext`, `OverQuotaCard`, `LocalApiSection`, and so on).
+
+Nothing in `ui/src/features/setup/` mentions `useSubscription` or `refresh` at all. So the provisioning
+success path cannot invalidate the cached verdict, and the device measurement above is what that looks
+like from the outside.
+
 ### The defect, stated plainly for a fix
 
 `provision_device` succeeding must invalidate the cached subscription. The narrowest correct fix is for
