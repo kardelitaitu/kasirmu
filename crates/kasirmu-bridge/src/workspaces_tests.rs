@@ -341,6 +341,51 @@ async fn list_workspaces_repairs_from_global_when_the_store_db_is_empty() {
     );
 }
 
+/// The asymmetry: the sibling entry point has NO read-repair.
+///
+/// The repair was added to `list_workspaces` (the picker path) and not to
+/// `list_workspaces_for_store_scoped` — the terminal-management screen's cross-store picker,
+/// reachable from the desktop shell (`apps/desktop-tauri/src/commands/workspaces.rs:261`).
+/// Reading the two functions shows the difference (the sibling has `lock_global` for the
+/// assignment but neither `has_empty` nor `global_rows`); this asserts it against the same
+/// fixture, so the divergence is a measured fact rather than a reading.
+///
+/// Same global row, same empty store DB as the test above — and the sibling returns `[]`.
+/// A terminal opened through this path therefore still shows the empty grid this whole
+/// defect is about.
+#[tokio::test]
+async fn list_workspaces_for_store_scoped_has_no_read_repair() {
+    let tb = picker_state(|conn| {
+        conn.execute_batch(
+            "INSERT INTO locations (id, name) VALUES ('store-a', 'Store A');\
+             INSERT INTO workspace_instances (id, type_key, location_id, name, description, colour, status) \
+             VALUES ('ws-global-a', 'store-pos', 'store-a', 'POS', '', NULL, 'active');",
+        )
+        .unwrap();
+    });
+    {
+        let conn = tb.db_manager().open_store("store-a").unwrap();
+        let db = conn.lock().unwrap();
+        db.execute("DELETE FROM workspace_instances", []).unwrap();
+        db.execute("DELETE FROM locations", []).unwrap();
+    }
+    mint_session(&tb, "owner-token", "user-owner", "role-owner", "store-a");
+
+    let listed =
+        list_workspaces_for_store_scoped(&tb.ctx(), "owner-token", "store-a".into()).await;
+    if !seeded_row_loads() {
+        assert_refused_by_the_seeded_row(&tb, listed, "free").await;
+        return;
+    }
+    let rows = listed.unwrap();
+    assert!(
+        rows.is_empty(),
+        "the sibling has no repair, so an empty store db lists nothing; got {rows:?}. \
+         If this ever returns the global row, the repair was extended here too — good, and \
+         this test should then assert the repair instead."
+    );
+}
+
 // ── Pre-session screen listing: the account and the store are both checked ──
 //
 // The ticket is verified in both this fn and `list_workspaces`; only the
