@@ -1598,6 +1598,58 @@ onboarding path.
 observable from a unit test of the write alone, since the write is correct in isolation. It follows
 from the four reader sites above, all of which were read rather than inferred.
 
+## ROUND 19: Step 5b contradicts the reconcile's own design — it is not just the wrong tenant
+
+Rounds 17-18 reported the tenant-key mismatch. Reading the reconcile's guard-1 justification shows the
+defect is **broader and better-grounded** than a key mismatch: Step 5b writes a bootstrap row for an
+install the reconcile deliberately refuses to write one for.
+
+### The two code paths disagree about whether a linked install gets a row at all
+
+| | Test applied | Outcome for `linked` |
+|---|---|---|
+| Reconcile (`migrations.rs:604`) | `SELECT EXISTS(... WHERE provisioning.mode = 'local')` | **refuses** — returns `Ok(false)`, writes nothing |
+| Step 5b (`provisioning.rs:526-531`) | none — `args.tenant_id.unwrap_or("default")` | **writes** a `BOOTSTRAP_FREE` row |
+
+And the reconcile says why, in its guard-1 doc (`migrations.rs:577-580`), verbatim:
+
+> A `linked` install's entitlement is **the server's grant**, and a missing row there is an anomaly
+> that must keep failing closed — writing Free would also **risk pre-empting the real grant**.
+
+Step 5b's own comment (`provisioning.rs:523`) invokes the *same* premise — *"ADR #56 §2.4: `local` is a
+supported permanent Free tier"* — and then applies it regardless of mode. The comment describes a
+`local`-only rule; the code has no such condition. That is the defect: not a wrong constant, a missing
+guard.
+
+### Why this is worse than the tenant mismatch it subsumes
+
+The tenant mismatch is a symptom. The cause is that Step 5b never asks `args.mode`, so for a linked
+install it:
+
+1. writes a row under the linked tenant — which **no tablet reader looks at** (`entitlements.rs:325`,
+   `auth.rs:672`, `history.rs:79`, and the reconcile all use `"default"`), and
+2. plants a **local `BOOTSTRAP_FREE` grant where the design says the server's grant belongs**, which is
+   the exact "pre-empting the real grant" the reconcile's guard exists to prevent.
+So the linked terminal is simultaneously locked (nothing reads its row) and holding a row that
+contradicts the entitlement model (something local claims to be its entitlement).
+
+### Reachability is unchanged from round 18 — it is the default path
+
+`ProvisioningFlow.tsx:184` initialises `provisionMode` to `'linked'`, and `:555` sends the account's
+`tenantId`. Nothing here narrows that; the guard analysis only explains the mechanism better.
+
+### The fix, and why it is not applied here
+
+The change is one guard — Step 5b should write only when `args.mode == ProvisioningMode::Local`,
+mirroring `migrations.rs:604` — which also removes the tenant question entirely, since a `local`
+install's tenant is `None` and therefore `"default"`, the value every reader uses.
+
+**Not applied: that edit is inside another session's uncommitted hunk.** The whole `provisioning.rs`
+delta is 11 added lines in one hunk (`@@ -519,6 +519,17 @@`) and it *is* Step 5b; a pathspec commit
+would carry their work under my message, which `AGENTS.md` §7.3 forbids. The finding is recorded
+precisely so whoever lands that hunk can apply the guard, and so a reviewer of it has the argument in
+front of them.
+
 ## Evidence retention
 
 Device-side files pulled during this pass: `kasir.db` (+wal) and `store-default.sqlite` (+wal) in
