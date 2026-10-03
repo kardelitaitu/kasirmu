@@ -1858,6 +1858,33 @@ treatment is missing or the class is dead and should go.
 And neither card has a test: `git grep -rn 'workspace-card-quick' -- ui/` finds the two `data-testid`
 attributes and nothing else, so the `data-testid`s exist for queries that were never written.
 
+### Worse than a bypassed chokepoint: the cards ignore the disabled-card contract
+
+The real cards treat an inaccessible workspace as **non-interactive**. `:920` computes
+`const disabled = !canAccess(ws.type_key)` and, for a disabled one, returns a plain `<div>` carrying a
+"Not available" badge (`:923-951`, localized via `workspace-card-no-access-aria`). It is not a button;
+it cannot be activated, and it says so.
+
+The quick cards are unconditional `<button>`s (`:786-792`, `:810-816`) with no `disabled` gate and no
+badge. So for a `roleName` the predicate refuses — its `default` arm — the same screen shows the real
+cards correctly marked "Not available" **and** two live buttons that will switch into the same
+workspaces. The inconsistency is the point: it is not that a guard was skipped in passing, it is that
+one of the two card renderers implements the access contract and the other does not.
+
+### And a localization defect the linter does not catch
+
+Both quick cards hardcode an English `aria-label` in the JSX — `aria-label="Retail POS"` (`:792`) and
+`aria-label="Restaurant POS"` (`:814`) — where every real card routes through `l10n.getString`
+(`workspace-card-open-aria` at `:962`, `workspace-card-no-access-aria` at `:929`). AGENTS.md §6.3
+requires all user-visible strings via `@fluent/react`, and an `aria-label` is user-visible to a screen
+reader.
+
+**Measured: `npx eslint src/features/workspaces/WorkspaceHome.tsx` passes clean with those literals in
+place.** `eslint-plugin-jsx-a11y` is configured (`ui/eslint.config.js:5,16`) and does not flag them, so
+the rule is real but unenforced at this site — and a reviewer running the gates would see green. That
+is worth knowing independently of these two cards: any hardcoded English `aria-label` added anywhere
+ships unchallenged.
+
 ### Why this is recorded rather than fixed
 
 Same constraint as the other two findings on this hunk: it is another session's uncommitted work, and a
