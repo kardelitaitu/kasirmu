@@ -1458,6 +1458,51 @@ Everything in this document that describes the defect as a property of `provisio
 accurate as history. What changed is that the fix has two halves, and only one of them was committed
 when round 15 described it.
 
+## ROUND 17: Step 5b writes the row under a tenant the reader never looks at
+
+A defect in the **in-flight** half of the fix, found by checking the write against the read rather
+than reading either alone. It is latent today and reachable the moment the `linked` path ships.
+
+### The two halves disagree on the tenant key
+
+| Site | Tenant it uses |
+|---|---|
+| `provisioning.rs:526` (Step 5b, the write) | `args.tenant_id.as_deref().unwrap_or("default")` |
+| `entitlements.rs:336` (the capabilities read) | `'default'`, hardcoded — its own message says "no tenant_subscription row for **'default'** — failing closed" |
+| `migrations.rs:613` (the reconcile's existence check) | `'default'`, hardcoded |
+
+So for a **linked** install the write lands on one tenant and both readers look at another. The row
+exists, the read does not find it, `Ok(None)` fails closed, `state: 'unavailable'` is projected, and
+`unavailable` is not in `toolLock`'s open set — the 17-locked-cards home screen, reproduced on a
+terminal that has just provisioned its own subscription row.
+
+### Both sides of that mismatch are deliberate, which is why it is a defect
+
+The write is not careless — `provisioning.rs:631-637` **requires** a non-empty `tenant_id` when
+`mode == Linked` ("a linked install must name its licence-server tenant"), and the bridge's wire type
+documents the field as *"The licence server's tenant id; required for `linked`"*
+(`setup.rs:177-179`). The read is not careless either: the tablet's store DB is `default`-scoped by
+construction, and the tenant-integrity gate in `state.rs` refuses to boot on a foreign-tenant row.
+Each is right in isolation; together they never meet.
+
+### Reachability, stated honestly
+
+**Not reachable from the shipped UI today.** The bridge's own comment says a `local` install "sends no
+`tenant_id`", and `git grep` over `ui/src` finds no `'linked'` written anywhere — so every current
+provisioning call takes the `unwrap_or("default")` path and the row matches the reader. The `linked`
+branch nevertheless exists in the core, is covered by tests (`provisioning_tests.rs:528-542`), and
+validates its tenant — so this is a trap armed for the next caller, not a live failure.
+
+That distinction is the whole report: it is **not** a reason to block the in-flight change, and it is
+**not** noise either. Whoever wires the linked path will hit it, and the symptom will look like the
+original defect rather than a tenant-key mismatch.
+
+**Suggested shape of a fix, not applied here** — the in-flight `provisioning.rs` was another session's
+uncommitted work, so changing it was not this session's to do. Either write `'default'` unconditionally
+in Step 5b (matching what both readers and the reconcile all assume, and what a `local` install means),
+or make the read tenant-aware; the first is smaller and matches the store-DB scoping the
+tenant-integrity gate already relies on.
+
 ## Evidence retention
 
 Device-side files pulled during this pass: `kasir.db` (+wal) and `store-default.sqlite` (+wal) in
