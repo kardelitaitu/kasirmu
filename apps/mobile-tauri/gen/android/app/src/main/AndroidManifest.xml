@@ -156,5 +156,11 @@
             android:name="android.support.FILE_PROVIDER_PATHS"
             android:resource="@xml/file_paths" />
         </provider>
+
+        <provider
+          android:name=".SyncInitProvider"
+          android:authorities="${applicationId}.syncinitprovider"
+          android:exported="false"
+          android:initOrder="100" />
     </application>
 </manifest>
