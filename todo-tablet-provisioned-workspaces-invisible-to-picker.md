@@ -2012,6 +2012,54 @@ enforced, which the pragma establishes — but it was **not** reproduced against
 constructing a store DB without its `store_profiles` row needs the device or a purpose-built fixture,
 and neither was available.
 
+## ROUND 26: the read-repair is MEASURED — it returns the row but does not persist it
+
+Round 25 reviewed the in-flight read-repair by reading it and predicted that its swallowed error
+(`let _ = db.execute(...)`) could leave the store DB empty while the call reported success. **That
+prediction is now reproduced**, by a test written for the branch the fix exists for.
+
+### The measurement
+
+A test was added that builds the production state exactly — a row in the global DB, an empty store DB
+— and calls the function the picker actually uses:
+
+```
+assertion 1: the repair must return the global row for an empty store db   -> PASSES
+assertion 2: the repair must persist the row into the store db             -> FAILS
+  left: 0
+ right: 1
+```
+
+So `list_workspaces` **returns** the global rows (the picker shows workspaces) while the store DB stays
+**empty**. On the next boot the repair runs again against the same empty file. That is not a crash and
+not a wrong screen — it is a repair that never lands, which is why reading the code alone could only
+suggest it.
+
+### Why it does not persist, and how the prediction was confirmed
+
+The INSERT is `INSERT OR IGNORE INTO workspace_instances (id, type_key, location_id, name, description,
+status)`, and `location_id` is `REFERENCES locations(id)` (`20260813_init.sql:986-988`, after
+`20260906_rename_store_to_location.sql:18` renamed the column). When the target row is absent the FK
+rejects the insert — and `let _ =` discards the error, so nothing surfaces. The test's fixture deletes
+the `locations` row to reach that state; the store DB is consequently empty and stays empty.
+
+### The finding that came out of building it: the repair is on ONE of two entry points
+
+Writing the test surfaced something the file-level read had hidden. The repair is in
+**`list_workspaces` (`workspaces.rs:109`)**, not in `list_workspaces_for_store_scoped` (`:733`). The
+first attempt called the sibling and got `[]`, which is the honest result: **that function has no
+repair at all.**
+
+Which one matters was then checked rather than assumed. The picker calls the repaired one:
+`ui/src/contexts/WorkspaceContext.tsx:329` -> `listWorkspaces()` (`ui/src/api/workspaces.ts:179-187`)
+-> the `list_workspaces` command. So the fix **does** reach the reported defect. The sibling is the
+terminal-management screen's cross-store picker (`apps/desktop-tauri/src/commands/workspaces.rs:261`),
+and a terminal opened through **that** path still shows an empty grid.
+
+**Not fixed here.** Both the repair and its gap are in another session's uncommitted hunk, which
+`AGENTS.md` §7.3 keeps out of this session's commits. What this round adds is the measurement the
+review could not make, and the two entry points it identified.
+
 ## Evidence retention
 
 Device-side files pulled during this pass: `kasir.db` (+wal) and `store-default.sqlite` (+wal) in
