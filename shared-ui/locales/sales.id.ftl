@@ -626,6 +626,8 @@ payment-toast-loyalty-failed = Gagal memuat akun loyalitas
 payment-toast-points-value-failed = Gagal memuat nilai poin
 payment-toast-kds-failed = Pembayaran berhasil, tetapi tiket dapur gagal dibuat — beri tahu dapur secara manual
 payment-toast-print-failed = Tidak ada yang tercetak — periksa bahwa printer sudah diatur dan dapat dijangkau
+payment-toast-invoice-issued = Faktur pajak berhasil diterbitkan
+payment-toast-invoice-failed = Gagal menerbitkan faktur pajak
 payment-customer-placeholder = mis. John Doe
 payment-loyalty-points-aria = Poin
 payment-search-customers-aria = Cari pelanggan
@@ -966,6 +968,7 @@ receipt-preview-qr-aria = Kode QR pembayaran
 receipt-preview-thanks = Terima kasih atas pembelian Anda!
 receipt-preview-skip = Lewati
 receipt-preview-print = Cetak Struk
+receipt-preview-issue-invoice = Terbitkan Faktur Pajak
 
 # ── Sales History ARIA (remaining) ──
 sales-history-search-placeholder =

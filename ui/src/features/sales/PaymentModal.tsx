@@ -6,7 +6,7 @@ import { useWorkspaceScope } from '@/contexts/WorkspaceContext';
 import { requiredLocalized } from '@/components';
 import { Localized, useLocalization } from '@fluent/react';
 import { Skeleton } from '@/components/Skeleton';
-import { startSaleScoped, addLineScoped, completeSaleScoped, printSalesReceipt, getSale, getSaleScoped, setCartDiscountScoped, holdCartScoped, finalizeSale, voidPendingSale, previewPromotedTotalFromLinesScoped, type SetCartDiscountScopedArgs, type CompleteSaleScopedArgs, type PaymentSplitArg, type SerialNumberArg, type PartialStockResult, type PreviewPromotedTotalResult } from '@/api/sales';
+import { startSaleScoped, addLineScoped, completeSaleScoped, printSalesReceipt, getSale, getSaleScoped, issueTaxInvoiceScoped, setCartDiscountScoped, holdCartScoped, finalizeSale, voidPendingSale, previewPromotedTotalFromLinesScoped, type SetCartDiscountScopedArgs, type CompleteSaleScopedArgs, type PaymentSplitArg, type SerialNumberArg, type PartialStockResult, type PreviewPromotedTotalResult } from '@/api/sales';
 import { createKdsOrderFromSaleScoped, publishCourseFiredScoped } from '@/api/kds';
 import { Button } from '@/components/Button';
 import { formatMoney, minorUnitExponent, parseMinorUnits, type Money } from '@/types/domain';
@@ -263,6 +263,8 @@ export default function PaymentModal({
 
   const [shortfallResult, setShortfallResult] = useState<PartialStockResult | null>(null);
   const [receiptArgs, setReceiptArgs] = useState<PrintSalesReceiptArgs | null>(null);
+  const [completedSaleId, setCompletedSaleId] = useState<string | null>(null);
+  const [issuingTaxInvoice, setIssuingTaxInvoice] = useState(false);
 
   const [paymentError, setPaymentError] = useState<{ message: string; retryable: boolean } | null>(null);
 
@@ -366,6 +368,8 @@ retryCurrencyLoad,
       setQrReference('');
       setShortfallResult(null);
       setReceiptArgs(null);
+      setCompletedSaleId(null);
+      setIssuingTaxInvoice(false);
       setSelectedCurrency(total.currency);
       setCustomerSearchQuery('');
       setCustomerRoster([]); // the derived rows are empty with it — no second list to clear
@@ -760,6 +764,7 @@ retryCurrencyLoad,
           ? await getSaleScoped(sessionToken, saleResult.saleId)
           : await getSale(saleResult.saleId);
 
+        setCompletedSaleId(saleResult.saleId);
         setReceiptArgs(buildCompletedSaleReceipt({
           saleId: saleResult.saleId,
           saleTotal: saleResult.total,
@@ -778,6 +783,7 @@ retryCurrencyLoad,
           ],
           tableNumber,
           marketProfile: activeMarketProfile,
+          customerName: selectedCustomer?.name,
         }));
       } catch {
         // Sale fetch may fail in edge cases — non-blocking.
@@ -1108,6 +1114,7 @@ retryCurrencyLoad,
           ? await getSaleScoped(sessionToken, saleResult.saleId)
           : await getSale(saleResult.saleId);
 
+        setCompletedSaleId(saleResult.saleId);
         const receiptData = buildCompletedSaleReceipt({
           saleId: saleResult.saleId,
           saleTotal: saleResult.total,
@@ -1134,6 +1141,7 @@ retryCurrencyLoad,
               ],
           tableNumber,
           marketProfile: activeMarketProfile,
+          customerName: selectedCustomer?.name ?? (method === 'credit' && customerName.trim() ? customerName.trim() : undefined),
         });
         // Store receipt data for preview (user chooses to print or skip)
         setReceiptArgs(receiptData);
@@ -1247,6 +1255,37 @@ retryCurrencyLoad,
         return { sku: String(line?.sku ?? lineId), serial };
       });
   }, [serialNumbers, lineItems]);
+
+  const handleIssueTaxInvoice = useCallback(async () => {
+    if (!completedSaleId || !sessionToken || !receiptArgs) return;
+    setIssuingTaxInvoice(true);
+    try {
+      const invoiceNumber = await issueTaxInvoiceScoped(sessionToken, completedSaleId);
+      setReceiptArgs((prev) =>
+        prev
+          ? {
+              ...prev,
+              isInvoice: true,
+              documentKind: 'invoice',
+              statutoryNumber: invoiceNumber,
+              receiptNumber: invoiceNumber,
+            }
+          : null,
+      );
+      addToast({
+        message: `${l10nRef.current.getString('payment-toast-invoice-issued', null, 'Tax invoice issued')}: ${invoiceNumber}`,
+        type: 'success',
+      });
+    } catch (err) {
+      console.error('issueTaxInvoiceScoped failed', err);
+      addToast({
+        message: l10nRef.current.getString('payment-toast-invoice-failed', null, 'Failed to issue tax invoice'),
+        type: 'error',
+      });
+    } finally {
+      setIssuingTaxInvoice(false);
+    }
+  }, [completedSaleId, sessionToken, receiptArgs, addToast]);
 
   if (!open && !leaving) return null;
 
@@ -1394,6 +1433,7 @@ retryCurrencyLoad,
               const completedSale = sessionToken
                 ? await getSaleScoped(sessionToken, result.saleId)
                 : await getSale(result.saleId);
+              setCompletedSaleId(result.saleId);
               const shortfallTotalMinor = result.total?.minor_units ?? completedSale?.total.minor_units ?? effectiveTotalInCartCurrency;
               const shortfallCurrency = result.total?.currency ?? completedSale?.total.currency ?? cartCurrency;
               const receiptData: PrintSalesReceiptArgs = {
@@ -1463,6 +1503,8 @@ retryCurrencyLoad,
         {done && receiptArgs ? (
           <ReceiptPreview
             receipt={receiptArgs}
+            onIssueTaxInvoice={sessionToken && completedSaleId ? handleIssueTaxInvoice : undefined}
+            issuingTaxInvoice={issuingTaxInvoice}
             onPrint={async () => {
               try {
                 await printSalesReceipt(sessionToken!, receiptArgs);

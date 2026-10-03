@@ -70,6 +70,11 @@ export interface PrintSalesReceiptArgs {
   taxIdLabel?: string | null | undefined;
   taxRegime?: string | null | undefined;
   statutoryRounding?: string | null | undefined;
+  documentKind?: 'receipt' | 'invoice' | undefined;
+  isInvoice?: boolean | undefined;
+  statutoryNumber?: string | null | undefined;
+  customerName?: string | null | undefined;
+  customerTaxId?: string | null | undefined;
 }
 
 /** Print a structured sales receipt (scoped — ADR #7). */

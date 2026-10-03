@@ -43,6 +43,8 @@ export interface SalesApiOverrides {
   listOpenBillsScoped?: ReturnType<typeof vi.fn>;
   stampFakturPajakScoped?: ReturnType<typeof vi.fn>;
   createFakturPenggantiScoped?: ReturnType<typeof vi.fn>;
+  issueTaxInvoiceScoped?: ReturnType<typeof vi.fn>;
+  getSaleStatutoryNumberScoped?: ReturnType<typeof vi.fn>;
 }
 
 export function createSalesApiMock(overrides: SalesApiOverrides = {}) {
@@ -111,6 +113,12 @@ export function createSalesApiMock(overrides: SalesApiOverrides = {}) {
     ),
     createFakturPenggantiScoped: vi.fn((_token: string, _saleId: string) =>
       Promise.resolve({ nsfp: '2600000000002', kodeTransaksi: '01', status: '01', formatted: '01012600000000002' }),
+    ),
+    issueTaxInvoiceScoped: vi.fn((_token: string, _saleId: string) =>
+      Promise.resolve('INV-TEST-0001'),
+    ),
+    getSaleStatutoryNumberScoped: vi.fn((_token: string, _saleId: string) =>
+      Promise.resolve(null),
     ),
     ...overrides,
   };

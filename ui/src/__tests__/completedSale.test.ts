@@ -153,4 +153,26 @@ describe('buildCompletedSaleReceipt', () => {
 
     expect(receipt.statutoryRounding).toBe('truncate');
   });
+
+  it('formats as formal statutory tax invoice when statutoryNumber is present', () => {
+    const sale = makeSaleDetail({ statutoryNumber: 'INV-2026-00042', displayCode: '01-02-261002-05-000123' });
+    const receipt = buildCompletedSaleReceipt({
+      saleId: 'sale-uuid-1234',
+      saleTotal: makeMoney(10000),
+      completedSale: sale,
+      cartLines: [makeCartLine('Item', 1, 9000)],
+      cartCurrency: 'IDR',
+      fallbackTotalMinor: 10000,
+      payments: [makePayment('cash', 10000)],
+      customerName: 'Acme Corp',
+      customerTaxId: '01.234.567.8-901.000',
+    });
+
+    expect(receipt.isInvoice).toBe(true);
+    expect(receipt.documentKind).toBe('invoice');
+    expect(receipt.statutoryNumber).toBe('INV-2026-00042');
+    expect(receipt.receiptNumber).toBe('INV-2026-00042');
+    expect(receipt.customerName).toBe('Acme Corp');
+    expect(receipt.customerTaxId).toBe('01.234.567.8-901.000');
+  });
 });

@@ -304,4 +304,39 @@ describe('ReceiptPreview', () => {
 
     expect(screen.getByText('PB1:')).toBeInTheDocument();
   });
+
+  it('renders TAX INVOICE banner, statutory invoice number and customer info when isInvoice is true', async () => {
+    const invoiceReceipt: PrintSalesReceiptArgs = {
+      ...mockReceipt,
+      isInvoice: true,
+      documentKind: 'invoice',
+      statutoryNumber: 'INV-2026-00099',
+      customerName: 'Global Enterprises Pte Ltd',
+      customerTaxId: 'SG12345678',
+    };
+
+    await renderWithFluent(<ReceiptPreview {...defaultProps} receipt={invoiceReceipt} />);
+
+    expect(screen.getByText('TAX INVOICE')).toBeInTheDocument();
+    expect(screen.getByText('Invoice No: INV-2026-00099')).toBeInTheDocument();
+    expect(screen.getByText('Billed To: Global Enterprises Pte Ltd')).toBeInTheDocument();
+    expect(screen.getByText('Tax ID: SG12345678')).toBeInTheDocument();
+  });
+
+  it('calls onIssueTaxInvoice when Issue Tax Invoice button is clicked', async () => {
+    const onIssueTaxInvoice = vi.fn();
+    await renderWithFluent(
+      <ReceiptPreview
+        {...defaultProps}
+        onIssueTaxInvoice={onIssueTaxInvoice}
+      />,
+    );
+
+    const issueBtn = screen.getByRole('button', { name: /issue tax invoice/i });
+    expect(issueBtn).toBeInTheDocument();
+    await waitFor(() => {
+      issueBtn.click();
+    });
+    expect(onIssueTaxInvoice).toHaveBeenCalledTimes(1);
+  });
 });

@@ -278,11 +278,13 @@ interface MockCompletedSale {
   createdAt: string;
   displayCode?: string | null;
   fakturPajak?: string | null;
+  statutoryNumber?: string | null;
 }
 interface MockSaleDetails extends Omit<MockCompletedSale, 'fakturPajak'> {
   subtotal: { minor_units: number; currency: string };
   taxTotal: { minor_units: number; currency: string };
   tenderedMinor: number;
+  statutoryNumber?: string | null;
   fakturPajak?: {
     nsfp: string;
     kodeTransaksi: string;
@@ -561,6 +563,30 @@ export function createSalesHandlers(deps: SalesDeps): Record<string, MockHandler
     }
     saveMockSales();
     return info;
+  },
+
+  'issue_tax_invoice_scoped': (args) => {
+    const raw = (args as { saleId?: string; args?: { saleId?: string } }) ?? {};
+    const saleId = raw.saleId ?? raw.args?.saleId;
+    if (!saleId) throw new Error('saleId is required');
+    const invNumber = `INV-${new Date().getFullYear()}-0001`;
+    const detailItem = saleDetails[saleId];
+    if (detailItem) {
+      detailItem.statutoryNumber = invNumber;
+    }
+    const s = completedSales.find((item) => item.id === saleId);
+    if (s) {
+      (s as unknown as { statutoryNumber?: string }).statutoryNumber = invNumber;
+    }
+    saveMockSales();
+    return invNumber;
+  },
+
+  'get_sale_statutory_number_scoped': (args) => {
+    const raw = (args as { saleId?: string; args?: { saleId?: string } }) ?? {};
+    const saleId = raw.saleId ?? raw.args?.saleId;
+    if (!saleId) return null;
+    return saleDetails[saleId]?.statutoryNumber ?? null;
   },
 
   'set_cart_discount': () => null,

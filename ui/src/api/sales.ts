@@ -98,6 +98,8 @@ export interface CompleteSaleResult {
   saleId: string;
   total: Money | null;
   lineCount: number;
+  receiptNumber?: string | null;
+  statutoryNumber?: string | null;
 }
 
 /** Arguments for setting a discount on a cart. */
@@ -191,6 +193,8 @@ export interface CompleteSaleScopedArgs {
    * Mirrors `tax_estimated: Option<bool>` (commands/pos.rs, c2cc3af9e).
    */
   taxEstimated?: boolean;
+  /** Document kind to issue: 'receipt' | 'invoice'. Defaults to 'receipt'. */
+  documentKind?: 'receipt' | 'invoice';
 }
 
 export const completeSaleScoped = (sessionToken: string, args: CompleteSaleScopedArgs): Promise<CompleteSaleResult> =>
@@ -508,6 +512,8 @@ export interface SaleDetail {
   baseTotalMinor?: number | null;
   /** CUR-02: fixed-point rate (millionths) used for the conversion. */
   tenderRateMillionths?: number | null;
+  /** Statutory document number (e.g. Tax Invoice number) stamped on the sale. */
+  statutoryNumber?: string | null;
 }
 
 /**
@@ -826,6 +832,11 @@ export interface PrintSalesReceiptArgs {
   taxIdLabel?: string | null | undefined;
   taxRegime?: string | null | undefined;
   statutoryRounding?: string | null | undefined;
+  documentKind?: 'receipt' | 'invoice' | undefined;
+  isInvoice?: boolean | undefined;
+  statutoryNumber?: string | null | undefined;
+  customerName?: string | null | undefined;
+  customerTaxId?: string | null | undefined;
 }
 
 /** Result of a receipt print request. */
@@ -836,6 +847,14 @@ export interface PrintSalesReceiptResult {
 /** Print a formatted sales receipt (session-scoped — ADR #7). */
 export const printSalesReceipt = (sessionToken: string, args: PrintSalesReceiptArgs): Promise<PrintSalesReceiptResult> =>
   loggedInvoke<PrintSalesReceiptResult>('print_sales_receipt_scoped', { sessionToken, args });
+
+/** Issue a formal statutory Tax Invoice for a sale in the store resolved from a session token. */
+export const issueTaxInvoiceScoped = (sessionToken: string, saleId: string): Promise<string> =>
+  loggedInvoke<string>('issue_tax_invoice_scoped', { sessionToken, saleId });
+
+/** Read the statutory document number stamped on a sale in the store resolved from a session token. */
+export const getSaleStatutoryNumberScoped = (sessionToken: string, saleId: string): Promise<string | null> =>
+  loggedInvoke<string | null>('get_sale_statutory_number_scoped', { sessionToken, saleId });
 
 /** Subscribe to receipt-printed events from the backend. Returns an unsubscribe function. */
 export const onReceiptPrinted = (handler: (lines: number) => void): Promise<UnlistenFn> =>

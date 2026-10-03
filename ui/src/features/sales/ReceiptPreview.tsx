@@ -22,6 +22,10 @@ export interface ReceiptPreviewProps {
   paymentLinkTemplate?: string;
   /** Whether to show a barcode on the receipt. */
   showBarcode?: boolean;
+  /** Optional handler to issue a formal Tax Invoice for this sale. */
+  onIssueTaxInvoice?: (() => void | Promise<void>) | undefined;
+  /** Whether the tax invoice is currently being issued. */
+  issuingTaxInvoice?: boolean | undefined;
 }
 
 /**
@@ -35,6 +39,8 @@ export default function ReceiptPreview({
   onSkip,
   paymentLinkTemplate,
   showBarcode = false,
+  onIssueTaxInvoice,
+  issuingTaxInvoice = false,
 }: ReceiptPreviewProps) {
   const { l10n } = useLocalization();
 
@@ -59,6 +65,22 @@ export default function ReceiptPreview({
   return (
     <div className="receipt-preview" role="region" aria-label={l10n.getString('receipt-preview-aria', null, 'Receipt Preview')}>
       <div className="receipt-preview-paper">
+        {/* ── Tax Invoice Banner ── */}
+        {(receipt.isInvoice || receipt.documentKind === 'invoice') && (
+          <div className="receipt-preview-invoice-banner" style={{
+            textAlign: 'center',
+            fontWeight: 700,
+            fontSize: '1rem',
+            letterSpacing: '1px',
+            padding: '0.25rem 0',
+            borderBottom: '2px solid var(--border-color, #000)',
+            marginBottom: '0.5rem',
+            textTransform: 'uppercase',
+          }}>
+            {receipt.taxRegime === 'PB1' || receipt.taxIdLabel === 'NPWP' ? 'FAKTUR PAJAK / TAX INVOICE' : 'TAX INVOICE'}
+          </div>
+        )}
+
         {/* ── Store Header ── */}
         <div className="receipt-preview-header">
           <div className="receipt-preview-store-name">
@@ -73,6 +95,17 @@ export default function ReceiptPreview({
             <span className="receipt-preview-date">{receipt.date}</span>
             <span className="receipt-preview-receipt-number">{receipt.receiptNumber}</span>
           </div>
+          {receipt.statutoryNumber && receipt.statutoryNumber !== receipt.receiptNumber && (
+            <div className="receipt-preview-statutory-number" style={{ fontWeight: 600, fontSize: '0.85rem' }}>
+              Invoice No: {receipt.statutoryNumber}
+            </div>
+          )}
+          {(receipt.customerName || receipt.customerTaxId) && (
+            <div className="receipt-preview-customer-info" style={{ marginTop: '0.25rem', fontSize: '0.8rem', textAlign: 'left' }}>
+              {receipt.customerName && <div>Billed To: {receipt.customerName}</div>}
+              {receipt.customerTaxId && <div>Tax ID: {receipt.customerTaxId}</div>}
+            </div>
+          )}
         </div>
 
         <div className="receipt-preview-separator">{separator}</div>
@@ -213,10 +246,15 @@ export default function ReceiptPreview({
 
       {/* ── Action Buttons ── */}
       <div className="receipt-preview-actions">
-        <Button variant="ghost" onClick={onSkip} disabled={loading}>
+        <Button variant="ghost" onClick={onSkip} disabled={loading || issuingTaxInvoice}>
           {l10n.getString('receipt-preview-skip', null, 'Skip')}
         </Button>
-        <Button variant="primary" onClick={onPrint} loading={loading}>
+        {onIssueTaxInvoice && !receipt.isInvoice && (
+          <Button variant="secondary" onClick={onIssueTaxInvoice} loading={issuingTaxInvoice} disabled={loading}>
+            {l10n.getString('receipt-preview-issue-invoice', null, 'Issue Tax Invoice')}
+          </Button>
+        )}
+        <Button variant="primary" onClick={onPrint} loading={loading} disabled={issuingTaxInvoice}>
           {l10n.getString('receipt-preview-print', null, 'Print Receipt')}
         </Button>
       </div>

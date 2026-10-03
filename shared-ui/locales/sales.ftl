@@ -193,6 +193,8 @@ payment-toast-loyalty-failed = Failed to load loyalty account
 payment-toast-points-value-failed = Failed to load points value
 payment-toast-kds-failed = Payment succeeded, but the kitchen ticket could not be created — notify the kitchen manually
 payment-toast-print-failed = Nothing was printed — check that a printer is set up and reachable
+payment-toast-invoice-issued = Tax invoice issued successfully
+payment-toast-invoice-failed = Failed to issue tax invoice
 payment-customer-placeholder = e.g. John Doe
 payment-loyalty-points-aria = Points
 payment-search-customers-aria = Search customers
@@ -1038,6 +1040,7 @@ receipt-preview-qr-aria = Payment QR code
 receipt-preview-thanks = Thank you for your purchase!
 receipt-preview-skip = Skip
 receipt-preview-print = Print Receipt
+receipt-preview-issue-invoice = Issue Tax Invoice
 
 # Dashboard
 # Daily Sales Dashboard — Free tier lock (C2.2, §6)
