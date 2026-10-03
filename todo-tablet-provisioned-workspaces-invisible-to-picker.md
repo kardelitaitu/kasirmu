@@ -2331,6 +2331,35 @@ written the subscription row, so it caches `state: 'unavailable'` — and nothin
 provisioning later succeeds. The flow's success path sets `hasCompletedSetup` to move past onboarding,
 but no code path calls `refresh()`, so the app runs on a verdict that was true only during setup.
 
+### Reproduced, and the causal chain closed
+
+A second independent run (`pm clear` -> fresh install -> provision `local` -> login) produced the same
+figures, and this time the disagreement was read in a **single evaluation** — backend and DOM at the
+same instant:
+
+```json
+{"cmd_state": "active", "cmd_status": "active", "cmd_tier": "free",
+ "dom_locked": 17, "dom_notice": true}
+```
+
+Then, with no other change than a reload:
+
+| | Immediately after provisioning | After a fresh context fetch |
+|---|---|---|
+| locked cards | **17** | **7** |
+| notice | shown | hidden |
+
+Same terminal, same database, same code. The only variable is whether `SubscriptionProvider` fetched
+before or after `provision_device` wrote the row — which is what makes this the cause rather than a
+correlate.
+
+The 7 remaining locks are correct: they read *"Requires Pro"*, *"Requires Premium plan"*, *"Requires
+Plus plan"*.
+
+**Also measured, and it identifies the cached value directly:** on a fresh install *before* provisioning,
+`get_subscription_capabilities` returns `state: "unavailable"`. That is precisely what the provider
+caches at mount, and precisely what it keeps reporting after the row appears.
+
 ### What this changes about everything above
 
 - **The `tenant_subscription` row is fine.** The two-halves fix (`d35555bca` + Step 5b) works; the row
