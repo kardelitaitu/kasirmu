@@ -2145,11 +2145,24 @@ The repair inserts into `store-<id>.sqlite`, where `workspace_instances.location
 |---|---|
 | `kasirmu-bridge/src/setup.rs:370` | `let db = ctx.lock_global().await;` — provisioning is handed the **global** db |
 | `provisioning.rs:486-499` | the `INSERT INTO locations` runs on that connection, so the row lands **globally** |
-| `create_location_profile` callers | **every one is a test** (`store_scoping_integration.rs`, `provisioning_tests.rs`) — no production caller |
+| `create_location_profile` callers | **not** all tests — `kasirmu-bridge/src/locations.rs:235,278,304` are production, and they write via `resolve_scope` |
 
-So a store db for a freshly provisioned location has no `locations` row, the repair's FK has no
-target, SQLite raises, and `let _ =` eats it. **The repair cannot persist in production**, which is why
-the picker is fixed for the session it runs in and reverts on the next boot.
+**That last row corrects an overstatement made earlier in this section.** Those production callers go
+through `ctx.resolve_scope`, which returns the **store** db (`ctx.rs:389-392`, `open_store`), so
+`create_location_profile_scoped` *does* write a `locations` row into a store db — when a merchant
+creates a location through Settings, which the command gates on `permissions::SETTINGS_EDIT`.
+
+So the failure is **conditional**, not universal:
+
+| Terminal | Store-db `locations` row | Repair's FK |
+|---|---|---|
+| freshly provisioned, Settings never opened | absent | **fails** — rows returned, none cached |
+| merchant has created a location through Settings | present | succeeds |
+
+The first case is the one this whole defect is about — the freshly provisioned terminal that lands on
+an empty picker — so the repair is broken for exactly the terminals it was written for, and works for
+ones that had already been past the problem. Stated that way it is a narrower claim than the first
+draft's, and it is the one the evidence supports.
 
 This is the split-brain restated from the other side: the defect is not only that the picker reads a
 different file, it is that the two files' schemas disagree about what a workspace row's location even
