@@ -1922,7 +1922,7 @@ claim was well-sourced when written; it is the world that moved.
 2026-09-22  99f0c6b0a  feat(licensing): add tablet device pairing UI and mode 1 vs 2 provisioning
                        (ADR #56 §2.3/§2.5)   <- the linked UI ships here
 2026-09-29  1a0fdf53e  docs(decisions): audit and stamp ADRs 45, 46, 48, 49, 56, 57
-                       -> last audited 29-09-26 by docs-auditor
+                       (its diff re-dated the ADR's footer from 22-09 to 29-09)
 ```
 
 Seven days separate them, and the stamp's reachable text still says the UI does not exist. Worse, the
@@ -2037,7 +2037,20 @@ DOM; on this host that entry point is dead and should carry this note.
 
 ## Status after this pass
 
-Unchanged: **neither defect is fixed, and no source was modified by this pass.** The blocking
-question remains the one §"The two owner rulings this case falls between" frames (R2 vs R11, and
-therefore whether an absent row means "Free, active" or "unlicensed"). It now has a
-device-measured role axis alongside it, which removes "roles" from the list of suspects.
+## Status after this pass
+
+**Both defects are fixed, and most of the source in this report is committed.** The line above this
+section is retained because it was true when written and this file keeps its corrections rather than
+overwriting them; it is not the current state. The stamp at the top of the file is.
+
+Committed by this session: the Fluent strings (`bcb4a5452`), the notice's tests (`ba69f826f`), the
+provisioning tests (`e8b2726f8`), the linked-provision tripwire (`d8dade5dc`, consolidated in
+`67c1fe483`, made self-describing in `37bce3c9e`), and the analysis in each round's section. Committed
+by peers: the reconcile (`d35555bca`), the notice's CSS (swept into `268440251`), and the whole of
+defect 1.
+
+Outstanding: the notice JSX (blocked by another session's hunk in the same file), the `args.mode`
+guard for the uncommitted Step 5b (same), and the quick-card defects (`d2b8e30e4`, `9daf8e795`, same).
+One file and one hunk carry all three.
+
+> last audited 03-10-26 by docs-auditor
