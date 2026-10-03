@@ -33,3 +33,20 @@ export const getLocalIp = (): Promise<string> =>
 /** Get the stable device identifier (hostname) for terminal binding. */
 export const getDeviceId = (): Promise<string> =>
   loggedInvoke<string>('get_device_id');
+
+/**
+ * Subscribe to `kasirmu://reconnect` broadcasts (fired when window regains focus
+ * after being backgrounded or suspended, e.g. on Android WebView resume).
+ */
+export const onAppReconnect = async (
+  handler: () => void,
+): Promise<() => void> => {
+  try {
+    const { listen } = await import('@tauri-apps/api/event');
+    const unlisten = await listen('kasirmu://reconnect', () => handler());
+    return unlisten;
+  } catch {
+    return () => {};
+  }
+};
+

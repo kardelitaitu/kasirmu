@@ -26,7 +26,7 @@ import {
   type CurrencyDto,
 } from '@/api/currency';
 import { getBrandSettingsScoped } from '@/api/branding';
-import { getVersionScoped, getDeviceId, type VersionInfo } from '@/api/system';
+import { getVersionScoped, getDeviceId, onAppReconnect, type VersionInfo } from '@/api/system';
 import { listTerminalsScoped } from '@/api/terminals';
 import { useWorkspace } from './WorkspaceContext';
 
@@ -609,6 +609,25 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
       if (unlisten) unlisten();
     };
   }, [markSettingsUpdated]);
+
+  useEffect(() => {
+    let unlistenReconnect: (() => void) | undefined;
+
+    // onAppReconnect re-hydrates settings on window/webview resume (e.g. Android foreground)
+    onAppReconnect(() => {
+      void refetch();
+    })
+      .then((fn) => {
+        unlistenReconnect = fn;
+      })
+      .catch((err) => {
+        console.warn('Failed to register onAppReconnect listener:', err);
+      });
+
+    return () => {
+      if (unlistenReconnect) unlistenReconnect();
+    };
+  }, [refetch]);
 
   const value = useMemo<SettingsContextValue>(
     () => ({
