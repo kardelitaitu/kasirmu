@@ -1688,6 +1688,38 @@ abandoned hunk is itself a cost, and the guard belongs to whoever owns that hunk
 permanently deferred to this report. If the hunk is still uncommitted when it is next read, the
 cleanest resolution is for a session that owns both halves to land them together.
 
+### The defect now has a tripwire, in the repo's own idiom
+
+Since the fix belongs in another session's hunk, the useful artefact is one that fails the moment
+that hunk lands unguarded. Added as an `#[ignore]`d characterisation test, following the precedent
+already in this crate (`products_stock_adjust_tests.rs` records a test ignored *"as a CHARACTERISATION
+of the loss"*, later *"un-ignored and INVERTED"* when its fix landed):
+
+```
+a_linked_provision_leaves_no_bootstrap_subscription_row ... ignored, characterises the pending Step 5b defect
+test result: ok. 32 passed; 0 failed; 1 ignored
+```
+
+Ignored rather than live because it **fails today** — and would leave a red build for whoever is
+editing `provisioning.rs`. Run explicitly, it demonstrates the defect mechanically:
+
+```
+cargo test -p kasirmu-core --lib a_linked_provision_leaves_no_bootstrap_subscription_row -- --ignored
+assertion `left == right` failed: ... provision_device must not write a local BOOTSTRAP_FREE row
+  left: 1
+ right: 0
+```
+
+One row written for a linked install, against an invariant of zero.
+
+**The invariant is not invented here.** `migrations_tests.rs`'s
+`reconcile_leaves_a_linked_install_to_the_server_grant` already asserts it — *"a linked install's
+entitlement is the server's, and a missing grant must keep failing closed"* — for the reconcile's path.
+What was missing is the same assertion at the **other entry point**, because the two run through
+different functions and neither test covers the other. This closes that asymmetry. The test needs no
+edit when the guard lands: a local-only write leaves a linked install with no row, so it passes
+unchanged, and only its `#[ignore]` comes off.
+
 ## Evidence retention
 
 Device-side files pulled during this pass: `kasir.db` (+wal) and `store-default.sqlite` (+wal) in
