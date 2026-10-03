@@ -1415,6 +1415,49 @@ than the only explanation**, which is the right place for it to sit.
   fix guards on `mode = 'local'` and leaves `linked` failing closed, which is the correct split.
 - The **notice is not made redundant**, for the reason above.
 
+## ROUND 16: there are TWO fixes, not one — and the source write now has a test
+
+Round 15 recorded the root cause as fixed by `d35555bca` alone, describing it as a startup reconcile.
+**That was incomplete.** There are two complementary changes:
+
+| | Where | State | What it does |
+|---|---|---|---|
+| Reconcile | `crates/kasirmu-core/src/migrations.rs` (`ensure_bootstrap_subscription`), called from both shells' `state.rs` | committed `d35555bca` | repairs installs provisioned BEFORE the write existed |
+| Source write | `crates/kasirmu-core/src/db/provisioning.rs`, "Step 5b" | **in flight, uncommitted** at the time of writing | makes `provision_device` create the row in its own transaction |
+
+The second is the load-bearing one: with only the reconcile, every new install would be provisioned
+into the unlicensed state and repaired on the next boot, so the defect would still be *reproduced*, just
+not observed. The peer's own doc comment says as much — *"Doing it here as well as there is deliberate,
+not redundant"* — and the two are ordered so the reconcile stays a repair rather than becoming the only
+writer.
+
+### Neither the describe nor the reconcile covers the write — that gap is now closed
+
+`provisioning_tests.rs` held 29 tests and **none mentioned `tenant_subscription`**, so the new Step 5b
+was unverified at its source. Added one test, and it passes:
+
+```
+test db::provisioning::tests::provisioning_writes_the_bootstrap_subscription_the_local_tier_needs ... ok
+test result: ok. 31 passed; 0 failed
+```
+
+It asserts the row the write must produce — `tenant_id='default'`, `tier_key='free'`, `status='active'`,
+`signature='BOOTSTRAP_FREE'` — and frames it against the standard the neighbouring end-to-end test
+already sets: §2.3 says onboarding must end at a **working** terminal, and a terminal whose licence row
+is absent is configured but not usable. Committed as `e8b2726f8`.
+
+Note what this test does and does not establish. It pins the write (passing with it, and asserting the
+exact row it produces); it was **not** demonstrated failing without the write, because that would have
+required mutating `provisioning.rs`, which at that moment held another session's uncommitted work — the
+same shared-index hazard this document records elsewhere. The assertion is specific enough to fail if
+the write is removed or its values change, but that was reasoned, not observed.
+
+### Consequence for the sections above
+
+Everything in this document that describes the defect as a property of `provision_device` remains
+accurate as history. What changed is that the fix has two halves, and only one of them was committed
+when round 15 described it.
+
 ## Evidence retention
 
 Device-side files pulled during this pass: `kasir.db` (+wal) and `store-default.sqlite` (+wal) in
