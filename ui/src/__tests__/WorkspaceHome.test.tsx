@@ -881,11 +881,10 @@ describe('WorkspaceHome', () => {
       expect(screen.getByText('Configuration')).toBeInTheDocument();
     });
 
-    it('renders the new Memo and Topology Editor cards for an entitled owner', async () => {
+    it('renders the Memo card for an entitled owner', async () => {
       mockSubscription('enterprise');
       await renderHomeWithTools();
       expect(screen.getByText('Memos')).toBeInTheDocument();
-      expect(screen.getByText('Topology Editor')).toBeInTheDocument();
     });
 
     it('locks tier-gated tools below their minimum tier (visible, non-clickable)', async () => {
@@ -897,21 +896,20 @@ describe('WorkspaceHome', () => {
       expect(locked.length).toBeGreaterThanOrEqual(5);
       expect(locked.every((el) => el.getAttribute('aria-disabled') === 'true')).toBe(true);
       // Locked-card count on Plus for an owner: analytics, reports, audit,
-      // memo, promotions (pro/premium tiers). Cloud Sync is admin-gated on
-      // the ROLE axis (hidden for non-admins), so it adds nothing here.
+      // memo, promotions (pro/premium tiers).
       // Staff stays clickable (role-only, free tier).
       expect(screen.getByText('Staff Management')).toBeInTheDocument();
       expect(screen.getByText('Staff Management').closest('[data-testid="workspace-tool-card-locked"]')).toBeNull();
     });
 
-    it('shows Settings as a locked card for managers (lockBelowRole), hides owner-only Features', async () => {
+    it('shows Settings as clickable for managers, hides admin-only Analytics', async () => {
       mockSubscription('enterprise');
       await renderHomeWithTools('manager');
-      expect(screen.getByText('Admin access required')).toBeInTheDocument();
-      const locked = screen.getAllByTestId('workspace-tool-card-locked');
-      expect(locked.length).toBe(1);
-      // Owner-only Features card is hidden from managers entirely.
-      expect(screen.queryByText('Features')).not.toBeInTheDocument();
+      // Settings is now accessible to managers directly
+      expect(screen.getByText('Settings')).toBeInTheDocument();
+      expect(screen.getByText('Settings').closest('[data-testid="workspace-tool-card-locked"]')).toBeNull();
+      // Admin-only Analytics card is hidden from managers entirely.
+      expect(screen.queryByText('Analytics')).not.toBeInTheDocument();
     });
 
     it('grace keeps role-only tools open but locks Pro tools (§B admin gate)', async () => {
