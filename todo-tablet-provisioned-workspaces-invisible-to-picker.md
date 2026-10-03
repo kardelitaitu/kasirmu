@@ -345,6 +345,7 @@ lives in the ordering between them.
 That also bounds the fix: the desktop must keep working exactly as it does, so whatever closes this
 belongs on the tablet side (or in a shared precondition check), not in an edit to the ordering the
 desktop depends on.
+
 ### The module doc asserts the invariant the code breaks
 
 `crates/kasirmu-core/src/db/provisioning.rs` states two things this report measures as false, and
@@ -364,6 +365,7 @@ The user-facing claim is wrong in the same direction — the wizard's success to
 at the moment this report's screenshot shows every tool disabled. **Nothing anywhere tells the
 operator that the install cannot be used**, which is why the two defects went unreported: the
 product says it succeeded.
+
 ### The missing piece is small — the capability already exists
 
 The blocker is NOT a missing implementation. `kasirmu_bridge::license::activate_license`
@@ -391,6 +393,7 @@ state and a working one is a registered command plus the screen the shared `ui/`
 It is still a product decision rather than a patch, because *whether a tablet should be able to
 activate itself* is a licensing-model choice this report cannot make — but the cost estimate the
 decision needs is now known, and it is small.
+
 ### What would settle it
 
 One question this checkout cannot answer: **how is a tablet meant to become licensed?** If the
