@@ -170,6 +170,9 @@ pub struct SaleDetail {
     /// Phase 6: e-Faktur Pajak compliance metadata (DJP Coretax PER-11/PJ/2025).
     #[serde(default)]
     pub faktur_pajak: Option<FakturPajakInfo>,
+    /// Statutory document number (e.g. formal Tax Invoice or Receipt sequence number).
+    #[serde(default)]
+    pub statutory_number: Option<String>,
 }
 
 /// Fetch a single sale by ID from the store resolved from a session token.
@@ -209,8 +212,12 @@ pub async fn get_sale_scoped(
         Some(s) => store.get_faktur_pajak(&s.id)?,
         None => None,
     };
+    let statutory_number = match &sale {
+        Some(s) => store.sale_statutory_number(&s.id)?,
+        None => None,
+    };
     drop(db);
-    Ok(sale.map(|s| map_sale_to_detail(s, tax_estimate_note, display_code, faktur_pajak)))
+    Ok(sale.map(|s| map_sale_to_detail(s, tax_estimate_note, display_code, faktur_pajak, statutory_number)))
 }
 
 /// Shared mapping from `kasirmu_core::Sale` to `SaleDetail`.
@@ -219,6 +226,7 @@ fn map_sale_to_detail(
     tax_estimate_note: Option<String>,
     display_code: Option<String>,
     faktur_pajak: Option<FakturPajakInfo>,
+    statutory_number: Option<String>,
 ) -> SaleDetail {
     SaleDetail {
         id: s.id,
@@ -235,6 +243,7 @@ fn map_sale_to_detail(
         tax_estimate_note,
         display_code,
         faktur_pajak,
+        statutory_number,
     }
 }
 

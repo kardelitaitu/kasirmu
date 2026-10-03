@@ -137,3 +137,33 @@ pub async fn list_fiscal_schemes_scoped(
         .await
         .map_err(Into::into)
 }
+
+/// Issue a formal statutory Tax Invoice for a sale in the store resolved from a session token.
+///
+/// Gated by `sales:process`.
+#[tauri::command]
+pub async fn issue_tax_invoice_scoped(
+    session_token: String,
+    sale_id: String,
+    state: State<'_, AppState>,
+) -> Result<String, AppError> {
+    let ctx = state.bridge_ctx();
+    kasirmu_bridge::fiscal::issue_tax_invoice_scoped(&ctx, &session_token, &sale_id)
+        .await
+        .map_err(Into::into)
+}
+
+/// Read the statutory document number stamped on a sale in the store resolved from a session token.
+///
+/// Gated by `sales:view`.
+#[tauri::command]
+pub async fn get_sale_statutory_number_scoped(
+    session_token: String,
+    sale_id: String,
+    state: State<'_, AppState>,
+) -> Result<Option<String>, AppError> {
+    let ctx = state.bridge_ctx();
+    kasirmu_bridge::fiscal::get_sale_statutory_number_scoped(&ctx, &session_token, &sale_id)
+        .await
+        .map_err(Into::into)
+}

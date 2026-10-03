@@ -1048,6 +1048,8 @@ pub fn run() {
                 commands::fiscal::list_document_number_sequences_scoped,
                 commands::fiscal::list_document_number_sequences_for_entity_scoped,
                 commands::fiscal::list_fiscal_schemes_scoped,
+                commands::fiscal::issue_tax_invoice_scoped,
+                commands::fiscal::get_sale_statutory_number_scoped,
                 commands::settings::get_receipt_settings_scoped,
                 commands::settings::get_setting_scoped,
                 commands::settings::get_store_settings_scoped,

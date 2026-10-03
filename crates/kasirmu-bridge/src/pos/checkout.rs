@@ -78,6 +78,9 @@ pub struct CompleteSaleArgs {
     /// the application rows persist inside the checkout transaction;
     /// payment splits are validated against the reduced total.
     pub promotion_ids: Option<Vec<String>>,
+    /// Document kind for statutory numbering: "receipt" (default) or "invoice"
+    /// for formal B2B Tax Invoicing.
+    pub document_kind: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -87,7 +90,7 @@ pub struct CompleteSaleArgs {
 /// shell's copy (Phase 3.3 T4): the absence of it is what let the shipped
 /// UI's `attemptId` vanish silently on the tablet while looking guarded.
 /// Every field the wire can carry is listed field-for-field against
-/// `ui/src/api/sales.ts::CompleteSaleScopedArgs` (15 fields) and both
+/// `ui/src/api/sales.ts::CompleteSaleScopedArgs` (16 fields) and both
 /// senders in the payment modal (the main path and
 /// the QRIS path, whose extra spread is `tenderSnapshot` — tip, service
 /// charge and the three CUR-02 fields, all present below). An unknown key
@@ -132,6 +135,9 @@ pub struct CompleteSaleScopedArgs {
     /// (D61 ruling 4: flag for recompute, never silent). Absent/false is
     /// the zero-change default: no stamp.
     pub tax_estimated: Option<bool>,
+    /// Document kind for statutory numbering: "receipt" (default) or "invoice"
+    /// for formal B2B Tax Invoicing.
+    pub document_kind: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -143,6 +149,10 @@ pub struct CompleteSaleResult {
     pub total: Option<Money>,
     /// Line Count.
     pub line_count: usize,
+    /// Receipt Number / display code.
+    pub receipt_number: Option<String>,
+    /// The statutory document number (e.g. invoice or receipt sequence).
+    pub statutory_number: Option<String>,
 }
 
 /// Stamp one idempotency key per split from a checkout attempt id.
@@ -432,7 +442,7 @@ pub async fn complete_sale_with_resolved_shortfalls_scoped(
     let sale_id = sale.id.clone();
 
     // ── Lock: Compute tax + execute the resolved deduction ────────
-    let _result = {
+    let (receipt_number, statutory_number) = {
         let db = conn
             .lock()
             .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
@@ -484,7 +494,7 @@ pub async fn complete_sale_with_resolved_shortfalls_scoped(
         // Multi-terminal: terminal_id is passed to complete_sale so that
         // the sale record tracks which terminal processed it. This enables
         // per-terminal reporting and cash drawer isolation.
-        store.complete_sale_with_resolved_shortfalls(
+        let deduct = store.complete_sale_with_resolved_shortfalls(
             &sale,
             Some(deduction_instance_id),
             &splits,
@@ -492,7 +502,8 @@ pub async fn complete_sale_with_resolved_shortfalls_scoped(
             Some(&session.terminal_id),
             &args.resolutions,
             &checkout_applications,
-        )?
+        )?;
+        (Some(deduct.receipt_number), deduct.statutory_number)
     };
 
     // Promotion-reduced payable (cart.total() would ignore promotions).
@@ -529,6 +540,8 @@ pub async fn complete_sale_with_resolved_shortfalls_scoped(
         sale_id,
         total,
         line_count,
+        receipt_number,
+        statutory_number,
     })
 }
 
@@ -754,7 +767,7 @@ pub async fn complete_sale_scoped(
     let sale_id = sale.id.clone();
 
     // ── Lock 2: Compute tax and create sale ───────────────────────
-    let _res = {
+    let (receipt_number, statutory_number) = {
         let db = conn
             .lock()
             .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
@@ -814,7 +827,7 @@ pub async fn complete_sale_scoped(
         // guard refused above was re-keyed, so this stamps the fresh one.
         stamp_attempt_split_keys(effective_attempt_id.as_deref(), &mut splits);
 
-        if stock_locations.is_empty() {
+        let deduct = if stock_locations.is_empty() {
             // Same primary-location resolution the legacy
             // complete_sale_deduction wrapper performs internally —
             // routed through with_locations so checkout promotions
@@ -852,7 +865,22 @@ pub async fn complete_sale_scoped(
                 &checkout_applications,
                 args.tax_estimated.unwrap_or(false),
             )?
+        };
+        let mut statutory_number = deduct.statutory_number;
+        let receipt_number = Some(deduct.receipt_number);
+
+        if args.document_kind.as_deref() == Some("invoice") {
+            let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+            let primary = kasirmu_core::location_resolver::resolve_primary_location(
+                &db,
+                deduction_instance_id,
+                None,
+            )?;
+            if let Ok(inv_num) = store.issue_tax_invoice_for_sale(&sale_id, primary.as_str(), &now) {
+                statutory_number = Some(inv_num);
+            }
         }
+        (receipt_number, statutory_number)
     };
 
     // Promotion-reduced payable (cart.total() would ignore promotions).
@@ -889,5 +917,7 @@ pub async fn complete_sale_scoped(
         sale_id,
         total,
         line_count,
+        receipt_number,
+        statutory_number,
     })
 }

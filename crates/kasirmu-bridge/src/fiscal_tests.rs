@@ -100,3 +100,20 @@ fn unconfigured_entity_kind_reads_none() {
             .is_none()
     );
 }
+
+#[tokio::test]
+async fn issue_tax_invoice_scoped_rejects_invalid_token() {
+    let tb = crate::testing::TestBridge::new();
+    let ctx = tb.ctx();
+    let result = issue_tax_invoice_scoped(&ctx, "invalid-token", "sale-1").await;
+    assert!(matches!(result, Err(BridgeError::InvalidSession)));
+}
+
+#[tokio::test]
+async fn get_sale_statutory_number_scoped_rejects_invalid_token() {
+    let tb = crate::testing::TestBridge::new();
+    let ctx = tb.ctx();
+    let result = get_sale_statutory_number_scoped(&ctx, "invalid-token", "sale-1").await;
+    assert!(matches!(result, Err(BridgeError::InvalidSession)));
+}
+

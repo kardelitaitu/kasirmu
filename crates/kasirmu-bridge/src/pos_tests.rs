@@ -394,6 +394,8 @@ fn complete_sale_result_debug() {
         sale_id: "sale-1".into(),
         total: Some(price(1000)),
         line_count: 2,
+        receipt_number: None,
+        statutory_number: None,
     };
     let debug = format!("{result:?}");
     assert!(debug.contains("sale-1"));
@@ -567,6 +569,7 @@ async fn scoped_sale_deducts_from_topology_warehouse_not_pos_location() {
             attempt_id: None,
             // F2-6: no estimate claim — the note must stay NULL.
             tax_estimated: None,
+            document_kind: None,
         },
     )
     .await;
@@ -1122,6 +1125,7 @@ async fn settle_replay_cart(
             promotion_ids: None,
             attempt_id: attempt.map(str::to_owned),
             tax_estimated: None,
+            document_kind: None,
         },
     )
     .await
@@ -2196,6 +2200,7 @@ async fn publish_course_fired_rejects_unknown_sale_and_empty_course() {
             promotion_ids: None,
             attempt_id: None,
             tax_estimated: None,
+            document_kind: None,
         },
     )
     .await
@@ -2384,6 +2389,7 @@ async fn settle_plugin_gate_cart(ctx: &BridgeCtx<'_>) -> Result<CompleteSaleResu
             promotion_ids: None,
             attempt_id: None,
             tax_estimated: None,
+            document_kind: None,
         },
     )
     .await

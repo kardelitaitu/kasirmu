@@ -179,6 +179,8 @@ pub(super) fn replay_receipt(sale: &kasirmu_core::Sale) -> CompleteSaleResult {
         sale_id: sale.id.clone(),
         total: Some(sale.total),
         line_count: sale.lines.len(),
+        receipt_number: Some(sale.id.clone()),
+        statutory_number: None,
     }
 }
 
@@ -584,10 +586,10 @@ pub(super) fn run_complete_sale_scoped(
         session.instance_id.as_str(),
         None,
     )?;
-    store.complete_sale_deduction_with_locations_and_estimate(
+    let deduct = store.complete_sale_deduction_with_locations_and_estimate(
         &sale,
         Some(&session.instance_id),
-        &[primary],
+        &[primary.clone()],
         &splits,
         &session.user_id,
         Some(&session.terminal_id),
@@ -595,11 +597,21 @@ pub(super) fn run_complete_sale_scoped(
         args.tax_estimated.unwrap_or(false),
     )?;
 
+    let mut statutory_number = deduct.statutory_number;
+    if args.document_kind.as_deref() == Some("invoice") {
+        let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+        if let Ok(inv_num) = store.issue_tax_invoice_for_sale(&sale.id, primary.as_str(), &now) {
+            statutory_number = Some(inv_num);
+        }
+    }
+
     // Promotion-reduced payable (cart.total() would ignore promotions).
     let result = CompleteSaleResult {
         sale_id: sale.id.clone(),
         total: Some(sale.total),
         line_count,
+        receipt_number: Some(deduct.receipt_number),
+        statutory_number,
     };
     tracing::info!(
         sale_id = %result.sale_id,
@@ -651,6 +663,8 @@ pub async fn complete_sale_scoped(
         sale_id,
         total,
         line_count,
+        receipt_number,
+        statutory_number,
     } = settlement.result;
 
     // A replay wrote nothing, so it must publish nothing: the domain event
@@ -661,6 +675,8 @@ pub async fn complete_sale_scoped(
             sale_id,
             total,
             line_count,
+            receipt_number,
+            statutory_number,
         });
     };
 
@@ -716,6 +732,8 @@ pub async fn complete_sale_scoped(
         sale_id,
         total,
         line_count,
+        receipt_number,
+        statutory_number,
     })
 }
 
