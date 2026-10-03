@@ -1123,7 +1123,10 @@ the same failure mode in the other direction: a peer's commit swept a file this 
 It is not lost, only attributed to the wrong change.
 
 **To finish:** once the peer's `WorkspaceHome.tsx` edits are committed, commit this session's notice
-JSX from that file with a pathspec line. Nothing else is outstanding.
+JSX from that file with a pathspec line — the block containing `data-testid="workspace-licence-notice"`
+and the complement condition at `:741-744`. Nothing else is outstanding. (Round 13 widened that
+condition and verified it against an expired subscription; the widening is part of the same
+uncommitted block, so it lands with it.)
 
 ## ROUND 13: the notice's condition was too narrow, and the widening is proven
 
