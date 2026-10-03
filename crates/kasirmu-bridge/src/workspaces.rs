@@ -149,12 +149,40 @@ pub async fn list_workspaces(
         .db_manager
         .open_store(&store_id)
         .map_err(|e| BridgeError::Internal(format!("opening store db: {e}")))?;
-    let db = conn
-        .lock()
-        .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-    let rows = store.list_workspaces(&real_role_id, Some(&real_user_id), &store_id)?;
-    drop(db);
+    let (mut rows, has_empty) = {
+        let db = conn
+            .lock()
+            .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
+        let store = Store::new(&db);
+        let rows = store.list_workspaces(&real_role_id, Some(&real_user_id), &store_id)?;
+        let empty = rows.is_empty();
+        (rows, empty)
+    };
+
+    if has_empty {
+        let global_db = ctx.lock_global().await;
+        let global_store = Store::new(&global_db);
+        let mut global_rows = global_store.list_workspaces(&real_role_id, Some(&real_user_id), &store_id)?;
+        if global_rows.is_empty() && store_id == "default" {
+            if let Ok(Some(primary)) = global_store.get_primary_location() {
+                global_rows = global_store.list_workspaces(&real_role_id, Some(&real_user_id), &primary.id)?;
+            }
+        }
+        drop(global_db);
+
+        if !global_rows.is_empty() {
+            if let Ok(db) = conn.lock() {
+                for r in &global_rows {
+                    let _ = db.execute(
+                        "INSERT OR IGNORE INTO workspace_instances (id, type_key, location_id, name, description, status)
+                         VALUES (?1, ?2, ?3, ?4, ?5, 'active')",
+                        rusqlite::params![r.instance_id, r.type_key, r.store_id, r.name, r.description],
+                    );
+                }
+            }
+            rows = global_rows;
+        }
+    }
 
     // 4. Scope-filter the listing through the user's assignment (ADR #35 D5
     //    / spec 0048): global assignments and legacy users pass everything;
