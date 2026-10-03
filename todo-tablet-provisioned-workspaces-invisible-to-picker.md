@@ -2401,6 +2401,79 @@ then sees 10 dead cards has no way to know a reload would fix it.
 Not fixed here: `WorkspaceHome.tsx` and the flow's files are the contested paths recorded in the round-30
 blocker section, and this measurement does not change that. What it changes is *what* should be fixed.
 
+## ROUND 32: Google device-link now works on RELEASE builds (loopback cleartext)
+
+The user reported that Google sign-in does not work on Android, and asked for it to work in
+**production release** builds. It was a release-configuration gap, not a logic bug, and it is now fixed
+and verified on the device.
+
+### The flow, and the exact hop that failed
+
+`Continue with Google` (`ProvisioningFlow.tsx:967`) -> `linkDeviceGoogle()` (`ui/src/api/license.ts:88`)
+-> `kasirmu_bridge::desktop_link::link_device`, which:
+
+1. binds a loopback HTTP listener — `TcpListener::bind("127.0.0.1:0")` (`desktop_link.rs:54`),
+2. hands the licence server `redirect_uri = http://127.0.0.1:<port>` (`:74`),
+3. opens the system browser at the consent screen, and
+4. waits up to 300 s (`desktop_link.rs:18`) for the browser to **redirect back to that plain-HTTP
+   loopback address**.
+
+Step 4 is cleartext, and Android blocks cleartext by default from API 28+ (`targetSdk = 36` here). The
+manifest carried a placeholder resolved by build type:
+
+| Build | `usesCleartextTraffic` | Where |
+|---|---|---|
+| `defaultConfig` | `"false"` | `build.gradle.kts:33` |
+| `debug` | `"true"` | `:52` (for the LAN Vite dev server) |
+| `release` | inherits `"false"` | — |
+
+So on a release build Chrome refuses the redirect, the callback never arrives, and the wizard shows
+only *"Could not link this device"*. Confirmed on the tablet that the installed APK is release
+(`flags=0x0`, no `DEBUGGABLE`), and that Chrome **is** installed and is the default browser — so the
+browser handoff was never the problem.
+
+### The fix: a loopback-only exception, not a global one
+
+Setting `usesCleartextTraffic="true"` would have fixed one loopback hop by permitting cleartext to
+**every** host, including the licence and sync servers. Instead:
+
+- **new** `res/xml/network_security_config.xml` — a `domain-config cleartextTrafficPermitted="true"`
+  scoped to `127.0.0.1` alone, with the reasoning in the file;
+- **one attribute** on `<application>`: `android:networkSecurityConfig="@xml/network_security_config"`.
+
+The two mechanisms are **additive, not exclusive**: release keeps `usesCleartextTraffic=false` globally
+while the config carves out the loopback address. `localhost` is deliberately not listed — the bridge
+sends the literal `127.0.0.1` (`desktop_link.rs:71-72`), and a hosts-file entry cannot re-point it.
+
+### Verified on the artifact and on the device
+
+Built a signed release APK (a local throwaway keystore at `%TEMP%`, plus the gitignored
+`keystore.properties`; neither is committed) and installed it. `aapt2` on the **installed** APK:
+
+```
+usesCleartextTraffic  = false
+networkSecurityConfig = @0x7f120004   (resolves to xml/network_security_config)
+```
+
+And the resource's own binary-XML string pool, decoded from the APK on the device:
+
+```
+[0] '127.0.0.1'
+[1] 'cleartextTrafficPermitted'
+[3] 'domain-config'
+[5] 'network-security-config'
+```
+
+So the exception is live in release, scoped to loopback, with global cleartext still off. Both XML
+files are well-formed.
+
+### One thing NOT verified, stated plainly
+
+The end-to-end sign-in was not completed, because that needs a real Google consent from a browser and
+a live licence server. What is proven is the hop that was broken: the app on the device now ships a
+network policy that permits cleartext to `127.0.0.1` in a release build. A tap-through remains the
+final confirmation.
+
 ## Evidence retention
 
 Device-side files pulled during this pass: `kasir.db` (+wal) and `store-default.sqlite` (+wal) in
