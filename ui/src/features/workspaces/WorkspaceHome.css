@@ -1365,6 +1365,16 @@ body:has(.memo-stack) .ws-layer-content {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
   gap: var(--space-3);
+  /* Every card the same height, across every row and every group.
+     `align-items: stretch` is the grid default, but the cards were still
+     three different heights (54 / 64 / 76 px, measured on the tablet) because
+     each one sized to its own content: a locked card reserves the tier badge's
+     band via padding-bottom, and a two-line description adds a line. Row-mates
+     therefore ended at different y, which is what read as "not wrapped
+     properly". Stretching the ITEM to the row is only half of it — the card is
+     a flex row, so its inner column also has to fill the height, which the
+     `.workspace-tool-body` rule below does. */
+  grid-auto-rows: 1fr;
 }
 
 /* ── Tool card ──────────────────────────────────────────────── */
@@ -1373,6 +1383,22 @@ body:has(.memo-stack) .ws-layer-content {
   display: flex;
   align-items: center;
   gap: var(--space-3);
+  /* Fill the grid row so row-mates are equal, and keep the icon centred
+     against the taller card the stretch produces. */
+  height: 100%;
+  box-sizing: border-box;
+  /* ONE height for every card, in every group. `grid-auto-rows: 1fr` equalised
+     a row but not the grid, so the three groups still measured 65 / 76 / 64 px
+     (Operations / Insights / Configuration) — the difference tracking the
+     DESCRIPTION's line count, since a card whose description wraps to two
+     lines is one line taller than its neighbours.
+     Sizing the card to the two-line case makes them all equal and keeps both
+     lines readable, rather than clamping the text to save 12px. The floor
+     lives on the BODY rather than the card so it composes with the card's own
+     padding and the badge band instead of duplicating their arithmetic —
+     a `min-height` on the card set an absolute 66.5px and was wrong the
+     moment the two-line body needed 43px of its own. Measured: the tallest
+     body is 43px at this scale (root font 14px on the tablet). */
   padding: var(--space-3) var(--space-4);
   background: var(--color-bg-elevated);
   border: 1px solid var(--color-border);
@@ -1419,6 +1445,16 @@ body:has(.memo-stack) .ws-layer-content {
   flex-direction: column;
   gap: 0.125rem;
   min-width: 0;
+  /* Grow into the stretched card so the content block is the same size on
+     every card, and centre it vertically against the taller ones.
+     The floor is the two-line case: a card whose description wraps to two
+     lines is one line taller than its neighbours, which is what made the three
+     groups measure 65 / 76 / 64 px. Reserving that height here keeps every card
+     identical while leaving both lines readable. 43px is the tallest measured
+     body at this scale (root font 14px on the tablet). */
+  flex: 1 1 auto;
+  justify-content: center;
+  min-height: 3.0714rem; /* 43px at the tablet's 14px root */
 }
 
 .workspace-tool-name {
@@ -1468,15 +1504,16 @@ body:has(.memo-stack) .ws-layer-content {
   position: relative;
   cursor: default;
   opacity: 0.62;
-  /* Dimming alone is not "greyed out". On this dark surface an opacity cut
-     leaves every hue intact, and the tier badge is a saturated fill — so the
-     badge was the one vivid element on a card that is meant to read as
-     disabled. Desaturate the card itself and the badge greys with it.
-     Same pairing as the genuinely-unusable port row
-     (NodeTopologyEditor.css:2041-2044: opacity + grayscale(1)), NOT the
-     partial grayscale(0.4) that marks a disabled-but-primary action
-     (CartPanelActions.css:85-89). */
-  filter: grayscale(1);
+  /* Dimming alone is not "greyed out", so the card's own parts are
+     desaturated — but NOT with a `filter` on the card. `filter` applies to
+     the whole subtree, so a card-level grayscale(1) also greyed the tier
+     badge's artwork, and a `filter` cannot be undone on a descendant. The
+     badge must keep its colour: it names the plan required, which is the one
+     piece of information on a locked card a merchant is meant to act on.
+     So the icon and text are greyed individually below, and the badge is
+     left alone. Same intent as NodeTopologyEditor.css:2041-2044's
+     opacity + grayscale pairing, applied per element instead of per card. */
+  filter: none;
   background: var(--color-bg-surface);
   /* Reserve the badge's corner. The badge is 1rem tall and sits --space-2 off
      the bottom edge, so it occupies the band 8..24px above the card's bottom
@@ -1488,6 +1525,18 @@ body:has(.memo-stack) .ws-layer-content {
 
 .workspace-tool-card--locked .workspace-tool-icon {
   color: var(--color-fg-tertiary);
+  /* The card-level grayscale this replaces is gone, so the icon greys here.
+     It is a single glyph in currentColor, so a colour swap is both simpler
+     and stronger than a filter. */
+  filter: grayscale(1);
+}
+
+/* The card's TEXT greys too — but only the text. Descendants are targeted
+   individually so `.workspace-tool-tier-badge` (below) never matches, which
+   is the whole point of the split. */
+.workspace-tool-card--locked .workspace-tool-name,
+.workspace-tool-card--locked .workspace-tool-desc {
+  filter: grayscale(1);
 }
 
 .workspace-tool-lock-badge {
@@ -1508,9 +1557,18 @@ body:has(.memo-stack) .ws-layer-content {
 
 /* ── Tier badge: the plan a locked card needs, bottom-right ─── */
 /* Generated artwork from assets/tier-badges/svg/ (see utils/tierBadge.ts).
-   It states the PLAN; the pill above states the REASON. The locked card dims
-   AND desaturates (see the filter on .workspace-tool-card--locked), so the
-   badge greys with everything else — it must not read as an enabled control. */
+   It states the PLAN; the pill above states the REASON.
+
+   The badge keeps its colour on a locked card, deliberately. The card is
+   dimmed with `opacity` and its icon and text are desaturated one by one —
+   never with a `filter` on the card, which would reach this artwork and could
+   not be undone here. `opacity: 1` restores the badge against the card's
+   0.62, so the plan stays legible as the one actionable fact on the card.
+   Precedent for exempting a marked element from a dimmed parent: the tool
+   card's badge is the same kind of "the reason you are looking at this"
+   affordance as a disabled-but-primary action, which
+   CartPanelActions.css:85-89 already keeps at partial strength rather than
+   greying out. */
 
 .workspace-tool-tier-badge {
   position: absolute;
@@ -1518,6 +1576,9 @@ body:has(.memo-stack) .ws-layer-content {
   bottom: var(--space-2);
   display: inline-flex;
   align-items: center;
+  /* Undo the locked card's 0.62 so the badge reads at full strength. Only
+     `opacity` needs restoring — the colour was never filtered out. */
+  opacity: 1;
 }
 
 /* Height drives the scale; the width follows from each badge's own viewBox
