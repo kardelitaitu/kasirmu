@@ -5,7 +5,7 @@
 // based access control, and per-workspace accent colors.
 
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { screen, waitFor, fireEvent, within, configure } from '@testing-library/react';
+import { screen, waitFor, fireEvent, within, configure, cleanup } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderWithFluent } from '@/__tests__/test-utils/render';
 import WorkspaceHome from '@/features/workspaces/WorkspaceHome';
@@ -842,6 +842,36 @@ describe('WorkspaceHome', () => {
         expect(screen.getAllByText('Restaurant POS').length).toBeGreaterThanOrEqual(1);
       });
     }
+
+    // ── Non-blocking licence notice ──────────────────────
+    // appShellBootGate.test.tsx rule 4 requires a non-usable licence to be
+    // "surfaced by the non-blocking badge" rather than blocked. This screen
+    // renders that notice, and its condition must be the COMPLEMENT of the
+    // `validityOpen` set in `toolLock` — not a check for one state, because
+    // five states lock every card and only `revoked` is handled upstream.
+    it('shows the licence notice for every state that locks the tools', async () => {
+      for (const state of ['unavailable', 'expired', 'canceled', 'paused'] as const) {
+        mockSubscription('free', state);
+        await renderHomeWithTools();
+        expect(
+          screen.getByTestId('workspace-licence-notice'),
+          `state=${state} locks every tool and must explain why`,
+        ).toBeInTheDocument();
+        cleanup();
+      }
+    });
+
+    it('shows no licence notice while the subscription is usable', async () => {
+      for (const state of ['active', 'grace'] as const) {
+        mockSubscription('free', state);
+        await renderHomeWithTools();
+        expect(
+          screen.queryByTestId('workspace-licence-notice'),
+          `state=${state} leaves the tools open, so there is nothing to explain`,
+        ).not.toBeInTheDocument();
+        cleanup();
+      }
+    });
 
     it('renders the three IA group headers (Operations / Insights / Configuration)', async () => {
       mockSubscription('enterprise');
