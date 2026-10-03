@@ -2186,6 +2186,45 @@ assertion at each end.
 hedged — the fix has to create the FK target (or write only columns that need none) *and* stop
 discarding the result, and the reason it must do both is now measured rather than argued.
 
+## ROUND 29: the cause is isolated by a controlled comparison
+
+Rounds 26-28 established the failure and the reason, but as two separate observations: the repair does
+not persist, and its INSERT needs a `locations` row the store db lacks. A diagnosis built that way can
+be consistent without being causal — the write might have failed for some other reason that happened to
+correlate. This round removes that doubt.
+
+### One variable, two outcomes
+
+Added the complement of round 26's test. The two fixtures are identical except for a single line:
+
+| Test | `DELETE FROM locations` | Persisted rows |
+|---|---|---|
+| `list_workspaces_repairs_from_global_when_the_store_db_is_empty` | yes | **0** |
+| `the_read_repair_persists_when_its_fk_target_exists` | no | **1** |
+
+Same global row, same emptied `workspace_instances`, same `list_workspaces` call, same picker ticket.
+The only difference is whether the FK target exists — and it flips the outcome. That identifies the
+missing target as the cause rather than a correlate.
+
+```
+the_read_repair_persists_when_its_fk_target_exists ... ok
+test result: ok. 27 passed; 0 failed; 1 ignored   (kasirmu-bridge, workspaces)
+```
+
+The new test is un-ignored because it passes: it describes behaviour that is correct. The round-26
+test stays ignored because it describes behaviour that is not.
+
+### It also describes a state a real merchant has
+
+Not a contrived fixture: `create_location_profile_scoped` writes a store-db `locations` row (via
+`ctx.resolve_scope`, `ctx.rs:389-392`), so a merchant who created a location through Settings has
+exactly this row and the repair works for them. That is the round-28 conditional, now demonstrated on
+both sides of the condition.
+
+**What the pair now says, in one sentence:** the read-repair caches its rows exactly when the store db
+already has the location — that is, for terminals that had already worked around the defect — and
+silently does nothing for the freshly provisioned ones it was written for.
+
 ## Evidence retention
 
 Device-side files pulled during this pass: `kasir.db` (+wal) and `store-default.sqlite` (+wal) in
