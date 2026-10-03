@@ -73,7 +73,7 @@ use kasirmu_core::db::Store;
 #[cfg(not(test))]
 use kasirmu_core::sync_client::SyncConfig;
 #[cfg(not(test))]
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 
 /// Application entry point, called by `main.rs`.
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -116,6 +116,14 @@ pub fn run() {
             // (which resolves the URI via the content resolver) and writes them to
             // a real cache path first. See the module note in Cargo.toml.
             .plugin(tauri_plugin_fs::init())
+            .on_window_event(|window, event| {
+                if let tauri::WindowEvent::Focused(true) = event {
+                    let _ = window.emit("kasirmu://reconnect", ());
+                    if let Some(state) = window.app_handle().try_state::<AppState>() {
+                        state.sync_wakeup.notify_one();
+                    }
+                }
+            })
             .setup(|app| {
                 // ── Structured logging: file sink first, stdout fallback ──────
                 // Wiring landed 2026-09-29. On Android the resolved directory is
