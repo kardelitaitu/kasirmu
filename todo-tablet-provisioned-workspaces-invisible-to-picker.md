@@ -693,6 +693,7 @@ reasonable from the outside and the reasons they fail are not visible from the d
 
 The useful output of the attempt is the correction it produced: it showed the gate is behaving as
 designed and the disagreement is in the capabilities read, which is where a real fix belongs.
+
 ## Acceptance for a repair
 
 Two behaviours must BOTH hold, and the second is the one that keeps the fix safe:
