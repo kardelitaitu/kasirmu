@@ -1249,6 +1249,54 @@ Committed: `ba69f826f` (the tests).
 checks it — the two other citations into that file (`:362` revoked, and the desktop's `:286`) were
 re-verified in the same pass and still hold.
 
+## ROUND 15: the uncommitted block is now recorded verbatim (recovery path)
+
+The one artefact still uncommitted is the notice JSX in `ui/src/features/workspaces/WorkspaceHome.tsx`.
+Everything else of mine is committed — the locale strings (`bcb4a5452`), the CSS (swept into a peer's
+`268440251`), and the tests (`ba69f826f`). So if this checkout is reset, **only the JSX is at risk**,
+and until this round nothing durable held it.
+
+That is now fixed by recording the block here. It is a direct child of `.ws-main`, immediately after
+`<header className="workspace-home-header" />` (line 713) and before the error/empty/populated
+branches, so it covers empty and populated states alike:
+
+```tsx
+          {/* ── Non-blocking licence notice ─────────────────────────────
+              ... (comment; see the file — 26 lines explaining rule 2/rule 4,
+              the profile-independence reason, and the complement condition) ... */}
+          {subscriptionState !== 'active' &&
+            subscriptionState !== 'grace' &&
+            subscriptionState !== 'loading' &&
+            subscriptionState !== 'revoked' && (
+            <div className="workspace-licence-notice" role="status" data-testid="workspace-licence-notice">
+              <Localized id="workspace-home-licence-unavailable">
+                <span>
+                  This terminal has no active licence. Tools below stay locked until it is activated.
+                </span>
+              </Localized>
+            </div>
+          )}
+```
+
+**Why it stays uncommitted.** `WorkspaceHome.tsx` carries another session's quick-launch cards
+(`data-testid="workspace-card-quick-retail"` / `-quick-restaurant`, hunk `@@ -747,0 +787,44 @@`)
+alongside this block (hunk `@@ -714,0 +715,39 @@`). The two hunks are cleanly separable, but
+`AGENTS.md` §7.3 permits only ONE commit form — a whole-path pathspec line, with `git add`/`git stage`
+forbidden because the shared index is a racing object — so there is **no sanctioned way to commit
+one hunk of a contested file**. The same section's rule at `:287` is the instruction that applies:
+*"A path that is dirty with content that is not yours: stop and say so."*
+
+Verified as real content rather than a line-ending artefact, per §7.3's last bullet:
+
+```
+work : f293c280c9b5bb9f1e3715c1b7559285cd5f2fe1
+index: 45da91d7a50b58d27556b9a9951b556e42f96eb8   (differ -> genuine changes)
+```
+
+**The blocker, stated plainly:** completing this work requires the peer's `WorkspaceHome.tsx` edits to
+be committed first. The condition has held since round 12; the work itself is finished, verified on
+the device (rounds 12-13) and covered by tests (round 14).
+
 ## Evidence retention
 
 Device-side files pulled during this pass: `kasir.db` (+wal) and `store-default.sqlite` (+wal) in
