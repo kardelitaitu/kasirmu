@@ -1892,6 +1892,66 @@ pathspec commit would carry the whole file. The fix is small and stated here —
 `activateWorkspace`, and either define `workspace-card--quick` or drop it — so whoever lands the hunk
 can apply it in one pass. Nothing in HEAD is affected: the cards do not exist there.
 
+## ROUND 24: ADR-56's status line is false, and its own audit stamp says it never checked
+
+Round 18 flagged this in passing as "stale". Audited properly against the current tree, it is a
+**major doc drift**, and the mechanism is more interesting than the error.
+
+### The claim, and its two falsifications
+
+`docs/decisions/2026-09-21-adr56-first-run-provisioning.md:23-25` states:
+
+> §2.3's `identify` leg for the `linked` tier. **The manual email identity step has no UI on either
+> shell**; `ProvisioningMode = 'local' | 'linked'` exists (`ui/src/api/settings.ts:151`) and **only
+> `'local'` is currently sent** directly from the wizard (`ui/src/features/setup/ProvisioningFlow.tsx:104`).
+
+Both halves are false, and neither needs inference:
+
+| Claim | Measured |
+|---|---|
+| "no UI on either shell" | `linkedAccount` state (`:219`), a `tabletTab: 'pair' \| 'email'` toggle **defaulting to `'email'`** (`:235`), `email`/`emailState` state (`:221`,`:223`), `requestDeviceLinkCode(email)` (`:340`), and a rendered `<label htmlFor="provision-account-email">` + input (`:867`,`:873`) |
+| "only `'local'` is currently sent" | `:554` sends `mode: provisionMode`, and `:555` sends the account's `tenantId` when it is `linked` |
+| the citation `ProvisioningFlow.tsx:104` | line 104 is `/**` — a doc-comment opener, not a mode send of any kind |
+
+`ui/src/api/settings.ts:151` is exact (`export type ProvisioningMode = 'local' | 'linked';`), so the
+claim was well-sourced when written; it is the world that moved.
+
+### The timeline makes this an audit finding, not a rot finding
+
+```
+2026-09-22  99f0c6b0a  feat(licensing): add tablet device pairing UI and mode 1 vs 2 provisioning
+                       (ADR #56 §2.3/§2.5)   <- the linked UI ships here
+2026-09-29  1a0fdf53e  docs(decisions): audit and stamp ADRs 45, 46, 48, 49, 56, 57
+                       -> last audited 29-09-26 by docs-auditor
+```
+
+Seven days separate them, and the stamp's reachable text still says the UI does not exist. Worse, the
+audit's own stamp records why:
+
+> **NOT re-measured: the identify leg for the linked tier**, which the status line states is the
+> outstanding item and which this pass did not attempt to adjudicate.
+
+So the pass **declined the one check that would have falsified the line**, while praising it — "the
+status line is the most useful kind: it enumerates exactly which sections are IMPLEMENTED, names the one
+that is NOT" — and stamped the document as audited. The claim was already false on the day it was
+certified. That is the failure mode worth recording: a status line earns trust by naming what is
+missing, and that trust is exactly what stops anyone re-measuring it.
+
+### Classification, by the docs-auditor table
+
+**Doc Drift (major) — High.** Its row covers "Wrong API signature, wrong config key, feature removed";
+this is the same class in the opposite direction: a feature documented as **absent** that has shipped.
+By the skill's threshold table that is a blocking finding (≥1 major doc drift).
+
+### What I did and did not do
+
+Recorded, not repaired. `docs-auditor`'s pre-flight requires a clean working tree, and this checkout
+carries two other sessions' uncommitted hunks — so an audit edit to a decision record would be made
+from a dirty tree against the skill's own §8.1. The correction is also not mechanical: the status line
+enumerates which sections are implemented, so updating it means restating §2.3's actual state, which is
+the author's call and not a drive-by edit. Flagged here with the evidence, the timeline, and the
+classification so the next audit starts from them.
+
 ## Evidence retention
 
 Device-side files pulled during this pass: `kasir.db` (+wal) and `store-default.sqlite` (+wal) in
