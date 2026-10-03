@@ -2225,6 +2225,58 @@ both sides of the condition.
 already has the location — that is, for terminals that had already worked around the defect — and
 silently does nothing for the freshly provisioned ones it was written for.
 
+## ROUND 30: every remaining path is blocked, and this is what unblocks each
+
+Rounds 16-29 were productive without hardware: five defects were characterised, four of them with tests,
+and the two that were measured rather than read (the read-repair's swallowed write, the linked-path
+tenant mismatch) are the ones most likely to have been missed by inspection alone. But every remaining
+path now needs something this session does not have, and the situation will not improve by continuing.
+
+### The inventory, exhaustively
+
+| Path | Blocked by | Blocked since round |
+|---|---|---|
+| Device verification (CDP, screenshots, `kasir.db` reads) | tablet off the LAN | 15 |
+| The notice's JSX (implemented, device-verified, tested) | `WorkspaceHome.tsx` contested | 12 |
+| Step 5b's `args.mode` guard | `provisioning.rs` contested | 17 |
+| The quick cards' four defects | `WorkspaceHome.tsx` contested | 23 |
+| The read-repair's two defects | `workspaces.rs` contested | 25 |
+
+Nothing tablet-related is outside this list. What remained reachable — tests and analysis *of* those
+items — is what rounds 16-29 spent, and each round has less left to add than the one before.
+
+### The concrete condition, stated so it can be acted on
+
+**Three files carry 128 uncommitted insertions between them, all last written between 08:17 and 08:56,
+and all under this repository's own commit identity.** They are not another user's work-in-flight that
+might resume; they are finished-looking changes that stopped. `AGENTS.md` §7.3 forbids committing a path
+whose working-tree content is not wholly yours, and its instruction for exactly this case is unambiguous:
+*"A path that is dirty with content that is not yours: stop and say so."* That is what this section is.
+
+**What unblocks each item, precisely:**
+
+| File | Insertions | Land it and you unblock |
+|---|---|---|
+| `crates/kasirmu-core/src/db/provisioning.rs` | 11 | Step 5b — add an `args.mode == Local` guard while landing it (rounds 17-20); the ignored tripwire in `provisioning_tests.rs` tells you when you have |
+| `crates/kasirmu-bridge/src/workspaces.rs` | 40 | The read-repair — it needs its FK target created and its discarded `Result` surfaced (rounds 25-29); two tests in `workspaces_tests.rs` bracket it |
+| `ui/src/features/workspaces/WorkspaceHome.tsx` | 83 | This session's notice JSX (39 of those lines) plus the quick cards, which bypass `activateWorkspace`, ignore the disabled-card contract, ship a hardcoded English `aria-label`, and use a class with no CSS rule (rounds 12-23) |
+
+### What is already secure, and does not need a rescue
+
+Stated because a reader seeing "blocked" may assume more is at risk than is. Everything of this
+session's that *can* be committed, is:
+
+- the notice's Fluent strings (`bcb4a5452`) and its tests (`ba69f826f`);
+- the provisioning tests (`e8b2726f8`, `31c0526db`);
+- the linked-provision tripwire, consolidated and self-describing (`d8dade5dc`, `67c1fe483`, `37bce3c9e`);
+- the read-repair's three tests, including the controlled comparison that isolates its cause
+  (`4c190e704`, `f9a685618`, `6b54c7e55`);
+- and the notice's CSS, swept into a peer's `268440251`.
+
+The only artefact that exists **solely** in the working tree is the 39-line notice JSX, and it is also
+recorded verbatim in this file ("ROUND 15: the uncommitted block is now recorded verbatim"), so it is
+recoverable even if that file is discarded.
+
 ## Evidence retention
 
 Device-side files pulled during this pass: `kasir.db` (+wal) and `store-default.sqlite` (+wal) in
