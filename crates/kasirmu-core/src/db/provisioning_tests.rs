@@ -544,6 +544,64 @@ fn a_linked_provision_requires_its_tenant_and_credential() {
     assert_eq!(out.record.device_id.as_deref(), Some("cred-1"));
 }
 
+/// A linked provision writes its subscription row under the LINKED tenant.
+///
+/// This pins the behaviour as it stands, and in doing so records a mismatch
+/// rather than blessing it. Step 5b keys the row on `args.tenant_id`, so a
+/// linked install writes `tenant-abc`; but the capabilities read looks for
+/// `'default'` alone (`entitlements.rs`: "no tenant_subscription row for
+/// 'default' — failing closed"), and so does the reconcile's existence check
+/// (`migrations.rs`). The two never meet, so a linked terminal that just wrote
+/// its own subscription row still reads `Ok(None)`, fails closed, projects
+/// `state: 'unavailable'`, and locks every tool.
+///
+/// Both halves are defensible alone — the write is required to name the
+/// linked tenant (`provisioning.rs`, "a linked install must name its
+/// licence-server tenant"), and the read is `default`-scoped because the
+/// tablet's store DB is. This test asserts the CURRENT row so the mismatch is
+/// visible and fails loudly if either side moves; it is not a statement that
+/// this is correct. Unreachable from the UI today (the bridge sends no
+/// `tenant_id` for a `local` install), reachable as soon as the linked path
+/// ships.
+#[test]
+fn a_linked_provision_keys_its_subscription_row_to_the_linked_tenant() {
+    let conn = fresh();
+    let mut linked = args_for("dev-linked");
+    linked.mode = ProvisioningMode::Linked;
+    linked.tenant_id = Some("tenant-abc".to_owned());
+    linked.device_credential_id = Some("cred-1".to_owned());
+    provision_device(&conn, &linked).unwrap();
+
+    // The row the WRITE produced.
+    let tenants: Vec<String> = conn
+        .prepare("SELECT tenant_id FROM tenant_subscription ORDER BY tenant_id")
+        .unwrap()
+        .query_map([], |r| r.get(0))
+        .unwrap()
+        .map(|r| r.unwrap())
+        .collect();
+    assert_eq!(
+        tenants,
+        vec!["tenant-abc".to_string()],
+        "Step 5b keys the row on args.tenant_id"
+    );
+
+    // The row the READ looks for. Its absence is the defect this test exposes:
+    // the read is hardcoded to 'default', so it cannot see what the write made.
+    let default_rows: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM tenant_subscription WHERE tenant_id = 'default'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        default_rows, 0,
+        "a linked install leaves the tenant the capabilities read actually uses empty — \
+         the read fails closed and every tool locks"
+    );
+}
+
 #[test]
 fn provisioning_a_local_terminal_names_no_licence_server_tenant() {
     // §2.4's local tier must not pretend to be linked. The stored tenant is
