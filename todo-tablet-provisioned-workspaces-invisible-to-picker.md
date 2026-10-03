@@ -2277,6 +2277,81 @@ The only artefact that exists **solely** in the working tree is the 39-line noti
 recorded verbatim in this file ("ROUND 15: the uncommitted block is now recorded verbatim"), so it is
 recoverable even if that file is discarded.
 
+## ROUND 31: DEVICE RESULTS — the lock-out is a STALE CONTEXT, not a missing row
+
+The tablet came back this round and the whole chain was walked on hardware. **It overturns the model
+this document has carried since round 4**, so read this section before any of the root-cause sections
+above.
+
+### What was done
+
+A genuinely fresh install (`kasir.db` recreated 09:59; `provisioning`, `tenant_subscription`,
+`workspace_instances`, `users` all zero rows). The dev server was started and reachability proved from
+the tablet (`curl` -> `200`). The app was driven through the shipping first-run flow over CDP:
+**"Offline only"** (the `local` path), store type retail, owner `budi` / PIN `1234`, then Finish setup.
+
+Provisioning succeeded and the app advanced to `staff-login-screen` — the correct ADR-56 order.
+
+### The rows ARE written, and the backend agrees
+
+```
+get_subscription_capabilities: {state: "active", status: "active", tier: "free",
+                                 expiresAt: null, isExpired: false, ...}
+get_license_status:           {isActive: true, status: "valid", tier: "free"}
+```
+
+So `provision_device`'s Step 5b writes the row, the capabilities read *finds* it, and **both** commands
+report an active licence. Round 4's premise — "the capabilities read requires a `tenant_subscription`
+row and fails closed without one, and no tablet path can write it" — no longer holds, and had already
+stopped holding when the two-halves fix landed.
+
+### But the UI still locked all 17 tools — and the reason is a STALE PROVIDER
+
+Immediately after provisioning, with no reload:
+
+```
+caps (direct command call): active, tier free        <- backend is correct
+home screen:                17 locked, notice SHOWN  <- UI disagrees
+```
+
+After a reload and a fresh login, the same screen, same terminal:
+
+| Reading | Before reload | After fresh context fetch |
+|---|---|---|
+| locked tool cards | **17** | **7** |
+| this document's notice | **shown** | **hidden** |
+
+The 7 that stay locked say *"Requires Pro"*, *"Requires Premium plan"*, *"Requires Plus plan"* — the
+correct Free-tier outcome. The other 10 are the ones that were falsely locked.
+
+**The cause is `SubscriptionProvider`.** It fetches once on mount and never refreshes
+(`ui/src/contexts/SubscriptionContext.tsx:70-72`, `useEffect(() => { refresh(); }, [refresh])` with an
+empty-dependency `useCallback`). During first-run the provider mounts **before** `provision_device` has
+written the subscription row, so it caches `state: 'unavailable'` — and nothing invalidates it when
+provisioning later succeeds. The flow's success path sets `hasCompletedSetup` to move past onboarding,
+but no code path calls `refresh()`, so the app runs on a verdict that was true only during setup.
+
+### What this changes about everything above
+
+- **The `tenant_subscription` row is fine.** The two-halves fix (`d35555bca` + Step 5b) works; the row
+  exists on this device and reads active.
+- **The 17-lock home screen is real, but its cause was mis-attributed.** It is not "no row, fail
+  closed" — it is "row written after the provider cached its verdict".
+- **This document's notice is correct but now serves the stale case.** It fires on the stale
+  `unavailable` — so it explains the lock-out accurately — but the underlying fault is the missing
+  refresh, and the notice is a symptom-level mitigation for it.
+- **Rounds 4-20's root-cause sections remain as history.** They describe a defect that was real at the
+  time and has since been fixed; they do not describe this device's current state.
+
+### The defect, stated plainly for a fix
+
+`provision_device` succeeding must invalidate the cached subscription. The narrowest correct fix is for
+the provisioning flow's success path to call `useSubscription().refresh()` — the same call the provider
+already exposes — so the 10 falsely-locked tools unlock without a reload. A merchant who provisions and
+then sees 10 dead cards has no way to know a reload would fix it.
+
+Not fixed here: `WorkspaceHome.tsx` and the flow's files are the contested paths recorded in the round-30
+blocker section, and this measurement does not change that. What it changes is *what* should be fixed.
 ## Evidence retention
 
 Device-side files pulled during this pass: `kasir.db` (+wal) and `store-default.sqlite` (+wal) in
