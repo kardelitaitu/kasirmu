@@ -118,7 +118,7 @@ become `5` (4 workspaces + the add card).
 
 ---
 
-# SECOND DEFECT (same test pass) — a `local` install can never obtain the
+# SECOND DEFECT (same test pass) — NO tablet install can obtain the
 # subscription row the capabilities read requires, so every tool locks
 
 <!-- Audit stamp: 2026-10-03 · DSH · status: MEASURED ON DEVICE + CAUSE CONFIRMED BY
@@ -216,7 +216,7 @@ into usable — the exact downgrade `entitlements.rs:113-114` ("a missing/tamper
 project a payload that locks every gate") exists to prevent. **Any** change here must first
 teach the read which case it hit.
 
-## Where a subscription row can come from — and why `local` never gets one
+## Where a subscription row can come from — and why a `local` install never gets one
 
 Every writer of this table, and who can reach it:
 
