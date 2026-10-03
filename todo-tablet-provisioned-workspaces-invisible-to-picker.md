@@ -6,11 +6,15 @@
 >
 > 1. **Provisioned workspaces are invisible** — provisioning writes the global DB, the picker
 >    reads a per-store DB. (A new instance of the known P0-4 split-brain.)
-> 2. **Every tool locks, permanently** — a `local` install can never obtain the
->    `tenant_subscription` row the capabilities read requires, so the fail-closed gate locks
->    all 17 tools for the life of the install. The gate itself is working as designed and is
->    pinned by a test; the gap is that nothing gives this mode a row. See §"The open product
->    question" — this one needs a decision, not a patch.
+> 2. **Every tool locks, permanently — on ANY tablet install, not just `local`.** The
+>    capabilities read requires a `tenant_subscription` row, and **no tablet code path can
+>    write one**: provisioning writes none, `activate_license` is desktop-only and shell-guarded
+>    off, the status poll only UPDATEs, sync does not carry the table, and the one INSERT path
+>    (`store_subscription`) is reachable only after an activation the tablet cannot perform.
+>    The gate itself works as designed and is pinned by a test; the gap is that nothing gives
+>    the tablet a row. Round 4 scoped this to `local` mode; round 5 widened it to every install
+>    and added the circular dependency that makes `linked` mode unreachable too — see §"No
+>    tablet path can write the row".
 
 <!-- Audit stamp: 2026-10-03 · DSH · status: MEASURED ON DEVICE (root cause proven, not yet repaired)
      Reproduced on Redmi 23073RPBFG (Android 15) with a debug build of `0.0.41` (mu.kasir.mobile),
@@ -239,6 +243,54 @@ the table (`provisioning.rs:434-528` — roles `:443`, location `:462`, workspac
 `provisioning.rs` returns no matches. Line 1520 of the same comment is the accurate half — the
 sentinel really is retired in favour of a signed row — but nothing then gives a `local` install
 one.
+
+## No tablet path can write the row — checked six ways (round 5)
+
+Round 4 concluded that `local` mode could never obtain a subscription row. Chasing the same
+question on the tablet's own command surface shows the reach is wider: **the tablet has no route
+to a `tenant_subscription` row at all**, in either provisioning mode. Each candidate was
+falsified separately rather than inferred from the first one that failed:
+
+| Route | Verdict | Evidence |
+|---|---|---|
+| Provisioning (`local` **and** `linked`) | writes nothing | `provisioning.rs:434-528`; the submit at `ProvisioningFlow.tsx:543-563` calls `provisionDevice` only, passing `tenant_id`/`device_credential_id` but never activating |
+| `activate_license` | **not registered on the tablet** | `apps/mobile-tauri/src/lib.rs:974-975` registers only `get_license_status` + `check_license_status`; `LicenseActivationScreen.tsx:271-287` guards the call with `if (!isTabletShell())` |
+| `check_license_status` | read-only, and errors first | `license.rs:448-452` returns `"No license activated. Activate first."` when no API key is stored; no INSERT anywhere in the body |
+| `refresh_subscription_status_from_server` | **UPDATE only** | `license_verification.rs:792-799` — `UPDATE tenant_subscription ... WHERE tenant_id = ?`; a no-op without an existing row |
+| Sync | table not carried | `tenant_subscription` is absent from the sync entity set (grepped `platform/sync` and the core sync modules) |
+| Migration seed | removed; fixture-only | `20260813_init.sql:1512-1522`; `seed_provisioned_baseline` has no production caller |
+
+The module doc states the policy rather than leaving it to inference —
+`apps/mobile-tauri/src/commands/license.rs:9-13`:
+
+> **READ-ONLY ON PURPOSE.** `activate_license`, `renew_license`, `pause_subscription`,
+> `resume_subscription`, `test_auth_connection` and every `*_scoped` twin stay desktop-only:
+> activation and billing management are back-office actions, not tablet ones.
+
+### The circular dependency that also sinks `linked` mode
+
+`linked` mode was the plausible escape: link the device to an account and let the server grant a
+subscription. It cannot, and the reason is a cycle. Every device-link command —
+`link_device_google` (`desktop_link.rs:27`), `link_device_email_request` (`:60`) and
+`link_device_email_consume` (`:76`) — begins by calling
+`kasirmu_bridge::license::stored_credentials`, and that function refuses without an existing
+activation
+(`crates/kasirmu-bridge/src/license.rs:228-232`):
+
+```rust
+match api_key {
+    Some(key) if !key.is_empty() => Ok((key, machine_id)),
+    _ => Err(BridgeError::Invalid(
+        "this device is not activated yet".to_string(),
+    )),
+}
+```
+
+So: linking needs an activation, activation is desktop-only, and provisioning writes no row to
+break the cycle. A tablet that has never been touched by the desktop cannot reach a licensed
+state through its own UI — which is a stronger statement than "offline mode is unsupported", and
+it is the reason this is reported rather than patched: the intended acquisition path for a tablet's
+subscription is not visible anywhere in this checkout.
 
 ## Why the test suite never saw it
 
