@@ -1720,6 +1720,31 @@ different functions and neither test covers the other. This closes that asymmetr
 edit when the guard lands: a local-only write leaves a linked install with no row, so it passes
 unchanged, and only its `#[ignore]` comes off.
 
+### The tripwire exposed a contradiction in this session's own earlier test
+
+Round 17 added `a_linked_provision_keys_its_subscription_row_to_the_linked_tenant`, which **passed** by
+asserting the buggy row. Round 20 added the ignored tripwire asserting **0** rows. Those two cannot
+both survive the fix, and the round-17 one is the worse kind of stale: it passes today, so nothing
+flags it, and its **name** ("keys its subscription row to the linked tenant") endorses the defect as a
+property. When the guard lands it would fail, and the failure would read as a regression rather than as
+the correction it is.
+
+Consolidated into the single ignored test, which now asserts the **invariant** rather than the current
+row — so it needs no edit when the guard lands, only the `#[ignore]` removed. Net effect: **20
+insertions, 64 deletions**, with the diagnostic documentation preserved (`67c1fe483`).
+
+```
+test result: ok. 31 passed; 0 failed; 1 ignored
+```
+
+Both directions re-checked after the change: the local case still passes (no regression), and the
+consolidated test still fails when run explicitly with `left: 1, right: 0` (still characterising).
+
+**The pattern worth naming:** a characterisation test that PASSES is a liability unless it is marked as
+one. The round-17 version looked like a normal assertion of expected behaviour, and would have punished
+the fix. The round-20 form is the same instinct as the repo's own precedent — ignored, named for the
+defect, and asserting the direction that must become true.
+
 ## Evidence retention
 
 Device-side files pulled during this pass: `kasir.db` (+wal) and `store-default.sqlite` (+wal) in
