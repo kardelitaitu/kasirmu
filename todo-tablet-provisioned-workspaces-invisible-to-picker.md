@@ -834,6 +834,29 @@ calls for a persistent `licenseState` badge, not a transient toast. A badge is t
 because it states the **truth claim** rather than acting on it, which is what survives a gate that
 was satisfied for an unrelated reason.
 
+### Why this was not implemented this round (scope estimate)
+
+The badge fix is correct but **not small**, and starting it without the verdict question answered
+would repeat the mistake rounds 8-10 each made. Measured scope:
+
+1. `BootStatusBadges` is **local to `AppShell.tsx:917`** — not exported — so reuse means extracting
+   it to a shared component first.
+2. `TabletAppShell` needs `licenseState` and `usersUnknown` wired in; it currently derives neither.
+3. `.boot-status-badges` has **no CSS rule anywhere** (`git grep` over `ui/src/**/*.css` finds only
+   test references), so the tablet's layout would need the styling defined, not inherited.
+4. `AppShell` renders its badges through `requiredLocalized(l10n, ...)`; the tablet shell uses
+   `<Localized>` components and has no `l10n` object in scope (a mistake made and caught in round 8),
+   so the string route has to be chosen deliberately rather than copied.
+
+`appShellBootGate.test.tsx` pins the existing component with **13 assertions** across its
+`boot-status-badges` / `boot-badge-*` testids, so the extraction is one that must keep that suite
+green while adding a second consumer.
+
+**That is a lane, not a line** — and its first step (extract, or give the tablet its own component)
+depends on whether the two shells should share one badge implementation, which is the same kind of
+shared-surface question as the verdict itself. Recorded here so the next session starts from the
+estimate instead of re-deriving it.
+
 ## Why the test suite never saw it
 
 The gap is masked by the fixture. Every bridge subscription test builds its DB from
