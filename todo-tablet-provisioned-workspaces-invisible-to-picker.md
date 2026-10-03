@@ -1187,6 +1187,68 @@ demonstrate coverage of five. The generalisable lesson: a fix keyed on one enum 
 against an instance of that member, and the check that found the gap was reading the **predicate
 the fix had to mirror**, not the enum it was drawn from.
 
+## ROUND 14: the fix is SHARED with the desktop, and it now has a test
+
+### The shared scope is confirmed by construction, not just by the entitlement path
+
+Round 10 argued the lock-out affects both shells because the desktop reaches the same
+`build_entitlements` -> `fail_closed` path. This round closes that with a stronger fact: the code is
+**one file**.
+
+| | Desktop | Tablet |
+|---|---|---|
+| imports `WorkspaceHome` | `ui/src/app/AppShell.tsx:42` | `ui/src/app/tablet/TabletAppShell.tsx:26` |
+| gate admitting an unlicensed install | `AppShell.tsx:286` | `TabletAppShell.tsx:200` |
+| `toolLock` (what locks all 17 cards) | `WorkspaceHome.tsx:419` — **the same lines** | same |
+
+`WorkspaceHome.tsx` is a single shared component, so the `validityOpen` predicate that locks every
+tool is literally the same code in both shells, and the desktop's boot gate is the same
+`licenceUsable || setupCompleted || installExisting` expression. **Round 10's scope correction is
+therefore confirmed** — this was never tablet-specific.
+
+Two consequences worth stating plainly:
+
+1. **The notice ships to the desktop too.** Because it lives in the shared component, the fix added
+   in rounds 12-13 is not a tablet patch; a desktop install with no subscription row now also
+   explains why its tools are locked.
+2. **Neither shell is fixed by this.** The notice states the cause; the tools stay locked on both.
+
+### The notice now has a test, and the test is a real fence
+
+Rounds 12-13 shipped the notice with device verification only and **no test** — the gap this round
+closes. Two cases were added to `ui/src/__tests__/WorkspaceHome.test.tsx`, both driven through the
+file's existing `mockSubscription(tier, state)` helper:
+
+- one asserting the notice appears for **every state that locks the tools** (`unavailable`,
+  `expired`, `canceled`, `paused`);
+- one asserting it is **absent while the subscription is usable** (`active`, `grace`).
+
+`revoked` is deliberately absent from both lists: `TabletAppShell.tsx:362` renders `RevokedScreen`
+before this component, so it cannot reach here — and the test helper's own state union already
+omits it (`WorkspaceHome.test.tsx:810`), which is independent agreement with that reading.
+
+**The fence was proved by breaking it.** Reverting the condition to the round-12
+`subscriptionState === 'unavailable'` and re-running:
+
+```
+Tests  1 failed | 53 passed (54)
+```
+
+The failing case is exactly the widened one, so the test would have caught the round-12 defect had
+it existed then. The condition was then restored and the suite re-run: **74 passed** across
+`WorkspaceHome`, `appShellBootGate` and `tabletWorkspaceGrid`.
+
+Committed: `ba69f826f` (the tests).
+
+### A citation that had drifted, found by checking rather than reading
+
+`TabletAppShell.tsx` is being edited concurrently, and a peer's insertion moved
+`setBootAllowed(...)` from `:199` to `:200`. My notice's code comment and this report both cited
+`:199`. Both were corrected (`cfe7abece` for the report, the JSX comment in the uncommitted block).
+**A line citation into a file another session is editing is a value that expires**, and nothing
+checks it — the two other citations into that file (`:362` revoked, and the desktop's `:286`) were
+re-verified in the same pass and still hold.
+
 ## Evidence retention
 
 Device-side files pulled during this pass: `kasir.db` (+wal) and `store-default.sqlite` (+wal) in
