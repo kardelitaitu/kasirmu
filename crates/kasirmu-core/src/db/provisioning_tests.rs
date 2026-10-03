@@ -378,6 +378,46 @@ fn provisioning_a_terminal_end_to_end_leaves_a_working_terminal() {
     );
 }
 
+/// `provision_device` must leave the install LICENSED, not merely configured.
+///
+/// ADR #56 §2.4 makes `local` a supported permanent Free tier, and §2.6 moved the
+/// `BOOTSTRAP_FREE` seed out of the schema and into this function's transaction.
+/// It wrote the location and the workspaces but never the subscription, so a
+/// provisioned terminal reached the capabilities read with no entitlement row —
+/// that read fails closed, projects `state: 'unavailable'`, and `unavailable` is
+/// not in `WorkspaceHome.toolLock`'s open set (`active`/`grace`/`loading`), so the
+/// FIRST gate rejects every tool before the tier check is reached. The visible
+/// result was a home screen of 17 locked cards reading "Subscription inactive".
+///
+/// The row is therefore part of "a working terminal", the standard the test above
+/// asserts §2.3 requires. Pinning it here keeps the write at its SOURCE, so the
+/// startup reconcile that repairs installs provisioned before it existed stays a
+/// repair rather than becoming the only writer.
+#[test]
+fn provisioning_writes_the_bootstrap_subscription_the_local_tier_needs() {
+    let conn = fresh();
+    provision_device(&conn, &args_for("dev-001")).unwrap();
+
+    // tenant_id defaults to "default" when args carry none, which is the tenant
+    // the capabilities read and the reconcile's own default both use.
+    let (tier, status, signature): (String, String, String) = conn
+        .query_row(
+            "SELECT tier_key, status, signature FROM tenant_subscription WHERE tenant_id = 'default'",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        )
+        .expect("a provisioned local terminal must have its bootstrap subscription row");
+
+    // Free and ACTIVE: `active` is what the fail-closed validity gate admits, and
+    // Free is the tier §2.4 says a `local` terminal permanently holds.
+    assert_eq!(tier, "free");
+    assert_eq!(status, "active");
+    // The sentinel the schema used to seed, kept so the row is recognisable as the
+    // bootstrap rather than a server grant — which is why the reconcile's guard 2
+    // refuses to touch a PRESENT row.
+    assert_eq!(signature, "BOOTSTRAP_FREE");
+}
+
 #[test]
 fn provisioning_creates_no_waiting_store_fiction_for_the_next_terminal() {
     // Two devices on one store DB provision independently. The first must not
