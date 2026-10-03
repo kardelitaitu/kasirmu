@@ -23,6 +23,7 @@ import ThemeToggle from '@/app/ThemeToggle';
 import { l10nErrorMessage } from '@/utils/app-error';
 import { plainErrorMessage } from '@/utils/app-error';
 import { isTabletShell } from '@/utils/shellKind';
+import { useSubscription } from '@/contexts/SubscriptionContext';
 import { QRCodeSVG } from 'qrcode.react';
 import './LicenseActivationScreen.css';
 
@@ -46,6 +47,7 @@ export interface LicenseActivationScreenProps {
 /** License activation screen — form for entering a license key and email to activate the POS software. */
 export default function LicenseActivationScreen({ initialError, onActivated }: LicenseActivationScreenProps) {
   const { l10n } = useLocalization();
+  const { refresh: refreshSubscription } = useSubscription();
   // 'choose' is the entry screen: the two ways in (Google, pair). 'key' and
   // 'pair' are the detailed forms behind it. The tablet has no license-key
   // route — activate_license/get_machine_id/get_hardware_fingerprint are
@@ -124,12 +126,13 @@ export default function LicenseActivationScreen({ initialError, onActivated }: L
     try {
       await linkDeviceGoogle();
       setLink('idle');
+      refreshSubscription();
       onActivated();
     } catch (err) {
       setLink('failed');
       console.warn('link_device_google failed', err);
     }
-  }, [onActivated]);
+  }, [onActivated, refreshSubscription]);
 
   /**
    * Send a sign-in code to the address, then ask for it.
@@ -157,26 +160,28 @@ export default function LicenseActivationScreen({ initialError, onActivated }: L
     setEmailError(null);
     try {
       await verifyEmailLoginCode(emailAddress.trim(), emailCode.trim());
+      refreshSubscription();
       onActivated();
     } catch (err) {
       setEmailError(l10nErrorMessage(err, l10n, 'auth-email-failed'));
     } finally {
       setEmailBusy(false);
     }
-  }, [emailAddress, emailCode, l10n, onActivated]);
+  }, [emailAddress, emailCode, l10n, onActivated, refreshSubscription]);
 
   const submitEmailPassword = useCallback(async () => {
     setEmailBusy(true);
     setEmailError(null);
     try {
       await loginWithEmailPassword(emailAddress.trim(), emailPassword);
+      refreshSubscription();
       onActivated();
     } catch (err) {
       setEmailError(l10nErrorMessage(err, l10n, 'auth-email-failed'));
     } finally {
       setEmailBusy(false);
     }
-  }, [emailAddress, emailPassword, l10n, onActivated]);
+  }, [emailAddress, emailPassword, l10n, onActivated, refreshSubscription]);
 
   /** Return to the address step, clearing whatever the last attempt left. */
   const backToEmailAddress = useCallback(() => {
@@ -221,6 +226,7 @@ export default function LicenseActivationScreen({ initialError, onActivated }: L
         const resp = await pollDevicePairing(pairingSession.poll_token);
         if (resp.status === 'claimed') {
           addToast({ type: 'success', message: l10n.getString('auth-pair-success') });
+          refreshSubscription();
           onActivated();
         }
       } catch (err: unknown) {
@@ -229,7 +235,7 @@ export default function LicenseActivationScreen({ initialError, onActivated }: L
     }, 3000);
 
     return () => clearInterval(interval);
-  }, [authMode, pairingSession, pairingExpired, addToast, l10n, onActivated]);
+  }, [authMode, pairingSession, pairingExpired, addToast, l10n, onActivated, refreshSubscription]);
 
   const handleActivate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -309,6 +315,7 @@ export default function LicenseActivationScreen({ initialError, onActivated }: L
 
       if (success === true) {
         addToast({ type: 'success', message: l10n.getString('auth-activation-success') });
+        refreshSubscription();
         onActivated();
       } else if (success === false) {
         setErrorMsg(l10n.getString('auth-activation-failed'));

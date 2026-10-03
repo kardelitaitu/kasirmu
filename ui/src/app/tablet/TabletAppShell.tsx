@@ -124,7 +124,7 @@ export default function TabletAppShell() {
   const [isLocked, setIsLocked] = useState(false);
   const { enabled, loaded: featuresLoaded } = useFeatures();
   const { session } = useAuth();
-  const { state: subscriptionState } = useSubscription();
+  const { state: subscriptionState, refresh: refreshSubscription } = useSubscription();
   // ADR #4 Phase 3b: use WorkspaceContext for device-bound auto-boot.
   const {
     activeWorkspace,
@@ -388,7 +388,10 @@ export default function TabletAppShell() {
       <LazyBoundary>
         <LicenseActivationScreen
           initialError={licenseError}
-          onActivated={() => setBootAllowed(true)}
+          onActivated={() => {
+            setBootAllowed(true);
+            refreshSubscription();
+          }}
         />
       </LazyBoundary>
     );
@@ -411,6 +414,7 @@ export default function TabletAppShell() {
             // "Create Owner PIN", asking them to create the account they had just
             // created, with the success toast still on screen. Measured 2026-09-23.
             setHasAnyUsers(true);
+            refreshSubscription();
           }}
         />
       </LazyBoundary>

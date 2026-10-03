@@ -15,6 +15,7 @@ import { isTabletShell } from '@/utils/shellKind';
 import { useToast } from '@/components/Toast';
 import { Button } from '@/components/Button';
 import { l10nErrorMessage } from '@/utils/app-error';
+import { useSubscription } from '@/contexts/SubscriptionContext';
 import { QRCodeSVG } from 'qrcode.react';
 
 import './ProvisioningFlow.css';
@@ -176,6 +177,7 @@ const STEPS: { id: string; labelId: string; fallback: string }[] = [
 export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProps) {
   const { l10n } = useLocalization();
   const { addToast } = useToast();
+  const { refresh: refreshSubscription } = useSubscription();
   // 'linked' is the DEFAULT, not merely an offered choice: the free plan attaches
   // to a kasir.mu account (Google or an emailed code), so a fresh terminal signs
   // up before it opens a register. The 'local' mode stays reachable — a merchant
@@ -560,6 +562,7 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
           message: l10n.getString('setup-provision-success'),
         });
         void result;
+        refreshSubscription();
         onProvisioned();
       } catch (err: unknown) {
         // Beside the button, not in the top banner — see `submitError` above.
@@ -580,6 +583,7 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
       ownerUsername,
       pin,
       provisionMode,
+      refreshSubscription,
       storeType,
     ],
   );

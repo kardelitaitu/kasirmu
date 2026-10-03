@@ -132,7 +132,7 @@ export default function AppShell() {
   // ADR #58 §2.6: subscription state needed to gate the revoked screen before
   // the boot-allowed check. `revoked` lands here when the ride-along daemon
   // has written and cached a revocation verdict from the licence server.
-  const { state: subscriptionState } = useSubscription();
+  const { state: subscriptionState, refresh: refreshSubscription } = useSubscription();
   // Stable ref so the mount effect below can call addToast without
   // listing it as a dependency (which would cause the effect to re-run
   // whenever the toast context re-creates its callback reference, resetting
@@ -602,6 +602,7 @@ export default function AppShell() {
               // answer is stale. Without this the merchant returned to
               // "Create Owner PIN" immediately after being told setup succeeded.
               setHasAnyUsers(true);
+              refreshSubscription();
             }}
           />
         </LazyBoundary>
@@ -893,13 +894,17 @@ function ActivationFlow({
   initialError: string | null;
   onComplete: () => void;
 }) {
+  const { refresh: refreshSubscription } = useSubscription();
   const [step, setStep] = useState<'activate' | 'bootstrap'>('activate');
 
   if (step === 'activate') {
     return (
       <LicenseActivationScreen
         initialError={initialError}
-        onActivated={() => setStep('bootstrap')}
+        onActivated={() => {
+          setStep('bootstrap');
+          refreshSubscription();
+        }}
       />
     );
   }

@@ -44,6 +44,16 @@ vi.mock('@/utils/shellKind', () => ({
   isTabletShell: vi.fn().mockReturnValue(false),
 }));
 
+const mockRefreshSubscription = vi.fn();
+vi.mock('@/contexts/SubscriptionContext', () => ({
+  useSubscription: () => ({
+    caps: null,
+    state: 'loading',
+    loading: false,
+    refresh: mockRefreshSubscription,
+  }),
+}));
+
 
 vi.mock('@fluent/react', () => ({
   Localized: ({ children }: { children: React.ReactNode }) => <>{children}</>,
@@ -138,6 +148,7 @@ describe('LicenseActivationScreen - Exhaustive Suite', () => {
     vi.mocked(getHardwareFingerprint).mockResolvedValue('hw_0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef');
     vi.mocked(activateLicense).mockResolvedValue(true);
     mockClipboardReadText.mockResolvedValue('clipboard-text');
+    mockRefreshSubscription.mockClear();
     // Desktop by default, so every case above keeps the shell it was written against.
     vi.mocked(isTabletShell).mockReturnValue(false);
     // The screen resolves the public IP over HTTP. Reject by default so an
@@ -972,6 +983,19 @@ describe('LicenseActivationScreen - Exhaustive Suite', () => {
         'KEY123', 'test@test.com', 'test-machine-id', '08123456789', undefined, undefined,
         'hw_0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
       ), FAST_WAIT);
+    });
+
+    it('64. refreshes subscription capabilities when license activation succeeds', async () => {
+      vi.mocked(isTabletShell).mockReturnValue(false);
+      renderOnForm();
+      fillForm();
+      clickSubmit();
+
+      await waitFor(() => {
+        expect(activateLicense).toHaveBeenCalled();
+        expect(mockRefreshSubscription).toHaveBeenCalled();
+        expect(mockOnActivated).toHaveBeenCalled();
+      }, FAST_WAIT);
     });
   });
 });

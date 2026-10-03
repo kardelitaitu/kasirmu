@@ -41,6 +41,16 @@ vi.mock('@/utils/shellKind', () => ({
   isTabletShell: vi.fn().mockReturnValue(false),
 }));
 
+const mockRefreshSubscription = vi.fn();
+vi.mock('@/contexts/SubscriptionContext', () => ({
+  useSubscription: () => ({
+    caps: null,
+    state: 'loading',
+    loading: false,
+    refresh: mockRefreshSubscription,
+  }),
+}));
+
 vi.mock('@fluent/react', () => ({
   Localized: ({ children, vars }: { children: React.ReactNode; vars?: Record<string, unknown> }) => {
     if (typeof children === 'string' && vars) {
@@ -1403,6 +1413,22 @@ describe('ProvisioningFlow (ADR #56 §2.3 / §2.5)', () => {
     expect(screen.getByTestId('provisioning-footer')).toHaveTextContent(
       'v0.0.41 • kasir.mu © 2026 All rights reserved.',
     );
+  });
+
+  it('refreshes subscription capabilities when provisioning finishes successfully', async () => {
+    mockRefreshSubscription.mockClear();
+    mockOnProvisioned.mockClear();
+    render(<ProvisioningFlow onProvisioned={mockOnProvisioned} />);
+
+    selectOfflineMode();
+    fillBasicForm();
+    fireEvent.click(screen.getByTestId('provision-submit'));
+
+    await waitFor(() => {
+      expect(provisionDevice).toHaveBeenCalled();
+      expect(mockRefreshSubscription).toHaveBeenCalled();
+      expect(mockOnProvisioned).toHaveBeenCalled();
+    }, FAST_WAIT);
   });
 });
 
