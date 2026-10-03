@@ -27,6 +27,9 @@
 
      DEFECT 1 (invisible workspaces) — FIXED, by another session. The device now renders
      three workspace cards where rounds 2-11 measured one. Not fixed by this session.
+     A second, uncommitted fix is also in flight in `crates/kasirmu-bridge/src/workspaces.rs`
+     (a read-repair that copies global rows into the store DB); round 25 reviews it and finds
+     three mechanical problems — no transaction, a swallowed FK error, and uncopied columns.
 
      DEFECT 2 (every tool locks) — ROOT CAUSE FIXED, by another session, in two halves:
        - committed `d35555bca`: a startup reconcile that repairs an install provisioned
