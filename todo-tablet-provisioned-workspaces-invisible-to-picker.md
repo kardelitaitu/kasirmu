@@ -1952,6 +1952,63 @@ enumerates which sections are implemented, so updating it means restating §2.3'
 the author's call and not a drive-by edit. Flagged here with the evidence, the timeline, and the
 classification so the next audit starts from them.
 
+## ROUND 25: the in-flight read-repair for defect 1 has three mechanical problems
+
+Defect 1 — the one this file opens with — is **being fixed right now** in
+`crates/kasirmu-bridge/src/workspaces.rs` (uncommitted, 34 insertions). The approach is a read-repair:
+when the store DB's `list_workspaces` returns nothing, read the global DB and copy the rows across.
+That is the right shape. The implementation has three problems, each checkable against the schema.
+
+### 1. The copy is a loop of unwrapped single statements — no transaction
+
+```rust
+for r in &global_rows {
+    let _ = db.execute(
+        "INSERT OR IGNORE INTO workspace_instances (...) VALUES (?1, ...)",
+        rusqlite::params![...],
+    );
+}
+```
+
+`AGENTS.md` §6.4 is a MUST: *"DB Writes — **ALWAYS use `rusqlite` transactions** for database writes."*
+Each `execute` here is its own implicit transaction, so a failure part-way leaves the store DB holding
+some of the copied rows and not others — and nothing reconciles that, because the repair only runs
+while the table is **empty** (`rows.is_empty()`). A partial copy therefore stops the repair from ever
+running again: the next call sees a non-empty table and returns the incomplete set. That is the
+failure mode worth naming, because it is silent and self-perpetuating.
+
+### 2. The error is discarded, and foreign keys are ON
+
+`let _ = db.execute(...)` throws away every error, including constraint violations. The INSERT omits
+`store_id`'s referent: `workspace_instances.store_id` is `TEXT NOT NULL REFERENCES
+store_profiles(id)` (`20260813_init.sql:986-988`), and `foreign_keys = ON` is set on every connection
+path (`migrations.rs:485`, applied by `run()`). So when the store DB has no `store_profiles` row for
+`r.store_id`, each INSERT fails — and the failure is swallowed, leaving `rows = global_rows` reporting
+success while the store DB stays empty. The merchant sees workspaces until the next boot, then not.
+
+### 3. Columns the originals carried are not copied
+
+The INSERT sets `(id, type_key, location_id, name, description, status)` and takes the schema's
+defaults for the rest. Two of the omitted columns are not cosmetic: `bound_location_id`
+(`:996`, `REFERENCES inventory_locations(id)`) is the store-scoping column this whole defect is about,
+and `purpose_key` (`:997`, `NOT NULL DEFAULT 'general'`) decides how the row is classified. So repaired
+rows are distinguishable from native ones, and any query filtering on `bound_location_id` will not see
+them.
+
+### What this does and does not change about this file's opening claim
+
+The opening section describes defect 1 as *"provisioning writes the global DB, the picker reads a
+per-store DB"*. That remains the diagnosis, and the repair confirms it — the fix exists precisely
+because the two databases diverge. What changes is only its status: **a fix is in flight**, so defect 1
+should no longer be read as unaddressed. Its three problems above are review notes on that fix, not a
+reopening of the diagnosis.
+
+**Measured, not inferred:** the schema lines, the `foreign_keys` pragma and its application point, and
+the in-flight diff were each read in this pass. The consequence in (2) follows from the FK being
+enforced, which the pragma establishes — but it was **not** reproduced against a database, because
+constructing a store DB without its `store_profiles` row needs the device or a purpose-built fixture,
+and neither was available.
+
 ## Evidence retention
 
 Device-side files pulled during this pass: `kasir.db` (+wal) and `store-default.sqlite` (+wal) in
