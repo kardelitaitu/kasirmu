@@ -75,6 +75,36 @@ use kasirmu_core::sync_client::SyncConfig;
 #[cfg(not(test))]
 use tauri::{Emitter, Manager};
 
+/// Global hook for Android WorkManager to nudge the tablet sync daemon.
+#[cfg(not(test))]
+static SYNC_WAKEUP_HOOK: std::sync::OnceLock<std::sync::Arc<tokio::sync::Notify>> =
+    std::sync::OnceLock::new();
+
+/// JNI bridge called by `mu.kasir.mobile.SyncWorker` to trigger an immediate
+/// background sync drain when Android WorkManager fires.
+#[cfg(all(not(test), target_os = "android"))]
+#[no_mangle]
+pub unsafe extern "system" fn Java_mu_kasir_mobile_SyncWorker_00024Companion_nativeNudgeSync(
+    _env: *mut std::ffi::c_void,
+    _class: *mut std::ffi::c_void,
+) {
+    if let Some(notify) = SYNC_WAKEUP_HOOK.get() {
+        notify.notify_one();
+    }
+}
+
+/// Fallback JNI symbol for direct static invocation.
+#[cfg(all(not(test), target_os = "android"))]
+#[no_mangle]
+pub unsafe extern "system" fn Java_mu_kasir_mobile_SyncWorker_nativeNudgeSync(
+    _env: *mut std::ffi::c_void,
+    _class: *mut std::ffi::c_void,
+) {
+    if let Some(notify) = SYNC_WAKEUP_HOOK.get() {
+        notify.notify_one();
+    }
+}
+
 /// Application entry point, called by `main.rs`.
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 #[allow(deprecated)]
@@ -551,6 +581,7 @@ pub fn run() {
                     .state::<AppState>()
                     .sync_wakeup
                     .clone();
+                let _ = SYNC_WAKEUP_HOOK.set(sync_wakeup.clone());
                 platform_startup::spawn_daemon("tablet sync daemon", async move {
                     let periodic = std::time::Duration::from_secs(30);
                     const WAKEUP_DEBOUNCE: std::time::Duration =
