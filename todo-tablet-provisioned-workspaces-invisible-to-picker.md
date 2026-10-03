@@ -1124,6 +1124,7 @@ It is not lost, only attributed to the wrong change.
 
 **To finish:** once the peer's `WorkspaceHome.tsx` edits are committed, commit this session's notice
 JSX from that file with a pathspec line. Nothing else is outstanding.
+
 ## Evidence retention
 
 Device-side files pulled during this pass: `kasir.db` (+wal) and `store-default.sqlite` (+wal) in
