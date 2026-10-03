@@ -282,10 +282,20 @@ are not equivalent — this is the decision the report cannot make:
 | **B. `local` is genuinely unsupported** | Remove or reword the wizard option so nobody provisions into a locked state | Discards an offline-first deployment; ADR-56 §2.4 makes `local` the *default* tier |
 | **C. The wizard copy is wrong** | Reword `setup-mode-local-desc` to stop promising a starter workspace | Cheapest, but leaves the install locked — it fixes the sentence, not the product |
 
-ADR-56 §2.4 already argues against B: it makes `local` "the **default**, not the fallback, because
-the target deployment includes merchants" without reliable connectivity. If that ruling still
-stands, A is the direction — and the constraint in the section above says how it must be done
-(distinguish absent from tampered, never collapse them).
+**ADR-56 §2.4 rules out B, and it does so in terms this device fails.** It defines the tier
+(`=local`, `docs/decisions/2026-09-21-adr56-first-run-provisioning.md:584-587`) as:
+
+> **`local`** — store name + owner PIN, no network. **Produces a working OS and a sellable
+> terminal.** This tier is the **default**, not the fallback...
+
+A terminal that cannot open a single tool is not a sellable terminal, so the shipped behaviour
+contradicts the ADR rather than merely disappointing the wizard copy. The same section also
+confirms the absence is expected — line 604 records that "a `local` install holds no signed
+subscription and therefore no expiry to approach" — so ADR-56 knew no row would exist and did
+not say what should replace it in the capabilities path. That omission is the defect.
+
+**So A is the ADR-conformant direction**, and the constraint above says how it must be done:
+teach the read to distinguish absent from tampered rather than collapsing them.
 
 ## Why it locks every tool
 
