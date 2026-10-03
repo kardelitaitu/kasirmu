@@ -322,6 +322,29 @@ prerequisite ("the wizard runs *after* activation"), and it is written for the d
 
 So the tablet's licensing model is not documented anywhere in this checkout. That is the gap.
 
+### The asymmetry that explains how this shipped
+
+`provision_device` is **shared** by both shells (`apps/desktop-tauri/src/commands/setup.rs:89`,
+`apps/mobile-tauri/src/commands/setup.rs`), and as a shared function it is CORRECT — because the
+two shells reach it by different routes:
+
+| | Desktop | Tablet |
+|---|---|---|
+| imports `LicenseActivationScreen` | **yes** — `ui/src/app/AppShell.tsx:29`, rendered `:900` | **no** — ADR-54 §1.5 |
+| registers `activate_license` | **yes** — `apps/desktop-tauri/src/lib.rs:1435` | **no** — only `get_license_status`/`check_license_status` |
+| order | activation, **then** the wizard (ADR-54 §1.4: "the wizard runs *after* activation") | wizard only |
+| subscription row at first run | present | **absent** |
+
+On the desktop the row is written before provisioning, so nothing downstream notices that
+`provision_device` does not write one — and no test notices either, because the fixture seeds it.
+The tablet runs the same provisioning without the step that precedes it, so it arrives at the same
+function with a precondition that is not met and no signal that it is not. **This is why the defect
+is invisible from either file read alone**: each side is internally consistent and the mismatch
+lives in the ordering between them.
+
+That also bounds the fix: the desktop must keep working exactly as it does, so whatever closes this
+belongs on the tablet side (or in a shared precondition check), not in an edit to the ordering the
+desktop depends on.
 ### What would settle it
 
 One question this checkout cannot answer: **how is a tablet meant to become licensed?** If the
