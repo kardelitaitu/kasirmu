@@ -1573,6 +1573,31 @@ The mismatch itself stands, and is now **worse than described**: it is reachable
 the shipping first-run flow, not armed for a future caller. The proving test from round 17
 (`6111e9983`) is unaffected and still passes — it asserts the row the current code writes.
 
+### The consequence, and why it is worse than "latent"
+
+Two facts make this a first-run defect rather than a future trap:
+
+1. **`linked` is the DEFAULT mode.** `ProvisioningFlow.tsx:184` is
+   `useState<ProvisioningMode>('linked')`, and the card is placed first with the comment *"The linked
+   card is FIRST because it is the default: the free plan attaches to an account, and the recommended
+   path should not sit second behind the exception."* So a merchant sees Linked preselected, not Local.
+2. **No tablet-side reader can see the row it writes.** Every tablet reader hardcodes `"default"` —
+   `entitlements.rs:325` (`TenantSubscription::load(self.conn, "default")`), `auth.rs:672`,
+   `history.rs:79`, and the reconcile's own check at `migrations.rs:613`. The only dynamic-tenant
+   caller is the **cloud** API (`kasirmu-api/src/routes/products.rs:282`), which is not the tablet.
+   The account's tenant comes from the licence server (`resp.tenant_id`), so it is a real per-tenant
+   id, not `'default'`.
+
+Together: a merchant who takes the **preselected** path and completes account linking gets a terminal
+whose subscription row exists, is active, is Free, and is invisible to the read that decides whether
+the tools unlock. The capabilities read returns `Ok(None)`, fails closed, projects `unavailable`, and
+the home screen locks all 17 cards with no explanation — the original defect, on the recommended
+onboarding path.
+
+**This is not a claim I could verify on hardware** (the device is off the network) and it is not
+observable from a unit test of the write alone, since the write is correct in isolation. It follows
+from the four reader sites above, all of which were read rather than inferred.
+
 ## Evidence retention
 
 Device-side files pulled during this pass: `kasir.db` (+wal) and `store-default.sqlite` (+wal) in
