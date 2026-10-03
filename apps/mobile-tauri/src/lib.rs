@@ -117,11 +117,25 @@ pub fn run() {
             // a real cache path first. See the module note in Cargo.toml.
             .plugin(tauri_plugin_fs::init())
             .on_window_event(|window, event| {
-                if let tauri::WindowEvent::Focused(true) = event {
-                    let _ = window.emit("kasirmu://reconnect", ());
-                    if let Some(state) = window.app_handle().try_state::<AppState>() {
-                        state.sync_wakeup.notify_one();
+                match event {
+                    tauri::WindowEvent::Focused(true) => {
+                        let _ = window.emit("kasirmu://reconnect", ());
+                        if let Some(state) = window.app_handle().try_state::<AppState>() {
+                            state.sync_wakeup.notify_one();
+                        }
                     }
+                    tauri::WindowEvent::Focused(false) => {
+                        // Backgrounding / window losing focus: flush WAL so dirty pages are
+                        // checkpointed to disk before the Android OS suspends or kills the process.
+                        if let Some(state) = window.app_handle().try_state::<AppState>() {
+                            let db = state.db.clone();
+                            tokio::task::spawn(async move {
+                                let conn = db.lock().await;
+                                let _ = conn.execute_batch("PRAGMA wal_checkpoint(PASSIVE);");
+                            });
+                        }
+                    }
+                    _ => {}
                 }
             })
             .setup(|app| {
