@@ -650,6 +650,7 @@ fn scoped_args(cart_id: CartId, attempt: Option<&str>) -> CompleteSaleScopedArgs
         promotion_ids: None,
         attempt_id: attempt.map(str::to_owned),
         tax_estimated: None,
+        document_kind: None,
     }
 }
 
