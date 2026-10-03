@@ -200,6 +200,29 @@ impl AppState {
         migrations::run(&mut conn)
             .map_err(|e| AppError::Internal(format!("running migrations: {e}")))?;
 
+        // ── Bootstrap-subscription reconcile (ADR #56 §2.6 option C) ──
+        // §2.6 removed the schema's BOOTSTRAP_FREE seed and assigned that row to
+        // `provision_device`'s transaction, which never wrote it. A `local`
+        // terminal therefore reaches the capabilities read with no entitlement
+        // row, that read fails closed, and the home screen renders every tool
+        // locked behind "Subscription inactive". Restore the row once, here, for
+        // installs provisioned before that write existed.
+        //
+        // Non-fatal on purpose: a failed repair leaves the terminal exactly as it
+        // was — a locked terminal, not a broken one — and refusing to boot over a
+        // repair step is the worse failure.
+        match migrations::ensure_bootstrap_subscription(&conn) {
+            Ok(true) => tracing::info!(
+                "restored the missing bootstrap Free subscription row for this local terminal"
+            ),
+            Ok(false) => {}
+            Err(e) => tracing::warn!(
+                error = %e,
+                "bootstrap-subscription reconcile failed; a local terminal with no \
+                 subscription row stays locked"
+            ),
+        }
+
         // ── Tenant-integrity gate (fail loud) ────────────────────────
         // Tablet store DBs are scoped by construction to the `default`
         // tenant. A foreign-tenant row here means a sync/restore mishap

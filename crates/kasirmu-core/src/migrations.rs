@@ -545,6 +545,93 @@ pub fn seed_provisioned_baseline(conn: &rusqlite::Connection) {
     .expect("seed_provisioned_baseline failed");
 }
 
+/// Restore the bootstrap Free subscription row on a `local` terminal that has none.
+///
+/// # The defect this repairs
+///
+/// ADR #56 §2.6 option C removed the schema's `BOOTSTRAP_FREE` seed and assigned
+/// every row it used to ship — location, workspaces, subscription — to
+/// `provision_device`'s single transaction (`20260813_init.sql:1399-1410` and
+/// `:1512-1520`, both of which state it in the schema's own words). That function
+/// writes the first two and never wrote the third, so a `local` terminal is
+/// provisioned into a state the product then treats as unlicensed:
+///
+/// * the capabilities read fails closed on the absent row
+///   (`entitlements.rs`, `SubscriptionLoader for Store`: `Ok(None)` → `None`),
+/// * which projects `state: 'unavailable'`,
+/// * which is not in `WorkspaceHome.toolLock`'s open set (`active`/`grace`/
+///   `loading`), so the FIRST gate rejects every tool before the tier check is
+///   ever reached,
+/// * and every card renders "Subscription inactive".
+///
+/// The row `provision_device` is missing is the row this writes. Doing it here as
+/// well as there is deliberate, not redundant: this repairs installs provisioned
+/// *before* that write existed. §2.6's own justification for not shipping a
+/// repair migration was §1.7's "no install base exists" — a claim that stops being
+/// true the first time a merchant's database is provisioned.
+///
+/// # Three guards, each load-bearing
+///
+/// 1. **A `local` terminal, not any terminal.** ADR-56 §2.4 makes `local` the
+///    default and a supported permanent Free tier; it has no licence server, so
+///    this sentinel row is the only row it can ever have. A `linked` install's
+///    entitlement is the server's grant, and a missing row there is an anomaly
+///    that must keep failing closed — writing Free would also risk pre-empting
+///    the real grant.
+/// 2. **Only when the row is ABSENT.** A present row is left exactly as it is,
+///    verified or not, so this can never launder a bad signature. That is the
+///    whole difference between repairing an absent row and becoming a licence
+///    bypass.
+/// 3. **`INSERT OR IGNORE`.** Idempotent under a concurrent launch, which this
+///    file permits: the tablet shares `kasir.db` with the bridge, the sync daemon
+///    and any second process a dev machine left running.
+///
+/// # Returns
+///
+/// `Ok(true)` when this call wrote the row, `Ok(false)` when it was not needed or
+/// not applicable — so a caller can log the repair without a second read.
+///
+/// # Errors
+///
+/// Returns [`crate::CoreError`] when `provisioning` or `tenant_subscription`
+/// cannot be read or written. A startup caller should warn and continue: a failed
+/// repair leaves the install exactly as it was — a locked terminal, not a broken
+/// one — and refusing to boot over a repair step is the worse failure.
+pub fn ensure_bootstrap_subscription(
+    conn: &rusqlite::Connection,
+) -> Result<bool, crate::CoreError> {
+    let is_local: bool = conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM provisioning WHERE mode = 'local')",
+        [],
+        |row| row.get(0),
+    )?;
+    if !is_local {
+        return Ok(false);
+    }
+
+    let has_row: bool = conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM tenant_subscription WHERE tenant_id = 'default')",
+        [],
+        |row| row.get(0),
+    )?;
+    if has_row {
+        return Ok(false);
+    }
+
+    // The row is the one `seed_provisioned_baseline` writes, pinned column by
+    // column by `the_reconcile_writes_the_row_the_baseline_seeds` — so this is a
+    // pinned copy of that row rather than a second source of truth for it.
+    let written = conn.execute(
+        "INSERT OR IGNORE INTO tenant_subscription \
+         (tenant_id, tier_key, status, expires_at, max_locations, max_pos_instances, \
+         allowed_types_json, signature) \
+         VALUES ('default', 'free', 'active', NULL, 1, 1, \
+         '[\"store-pos\", \"restaurant-pos\", \"admin\"]', 'BOOTSTRAP_FREE')",
+        [],
+    )?;
+    Ok(written > 0)
+}
+
 /// Create a fresh in-memory database with all migrations already applied.
 ///
 /// Uses a [`std::sync::LazyLock`]ed pre-migrated snapshot connection.
