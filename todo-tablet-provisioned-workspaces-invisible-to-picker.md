@@ -6,8 +6,11 @@
 >
 > 1. **Provisioned workspaces are invisible** — provisioning writes the global DB, the picker
 >    reads a per-store DB. (A new instance of the known P0-4 split-brain.)
-> 2. **Every tool locks** — provisioning writes no `tenant_subscription` row, so the
->    fail-closed gate locks all 17 tools. (A documented contract the code does not honour.)
+> 2. **Every tool locks, permanently** — a `local` install can never obtain the
+>    `tenant_subscription` row the capabilities read requires, so the fail-closed gate locks
+>    all 17 tools for the life of the install. The gate itself is working as designed and is
+>    pinned by a test; the gap is that nothing gives this mode a row. See §"The open product
+>    question" — this one needs a decision, not a patch.
 
 <!-- Audit stamp: 2026-10-03 · DSH · status: MEASURED ON DEVICE (root cause proven, not yet repaired)
      Reproduced on Redmi 23073RPBFG (Android 15) with a debug build of `0.0.41` (mu.kasir.mobile),
@@ -111,12 +114,15 @@ become `5` (4 workspaces + the add card).
 
 ---
 
-# SECOND DEFECT (same test pass) — provisioning writes no subscription row,
-# so every tool locks on a fresh offline install
+# SECOND DEFECT (same test pass) — a `local` install can never obtain the
+# subscription row the capabilities read requires, so every tool locks
 
-<!-- Audit stamp: 2026-10-03 · DSH · status: MEASURED ON DEVICE. Independent of the defect
-     above: this one is a missing write, not a database split. Both were observed on the same
-     provisioned tablet, and either alone is enough to make a fresh install unusable. -->
+<!-- Audit stamp: 2026-10-03 · DSH · status: MEASURED ON DEVICE + CAUSE CONFIRMED BY
+     EXPERIMENT. Independent of the defect above: this one is a mode that cannot obtain a
+     licence row, not a database split. Both were observed on the same provisioned tablet,
+     and either alone is enough to make a fresh install unusable. The first draft of this
+     section mis-diagnosed it as a missing write and proposed a fix that would have broken a
+     deliberate security test; the text below is the corrected reading and says so. -->
 
 **Symptom.** Every one of the home screen's 17 tool cards renders locked — `aria-disabled="true"`,
 `data-testid="workspace-tool-card-locked"`, each captioned "Subscription inactive". The owner
@@ -318,13 +324,6 @@ experiment below confirms rather than assumes. The measured `features: {}` is a 
 genuine fact about this tier, not part of this lock: it is why `maxWarehouses: 0` and
 `maxKdsScreens: 0`, and those caps are what the 7 remaining locks report after the state is
 repaired (see the experiment's second point).
-
-## Note on intent
-
-ADR-56 §2.4 (§2.4 at `docs/decisions/2026-09-21-adr56-first-run-provisioning.md:580`) makes the
-`local` tier the **default**, not a fallback, precisely so a merchant without connectivity can
-still run. A `local` install that locks all 17 tools is the opposite of that decision, so the
-missing row reads as an un-implemented step rather than a deliberate denial.
 
 ## Confirmed by experiment on the device (2026-10-03)
 
