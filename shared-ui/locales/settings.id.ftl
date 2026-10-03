@@ -75,7 +75,7 @@ settings-screen-migrating = Konten setelan yang ada akan dipindahkan ke sini sec
 # (gerbang orphan: kunci harus direferensikan oleh commitnya sendiri).
 settings-nav-plus-badge-aria = Memerlukan paket Plus
 settings-locked-title = Setelan dibatasi
-settings-locked-desc = Setelan hanya tersedia untuk pemilik dan administrator.
+settings-locked-desc = Setelan hanya tersedia untuk manajer, administrator, dan pemilik.
 settings-sidebar-nav-aria = Navigasi pengaturan
 settings-sidebar-expand-aria = Buka bilah sisi pengaturan
 settings-sidebar-collapse-aria = Tutup bilah sisi pengaturan

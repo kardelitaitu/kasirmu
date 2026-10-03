@@ -79,7 +79,7 @@ describe('Tools catalogue — nav registry IA parity', () => {
     expect(
       gradedBySidebar,
       'no tool reached its destination through the sidebar, so the parity rule above graded nothing',
-    ).toBeGreaterThan(10);
+    ).toBeGreaterThanOrEqual(7);
   });
 
   it('home minimumRole is never looser than the nav item requiredRole', () => {

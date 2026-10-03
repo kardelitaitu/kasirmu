@@ -615,10 +615,7 @@ workspace-home-staff-title = Staff Management
 workspace-home-staff-desc = Manage staff, roles, and permissions
 workspace-home-settings-title = Settings
 workspace-home-settings-desc = System configuration and preferences
-# Reuses the wording already approved for this feature at setup-feature-cloud-sync
-# and -desc above, rather than inventing new copy for the same capability.
-workspace-home-cloud-sync-title = Cloud Sync
-workspace-home-cloud-sync-desc = Sync data to cloud PostgreSQL with backup
+
 workspace-home-audit-title = Audit Log
 workspace-home-audit-desc = View system activity and change history
 workspace-home-terminals-title = Terminals
@@ -627,18 +624,8 @@ workspace-home-locations-title = Locations
 workspace-home-locations-desc = Manage physical locations and branches
 workspace-home-shifts-title = Shifts
 workspace-home-shifts-desc = Manage staff shifts and schedules
-workspace-home-tax-config-title = Tax Rates
-workspace-home-tax-config-desc = Configure tax rates and rules
-workspace-home-exchange-rates-title = Exchange Rates
-workspace-home-exchange-rates-desc = Configure currency exchange rates
 workspace-home-promotions-title = Promotions
 workspace-home-promotions-desc = Create and manage promotions
-workspace-home-offline-queue-title = Offline Queue
-workspace-home-offline-queue-desc = View pending offline sync items
-workspace-home-features-title = Features
-workspace-home-features-desc = Toggle feature availability
-workspace-home-data-management-title = Data
-workspace-home-data-management-desc = Back up, export, and import data
 workspace-home-workspaces-section = Workspaces
 workspace-home-tools-section = Tools
 # Tools group headers — the agreed information architecture
@@ -655,8 +642,7 @@ workspace-home-tools-requires-tier-premium = Requires Premium plan
 workspace-home-tools-requires-tier-enterprise = Requires Enterprise plan
 workspace-home-tools-subscription-inactive = Subscription inactive
 workspace-home-tools-requires-role = Admin access required
-workspace-home-topology-title = Topology Editor
-workspace-home-topology-desc = Design locations, workspaces, and device links
+
 workspace-home-memo-title = Memos
 workspace-home-memo-desc = Write notices for terminals and locations
 workspace-home-add-workspace = Add Workspace

@@ -227,7 +227,7 @@ settings-screen-migrating = Existing settings content will move here selectively
 # (orphan gate: a key must be referenced by its own commit).
 settings-nav-plus-badge-aria = Requires Plus plan
 settings-locked-title = Settings restricted
-settings-locked-desc = Settings are available to owners and administrators only.
+settings-locked-desc = Settings are available to managers, administrators, and owners only.
 settings-sidebar-nav-aria = Settings navigation
 settings-sidebar-expand-aria = Expand settings sidebar
 settings-sidebar-collapse-aria = Collapse settings sidebar

@@ -136,15 +136,15 @@ function SettingsPageContent() {
   const [, setSyncApiKeyVisible] = useState(false);
 
   const { session } = useAuth();
-  // ── Role gate: Settings is admin/owner-only ──────────────────
+  // ── Role gate: Settings is manager/admin/owner-accessible ──
   // roleAtLeast fails closed (missing/blank/retired/unknown roles never
-  // clear the floor), so managers, staff, auditors — and anyone with an
+  // clear the floor), so staff, auditors — and anyone with an
   // unrecognized role — get the locked card instead of the shell. The gate
   // normalizes first: the session carries the backend's DISPLAY role name
   // (capitalized, e.g. 'Owner', 'Manager' — kasirmu-bridge/src/auth.rs:485),
   // while roleAtLeast's table is keyed lowercase, so an unnormalized 'Owner'
   // scores 0 and locks a real owner out (reproduced in the browser).
-  const adminUp = roleAtLeast(normalizeRole(session?.role_name ?? null), 'admin');
+  const canAccessSettings = roleAtLeast(normalizeRole(session?.role_name ?? null), 'manager');
   const { sessionToken } = useWorkspace();
 
   const [displayCardSize, setDisplayCardSize] = useState(0);
@@ -357,8 +357,8 @@ function SettingsPageContent() {
   // ── Role gate render: locked card instead of the whole shell ────────
   // Positioned AFTER every hook in this component so the locked shell and
   // the full shell run the same hook sequence (rules of hooks). Rendered
-  // for manager/staff/auditor; admin/owner get the app.
-  if (!adminUp) {
+  // for staff/auditor/unrecognized; manager/admin/owner get the app.
+  if (!canAccessSettings) {
     return (
       <div className="settings-page">
         {/* role="status" (polite announcement) cannot share an element with

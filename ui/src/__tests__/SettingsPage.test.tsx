@@ -302,8 +302,8 @@ async function navigateCheck(key: string) {
 }
 
 describe('SettingsPage role gate', () => {
-  it('shows the locked card — not the shell — to a manager session', async () => {
-    authState.session = sessions.manager;
+  it('shows the locked card — not the shell — to a staff session', async () => {
+    authState.session = sessions.staff;
     renderPage();
 
     const card = await screen.findByTestId('settings-locked-card');
@@ -320,8 +320,8 @@ describe('SettingsPage role gate', () => {
     expect(document.querySelector('.settings-topbar')).toBeNull();
   });
 
-  it('locks every role below the admin floor, fail-closed', async () => {
-    for (const role of ['staff', 'auditor', 'manager', 'role-manager', 'cashier', null] as const) {
+  it('locks every role below the manager floor, fail-closed', async () => {
+    for (const role of ['staff', 'auditor', 'cashier', null] as const) {
       cleanup();
       authState.session = role === null ? null : { username: 'u', role_name: role, display_name: 'U' };
       renderPage();
@@ -332,8 +332,8 @@ describe('SettingsPage role gate', () => {
     }
   });
 
-  it('unlocks for owner, bare admin, and the role-admin preset id', async () => {
-    for (const s of [sessions.owner, sessions.admin, sessions['role-admin']]) {
+  it('unlocks for owner, admin, role-admin, manager, and role-manager', async () => {
+    for (const s of [sessions.owner, sessions.admin, sessions['role-admin'], sessions.manager, sessions['role-manager']]) {
       cleanup();
       authState.session = s;
       await openShell();

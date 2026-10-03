@@ -597,9 +597,7 @@ workspace-home-staff-title = Manajemen Staf
 workspace-home-staff-desc = Kelola staf, peran, dan izin
 workspace-home-settings-title = Pengaturan
 workspace-home-settings-desc = Konfigurasi sistem dan preferensi
-# Mirrors setup-feature-cloud-sync / -desc above, the established Indonesian wording.
-workspace-home-cloud-sync-title = Sinkronisasi Cloud
-workspace-home-cloud-sync-desc = Sinkronkan data ke PostgreSQL cloud dengan cadangan
+
 workspace-home-audit-title = Log Audit
 workspace-home-audit-desc = Lihat aktivitas sistem dan riwayat perubahan
 workspace-home-terminals-title = Terminal
@@ -608,18 +606,8 @@ workspace-home-locations-title = Lokasi
 workspace-home-locations-desc = Kelola lokasi fisik dan cabang
 workspace-home-shifts-title = Shift
 workspace-home-shifts-desc = Kelola shift dan jadwal staf
-workspace-home-tax-config-title = Tarif Pajak
-workspace-home-tax-config-desc = Konfigurasi tarif dan aturan pajak
-workspace-home-exchange-rates-title = Nilai Tukar
-workspace-home-exchange-rates-desc = Konfigurasi nilai tukar mata uang
 workspace-home-promotions-title = Promosi
 workspace-home-promotions-desc = Buat dan kelola promosi
-workspace-home-offline-queue-title = Antrean Offline
-workspace-home-offline-queue-desc = Lihat item sinkronisasi offline yang tertunda
-workspace-home-features-title = Fitur
-workspace-home-features-desc = Aktifkan atau nonaktifkan fitur
-workspace-home-data-management-title = Data
-workspace-home-data-management-desc = Cadangkan, ekspor, dan impor data
 workspace-home-workspaces-section = Workspace
 workspace-home-tools-section = Alat
 # Header grup Tools — arsitektur informasi yang disepakati
@@ -636,8 +624,7 @@ workspace-home-tools-requires-tier-premium = Perlu paket Premium
 workspace-home-tools-requires-tier-enterprise = Perlu paket Enterprise
 workspace-home-tools-subscription-inactive = Langganan tidak aktif
 workspace-home-tools-requires-role = Butuh akses Admin
-workspace-home-topology-title = Editor Topologi
-workspace-home-topology-desc = Rancang lokasi, workspace, dan tautan perangkat
+
 workspace-home-memo-title = Memo
 workspace-home-memo-desc = Tulis pemberitahuan untuk terminal dan lokasi
 workspace-home-add-workspace = Tambah Workspace

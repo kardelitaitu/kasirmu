@@ -39,32 +39,31 @@ describe('Tools catalogue — access matrix (todo-tools.md)', () => {
     expect(tierOf('audit')).toBe('premium');
     expect(tierOf('memo')).toBe('pro');
     expect(tierOf('promotions')).toBe('premium');
-    expect(tierOf('cloud-sync')).toBe('plus');
-    expect(tierOf('data-management')).toBe('plus');
-    // Basic Offline Queue visibility is available to all active tiers.
-    expect(tierOf('offline-queue')).toBe('free');
+    expect(tierOf('settings')).toBe('free');
+    expect(tierOf('staff')).toBe('free');
+    expect(tierOf('locations')).toBe('free');
+    expect(tierOf('terminals')).toBe('free');
+    expect(tierOf('shifts')).toBe('free');
   });
 
   it('pins the agreed minimum roles', () => {
     const roleOf = (id: string) =>
       TOOLS.find((t) => t.id === id)!.access.minimumRole;
-    expect(roleOf('settings')).toBe('admin');
-    expect(roleOf('topology-editor')).toBe('admin');
+    expect(roleOf('settings')).toBe('manager');
     expect(roleOf('analytics')).toBe('admin');
     expect(roleOf('staff')).toBe('manager');
     expect(roleOf('locations')).toBe('manager');
     expect(roleOf('terminals')).toBe('manager');
+    expect(roleOf('shifts')).toBe('manager');
     expect(roleOf('reports')).toBe('manager');
     expect(roleOf('audit')).toBe('manager');
     expect(roleOf('memo')).toBe('manager');
     expect(roleOf('promotions')).toBe('manager');
-    expect(roleOf('features')).toBe('owner');
-    expect(roleOf('data-management')).toBe('owner');
   });
 
-  it('Settings is the only role-locked card (managers see it locked, not hidden)', () => {
+  it('no card is role-locked on home grid (managers can access Settings directly)', () => {
     const roleLocked = TOOLS.filter((t) => t.access.lockBelowRole);
-    expect(roleLocked.map((t) => t.id)).toEqual(['settings']);
+    expect(roleLocked).toHaveLength(0);
   });
 
   it('every tool belongs to a declared group and every declared group has tools', () => {
@@ -84,7 +83,6 @@ describe('Tools catalogue — access matrix (todo-tools.md)', () => {
       (t) => t.id,
     );
     expect(operations).toEqual([
-      'topology-editor',
       'staff',
       'locations',
       'terminals',
