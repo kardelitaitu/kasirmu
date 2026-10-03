@@ -15,6 +15,47 @@ fn seed_product(conn: &Connection, id: &str, sku: &str, name: &str, price: i64, 
     .unwrap();
 }
 
+/// A failed `is_active` read must REFUSE, not report the product as active.
+///
+/// `is_active: row.get::<_, i64>(18).unwrap_or(1) != 0` made a failed column read
+/// mean "active" — the permissive direction, and the opposite of `track_serial` one
+/// field up, which defaults to `0`. The mapper's own note at `image_hash` records the
+/// general hazard: a failed read returns a silently wrong answer either way, so the
+/// default must be one that cannot claim the product is sellable.
+///
+/// Dropping the column is the discriminating input: `products` loses `is_active` while
+/// the rest of the row stays valid, so the assertion is about THIS read rather than
+/// about a broken database. The table is rebuilt rather than altered because SQLite
+/// cannot drop a column here, preserving every other column's position.
+#[test]
+fn a_failed_is_active_read_refuses_rather_than_reporting_active() {
+    let conn = fresh();
+    seed_product(&conn, "p-inactive", "SKU-INACT", "Widget", 1500, "USD");
+    let repo = InventoryRepository::new(&conn);
+
+    // Sanity first, so a failure below is caused by the removed column rather than
+    // by a fixture that never worked.
+    assert!(repo.get_product("p-inactive").unwrap().unwrap().is_active);
+
+    conn.execute_batch(
+        r#"ALTER TABLE products RENAME TO products_full;
+CREATE TABLE products AS SELECT id, sku, name, price_minor, currency, category_id,
+    barcode, created_at, updated_at, price_updated_at, track_serial, product_type,
+    version, cost_minor, brand, rack_location, notes, unit, default_supplier_id,
+    popularity_score, image_hash FROM products_full;"#,
+    )
+    .expect("rebuild products without is_active");
+
+    let err = repo
+        .get_product("p-inactive")
+        .expect_err("a failed is_active read must not be reported as active");
+    let msg = format!("{err:?}");
+    assert!(
+        msg.contains("is_active") || msg.contains("no such column"),
+        "the refusal must name the real cause, got: {msg}"
+    );
+}
+
 #[test]
 fn get_product_returns_none_for_missing_id() {
     let conn = fresh();
