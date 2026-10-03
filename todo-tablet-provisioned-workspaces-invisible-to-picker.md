@@ -794,6 +794,46 @@ ADR-56 §5 Q2 rejected. A debug build that never exercises the activation gate a
 so the gate's release behaviour is unverified by any local run. That is worth its own ruling even if
 the arm is kept.
 
+## The intended design exists on desktop — the tablet has no badge (round 11)
+
+This is the most concrete finding of the session, and it comes from a test written for **exactly
+this situation**. `ui/src/__tests__/appShellBootGate.test.tsx:15-24` pins four invariants; the
+fourth is the one that matters, verbatim:
+
+> (4) only an unusable/unknown licence with no other evidence blocks; **inactive/unknown is
+>     otherwise surfaced by the non-blocking badge.**
+
+Rule 2 (`:18-21`) explains the bypass as well, calling it *"the compatibility contract of this
+change"* — *"the pass that keeps a paying existing install from being nagged into a second owner
+account is preserved verbatim"*. So the bypass this report measured is **deliberate and pinned**,
+and the design's answer to an unlicensed-but-admitted install is a **badge, not a block**.
+
+The desktop implements that answer; the tablet does not:
+
+| | Desktop | Tablet |
+|---|---|---|
+| `licenseState` (truth claim, separate from availability) | `AppShell.tsx:118` | **absent** |
+| non-blocking verdict badges | `AppShell.tsx:444-464`, rendered `:911-930` | **absent** |
+| inactive licence surfaced | warning badge (`:930`) | nothing |
+
+`git grep -n 'licenseState\|badge' -- ui/src/app/tablet/TabletAppShell.tsx` returns **no matches**.
+The tablet reads the licence verdict, uses it only to compute `bootAllowed`, and discards it. That
+is how a provisioned install is admitted with no indication its licence is inactive, and why
+nothing on the home screen explains the 17 locked cards.
+
+**This is a defect the project's own test says should not exist.** Unlike the verdict question
+above, it needs no decision: the desktop behaviour is the specified one, the tablet is missing it,
+and the fix is additive — carry `licenseState` alongside `bootAllowed` and render the same badges.
+It changes no gate, no pin, and no Rust.
+
+### The round-8 drafted fix was reaching for this and missed
+
+Round 8 drafted a tablet **toast** for the same case, then reverted it. The stated reason was that
+the branch cannot fire on a debug build — true, but the deeper error was the mechanism: the design
+calls for a persistent `licenseState` badge, not a transient toast. A badge is the right shape
+because it states the **truth claim** rather than acting on it, which is what survives a gate that
+was satisfied for an unrelated reason.
+
 ## Why the test suite never saw it
 
 The gap is masked by the fixture. Every bridge subscription test builds its DB from
