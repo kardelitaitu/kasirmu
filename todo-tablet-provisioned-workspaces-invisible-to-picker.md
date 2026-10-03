@@ -450,8 +450,11 @@ Two things this settles:
 workspaces Defect 1 hides. So the two defects are not merely co-located — repairing this one
 restores the operator's only route around the other.
 
-**The device was left in this state deliberately.** It is a reproducibility aid, not a fix: the
-row is a hand-inserted sentinel on one tablet, invisible to any build, and a `pm clear` removes it.
+**The device was left in that state at the end of round 3** as a reproducibility aid — the row
+was a hand-inserted sentinel on one tablet, invisible to any build, and a `pm clear` would have
+removed it. **Round 6 removed it**, so the device now carries the true provisioned state and the
+table above records the re-measurement. Read the round-3 column as "the mechanism, isolated by
+adding one row", not as what a merchant receives.
 ## Acceptance for a repair
 Two behaviours must BOTH hold, and the second is the one that keeps the fix safe:
 
@@ -470,6 +473,34 @@ get_subscription_capabilities -> state must not be 'unavailable'
 document.querySelectorAll('[data-testid=workspace-tool-card-locked]').length -> must fall
 ```
 
+## Re-verified on the TRUE provisioned state (2026-10-03, round 6)
+
+Rounds 3 and 4 measured the lock-out after hand-inserting a sentinel row to prove the mechanism,
+which left the device in an artificial state. This pass **removed that row** (restoring exactly
+what `provision_device` produces) and re-measured, so the headline evidence is no longer taken
+from a modified device:
+
+| Reading | True provisioned state | With a hand-inserted sentinel (round 3) |
+|---|---|---|
+| `tenant_subscription` rows | **0** | 1 |
+| `workspace_instances` rows | 4 | 4 |
+| logged in successfully | yes | yes |
+| `workspace-home` mounted | 1 | 1 |
+| **locked tool cards** | **17 of 17** | 7 of 17 |
+| **unlocked tool cards** | **0** | 10 |
+| **`.workspace-grid > *`** | **1** (the add card) | 1 |
+
+Both defects therefore reproduce on an **unmodified** device, and the earlier round-3 comparison
+gains a control it did not have: the same device, the same session, differing only in that one row.
+The lock-out is total when the row is absent and partial when it is present, which is the
+attribution the fix decision rests on.
+
+The screen at this state shows both defects at once — the `WORKSPACES` section holding only an
+"Add Workspace" card, and every tool card captioned "Subscription inactive", Topology Editor
+among them. **Topology Editor is the one tool that can create the workspaces Defect 1 hides, so a
+fresh install denies the operator both the destination and the route to it.**
+
+**The device is left in this true state**, not the round-3 modified one.
 ## Evidence retention
 
 Device-side files pulled during this pass: `kasir.db` (+wal) and `store-default.sqlite` (+wal) in
