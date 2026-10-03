@@ -529,6 +529,60 @@ bodies"* (`license.rs:9-10`), so `get_license_status` is meant to let a develope
 The defect is that the concession was made in one reader and not the other, so a debug build
 presents two contradictory verdicts to the same user in the same session.
 
+### The gate's intended order is now measurable, and one profile skips it (round 9)
+
+The three gates in `TabletAppShell.tsx` are ordered exactly as ADR-56 §5 Q2 decided
+(activate → provision → login), and their lines make the ladder explicit:
+
+| Order | Condition | Renders | Line |
+|---|---|---|---|
+| 1 | `!bootAllowed` | `LicenseActivationScreen` | `:327` |
+| 2 | `!hasCompletedSetup` | `ProvisioningFlow` | `:384` |
+| 3 | — | `StaffLoginScreen` | `:434` |
+
+So the activation gate is meant to stand **in front of** provisioning. Whether it does depends on
+`licenceUsable`, and that depends on the build profile, because `get_license_status` answers
+differently in each:
+
+| Profile | Fresh device, no licence stored (`pm clear` state) | `licenceUsable` | Gate 1 |
+|---|---|---|---|
+| **debug** | `is_active: true`, `status: Valid`, `tier: free` (`license.rs:776-788`) | **true** | **never fires** |
+| release | `is_active: false`, `status: Missing` (`license.rs:789-798`) | false | fires |
+
+**This is evidenced by observation, not inference.** In round 3 this session ran `pm clear` on the
+tablet — wiping the provisioning row and every user — and the app then rendered
+`provision-account-email` / "Set up this terminal", i.e. `ProvisioningFlow` at gate 2. Gate 1 could
+only have been skipped if `bootAllowed` was already true, and with `setupCompleted` and
+`installExisting` both false, `licenceUsable` is the only term left. On the debug APK the
+activation gate is therefore **unreachable**, and the ladder silently collapses to
+provision → login — the exact order ADR-56 §5 Q2 rejected as Option B.
+
+### And in release, where the gate DOES fire, its submit is disabled
+
+The release half is not a working alternative. `LicenseActivationScreen.tsx:286-308` guards the
+whole activation call:
+
+```ts
+let success: boolean | null = null;
+if (!isTabletShell()) {
+  const machineId = await getMachineId();
+  ...
+  success = await activateLicense(...);
+}
+```
+
+On a tablet `success` stays `null` — the file's own comment calls that "NOT ATTEMPTED on this shell"
+(`:278-281`) — so the screen renders a licence-key field and a submit button that cannot succeed.
+**A release tablet reaches the gate, is shown the activation screen, and cannot activate from it.**
+
+| Profile | Reaches the gate? | Can activate from it? | End state |
+|---|---|---|---|
+| debug | no — `licenceUsable` true | n/a | provisioned, then all 17 tools locked |
+| release | yes | **no** — submit guarded off | blocked at the activation screen |
+
+Both profiles fail, at different points, which is why this needs the two-part fix and not one
+change: the debug arm decides whether the gate is reachable, and the shell guard decides whether it
+is usable.
 ### What this changes about the earlier analysis
 
 - **The six-way proof in round 5 stands**: no tablet path writes the row, and that is still why
