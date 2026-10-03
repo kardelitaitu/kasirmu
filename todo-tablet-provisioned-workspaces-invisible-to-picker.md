@@ -1767,6 +1767,47 @@ one. The round-17 version looked like a normal assertion of expected behaviour, 
 the fix. The round-20 form is the same instinct as the repo's own precedent — ignored, named for the
 defect, and asserting the direction that must become true.
 
+## ROUND 22: the tripwire was undiscoverable, and this file had no usable status line
+
+Two defects in this session's own artefacts, both found by asking "who reads this, and what do they
+see?"
+
+### The tripwire could not be acted on by the person who would hit it
+
+Round 21 consolidated the linked-provision test into an `#[ignore]`d characterisation — and in doing so
+dropped the reference to this document, while leaving an `#[ignore]` reason that named neither the fix
+nor where to read about it. Measured:
+
+```
+reason before : "characterises the pending Step 5b defect: a linked install must get no bootstrap row"
+reason after  : "pending Step 5b defect: provision_device must add the args.mode == Local guard;
+                then remove this #[ignore]. See
+                todo-tablet-provisioned-workspaces-invisible-to-picker.md"
+```
+
+**And the comparison that makes the point:** of the 15 `#[ignore]`d tests in this repo, every other one
+is ignored for an **environmental** reason — needs Python, needs a D-Bus service, is a child probe run
+by a parent. This is the only one ignored for a **code defect**. Environmental ignores stay valid
+forever and need no follow-up; a defect-characterisation becomes stale the moment the fix lands, and
+nothing in CI reports ignored tests (`git grep` over `.github/` and `scripts/` finds no `--ignored`
+run). So the artefact had to carry its own instructions, and now does.
+
+### This file had no usable status line
+
+They are stale in the opposite direction now: the audit stamp read *"both defects proven, **neither
+fixed**"*, and the summary blockquote described defect 2 as an open lock-out — while the header of
+every round-16-onward section records fixes landed by other sessions.
+
+Worse, the file is a **22-round working log in non-chronological order**: round 15 appears three times
+(at :1300, :1344 and :1377), two sections are both headed "What was measured", and two are both headed
+"Acceptance for a repair". A reader following it top to bottom reaches the 17-lock-out description long
+before the fix, with nothing to say so.
+
+Both fixed at the top of the file rather than by reordering 1,800 lines, which would risk losing the
+corrections the log exists to preserve. The stamp now leads with the current state of each defect, this
+session's own work and its commit status, the one open defect, and the device situation, plus an
+explicit instruction not to read the body chronologically (`6047b8960`).
+
 ## Evidence retention
 
 Device-side files pulled during this pass: `kasir.db` (+wal) and `store-default.sqlite` (+wal) in
