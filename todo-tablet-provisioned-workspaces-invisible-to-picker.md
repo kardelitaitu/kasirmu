@@ -374,6 +374,7 @@ Two independent bypasses, and the second one is not even licence-related: any de
 account skips activation forever. The observable consequence matches — the tablet currently renders
 `staff-login-screen` and **not** the activation screen (`onActivation: false`), so it never offers the
 operator the one action that would license it.
+
 ### What ADR-56 decided about this exact case, in its own words
 
 This is the answer the report had been asking for, and it was in the ADR all along:
@@ -541,6 +542,7 @@ presents two contradictory verdicts to the same user in the same session.
   screen's submit is guarded off on the tablet (`LicenseActivationScreen.tsx:287`). Whether a
   release tablet can therefore bootstrap is untested here and should be measured before any fix is
   chosen, because it decides whether the defect is debug-only or universal.
+
 ## Why the test suite never saw it
 
 The gap is masked by the fixture. Every bridge subscription test builds its DB from
