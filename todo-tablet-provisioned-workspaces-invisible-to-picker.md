@@ -684,6 +684,7 @@ Neither passes a debug-permissive argument that could rescue an absent row: the 
 (`entitlements.rs:136`) an `Unavailable` row never satisfies. **So the lock-out below is reachable
 on the desktop by exactly the same route**, and nothing in this report should be read as a
 tablet-only claim.
+
 ### What the round-9 evidence does and does not show
 
 The `pm clear` measurement stands and is unaffected: the debug arm in `get_license_status` really
