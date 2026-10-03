@@ -183,39 +183,109 @@ So the SAME absent row yields **Free + active** to the session reader and **Free
 the capabilities reader. The UI trusts the second one, and `unavailable` is not in the open set —
 hence the lock-out. The two readers disagreeing, not the absence itself, is the defect.
 
-### The fix is NOT "treat None as Free" — None is three different facts
+### The constraint any repair must respect: `None` is three different facts
 
-`SubscriptionLoader::load_verified_subscription` deliberately collapses three distinct cases into
-one `None` (`crates/kasirmu-core/src/entitlements.rs:324-344`), and the doc comment on the trait
-says so (`:306-308`, "missing/tampered/unreadable"):
+Recorded because the first draft of this report got it wrong and proposed exactly the change
+this forbids. `SubscriptionLoader::load_verified_subscription` deliberately collapses three
+distinct cases into one `None` (`crates/kasirmu-core/src/entitlements.rs:324-344`), and the
+trait's doc comment says so (`:306-308`, "missing/tampered/unreadable"):
 
-1. `Ok(None)` — **no row**: the fresh-install case that should read Free-active.
-2. `verify_signature()` failed — **tampered**: must stay locked. `fail_closed` is the whole point.
+1. `Ok(None)` — **no row**.
+2. `verify_signature()` failed — **tampered**: must stay locked.
 3. `TenantSubscription::load` errored — **unreadable**: must stay locked.
 
-Only case 1 is the defect, and the trait erases the distinction before either reader can act on
-it. A repair that maps `None` to `bootstrap_free()` would hand cases 2 and 3 the same Free-active
-answer and turn a tampered row from locked into usable — the exact downgrade `entitlements.rs:113-114`
-("a missing/tampered row must project a payload that locks every gate") exists to prevent. The
-capabilities path therefore needs to learn WHICH of the three it hit, which is why this is a
-design change on the trait rather than a one-line fallback.
+The section below **refutes the first draft's conclusion** that case 1 is simply a bug: for the
+`local` mode there is no row BY DESIGN, and
+`capabilities_fail_closed_when_subscription_row_missing` pins the lock-out deliberately. So the
+defect is not that the capabilities path fails closed.
 
-## Why the migration comment does not resolve it
+The collapse matters as a constraint, not as the bug: because a single `None` cannot say which
+of the three it was, no repair may map `None` to `bootstrap_free()`. Doing so would hand the
+tampered and unreadable cases the same Free-active answer and turn a tampered row from locked
+into usable — the exact downgrade `entitlements.rs:113-114` ("a missing/tampered row must
+project a payload that locks every gate") exists to prevent. **Any** change here must first
+teach the read which case it hit.
 
-`crates/kasirmu-core/migrations/20260813_init.sql:1512-1520` says the removed `BOOTSTRAP_FREE`
-subscription is "now created by `provision_device`'s single transaction". It is not — that
-transaction has six steps and none touch the table (`provisioning.rs:434-528`): roles `:443`,
-location `:462`, workspaces `:509`, owner `:514`, settings `:520`, marker `:523`. A grep for
-`tenant_subscription` across `provisioning.rs` returns no matches. A grep across the whole tree
-finds `INSERT INTO tenant_subscription` only in migrations and in cloud-server TESTS — there is
-**no client-side write path at all**, so the comment describes work that does not exist in any
-form.
+## Where a subscription row can come from — and why `local` never gets one
 
-ADR-56 §2.6 is more careful than the migration comment and does not promise a local write: it
-retires the sentinel on the grounds that "a provisioned terminal gets a real signed subscription"
-(`docs/decisions/2026-09-21-adr56-first-run-provisioning.md:667-668`) — i.e. the signed row is
-expected from the licence server. That is coherent for a `linked` install and leaves the
-question these four-versus-one readers disagree about only for `local`.
+Every writer of this table, and who can reach it:
+
+| Writer | Operation | Reached by |
+|---|---|---|
+| `licensed_subscription::store_subscription` (`license_verification.rs:728-764`) | **INSERT OR REPLACE**, a *real signed* row | an activation or renewal against the licence server — the `linked` path |
+| `refresh_subscription_status_from_server` (`:785-802`) | **UPDATE only** | the `/license/status` poll; no-ops when no row exists |
+| `seed_provisioned_baseline` (`migrations.rs:530-546`) | INSERT with the `BOOTSTRAP_FREE` sentinel | **TESTS ONLY** — verified in round 3, no production caller |
+| `provision_device` | **nothing** | — |
+
+Two consequences:
+
+- **`linked` works.** Licence activation writes a genuine signed row; the sentinel is indeed
+  retired for that path, exactly as ADR-56 §2.6 intends.
+- **`local` can never obtain one.** It has no activation (that needs the network it opted out of),
+  no sync path (`tenant_subscription` is absent from the sync entity set), and the migration seed
+  was deleted in the same change. So `state` is `unavailable` for the life of the install, and
+  every tool stays locked.
+
+The migration comment at `20260813_init.sql:1519` ("They are now created by `provision_device`'s
+single transaction") is therefore **not accurate**: that transaction has six steps and none touch
+the table (`provisioning.rs:434-528` — roles `:443`, location `:462`, workspaces `:509`, owner
+`:514`, settings `:520`, marker `:523`), and a grep for `tenant_subscription` across
+`provisioning.rs` returns no matches. Line 1520 of the same comment is the accurate half — the
+sentinel really is retired in favour of a signed row — but nothing then gives a `local` install
+one.
+
+## Why the test suite never saw it
+
+The gap is masked by the fixture. Every bridge subscription test builds its DB from
+`crate::testing::temp_conn`, and that is `migrations::fresh_db()` **plus
+`migrations::seed_provisioned_baseline(&conn)`** (`testing.rs:99-103`) — so **every test database
+already contains the `BOOTSTRAP_FREE` row that production never writes**. The fixture's own doc
+comment states the intent (`subscription_tests.rs:10-13`): the seed is included "so the seeded
+baseline (ADR #56 §2.6: location, legal entity, workspace instances, BOOTSTRAP_FREE subscription)
+is present", and that calling `fresh_db()` alone "would skip that seed and make every fail-closed
+arm pass for the wrong reason".
+
+The result is that the production state — **no row at all** — is reachable in tests only by
+deliberately deleting the seed, which is exactly what
+`capabilities_fail_closed_when_subscription_row_missing` does (`subscription_tests.rs:254-277`).
+That test is correct and valuable; it is simply not the state a `local` install ships in.
+
+## This behaviour is INTENTIONAL and PINNED — it is not a bug to patch away
+
+This corrects the first draft of this section, which proposed treating a missing row as Free.
+`capabilities_fail_closed_when_subscription_row_missing` asserts `state == "unavailable"`
+deliberately, with the reason inline (`subscription_tests.rs:268-269`): "Fail closed: Free
+entitlements — the debug Premium upgrade must not apply, so every tier gate locks even in dev
+builds." The trait's own doc groups the three cases on purpose (`entitlements.rs:306-308`,
+"missing/tampered/unreadable"), and `entitlements.rs:113-114` states the rule that a missing row
+must lock every gate.
+
+So the question is NOT "why does the capabilities path fail closed" — that is working as designed,
+and the design is defensible. The question is **what a `local` install is supposed to be**, because
+today that mode is provisioned into a state the product then treats as unlicensed.
+
+### The open product question (needs an owner decision, not a patch)
+
+The setup wizard's own copy promises the opposite of what ships —
+`shared-ui/locales/settings.ftl:99`, the `local` mode card the owner chose:
+
+> Keep this terminal completely offline. No account, no cloud sync — **a free starter workspace
+> is created on the device.**
+
+Measured against that sentence, the device delivers neither half: the starter workspaces exist
+but are invisible (Defect 1), and every tool is locked (this defect). Three ways out, and they
+are not equivalent — this is the decision the report cannot make:
+
+| Option | What changes | Cost / risk |
+|---|---|---|
+| **A. `local` is a supported tier** | `provision_device` writes a Free row for `local` mode only, or the capabilities read treats an absent row as Free **for that mode** | Touches the pinned fail-closed contract; must keep `linked` and tampered-row behaviour exactly as tested |
+| **B. `local` is genuinely unsupported** | Remove or reword the wizard option so nobody provisions into a locked state | Discards an offline-first deployment; ADR-56 §2.4 makes `local` the *default* tier |
+| **C. The wizard copy is wrong** | Reword `setup-mode-local-desc` to stop promising a starter workspace | Cheapest, but leaves the install locked — it fixes the sentence, not the product |
+
+ADR-56 §2.4 already argues against B: it makes `local` "the **default**, not the fallback, because
+the target deployment includes merchants" without reliable connectivity. If that ruling still
+stands, A is the direction — and the constraint in the section above says how it must be done
+(distinguish absent from tampered, never collapse them).
 
 ## Why it locks every tool
 
