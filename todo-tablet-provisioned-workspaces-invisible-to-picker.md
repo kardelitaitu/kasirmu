@@ -580,6 +580,7 @@ stored payload therefore reported `is_active: true`, which is the debug arm at `
 The practical consequence: the ladder silently becomes provision → login, which is the order ADR-56
 §5 Q2 explicitly rejected (its Option B). The ADR's gate is present in the source and dead at
 runtime in every debug build.
+
 ### And in release, where the gate DOES fire, its submit is disabled
 
 The release half is not a working alternative. `LicenseActivationScreen.tsx:286-308` guards the
