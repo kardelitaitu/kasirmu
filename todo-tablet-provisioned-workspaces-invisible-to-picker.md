@@ -1297,6 +1297,50 @@ index: 45da91d7a50b58d27556b9a9951b556e42f96eb8   (differ -> genuine changes)
 be committed first. The condition has held since round 12; the work itself is finished, verified on
 the device (rounds 12-13) and covered by tests (round 14).
 
+## ROUND 15 CORRECTION: the debug APK needs the dev server — it does not embed the bundle
+
+Round 12 recorded that "the installed debug APK serves its EMBEDDED bundle, not the Vite dev
+server", and built a verification loop on it. **That conclusion was wrong**, and the correction
+matters because the loop it prescribed is not the one that works.
+
+What actually happens, measured this round:
+
+1. `cargo tauri android dev` rewrites the debug build's `devUrl` to the host's LAN address at
+   install time — the installed APK requested `http://192.168.0.168:1422/`, while the same file on
+   disk still reads `http://localhost:1422/`. The tablet reported it verbatim:
+   `Failed to request http://192.168.0.168:1422/: error sending request for url (...)`.
+2. With the dev server **down**, the app therefore renders `Loading…` and then that error, and
+   dynamic imports fail: `TypeError: Failed to fetch dynamically imported module:
+   https://tauri.localhost/src/features/workspaces/WorkspaceHome.tsx`.
+3. With the dev server **up**, it loads source modules from `/src/...` — not `/assets/index.mobile-
+   <hash>.js`. The Vite client connects to `192.168.0.168:1422`, and only its HMR WebSocket is
+   blocked (`ws://` under the HTTPS page origin, the mixed-content limit recorded in this document
+   since round 1).
+
+So the `/assets/index.mobile-<hash>.js` observation in round 12 was real but came from a **release**
+APK's history at that point, not from this debug one — and the reasoning built on it ("rebuild the
+bundle and re-install the APK") described a loop that is not what made the round-13 verification
+pass. What made it pass was the dev server being **up**, serving current source.
+
+**The loop that actually verifies a frontend change on this device:**
+
+```
+1. start the mobile dev server:  TAURI_DEV_HOST=<lan-ip> npm run dev:mobile   (from ui/)
+2. confirm reachability from the tablet:
+     adb shell 'curl -s -m 8 -o /dev/null -w %{http_code} http://<lan-ip>:1422/'   -> 200
+3. (re)install the debug APK if the Rust side changed; a UI-only change needs no reinstall
+4. force-stop and relaunch the app, then drive it over CDP
+```
+
+`npm run build:mobile` is **not** part of this loop — it produces `ui/dist-mobile/`, which the debug
+APK does not serve. It would matter for a release build, which is a different verification.
+
+**Why the correction is worth recording rather than quietly fixing:** rounds 12-13 stated the wrong
+mechanism confidently, and a reader following it would rebuild bundles that never reach the device.
+The device-level *results* in those rounds still stand — the notice was observed rendering, and the
+expired-state proof was observed — because the dev server happened to be up or the install happened
+to carry the change. Only the explanation of *why* it worked was wrong.
+
 ## Evidence retention
 
 Device-side files pulled during this pass: `kasir.db` (+wal) and `store-default.sqlite` (+wal) in
