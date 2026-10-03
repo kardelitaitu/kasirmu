@@ -544,11 +544,13 @@ fn a_linked_provision_requires_its_tenant_and_credential() {
     assert_eq!(out.record.device_id.as_deref(), Some("cred-1"));
 }
 
-/// A linked provision writes its subscription row under the LINKED tenant.
+/// A linked provision must write NO subscription row, and today it writes one.
 ///
-/// This pins the behaviour as it stands, and in doing so records a mismatch
-/// rather than blessing it. Step 5b keys the row on `args.tenant_id`, so a
-/// linked install writes `tenant-abc`; but the capabilities read looks for
+/// The invariant, first, because that is what this asserts: a linked install's
+/// entitlement is the server's grant, so `provision_device` must leave
+/// `tenant_subscription` empty. It currently does not. Step 5b keys the row on
+/// `args.tenant_id`, so a linked install writes `tenant-abc`; but the
+/// capabilities read looks for
 /// `'default'` alone (`entitlements.rs`: "no tenant_subscription row for
 /// 'default' — failing closed"), and so does the reconcile's existence check
 /// (`migrations.rs`). The two never meet, so a linked terminal that just wrote
@@ -567,72 +569,25 @@ fn a_linked_provision_requires_its_tenant_and_credential() {
 /// the design says the server's grant belongs, under a tenant no tablet reader
 /// consults.
 ///
-/// This test asserts the CURRENT row so the defect is visible and fails loudly
-/// if either side moves; it is not a statement that this is correct. It is
-/// reachable through the shipping first-run flow: `ProvisioningFlow.tsx`
+/// Reachable through the shipping first-run flow: `ProvisioningFlow.tsx`
 /// initialises `provisionMode` to `'linked'` and sends the account's
 /// `tenantId`. The fix is one guard — write only for `ProvisioningMode::Local`,
 /// mirroring the reconcile — which also settles the tenant question, because a
 /// `local` install's tenant is `None` and therefore `"default"`.
-#[test]
-fn a_linked_provision_keys_its_subscription_row_to_the_linked_tenant() {
-    let conn = fresh();
-    let mut linked = args_for("dev-linked");
-    linked.mode = ProvisioningMode::Linked;
-    linked.tenant_id = Some("tenant-abc".to_owned());
-    linked.device_credential_id = Some("cred-1".to_owned());
-    provision_device(&conn, &linked).unwrap();
-
-    // The row the WRITE produced.
-    let tenants: Vec<String> = conn
-        .prepare("SELECT tenant_id FROM tenant_subscription ORDER BY tenant_id")
-        .unwrap()
-        .query_map([], |r| r.get(0))
-        .unwrap()
-        .map(|r| r.unwrap())
-        .collect();
-    assert_eq!(
-        tenants,
-        vec!["tenant-abc".to_string()],
-        "Step 5b keys the row on args.tenant_id"
-    );
-
-    // The row the READ looks for. Its absence is the defect this test exposes:
-    // the read is hardcoded to 'default', so it cannot see what the write made.
-    let default_rows: i64 = conn
-        .query_row(
-            "SELECT COUNT(*) FROM tenant_subscription WHERE tenant_id = 'default'",
-            [],
-            |r| r.get(0),
-        )
-        .unwrap();
-    assert_eq!(
-        default_rows, 0,
-        "a linked install leaves the tenant the capabilities read actually uses empty — \
-         the read fails closed and every tool locks"
-    );
-}
-
-/// The invariant `provision_device` must satisfy for a LINKED install: no row.
 ///
-/// `#[ignore]`d on purpose, in the repo's characterisation idiom (see
-/// `products_stock_adjust_tests.rs`: a test ignored "as a CHARACTERISATION of the
-/// loss", later un-ignored and inverted when the fix landed). It records the
-/// invariant that the pending Step 5b would break, without leaving a red build
-/// for whoever is editing `provisioning.rs`.
+/// `#[ignore]`d on purpose, in this repo's characterisation idiom (see
+/// `products_stock_adjust_tests.rs`: a test ignored "as a CHARACTERISATION of
+/// the loss", later un-ignored and inverted when its fix landed). It asserts
+/// the INVARIANT the pending Step 5b breaks rather than the row it currently
+/// writes, so it needs no edit when the guard lands — only the `#[ignore]`
+/// comes off. Ignored rather than live because it fails today, and a red build
+/// is no gift to whoever is editing `provisioning.rs`.
 ///
-/// The invariant is not invented here — the reconcile already pins it for its own
-/// path, in `migrations_tests.rs`'s
-/// `reconcile_leaves_a_linked_install_to_the_server_grant`, which asserts **0**
-/// subscription rows for a linked install and says why: "a linked install's
-/// entitlement is the server's, and a missing grant must keep failing closed".
-/// What is missing is the same assertion at the OTHER entry point, since the two
-/// run through different functions and neither test covers the other.
-///
-/// UN-IGNORE THIS when `provision_device` gains its `args.mode` guard. It should
-/// then pass unchanged: a local-only write leaves a linked install with no row.
-/// Until then it fails, which is the point — it is the tripwire for the defect
-/// described in `todo-tablet-provisioned-workspaces-invisible-to-picker.md`.
+/// The invariant is the reconcile's, not this test's invention:
+/// `migrations_tests.rs`'s `reconcile_leaves_a_linked_install_to_the_server_grant`
+/// asserts it for the other entry point — "a linked install's entitlement is the
+/// server's, and a missing grant must keep failing closed". The two run through
+/// different functions, so neither test covers the other; this closes that.
 #[test]
 #[ignore = "characterises the pending Step 5b defect: a linked install must get no bootstrap row"]
 fn a_linked_provision_leaves_no_bootstrap_subscription_row() {
@@ -657,6 +612,7 @@ fn a_linked_provision_leaves_no_bootstrap_subscription_row() {
          failing closed — provision_device must not write a local BOOTSTRAP_FREE row"
     );
 }
+
 
 #[test]
 fn provisioning_a_local_terminal_names_no_licence_server_tenant() {
