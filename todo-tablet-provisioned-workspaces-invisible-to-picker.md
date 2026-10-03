@@ -723,6 +723,77 @@ the security property"*, and warns that a green `cargo test` does not cover the 
 So the permissive debug arms are a deliberate, tested, cross-cutting convention — the earlier draft
 of this section proposed deleting one, which would have failed the tests written to protect it.
 
+## The two owner rulings this case falls between (round 11)
+
+Rounds 8-10 proposed fixing this by changing one of the two readers. Reading the owner rulings
+shows the question is **not** a free choice: two rulings already on record pull in opposite
+directions, and this case sits between them. Recording that is more useful than picking a side,
+because the pick is exactly what the existing rulings say not to make informally.
+
+### R2 — keep the `cfg` gate, declare the gap explained
+
+`docs/plans/_done/done-todo-owner-rulings.md:62-72`. Subject: a debug-only code path
+(`sync_tests.rs:35-37`) covering a fallback that "exists only under `#[cfg(debug_assertions)]`". The
+ruling: *"**(i) — keep the `cfg` gate, declare the debug/release gap explained, and tick the
+box.**"* The recommendation explains why the alternative is not worth taking (`:70`): forcing a
+per-profile assertion *"buys coverage of a dev-only fallback"*.
+
+**Read against this case**, `get_license_status`'s debug arm is the same shape: a dev-only
+affordance (run without a licence) that release deliberately does not have. R2 says keep it and
+document the gap, which is what `license_tests.rs:614`/`:663` already do under the `HAZARD`
+headers.
+
+### R11 — a behaviour must not depend on the build profile
+
+`done-todo-owner-rulings.md:274-284`. Subject: the `debug_upgrade` flag, where the tablet passes
+`false` and the bridge passes `true`. The ruling: *"**(i) — `false` is authoritative. An audit
+record must not depend on the build profile, so the recorder stops depending on a debug-only tier
+promotion and the bridge changes.**"* The recommendation states the principle generally (`:282`):
+*"An audit record must not depend on the build profile."*
+
+**Read against this case**, `get_license_status` returns a different **verdict** per profile for the
+same database — `Valid`/active in debug, `Missing`/inactive in release — and it is that verdict
+that decides whether the activation gate fires. R11 says the profile-independent side is
+authoritative, which is `get_subscription_capabilities` (always strict, both profiles).
+
+### Why neither settles it, and what that implies
+
+| | R2 | R11 |
+|---|---|---|
+| Subject | a TEST covering a dev-only **feature** release lacks | a RECORDER whose **output** diverges |
+| Ruling | keep the gate; document the gap | remove the dependence; the strict side wins |
+| Applies here because | the debug arm is a dev-only **affordance** | the arm changes a **verdict that gates access** |
+
+Both readings are defensible, and the two rulings themselves acknowledge they select different
+sides for good reasons — R11's text says so explicitly: *"Note this selects the opposite shell from
+R10, which is correct and not a contradiction: R10 moves gates toward the stricter side, this moves
+the recorder toward the profile-independent side."* (`:284`)
+
+So the deciding question is which of the two shapes this arm is, and that is a judgement about
+intent rather than a fact either file records:
+
+- if the debug arm is **a convenience for developers** (the HAZARD header's reading — "Asserted AS
+  SHIPPED, not as correct"), R2 governs: keep it, and the defect is only that the capabilities path
+  never got the matching concession, so a **debug tablet** is self-inconsistent;
+- if it is **a verdict the product must not vary by profile** (R11's reading), then the arm is the
+  bug, the capabilities path is already right, and the fix is to make `get_license_status`
+  profile-independent in **both** shells — which also removes the desktop's latent divergence.
+
+**This report does not decide between them.** Both fixes touch a pinned, security-adjacent behaviour
+under an explicit `HAZARD` header, and R10's own price note applies with full force (`:270`): *"it
+is the one item here I would not ship without a written ruling."* The deliverable this round is the
+question, framed against the two rulings that already exist, so the ruling that closes it can cite
+whichever of R2/R11 it follows and say why.
+
+### One thing independent of that choice
+
+Whichever way the verdict question is settled, the **dead activation gate on a debug build** stands
+as a defect on its own: with `licenceUsable` forced true by the debug arm, gate 1
+(`TabletAppShell.tsx:327`) cannot fire, so the ladder collapses to provision → login — the order
+ADR-56 §5 Q2 rejected. A debug build that never exercises the activation gate also never tests it,
+so the gate's release behaviour is unverified by any local run. That is worth its own ruling even if
+the arm is kept.
+
 ## Why the test suite never saw it
 
 The gap is masked by the fixture. Every bridge subscription test builds its DB from
