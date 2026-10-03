@@ -1468,6 +1468,15 @@ body:has(.memo-stack) .ws-layer-content {
   position: relative;
   cursor: default;
   opacity: 0.62;
+  /* Dimming alone is not "greyed out". On this dark surface an opacity cut
+     leaves every hue intact, and the tier badge is a saturated fill — so the
+     badge was the one vivid element on a card that is meant to read as
+     disabled. Desaturate the card itself and the badge greys with it.
+     Same pairing as the genuinely-unusable port row
+     (NodeTopologyEditor.css:2041-2044: opacity + grayscale(1)), NOT the
+     partial grayscale(0.4) that marks a disabled-but-primary action
+     (CartPanelActions.css:85-89). */
+  filter: grayscale(1);
   background: var(--color-bg-surface);
   /* Reserve the badge's corner. The badge is 1rem tall and sits --space-2 off
      the bottom edge, so it occupies the band 8..24px above the card's bottom
@@ -1499,9 +1508,9 @@ body:has(.memo-stack) .ws-layer-content {
 
 /* ── Tier badge: the plan a locked card needs, bottom-right ─── */
 /* Generated artwork from assets/tier-badges/svg/ (see utils/tierBadge.ts).
-   It states the PLAN; the pill above states the REASON. The card's own 0.62
-   opacity dims the badge with everything else, which is intended: the card is
-   still greyed out, and the badge must not read as an enabled control. */
+   It states the PLAN; the pill above states the REASON. The locked card dims
+   AND desaturates (see the filter on .workspace-tool-card--locked), so the
+   badge greys with everything else — it must not read as an enabled control. */
 
 .workspace-tool-tier-badge {
   position: absolute;
@@ -1509,7 +1518,6 @@ body:has(.memo-stack) .ws-layer-content {
   bottom: var(--space-2);
   display: inline-flex;
   align-items: center;
-  line-height: 0;
 }
 
 /* Height drives the scale; the width follows from each badge's own viewBox
@@ -1518,6 +1526,28 @@ body:has(.memo-stack) .ws-layer-content {
   display: block;
   height: 1rem;
   width: auto;
+}
+
+/* Visually hidden, readable by assistive tech: the badge is artwork, so this
+   span carries the accessible statement of the plan.
+   Screen-scoped rather than the global `.sr-only` (theme/components.css), and
+   the recipe is identical. Reason: the WorkspaceHome entry in
+   screenExtraction.test.ts resolves its used-classNames against its own sheet
+   UNION `parentCss`, and a `parentCss` citation is all-or-nothing — the guard
+   requires the cited sheet to define EVERY name the entry's own CSS misses, so
+   components.css cannot be cited while any other name in this screen is still
+   unstyled. Same call, and the same recipe, as RetailPosScreen.css:209
+   `.retail-sr-only`. */
+.workspace-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 /* ── Add workspace card (+) ───────────────────────────────── */

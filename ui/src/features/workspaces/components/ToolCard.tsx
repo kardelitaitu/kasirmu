@@ -130,9 +130,10 @@ export function ToolCard({
         )}
       </div>
       {/* The plan badge, pinned bottom-right. The artwork is decorative — the
-          accessible statement of the plan is the `sr-only` text beside it,
-          which is the same Fluent message the reason pill used to carry. That
-          is why the key keeps a reference and the orphan lint stays satisfied. */}
+          accessible statement of the plan is the hidden text beside it, which
+          is the same Fluent message the reason pill used to carry. That is why
+          the key keeps a reference and the orphan lint stays satisfied.
+          `workspace-sr-only`, not the global `sr-only`: see WorkspaceHome.css. */}
       {tool.access.minimumTier !== 'free' && (
         <span className="workspace-tool-tier-badge">
           <img
@@ -143,7 +144,7 @@ export function ToolCard({
             aria-hidden="true"
           />
           <Localized id={`workspace-home-tools-requires-tier-${tool.access.minimumTier}`}>
-            <span className="sr-only">Requires {tool.access.minimumTier} plan</span>
+            <span className="workspace-sr-only">Requires {tool.access.minimumTier} plan</span>
           </Localized>
         </span>
       )}
