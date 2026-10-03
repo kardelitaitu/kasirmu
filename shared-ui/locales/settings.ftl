@@ -100,6 +100,7 @@ setup-mode-local-desc = Keep this terminal completely offline. No account, no cl
 setup-mode-linked-title = Link your kasir.mu account
 setup-mode-linked-desc = Sign up or sign in to attach this terminal to your account, for multi-device sync, cloud backup, and your plan.
 setup-tab-pair = QR Pairing
+setup-tab-google = Google Sign-in
 setup-tab-email = Email Code
 setup-provision-store-type = What kind of shop is this?
 setup-store-type-simple-retail = Shop

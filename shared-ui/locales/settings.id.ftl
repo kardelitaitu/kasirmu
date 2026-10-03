@@ -176,6 +176,7 @@ setup-mode-local-desc = Jaga terminal ini sepenuhnya offline. Tanpa akun, tanpa 
 setup-mode-linked-title = Tautkan akun kasir.mu Anda
 setup-mode-linked-desc = Daftar atau masuk untuk menautkan terminal ini ke akun Anda, untuk sinkronisasi antarperangkat, backup cloud, dan paket Anda.
 setup-tab-pair = Pasangkan QR
+setup-tab-google = Masuk Google
 setup-tab-email = Kode Email
 setup-provision-store-type = Jenis usaha apa ini?
 setup-store-type-simple-retail = Toko

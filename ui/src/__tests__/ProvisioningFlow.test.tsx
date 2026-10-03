@@ -80,6 +80,7 @@ vi.mock('@fluent/react', () => ({
           'setup-provision-account-section': 'kasir.mu Account',
           'setup-provision-offline-warn': 'Internet connection is required to create or link your account.',
           'setup-tab-pair': 'QR Pairing',
+          'setup-tab-google': 'Google Sign-in',
           'setup-tab-email': 'Email Code',
           'setup-account-email': 'Email address',
           'setup-account-code': 'Verification code',
@@ -275,10 +276,7 @@ describe('ProvisioningFlow (ADR #56 §2.3 / §2.5)', () => {
 
     render(<ProvisioningFlow onProvisioned={mockOnProvisioned} />);
 
-    // The QR view is not the default tab any more (fix 4 — the email leg is),
-    // and this failure renders in that view. Ask for it by name.
-    fireEvent.click(await screen.findByRole('tab', { name: /QR Pairing/i }));
-
+    // QR Pairing is the Hero tab on tablets (Option 3), auto-started on mount.
     // The failure surfaces, and a control to retry is offered beside it.
     const retry = await screen.findByRole('button', { name: /Refresh Code/i });
     fireEvent.click(retry);
@@ -985,15 +983,13 @@ describe('ProvisioningFlow (ADR #56 §2.3 / §2.5)', () => {
     // Switch to Mode 2
     fireEvent.click(screen.getByTestId('provision-mode-linked'));
 
-    // Tablet subtabs exist
+    // Tablet subtabs exist (Option 3: QR hero, Google direct, Email fallback)
     expect(screen.getByRole('tab', { name: /QR Pairing/i })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /Google Sign-in/i })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: /Email Code/i })).toBeInTheDocument();
 
-    // The EMAIL tab is the default now (fix 4): a merchant alone with one
-    // terminal cannot scan a QR with a second signed-in phone. This test is
-    // about the QR leg specifically, so it asks for it by name.
-    expect(screen.getByRole('tab', { name: /Email Code/i }).getAttribute('aria-selected')).toBe('true');
-    fireEvent.click(screen.getByRole('tab', { name: /QR Pairing/i }));
+    // QR Pairing is the Hero tab on tablets (Option 3)
+    expect(screen.getByRole('tab', { name: /QR Pairing/i }).getAttribute('aria-selected')).toBe('true');
 
     // Flush startDevicePairing microtasks
     await vi.runOnlyPendingTimersAsync();
@@ -1052,13 +1048,10 @@ describe('ProvisioningFlow (ADR #56 §2.3 / §2.5)', () => {
     // Switch to Mode 2
     fireEvent.click(screen.getByTestId('provision-mode-linked'));
 
-    // The Email Code subtab is ALREADY the selected one (fix 4). This test used
-    // to click it, which passed on the old default too — so the assertion that
-    // it is selected is now the load-bearing part, not a side effect of a tap.
+    // Switch to Email Code tab
     const emailTab = screen.getByRole('tab', { name: /Email Code/i });
+    fireEvent.click(emailTab);
     expect(emailTab.getAttribute('aria-selected')).toBe('true');
-    // And the QR route is still exactly one tap away: the default changed, it
-    // was not removed.
     expect(screen.getByRole('tab', { name: /QR Pairing/i })).toBeInTheDocument();
 
     // Input email and send code. Queried by its accessible NAME, not its
@@ -1097,6 +1090,44 @@ describe('ProvisioningFlow (ADR #56 §2.3 / §2.5)', () => {
           device_credential_id: 'term-email-1',
         }),
       );
+    }, FAST_WAIT);
+  });
+
+  it('Tablet shell in Mode 2 allows direct Google sign-in leg', async () => {
+    vi.mocked(isTabletShell).mockReturnValue(true);
+    vi.mocked(startDevicePairing).mockResolvedValueOnce({
+      code: 'ABCD1234',
+      poll_token: 'poll-token-xyz',
+      expires_at: new Date(Date.now() + 60000).toISOString(),
+      qr_url: 'https://kasir.mu/pair?code=ABCD1234',
+    });
+    vi.mocked(linkDeviceGoogle).mockResolvedValueOnce({
+      tenantId: 'tenant-google-123',
+      provider: 'google',
+      email: 'owner-tablet@gmail.com',
+      terminal: {
+        terminalId: 'term-google-1',
+        issued: true,
+      },
+    });
+
+    render(<ProvisioningFlow onProvisioned={mockOnProvisioned} />);
+
+    // Switch to Mode 2
+    fireEvent.click(screen.getByTestId('provision-mode-linked'));
+
+    // Switch to Google Sign-in tab
+    const googleTab = screen.getByRole('tab', { name: /Google Sign-in/i });
+    fireEvent.click(googleTab);
+    expect(googleTab.getAttribute('aria-selected')).toBe('true');
+
+    // Click Google button
+    const googleBtn = screen.getByTestId('provision-google-button');
+    fireEvent.click(googleBtn);
+
+    await waitFor(() => {
+      expect(linkDeviceGoogle).toHaveBeenCalled();
+      expect(screen.getByText(/Linked to owner-tablet@gmail\.com\./i)).toBeInTheDocument();
     }, FAST_WAIT);
   });
 
@@ -1293,10 +1324,6 @@ describe('ProvisioningFlow (ADR #56 §2.3 / §2.5)', () => {
       });
 
     render(<ProvisioningFlow onProvisioned={mockOnProvisioned} />);
-    // `getByRole`, not `findByRole`: fake timers are installed, and testing-library's
-    // `findBy` waits on those same fake timers, so it hangs until the 10s
-    // timeout instead of resolving.
-    fireEvent.click(screen.getByRole('tab', { name: /QR Pairing/i }));
     // Exactly zero milliseconds: the first session's promise has to settle and
     // paint, and the 3s poll must NOT have run yet. (runOnlyPendingTimersAsync
     // would fire the interval here, so by the time we looked the replacement
@@ -1336,8 +1363,6 @@ describe('ProvisioningFlow (ADR #56 §2.3 / §2.5)', () => {
       .mockRejectedValue(new Error('network down'));
 
     render(<ProvisioningFlow onProvisioned={mockOnProvisioned} />);
-    // Same reason as the test above: `findByRole` waits on the fake clock.
-    fireEvent.click(screen.getByRole('tab', { name: /QR Pairing/i }));
     // 0ms first: the dead session must be ON SCREEN before the poll can notice
     // it is dead. 3s after that is the tick that mints the replacement.
     await vi.advanceTimersByTimeAsync(0);
@@ -1354,9 +1379,9 @@ describe('ProvisioningFlow (ADR #56 §2.3 / §2.5)', () => {
     expect(startDevicePairing).toHaveBeenCalledTimes(3);
   });
 
-  // ── Fix 4: the tablet opens on the route a solo merchant can actually use ──
+  // ── Option 3: tablet opens on QR Pairing hero route with Google & Email alternatives ──
 
-  it('opens the tablet on the email route, and says what QR needs', () => {
+  it('opens the tablet on the QR pairing route, and provides Google and Email alternatives', () => {
     vi.mocked(isTabletShell).mockReturnValue(true);
     vi.mocked(startDevicePairing).mockResolvedValue({
       code: 'ABCD1234',
@@ -1366,18 +1391,12 @@ describe('ProvisioningFlow (ADR #56 §2.3 / §2.5)', () => {
     });
     render(<ProvisioningFlow onProvisioned={mockOnProvisioned} />);
 
-    // The DEFAULT is the email leg. QR asks for a second phone already signed
-    // in to the account — three-part precondition on the first screen of setup,
-    // which a merchant with one terminal alone cannot meet.
-    expect(screen.getByRole('tab', { name: /Email Code/i })).toHaveAttribute('aria-selected', 'true');
-    expect(screen.getByRole('tab', { name: /QR Pairing/i })).toHaveAttribute('aria-selected', 'false');
-    // The cost is disclosed rather than discovered at the tab.
+    // QR Pairing is the Hero tab on tablets (Option 3).
+    expect(screen.getByRole('tab', { name: /QR Pairing/i })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: /Google Sign-in/i })).toHaveAttribute('aria-selected', 'false');
+    expect(screen.getByRole('tab', { name: /Email Code/i })).toHaveAttribute('aria-selected', 'false');
+    // The requirement is stated upfront.
     expect(screen.getByText(/QR pairing needs a second phone signed in/i)).toBeInTheDocument();
-
-    // And no pairing session is minted for a route the merchant did not open:
-    // starting one is a network call, and the automatic-start effect is gated
-    // on the QR tab for exactly that reason.
-    expect(startDevicePairing).not.toHaveBeenCalled();
   });
 
   // ── Fix 5: the currency and timezone this terminal is set up with ────────

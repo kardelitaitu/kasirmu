@@ -227,14 +227,10 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
 
   // Tablet pairing state.
   //
-  // 'email' is the DEFAULT, not 'pair'. QR pairing asks the merchant to have a
-  // phone with the kasir.mu account ALREADY signed in, hold it over the terminal,
-  // and scan — a three-part precondition on the very first screen of setup, and
-  // the one a merchant setting up a single terminal alone simply cannot meet.
-  // The emailed code needs one thing (the account address) and works on any
-  // device. Both routes stay one tap apart, so QR is still reachable for the
-  // merchant who has a second device on the counter.
-  const [tabletTab, setTabletTab] = useState<'pair' | 'email'>('email');
+  // 'pair' is the HERO on tablets (Option 3): QR pairing offers an instant scan
+  // affordance with a phone. Direct Google Login is unblocked as a first-class tab,
+  // and Email Code remains the fallback for solo merchants.
+  const [tabletTab, setTabletTab] = useState<'pair' | 'google' | 'email'>('pair');
   const [pairingSession, setPairingSession] = useState<PairingSessionStart | null>(null);
   const [pairingLoading, setPairingLoading] = useState(false);
   const [pairingExpired, setPairingExpired] = useState(false);
@@ -784,6 +780,15 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
                   <button
                     type="button"
                     role="tab"
+                    aria-selected={tabletTab === 'google'}
+                    className={`provisioning-subtab ${tabletTab === 'google' ? 'active' : ''}`}
+                    onClick={() => setTabletTab('google')}
+                  >
+                    <Localized id="setup-tab-google">Google Sign-in</Localized>
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
                     aria-selected={tabletTab === 'email'}
                     className={`provisioning-subtab ${tabletTab === 'email' ? 'active' : ''}`}
                     onClick={() => setTabletTab('email')}
@@ -853,6 +858,35 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
                         </p>
                       </div>
                     ) : null}
+                  </div>
+                ) : tabletTab === 'google' ? (
+                  <div className="provisioning-account-input-group">
+                    <p className="provisioning-note">
+                      <Localized id="auth-setup-google-desc">
+                        <span>Sign in, or create an account automatically if you are new.</span>
+                      </Localized>
+                    </p>
+                    <Button
+                      variant="primary"
+                      type="button"
+                      data-testid="provision-google-button"
+                      onClick={() => void linkWithGoogle()}
+                      disabled={link.kind === 'linking' || isOffline}
+                    >
+                      <Localized id="setup-account-google">Continue with Google</Localized>
+                    </Button>
+                    {link.kind === 'linking' && (
+                      <p className="provisioning-note" role="status">
+                        <Localized id="setup-account-waiting">Waiting for your browser…</Localized>
+                      </p>
+                    )}
+                    {link.kind === 'failed' && (
+                      <p className="provisioning-field-error" role="alert">
+                        <Localized id="auth-setup-google-failed">
+                          <span>Could not sign in with Google. Please try again.</span>
+                        </Localized>
+                      </p>
+                    )}
                   </div>
                 ) : (
                   <div className="provisioning-account-input-group">
