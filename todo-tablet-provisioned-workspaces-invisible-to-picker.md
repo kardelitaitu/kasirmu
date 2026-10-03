@@ -583,6 +583,7 @@ On a tablet `success` stays `null` — the file's own comment calls that "NOT AT
 Both profiles fail, at different points, which is why this needs the two-part fix and not one
 change: the debug arm decides whether the gate is reachable, and the shell guard decides whether it
 is usable.
+
 ### What this changes about the earlier analysis
 
 - **The six-way proof in round 5 stands**: no tablet path writes the row, and that is still why
