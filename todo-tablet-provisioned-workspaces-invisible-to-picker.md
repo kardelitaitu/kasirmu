@@ -1503,6 +1503,24 @@ in Step 5b (matching what both readers and the reconcile all assume, and what a 
 or make the read tenant-aware; the first is smaller and matches the store-DB scoping the
 tenant-integrity gate already relies on.
 
+### The mismatch is now PROVEN, not merely read
+
+Added a test that provisions a linked install (`tenant-abc`, `cred-1`) and asserts both sides of the
+disagreement. It passes:
+
+```
+test db::provisioning::tests::a_linked_provision_keys_its_subscription_row_to_the_linked_tenant ... ok
+test result: ok. 32 passed; 0 failed
+```
+
+It asserts the write leaves exactly `["tenant-abc"]` in `tenant_subscription`, and that the
+`'default'` row — the only one `entitlements.rs` looks for — is **absent** (`COUNT(*) = 0`). So the
+claim is not an inference from two code reads; it is an executed observation that a linked install
+provisions itself into a state its own capabilities read cannot see.
+
+The test asserts the **current** behaviour deliberately, with that stated in its doc comment: it is a
+tripwire that fails loudly if either side moves, not an endorsement. Committed as `6111e9983`.
+
 ## Evidence retention
 
 Device-side files pulled during this pass: `kasir.db` (+wal) and `store-default.sqlite` (+wal) in
