@@ -6,20 +6,35 @@
 >
 > 1. **Provisioned workspaces are invisible** — provisioning writes the global DB, the picker
 >    reads a per-store DB. (A new instance of the known P0-4 split-brain.)
-> 2. **Every tool locks, permanently — on ANY tablet install, not just `local`.** The
->    capabilities read requires a `tenant_subscription` row, and **no tablet code path can
->    write one**: provisioning writes none, `activate_license` is desktop-only and shell-guarded
->    off, the status poll only UPDATEs, sync does not carry the table, and the one INSERT path
->    (`store_subscription`) is reachable only after an activation the tablet cannot perform.
->    The gate itself works as designed and is pinned by a test; the gap is that nothing gives
->    the tablet a row. Round 4 scoped this to `local` mode; round 5 widened it to every install
->    and added the circular dependency that makes `linked` mode unreachable too — see §"No
->    tablet path can write the row".
+> 2. **Every tool locks, permanently — on a provisioned install with no licence row, on BOTH
+>    shells.** The capabilities read requires a `tenant_subscription` row and fails closed to
+>    `unavailable` without one, while the boot gate is satisfied by `setupCompleted` — so the
+>    install is admitted and then tier-locked. No tablet code path can write the row
+>    (provisioning writes none; `activate_license` is desktop-only and shell-guarded off; the
+>    status poll only UPDATEs; sync does not carry the table; `store_subscription` needs an
+>    activation the tablet cannot perform).
+>
+>    **Scope was corrected twice and the earlier framings should not be trusted.** Round 4
+>    scoped this to `local` mode (too narrow); round 5 widened it to "every tablet install"
+>    (also wrong); round 10 established it is **not tablet-specific at all** — the desktop
+>    reaches the same state by the same route, and the two shells' `debug_upgrade` argument is
+>    orthogonal because `apply_debug_upgrade` requires `state == Active`. See §"CORRECTION
+>    (round 10): this is a SHARED defect".
 
-<!-- Audit stamp: 2026-10-03 · DSH · status: MEASURED ON DEVICE (root cause proven, not yet repaired)
+<!-- Audit stamp: 2026-10-03 · DSH · status: MEASURED ON DEVICE (both defects proven, neither fixed)
      Reproduced on Redmi 23073RPBFG (Android 15) with a debug build of `0.0.41` (mu.kasir.mobile),
      installed 2026-10-03 06:53, exercised over CDP. Every figure below was read off the device
-     or its pulled SQLite files during this pass; nothing is inferred from source alone. -->
+     or its pulled SQLite files; nothing is inferred from source alone.
+
+     READ THE CORRECTIONS, NOT THE FIRST DRAFT. Three claims in this document were revised after
+     further measurement, and each revision is left in place rather than silently edited:
+       - the second defect's SCOPE (round 4: `local` mode -> round 5: all tablets -> round 10:
+         BOTH shells; it is not tablet-specific),
+       - the tablet's boot gates (round 7 said absent; round 8 found them present and bypassed),
+       - the proposed FIX (round 7 proposed a tablet toast, reverted in round 8 as unverifiable
+         and aimed at the wrong layer; round 10 established the debug arms must NOT be removed
+         because `license_tests.rs` pins them as deliberate hazards).
+     The device-level reproductions were unaffected by any of the three. -->
 
 **Symptom.** A freshly provisioned tablet that chose **"Offline only"** on the setup wizard
 lands on a home screen showing the EMPTY workspace picker — a single "Add Workspace" card —
