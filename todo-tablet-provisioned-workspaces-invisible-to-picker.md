@@ -322,6 +322,61 @@ prerequisite ("the wizard runs *after* activation"), and it is written for the d
 
 So the tablet's licensing model is not documented anywhere in this checkout. That is the gap.
 
+### CORRECTION (round 8): the tablet DOES have a licence gate — and bypasses it
+
+Round 7's table recorded the tablet's licence gate, activation screen and `bootAllowed` as
+**absent**. That was wrong, and the error matters because the true structure is what makes the
+defect explainable. Measured this round:
+
+| Piece | Desktop | Tablet |
+|---|---|---|
+| `bootAllowed` state | `AppShell.tsx:117` | **`TabletAppShell.tsx:114`** |
+| licence gate render | `AppShell.tsx:553` | **`:327`** |
+| `LicenseActivationScreen` | `AppShell.tsx:900` | **`:330`** |
+| registered `activate_license` | `lib.rs:1435` | still **absent** |
+
+ADR-56 §5 Q2 decided this on purpose and marks it IMPLEMENTED
+(`docs/decisions/2026-09-21-adr56-first-run-provisioning.md:945-970`): *"both shells converge on
+the desktop's order (activate → identify → provision → login)"*, with the reasoning that *"the
+tablet's absence of this gate is the bug, not a design"*, and the shipped note that *"Existing
+installs bypass the gate via `setupCompleted || installExisting`".*
+
+That bypass is the seam. `TabletAppShell.tsx:196-199`:
+
+```ts
+const licenceUsable =
+  licenseRes.ok && (licenseRes.value.isActive || licenseRes.value.status === 'gracePeriod');
+const installExisting = usersRes.ok && usersRes.value.has_users;
+setBootAllowed(licenceUsable || setupCompleted || installExisting);
+```
+
+`setupCompleted` becomes true the moment provisioning writes its marker — which provisioning does
+**regardless of any licence**. So a freshly provisioned tablet sets `bootAllowed = true`, walks past
+the activation screen, reaches the home screen, and is locked out there instead, because
+`WorkspaceHome` reads `subscriptionState` (`unavailable`) and not `bootAllowed`.
+
+**Two shipped components therefore disagree about the same install**: the boot gate says "this
+device may proceed", the home screen says "this device is unlicensed". That is the same class
+ADR-56 §1.4 named — *"same install, opposite verdicts"* (`:943`) — which Q2 was written to
+eliminate and replaced with a new instance. The bypass is doing the work the gate was built to do.
+
+### What ADR-56 decided about this exact case, in its own words
+
+This is the answer the report had been asking for, and it was in the ADR all along:
+
+- **`:960-961`** — *"a tablet that cannot activate a licence also cannot link an identity, cannot
+  sync, and cannot be sold. **The tablet's absence of this gate is the bug, not a design."***
+- **`:988-992`** — *"`Free` is a **permanent** tier, not a trial... A `local` terminal is therefore
+  *already* a legitimate steady state — it is a Free terminal that has not yet linked — not a
+  degraded one waiting for rescue."*
+
+So the intended behaviour is not ambiguous: a provisioned `local` tablet is a **Free terminal**, it
+is a legitimate steady state, and it must be usable. The shipped behaviour denies all three. No
+product decision is outstanding after all — the ADR made it, and the implementation diverges from
+it. That also means the earlier "A is the ADR-conformant direction" framing understated it: A was
+not a proposal, it was **already decided and marked implemented**, and this is a regression or an
+incomplete implementation of it.
+
 ### The asymmetry that explains how this shipped
 
 `provision_device` is **shared** by both shells (`apps/desktop-tauri/src/commands/setup.rs:89`,
