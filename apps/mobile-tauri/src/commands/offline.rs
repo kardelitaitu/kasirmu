@@ -485,24 +485,25 @@ pub async fn requeue_remote_failure_scoped(
 ///
 /// # ADR #49 NOT APPLIED, deliberately
 ///
-/// Refused 2026-09-16 — **case 2**, on the same ground as
-/// [`list_pending_offline_scoped`]. The body already matches the twin, but the
-/// door resolves a session via `resolve_scope` and names no permission
-/// (`registration_gate_debt.generated.rs:178`), so delegating would flip the row
-/// to `Gated` and **erase debt** instead of paying it (§1).
-#[allow(clippy::needless_borrow, dropping_references)]
+/// List retained remote-application failures (dead-letter discovery) resolved from a session token. ADR #7.
+///
+/// Requires `SYNC_MANAGE` — a manager-only view. Gating this pays the
+/// debt-ledger row rather than erasing it (§1): the door's body already
+/// matches its bridge twin, so adding the gate is the narrowest repair.
 #[command]
 pub async fn list_remote_failures_scoped(
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<RemoteSyncFailureDto>, AppError> {
-    let (_session, conn_arc) = state.resolve_scope(&session_token)?;
+    let session = state.resolve_session(&session_token)?;
+    require_permission_for_session(&state, &session, permissions::SYNC_MANAGE).await?;
+    let conn_arc = state.resolve_store(&session_token)?;
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
     let db = &*db_guard;
     let failures = run_list_remote_failures(&db)?;
-    drop(db);
+    let _ = db;
     Ok(failures)
 }
 

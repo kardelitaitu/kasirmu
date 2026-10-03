@@ -140,6 +140,20 @@ impl Store<'_> {
             .map_err(Into::into)
     }
 
+    /// Count items in `sync_remote_failures` that are currently dead-lettered.
+    ///
+    /// Returns [`PENDING_COUNT_UNKNOWN`] sentinel (-1) on error; callers must
+    /// not treat -1 as zero dead letters.
+    pub fn count_dead_lettered_remote_failures(&self) -> Result<i64, CoreError> {
+        self.conn
+            .query_row(
+                "SELECT COUNT(*) FROM sync_remote_failures WHERE dead_lettered = 1",
+                [],
+                |row| row.get(0),
+            )
+            .map_err(Into::into)
+    }
+
     /// Clear a resolved remote failure after its item is applied successfully.
     pub fn clear_remote_failure(&self, item_id: &str) -> Result<(), CoreError> {
         let tx = self.conn.unchecked_transaction()?;
