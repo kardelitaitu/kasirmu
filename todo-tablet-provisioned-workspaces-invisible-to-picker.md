@@ -360,6 +360,20 @@ device may proceed", the home screen says "this device is unlicensed". That is t
 ADR-56 §1.4 named — *"same install, opposite verdicts"* (`:943`) — which Q2 was written to
 eliminate and replaced with a new instance. The bypass is doing the work the gate was built to do.
 
+#### Confirmed on the device (round 8)
+
+The three gate inputs were read from the device's own database and agree with the analysis:
+
+| Gate input (`TabletAppShell.tsx:196-199`) | Device value | Contribution |
+|---|---|---|
+| `licenceUsable` | false — no subscription row, state `unavailable` | none |
+| **`setupCompleted`** | **true** — a `provisioning` row exists, `mode='local'` | **`bootAllowed = true`** |
+| `installExisting` | true — 1 row in `users` | `bootAllowed = true` |
+
+Two independent bypasses, and the second one is not even licence-related: any device with a staff
+account skips activation forever. The observable consequence matches — the tablet currently renders
+`staff-login-screen` and **not** the activation screen (`onActivation: false`), so it never offers the
+operator the one action that would license it.
 ### What ADR-56 decided about this exact case, in its own words
 
 This is the answer the report had been asking for, and it was in the ADR all along:
