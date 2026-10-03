@@ -668,6 +668,22 @@ design preserves deliberately (and the pre-existing tablet caps gap its owner ma
 separately)."* That gap is about a Free row being promoted to Premium in dev; it is **not** the
 absent-row lock-out, and conflating the two is what produced the wrong framing above.
 
+#### The shared path, confirmed by the command bodies
+
+Both shells register a `get_subscription_capabilities` command and both reach the same
+fail-closed logic; the tablet's is a duplicate body rather than a delegation, which is why the two
+could have drifted but did not:
+
+| Shell | Command | Body |
+|---|---|---|
+| desktop | `commands/subscription.rs:45-52` | delegates to `kasirmu_bridge::subscription::get_subscription_capabilities` |
+| tablet | `apps/mobile-tauri/src/commands/subscription.rs:152-188` | the same two steps inline — `build_entitlements`, then `load_verified_subscription` for the status string |
+
+Neither passes a debug-permissive argument that could rescue an absent row: the desktop's
+`build_entitlements(..., true)` only reaches `apply_debug_upgrade`, whose `state == Active` guard
+(`entitlements.rs:136`) an `Unavailable` row never satisfies. **So the lock-out below is reachable
+on the desktop by exactly the same route**, and nothing in this report should be read as a
+tablet-only claim.
 ### What the round-9 evidence does and does not show
 
 The `pm clear` measurement stands and is unaffected: the debug arm in `get_license_status` really
