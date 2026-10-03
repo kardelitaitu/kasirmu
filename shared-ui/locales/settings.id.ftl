@@ -1170,3 +1170,16 @@ settings-edc-default-auto = Otomatis (Pertama Dibuat)
 settings-edc-saved = Terminal EDC berhasil disimpan.
 settings-edc-deleted = Terminal EDC berhasil dihapus.
 settings-edc-delete-confirm = Apakah Anda yakin ingin menghapus terminal EDC ini?
+
+# Panel Konflik Sinkronisasi Terkarantina (Dead-letter recovery)
+sync-conflicts-panel-title = Konflik Sinkronisasi Terkarantina
+sync-conflicts-panel-empty = Tidak ada konflik gagal permanen (dead-letter).
+sync-conflicts-panel-table-aria = Tabel konflik terkarantina
+sync-conflicts-col-action = Aksi
+sync-conflicts-col-attempts = Percobaan
+sync-conflicts-col-error = Kesalahan Terakhir
+sync-conflicts-col-actions = Aksi
+sync-conflicts-retry = Coba Lagi
+sync-conflicts-retrying = Mencoba lagi…
+sync-conflicts-retry-aria = Coba sinkronisasi ulang item { $id }
+

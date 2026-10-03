@@ -1191,3 +1191,16 @@ settings-edc-default-auto = Auto (Earliest Created)
 settings-edc-saved = EDC Terminal saved successfully.
 settings-edc-deleted = EDC Terminal deleted.
 settings-edc-delete-confirm = Are you sure you want to delete this EDC terminal?
+
+# Quarantined Sync Conflicts Panel (Dead-letter recovery)
+sync-conflicts-panel-title = Quarantined Sync Conflicts
+sync-conflicts-panel-empty = No dead-lettered conflicts.
+sync-conflicts-panel-table-aria = Quarantined conflicts table
+sync-conflicts-col-action = Action
+sync-conflicts-col-attempts = Attempts
+sync-conflicts-col-error = Last Error
+sync-conflicts-col-actions = Actions
+sync-conflicts-retry = Retry
+sync-conflicts-retrying = Retrying…
+sync-conflicts-retry-aria = Retry sync for item { $id }
+
