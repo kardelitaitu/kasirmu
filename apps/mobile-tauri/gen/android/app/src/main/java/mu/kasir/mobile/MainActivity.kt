@@ -51,6 +51,12 @@ class MainActivity : TauriActivity() {
     installBackGuard()
   }
 
+  override fun onNewIntent(intent: android.content.Intent) {
+    super.onNewIntent(intent)
+    setIntent(intent)
+    hideSystemBars()
+  }
+
   private fun findWebView(view: View): WebView? {
     if (view is WebView) return view
     if (view is ViewGroup) {
