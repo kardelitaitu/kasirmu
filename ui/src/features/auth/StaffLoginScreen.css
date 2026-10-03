@@ -416,6 +416,114 @@
   animation: login-spin var(--duration-600) var(--ease-linear) infinite;
 }
 
+/* ── Username step & Quick Login chips ──────────────────────────── */
+
+.staff-login-username-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+}
+
+.staff-login-recent {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  margin-top: var(--space-4);
+  gap: var(--space-2);
+}
+
+.staff-login-recent-label {
+  font-size: var(--text-xs);
+  color: var(--color-fg-muted);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wider);
+  font-weight: var(--font-weight-medium);
+}
+
+.staff-login-recent-chips {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-2);
+  width: 100%;
+}
+
+.staff-login-chip {
+  display: inline-flex;
+  align-items: center;
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  padding: 2px 4px 2px 2px;
+  transition:
+    background var(--duration-150) var(--ease-out),
+    border-color var(--duration-150) var(--ease-out);
+}
+
+.staff-login-chip:hover {
+  background: var(--color-accent-subtle);
+  border-color: var(--color-accent);
+}
+
+.staff-login-chip-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  background: none;
+  border: none;
+  padding: var(--space-1) var(--space-2);
+  cursor: pointer;
+  color: var(--color-fg);
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-medium);
+  border-radius: var(--radius-full);
+}
+
+.staff-login-chip-avatar {
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 50%;
+  background: var(--color-accent);
+  color: var(--color-accent-fg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--text-xs);
+  font-weight: var(--font-weight-bold);
+  flex-shrink: 0;
+}
+
+.staff-login-chip-text {
+  max-width: 7.5rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.staff-login-chip-remove {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  background: none;
+  border: none;
+  border-radius: 50%;
+  color: var(--color-fg-muted);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  line-height: 1;
+  padding: 0;
+  margin-left: 2px;
+  transition: color var(--duration-150) var(--ease-out);
+}
+
+.staff-login-chip-remove:hover {
+  color: var(--color-danger);
+}
+
 
 /* ── PIN section ─────────────────────────────────────────────────── */
 

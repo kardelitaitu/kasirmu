@@ -144,6 +144,9 @@ staff-login-back = ← Back
 staff-login-copyright = © 2026 kasir.mu. All rights reserved.
 staff-login-attempts-remaining = ({ $count } attempt{ $count -> [1] { "" } *{ "s" } } remaining)
 staff-login-lockout = Locked out. Try again in { $seconds }s
+staff-login-recent-label = Quick Login
+staff-login-recent-aria = Recent staff accounts
+staff-login-recent-remove-aria = Remove { $user } from quick login
 
 # ── Fast User Switching (ADR #6) ──────────────────────────────────────────
 

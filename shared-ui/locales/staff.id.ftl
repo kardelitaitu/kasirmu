@@ -109,6 +109,9 @@ staff-login-backspace-aria =
     .aria-label = Hapus
 staff-login-digit-aria =
     .aria-label = { $digit }
+staff-login-recent-label = Masuk Cepat
+staff-login-recent-aria = Akun staf terkini
+staff-login-recent-remove-aria = Hapus { $user } dari masuk cepat
 
 # ── Assignment Access (ADR #35 D5 / spec 0048) ──
 staff-assignment-section-label = Akses Penugasan
