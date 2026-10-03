@@ -613,6 +613,51 @@ fn a_linked_provision_keys_its_subscription_row_to_the_linked_tenant() {
     );
 }
 
+/// The invariant `provision_device` must satisfy for a LINKED install: no row.
+///
+/// `#[ignore]`d on purpose, in the repo's characterisation idiom (see
+/// `products_stock_adjust_tests.rs`: a test ignored "as a CHARACTERISATION of the
+/// loss", later un-ignored and inverted when the fix landed). It records the
+/// invariant that the pending Step 5b would break, without leaving a red build
+/// for whoever is editing `provisioning.rs`.
+///
+/// The invariant is not invented here — the reconcile already pins it for its own
+/// path, in `migrations_tests.rs`'s
+/// `reconcile_leaves_a_linked_install_to_the_server_grant`, which asserts **0**
+/// subscription rows for a linked install and says why: "a linked install's
+/// entitlement is the server's, and a missing grant must keep failing closed".
+/// What is missing is the same assertion at the OTHER entry point, since the two
+/// run through different functions and neither test covers the other.
+///
+/// UN-IGNORE THIS when `provision_device` gains its `args.mode` guard. It should
+/// then pass unchanged: a local-only write leaves a linked install with no row.
+/// Until then it fails, which is the point — it is the tripwire for the defect
+/// described in `todo-tablet-provisioned-workspaces-invisible-to-picker.md`.
+#[test]
+#[ignore = "characterises the pending Step 5b defect: a linked install must get no bootstrap row"]
+fn a_linked_provision_leaves_no_bootstrap_subscription_row() {
+    let conn = fresh();
+    let mut linked = args_for("dev-linked");
+    linked.mode = ProvisioningMode::Linked;
+    linked.tenant_id = Some("tenant-abc".to_owned());
+    linked.device_credential_id = Some("cred-1".to_owned());
+    provision_device(&conn, &linked).unwrap();
+
+    // Step 5b currently writes one, under the linked tenant. The reconcile
+    // refuses to write one at all for the same install — it writes only when
+    // `EXISTS(... provisioning.mode = 'local')` — so the two entry points
+    // disagree, and the design is the reconcile's: a linked install's
+    // entitlement is the server's grant, and writing Free risks pre-empting it.
+    let rows: i64 = conn
+        .query_row("SELECT COUNT(*) FROM tenant_subscription", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(
+        rows, 0,
+        "a linked install's entitlement is the server's, and a missing grant must keep \
+         failing closed — provision_device must not write a local BOOTSTRAP_FREE row"
+    );
+}
+
 #[test]
 fn provisioning_a_local_terminal_names_no_licence_server_tenant() {
     // §2.4's local tier must not pretend to be linked. The stored tenant is
