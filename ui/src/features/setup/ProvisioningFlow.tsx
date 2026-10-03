@@ -322,7 +322,8 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
       const account = await linkDeviceGoogle();
       setLink({ kind: 'linked', account });
       setLinkedAccount(account);
-    } catch {
+    } catch (err) {
+      console.error('[ProvisioningFlow] linkWithGoogle failed:', err);
       // No `setErrorMsg` here: the failure is rendered inline, beside the
       // control that caused it, by the `link.kind === 'failed'` branch below.
       // Setting both drew the same sentence twice on one screen — once in the

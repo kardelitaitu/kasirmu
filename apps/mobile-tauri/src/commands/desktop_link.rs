@@ -33,8 +33,9 @@ pub async fn link_device_google(
         }
     };
     let base_url = kasirmu_core::attestation::resolved_origin().url;
+    tracing::info!("link_device_google: starting Google link flow for machine_id={}", machine_id);
     let app_handle = state.app.clone();
-    let account = kasirmu_bridge::desktop_link::link_device(
+    let account = match kasirmu_bridge::desktop_link::link_device(
         &base_url,
         &api_key,
         &machine_id,
@@ -48,7 +49,16 @@ pub async fn link_device_google(
             }
         },
     )
-    .await?;
+    .await {
+        Ok(acc) => {
+            tracing::info!("link_device_google: successfully linked account email={}", acc.email);
+            acc
+        }
+        Err(e) => {
+            tracing::error!("link_device_google: linking failed: {:?}", e);
+            return Err(e.into());
+        }
+    };
     // The link earned a sync credential whenever the server could issue one; store it now so
     // the device is ready to sync (ADR #54 §2.5 step 7).
     store_earned_credential(&state, account.terminal.as_ref()).await?;
