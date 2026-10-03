@@ -1050,6 +1050,80 @@ fresh install denies the operator both the destination and the route to it.**
 
 **The device is left in this true state**, not the round-3 modified one.
 
+## STATUS (round 12): the notice is IMPLEMENTED and VERIFIED; one file still uncommitted
+
+**Both defects are now fixed, and one of them by another session.** This is the state a reader
+should start from, because it differs from everything above it.
+
+### Defect 2's symptom now has an explanation on screen
+
+Implemented and **verified on the device** (Redmi 23073RPBFG, debug `0.0.41`): a non-blocking notice
+above the tool grid, driven by `subscriptionState === 'unavailable'`:
+
+```json
+{"home": 1, "locked": 17,
+ "notice": "This terminal has no active licence. Tools below stay locked until it is activated."}
+```
+
+The screenshot at this state shows the notice band above `WORKSPACES`, the tool cards still
+correctly locked, and the tier captions (`PRO` / `PREMIUM`) intact — the operator now sees the
+**cause** of the lock-out, which is what `appShellBootGate.test.tsx` rule 4 requires and what the
+tablet previously omitted.
+
+Committed: the two Fluent strings (`bcb4a5452`). **Still uncommitted: the `WorkspaceHome.tsx` JSX** —
+held deliberately, per the contention note below.
+
+### Defect 1 is FIXED, by a concurrent session
+
+The same device now renders **three workspace cards** (Restaurant POS, Kitchen Display, Warehouse),
+where rounds 2-11 measured exactly one (`Add Workspace`):
+
+```json
+{"gridCards": 3}
+```
+
+This was not fixed by this session. Peer commits `268440251` and the `TabletAppShell.tsx` /
+`ToolCard.tsx` edits observed mid-round are what changed it. **Do not read Defect 1 as open** — the
+sections above document it as found; it has since been addressed elsewhere.
+
+### Why earlier rounds' frontend changes never reached the device
+
+A measured fact worth recording, because it would otherwise mislead a reader of the earlier rounds:
+**the installed debug APK serves its EMBEDDED bundle, not the Vite dev server.**
+
+Observed: with the dev server running on the LAN and `TAURI_DEV_HOST` set, the tablet loaded
+`https://tauri.localhost/assets/index.mobile-<hash>.js` — a build artefact — and `location.href` was
+`https://tauri.localhost/`, never `:1422`. The hash dated the bundle, and a source edit made after
+that build produced **no change on the device**, including across an app restart.
+
+Two consequences, both of which bit this round before being measured:
+
+1. **HMR is not merely noisy here, it is absent.** A source edit stays invisible until
+   `npm run build:mobile` regenerates `ui/dist-mobile/` **and** the APK is rebuilt to embed it.
+2. **`cargo tauri android dev` did not switch the device to the dev server** despite
+   `--no-dev-server-wait` and a server the tablet could reach (HTTP 200, measured). The two paths are
+   distinguishable only by the loaded asset URL, so this must be checked rather than assumed —
+   reading `location.href` is the cheap test.
+
+The verification above used the loop that works: `npm run build:mobile`, confirm the new hash in
+`ui/dist-mobile/assets/`, then `cargo tauri android dev --config <devUrl override>` to rebuild and
+re-install the APK.
+
+### Shared-index contention: one file could not be committed
+
+`ui/src/features/workspaces/WorkspaceHome.tsx` is **dirty with another session's work** — 70 added
+lines, of which this session's notice is ~26 and the remainder is a peer's quick-launch cards
+(`workspace-card-quick-retail` and siblings). `AGENTS.md` §7.3 forbids committing a path whose
+working-tree content is not wholly yours, since a pathspec commit records the working-tree copy and
+would sweep their uncommitted edits in. The JSX is therefore left uncommitted, deliberately.
+
+**Also measured:** the CSS half of this change (`WorkspaceHome.css`, `.workspace-licence-notice`) was
+already committed by a peer — it appears in `268440251`, whose message concerns tier badges. That is
+the same failure mode in the other direction: a peer's commit swept a file this session had edited.
+It is not lost, only attributed to the wrong change.
+
+**To finish:** once the peer's `WorkspaceHome.tsx` edits are committed, commit this session's notice
+JSX from that file with a pathspec line. Nothing else is outstanding.
 ## Evidence retention
 
 Device-side files pulled during this pass: `kasir.db` (+wal) and `store-default.sqlite` (+wal) in
