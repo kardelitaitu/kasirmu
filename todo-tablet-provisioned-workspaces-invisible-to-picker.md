@@ -345,6 +345,25 @@ lives in the ordering between them.
 That also bounds the fix: the desktop must keep working exactly as it does, so whatever closes this
 belongs on the tablet side (or in a shared precondition check), not in an edit to the ordering the
 desktop depends on.
+### The module doc asserts the invariant the code breaks
+
+`crates/kasirmu-core/src/db/provisioning.rs` states two things this report measures as false, and
+they are worth quoting because they are what a reader would trust:
+
+- **`:16-17`** — *"The row is written LAST inside one transaction (§2.2), so its presence proves
+  the **licence**, location and owner were all written."* The location and owner are written;
+  the licence is never written by this transaction (no `tenant_subscription` reference exists in
+  the file). So the marker proves two of the three things it names, and the third is exactly the
+  one the picker needs.
+- **`:35`** — the `Local` variant is documented as *"No network: a **working OS and a sellable
+  terminal**."* Measured, a `local` install renders 17 of 17 tool cards locked (see the
+  re-verification below), which is neither working nor sellable.
+
+The user-facing claim is wrong in the same direction — the wizard's success toast is
+`setup-provision-success = This terminal is ready.` (`shared-ui/locales/settings.ftl:117`), shown
+at the moment this report's screenshot shows every tool disabled. **Nothing anywhere tells the
+operator that the install cannot be used**, which is why the two defects went unreported: the
+product says it succeeded.
 ### The missing piece is small — the capability already exists
 
 The blocker is NOT a missing implementation. `kasirmu_bridge::license::activate_license`
