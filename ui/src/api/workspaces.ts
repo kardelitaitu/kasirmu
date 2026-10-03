@@ -51,11 +51,14 @@ export interface WorkspaceTypeDto {
 
 // ── Boot Resolution (ADR #4 Phase 3) ──────────────────────────────────
 
-/** DTO returned by resolve_boot_store. */
+/** DTO returned by resolve_boot_store. Supports both camelCase (from Serde) and snake_case. */
 export interface BootResolution {
-  is_bound: boolean;
-  store_id: string;
-  instance_id: string | null;
+  is_bound?: boolean;
+  isBound?: boolean;
+  store_id?: string;
+  storeId?: string;
+  instance_id?: string | null;
+  instanceId?: string | null;
 }
 
 /**
