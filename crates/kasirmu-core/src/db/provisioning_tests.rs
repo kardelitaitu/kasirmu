@@ -418,6 +418,54 @@ fn provisioning_writes_the_bootstrap_subscription_the_local_tier_needs() {
     assert_eq!(signature, "BOOTSTRAP_FREE");
 }
 
+/// `provision_device` writes its location to the GLOBAL db and leaves the store db alone.
+///
+/// This is the fact that makes the read-repair in
+/// `kasirmu-bridge::workspaces::list_workspaces` fail in production. The repair copies
+/// global `workspace_instances` rows into `store-<id>.sqlite`, but that table's
+/// `location_id` is `REFERENCES locations(id)`
+/// (`20260813_init.sql:986-988`, after `20260906_rename_store_to_location.sql:14` renamed
+/// the target table) — and nothing in production ever writes a `locations` row into a
+/// store db. `create_location_profile` has no caller outside tests.
+///
+/// So when the repair inserts into the store db, its foreign key has no target, SQLite
+/// raises `FOREIGN KEY constraint failed`, and the repair's `let _ =` discards it. The
+/// rows are returned to the caller and never cached. Asserted here, at the provisioning
+/// end, so the premise is pinned where it is created rather than only where it bites.
+#[test]
+fn provisioning_writes_its_location_to_the_global_db_not_a_store_db() {
+    // `fresh()` is the global identity database — the one the bridge hands to
+    // `provision_device` (`kasirmu-bridge/src/setup.rs:370`, `ctx.lock_global()`).
+    let conn = fresh();
+    let out = provision_device(&conn, &args_for("dev-001")).unwrap();
+
+    // The location exists HERE, with the id the result names.
+    let name: String = conn
+        .query_row(
+            "SELECT name FROM locations WHERE id = ?1",
+            rusqlite::params![out.location_id],
+            |r| r.get(0),
+        )
+        .expect("provisioning writes the location into this db");
+    assert_eq!(name, "Sunset Cafe");
+
+    // And this db is the only one in play: `provision_device` takes one connection and
+    // opens no store file, which is why a store db for the same location starts empty.
+    // The repair's FK therefore has no target unless something else provisions it —
+    // and per the module comment above, nothing in production does.
+    let instances: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM workspace_instances WHERE location_id = ?1",
+            rusqlite::params![out.location_id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert!(
+        instances > 0,
+        "provisioning writes the workspaces HERE too — which is the split-brain: the"
+    );
+}
+
 #[test]
 fn provisioning_creates_no_waiting_store_fiction_for_the_next_terminal() {
     // Two devices on one store DB provision independently. The first must not
