@@ -1038,6 +1038,32 @@ fn requeue_remote_failure_clears_quarantine_and_rewinds_anchor() {
 }
 
 #[test]
+fn count_dead_lettered_remote_failures_reflects_quarantine_state() {
+    let conn = fresh();
+    let s = store(&conn);
+
+    assert_eq!(s.count_dead_lettered_remote_failures().unwrap(), 0);
+
+    // Record a failure with max_retries = 3 (attempt 1 of 3: transient, not dead-lettered)
+    let dead_lettered = s
+        .record_remote_failure("item-transient", "sale", "{}", "err", 3)
+        .unwrap();
+    assert!(!dead_lettered);
+    assert_eq!(s.count_dead_lettered_remote_failures().unwrap(), 0);
+
+    // Record a failure with max_retries = 1 (attempt 1 of 1: immediately dead-lettered)
+    let dead_lettered = s
+        .record_remote_failure("item-quarantined", "sale", "{}", "err", 1)
+        .unwrap();
+    assert!(dead_lettered);
+    assert_eq!(s.count_dead_lettered_remote_failures().unwrap(), 1);
+
+    // Requeueing the quarantined item deletes the failure row and clears count to 0
+    s.requeue_remote_failure("item-quarantined").unwrap();
+    assert_eq!(s.count_dead_lettered_remote_failures().unwrap(), 0);
+}
+
+#[test]
 fn requeue_remote_failure_refuses_non_dead_lettered() {
     let conn = fresh();
     let s = store(&conn);
