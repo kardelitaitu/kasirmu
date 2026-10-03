@@ -292,6 +292,30 @@ state through its own UI — which is a stronger statement than "offline mode is
 it is the reason this is reported rather than patched: the intended acquisition path for a tablet's
 subscription is not visible anywhere in this checkout.
 
+### Corroborated on the device
+
+The device agrees with the source on every point. Its `settings` table holds exactly the 17 keys
+`write_provisioning_settings` and normal operation write, and **no licence key of any kind** — a
+grep for `%license%`, `%machine%`, `%hardware%`, `%api%` returns nothing:
+
+```
+currency.default, feature.* (x10), popularity.* (x5), store.preset, sync_server_url
+license-related setting: NONE
+```
+
+That absence is the runtime signature of the cycle above — no `license.api_key` means
+`stored_credentials` refuses, which means no link, which means no activation.
+
+### What would settle it
+
+One question this checkout cannot answer: **how is a tablet meant to become licensed?** If the
+answer is "the operator runs the desktop app once against the same account", then the tablet's
+first-run experience needs to say so instead of offering modes that cannot complete. If the
+answer is "it should activate itself", then the missing piece is a tablet-side activation path,
+which does not exist in the shell's command list. Either way the fix is a product decision about
+the tablet's licensing model, not a local patch — which is why this round adds evidence rather
+than code.
+
 ## Why the test suite never saw it
 
 The gap is masked by the fixture. Every bridge subscription test builds its DB from
