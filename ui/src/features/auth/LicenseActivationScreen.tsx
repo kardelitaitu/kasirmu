@@ -412,91 +412,162 @@ export default function LicenseActivationScreen({ initialError, onActivated }: L
                 </Localized>
               </div>
 
-              <button
-                type="button"
-                className="license-setup-choice"
-                data-testid="setup-google"
-                onClick={() => void signInWithGoogle()}
-                disabled={link === 'linking'}
-              >
-                <span className="license-setup-choice-title">
-                  <Localized id="auth-setup-google">Sign in with Google</Localized>
-                </span>
-                <span className="license-setup-choice-desc">
-                  <Localized id="auth-setup-google-desc">
-                    Sign in, or create an account automatically if you are new.
-                  </Localized>
-                </span>
-              </button>
+              {isTabletShell() ? (
+                <>
+                  <button
+                    type="button"
+                    className="license-setup-choice license-setup-choice-hero"
+                    data-testid="setup-pair"
+                    onClick={() => {
+                      setAuthMode('pair');
+                      if (!pairingSession) void loadPairingSession();
+                    }}
+                  >
+                    <div className="license-setup-choice-hero-badge">
+                      <Localized id="auth-setup-recommended-tablet">
+                        <span>Recommended for Tablets</span>
+                      </Localized>
+                    </div>
+                    <span className="license-setup-choice-title">
+                      <Localized id="auth-setup-pair">Pair this device to your organization</Localized>
+                    </span>
+                    <span className="license-setup-choice-desc">
+                      <Localized id="auth-setup-pair-desc">
+                        Scan a code from a phone or another terminal that is already set up.
+                      </Localized>
+                    </span>
+                  </button>
 
-              {link === 'linking' && (
-                <p className="license-pairing-status" role="status">
-                  <span className="license-pulse-dot" aria-hidden="true" />
-                  <Localized id="auth-setup-waiting-browser">
-                    <span>Waiting for your browser to finish signing in…</span>
-                  </Localized>
-                </p>
-              )}
+                  <button
+                    type="button"
+                    className="license-setup-choice"
+                    data-testid="setup-google"
+                    onClick={() => void signInWithGoogle()}
+                    disabled={link === 'linking'}
+                  >
+                    <span className="license-setup-choice-title">
+                      <Localized id="auth-setup-google">Sign in with Google</Localized>
+                    </span>
+                    <span className="license-setup-choice-desc">
+                      <Localized id="auth-setup-google-desc">
+                        Sign in, or create an account automatically if you are new.
+                      </Localized>
+                    </span>
+                  </button>
 
-              {/* Same escape as the provisioning flow offers: say what
-                  happened next to the control that did it, with a retry. */}
-              {link === 'failed' && (
-                <div className="license-error-banner" role="alert">
-                  <Localized id="auth-setup-google-failed">
-                    <span>Could not sign in with Google. Please try again.</span>
-                  </Localized>
-                </div>
-              )}
+                  {link === 'linking' && (
+                    <p className="license-pairing-status" role="status">
+                      <span className="license-pulse-dot" aria-hidden="true" />
+                      <Localized id="auth-setup-waiting-browser">
+                        <span>Waiting for your browser to finish signing in…</span>
+                      </Localized>
+                    </p>
+                  )}
 
-              <button
-                type="button"
-                className="license-setup-choice"
-                data-testid="setup-pair"
-                onClick={() => {
-                  setAuthMode('pair');
-                  if (!pairingSession) void loadPairingSession();
-                }}
-              >
-                <span className="license-setup-choice-title">
-                  <Localized id="auth-setup-pair">Pair this device to your organization</Localized>
-                </span>
-                <span className="license-setup-choice-desc">
-                  <Localized id="auth-setup-pair-desc">
-                    Scan a code from a phone or another terminal that is already set up.
-                  </Localized>
-                </span>
-              </button>
+                  {link === 'failed' && (
+                    <div className="license-error-banner" role="alert">
+                      <Localized id="auth-setup-google-failed">
+                        <span>Could not sign in with Google. Please try again.</span>
+                      </Localized>
+                    </div>
+                  )}
 
-              {/* Email sign-in: the third way in, beside Google and pairing.
-                  Same shape as the pair choice — set the mode, and the flow's
-                  own view below takes over from the entry screen. */}
-              <button
-                type="button"
-                className="license-setup-choice"
-                data-testid="setup-email"
-                onClick={() => setAuthMode('email')}
-              >
-                <span className="license-setup-choice-title">
-                  <Localized id="auth-setup-email">Sign in with Email</Localized>
-                </span>
-                <span className="license-setup-choice-desc">
-                  <Localized id="auth-setup-email-desc">
-                    Get a one-time code by email, or sign in with your password.
-                  </Localized>
-                </span>
-              </button>
+                  <button
+                    type="button"
+                    className="license-setup-choice"
+                    data-testid="setup-email"
+                    onClick={() => setAuthMode('email')}
+                  >
+                    <span className="license-setup-choice-title">
+                      <Localized id="auth-setup-email">Sign in with Email</Localized>
+                    </span>
+                    <span className="license-setup-choice-desc">
+                      <Localized id="auth-setup-email-desc">
+                        Get a one-time code by email, or sign in with your password.
+                      </Localized>
+                    </span>
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    className="license-setup-choice"
+                    data-testid="setup-google"
+                    onClick={() => void signInWithGoogle()}
+                    disabled={link === 'linking'}
+                  >
+                    <span className="license-setup-choice-title">
+                      <Localized id="auth-setup-google">Sign in with Google</Localized>
+                    </span>
+                    <span className="license-setup-choice-desc">
+                      <Localized id="auth-setup-google-desc">
+                        Sign in, or create an account automatically if you are new.
+                      </Localized>
+                    </span>
+                  </button>
 
-              {/* The license-key form is desktop-only, so this is the one
-                  route to it from the entry screen. */}
-              {!isTabletShell() && (
-                <button
-                  type="button"
-                  className="license-setup-link"
-                  data-testid="setup-license-key"
-                  onClick={() => setAuthMode('key')}
-                >
-                  <Localized id="auth-tab-license-key">License Key</Localized>
-                </button>
+                  {link === 'linking' && (
+                    <p className="license-pairing-status" role="status">
+                      <span className="license-pulse-dot" aria-hidden="true" />
+                      <Localized id="auth-setup-waiting-browser">
+                        <span>Waiting for your browser to finish signing in…</span>
+                      </Localized>
+                    </p>
+                  )}
+
+                  {link === 'failed' && (
+                    <div className="license-error-banner" role="alert">
+                      <Localized id="auth-setup-google-failed">
+                        <span>Could not sign in with Google. Please try again.</span>
+                      </Localized>
+                    </div>
+                  )}
+
+                  <button
+                    type="button"
+                    className="license-setup-choice"
+                    data-testid="setup-pair"
+                    onClick={() => {
+                      setAuthMode('pair');
+                      if (!pairingSession) void loadPairingSession();
+                    }}
+                  >
+                    <span className="license-setup-choice-title">
+                      <Localized id="auth-setup-pair">Pair this device to your organization</Localized>
+                    </span>
+                    <span className="license-setup-choice-desc">
+                      <Localized id="auth-setup-pair-desc">
+                        Scan a code from a phone or another terminal that is already set up.
+                      </Localized>
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    className="license-setup-choice"
+                    data-testid="setup-email"
+                    onClick={() => setAuthMode('email')}
+                  >
+                    <span className="license-setup-choice-title">
+                      <Localized id="auth-setup-email">Sign in with Email</Localized>
+                    </span>
+                    <span className="license-setup-choice-desc">
+                      <Localized id="auth-setup-email-desc">
+                        Get a one-time code by email, or sign in with your password.
+                      </Localized>
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    className="license-setup-link"
+                    data-testid="setup-license-key"
+                    onClick={() => setAuthMode('key')}
+                  >
+                    <Localized id="auth-tab-license-key">License Key</Localized>
+                  </button>
+                </>
               )}
             </div>
           ) : (

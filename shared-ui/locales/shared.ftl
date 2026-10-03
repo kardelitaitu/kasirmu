@@ -469,6 +469,7 @@ auth-setup-google = Sign in with Google
 auth-setup-google-desc = Sign in, or create an account automatically if you are new.
 auth-setup-pair = Pair this device to your organization
 auth-setup-pair-desc = Scan a code from a phone or another terminal that is already set up.
+auth-setup-recommended-tablet = Recommended for Tablets
 auth-setup-email = Sign in with email
 auth-setup-email-desc = We email a one-time code, or you can use your password.
 auth-setup-back = Back

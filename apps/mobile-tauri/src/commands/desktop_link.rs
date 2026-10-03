@@ -24,7 +24,13 @@ pub async fn link_device_google(
 ) -> Result<kasirmu_core::desktop_link::LinkedAccount, AppError> {
     let (api_key, machine_id) = {
         let ctx = state.bridge_ctx();
-        kasirmu_bridge::license::stored_credentials(&ctx).await?
+        match kasirmu_bridge::license::stored_credentials(&ctx).await {
+            Ok(creds) => creds,
+            Err(_) => {
+                let machine_id = kasirmu_bridge::license::get_machine_id(&ctx).await?;
+                (String::new(), machine_id)
+            }
+        }
     };
     let base_url = kasirmu_core::attestation::resolved_origin().url;
     let account = kasirmu_bridge::desktop_link::link_device(

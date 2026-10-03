@@ -255,3 +255,48 @@ func TestDesktopLinkCallbackBindsTheIdentityAndHandsOffToLoopback(t *testing.T) 
 		t.Errorf("another machine must not consume the code, got %d: %s", foreign.Code, foreign.Body.String())
 	}
 }
+
+func TestDesktopLinkPreActivationAllowsUnactivatedDevice(t *testing.T) {
+	t.Setenv("OZ_GOOGLE_CLIENT_ID", "client-abc")
+	t.Setenv("OZ_GOOGLE_CLIENT_SECRET", "secret")
+	restore := fakeGoogleToken(t, validClaims("client-abc"))
+	defer restore()
+	app, mux := dashboardMux(t)
+	defer app.Cleanup()
+
+	// An unactivated device has no tenant yet and sends pre_activation: true with no Bearer token.
+	startPayload := `{"machine_id":"mach-new","state":"0123456789abcdef","code_verifier":"` + testVerifier +
+		`","redirect_uri":"http://127.0.0.1:49152","pre_activation":true}`
+	rec := doJSON(mux, http.MethodPost, "/api/v1/desktop/link/google/start", "", startPayload)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("pre-activation start failed: %d %s", rec.Code, rec.Body.String())
+	}
+
+	// Google callback runs and resolves identity (creates or links tenant for owner@example.com).
+	cb := doJSON(mux, http.MethodGet, "/api/v1/desktop/link/google/callback?state=0123456789abcdef&code=auth-code", "", "")
+	if cb.Code != http.StatusFound {
+		t.Fatalf("pre-activation callback failed: %d %s", cb.Code, cb.Body.String())
+	}
+	location := cb.Header().Get("Location")
+	if !strings.HasPrefix(location, "http://127.0.0.1:49152?link_code=") {
+		t.Fatalf("Location = %q, want loopback code", location)
+	}
+	code := location[strings.Index(location, "link_code=")+len("link_code="):]
+
+	// Consume code with pre_activation: true and machine_id
+	consumed := doJSON(mux, http.MethodPost, "/api/v1/desktop/link/consume", "",
+		`{"link_code":"`+code+`","machine_id":"mach-new","pre_activation":true}`)
+	if consumed.Code != http.StatusOK {
+		t.Fatalf("pre-activation consume failed: %d %s", consumed.Code, consumed.Body.String())
+	}
+	var body map[string]any
+	if err := json.Unmarshal(consumed.Body.Bytes(), &body); err != nil {
+		t.Fatalf("bad JSON: %v", err)
+	}
+	if body["email"] != "owner@example.com" {
+		t.Errorf("email = %v, want owner@example.com", body["email"])
+	}
+	if body["tenantId"] == "" || body["tenantId"] == nil {
+		t.Errorf("expected tenantId to be non-empty")
+	}
+}

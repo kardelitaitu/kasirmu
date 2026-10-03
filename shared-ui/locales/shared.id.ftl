@@ -429,6 +429,7 @@ auth-setup-google = Masuk dengan Google
 auth-setup-google-desc = Masuk, atau buat akun secara otomatis jika Anda baru.
 auth-setup-pair = Tautkan perangkat ini ke organisasi Anda
 auth-setup-pair-desc = Pindai kode dari HP atau terminal lain yang sudah disiapkan.
+auth-setup-recommended-tablet = Rekomendasi untuk Tablet
 auth-setup-email = Masuk dengan email
 auth-setup-email-desc = Kami mengirim kode sekali pakai, atau Anda bisa memakai kata sandi.
 auth-setup-back = Kembali
