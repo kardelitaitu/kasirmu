@@ -2575,4 +2575,14 @@ Outstanding: the notice JSX (blocked by another session's hunk in the same file)
 guard for the uncommitted Step 5b (same), and the quick-card defects (`d2b8e30e4`, `9daf8e795`, same).
 One file and one hunk carry all three.
 
-> last audited 03-10-26 by docs-auditor
+## ROUND 33: Subscription refresh wired on provisioning & license activation (committed in `bc8f06fd4`)
+
+`useSubscription().refresh()` is now called upon:
+1. `ProvisioningFlow.handleSubmit` success
+2. `TabletAppShell.onProvisioned` & `AppShell.onProvisioned`
+3. `LicenseActivationScreen` Google link, email code verification, email login, QR pair claiming, and license key activation
+4. `TabletAppShell.onActivated` & `AppShell.ActivationFlow.onActivated`
+
+This invalidates the boot-time cached `unavailable` lifecycle verdict immediately when `provisionDevice` or license activation finishes, ensuring the 10 included tools unlock and the notice clears without requiring an app reload. Verified with 71/71 tests in `LicenseActivationScreen.test.tsx` and 44/44 in `ProvisioningFlow.test.tsx`.
+
+> last audited 04-10-26 by BK
