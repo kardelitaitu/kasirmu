@@ -555,14 +555,25 @@ fn a_linked_provision_requires_its_tenant_and_credential() {
 /// its own subscription row still reads `Ok(None)`, fails closed, projects
 /// `state: 'unavailable'`, and locks every tool.
 ///
-/// Both halves are defensible alone — the write is required to name the
-/// linked tenant (`provisioning.rs`, "a linked install must name its
-/// licence-server tenant"), and the read is `default`-scoped because the
-/// tablet's store DB is. This test asserts the CURRENT row so the mismatch is
-/// visible and fails loudly if either side moves; it is not a statement that
-/// this is correct. Unreachable from the UI today (the bridge sends no
-/// `tenant_id` for a `local` install), reachable as soon as the linked path
-/// ships.
+/// The deeper defect is not the tenant key but the MISSING GUARD. The write
+/// does not ask `args.mode` at all, while the reconcile for the same row does:
+/// `migrations.rs` writes only when `EXISTS(... provisioning.mode = 'local')`,
+/// and its guard-1 doc explains why a linked install must be left alone —
+/// "A `linked` install's entitlement is the server's grant, and a missing row
+/// there is an anomaly that must keep failing closed — writing Free would also
+/// risk pre-empting the real grant." Step 5b's own comment invokes the same
+/// premise ("`local` is a supported permanent Free tier") and then applies it
+/// in every mode. So a linked install gets a local `BOOTSTRAP_FREE` grant where
+/// the design says the server's grant belongs, under a tenant no tablet reader
+/// consults.
+///
+/// This test asserts the CURRENT row so the defect is visible and fails loudly
+/// if either side moves; it is not a statement that this is correct. It is
+/// reachable through the shipping first-run flow: `ProvisioningFlow.tsx`
+/// initialises `provisionMode` to `'linked'` and sends the account's
+/// `tenantId`. The fix is one guard — write only for `ProvisioningMode::Local`,
+/// mirroring the reconcile — which also settles the tenant question, because a
+/// `local` install's tenant is `None` and therefore `"default"`.
 #[test]
 fn a_linked_provision_keys_its_subscription_row_to_the_linked_tenant() {
     let conn = fresh();
