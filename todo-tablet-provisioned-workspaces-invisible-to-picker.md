@@ -628,6 +628,68 @@ is usable.
   endpoint, and the fix must address the capabilities read rather than the gate, because the gate
   is behaving as designed in both.
 
+## CORRECTION (round 10): this is a SHARED defect, not a tablet one
+
+Rounds 4-9 reasoned about a tablet-versus-desktop asymmetry. That framing was **wrong**, and the
+error came from reading only the argument the two shells pass to `build_entitlements` instead of
+following what that argument does.
+
+`apply_debug_upgrade` (`crates/kasirmu-core/src/entitlements.rs:134-141`) is:
+
+```rust
+if cfg!(debug_assertions)
+    && self.state == SubscriptionLifecycleState::Active
+    && self.tier == SubscriptionTier::Free
+{
+    self.tier = SubscriptionTier::Premium;
+}
+```
+
+The `state == Active` guard makes it inert for this case. An absent row produces `fail_closed`
+(`entitlements.rs:372-373`), whose state is `Unavailable` — never `Active` — so the upgrade cannot
+fire. Desktop passing `true` and tablet passing `false` is therefore **orthogonal**: with no row,
+both return `state: "unavailable"` and both lock every tier-gated tool.
+
+| | Desktop | Tablet |
+|---|---|---|
+| capabilities with no row | `unavailable` | `unavailable` |
+| gate bypass on `setupCompleted`/`installExisting` | `AppShell.tsx:286` | `TabletAppShell.tsx:199` |
+| lock-out after boot | **yes** | **yes** |
+
+So every claim earlier in this report that scoped the lock-out to the tablet — or to `local` mode,
+or to a build profile — **overstates the difference and understates the reach**. The defect is: a
+provisioned install with no licence row boots past the gate and is then tier-locked, on both
+shells. The tablet is where it was measured because this session provisioned one; nothing about it
+is tablet-specific.
+
+The code already records the divergence it does have, and calls it a known gap
+(`entitlements.rs:128-133`): *"Tablet never calls this — the per-client divergence the consolidation
+design preserves deliberately (and the pre-existing tablet caps gap its owner may close
+separately)."* That gap is about a Free row being promoted to Premium in dev; it is **not** the
+absent-row lock-out, and conflating the two is what produced the wrong framing above.
+
+### What the round-9 evidence does and does not show
+
+The `pm clear` measurement stands and is unaffected: the debug arm in `get_license_status` really
+does make the activation gate unreachable, and that was observed. What it does **not** show is that
+removing that arm would fix anything — the gate would then fire, and the activation screen it
+renders cannot submit on a tablet (`LicenseActivationScreen.tsx:287`).
+
+### Why the debug arms must NOT be removed
+
+`license_tests.rs:614` and `:663` pin them under explicit `HAZARD 1 of 2` / `HAZARD 2 of 2`
+headers, and the second says why (`:665-669`):
+
+> **HAZARD 1 of 2** — A license that expired AND whose grace window has closed must be INACTIVE. In
+> debug it is not: that cfg arm returns `is_active: true` / Valid with the payload attached.
+> **Asserted AS SHIPPED, not as correct — this is the pin that fails loudly if anyone later reads
+> the debug arm as the spec.**
+
+ADR-57 §2.5 states the same policy from the security side (`docs/decisions/2026-09-21-adr57-client-
+tamper-resistance.md:532-536`): *"under `debug_assertions` ... the debug arm asserts the opposite of
+the security property"*, and warns that a green `cargo test` does not cover the release invariant.
+So the permissive debug arms are a deliberate, tested, cross-cutting convention — the earlier draft
+of this section proposed deleting one, which would have failed the tests written to protect it.
 ## Why the test suite never saw it
 
 The gap is masked by the fixture. Every bridge subscription test builds its DB from
