@@ -519,6 +519,17 @@ fn provision_device_inner(
     // its own transaction (see the doc comment above).
     write_provisioning_settings(tx, args)?;
 
+    // ── Step 5b: bootstrap Free subscription if no subscription row exists ──
+    // ADR #56 §2.4: `local` is a supported permanent Free tier. Ensure the
+    // install has an active Free subscription so capabilities fail-closed
+    // checks permit normal offline terminal operation.
+    let tenant_id = args.tenant_id.as_deref().unwrap_or("default");
+    tx.execute(
+        "INSERT OR IGNORE INTO tenant_subscription (tenant_id, tier_key, status, expires_at, max_locations, max_pos_instances, allowed_types_json, signature)
+         VALUES (?1, 'free', 'active', NULL, 1, 1, '[\"store-pos\", \"restaurant-pos\", \"admin\"]', 'BOOTSTRAP_FREE')",
+        params![tenant_id],
+    )?;
+
     // ── Step 6: the marker, LAST ─────────────────────────────────
     let (record, _) = store.provision_terminal(&ProvisioningRecord {
         terminal_id: args.terminal_id.clone(),
