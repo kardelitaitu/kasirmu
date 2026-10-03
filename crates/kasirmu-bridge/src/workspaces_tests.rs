@@ -386,6 +386,72 @@ async fn list_workspaces_for_store_scoped_has_no_read_repair() {
     );
 }
 
+/// The SAME repair, with the FK target present: it persists.
+///
+/// Round 26 measured the repair failing and round 28 established why — its INSERT needs a
+/// `locations` row in the store db, and a freshly provisioned terminal has none. This is the
+/// complement, and it is the half that shows the diagnosis is right rather than merely
+/// consistent with the failure: keep that row and the identical insert works.
+///
+/// The one difference from `list_workspaces_repairs_from_global_when_the_store_db_is_empty` is
+/// the absent `DELETE FROM locations`. Same global row, same emptied instances table, same
+/// call — so between the two tests the ONLY variable is the FK target, which is what makes
+/// this a controlled comparison instead of two anecdotes.
+///
+/// It describes a real state, not a contrived one: a merchant who created a location through
+/// Settings has exactly this row (`create_location_profile_scoped` writes into the store db via
+/// `ctx.resolve_scope`, `ctx.rs:389-392`), and for them the repair works.
+#[tokio::test]
+async fn the_read_repair_persists_when_its_fk_target_exists() {
+    let tb = picker_state(|conn| {
+        conn.execute_batch(
+            "INSERT INTO locations (id, name) VALUES ('store-a', 'Store A');\
+             INSERT INTO workspace_instances (id, type_key, location_id, name, description, colour, status) \
+             VALUES ('ws-global-a', 'store-pos', 'store-a', 'POS', '', NULL, 'active');",
+        )
+        .unwrap();
+    });
+    {
+        let conn = tb.db_manager().open_store("store-a").unwrap();
+        let db = conn.lock().unwrap();
+        // Instances only. The `locations` row stays, which is the whole point.
+        db.execute("DELETE FROM workspace_instances", []).unwrap();
+    }
+    let secret = tb.ctx().picker_ticket_secret.clone();
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i64;
+    let ticket = crate::picker::sign_picker_ticket(&secret, "user-owner", now + 300);
+
+    let listed = list_workspaces(&tb.ctx(), ticket, "store-a".into()).await;
+    if !seeded_row_loads() {
+        assert_refused_by_the_seeded_row(&tb, listed, "free").await;
+        return;
+    }
+    let rows = listed.unwrap();
+    assert!(
+        rows.iter().any(|d| d.instance_id == "ws-global-a"),
+        "the repair must still return the global row, got {rows:?}"
+    );
+
+    let cached: i64 = {
+        let conn = tb.db_manager().open_store("store-a").unwrap();
+        let db = conn.lock().unwrap();
+        db.query_row(
+            "SELECT COUNT(*) FROM workspace_instances WHERE id = 'ws-global-a'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap()
+    };
+    assert_eq!(
+        cached, 1,
+        "with its FK target present the repair persists — vs 0 in the sibling test above, \
+         which differs ONLY by that row. This is what identifies the missing target as the cause."
+    );
+}
+
 // ── Pre-session screen listing: the account and the store are both checked ──
 //
 // The ticket is verified in both this fn and `list_workspaces`; only the
