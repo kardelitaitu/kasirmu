@@ -2129,6 +2129,50 @@ raises, and the table is still empty. That matches the read-repair's measured `l
 is why the repair cannot be fixed by surfacing the error alone: the write will keep failing until its
 FK target exists.
 
+## ROUND 28: the read-repair's failure is PRODUCTION behaviour, not a fixture artefact
+
+Round 26 measured that the repair does not persist its rows, then had to allow that the fixture might
+be modelling a state production never reaches — its doc said the consequence "follows from the FK
+being enforced… but it was **not** reproduced against a database". That caveat is now closed, and the
+answer is the worse one.
+
+### Nothing in production writes a `locations` row into a store db
+
+The repair inserts into `store-<id>.sqlite`, where `workspace_instances.location_id` is
+`REFERENCES locations(id)`. For that to succeed, the store db must already hold the row. It does not:
+
+| Evidence | Finding |
+|---|---|
+| `kasirmu-bridge/src/setup.rs:370` | `let db = ctx.lock_global().await;` — provisioning is handed the **global** db |
+| `provisioning.rs:486-499` | the `INSERT INTO locations` runs on that connection, so the row lands **globally** |
+| `create_location_profile` callers | **every one is a test** (`store_scoping_integration.rs`, `provisioning_tests.rs`) — no production caller |
+
+So a store db for a freshly provisioned location has no `locations` row, the repair's FK has no
+target, SQLite raises, and `let _ =` eats it. **The repair cannot persist in production**, which is why
+the picker is fixed for the session it runs in and reverts on the next boot.
+
+This is the split-brain restated from the other side: the defect is not only that the picker reads a
+different file, it is that the two files' schemas disagree about what a workspace row's location even
+*is* — and the repair tries to translate between them without creating the row it depends on.
+
+### Pinned where the premise is created
+
+Added a test at the provisioning end rather than at the repair end, so the fact is asserted where it
+originates:
+
+```
+test db::provisioning::tests::provisioning_writes_its_location_to_the_global_db_not_a_store_db ... ok
+test result: ok. 32 passed; 0 failed; 1 ignored
+```
+
+It asserts both halves — the location exists in the global db with the id the result names, **and** the
+workspaces are written there too. Between this and round 26's ignored tripwire, the defect now has an
+assertion at each end.
+
+**Still not fixed**: the repair is another session's uncommitted hunk. But the finding is no longer
+hedged — the fix has to create the FK target (or write only columns that need none) *and* stop
+discarding the result, and the reason it must do both is now measured rather than argued.
+
 ## Evidence retention
 
 Device-side files pulled during this pass: `kasir.db` (+wal) and `store-default.sqlite` (+wal) in
