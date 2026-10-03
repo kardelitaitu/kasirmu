@@ -352,6 +352,10 @@ workspace-home-shortcut-hint = Press { $key } to open
 workspace-home-user-aria = Logged in as { $name }
 workspace-home-error-title = Connection Error
 workspace-home-error-desc = Could not load your workspaces. Check your connection and try again.
+# Shown when the tenant subscription is not usable on this terminal. The boot gate
+# deliberately still admits a provisioned install (appShellBootGate.test.tsx rule 2),
+# so this states the CAUSE of the locked tool cards rather than blocking the screen.
+workspace-home-licence-unavailable = This terminal has no active licence. Tools below stay locked until it is activated.
 # Shown when create_session is rejected: the workspace is listed, but no session
 # token could be minted for it, so token-taking commands cannot run. The toast's
 # Show detail carries the backend reason (clock rollback, denied workspace type,

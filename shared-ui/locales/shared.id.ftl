@@ -406,6 +406,10 @@ workspace-card-no-access-aria = { $name } — tidak tersedia untuk peran Anda
 workspace-card-no-access-badge = Tidak tersedia
 workspace-home-error-title = Galat Koneksi
 workspace-home-error-desc = Tidak dapat memuat ruang kerja. Periksa koneksi Anda dan coba lagi.
+# DITAMPILKAN saat langganan tenant tidak dapat digunakan di terminal ini. Gerbang boot
+# sengaja tetap mengizinkan instalasi yang sudah diprovisikan, jadi pesan ini menyatakan
+# PENYEBAB kartu alat yang terkunci, bukan memblokir layar.
+workspace-home-licence-unavailable = Terminal ini tidak memiliki lisensi aktif. Alat di bawah tetap terkunci sampai diaktifkan.
 # DITAMPILKAN saat create_session ditolak: ruang kerja terdaftar, tetapi token sesi
 # tidak dapat dibuat, jadi perintah yang memerlukan token tidak dapat berjalan.
 workspace-session-token-error = Tidak dapat memulai sesi untuk ruang kerja ini. Periksa detail dan coba lagi.
