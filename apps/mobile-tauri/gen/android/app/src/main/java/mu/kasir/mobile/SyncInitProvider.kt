@@ -5,6 +5,10 @@ import android.content.ContentValues
 import android.database.Cursor
 import android.net.Uri
 
+import android.util.Log
+import androidx.startup.AppInitializer
+import androidx.work.WorkManagerInitializer
+
 /**
  * Headless ContentProvider that schedules background sync on process boot.
  *
@@ -15,7 +19,18 @@ class SyncInitProvider : ContentProvider() {
 
     override fun onCreate(): Boolean {
         context?.let { ctx ->
-            SyncWorker.schedule(ctx.applicationContext)
+            val appCtx = ctx.applicationContext
+            try {
+                AppInitializer.getInstance(appCtx)
+                    .initializeComponent(WorkManagerInitializer::class.java)
+            } catch (e: Exception) {
+                Log.w("SyncInitProvider", "AppInitializer WorkManager init: ${e.message}")
+            }
+            try {
+                SyncWorker.schedule(appCtx)
+            } catch (e: Exception) {
+                Log.e("SyncInitProvider", "Could not schedule SyncWorker on startup", e)
+            }
         }
         return true
     }

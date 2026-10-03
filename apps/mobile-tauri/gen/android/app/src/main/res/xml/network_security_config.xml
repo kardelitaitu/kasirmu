@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Loopback-only cleartext exception for the Google device-link flow.
+
+  ADR #54 2.5 links a device by opening the system browser at Google's consent
+  screen and waiting for the redirect back to a listener the app binds on
+  127.0.0.1 (kasirmu-bridge/src/desktop_link.rs:54, redirect_uri at :74). That
+  redirect is plain http, and Android blocks cleartext by default from API 28+
+  (targetSdk is 36 here), so on a RELEASE build Chrome refuses to follow it, the
+  callback never arrives, and the wizard times out after its 300s wait with only
+  "Could not link this device" to show for it.
+
+  WHY NOT android:usesCleartextTraffic="true": that would permit cleartext to
+  EVERY host, including the licence and sync servers, and would let a DNS or
+  proxy hijack strip TLS from the app's whole network surface to fix one
+  loopback hop. The manifest keeps that flag false for release and this config
+  narrows the exception to the literal loopback address.
+
+  127.0.0.1 CANNOT BE INTERCEPTED OFF-DEVICE. The traffic never leaves the
+  device or reaches a network interface, so there is no wire to tap and no
+  host to spoof - which is why the loopback exemption is the standard one and
+  not a hole. `localhost` is deliberately NOT listed: the bridge sends the
+  literal 127.0.0.1 because the licence server accepts only that form
+  (desktop_link.rs:71-72), and a hosts-file entry cannot re-point 127.0.0.1 the
+  way it can re-point a name.
+
+  The debug build still gets android:usesCleartextTraffic="true"
+  (build.gradle.kts:52) for the Vite dev server on the LAN, which is a separate
+  and development-only need. This file is what makes the flow work in RELEASE.
+-->
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">127.0.0.1</domain>
+    </domain-config>
+</network-security-config>
