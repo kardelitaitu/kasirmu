@@ -345,6 +345,33 @@ lives in the ordering between them.
 That also bounds the fix: the desktop must keep working exactly as it does, so whatever closes this
 belongs on the tablet side (or in a shared precondition check), not in an edit to the ordering the
 desktop depends on.
+### The missing piece is small — the capability already exists
+
+The blocker is NOT a missing implementation. `kasirmu_bridge::license::activate_license`
+(`crates/kasirmu-bridge/src/license.rs:95-104`) is fully implemented, shell-agnostic, and takes
+only a `BridgeCtx` and its arguments: it calls the licence server, encrypts the returned API key
+against the machine id, stores it, and (through `store_subscription`) writes the
+`tenant_subscription` row this report is about. Nothing in it is desktop-specific.
+
+The desktop's command is a **12-line shim** over it (`apps/desktop-tauri/src/commands/license.rs:42-65`
+— take `state.bridge_ctx()`, forward the seven arguments, map the error). A tablet equivalent would
+be the same shape, and its absence is the whole gap:
+
+| Piece | Desktop | Tablet |
+|---|---|---|
+| bridge `activate_license` | present | present (**shared**) |
+| shell command registering it | `lib.rs:1435` | **absent** |
+| licence gate (`bootAllowed`) | `AppShell.tsx:553`, `:898` | **absent** |
+| activation screen rendered | `AppShell.tsx:900` | **absent** |
+
+So the tablet shell is not *missing a screen and a command because the design says activation
+happens elsewhere* — it has the bridge function it would call, in the same crate graph, one shim
+away from being reachable. That is what makes this worth raising: the distance between the shipped
+state and a working one is a registered command plus the screen the shared `ui/` already contains.
+
+It is still a product decision rather than a patch, because *whether a tablet should be able to
+activate itself* is a licensing-model choice this report cannot make — but the cost estimate the
+decision needs is now known, and it is small.
 ### What would settle it
 
 One question this checkout cannot answer: **how is a tablet meant to become licensed?** If the
