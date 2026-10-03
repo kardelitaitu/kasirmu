@@ -306,6 +306,22 @@ license-related setting: NONE
 That absence is the runtime signature of the cycle above — no `license.api_key` means
 `stored_credentials` refuses, which means no link, which means no activation.
 
+### The ADR notices the missing screen but not the dead end
+
+ADR-54 §1.5 records the missing activation screen as a PLACEMENT concern rather than a licensing
+one (`docs/decisions/2026-09-19-adr54-google-sign-in.md:107-111`):
+
+> `ui/src/app/tablet/TabletAppShell.tsx` mounts the **same** `SetupWizard` ... and never imports
+> `LicenseActivationScreen` **at all**; its gate is `StaffLoginScreen` then the wizard. So any
+> Google control placed in the wizard ships to Android unless it is excluded deliberately...
+
+The sentence is about where a *Google button* may appear. It states the same fact this report
+measures — no activation screen on the tablet — without drawing the consequence, because the
+section's question was widget placement. §1.4 is the section that names activation as the
+prerequisite ("the wizard runs *after* activation"), and it is written for the desktop.
+
+So the tablet's licensing model is not documented anywhere in this checkout. That is the gap.
+
 ### What would settle it
 
 One question this checkout cannot answer: **how is a tablet meant to become licensed?** If the
