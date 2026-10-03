@@ -455,7 +455,9 @@ was a hand-inserted sentinel on one tablet, invisible to any build, and a `pm cl
 removed it. **Round 6 removed it**, so the device now carries the true provisioned state and the
 table above records the re-measurement. Read the round-3 column as "the mechanism, isolated by
 adding one row", not as what a merchant receives.
+
 ## Acceptance for a repair
+
 Two behaviours must BOTH hold, and the second is the one that keeps the fix safe:
 
 1. **The lock lifts.** On a device provisioned offline, the home screen renders tool cards that
@@ -501,6 +503,7 @@ among them. **Topology Editor is the one tool that can create the workspaces Def
 fresh install denies the operator both the destination and the route to it.**
 
 **The device is left in this true state**, not the round-3 modified one.
+
 ## Evidence retention
 
 Device-side files pulled during this pass: `kasir.db` (+wal) and `store-default.sqlite` (+wal) in
