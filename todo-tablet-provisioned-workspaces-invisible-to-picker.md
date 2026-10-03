@@ -1374,6 +1374,47 @@ Note also that the device's address **changed** — it was `192.168.0.168` in ro
 as `192.168.0.187` here. Any saved address or `TAURI_DEV_HOST` value is therefore a perishable
 configuration, not a constant; resolve it each session rather than reusing it.
 
+## ROUND 15: the root cause was FIXED by another session — and the notice is still needed
+
+Peer commit `d35555bca` ("fix(subscription): restore the bootstrap Free subscription row on a local
+install") fixes the defect this report has documented since round 4. It is worth recording what it
+did, because it changes the standing of everything above.
+
+### The fix corroborates this report's diagnosis, independently
+
+The commit's own doc comment restates the chain rounds 4-11 established, line for line: §2.6 removed
+the `BOOTSTRAP_FREE` seed and assigned it to `provision_device`, "which never wrote it"; the
+capabilities read then fails closed; "which projects `state: 'unavailable'`, which is not in
+`WorkspaceHome.toolLock`'s open set (`active`/`grace`/`loading`), so the FIRST gate rejects every
+tool before the tier check is ever reached, and every card renders \"Subscription inactive\"."
+That is the same finding, reached separately.
+
+**And it resolves the constraint round 8 identified as the trap.** My first draft proposed treating
+an absent row as Free, which I withdrew because `None` collapses "absent", "tampered" and
+"unreadable". The fix's guard 2 answers exactly that: *"Only when the row is ABSENT. A present row
+is left exactly as it is, verified or not, so this can never launder a bad signature. That is the
+whole difference between repairing an absent row and becoming a licence bypass."* It also guards on
+`mode = 'local'` only, so a `linked` install's missing row keeps failing closed rather than
+pre-empting the server's grant — the distinction between the two modes that rounds 4-6 got wrong
+twice.
+
+### Why the notice still earns its place
+
+The fix is **non-fatal by design**, in its own words: *"a failed repair leaves the terminal exactly
+as it was — a locked terminal, not a broken one."* The tablet's caller logs a warning and continues.
+So there remains a reachable path to the silent lock-out — a repair that fails, a row deleted or
+tampered after provisioning, or a build running before this fix — and the notice is what turns that
+path from an unexplained wall of disabled cards into a stated cause. It is now a **safety net rather
+than the only explanation**, which is the right place for it to sit.
+
+### What this changes upstream in this report
+
+- The **root-cause** sections remain accurate as a statement of what WAS true and why it happened.
+  They should be read as the diagnosis that motivated `d35555bca`, not as open defects.
+- The **`local`-mode framing** in rounds 4-6 (and its correction in round 10) is superseded: the
+  fix guards on `mode = 'local'` and leaves `linked` failing closed, which is the correct split.
+- The **notice is not made redundant**, for the reason above.
+
 ## Evidence retention
 
 Device-side files pulled during this pass: `kasir.db` (+wal) and `store-default.sqlite` (+wal) in
