@@ -1631,6 +1631,22 @@ body:has(.memo-stack) .ws-layer-content {
   opacity: 1;
 }
 
+/* ── Quick-launch preset cards ──────────────────────────────── */
+
+/* The two presets (Retail / Restaurant POS) offered while the terminal has no
+   workspace yet. They are ordinary cards **on purpose**: explicitly not the
+   dashed, dimmed treatment `.workspace-card--add` gives the "+" card, so a
+   preset reads as a real destination and the "+" stays the only card that
+   reads as an action. The two declarations below are the defaults restated —
+   they exist to pin that contrast, so a future change to `.workspace-card`
+   cannot quietly make the presets look like the add card.
+   `workspace-card--quick` previously had NO rule at all while `WorkspaceHome`
+   applied it, which is what `screenExtraction.test.ts` case 1 reports. */
+.workspace-card--quick {
+  border-style: solid;
+  opacity: 1;
+}
+
 /* ── Reduced motion for tools ───────────────────────────────── */
 
 @media (prefers-reduced-motion: reduce) {

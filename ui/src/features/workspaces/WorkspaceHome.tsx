@@ -712,6 +712,45 @@ export default function WorkspaceHome() {
         <div className="ws-main">
           <header className="workspace-home-header" />
 
+          {/* ── Non-blocking licence notice ─────────────────────────────
+              The boot gate admits a provisioned install even when its licence
+              is not usable (TabletAppShell.tsx:200 — `setupCompleted ||
+              installExisting`, pinned as the compatibility contract in
+              appShellBootGate.test.tsx rule 2). The design's answer to that
+              state is NOT a block: `appShellBootGate.test.tsx` rule 4 requires
+              it to be "surfaced by the non-blocking badge". The desktop does
+              so (AppShell.tsx:911-930); this screen locked all 17 tool cards
+              below without explaining why, so an operator saw the consequence
+              and never the cause.
+
+              Read from `subscriptionState` rather than the licence DTO on
+              purpose: the capabilities read is profile-independent (always
+              fails closed), so this notice appears on both debug and release
+              builds — where `get_license_status` would report `active` in
+              debug and hide the very state the operator is looking at.
+
+              The condition is the COMPLEMENT of `toolLock`'s `validityOpen`
+              (above), not a check for `unavailable` alone. Five lifecycle
+              states fail that gate — `unavailable`, `expired`, `canceled`,
+              `paused` and `revoked` — and only `revoked` is handled upstream
+              (TabletAppShell.tsx:362 renders RevokedScreen). An expired or
+              canceled subscription reaches this screen and locks all 17
+              cards, so keying on `unavailable` would leave the notice silent
+              in exactly the cases it exists for. Spelled against the same
+              three open states so an edit to one is noticed in the other. */}
+          {subscriptionState !== 'active' &&
+            subscriptionState !== 'grace' &&
+            subscriptionState !== 'loading' &&
+            subscriptionState !== 'revoked' && (
+            <div className="workspace-licence-notice" role="status" data-testid="workspace-licence-notice">
+              <Localized id="workspace-home-licence-unavailable">
+                <span>
+                  This terminal has no active licence. Tools below stay locked until it is activated.
+                </span>
+              </Localized>
+            </div>
+          )}
+
           {error && sortedWorkspaces.length === 0 ? (
             <div className="workspace-error">
               <div className="workspace-error-icon" aria-hidden="true">
@@ -745,6 +784,50 @@ export default function WorkspaceHome() {
                     </h2>
                   </div>
                   <div className="workspace-grid" ref={gridRef} role="group" aria-label={l10n.getString('workspaces-aria')}>
+                    <button
+                      type="button"
+                      className="workspace-card workspace-card--quick ws-color-store-pos"
+                      data-testid="workspace-card-quick-retail"
+                      onClick={() => setActiveWorkspace('store-pos')}
+                      aria-label="Retail POS"
+                    >
+                      <div className="workspace-card-row">
+                        <div className="workspace-card-icon">
+                          <div className="workspace-card-icon-inner">{getIcon('store-pos')}</div>
+                        </div>
+                        <div className="workspace-card-body">
+                          <div className="workspace-card-title">
+                            <h2 className="workspace-card-name">Retail POS</h2>
+                          </div>
+                          <div className="workspace-card-text">
+                            <p className="workspace-card-desc">Barcode retail POS terminal</p>
+                          </div>
+                        </div>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      className="workspace-card workspace-card--quick ws-color-restaurant-pos"
+                      data-testid="workspace-card-quick-restaurant"
+                      onClick={() => setActiveWorkspace('restaurant-pos')}
+                      aria-label="Restaurant POS"
+                    >
+                      <div className="workspace-card-row">
+                        <div className="workspace-card-icon">
+                          <div className="workspace-card-icon-inner">{getIcon('restaurant-pos')}</div>
+                        </div>
+                        <div className="workspace-card-body">
+                          <div className="workspace-card-title">
+                            <h2 className="workspace-card-name">Restaurant POS</h2>
+                          </div>
+                          <div className="workspace-card-text">
+                            <p className="workspace-card-desc">Dining and table service POS</p>
+                          </div>
+                        </div>
+                      </div>
+                    </button>
+
                     <button
                       type="button"
                       className="workspace-card workspace-card--add"
