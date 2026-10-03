@@ -690,6 +690,7 @@ tamper-resistance.md:532-536`): *"under `debug_assertions` ... the debug arm ass
 the security property"*, and warns that a green `cargo test` does not cover the release invariant.
 So the permissive debug arms are a deliberate, tested, cross-cutting convention — the earlier draft
 of this section proposed deleting one, which would have failed the tests written to protect it.
+
 ## Why the test suite never saw it
 
 The gap is masked by the fixture. Every bridge subscription test builds its DB from
