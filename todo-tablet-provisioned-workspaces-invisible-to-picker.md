@@ -473,6 +473,74 @@ which does not exist in the shell's command list. Either way the fix is a produc
 the tablet's licensing model, not a local patch — which is why this round adds evidence rather
 than code.
 
+## ROOT CAUSE (round 8) — two commands disagree because only ONE has a debug arm
+
+Rounds 4-7 measured the lock-out through the capabilities read and inferred the cause from the
+absent database row. That inference was **incomplete**, and the device proved it this round:
+`get_license_status` and `get_subscription_capabilities`, asked about the SAME device, answer
+oppositely.
+
+```json
+get_license_status            -> {isActive: true,  status: "valid",       tier: "free"}
+get_subscription_capabilities -> {tier: "free", status: "unavailable", state: "unavailable"}
+```
+
+The boot gate asks the FIRST question (`TabletAppShell.tsx:203-204`), so it is satisfied and admits
+the device. The home screen asks the SECOND (`WorkspaceHome.tsx:419-423`), gets `unavailable`, and
+locks all 17 tools. **That is why the device boots happily and then cannot be used** — not a missing
+row at boot, but two readers of the same install disagreeing, which is ADR-56 §1.4's
+*"same install, opposite verdicts"* in its purest form.
+
+### The mechanism: a debug short-circuit that only one side has
+
+`get_license_status` carries a `#[cfg(debug_assertions)]` arm for the no-licence case
+(`crates/kasirmu-bridge/src/license.rs:776-788`):
+
+```rust
+} else {
+    // -- No stored payload/signature --------------------
+    #[cfg(debug_assertions)]
+    {
+        tracing::debug!("No license payload found in debug mode -- returning Valid (free tier)");
+        Ok(LicenseStatusDto {
+            is_active: true, status: LicenseVerificationStatus::Valid,
+            tier: Some("free".to_string()), payload: None, message: None,
+        })
+    }
+```
+
+`get_subscription_capabilities` has **no equivalent arm** — a grep for `debug_assertions` across
+`subscription.rs`, the mobile `commands/subscription.rs` and `entitlements.rs` returns only
+`entitlements.rs:135` (`apply_debug_upgrade`, which this client passes `false`). So on a debug
+build:
+
+| Build | `get_license_status`, no licence | `get_subscription_capabilities`, no licence |
+|---|---|---|
+| **debug** | `is_active: true`, `tier: "free"` | `unavailable` — locks every tool |
+| release | `is_active: false`, `status: "Missing"` | `unavailable` — locks every tool |
+
+**The two agree in a release build and disagree in every debug build.** That is the condition this
+device is in, and it explains a fact rounds 4-7 could not: why the boot gate was satisfied on a
+terminal with no subscription row.
+
+Both arms are deliberate — the module doc calls the debug branches *"verbatim ports of the command
+bodies"* (`license.rs:9-10`), so `get_license_status` is meant to let a developer run unlicensed.
+The defect is that the concession was made in one reader and not the other, so a debug build
+presents two contradictory verdicts to the same user in the same session.
+
+### What this changes about the earlier analysis
+
+- **The six-way proof in round 5 stands**: no tablet path writes the row, and that is still why
+  `get_subscription_capabilities` has nothing to read.
+- **The `local`-mode framing in rounds 4-6 was too narrow.** The lock-out needs no provisioning
+  mode at all — any **debug** build shows it, because the arm that would have compensated
+  (`get_license_status`) is the debug-only one.
+- **A release build behaves differently, and that is the open question this leaves.** In release,
+  the gate is NOT satisfied without a licence (`status: Missing` → `bootAllowed` false unless
+  `setupCompleted`/`installExisting`), so the operator is shown the activation screen — but that
+  screen's submit is guarded off on the tablet (`LicenseActivationScreen.tsx:287`). Whether a
+  release tablet can therefore bootstrap is untested here and should be measured before any fix is
+  chosen, because it decides whether the defect is debug-only or universal.
 ## Why the test suite never saw it
 
 The gap is masked by the fixture. Every bridge subscription test builds its DB from
