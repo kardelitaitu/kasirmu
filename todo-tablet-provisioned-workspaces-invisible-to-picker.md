@@ -536,12 +536,18 @@ presents two contradictory verdicts to the same user in the same session.
 - **The `local`-mode framing in rounds 4-6 was too narrow.** The lock-out needs no provisioning
   mode at all — any **debug** build shows it, because the arm that would have compensated
   (`get_license_status`) is the debug-only one.
-- **A release build behaves differently, and that is the open question this leaves.** In release,
-  the gate is NOT satisfied without a licence (`status: Missing` → `bootAllowed` false unless
-  `setupCompleted`/`installExisting`), so the operator is shown the activation screen — but that
-  screen's submit is guarded off on the tablet (`LicenseActivationScreen.tsx:287`). Whether a
-  release tablet can therefore bootstrap is untested here and should be measured before any fix is
-  chosen, because it decides whether the defect is debug-only or universal.
+- **The lock-out is NOT debug-only, and this session already measured that.** The first screenshot
+  taken in round 1 was from the **release** build (`dumpsys package`: `flags=0x0`,
+  `versionName=0.0.41`) recorded before the debug APK was installed, and it shows the same 17
+  locked cards captioned "Subscription inactive". The debug arm changes only which of the two
+  commands is satisfied at the gate — it cannot change the outcome, because the gate is an OR:
+  with no licence, `licenceUsable` is false in both profiles, but `setupCompleted` is true as soon
+  as provisioning writes its marker, and provisioning does not depend on the profile. So
+  `bootAllowed` is satisfied either way and the home screen locks the tools either way.
+- **What the debug arm does change** is the *route* to the lock-out: on a debug build the gate is
+  satisfied by a false `is_active: true`; on release it is satisfied by `setupCompleted`. Same
+  endpoint, and the fix must address the capabilities read rather than the gate, because the gate
+  is behaving as designed in both.
 
 ## Why the test suite never saw it
 
