@@ -164,7 +164,7 @@ pub fn run() {
                         // checkpointed to disk before the Android OS suspends or kills the process.
                         if let Some(state) = window.app_handle().try_state::<AppState>() {
                             let db = state.db.clone();
-                            tokio::task::spawn(async move {
+                            platform_startup::spawn_once("wal checkpoint on blur", async move {
                                 let conn = db.lock().await;
                                 let _ = conn.execute_batch("PRAGMA wal_checkpoint(PASSIVE);");
                             });

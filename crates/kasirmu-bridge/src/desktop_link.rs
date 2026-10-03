@@ -37,9 +37,16 @@ pub enum LinkCallback {
 /// sentence would cost more than the sentence. One line in each language beats one language
 /// that is wrong for half the merchants.
 const RELAY_PAGE: &str = "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">\
-    <title>kasir.mu</title></head><body style=\"font-family:system-ui;padding:3rem;text-align:center\">\
+    <title>kasir.mu</title><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\
+    <meta http-equiv=\"refresh\" content=\"0;url=intent:#Intent;package=mu.kasir.mobile;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;end\">\
+    <style>body{font-family:system-ui,-apple-system,sans-serif;padding:2rem;text-align:center;background:#0f172a;color:#f8fafc;}\
+    .btn{display:inline-block;margin-top:1.5rem;padding:0.75rem 1.5rem;background:#3b82f6;color:white;text-decoration:none;border-radius:0.5rem;font-weight:bold;}\
+    </style></head><body>\
+    <h2>kasir.mu</h2>\
     <p>You can close this window and return to the app.</p>\
-    <p lang=\"id\">Anda dapat menutup jendela ini dan kembali ke aplikasi.</p></body></html>";
+    <p lang=\"id\">Anda dapat menutup jendela ini dan kembali ke aplikasi.</p>\
+    <a class=\"btn\" href=\"intent:#Intent;package=mu.kasir.mobile;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;end\">Kembali ke kasir.mu / Return to App</a>\
+    </body></html>";
 
 /// A bound loopback listener waiting for one device-link redirect.
 #[derive(Debug)]
