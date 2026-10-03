@@ -1341,6 +1341,39 @@ The device-level *results* in those rounds still stand — the notice was observ
 expired-state proof was observed — because the dev server happened to be up or the install happened
 to carry the change. Only the explanation of *why* it worked was wrong.
 
+## ROUND 15: the device left the network mid-round (external, not caused by this work)
+
+The tablet dropped off Wi-Fi during this round, which ends device verification until it returns.
+Recorded because it changes what the next session can rely on.
+
+Measured:
+
+```
+adb devices                          -> (empty)
+adb mdns services                    -> adb-e45e28d9-lFE6yH  _adb-tls-connect._tcp  192.168.0.187:39061
+adb connect 192.168.0.187:39061      -> 10060 (timed out, host did not respond)
+ping 192.168.0.187                   -> Reply from 192.168.0.168: Destination host unreachable
+Get-NetNeighbor 192.168.0.187        -> State "Unreachable", LinkLayerAddress 00-00-00-00-00-00
+```
+
+The host side is healthy — the LAN is up, `192.168.0.105` is `Reachable`, and the adapter still holds
+`192.168.0.168` — so the loss is the tablet, not this machine. mDNS still advertises the device, which
+is why the serial resolves while nothing answers: the advertisement is cached, the host is not there.
+**A re-pair or waking the tablet is required**, and that is the `android-apk-build` skill's territory
+rather than this report's.
+
+**What this blocks and what it does not:**
+
+- It blocks any further **device** verification — no CDP, no screenshots, no `kasir.db` reads.
+- It does **not** block the outstanding code item, which is a commit gate rather than a device
+  question (see the round-15 recovery section above).
+- The work verified on the device in rounds 12-14 stands; those measurements were taken while it was
+  reachable and are quoted above.
+
+Note also that the device's address **changed** — it was `192.168.0.168` in rounds 1-14 and appeared
+as `192.168.0.187` here. Any saved address or `TAURI_DEV_HOST` value is therefore a perishable
+configuration, not a constant; resolve it each session rather than reusing it.
+
 ## Evidence retention
 
 Device-side files pulled during this pass: `kasir.db` (+wal) and `store-default.sqlite` (+wal) in
