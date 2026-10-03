@@ -110,10 +110,19 @@ UPDATER_PRIVATE_KEY="$SEED" node scripts/generate-latest-json.mjs 0.0.0-prefligh
 Without it the workflow logs `::warning:: … installers will be UNSIGNED` and
 uses a no-op `signCommand`, so the release still succeeds with **unsigned**
 Windows installers. With it, `Import-PfxCertificate` imports the PFX and
-Tauri signs via `signtool.exe`. Note the current import step does not pass
-`UPDATER_CERT_PASSWORD` — a password-protected PFX may not import cleanly;
-export the PFX without a password, or verify the step succeeds in a
-`workflow_dispatch` dry run first.
+Tauri signs via `signtool.exe`.
+
+**Corrected 2026-10-03.** This paragraph previously told you to *export the PFX without a
+password*, because `Import-PfxCertificate` was called without `-Password` — so a normal
+CA-issued PFX could not be imported at all, and the workaround was to store an unencrypted
+private key. The import now passes `UPDATER_CERT_PASSWORD`, so:
+
+- set **both** `UPDATER_CERT` and `UPDATER_CERT_PASSWORD`;
+- a passwordless PFX still works (an empty password secret is handled);
+- the import step publishes the certificate's thumbprint and the build pins it, so the job
+  fails loudly rather than signing with an unrelated certificate on the runner. If the
+  certificate does not import, expect `refusing to sign blindly` rather than a silent
+  unsigned or mis-signed installer.
 
 ### Android (`android.yml` — ⚠️ RETIRED `.bak`, nothing runs)
 
