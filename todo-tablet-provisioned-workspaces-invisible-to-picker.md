@@ -1,18 +1,16 @@
 # todo-tablet-provisioned-workspaces-invisible-to-picker
 
-> Two independent defects found on one freshly provisioned tablet. Either alone makes an
-> offline install unusable; together they are a dead end. They are reported here together
-> because one test pass produced both, not because one causes the other.
+> Two independent defects found on one freshly provisioned tablet. **Both have since been fixed
+> by other sessions** — see the status stamp below for the current state, which is the only part
+> of this file that should be read as present tense.
 >
-> 1. **Provisioned workspaces are invisible** — provisioning writes the global DB, the picker
->    reads a per-store DB. (A new instance of the known P0-4 split-brain.)
-> 2. **Every tool locks, permanently — on a provisioned install with no licence row, on BOTH
->    shells.** The capabilities read requires a `tenant_subscription` row and fails closed to
->    `unavailable` without one, while the boot gate is satisfied by `setupCompleted` — so the
->    install is admitted and then tier-locked. No tablet code path can write the row
->    (provisioning writes none; `activate_license` is desktop-only and shell-guarded off; the
->    status poll only UPDATEs; sync does not carry the table; `store_subscription` needs an
->    activation the tablet cannot perform).
+> 1. **Provisioned workspaces are invisible** — provisioning wrote the global DB, the picker read
+>    a per-store DB. (A new instance of the known P0-4 split-brain.) **FIXED.**
+> 2. **Every tool locked, permanently — on a provisioned install with no licence row, on BOTH
+>    shells.** The capabilities read required a `tenant_subscription` row and failed closed to
+>    `unavailable` without one, while the boot gate was satisfied by `setupCompleted` — so the
+>    install was admitted and then tier-locked. **ROOT CAUSE FIXED** in two halves (`d35555bca`
+>    committed; `provision_device`'s own write still uncommitted).
 >
 >    **Scope was corrected twice and the earlier framings should not be trusted.** Round 4
 >    scoped this to `local` mode (too narrow); round 5 widened it to "every tablet install"
@@ -21,20 +19,44 @@
 >    orthogonal because `apply_debug_upgrade` requires `state == Active`. See §"CORRECTION
 >    (round 10): this is a SHARED defect".
 
-<!-- Audit stamp: 2026-10-03 · DSH · status: MEASURED ON DEVICE (both defects proven, neither fixed)
-     Reproduced on Redmi 23073RPBFG (Android 15) with a debug build of `0.0.41` (mu.kasir.mobile),
-     installed 2026-10-03 06:53, exercised over CDP. Every figure below was read off the device
-     or its pulled SQLite files; nothing is inferred from source alone.
+<!-- Audit stamp: 2026-10-03 · DSH · status: BOTH DEFECTS FIXED; ONE FRONTEND CHANGE AWAITS ITS FILE
 
-     READ THE CORRECTIONS, NOT THE FIRST DRAFT. Three claims in this document were revised after
-     further measurement, and each revision is left in place rather than silently edited:
-       - the second defect's SCOPE (round 4: `local` mode -> round 5: all tablets -> round 10:
-         BOTH shells; it is not tablet-specific),
-       - the tablet's boot gates (round 7 said absent; round 8 found them present and bypassed),
-       - the proposed FIX (round 7 proposed a tablet toast, reverted in round 8 as unverifiable
-         and aimed at the wrong layer; round 10 established the debug arms must NOT be removed
-         because `license_tests.rs` pins them as deliberate hazards).
-     The device-level reproductions were unaffected by any of the three. -->
+     READ THIS FIRST. The document below is a 22-round working log and is deliberately
+     non-chronological: sections carry corrections of earlier sections, sometimes several
+     rounds later. Do not read it top to bottom for the current state. That state is here.
+
+     DEFECT 1 (invisible workspaces) — FIXED, by another session. The device now renders
+     three workspace cards where rounds 2-11 measured one. Not fixed by this session.
+
+     DEFECT 2 (every tool locks) — ROOT CAUSE FIXED, by another session, in two halves:
+       - committed `d35555bca`: a startup reconcile that repairs an install provisioned
+         before the write existed (`migrations.rs::ensure_bootstrap_subscription`).
+       - in flight, uncommitted: a write in `provision_device` itself (`provisioning.rs`
+         "Step 5b"). Uncommitted at the time of writing.
+
+     THIS SESSION'S OWN WORK, and its state:
+       - a non-blocking licence notice in the shared `WorkspaceHome.tsx`, so an install with
+         no usable entitlement states the CAUSE instead of showing 17 unexplained locked
+         cards (`appShellBootGate.test.tsx` rule 4 requires exactly this). VERIFIED ON DEVICE
+         for both `unavailable` and `expired`.
+       - its Fluent strings: COMMITTED (`bcb4a5452`).
+       - its CSS: COMMITTED, swept into a peer's `268440251`.
+       - its tests: COMMITTED (`ba69f826f`).
+       - **the JSX itself: UNCOMMITTED.** `WorkspaceHome.tsx` also carries another session's
+         quick-launch cards in a separate hunk, and `AGENTS.md` 7.3 permits only whole-path
+         commits, so the two cannot be separated. The block is recorded verbatim in
+         "ROUND 15: the uncommitted block is now recorded verbatim", so it is recoverable.
+
+     ONE OPEN DEFECT, not yet fixed anywhere: the uncommitted `provisioning.rs` Step 5b has
+     no `args.mode` guard, so a LINKED install would get a local `BOOTSTRAP_FREE` row that no
+     tablet reader consults — and the reconcile deliberately refuses to write exactly that.
+     HEAD is unaffected (it contains no such write). A tripwire test marks the spot:
+     `provisioning_tests.rs::a_linked_provision_leaves_no_bootstrap_subscription_row`.
+
+     DEVICE: the tablet left the network during round 15 and has not returned. Every finding
+     since round 16 comes from code, tests and ADRs rather than hardware. Re-pairing is
+     required to resume device verification; nothing in this file depends on it to be read. -->
+
 
 **Symptom.** A freshly provisioned tablet that chose **"Offline only"** on the setup wizard
 lands on a home screen showing the EMPTY workspace picker — a single "Add Workspace" card —
