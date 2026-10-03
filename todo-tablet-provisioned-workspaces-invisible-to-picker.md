@@ -2474,6 +2474,90 @@ a live licence server. What is proven is the hop that was broken: the app on the
 network policy that permits cleartext to `127.0.0.1` in a release build. A tap-through remains the
 final confirmation.
 
+## ROUND 34: Warehouse and admin routed to the wrong screen on the tablet
+
+Reported: retail POS and other workspaces cannot be opened on the Android tablet. Analysed from
+code (the installed build is RELEASE, so CDP cannot attach — no DOM read and no testid taps;
+`uiautomator` sees a single opaque WebView node. Coordinate taps DO work, which is how the setup
+screen was reached, but provisioning requires a phone, a Google consent or a mailbox code).
+
+### Two defects, both real, both fixed
+
+**1. `warehouse` mapped to the wrong route.** `TabletAppShell.tsx` sent `warehouse` to `products`,
+so the Warehouse workspace rendered `ProductLookupScreen` instead of the `WarehouseConsole` that
+`ui/src/features/warehouse/register.tsx:8` registers at `route: 'warehouse'`. The desktop
+(`AppShell.tsx:340`) has always named `warehouse`; the tablet was the outlier. This matters because
+a Retail provision creates exactly three workspaces — `store-pos`, `warehouse`, `admin`
+(`crates/kasirmu-core/src/db/provisioning.rs:90`) — so Warehouse is one of the few a retail tablet
+can open at all.
+
+**2. The empty-hash fallback discarded the workspace's route.** `TabletAppShell.tsx`'s hash effect
+was:
+
+```ts
+if (!raw) {
+  if (!activeWorkspaceRef.current) setCurrentRoute('products');
+  else setCurrentRoute('pos');        // <- unconditional, ignores WHICH workspace
+}
+```
+
+That effect is declared AFTER the workspace-rebind effect, so it ran last and won. The rebind
+effect mapped `admin -> settings`, but the hash effect overwrote it with `pos` whenever any
+workspace was active; and because the rebind effect is guarded on a *change*, a shell mounting with
+a workspace already active (device-bound auto-boot) had no other source for its route. The two
+effects contradicted each other and the loser was the correct one.
+
+Fixed by extracting one `WORKSPACE_ROUTE` map, correcting `warehouse`, and making the fallback read
+that same map instead of the hardcoded `pos`.
+
+`restaurant-pos` and `store-pos` deliberately keep their tablet value (`pos`) even though the
+desktop names `sales` and `products`: both have fullscreen branches that render a hardcoded screen
+and never read the route. The new test file pins that as a CONTROL so nobody 'fixes' it into a
+regression.
+
+### Tests
+
+New `ui/src/__tests__/TabletAppShellWorkspaceRoute.test.tsx` (4 cases): warehouse on mount, warehouse
+on a later rebind, admin on mount, and the store-pos CONTROL. **The first two failed before the
+fix** — the render showed `data-testid="pos-page"` where the warehouse console was expected, which
+is the defect reproduced in a test rather than inferred.
+
+Three existing tests had to be corrected, and the reason is the same in each: they asserted the
+buggy outcome.
+
+- `TabletAppShell.test.tsx` — two cases set `activeWorkspace: 'admin'` but registered only a `pos`
+  page, and passed *because* everything landed on `pos`. They now register the route `admin` truly
+  opens. Their assertions are otherwise unchanged; the role-gate case in particular would otherwise
+  have passed vacuously, since an unregistered route yields no registration and therefore no
+  `PermissionDenied`.
+- `pageLayoutRender.test.ts` — its tablet block registers a layout probe and says in a comment that
+  it is on "the tablet shell's initial route". Retargeted to `settings`, the route `admin` opens.
+  Its layout assertions are byte-identical; only WHERE the probe mounts changed.
+
+### Verification
+
+- `TabletAppShellWorkspaceRoute` 4/4, `TabletAppShell` 36/36, `TabletAppShellFeatureGateRoute` 9/9,
+  `pageLayoutRender` 11/11 — 60 green across the four files that exercise the shell.
+- `npm run lint` — 0 errors (61 pre-existing warnings, none in the changed files).
+- Full suite 10,900 passed / 10 failed. **None of the 10 is from this change**: they are
+  `nativeTooltipCompliance`, `screenExtraction`, `storageKeyPins`, `themeTokenCompliance` and
+  `SettingsPage.a11y`. `screenExtraction`'s single failure names
+  `settings/SyncConflictsPanel.css`, and the one `tsc` error names the same file's `.tsx` — both are
+  another session's uncommitted in-flight work on `SyncConflictsPanel`, which neither imports nor
+  is imported by the tablet shell.
+
+### Not verified on device — stated plainly
+
+The fix was shipped on code evidence alone, as agreed, so nothing here was watched failing on the
+tablet. What is proven is the routing logic and that the previous code could not reach
+`WarehouseConsole`. A tap-through on a provisioned terminal remains the final confirmation.
+
+### Landed
+
+`d4545ff1d fix(tablet): align warehouse and admin workspace routes and empty-hash fallback` — a peer
+session's commit swept these four files in; the message describes the change accurately and all four
+are intact in HEAD.
+
 ## Evidence retention
 
 Device-side files pulled during this pass: `kasir.db` (+wal) and `store-default.sqlite` (+wal) in
