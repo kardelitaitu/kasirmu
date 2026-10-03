@@ -1650,6 +1650,44 @@ would carry their work under my message, which `AGENTS.md` §7.3 forbids. The fi
 precisely so whoever lands that hunk can apply the guard, and so a reviewer of it has the argument in
 front of them.
 
+## ROUND 20 CORRECTION: the Step 5b defect is in UNCOMMITTED work — HEAD is correct
+
+Rounds 17-19 called this a *"live first-run defect on the recommended path"*. **That was overstated**,
+and the check that corrected it is one line: whether the committed tree contains the offending write.
+
+```
+tenant_subscription references in HEAD's provisioning.rs  : 0
+tenant_subscription references in the file on disk       : 1   (the peer's uncommitted Step 5b)
+```
+
+So the defect exists **only in another session's work-in-progress**. Nothing in HEAD is wrong:
+
+- HEAD's `provision_device` writes no subscription row at all, as it always has.
+- HEAD carries the committed reconcile (`d35555bca`), which repairs a **local** install at boot and
+  deliberately refuses a linked one (`mode = 'local'` guard). So the shipping tree is correct for the
+  case the shipping UI actually provisions.
+- The linked gap arrives only if and when Step 5b lands unguarded.
+
+**What was right and what was wrong in the earlier sections:** the mechanism is exactly as described —
+Step 5b's missing `args.mode` guard, the contrast with the reconcile's guard 1, and the risk of
+planting a local `BOOTSTRAP_FREE` grant where the server's belongs. What was wrong was the **tense**:
+those sections speak of the defect as present, when it is proposed. Read them as a review of a pending
+change, not as a report of shipped behaviour.
+
+### This is a review note, and that is its correct form
+
+The consequence for how the finding should travel: it is not a bug to fix in HEAD, it is an objection
+to a pending hunk. The right recipient is whoever lands `provisioning.rs`, and the right action is to
+add the guard **in that hunk** — which is also why this session could not do it without sweeping their
+work into a commit of its own (`AGENTS.md` §7.3: *"A path that is dirty with content that is not
+yours: stop and say so."*).
+
+**Observation worth recording:** both contested files have gone quiet — `provisioning.rs` last written
+74 minutes before this round, `WorkspaceHome.tsx` 35 minutes. Holding a fix four rounds pending an
+abandoned hunk is itself a cost, and the guard belongs to whoever owns that hunk rather than being
+permanently deferred to this report. If the hunk is still uncommitted when it is next read, the
+cleanest resolution is for a session that owns both halves to land them together.
+
 ## Evidence retention
 
 Device-side files pulled during this pass: `kasir.db` (+wal) and `store-default.sqlite` (+wal) in
