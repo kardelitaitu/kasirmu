@@ -31,11 +31,19 @@
      (a read-repair that copies global rows into the store DB); round 25 reviews it and finds
      three mechanical problems — no transaction, a swallowed FK error, and uncopied columns.
 
-     DEFECT 2 (every tool locks) — ROOT CAUSE FIXED, by another session, in two halves:
-       - committed `d35555bca`: a startup reconcile that repairs an install provisioned
-         before the write existed (`migrations.rs::ensure_bootstrap_subscription`).
-       - in flight, uncommitted: a write in `provision_device` itself (`provisioning.rs`
-         "Step 5b"). Uncommitted at the time of writing.
+     DEFECT 2 (every tool locks) — THE MISSING ROW IS FIXED; A DIFFERENT CAUSE REMAINS.
+       - The row is now written and read correctly. Measured on the device (round 31):
+         `get_subscription_capabilities` returns `state: "active", tier: "free"` and
+         `get_license_status` returns `isActive: true` after a fresh `local` provision.
+         So rounds 4-20's "no row, fails closed" diagnosis describes a defect that HAS
+         BEEN FIXED — two halves: committed `d35555bca` (a startup reconcile) plus a
+         write in `provision_device` itself (`provisioning.rs` "Step 5b", uncommitted).
+       - **But a freshly provisioned terminal still shows 17 locked tools** — reproduced
+         twice on hardware. The cause is now identified and is NOT the row: `SubscriptionProvider`
+         fetches once on mount, BEFORE `provision_device` writes, so it caches `unavailable`
+         and nothing refreshes it. A reload drops the count 17 -> 7 (the 7 being correct
+         Free-tier locks). See "ROUND 31: DEVICE RESULTS". The fix is a `refresh()` on the
+         provisioning success path — NOT a schema or entitlement change.
 
      THIS SESSION'S OWN WORK, and its state:
        - a non-blocking licence notice in the shared `WorkspaceHome.tsx`, so an install with
