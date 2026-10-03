@@ -11,7 +11,7 @@ import { roleAtLeast, normalizeRole } from '@/utils/role';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { DEFAULT_RESOLVED_ORIGIN, SettingsProvider, useSettings } from '@/contexts/SettingsContext';
 import { useCurrency } from '@/contexts/CurrencyContext';
-import { type SyncSettingsDto } from '@/api/offline';
+import { type SyncSettingsDto, pgSyncStatusScoped } from '@/api/offline';
 
 // The brand writes moved out with the save orchestration (./hooks/useSettingsSave);
 // only the BrandContext refresh handle is still read here.
@@ -146,6 +146,20 @@ function SettingsPageContent() {
   // scores 0 and locks a real owner out (reproduced in the browser).
   const canAccessSettings = roleAtLeast(normalizeRole(session?.role_name ?? null), 'manager');
   const { sessionToken } = useWorkspace();
+  const [deadLetterCount, setDeadLetterCount] = useState<number>(0);
+
+  useEffect(() => {
+    if (!sessionToken) return;
+    pgSyncStatusScoped(sessionToken)
+      .then((status) => {
+        if (status && status.deadLetterCount > 0) {
+          setDeadLetterCount(status.deadLetterCount);
+        } else {
+          setDeadLetterCount(0);
+        }
+      })
+      .catch(() => {});
+  }, [sessionToken]);
 
   const [displayCardSize, setDisplayCardSize] = useState(0);
   const [displayFontSize, setDisplayFontSize] = useState(0);
@@ -415,6 +429,7 @@ function SettingsPageContent() {
           onSearchChange={setSearchQuery}
           mobileSidebarOpen={mobileSidebarOpen}
           onMobileClose={() => setMobileSidebarOpen(false)}
+          deadLetterCount={deadLetterCount}
         />
 
         {/* ── Main content ──────────────────────────────── */}

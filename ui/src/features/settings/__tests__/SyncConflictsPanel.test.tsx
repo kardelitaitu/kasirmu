@@ -32,6 +32,16 @@ const mockL10n = {
       'sync-conflicts-retry': 'Retry',
       'sync-conflicts-retrying': 'Retrying…',
       'sync-conflicts-retry-aria': `Retry sync for item ${vars?.['id'] ?? ''}`,
+      'sync-conflicts-requeue-all': 'Requeue All',
+      'sync-conflicts-requeueing-all': 'Requeueing…',
+      'sync-conflicts-requeue-all-aria': 'Requeue all quarantined sync conflicts',
+      'sync-conflicts-payload-inspect': 'Inspect',
+      'sync-conflicts-payload-hide': 'Hide',
+      'sync-conflicts-payload-inspect-aria': `Inspect payload for item ${vars?.['id'] ?? ''}`,
+      'sync-conflicts-payload-hide-aria': `Hide payload for item ${vars?.['id'] ?? ''}`,
+      'sync-conflicts-payload-copy': 'Copy JSON',
+      'sync-conflicts-payload-copied': 'Copied!',
+      'sync-conflicts-badge-aria': `${vars?.['count'] ?? ''} quarantined sync conflicts`,
     };
     return map[id] ?? id;
   },
@@ -159,4 +169,96 @@ describe('SyncConflictsPanel', () => {
       expect(screen.getByRole('alert')).toHaveTextContent('Error: Requeue failed');
     });
   });
+
+  it('toggles payload inspection for an item', async () => {
+    const user = userEvent.setup();
+    const failuresWithPayload: RemoteSyncFailureDto[] = [
+      {
+        itemId: 'item-payload',
+        action: 'sale.create',
+        payload: '{"orderId":"12345","amount":50000}',
+        attempts: 3,
+        lastError: 'Conflict',
+        deadLettered: true,
+      },
+    ];
+    vi.mocked(listRemoteFailuresScoped).mockResolvedValueOnce(failuresWithPayload);
+
+    render(<SyncConflictsPanel />);
+
+    await waitFor(() => {
+      expect(screen.getByText('sale.create')).toBeInTheDocument();
+    });
+
+    expect(screen.queryByTestId('payload-view-item-payload')).not.toBeInTheDocument();
+
+    const inspectBtn = screen.getByRole('button', { name: 'Inspect payload for item item-payload' });
+    await user.click(inspectBtn);
+
+    expect(screen.getByTestId('payload-view-item-payload')).toBeInTheDocument();
+    expect(screen.getByText(/"orderId": "12345"/)).toBeInTheDocument();
+
+    const hideBtn = screen.getByRole('button', { name: 'Hide payload for item item-payload' });
+    await user.click(hideBtn);
+
+    expect(screen.queryByTestId('payload-view-item-payload')).not.toBeInTheDocument();
+  });
+
+  it('handles requeue all when multiple dead-lettered items exist', async () => {
+    const user = userEvent.setup();
+    const onRequeueSuccess = vi.fn();
+    const multiDeadLetters: RemoteSyncFailureDto[] = [
+      {
+        itemId: 'dead-1',
+        action: 'sale.create',
+        payload: '{}',
+        attempts: 5,
+        lastError: 'Err 1',
+        deadLettered: true,
+      },
+      {
+        itemId: 'dead-2',
+        action: 'stock.adjust',
+        payload: '{}',
+        attempts: 4,
+        lastError: 'Err 2',
+        deadLettered: true,
+      },
+    ];
+
+    vi.mocked(listRemoteFailuresScoped)
+      .mockResolvedValueOnce(multiDeadLetters)
+      .mockResolvedValueOnce([]);
+
+    vi.mocked(requeueRemoteFailureScoped).mockResolvedValue(undefined);
+
+    render(<SyncConflictsPanel onRequeueSuccess={onRequeueSuccess} />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Requeue All')).toBeInTheDocument();
+    });
+
+    const requeueAllBtn = screen.getByRole('button', { name: 'Requeue all quarantined sync conflicts' });
+    await user.click(requeueAllBtn);
+
+    expect(requeueRemoteFailureScoped).toHaveBeenCalledWith('test-token', 'dead-1');
+    expect(requeueRemoteFailureScoped).toHaveBeenCalledWith('test-token', 'dead-2');
+
+    await waitFor(() => {
+      expect(onRequeueSuccess).toHaveBeenCalledTimes(1);
+      expect(screen.getByText('No dead-lettered conflicts.')).toBeInTheDocument();
+    });
+  });
+
+  it('calls onCountChange with the count of dead-lettered items', async () => {
+    const onCountChange = vi.fn();
+    vi.mocked(listRemoteFailuresScoped).mockResolvedValueOnce(mockFailures);
+
+    render(<SyncConflictsPanel onCountChange={onCountChange} />);
+
+    await waitFor(() => {
+      expect(onCountChange).toHaveBeenCalledWith(1);
+    });
+  });
 });
+

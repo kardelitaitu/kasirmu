@@ -235,6 +235,7 @@ interface SettingsNavTreeProps {
   onSearchChange: (q: string) => void;
   mobileSidebarOpen: boolean;
   onMobileClose: () => void;
+  deadLetterCount?: number;
 }
 
 // ── Component ─────────────────────────────────────────────────────
@@ -246,6 +247,7 @@ const SettingsNavTree = function SettingsNavTree({
   onSearchChange,
   mobileSidebarOpen,
   onMobileClose,
+  deadLetterCount,
 }: SettingsNavTreeProps) {
   const { l10n } = useLocalization();
   const sidebarRef = useRef<HTMLElement>(null);
@@ -704,6 +706,17 @@ const SettingsNavTree = function SettingsNavTree({
                       <span className="settings-nav-label">
                         <Localized id={NAV_L10N_KEYS[item.key] ?? ''}>{item.label}</Localized>
                       </span>
+                      {(key === 'data-sync' || key === 'sync-conflicts') &&
+                        deadLetterCount !== undefined &&
+                        deadLetterCount > 0 &&
+                        !sidebarCollapsed && (
+                          <span
+                            className="settings-nav-count-badge"
+                            aria-label={l10n.getString('sync-conflicts-badge-aria', { count: deadLetterCount })}
+                          >
+                            {deadLetterCount}
+                          </span>
+                        )}
                     </button>
                     <Tooltip content={l10n.getString('settings-nav-unpin-title')} fit="inline" portal>
                       <button
@@ -772,6 +785,17 @@ const SettingsNavTree = function SettingsNavTree({
                         {item.plus && !sidebarCollapsed && (
                           <span className="settings-nav-plus-badge" aria-label={l10n.getString('settings-nav-plus-badge-aria')}>Plus+</span>
                         )}
+                        {(key === 'data-sync' || key === 'sync-conflicts') &&
+                          deadLetterCount !== undefined &&
+                          deadLetterCount > 0 &&
+                          !sidebarCollapsed && (
+                            <span
+                              className="settings-nav-count-badge"
+                              aria-label={l10n.getString('sync-conflicts-badge-aria', { count: deadLetterCount })}
+                            >
+                              {deadLetterCount}
+                            </span>
+                          )}
                       </button>
                     </Tooltip>
                     {!sidebarCollapsed && (

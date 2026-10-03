@@ -1182,4 +1182,15 @@ sync-conflicts-col-actions = Aksi
 sync-conflicts-retry = Coba Lagi
 sync-conflicts-retrying = Mencoba lagi…
 sync-conflicts-retry-aria = Coba sinkronisasi ulang item { $id }
+sync-conflicts-requeue-all = Coba Lagi Semua
+sync-conflicts-requeueing-all = Mencoba lagi ({ $current }/{ $total })…
+sync-conflicts-requeue-all-aria = Coba lagi semua konflik sinkronisasi terkarantina
+sync-conflicts-payload-inspect = Periksa
+sync-conflicts-payload-hide = Sembunyikan
+sync-conflicts-payload-inspect-aria = Periksa payload untuk item { $id }
+sync-conflicts-payload-hide-aria = Sembunyikan payload untuk item { $id }
+sync-conflicts-payload-copy = Salin JSON
+sync-conflicts-payload-copied = Tersalin!
+sync-conflicts-badge-aria = { $count } konflik sinkronisasi terkarantina
+
 

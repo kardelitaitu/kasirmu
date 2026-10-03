@@ -1203,4 +1203,15 @@ sync-conflicts-col-actions = Actions
 sync-conflicts-retry = Retry
 sync-conflicts-retrying = Retrying…
 sync-conflicts-retry-aria = Retry sync for item { $id }
+sync-conflicts-requeue-all = Requeue All
+sync-conflicts-requeueing-all = Requeueing ({ $current }/{ $total })…
+sync-conflicts-requeue-all-aria = Requeue all quarantined sync conflicts
+sync-conflicts-payload-inspect = Inspect
+sync-conflicts-payload-hide = Hide
+sync-conflicts-payload-inspect-aria = Inspect payload for item { $id }
+sync-conflicts-payload-hide-aria = Hide payload for item { $id }
+sync-conflicts-payload-copy = Copy JSON
+sync-conflicts-payload-copied = Copied!
+sync-conflicts-badge-aria = { $count } quarantined sync conflicts
+
 

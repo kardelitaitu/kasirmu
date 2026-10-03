@@ -480,6 +480,24 @@ body:has(.memo-stack) .settings-body {
   white-space: nowrap;
 }
 
+/* ── Dead-letter sync conflicts count badge ── */
+.settings-nav-count-badge {
+  flex-shrink: 0;
+  margin-left: auto;
+  min-width: 1.25rem;
+  height: 1.25rem;
+  padding: 0 var(--space-1);
+  font-size: var(--text-xs);
+  font-weight: var(--font-weight-bold);
+  line-height: 1.25rem;
+  text-align: center;
+  color: #ffffff;
+  background: var(--color-danger, #ef4444);
+  border-radius: var(--radius-full);
+  white-space: nowrap;
+}
+
+
 /* (Historical note) `.settings-sidebar.collapsed .tooltip-content
    { display:block !important }` was removed: portal bubbles live in
    document.body, so descendant rules never reached them anyway. */
