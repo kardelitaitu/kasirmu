@@ -1808,6 +1808,63 @@ corrections the log exists to preserve. The stamp now leads with the current sta
 session's own work and its commit status, the one open defect, and the device situation, plus an
 explicit instruction not to read the body chronologically (`6047b8960`).
 
+## ROUND 23: the peer's uncommitted quick-cards bypass the app's own activation path
+
+Reading the hunk that blocks this session's work turned up a defect in it. Recorded because the hunk
+is about to land and the finding is cheap to act on now, expensive later.
+
+### The quick cards call the setter directly instead of `activateWorkspace`
+
+Every other way into a workspace goes through one function (`WorkspaceHome.tsx:534-544`):
+
+```ts
+const activateWorkspace = useCallback((key: string): boolean => {
+  if (!canAccess(key)) return false;          // 1. permission
+  navigateWithExit(() => {
+    recordLastUsed(key);                      // 2. last-used tracking
+    setActiveWorkspace(key);                  // 3. the actual switch
+  });
+  return true;
+}, [...]);
+```
+
+The two quick cards call `setActiveWorkspace` **raw**, skipping the wrapper entirely:
+
+| Site | Call |
+|---|---|
+| `:791` (Retail POS quick card) | `onClick={() => setActiveWorkspace('store-pos')}` |
+| `:813` (Restaurant POS quick card) | `onClick={() => setActiveWorkspace('restaurant-pos')}` |
+
+Three consequences, all mechanical:
+
+1. **No exit transition.** `navigateWithExit` (`:468-481`) sets `isExiting` and defers the switch by
+   `animDuration(150)`; the raw call switches immediately, so the crossfade those cards are meant to
+   participate in does not fire.
+2. **No `recordLastUsed`.** The `lastWorkspace` field stops being updated when a merchant enters via a
+   quick card, so "resume where you left off" silently degrades for exactly the users taking the
+   shortest path.
+3. **No `canAccess`.** In this revision the predicate is role-agnostic — it admits every known role and
+   refuses only an unrecognised `roleName` (`:494-508`) — so the practical exposure today is a
+   default-case role, not a normal one. It is still a bypass of the single chokepoint, and it stops
+   being harmless the moment that predicate grows a real rule.
+
+### Also inert: `workspace-card--quick` has no stylesheet rule
+
+`git grep -rn 'workspace-card--quick' -- ui/` returns **only the two JSX sites**. There is no rule in
+`WorkspaceHome.css` (which does define the base `.workspace-card` at `:330` and the sibling
+`ws-color-store-pos` at `:19`). So the class name is currently decorative — either the intended visual
+treatment is missing or the class is dead and should go.
+
+And neither card has a test: `git grep -rn 'workspace-card-quick' -- ui/` finds the two `data-testid`
+attributes and nothing else, so the `data-testid`s exist for queries that were never written.
+
+### Why this is recorded rather than fixed
+
+Same constraint as the other two findings on this hunk: it is another session's uncommitted work, and a
+pathspec commit would carry the whole file. The fix is small and stated here — route both cards through
+`activateWorkspace`, and either define `workspace-card--quick` or drop it — so whoever lands the hunk
+can apply it in one pass. Nothing in HEAD is affected: the cards do not exist there.
+
 ## Evidence retention
 
 Device-side files pulled during this pass: `kasir.db` (+wal) and `store-default.sqlite` (+wal) in
