@@ -2060,6 +2060,28 @@ and a terminal opened through **that** path still shows an empty grid.
 `AGENTS.md` §7.3 keeps out of this session's commits. What this round adds is the measurement the
 review could not make, and the two entry points it identified.
 
+### ROUND 27: the asymmetry is now measured, not read
+
+Round 26 identified the two entry points by reading them and asserted the sibling had no repair. That
+is now a test rather than a claim — same fixture, both functions:
+
+```
+list_workspaces_repairs_from_global_when_the_store_db_is_empty   -> returns the global row
+list_workspaces_for_store_scoped_has_no_read_repair              -> returns []
+```
+
+The second passes, which is the point: it pins the divergence. Its message says what to do if it ever
+fails — *"If this ever returns the global row, the repair was extended here too — good, and this test
+should then assert the repair instead."* So it is a fence against the gap silently persisting, not an
+endorsement of it.
+
+Suite state after this: **26 passed, 1 ignored** in `kasirmu-bridge`.
+
+**Why the sibling matters, restated precisely:** the picker path is repaired (so the reported defect is
+addressed for the flow it was measured on), and the cross-store picker used by the terminal-management
+screen is not. A merchant who opens a terminal through that screen still sees an empty grid, and would
+report the same defect again.
+
 ## Evidence retention
 
 Device-side files pulled during this pass: `kasir.db` (+wal) and `store-default.sqlite` (+wal) in
