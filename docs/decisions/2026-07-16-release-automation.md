@@ -38,7 +38,7 @@ This is error-prone, non-reproducible, and blocks the in-app updater (ADR #13) f
 | Ed25519 public key committed | `oz-pos-updater.key.pub` |
 | `latest.json` endpoint | `https://github.com/kardelitaitu/kasirmu/releases/latest/download/latest.json` |
 | NSIS + WiX bundle targets | `tauri.conf.json` `bundle.targets = "all"` |
-| Code signing config | `tauri.conf.json` `windows.signCommand` using `signtool.exe` |
+| Code signing config | `tauri.conf.json` `windows.digestAlgorithm` / `timestampUrl`, plus `certificateThumbprint` supplied per-run by CI |
 | Settings About page updater UI | Implemented in ADR #13 |
 
 ### What's Missing
@@ -93,13 +93,44 @@ The `--ci` flag suppresses Tauri's interactive prompts and uses the `tauri.conf.
 
 ### 4. Signing
 
-Code signing is handled by Tauri's built-in `windows.signCommand` in `tauri.conf.json`:
+Code signing uses Tauri's **native** Windows signing fields in `tauri.conf.json` — `digestAlgorithm`
+and `timestampUrl` — plus `certificateThumbprint`, which CI supplies per-run:
+
+```json
+"digestAlgorithm": "sha256",
+"timestampUrl": "https://timestamp.digicert.com"
+```
+
+The signing certificate is imported from a GitHub secret (`UPDATER_CERT`) as a base64-encoded `.pfx`
+file into the system certificate store before the build step, and `UPDATER_CERT_PASSWORD` decrypts it.
+
+**This section was corrected 2026-10-03; the superseded form and why it changed are below.**
+
+The command was formerly a hand-rolled `windows.signCommand`:
 
 ```json
 "signCommand": "signtool.exe sign /fd SHA256 /a /tr http://timestamp.digicert.com /td SHA256 %1"
 ```
 
-The signing certificate is imported from a GitHub secret (`UPDATER_CERT`) as a base64-encoded `.pfx` file into the system certificate store before the build step. The `signtool.exe /a` flag auto-selects the best available certificate, so no thumbprint configuration is needed.
+Three defects, in order of severity:
+
+1. **`UPDATER_CERT_PASSWORD` was never consumed.** `Import-PfxCertificate` ran without `-Password`,
+   so a CA-issued PFX — which is normally password-protected — could not be imported at all. The
+   documented workaround was to export the PFX *without* a password, i.e. to store an unencrypted
+   private key. The import now passes the password; an empty secret still works, so the old advice
+   remains compatible without being required.
+2. **`/a` signs with whatever certificate the machine holds.** The earlier text said this
+   "auto-selects the best available certificate, so no thumbprint configuration is needed" — but
+   "best available" is not "yours". On a shared runner it can sign with the wrong identity, and
+   nothing in the build says so. The import step now publishes the imported certificate's thumbprint
+   and the build pins it via `certificateThumbprint`; a missing thumbprint fails the build rather
+   than signing blindly.
+3. **`http://` timestamp** — `https://timestamp.digicert.com` is the correct form; this was already
+   raised as L-4 in `docs/records/superseded/tauri-security-audit.md:174` and is now applied.
+
+Using Tauri's native fields rather than a hand-rolled command also removes the build-machine
+dependency the same audit noted: the toolchain builds the `signtool` invocation, so it is not
+sensitive to what happens to be on `PATH`.
 
 For a simpler alternative that avoids managing a PFX in CI, the workflow can pass the certificate directly to `signtool` via its `/f` flag and a password from secrets.
 
