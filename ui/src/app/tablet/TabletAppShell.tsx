@@ -152,6 +152,7 @@ export default function TabletAppShell() {
       }
     }
     prevWorkspaceRef.current = activeWorkspace;
+    activeWorkspaceRef.current = activeWorkspace;
   }, [activeWorkspace]);
 
   // ── F10 opens the WorkspaceSettingsModal — parity with the desktop shell ──
