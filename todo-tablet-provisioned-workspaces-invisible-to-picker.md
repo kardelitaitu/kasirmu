@@ -2082,6 +2082,31 @@ addressed for the flow it was measured on), and the cross-store picker used by t
 screen is not. A merchant who opens a terminal through that screen still sees an empty grid, and would
 report the same defect again.
 
+### The fix direction, checked rather than assumed
+
+Round 26 named the cause (an FK-rejected write whose error is discarded) without proving the repair
+would work once the error is surfaced. Two things settle that:
+
+1. **The fixture is realistic.** Deleting the store DB's `locations` row is the right way to model the
+   missing target, and it is what a store DB for an unprovisioned location would hold. The fixture's
+   own `INSERT INTO locations (id, name) VALUES (...)` matches the idiom this repo already uses for the
+   same fixture (`migrations_tests.rs:1011`, `:1587`).
+2. **`locations` is the right table.** `20260906_rename_store_to_location.sql:14` is
+   `ALTER TABLE store_profiles RENAME TO locations` — so the FK target is the renamed table, not a
+   missing one. My first fixture attempt failed with `no such table: store_profiles` for exactly this
+   reason, which is what prompted the check.
+
+So the repair has two defects, and they need different fixes:
+
+| Defect | Fix |
+|---|---|
+| The write's error is discarded (`let _ =`) | propagate it, so a failed repair is visible rather than silent |
+| The write can fail on a missing FK target | ensure the `locations` row exists in the store DB first, or write only the columns that need no target |
+
+Surfacing the error alone would turn a silent no-op into a loudly failing repair; it does not make the
+rows land. Both are needed, and the second is why `INSERT OR IGNORE` does not save it — `OR IGNORE`
+covers uniqueness conflicts, not foreign-key violations.
+
 ## Evidence retention
 
 Device-side files pulled during this pass: `kasir.db` (+wal) and `store-default.sqlite` (+wal) in
