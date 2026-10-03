@@ -149,8 +149,11 @@ subscription row is expected — the licence server writes it, and no client-sid
 does. What matters is how each reader handles that absence.
 
 **Reading 1 — session creation and workspace listing treat "no row" as Free.** Four separate
-production sites load the row and fall back in memory with the same warn-plus-`bootstrap_free()`
-`unwrap_or_else`:
+production sites use the same shape, and it is sharper than "fall back on any failure": the
+`?` on `TenantSubscription::load(...)` propagates a READ error, and `unwrap_or_else` fires only on
+`Ok(None)` — a genuinely ABSENT row. A tampered row loads as `Ok(Some)` and is then rejected by
+the `verify_signature()?` on the next line. So these four sites DO distinguish absent from
+tampered:
 
 | Site | Behaviour on a missing row |
 |---|---|
@@ -179,6 +182,23 @@ separately sets the DTO's status string to `"unavailable"` when the row is absen
 So the SAME absent row yields **Free + active** to the session reader and **Free + unavailable** to
 the capabilities reader. The UI trusts the second one, and `unavailable` is not in the open set —
 hence the lock-out. The two readers disagreeing, not the absence itself, is the defect.
+
+### The fix is NOT "treat None as Free" — None is three different facts
+
+`SubscriptionLoader::load_verified_subscription` deliberately collapses three distinct cases into
+one `None` (`crates/kasirmu-core/src/entitlements.rs:324-344`), and the doc comment on the trait
+says so (`:306-308`, "missing/tampered/unreadable"):
+
+1. `Ok(None)` — **no row**: the fresh-install case that should read Free-active.
+2. `verify_signature()` failed — **tampered**: must stay locked. `fail_closed` is the whole point.
+3. `TenantSubscription::load` errored — **unreadable**: must stay locked.
+
+Only case 1 is the defect, and the trait erases the distinction before either reader can act on
+it. A repair that maps `None` to `bootstrap_free()` would hand cases 2 and 3 the same Free-active
+answer and turn a tampered row from locked into usable — the exact downgrade `entitlements.rs:113-114`
+("a missing/tampered row must project a payload that locks every gate") exists to prevent. The
+capabilities path therefore needs to learn WHICH of the three it hit, which is why this is a
+design change on the trait rather than a one-line fallback.
 
 ## Why the migration comment does not resolve it
 
@@ -226,10 +246,17 @@ missing row reads as an un-implemented step rather than a deliberate denial.
 
 ## Acceptance for a repair
 
-On a device provisioned offline, `SELECT COUNT(*) FROM tenant_subscription` is `1` and the home
-screen renders tool cards that are NOT `workspace-tool-card-locked` for at least the free-tier
-tools. Reproduction is the same as the section above and equally cheap, and the assertion is one
-IPC call plus one DOM count:
+Two behaviours must BOTH hold, and the second is the one that keeps the fix safe:
+
+1. **The lock lifts.** On a device provisioned offline, the home screen renders tool cards that
+   are NOT `workspace-tool-card-locked` for at least the free-tier tools, and
+   `get_subscription_capabilities` reports a state other than `unavailable`.
+2. **A tampered row still locks.** A row whose `signature` does not verify must still yield
+   `unavailable` and keep every tool locked. This is the regression risk of the obvious fix:
+   collapsing "absent" back onto "tampered" would trade a visible lock-out for an invisible
+   licence bypass, which is strictly worse and would not fail any test that only checks case 1.
+
+Reproduction is cheap for both — the assertion is one IPC call plus one DOM count:
 
 ```
 get_subscription_capabilities -> state must not be 'unavailable'
