@@ -170,6 +170,7 @@ vi.mock('@/api/system', () => ({
   getVersionScoped: vi.fn(() => Promise.resolve({
     name: 'kasirmu-app', version: '0.0.19', rustVersion: '1.80', target: 'x86_64',
   })),
+  onAppReconnect: vi.fn(() => Promise.resolve(() => {})),
 }));
 
 // ── Minimal Fluent l10n for Localized ───────────────────────────

@@ -112,11 +112,17 @@ vi.mock('@/api/branding', () => ({
   ),
 }));
 
+const appReconnectHandler = vi.hoisted(() => ({ fn: null as (() => void) | null }));
+
 vi.mock('@/api/system', () => ({
   getVersionScoped: vi.fn(() =>
     mocks.failVersion ? Promise.reject(new Error('Version fail')) : Promise.resolve({ ...mocks.versionInfo }),
   ),
   getDeviceId: vi.fn(() => Promise.resolve(identityMocks.deviceId)),
+  onAppReconnect: vi.fn((handler: () => void) => {
+    appReconnectHandler.fn = handler;
+    return Promise.resolve(() => { appReconnectHandler.fn = null; });
+  }),
 }));
 
 vi.mock('@/api/terminals', () => ({
@@ -227,6 +233,7 @@ function resetFailures() {
     { code: 'USD', name: 'US Dollar', minor_exponent: 2, symbol: '$' },
     { code: 'EUR', name: 'Euro', minor_exponent: 2, symbol: '€' },
   );
+  appReconnectHandler.fn = null;
 }
 
 beforeEach(() => {
@@ -829,6 +836,23 @@ describe('SettingsContext', () => {
     await act(async () => { vi.advanceTimersByTime(400); });
 
     expect(result.current.settings.store.name).toBe('Mixed Key Store');
+    vi.useRealTimers();
+  });
+
+  it('re-hydrates settings when app reconnects', async () => {
+    vi.useFakeTimers();
+    const { result } = renderHook(() => useSettings(), { wrapper });
+    await act(async () => { vi.advanceTimersByTime(0); });
+    expect(result.current.loading).toBe(false);
+
+    Object.assign(mocks.storeSettings, { name: 'Reconnected Store' });
+    expect(appReconnectHandler.fn).not.toBeNull();
+    await act(async () => {
+      appReconnectHandler.fn!();
+      vi.advanceTimersByTime(0);
+    });
+
+    expect(result.current.settings.store.name).toBe('Reconnected Store');
     vi.useRealTimers();
   });
 });

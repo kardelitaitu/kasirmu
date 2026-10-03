@@ -69,6 +69,7 @@ vi.mock('@/api/license', () => ({
 
 vi.mock('@/api/system', () => ({
   getVersionScoped: vi.fn(() => Promise.resolve({ version: '0.0.19' })),
+  onAppReconnect: vi.fn(() => Promise.resolve(() => {})),
 }));
 
 vi.mock('@/api/currency', () => ({
