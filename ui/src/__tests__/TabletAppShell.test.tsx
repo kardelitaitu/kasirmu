@@ -728,12 +728,18 @@ describe('TabletAppShell — routing', () => {
   describe('sidebar workspaces', () => {
     it('renders TabletAppLayout with the registered page for admin', async () => {
       clearPages();
+      // `admin` opens the `settings` route (see WORKSPACE_ROUTE in
+      // TabletAppShell.tsx). This used to register `pos` and pass anyway,
+      // because the hash effect's empty-hash fallback forced 'pos' no matter
+      // which workspace was active — the very defect fixed 2026-10-04. The
+      // page is registered under the route the workspace truly opens so the
+      // assertion tracks the workspace, not the accident.
       registerPage({
-        route: 'pos',
+        route: 'settings',
         component: () => <div data-testid="page-content">Page Content</div>,
-        label: 'POS Terminal',
+        label: 'Settings',
       });
-      mockWorkspaceValue({ activeWorkspace: 'admin', workspaceScreens: ['pos'] });
+      mockWorkspaceValue({ activeWorkspace: 'admin', workspaceScreens: ['settings'] });
 
       await renderWithProviders(<TabletAppShell />, sharedFtl);
 
@@ -751,10 +757,14 @@ describe('TabletAppShell — routing', () => {
   describe('permission gating', () => {
     it('renders PermissionDenied when the current page requires a higher role', async () => {
       clearPages();
+      // Route must be the one `admin` opens, or the gate under test never
+      // renders at all: with the workspace routed correctly (2026-10-04), an
+      // unregistered 'settings' page yields no registration and therefore no
+      // PermissionDenied — the test would pass vacuously.
       registerPage({
-        route: 'pos',
+        route: 'settings',
         component: () => <div data-testid="page-content">Page Content</div>,
-        label: 'POS Terminal',
+        label: 'Settings',
         requiredRole: 'owner',
       });
       mockCashierSession();

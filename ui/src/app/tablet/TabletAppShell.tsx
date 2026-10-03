@@ -74,6 +74,34 @@ function renderPageLayout(
 }
 
 /**
+ * The screen each workspace type opens on, as a route the page registry knows.
+ *
+ * CORRECTED 2026-10-04: `warehouse` mapped to `products`, so opening the
+ * Warehouse workspace rendered ProductLookupScreen instead of the
+ * WarehouseConsole registered at `route: 'warehouse'`
+ * (ui/src/features/warehouse/register.tsx:8). The desktop map
+ * (AppShell.tsx:340) has always named `warehouse`; the tablet was the outlier.
+ * That mattered because a Retail provision creates exactly three workspaces —
+ * store-pos, warehouse, admin (crates/kasirmu-core/src/db/provisioning.rs:90) —
+ * so Warehouse is one of the few a retail tablet can open at all.
+ *
+ * `restaurant-pos` and `store-pos` deliberately keep their tablet value (`pos`)
+ * even though the desktop names `sales` and `products`: both have fullscreen
+ * branches below (see the `activeWorkspace ===` tests) that render a hardcoded
+ * screen and never read the route, which
+ * TabletAppShellWorkspaceRoute.test.tsx pins as a CONTROL. Aligning them would
+ * change nothing on screen and would risk the e2e deep links that address the
+ * hash directly.
+ */
+const WORKSPACE_ROUTE: Record<string, string> = {
+  'restaurant-pos': 'pos',
+  'store-pos': 'pos',
+  kds: 'kds',
+  warehouse: 'warehouse',
+  admin: 'settings',
+};
+
+/**
  * Tablet-optimised application shell.
  *
  * ADR #4 Phase 3b: Uses WorkspaceContext for device-bound auto-boot
@@ -134,6 +162,14 @@ export default function TabletAppShell() {
   } = useWorkspace();
 
   // Navigate to workspace-appropriate route on selection.
+  //
+  // This effect only routes when the workspace CHANGES — `prevWorkspaceRef`
+  // is seeded with the workspace active on the first render, so an unchanged
+  // workspace is a deliberate no-op here. The MOUNT case (a device-bound
+  // auto-boot, where a workspace is already active at first paint) is handled
+  // by the hash effect further down, whose empty-hash branch reads the same
+  // WORKSPACE_ROUTE map; that branch runs after this one and would otherwise
+  // overwrite whatever this set. See its comment for the defect fixed there.
   const prevWorkspaceRef = useRef(activeWorkspace);
   useEffect(() => {
     if (prevWorkspaceRef.current !== undefined && prevWorkspaceRef.current !== activeWorkspace) {
@@ -141,14 +177,7 @@ export default function TabletAppShell() {
         window.location.hash = '';
         setCurrentRoute('pos');
       } else {
-        const workspaceRoute: Record<string, string> = {
-          'restaurant-pos': 'pos',
-          'store-pos': 'pos',
-          kds: 'kds',
-          warehouse: 'products',
-          admin: 'settings',
-        };
-        setCurrentRoute(workspaceRoute[activeWorkspace] ?? 'pos');
+        setCurrentRoute(WORKSPACE_ROUTE[activeWorkspace] ?? 'pos');
       }
     }
     prevWorkspaceRef.current = activeWorkspace;
@@ -273,10 +302,19 @@ export default function TabletAppShell() {
     const syncFromHash = () => {
       const raw = window.location.hash.replace(/^#\/?/, '').split('?')[0];
       if (!raw) {
-        if (!activeWorkspaceRef.current) {
+        // No hash route: fall back to the ACTIVE WORKSPACE's own screen rather
+        // than a hardcoded 'pos'. This branch used to set 'pos' whenever any
+        // workspace was active, which discarded the workspace's mapping — and
+        // because this effect is declared AFTER the workspace-rebind effect it
+        // ran last and won, so a shell mounting with a workspace already
+        // active (device-bound auto-boot) always landed on 'pos'. Warehouse
+        // has no fullscreen branch to render instead, so it showed the POS
+        // screen. Reading the same map keeps the two sources in agreement.
+        const active = activeWorkspaceRef.current;
+        if (!active) {
           setCurrentRoute('products');
         } else {
-          setCurrentRoute('pos');
+          setCurrentRoute(WORKSPACE_ROUTE[active] ?? 'pos');
         }
         return;
       }
