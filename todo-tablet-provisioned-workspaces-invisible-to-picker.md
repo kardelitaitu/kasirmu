@@ -668,7 +668,7 @@ both return `state: "unavailable"` and both lock every tier-gated tool.
 | | Desktop | Tablet |
 |---|---|---|
 | capabilities with no row | `unavailable` | `unavailable` |
-| gate bypass on `setupCompleted`/`installExisting` | `AppShell.tsx:286` | `TabletAppShell.tsx:199` |
+| gate bypass on `setupCompleted`/`installExisting` | `AppShell.tsx:286` | `TabletAppShell.tsx:200` |
 | lock-out after boot | **yes** | **yes** |
 
 So every claim earlier in this report that scoped the lock-out to the tablet — or to `local` mode,
