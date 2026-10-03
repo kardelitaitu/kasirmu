@@ -33,15 +33,19 @@ pub async fn link_device_google(
         }
     };
     let base_url = kasirmu_core::attestation::resolved_origin().url;
+    let app_handle = state.app.clone();
     let account = kasirmu_bridge::desktop_link::link_device(
         &base_url,
         &api_key,
         &machine_id,
         LINK_WAIT,
-        |url: String| async move {
-            crate::commands::browser::open_in_browser(&url)
-                .await
-                .map_err(|e| kasirmu_bridge::error::BridgeError::Internal(e.to_string()))
+        move |url: String| {
+            let app_handle = app_handle.clone();
+            async move {
+                crate::commands::browser::open_in_browser(app_handle.as_ref(), &url)
+                    .await
+                    .map_err(|e| kasirmu_bridge::error::BridgeError::Internal(e.to_string()))
+            }
         },
     )
     .await?;
