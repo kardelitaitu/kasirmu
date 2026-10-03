@@ -2352,6 +2352,7 @@ then sees 10 dead cards has no way to know a reload would fix it.
 
 Not fixed here: `WorkspaceHome.tsx` and the flow's files are the contested paths recorded in the round-30
 blocker section, and this measurement does not change that. What it changes is *what* should be fixed.
+
 ## Evidence retention
 
 Device-side files pulled during this pass: `kasir.db` (+wal) and `store-default.sqlite` (+wal) in
