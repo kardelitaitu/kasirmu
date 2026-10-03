@@ -557,6 +557,29 @@ only have been skipped if `bootAllowed` was already true, and with `setupComplet
 activation gate is therefore **unreachable**, and the ladder silently collapses to
 provision → login — the exact order ADR-56 §5 Q2 rejected as Option B.
 
+#### Proven by `pm clear` on the device (round 9)
+
+Inference was not enough for a claim this structural, so the state was produced and observed. With
+the app force-stopped, `adb shell pm clear mu.kasir.mobile` wiped `kasir.db` — no provisioning row,
+no users, no licence — and the app was relaunched against the debug APK. The screen it rendered
+was `ProvisioningFlow`, not the activation screen:
+
+```json
+{"testids": ["provisioning-flow", "provision-step-jump-account", "provision-mode-linked",
+             "provision-mode-local", "provision-step-next", ...],
+ "inputs":  ["provision-account-email"]}
+```
+
+Gate 1 (`:327`) is evaluated before gate 2 (`:384`), so reaching `ProvisioningFlow` proves
+`bootAllowed` was already true. On this device `setupCompleted` and `installExisting` are both
+false by construction of the wipe, which leaves `licenceUsable` as the only possible term — and
+`licenceUsable` is `licenseRes.value.isActive || status === 'gracePeriod'` (`:197`). A device with no
+stored payload therefore reported `is_active: true`, which is the debug arm at `license.rs:776-788`.
+**The activation gate is unreachable on a debug build, and that is now observed rather than argued.**
+
+The practical consequence: the ladder silently becomes provision → login, which is the order ADR-56
+§5 Q2 explicitly rejected (its Option B). The ADR's gate is present in the source and dead at
+runtime in every debug build.
 ### And in release, where the gate DOES fire, its submit is disabled
 
 The release half is not a working alternative. `LicenseActivationScreen.tsx:286-308` guards the
