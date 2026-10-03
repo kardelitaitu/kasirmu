@@ -142,29 +142,60 @@ and the device database agrees — the table is empty:
 | `workspace_instances` | 4 |
 | `users` | 1 |
 
-## Root cause — a documented contract that the code does not honour
+## Root cause — an inconsistency between two readers of the same absent row
 
-`crates/kasirmu-core/migrations/20260813_init.sql:1512-1520` removed the migration-seeded
-subscription and states what replaces it, verbatim:
+There are two readings of the same fact, and they disagree. On an offline (`local`) install no
+subscription row is expected — the licence server writes it, and no client-side command ever
+does. What matters is how each reader handles that absence.
 
-> The five default workspace instances and the BOOTSTRAP_FREE subscription **were REMOVED here**
-> (ADR #56 §2.6 option C). ... **They are now created by `provision_device`'s single transaction**,
-> alongside the location row they reference.
+**Reading 1 — session creation and workspace listing treat "no row" as Free.** Four separate
+production sites load the row and fall back in memory with the same warn-plus-`bootstrap_free()`
+`unwrap_or_else`:
 
-`provision_device` does not do this, and not by oversight in one branch — the write does not
-exist. Its transaction has exactly six steps and none of them touch the table
-(`crates/kasirmu-core/src/db/provisioning.rs:434-528`):
+| Site | Behaviour on a missing row |
+|---|---|
+| `crates/kasirmu-bridge/src/auth.rs:672-675` | `bootstrap_free()` — session created |
+| `apps/mobile-tauri/src/commands/auth.rs:518-521` | `bootstrap_free()` — session created |
+| `crates/kasirmu-bridge/src/workspaces.rs:294-297` | `bootstrap_free()` — workspaces listed |
+| `crates/kasirmu-bridge/src/workspaces.rs:726` | `bootstrap_free()` — workspaces listed |
 
-| Step | Line | Writes |
-|---|---|---|
-| 2 | `:443` | `seed_default_roles()` |
-| 3 | `:462-509` | the `locations` row + `create_workspaces_in_tx` |
-| 4 | `:514` | `create_owner_in_tx` |
-| 5 | `:520` | `write_provisioning_settings` |
-| 6 | `:523` | the `provisioning` marker |
+This is why logging in works on the broken device: the session path compensates.
 
-A grep for `tenant_subscription` / `TenantSubscription` across `provisioning.rs` returns **no
-matches at all**. So the migration comment describes work that was never written.
+**Reading 2 — the capabilities path treats "no row" as `unavailable`.**
+`crates/kasirmu-bridge/src/subscription.rs:210-239` has no such fallback. It builds entitlements
+through `build_entitlements`, whose first statement is:
+
+```rust
+let Some(sub) = loader.load_verified_subscription() else {
+    return Entitlements::fail_closed(usage);   // tier: Free, state: Unavailable, loaded: false
+};
+```
+
+(`crates/kasirmu-core/src/entitlements.rs:372-373`; `fail_closed` is `:116-126`.) It then
+separately sets the DTO's status string to `"unavailable"` when the row is absent
+(`subscription.rs:226-229`), and `lifecycle_state_at` maps any unrecognized status to
+`Unavailable` (`crates/kasirmu-core/src/subscription.rs:760`).
+
+So the SAME absent row yields **Free + active** to the session reader and **Free + unavailable** to
+the capabilities reader. The UI trusts the second one, and `unavailable` is not in the open set —
+hence the lock-out. The two readers disagreeing, not the absence itself, is the defect.
+
+## Why the migration comment does not resolve it
+
+`crates/kasirmu-core/migrations/20260813_init.sql:1512-1520` says the removed `BOOTSTRAP_FREE`
+subscription is "now created by `provision_device`'s single transaction". It is not — that
+transaction has six steps and none touch the table (`provisioning.rs:434-528`): roles `:443`,
+location `:462`, workspaces `:509`, owner `:514`, settings `:520`, marker `:523`. A grep for
+`tenant_subscription` across `provisioning.rs` returns no matches. A grep across the whole tree
+finds `INSERT INTO tenant_subscription` only in migrations and in cloud-server TESTS — there is
+**no client-side write path at all**, so the comment describes work that does not exist in any
+form.
+
+ADR-56 §2.6 is more careful than the migration comment and does not promise a local write: it
+retires the sentinel on the grounds that "a provisioned terminal gets a real signed subscription"
+(`docs/decisions/2026-09-21-adr56-first-run-provisioning.md:667-668`) — i.e. the signed row is
+expected from the licence server. That is coherent for a `linked` install and leaves the
+question these four-versus-one readers disagree about only for `local`.
 
 ## Why it locks every tool
 
