@@ -1054,3 +1054,88 @@ fresh install denies the operator both the destination and the route to it.**
 
 Device-side files pulled during this pass: `kasir.db` (+wal) and `store-default.sqlite` (+wal) in
 the host temp dir, and the CDP evaluation transcripts quoted above.
+
+---
+
+# Re-verified live, with the ROLE axis measured (2026-10-03 ~08:12, round 12)
+
+<!-- Audit stamp: 2026-10-03 · Budak-Korporat · status: MEASURED ON DEVICE · no source modified
+     Round 6 established the tier lock-out on the true provisioned state. This pass adds the one
+     axis the report never measured — ROLE — and it is CORRECT. The user-visible report that "it
+     does not detect roles AND subscription tier" is therefore ONE defect, not two: the
+     subscription-state gate blanks the whole grid, which erases the evidence that the role and
+     tier gates behind it are working. Everything below was read off the live device. -->
+
+The report has measured the tier axis four times and the role axis never. A report that says
+"every card is locked" cannot distinguish "the gate is broken" from "the gate is right and the
+state is wrong" — so this pass measured the role directly.
+
+Device: Redmi `23073RPBFG` (Android 15), `mu.kasir.mobile` `0.0.41`, **debuggable** APK
+(`dumpsys package … flags=[ DEBUGGABLE HAS_CODE ALLOW_CLEAR_USER_DATA ]`), pid `29127`,
+`topResumedActivity=…/.MainActivity`, `Display State=ON`. Read over CDP (`adb forward
+tcp:9222 localabstract:webview_devtools_remote_29127` → `Runtime.evaluate`), logged in as `budi`.
+
+| Reading | Value |
+|---|---|
+| `.workspace-home-user-role` textContent | **`owner`** — role detected correctly |
+| `[data-testid=workspace-tool-card]` (unlocked) | **0** |
+| `[data-testid=workspace-tool-card-locked]` | **17** |
+| the 17 lock badges | **all identical: `Subscription inactive`** |
+| `.workspace-grid > *` | **1** (the Add Workspace card; Defect 1 unchanged) |
+| `get_subscription_capabilities` | `{"tier":"free","status":"unavailable","state":"unavailable","isTrial":false,"trialEndsAt":null,"features":{},"maxLocations":1,"maxPosInstances":1,"maxWarehouses":0,"maxKdsScreens":0,"maxStaffUsers":1,"salesHistoryDays":90,"supportsQris":false,"supportsAnalytics":false,"addons":[],"supportsLoyalty":false,"supportsDailyDashboard":false,"supportsCloudSync":false,"offlineGraceDays":7,"expiresAt":null,"graceUntil":null,"isExpired":false,"locationCount":1,"staffCount":0,"terminalCount":0}` |
+
+**Why 17 and not fewer — the role gate is working.** `roleAtLeast(roleName, access.minimumRole)`
+(`WorkspaceHome.tsx:396-399`) runs FIRST and correctly admits all 17 for `owner`: the owner-only
+tools (`features`, `data-management`) and the admin-only ones (`topology-editor`, `analytics`,
+`cloud-sync`) are all legitimately visible to this role. Derived from the catalogue (not measured —
+no manager login was taken), a `manager` would see **12** cards: 11 open plus the single locked
+Settings card, which is the one entry carrying `lockBelowRole` (`tools.tsx:245`). So there is no
+role defect on this screen.
+
+**Why every caption is the generic one.** `unavailable` is not in the open set
+(`WorkspaceHome.tsx:419-423`), so the first gate rejects before the tier check at `:425` is ever
+reached. That is why no card reads "Requires Pro plan" / "Requires Premium plan" — the per-tier
+captions are unreachable while the state gate is shut, and their absence is itself the proof that
+the lock is the state gate and not the tier gate.
+
+## Instrument note — `scripts/android-cdp.mjs` is dead on this host (cost 3 round trips)
+
+Worth recording because the failure is *misleading*. `node scripts/android-cdp.mjs targets` fails
+with:
+
+```
+android-cdp: mu.kasir.mobile is not running — launch it first
+```
+
+The app **is** running (`adb shell pidof mu.kasir.mobile` → `29127`; `ps -A | grep -i kasir` agrees).
+The real cause is that Node cannot spawn `adb` in this sandbox: `execFileSync("adb", …)` throws
+`EBUSY spawnSync adb EBUSY`, identically for `adb` and `adb.exe`, and with the SDK platform-tools
+first on `PATH` — so it is the spawn, not the resolution. The script's `adbTolerant` converts that
+throw into `""`, and `""` is then reported as "not running" *and* as "the installed APK is a release
+build". Two wrong diagnoses from one swallowed error.
+
+Working path: **do the forward from bash, then speak CDP from Node** — Node 22's global `fetch` and
+`WebSocket` need no child process.
+
+```bash
+A="C:/Users/Dika/AppData/Local/Android/Sdk/platform-tools/adb.exe"
+export MSYS_NO_PATHCONV=1
+PID=$("$A" shell pidof mu.kasir.mobile | tr -d '\r')
+"$A" forward --remove-all; "$A" forward tcp:9222 "localabstract:webview_devtools_remote_$PID"
+curl -s http://127.0.0.1:9222/json      # targets, then ws://127.0.0.1:9222/devtools/page/<id>
+```
+
+then ~40 lines of Node: `fetch` the target list → pick `type === 'page'` → open the
+`webSocketDebuggerUrl` → `Runtime.evaluate {expression, awaitPromise: true, returnByValue: true}`.
+`awaitPromise` is what makes the decisive call usable, because the IPC returns a promise:
+`window.__TAURI_INTERNALS__.invoke('get_subscription_capabilities')`.
+
+The repo skill `android-ui-automation` points at `scripts/android-cdp.mjs` as the way to drive the
+DOM; on this host that entry point is dead and should carry this note.
+
+## Status after this pass
+
+Unchanged: **neither defect is fixed, and no source was modified by this pass.** The blocking
+question remains the one §"The two owner rulings this case falls between" frames (R2 vs R11, and
+therefore whether an absent row means "Free, active" or "unlicensed"). It now has a
+device-measured role axis alongside it, which removes "roles" from the list of suspects.
