@@ -438,7 +438,7 @@
   font-size: var(--text-xs);
   color: var(--color-fg-muted);
   text-transform: uppercase;
-  letter-spacing: var(--tracking-wider);
+  letter-spacing: var(--tracking-wide);
   font-weight: var(--font-weight-medium);
 }
 
@@ -514,7 +514,6 @@
   color: var(--color-fg-muted);
   font-size: var(--text-sm);
   cursor: pointer;
-  line-height: 1;
   padding: 0;
   margin-left: 2px;
   transition: color var(--duration-150) var(--ease-out);
