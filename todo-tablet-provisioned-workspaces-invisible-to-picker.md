@@ -2107,6 +2107,28 @@ Surfacing the error alone would turn a silent no-op into a loudly failing repair
 rows land. Both are needed, and the second is why `INSERT OR IGNORE` does not save it — `OR IGNORE`
 covers uniqueness conflicts, not foreign-key violations.
 
+### The `OR IGNORE` claim, measured
+
+The paragraph above says `INSERT OR IGNORE` does not save the write. That is a claim about SQLite, so
+it was run rather than reasoned about:
+
+```python
+c.execute('PRAGMA foreign_keys = ON')
+c.execute('CREATE TABLE parent (id TEXT PRIMARY KEY)')
+c.execute('CREATE TABLE child (id TEXT PRIMARY KEY, pid TEXT NOT NULL REFERENCES parent(id))')
+c.execute("INSERT OR IGNORE INTO child (id, pid) VALUES ('c1','missing')")
+```
+
+```
+ERROR RAISED: IntegrityError FOREIGN KEY constraint failed
+child rows after OR IGNORE: 0
+```
+
+So `OR IGNORE` covers uniqueness conflicts and **not** foreign-key violations — the statement still
+raises, and the table is still empty. That matches the read-repair's measured `left: 0` exactly, and it
+is why the repair cannot be fixed by surfacing the error alone: the write will keep failing until its
+FK target exists.
+
 ## Evidence retention
 
 Device-side files pulled during this pass: `kasir.db` (+wal) and `store-default.sqlite` (+wal) in
