@@ -1521,6 +1521,58 @@ provisions itself into a state its own capabilities read cannot see.
 The test asserts the **current** behaviour deliberately, with that stated in its doc comment: it is a
 tripwire that fails loudly if either side moves, not an endorsement. Committed as `6111e9983`.
 
+## ROUND 18 CORRECTION: the linked path IS reachable — the round-17 severity was wrong
+
+Round 17 concluded the tenant-key mismatch was "not reachable from the shipped UI today", and rested
+that on two things: `git grep` over `ui/src` finding no `'linked'` string, and the bridge's comment that
+a `local` install sends no `tenant_id`. **Both were true of the strings I searched and false of the
+feature.** The linked path has a UI, and the mismatch is live.
+
+### What the grep missed
+
+The search looked for the literal `'linked'` in quotes. The flow stores it in a variable and never
+spells it that way, so nothing matched:
+
+| Evidence | Line |
+|---|---|
+| A selectable "Link your kasir.mu account" card, `data-testid="provision-mode-linked"` | `ProvisioningFlow.tsx:668-677` |
+| The parallel `provision-mode-local` card it sits beside | `:679-691` |
+| An account-linking step gated on the mode | `:697-706` |
+| **The submit that carries the tenant** | `:555` — `tenant_id: provisionMode === 'linked' ? (linkedAccount?.tenantId ?? null) : null` |
+| `mode` sent from the same state | `:554` |
+
+So a merchant chooses Linked, signs in, and `provision_device` is called with `mode = Linked` and a real
+`tenant_id` — which is exactly the input that makes Step 5b write `tenant_subscription` under a tenant
+`entitlements.rs:325` never reads (`TenantSubscription::load(self.conn, "default")`).
+
+**The generalisable error:** I treated a grep for one spelling as evidence about a feature. A negative
+grep result constrains the strings, not the behaviour — and the ADR I checked next agreed with me for a
+reason that had also expired.
+
+### ADR-56's status line is stale on this point
+
+`docs/decisions/2026-09-21-adr56-first-run-provisioning.md` states, in its own status line, that
+§2.3's `identify` leg for the `linked` tier **is NOT implemented** — *"The manual email identity step has
+no UI on either shell"* — and cites `ProvisioningFlow.tsx:104` as where "only `'local'` is currently
+sent". Three observations:
+
+1. The claim is **falsified by the tree**: there is a linked card (`:668-677`), a linked branch
+   (`:697-706`), and a linked submit (`:555`).
+2. The cited coordinate is **wrong** even as a coordinate: `ProvisioningFlow.tsx:104` is a blank line
+   inside a doc comment, not a send of any mode.
+3. Its companion citation, `ui/src/api/settings.ts:151`, **is** exact
+   (`export type ProvisioningMode = 'local' | 'linked';`).
+
+I did not edit the ADR — it is not this report's file and the status line carries its own audit trail.
+Flagged here because the next reader who checks that line will otherwise conclude the linked path is
+unshipped, which is the same conclusion that shaped round 17.
+
+### What this does to round 17's conclusion
+
+The mismatch itself stands, and is now **worse than described**: it is reachable by a merchant through
+the shipping first-run flow, not armed for a future caller. The proving test from round 17
+(`6111e9983`) is unaffected and still passes — it asserts the row the current code writes.
+
 ## Evidence retention
 
 Device-side files pulled during this pass: `kasir.db` (+wal) and `store-default.sqlite` (+wal) in
