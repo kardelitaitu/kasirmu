@@ -128,6 +128,7 @@ export default function TabletAppShell() {
   // ADR #4 Phase 3b: use WorkspaceContext for device-bound auto-boot.
   const {
     activeWorkspace,
+    setActiveWorkspace,
     workspaceScreens,
     terminalId,
   } = useWorkspace();
@@ -254,21 +255,35 @@ export default function TabletAppShell() {
   //
   // The hash is read on mount as well as on change so a #/route
   // deep link / reload works, not only a live click.
+  // `activeWorkspace` is read through a REF, not through this effect's deps, and
+  // that is the whole point of the indirection. The workspace-rebind effect above
+  // (:137-155) also fires on `activeWorkspace`, so both effects ran on the same
+  // commit and raced: the rebind set 'settings' for an admin workspace, then this
+  // one — seeing the hash still empty — overwrote it with 'pos' and the terminal
+  // landed back on POS. Measured: TabletAppShellFeatureGateRoute.test.tsx
+  // "mounts a feature-disabled settings page after a workspace rebind to admin".
+  // A hash-driven effect must key on the hash; nothing else may re-arm it.
+  const activeWorkspaceRef = useRef(activeWorkspace);
+  useEffect(() => {
+    activeWorkspaceRef.current = activeWorkspace;
+  }, [activeWorkspace]);
+
   useEffect(() => {
     const syncFromHash = () => {
       const raw = window.location.hash.replace(/^#\/?/, '').split('?')[0];
       if (!raw) {
-        // Mirror AppShell.tsx:357-364: a CLEARED hash means "leave whatever
-        // fullscreen page the hash put us on". This copy returned early
-        // instead, so the only way out of a fullscreen page was forward —
-        // clearing the hash did nothing and currentRoute stayed put. 'pos' is
-        // this shell's default (the same value onProvisioned resets to), and
-        // while the device is still unprovisioned the !hasCompletedSetup gate
-        // below re-renders ProvisioningFlow regardless of the route.
-        setCurrentRoute('pos');
+        if (!activeWorkspaceRef.current) {
+          setCurrentRoute('products');
+        } else {
+          setCurrentRoute('pos');
+        }
         return;
       }
-      if (getPage(raw)) setCurrentRoute(raw);
+      if (getPage(raw)) {
+        setCurrentRoute(raw);
+      } else if (raw.startsWith('settings/')) {
+        if (getPage('settings')) setCurrentRoute('settings');
+      }
     };
     syncFromHash();
     window.addEventListener('hashchange', syncFromHash);
@@ -289,6 +304,49 @@ export default function TabletAppShell() {
   const handleUnlock = useCallback(() => {
     setIsLocked(false);
   }, []);
+
+  // ── Hardware Back-Button Support (Android) ─────────────────────
+  useEffect(() => {
+    const win = window as unknown as { __onAndroidBackPressed?: () => boolean };
+    win.__onAndroidBackPressed = () => {
+      // 1. If any modal is open, dismiss it via Escape
+      if (isAnyAriaModalOpen()) {
+        const escEvent = new KeyboardEvent('keydown', {
+          key: 'Escape',
+          code: 'Escape',
+          bubbles: true,
+          cancelable: true,
+        });
+        document.dispatchEvent(escEvent);
+        return true;
+      }
+
+      // 2. If workspace settings modal is open:
+      if (settingsModalOpen) {
+        setSettingsModalOpen(false);
+        return true;
+      }
+
+      // 3. If a hash is active (e.g. #/settings/topology), clear back to workspace
+      if (window.location.hash) {
+        window.location.hash = '';
+        return true;
+      }
+
+      // 4. If in an active workspace (e.g. POS), back button returns to WorkspaceHome
+      if (activeWorkspace) {
+        setActiveWorkspace(null);
+        return true;
+      }
+
+      // 5. At root (WorkspaceHome or login screen): return false for double-tap exit toast
+      return false;
+    };
+
+    return () => {
+      delete win.__onAndroidBackPressed;
+    };
+  }, [activeWorkspace, settingsModalOpen, setActiveWorkspace]);
 
   // Must be called unconditionally before any early return (rules-of-hooks).
   // Returns splashMounted=false, splashExiting=false when loading is false,
@@ -335,48 +393,6 @@ export default function TabletAppShell() {
     );
   }
 
-  // Render the current page from the registry, or null if not found.
-  const pageRegistration = getPage(currentRoute);
-  const PageComponent = pageRegistration?.component ?? null;
-  const pageDenied = pageRegistration && !isPageAccessible(pageRegistration, userRole, userPermissions);
-
-  // Fullscreen pages render without the tab bar or active workspace requirement.
-  // When an unprovisioned tablet enters mobile-setup, completing the flow marks the device provisioned.
-  if (pageRegistration?.fullscreen) {
-    if (pageDenied) {
-      return (
-        <PermissionDenied
-          action={pageRegistration.label}
-          requiredRole={pageRegistration.requiredRole ?? ''}
-          requiredPermission={pageRegistration.requiredPermission}
-        />
-      );
-    }
-    const isCustomerKiosk = currentRoute === 'kiosk';
-    const FullscreenPageComponent = PageComponent as React.ComponentType<{ onProvisioned?: () => void }>;
-    return PageComponent ? (
-      <>
-        {!isCustomerKiosk && <MemoBanner />}
-        <div className="workspace-fullscreen" key={pageRegistration.screenGroup ?? currentRoute}>
-          {renderPageLayout(
-            <LazyBoundary>
-              <FullscreenPageComponent
-                onProvisioned={() => {
-                  setHasCompletedSetup(true);
-                  setHasAnyUsers(true);
-                  setCurrentRoute('pos');
-                  window.location.hash = '';
-                }}
-              />
-            </LazyBoundary>,
-            pageRegistration.layout,
-            orientation.isLandscape,
-          )}
-        </div>
-      </>
-    ) : null;
-  }
-
   // ── First-run provisioning runs BEFORE the login gate (ADR #41 §2.1, ADR #56 §2.3) ──
   // ADR #41 §2.1's "State A: New / Uninitialized Device" says the application
   // boots directly into onboarding and authentication happens *inside* it.
@@ -400,7 +416,7 @@ export default function TabletAppShell() {
     );
   }
 
-  if (!session) {
+  if (!session && currentRoute !== 'kiosk') {
     // Owner bootstrap (mirrors the desktop AppShell's hasUsers === false branch).
     //
     // ADR #56 §2.2 made the owner part of the provisioning transaction, so on a
@@ -434,6 +450,47 @@ export default function TabletAppShell() {
         <StaffLoginScreen />
       </LazyBoundary>
     );
+  }
+
+  // Render the current page from the registry, or null if not found.
+  const pageRegistration = getPage(currentRoute);
+  const PageComponent = pageRegistration?.component ?? null;
+  const pageDenied = pageRegistration && !isPageAccessible(pageRegistration, userRole, userPermissions);
+
+  // Fullscreen pages render without the tab bar or active workspace requirement.
+  if (pageRegistration?.fullscreen) {
+    if (pageDenied) {
+      return (
+        <PermissionDenied
+          action={pageRegistration.label}
+          requiredRole={pageRegistration.requiredRole ?? ''}
+          requiredPermission={pageRegistration.requiredPermission}
+        />
+      );
+    }
+    const isCustomerKiosk = currentRoute === 'kiosk';
+    const FullscreenPageComponent = PageComponent as React.ComponentType<{ onProvisioned?: () => void }>;
+    return PageComponent ? (
+      <>
+        {!isCustomerKiosk && <MemoBanner />}
+        <div className="workspace-fullscreen" key={pageRegistration.screenGroup ?? currentRoute}>
+          {renderPageLayout(
+            <LazyBoundary>
+              <FullscreenPageComponent
+                onProvisioned={() => {
+                  setHasCompletedSetup(true);
+                  setHasAnyUsers(true);
+                  setCurrentRoute('pos');
+                  window.location.hash = '';
+                }}
+              />
+            </LazyBoundary>,
+            pageRegistration.layout,
+            orientation.isLandscape,
+          )}
+        </div>
+      </>
+    ) : null;
   }
 
   // ADR #4 Phase 3b: Workspace routing — same pattern as desktop AppShell.
