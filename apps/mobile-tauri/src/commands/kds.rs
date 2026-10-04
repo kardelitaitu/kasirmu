@@ -175,6 +175,64 @@ pub async fn get_kds_order_scoped(
         .map_err(Into::into)
 }
 
+/// Update the items on a KDS order in the store resolved from a session token. ADR #7.
+#[command]
+pub async fn update_kds_order_items_scoped(
+    session_token: String,
+    args: kasirmu_core::UpdateKdsOrderItemsInput,
+    state: State<'_, AppState>,
+) -> Result<KdsOrder, AppError> {
+    let ctx = state.bridge_ctx();
+    kasirmu_bridge::kds::update_kds_order_items_scoped(&ctx, &session_token, args)
+        .await
+        .map_err(Into::into)
+}
+
+/// Print a kitchen chit for a specific KDS order by ID (scoped - ADR #7).
+#[command]
+pub async fn print_kds_chit_scoped(
+    session_token: String,
+    order_id: String,
+    state: State<'_, AppState>,
+) -> Result<bool, AppError> {
+    let ctx = state.bridge_ctx();
+    kasirmu_bridge::kds::print_kds_chit_scoped(&ctx, &session_token, &order_id)
+        .await
+        .map_err(Into::into)
+}
+
+/// Get all line items for a KDS order (scoped - ADR #7).
+#[command]
+pub async fn get_kds_order_lines_scoped(
+    session_token: String,
+    order_id: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<kasirmu_core::KdsLineItem>, AppError> {
+    let ctx = state.bridge_ctx();
+    kasirmu_bridge::kds::get_kds_order_lines_scoped(&ctx, &session_token, &order_id)
+        .await
+        .map_err(Into::into)
+}
+
+/// Update the status of a single KDS line item in the store resolved from a session token. ADR #7.
+#[command]
+pub async fn update_kds_line_item_status_scoped(
+    session_token: String,
+    item_id: String,
+    status: String,
+    state: State<'_, AppState>,
+) -> Result<kasirmu_core::KdsLineItem, AppError> {
+    let ctx = state.bridge_ctx();
+    kasirmu_bridge::kds::update_kds_line_item_status_scoped(
+        &ctx,
+        &session_token,
+        &item_id,
+        &status,
+    )
+    .await
+    .map_err(Into::into)
+}
+
 #[cfg(test)]
 #[path = "kds_tests.rs"]
 mod tests;

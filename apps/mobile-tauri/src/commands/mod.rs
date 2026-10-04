@@ -31,6 +31,8 @@ pub mod customers;
 pub mod data;
 /// Device-link commands (ADR #54 §2.5).
 pub mod desktop_link;
+/// EDC payment terminal commands.
+pub mod edc;
 /// Exchange-rate commands.
 pub mod exchange_rates;
 /// Feature-flag commands.
@@ -45,6 +47,8 @@ pub mod hardware;
 pub mod health;
 /// Sales-history commands.
 pub mod history;
+/// Multi-location inventory, shifts, transactions, thresholds, and pending sale checkout commands.
+pub mod inventory;
 /// Inventory-count commands.
 pub mod inventory_counts;
 /// KDS commands.
@@ -97,6 +101,8 @@ pub mod scale;
 pub mod settings;
 /// Initial-setup commands.
 pub mod setup;
+/// Shift management commands.
+pub mod shifts;
 /// Staff / employee commands.
 pub mod staff;
 /// Stock transfer commands.

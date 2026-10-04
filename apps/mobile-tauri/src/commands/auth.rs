@@ -1144,6 +1144,20 @@ pub async fn refresh_picker_ticket(
     let ctx = state.bridge_ctx();
     kasirmu_bridge::auth::refresh_picker_ticket(&ctx, &session_token).map_err(Into::into)
 }
+
+/// Verify a staff PIN against the current session.
+#[command]
+pub async fn verify_pin(
+    state: State<'_, AppState>,
+    session_token: String,
+    pin: String,
+) -> Result<bool, AppError> {
+    let ctx = state.bridge_ctx();
+    kasirmu_bridge::auth::verify_pin(&ctx, &session_token, &pin)
+        .await
+        .map_err(Into::into)
+}
+
 #[cfg(test)]
 #[path = "auth_tests.rs"]
 mod tests;

@@ -220,8 +220,20 @@ mod debt;
 /// `local_payment::set_payment_gateway_config_scoped`, and
 /// `local_payment::delete_payment_gateway_scoped`. All four arrive already gated,
 /// so they move no debt ledger row or ceiling, making this registration floor
-/// the only check that observes them. Provenance recorded in docs/records/journal/JOURNAL.md.
-const REGISTERED_FLOOR: usize = 352;
+///
+/// The 352 -> 359 step, 2026-10-04. Seven shift management commands were registered in
+/// `apps/mobile-tauri/src/lib.rs` for parity with desktop:
+/// `shifts::open_shift_scoped`, `shifts::close_shift_scoped`,
+/// `shifts::get_active_shift_scoped`, `shifts::list_shifts_scoped`,
+/// `shifts::get_shift_scoped`, `shifts::create_cash_payout_scoped`, and
+/// `shifts::get_shift_report_scoped`. All seven arrive already gated, so they move no
+/// debt ledger row or ceiling, making this registration floor the only check that observes them.
+///
+/// The 359 -> 405 step, 2026-10-04. 46 commands registered across inventory (24), kds (4),
+/// auth PIN verification (1), location profiles & prefixes (8), product images (1), and
+/// EDC terminals (8) for full functional parity with desktop on tablet POS/restaurant/store flows.
+/// All 46 arrive already gated on the bridge side, so they move no debt ledger row or ceiling.
+const REGISTERED_FLOOR: usize = 405;
 /// How far the parsed count may rise without regenerating: names are added by ordinary
 /// feature work, so the floor is a lower bound plus slack and never an equality.
 /// Crossing the slack is the signal that the ledger needs regenerating in the same pass.

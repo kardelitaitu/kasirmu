@@ -770,6 +770,7 @@ pub fn run() {
                 // SaaS-3 L194: multi-organization user switching.
                 commands::auth::list_organizations,
                 commands::auth::switch_organization,
+                commands::auth::verify_pin,
                 // Own-avatar read (parity gap closed 2026-09-19): the shared
                 // PosScreen restaurant sidebar reads this on mount and this shell
                 // renders that screen. The two writes join it in b-full Phase 3,
@@ -1022,6 +1023,10 @@ pub fn run() {
                 commands::kds::get_kds_queue_scoped,
                 commands::kds::list_kds_orders_scoped,
                 commands::kds::update_kds_status_scoped,
+                commands::kds::update_kds_order_items_scoped,
+                commands::kds::print_kds_chit_scoped,
+                commands::kds::get_kds_order_lines_scoped,
+                commands::kds::update_kds_line_item_status_scoped,
                 commands::legal_entities::list_legal_entities_scoped,
                 commands::legal_entities::get_legal_entity_scoped,
                 commands::legal_entities::create_legal_entity_scoped,
@@ -1034,6 +1039,14 @@ pub fn run() {
                 // Primary-location read: the shared Business Defaults cards
                 // (regional / local-payment / receipt-format) resolve it first.
                 commands::locations::get_primary_location_scoped,
+                commands::locations::list_locations_scoped,
+                commands::locations::get_location_profile_scoped,
+                commands::locations::create_location_profile_scoped,
+                commands::locations::update_location_profile_scoped,
+                commands::locations::set_primary_location_scoped,
+                commands::locations::delete_location_profile_scoped,
+                commands::locations::get_location_ticket_prefix_scoped,
+                commands::locations::set_location_ticket_prefix_scoped,
                 // Regional configuration read model (slice 2, saas-2 design).
                 commands::regional::get_regional_config_scoped,
                 // Regional configuration write path (slice 3, saas-2 design).
@@ -1080,6 +1093,7 @@ pub fn run() {
                 // succeeds and then the write fails as "command not found".
                 commands::products_images::products_set_image_scoped,
                 commands::products_images::products_clear_image_scoped,
+                commands::products_images::products_list_images_scoped,
                 commands::promotions::apply_promotion_scoped,
                 commands::promotions::create_promotion_scoped,
                 commands::promotions::delete_promotion_scoped,
@@ -1149,6 +1163,47 @@ pub fn run() {
                 commands::terminals::register_terminal_scoped,
                 commands::terminals::set_terminal_override_scoped,
                 commands::terminals::update_terminal_scoped,
+                commands::shifts::open_shift_scoped,
+                commands::shifts::close_shift_scoped,
+                commands::shifts::get_active_shift_scoped,
+                commands::shifts::list_shifts_scoped,
+                commands::shifts::get_shift_scoped,
+                commands::shifts::create_cash_payout_scoped,
+                commands::shifts::get_shift_report_scoped,
+                // Multi-location inventory, shifts, transactions, thresholds, alerts, and sale checkout
+                commands::inventory::create_inventory_location,
+                commands::inventory::list_inventory_locations,
+                commands::inventory::update_inventory_location,
+                commands::inventory::deactivate_inventory_location,
+                commands::inventory::get_workspace_locations_scoped,
+                commands::inventory::invalidate_location_cache_scoped,
+                commands::inventory::set_workspace_inventory_locations,
+                commands::inventory::get_workspace_inventory_locations,
+                commands::inventory::start_inventory_shift,
+                commands::inventory::end_inventory_shift,
+                commands::inventory::get_active_inventory_shift,
+                commands::inventory::list_inventory_shifts,
+                commands::inventory::create_inventory_transaction,
+                commands::inventory::list_inventory_transactions,
+                commands::inventory::list_inventory_transactions_for_shift,
+                commands::inventory::get_inventory_transaction,
+                commands::inventory::set_stock_threshold,
+                commands::inventory::get_stock_thresholds,
+                commands::inventory::delete_stock_threshold,
+                commands::inventory::get_low_stock_alerts_at_location_scoped,
+                commands::inventory::active_stock_alerts_scoped,
+                commands::inventory::acknowledge_stock_alert_scoped,
+                commands::inventory::finalize_sale,
+                commands::inventory::void_pending_sale,
+                // EDC payment terminal commands
+                commands::edc::edc_terminal_status_scoped,
+                commands::edc::edc_sale,
+                commands::edc::edc_refund,
+                commands::edc::edc_void,
+                commands::edc::list_edc_terminals_scoped,
+                commands::edc::create_edc_terminal_scoped,
+                commands::edc::update_edc_terminal_scoped,
+                commands::edc::delete_edc_terminal_scoped,
             ])
             .run(tauri::generate_context!())
             .map_err(AppError::from);
