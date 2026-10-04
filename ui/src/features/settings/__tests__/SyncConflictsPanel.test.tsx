@@ -108,7 +108,7 @@ describe('SyncConflictsPanel', () => {
 
     expect(screen.getByText('sale.create')).toBeInTheDocument();
     expect(screen.getByText('5')).toBeInTheDocument();
-    expect(screen.getByText('Inventory constraint violated')).toBeInTheDocument();
+    expect(screen.getAllByText('Inventory constraint violated')[0]).toBeInTheDocument();
 
     // item-2 has deadLettered = false, so it should not appear in the dead-lettered list
     expect(screen.queryByText('stock.adjust')).not.toBeInTheDocument();

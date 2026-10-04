@@ -50,23 +50,37 @@
 .workspace-fullscreen {
   height: 100dvh;
   overflow: hidden;
-  animation: ws-page-enter 0.2s var(--ease-out) both;
 }
 
 .workspace-fullscreen--exiting {
-  animation: ws-page-exit var(--duration-150) var(--ease-out) both;
   pointer-events: none;
 }
 
 /* Workspace home wrapper — fades in when returning from a workspace. */
 .workspace-home-wrapper {
   min-height: 100%;
-  animation: ws-page-enter 0.2s var(--ease-out) both;
 }
 
 .workspace-home-wrapper--exiting {
-  animation: ws-page-exit var(--duration-150) var(--ease-out) both;
   pointer-events: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .workspace-fullscreen {
+    animation: ws-page-enter 0.2s var(--ease-out) both;
+  }
+
+  .workspace-fullscreen--exiting {
+    animation: ws-page-exit var(--duration-150) var(--ease-out) both;
+  }
+
+  .workspace-home-wrapper {
+    animation: ws-page-enter 0.2s var(--ease-out) both;
+  }
+
+  .workspace-home-wrapper--exiting {
+    animation: ws-page-exit var(--duration-150) var(--ease-out) both;
+  }
 }
 
 /* ── Layout ───────────────────────────────────────── */
@@ -555,3 +569,19 @@
   }
 }
 
+/* ── Reduced motion ────────────────────────────────────────────────
+ * The workspace page transitions above (.workspace-fullscreen and
+ * .workspace-home-wrapper, enter + exit) are purely decorative: the
+ * content is fully usable without them. A merchant who has asked the OS
+ * for reduced motion gets the page swap with no cross-fade, which is the
+ * point of the preference. Pattern B, matching AnalyticsScreen.css:1689 —
+ * scoped to this shell's own surfaces rather than a bare `*`.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .workspace-fullscreen,
+  .workspace-fullscreen--exiting,
+  .workspace-home-wrapper,
+  .workspace-home-wrapper--exiting {
+    animation: none;
+  }
+}
