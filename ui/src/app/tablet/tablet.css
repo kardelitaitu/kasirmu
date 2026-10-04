@@ -263,7 +263,7 @@
 }
 
 .tablet-shell .btn,
-.tablet-shell button:not(.tablet-tab-item) {
+.tablet-shell button:not(.tablet-tab-item):not(.resto-switch-btn):not([role="switch"]) {
   padding: var(--space-3) var(--space-5);
   font-size: var(--tablet-font-base);
   border-radius: var(--tablet-radius);
@@ -278,7 +278,7 @@
 }
 
 /* ── Input overrides ──────────────────────────────── */
-.tablet-shell input,
+.tablet-shell input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]),
 .tablet-shell select,
 .tablet-shell textarea {
   min-height: var(--tablet-tap-target);
