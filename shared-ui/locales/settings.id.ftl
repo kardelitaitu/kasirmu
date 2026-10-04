@@ -1194,4 +1194,27 @@ sync-conflicts-payload-copy = Salin JSON
 sync-conflicts-payload-copied = Tersalin!
 sync-conflicts-badge-aria = { $count } konflik sinkronisasi terkarantina
 
+# Android In-App Self-Updater
+settings-updater-title = Pembaruan Aplikasi
+settings-updater-subtitle = Periksa dan pasang pembaruan sistem POS Android dengan aman.
+settings-updater-current-version = Versi Saat Ini: v{ $version }
+settings-updater-latest-version = Versi Tersedia: v{ $version }
+settings-updater-check-btn = Periksa Pembaruan
+settings-updater-checking = Memeriksa pembaruan…
+settings-updater-up-to-date = Aplikasi Anda sudah versi terbaru.
+settings-updater-available-banner = Versi baru tersedia untuk perangkat Anda!
+settings-updater-download-btn = Unduh Pembaruan ({ $size })
+settings-updater-install-btn = Pasang Pembaruan Sekarang
+settings-updater-permission-btn = Izinkan Pemasangan Paket
+settings-updater-permission-note = Android memerlukan izin untuk memasang paket dari aplikasi ini.
+settings-updater-progress = Mengunduh: { $percent }% ({ $speed } MB/s)
+settings-updater-eta = Perkiraan sisa waktu: { $eta } detik
+settings-updater-backup-creating = Membuat cadangan database sebelum pembaruan…
+settings-updater-error-prefix = Kesalahan pembaruan: { $error }
+settings-updater-offline-warning-title = Transaksi Belum Tersinkronisasi Terdeteksi
+settings-updater-offline-warning-body = Anda memiliki { $count } transaksi yang belum tersinkronisasi di antrean offline. Harap sinkronkan ke cloud sebelum memperbarui untuk mencegah potensi kehilangan data.
+settings-updater-offline-sync-now = Sinkronkan Sekarang
+settings-updater-offline-ignore-proceed = Tetap Lanjutkan
+settings-updater-cancel = Batal
+
 

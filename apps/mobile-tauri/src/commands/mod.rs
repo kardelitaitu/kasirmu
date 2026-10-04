@@ -123,5 +123,7 @@ pub mod terminals;
 pub(crate) mod testing;
 /// Void / cancel commands.
 pub mod void;
+/// In-App self-updater commands (todo-android-updater.md).
+pub mod updater;
 /// Workspace listing + boot-resolution commands (audit-open-findings residual, desktop parity).
 pub mod workspaces;

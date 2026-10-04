@@ -961,6 +961,29 @@ export const systemHandlers: Record<string, MockHandler> = {
     // header) to stay in lockstep with the shipped app.
     return { app_version: pkg.version };
   },
+
+  // ═══════════════════════════════════════════════════════════════
+  // ANDROID IN-APP UPDATER
+  // ═══════════════════════════════════════════════════════════════
+
+  'check_app_update': (_args) => ({
+    update_available: false,
+    current_version: pkg.version,
+    latest_version: pkg.version,
+    release_notes: '### Updates\nNo update available in mock mode.',
+    download_url: null,
+    sha256: null,
+    file_size_bytes: null,
+    abi_matched: 'arm64-v8a',
+  }),
+
+  'start_apk_download': (_args) => '/mock/cache/updates/kasirmu-mock.apk',
+
+  'prepare_and_launch_update': (_args) => ({
+    success: true,
+    backup_path: '/mock/cache/backups/pre_update_mock.db',
+    apk_path: '/mock/cache/updates/kasirmu-mock.apk',
+  }),
 };
 
 export { MOCK_ROLE_PERMISSIONS, mockHandlerPayload };

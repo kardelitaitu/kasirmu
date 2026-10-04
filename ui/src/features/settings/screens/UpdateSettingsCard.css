@@ -1,0 +1,257 @@
+/* UpdateSettingsCard.css — In-App Self-Updater styles */
+
+.update-settings-card {
+  background: var(--color-surface, #ffffff);
+  border: 1px solid var(--color-border, #e2e8f0);
+  border-radius: var(--radius-lg, 8px);
+  padding: 1.5rem;
+  margin-top: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.update-settings-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.update-settings-title {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--color-text, #1e293b);
+}
+
+.update-settings-subtitle {
+  margin: 0.25rem 0 0 0;
+  font-size: 0.875rem;
+  color: var(--color-text-secondary, #64748b);
+}
+
+.update-settings-version-tags {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.update-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.625rem;
+  border-radius: var(--radius-full, 9999px);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.update-badge--current {
+  background: var(--color-surface-hover, #f1f5f9);
+  color: var(--color-text-secondary, #475569);
+  border: 1px solid var(--color-border, #cbd5e1);
+}
+
+.update-badge--latest {
+  background: rgba(16, 185, 129, 0.12);
+  color: #059669;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.update-settings-body {
+  margin-top: 0.5rem;
+}
+
+.update-state-box {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.update-state-box--loading {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.75rem;
+  color: var(--color-text-secondary, #64748b);
+  font-size: 0.875rem;
+}
+
+.update-spinner {
+  width: 1.25rem;
+  height: 1.25rem;
+  border: 2px solid var(--color-border, #cbd5e1);
+  border-top-color: var(--color-primary, #2563eb);
+  border-radius: 50%;
+  animation: update-spin 0.8s linear infinite;
+}
+
+@keyframes update-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.update-state-box--ok {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.update-status-icon {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  background: rgba(16, 185, 129, 0.15);
+  color: #059669;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+}
+
+.update-status-message {
+  margin: 0;
+  font-size: 0.9375rem;
+  color: var(--color-text, #1e293b);
+  font-weight: 500;
+}
+
+.update-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  background: rgba(37, 99, 235, 0.08);
+  border: 1px solid rgba(37, 99, 235, 0.2);
+  border-radius: var(--radius-md, 6px);
+}
+
+.update-banner-icon {
+  font-size: 1.25rem;
+}
+
+.update-banner-text {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--color-primary-dark, #1d4ed8);
+}
+
+.update-banner--ready {
+  background: rgba(16, 185, 129, 0.08);
+  border-color: rgba(16, 185, 129, 0.25);
+}
+
+.update-banner--ready .update-banner-text {
+  color: #047857;
+}
+
+.update-release-notes {
+  background: var(--color-surface-sunken, #f8fafc);
+  border: 1px solid var(--color-border, #e2e8f0);
+  border-radius: var(--radius-md, 6px);
+  padding: 0.75rem 1rem;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.update-notes-title {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-secondary, #64748b);
+  margin-bottom: 0.375rem;
+}
+
+.update-notes-content {
+  font-size: 0.875rem;
+  color: var(--color-text, #334155);
+  white-space: pre-wrap;
+  line-height: 1.4;
+}
+
+.update-action-row {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.update-state-box--progress {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.update-progress-meta {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary, #475569);
+}
+
+.update-progress-track {
+  width: 100%;
+  height: 8px;
+  background: var(--color-surface-hover, #e2e8f0);
+  border-radius: var(--radius-full, 9999px);
+  overflow: hidden;
+}
+
+.update-progress-fill {
+  height: 100%;
+  background: var(--color-primary, #2563eb);
+  transition: width 0.2s ease-in-out;
+}
+
+.update-permission-box {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1rem;
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+  border-radius: var(--radius-md, 6px);
+}
+
+.update-permission-text {
+  margin: 0;
+  font-size: 0.875rem;
+  color: #b45309;
+}
+
+.update-state-box--error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  border-radius: var(--radius-md, 6px);
+  gap: 1rem;
+}
+
+.update-error-text {
+  margin: 0;
+  font-size: 0.875rem;
+  color: #b91c1c;
+}
+
+.update-modal-actions {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: flex-end;
+}
+
+.update-offline-body {
+  margin: 0;
+  font-size: 0.9375rem;
+  color: var(--color-text, #334155);
+  line-height: 1.5;
+}

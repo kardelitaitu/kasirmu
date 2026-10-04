@@ -48,6 +48,11 @@
          today; see the note at the bottom. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!-- ── In-App APK Self-Updater ──────────────────────────────────────────
+         Allows prompting the Android package installer to update kasir.mu.
+         On Android 8.0+ (API 26+) this requires user consent via system settings. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
     <!-- ── Bluetooth: receipt printer, and the cash drawer through it ───────
          Split by API level, because the capability moved. On API 31+
          (Android 12+) BLUETOOTH_CONNECT and BLUETOOTH_SCAN are DANGEROUS

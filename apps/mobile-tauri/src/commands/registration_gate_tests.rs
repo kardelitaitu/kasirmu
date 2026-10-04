@@ -229,11 +229,10 @@ mod debt;
 /// `shifts::get_shift_report_scoped`. All seven arrive already gated, so they move no
 /// debt ledger row or ceiling, making this registration floor the only check that observes them.
 ///
-/// The 359 -> 405 step, 2026-10-04. 46 commands registered across inventory (24), kds (4),
-/// auth PIN verification (1), location profiles & prefixes (8), product images (1), and
-/// EDC terminals (8) for full functional parity with desktop on tablet POS/restaurant/store flows.
-/// All 46 arrive already gated on the bridge side, so they move no debt ledger row or ceiling.
-const REGISTERED_FLOOR: usize = 405;
+/// The 405 -> 408 step, 2026-10-05. 3 commands registered for Android in-app self-updater:
+/// check_app_update (SETTINGS_READ), start_apk_download (SETTINGS_EDIT), prepare_and_launch_update (SETTINGS_EDIT).
+/// All 3 arrive already gated on the bridge side, so they move no debt ledger row or ceiling.
+const REGISTERED_FLOOR: usize = 408;
 /// How far the parsed count may rise without regenerating: names are added by ordinary
 /// feature work, so the floor is a lower bound plus slack and never an equality.
 /// Crossing the slack is the signal that the ledger needs regenerating in the same pass.

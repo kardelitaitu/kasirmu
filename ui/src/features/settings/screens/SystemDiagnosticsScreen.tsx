@@ -13,6 +13,7 @@
 
 import { Localized } from '@fluent/react';
 import DiagnosticsSection from '../sections/DiagnosticsSection';
+import { UpdateSettingsCard } from './UpdateSettingsCard';
 import './screens-placeholder.css';
 
 /** Settings → System Diagnostics: heading + the real DiagnosticsSection body. */
@@ -31,6 +32,7 @@ export function SystemDiagnosticsScreen() {
         </Localized>
       </p>
       <DiagnosticsSection />
+      <UpdateSettingsCard />
     </section>
   );
 }

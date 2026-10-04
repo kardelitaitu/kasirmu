@@ -1204,6 +1204,10 @@ pub fn run() {
                 commands::edc::create_edc_terminal_scoped,
                 commands::edc::update_edc_terminal_scoped,
                 commands::edc::delete_edc_terminal_scoped,
+                // In-App Self-Updater commands (todo-android-updater.md)
+                commands::updater::check_app_update,
+                commands::updater::start_apk_download,
+                commands::updater::prepare_and_launch_update,
             ])
             .run(tauri::generate_context!())
             .map_err(AppError::from);

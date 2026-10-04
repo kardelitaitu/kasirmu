@@ -1215,4 +1215,27 @@ sync-conflicts-payload-copy = Copy JSON
 sync-conflicts-payload-copied = Copied!
 sync-conflicts-badge-aria = { $count } quarantined sync conflicts
 
+# Android In-App Self-Updater
+settings-updater-title = Application Updates
+settings-updater-subtitle = Check for and install Android POS system updates safely.
+settings-updater-current-version = Current Version: v{ $version }
+settings-updater-latest-version = Available Version: v{ $version }
+settings-updater-check-btn = Check for Updates
+settings-updater-checking = Checking for updates…
+settings-updater-up-to-date = Your application is up to date.
+settings-updater-available-banner = A newer version is available for your device!
+settings-updater-download-btn = Download Update ({ $size })
+settings-updater-install-btn = Install Update Now
+settings-updater-permission-btn = Grant Install Permission
+settings-updater-permission-note = Android requires permission to install packages from this app.
+settings-updater-progress = Downloading: { $percent }% ({ $speed } MB/s)
+settings-updater-eta = Estimated time remaining: { $eta }s
+settings-updater-backup-creating = Creating pre-update database backup…
+settings-updater-error-prefix = Update error: { $error }
+settings-updater-offline-warning-title = Unsynced Transactions Detected
+settings-updater-offline-warning-body = You have { $count } unsynced transactions in your offline queue. Please sync them with the cloud before updating to prevent potential data loss.
+settings-updater-offline-sync-now = Sync Now
+settings-updater-offline-ignore-proceed = Proceed Anyway
+settings-updater-cancel = Cancel
+
 
