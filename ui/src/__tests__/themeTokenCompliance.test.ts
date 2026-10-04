@@ -3315,7 +3315,15 @@ const LINE_HEIGHT_LITERAL_BASELINE: Array<[string, string, number]> = [
   ["1.4", "ui/src/features/settings/FeatureToggleScreen.css", 1],
   ["1", "ui/src/features/settings/LicenseSettings.css", 1],
   ["1.4", "ui/src/features/settings/LicenseSettings.css", 1],
-  ["1.25rem", "ui/src/features/settings/SettingsNavTree.css", 1],
+  // Restated 2026-10-04: `1.25rem @ ui/src/features/settings/SettingsNavTree.css`
+  // 1 -> 2. Peer commit 75eb83d7c rebuilt the settings nav as a flat page list
+  // and added `.settings-nav-plus-badge` (:470), whose `line-height: 1.25rem`
+  // joins the existing badge at :492. Both are single-line pills that centre
+  // their text inside a fixed-height box -- the 2026-09-19 note's case exactly:
+  // the literal is the box's own height (1.25rem, matching the sibling
+  // `min-width`/`height` at :487-488), not a step on the --leading-* scale. The
+  // commit that added the second site did not restate this count.
+  ["1.25rem", "ui/src/features/settings/SettingsNavTree.css", 2],
   ["1.4", "ui/src/features/settings/SettingsNavTree.css", 1],
   ["1", "ui/src/features/settings/SettingsPage.css", 1],
   ["1.4", "ui/src/features/settings/SettingsPage.css", 3],

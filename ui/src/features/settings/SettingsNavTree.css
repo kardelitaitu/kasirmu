@@ -491,8 +491,11 @@ body:has(.memo-stack) .settings-body {
   font-weight: var(--font-weight-bold);
   line-height: 1.25rem;
   text-align: center;
-  color: #ffffff;
-  background: var(--color-danger, #ef4444);
+  color: var(--color-text-on-color);
+  /* No literal fallback: --color-danger is declared in every theme block of
+     ui/src/theme/tokens.css, so the old `, #ef4444` could never render and
+     merely froze a colour the themes are free to change. */
+  background: var(--color-danger);
   border-radius: var(--radius-full);
   white-space: nowrap;
 }

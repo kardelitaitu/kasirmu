@@ -56,6 +56,20 @@
   font-weight: var(--font-weight-medium);
 }
 
+/* The last-error cell wraps the raw server string in the design <Tooltip>, so
+   the text itself needs the truncation the native `title=` used to imply:
+   without it a long error stretches the column instead of being revealed on
+   hover. `overflow-wrap` keeps an unbroken token from escaping the cell. */
+.sync-conflicts-error-text {
+  display: inline-block;
+  max-width: 24rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+  overflow-wrap: anywhere;
+}
+
 .sync-conflicts-panel-header {
   display: flex;
   align-items: center;
@@ -80,7 +94,7 @@
 
 .sync-conflicts-requeue-all-btn:hover:not(:disabled) {
   background: var(--color-accent);
-  color: #fff;
+  color: var(--color-accent-fg);
 }
 
 .sync-conflicts-requeue-all-btn:disabled {

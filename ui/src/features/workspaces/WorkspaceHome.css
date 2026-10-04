@@ -955,7 +955,9 @@ body:has(.memo-stack) .ws-layer-content {
   background: var(--color-warning-bg);
   color: var(--color-fg);
   font-size: var(--text-sm);
-  line-height: 1.4;
+  /* --leading-snug is exactly 1.4; the literal was a scale step the tokens
+     already name, so this changes no rendering. */
+  line-height: var(--leading-snug);
 }
 
 /* ── Error state ─────────────────────────────────────────────────── */

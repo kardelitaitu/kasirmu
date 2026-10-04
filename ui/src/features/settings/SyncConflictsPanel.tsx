@@ -1,5 +1,6 @@
 import { useLocalization } from '@fluent/react';
 import { Fragment, useCallback, useEffect, useState } from 'react';
+import Tooltip from '@/app/Tooltip';
 
 import {
   listRemoteFailuresScoped,
@@ -182,7 +183,21 @@ export function SyncConflictsPanel({
                     <tr>
                       <td>{f.action}</td>
                       <td>{f.attempts}</td>
-                      <td title={f.lastError || ''}>{f.lastError || '—'}</td>
+                      {/* The error text is a server string, not a translatable
+                          UI label, so it stays as-is inside the design Tooltip
+                          rather than a native `title=` (banned on intrinsic
+                          elements -- see nativeTooltipCompliance.test.ts).
+                          `portal` escapes the table's scroll clipping and
+                          `fit="inline"` keeps the cell's own box. */}
+                      <td>
+                        {f.lastError ? (
+                          <Tooltip content={f.lastError} fit="inline" portal>
+                            <span className="sync-conflicts-error-text">{f.lastError}</span>
+                          </Tooltip>
+                        ) : (
+                          '—'
+                        )}
+                      </td>
                       <td>
                         <div className="sync-conflicts-actions-group">
                           <button

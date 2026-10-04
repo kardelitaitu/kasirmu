@@ -871,6 +871,20 @@ const SCREENS: ScreenEntry[] = [
     dynamicClassPrefixes: [ 'settings-license-value--tier-free', 'settings-license-value--tier-pro', 'settings-license-value--tier-premium', 'settings-license-value--tier-enterprise'], // settings-license-value--tier-plus struck 2026-09-15 · DSH · 0 rules (LicenseSettings.css defines -free/-pro/-premium/-enterprise at :244/:249/:254/:259) and 0 composition sites; the name is built as settings-license-value--tier- plus payload.tier_key, so if a plus tier is ever real the missing piece is the CSS rule, not this mute. Graded by the prefix arm at the foot of this file.
     knownDynamicFragments: ['server-status'],
   },
+  {
+    name: 'SyncConflictsPanel',
+    tsx: 'settings/SyncConflictsPanel.tsx',
+    css: ['settings/SyncConflictsPanel.css'],
+    // Registered 2026-10-04: the sheet shipped with peer commit ce1098170 (the
+    // sync payload inspector) and no entry cited it, so this check reported it
+    // uncited. Shape #1, and it is COMPLETE: the panel imports its own sheet at
+    // :12 and every name it composes is defined there, including
+    // `sync-conflicts-table` at :40 — so no parent is owed anything. No
+    // `parentCss` is carried deliberately: an earlier draft cited
+    // SettingsPage.css out of habit and the vacuous-citation check rejected it,
+    // which is the correct answer. The panel mounts inside the settings shell,
+    // but mounting is not borrowing.
+  },
 
   // ── Locations (moved from stores/ in the Store→Location rename) ──
   {

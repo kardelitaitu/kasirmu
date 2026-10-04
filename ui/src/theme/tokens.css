@@ -102,6 +102,7 @@
   --color-accent-subtle-fg:#e8eaef;
   --color-accent-secondary:#1A8FFF;
   --color-primary:         #1155CC;
+  --color-primary-hover:   #0E47A8;
   --color-primary-soft:    rgba(17, 85, 204, 0.10);
 
   /* ── Semantic: Links ──────────────────────────────────────── */
@@ -512,6 +513,7 @@
   --color-accent-subtle-fg:#1a1d23;
   --color-accent-secondary:#2874A6;
   --color-primary:         #147EFB;
+  --color-primary-hover:   #0E5FD0;
   --color-primary-soft:    rgba(20, 126, 251, 0.15);
 
   /* ── Links ────────────────────────────────────────────────── */
@@ -657,6 +659,7 @@
   --color-accent-subtle-fg:#e8eaef;
   --color-accent-secondary:#1A8FFF;
   --color-primary:         #1155CC;
+  --color-primary-hover:   #0E47A8;
 
   /* ── Links ────────────────────────────────────────────────── */
   --color-link:            #1A8FFF;

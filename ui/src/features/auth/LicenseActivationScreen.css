@@ -388,7 +388,11 @@
 }
 
 .license-setup-choice-hero:hover:not(:disabled) {
-  border-color: var(--color-primary-hover, var(--color-primary));
+  /* --color-primary-hover is now declared in every theme block of
+     ui/src/theme/tokens.css. Before that it was referenced from this one
+     site and defined nowhere, so the fallback silently supplied
+     --color-primary and the hover border never actually changed. */
+  border-color: var(--color-primary-hover);
   box-shadow: 0 0 1.25rem color-mix(in srgb, var(--color-primary) 30%, transparent);
 }
 
