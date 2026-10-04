@@ -75,7 +75,7 @@ export function MenuItemGrid({ loading, error, onRetry, items, hasActiveFilter, 
       <div className="restaurant-empty" role="status">
         <span className="restaurant-empty-text">
           <Localized id={hasActiveFilter ? 'restaurant-menu-no-match' : 'restaurant-menu-empty'}>
-            <span>No items available</span>
+            <span>{hasActiveFilter ? 'No items available' : 'Menu is empty'}</span>
           </Localized>
         </span>
         {hasActiveFilter && (

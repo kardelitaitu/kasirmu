@@ -192,8 +192,11 @@ export default function RestaurantMenu({
   isManager,
 }: RestaurantMenuProps) {
   const { l10n } = useLocalization();
-  const { sessionToken } = useWorkspace();
+  const { sessionToken, sessionError, retrySessionToken } = useWorkspace();
+  const isWaitingForSession = !sessionToken && !sessionError;
   const { products, categoryMeta, loading, error, reload } = useProducts(sessionToken ?? undefined);
+  const missingTokenError = l10n.getString('product-lookup-error-load');
+  const isTransientSessionError = isWaitingForSession && error === missingTokenError;
   const { session } = useAuth();
   const userId = session?.user_id ?? 'default';
   const [internalMenuOpen, setInternalMenuOpen] = useState(false);
@@ -638,9 +641,12 @@ export default function RestaurantMenu({
 
       {/* ── Product grid ───────────────────────────── */}
       <MenuItemGrid
-        loading={loading}
-        error={error}
-        onRetry={reload}
+        loading={loading || isTransientSessionError}
+        error={isTransientSessionError ? null : (sessionError ?? error)}
+        onRetry={() => {
+          if (sessionError) retrySessionToken?.();
+          reload();
+        }}
         items={filtered}
         hasActiveFilter={effectiveCategory !== 'All' || searchQuery.trim().length > 0}
         onClearFilter={() => { setSearchQuery(''); setActiveCategory('All'); }}
