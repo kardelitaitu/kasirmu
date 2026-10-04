@@ -22,6 +22,53 @@
   --tablet-radius: 12px;
 }
 
+/* ── Transition animations ────────────────────────────────────── */
+
+@keyframes ws-page-enter {
+  from {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes ws-page-exit {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+}
+
+/* Fullscreen workspace (e.g. restaurant-pos, store-pos, kds) — no tab bar. */
+.workspace-fullscreen {
+  height: 100dvh;
+  overflow: hidden;
+  animation: ws-page-enter 0.2s var(--ease-out) both;
+}
+
+.workspace-fullscreen--exiting {
+  animation: ws-page-exit var(--duration-150) var(--ease-out) both;
+  pointer-events: none;
+}
+
+/* Workspace home wrapper — fades in when returning from a workspace. */
+.workspace-home-wrapper {
+  min-height: 100%;
+  animation: ws-page-enter 0.2s var(--ease-out) both;
+}
+
+.workspace-home-wrapper--exiting {
+  animation: ws-page-exit var(--duration-150) var(--ease-out) both;
+  pointer-events: none;
+}
+
 /* ── Layout ───────────────────────────────────────── */
 /* TAB-02: the tablet entry never loads AppLayout.css, so the base
  * `.app-layout` rules (display:flex etc.) must be re-declared here for

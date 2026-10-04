@@ -3,6 +3,7 @@ import { Localized } from '@fluent/react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import TabletAppLayout from './TabletAppLayout';
+import './tablet.css';
 import { readBootGate } from '@/utils/boot-retry';
 import { useFeatures } from '@/hooks/useFeatures';
 import { getPage, isPageAccessible, type PageRegistration } from '@/registries/page-registry';
