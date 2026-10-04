@@ -333,7 +333,29 @@ impl SubscriptionLoader for crate::db::Store<'_> {
                 }
             },
             Ok(None) => {
-                tracing::warn!("no tenant_subscription row for 'default' — failing closed");
+                // Secondary fallback: check provisioning table for a server-assigned tenant_id
+                let provisioned_tenant: Option<String> = self
+                    .conn
+                    .query_row(
+                        "SELECT tenant_id FROM provisioning WHERE tenant_id IS NOT NULL AND tenant_id != 'default' LIMIT 1",
+                        [],
+                        |r| r.get(0),
+                    )
+                    .ok();
+                if let Some(ref tid) = provisioned_tenant {
+                    if let Ok(Some(sub)) = TenantSubscription::load(self.conn, tid) {
+                        return match sub.verify_signature() {
+                            Ok(()) => Some(sub),
+                            Err(e) => {
+                                tracing::warn!(
+                                    "subscription signature verification failed — failing closed: {e}"
+                                );
+                                None
+                            }
+                        };
+                    }
+                }
+                tracing::warn!("no tenant_subscription row found — failing closed");
                 None
             }
             Err(e) => {
