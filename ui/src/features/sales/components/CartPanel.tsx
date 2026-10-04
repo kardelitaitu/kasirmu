@@ -94,7 +94,7 @@ function KitchenDisplayIcon() {
 
 export interface CartPanelProps {
   hidden?: boolean;
-  startResize: (e: React.MouseEvent) => void;
+  startResize: (e: React.MouseEvent | React.TouchEvent | React.PointerEvent) => void;
   cartPanelRef: React.RefObject<HTMLElement>;
   cartWidth: number;
   handleCartPanelKeyDown: (e: React.KeyboardEvent<HTMLElement>) => void;
@@ -351,6 +351,8 @@ export function CartPanel({
       <div
         className={`pos-resize-handle${cartExiting ? ' pos-resize-handle--exiting' : ''}${cartEntering ? ' pos-resize-handle--entering' : ''}`}
         onMouseDown={startResize}
+        onTouchStart={startResize}
+        onPointerDown={startResize}
         aria-hidden="true"
         style={isFullyHidden ? { display: 'none' } : undefined}
       />

@@ -23,15 +23,21 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 // React's MouseEvent is aliased: the DOM MouseEvent is used unaliased by the
 // window listener below, and the shell annotated this one React.MouseEvent via
 // the UMD namespace, which is not in scope in a .ts module.
-import type { MouseEvent as ReactMouseEvent } from 'react';
+import type {
+  MouseEvent as ReactMouseEvent,
+  TouchEvent as ReactTouchEvent,
+  PointerEvent as ReactPointerEvent,
+} from 'react';
 import { clampCartWidth, CART_WIDTH_DEFAULT } from '../utils/cartCalculations';
+
+export type CartResizeEvent = ReactMouseEvent | ReactTouchEvent | ReactPointerEvent;
 
 /**
  * Persisted, viewport-clamped cart-panel width plus the drag handle that
  * changes it. Call it once from the screen that renders the split.
  *
  * returns cartWidth    - current panel width in px (already clamped)
- *         startResize  - onMouseDown handler for the resize divider
+ *         startResize  - onMouseDown / onTouchStart / onPointerDown handler
  *         posScreenRef - ref for the screen root div; the drag maths reads its
  *                        getBoundingClientRect(), so it must be attached
  */
@@ -47,9 +53,12 @@ export function useCartResize() {
   });
   const isResizing = useRef(false);
   const posScreenRef = useRef<HTMLDivElement>(null);
+  const lastClientXRef = useRef<number | null>(null);
 
-  const startResize = useCallback((e: ReactMouseEvent) => {
-    e.preventDefault();
+  const startResize = useCallback((e: CartResizeEvent) => {
+    if ('cancelable' in e && e.cancelable) {
+      e.preventDefault();
+    }
     isResizing.current = true;
     document.body.style.cursor = 'col-resize';
     document.body.style.userSelect = 'none';
@@ -59,37 +68,67 @@ export function useCartResize() {
   useEffect(() => {
     let rafId: number | null = null;
 
+    const applyWidthFromPointer = () => {
+      if (lastClientXRef.current === null || !posScreenRef.current) return;
+      const rect = posScreenRef.current.getBoundingClientRect();
+      const clamped = clampCartWidth(rect.right - lastClientXRef.current, window.innerWidth);
+      setCartWidth(clamped);
+      localStorage.setItem('pos-cart-width', String(clamped));
+    };
+
     const stopResize = () => {
       if (!isResizing.current) return;
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+        rafId = null;
+        applyWidthFromPointer();
+      }
       isResizing.current = false;
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
       document.body.classList.remove('is-resizing');
-      if (rafId !== null) {
-        cancelAnimationFrame(rafId);
-        rafId = null;
-      }
     };
-    const onMouseMove = (e: MouseEvent) => {
-      if (!isResizing.current || !posScreenRef.current) return;
-      const rect = posScreenRef.current.getBoundingClientRect();
-      const clamped = clampCartWidth(rect.right - e.clientX, window.innerWidth);
-      if (rafId !== null) {
-        cancelAnimationFrame(rafId);
+
+    const getClientX = (e: MouseEvent | TouchEvent | PointerEvent): number | null => {
+      if ('touches' in e && e.touches[0]) {
+        return e.touches[0].clientX;
       }
+      if ('clientX' in e && typeof e.clientX === 'number') {
+        return e.clientX;
+      }
+      return null;
+    };
+
+    const onPointerMove = (e: MouseEvent | TouchEvent | PointerEvent) => {
+      if (!isResizing.current || !posScreenRef.current) return;
+      const clientX = getClientX(e);
+      if (clientX === null) return;
+      lastClientXRef.current = clientX;
+      if (rafId !== null) return;
       rafId = requestAnimationFrame(() => {
-        setCartWidth(clamped);
-        // Persist the clamped value so the next launch on this
-        // display picks up the most recent *applied* width.
-        localStorage.setItem('pos-cart-width', String(clamped));
         rafId = null;
+        applyWidthFromPointer();
       });
     };
-    window.addEventListener('mousemove', onMouseMove);
+
+    window.addEventListener('mousemove', onPointerMove);
     window.addEventListener('mouseup', stopResize);
+    window.addEventListener('touchmove', onPointerMove, { passive: true });
+    window.addEventListener('touchend', stopResize);
+    window.addEventListener('touchcancel', stopResize);
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', stopResize);
+    window.addEventListener('pointercancel', stopResize);
+
     return () => {
-      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mousemove', onPointerMove);
       window.removeEventListener('mouseup', stopResize);
+      window.removeEventListener('touchmove', onPointerMove);
+      window.removeEventListener('touchend', stopResize);
+      window.removeEventListener('touchcancel', stopResize);
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', stopResize);
+      window.removeEventListener('pointercancel', stopResize);
       stopResize();
     };
   }, []);

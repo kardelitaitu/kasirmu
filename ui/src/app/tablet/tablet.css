@@ -414,13 +414,19 @@
 }
 
 /* ── Prevent text selection during rapid taps ─────── */
-.tablet-shell * {
+.tablet-shell *,
+.workspace-fullscreen * {
   -webkit-touch-callout: none;
+  -webkit-user-select: none;
   user-select: none;
 }
 
 .tablet-shell input,
-.tablet-shell textarea {
+.tablet-shell textarea,
+.tablet-shell [contenteditable="true"],
+.workspace-fullscreen input,
+.workspace-fullscreen textarea,
+.workspace-fullscreen [contenteditable="true"] {
   user-select: text;
   -webkit-user-select: text;
 }

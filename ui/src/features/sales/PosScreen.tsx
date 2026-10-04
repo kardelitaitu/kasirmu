@@ -902,7 +902,17 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
 
   return (
     <>
-    <div className="pos-screen" ref={posScreenRef}>
+    <div
+      className="pos-screen"
+      ref={posScreenRef}
+      onContextMenu={(e) => {
+        const target = e.target as HTMLElement | null;
+        if (target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA' || target?.isContentEditable) {
+          return;
+        }
+        e.preventDefault();
+      }}
+    >
       {/* ── Left: Product lookup ─────────────────── */}
       <div className="pos-products">
         {activeWorkspace === 'restaurant-pos' ? (

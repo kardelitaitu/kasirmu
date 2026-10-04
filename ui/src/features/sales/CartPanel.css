@@ -43,6 +43,17 @@
   touch-action: none;
 }
 
+/* Expand touch target hit area on mobile/tablet without expanding visual width */
+.pos-resize-handle::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -14px;
+  right: -14px;
+  z-index: var(--z-sticky, 20);
+}
+
 .pos-resize-handle:hover,
 .pos-resize-handle:focus-visible {
   background: var(--color-accent-dim);

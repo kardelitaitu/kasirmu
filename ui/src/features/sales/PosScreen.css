@@ -38,6 +38,21 @@
      would silently capture these tiers — a live concern now, where before there
      was nothing to capture. */
   container-type: inline-size;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.pos-screen input,
+.pos-screen textarea,
+.pos-screen [contenteditable="true"] {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.pos-screen img {
+  -webkit-user-drag: none;
+  user-select: none;
 }
 
 /* ── Left: Product lookup area ────────────────────────── */
