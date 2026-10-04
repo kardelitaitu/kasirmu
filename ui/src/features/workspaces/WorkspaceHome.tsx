@@ -832,7 +832,7 @@ export default function WorkspaceHome() {
                       type="button"
                       className="workspace-card workspace-card--add"
                       data-testid="workspace-card-add"
-                      onClick={() => handleShortcutNav('settings/topology')}
+                      onClick={() => handleShortcutNav('topology')}
                       aria-label={l10n.getString('workspace-home-add-workspace-aria')}
                     >
                       <div className="workspace-card-row">

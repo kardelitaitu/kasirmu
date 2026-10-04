@@ -382,6 +382,12 @@ export default function AppShell() {
       // applies the section.
       if (getPage(route)) {
         setCurrentRoute(route);
+      } else if (route.startsWith('settings/topology')) {
+        if (getPage('topology')) {
+          setCurrentRoute('topology');
+        } else if (getPage('settings')) {
+          setCurrentRoute('settings');
+        }
       } else if (route.startsWith('settings/')) {
         if (getPage('settings')) {
           setCurrentRoute('settings');

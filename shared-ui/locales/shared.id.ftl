@@ -40,6 +40,7 @@ nav-customers = Pelanggan
 nav-inventory = Stok
 nav-general = Umum
 nav-settings = Pengaturan
+nav-topology = Topologi
 nav-reports = Laporan
 nav-design = Sistem Desain
 nav-orders = Pesanan
@@ -598,6 +599,8 @@ workspace-home-staff-title = Manajemen Staf
 workspace-home-staff-desc = Kelola staf, peran, dan izin
 workspace-home-settings-title = Pengaturan
 workspace-home-settings-desc = Konfigurasi sistem dan preferensi
+workspace-home-topology-title = Editor Topologi
+workspace-home-topology-desc = Bangun dan hubungkan cabang toko, kasir, dan gudang
 
 workspace-home-audit-title = Log Audit
 workspace-home-audit-desc = Lihat aktivitas sistem dan riwayat perubahan

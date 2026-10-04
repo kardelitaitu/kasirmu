@@ -321,6 +321,12 @@ export default function TabletAppShell() {
       }
       if (getPage(raw)) {
         setCurrentRoute(raw);
+      } else if (raw.startsWith('settings/topology')) {
+        if (getPage('topology')) {
+          setCurrentRoute('topology');
+        } else if (getPage('settings')) {
+          setCurrentRoute('settings');
+        }
       } else if (raw.startsWith('settings/')) {
         if (getPage('settings')) setCurrentRoute('settings');
       }

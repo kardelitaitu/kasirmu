@@ -44,12 +44,14 @@ describe('Tools catalogue — access matrix (todo-tools.md)', () => {
     expect(tierOf('locations')).toBe('free');
     expect(tierOf('terminals')).toBe('free');
     expect(tierOf('shifts')).toBe('free');
+    expect(tierOf('topology')).toBe('free');
   });
 
   it('pins the agreed minimum roles', () => {
     const roleOf = (id: string) =>
       TOOLS.find((t) => t.id === id)!.access.minimumRole;
     expect(roleOf('settings')).toBe('manager');
+    expect(roleOf('topology')).toBe('manager');
     expect(roleOf('analytics')).toBe('admin');
     expect(roleOf('staff')).toBe('manager');
     expect(roleOf('locations')).toBe('manager');

@@ -48,6 +48,7 @@ app-error-global = Something unexpected happened. If this keeps happening, resta
 
 # Navigation
 nav-inventory = Inventory
+nav-topology = Topology
 
 # Common / Global
 cancel = Cancel
@@ -616,6 +617,8 @@ workspace-home-staff-title = Staff Management
 workspace-home-staff-desc = Manage staff, roles, and permissions
 workspace-home-settings-title = Settings
 workspace-home-settings-desc = System configuration and preferences
+workspace-home-topology-title = Topology Editor
+workspace-home-topology-desc = Build and connect store branches, registers, and warehouses
 
 workspace-home-audit-title = Audit Log
 workspace-home-audit-desc = View system activity and change history
