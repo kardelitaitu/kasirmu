@@ -86,10 +86,10 @@ interface ReceiptFormValues {
   marginBottom: number;
   marginLeft: number;
   marginRight: number;
-  printerConnection: 'auto' | 'network' | 'usb' | 'serial' | 'disabled';
+  printerConnection: 'auto' | 'network' | 'usb' | 'serial' | 'bluetooth' | 'disabled';
   printerDevicePath: string;
   printerPaperSize: '80' | '58';
-  kitchenConnection: 'disabled' | 'network' | 'usb' | 'serial' | 'auto';
+  kitchenConnection: 'disabled' | 'network' | 'usb' | 'serial' | 'bluetooth' | 'auto';
   kitchenDevicePath: string;
 }
 
@@ -157,11 +157,15 @@ export default function RestaurantReceiptsScreen({
   const [marginRight, setMarginRight] = useState(3);
 
   // ── Printer device draft state ──────────────────────────────
-  const [printerConnection, setPrinterConnection] = useState<'auto' | 'network' | 'usb' | 'serial' | 'disabled'>('auto');
+  const [printerConnection, setPrinterConnection] = useState<'auto' | 'network' | 'usb' | 'serial' | 'bluetooth' | 'disabled'>('auto');
   const [printerDevicePath, setPrinterDevicePath] = useState('');
   const [printerPaperSize, setPrinterPaperSize] = useState<'80' | '58'>('80');
-  const [kitchenConnection, setKitchenConnection] = useState<'disabled' | 'network' | 'usb' | 'serial' | 'auto'>('disabled');
+  const [kitchenConnection, setKitchenConnection] = useState<'disabled' | 'network' | 'usb' | 'serial' | 'bluetooth' | 'auto'>('disabled');
   const [kitchenDevicePath, setKitchenDevicePath] = useState('');
+
+  // Bluetooth permission and paired device state (Android native bridge)
+  const [btPermissionsGranted, setBtPermissionsGranted] = useState<boolean | null>(null);
+  const [pairedBtDevices, setPairedBtDevices] = useState<Array<{ name: string; address: string }>>([]);
 
   const [saving, setSaving] = useState(false);
   const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
@@ -176,6 +180,46 @@ export default function RestaurantReceiptsScreen({
   const [receiptWorkspaceId, setReceiptWorkspaceId] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Sync Bluetooth state and bonded devices via native Android bridge
+  const refreshBluetoothDevices = useCallback(() => {
+    const win = window as unknown as {
+      __kasirmuNative?: {
+        hasBluetoothPermissions?: () => boolean;
+        getPairedBluetoothDevices?: () => string;
+      };
+    };
+    if (win.__kasirmuNative?.hasBluetoothPermissions) {
+      const hasPerms = win.__kasirmuNative.hasBluetoothPermissions();
+      setBtPermissionsGranted(hasPerms);
+      if (hasPerms && win.__kasirmuNative.getPairedBluetoothDevices) {
+        try {
+          const list = JSON.parse(win.__kasirmuNative.getPairedBluetoothDevices()) as Array<{ name: string; address: string }>;
+          setPairedBtDevices(list);
+        } catch {
+          setPairedBtDevices([]);
+        }
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    if (printerConnection === 'bluetooth' || kitchenConnection === 'bluetooth') {
+      refreshBluetoothDevices();
+    }
+  }, [printerConnection, kitchenConnection, refreshBluetoothDevices]);
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const custom = e as CustomEvent<{ granted: boolean }>;
+      setBtPermissionsGranted(custom.detail?.granted ?? false);
+      if (custom.detail?.granted) {
+        refreshBluetoothDevices();
+      }
+    };
+    window.addEventListener('kasirmu:bluetoothPermissionResult', handler);
+    return () => window.removeEventListener('kasirmu:bluetoothPermissionResult', handler);
+  }, [refreshBluetoothDevices]);
 
   // Track originals for dirty state
   const originalsRef = useRef<ReceiptFormValues | null>(null);
@@ -632,9 +676,20 @@ export default function RestaurantReceiptsScreen({
   ]);
 
   const handlePrinterConnectionChange = (v: string) => {
-    const conn = v as 'auto' | 'network' | 'usb' | 'serial' | 'disabled';
+    const conn = v as 'auto' | 'network' | 'usb' | 'serial' | 'bluetooth' | 'disabled';
     setPrinterConnection(conn);
     hw.updatePrinter({ connection: conn });
+    if (conn === 'bluetooth') {
+      const win = window as unknown as {
+        __kasirmuNative?: {
+          hasBluetoothPermissions?: () => boolean;
+          requestBluetoothPermissions?: () => void;
+        };
+      };
+      if (win.__kasirmuNative?.hasBluetoothPermissions && !win.__kasirmuNative.hasBluetoothPermissions()) {
+        win.__kasirmuNative.requestBluetoothPermissions?.();
+      }
+    }
   };
 
   const handlePrinterDevicePathChange = (v: string) => {
@@ -649,9 +704,20 @@ export default function RestaurantReceiptsScreen({
   };
 
   const handleKitchenConnectionChange = (v: string) => {
-    const conn = v as 'disabled' | 'network' | 'usb' | 'serial' | 'auto';
+    const conn = v as 'disabled' | 'network' | 'usb' | 'serial' | 'bluetooth' | 'auto';
     setKitchenConnection(conn);
     hw.updateKitchenPrinter({ connection: conn });
+    if (conn === 'bluetooth') {
+      const win = window as unknown as {
+        __kasirmuNative?: {
+          hasBluetoothPermissions?: () => boolean;
+          requestBluetoothPermissions?: () => void;
+        };
+      };
+      if (win.__kasirmuNative?.hasBluetoothPermissions && !win.__kasirmuNative.hasBluetoothPermissions()) {
+        win.__kasirmuNative.requestBluetoothPermissions?.();
+      }
+    }
   };
 
   const handleKitchenDevicePathChange = (v: string) => {
@@ -716,13 +782,13 @@ export default function RestaurantReceiptsScreen({
       return;
     }
 
-    // 4. Pre-flight check: USB/Serial printer path
-    if ((printerConnection === 'usb' || printerConnection === 'serial') && !printerDevicePath.trim()) {
+    // 4. Pre-flight check: USB/Serial/Bluetooth printer path
+    if ((printerConnection === 'usb' || printerConnection === 'serial' || printerConnection === 'bluetooth') && !printerDevicePath.trim()) {
       const res = formatTestPrintResult(TEST_PRINT_CODES.ERR_MISSING_PORT);
       setTestPrintResult({ ...res, timestamp: Date.now() });
       addToast({
         title: `[${res.code}] Print Error`,
-        message: res.message,
+        message: printerConnection === 'bluetooth' ? 'Bluetooth MAC address is required' : res.message,
         type: 'error',
       });
       return;
@@ -2241,6 +2307,7 @@ export default function RestaurantReceiptsScreen({
                     onChange={handlePrinterConnectionChange}
                     options={[
                       { value: 'auto', label: 'Auto Detect' },
+                      { value: 'bluetooth', label: 'Bluetooth SPP (Wireless)' },
                       { value: 'network', label: 'Network / Ethernet' },
                       { value: 'usb', label: 'USB' },
                       { value: 'serial', label: 'Serial / COM' },
@@ -2248,6 +2315,58 @@ export default function RestaurantReceiptsScreen({
                     ]}
                   />
                 </div>
+
+                {printerConnection === 'bluetooth' && (
+                  <div style={{ marginBottom: 'var(--space-3)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                      <label htmlFor="resto-hw-printer-path" className="resto-toggle-title">
+                        Bluetooth MAC Address
+                      </label>
+                      {btPermissionsGranted === false && (
+                        <button
+                          type="button"
+                          className="restaurant-settings-back-btn"
+                          style={{ fontSize: 'var(--text-xs)', padding: '2px 8px', border: '1px solid var(--color-primary)' }}
+                          onClick={() => {
+                            const win = window as unknown as {
+                              __kasirmuNative?: { requestBluetoothPermissions?: () => void };
+                            };
+                            win.__kasirmuNative?.requestBluetoothPermissions?.();
+                          }}
+                        >
+                          Grant Bluetooth Permission
+                        </button>
+                      )}
+                    </div>
+                    {pairedBtDevices.length > 0 && (
+                      <div style={{ marginBottom: '6px' }}>
+                        <select
+                          className="resto-text-input"
+                          style={{ marginBottom: '6px' }}
+                          value={pairedBtDevices.some((d) => d.address === printerDevicePath) ? printerDevicePath : ''}
+                          onChange={(e) => {
+                            if (e.target.value) handlePrinterDevicePathChange(e.target.value);
+                          }}
+                        >
+                          <option value="">-- Select Paired Bluetooth Device --</option>
+                          {pairedBtDevices.map((d) => (
+                            <option key={d.address} value={d.address}>
+                              {d.name} ({d.address})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                    <input
+                      id="resto-hw-printer-path"
+                      type="text"
+                      className="resto-text-input"
+                      placeholder="66:12:34:AB:CD:EF (MAC Address)"
+                      value={printerDevicePath}
+                      onChange={(e) => handlePrinterDevicePathChange(e.target.value)}
+                    />
+                  </div>
+                )}
 
                 {(printerConnection === 'network' || printerConnection === 'serial' || printerConnection === 'usb') && (
                   <div style={{ marginBottom: 'var(--space-3)' }}>
@@ -2314,6 +2433,7 @@ export default function RestaurantReceiptsScreen({
                       disabled={!hasKdsFeature}
                       options={[
                         { value: 'disabled', label: 'Disabled' },
+                        { value: 'bluetooth', label: 'Bluetooth SPP (Wireless)' },
                         { value: 'network', label: 'Network / Ethernet' },
                         { value: 'usb', label: 'USB' },
                         { value: 'serial', label: 'Serial / COM' },
@@ -2330,7 +2450,7 @@ export default function RestaurantReceiptsScreen({
                         id="resto-hw-kitchen-path"
                         type="text"
                         className="resto-text-input"
-                        placeholder="192.168.1.101:9100"
+                        placeholder={kitchenConnection === 'network' ? '192.168.1.101:9100' : kitchenConnection === 'bluetooth' ? '66:12:34:AB:CD:EF' : 'COM4'}
                         value={kitchenDevicePath}
                         onChange={(e) => handleKitchenDevicePathChange(e.target.value)}
                       />

@@ -345,6 +345,24 @@ export default function TabletAppShell() {
     setIsLocked(false);
   }, []);
 
+  // ── Native Screen-On / Wake-Lock Management (Android) ─────────
+  // Keeps the Android display awake while a cashier is logged in and active.
+  // When the terminal is locked (SessionLockScreen) or logged out, release
+  // FLAG_KEEP_SCREEN_ON so the Android tablet display can timeout and sleep.
+  useEffect(() => {
+    const win = window as unknown as {
+      __kasirmuNative?: {
+        setKeepScreenOn?: (enabled: boolean) => void;
+      };
+    };
+    const shouldKeepOn = Boolean(session && !isLocked);
+    win.__kasirmuNative?.setKeepScreenOn?.(shouldKeepOn);
+
+    return () => {
+      win.__kasirmuNative?.setKeepScreenOn?.(false);
+    };
+  }, [session, isLocked]);
+
   // ── Hardware Back-Button Support (Android) ─────────────────────
   useEffect(() => {
     const win = window as unknown as { __onAndroidBackPressed?: () => boolean };

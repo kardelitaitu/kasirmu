@@ -10,7 +10,7 @@ import { plainErrorMessage } from '@/utils/app-error';
 
 // ── Types ──────────────────────────────────────────────────────────
 
-export type PrinterConnection = 'network' | 'usb' | 'serial' | 'auto' | 'disabled';
+export type PrinterConnection = 'network' | 'usb' | 'serial' | 'bluetooth' | 'auto' | 'disabled';
 export type PaperSize = '58' | '80' | 'a4' | 'letter';
 export type ScaleConnection = 'serial' | 'usb' | 'none';
 export type ScannerMode = 'keyboard' | 'serial' | 'auto' | 'none';

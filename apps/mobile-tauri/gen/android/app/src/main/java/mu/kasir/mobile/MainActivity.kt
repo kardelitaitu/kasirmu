@@ -1,17 +1,25 @@
 package mu.kasir.mobile
 
+import android.Manifest
+import android.bluetooth.BluetoothAdapter
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.os.SystemClock
+import android.view.View
+import android.view.ViewGroup
 import android.view.WindowManager
+import android.webkit.JavascriptInterface
+import android.webkit.WebView
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.enableEdgeToEdge
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
-
-import android.view.View
-import android.view.ViewGroup
-import android.webkit.WebView
+import org.json.JSONArray
+import org.json.JSONObject
 
 /**
  * Immersive, edge-to-edge host for the tablet POS shell.
@@ -42,6 +50,7 @@ import android.webkit.WebView
  */
 class MainActivity : TauriActivity() {
   private var backPressedAtMs = 0L
+  private var bridgeInstalled = false
 
   override fun onCreate(savedInstanceState: Bundle?) {
     enableEdgeToEdge()
@@ -49,6 +58,9 @@ class MainActivity : TauriActivity() {
     hideSystemBars()
     keepScreenOn()
     installBackGuard()
+    window.decorView.post {
+      attachBridgeIfFound()
+    }
   }
 
   override fun onNewIntent(intent: android.content.Intent) {
@@ -66,6 +78,35 @@ class MainActivity : TauriActivity() {
       }
     }
     return null
+  }
+
+  private fun attachBridgeIfFound() {
+    if (bridgeInstalled) return
+    val webView = findWebView(window.decorView)
+    if (webView != null) {
+      webView.addJavascriptInterface(KasirmuNativeBridge(this), "__kasirmuNative")
+      bridgeInstalled = true
+    }
+  }
+
+  /**
+   * Forward runtime permission results to the WebView so the React hardware
+   * setup screen updates immediately without polling or requiring an app restart.
+   */
+  override fun onRequestPermissionsResult(
+    requestCode: Int,
+    permissions: Array<out String>,
+    grantResults: IntArray
+  ) {
+    super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+    if (requestCode == BT_PERMISSION_REQUEST_CODE) {
+      val allGranted = grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED }
+      val webView = findWebView(window.decorView)
+      webView?.evaluateJavascript(
+        "(function() { window.dispatchEvent(new CustomEvent('kasirmu:bluetoothPermissionResult', { detail: { granted: $allGranted } })); })()",
+        null
+      )
+    }
   }
 
   /**
@@ -120,20 +161,15 @@ class MainActivity : TauriActivity() {
    */
   override fun onWindowFocusChanged(hasFocus: Boolean) {
     super.onWindowFocusChanged(hasFocus)
-    if (hasFocus) hideSystemBars()
+    if (hasFocus) {
+      hideSystemBars()
+      attachBridgeIfFound()
+    }
   }
 
   /**
-   * A POS terminal must not sleep under a cashier who is mid-transaction.
-   *
-   * `FLAG_KEEP_SCREEN_ON` is the whole fix: it is a window flag, so it needs no
-   * permission, no foreground service and no Tauri plugin, and the platform
-   * clears it on its own when the activity is no longer foregrounded — which is
-   * exactly the lifetime wanted here. A `WakeLock` would have asked for
-   * `WAKE_LOCK`, held the CPU awake (battery) beyond the visible screen, and
-   * still done nothing about the Low Memory Killer reaping the process.
-   *
-   * Set on the window in `onCreate`, after `super` has attached it.
+   * Initial screen-on setting on launch. Dynamic screen retention is governed
+   * by `TabletAppShell` via `KasirmuNativeBridge.setKeepScreenOn`.
    */
   private fun keepScreenOn() {
     window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -146,8 +182,80 @@ class MainActivity : TauriActivity() {
     controller.hide(WindowInsetsCompat.Type.systemBars())
   }
 
+  /**
+   * Native bridge exposed to the WebView under `window.__kasirmuNative`.
+   *
+   * Provides:
+   * 1. Dynamic screen-on management (`setKeepScreenOn`): kept awake while the
+   *    cashier session is active and unlocked; allowed to sleep when locked.
+   * 2. Bluetooth permissions & device enumeration for ESC/POS receipt printers.
+   */
+  class KasirmuNativeBridge(private val activity: MainActivity) {
+    @JavascriptInterface
+    fun setKeepScreenOn(enabled: Boolean) {
+      activity.runOnUiThread {
+        if (enabled) {
+          activity.window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        } else {
+          activity.window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
+      }
+    }
+
+    @JavascriptInterface
+    fun hasBluetoothPermissions(): Boolean {
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        val connectGranted = ContextCompat.checkSelfPermission(
+          activity,
+          Manifest.permission.BLUETOOTH_CONNECT
+        ) == PackageManager.PERMISSION_GRANTED
+        val scanGranted = ContextCompat.checkSelfPermission(
+          activity,
+          Manifest.permission.BLUETOOTH_SCAN
+        ) == PackageManager.PERMISSION_GRANTED
+        return connectGranted && scanGranted
+      }
+      return true
+    }
+
+    @JavascriptInterface
+    fun requestBluetoothPermissions() {
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        val permissions = arrayOf(
+          Manifest.permission.BLUETOOTH_CONNECT,
+          Manifest.permission.BLUETOOTH_SCAN
+        )
+        activity.runOnUiThread {
+          ActivityCompat.requestPermissions(activity, permissions, BT_PERMISSION_REQUEST_CODE)
+        }
+      }
+    }
+
+    @JavascriptInterface
+    fun getPairedBluetoothDevices(): String {
+      if (!hasBluetoothPermissions()) return "[]"
+      return try {
+        val adapter = BluetoothAdapter.getDefaultAdapter() ?: return "[]"
+        val bonded = adapter.bondedDevices ?: return "[]"
+        val list = JSONArray()
+        for (device in bonded) {
+          val obj = JSONObject()
+          val name = try { device.name } catch (_: SecurityException) { null }
+          obj.put("name", name ?: device.address)
+          obj.put("address", device.address)
+          list.put(obj)
+        }
+        list.toString()
+      } catch (_: Exception) {
+        "[]"
+      }
+    }
+  }
+
   companion object {
     /** How long a second BACK press still counts as confirmation. */
     private const val BACK_CONFIRM_WINDOW_MS = 2000L
+    /** Request code for Bluetooth runtime permissions (BLUETOOTH_CONNECT + BLUETOOTH_SCAN). */
+    private const val BT_PERMISSION_REQUEST_CODE = 1001
   }
 }
