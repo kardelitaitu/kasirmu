@@ -283,10 +283,29 @@ where
             )));
         }
     };
-    // The `?` above converts through `From<CoreError>`; a tail expression must say so.
-    consume_desktop_link(base_url, api_key, machine_id, &code)
-        .await
-        .map_err(BridgeError::from)
+    // Give the operating system a moment to transition the app window back to the
+    // foreground and unfreeze network egress before calling consume.
+    tokio::time::sleep(Duration::from_millis(600)).await;
+
+    // Retry consume_desktop_link up to 4 times on transport/network errors, because on
+    // mobile the OS network policy may take a moment to restore outbound socket permissions.
+    let mut last_err = None;
+    for attempt in 0..4 {
+        if attempt > 0 {
+            tokio::time::sleep(Duration::from_millis(600 * attempt as u64)).await;
+        }
+        match consume_desktop_link(base_url, api_key, machine_id, &code).await {
+            Ok(account) => return Ok(account),
+            Err(e) => {
+                if matches!(e, kasirmu_core::error::CoreError::Validation { .. }) {
+                    return Err(BridgeError::from(e));
+                }
+                tracing::warn!("consume_desktop_link attempt {} failed: {:?}", attempt + 1, e);
+                last_err = Some(e);
+            }
+        }
+    }
+    Err(BridgeError::from(last_err.expect("attempt loop ran")))
 }
 #[cfg(test)]
 #[path = "desktop_link_tests.rs"]

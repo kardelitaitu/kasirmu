@@ -362,15 +362,20 @@ async fn post_json(
         .timeout(LINK_TIMEOUT)
         .build()
         .map_err(|e| CoreError::Internal(format!("{what} client: {e}")))?;
+
     let mut req = client.post(&url);
     if !api_key.is_empty() {
         req = req.bearer_auth(api_key);
     }
-    let response = req
-        .json(body)
-        .send()
-        .await
-        .map_err(|e| CoreError::Internal(format!("{what} request to {base_url} failed: {e}")))?;
+    let response = req.json(body).send().await.map_err(|e| {
+        let mut chain = format!("{e}");
+        let mut curr: Option<&(dyn std::error::Error + 'static)> = std::error::Error::source(&e);
+        while let Some(src) = curr {
+            chain.push_str(&format!(" -> {src}"));
+            curr = src.source();
+        }
+        CoreError::Internal(format!("{what} request to {base_url} failed: {chain}"))
+    })?;
     let status = response.status();
     if status.is_success() {
         return Ok(response);
