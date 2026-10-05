@@ -249,6 +249,22 @@ codegen-units = 1
 opt-level = "s"
 strip = true
 
+# kasirmu-mobile (Tauri mobile shell) — optimized for mobile binary size.
+[profile.release.package.kasirmu-mobile]
+codegen-units = 1
+opt-level = "s"
+strip = true
+
+[profile.release.package.kasirmu-bridge]
+codegen-units = 1
+opt-level = "s"
+strip = true
+
+[profile.release.package.kasirmu-core]
+codegen-units = 1
+opt-level = "s"
+strip = true
+
 [profile.dev]
 opt-level = 0
 incremental = true
