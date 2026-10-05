@@ -17,7 +17,7 @@ use std::collections::HashMap;
 
 use kasirmu_core::export::email_report::SMTP_CONFIG_SETTINGS_KEY;
 use kasirmu_core::settings::{IngestPolicy, IngestPolicyKind};
-use kasirmu_core::{Settings, Store};
+use kasirmu_core::{AuditEntry, Settings, Store};
 use platform_core::settings::Settings as TrackedSettings;
 
 use crate::error::BridgeError;
@@ -148,11 +148,24 @@ pub fn run_get_setting(
 /// error, not an internal fault, so this door raises `Invalid` too; the
 /// message stays platform-core's (one owner of the text) and names the key,
 /// never the value.
+/// Business logic for set_setting (extracted for testing).
+/// Uses set_tracked so every settings change writes a delta record (ADR #22).
 pub fn run_set_setting(
     conn: &rusqlite::Connection,
     key: &str,
     value: &str,
     terminal_id: &str,
+) -> Result<String, BridgeError> {
+    run_set_setting_for_user(conn, key, value, terminal_id, None)
+}
+
+/// Business logic for set_setting with actor user attribution (P1.3).
+pub fn run_set_setting_for_user(
+    conn: &rusqlite::Connection,
+    key: &str,
+    value: &str,
+    terminal_id: &str,
+    actor: Option<&str>,
 ) -> Result<String, BridgeError> {
     // The manager door, ASKED of platform-core: the rule and the wording are
     // the producer there (`manager_owned_key_refusal`); this lane supplies only
@@ -178,6 +191,23 @@ pub fn run_set_setting(
         value
     };
     Settings::set_tracked(conn, key, value, terminal_id)?;
+
+    // Audit log (P1.3): record user-initiated setting changes.
+    let details = serde_json::json!({
+        "key": key,
+        "value": value,
+        "terminal_id": terminal_id,
+    });
+    let entry = AuditEntry::new(
+        actor.unwrap_or("system"),
+        "setting.change",
+        Some("setting"),
+        Some(key),
+        Some(details.to_string()),
+        "success",
+    );
+    Store::new(conn).log_audit(&entry)?;
+
     Ok(value.to_string())
 }
 
@@ -238,6 +268,16 @@ pub fn run_set_settings_batch(
     entries: &HashMap<String, String>,
     terminal_id: &str,
 ) -> Result<HashMap<String, String>, BridgeError> {
+    run_set_settings_batch_for_user(tx, entries, terminal_id, None)
+}
+
+/// Business logic for set_settings_scoped batch write with actor attribution (P1.3).
+pub fn run_set_settings_batch_for_user(
+    tx: &rusqlite::Transaction<'_>,
+    entries: &HashMap<String, String>,
+    terminal_id: &str,
+    actor: Option<&str>,
+) -> Result<HashMap<String, String>, BridgeError> {
     // Batch-wide and BEFORE any write, like the credential pre-flight under it.
     // One offender aborts the batch. The wording comes from the producer in
     // platform-core, the label from the lookup this lane owns, and the variant
@@ -276,6 +316,23 @@ pub fn run_set_settings_batch(
         // this loop had when it called `Settings::set` itself.
         TrackedSettings::set_tracked_in_tx(tx, key, value, terminal_id)
             .map_err(kasirmu_core::CoreError::from)?;
+
+        // Audit log in tx (P1.3): record user-initiated setting changes.
+        let details = serde_json::json!({
+            "key": key,
+            "value": value,
+            "terminal_id": terminal_id,
+        });
+        let entry = AuditEntry::new(
+            actor.unwrap_or("system"),
+            "setting.change",
+            Some("setting"),
+            Some(key),
+            Some(details.to_string()),
+            "success",
+        );
+        Store::log_audit_in_tx(tx, &entry)?;
+
         written.insert(key.clone(), value.to_string());
     }
     Ok(written)

@@ -1553,6 +1553,42 @@ fn both_write_doors_credential_refusals_carry_the_identical_message() {
     );
 }
 
+#[test]
+fn set_setting_and_batch_write_audit_log_entries() {
+    let conn = fresh_conn();
+    run_set_setting_for_user(&conn, "store.name", "Audit Store", "t-1", Some("user-123")).unwrap();
+
+    let store = Store::new(&conn);
+    let entries = store.list_audit_entries(10, 0).unwrap();
+    assert_eq!(entries.len(), 1);
+    assert_eq!(entries[0].action, "setting.change");
+    assert_eq!(entries[0].target_type.as_deref(), Some("setting"));
+    assert_eq!(entries[0].target_id.as_deref(), Some("store.name"));
+    assert_eq!(entries[0].user_id, "user-123");
+    assert_eq!(entries[0].outcome, "success");
+
+    let tx = conn.unchecked_transaction().unwrap();
+    run_set_settings_batch_for_user(
+        &tx,
+        &HashMap::from([
+            ("theme".to_string(), "dark".to_string()),
+            ("currency.default".to_string(), "USD".to_string()),
+        ]),
+        "t-1",
+        Some("user-456"),
+    )
+    .unwrap();
+    tx.commit().unwrap();
+
+    let entries = store.list_audit_entries(10, 0).unwrap();
+    assert_eq!(entries.len(), 3);
+    for entry in &entries {
+        assert_eq!(entry.action, "setting.change");
+        assert_eq!(entry.target_type.as_deref(), Some("setting"));
+        assert_eq!(entry.outcome, "success");
+    }
+}
+
 /// Control, and the guard against over-correction: refusing a bad row by
 /// aborting the WHOLE batch is only safe because it is what the single-write
 /// funnel does too. Two ordinary keys must both land.
