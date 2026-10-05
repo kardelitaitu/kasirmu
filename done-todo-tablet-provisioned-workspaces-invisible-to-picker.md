@@ -19,7 +19,7 @@
 >    orthogonal because `apply_debug_upgrade` requires `state == Active`. See §"CORRECTION
 >    (round 10): this is a SHARED defect".
 
-<!-- Audit stamp: 2026-10-03 · DSH · status: BOTH DEFECTS FIXED; ONE FRONTEND CHANGE AWAITS ITS FILE
+<!-- Audit stamp: 2026-10-05 · BK · status: COMPLETE · all defects resolved, Step 5b guard landed and test passing
 
      READ THIS FIRST. The document below is a 22-round working log and is deliberately
      non-chronological: sections carry corrections of earlier sections, sometimes several
@@ -2667,6 +2667,8 @@ One file and one hunk carry all three.
 3. `LicenseActivationScreen` Google link, email code verification, email login, QR pair claiming, and license key activation
 4. `TabletAppShell.onActivated` & `AppShell.ActivationFlow.onActivated`
 
-This invalidates the boot-time cached `unavailable` lifecycle verdict immediately when `provisionDevice` or license activation finishes, ensuring the 10 included tools unlock and the notice clears without requiring an app reload. Verified with 71/71 tests in `LicenseActivationScreen.test.tsx` and 44/44 in `ProvisioningFlow.test.tsx`.
+## ROUND 34: Local provisioning subscription guard landed & linked tripwire unignored
 
-> last audited 04-10-26 by BK
+`crates/kasirmu-core/src/db/provisioning.rs` now explicitly guards Step 5b subscription insertion with `if args.mode == ProvisioningMode::Local`. Linked provisioning leaves zero subscription rows, conforming to ADR-56. `a_linked_provision_leaves_no_bootstrap_subscription_row` in `crates/kasirmu-core/src/db/provisioning_tests.rs` is now unignored and passes. Acceptance command `cargo test -p kasirmu-core db::provisioning::tests` passed cleanly.
+
+> last audited 05-10-26 by BK

@@ -187,6 +187,20 @@ impl Store<'_> {
 
             let (items_summary, item_count) = Store::derive_kds_summary(&structured_items);
 
+            let notes = structured_items
+                .iter()
+                .flat_map(|item| {
+                    item.modifiers.iter().filter_map(|m| {
+                        if m.name.eq_ignore_ascii_case("note") || m.name.eq_ignore_ascii_case("catatan") {
+                            Some(format!("{}: {}", item.display_name, m.choice))
+                        } else {
+                            None
+                        }
+                    })
+                })
+                .collect::<Vec<_>>()
+                .join("; ");
+
             let order = self.create_kds_order_fanout_in_tx(
                 &tx,
                 CreateKdsOrderInput {
@@ -195,7 +209,7 @@ impl Store<'_> {
                     items_summary,
                     item_count,
                     kitchen_zone: zone,
-                    notes: String::new(),
+                    notes,
                     table_number: table_number.clone(),
                     priority: false,
                 },

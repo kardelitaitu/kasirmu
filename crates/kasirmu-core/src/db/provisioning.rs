@@ -526,18 +526,20 @@ fn provision_device_inner(
     //
     // All client quota readers load tenant "default" (see license.rs:143-154),
     // so "default" MUST be populated even when args.tenant_id is a server-assigned ID.
-    tx.execute(
-        "INSERT OR IGNORE INTO tenant_subscription (tenant_id, tier_key, status, expires_at, max_locations, max_pos_instances, allowed_types_json, signature)
-         VALUES ('default', 'free', 'active', NULL, 1, 1, '[\"store-pos\", \"restaurant-pos\", \"admin\"]', 'BOOTSTRAP_FREE')",
-        [],
-    )?;
-    if let Some(tenant_id) = args.tenant_id.as_deref() {
-        if tenant_id != "default" {
-            tx.execute(
-                "INSERT OR IGNORE INTO tenant_subscription (tenant_id, tier_key, status, expires_at, max_locations, max_pos_instances, allowed_types_json, signature)
-                 VALUES (?1, 'free', 'active', NULL, 1, 1, '[\"store-pos\", \"restaurant-pos\", \"admin\"]', 'BOOTSTRAP_FREE')",
-                params![tenant_id],
-            )?;
+    if args.mode == ProvisioningMode::Local {
+        tx.execute(
+            "INSERT OR IGNORE INTO tenant_subscription (tenant_id, tier_key, status, expires_at, max_locations, max_pos_instances, allowed_types_json, signature)
+             VALUES ('default', 'free', 'active', NULL, 1, 1, '[\"store-pos\", \"restaurant-pos\", \"admin\"]', 'BOOTSTRAP_FREE')",
+            [],
+        )?;
+        if let Some(tenant_id) = args.tenant_id.as_deref() {
+            if tenant_id != "default" {
+                tx.execute(
+                    "INSERT OR IGNORE INTO tenant_subscription (tenant_id, tier_key, status, expires_at, max_locations, max_pos_instances, allowed_types_json, signature)
+                     VALUES (?1, 'free', 'active', NULL, 1, 1, '[\"store-pos\", \"restaurant-pos\", \"admin\"]', 'BOOTSTRAP_FREE')",
+                    params![tenant_id],
+                )?;
+            }
         }
     }
 

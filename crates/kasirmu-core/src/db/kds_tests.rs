@@ -4193,3 +4193,28 @@ fn complete_sale_to_kds_propagates_db_error_when_resolving_product_name() {
         "expected CoreError::Db, got {err:?}"
     );
 }
+
+#[test]
+fn complete_sale_to_kds_carries_line_notes_into_order_notes() {
+    let conn = fresh();
+    let s = store(&conn);
+    seed_product(&conn, "BURGER", "Cheeseburger");
+
+    let mut cart = Cart::new(usd());
+    let mut line = CartLine::new(Sku::new("BURGER"), 1, price(1200));
+    let mods = vec![crate::KdsModifier {
+        name: "Note".into(),
+        choice: "no pickles, extra sauce".into(),
+        price_minor: 0,
+    }];
+    line.set_modifiers(Some(serde_json::to_string(&mods).unwrap()));
+    cart.add_line(line).unwrap();
+
+    let sale = Sale::from_cart(&cart).unwrap();
+    s.create_sale(&sale).unwrap();
+
+    let orders = s.complete_sale_to_kds(&sale.id, None).unwrap();
+    assert_eq!(orders.len(), 1);
+    assert_eq!(orders[0].notes, "Cheeseburger: no pickles, extra sauce");
+}
+

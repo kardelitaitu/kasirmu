@@ -640,9 +640,6 @@ fn a_linked_provision_requires_its_tenant_and_credential() {
 /// Full analysis, and the one-line guard that settles it:
 /// `todo-tablet-provisioned-workspaces-invisible-to-picker.md` (rounds 17-21).
 #[test]
-#[ignore = "pending Step 5b defect: provision_device must add the args.mode == Local guard; \
-            then remove this #[ignore]. See \
-            todo-tablet-provisioned-workspaces-invisible-to-picker.md"]
 fn a_linked_provision_leaves_no_bootstrap_subscription_row() {
     let conn = fresh();
     let mut linked = args_for("dev-linked");
