@@ -426,7 +426,7 @@ fn multi_payment_split_persists_all_records() {
             method: "card".to_string(),
             amount_minor: 200,
             gateway_reference: Some("txn-abc".to_string()),
-            gateway_status: Some("captured".to_string()),
+            gateway_status: Some("settled".to_string()),
             gateway_response: None,
             idempotency_key: Some("idem-abc".to_string()),
         },
@@ -713,7 +713,7 @@ fn finalize_wins_over_reap() {
         method: "card".to_string(),
         amount_minor: 600,
         gateway_reference: Some("txn-race2".to_string()),
-        gateway_status: Some("captured".to_string()),
+        gateway_status: Some("settled".to_string()),
         gateway_response: None,
         idempotency_key: Some("idem-race2".to_string()),
     }];
@@ -768,7 +768,7 @@ fn completed_sale_preserves_stock_deduction() {
         method: "card".to_string(),
         amount_minor: 1200,
         gateway_reference: Some("txn-final".to_string()),
-        gateway_status: Some("captured".to_string()),
+        gateway_status: Some("settled".to_string()),
         gateway_response: None,
         idempotency_key: Some("idem-final".to_string()),
     }];

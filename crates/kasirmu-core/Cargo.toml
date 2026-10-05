@@ -54,6 +54,10 @@ serial_test = { workspace = true }
 tempfile = { workspace = true }
 tokio = { workspace = true }
 
+[[test]]
+name = "integration"
+path = "tests/integration/main.rs"
+
 [[bench]]
 name = "barcode_lookup"
 harness = false

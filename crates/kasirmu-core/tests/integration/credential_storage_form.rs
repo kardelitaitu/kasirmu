@@ -1080,7 +1080,7 @@ fn decision_pin_reads_are_branch_tolerant() {
     let out = std::process::Command::new(exe)
         .args([
             "--exact",
-            "decision_pin_child_probe_under_master_key",
+            "credential_storage_form::decision_pin_child_probe_under_master_key",
             "--nocapture",
             "--ignored",
         ])
