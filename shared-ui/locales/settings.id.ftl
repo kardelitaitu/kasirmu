@@ -1197,7 +1197,7 @@ sync-conflicts-badge-aria = { $count } konflik sinkronisasi terkarantina
 # Android In-App Self-Updater
 settings-updater-title = Pembaruan Aplikasi
 settings-updater-subtitle = Periksa dan pasang pembaruan sistem POS Android dengan aman.
-settings-updater-current-version = Versi Saat Ini: v{ $version }
+settings-updater-current-version = Versi Saat Ini: { $version }
 settings-updater-latest-version = Versi Tersedia: v{ $version }
 settings-updater-check-btn = Periksa Pembaruan
 settings-updater-checking = Memeriksa pembaruan…

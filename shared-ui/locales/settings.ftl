@@ -1218,7 +1218,7 @@ sync-conflicts-badge-aria = { $count } quarantined sync conflicts
 # Android In-App Self-Updater
 settings-updater-title = Application Updates
 settings-updater-subtitle = Check for and install Android POS system updates safely.
-settings-updater-current-version = Current Version: v{ $version }
+settings-updater-current-version = Current Version: { $version }
 settings-updater-latest-version = Available Version: v{ $version }
 settings-updater-check-btn = Check for Updates
 settings-updater-checking = Checking for updates…
