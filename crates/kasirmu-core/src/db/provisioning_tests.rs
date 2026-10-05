@@ -663,6 +663,63 @@ fn a_linked_provision_leaves_no_bootstrap_subscription_row() {
     );
 }
 
+/// What a LINKED install's entitlement reads as once Step 5b stopped writing.
+///
+/// Pinned as a CHARACTERISATION of the state, not as an endorsement of it.
+/// Step 5b is now `Local`-only (`c22fb6421`), and every other writer is gated
+/// the same way — `migrations::ensure_bootstrap_subscription` returns early
+/// unless `provisioning.mode = 'local'`, and the shell's startup reconcile only
+/// copies a row that already exists, so it writes nothing against an empty
+/// table. A linked provision therefore ends with **no** `tenant_subscription`
+/// row, `entitlements.rs`'s provisioning-tenant fallback finds nothing either,
+/// and the install reads `Unavailable` — which is outside
+/// `WorkspaceHome.toolLock`'s open set (`active`/`grace`/`loading`), so every
+/// tool locks.
+///
+/// That IS the design's answer: a linked install's entitlement is the server's
+/// grant, and a missing grant must fail closed. It is reachable in practice
+/// only where the licence gate did not run first — which a **debug** build
+/// allows, because `get_license_status` reports `Valid`/`free` with no payload
+/// and so satisfies `bootAllowed` without any activation. A release build
+/// routes through `LicenseActivationScreen` first, and activation writes tenant
+/// `default` via `INSERT OR REPLACE` (`license.rs:177`), so the row exists by
+/// the time provisioning runs.
+///
+/// Recorded because nothing pinned it: the only linked-side test was the
+/// negative one above. **If ownership rules that the linked flow must end at a
+/// usable terminal, this is the test to invert** — do not delete it, and do not
+/// "fix" it by widening Step 5b, which would re-break
+/// `a_linked_provision_leaves_no_bootstrap_subscription_row`.
+#[test]
+fn a_linked_provision_with_no_server_grant_reads_unavailable() {
+    let conn = fresh();
+    let mut linked = args_for("dev-linked");
+    linked.mode = ProvisioningMode::Linked;
+    linked.tenant_id = Some("tenant-abc".to_owned());
+    linked.device_credential_id = Some("cred-1".to_owned());
+    provision_device(&conn, &linked).unwrap();
+
+    let rows: i64 = conn
+        .query_row("SELECT COUNT(*) FROM tenant_subscription", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(rows, 0, "a linked provision writes no subscription row");
+
+    let s = store(&conn);
+    let ent = crate::entitlements::build_entitlements(
+        &s,
+        crate::availability::UsageCounts::default(),
+        false,
+    );
+    assert!(
+        !ent.loaded,
+        "no row exists to load, so `loaded` must stay false"
+    );
+    assert_eq!(
+        ent.state,
+        crate::subscription::SubscriptionLifecycleState::Unavailable
+    );
+    assert_eq!(ent.tier, crate::SubscriptionTier::Free);
+}
 
 #[test]
 fn provisioning_a_local_terminal_names_no_licence_server_tenant() {
