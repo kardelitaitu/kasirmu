@@ -2,7 +2,7 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { fileURLToPath, URL } from 'node:url';
-import { buildIdDefine } from './src/build-id';
+import { buildIdDefine } from './src/build-id.node';
 
 // Tauri expects a fixed port; fail if it isn't available.
 const host = process.env.TAURI_DEV_HOST;
