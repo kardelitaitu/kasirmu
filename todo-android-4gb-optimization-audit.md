@@ -2,8 +2,8 @@
 
 **Project:** `kasirmu`  
 **Document:** `todo-android-4gb-optimization-audit.md`  
-**Status:** Draft for execution  
-**Last Reviewed:** 2026-09-29  
+**Status:** Phase 1 Baseline Verified on Reference Hardware  
+**Last Reviewed:** 2026-10-05  
 **Target Platform:** Android tablets / POS devices with 4GB RAM  
 **Primary Goal:** Make `kasirmu` reliable, fast, and memory-safe on low-RAM Android devices without compromising POS correctness, offline durability, security, or recoverability.
 
@@ -131,6 +131,30 @@ On Android tablets, profilers (`dumpsys meminfo`) report a higher idle process f
 - **Policy Stance**:
   - **3 GB is Supported**: Kasirmu does not hard-block 3 GB devices (`minSdkVersion: 26` allows install); standard checkout runs smoothly.
   - **4 GB is the Recommended Baseline**: Protects merchants against LMK kills during multi-tasking, heavy reporting queries, and sustained camera scanning.
+
+#### 4.4.4 Measured Telemetry Baseline (Live Hardware Validation — 2026-10-05)
+Empirical measurement captured directly from the live connected reference tablet via wireless ADB (`adb shell dumpsys meminfo mu.kasir.mobile`):
+
+- **Reference Hardware**:
+  - Device: Xiaomi Redmi Pad SE (`23073RPBFG`)
+  - OS / ABI: Android 15 / `arm64-v8a`
+  - Total Memory: 3,796,052 kB (~3.8 GB Physical RAM)
+  - Memory Available to System: 1,684,564 kB (~1.68 GB headroom)
+  - Active Build: Debug Universal APK (`v0.0.41 · 349468a+dirty`)
+
+- **Telemetry Results Across Workflow Cycles**:
+  | Component / Metric | Initial Idle Baseline | Active POS & Settings Cycle | Budget Target | Status |
+  |---|---:|---:|---:|:---:|
+  | **Total PSS** | **244.7 MB** (244,750 kB) | **238.3 MB** (238,279 kB) | ≤ 350 MB | **PASS** (+105.3 MB headroom) |
+  | **Total RSS** | **351.5 MB** (351,588 kB) | **328.0 MB** (328,064 kB) | — | Informational |
+  | **Private Dirty** | **89.6 MB** (89,616 kB) | **77.2 MB** (77,168 kB) | ≤ 180 MB | **PASS** |
+  | **Graphics (EGL/GL)** | **44.0 MB** (43,996 kB) | **39.3 MB** (39,340 kB) | ≤ 90 MB | **PASS** |
+  | **Native Heap** | **16.1 MB** (16,120 kB) | **13.0 MB** (13,024 kB) | ≤ 40 MB | **PASS** |
+  | **Java Heap** | **8.5 MB** (8,468 kB) | **8.7 MB** (8,712 kB) | ≤ 32 MB | **PASS** |
+  | **Code (.apk/.so/.dex)** | **79.3 MB** (79,316 kB) | **74.9 MB** (74,944 kB) | ≤ 120 MB | **PASS** |
+  | **Navigation Drift** | Baseline | **-6.5 MB** net delta | ≤ 50 MB growth | **PASS** (Zero monotonic climb) |
+
+**Conclusion:** The tablet architecture effortlessly fulfills all Phase 1 memory targets. Even under debug symbols with WebView DevTools attached, total PSS remains at ~238–244 MB, leaving ~1.44 GB of safety headroom before the Android LMK threshold on a 4GB device.
 
 ---
 
