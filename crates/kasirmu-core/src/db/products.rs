@@ -253,6 +253,23 @@ impl Store<'_> {
         if self.conn.is_autocommit() {
             let tx = self.conn.unchecked_transaction()?;
             Self::create_product_variant_on(&tx, variant, price_minor, currency_str.as_deref())?;
+            let audit = crate::AuditEntry::new(
+                "system",
+                "product.update",
+                Some("product"),
+                Some(&variant.parent_sku),
+                Some(
+                    serde_json::json!({
+                        "action": "create_variant",
+                        "parent_sku": variant.parent_sku,
+                        "variant_sku": variant.sku,
+                        "variant_name": variant.name,
+                    })
+                    .to_string(),
+                ),
+                "success",
+            );
+            Self::log_audit_in_tx(&tx, &audit)?;
             tx.commit()?;
             Ok(())
         } else {
@@ -261,7 +278,25 @@ impl Store<'_> {
                 variant,
                 price_minor,
                 currency_str.as_deref(),
-            )
+            )?;
+            let audit = crate::AuditEntry::new(
+                "system",
+                "product.update",
+                Some("product"),
+                Some(&variant.parent_sku),
+                Some(
+                    serde_json::json!({
+                        "action": "create_variant",
+                        "parent_sku": variant.parent_sku,
+                        "variant_sku": variant.sku,
+                        "variant_name": variant.name,
+                    })
+                    .to_string(),
+                ),
+                "success",
+            );
+            self.log_audit(&audit)?;
+            Ok(())
         }
     }
 
@@ -330,16 +365,53 @@ impl Store<'_> {
             if affected == 0 {
                 tx.rollback()?;
             } else {
+                let audit = crate::AuditEntry::new(
+                    "system",
+                    "product.update",
+                    Some("product"),
+                    Some(&variant.parent_sku),
+                    Some(
+                        serde_json::json!({
+                            "action": "update_variant",
+                            "parent_sku": variant.parent_sku,
+                            "variant_sku": variant.sku,
+                            "variant_name": variant.name,
+                        })
+                        .to_string(),
+                    ),
+                    "success",
+                );
+                Self::log_audit_in_tx(&tx, &audit)?;
                 tx.commit()?;
             }
             affected
         } else {
-            Self::update_product_variant_on(
+            let affected = Self::update_product_variant_on(
                 self.conn,
                 variant,
                 price_minor,
                 currency_str.as_deref(),
-            )?
+            )?;
+            if affected > 0 {
+                let audit = crate::AuditEntry::new(
+                    "system",
+                    "product.update",
+                    Some("product"),
+                    Some(&variant.parent_sku),
+                    Some(
+                        serde_json::json!({
+                            "action": "update_variant",
+                            "parent_sku": variant.parent_sku,
+                            "variant_sku": variant.sku,
+                            "variant_name": variant.name,
+                        })
+                        .to_string(),
+                    ),
+                    "success",
+                );
+                self.log_audit(&audit)?;
+            }
+            affected
         };
         if affected == 0 {
             return Err(CoreError::NotFound {
@@ -376,15 +448,31 @@ impl Store<'_> {
 
     /// Delete a product variant by its own SKU.
     pub fn delete_product_variant(&self, sku: &str) -> Result<(), CoreError> {
-        let affected = self
-            .conn
-            .execute("DELETE FROM product_variants WHERE sku = ?1", params![sku])?;
+        let tx = self.conn.unchecked_transaction()?;
+        let affected = tx.execute("DELETE FROM product_variants WHERE sku = ?1", params![sku])?;
         if affected == 0 {
+            tx.rollback()?;
             return Err(CoreError::NotFound {
                 entity: "product_variant",
                 id: sku.to_owned(),
             });
         }
+        let audit = crate::AuditEntry::new(
+            "system",
+            "product.update",
+            Some("product_variant"),
+            Some(sku),
+            Some(
+                serde_json::json!({
+                    "action": "delete_variant",
+                    "variant_sku": sku,
+                })
+                .to_string(),
+            ),
+            "success",
+        );
+        Self::log_audit_in_tx(&tx, &audit)?;
+        tx.commit()?;
         Ok(())
     }
 

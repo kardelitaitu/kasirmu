@@ -424,6 +424,28 @@ impl Store<'_> {
             )?;
         }
 
+        // Audit log entry (P1.2).
+        let audit = crate::AuditEntry::new(
+            "system",
+            "product.create",
+            Some("product"),
+            Some(sku.trim()),
+            Some(
+                serde_json::json!({
+                    "id": id,
+                    "sku": sku.trim(),
+                    "name": name.trim(),
+                    "price_minor": price.minor_units,
+                    "category_id": category_id,
+                    "initial_stock": initial_stock,
+                    "product_type": product_type,
+                })
+                .to_string(),
+            ),
+            "success",
+        );
+        Self::log_audit_in_tx(&tx, &audit)?;
+
         tx.commit()?;
 
         if let Some(cache) = &self.cache {
@@ -533,6 +555,24 @@ impl Store<'_> {
             "INSERT INTO product_activity (id, sku, event_type) VALUES (?1, ?2, 'edit')",
             params![crate::new_id(), sku],
         )?;
+
+        // Audit log entry (P1.2).
+        let audit = crate::AuditEntry::new(
+            "system",
+            "product.update",
+            Some("product"),
+            Some(sku),
+            Some(
+                serde_json::json!({
+                    "sku": sku,
+                    "updated_fields": sets,
+                })
+                .to_string(),
+            ),
+            "success",
+        );
+        Self::log_audit_in_tx(&tx, &audit)?;
+
         tx.commit()?;
 
         self.recompute_popularity(sku)?;
@@ -675,6 +715,27 @@ impl Store<'_> {
             )?;
             stmt.query_row(params![sku], row_to_product)?
         };
+
+        // Audit log entry (P1.2).
+        let audit = crate::AuditEntry::new(
+            "system",
+            "product.update",
+            Some("product"),
+            Some(sku),
+            Some(
+                serde_json::json!({
+                    "sku": sku,
+                    "name": product.name,
+                    "price_minor": product.price.minor_units,
+                    "category_id": product.category_id,
+                    "version": product.version,
+                })
+                .to_string(),
+            ),
+            "success",
+        );
+        Self::log_audit_in_tx(&tx, &audit)?;
+
         tx.commit()?;
 
         if let Some(cache) = &self.cache {
@@ -703,16 +764,29 @@ impl Store<'_> {
 
     /// Set the `track_serial` flag for a product identified by SKU.
     pub fn set_product_track_serial(&self, sku: &str, track_serial: bool) -> Result<(), CoreError> {
-        let rows = self.conn.execute(
+        let tx = self.conn.unchecked_transaction()?;
+        let rows = tx.execute(
             "UPDATE products SET track_serial = ?1 WHERE sku = ?2",
             params![i64::from(track_serial), sku],
         )?;
         if rows == 0 {
+            tx.rollback()?;
             return Err(CoreError::NotFound {
                 entity: "product",
                 id: sku.to_owned(),
             });
         }
+        let audit = crate::AuditEntry::new(
+            "system",
+            "product.update",
+            Some("product"),
+            Some(sku),
+            Some(serde_json::json!({ "sku": sku, "track_serial": track_serial }).to_string()),
+            "success",
+        );
+        Self::log_audit_in_tx(&tx, &audit)?;
+        tx.commit()?;
+
         if let Some(cache) = &self.cache {
             cache.invalidate_product(sku);
         }
@@ -721,15 +795,26 @@ impl Store<'_> {
 
     /// Delete a product by SKU.
     pub fn delete_product(&self, sku: &str) -> Result<(), CoreError> {
-        let rows = self
-            .conn
-            .execute("DELETE FROM products WHERE sku = ?1", params![sku])?;
+        let tx = self.conn.unchecked_transaction()?;
+        let rows = tx.execute("DELETE FROM products WHERE sku = ?1", params![sku])?;
         if rows == 0 {
+            tx.rollback()?;
             return Err(CoreError::NotFound {
                 entity: "product",
                 id: sku.to_owned(),
             });
         }
+
+        let audit = crate::AuditEntry::new(
+            "system",
+            "product.delete",
+            Some("product"),
+            Some(sku),
+            Some(serde_json::json!({ "sku": sku }).to_string()),
+            "success",
+        );
+        Self::log_audit_in_tx(&tx, &audit)?;
+        tx.commit()?;
 
         if let Some(cache) = &self.cache {
             cache.invalidate_product(sku);
