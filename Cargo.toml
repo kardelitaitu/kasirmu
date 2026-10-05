@@ -225,7 +225,12 @@ wiremock = "0.6.5"
 missing_docs = "warn"
 
 [workspace.lints.clippy]
-assert_is_empty = "allow"
+# `const_is_empty` warns on `.is_empty()` called on a constant, where the answer is
+# fixed at compile time -- usually a mistake. (This entry read `assert_is_empty`
+# until 2026-10-05, a name clippy does not have: the allow therefore silenced
+# nothing, and every build emitted `warning[E0602]: unknown lint`. Verified with
+# `cargo clippy --explain const_is_empty`.)
+const_is_empty = "allow"
 double_must_use = "allow"
 
 [workspace.lints.rustdoc]
