@@ -53,10 +53,11 @@ export function SettingsLoadingChrome() {
   return (
     <div className="settings-page">
       <header className="settings-topbar">
-        {/* COL 1: mobile menu — empty in skeleton */}
-        <div className="settings-topbar__col" />
-        {/* COL 2: branding */}
-        <div className="settings-topbar__col settings-topbar__col--brand">
+        {/* COL 1: lead group (back + icon + title). The back button is not
+            rendered in the skeleton — it is a real control with a real
+            destination, and a placeholder for it would be a lie about what is
+            clickable while the page is still loading. */}
+        <div className="settings-topbar__col settings-topbar__col--lead">
           <div className="settings-topbar-icon" aria-hidden="true">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
               <circle cx="12" cy="12" r="3" />
@@ -65,9 +66,9 @@ export function SettingsLoadingChrome() {
           </div>
           <span className="settings-topbar-name"><Localized id="settings-title">Settings</Localized></span>
         </div>
-        {/* COL 3–5: empty in skeleton */}
+        {/* COL 2 (search) and COL 3 (actions) — empty in skeleton. Three items
+            total, matching the real header's `1fr auto 1fr` grid. */}
         <div className="settings-topbar__col settings-topbar__col--search" />
-        <div className="settings-topbar__col" />
         <div className="settings-topbar__col settings-topbar__col--actions" />
       </header>
       <div className="settings-body">

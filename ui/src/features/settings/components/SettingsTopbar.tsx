@@ -112,9 +112,14 @@ export function SettingsTopbar({
           onClose={cm.close}
         />
       )}
+      {/* Three-column grid — the SAME shape as the Staff Management
+          header (1fr auto 1fr), with the SEARCH in the middle where that
+          page puts its tab strip. The centre is centred by the grid, not
+          by available space, so the search does not drift as the title or
+          the action cluster changes width. */}
       <header className="settings-topbar">
-        {/* COL 1: back to the workspace picker */}
-        <div className="settings-topbar__col">
+        {/* COL 1: back + title (the lead group, pinned to the start) */}
+        <div className="settings-topbar__col settings-topbar__col--lead">
           <Tooltip content={l10n.getString('settings-back-aria')} fit="inline" portal>
             <button
               type="button"
@@ -127,9 +132,6 @@ export function SettingsTopbar({
               </svg>
             </button>
           </Tooltip>
-        </div>
-        {/* COL 2: branding */}
-        <div className="settings-topbar__col settings-topbar__col--brand">
           <div className="settings-topbar-icon" aria-hidden="true">
             {currentNavItem?.icon ?? (
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -144,7 +146,7 @@ export function SettingsTopbar({
             </Localized>
           </h1>
         </div>
-        {/* COL 3: search */}
+        {/* COL 2: search (centre) */}
         <div className="settings-topbar__col settings-topbar__col--search">
           <div className="settings-topbar-search">
             <svg className="settings-topbar-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -177,7 +179,7 @@ export function SettingsTopbar({
             )}
           </div>
         </div>
-        {/* COL 4: actions */}
+        {/* COL 3: actions (pinned to the end) */}
         <div className="settings-topbar__col settings-topbar__col--actions">
           <div className="settings-save-bar">
             {/* Revert button is always rendered but invisible when not dirty.

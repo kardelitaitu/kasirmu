@@ -20,6 +20,16 @@ installPerfProbe();
 // ADR #54 §2.7: the Google control is excluded from the tablet build.
 setShellKind('tablet');
 
+// Root marker for tablet-only CSS. This is the only reliable one for
+// FULLSCREEN routes (settings, staff, kds, …): they render outside
+// TabletAppLayout, so they never carry its `.tablet-shell` class, and
+// `.workspace-fullscreen` is shared with the desktop shell. Without this,
+// a tablet-only layout rule has no ancestor to key off and has to be
+// scoped by viewport width — which is wrong at 686px portrait, where the
+// tablet must NOT be treated as a phone (that mis-scoping is what hid the
+// settings sidebar; see SettingsNavTree.css).
+document.documentElement.dataset['shell'] = 'tablet';
+
 // ── Render ───────────────────────────────────────────────────────
 //
 // The tablet entry renders through the SAME shared provider stack as the
