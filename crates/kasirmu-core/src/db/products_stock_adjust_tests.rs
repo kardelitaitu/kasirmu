@@ -899,3 +899,36 @@ fn check_stock_threshold_and_alert_propagates_db_error() {
         "expected CoreError::Db, got {err:?}"
     );
 }
+
+#[test]
+fn adjust_stock_writes_audit_log_entry() {
+    let conn = fresh();
+    let s = store(&conn);
+    seed_product(&conn, "SKU-AUDIT-1");
+    seed_location(&conn, "loc-1", "Store 1");
+    let loc = crate::inventory::LocationId::from("loc-1");
+    let user_id = platform_core::staff::UserId::from("staff-user-1");
+
+    let tx = conn.unchecked_transaction().unwrap();
+    s.adjust_stock_at_location_with_reason(
+        &tx,
+        "SKU-AUDIT-1",
+        25,
+        &loc,
+        Some("manual count adjustment"),
+        None,
+        None,
+        Some(&user_id),
+    )
+    .unwrap();
+    tx.commit().unwrap();
+
+    let entries = s.list_audit_entries(10, 0).unwrap();
+    assert_eq!(entries.len(), 1);
+    assert_eq!(entries[0].action, "stock.adjust");
+    assert_eq!(entries[0].target_type.as_deref(), Some("product"));
+    assert_eq!(entries[0].target_id.as_deref(), Some("SKU-AUDIT-1"));
+    assert_eq!(entries[0].user_id, "staff-user-1");
+    assert_eq!(entries[0].outcome, "success");
+    assert!(entries[0].details.contains("\"delta\":25"));
+}

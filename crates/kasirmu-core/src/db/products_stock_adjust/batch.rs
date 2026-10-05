@@ -200,6 +200,26 @@ impl Store<'_> {
             &now,
         )?;
 
+        // 4. Audit log entry (P1.1).
+        let audit = crate::AuditEntry::new(
+            source_user_id.unwrap_or("system"),
+            "stock.adjust",
+            Some("product"),
+            Some(sku),
+            Some(
+                serde_json::json!({
+                    "sku": sku,
+                    "delta": delta,
+                    "reason": reason,
+                    "location_id": crate::inventory::CANONICAL_DEFAULT_LOCATION_UUID,
+                    "new_qty": new_qty,
+                })
+                .to_string(),
+            ),
+            "success",
+        );
+        Self::log_audit_in_tx(&tx, &audit)?;
+
         tx.commit()?;
 
         if let Some(cache) = &self.cache {
