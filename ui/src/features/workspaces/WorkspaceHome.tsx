@@ -11,6 +11,7 @@ import type { LoginSessionDto } from '@/api/staff';
 import { useSubscription, useAdminGate } from '@/contexts/SubscriptionContext';
 import { tierSatisfies } from '@/utils/tierLevel';
 import { roleAtLeast } from '@/utils/role';
+import { getPage } from '@/registries/page-registry';
 import { TOOLS, TOOL_GROUP_ORDER, type ToolItem, type ToolGroupId } from './tools';
 import { ToolsCategoryGrid } from './components/ToolsCategoryGrid';
 import type { ToolLockReason } from './components/ToolCard';
@@ -480,12 +481,38 @@ export default function WorkspaceHome() {
     [isExiting],
   );
 
-  // ── Shortcut navigation to tools (switches to admin workspace) ──
+  // ── Shortcut navigation to tools ──────────────────────────────
+  //
+  // The Tools cards reach two DIFFERENT kinds of destination, and they need
+  // different navigation:
+  //
+  //  - a registered FULLSCREEN page (staff, roles, locations, terminals,
+  //    shifts, memos, promotions, analytics, dashboard, audit-log, settings,
+  //    topology) renders on its own, outside any workspace. Setting a
+  //    workspace for it is not just redundant, it is ACTIVELY WRONG: the
+  //    shell's workspace-rebind effect fires on the change and overwrites
+  //    the route the hash just set. Measured 2026-10-05 on the tablet — the
+  //    Staff Management card set '#/staff' and then
+  //    setActiveWorkspace('admin') rebound the shell to the admin
+  //    workspace's own screen ('settings'), so the Settings hub rendered and
+  //    Staff Management was unreachable.
+  //
+  //  - a deep link into the Settings hub ('settings/...'). These have no page
+  //    of their own, so the hub must be open for them to resolve — hence the
+  //    workspace switch, which is what makes the hub's route reachable.
+  //
+  // Deciding from the registration (never a hand-kept list) keeps this in
+  // step with registerPage: a tool that becomes fullscreen later stops
+  // forcing a workspace without an edit here.
   const handleShortcutNav = useCallback(
     (route: string) => {
       navigateWithExit(() => {
         window.location.hash = `#/${route}`;
-        setActiveWorkspace('admin');
+        // Only a non-fullscreen destination (a Settings-hub deep link) needs
+        // a workspace to render into.
+        if (getPage(route)?.fullscreen !== true) {
+          setActiveWorkspace('admin');
+        }
       });
     },
     [setActiveWorkspace, navigateWithExit],
