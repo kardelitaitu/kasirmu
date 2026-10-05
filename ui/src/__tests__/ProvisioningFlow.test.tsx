@@ -319,6 +319,55 @@ describe('ProvisioningFlow (ADR #56 §2.3 / §2.5)', () => {
     }, FAST_WAIT);
   });
 
+  // ── P4: a linked account the server issued no terminal for ─────────
+  //
+  // The fixture above resolves `linkDeviceGoogle` with NO `terminal`, and that
+  // is the real contract: `terminal` is optional in all three link DTOs
+  // (`ui/src/api/license.ts:73`, `:101`, `:172`). Core refuses a linked
+  // provision with no credential at all
+  // (`a_linked_provision_requires_its_tenant_and_credential`), so the flow
+  // substitutes `terminalId` from `getDeviceId()` rather than dead-ending the
+  // merchant.
+  //
+  // On Android that substituted value is the literal string "unknown-device"
+  // for EVERY tablet: the app process carries no HOSTNAME/COMPUTERNAME
+  // (measured — 0 matches in /proc/<pid>/environ on the device), so
+  // `kasirmu_bridge::health::get_device_id` falls through to its constant. The
+  // credential a linked tablet records is therefore a value shared by every
+  // device in the field, not an identity.
+  //
+  // Pinned as a CHARACTERISATION of what ships. Blocking the submit here would
+  // be the wrong fix — it would dead-end the Google path, which legitimately
+  // returns no terminal — and the right fix is a real per-device id, not a
+  // change to this branch.
+  it('falls back to the device id when the link issued no terminal credential', async () => {
+    vi.mocked(linkDeviceGoogle).mockResolvedValue({
+      tenantId: 'tenant-no-terminal',
+      provider: 'google',
+      email: 'no-terminal@example.com',
+    });
+
+    render(<ProvisioningFlow onProvisioned={mockOnProvisioned} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /Continue with Google/i }));
+    await waitFor(() => {
+      expect(screen.getByText(/Linked to no-terminal@example\.com\./i)).toBeInTheDocument();
+    }, FAST_WAIT);
+
+    fillBasicForm();
+    fireEvent.click(screen.getByTestId('provision-submit'));
+
+    await waitFor(() => {
+      expect(provisionDevice).toHaveBeenCalledWith(
+        expect.objectContaining({
+          mode: 'linked',
+          tenant_id: 'tenant-no-terminal',
+          device_credential_id: 'test-terminal-01',
+        }),
+      );
+    }, FAST_WAIT);
+  });
+
   // ── The two email-leg failures are different problems ──────────────
   //
   // Both used to set one state ('failed') and one sentence via the form-wide
