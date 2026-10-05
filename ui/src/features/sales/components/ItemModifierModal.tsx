@@ -47,6 +47,8 @@ export interface ItemModifierModalProps {
   currency: string;
   /** Available modifier groups with their options. */
   groups: ModifierGroup[];
+  /** Optional pre-existing modifier selections for editing in-cart lines. */
+  initialSelections?: ModifierSelection[] | undefined;
   /** Called when the user confirms their selections. */
   onConfirm: (selections: ModifierSelection[], totalPriceMinor: number) => void;
   /** Called when the modal is dismissed without confirming. */
@@ -81,6 +83,7 @@ export default function ItemModifierModal({
   basePriceMinor,
   currency,
   groups,
+  initialSelections,
   onConfirm,
   onClose,
 }: ItemModifierModalProps) {
@@ -90,11 +93,19 @@ export default function ItemModifierModal({
   // Key: groupId, Value: set of modifierIds selected in that group.
   const [selected, setSelected] = useState<Record<string, Set<string>>>(() => {
     const initial: Record<string, Set<string>> = {};
-    for (const group of groups) {
-      const defaults = group.modifiers
-        .filter((m) => m.isDefault)
-        .map((m) => m.id);
-      initial[group.id] = new Set(defaults);
+    if (initialSelections && initialSelections.length > 0) {
+      for (const s of initialSelections) {
+        const set = initial[s.groupId] ?? new Set<string>();
+        set.add(s.modifierId);
+        initial[s.groupId] = set;
+      }
+    } else {
+      for (const group of groups) {
+        const defaults = group.modifiers
+          .filter((m) => m.isDefault)
+          .map((m) => m.id);
+        initial[group.id] = new Set(defaults);
+      }
     }
     return initial;
   });
@@ -171,15 +182,23 @@ export default function ItemModifierModal({
   useEffect(() => {
     if (open) {
       const initial: Record<string, Set<string>> = {};
-      for (const group of groups) {
-        const defaults = group.modifiers
-          .filter((m) => m.isDefault)
-          .map((m) => m.id);
-        initial[group.id] = new Set(defaults);
+      if (initialSelections && initialSelections.length > 0) {
+        for (const s of initialSelections) {
+          const set = initial[s.groupId] ?? new Set<string>();
+          set.add(s.modifierId);
+          initial[s.groupId] = set;
+        }
+      } else {
+        for (const group of groups) {
+          const defaults = group.modifiers
+            .filter((m) => m.isDefault)
+            .map((m) => m.id);
+          initial[group.id] = new Set(defaults);
+        }
       }
       setSelected(initial);
     }
-  }, [open, groups]);
+  }, [open, groups, initialSelections]);
 
   // ── Exit animation (dismiss fade) ─────────────────────────────
   // Mirrors the useExitAnimation shape (WorkspaceSettingsModal /

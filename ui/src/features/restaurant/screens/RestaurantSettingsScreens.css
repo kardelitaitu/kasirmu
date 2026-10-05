@@ -1230,6 +1230,32 @@
   color: var(--color-danger-hover);
 }
 
+/* ── Non-interactive Settings Group Cards ───────────────────── */
+
+.resto-settings-cards-list {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-4);
+  width: 100%;
+  align-items: start;
+}
+
+@media (min-width: 960px) {
+  .resto-settings-cards-list {
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--space-4);
+  }
+}
+
+.resto-settings-group-card {
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg, 12px);
+  padding: var(--space-3) var(--space-4);
+  box-sizing: border-box;
+  width: 100%;
+}
+
 /* ── Expandable Payment Method Cards Template ──────────────── */
 
 .resto-payment-cards-list {

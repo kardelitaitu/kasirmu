@@ -1099,3 +1099,5 @@ pos-cart-customer-placeholder = Name (optional)...
 pos-cart-customer-aria = Customer name (optional)
 pos-cart-new-tab = New Tab
 pos-cart-new-tab-title = Clear active cart to start a new tab
+pos-cart-guest-count-label = Guests
+edit-modifiers = Edit

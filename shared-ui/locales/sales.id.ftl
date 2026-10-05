@@ -1073,4 +1073,6 @@ pos-cart-customer-placeholder = Nama (opsional)...
 pos-cart-customer-aria = Nama pelanggan (opsional)
 pos-cart-new-tab = Tagihan Baru
 pos-cart-new-tab-title = Bersihkan keranjang untuk memulai tagihan baru
+pos-cart-guest-count-label = Tamu
+edit-modifiers = Ubah
 

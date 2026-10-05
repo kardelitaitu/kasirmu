@@ -5,6 +5,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Localized } from '@/components/Localized';
 import { useLocalization } from '@fluent/react';
 import ProductLookupScreen from '@/features/products/ProductLookupScreen';
+import { useProducts } from '@/features/products/useProducts';
 import RestaurantMenu from '@/features/restaurant/RestaurantMenu';
 import type { RestaurantSidebarActions, RestaurantSidebarProfile } from '@/features/restaurant/components/RestaurantSidebar';
 import { isTauriWebview } from '@/api/tauri';
@@ -23,7 +24,7 @@ import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useWorkspaceNav } from '@/hooks/useWorkspaceNav';
 import { useOrientation } from '@/hooks/useOrientation';
 
-import { formatMoney, type CartLine, type LineId, type Product, type Sku } from '@/types/domain';
+import { formatMoney, getProductModifierGroups, type CartLine, type LineId, type ModifierSelection, type Product, type Sku } from '@/types/domain';
 import { useSwipe } from '@/hooks/useSwipe';
 import {
   deleteHeldCartScoped,
@@ -53,6 +54,7 @@ import { useCartResize } from './hooks/useCartResize';
 import PaymentModal from './PaymentModal';
 import PriceOverrideModal from './PriceOverrideModal';
 import PromotionsModal from './PromotionsModal';
+import ItemModifierModal from './components/ItemModifierModal';
 import type { Promotion } from '@/api/promotions';
 import FastPINOverlay from '@/components/FastPINOverlay';
 
@@ -112,6 +114,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     removeLine,
     updateQty,
     updateLinePrice,
+    updateLineModifiers,
     updateLineNote,
     fireCourse,
     fireAllCourses,
@@ -129,6 +132,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   const { session, logout, isManager } = useAuth();
   const { activeWorkspace, setActiveWorkspace, sessionToken: rawToken } = useWorkspace();
   const sessionToken = rawToken || '';
+  const { products } = useProducts(sessionToken || undefined);
   const { isEnabled } = useFeatures();
   const userId = session?.user_id ?? '';
 
@@ -197,6 +201,9 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
       if (typeof data.customerName === 'string') {
         setCustomerName(data.customerName);
       }
+      if (typeof data.guestCount === 'string') {
+        setGuestCount(data.guestCount);
+      }
       localStorage.removeItem(LOCKED_CART_KEY);
     } catch { /* ignore */ }
   }, [setLines, setDiscount, setAppliedPromotions, setTipPercent, setServiceCharge]);
@@ -214,6 +221,9 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   const [discountName, setDiscountName] = useState('');
   const [tableNumber, setTableNumber] = useState('');
   const [customerName, setCustomerName] = useState('');
+  const [guestCount, setGuestCount] = useState('');
+  const [editingCartLine, setEditingCartLine] = useState<CartLine | null>(null);
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [showTableNumberSetting, setShowTableNumberSetting] = useState(false);
   // Restaurant coursing: `restaurant.course_firing` gates the firing bar +
   // per-line course chip. Defaults to the workspace check alone until the
@@ -577,9 +587,10 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     resetCart();
     setTableNumber('');
     setCustomerName('');
+    setGuestCount('');
     // Also clear the customer-facing pole display.
     customerDisplayPaymentComplete();
-  }, [resetCart, setTableNumber, setCustomerName, customerDisplayPaymentComplete, activeOpenBillId, loadOpenBills, addToast, sessionToken, deductionLocationIdRef, setActiveOpenBillId, setCartId, setDeductionLocationName, setDeductionOverridden]);
+  }, [resetCart, setTableNumber, setCustomerName, setGuestCount, customerDisplayPaymentComplete, activeOpenBillId, loadOpenBills, addToast, sessionToken, deductionLocationIdRef, setActiveOpenBillId, setCartId, setDeductionLocationName, setDeductionOverridden]);
 
   // ── Lock: save cart state to localStorage, then logout ───────────
 
@@ -606,6 +617,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
           serviceChargePercent,
           tableNumber,
           customerName,
+          guestCount,
         };
         localStorage.setItem(LOCKED_CART_KEY, JSON.stringify(data));
       } else {
@@ -613,7 +625,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
       }
     } catch { /* storage quota or unavailable — ignore */ }
     logout();
-  }, [lines, discountPercent, discountLabel, appliedPromotions, tipPercent, serviceChargeEnabled, serviceChargePercent, tableNumber, customerName, logout]);
+  }, [lines, discountPercent, discountLabel, appliedPromotions, tipPercent, serviceChargeEnabled, serviceChargePercent, tableNumber, customerName, guestCount, logout]);
 
   // ── Keyboard navigation (↑ / ↓ / + / − / Del / Enter) ─────────
   // Behaviour lives in useCartKeyboardNav; the cart-line ref Map and its
@@ -683,42 +695,94 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     }
   }, [activeShift, handleCloseShiftClick]);
 
+  const handleEditModifiers = useCallback(
+    async (line: CartLine) => {
+      let prod = products.find((p) => p.sku === line.sku);
+      if (!prod && sessionToken) {
+        try {
+          const dto = await lookupProductBySkuScoped(sessionToken, line.sku);
+          if (dto) {
+            prod = {
+              sku: dto.sku as Sku,
+              name: dto.name,
+              category: dto.category ?? 'Uncategorized',
+              price: { minor_units: dto.price.minor_units, currency: dto.price.currency },
+              barcode: dto.barcode,
+              inStock: dto.in_stock,
+              stockQty: dto.stock_qty,
+              productType: dto.product_type as Product['productType'],
+              notes: dto.notes ?? null,
+            };
+          }
+        } catch { /* ignore */ }
+      }
+      if (!prod) {
+        addToast({ message: 'Product details not found', type: 'error' });
+        return;
+      }
+      const groups = getProductModifierGroups(prod);
+      if (groups.length === 0) {
+        addToast({ message: 'No modifiers configured for this item', type: 'info' });
+        return;
+      }
+      setEditingCartLine(line);
+      setEditingProduct(prod);
+    },
+    [products, sessionToken, addToast],
+  );
+
+  const handleConfirmEditModifiers = useCallback(
+    (selections: ModifierSelection[], totalPriceMinor: number) => {
+      if (!editingCartLine || !editingProduct) return;
+      updateLineModifiers(
+        editingCartLine.id,
+        selections,
+        { minor_units: totalPriceMinor, currency: editingCartLine.unit_price.currency },
+      );
+      setEditingCartLine(null);
+      setEditingProduct(null);
+    },
+    [editingCartLine, editingProduct, updateLineModifiers],
+  );
+
+  const handleSelectTableFromManagement = useCallback(
+    (tableName: string) => {
+      setTableNumber(tableName);
+      setShowTables(false);
+      // Find active tab matching this table to resume order if exists
+      const matchingBill = openBills.find(
+        (b) =>
+          b.label.toLowerCase().includes(`table ${tableName.toLowerCase()}`) ||
+          (b.customer_name && b.customer_name.toLowerCase().includes(`table ${tableName.toLowerCase()}`)),
+      );
+      if (matchingBill) {
+        void handleResumeOpenBill(matchingBill.id);
+      }
+      if (sessionToken) {
+        void listTablesScoped(sessionToken)
+          .then((tables) => {
+            const match = tables.find(
+              (t) => t.name === tableName || t.id === tableName,
+            );
+            if (match && match.status !== 'occupied') {
+              return updateTableStatusScoped(sessionToken, match.id, 'occupied');
+            }
+          })
+          .catch(() => {});
+      }
+    },
+    [openBills, handleResumeOpenBill, sessionToken],
+  );
+
   // ── Sub-screen: Table Management ─────────────────────────────
   if (showTables) {
     return (
       <div className="pos-screen">
         <div style={{ flex: 1, overflow: 'auto' }}>
           <TableManagementScreen
-            onSelectTable={(tableName) => {
-              setTableNumber(tableName);
-              setShowTables(false);
-              // Mark the table as occupied in the backend when it is assigned
-              // to an active cart. Failure is non-fatal — the cart assignment
-              // (setTableNumber) already succeeded; the table status is cosmetic.
-              if (sessionToken) {
-                void listTablesScoped(sessionToken)
-                  .then((tables) => {
-                    const match = tables.find(
-                      (t) => t.name === tableName || t.id === tableName,
-                    );
-                    if (match && match.status !== 'occupied') {
-                      return updateTableStatusScoped(sessionToken, match.id, 'occupied');
-                    }
-                  })
-                  .catch(() => {});
-              }
-            }}
+            onSelectTable={handleSelectTableFromManagement}
+            onBack={() => setShowTables(false)}
           />
-        </div>
-        <div style={{ padding: '8px 16px', borderTop: '1px solid var(--color-border, #ddd)' }}>
-          <button
-            type="button"
-            className="pos-cart-pay-btn"
-            onClick={() => setShowTables(false)}
-            style={{ width: '100%' }}
-          >
-            &larr; {l10n.getString('back')}
-          </button>
         </div>
       </div>
     );
@@ -727,19 +791,24 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   // ── Sub-screen: Sales History (F6) ───────────────────────────
   if (showSalesHistory) {
     return (
-      <div className="pos-screen">
-        <div style={{ flex: 1, overflow: 'auto' }}>
-          <SalesHistoryScreen />
-        </div>
-        <div style={{ padding: '8px 16px', borderTop: '1px solid var(--color-border, #ddd)' }}>
+      <div className="pos-screen" style={{ flexDirection: 'column' }}>
+        <header className="restaurant-subscreen-top-bar">
           <button
             type="button"
-            className="pos-cart-pay-btn"
+            className="restaurant-subscreen-back-btn"
             onClick={() => setShowSalesHistory(false)}
-            style={{ width: '100%' }}
+            aria-label={l10n.getString('back') || 'Back'}
           >
-            &larr; {l10n.getString('back')}
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="18" height="18" aria-hidden="true">
+              <line x1="19" y1="12" x2="5" y2="12" />
+              <polyline points="12 19 5 12 12 5" />
+            </svg>
+            <span>{l10n.getString('back') || 'Back'}</span>
           </button>
+          <h2 className="restaurant-subscreen-top-title">{l10n.getString('sales-history-title') || 'Sales History'}</h2>
+        </header>
+        <div style={{ flex: 1, overflow: 'auto' }}>
+          <SalesHistoryScreen />
         </div>
       </div>
     );
@@ -748,19 +817,24 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   // ── Sub-screen: Stock Inquiry (F8) ───────────────────────────
   if (showStockInquiry) {
     return (
-      <div className="pos-screen">
-        <div style={{ flex: 1, overflow: 'auto' }}>
-          <ProductLookupScreen onAddProduct={handleAddProduct} />
-        </div>
-        <div style={{ padding: '8px 16px', borderTop: '1px solid var(--color-border, #ddd)' }}>
+      <div className="pos-screen" style={{ flexDirection: 'column' }}>
+        <header className="restaurant-subscreen-top-bar">
           <button
             type="button"
-            className="pos-cart-pay-btn"
+            className="restaurant-subscreen-back-btn"
             onClick={() => setShowStockInquiry(false)}
-            style={{ width: '100%' }}
+            aria-label={l10n.getString('back') || 'Back'}
           >
-            &larr; {l10n.getString('back')}
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="18" height="18" aria-hidden="true">
+              <line x1="19" y1="12" x2="5" y2="12" />
+              <polyline points="12 19 5 12 12 5" />
+            </svg>
+            <span>{l10n.getString('back') || 'Back'}</span>
           </button>
+          <h2 className="restaurant-subscreen-top-title">{l10n.getString('nav-inventory') || 'Stock Inquiry'}</h2>
+        </header>
+        <div style={{ flex: 1, overflow: 'auto' }}>
+          <ProductLookupScreen onAddProduct={handleAddProduct} />
         </div>
       </div>
     );
@@ -854,11 +928,14 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     setTableNumber,
     customerName,
     setCustomerName,
+    guestCount,
+    setGuestCount,
   };
   const cartLineRows = {
     lines, fireCourse, fireAllCourses, assignCourse, setCartLineRef,
     handleRemoveLine, handleDecreaseQty, handleIncreaseQty,
     updateLineNote,
+    onEditModifiers: handleEditModifiers,
     isManager, setOverrideTarget, ensureCart,
     animatedUndoStack, handleUndoRemove, handleDismissUndo,
     courseFiringEnabled,
@@ -1087,6 +1164,23 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
         variant="warning"
         confirmLabel={l10n.getString('restaurant-exit-confirm-btn')}
       />
+
+      {/* ── Item Modifier Modal (in-cart customization editing) ────── */}
+      {editingCartLine && editingProduct && (
+        <ItemModifierModal
+          open={true}
+          productName={editingProduct.name}
+          basePriceMinor={editingProduct.price.minor_units}
+          currency={editingCartLine.unit_price.currency}
+          groups={getProductModifierGroups(editingProduct)}
+          initialSelections={editingCartLine.modifiers}
+          onConfirm={handleConfirmEditModifiers}
+          onClose={() => {
+            setEditingCartLine(null);
+            setEditingProduct(null);
+          }}
+        />
+      )}
     </div>
   </>
   );

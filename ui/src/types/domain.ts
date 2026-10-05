@@ -166,6 +166,22 @@ export interface Product {
   readonly modifierGroups?: ModifierGroup[];
 }
 
+/** Extract configured modifier groups from a product or its serialized metadata. */
+export function getProductModifierGroups(product: Product): ModifierGroup[] {
+  if (product.modifierGroups && product.modifierGroups.length > 0) {
+    return product.modifierGroups;
+  }
+  if (product.notes && product.notes.startsWith('[')) {
+    try {
+      const parsed = JSON.parse(product.notes);
+      if (Array.isArray(parsed) && parsed.length > 0 && parsed[0].modifiers) {
+        return parsed as ModifierGroup[];
+      }
+    } catch { /* malformed notes */ }
+  }
+  return [];
+}
+
 /** Mirrors `AppError` in `apps/desktop-tauri/src/error.rs`. */
 export type AppError =
   | { kind: 'core'; subKind: string; message: string }

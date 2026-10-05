@@ -40,6 +40,16 @@ function PlusIcon() {
   );
 }
 
+/** Note / Pencil icon SVG */
+function NoteIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="13" height="13" aria-hidden="true">
+      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+    </svg>
+  );
+}
+
 export interface CartLineItemProps {
   line: CartLine;
   onRemove: (line: CartLine) => void;
@@ -57,6 +67,10 @@ export interface CartLineItemProps {
    * and every unit test that does not care about coursing are unaffected.
    */
   onAssignCourse?: (lineId: LineId, courseId: CourseId) => void;
+  /**
+   * Edit modifiers for this line item.
+   */
+  onEditModifiers?: ((line: CartLine) => void) | undefined;
   /**
    * Id of the line whose course dropdown is open. Held by the panel rather
    * than per line so only one dropdown can be open at a time.
@@ -79,6 +93,7 @@ export function CartLineItem({
   onOverride,
   onUpdateNote,
   onAssignCourse,
+  onEditModifiers,
   courseMenuLine = null,
   onCourseMenuLineChange,
   registerRef,
@@ -168,7 +183,7 @@ export function CartLineItem({
                 aria-label={line.note ? `${l10n.getString('pos-cart-line-edit-note') || 'Edit Note'}: ${line.note}` : (l10n.getString('pos-cart-line-add-note') || 'Add Note')}
                 data-testid="cart-line-note-btn"
               >
-                📝
+                <NoteIcon />
               </button>
             )}
             {onAssignCourse && (
@@ -243,6 +258,29 @@ export function CartLineItem({
                   )}
                 </span>
               ))}
+              {onEditModifiers && (
+                <button
+                  type="button"
+                  className="pos-cart-line-edit-modifiers-btn"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onEditModifiers(line);
+                  }}
+                  aria-label={l10n.getString('edit-modifiers') || 'Edit Modifiers'}
+                  data-testid="cart-line-edit-modifiers-btn"
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    padding: '1px 6px',
+                    fontSize: '11px',
+                    color: 'var(--color-primary, #147efb)',
+                    cursor: 'pointer',
+                    textDecoration: 'underline',
+                  }}
+                >
+                  Edit
+                </button>
+              )}
             </div>
           )}
           {line.note && (

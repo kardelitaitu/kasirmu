@@ -1,12 +1,12 @@
 import { useState, useMemo, useCallback, useEffect, useLayoutEffect, useRef } from 'react';
-import { type CourseId, type ModifierSelection, type Product } from '@/types/domain';
+import { type CourseId, type ModifierSelection, type Product, getProductModifierGroups } from '@/types/domain';
 import { useLocalization } from '@fluent/react';
 import { useProducts } from '@/features/products/useProducts';
 import { useAuth } from '@/contexts/AuthContext';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import * as locationsApi from '@/api/locations';
 import * as settingsApi from '@/api/settings';
-import ItemModifierModal, { type ModifierGroup } from '@/features/sales/components/ItemModifierModal';
+import ItemModifierModal from '@/features/sales/components/ItemModifierModal';
 import { MenuCategoryTabBar } from './components/MenuCategoryTabBar';
 import { MenuItemGrid } from './components/MenuItemGrid';
 import { MenuItemContextMenu, type RestaurantContextMenuState } from './components/MenuItemContextMenu';
@@ -145,22 +145,6 @@ function saveUnavailable(unavail: Set<string>, uid: string, locId?: string | nul
     }
     localStorage.setItem(key(uid, 'unavail'), serialized);
   } catch { /* storage unavailable */ }
-}
-
-/** Extract configured modifier groups from a product or its serialized metadata. */
-function getProductModifierGroups(product: Product): ModifierGroup[] {
-  if (product.modifierGroups && product.modifierGroups.length > 0) {
-    return product.modifierGroups;
-  }
-  if (product.notes && product.notes.startsWith('[')) {
-    try {
-      const parsed = JSON.parse(product.notes);
-      if (Array.isArray(parsed) && parsed.length > 0 && parsed[0].modifiers) {
-        return parsed as ModifierGroup[];
-      }
-    } catch { /* malformed notes */ }
-  }
-  return [];
 }
 
 /** Sort so pinned items appear first, preserving original order within each group. */
