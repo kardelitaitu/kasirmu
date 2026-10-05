@@ -211,9 +211,14 @@ pub struct AddLineArgs {
     /// Restaurant course assignment at add time (e.g. "appetizer", "main").
     /// Normalized through `foundation::cart::normalize_course` (legacy
     /// "drinks" → "beverage"); `None` leaves the line unassigned.
-    /// Modifiers ride this same wire in a later tranche.
     #[serde(default)]
     pub course: Option<String>,
+    /// Modifier choices serialized as JSON string array.
+    #[serde(default)]
+    pub modifiers_json: Option<String>,
+    /// Optional customer / kitchen note for this line.
+    #[serde(default)]
+    pub note: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -284,6 +289,8 @@ pub async fn add_line_scoped(
     let unit_price = line_unit_price(&args, cart.currency())?;
     let mut line = CartLine::new(args.sku.clone(), args.qty, unit_price);
     line.set_course(args.course.as_deref());
+    line.set_modifiers(args.modifiers_json);
+    line.set_note(args.note);
     let line_id = line.id;
     let line_total = line.total();
     cart.add_line(line)

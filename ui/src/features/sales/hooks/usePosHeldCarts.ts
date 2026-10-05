@@ -34,6 +34,8 @@ export interface UsePosHeldCartsParams {
   setTableNumber: (table: string) => void;
   customerName?: string;
   setCustomerName?: (name: string) => void;
+  orderType?: 'dine_in' | 'takeaway' | 'delivery';
+  setOrderType?: (orderType: 'dine_in' | 'takeaway' | 'delivery') => void;
 }
 
 /**
@@ -62,6 +64,8 @@ export function usePosHeldCarts({
   setTableNumber,
   customerName = '',
   setCustomerName,
+  orderType = 'dine_in',
+  setOrderType,
 }: UsePosHeldCartsParams) {
   // An open bill is a Restaurant POS concept: `list_open_bills_scoped` — its
   // only reader — refuses every other vertical in the bridge
@@ -157,6 +161,7 @@ export function usePosHeldCarts({
         discountLabel,
         ...(trimmedTable ? { tableNumber: trimmedTable } : {}),
         ...(trimmedName ? { customerName: trimmedName } : {}),
+        ...(orderType ? { orderType } : {}),
       });
       const label = trimmedTable
         ? (trimmedName ? `Table ${trimmedTable} (${trimmedName})` : `Table ${trimmedTable}`)
@@ -194,7 +199,7 @@ export function usePosHeldCarts({
     } finally {
       setOpeningBill(false);
     }
-  }, [activeShift, lines, subtotal, customerName, openBillName, tableNumber, discountPercent, discountLabel, resetCart, setTableNumber, setCustomerName, activeOpenBillId, loadOpenBills, addToast, openBillInputExit, sessionToken, setAppliedPromotions]);
+  }, [activeShift, lines, subtotal, customerName, openBillName, tableNumber, orderType, discountPercent, discountLabel, resetCart, setTableNumber, setCustomerName, activeOpenBillId, loadOpenBills, addToast, openBillInputExit, sessionToken, setAppliedPromotions]);
 
   const handleResumeOpenBill = useCallback(async (id: string) => {
     try {
@@ -233,6 +238,9 @@ export function usePosHeldCarts({
       if (typeof data.tableNumber === 'string') {
         setTableNumber(data.tableNumber);
       }
+      if (data.orderType && (data.orderType === 'dine_in' || data.orderType === 'takeaway' || data.orderType === 'delivery')) {
+        setOrderType?.(data.orderType);
+      }
       if (typeof data.customerName === 'string') {
         setCustomerName?.(data.customerName);
       } else if (full.customer_name) {
@@ -246,7 +254,7 @@ export function usePosHeldCarts({
     } catch {
       addToast({ message: 'Failed to resume open bill', type: 'error' });
     }
-  }, [setLines, setDiscount, setTableNumber, setCustomerName, addToast, openBillsExit, sessionToken]);
+  }, [setLines, setDiscount, setTableNumber, setCustomerName, setOrderType, addToast, openBillsExit, sessionToken]);
 
   return {
     activeOpenBillId,

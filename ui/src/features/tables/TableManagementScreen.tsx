@@ -62,6 +62,7 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
   const pendingRef = useRef<string | null>(null);
   // TBL-03: localized error surfaced inside the open detail panel.
   const [actionError, setActionError] = useState<string | null>(null);
+  const [showReleaseConfirm, setShowReleaseConfirm] = useState(false);
   // Request-generation guard (TBL-02): a stale response from an earlier
   // section/token/refresh can never overwrite a fresher result.
   const loadSeqRef = useRef(0);
@@ -143,12 +144,14 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
   const openDetail = useCallback((t: Table) => {
     triggerRef.current = document.activeElement as HTMLElement | null;
     setActionError(null);
+    setShowReleaseConfirm(false);
     setSelected(t);
   }, []);
 
   const closeDetail = useCallback(() => {
     setSelected(null);
     setActionError(null);
+    setShowReleaseConfirm(false);
     triggerRef.current?.focus();
   }, []);
 
@@ -328,6 +331,43 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
               </p>
             )}
 
+            {showReleaseConfirm && activeBill && (
+              <div
+                style={{
+                  background: 'var(--color-danger-subtle, rgba(239, 68, 68, 0.1))',
+                  border: '1px solid var(--color-danger, #ef4444)',
+                  padding: '10px 12px',
+                  borderRadius: '8px',
+                  margin: '12px 0',
+                  fontSize: 'var(--text-xs)',
+                  color: 'var(--color-fg)',
+                }}
+              >
+                <div style={{ fontWeight: 600, color: 'var(--color-danger, #ef4444)', marginBottom: '4px' }}>
+                  ⚠️ Table has an active tab ({formatMoney({ minor_units: activeBill.total_minor, currency: activeBill.currency })})
+                </div>
+                <div>
+                  Releasing will mark the table as available without closing or settling this unpaid bill. Are you sure?
+                </div>
+                <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+                  <Button
+                    variant="danger"
+                    size="sm"
+                    state={pendingId === selected.id ? 'processing' : 'ready'}
+                    onClick={() => {
+                      setShowReleaseConfirm(false);
+                      void statusAction(selected);
+                    }}
+                  >
+                    Confirm Release
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={() => setShowReleaseConfirm(false)}>
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            )}
+
             <div className="tables-detail-actions">
               {onSelectTable && (
                 <Button
@@ -344,16 +384,24 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
                   </Localized>
                 </Button>
               )}
-              <Button
-                variant={selected.status === 'occupied' ? 'danger' : 'primary'}
-                size="sm"
-                state={pendingId === selected.id ? 'processing' : 'ready'}
-                onClick={() => void statusAction(selected)}
-              >
-                <Localized id={selected.status === 'occupied' ? 'tables-release' : selected.status === 'available' ? 'tables-mark-reserved' : 'tables-mark-available'}>
-                  {selected.status === 'occupied' ? 'Release' : selected.status === 'available' ? 'Mark Reserved' : 'Mark Available'}
-                </Localized>
-              </Button>
+              {!showReleaseConfirm && (
+                <Button
+                  variant={selected.status === 'occupied' ? 'danger' : 'primary'}
+                  size="sm"
+                  state={pendingId === selected.id ? 'processing' : 'ready'}
+                  onClick={() => {
+                    if (selected.status === 'occupied' && activeBill) {
+                      setShowReleaseConfirm(true);
+                    } else {
+                      void statusAction(selected);
+                    }
+                  }}
+                >
+                  <Localized id={selected.status === 'occupied' ? 'tables-release' : selected.status === 'available' ? 'tables-mark-reserved' : 'tables-mark-available'}>
+                    {selected.status === 'occupied' ? 'Release' : selected.status === 'available' ? 'Mark Reserved' : 'Mark Available'}
+                  </Localized>
+                </Button>
+              )}
               <Button variant="ghost" size="sm" onClick={closeDetail}>
                 <Localized id="close">Close</Localized>
               </Button>

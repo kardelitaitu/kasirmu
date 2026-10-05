@@ -1,7 +1,7 @@
 .payment-overlay {
   position: fixed;
   inset: 0;
-  z-index: var(--z-modal);
+  z-index: calc(var(--z-modal, 100) + 10);
   display: flex;
   align-items: center;
   justify-content: center;

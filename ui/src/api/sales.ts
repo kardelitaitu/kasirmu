@@ -37,6 +37,14 @@ export interface AddLineArgs {
    * reaches the KDS fan-out.
    */
   course?: string;
+  /**
+   * Modifier choices serialized as a JSON string array of { name, choice, price_minor }.
+   */
+  modifiersJson?: string;
+  /**
+   * Optional custom note for this line item.
+   */
+  note?: string;
 }
 
 /** Result of adding a line item to a cart. */

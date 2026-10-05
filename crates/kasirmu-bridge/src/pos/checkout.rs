@@ -196,6 +196,12 @@ pub struct CartLineData {
     /// course. Normalized through `foundation::cart::normalize_course`.
     #[serde(default)]
     pub course: Option<String>,
+    /// Modifier choices serialized as JSON string array.
+    #[serde(default)]
+    pub modifiers_json: Option<String>,
+    /// Optional customer / kitchen note for this line.
+    #[serde(default)]
+    pub note: Option<String>,
 }
 
 /// Resolve the unit price for a reconstructed shortfall line
@@ -404,6 +410,8 @@ pub async fn complete_sale_with_resolved_shortfalls_scoped(
             unit_price,
         );
         line.set_course(line_data.course.as_deref());
+        line.set_modifiers(line_data.modifiers_json.clone());
+        line.set_note(line_data.note.clone());
         cart.add_line(line)
             .map_err(|e| BridgeError::Invalid(e.to_string()))?;
     }

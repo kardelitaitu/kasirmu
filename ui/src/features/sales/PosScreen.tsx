@@ -230,6 +230,8 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   // setting loads, so a slow settings read never hides coursing that the
   // workspace implies; an explicit "false" hides it.
   const [courseFiringEnabled, setCourseFiringEnabled] = useState<boolean | null>(null);
+  const [orderTypePromptEnabled, setOrderTypePromptEnabled] = useState(false);
+  const [orderType, setOrderType] = useState<'dine_in' | 'takeaway' | 'delivery'>('dine_in');
   const [restaurantSidebarOpen, setRestaurantSidebarOpen] = useState(false);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
   const { goToWorkspacePicker } = useWorkspaceNav();
@@ -498,6 +500,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   const cartSwipe = useSwipe({
     onSwipeLeft: () => {
       if (total && (activeShiftRef.current || shiftUnavailableRef.current)) {
+        setCartSheetOpen(false);
         setShowPayment(true);
       }
     },
@@ -534,6 +537,8 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     setTableNumber,
     customerName,
     setCustomerName,
+    orderType,
+    setOrderType,
   });
 
   const { handlePaymentComplete: customerDisplayPaymentComplete } = useCustomerDisplay({
@@ -685,6 +690,22 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
         setCourseFiringEnabled(null);
       });
     return () => { courseFiringSeq.current += 1; };
+  }, [sessionToken]);
+
+  const orderTypePromptSeq = useRef(0);
+  useEffect(() => {
+    const seq = ++orderTypePromptSeq.current;
+    const stale = () => orderTypePromptSeq.current !== seq;
+    getSettingScoped(sessionToken || null, 'restaurant.order_type_prompt')
+      .then((raw) => {
+        if (stale()) return;
+        setOrderTypePromptEnabled(raw === 'true');
+      })
+      .catch(() => {
+        if (stale()) return;
+        setOrderTypePromptEnabled(false);
+      });
+    return () => { orderTypePromptSeq.current += 1; };
   }, [sessionToken]);
 
   const handleRequestExit = useCallback(() => {
@@ -930,6 +951,9 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     setCustomerName,
     guestCount,
     setGuestCount,
+    orderType,
+    setOrderType,
+    orderTypePromptEnabled,
   };
   const cartLineRows = {
     lines, fireCourse, fireAllCourses, assignCourse, setCartLineRef,
@@ -1072,6 +1096,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
           taxEstimated={taxEstimated}
           {...(sessionToken ? { sessionToken } : {})}
           tableNumber={tableNumber}
+          orderType={orderType}
           onComplete={handlePaymentComplete}
           onClose={() => setShowPayment(false)}
         />

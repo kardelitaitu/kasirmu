@@ -75,6 +75,13 @@ pub struct CartLine {
     /// so carts persisted before this field existed still deserialize.
     #[serde(default)]
     pub course: Option<String>,
+    /// Modifier choices serialized as a JSON string array of KdsModifier / ModifierSelection objects.
+    /// `None` or empty string when no modifiers.
+    #[serde(default)]
+    pub modifiers_json: Option<String>,
+    /// Optional custom customer/kitchen note for this line item (e.g. "less ice", "allergies: peanuts").
+    #[serde(default)]
+    pub note: Option<String>,
 }
 
 impl CartLine {
@@ -91,6 +98,8 @@ impl CartLine {
             unit_price,
             overridden_price: None,
             course: None,
+            modifiers_json: None,
+            note: None,
         }
     }
 
@@ -147,6 +156,22 @@ impl CartLine {
     /// becomes `"beverage"`, and an empty value clears the assignment.
     pub fn set_course(&mut self, course: Option<&str>) {
         self.course = normalize_course(course);
+    }
+
+    /// Set (or clear) modifiers serialized as JSON for this line.
+    pub fn set_modifiers(&mut self, modifiers_json: Option<String>) {
+        self.modifiers_json = match modifiers_json {
+            Some(s) if !s.trim().is_empty() => Some(s),
+            _ => None,
+        };
+    }
+
+    /// Set (or clear) the custom note for this line.
+    pub fn set_note(&mut self, note: Option<String>) {
+        self.note = match note {
+            Some(s) if !s.trim().is_empty() => Some(s),
+            _ => None,
+        };
     }
 }
 

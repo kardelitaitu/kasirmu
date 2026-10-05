@@ -197,12 +197,10 @@ impl Sale {
                     tax_rate_id: None,
                     tax_breakdown_json: None,
                     serial_number: None,
-                    // Restaurant coursing: carried from the cart line (assigned
-                    // via `set_line_course_scoped` or at add time). `None` for
-                    // non-restaurant sales; modifiers stay `None` until the
-                    // modifiers tranche wires them through the same path.
+                    // Restaurant coursing & modifiers: carried from the cart line (assigned
+                    // via `set_line_course_scoped` or at add time).
                     course: cl.course.clone(),
-                    modifiers_json: None,
+                    modifiers_json: cl.modifiers_json.clone(),
                 })
             })
             .collect::<Option<Vec<_>>>()?;

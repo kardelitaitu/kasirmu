@@ -102,6 +102,7 @@ export default function PaymentModal({
   // it is a real cleanup but a separate, wider change. Recorded in docs/plans/0.0.36-backlog.md.
   sessionToken,
   tableNumber,
+  orderType = 'dine_in',
   selectedCustomer: selectedCustomerProp,
   onCustomerChange,
   onComplete,
@@ -694,6 +695,18 @@ retryCurrencyLoad,
           // Restaurant coursing: carry the assignment so `sale_lines.course`
           // reaches the KDS fan-out. Normalized backend-side.
           ...(line.courseId ? { course: line.courseId } : {}),
+          ...(line.modifiers && line.modifiers.length > 0
+            ? {
+                modifiersJson: JSON.stringify(
+                  line.modifiers.map((m) => ({
+                    name: m.groupName,
+                    choice: m.modifierName,
+                    price_minor: m.priceMinor,
+                  })),
+                ),
+              }
+            : {}),
+          ...(line.note ? { note: line.note } : {}),
         };
         await addLineScoped(sessionToken!, lineArgs);
       }
@@ -992,6 +1005,7 @@ retryCurrencyLoad,
           discountLabel,
           ...(trimmedTable ? { tableNumber: trimmedTable } : {}),
           ...(trimmedName ? { customerName: trimmedName } : {}),
+          orderType,
         });
         const label = trimmedTable
           ? (trimmedName ? `Table ${trimmedTable} (${trimmedName})` : `Table ${trimmedTable}`)
@@ -1032,6 +1046,18 @@ retryCurrencyLoad,
           // Restaurant coursing: carry the assignment so `sale_lines.course`
           // reaches the KDS fan-out. Normalized backend-side.
           ...(line.courseId ? { course: line.courseId } : {}),
+          ...(line.modifiers && line.modifiers.length > 0
+            ? {
+                modifiersJson: JSON.stringify(
+                  line.modifiers.map((m) => ({
+                    name: m.groupName,
+                    choice: m.modifierName,
+                    price_minor: m.priceMinor,
+                  })),
+                ),
+              }
+            : {}),
+          ...(line.note ? { note: line.note } : {}),
         };
         await addLineScoped(sessionToken!, lineArgs);
       }
@@ -1193,7 +1219,7 @@ retryCurrencyLoad,
     } finally {
       setProcessing(false);
     }
-  }, [method, customerName, lineItems, discountPercent, discountLabel, promotionIds, splitMode, splits, otherLabel, change, sessionToken, selectedCustomer, loyaltyAccount, redeemPoints, loyaltyDiscount, serialNumbers, tableNumber, addToast, classifyError, l10n, cartCurrency, effectiveTotalInCartCurrency, lineItemsInCartCurrency, tenderedMinorInCartCurrency, total.currency, total.minor_units, tenderSnapshot, taxEstimated, publishFiredCourses, activeMarketProfile, paymentRails]);
+  }, [method, customerName, lineItems, discountPercent, discountLabel, promotionIds, splitMode, splits, otherLabel, change, sessionToken, selectedCustomer, loyaltyAccount, redeemPoints, loyaltyDiscount, serialNumbers, tableNumber, orderType, addToast, classifyError, l10n, cartCurrency, effectiveTotalInCartCurrency, lineItemsInCartCurrency, tenderedMinorInCartCurrency, total.currency, total.minor_units, tenderSnapshot, taxEstimated, publishFiredCourses, activeMarketProfile, paymentRails]);
 
   useEffect(() => {
     if (!done) return;

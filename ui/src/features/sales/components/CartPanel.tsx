@@ -142,6 +142,9 @@ export interface CartPanelProps {
   setTableNumber: Dispatch<SetStateAction<string>>;
   guestCount?: string;
   setGuestCount?: Dispatch<SetStateAction<string>>;
+  orderType?: 'dine_in' | 'takeaway' | 'delivery';
+  setOrderType?: Dispatch<SetStateAction<'dine_in' | 'takeaway' | 'delivery'>>;
+  orderTypePromptEnabled?: boolean;
   shiftErrorExit: UseExitAnimationResult;
   closeShiftError: string | null;
   fireCourse: (courseId: CourseId) => void;
@@ -248,6 +251,9 @@ export function CartPanel({
   setTableNumber,
   guestCount,
   setGuestCount,
+  orderType = 'dine_in',
+  setOrderType,
+  orderTypePromptEnabled = false,
   shiftErrorExit,
   closeShiftError,
   fireCourse,
@@ -585,6 +591,58 @@ export function CartPanel({
             >
               + {l10n.getString('pos-cart-new-tab') || 'New Tab'}
             </button>
+          </div>
+        )}
+
+        {/* ── Order Type Prompt (Dine-in / Takeaway / Delivery) ── */}
+        {(orderTypePromptEnabled || activeWorkspace === 'restaurant-pos') && setOrderType && (
+          <div
+            className="pos-cart-order-type-row"
+            style={{
+              display: 'flex',
+              gap: '6px',
+              padding: '6px 12px',
+              borderBottom: '1px solid var(--color-border)',
+              background: 'var(--color-bg-subtle, rgba(0, 0, 0, 0.02))',
+            }}
+          >
+            {(
+              [
+                { id: 'dine_in', label: 'Dine In', icon: '🍽️' },
+                { id: 'takeaway', label: 'Takeaway', icon: '🛍️' },
+                { id: 'delivery', label: 'Delivery', icon: '🛵' },
+              ] as const
+            ).map((opt) => {
+              const active = orderType === opt.id;
+              return (
+                <button
+                  key={opt.id}
+                  type="button"
+                  style={{
+                    flex: 1,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '4px',
+                    padding: '4px 8px',
+                    fontSize: 'var(--text-xs, 12px)',
+                    fontWeight: active ? 600 : 500,
+                    borderRadius: 'var(--radius-md, 6px)',
+                    border: active ? '1px solid var(--color-primary)' : '1px solid var(--color-border)',
+                    background: active ? 'var(--color-primary-subtle, rgba(59, 130, 246, 0.12))' : 'var(--color-surface)',
+                    color: active ? 'var(--color-primary)' : 'var(--color-fg-muted)',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                  }}
+                  onClick={() => setOrderType(opt.id)}
+                  aria-pressed={active}
+                  data-testid={`pos-order-type-${opt.id}`}
+                >
+                  <span aria-hidden="true">{opt.icon}</span>
+                  <span>{opt.label}</span>
+                </button>
+              );
+            })}
           </div>
         )}
 
