@@ -1,5 +1,7 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { useKeyboardAvoidance } from '@/hooks/useKeyboardAvoidance';
+import { useVersionStatus } from '@/hooks/useVersionStatus';
+import { formatDisplayVersion } from '@/build-id';
 import { checkUsername } from '@/api/staff';
 import { useAuth } from '@/contexts/AuthContext';
 import { useBrand } from '@/contexts/BrandContext';
@@ -147,6 +149,11 @@ const LOCKOUT_DURATION_MS = 30_000;
 export default function StaffLoginScreen() {
   const { l10n } = useLocalization();
   const { login, loading: authLoading, error, clearError, session } = useAuth();
+  // The footer reports the REAL version and the stamped commit, not literals.
+  // `currentVersion` reached the screen as a hardcoded 'v0.0.41' until
+  // 2026-10-04, so a build from any point in the release's life looked
+  // identical; `buildId` is what actually distinguishes one build from another.
+  const { currentVersion, buildId } = useVersionStatus();
   const { addToast } = useToast();
   const [step, setStep] = useState<Step>('username');
   const [username, setUsername] = useState('');
@@ -748,7 +755,12 @@ function normalizeCashier(item: unknown): RecentCashier | null {
       {/* ── Footer: version + copyright + sync status ────── */}
       <div className="staff-login-footer">
         <div className="staff-login-footer-left">
-          <span className="staff-login-footer-version">v0.0.41</span>
+          {/* Version and build id, from the shared formatter rather than a
+              literal. The build id is rendered as text, not a `title=`: native
+              titles are the banned square tooltip (nativeTooltipCompliance). */}
+          <span className="staff-login-footer-version">
+            {formatDisplayVersion(currentVersion, null, buildId)}
+          </span>
           <Localized id="staff-login-copyright">
             <span className="staff-login-footer-copyright">&copy; 2026 kasir.mu. All rights reserved.</span>
           </Localized>

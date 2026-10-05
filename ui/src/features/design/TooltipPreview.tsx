@@ -1,6 +1,8 @@
 import Tooltip from '@/app/Tooltip';
 import ThemeToggle from '@/app/ThemeToggle';
 import { useLocalization } from '@fluent/react';
+import { useVersionStatus } from '@/hooks/useVersionStatus';
+import { formatDisplayVersion } from '@/build-id';
 import './TooltipPreview.css';
 
 /**
@@ -17,6 +19,9 @@ import './TooltipPreview.css';
  */
 export default function TooltipPreview() {
   const { l10n } = useLocalization();
+  // Show the real version: this surface renders a mock status pill, and a
+  // hardcoded one advertised a stale version on the design page.
+  const { currentVersion, buildId } = useVersionStatus();
   return (
     <div className="tp-page">
       <header className="tp-header">
@@ -437,7 +442,7 @@ export default function TooltipPreview() {
                 <Tooltip content="Backend connected" position="top">
                   <div style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
                     <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--color-success)', boxShadow: '0 0 4px var(--color-success)', display: 'inline-block' }} />
-                    <span style={{ fontSize: '0.625rem', fontWeight: 600, color: 'var(--color-fg-secondary)' }}>kasir.mu v0.0.41</span>
+                    <span style={{ fontSize: '0.625rem', fontWeight: 600, color: 'var(--color-fg-secondary)' }}>{`kasir.mu ${formatDisplayVersion(currentVersion, null, buildId)}`}</span>
                   </div>
                 </Tooltip>
 

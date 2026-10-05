@@ -13,6 +13,8 @@ import {
 } from '@/api/license';
 import { isTabletShell } from '@/utils/shellKind';
 import { useToast } from '@/components/Toast';
+import { useVersionStatus } from '@/hooks/useVersionStatus';
+import { formatDisplayVersion } from '@/build-id';
 import { Button } from '@/components/Button';
 import { l10nErrorMessage } from '@/utils/app-error';
 import { useSubscription } from '@/contexts/SubscriptionContext';
@@ -176,6 +178,10 @@ const STEPS: { id: string; labelId: string; fallback: string }[] = [
 
 export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProps) {
   const { l10n } = useLocalization();
+  // Real version + stamped commit. This footer was added to MATCH the other
+  // surfaces, whose strings were themselves hardcoded -- so all of them could
+  // drift from the app together. See src/build-id.ts.
+  const { currentVersion: appVersion, buildId: appBuildId } = useVersionStatus();
   const { addToast } = useToast();
   const { refresh: refreshSubscription } = useSubscription();
   // 'linked' is the DEFAULT, not merely an offered choice: the free plan attaches
@@ -1254,7 +1260,7 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
             different one here. Not localized: it is a version string and a legal
             line, and every sibling surface renders it identically. */}
         <p className="provisioning-footer" data-testid="provisioning-footer">
-          v0.0.41 • kasir.mu © 2026 All rights reserved.
+          {`${formatDisplayVersion(appVersion, null, appBuildId)} • kasir.mu © 2026 All rights reserved.`}
         </p>
       </form>
     </div>

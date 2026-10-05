@@ -2,12 +2,17 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { fileURLToPath, URL } from 'node:url';
+import { buildIdDefine } from './src/build-id';
 
 // Tauri expects a fixed port; fail if it isn't available.
 const host = process.env.TAURI_DEV_HOST;
 
 export default defineConfig(({ command }) => ({
   plugins: [react()],
+
+  // Stamps the commit this bundle was built from, so two builds of the same
+  // release can be told apart. See `src/build-id.ts`.
+  define: buildIdDefine(),
 
   resolve: {
     // Use the explicit regex form for the `@/` alias (instead of the

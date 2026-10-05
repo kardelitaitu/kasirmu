@@ -2,6 +2,7 @@
 import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import { fileURLToPath, URL } from 'node:url';
+import { buildIdDefine } from './src/build-id';
 
 // Tauri expects a fixed port; fail if it isn't available.
 const host = process.env.TAURI_DEV_HOST;
@@ -48,6 +49,10 @@ function mobileEntryAtRoot(): Plugin {
 
 export default defineConfig(({ command }) => ({
   plugins: [react(), mobileEntryAtRoot()],
+
+  // Stamps the commit this bundle was built from, so two APKs of the same
+  // release can be told apart on a device. See `src/build-id.ts`.
+  define: buildIdDefine(),
 
   resolve: {
     // P9a: the Fluent corpus lives at shared-ui/locales/, outside ui/.

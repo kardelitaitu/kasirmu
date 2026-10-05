@@ -3,6 +3,8 @@ import { Localized, useLocalization } from '@fluent/react';
 import { Button } from '@/components/Button';
 import { Modal } from '@/components/Modal';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
+import { useVersionStatus } from '@/hooks/useVersionStatus';
+import { formatDisplayVersion } from '@/build-id';
 import {
   checkAppUpdate,
   startApkDownload,
@@ -52,6 +54,9 @@ export function UpdateSettingsCard() {
 
   const [step, setStep] = useState<UpdateStep>('idle');
   const [updateInfo, setUpdateInfo] = useState<UpdateCheckResult | null>(null);
+  // Live version and build stamp for the "Current Version" badge. The updater
+  // probe's own `currentVersion` still wins when it has answered.
+  const { currentVersion, buildId } = useVersionStatus();
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [downloadProgress, setDownloadProgress] = useState<DownloadState>({
     percentage: 0,
@@ -277,8 +282,16 @@ export function UpdateSettingsCard() {
           <span className="update-badge update-badge--current">
             <Localized
               id="settings-updater-current-version"
-              vars={{ version: updateInfo?.currentVersion || '0.0.41' }}
+              // Fall back to the live app version, not a literal. The updater's
+              // own `currentVersion` wins once it has answered; `useVersionStatus`
+              // supplies the same value before then. The build stamp is appended
+              // for the same reason the footer shows it: a version number cannot
+              // tell two builds of one release apart.
+              vars={{ version: formatDisplayVersion(updateInfo?.currentVersion, currentVersion, buildId) }}
             >
+              {/* FTL fallback only: shown when the key is absent. The live value
+                  arrives through `vars`, so this literal is a translation default
+                  and deliberately NOT a version source. */}
               Current Version: v0.0.41
             </Localized>
           </span>

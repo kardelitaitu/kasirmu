@@ -1429,8 +1429,14 @@ describe('ProvisioningFlow (ADR #56 §2.3 / §2.5)', () => {
     // auth modals, StaffLoginScreen, LicenseActivationScreen); this flow was
     // the one screen that omitted it, so a merchant told their version on the
     // next screen read a different one here.
+    // The footer used to assert the hardcoded 'v0.0.41'. That literal was the
+    // bug: every build of the release rendered it, so two APKs could not be
+    // told apart. Assert the SHAPE now -- a version, a build stamp, and the
+    // legal line -- so the footer is pinned to reading live values rather than
+    // to one frozen number. In jsdom there is no Tauri app, so the version
+    // falls back to 0.0.0 and the build id comes from the checkout.
     expect(screen.getByTestId('provisioning-footer')).toHaveTextContent(
-      'v0.0.41 • kasir.mu © 2026 All rights reserved.',
+      /^v\d+\.\d+\.\d+( · [0-9a-f]{7}(\+dirty)?)? • kasir\.mu © 2026 All rights reserved\.$/,
     );
   });
 
