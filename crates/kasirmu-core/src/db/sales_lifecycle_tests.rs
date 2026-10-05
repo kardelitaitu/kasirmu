@@ -173,14 +173,19 @@ fn shortfall_settlement_writes_one_audit_row_with_real_actor() {
     )
     .unwrap();
 
-    assert_eq!(audit_count(&conn), 1);
+    assert_eq!(audit_count(&conn), 2);
     let entries = store(&conn).list_audit_entries(10, 0).unwrap();
-    assert_eq!(entries[0].action, "sale.completed");
+    let sale_entry = entries
+        .iter()
+        .find(|e| e.action == "sale.completed")
+        .unwrap();
+    assert_eq!(sale_entry.action, "sale.completed");
     // PCI 10.2.1: the REAL actor, not the handler's empty string.
-    assert_eq!(entries[0].user_id, "cashier-2");
-    assert_eq!(entries[0].target_type.as_deref(), Some("sale"));
-    assert_eq!(entries[0].target_id.as_deref(), Some(sale.id.as_str()));
-    assert_eq!(entries[0].outcome, "success");
+    assert_eq!(sale_entry.user_id, "cashier-2");
+    assert_eq!(sale_entry.target_type.as_deref(), Some("sale"));
+    assert_eq!(sale_entry.target_id.as_deref(), Some(sale.id.as_str()));
+    assert_eq!(sale_entry.outcome, "success");
+    assert!(entries.iter().any(|e| e.action == "stock.adjust"));
 }
 
 /// HEAD-failure: explicitly NOT a HEAD-failure - passes at HEAD trivially
