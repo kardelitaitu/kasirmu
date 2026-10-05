@@ -98,6 +98,11 @@ All DB access goes through `Store` methods in `db.rs`. Every write runs inside a
 
 Key methods: `create_product`, `list_products`, `update_product`, `delete_product`, `lookup_product_with_details_by_barcode`, `list_sales`, `get_sale`, `create_sale`, `complete_sale_deduction`, `complete_sale_with_resolved_shortfalls`, `hold_cart`, `list_held_carts`, `get_held_cart`, `delete_held_cart`, `set_cart_discount`, `export_daily_summary`, `export_sales_by_hour`, staff CRUD, customer CRUD, category CRUD, tax rate CRUD, feature flags, currencies, exchange rates (`list_exchange_rates`, `create_exchange_rate`, `upsert_exchange_rate`), audit log.
 
+## Testing
+
+- **Unit tests:** Sibling `*_tests.rs` wired into modules via `#[cfg(test)] mod tests;`. Run with `cargo test -p kasirmu-core --lib`.
+- **Integration tests:** Consolidated in `tests/integration/main.rs` with 24 submodules (`tests/integration/*.rs`). Run the full integration suite with `cargo test -p kasirmu-core --test integration`, or target a specific subsystem module with `cargo test -p kasirmu-core --test integration <module>::` (e.g. `cargo test -p kasirmu-core --test integration audit::`).
+
 ## Conventions
 
 - Money is always `i64` minor units — never `f32`/`f64`.

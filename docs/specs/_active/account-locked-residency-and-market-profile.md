@@ -160,15 +160,15 @@ The implementation must pass three automated test cases:
    - Mock all network connections to disconnect (`assert_offline`).
    - Run a 100-item checkout cycle with PB1 tax calculation and receipt rendering.
    - Assert zero network requests and sub-10ms total execution time.
-   - Runner: `cargo test -p kasirmu-core --test offline_integration test_sale_execution_zero_lookups`
+    - Runner: `cargo test -p kasirmu-core --test integration offline::test_sale_execution_zero_lookups`
 2. **Test Shift-Immunity Lock (`test_shift_locks_regional_settings`):**
    - Open a shift for Location `loc-1`.
    - Attempt to call `update_regional_settings` to change currency from `IDR` to `USD`.
    - Assert `CoreError::Validation { field: "regional_settings", .. }` is returned (there is no `code` field on this variant; discriminate by `field` name).
    - Close the shift.
    - Re-attempt `update_regional_settings`; assert successful mutation and audit event emission.
-   - Runner: `cargo test -p kasirmu-core --test shift_integration test_shift_locks_regional_settings`
+   - Runner: `cargo test -p kasirmu-core --test integration shift::test_shift_locks_regional_settings`
 3. **Test Scope-Chain Fallback (`test_regional_scope_chain_resolution`):**
    - Verify that an unset location correctly inherits currency and country from its parent `LegalEntity` without requiring manual duplication.
-   - Runner: `cargo test -p kasirmu-core --test settings_integration test_regional_scope_chain_resolution`
+   - Runner: `cargo test -p kasirmu-core --test integration settings::test_regional_scope_chain_resolution`
 

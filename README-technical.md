@@ -231,6 +231,8 @@ See [docs/guides/developer/QUICKSTART.md](./docs/guides/developer/QUICKSTART.md)
 | `cargo fmt --all` | Format Rust code (CI checks it: the `Cargo fmt check` step in `dev-ci.yml` runs `cargo fmt --all -- --check` — cited by step name, not line number, because lines move) |
 | `cargo clippy --all-targets --all-features -- -D warnings` | Lint — CI runs the `--workspace --all-targets` lane, `--all-features` is local-only (**Clippy** below) |
 | `cargo test --workspace` | Run tests — 9,026 `#[test]` fns (**Test count** below) |
+| `cargo test -p kasirmu-core --test integration` | Run consolidated core integration test suite (547 tests across 24 modules in 1 binary; e.g. `--test integration audit::` for scoped runs) |
+| `cargo test -p kasirmu-core --lib` | Fast unit iteration for `kasirmu-core` (skips integration binary) |
 | `bash scripts/check.sh` | The FULL local matrix (Rust + UI + migrations), run by hand — **not** what `git push` runs (**What a push runs** below) |
 | `bash scripts/coverage.sh` | Rust + UI coverage reports |
 | `bash scripts/reset-dev-pg.sh` | Reset the dev PostgreSQL container to the committed PG_INIT schema (`.ps1` twin on Windows) |
@@ -258,7 +260,7 @@ Every PR must pass `cargo fmt`, Clippy, `tsc --noEmit`, and all tests before mer
 
 ## Status
 
-**Where we are: v0.0.40 — all six roadmap phases delivered, four follow-through gaps open.** The phase table in `docs/guides/product/ROADMAP.md` is the authority. (Note: the ROADMAP's phase *names* differ from the shorthand this section used until 2026-09-17 — "CRM, Restaurant, Accounting" and "Multi-store topology, Cloud Sync, Plugin system" were never ROADMAP phases. The real names are used below.)
+**Where we are: v0.0.41 — all six roadmap phases delivered, four follow-through gaps open.** The phase table in `docs/guides/product/ROADMAP.md` is the authority. (Note: the ROADMAP's phase *names* differ from the shorthand this section used until 2026-09-17 — "CRM, Restaurant, Accounting" and "Multi-store topology, Cloud Sync, Plugin system" were never ROADMAP phases. The real names are used below.)
 
 | Phase (ROADMAP) | State | What's real | What's still open |
 |---|---|---|---|
@@ -273,7 +275,7 @@ Every PR must pass `cargo fmt`, Clippy, `tsc --noEmit`, and all tests before mer
 
 Module-level truth (`modules/`): 10 active (`inventory`, `crm`, `tax`, `settings`, `staff`, `terminal`, `currency`, `sales`, `reporting`, `loyalty`), 4 still stubs with no domain logic (`purchasing`, `promotions`, `giftcards`, `kitchen` — the KDS UI in `ui/src/features/kds/` is frontend-only; the PROMO-3 engine lives in `kasirmu-core`, not `modules/promotions`; gift-card types still sit in `modules/loyalty`). There is **no accounting module** — no chart of accounts, journal, or expense tracking exists anywhere in `modules/`, migrations, or UI. What the platform does have is sales accounting's raw material: revenue/COGS/gross-profit reporting (`crates/kasirmu-core/src/db/reports/revenue.rs`), shift cash reconciliation, and purchase-order history.
 
-Latest release: **v0.0.40** (on branch `0.0.40`).
+Latest release: **v0.0.41** (on branch `0.0.41`).
 
 See [ROADMAP.md](./docs/guides/product/ROADMAP.md) for the full phased delivery plan, and [MODULAR_APP_PLAN.md](./docs/records/superseded/MODULAR_APP_PLAN.md) for detailed granular checklists covering feature presets, restaurant workflows, LAN KDS discovery, and Docker cloud server containerization (`apps/cloud-server`).
 

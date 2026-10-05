@@ -201,9 +201,9 @@ If you only want the i18n quality gate as a quick pre-flight, run `bash scripts/
 ## Project structure (at a glance)
 
 ```
-oz-pos/
+kasirmu/
 ├── Cargo.toml                  # workspace root
-├── crates/                     # Rust workspace members (one per oz-* responsibility)
+├── crates/                     # Rust workspace members (one per kasirmu-* responsibility)
 │   ├── kasirmu-core/                # money, currency, cart, sale, inventory
 │   ├── kasirmu-crypto/              # cryptographic primitives (secret encryption at rest)
 │   ├── kasirmu-hal/                 # hardware abstraction + drivers
@@ -237,7 +237,7 @@ The first time you work on a layer, read the matching skill under `.agents/skill
 
 | If you're touching… | Read this skill |
 |---|---|
-| Rust in any `oz-*` crate, `Money`, SQL, error types | `rust-backend` |
+| Rust in any `kasirmu-*` crate, `Money`, SQL, error types | `rust-backend` |
 | A Tauri command, a per-domain `ui/src/api/<feature>.ts` wrapper, events | `tauri-ipc` |
 | A React component, Fluent strings, accessibility | `ui-components` |
 | A device driver, the mock, the registry | `hal-drivers` |
