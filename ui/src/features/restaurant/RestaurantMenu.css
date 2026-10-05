@@ -40,6 +40,11 @@
   padding-left: calc(18rem + 8px + var(--space-4));
 }
 
+.restaurant-menu--has-floating-bar {
+  /* Extra bottom padding so the floating cart bar does not obscure the bottom row of menu items */
+  padding-bottom: calc(4.75rem + env(safe-area-inset-bottom, 0px));
+}
+
 /* ── Header row ──────────────────────────────────── */
 .restaurant-header {
   display: flex;

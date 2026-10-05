@@ -42,6 +42,8 @@ export interface RestaurantMenuProps {
   onRequestExit?: () => void;
   /** Override manager status for sidebar permissions. */
   isManager?: boolean | undefined;
+  /** Whether the floating cart bar is shown in portrait mode (adjusts bottom padding). */
+  hasFloatingCartBar?: boolean | undefined;
 }
 
 // ── Helpers ────────────────────────────────────────────────────────
@@ -190,6 +192,7 @@ export default function RestaurantMenu({
   onChangePhoto,
   onRequestExit,
   isManager,
+  hasFloatingCartBar,
 }: RestaurantMenuProps) {
   const { l10n } = useLocalization();
   const { sessionToken, sessionError, retrySessionToken } = useWorkspace();
@@ -575,7 +578,7 @@ export default function RestaurantMenu({
   return (
     <div
       ref={setMenuRoot}
-      className={`restaurant-menu ${menuOpen ? 'restaurant-menu--sidebar-open' : ''}`}
+      className={`restaurant-menu ${menuOpen ? 'restaurant-menu--sidebar-open' : ''}${hasFloatingCartBar ? ' restaurant-menu--has-floating-bar' : ''}`}
       style={{ '--card-size': cardSize, '--font-size': fontSize } as React.CSSProperties}
     >
       {/* ── Header row: sidebar + preferences hamburger + search ── */}

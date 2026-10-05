@@ -381,3 +381,12 @@ product-mgmt-alert-count =
     }
 
 # ── Customer Management (remaining) ──
+
+# ── Restaurant POS Portrait Cart ──
+restaurant-cart-view-order = Lihat Pesanan
+restaurant-cart-sheet-title = Pesanan Saat Ini
+restaurant-cart-sheet-close = Tutup Keranjang
+restaurant-cart-items-count = { $count } item
+restaurant-cart-table-badge = Meja { $table }
+restaurant-cart-empty = Keranjang kosong
+

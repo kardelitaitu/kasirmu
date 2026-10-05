@@ -17,8 +17,11 @@ import SalesHistoryScreen from '@/features/sales/SalesHistoryScreen';
 import RestaurantReceiptsScreen from '@/features/restaurant/screens/RestaurantReceiptsScreen';
 import RestaurantPaymentsScreen from '@/features/restaurant/screens/RestaurantPaymentsScreen';
 import RestaurantSettingsScreen from '@/features/restaurant/screens/RestaurantSettingsScreen';
+import { RestaurantFloatingCartBar } from '@/features/restaurant/components/RestaurantFloatingCartBar';
+import { RestaurantCartSheet } from '@/features/restaurant/components/RestaurantCartSheet';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useWorkspaceNav } from '@/hooks/useWorkspaceNav';
+import { useOrientation } from '@/hooks/useOrientation';
 
 import { formatMoney, type CartLine, type LineId, type Product, type Sku } from '@/types/domain';
 import { useSwipe } from '@/hooks/useSwipe';
@@ -220,6 +223,9 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   const [restaurantSidebarOpen, setRestaurantSidebarOpen] = useState(false);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
   const { goToWorkspacePicker } = useWorkspaceNav();
+  const { orientation } = useOrientation();
+  const [cartSheetOpen, setCartSheetOpen] = useState(false);
+  const isPortraitRestaurant = activeWorkspace === 'restaurant-pos' && !orientation.isLandscape;
 
   // ── Sidebar header identity ────────────────────────────
   // The avatar hash is read through `get_own_avatar_scoped`, not the staff
@@ -474,6 +480,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
       return;
     }
     if (!total) return;
+    setCartSheetOpen(false);
     setShowPayment(true);
   }, [total, addToast, activeShiftRef, shiftUnavailableRef]);
 
@@ -925,17 +932,42 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
             onChangePhoto={() => { void handleChangePhoto(); }}
             onRequestExit={handleRequestExit}
             isManager={isManager}
+            hasFloatingCartBar={isPortraitRestaurant}
           />
         ) : (
           <ProductLookupScreen onAddProduct={handleAddProduct} />
         )}
       </div>
 
-      {/* ── Resize handle & Cart panel ─────────────── */}
-      <CartPanel
-        {...cartPanelProps}
-        hidden={activeWorkspace === 'restaurant-pos' && restaurantSidebarOpen}
-      />
+      {/* ── Resize handle & Cart panel (landscape / desktop) ── */}
+      {!isPortraitRestaurant && (
+        <CartPanel
+          {...cartPanelProps}
+          hidden={activeWorkspace === 'restaurant-pos' && restaurantSidebarOpen}
+        />
+      )}
+
+      {/* ── Restaurant Portrait: Floating Cart Bar & Bottom Sheet Drawer ── */}
+      {isPortraitRestaurant && (
+        <>
+          <RestaurantFloatingCartBar
+            lines={lines}
+            total={total}
+            tableNumber={tableNumber}
+            onOpenCart={() => setCartSheetOpen(true)}
+          />
+          <RestaurantCartSheet
+            open={cartSheetOpen}
+            onClose={() => setCartSheetOpen(false)}
+            tableNumber={tableNumber}
+          >
+            <CartPanel
+              {...cartPanelProps}
+              hidden={false}
+            />
+          </RestaurantCartSheet>
+        </>
+      )}
 
       {/* ── F2-3: cart-tax watcher (retry bumps the key) ─ */}
       <CartTaxWatcher

@@ -1,0 +1,202 @@
+/* ============================================================
+ * Restaurant Cart Sheet (Bottom Sheet Drawer in Portrait Mode)
+ * ============================================================ */
+
+/* ── Backdrop scrim ────────────────────────────────────────── */
+.restaurant-cart-sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  background: var(--scrim-backdrop, rgba(0, 0, 0, 0.5));
+  z-index: var(--z-modal, 100);
+  border: none;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  box-sizing: border-box;
+}
+
+/* ── Sheet panel container ─────────────────────────────────── */
+.restaurant-cart-sheet-panel {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  width: 100%;
+  max-width: 800px;
+  max-height: 85dvh;
+  height: 85dvh;
+  margin-inline: auto;
+  z-index: calc(var(--z-modal, 100) + 1);
+  background: var(--color-bg);
+  border-top-left-radius: var(--radius-2xl);
+  border-top-right-radius: var(--radius-2xl);
+  border: 1px solid var(--color-border);
+  border-bottom: none;
+  box-shadow: var(--shadow-2xl);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+/* ── Grabber handle ────────────────────────────────────────── */
+.restaurant-cart-sheet-handle-wrap {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding-top: var(--space-2);
+  padding-bottom: var(--space-1);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.restaurant-cart-sheet-handle {
+  width: 2.5rem;
+  height: 0.25rem;
+  border-radius: var(--radius-full);
+  background: var(--color-border-emphasis, #888888);
+  opacity: 0.6;
+}
+
+/* ── Header ────────────────────────────────────────────────── */
+.restaurant-cart-sheet-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-2) var(--space-4) var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+  flex-shrink: 0;
+}
+
+.restaurant-cart-sheet-title-group {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.restaurant-cart-sheet-title {
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-fg);
+}
+
+.restaurant-cart-sheet-table-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-full);
+  background: var(--color-accent-subtle);
+  border: 1px solid var(--color-accent);
+  color: var(--color-accent);
+  font-size: var(--text-xs);
+  font-weight: var(--font-weight-semibold);
+}
+
+.restaurant-cart-sheet-close-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  padding: 0;
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  color: var(--color-fg-secondary);
+  cursor: pointer;
+  transition:
+    background-color var(--duration-150) var(--ease-out),
+    color var(--duration-150) var(--ease-out);
+}
+
+.restaurant-cart-sheet-close-btn:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-fg);
+}
+
+.restaurant-cart-sheet-close-btn:focus-visible {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 2px;
+}
+
+/* ── Body: hosts CartPanel inside bottom sheet ─────────────── */
+.restaurant-cart-sheet-body {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Override CartPanel desktop sizing and borders when placed inside sheet */
+.restaurant-cart-sheet-body .pos-cart-panel {
+  width: 100% !important;
+  max-width: 100% !important;
+  height: 100% !important;
+  margin: 0 !important;
+  border: none !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  flex: 1 1 100% !important;
+  display: flex !important;
+}
+
+/* Hide desktop resize handle inside bottom sheet */
+.restaurant-cart-sheet-body .pos-resize-handle {
+  display: none !important;
+}
+
+/* Hide the duplicate header in CartPanel when rendered inside RestaurantCartSheet */
+.restaurant-cart-sheet-body .pos-cart-header {
+  display: none;
+}
+
+/* ── Entry and Exit Animations ─────────────────────────────── */
+@media (prefers-reduced-motion: no-preference) {
+  /* Scrim entry */
+  .restaurant-cart-sheet-backdrop {
+    animation: restaurant-cart-scrim-in var(--duration-200) var(--ease-out);
+  }
+  @keyframes restaurant-cart-scrim-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  /* Scrim exit */
+  @keyframes restaurant-cart-scrim-out {
+    from { opacity: 1; }
+    to { opacity: 0; }
+  }
+  .restaurant-cart-sheet-backdrop--exiting {
+    animation: restaurant-cart-scrim-out var(--duration-200) var(--ease-out) both;
+    pointer-events: none;
+  }
+
+  /* Panel slide up entry */
+  .restaurant-cart-sheet-panel {
+    animation: restaurant-cart-sheet-in var(--duration-200) var(--ease-out);
+  }
+  @keyframes restaurant-cart-sheet-in {
+    from {
+      transform: translateY(100%);
+    }
+    to {
+      transform: translateY(0);
+    }
+  }
+
+  /* Panel slide down exit */
+  @keyframes restaurant-cart-sheet-out {
+    from {
+      transform: translateY(0);
+    }
+    to {
+      transform: translateY(100%);
+    }
+  }
+  .restaurant-cart-sheet-panel--exiting {
+    animation: restaurant-cart-sheet-out var(--duration-200) var(--ease-out) both;
+    pointer-events: none;
+  }
+}

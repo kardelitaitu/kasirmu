@@ -383,3 +383,16 @@ product-mgmt-alert-count =
         [one] Open stock alerts ({ $count } active)
        *[other] Open stock alerts ({ $count } active)
     }
+
+# ── Restaurant POS Portrait Cart ──
+restaurant-cart-view-order = View Order
+restaurant-cart-sheet-title = Current Order
+restaurant-cart-sheet-close = Close Cart
+restaurant-cart-items-count =
+    { $count ->
+        [one] 1 item
+       *[other] { $count } items
+    }
+restaurant-cart-table-badge = Table { $table }
+restaurant-cart-empty = Cart is empty
+
