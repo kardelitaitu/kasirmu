@@ -255,3 +255,31 @@
     max-width: 100%;
   }
 }
+
+/* ── Touch press feedback ────────────────────────────────────────────
+   Appearance is tuned on the tablet. The colour picker and reset-all are
+   discrete buttons (scale); the per-colour reset tints. */
+.appearance-colour-picker:not(:disabled):active,
+.appearance-reset-all-btn:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+.appearance-colour-reset:active {
+  background: color-mix(in srgb, var(--color-fg) 12%, transparent);
+}
+
+@media (pointer: coarse) {
+  .appearance-colour-picker,
+.appearance-colour-reset,
+.appearance-reset-all-btn {
+    min-height: var(--touch-target-min);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .appearance-colour-picker:not(:disabled):active,
+.appearance-reset-all-btn:not(:disabled):active {
+    transform: none;
+    opacity: 0.75;
+  }
+}

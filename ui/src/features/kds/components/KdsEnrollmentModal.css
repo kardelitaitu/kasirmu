@@ -301,3 +301,37 @@
     pointer-events: none;
   }
 }
+
+/* ── Touch press feedback ────────────────────────────────────────────
+   Enrollment is done on the kitchen tablet with gloves on. All these are
+   discrete buttons; the station remove is a bare glyph and tints. */
+.kds-enrollment-close:not(:disabled):active,
+.kds-enrollment-retry:not(:disabled):active,
+.kds-enrollment-done:not(:disabled):active,
+.kds-enrollment-confirm:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+.kds-enrollment-station-remove:active {
+  background: color-mix(in srgb, var(--color-fg) 12%, transparent);
+}
+
+@media (pointer: coarse) {
+  .kds-enrollment-close,
+.kds-enrollment-station-remove,
+.kds-enrollment-retry,
+.kds-enrollment-done,
+.kds-enrollment-confirm {
+    min-height: var(--touch-target-min);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kds-enrollment-close:not(:disabled):active,
+.kds-enrollment-retry:not(:disabled):active,
+.kds-enrollment-done:not(:disabled):active,
+.kds-enrollment-confirm:not(:disabled):active {
+    transform: none;
+    opacity: 0.75;
+  }
+}
