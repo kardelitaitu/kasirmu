@@ -489,18 +489,15 @@ async fn report_rls_posture(
         return Ok(());
     }
 
-    // The decision is pure (rls_verdict_is_fatal); this arm only renders it.
-    let fatal = rls_verdict_is_fatal(posture, production, allow_inert_rls());
-    if !fatal {
-        // Either there is nothing to isolate (NoProtectedTables), production is
-        // off, or the operator opted out. NoProtectedTables is a warn because it
-        // is not a breach; the others are already reported above.
-        if matches!(posture, crate::db::RlsPosture::NoProtectedTables) {
-            tracing::warn!(rls_posture = posture.as_str(), "{}", message);
-        }
+    // Not a breach: this database carries no tenant_isolation policy at all, so
+    // no query can be leaking through one (a single-tenant deployment, or an
+    // unapplied schema). Warn and continue — see rls_verdict_is_fatal.
+    if matches!(posture, crate::db::RlsPosture::NoProtectedTables) {
+        tracing::warn!(rls_posture = posture.as_str(), "{}", message);
         return Ok(());
     }
 
+    // From here the posture IS a bypass. Report it at ERROR with the counts.
     tracing::error!(
         rls_posture = posture.as_str(),
         role = %facts.role,
@@ -510,26 +507,36 @@ async fn report_rls_posture(
         message
     );
 
-    if !allow_inert_rls() {
-        return Err(format!(
-            "tenant isolation is NOT enforced (rls_posture={}, role={}, {}/{} protected tables forced). \
-             OZ_PRODUCTION=1 requires FORCE ROW LEVEL SECURITY: run scripts/rls-cutover.sql, then \
-             scripts/rls-cutover-force-remaining.sql, and confirm /health reports \
-             \"rls_posture\":\"enforced\". To start anyway during a migration window, set \
-             OZ_ALLOW_INERT_RLS=1.",
-            posture.as_str(),
-            facts.role,
-            facts.forced_tables,
-            facts.protected_tables
-        ));
+    // The decision is pure (rls_verdict_is_fatal); the branches below only
+    // render it. Asked ONCE so the hatch path stays reachable — an earlier
+    // shape folded allow_inert_rls() into `fatal`, which made the
+    // "starting anyway" branch below dead code (the hatch silently skipped the
+    // ERROR that is its whole purpose).
+    if !rls_verdict_is_fatal(posture, production, allow_inert_rls()) {
+        // Either production is off (dev/test connect as owner by design) or the
+        // operator opted out. Only the opt-out needs saying out loud; a
+        // non-production run is already covered by the ERROR above.
+        if production {
+            tracing::error!(
+                rls_posture = posture.as_str(),
+                "OZ_ALLOW_INERT_RLS=1 is set — starting anyway with tenant isolation NOT enforced. \
+                 Unset it once the FORCE ROW LEVEL SECURITY cutover has run."
+            );
+        }
+        return Ok(());
     }
 
-    tracing::error!(
-        rls_posture = posture.as_str(),
-        "OZ_ALLOW_INERT_RLS=1 is set — starting anyway with tenant isolation NOT enforced. \
-         Unset it once the FORCE ROW LEVEL SECURITY cutover has run."
-    );
-    Ok(())
+    Err(format!(
+        "tenant isolation is NOT enforced (rls_posture={}, role={}, {}/{} protected tables forced). \
+         OZ_PRODUCTION=1 requires FORCE ROW LEVEL SECURITY: run scripts/rls-cutover.sql, then \
+         scripts/rls-cutover-force-remaining.sql, and confirm /health reports \
+         \"rls_posture\":\"enforced\". To start anyway during a migration window, set \
+         OZ_ALLOW_INERT_RLS=1.",
+        posture.as_str(),
+        facts.role,
+        facts.forced_tables,
+        facts.protected_tables
+    ))
 }
 
 /// Whether the operator has explicitly accepted inert tenant isolation.
