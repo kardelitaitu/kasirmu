@@ -36,7 +36,7 @@ export function RestaurantFloatingCartBar({
 
   return (
     <aside
-      className="restaurant-floating-cart-bar"
+      className="restaurant-floating-cart-bar noise-dither"
       aria-label={l10n.getString('restaurant-cart-sheet-title')}
     >
       <button

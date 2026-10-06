@@ -86,7 +86,19 @@
   border: 2px solid var(--color-border, #cbd5e1);
   border-top-color: var(--color-primary, #2563eb);
   border-radius: 50%;
-  animation: update-spin 0.8s linear infinite;
+}
+
+/* Gated, not merely styled: an always-on rotation is the exact shape WCAG
+   2.3.3 covers, and this was the one un-gated decorative animation in the
+   tree (animationCompliance). `no-preference` is the house form -- the same
+   opt-in `theme/components.css` uses for `.spinner` -- rather than a
+   `reduce` block that switches it off, so a user who never expressed a
+   preference still gets the motion. The ring keeps its shape either way;
+   only the rotation stops. */
+@media (prefers-reduced-motion: no-preference) {
+  .update-spinner {
+    animation: update-spin 0.8s linear infinite;
+  }
 }
 
 @keyframes update-spin {

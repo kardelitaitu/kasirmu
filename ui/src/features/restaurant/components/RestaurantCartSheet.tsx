@@ -56,7 +56,7 @@ export function RestaurantCartSheet({
         role="dialog"
         aria-modal="true"
         aria-label={l10n.getString('restaurant-cart-sheet-title')}
-        className={`restaurant-cart-sheet-panel${exiting ? ' restaurant-cart-sheet-panel--exiting' : ''}`}
+        className={`restaurant-cart-sheet-panel noise-dither${exiting ? ' restaurant-cart-sheet-panel--exiting' : ''}`}
         data-testid="restaurant-cart-sheet-panel"
       >
         {/* Drag handle / top affordance */}
