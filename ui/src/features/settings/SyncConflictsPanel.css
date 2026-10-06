@@ -217,3 +217,36 @@
   word-break: break-all;
 }
 
+/* ── Touch press feedback ────────────────────────────────────────────
+   Conflict resolution is a high-stakes, money-adjacent action performed on
+   a tablet, so the press cue matters more here than elsewhere. Every
+   control is a discrete button and scales; the copy button tints because
+   it is a bare glyph affordance rather than a filled action. */
+.sync-conflicts-requeue-all-btn:not(:disabled):active,
+.sync-conflicts-inspect-btn:not(:disabled):active,
+.sync-conflicts-retry-btn:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+.sync-conflicts-copy-btn:active {
+  background: color-mix(in srgb, var(--color-fg) 12%, transparent);
+}
+
+@media (pointer: coarse) {
+  .sync-conflicts-requeue-all-btn,
+  .sync-conflicts-inspect-btn,
+  .sync-conflicts-retry-btn,
+  .sync-conflicts-copy-btn {
+    min-height: var(--touch-target-min);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sync-conflicts-requeue-all-btn:not(:disabled):active,
+  .sync-conflicts-inspect-btn:not(:disabled):active,
+  .sync-conflicts-retry-btn:not(:disabled):active {
+    transform: none;
+    opacity: 0.75;
+  }
+}
+

@@ -824,3 +824,32 @@
 .shift-mgmt-cell-negative {
   color: var(--color-danger);
 }
+
+/* ── Touch press feedback ────────────────────────────────────────────
+   Shift close and payout happen at the till on the tablet, often one-handed
+   at end of day. All four are discrete buttons: they scale. */
+.shift-mgmt-close-btn:not(:disabled):active,
+.shift-mgmt-view-btn:not(:disabled):active,
+.shift-mgmt-modal-close:not(:disabled):active,
+.shift-mgmt-payout-btn:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+@media (pointer: coarse) {
+  .shift-mgmt-close-btn,
+  .shift-mgmt-view-btn,
+  .shift-mgmt-modal-close,
+  .shift-mgmt-payout-btn {
+    min-height: var(--touch-target-min);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shift-mgmt-close-btn:not(:disabled):active,
+  .shift-mgmt-view-btn:not(:disabled):active,
+  .shift-mgmt-modal-close:not(:disabled):active,
+  .shift-mgmt-payout-btn:not(:disabled):active {
+    transform: none;
+    opacity: 0.75;
+  }
+}
