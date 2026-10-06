@@ -22,6 +22,30 @@
 //! AppearanceSettings' self-contained pattern. Copy is Fluent-only and uses
 //! existing keys; the one new key (`settings-store-name-required`) was added to
 //! BOTH the en and id bundles.
+//!
+//! VERIFIED ON THE TABLET 2026-10-06 (Redmi 23073RPBFG, debug build embedding
+//! this bundle), over CDP against the running app:
+//!
+//!   input#settings-field-store-name  → present
+//!   input#settings-field-tax-id      → present
+//!   input#settings-field-address     → present
+//!   input#settings-field-branch      → present
+//!   select#language-select           → present, 2 options (en, id)
+//!   select#settings-field-default-currency → present
+//!   .settings-section-content input  → 4   (was 0 before this migration)
+//!   .settings-general-save-btn       → present
+//!
+//! Typing into the store-name field flipped that button from `disabled: true`
+//! to `disabled: false`, so the dirty comparison against the context read is
+//! live — not merely "renders".
+//!
+//! NOT verified end-to-end: the WRITE. Pressing save produces no toast on this
+//! device, and the page-level "Save settings" button behaves identically — the
+//! workspace session token is minted only when an instance is resolvable (see
+//! useBackupStatus.ts for the same hole), and this install has none. So the
+//! no-op is the documented token gate, not this screen's save path failing; it
+//! is asserted directly by useStoreDraft.test.tsx ("save writes the draft
+//! through the scoped command") under a mocked token.
 
 import { Localized, useLocalization } from '@fluent/react';
 import { Button } from '@/components/Button';
