@@ -1708,7 +1708,28 @@ const SCREENS: ScreenEntry[] = [
     // its markup that its own sheet does not define.
     name: 'LocalPaymentSettingsCard',
     tsx: 'settings/screens/LocalPaymentSettingsCard.tsx',
-    css: ['settings/screens/LocalPaymentSettingsCard.css'],
+    // SettingsScopeTag.css joins the css list, not just additionalTsx: the header
+    // contract at :6-8 is that additionalTsx feeds the USED-class walk and css feeds
+    // the DEFINED-rule walk. Citing only the component left settings-scope-tag
+    // reported as used-but-undefined, because its own sheet was still unclaimed.
+    css: [
+      'settings/screens/LocalPaymentSettingsCard.css',
+      'settings/SettingsScopeTag.css',
+    ],
+    // The component itself is mounted at :167 (imported :18). An additionalTsx line
+    // rather than an entry of its own is the right shape: SettingsScopeTag is a
+    // component, not a screen — no route, no registerPage, no nav item — the same
+    // relationship the settings sections and the four workspace cards have to
+    // SettingsPage. It sat in BASELINE_UNCITED until now, so neither half of this
+    // suite graded it in either direction.
+    additionalTsx: ['settings/SettingsScopeTag.tsx'],
+    // The five scope modifiers are composed from the prop:
+    // `settings-scope-tag settings-scope-tag--${scope}` (SettingsScopeTag.tsx:45),
+    // so the static walk reaches the base and none of the tails. This is the
+    // genuine composed-at-runtime case, and SettingsScopeTag.test.tsx:23 asserts
+    // the composed name directly — the prefix covers exactly the five variants the
+    // sheet defines and no more.
+    dynamicClassPrefixes: ['settings-scope-tag--'],
     parentCss: ['settings/SettingsPage.css'],
   },
 
@@ -2792,7 +2813,6 @@ const BASELINE_UNCITED: string[] = [
   'retail/RetailPosScreen.css',
   'sales/widgets/widgets.css',
   'settings/SettingsNavTree.css',
-  'settings/SettingsScopeTag.css',
   'settings/WorkspaceSettingsModal.module.css',
   'setup/components/LiveSetupPreview.css',
   'staff/components/RoleAuthoringPanel.css',
