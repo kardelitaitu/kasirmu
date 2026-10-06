@@ -15,6 +15,7 @@ import { SettingsPopup } from '@/components';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { formatMoney } from '@/types/domain';
 import './BundleManagementScreen.css';
+import { asArray } from '@/utils/ipc-payload';
 
 interface BundleItemForm {
   sku: string;
@@ -62,7 +63,7 @@ export default function BundleManagementScreen() {
     setLoading(true);
     try {
       const result = await listBundles(sessionToken);
-      setBundles(result);
+      setBundles(asArray<typeof result[number]>(result));
     } catch {
       // IPC unavailable.
     } finally {

@@ -21,6 +21,7 @@ import { Button } from '@/components/Button';
 import { Skeleton } from '@/components/Skeleton';
 import { SegmentedTabs, requiredLocalized, type RequiredLocalizedL10n } from '@/components';
 import { l10nErrorMessage } from '@/utils/app-error';
+import { asArray } from '@/utils/ipc-payload';
 import { settleRead } from '@/utils/settle-read';
 import './StockTransfersScreen.css';
 
@@ -115,7 +116,7 @@ export default function StockTransfersScreen() {
         settleRead('stock-transfers listProductsScoped', listProductsScoped(sessionToken)),
         settleRead('stock-transfers listTerminalsScoped', listTerminalsScoped(sessionToken)),
       ]);
-      setTransfers(data);
+      setTransfers(asArray<typeof data[number]>(data));
       // Only an ANSWER is written. A throw writes nothing, so the dropdowns
       // stay UNKNOWN and the notices below can say so out loud.
       if (prodRead.ok) setProducts(prodRead.value);

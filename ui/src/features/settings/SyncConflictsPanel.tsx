@@ -10,6 +10,7 @@ import {
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 
 import './SyncConflictsPanel.css';
+import { asArray } from '@/utils/ipc-payload';
 
 export interface SyncConflictsPanelProps {
   onRequeueSuccess?: () => void;
@@ -53,7 +54,7 @@ export function SyncConflictsPanel({
     try {
       const result = await listRemoteFailuresScoped(sessionToken);
       const list = result ?? [];
-      setFailures(list);
+      setFailures(asArray<typeof list[number]>(list));
       const deadCount = list.filter((f) => f.deadLettered).length;
       onCountChange?.(deadCount);
     } catch (e) {

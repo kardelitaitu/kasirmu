@@ -35,6 +35,7 @@ import {
 } from '@/api/fiscal';
 import { listLegalEntitiesScoped, type LegalEntity } from '@/api/legalEntities';
 import { l10nErrorMessage } from '@/utils/app-error';
+import { asArray } from '@/utils/ipc-payload';
 import './StatutoryNumberingCard.css';
 
 /** The series kinds this card can number. Adding one is a deliberate act:
@@ -93,7 +94,7 @@ export function StatutoryNumberingCard() {
       try {
         const rows = await listLegalEntitiesScoped(sessionToken);
         if (cancelled) return;
-        setEntities(rows);
+        setEntities(asArray<typeof rows[number]>(rows));
         setEntityId(rows[0]?.id ?? null);
         // W5-C: the whole configured surface — every entity's series with
         // its live counter — so the card finally SHOWS what exists instead

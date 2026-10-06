@@ -18,6 +18,7 @@ import { Button } from '@/components/Button';
 import { Badge } from '@/components/Badge';
 import { Skeleton } from '@/components/Skeleton';
 import { l10nErrorMessage } from '@/utils/app-error';
+import { asArray } from '@/utils/ipc-payload';
 import './VoidOrdersScreen.css';
 
 // ── Reason options ──────────────────────────────────────────────────
@@ -112,7 +113,7 @@ export default function VoidOrdersScreen({ initialSaleId }: VoidOrdersScreenProp
       const { sales: items } = sessionToken
         ? await listSalesScoped(sessionToken)
         : await listSales();
-      setSales(items);
+      setSales(asArray<typeof items[number]>(items));
     } catch (err) {
       setError(l10nErrorMessage(err, l10n, 'void-orders-error-load'));
     } finally {

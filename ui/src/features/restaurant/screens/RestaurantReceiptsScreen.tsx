@@ -17,6 +17,7 @@ import { printSalesReceipt } from '@/api/sales';
 import { openCashDrawerScoped } from '@/api/hardware';
 import SettingsSelect from '@/features/settings/SettingsSelect';
 import { tierSatisfies } from '@/utils/tierLevel';
+import { asArray } from '@/utils/ipc-payload';
 import {
   clamp,
   rollWidthMm as paperRollWidth,
@@ -197,7 +198,7 @@ export default function RestaurantReceiptsScreen({
       if (hasPerms && win.__kasirmuNative.getPairedBluetoothDevices) {
         try {
           const list = JSON.parse(win.__kasirmuNative.getPairedBluetoothDevices()) as Array<{ name: string; address: string }>;
-          setPairedBtDevices(list);
+          setPairedBtDevices(asArray<typeof list[number]>(list));
         } catch {
           setPairedBtDevices([]);
         }

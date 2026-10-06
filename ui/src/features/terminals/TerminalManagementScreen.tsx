@@ -204,7 +204,7 @@ export default function TerminalManagementScreen() {
     setError(null);
     try {
       const data = await listTerminalsScoped(sessionToken);
-      setTerminals(data);
+      setTerminals(asArray<typeof data[number]>(data));
     } catch {
       setError(l10n.getString('terminal-error-load'));
     } finally {

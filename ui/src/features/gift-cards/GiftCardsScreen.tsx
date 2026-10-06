@@ -13,6 +13,7 @@ import { requiredLocalized, EmptyState } from '@/components';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { NoGiftCardsIcon } from '@/components/EmptyStateIllustrations';
 import { l10nErrorMessage } from '@/utils/app-error';
+import { asArray } from '@/utils/ipc-payload';
 import { formatMoney } from '@/types/domain';
 import { Card } from '@/components/Card';
 import { Button } from '@/components/Button';
@@ -59,7 +60,7 @@ export default function GiftCardsScreen() {
       if (search.trim()) filter.search = search.trim();
       if (statusFilter) filter.status = statusFilter;
       const result = await listGiftCards(sessionToken, filter);
-      setCards(result);
+      setCards(asArray<typeof result[number]>(result));
     } catch {
       addToast({ message: requiredLocalized(l10n, 'gift-cards-error-load'), type: 'error' });
     } finally {

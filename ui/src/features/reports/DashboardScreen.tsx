@@ -13,6 +13,7 @@ import { useCurrency } from '@/contexts/CurrencyContext';
 import { useWorkspaceNav } from '@/hooks/useWorkspaceNav';
 import { requiredLocalized } from '@/components';
 import { l10nErrorMessage } from '@/utils/app-error';
+import { asArray } from '@/utils/ipc-payload';
 import { Card } from '@/components/Card';
 import { Spinner } from '@/components/Spinner';
 import { minorUnitExponent } from '@/types/domain';
@@ -223,7 +224,7 @@ function DashboardScreenContent() {
       setDailyRevenue(daily);
       setTopProducts(top);
       setLowStock(stock);
-      setCategoryBreakdown(cats);
+      setCategoryBreakdown(asArray<typeof cats[number]>(cats));
       setSelectedCategory(null);
       setHeatmap(heat);
       setPrevDaily(prev);

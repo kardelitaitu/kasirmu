@@ -18,6 +18,7 @@ export { fmtDuration } from '@/features/kds/components/KdsTicketLineItem';
 export { itemDone };
 import { canAdvanceKdsStatus } from '@/features/kds/kdsStatus';
 import { useKdsCardColors } from '@/features/kds/KdsCardColorsContext';
+import { asArray } from '@/utils/ipc-payload';
 
 /** Props for the KdsTicketCard component. */
 export interface KdsTicketCardProps {
@@ -205,7 +206,7 @@ export const KdsTicketCard = memo(function KdsTicketCard({
     getKdsOrderLinesScoped(sessionToken, order.id)
       .then((items) => {
         if (seq !== loadSeqRef.current) return;
-        setLineItems(items);
+        setLineItems(asArray<typeof items[number]>(items));
         setLineItemsLoading(false);
       })
       .catch(() => {

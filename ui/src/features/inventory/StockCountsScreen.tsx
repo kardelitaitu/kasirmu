@@ -4,6 +4,7 @@ import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { useToast } from '@/components/Toast';
 import { requiredLocalized } from '@/components';
 import { l10nErrorMessage } from '@/utils/app-error';
+import { asArray } from '@/utils/ipc-payload';
 import {
   listStockCounts,
   type StockCountDto,
@@ -38,7 +39,7 @@ export default function StockCountsScreen() {
     try {
       if (!sessionToken) throw new Error(requiredLocalized(l10nRef.current, 'sc-error-session'));
       const data = await listStockCounts(sessionToken);
-      setCounts(data);
+      setCounts(asArray<typeof data[number]>(data));
     } catch (err) {
       const message = l10nErrorMessage(err, l10nRef.current, 'sc-error-load');
       setError(message);

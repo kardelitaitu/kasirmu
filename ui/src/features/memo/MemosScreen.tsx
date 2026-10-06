@@ -17,6 +17,7 @@ import { Card } from '@/components/Card';
 import { Button } from '@/components/Button';
 import { Skeleton } from '@/components/Skeleton';
 import { l10nErrorMessage } from '@/utils/app-error';
+import { asArray } from '@/utils/ipc-payload';
 import './MemosScreen.css';
 
 // ── Helpers ─────────────────────────────────────────────────────────
@@ -145,7 +146,7 @@ function MemosScreenContent() {
     try {
       const rows = await listAuthoredMemosScoped(sessionToken);
       if (seq !== loadSeqRef.current) return;
-      setMemos(rows);
+      setMemos(asArray<typeof rows[number]>(rows));
     } catch (err) {
       if (seq !== loadSeqRef.current) return;
       setError(l10nErrorMessage(err, l10n, 'memos-error-load'));

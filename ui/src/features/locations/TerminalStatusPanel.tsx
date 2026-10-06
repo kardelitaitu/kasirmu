@@ -5,6 +5,7 @@ import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { Card } from '@/components/Card';
 import { Skeleton } from '@/components/Skeleton';
 import './TerminalStatusPanel.css';
+import { asArray } from '@/utils/ipc-payload';
 
 const ONLINE_THRESHOLD_MS = 5 * 60 * 1000;
 
@@ -42,7 +43,7 @@ export default function TerminalStatusPanel({ refreshTrigger }: TerminalStatusPa
   const load = useCallback(async () => {
     try {
       const data = await listTerminalsScoped(sessionToken);
-      setTerminals(data);
+      setTerminals(asArray<typeof data[number]>(data));
       setError(null);
     } catch {
       setError(l10n.getString('terminal-status-error-load'));

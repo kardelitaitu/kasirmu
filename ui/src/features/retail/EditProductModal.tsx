@@ -13,6 +13,7 @@ import {
   productsListImagesScoped,
 } from '@/api/products';
 import { DEFAULT_LOW_STOCK_THRESHOLD, DEFAULT_HIGH_STOCK_THRESHOLD } from '@/types/domain';
+import { asArray } from '@/utils/ipc-payload';
 
 export interface EditProductModalProps {
   product: ProductDto | null;
@@ -69,7 +70,7 @@ export const EditProductModal: React.FC<EditProductModalProps> = ({
     if (!sessionToken || !product?.id) return;
     try {
       const list = await productsListImagesScoped(sessionToken, product.id);
-      setImages(list);
+      setImages(asArray<typeof list[number]>(list));
       setImageError(null);
     } catch {
       setImageError(requiredLocalized(l10n, 'retail-edit-image-error'));

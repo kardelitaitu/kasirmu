@@ -100,7 +100,7 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
     let cancelled = false;
     listSectionsScoped(sessionToken)
       .then((data) => {
-        if (!cancelled) setSections(data);
+        if (!cancelled) setSections(asArray<typeof data[number]>(data));
       })
       .catch(() => {
         if (!cancelled) setSections([]);
