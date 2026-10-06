@@ -158,10 +158,12 @@ pub use kds_sync::{
     EVENT_LINE_ITEM_BUMPED, EVENT_ORDER_PLACED, EVENT_ORDER_READY, EVENT_ORDER_RECALLED,
     KDS_EVENT_TAG_PREFIX, KdsLineItemBumped, KdsOrderPlaced, KdsOrderReady, KdsOrderRecalled,
     KdsQueueProvider, KdsQueueSnapshot, KdsQueueTicket, KdsSyncEvent, KdsSyncHandler,
-    PeerSubscription, TableStateProvider, event_station_scope, should_deliver,
+    PeerSubscription, TableLeaseProvider, TableStateProvider, event_station_scope, should_deliver,
 };
 pub use table_sync::{
-    EVENT_TABLE_STATUS_CHANGED, TABLE_EVENT_TAG_PREFIX, TableStatusChanged, TableSyncEvent,
+    EVENT_TABLE_CLAIM_REQUESTED, EVENT_TABLE_LOCK_ACQUIRED, EVENT_TABLE_LOCK_RELEASED,
+    EVENT_TABLE_STATUS_CHANGED, TABLE_EVENT_TAG_PREFIX, TableClaimRequested, TableLease,
+    TableLeaseTracker, TableLockAcquired, TableLockReleased, TableStatusChanged, TableSyncEvent,
     TableSyncHandler,
 };
 
@@ -316,6 +318,9 @@ pub struct LanEventForwarder {
     /// Live floor table snapshot source for reconnecting peers
     /// (`{"op":"discover","want_tables":true}`).
     table_provider: Option<TableStateProvider>,
+    /// Live active table leases snapshot source for reconnecting peers
+    /// (`{"op":"discover","want_tables":true}`).
+    lease_provider: Option<TableLeaseProvider>,
     /// Optional handler for processing uplink messages from connected peers.
     uplink_handler: Option<UplinkHandler>,
 }
@@ -343,6 +348,7 @@ impl LanEventForwarder {
             discovery_payload: None,
             kds_queue: None,
             table_provider: None,
+            lease_provider: None,
             uplink_handler: None,
         }
     }
@@ -398,6 +404,12 @@ impl LanEventForwarder {
         self
     }
 
+    /// Attach a live active table lease provider for reconnect reconciliation.
+    pub fn with_table_leases(mut self, provider: TableLeaseProvider) -> Self {
+        self.lease_provider = Some(provider);
+        self
+    }
+
     /// Return a handle for registering event bus subscribers.
     pub fn handle(&self) -> LanForwarderHandle {
         LanForwarderHandle {
@@ -447,6 +459,7 @@ impl LanEventForwarder {
         let psk = self.psk.clone();
         let kds_queue = self.kds_queue.clone();
         let table_provider = self.table_provider.clone();
+        let lease_provider = self.lease_provider.clone();
         let uplink = self.uplink_handler.clone();
 
         loop {
@@ -466,6 +479,7 @@ impl LanEventForwarder {
                     let discovery = self.discovery_payload.clone();
                     let kds_queue_clone = kds_queue.clone();
                     let table_provider_clone = table_provider.clone();
+                    let lease_provider_clone = lease_provider.clone();
                     let uplink_clone = uplink.clone();
                     tokio::spawn(handle_peer(
                         stream,
@@ -476,6 +490,7 @@ impl LanEventForwarder {
                         discovery,
                         kds_queue_clone,
                         table_provider_clone,
+                        lease_provider_clone,
                         uplink_clone,
                     ));
                 }
@@ -560,6 +575,12 @@ pub struct KdsDiscoverResponse {
     /// [`LanEventForwarder::with_table_provider`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub table_states: Option<Vec<kasirmu_core::Table>>,
+    /// Reconnect reconciliation (multi-terminal active table leases):
+    /// the current active table leases snapshot, present only when the peer's
+    /// discovery request opted in with `want_tables: true` **and** a provider
+    /// is configured via [`LanEventForwarder::with_table_leases`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub active_leases: Option<Vec<table_sync::TableLease>>,
 }
 
 // ── Peer handler ─────────────────────────────────────────────────────
@@ -608,6 +629,7 @@ async fn handle_peer(
     discovery_payload: Option<Arc<String>>,
     kds_queue: Option<KdsQueueProvider>,
     table_provider: Option<TableStateProvider>,
+    lease_provider: Option<TableLeaseProvider>,
     uplink_handler: Option<UplinkHandler>,
 ) {
     let timeout_dur = std::time::Duration::from_secs(PSK_HANDSHAKE_TIMEOUT_SECS);
@@ -757,6 +779,7 @@ async fn handle_peer(
                                     kds_queue.as_ref(),
                                     d.want_tables,
                                     table_provider.as_ref(),
+                                    lease_provider.as_ref(),
                                 );
                                 let mut out = vec![0u8; response.len() + 32];
                                 if let Ok(en) = state.write_message(response.as_bytes(), &mut out) {
@@ -822,6 +845,7 @@ async fn handle_peer(
                                 kds_queue.as_ref(),
                                 d.want_tables,
                                 table_provider.as_ref(),
+                                lease_provider.as_ref(),
                             );
                             let response = format!("{response}\n");
                             if let Err(e) = stream.get_mut().write_all(response.as_bytes()).await {

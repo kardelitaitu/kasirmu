@@ -234,7 +234,9 @@ pub struct AppState {
     /// pointer swap, never across an await. Starts as the empty default;
     /// first populated when this terminal executes a KDS transition.
     ///
-    /// [`KdsQueueProvider`]: kasirmu_lan::KdsQueueProvider
+    /// In-memory active table leases tracker for distributed locking across LAN peers.
+    pub table_lease_tracker: Arc<RwLock<kasirmu_lan::TableLeaseTracker>>,
+    /// In-memory KDS active-queue snapshot served to reconnecting LAN KDS peers.
     pub kds_queue_cache: Arc<RwLock<kasirmu_lan::KdsQueueSnapshot>>,
 }
 
@@ -472,6 +474,7 @@ impl AppState {
             topology_apply_lock: Mutex::new(()),
             local_api: Mutex::new(None),
             local_api_op: Mutex::new(()),
+            table_lease_tracker: Arc::new(RwLock::new(kasirmu_lan::TableLeaseTracker::new())),
             kds_queue_cache: Arc::new(RwLock::new(kasirmu_lan::KdsQueueSnapshot::default())),
         })
     }

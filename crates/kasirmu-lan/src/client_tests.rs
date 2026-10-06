@@ -63,6 +63,7 @@ async fn lan_client_noise_connects_and_receives_table_event() {
         transports: vec!["noise-psk-v1".into()],
         active_queue: None,
         table_states: None,
+        active_leases: None,
     };
     let discover_json = serde_json::to_string(&discover).unwrap();
 
@@ -185,6 +186,7 @@ async fn lan_client_sends_uplink_and_triggers_server_handler() {
         transports: vec!["noise-psk-v1".into()],
         active_queue: None,
         table_states: None,
+        active_leases: None,
     };
     let discover_json = serde_json::to_string(&discover).unwrap();
 

@@ -88,12 +88,19 @@ This master plan bridges the peer-to-peer gap over the audited `kasirmu-lan` tra
     - [x] Two terminals connect over Noise transport.
     - [x] Terminal A uplinks stock movement mutations (`OfflineQueueItem`), primary server receives and broadcasts, Terminal B receives and validates identical batch without loss.
 
-#### Phase 2.3: Table & Held Cart Distributed Lease Protocol
+#### Phase 2.3: Table & Held Cart Distributed Lease Protocol [COMPLETED]
 - **Goal**: Prevent split-brain cart checkout or double-seating across terminals when offline.
 - **Implementation**:
-  - Lease message on wire: `table.lock_acquired { table_id, terminal_id, lease_ttl_ms }` and `table.lock_released`.
-  - Soft optimistic lock: If Tablet A has an open bill on Table 4, Tablet B shows "Occupied by Terminal A" with a badge.
-  - Held cart transfer: Tablet B can request cart handover; Tablet A acknowledges and releases local lock.
+  - [x] Lease messages on wire: `table.lock_acquired { table_id, terminal_id, lease_ttl_ms, acquired_at }`, `table.lock_released`, and `table.claim_requested`.
+  - [x] In-memory `TableLeaseTracker` with timestamp-based expiry, conflict detection, and active lease listing.
+  - [x] Reconnect reconciliation: `KdsDiscoverResponse` carries `active_leases` on `want_tables: true`, injected via `TableLeaseProvider` (`with_table_leases`).
+  - [x] Desktop server wires `TableLeaseTracker` to `LanEventForwarder` and handles lock/release uplink messages, updating local state and broadcasting lease updates.
+  - [x] Mobile tablet LAN client daemon receives lease updates and emits `tables:lock-acquired`, `tables:lock-released`, and `tables:claim-requested` to WebView.
+  - [x] Added comprehensive distributed lease integration tests in `crates/kasirmu-lan/tests/distributed_lease_tests.rs`:
+    - [x] Terminal A acquires lease on table -> Terminal B receives `LockAcquired` broadcast.
+    - [x] Terminal B attempts conflicting acquisition -> rejected by tracker with conflict details.
+    - [x] Terminal A releases lease -> Terminal B receives `LockReleased` broadcast and successfully acquires table.
+    - [x] Terminal C reconnects and immediately receives active table lease in discovery response.
 
 ---
 

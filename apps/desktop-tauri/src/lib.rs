@@ -932,7 +932,7 @@ pub fn run() {
             // transition: it runs synchronously inside the per-peer
             // accept task, so it only ever takes the cheap `std` read
             // lock and never touches the async DB mutex.
-            let (kds_discovery_json, kds_queue_provider, table_provider) = {
+            let (kds_discovery_json, kds_queue_provider, table_provider, table_lease_provider) = {
                 let state = app.state::<AppState>();
                 let restaurant_pos_id = state
                     .terminal_id
@@ -947,6 +947,7 @@ pub fn run() {
                     transports: vec!["noise-psk-v1".into(), "legacy-psk-v1".into()],
                     active_queue: None,
                     table_states: None,
+                    active_leases: None,
                 };
                 let json = serde_json::to_string(&discover).unwrap_or_else(|e| {
                     tracing::warn!(
@@ -977,17 +978,30 @@ pub fn run() {
                     }
                     all_tables
                 });
-                (json, provider, table_provider)
+                let lease_tracker = state.table_lease_tracker.clone();
+                let table_lease_provider: crate::lan_server::TableLeaseProvider = std::sync::Arc::new(move || {
+                    let now_ms = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_millis() as u64;
+                    lease_tracker
+                        .read()
+                        .map(|t| t.active_leases(now_ms))
+                        .unwrap_or_default()
+                });
+                (json, provider, table_provider, table_lease_provider)
             };
             let forwarder = crate::lan_server::LanEventForwarder::new(lan_bind_addr, lan_psk)
                 .with_discovery(kds_discovery_json)
                 .with_kds_queue(kds_queue_provider)
-                .with_table_provider(table_provider);
+                .with_table_provider(table_provider)
+                .with_table_leases(table_lease_provider);
             let handle = forwarder.handle();
 
             let uplink_db_manager = app.state::<AppState>().db_manager.clone();
             let uplink_app_handle = app.handle().clone();
             let uplink_kds_cache = app.state::<AppState>().kds_queue_cache.clone();
+            let uplink_table_leases = app.state::<AppState>().table_lease_tracker.clone();
             let uplink_forwarder_handle = handle.clone();
 
             let uplink_handler: crate::lan_server::UplinkHandler =
@@ -1121,7 +1135,34 @@ pub fn run() {
                             }
                         }
                     } else if trimmed.starts_with(crate::lan_server::TABLE_EVENT_TAG_PREFIX) {
-                        let _ = uplink_app_handle.emit("tables:status-changed", serde_json::Value::Null);
+                        if let Ok(event) = serde_json::from_str::<crate::lan_server::TableSyncEvent>(trimmed) {
+                            let now_ms = std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .unwrap_or_default()
+                                .as_millis() as u64;
+                            match &event {
+                                crate::lan_server::TableSyncEvent::LockAcquired(lock) => {
+                                    if let Ok(mut trk) = uplink_table_leases.write() {
+                                        let _ = trk.try_acquire(lock.clone(), now_ms);
+                                    }
+                                    let _ = uplink_app_handle.emit("tables:lock-acquired", lock);
+                                }
+                                crate::lan_server::TableSyncEvent::LockReleased(rel) => {
+                                    if let Ok(mut trk) = uplink_table_leases.write() {
+                                        let _ = trk.release(rel);
+                                    }
+                                    let _ = uplink_app_handle.emit("tables:lock-released", rel);
+                                }
+                                crate::lan_server::TableSyncEvent::ClaimRequested(claim) => {
+                                    let _ = uplink_app_handle.emit("tables:claim-requested", claim);
+                                }
+                                crate::lan_server::TableSyncEvent::StatusChanged(_) => {
+                                    let _ = uplink_app_handle.emit("tables:status-changed", serde_json::Value::Null);
+                                }
+                            }
+                        } else {
+                            let _ = uplink_app_handle.emit("tables:status-changed", serde_json::Value::Null);
+                        }
                     }
                 });
 

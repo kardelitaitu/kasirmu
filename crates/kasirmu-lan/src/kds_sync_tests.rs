@@ -432,6 +432,7 @@ fn new_discovery_response_roundtrips_with_active_queue() {
         transports: vec!["noise-psk-v1".into(), "legacy-psk-v1".into()],
         active_queue: Some(snapshot),
         table_states: None,
+        active_leases: None,
     };
     let json = serde_json::to_string(&response).unwrap();
     assert!(json.contains("\"active_queue\""));
@@ -466,16 +467,16 @@ const BASE_PAYLOAD: &str =
 #[test]
 fn non_opting_peer_gets_byte_identical_payload() {
     // No opt-in — even with a provider configured, legacy bytes hold.
-    let out = build_discovery_response(BASE_PAYLOAD, false, Some(&provider()), false, None);
+    let out = build_discovery_response(BASE_PAYLOAD, false, Some(&provider()), false, None, None);
     assert_eq!(out, BASE_PAYLOAD);
     // Opt-in but no provider configured: still unchanged.
-    let out = build_discovery_response(BASE_PAYLOAD, true, None, false, None);
+    let out = build_discovery_response(BASE_PAYLOAD, true, None, false, None, None);
     assert_eq!(out, BASE_PAYLOAD);
 }
 
 #[test]
 fn opt_in_peer_gets_active_queue_injected() {
-    let out = build_discovery_response(BASE_PAYLOAD, true, Some(&provider()), false, None);
+    let out = build_discovery_response(BASE_PAYLOAD, true, Some(&provider()), false, None, None);
     let value: serde_json::Value = serde_json::from_str(&out).unwrap();
     assert_eq!(value["restaurant_pos_id"], "pos-1");
     let queue = value
@@ -490,7 +491,7 @@ fn opt_in_peer_gets_active_queue_injected() {
 fn injection_survives_typed_deserialize_on_client_side() {
     // The client-side apply path: an injected response parses straight
     // into the typed response with the snapshot populated.
-    let out = build_discovery_response(BASE_PAYLOAD, true, Some(&provider()), false, None);
+    let out = build_discovery_response(BASE_PAYLOAD, true, Some(&provider()), false, None, None);
     let parsed: crate::KdsDiscoverResponse =
         serde_json::from_value(serde_json::from_str(&out).unwrap()).unwrap();
     let queue = parsed.active_queue.expect("typed apply path");
@@ -526,13 +527,35 @@ fn opt_in_peer_gets_table_states_injected() {
             updated_at: "2026-10-07T01:00:00Z".into(),
         }]
     });
-    let out = build_discovery_response(BASE_PAYLOAD, false, None, true, Some(&table_provider));
+    let lease_provider: TableLeaseProvider = Arc::new(|| {
+        vec![crate::table_sync::TableLease {
+            table_id: "tbl-1".into(),
+            terminal_id: "term-pos-1".into(),
+            terminal_label: Some("POS 1".into()),
+            held_cart_id: None,
+            lease_ttl_ms: 30000,
+            acquired_at: "2026-10-07T00:00:00Z".into(),
+            expires_at_epoch_ms: 30000,
+        }]
+    });
+    let out = build_discovery_response(
+        BASE_PAYLOAD,
+        false,
+        None,
+        true,
+        Some(&table_provider),
+        Some(&lease_provider),
+    );
     let parsed: crate::KdsDiscoverResponse =
         serde_json::from_value(serde_json::from_str(&out).unwrap()).unwrap();
     let tables = parsed.table_states.expect("table_states must be injected");
     assert_eq!(tables.len(), 1);
     assert_eq!(tables[0].id, "tbl-1");
     assert_eq!(tables[0].status, "occupied");
+    let leases = parsed.active_leases.expect("active_leases must be injected");
+    assert_eq!(leases.len(), 1);
+    assert_eq!(leases[0].table_id, "tbl-1");
+    assert_eq!(leases[0].terminal_id, "term-pos-1");
 }
 
 #[test]
@@ -540,11 +563,11 @@ fn malformed_payload_is_returned_unchanged() {
     // Non-JSON and non-object payloads must not gain a snapshot key —
     // the response degrades to the legacy bytes instead of breaking.
     assert_eq!(
-        build_discovery_response("not json", true, Some(&provider()), false, None),
+        build_discovery_response("not json", true, Some(&provider()), false, None, None),
         "not json"
     );
     assert_eq!(
-        build_discovery_response("[1,2,3]", true, Some(&provider()), false, None),
+        build_discovery_response("[1,2,3]", true, Some(&provider()), false, None, None),
         "[1,2,3]"
     );
 }
@@ -555,7 +578,7 @@ fn empty_snapshot_still_satisfies_the_opt_in() {
         generated_at: "2026-09-13T09:00:00Z".into(),
         tickets: vec![],
     });
-    let out = build_discovery_response(BASE_PAYLOAD, true, Some(&empty), false, None);
+    let out = build_discovery_response(BASE_PAYLOAD, true, Some(&empty), false, None, None);
     let value: serde_json::Value = serde_json::from_str(&out).unwrap();
     assert_eq!(
         value["active_queue"]["tickets"].as_array().unwrap().len(),

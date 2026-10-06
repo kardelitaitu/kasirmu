@@ -400,8 +400,12 @@ pub type KdsQueueProvider = Arc<dyn Fn() -> KdsQueueSnapshot + Send + Sync>;
 /// Source of live floor table snapshots for reconnecting peer terminals.
 pub type TableStateProvider = Arc<dyn Fn() -> Vec<kasirmu_core::Table> + Send + Sync>;
 
+/// Source of live active table leases for reconnecting peer terminals.
+pub type TableLeaseProvider = Arc<dyn Fn() -> Vec<crate::table_sync::TableLease> + Send + Sync>;
+
 /// Answer one discovery request, optionally injecting the live active
-/// queue under `active_queue` and table states under `table_states`.
+/// queue under `active_queue`, table states under `table_states`, and active
+/// table leases under `active_leases`.
 ///
 /// The payload is returned **byte-identical** unless the peer opted in
 /// with `want_queue: true` / `want_tables: true`, a corresponding provider is configured,
@@ -413,11 +417,12 @@ pub(crate) fn build_discovery_response(
     queue_provider: Option<&KdsQueueProvider>,
     want_tables: bool,
     table_provider: Option<&TableStateProvider>,
+    lease_provider: Option<&TableLeaseProvider>,
 ) -> String {
     if !want_queue && !want_tables {
         return payload.to_string();
     }
-    if queue_provider.is_none() && table_provider.is_none() {
+    if queue_provider.is_none() && table_provider.is_none() && lease_provider.is_none() {
         return payload.to_string();
     }
     let Ok(mut value) = serde_json::from_str::<serde_json::Value>(payload) else {
@@ -441,16 +446,27 @@ pub(crate) fn build_discovery_response(
             }
         }
     }
-    if want_tables
-        && let Some(provider) = table_provider
-    {
-        let tables = provider();
-        match serde_json::to_value(&tables) {
-            Ok(t) => {
-                value["table_states"] = t;
+    if want_tables {
+        if let Some(provider) = table_provider {
+            let tables = provider();
+            match serde_json::to_value(&tables) {
+                Ok(t) => {
+                    value["table_states"] = t;
+                }
+                Err(e) => {
+                    tracing::warn!(error = %e, "failed to serialise table snapshot — omitted");
+                }
             }
-            Err(e) => {
-                tracing::warn!(error = %e, "failed to serialise table snapshot — omitted");
+        }
+        if let Some(provider) = lease_provider {
+            let leases = provider();
+            match serde_json::to_value(&leases) {
+                Ok(l) => {
+                    value["active_leases"] = l;
+                }
+                Err(e) => {
+                    tracing::warn!(error = %e, "failed to serialise table leases snapshot — omitted");
+                }
             }
         }
     }

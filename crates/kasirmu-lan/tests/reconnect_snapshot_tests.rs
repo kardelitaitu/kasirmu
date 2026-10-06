@@ -114,6 +114,7 @@ async fn reconnect_fetches_fresh_table_snapshot_and_reconciles() {
         transports: vec!["noise-psk-v1".into()],
         active_queue: None,
         table_states: None,
+        active_leases: None,
     };
     let discover_json = serde_json::to_string(&base_discover).unwrap();
 
