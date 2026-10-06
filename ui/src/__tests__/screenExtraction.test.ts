@@ -2130,6 +2130,30 @@ const SCREENS: ScreenEntry[] = [
   // ── Landed from the array: each entry below is one sheet that no check
   // read, registered only after its own walk came back 0 undefined / 0 dead.
   {
+    // memo/MemoBanner.css, landed 2026-10-07 (BASELINE_UNCITED 22 -> 21).
+    // MemoBanner is a COMPONENT, not a screen: it has no route, no registerPage
+    // and no nav item, and it is mounted from the shells rather than any one page
+    // (AppLayout.tsx:388, AppShell.tsx:623/660/688/703/729/747/773/789 and
+    // TabletAppLayout.tsx:127, TabletAppShell.tsx:547/578/591/604/617). None of
+    // those hosts is itself registered, so the entry is the component's own —
+    // the same shape 34 other non-Screen entries already use (StockCountDetail,
+    // TerminalStatusPanel, SalesHistoryScreen's siblings, …).
+    name: 'MemoBanner',
+    tsx: 'memo/MemoBanner.tsx',
+    css: ['memo/MemoBanner.css'],
+    // Three names reach className through a LOCAL, not through JSX:
+    //   const itemClass = ['memo-stack-item', mounted ? 'is-mounted' : '',
+    //                      exit.exiting ? 'is-exiting' : ''].filter(Boolean).join(' ')
+    // at :198-200, applied as className={itemClass} at :204. The static walk sees
+    // the identifier, never the three literals, so all three rules graded dead.
+    // dynamicClassPrefixes, NOT externalClasses: this sheet defines all three names
+    // itself, and the ledger case at :3011 requires an externalClasses value to be
+    // defined OUTSIDE the declaring entry's own css. A whole name is not a wildcard,
+    // so these three prefixes excuse exactly the three rules and nothing else — the
+    // same reasoning the WorkspaceHome entry records at :1013 for memo-stack.
+    dynamicClassPrefixes: ['memo-stack-item', 'is-mounted', 'is-exiting'],
+  },
+  {
     // 673-line screen over a 350-line sheet; lazy-registered page, so the
     // mount is proven by reports/register.tsx:8 and the registerPage route
     // 'menu-engineering' at :45. Owns its sheet (:33) and no other .tsx in
@@ -2809,7 +2833,6 @@ const BASELINE_UNCITED: string[] = [
   'locations/TopologyRevisionBrowser.css',
   'locations/TopologyScreen.css',
   'marketplace/AddonsMarketplace.css',
-  'memo/MemoBanner.css',
   'retail/RetailPosScreen.css',
   'sales/widgets/widgets.css',
   'settings/SettingsNavTree.css',
