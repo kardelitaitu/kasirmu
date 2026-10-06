@@ -803,6 +803,23 @@ pub fn run() {
                                     kasirmu_lan::LanEvent::Table(kasirmu_lan::TableSyncEvent::StatusChanged(sc)) => {
                                         let _ = lan_app_handle.emit("tables:status-changed", &sc.table);
                                     }
+                                    // Lease traffic. TableSyncEvent gained these three
+                                    // variants in 9d46d3912 while this match kept only
+                                    // StatusChanged, so the arm set was non-exhaustive and
+                                    // the Android build died at E0004 (the whole crate is
+                                    // one match arm short of compiling). Each is forwarded
+                                    // whole rather than filtered: the UI is what decides
+                                    // whether a lock belongs to this terminal, and it needs
+                                    // the acquiring terminal id to tell.
+                                    kasirmu_lan::LanEvent::Table(kasirmu_lan::TableSyncEvent::LockAcquired(lock)) => {
+                                        let _ = lan_app_handle.emit("tables:lock-acquired", &lock);
+                                    }
+                                    kasirmu_lan::LanEvent::Table(kasirmu_lan::TableSyncEvent::LockReleased(lock)) => {
+                                        let _ = lan_app_handle.emit("tables:lock-released", &lock);
+                                    }
+                                    kasirmu_lan::LanEvent::Table(kasirmu_lan::TableSyncEvent::ClaimRequested(claim)) => {
+                                        let _ = lan_app_handle.emit("tables:claim-requested", &claim);
+                                    }
                                     kasirmu_lan::LanEvent::Kds(kds_ev) => {
                                         if let Some(state) = lan_app_handle.try_state::<AppState>() {
                                             let db = state.db.lock().await;
@@ -903,6 +920,11 @@ pub fn run() {
                                                 }
                                             }
                                             let _ = lan_app_handle.emit("tables:status-changed", serde_json::Value::Null);
+                                        }
+                                        if let Some(leases) = discovery.active_leases {
+                                            for lease in &leases {
+                                                let _ = lan_app_handle.emit("tables:lock-acquired", lease);
+                                            }
                                         }
                                     }
                                 }
