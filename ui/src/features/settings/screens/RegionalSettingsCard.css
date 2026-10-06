@@ -98,6 +98,7 @@
 
 /* ── Touch press feedback ────────────────────────────────────────────
    Save is the card's only action.
+   ────────────────────────────────────────────────────────────────── */
 
 .regional-settings-save:not(:disabled):active {
   transform: scale(0.97);

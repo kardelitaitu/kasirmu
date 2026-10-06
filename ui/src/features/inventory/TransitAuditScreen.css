@@ -182,6 +182,7 @@
 
 /* ── Touch press feedback ────────────────────────────────────────────
    Transit audit is reviewed on the tablet.
+   ────────────────────────────────────────────────────────────────── */
 
 .reverse-btn:not(:disabled):active {
   transform: scale(0.97);

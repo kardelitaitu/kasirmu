@@ -133,6 +133,7 @@
 
 /* ── Touch press feedback ────────────────────────────────────────────
    History rows open a past count.
+   ────────────────────────────────────────────────────────────────── */
 
 .sc-hist-item:active {
   background: color-mix(in srgb, var(--color-fg) 12%, transparent);

@@ -236,6 +236,7 @@
 
 /* ── Touch press feedback ────────────────────────────────────────────
    The shift bar is pinned at the till on the tablet.
+   ────────────────────────────────────────────────────────────────── */
 
 .shift-btn:not(:disabled):active {
   transform: scale(0.97);

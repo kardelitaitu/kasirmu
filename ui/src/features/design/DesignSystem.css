@@ -243,6 +243,7 @@
 
 /* ── Touch press feedback ────────────────────────────────────────────
    The shared design-system button.
+   ────────────────────────────────────────────────────────────────── */
 
 .btn:not(:disabled):active {
   transform: scale(0.97);

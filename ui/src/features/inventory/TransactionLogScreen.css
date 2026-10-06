@@ -177,6 +177,7 @@
 
 /* ── Touch press feedback ────────────────────────────────────────────
    Log rows expand in place; tint, not scale, so the table does not twitch.
+   ────────────────────────────────────────────────────────────────── */
 
 .log-row-expandable:active {
   background: color-mix(in srgb, var(--color-fg) 12%, transparent);

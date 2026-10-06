@@ -125,6 +125,7 @@
 
 /* ── Touch press feedback ────────────────────────────────────────────
    Threshold checkbox labels are the tap target.
+   ────────────────────────────────────────────────────────────────── */
 
 .threshold-checkbox-label:active {
   background: color-mix(in srgb, var(--color-fg) 12%, transparent);

@@ -250,6 +250,7 @@
 /* ── Touch press feedback ────────────────────────────────────────────
    CSS-module sheet: class names are locally scoped, so these selectors are
    plain `.close-btn`. Same press contract as the sibling stylesheets.
+   ────────────────────────────────────────────────────────────────── */
 
 .close-btn:not(:disabled):active {
   transform: scale(0.97);

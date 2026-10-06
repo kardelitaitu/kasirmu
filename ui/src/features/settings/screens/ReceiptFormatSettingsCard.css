@@ -119,6 +119,7 @@
 
 /* ── Touch press feedback ────────────────────────────────────────────
    Receipt format save, plus its option checkboxes.
+   ────────────────────────────────────────────────────────────────── */
 
 .rcptfmt-save:not(:disabled):active {
   transform: scale(0.97);

@@ -154,6 +154,7 @@
 
 /* ── Touch press feedback ────────────────────────────────────────────
    Local payment rails: toggles tint (switch-shaped), add/save scale.
+   ────────────────────────────────────────────────────────────────── */
 
 .localpay-add-button:not(:disabled):active,
 .localpay-save:not(:disabled):active {

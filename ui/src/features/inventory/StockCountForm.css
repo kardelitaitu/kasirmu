@@ -85,6 +85,7 @@
 
 /* ── Touch press feedback ────────────────────────────────────────────
    Count-type buttons are a segmented group: scale, not tint, so the selected fill stays readable.
+   ────────────────────────────────────────────────────────────────── */
 
 .sc-type-btn:not(:disabled):active {
   transform: scale(0.97);

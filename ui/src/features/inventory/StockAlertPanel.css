@@ -251,6 +251,7 @@
 
 /* ── Touch press feedback ────────────────────────────────────────────
    Acknowledging a stock alert is a discrete action.
+   ────────────────────────────────────────────────────────────────── */
 
 .stock-alert-ack-btn:not(:disabled):active {
   transform: scale(0.97);
