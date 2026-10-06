@@ -3247,6 +3247,12 @@ const LINE_HEIGHT_LITERAL_BASELINE: Array<[string, string, number]> = [
   // established and this is a fourth site of an existing one. Listed, not
   // invented: the parked-item rule asks a human to pick a step when one does
   // not exist, and this one does.
+  // 1 on the floating cart bar's count badge (RestaurantFloatingCartBar.css:90).
+  // Single-glyph control centring a numeral in a fixed-height pill — the same
+  // case the 2026-09-29 note above records for the restaurant search-clear button
+  // and the sidebar badge: a --leading-* step cannot express it, and the
+  // alternative is flex centring, which this badge does not use. Not a new value.
+  ["1", "ui/src/features/restaurant/components/RestaurantFloatingCartBar.css", 1],
   ["1.35", "ui/src/features/restaurant/screens/RestaurantSettingsScreens.css", 3],
 
   ["1", "ui/src/features/kds/KdsScreen.css", 2],
