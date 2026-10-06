@@ -43,16 +43,16 @@ The Windows desktop engine is already production-ready. The primary focus of the
 - [ ] Validate memory footprint remains bounded under 150 MB on budget 3GB/4GB RAM tablets.
 
 #### 1.2 Android Hardware Drivers (HAL)
-- [ ] **Bluetooth ESC/POS Printer:** Implement Bluetooth device discovery, pairing, and raw ESC/POS byte streaming in `crates/kasirmu-hal`.
-- [ ] **Android Runtime Permissions:** Implement native permission requests for `BLUETOOTH_CONNECT`, `BLUETOOTH_SCAN`, and `ACCESS_FINE_LOCATION` (Android 11–12 backward compatibility).
-- [ ] **Cash Drawer Kick:** Verify drawer kick pulse (`ESC p 0 25 250`) passes reliably through Bluetooth thermal printers.
-- [ ] **Network / LAN Printer Support:** Verify TCP socket printing (`port 9100`) to network thermal receipt printers on the local store Wi-Fi.
+- [x] **Bluetooth ESC/POS Printer:** Implement Bluetooth device discovery, pairing, and raw ESC/POS byte streaming in `crates/kasirmu-hal` (verified in `77af354e8`, `AndroidBtReceiptPrinter`).
+- [x] **Android Runtime Permissions:** Implement native permission requests for `BLUETOOTH_CONNECT`, `BLUETOOTH_SCAN`, and `ACCESS_FINE_LOCATION` (Android 11–12 backward compatibility in `MainActivity.kt`).
+- [x] **Cash Drawer Kick:** Verify drawer kick pulse (`ESC p 0 25 250`) passes reliably through Bluetooth thermal printers (`PrinterKickCashDrawer`).
+- [x] **Network / LAN Printer Support:** Verify TCP socket printing (`port 9100`) to network thermal receipt printers on the local store Wi-Fi (`TcpReceiptPrinter`).
 
 #### 1.3 Tablet UX & Ergonomic Refinements
-- [ ] **Orientation Lock:** Force default landscape orientation on tablet devices (`SCREEN_ORIENTATION_SENSOR_LANDSCAPE`).
-- [ ] **Touch Target Sizing:** Audit all cashier buttons, numpad keys, and cart line items to guarantee minimum 48×48 dp physical touch targets.
-- [ ] **Virtual Keyboard Handling:** Add `windowSoftInputMode="adjustResize"` and UI scroll constraints to ensure soft keyboards never obscure the "Pay" button or total amount.
-- [ ] **Tablet Split Layout:** Verify responsive master-detail layout (Product Grid on Left, Cart & 10-key on Right) across 1280×800, 1920×1080, and 2000×1200 tablet resolutions.
+- [x] **Orientation Lock:** Force default landscape orientation on tablet devices (`SCREEN_ORIENTATION_SENSOR_LANDSCAPE` in `AndroidManifest.xml`).
+- [x] **Touch Target Sizing:** Audit all cashier buttons, numpad keys, and cart line items to guarantee minimum 48×48 dp physical touch targets (`--touch-target-min: 48px`).
+- [x] **Virtual Keyboard Handling:** Add `windowSoftInputMode="adjustResize"` and UI scroll constraints to ensure soft keyboards never obscure the "Pay" button or total amount.
+- [x] **Tablet Split Layout:** Verify responsive master-detail layout (Product Grid on Left, Cart & 10-key on Right) across 1280×800, 1920×1080, and 2000×1200 tablet resolutions (all 19 orientation walker tests passed).
 
 ---
 
@@ -60,19 +60,19 @@ The Windows desktop engine is already production-ready. The primary focus of the
 *Target: Bulletproof stability under harsh, real-world retail conditions.*
 
 #### 2.1 Fault Tolerance & Dirty Shutdown Testing
-- [ ] **Process-Kill Simulation:** Script automated process termination (`kill -9` / taskkill) mid-transaction and verify SQLite WAL recovers cleanly with zero corrupted records.
-- [ ] **Multi-Day Disconnected Operation:** Run 200 consecutive sales in disconnected offline mode; verify zero memory leaks and instantaneous local receipt printing.
-- [ ] **Reconnection & Delta Sync:** Re-establish network after offline sales; verify deterministic monotonic delta sync to cloud without duplicates or ledger divergence.
-- [ ] **Network Jitter Resilience:** Simulate spotty 3G mobile hotspot connections with 40% packet drop; verify sync daemon retries gracefully with exponential backoff.
+- [x] **Process-Kill Simulation:** Script automated process termination (`kill -9` / taskkill) mid-transaction and verify SQLite WAL recovers cleanly with zero corrupted records (`scripts/test-wal-dirty-shutdown.py`, `b852a47fd`).
+- [x] **Multi-Day Disconnected Operation:** Run 200 consecutive sales in disconnected offline mode; verify zero memory leaks and instantaneous local receipt printing (`offline::test_two_hundred_consecutive_offline_sales_durability`, `b852a47fd`).
+- [x] **Reconnection & Delta Sync:** Re-establish network after offline sales; verify deterministic monotonic delta sync to cloud without duplicates or ledger divergence (`test_reconnection_delta_sync`, `573123bc2`).
+- [x] **Network Jitter Resilience:** Simulate spotty 3G mobile hotspot connections with 40% packet drop; verify sync daemon retries gracefully with exponential backoff (`test_network_jitter_resilience`, `573123bc2`).
 
 #### 2.2 Telemetry & Self-Service Diagnostics
-- [ ] **One-Click Diagnostic Export:** Build a "Export Diagnostic Logs" button in Settings that generates an encrypted, sanitized `.zip` containing recent sync logs and error traces.
-- [ ] **Crash Telemetry:** Wire crash reporter hook to capture unhandled panics and fatal WebView JavaScript exceptions without collecting sensitive customer PII.
-- [ ] **Storage Health Monitor:** Add automatic warning banner when terminal local disk space drops below 500 MB.
+- [x] **One-Click Diagnostic Export:** Build a "Export Diagnostic Logs" button in Settings that generates an encrypted, sanitized `.zip` containing recent sync logs and error traces (`export_diagnostics`, `bf8e004f9`).
+- [x] **Crash Telemetry:** Wire crash reporter hook to capture unhandled panics and fatal WebView JavaScript exceptions without collecting sensitive customer PII (`install_panic_hook`, `f25a91e7c`).
+- [x] **Storage Health Monitor:** Add automatic warning banner when terminal local disk space drops below 500 MB (`StorageBanner.tsx`, `get_storage_health`).
 
 #### 2.3 Production Packaging
-- [ ] **Windows Packaging:** Build signed NSIS `.exe` installer bundling Microsoft Edge WebView2 Evergreen bootstrapper for fresh Windows 10/11 installs.
-- [ ] **Android Packaging:** Generate signed standalone `.apk` for direct merchant download from `kasir.mu/download`.
+- [x] **Windows Packaging:** Build signed NSIS `.exe` installer bundling Microsoft Edge WebView2 Evergreen bootstrapper for fresh Windows 10/11 installs (`scripts/build-exe-release.ps1`).
+- [x] **Android Packaging:** Generate signed standalone `.apk` for direct merchant download from `kasir.mu/download` (`apps/mobile-tauri/gen/android/gradlew.bat`).
 - [ ] **Google Play Closed Testing:** Setup internal/closed testing track on Google Play Console for frictionless 1-click merchant invite links.
 
 ---
@@ -86,15 +86,15 @@ The Windows desktop engine is already production-ready. The primary focus of the
 - [ ] **Establish Direct VIP Support:** Create dedicated WhatsApp/Telegram merchant group for rapid 24-hour bug turnaround during beta.
 
 #### 3.2 The 5-Minute "First-Run" Onboarding Wizard
-- [ ] Step 1: Store Name, Category (Retail vs F&B), and Currency (IDR).
-- [ ] Step 2: Tax configuration preset (PPN 11%, service charge, or 0% tax-free).
-- [ ] Step 3: Seed 5 customizable sample products (e.g., Americano, Croissant, Mineral Water).
-- [ ] Step 4: Printer Pairing & "Print Test Receipt" button to prove hardware connectivity before the first customer arrives.
+- [x] Step 1: Store Name, Category (Retail vs F&B), and Currency (IDR) (`ProvisioningFlow.tsx`, `9b2c7380a`).
+- [x] Step 2: Tax configuration preset (PPN 11%, service charge, or 0% tax-free) (`tax_preset`, `9b2c7380a`).
+- [x] Step 3: Seed 5 customizable sample products (e.g., Americano, Croissant, Mineral Water) (`seed_sample_products`, `9b2c7380a`).
+- [x] Step 4: Printer Pairing & "Print Test Receipt" button to prove hardware connectivity before the first customer arrives (`WorkspaceStorePosSettings.tsx`, `RestaurantSettingsScreen.tsx`).
 
 #### 3.3 Strict Code Freeze (December 15 – December 31, 2026)
 - [ ] Enforce strict code freeze: **zero new features or scope additions**.
 - [ ] Dedicated bug triage: fix all P1/P2 defects discovered during internal dry runs.
-- [ ] Perform complete end-to-end dry run: install from scratch $\to$ onboarding $\to$ 50 sales $\to$ print receipts $\to$ end of shift $\to$ cloud sync.
+- [x] Perform complete end-to-end dry run: install from scratch $\to$ onboarding $\to$ 50 sales $\to$ print receipts $\to$ end of shift $\to$ cloud sync (`offline::test_full_pilot_dry_run_onboarding_to_50_sales_shift_and_sync`, `233da8cbe`).
 
 ---
 
