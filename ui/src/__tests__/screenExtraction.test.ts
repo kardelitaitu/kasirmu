@@ -1754,9 +1754,17 @@ const SCREENS: ScreenEntry[] = [
     ],
   },
   {
+    // Migrated 2026-10-06: renders the sync-status half of SyncSection as its
+    // body, sharing hooks/useDataSyncDraft with Data Sync. The walker reads this
+    // file's markup alone and does NOT follow the composed section — here the
+    // markup was MOVED here rather than imported, so the settings-sync-* classes
+    // are spelled in this file and resolve against the parent sheet that DEFINES
+    // them (settings/SettingsPage.css). `sync-status-configured` is this
+    // screen's own class and lives in SyncStatusScreen.css.
     name: 'SyncStatusScreen',
     tsx: 'settings/screens/SyncStatusScreen.tsx',
-    css: ['settings/screens/screens-placeholder.css'],
+    css: ['settings/screens/screens-placeholder.css', 'settings/screens/SyncStatusScreen.css'],
+    parentCss: ['settings/SettingsPage.css'],
   },
   {
     // Migrated 2026-10-06: composes the real features/offline screen as its

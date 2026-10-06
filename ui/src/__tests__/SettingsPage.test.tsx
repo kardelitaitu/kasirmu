@@ -449,6 +449,12 @@ describe('SettingsPage admin shell — flat 14-page IA', () => {
       // hooks/useDataSyncDraft. The Cloud Sync card is the body; the save button
       // is this screen's own (the section's own actions live inside the card).
       'data-sync': ['settings-data-sync-save-btn'],
+      // Migrated 2026-10-06: composes the sync-status half of SyncSection as its
+      // body, sharing hooks/useDataSyncDraft with Data Sync. The Cloud Sync card
+      // ALWAYS renders; the status indicator inside it does NOT, because this
+      // file's IPC mock resolves nothing, so the draft is unconfigured and the
+      // "not configured" arm is the correct branch to land on.
+      'sync-status': ['settings-sync-status'],
     };
 
     for (const item of NAV_ITEMS) {

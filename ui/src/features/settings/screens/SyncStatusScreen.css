@@ -1,0 +1,11 @@
+/* Settings → Sync Status — the read-only sync report.
+
+   Own sheet rather than the shared screens-placeholder.css: a screen-specific
+   class in the family sheet would be reported as a dead rule against every
+   scaffold that cites it (the mistake the General migration made first).
+
+   This screen currently defines no rule of its own: it reuses the
+   settings-sync-* classes that SettingsPage.css owns for the whole family. The
+   file exists so a later screen-specific rule has an obvious home, and so the
+   screenExtraction entry names it explicitly rather than silently citing a
+   sheet it does not use. */
