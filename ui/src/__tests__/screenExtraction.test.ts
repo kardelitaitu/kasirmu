@@ -1714,9 +1714,27 @@ const SCREENS: ScreenEntry[] = [
     ],
   },
   {
+    // Migrated 2026-10-06: the last scaffold, and the only greenfield one — its
+    // provenance named no source section, so the content was chosen from what the
+    // app already has and does not expose on the tablet (the shared RoleBadge,
+    // whose only production import was the DESKTOP shell's AppLayout). RoleBadge
+    // and Card are imported components that render their own classes
+    // (`role-badge*`, `card`) from their own sheets — declared external so
+    // neither is read as this screen's dead rule. `settings-hint` is defined in
+    // settings/SettingsPage.css and cited as a parent.
     name: 'SecurityAccountScreen',
     tsx: 'settings/screens/SecurityAccountScreen.tsx',
-    css: ['settings/screens/screens-placeholder.css'],
+    css: ['settings/screens/screens-placeholder.css', 'settings/screens/SecurityAccountScreen.css'],
+    parentCss: ['settings/SettingsPage.css'],
+    externalClasses: [
+      'role-badge',
+      'role-badge-avatar',
+      'role-badge-info',
+      'role-badge-name',
+      'role-badge-role',
+      'role-badge-role-icon',
+      'role-badge-logout',
+    ],
   },
   {
     // Migrated 2026-10-06: composes the real sections/SyncSection as its body,

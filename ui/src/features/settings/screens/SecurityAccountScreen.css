@@ -1,0 +1,13 @@
+/* Settings → Security & Account — the active-session card.
+
+   Own sheet rather than the shared screens-placeholder.css: these rules belong
+   to THIS screen, and a screen-specific class in the family sheet would be
+   reported as a dead rule against every scaffold that cites it. */
+
+.settings-security-session {
+  padding-bottom: var(--space-3);
+}
+
+.settings-security-trail-note {
+  margin-top: var(--space-3);
+}

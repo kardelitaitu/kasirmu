@@ -211,6 +211,9 @@ settings-nav-devices-connectivity = Devices & Connectivity
 settings-nav-business-defaults = Business Defaults
 settings-nav-features-modules = Features & Modules
 settings-nav-security-account = Security & Account
+# Heading of the Security & Account page's single card: the signed-in user, their
+# role, and the sign-out control (rendered by components/RoleBadge.tsx).
+settings-section-security = Active session
 settings-nav-data-sync = Data & Sync
 settings-nav-data-management = Data Management
 settings-nav-sync-status = Sync Status

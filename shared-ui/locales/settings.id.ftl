@@ -58,6 +58,9 @@ settings-nav-devices-connectivity = Perangkat & Konektivitas
 settings-nav-business-defaults = Default Bisnis
 settings-nav-features-modules = Fitur & Modul
 settings-nav-security-account = Keamanan & Akun
+# Heading of the Security & Account page's single card: the signed-in user, their
+# role, and the sign-out control (rendered by components/RoleBadge.tsx).
+settings-section-security = Sesi aktif
 settings-nav-data-sync = Data & Sinkronisasi
 settings-nav-data-management = Manajemen Data
 settings-nav-sync-status = Status Sinkronisasi

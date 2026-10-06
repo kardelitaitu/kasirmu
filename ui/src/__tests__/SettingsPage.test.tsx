@@ -455,6 +455,13 @@ describe('SettingsPage admin shell — flat 14-page IA', () => {
       // file's IPC mock resolves nothing, so the draft is unconfigured and the
       // "not configured" arm is the correct branch to land on.
       'sync-status': ['settings-sync-status'],
+      // Migrated 2026-10-06: the LAST scaffold, and the only greenfield one — its
+      // provenance named no source section. It renders the shared RoleBadge (the
+      // desktop shell's own component, which the tablet shows nowhere) plus the
+      // audit-trail scope note. `.settings-section-title` is the card heading;
+      // RoleBadge itself returns null without a session, which is why the heading
+      // — not the badge — is what proves the body mounted.
+      'security-account': ['settings-security-trail-note'],
     };
 
     for (const item of NAV_ITEMS) {
