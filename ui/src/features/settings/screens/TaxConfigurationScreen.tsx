@@ -6,16 +6,15 @@
 //! live in different directories, and the import here is never wired until the
 //! migration lands and swaps this blank in for the moved screen.
 //!
-//! PARKED 2026-10-06: the composition was attempted and REVERTED. Mounting the
-//! real tax screen here makes SettingsPage.test.tsx's 14-section sweep fail —
-//! measured with per-section heap probes, the process dies inside the
-//! `tax-configuration` iteration having reached neither 3000MB nor a render of
-//! the composed body, while every other section stays flat at ~80MB. The screen
-//! mounts fine in ISOLATION (66MB, its own suite green), so the instability is
-//! specific to composing it inside this sweep. Two genuine robustness bugs in
-//! the composed screen were found and fixed on the way (see
-//! `features/tax/TaxConfigurationScreen.tsx`), but they are not the cause.
-//! Do NOT re-wire this until the sweep can mount the screen.
+//! PARKED 2026-10-06: composition attempted twice and REVERTED both times.
+//! Evidence gathered: the screen mounts fine in ISOLATION (66 MB, its own suite
+//! green), imports cost ~49 MB, IPC stays bounded (21 calls) and the heap probe
+//! reads flat ~83 MB right up to the failing iteration — yet the worker dies
+//! with V8 "Reached heap limit", and the tax component records ZERO renders.
+//! So the blow-up is neither rendering, nor data, nor module loading. The
+//! composed body is also observed to stay on Suspense's `.section-loading`
+//! (`heading "Tax Configuration"` never appears). Do NOT re-wire this until
+//! the sweep can mount the screen.
 
 import { Localized } from '@fluent/react';
 import './screens-placeholder.css';

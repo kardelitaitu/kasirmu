@@ -426,6 +426,7 @@ describe('SettingsPage admin shell — flat 14-page IA', () => {
     for (const item of NAV_ITEMS) {
       const label = navLabel(item.key);
       expect(label, item.key + ' has no bundle label').not.toBe('');
+
       await navigateByNav(item.key);
 
       const root = sectionRoot();
@@ -437,13 +438,31 @@ describe('SettingsPage admin shell — flat 14-page IA', () => {
       if (markers) {
         // A migrated screen must NOT fall back to the placeholder copy.
         expect(within(body).queryByText(placeholder), item.key + ' still shows the placeholder').toBeNull();
+        // WAIT for the composed body instead of reading it synchronously. A
+        // migrated screen is a SECOND lazy hop — screens/registry lazy-imports
+        // this scaffold, which then lazy-imports (or composes) the feature
+        // screen — so the section can still be showing Suspense's
+        // `.section-loading` when navigateByNav resolves: that helper waits on
+        // the SCAFFOLD heading, which renders before the inner chunk does.
+        // MEASURED 2026-10-06: the synchronous read caught "Loading…" for
+        // tax-configuration, and when the chunk lost the race badly enough the
+        // whole worker was killed mid-resolution instead of failing the assert.
         for (const marker of markers) {
-          expect(body.querySelector('.' + marker), item.key + ' must mount its .' + marker + ' screen').not.toBeNull();
+          await waitFor(() => {
+            expect(
+              document.querySelector('.' + marker),
+              item.key + ' must mount its .' + marker + ' screen',
+            ).not.toBeNull();
+          });
         }
       } else {
-        expect(within(body).getAllByText(placeholder)).toHaveLength(1);
+        await waitFor(() => {
+          expect(within(sectionRoot()).getAllByText(placeholder)).toHaveLength(1);
+        });
       }
-      expect(within(body).getByText(migrating)).toBeInTheDocument();
+      await waitFor(() => {
+        expect(within(sectionRoot()).getByText(migrating)).toBeInTheDocument();
+      });
     }
   });
 
