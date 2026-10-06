@@ -41,14 +41,12 @@
 }
 
 .sync-conflict-review__toggle input {
-  /* Size the VISIBLE box, not the hit area. theme/components.css:1541 has a
-     `@media (pointer: coarse)` block that gives every `input` a 44px
-     min-width/min-height, so a bare checkbox renders as a 44x44 grey square on
-     the tablet (verified on device: the installed build showed exactly that,
-     with the label sitting off-centre beside it). Overriding the floor to the
-     glyph size keeps the checkbox looking like a checkbox; the 44px tap target
-     the global rule exists for is preserved on the LABEL, which wraps this input
-     and already carries min-height: var(--touch-target-min) above. */
+  /* Glyph-sized box. The 44px floor that used to stretch this to a grey square
+     is now exempted for checkbox/radio at theme/components.css:1555, so the
+     min-width/min-height zeros here are belt-and-braces for any shell that
+     predates that fix — the size below is what actually shows. The tap target
+     lives on the label, which wraps this input and carries
+     min-height: var(--touch-target-min) above. */
   width: var(--space-4);
   height: var(--space-4);
   min-width: 0;

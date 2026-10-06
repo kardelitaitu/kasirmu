@@ -1545,6 +1545,24 @@
     min-height: var(--touch-target-min);
     min-width: var(--touch-target-min);
   }
+  /* Checkboxes and radios are exempt from the floor above. A bare
+     `input[type=checkbox]` has no intrinsic width, so min-width: 44px stretches
+     the BOX ITSELF: on the tablet a raw checkbox rendered as a 44x44 grey square
+     with its label sitting off-centre beside it (verified on device — the sync
+     conflict screen's "show resolved history" control showed exactly that, and
+     the ReceiptFormat / ExportSection / RoleAssignmentMatrix checkboxes had no
+     rule of their own to stop it).
+     The tap target the floor exists for is not lost: every one of those sites
+     pairs the input with a <label>, and `label` keeps the 44px floor above, so
+     the tappable area is the label. Toggle switches are unaffected either way —
+     they already set width/height: 0 on the input and draw a slider sibling.
+     Scoped to the checkbox/radio types so text inputs and selects keep the
+     floor they legitimately want. */
+  input[type="checkbox"],
+  input[type="radio"] {
+    min-width: 0;
+    min-height: 0;
+  }
   .btn, .card-clickable, .nav-item,
   [role="tablist"] [role="tab"] {
     min-height: var(--touch-target-comfortable);
