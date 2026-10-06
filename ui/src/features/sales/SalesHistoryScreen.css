@@ -963,3 +963,46 @@
   border-radius: var(--radius-md);
   margin-top: var(--space-2);
 }
+
+/* ── Touch press feedback ────────────────────────────────────────────
+   The history toolbar is heavily tapped on a tablet: filter, sort, paging
+   and the per-row void action. These carried transitions but no `:active`,
+   so a tap gave nothing back. Filled buttons scale; chips and the modal
+   close (transparent at rest) tint. `<select>` elements are excluded — the
+   native picker owns its own press state. */
+.sales-history-export-btn:not(:disabled):active,
+.sales-history-sort-btn:not(:disabled):active,
+.sales-history-action-btn:not(:disabled):active,
+.sales-history-page-btn:not(:disabled):active,
+.sales-history-void-btn:not(:disabled):active,
+.sales-history-modal-close:active {
+  transform: scale(0.97);
+}
+
+.sales-history-chip:active {
+  background: color-mix(in srgb, var(--color-fg) 12%, transparent);
+}
+
+@media (pointer: coarse) {
+  .sales-history-export-btn,
+  .sales-history-sort-btn,
+  .sales-history-action-btn,
+  .sales-history-page-btn,
+  .sales-history-void-btn,
+  .sales-history-chip,
+  .sales-history-modal-close {
+    min-height: var(--touch-target-min);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sales-history-export-btn:not(:disabled):active,
+  .sales-history-sort-btn:not(:disabled):active,
+  .sales-history-action-btn:not(:disabled):active,
+  .sales-history-page-btn:not(:disabled):active,
+  .sales-history-void-btn:not(:disabled):active,
+  .sales-history-modal-close:active {
+    transform: none;
+    opacity: 0.75;
+  }
+}

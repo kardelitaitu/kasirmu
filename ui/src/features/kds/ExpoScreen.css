@@ -601,3 +601,42 @@
     max-width: 160px;
   }
 }
+
+/* ── Touch press feedback (expo / kitchen display) ────────────────────
+   The kitchen display is a wall tablet driven by wet, gloved fingers, where
+   the only confirmation a tap registered is the control reacting. These
+   carried transitions but no `:active`. Filled controls scale; the back
+   affordance and station options (transparent at rest) tint. */
+.kds-expo-station-btn:not(:disabled):active,
+.kds-expo-recall-btn:not(:disabled):active,
+.kds-expo-btn:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+.kds-expo-back:active,
+.kds-expo-error-retry:active,
+.kds-expo-recall-restore:active,
+.kds-station-option:active {
+  background: color-mix(in srgb, var(--color-fg) 12%, transparent);
+}
+
+@media (pointer: coarse) {
+  .kds-expo-back,
+  .kds-expo-station-btn,
+  .kds-expo-recall-btn,
+  .kds-expo-error-retry,
+  .kds-expo-recall-restore,
+  .kds-expo-btn,
+  .kds-station-option {
+    min-height: var(--touch-target-min);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kds-expo-station-btn:not(:disabled):active,
+  .kds-expo-recall-btn:not(:disabled):active,
+  .kds-expo-btn:not(:disabled):active {
+    transform: none;
+    opacity: 0.75;
+  }
+}

@@ -1258,3 +1258,35 @@ html[data-shell='tablet'] .settings-section-content {
 html[data-shell='tablet'] .settings-content {
   min-width: 0;
 }
+
+/* ── Touch press feedback (settings) ─────────────────────────────────
+   A tablet has no hover, so a control whose only cue is `:hover` gives no
+   acknowledgement under a finger. This sheet already carried its
+   coarse-pointer block; what was missing is the press state a touch
+   actually produces.
+
+   The toggle-shaped controls (`.settings-toggle`, `.settings-input-toggle`,
+   `.settings-footer-theme-toggle`) take the TINT, not the scale: their knob
+   already animates on change, and a press-scale on top of that transition
+   reads as a double-move. Filled buttons scale. */
+.settings-topbar-menu-btn:not(:disabled):active,
+.settings-btn-revert:not(:disabled):active,
+.settings-size-btn:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+.settings-toggle:active,
+.settings-input-toggle:active,
+.settings-footer-theme-toggle:active,
+.settings-topbar-search-clear:active {
+  background: color-mix(in srgb, var(--color-fg) 12%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .settings-topbar-menu-btn:not(:disabled):active,
+  .settings-btn-revert:not(:disabled):active,
+  .settings-size-btn:not(:disabled):active {
+    transform: none;
+    opacity: 0.75;
+  }
+}

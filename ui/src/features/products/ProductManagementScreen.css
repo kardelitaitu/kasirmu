@@ -541,3 +541,41 @@
     transition: border-color var(--duration-150) var(--ease-out), box-shadow var(--duration-150) var(--ease-out);
   }
 }
+
+/* ── Touch press feedback ────────────────────────────────────────────
+   Catalog management on a tablet: the alert retry, the drawer close and the
+   action row are all thumb targets. Filled buttons scale; the option rows and
+   the transparent close tint. The `<select>` is excluded for the same reason
+   as the history screen's: the native control owns its press state. */
+.product-mgmt-alert-error-retry:not(:disabled):active,
+.product-mgmt-action-btn:not(:disabled):active,
+.product-mgmt-alert-drawer-close:active,
+.product-mgmt-modal-close:active {
+  transform: scale(0.97);
+}
+
+.product-mgmt-tax-rate-option:active,
+.product-mgmt-alert-toggle:active {
+  background: color-mix(in srgb, var(--color-fg) 12%, transparent);
+}
+
+@media (pointer: coarse) {
+  .product-mgmt-alert-error-retry,
+  .product-mgmt-action-btn,
+  .product-mgmt-alert-drawer-close,
+  .product-mgmt-modal-close,
+  .product-mgmt-tax-rate-option,
+  .product-mgmt-alert-toggle {
+    min-height: var(--touch-target-min);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .product-mgmt-alert-error-retry:not(:disabled):active,
+  .product-mgmt-action-btn:not(:disabled):active,
+  .product-mgmt-alert-drawer-close:active,
+  .product-mgmt-modal-close:active {
+    transform: none;
+    opacity: 0.75;
+  }
+}
