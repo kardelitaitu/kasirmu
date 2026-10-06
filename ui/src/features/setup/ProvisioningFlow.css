@@ -294,6 +294,10 @@
   cursor: default;
 }
 
+.provisioning-step-jump:not(:disabled):active {
+  opacity: 0.75;
+}
+
 .provisioning-step-jump:focus-visible {
   outline: 2px solid var(--color-accent);
   outline-offset: 2px;
@@ -361,10 +365,18 @@
   text-align: left;
   color: inherit;
   font: inherit;
+  transition:
+    border-color var(--duration-150) ease,
+    background-color var(--duration-150) ease,
+    transform var(--duration-100) ease;
 }
 
 .provisioning-store-type:hover {
   border-color: var(--color-accent-hover);
+}
+
+.provisioning-store-type:active {
+  transform: scale(0.98);
 }
 
 /* The selected state must not rely on colour alone (WCAG 1.4.1): `aria-pressed`
@@ -397,6 +409,8 @@
   background: var(--color-bg);
   color: var(--color-fg-primary);
   font: inherit;
+  scroll-margin-top: var(--space-4);
+  scroll-margin-bottom: var(--space-8);
 }
 
 .provisioning-field input:focus-visible {
@@ -457,6 +471,8 @@
 
 .provisioning-account-input-row input {
   flex: 1;
+  scroll-margin-top: var(--space-4);
+  scroll-margin-bottom: var(--space-8);
 }
 
 .provisioning-note {
@@ -502,6 +518,10 @@
 
 .provisioning-mode-card:hover {
   border-color: var(--color-accent-hover);
+}
+
+.provisioning-mode-card:active {
+  transform: scale(0.98);
 }
 
 .provisioning-mode-card.is-selected {
@@ -556,6 +576,14 @@
   border-radius: var(--radius-md);
   cursor: pointer;
   text-align: center;
+  transition:
+    background-color var(--duration-150) ease,
+    color var(--duration-150) ease,
+    transform var(--duration-100) ease;
+}
+
+.provisioning-subtab:active {
+  transform: scale(0.98);
 }
 
 .provisioning-subtab.active {
@@ -628,5 +656,67 @@
 @media (prefers-reduced-motion: no-preference) {
   .provisioning-pulse-dot {
     animation: pulse-ring 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+}
+
+/* ── Coarse pointer touch ergonomics ────────────────────────────── */
+@media (pointer: coarse) {
+  .provisioning-subtab {
+    min-height: var(--touch-target-min);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .provisioning-step-jump {
+    min-height: var(--touch-target-min);
+  }
+}
+
+/* ── Compact landscape / short viewport adaptations ──────────────── */
+@media (max-height: 700px) {
+  .provisioning-card {
+    padding: var(--space-4);
+    gap: var(--space-3);
+  }
+
+  .provisioning-pairing-box {
+    gap: var(--space-2);
+  }
+
+  .provisioning-pairing-view {
+    padding: 0;
+    gap: var(--space-2);
+  }
+
+  .provisioning-qr-wrapper {
+    padding: var(--space-2);
+  }
+
+  .provisioning-header h1 {
+    font-size: var(--text-2xl);
+    margin-bottom: 0;
+  }
+}
+
+/* ── Phone & narrow viewport adaptations ─────────────────────────── */
+@media (max-width: 480px) {
+  .provisioning-container {
+    --provisioning-gutter: var(--space-4);
+  }
+
+  .provisioning-card {
+    padding: var(--space-4);
+    border-radius: var(--radius-2xl);
+  }
+
+  .provisioning-mode-options,
+  .provisioning-store-types {
+    grid-template-columns: 1fr;
+    gap: var(--space-2);
+  }
+
+  .provisioning-header h1 {
+    font-size: var(--text-2xl);
   }
 }
