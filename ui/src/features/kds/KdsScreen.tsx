@@ -117,7 +117,7 @@ export default function KdsScreen() {
 
   // P3-2: Chime when new tickets arrive (debounced to max 1 per 5s).
   useNewTicketSound(orders, settings.soundEnabled);
-  const { speak, setSoundEnabled } = useSound();
+  const { speak, setSoundEnabled, playBeep } = useSound();
 
   // The KDS sound preference drives the GLOBAL mute: SLA escalation
   // alerts (each card's own useSound instance) and TTS callouts route
@@ -197,11 +197,18 @@ export default function KdsScreen() {
     }
   }, [sessionToken, workspaceScope?.storeId, prefs.kdsZone, wrapFetch, retryPending, speak, l10n]);
 
+  const handleCourseFired = useCallback((payload: { course?: string; display_number?: number }) => {
+    playBeep();
+    if (payload?.course) {
+      speak(`${payload.course} fired!`);
+    }
+  }, [playBeep, speak]);
+
   // PERF-KDS-01 / 1a (extracted): the whole realtime subscription block — the
   // `fetchOrdersRef` indirection (each subscription rebuild costs two WebView2
   // IPC round trips, so the ref must stay), the kds:orders-changed subscribe,
   // the visibilitychange fallback and their one unmount cleanup.
-  useKdsRealtime({ fetchOrders, arrivalTimerRef });
+  useKdsRealtime({ fetchOrders, arrivalTimerRef, onCourseFired: handleCourseFired });
 
   const clearError = useCallback(() => setError(null), []);
 

@@ -168,3 +168,57 @@ async fn lan_client_plain_connects_and_receives_event() {
 
     client_handle.stop();
 }
+
+#[tokio::test]
+async fn lan_client_sends_uplink_and_triggers_server_handler() {
+    let port = 19183;
+    let bind_addr = format!("127.0.0.1:{port}");
+    let (uplink_received_tx, mut uplink_received_rx) = tokio::sync::mpsc::channel(10);
+
+    let discover = KdsDiscoverResponse {
+        restaurant_pos_id: "pos-1".into(),
+        devices: vec![],
+        version: "0.0.41".into(),
+        transports: vec!["noise-psk-v1".into()],
+        active_queue: None,
+    };
+    let discover_json = serde_json::to_string(&discover).unwrap();
+
+    let forwarder = LanEventForwarder::new(bind_addr.clone(), Some("secret-uplink".into()))
+        .with_discovery(discover_json)
+        .with_uplink_handler(Arc::new(move |msg| {
+            let _ = uplink_received_tx.try_send(msg);
+        }));
+    tokio::spawn(forwarder.run());
+
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    let config = LanClientConfig {
+        server_addr: bind_addr,
+        psk: Some("secret-uplink".into()),
+        device_id: Some("tablet-kds".into()),
+        station_ids: vec!["grill".into()],
+        want_queue: false,
+    };
+
+    let (client_handle, _event_rx) = start_lan_client(config);
+
+    // Wait for client to connect
+    tokio::time::sleep(Duration::from_millis(150)).await;
+
+    // Send KdsLineItemBumped uplink event
+    let bump_event = r#"{"type":"kds.line_item_bumped","kds_order_id":"ord-1","sale_id":"sale-1","line_item_id":"line-1","stations":["grill"],"to_status":"prepared","bumped_by":"tablet-kds","occurred_at":"2026-10-06T04:00:00Z"}"#;
+    client_handle.send(bump_event.to_string()).expect("send failed");
+
+    let received = timeout(Duration::from_secs(3), uplink_received_rx.recv())
+        .await
+        .expect("timed out waiting for uplink event")
+        .expect("channel closed");
+
+    assert!(received.contains("kds.line_item_bumped"));
+    assert!(received.contains("prepared"));
+    assert!(received.contains("tablet-kds"));
+
+    client_handle.stop();
+}
+

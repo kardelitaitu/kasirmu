@@ -4218,3 +4218,67 @@ fn complete_sale_to_kds_carries_line_notes_into_order_notes() {
     assert_eq!(orders[0].notes, "Cheeseburger: no pickles, extra sauce");
 }
 
+#[test]
+fn ingest_kds_order_persists_order_lines_and_targets() {
+    let conn = fresh();
+    let s = store(&conn);
+
+    let order = KdsOrder {
+        id: "kds-test-order-1".to_string(),
+        sale_id: "sale-test-1".to_string(),
+        store_id: Some("store-main".to_string()),
+        target_instance_id: None,
+        status: "pending".to_string(),
+        items_summary: "2x Burger".to_string(),
+        item_count: 2,
+        display_number: Some(42),
+        ticket_prefix: "D".to_string(),
+        received_at: "2026-10-06T09:00:00Z".to_string(),
+        started_at: None,
+        ready_at: None,
+        served_at: None,
+        prep_time_seconds: 0,
+        kitchen_zone: Some("grill".to_string()),
+        notes: "extra crispy".to_string(),
+        table_number: Some("T4".to_string()),
+        priority: true,
+    };
+
+    let line = KdsLineItem {
+        id: "line-item-1".to_string(),
+        kds_order_id: "kds-test-order-1".to_string(),
+        sku: "BURGER".to_string(),
+        display_name: "Cheeseburger".to_string(),
+        qty: 2,
+        course: Some("main".to_string()),
+        modifiers: vec![crate::KdsModifier {
+            name: "Cheese".to_string(),
+            choice: "Cheddar".to_string(),
+            price_minor: 100,
+        }],
+        line_position: 1,
+        item_status: "pending".to_string(),
+        started_at: None,
+        ready_at: None,
+        served_at: None,
+        created_at: "2026-10-06T09:00:00Z".to_string(),
+    };
+
+    let targets = vec!["station-grill-1".to_string()];
+
+    s.ingest_kds_order(&order, &[line], &targets).unwrap();
+
+    let fetched = s.get_kds_order("kds-test-order-1").unwrap().unwrap();
+    assert_eq!(fetched.id, "kds-test-order-1");
+    assert_eq!(fetched.status, "pending");
+    assert_eq!(fetched.display_number, Some(42));
+    assert_eq!(fetched.table_number.as_deref(), Some("T4"));
+    assert!(fetched.priority);
+
+    let fetched_lines = s.get_kds_order_lines("kds-test-order-1").unwrap();
+    assert_eq!(fetched_lines.len(), 1);
+    assert_eq!(fetched_lines[0].id, "line-item-1");
+    assert_eq!(fetched_lines[0].display_name, "Cheeseburger");
+    assert_eq!(fetched_lines[0].modifiers.len(), 1);
+}
+

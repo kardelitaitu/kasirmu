@@ -80,6 +80,19 @@ use tauri::{Emitter, Manager};
 static SYNC_WAKEUP_HOOK: std::sync::OnceLock<std::sync::Arc<tokio::sync::Notify>> =
     std::sync::OnceLock::new();
 
+/// Global handle for the LAN client connection to send uplink messages to the server.
+pub static LAN_CLIENT_HANDLE: std::sync::RwLock<Option<kasirmu_lan::LanClientHandle>> =
+    std::sync::RwLock::new(None);
+
+/// Send a raw JSON uplink event (e.g. KdsSyncEvent or TableSyncEvent) to the LAN server.
+pub fn send_lan_uplink(msg: String) {
+    if let Ok(guard) = LAN_CLIENT_HANDLE.read() {
+        if let Some(ref handle) = *guard {
+            let _ = handle.send(msg);
+        }
+    }
+}
+
 /// JNI bridge called by `mu.kasir.mobile.SyncWorker` to trigger an immediate
 /// background sync drain when Android WorkManager fires.
 // Edition 2024 makes `unsafe_attr_outside_unsafe` a hard error, so the
@@ -777,21 +790,78 @@ pub fn run() {
                         };
 
                         if let Some(config) = config_opt {
-                            let (_client_handle, mut rx) = kasirmu_lan::start_lan_client(config);
+                            let (client_handle, mut rx) = kasirmu_lan::start_lan_client(config);
+                            if let Ok(mut guard) = LAN_CLIENT_HANDLE.write() {
+                                *guard = Some(client_handle);
+                            }
                             while let Ok(event) = rx.recv().await {
                                 match event {
                                     kasirmu_lan::LanEvent::Table(kasirmu_lan::TableSyncEvent::StatusChanged(sc)) => {
                                         let _ = lan_app_handle.emit("tables:status-changed", &sc.table);
                                     }
-                                    kasirmu_lan::LanEvent::Kds(_) => {
+                                    kasirmu_lan::LanEvent::Kds(kds_ev) => {
+                                        if let Some(state) = lan_app_handle.try_state::<AppState>() {
+                                            let db = state.db.lock().await;
+                                            let store = kasirmu_core::db::Store::new(&db);
+                                            match &kds_ev {
+                                                kasirmu_lan::KdsSyncEvent::OrderPlaced(placed) => {
+                                                    let order = kasirmu_core::KdsOrder {
+                                                        id: placed.kds_order_id.clone(),
+                                                        sale_id: placed.sale_id.clone(),
+                                                        store_id: placed.store_id.clone(),
+                                                        target_instance_id: placed.stations.first().cloned(),
+                                                        status: "pending".to_string(),
+                                                        items_summary: placed.items.iter().map(|i| format!("{}x {}", i.qty, i.display_name)).collect::<Vec<_>>().join(", "),
+                                                        item_count: placed.items.iter().map(|i| i.qty).sum(),
+                                                        display_number: placed.display_number,
+                                                        ticket_prefix: placed.ticket_prefix.clone(),
+                                                        received_at: placed.occurred_at.clone(),
+                                                        started_at: None,
+                                                        ready_at: None,
+                                                        served_at: None,
+                                                        prep_time_seconds: 0,
+                                                        kitchen_zone: Some("kitchen".to_string()),
+                                                        notes: placed.notes.clone(),
+                                                        table_number: placed.table_number.clone(),
+                                                        priority: placed.priority,
+                                                    };
+                                                    let _ = store.ingest_kds_order(&order, &placed.items, &placed.stations);
+                                                }
+                                                kasirmu_lan::KdsSyncEvent::LineItemBumped(bump) => {
+                                                    let _ = store.update_kds_line_item_status(&bump.line_item_id, &bump.to_status);
+                                                }
+                                                kasirmu_lan::KdsSyncEvent::OrderReady(ready) => {
+                                                    let _ = store.update_kds_status(&ready.kds_order_id, "ready");
+                                                }
+                                                kasirmu_lan::KdsSyncEvent::Recalled(recalled) => {
+                                                    let _ = store.update_kds_status(&recalled.kds_order_id, &recalled.recall_to);
+                                                }
+                                            }
+                                        }
                                         let _ = lan_app_handle.emit("kds:orders-changed", serde_json::Value::Null);
                                     }
                                     kasirmu_lan::LanEvent::RawJson(raw) => {
-                                        if raw.contains("order.course_fired") || raw.contains("sale.completed") {
+                                        if raw.contains("order.course_fired") {
+                                            if let Ok(val) = serde_json::from_str::<serde_json::Value>(&raw) {
+                                                let _ = lan_app_handle.emit("kds:course-fired", &val);
+                                            }
+                                            let _ = lan_app_handle.emit("kds:orders-changed", serde_json::Value::Null);
+                                        } else if raw.contains("sale.completed") {
                                             let _ = lan_app_handle.emit("kds:orders-changed", serde_json::Value::Null);
                                         }
                                     }
-                                    kasirmu_lan::LanEvent::Discovery(_) => {}
+                                    kasirmu_lan::LanEvent::Discovery(discovery) => {
+                                        if let Some(queue) = discovery.active_queue {
+                                            if let Some(state) = lan_app_handle.try_state::<AppState>() {
+                                                let db = state.db.lock().await;
+                                                let store = kasirmu_core::db::Store::new(&db);
+                                                for ticket in queue.tickets {
+                                                    let _ = store.ingest_kds_order(&ticket.order, &ticket.line_items, &ticket.stations);
+                                                }
+                                            }
+                                            let _ = lan_app_handle.emit("kds:orders-changed", serde_json::Value::Null);
+                                        }
+                                    }
                                 }
                             }
                         }

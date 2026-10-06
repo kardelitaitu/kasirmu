@@ -105,9 +105,40 @@ pub async fn update_kds_status_scoped(
     state: State<'_, AppState>,
 ) -> Result<KdsOrder, AppError> {
     let ctx = state.bridge_ctx();
-    kasirmu_bridge::kds::update_kds_status_scoped(&ctx, &session_token, &id, &status)
+    let order = kasirmu_bridge::kds::update_kds_status_scoped(&ctx, &session_token, &id, &status)
         .await
-        .map_err(Into::into)
+        .map_err(AppError::from)?;
+
+    if matches!(order.status.as_str(), "ready" | "preparing" | "pending") {
+        let terminal_id = ctx.terminal_id().await;
+        let occurred_at = chrono::Utc::now().to_rfc3339();
+        let event = if order.status == "ready" {
+            kasirmu_lan::KdsSyncEvent::OrderReady(kasirmu_lan::KdsOrderReady {
+                kds_order_id: order.id.clone(),
+                sale_id: order.sale_id.clone(),
+                stations: vec![],
+                display_number: order.display_number,
+                ready_at: order.ready_at.clone(),
+                bumped_by: terminal_id,
+                occurred_at,
+            })
+        } else {
+            kasirmu_lan::KdsSyncEvent::Recalled(kasirmu_lan::KdsOrderRecalled {
+                kds_order_id: order.id.clone(),
+                sale_id: order.sale_id.clone(),
+                line_item_id: None,
+                stations: vec![],
+                recall_to: order.status.clone(),
+                reason: None,
+                occurred_at,
+            })
+        };
+        if let Ok(json) = serde_json::to_string(&event) {
+            crate::send_lan_uplink(json);
+        }
+    }
+
+    Ok(order)
 }
 
 /// Create KDS orders from a completed sale, tagged with the session's
@@ -223,14 +254,31 @@ pub async fn update_kds_line_item_status_scoped(
     state: State<'_, AppState>,
 ) -> Result<kasirmu_core::KdsLineItem, AppError> {
     let ctx = state.bridge_ctx();
-    kasirmu_bridge::kds::update_kds_line_item_status_scoped(
+    let item = kasirmu_bridge::kds::update_kds_line_item_status_scoped(
         &ctx,
         &session_token,
         &item_id,
         &status,
     )
     .await
-    .map_err(Into::into)
+    .map_err(AppError::from)?;
+
+    let terminal_id = ctx.terminal_id().await;
+    let occurred_at = chrono::Utc::now().to_rfc3339();
+    let event = kasirmu_lan::KdsSyncEvent::LineItemBumped(kasirmu_lan::KdsLineItemBumped {
+        kds_order_id: item.kds_order_id.clone(),
+        sale_id: String::new(),
+        line_item_id: item.id.clone(),
+        stations: vec![],
+        to_status: item.item_status.clone(),
+        bumped_by: terminal_id,
+        occurred_at,
+    });
+    if let Ok(json) = serde_json::to_string(&event) {
+        crate::send_lan_uplink(json);
+    }
+
+    Ok(item)
 }
 
 #[cfg(test)]

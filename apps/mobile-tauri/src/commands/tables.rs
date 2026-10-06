@@ -162,6 +162,15 @@ pub async fn update_table_status_scoped(
     let store = Store::new(&db);
     let table = store.update_table_status(&id, &status)?;
     drop(db);
+
+    let event = kasirmu_lan::TableSyncEvent::StatusChanged(kasirmu_lan::TableStatusChanged {
+        table: table.clone(),
+        occurred_at: chrono::Utc::now().to_rfc3339(),
+    });
+    if let Ok(json) = serde_json::to_string(&event) {
+        crate::send_lan_uplink(json);
+    }
+
     Ok(table)
 }
 

@@ -964,6 +964,115 @@ pub fn run() {
                 .with_discovery(kds_discovery_json)
                 .with_kds_queue(kds_queue_provider);
             let handle = forwarder.handle();
+
+            let uplink_db_manager = app.state::<AppState>().db_manager.clone();
+            let uplink_app_handle = app.handle().clone();
+            let uplink_kds_cache = app.state::<AppState>().kds_queue_cache.clone();
+            let uplink_forwarder_handle = handle.clone();
+
+            let uplink_handler: crate::lan_server::UplinkHandler =
+                std::sync::Arc::new(move |raw_msg: String| {
+                    // Re-broadcast uplink event to all other connected peers
+                    uplink_forwarder_handle.broadcast(raw_msg.clone());
+
+                    let trimmed = raw_msg.trim();
+                    if trimmed.starts_with(crate::lan_server::KDS_EVENT_TAG_PREFIX) {
+                        if let Ok(event) = serde_json::from_str::<crate::lan_server::KdsSyncEvent>(trimmed) {
+                            match &event {
+                                crate::lan_server::KdsSyncEvent::LineItemBumped(bump) => {
+                                    for store_id in uplink_db_manager.open_store_ids() {
+                                        if let Ok(conn) = uplink_db_manager.open_store(&store_id) {
+                                            if let Ok(db) = conn.lock() {
+                                                let store = kasirmu_core::db::Store::new(&db);
+                                                let _ = store.update_kds_line_item_status(
+                                                    &bump.line_item_id,
+                                                    &bump.to_status,
+                                                );
+                                            }
+                                        }
+                                    }
+                                }
+                                crate::lan_server::KdsSyncEvent::OrderReady(ready) => {
+                                    for store_id in uplink_db_manager.open_store_ids() {
+                                        if let Ok(conn) = uplink_db_manager.open_store(&store_id) {
+                                            if let Ok(db) = conn.lock() {
+                                                let store = kasirmu_core::db::Store::new(&db);
+                                                let _ = store.update_kds_status(
+                                                    &ready.kds_order_id,
+                                                    "ready",
+                                                );
+                                            }
+                                        }
+                                    }
+                                }
+                                crate::lan_server::KdsSyncEvent::Recalled(recalled) => {
+                                    for store_id in uplink_db_manager.open_store_ids() {
+                                        if let Ok(conn) = uplink_db_manager.open_store(&store_id) {
+                                            if let Ok(db) = conn.lock() {
+                                                let store = kasirmu_core::db::Store::new(&db);
+                                                let _ = store.update_kds_status(
+                                                    &recalled.kds_order_id,
+                                                    &recalled.recall_to,
+                                                );
+                                            }
+                                        }
+                                    }
+                                }
+                                _ => {}
+                            }
+
+                            // Refresh KDS queue snapshot cache from open store databases
+                            let mut tickets = Vec::new();
+                            for store_id in uplink_db_manager.open_store_ids() {
+                                if let Ok(conn) = uplink_db_manager.open_store(&store_id) {
+                                    if let Ok(db) = conn.lock() {
+                                        let store = kasirmu_core::db::Store::new(&db);
+                                        if let Ok(orders) = store.get_kds_queue(None) {
+                                            for order in orders {
+                                                let line_items = store
+                                                    .get_kds_order_lines(&order.id)
+                                                    .unwrap_or_default();
+                                                let stations: Vec<String> = if let Ok(mut stmt) = db
+                                                    .prepare(
+                                                        "SELECT target_instance_id FROM kds_order_targets WHERE kds_order_id = ?1",
+                                                    ) {
+                                                    stmt.query_map(
+                                                        rusqlite::params![&order.id],
+                                                        |r| r.get(0),
+                                                    )
+                                                    .ok()
+                                                    .map(|rows| {
+                                                        rows.filter_map(Result::ok).collect()
+                                                    })
+                                                    .unwrap_or_default()
+                                                } else {
+                                                    Vec::new()
+                                                };
+                                                tickets.push(crate::lan_server::KdsQueueTicket {
+                                                    order,
+                                                    line_items,
+                                                    stations,
+                                                });
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            if let Ok(mut guard) = uplink_kds_cache.write() {
+                                *guard = crate::lan_server::KdsQueueSnapshot {
+                                    generated_at: chrono::Utc::now().to_rfc3339(),
+                                    tickets,
+                                };
+                            }
+
+                            let _ = uplink_app_handle.emit("kds:orders-changed", serde_json::Value::Null);
+                        }
+                    } else if trimmed.starts_with(crate::lan_server::TABLE_EVENT_TAG_PREFIX) {
+                        let _ = uplink_app_handle.emit("tables:status-changed", serde_json::Value::Null);
+                    }
+                });
+
+            let forwarder = forwarder.with_uplink_handler(uplink_handler);
             platform_startup::spawn_daemon("LAN event forwarder", forwarder.run());
 
             // Subscribe event bus handlers for LAN forwarding.

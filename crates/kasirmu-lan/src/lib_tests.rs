@@ -190,7 +190,7 @@ async fn spawn_test_peer(
 
     let server_handle = tokio::spawn(async move {
         let (stream, _) = listener.accept().await.unwrap();
-        handle_peer(stream, "test-peer".into(), rx, buffer, None, None, None).await;
+        handle_peer(stream, "test-peer".into(), rx, buffer, None, None, None, None).await;
     });
 
     let client = TcpStream::connect(addr).await.unwrap();
@@ -511,6 +511,7 @@ async fn spawn_psk_peer(
             expected,
             None,
             None,
+            None,
         )
         .await;
     });
@@ -656,6 +657,7 @@ async fn spawn_peer_with(
             expected,
             payload,
             kds_queue,
+            None,
         )
         .await;
     });

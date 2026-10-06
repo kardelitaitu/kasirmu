@@ -306,7 +306,12 @@ pub struct LanEventForwarder {
     /// (`{"op":"discover","want_queue":true}`). `None` disables snapshot
     /// injection — legacy discovery responses are then byte-identical.
     kds_queue: Option<KdsQueueProvider>,
+    /// Optional handler for processing uplink messages from connected peers.
+    uplink_handler: Option<UplinkHandler>,
 }
+
+/// Callback for processing uplink lines received from connected LAN peers.
+pub type UplinkHandler = Arc<dyn Fn(String) + Send + Sync>;
 
 /// Handle for registering event bus handlers.
 ///
@@ -327,6 +332,7 @@ impl LanEventForwarder {
             psk: psk.map(Arc::new),
             discovery_payload: None,
             kds_queue: None,
+            uplink_handler: None,
         }
     }
 
@@ -338,6 +344,12 @@ impl LanEventForwarder {
     /// identity, active devices, and version information.
     pub fn with_discovery(mut self, payload: String) -> Self {
         self.discovery_payload = Some(Arc::new(payload));
+        self
+    }
+
+    /// Attach a handler for uplink messages sent by connected LAN peers.
+    pub fn with_uplink_handler(mut self, handler: UplinkHandler) -> Self {
+        self.uplink_handler = Some(handler);
         self
     }
 
@@ -417,6 +429,7 @@ impl LanEventForwarder {
 
         let psk = self.psk.clone();
         let kds_queue = self.kds_queue.clone();
+        let uplink = self.uplink_handler.clone();
 
         loop {
             match listener.accept().await {
@@ -434,6 +447,7 @@ impl LanEventForwarder {
                     let psk_clone = psk.clone();
                     let discovery = self.discovery_payload.clone();
                     let kds_queue_clone = kds_queue.clone();
+                    let uplink_clone = uplink.clone();
                     tokio::spawn(handle_peer(
                         stream,
                         addr,
@@ -442,6 +456,7 @@ impl LanEventForwarder {
                         psk_clone,
                         discovery,
                         kds_queue_clone,
+                        uplink_clone,
                     ));
                 }
                 Err(e) => {
@@ -566,6 +581,7 @@ async fn handle_peer(
     psk: Option<Arc<String>>,
     discovery_payload: Option<Arc<String>>,
     kds_queue: Option<KdsQueueProvider>,
+    uplink_handler: Option<UplinkHandler>,
 ) {
     let timeout_dur = std::time::Duration::from_secs(PSK_HANDSHAKE_TIMEOUT_SECS);
     // Per-peer kds-sync subscription; None = receive everything
@@ -885,50 +901,110 @@ async fn handle_peer(
     // before initial events are flushed.
     heartbeat.tick().await;
 
-    loop {
-        tokio::select! {
-            biased;
+    if let Some(handler) = uplink_handler {
+        loop {
+            tokio::select! {
+                biased;
 
-            msg = rx.recv() => {
-                match msg {
-                    Ok(msg) => {
-                        // kds-sync: station-scoped peer filter — a line
-                        // outside this peer's stations is dropped, not
-                        // buffered (it belongs to another station).
-                        if !should_deliver(subscription.as_ref(), &msg) {
-                            continue;
+                msg = rx.recv() => {
+                    match msg {
+                        Ok(msg) => {
+                            if !should_deliver(subscription.as_ref(), &msg) {
+                                continue;
+                            }
+                            if let Err(e) = conn.send_line(&msg).await {
+                                tracing::debug!(
+                                    peer = %peer_addr,
+                                    error = %e,
+                                    "LAN peer disconnected, event buffered"
+                                );
+                                offline_buffer.push(&replay_key, &peer_addr, msg).await;
+                                return;
+                            }
                         }
-                        if let Err(e) = conn.send_line(&msg).await {
-                            tracing::debug!(
-                                peer = %peer_addr,
-                                error = %e,
-                                "LAN peer disconnected, event buffered"
-                            );
-                            // Buffer the event for replay on reconnection
-                            // under this peer's replay identity (caps
-                            // enforced by `push`).
-                            offline_buffer.push(&replay_key, &peer_addr, msg).await;
+                        Err(broadcast::error::RecvError::Lagged(count)) => {
+                            tracing::warn!(peer = %peer_addr, skipped = count, "LAN peer lagged");
+                        }
+                        Err(broadcast::error::RecvError::Closed) => {
+                            tracing::debug!(peer = %peer_addr, "LAN forwarder shutting down");
                             return;
                         }
                     }
-                    Err(broadcast::error::RecvError::Lagged(count)) => {
-                        tracing::warn!(peer = %peer_addr, skipped = count, "LAN peer lagged");
+                }
+
+                incoming_res = conn.read_line() => {
+                    match incoming_res {
+                        Ok(Some(line)) => {
+                            let trimmed = line.trim();
+                            if trimmed.starts_with(crate::kds_sync::KDS_EVENT_TAG_PREFIX)
+                                || trimmed.starts_with(crate::table_sync::TABLE_EVENT_TAG_PREFIX)
+                            {
+                                handler(trimmed.to_string());
+                            }
+                        }
+                        Ok(None) => {
+                            tracing::debug!(peer = %peer_addr, "LAN peer disconnected (EOF)");
+                            return;
+                        }
+                        Err(e) => {
+                            tracing::debug!(peer = %peer_addr, error = %e, "LAN peer read error");
+                            return;
+                        }
                     }
-                    Err(broadcast::error::RecvError::Closed) => {
-                        tracing::debug!(peer = %peer_addr, "LAN forwarder shutting down");
+                }
+
+                _ = heartbeat.tick() => {
+                    if let Err(e) = conn.send_line("{\"type\":\"ping\"}").await {
+                        tracing::debug!(
+                            peer = %peer_addr,
+                            error = %e,
+                            "LAN peer disconnected (heartbeat)"
+                        );
                         return;
                     }
                 }
             }
+        }
+    } else {
+        loop {
+            tokio::select! {
+                biased;
 
-            _ = heartbeat.tick() => {
-                if let Err(e) = conn.send_line("{\"type\":\"ping\"}").await {
-                    tracing::debug!(
-                        peer = %peer_addr,
-                        error = %e,
-                        "LAN peer disconnected (heartbeat)"
-                    );
-                    return;
+                msg = rx.recv() => {
+                    match msg {
+                        Ok(msg) => {
+                            if !should_deliver(subscription.as_ref(), &msg) {
+                                continue;
+                            }
+                            if let Err(e) = conn.send_line(&msg).await {
+                                tracing::debug!(
+                                    peer = %peer_addr,
+                                    error = %e,
+                                    "LAN peer disconnected, event buffered"
+                                );
+                                offline_buffer.push(&replay_key, &peer_addr, msg).await;
+                                return;
+                            }
+                        }
+                        Err(broadcast::error::RecvError::Lagged(count)) => {
+                            tracing::warn!(peer = %peer_addr, skipped = count, "LAN peer lagged");
+                        }
+                        Err(broadcast::error::RecvError::Closed) => {
+                            tracing::debug!(peer = %peer_addr, "LAN forwarder shutting down");
+                            return;
+                        }
+                    }
+                }
+
+                _ = heartbeat.tick() => {
+                    if let Err(e) = conn.send_line("{\"type\":\"ping\"}").await {
+                        tracing::debug!(
+                            peer = %peer_addr,
+                            error = %e,
+                            "LAN peer disconnected (heartbeat)"
+                        );
+                        return;
+                    }
                 }
             }
         }

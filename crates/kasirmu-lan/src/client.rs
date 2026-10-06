@@ -9,7 +9,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::TcpStream;
-use tokio::sync::{broadcast, watch};
+use tokio::sync::{broadcast, mpsc, watch};
 
 use crate::KdsDiscoverResponse;
 use crate::kds_sync::{KDS_EVENT_TAG_PREFIX, KdsSyncEvent};
@@ -65,12 +65,23 @@ impl LanEvent {
 #[derive(Clone)]
 pub struct LanClientHandle {
     shutdown_tx: Arc<watch::Sender<bool>>,
+    uplink_tx: mpsc::Sender<String>,
 }
 
 impl LanClientHandle {
     /// Signal the client task to disconnect and stop reconnecting.
     pub fn stop(&self) {
         let _ = self.shutdown_tx.send(true);
+    }
+
+    /// Queue a message to send upstream to the primary LAN server.
+    pub fn send(&self, msg: String) -> Result<(), mpsc::error::TrySendError<String>> {
+        self.uplink_tx.try_send(msg)
+    }
+
+    /// Asynchronously send a message upstream to the primary LAN server.
+    pub async fn send_async(&self, msg: String) -> Result<(), mpsc::error::SendError<String>> {
+        self.uplink_tx.send(msg).await
     }
 }
 
@@ -82,11 +93,13 @@ pub fn start_lan_client(
 ) -> (LanClientHandle, broadcast::Receiver<LanEvent>) {
     let (event_tx, event_rx) = broadcast::channel(256);
     let (shutdown_tx, shutdown_rx) = watch::channel(false);
+    let (uplink_tx, uplink_rx) = mpsc::channel(256);
     let handle = LanClientHandle {
         shutdown_tx: Arc::new(shutdown_tx),
+        uplink_tx,
     };
 
-    tokio::spawn(run_client_loop(config, event_tx, shutdown_rx));
+    tokio::spawn(run_client_loop(config, event_tx, shutdown_rx, uplink_rx));
 
     (handle, event_rx)
 }
@@ -95,6 +108,7 @@ async fn run_client_loop(
     config: LanClientConfig,
     event_tx: broadcast::Sender<LanEvent>,
     mut shutdown_rx: watch::Receiver<bool>,
+    mut uplink_rx: mpsc::Receiver<String>,
 ) {
     let mut backoff = Duration::from_millis(200);
     const MAX_BACKOFF: Duration = Duration::from_secs(5);
@@ -107,7 +121,9 @@ async fn run_client_loop(
                 backoff = Duration::from_millis(200);
                 tracing::info!(server = %config.server_addr, "connected to LAN forwarder");
 
-                let run_result = handle_connection(&config, stream, &event_tx, &mut shutdown_rx).await;
+                let run_result =
+                    handle_connection(&config, stream, &event_tx, &mut shutdown_rx, &mut uplink_rx)
+                        .await;
                 if *shutdown_rx.borrow() {
                     tracing::info!(server = %config.server_addr, "LAN client stopped by shutdown signal");
                     break;
@@ -144,6 +160,7 @@ async fn handle_connection(
     stream: TcpStream,
     event_tx: &broadcast::Sender<LanEvent>,
     shutdown_rx: &mut watch::Receiver<bool>,
+    uplink_rx: &mut mpsc::Receiver<String>,
 ) -> std::io::Result<()> {
     let mut reader = BufReader::new(stream);
 
@@ -177,7 +194,7 @@ async fn handle_connection(
             let _ = event_tx.send(LanEvent::Discovery(resp));
         }
 
-        // Continuous read loop
+        // Continuous read and uplink loop
         loop {
             tokio::select! {
                 biased;
@@ -186,6 +203,14 @@ async fn handle_connection(
                     if *shutdown_rx.borrow() {
                         return Ok(());
                     }
+                }
+
+                Some(outgoing) = uplink_rx.recv() => {
+                    let mut out = vec![0u8; outgoing.len() + 32];
+                    let n = transport
+                        .write_message(outgoing.as_bytes(), &mut out)
+                        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+                    write_frame(reader.get_mut(), &out[..n]).await?;
                 }
 
                 frame_res = read_frame(&mut reader) => {
@@ -227,6 +252,11 @@ async fn handle_connection(
                     if *shutdown_rx.borrow() {
                         return Ok(());
                     }
+                }
+
+                Some(outgoing) = uplink_rx.recv() => {
+                    let line = format!("{}\n", outgoing.trim());
+                    reader.get_mut().write_all(line.as_bytes()).await?;
                 }
 
                 line_res = async {

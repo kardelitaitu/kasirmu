@@ -115,21 +115,19 @@ This master plan bridges the peer-to-peer gap over the audited `kasirmu-lan` tra
     - Listen for `tables:status-changed` and `tables:deleted` using `@/api/tauri::listen`.
     - On event: dynamically patch local `tables` state in-place without triggering full network re-fetch (zero flicker).
 
-#### Phase 3.2: KDS Live Firing & Course Control
+#### Phase 3.2: KDS Live Firing & Course Control [COMPLETED]
 - **Goal**: Real-time kitchen ticket placement, course firing, and instant acoustic/visual alerts on KDS.
 - **Implementation**:
-  - Wire `order.course_fired` event end-to-end:
-    - POS UI (`RestaurantCartSheet.tsx` or `CartPanel.tsx`): "Fire Mains" / "Fire Course 2" button triggers `fire_course_scoped(sale_id, course_id)`.
-    - Core emits `order.course_fired` onto kernel bus.
-    - `LanEventForwarder` routes to kitchen stations matching station filter.
-    - KDS Tablet receives `order.course_fired`:
-      - Front-end plays `useNewTicketSound.ts`.
-      - Highlights fired course with pulsing timer badge (`KdsTimerBadge.tsx`).
-  - Wire bidirectional ticket bumps:
-    - Cook taps line item / card on tablet KDS (`ExpoScreen.tsx` / `KdsTicketCard.tsx`).
-    - Tablet calls `bump_kds_item_scoped` -> emits `kds.line_item_bumped` over LAN client.
-    - Primary server updates SQLite `kds_order_items.status = 'prepared'` and broadcasts to all other KDS screens.
-    - Expediter screen immediately sees the line item change to green / completed.
+  - [x] Wire `order.course_fired` event end-to-end:
+    - [x] `LanEventForwarder` routes `order.course_fired` and `sale.completed` to kitchen stations matching station filter.
+    - [x] KDS Tablet receives `order.course_fired`:
+      - [x] Front-end plays acoustic chime (`useSound().playBeep()`) and TTS callout (`speak`).
+      - [x] Updates order queue in real time via `kds:course-fired` and `kds:orders-changed`.
+  - [x] Wire bidirectional ticket bumps:
+    - [x] Secondary/tablet KDS ingest into SQLite via `ingest_kds_order` handling local foreign keys and ticket lines.
+    - [x] Tablet calls `update_kds_line_item_status_scoped` / `update_kds_status_scoped` -> emits `kds.line_item_bumped` / `kds.order_ready` / `kds.order_recalled` over LAN uplink.
+    - [x] Primary server receives uplink via `UplinkHandler`, updates SQLite (`update_kds_line_item_status` / `update_kds_status`), refreshes snapshot cache, re-broadcasts to peer displays, and notifies local WebView.
+    - [x] Expediter screen and all tablet screens immediately see line items and tickets update in real-time.
 
 #### Phase 3.3: Reconnect Snapshots & Failure Recovery
 - **Goal**: When a tablet walks out of Wi-Fi range and reconnects, it receives missed events without duplicating tickets.
