@@ -432,6 +432,12 @@ describe('SettingsPage admin shell — flat 14-page IA', () => {
       // ambiguous match — retried inside waitFor until the worker died with
       // "Reached heap limit". `.tax-config` is the composed body.
       'tax-configuration': ['tax-config'],
+      // Migrated 2026-10-06: composes the real feature-flag screen with
+      // `embedded`. .feature-toggle is its root and always renders. The search
+      // box is deliberately NOT asserted: it is gated on `!loading && !error`,
+      // and this file's IPC mock resolves `undefined`, so the composed screen
+      // legitimately lands in its error arm instead.
+      'features-modules': ['feature-toggle'],
     };
 
     for (const item of NAV_ITEMS) {

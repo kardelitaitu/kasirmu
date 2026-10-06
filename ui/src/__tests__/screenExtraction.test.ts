@@ -1660,9 +1660,39 @@ const SCREENS: ScreenEntry[] = [
     css: ['settings/screens/screens-placeholder.css'],
   },
   {
+    // Migrated 2026-10-06: composes the real settings/FeatureToggleScreen as its
+    // body, the same way the ExchangeRatesScreen / DataManagementScreen /
+    // TaxConfigurationScreen scaffolds compose theirs. The walker reads this
+    // file's markup alone and does NOT follow the composed import, so that
+    // screen's own feature-toggle-* classes (styled by
+    // settings/FeatureToggleScreen.css, which the composed screen imports) are
+    // declared external here. The screen keeps its own ledger entry; these names
+    // are reached through composition, not spelled in this file. The scaffold
+    // still renders settings-screen-placeholder + -note, so no scaffold name
+    // goes dead.
     name: 'FeaturesModulesScreen',
     tsx: 'settings/screens/FeaturesModulesScreen.tsx',
     css: ['settings/screens/screens-placeholder.css'],
+    externalClasses: [
+      'feature-toggle',
+      'feature-toggle-header',
+      'feature-toggle-title',
+      'feature-toggle-subtitle',
+      'feature-toggle-loading-skeleton',
+      'feature-toggle-skeleton-search',
+      'feature-toggle-error',
+      'feature-toggle-search',
+      'feature-toggle-search-icon',
+      'feature-toggle-search-input',
+      'feature-toggle-search-clear',
+      'feature-toggle-group',
+      'feature-toggle-group-header',
+      'feature-toggle-group-title',
+      'feature-toggle-bulk-actions',
+      'feature-toggle-list',
+      'feature-toggle-item',
+      'feature-toggle-item-info',
+    ],
   },
   {
     name: 'SecurityAccountScreen',

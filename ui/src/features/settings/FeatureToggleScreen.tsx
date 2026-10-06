@@ -94,7 +94,22 @@ function getGroupIcon(group: string): React.ReactNode {
 // ── Component ──────────────────────────────────────────────────────
 
 /** Feature flag management screen — groups all 32 feature flags by category with toggle switches and automatic dependency resolution. */
-export default function FeatureToggleScreen() {
+/** Props for {@link FeatureToggleScreen}. */
+export interface FeatureToggleScreenProps {
+  /**
+   * Render as a BODY inside another page rather than as a standalone screen.
+   *
+   * The only difference is the title row: a composing page (Settings →
+   * Features & Modules) already renders its own <h1>, so this screen's title
+   * would print twice. Same opt-in contract as the ExchangeRatesScreen /
+   * DataManagementScreen / TaxConfigurationScreen siblings.
+   *
+   * Default false keeps the standalone route (`features`) unchanged.
+   */
+  embedded?: boolean;
+}
+
+export default function FeatureToggleScreen({ embedded = false }: FeatureToggleScreenProps = {}) {
   const { l10n } = useLocalization();
   // Keep a stable ref to l10n so callbacks can read the latest translations
   // without listing l10n in their deps (which would recreate them every
@@ -292,7 +307,10 @@ export default function FeatureToggleScreen() {
         />
       )}
       <div className="feature-toggle-header">
-        <Localized id="feature-toggle-title"><h1 className="feature-toggle-title">Feature Toggles</h1></Localized>
+        {/* Skipped when embedded: the composing page owns the <h1>. */}
+        {!embedded && (
+          <Localized id="feature-toggle-title"><h1 className="feature-toggle-title">Feature Toggles</h1></Localized>
+        )}
         {features.length > 0 && (
           <Localized
             id="feature-toggle-subtitle"
