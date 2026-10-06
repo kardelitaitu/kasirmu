@@ -293,3 +293,12 @@
     opacity: 0.75;
   }
 }
+
+/* A sub-heading inside a .tp-section. .tp-section-title and .tp-section-desc are
+   both defined above; this third level was not. Note the call site also carries
+   an inline font-size/colour pair, so this rule is what makes the name honest
+   rather than what changes the render. */
+.tp-section-subtitle {
+  font-weight: var(--font-weight-medium);
+  color: var(--color-fg-secondary);
+}

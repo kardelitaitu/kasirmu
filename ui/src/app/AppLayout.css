@@ -793,3 +793,14 @@
     opacity: 0.75;
   }
 }
+
+/* The "waiting on boot data" badge row AppShell renders while startup probes are
+   still in flight (AppShell.tsx:953). AppShell imports no sheet of its own; this
+   is the layout sheet its markup is styled by. */
+.boot-status-badges {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  padding: var(--space-2) var(--space-4);
+}

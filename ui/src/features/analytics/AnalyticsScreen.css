@@ -1838,3 +1838,26 @@
   outline: 2px solid var(--color-border-focus);
   outline-offset: 2px;
 }
+
+/* The small "what is this card" info button in a card's action row. Its sibling
+   .analytics-card-action is defined above; this is the icon-only modifier. */
+.analytics-card-info {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--color-fg-muted);
+  cursor: pointer;
+}
+
+.analytics-card-info:hover {
+  color: var(--color-fg);
+}
+
+/* The revenue card's chart well. .analytics-card-visual is the shared frame;
+   this only names the card so a future revenue-specific tweak has a hook. */
+.analytics-card-visual--revenue {
+  color: var(--color-success);
+}
