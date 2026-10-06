@@ -717,8 +717,12 @@ const SCREENS: ScreenEntry[] = [
       'address',
       'tax-id',
       'branch',
-      'settings-sync-token-actions',
-      'settings-sync-status-text',
+      // 'settings-sync-token-actions' and 'settings-sync-status-text' were
+      // REMOVED from this list on 2026-10-07: both are written literally in
+      // markup (SyncSection.tsx:280/:353, LocalApiSection.tsx:387), so muting
+      // them here asserted they were composed at runtime — which was never true
+      // — and the muting suppressed the dead-class check for names nobody had
+      // defined. They are now real rules in SettingsPage.css instead.
       'topology',
       'free',
     ],

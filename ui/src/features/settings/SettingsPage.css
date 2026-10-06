@@ -769,6 +769,31 @@ body:has(.settings-footer) {
   box-shadow: inset 0 0 0 1px var(--color-danger);
 }
 
+/* ── Two sync-family names that were never defined ──────────────────
+   Both are REAL markup, not runtime-composed values:
+   SyncSection.tsx:353 and LocalApiSection.tsx:387 write
+   `settings-sync-status-text` literally, and SyncSection.tsx:280 writes
+   `settings-sync-token-actions`. Until now the guard excused them through
+   knownDynamicFragments on the SettingsPage entry, which asserts the name is
+   composed at runtime — false for these two, and the field's own docstring says
+   muting a literal there "then travels into case 3: a muted name is never
+   reported dead anywhere". Defining them is what makes the claim true-by-removal. */
+.settings-sync-status-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The Request-token / Copy row under the token hint. */
+.settings-sync-token-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  margin-top: var(--space-2);
+}
+
 /* ── Range input and the value beside it ────────────────────────────
    `.settings-range` / `.settings-range-value` are used by three workspace
    cards (TerminalPreferencesCard, WorkspaceKdsSettings, WorkspaceInventory

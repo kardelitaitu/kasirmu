@@ -145,3 +145,26 @@
     transition: width var(--duration-300) var(--ease-out);
   }
 }
+
+/* ── Per-widget identity hooks ────────────────────────────────────────
+   Five modifiers every widget declares on its root — reporting-widget--category,
+   --daily-total, --heatmap, --revenue, --hourly — none of which any stylesheet
+   defined. They are NOT missing styling: every widget shares one interior
+   (header → reporting-widget-title → body), and the tile's chrome — Card,
+   width and grid slot — belongs to SalesDashboardScreen.css, whose own comment
+   says so ("the widget tiles' chrome belongs to widgets.css and a screen may
+   not borrow it"). The modifier names WHICH widget a tile is, for markup
+   readers, tests and DevTools; it does not select a different look.
+
+   Declared explicitly rather than left undefined so the name resolves, and so a
+   widget that later DOES need its own rule has an obvious, correct hook instead
+   of inventing a second class alongside it. Keep these empty: if one grows a
+   rule, the widget has stopped sharing the family interior and that is worth
+   noticing in review. */
+.reporting-widget--category,
+.reporting-widget--daily-total,
+.reporting-widget--heatmap,
+.reporting-widget--revenue,
+.reporting-widget--hourly {
+  /* Intentionally inherits .reporting-widget. */
+}

@@ -66,3 +66,37 @@
   font-weight: var(--font-weight-medium);
   color: var(--color-fg);
 }
+
+/* ── Four more names the same component renders ───────────────────────
+   Round 29 wrote the seven the guard reported; these four are in the same file
+   but were not in that report, because OverQuotaCard has no SCREENS entry of
+   its own — the guard only ever saw the sheet through LicenseSettings. Found by
+   re-sweeping the file rather than trusting the earlier list to be complete. */
+
+/* The suspend/restore button row under the remedy paragraph. */
+.settings-license-quota-remedy-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  margin-top: var(--space-2);
+}
+
+/* A store id quoted inside the remedy note: mono and slightly emphasised, so it
+   reads as an identifier rather than as part of the sentence. */
+.settings-license-quota-remedy-store {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--color-fg);
+}
+
+/* The per-location region and its heading. The heading also carries
+   .settings-hint, so only the emphasis it adds is set. */
+.settings-license-quota-locations {
+  margin-top: var(--space-3);
+}
+
+.settings-license-quota-loc-heading {
+  font-weight: var(--font-weight-medium);
+  color: var(--color-fg);
+}
