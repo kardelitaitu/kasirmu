@@ -132,7 +132,16 @@
    grade this sheet — widgets.css is in BASELINE_UNCITED, so nothing sees the
    collision. Decide the grid, delete the losing copy, then cite widgets.css from
    the SalesDashboardScreen entry so it stays graded. Found while adding that cite;
-   the cite was reverted because the suite fails on exactly this duplication. */
+   the cite was reverted because the suite fails on exactly this duplication.
+
+   CORRECTION 2026-10-07: an earlier draft of this note claimed the live auto-fill
+   grid made .widget-width-*'s `grid-column: span 2` INERT, and that the explicit
+   repeat(2, 1fr) here was therefore the intended design. That is wrong —
+   auto-fill creates real columns and a span is honoured against them. Both grids
+   render the width classes correctly, so the evidence does NOT pick a winner:
+   auto-fill adapts to the viewport, repeat(2, 1fr) is a fixed two-column
+   dashboard. Only the owner can say which the dashboard wants. Do not treat the
+   import order as a tiebreak. */
 
 .reporting-dashboard {
   padding: var(--space-4);
@@ -141,7 +150,11 @@
 .reporting-dashboard-title {
   margin: 0 0 var(--space-4);
   font-size: var(--text-2xl);
-  font-weight: 700;
+  /* --font-weight-bold is 700; the literal that stood here was equivalent but
+     off-scale, and themeTokenCompliance scans THIS sheet (it holds two frozen
+     tail entries for it), so the token is the form that stays honest if the
+     scale ever moves. */
+  font-weight: var(--font-weight-bold);
 }
 
 .reporting-dashboard-grid {
