@@ -210,6 +210,21 @@
   flex-shrink: 0;
 }
 
+/* Leading icon slot. Third member of the btn__ family — .btn__spinner (:158) and
+   .btn__check (:209) were both defined while this one was not, so the icon had no
+   rule of its own. .btn is inline-flex with gap: var(--space-2) (:10-13), which
+   spaces it from the label; what it lacked was the shrink guard the other two
+   carry, so a long label could squash an icon inside a constrained button.
+   Sized in em so it tracks the button's own font-size, as .btn__spinner does. */
+.btn__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 1em;
+  height: 1em;
+}
+
 @media (prefers-reduced-motion: no-preference) {
   .btn--success-state .btn__check {
     animation: btn-check-pop var(--duration-200) var(--ease-out) both;
