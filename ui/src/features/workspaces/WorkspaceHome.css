@@ -1656,3 +1656,35 @@ body:has(.memo-stack) .ws-layer-content {
     transition: none;
   }
 }
+
+/* ── Touch press feedback ────────────────────────────────────────────
+   The workspace picker is the tablet's first screen after login. Filled
+   buttons scale; the user-profile row tints (it opens a menu rather than
+   performing an action, so a scale would overstate it). */
+.workspace-error-retry:not(:disabled):active,
+.workspace-home-fullscreen-btn:not(:disabled):active,
+.workspace-home-logout-btn:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+.workspace-home-user-profile:active {
+  background: color-mix(in srgb, var(--color-fg) 12%, transparent);
+}
+
+@media (pointer: coarse) {
+  .workspace-error-retry,
+  .workspace-home-fullscreen-btn,
+  .workspace-home-logout-btn,
+  .workspace-home-user-profile {
+    min-height: var(--touch-target-min);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .workspace-error-retry:not(:disabled):active,
+  .workspace-home-fullscreen-btn:not(:disabled):active,
+  .workspace-home-logout-btn:not(:disabled):active {
+    transform: none;
+    opacity: 0.75;
+  }
+}

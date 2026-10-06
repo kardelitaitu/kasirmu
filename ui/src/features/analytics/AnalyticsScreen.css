@@ -1708,3 +1708,60 @@
     padding: 8px 0;
   }
 }
+
+/* ── Touch press feedback ────────────────────────────────────────────
+   Analytics is reviewed on the tablet, including the zoom/pan controls and
+   the per-card action row. Filled buttons scale; chips, the badge and the
+   menu items tint. The workspace `<select>` is excluded — the native picker
+   owns its own press state. */
+.analytics-back-btn:not(:disabled):active,
+.analytics-granularity-btn:not(:disabled):active,
+.analytics-action-btn:not(:disabled):active,
+.analytics-zoom-reset-btn:not(:disabled):active,
+.analytics-reset-layout:not(:disabled):active,
+.analytics-card-action:not(:disabled):active,
+.analytics-cache-clear-btn:not(:disabled):active,
+.analytics-session-banner-action:not(:disabled):active,
+.analytics-scroll-top:not(:disabled):active,
+.analytics-export-btn:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+.analytics-zoom-badge:active,
+.analytics-preset-chip:active,
+.analytics-card-menu button:active,
+.analytics-cache-chip:active,
+.analytics-palette-item:active {
+  background: color-mix(in srgb, var(--color-fg) 12%, transparent);
+}
+
+@media (pointer: coarse) {
+  .analytics-back-btn,
+  .analytics-granularity-btn,
+  .analytics-action-btn,
+  .analytics-zoom-reset-btn,
+  .analytics-reset-layout,
+  .analytics-preset-chip,
+  .analytics-card-action,
+  .analytics-cache-clear-btn,
+  .analytics-scroll-top,
+  .analytics-export-btn {
+    min-height: var(--touch-target-min);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .analytics-back-btn:not(:disabled):active,
+  .analytics-granularity-btn:not(:disabled):active,
+  .analytics-action-btn:not(:disabled):active,
+  .analytics-zoom-reset-btn:not(:disabled):active,
+  .analytics-reset-layout:not(:disabled):active,
+  .analytics-card-action:not(:disabled):active,
+  .analytics-cache-clear-btn:not(:disabled):active,
+  .analytics-session-banner-action:not(:disabled):active,
+  .analytics-scroll-top:not(:disabled):active,
+  .analytics-export-btn:not(:disabled):active {
+    transform: none;
+    opacity: 0.75;
+  }
+}
