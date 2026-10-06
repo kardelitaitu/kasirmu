@@ -11,6 +11,7 @@
  *   - Pill qty control (.pos-cart-line-controls, .pos-cart-qty-btn, .pos-cart-qty-value)
  *   - Line total (.pos-cart-line-total)
  *   - Remove buttons (.pos-cart-line-remove, .pos-cart-line-swipe-action, .pos-cart-line-swipe-remove)
+ *   - Edit-modifiers link (.pos-cart-line-edit-modifiers-btn)
  *   - Line-in keyframe + reduced-motion override
  *
  * Brand hooks (consumed via var(--brand-token, fallback)):
@@ -657,4 +658,21 @@
     transform: none;
     opacity: 0.75;
   }
+}
+
+/* ── Edit-modifiers link ─────────────────────────────── */
+
+/* Moved off an inline `style={{...}}` on CartLineItem.tsx:264. The class was in
+   the markup with no sheet behind it, so screenExtraction reported it as
+   used-but-undefined; the values are the same ones, as tokens where a step
+   exists. 1px/6px/11px are sub-token sizes the theme checker exempts by design
+   (<=10px, or the line-height/gap class of literals). */
+.pos-cart-line-edit-modifiers-btn {
+  background: none;
+  border: none;
+  padding: 1px 6px;
+  font-size: 11px;
+  color: var(--color-primary);
+  cursor: pointer;
+  text-decoration: underline;
 }

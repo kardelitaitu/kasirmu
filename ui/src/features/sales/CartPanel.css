@@ -472,6 +472,26 @@
   flex: 1 1 auto;
 }
 
+/* Order-type prompt row (Dine-in / Takeaway / Delivery). The rule was on this
+   element as an inline `style={{...}}` with literal 6px values and no matching
+   class, which is why screenExtraction reported the name as used-but-undefined:
+   a class in the markup with no sheet behind it styles nothing. Moved here so the
+   values are tokens and the guard can see them. */
+.pos-cart-order-type-row {
+  display: flex;
+  gap: 6px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-bg-subtle, rgba(0, 0, 0, 0.02));
+}
+
+/* Pax input beside the customer field. Was inline `width: 64px`; 4rem is the
+   token step this file already uses for the same size (see .pos-cart-table-input). */
+.pos-cart-guest-field {
+  width: 4rem;
+  flex: 0 0 auto;
+}
+
 .pos-cart-table-label,
 .pos-cart-customer-label {
   font-size: var(--text-xs);

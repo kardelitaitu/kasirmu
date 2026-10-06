@@ -609,17 +609,10 @@ export function CartPanel({
         )}
 
         {/* ── Order Type Prompt (Dine-in / Takeaway / Delivery) ── */}
+        {/* Styling lives in CartPanel.css (.pos-cart-order-type-row); it used to
+            be an inline style block with hardcoded 6px values and no sheet behind it. */}
         {(orderTypePromptEnabled || activeWorkspace === 'restaurant-pos') && setOrderType && (
-          <div
-            className="pos-cart-order-type-row"
-            style={{
-              display: 'flex',
-              gap: '6px',
-              padding: '6px 12px',
-              borderBottom: '1px solid var(--color-border)',
-              background: 'var(--color-bg-subtle, rgba(0, 0, 0, 0.02))',
-            }}
-          >
+          <div className="pos-cart-order-type-row">
             {(
               [
                 { id: 'dine_in', label: 'Dine In', icon: '🍽️' },
@@ -695,7 +688,7 @@ export function CartPanel({
               </div>
             )}
             {setGuestCount && (
-              <div className="pos-cart-guest-field" style={{ width: '64px', flex: '0 0 auto' }}>
+              <div className="pos-cart-guest-field">
                 <label htmlFor="pos-guest-count" className="pos-cart-customer-label">
                   {l10n.getString('pos-cart-guest-count-label') || 'Pax'}
                 </label>

@@ -268,15 +268,6 @@ export function CartLineItem({
                   }}
                   aria-label={l10n.getString('edit-modifiers') || 'Edit Modifiers'}
                   data-testid="cart-line-edit-modifiers-btn"
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    padding: '1px 6px',
-                    fontSize: '11px',
-                    color: 'var(--color-primary, #147efb)',
-                    cursor: 'pointer',
-                    textDecoration: 'underline',
-                  }}
                 >
                   Edit
                 </button>
