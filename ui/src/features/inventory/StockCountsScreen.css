@@ -154,3 +154,28 @@
     transition: all 0.15s;
   }
 }
+
+/* ── Touch press feedback ────────────────────────────────────────────
+   Stock counts are performed on a tablet walking the floor, so these are
+   thumb targets with no hover available. */
+.sc-card-action:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+.sc-filter-btn:active {
+  background: color-mix(in srgb, var(--color-fg) 12%, transparent);
+}
+
+@media (pointer: coarse) {
+  .sc-filter-btn,
+  .sc-card-action {
+    min-height: var(--touch-target-min);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sc-card-action:not(:disabled):active {
+    transform: none;
+    opacity: 0.75;
+  }
+}

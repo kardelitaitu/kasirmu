@@ -654,3 +654,45 @@
   gap: 0.25rem;
   font-size: var(--text-sm);
 }
+
+/* ── Touch press feedback ────────────────────────────────────────────
+   The warehouse console is operated on a tablet. Filled/card surfaces scale;
+   rows, the popup close and the search clear (bare glyphs) tint.
+
+   NOTE: `.warehouse-search-clear`, `.warehouse-th-btn` and `.warehouse-btn`
+   are NOT styled here. All three exist only in this file — no component
+   references them (grep over ui/src finds the stylesheet and nothing else),
+   so they are dead selectors and adding press states to them would add
+   unreachable CSS. Left for a separate dead-code sweep, not silently
+   animated. */
+.warehouse-grid-card:not(:disabled):active,
+.warehouse-session-pick-btn:not(:disabled):active,
+.warehouse-fn-btn:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+.warehouse-session-remove:active,
+.warehouse-popup-close:active,
+.warehouse-transfer-item:active {
+  background: color-mix(in srgb, var(--color-fg) 12%, transparent);
+}
+
+@media (pointer: coarse) {
+  .warehouse-grid-card,
+  .warehouse-session-pick-btn,
+  .warehouse-session-remove,
+  .warehouse-fn-btn,
+  .warehouse-popup-close,
+  .warehouse-transfer-item {
+    min-height: var(--touch-target-min);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .warehouse-grid-card:not(:disabled):active,
+  .warehouse-session-pick-btn:not(:disabled):active,
+  .warehouse-fn-btn:not(:disabled):active {
+    transform: none;
+    opacity: 0.75;
+  }
+}

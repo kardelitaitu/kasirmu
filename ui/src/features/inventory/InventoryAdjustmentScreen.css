@@ -381,3 +381,29 @@
   gap: var(--space-3);
   padding-top: var(--space-1);
 }
+
+/* ── Touch press feedback ────────────────────────────────────────────
+   Adjustments are entered on a tablet. Filled type buttons scale; the
+   product rows and the clear affordance tint. */
+.inv-adjust-type-btn:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+.inv-adjust-product-item:active,
+.inv-adjust-clear-btn:active {
+  background: color-mix(in srgb, var(--color-fg) 12%, transparent);
+}
+
+@media (pointer: coarse) {
+  .inv-adjust-type-btn,
+  .inv-adjust-clear-btn {
+    min-height: var(--touch-target-min);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .inv-adjust-type-btn:not(:disabled):active {
+    transform: none;
+    opacity: 0.75;
+  }
+}

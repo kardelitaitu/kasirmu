@@ -218,3 +218,32 @@
 .location-picker-option--active .location-picker-option-meta {
   color: var(--color-accent-active);
 }
+
+/* ── Touch press feedback ────────────────────────────────────────────
+   The picker opens onto a tablet. Options tint (they are rows, and a row
+   scaling on a finger reads as the whole panel twitching); the trigger and
+   retry scale because they are discrete filled controls. */
+.location-picker-trigger:not(:disabled):active,
+.location-picker-retry:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+.location-picker-option:active {
+  background: color-mix(in srgb, var(--color-fg) 12%, transparent);
+}
+
+@media (pointer: coarse) {
+  .location-picker-trigger,
+  .location-picker-retry,
+  .location-picker-option {
+    min-height: var(--touch-target-min);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .location-picker-trigger:not(:disabled):active,
+  .location-picker-retry:not(:disabled):active {
+    transform: none;
+    opacity: 0.75;
+  }
+}
