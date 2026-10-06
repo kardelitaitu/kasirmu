@@ -1675,9 +1675,25 @@ const SCREENS: ScreenEntry[] = [
     css: ['settings/screens/screens-placeholder.css'],
   },
   {
+    // Migrated 2026-10-06: composes the real settings/DataManagementScreen as
+    // its body, the same way system-diagnostics composes DiagnosticsSection and
+    // its ExchangeRatesScreen sibling composes the currency screen. The walker
+    // reads this file's markup alone and does NOT follow the composed import,
+    // so the data-mgmt-* classes (styled by settings/DataManagementScreen.css,
+    // which the composed screen imports) are declared external here. That
+    // screen keeps its own ledger entry; these names are reached through
+    // composition, not spelled in this file. The scaffold still renders
+    // settings-screen-placeholder + -note, so no scaffold name goes dead.
     name: 'DataManagementScreen (placeholder)',
     tsx: 'settings/screens/DataManagementScreen.tsx',
     css: ['settings/screens/screens-placeholder.css'],
+    externalClasses: [
+      'data-mgmt',
+      'data-mgmt-header',
+      'data-mgmt-title',
+      'data-mgmt-tabs',
+      'data-mgmt-tab-icon',
+    ],
   },
   {
     name: 'SyncStatusScreen',

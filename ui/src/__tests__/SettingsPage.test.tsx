@@ -421,6 +421,10 @@ describe('SettingsPage admin shell — flat 14-page IA', () => {
       // is what proves it mounted; .exchange-rate-config is its root, so both
       // are asserted.
       'exchange-rates': ['exchange-rate-config', 'exchange-rate-empty'],
+      // Migrated 2026-10-06: composes the real features/settings
+      // DataManagementScreen. With the mocked IPC (and the admin gate open in
+      // this session) the body's tab strip is what proves it mounted.
+      'data-management': ['data-mgmt', 'data-mgmt-tabs'],
     };
 
     for (const item of NAV_ITEMS) {

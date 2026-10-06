@@ -95,10 +95,25 @@ export function useBackupStatus({ sessionToken, triggerFlash }: {
     if (!fetchStatus) return;
     fetchStatus()
       .then((status) => {
+        // Guard the PAYLOAD before reading it. The commands declare a
+        // BackupStatus shape, but nothing at runtime ENFORCES that, and a
+        // transport answering `undefined` made `status.last_backup` throw a
+        // TypeError inside this handler — surfacing as an UNCAUGHT exception
+        // during render ("Cannot read properties of undefined (reading
+        // 'last_backup')") that blanked the whole Data Management screen.
+        // Same class as the array coercions in ExchangeRateScreen and the tax
+        // screen.
+        //
+        // The guard goes on the payload, NOT on its fields: writing
+        // `status?.last_backup ?? undefined` would be a SECOND bug, mapping a
+        // legitimate `null` ("read succeeded, answered: never backed up",
+        // which renders "Never") onto `undefined` ("never answered") and
+        // erasing a real answer. Only an ABSENT payload is never-answered; a
+        // present one keeps its own null.
         setBackup((prev) => ({
           ...prev,
-          lastBackup: status.last_backup,
-          lastBackupSize: status.last_backup_size ?? undefined,
+          lastBackup: status ? status.last_backup : undefined,
+          lastBackupSize: status ? (status.last_backup_size ?? undefined) : undefined,
         }));
       })
       .catch(() => {
