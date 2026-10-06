@@ -174,6 +174,15 @@ BEGIN
         EXECUTE format('ALTER TABLE public.%I RENAME TO %I', 'payments_new', 'payments');
     END IF;
 
+    -- 'payments_new' -> 'payments'   (20261018_gateway_status_adr64_vocabulary.sql)
+    IF EXISTS (SELECT 1 FROM information_schema.tables
+                WHERE table_schema = 'public' AND table_name = 'payments_new')
+       AND NOT EXISTS (SELECT 1 FROM information_schema.tables
+                WHERE table_schema = 'public' AND table_name = 'payments')
+    THEN
+        EXECUTE format('ALTER TABLE public.%I RENAME TO %I', 'payments_new', 'payments');
+    END IF;
+
     -- 'user_location_access'.'store_id' -> 'location_id'   (20260906_rename_store_to_location.sql)
     IF EXISTS (SELECT 1 FROM information_schema.columns
                 WHERE table_schema = 'public' AND table_name = 'user_location_access'
@@ -2977,7 +2986,7 @@ CREATE TABLE IF NOT EXISTS "payments" (
     gateway_reference TEXT,
     gateway_status    TEXT CHECK (gateway_status IN (
         'pending', 'authorized', 'confirmed', 'settled',
-        'failed', 'refunded', 'chargeback'
+        'failed', 'voided', 'refunded', 'disputed', 'unconfirmed'
     ) OR gateway_status IS NULL),
     gateway_response  TEXT,
     settled_at        TEXT,

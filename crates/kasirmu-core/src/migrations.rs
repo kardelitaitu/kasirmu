@@ -449,6 +449,15 @@ pub const ALL: &[Migration] = &[
         id: "20261017_payments_method_check.sql",
         sql: include_str!("../migrations/20261017_payments_method_check.sql"),
     },
+    // ADR-64 (D4) vocabulary REPAIR: 20261017 shipped 'chargeback' and omitted
+    // the decided 'voided', 'disputed' and 'unconfirmed'. This restates the
+    // constraint over the decision's own set. Date 20261018 sorts last, and the
+    // change is a constraint rebuild over an unread column, so it reorders
+    // nothing.
+    Migration {
+        id: "20261018_gateway_status_adr64_vocabulary.sql",
+        sql: include_str!("../migrations/20261018_gateway_status_adr64_vocabulary.sql"),
+    },
 ];
 
 /// Postgres DDL for the full schema, parallel to the SQLite `init.sql`.

@@ -3586,9 +3586,14 @@ fn payments_method_check_and_gateway_status_constraints_enforced() {
         assert!(res.is_err(), "invalid method {invalid} must be rejected by CHECK constraint");
     }
 
+    // ADR-64 D4's decided set, not the set 20261017 happened to ship. The two
+    // diverged (20261018 repaired it): the migration omitted 'voided',
+    // 'disputed' and 'unconfirmed' and invented 'chargeback'. Asserting the
+    // decided values is the point -- a list copied from the implementation
+    // cannot detect the implementation disagreeing with the decision.
     let valid_statuses = [
         "pending", "authorized", "confirmed", "settled",
-        "failed", "refunded", "chargeback",
+        "failed", "voided", "refunded", "disputed", "unconfirmed",
     ];
 
     for (i, status) in valid_statuses.iter().enumerate() {
@@ -3600,8 +3605,10 @@ fn payments_method_check_and_gateway_status_constraints_enforced() {
         assert!(res.is_ok(), "valid gateway_status {status} must succeed: {res:?}");
     }
 
-    // Invalid gateway_status must be rejected
-    for invalid_status in ["processing", "waiting", "PENDING", "unknown"] {
+    // Invalid gateway_status must be rejected. 'chargeback' belongs here now:
+    // 20261017 accepted it, ADR-64 D4 does not, and 20261018 removed it. Pinning
+    // a formerly-accepted value as rejected is what stops it creeping back.
+    for invalid_status in ["processing", "waiting", "PENDING", "unknown", "chargeback"] {
         let res = conn.execute(
             "INSERT INTO payments (id, sale_id, method, amount_minor, currency, created_at, gateway_status)
              VALUES (?1, 'sale-pm-test', 'card', 1000, 'IDR', '2026-10-02T00:00:00.000Z', ?2)",
