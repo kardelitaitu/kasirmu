@@ -1587,9 +1587,24 @@ const SCREENS: ScreenEntry[] = [
   // Each scaffold is swapped for the migrated screen during the settings
   // campaign, at which point its entry points at that screen's own sheet.
   {
+    // Migrated 2026-10-06: composes the real sections/GeneralSection as its
+    // body, driven by hooks/useStoreDraft (the eleven props the section takes
+    // are supplied by that hook, not spelled here). The walker reads this file's
+    // markup alone and does NOT follow the composed import, so the
+    // settings-* classes the section renders from SettingsPage.css are declared
+    // external here. That section keeps its own ledger entry; these names are
+    // reached through composition, not spelled in this file. The scaffold still
+    // renders settings-screen-placeholder + -note.
     name: 'GeneralScreen',
     tsx: 'settings/screens/GeneralScreen.tsx',
     css: ['settings/screens/screens-placeholder.css'],
+    // The composed section renders the settings-family form classes, which are
+    // DEFINED in settings/SettingsPage.css — so this entry CITES that sheet as a
+    // parent rather than muting the names. The section keeps its own ledger
+    // entry; the form markup moved here only in the sense that this screen is
+    // what renders it now. `settings-general-save-btn` is this screen's OWN
+    // class and lives in the scaffold sheet (case 3 still walks `css` alone).
+    parentCss: ['settings/SettingsPage.css'],
   },
   {
     name: 'LicenseSubscriptionScreen',

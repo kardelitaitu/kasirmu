@@ -441,6 +441,10 @@ describe('SettingsPage admin shell — flat 14-page IA', () => {
       // Migrated 2026-10-06: composes the real offline-queue screen with
       // `embedded`. .offline-queue-screen is its root and always renders.
       'offline-queue': ['offline-queue-screen'],
+      // Migrated 2026-10-06: composes the real GeneralSection, driven by
+      // hooks/useStoreDraft. The form is the body; there is no wrapper class of
+      // its own, so the marker is the store-name field the rebuild dropped.
+      'general': ['settings-general-save-btn'],
     };
 
     for (const item of NAV_ITEMS) {

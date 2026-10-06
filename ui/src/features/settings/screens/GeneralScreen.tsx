@@ -1,65 +1,94 @@
-//! GeneralScreen — blank Settings screen scaffold (settings rebuild).
+//! GeneralScreen — Settings → General.
 //!
-//! Migration provenance (orchestrator contract, settings-screens phase):
-//! Content moves here from `features/settings/sections/GeneralSection.tsx`
-//! (store identity fields).
+//! Migrated 2026-10-06 from `features/settings/sections/GeneralSection.tsx` (store
+//! identity + default currency + UI language), per the provenance this scaffold
+//! named while it was still blank.
 //!
-//! Intentionally renders no controls: this file exists so the route/placeholder
-//! is honest about its state, and every scaffold in this folder shares one
-//! stylesheet (`./screens-placeholder.css`) so the placeholder looks identical
-//! everywhere.
+//! Unlike its ExchangeRates / DataManagement / TaxConfiguration siblings, the
+//! section could NOT simply be composed: `GeneralSection` is presentational and
+//! takes ELEVEN props, and the flat-IA rebuild removed the page state that used
+//! to supply them. `validateField`, `clearFieldError` and `fieldErrors` were
+//! never reimplemented — `git grep validateField` finds the prop type, its two
+//! call sites, and test mocks, and no definition — so the form could not render
+//! even if imported.
 //!
-//! Copy is Fluent-only: `settings-nav-*` for the title, plus the two shared
-//! placeholder notes. Both keys exist in `settings.ftl` and `settings.id.ftl`.
+//! The missing half now lives in `hooks/useStoreDraft.ts`: it owns the draft,
+//! validation, and the `set_store_settings_scoped` write, and it marks
+//! `store.*` changed so the settings context refetches — the same post-write
+//! contract `useSettingsSave`'s store task uses, so the two cannot diverge.
 //!
-//! ── WHY THIS IS STILL EMPTY, AND WHY THAT IS NOT FREE ──────────────
-//!
-//! `GeneralSection` is presentational: it takes ELEVEN props (store, setStore,
-//! markDirty, cmInput, fieldErrors, validateField, clearFieldError, currencies,
-//! defaultCurrency, setDefaultCurrencyState, l10n) and owns no state. All of it
-//! lives in `SettingsPage.tsx`, whose `renderSection` now dispatches ONLY to
-//! `SETTINGS_SCREENS` — and SettingsPage imports NONE of the six
-//! `sections/*.tsx` files any more. So the section cannot simply be dropped in
-//! the way DiagnosticsSection (zero props) was: composing it needs the state
-//! LIFTED first, exactly as the offline/tax/data-management screens needed only
-//! `embedded`.
-//!
-//! The consequence is user-visible, verified on the tablet 2026-10-06 by
-//! navigating Settings → General over CDP:
-//!
-//!   document.querySelector('#settings-field-store-name') → null
-//!   .settings-section-content input / select count → 0
-//!
-//! In other words the shipped app has NO way to edit store name, address, tax
-//! ID, branch, default currency, or the UI language: those fields exist only in
-//! GeneralSection.tsx, which nothing renders. `SettingsPage` still carries the
-//! `store` state and still hands it to `useSettingsSave`, so the SAVE pipeline
-//! is intact but detached from any UI that could change it.
-//!
-//! So this screen is the sharpest argument for the lift: it is not a cosmetic
-//! gap, it is lost configuration. Do that refactor before treating any of the
-//! four remaining placeholders (this, data-sync, sync-status, security-account)
-//! as a simple composition — three of them need moved state, and
-//! security-account has no source content at all.
+//! This screen keeps its own Save button (the page's topbar Save is driven by
+//! page-level dirty state this screen does not own), mirroring
+//! AppearanceSettings' self-contained pattern. Copy is Fluent-only and uses
+//! existing keys; the one new key (`settings-store-name-required`) was added to
+//! BOTH the en and id bundles.
 
-import { Localized } from '@fluent/react';
+import { Localized, useLocalization } from '@fluent/react';
+import { Button } from '@/components/Button';
+import { useStoreDraft } from '../hooks/useStoreDraft';
+import GeneralSection from '../sections/GeneralSection';
 import './screens-placeholder.css';
 
-/** Placeholder for Settings → General. */
+/** Settings → General: heading + the real store-identity form as its body. */
 export function GeneralScreen() {
+  const { l10n } = useLocalization();
+  const draft = useStoreDraft();
+
   return (
     <section className="settings-screen-placeholder">
       <h1 className="settings-screen-placeholder-title">
         <Localized id="settings-nav-general">General</Localized>
       </h1>
-      <p className="settings-screen-placeholder-note">
-        <Localized id="settings-screen-placeholder">This page is being rebuilt.</Localized>
-      </p>
+      {/* The migration note stays (SettingsPage.test.tsx asserts it on every
+          screen, migrated ones included); the one-off placeholder line goes away
+          now that the body is real content. */}
       <p className="settings-screen-placeholder-note">
         <Localized id="settings-screen-migrating">
           Existing settings content will move here selectively.
         </Localized>
       </p>
+
+      <GeneralSection
+        store={draft.store}
+        setStore={(next) => {
+          // The section writes whole objects (`setStore({ ...store, name })`),
+          // so route each field through the hook to keep error-clearing and
+          // dirty tracking in one place.
+          const value = typeof next === 'function' ? null : next;
+          if (value) {
+            for (const [k, v] of Object.entries(value)) {
+              if (draft.store[k as keyof typeof draft.store] !== v) {
+                draft.setField(k as keyof typeof draft.store, String(v));
+              }
+            }
+          }
+        }}
+        // The section calls this on every keystroke; the hook derives dirtiness
+        // by comparing the draft against the context read, so there is nothing
+        // to flip here.
+        markDirty={() => {}}
+        cmInput={draft.cmInput}
+        fieldErrors={draft.fieldErrors}
+        validateField={draft.validateField}
+        clearFieldError={draft.clearFieldError}
+        currencies={draft.currencies}
+        defaultCurrency={draft.store.currency}
+        setDefaultCurrencyState={(v) => draft.setField('currency', v)}
+        l10n={l10n}
+      />
+
+      <div className="settings-form">
+        <Button
+          type="button"
+          variant="primary"
+          size="sm"
+          className="settings-general-save-btn"
+          onClick={() => { void draft.save(); }}
+          disabled={draft.saving || !draft.isDirty}
+        >
+          <Localized id="settings-btn-save">Save</Localized>
+        </Button>
+      </div>
     </section>
   );
 }

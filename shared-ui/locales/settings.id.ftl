@@ -271,6 +271,8 @@ settings-currency-loading = Memuat mata uang…
 settings-section-display = Tampilan
 settings-section-receipt = Nota
 settings-field-store-name = Nama toko
+# Shown under the store-name input when it is left empty on blur.
+settings-store-name-required = Nama toko wajib diisi
 settings-field-address = Alamat
 settings-field-branch = Cabang
 settings-field-tax-id = NPWP

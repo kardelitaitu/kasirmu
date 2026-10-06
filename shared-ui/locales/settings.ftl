@@ -277,6 +277,9 @@ settings-currency-loading = Loading currencies…
 settings-section-display = Display
 settings-section-receipt = Receipt
 settings-field-store-name = Store name
+# Shown under the store-name input when it is left empty on blur. Mirrors the
+# `required` attribute the input already carries.
+settings-store-name-required = Store name is required
 settings-field-address = Address
 settings-field-branch = Branch
 settings-field-tax-id = Tax / VAT ID
