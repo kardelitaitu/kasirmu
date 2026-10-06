@@ -655,9 +655,10 @@ pub async fn get_hardware_settings_scoped(
     })
 }
 
-/// Session-scoped hardware write: the only one. The unscoped `set_hardware_settings`
-/// this used to sit beside took `user_id` from the renderer, which is the actor the
-/// permission check asks about, so it was retired with T11 rather than repaired.
+/// Session-scoped hardware write: persists to canonical `hardware_profiles` DB table,
+/// updates legacy store settings for backwards-compat, and triggers a live in-memory
+/// reload of the active `DriverRegistry` so newly configured printers and companion
+/// cash drawers take effect immediately without requiring an app restart.
 #[command]
 pub async fn set_hardware_settings_scoped(
     session_token: String,
@@ -666,17 +667,68 @@ pub async fn set_hardware_settings_scoped(
 ) -> Result<(), AppError> {
     let session = state.resolve_session(&session_token)?;
     require_permission_for_session(&state, &session, permissions::SETTINGS_EDIT).await?;
-    let conn_arc = state.resolve_store(&session_token)?;
-    let db_guard = conn_arc
+
+    // 1. Sync legacy per-store settings table
+    if let Ok(conn_arc) = state.resolve_store(&session_token) {
+        if let Ok(db_guard) = conn_arc.lock() {
+            if let Ok(tx) = db_guard.unchecked_transaction() {
+                let _ = Settings::set_printer_connection(&tx, &args.printer_connection);
+                let _ = Settings::set_printer_device_path(&tx, &args.printer_device_path);
+                let _ = Settings::set_printer_paper_size(&tx, &args.printer_paper_size);
+                let _ = Settings::set_scanner_device_id(&tx, &args.scanner_device_id);
+                let _ = Settings::set_scanner_input_mode(&tx, &args.scanner_input_mode);
+                let _ = tx.commit();
+            }
+        }
+    }
+
+    // 2. Persist to canonical hardware_profiles DB table
+    let profile = platform_core::terminal_profile::TerminalProfile {
+        printer_connection: args.printer_connection.clone(),
+        printer_device_path: args.printer_device_path.clone(),
+        printer_paper_size: args.printer_paper_size.clone(),
+        scanner_device_id: args.scanner_device_id.clone(),
+        scanner_input_mode: args.scanner_input_mode.clone(),
+        ..platform_core::terminal_profile::TerminalProfile::default()
+    };
+    let json = serde_json::to_string(&profile)
+        .map_err(|e| AppError::Internal(format!("serializing profile: {e}")))?;
+
+    let terminal_id = state
+        .terminal_id
         .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let tx = db_guard.unchecked_transaction()?;
-    Settings::set_printer_connection(&tx, &args.printer_connection)?;
-    Settings::set_printer_device_path(&tx, &args.printer_device_path)?;
-    Settings::set_printer_paper_size(&tx, &args.printer_paper_size)?;
-    Settings::set_scanner_device_id(&tx, &args.scanner_device_id)?;
-    Settings::set_scanner_input_mode(&tx, &args.scanner_input_mode)?;
-    tx.commit()?;
+        .await
+        .clone()
+        .unwrap_or_else(|| "unknown".to_string());
+
+    {
+        let conn = state.db.lock().await;
+        conn.execute(
+            "INSERT OR REPLACE INTO hardware_profiles (terminal_id, profile_json, schema_version, updated_at)
+             VALUES (?1, ?2, ?3, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
+            rusqlite::params![&terminal_id, &json, profile.schema_version],
+        )?;
+    }
+
+    // 3. Persist fallback JSON file
+    let base_dir = state
+        .db_path
+        .parent()
+        .unwrap_or(std::path::Path::new("."))
+        .to_path_buf();
+    let path = platform_core::terminal_profile::TerminalProfile::profile_path(&base_dir, &terminal_id);
+    if let Err(e) = profile.save(&path) {
+        tracing::warn!(
+            terminal_id = %terminal_id,
+            error = %e,
+            "failed to save hardware settings to JSON — DB write succeeded"
+        );
+    }
+
+    // 4. Live reload hardware registry so test prints and cash drawer kick immediately use new settings
+    let report = platform_startup::hardware::register_hardware(&state.registry, &profile).await;
+    tracing::info!(%report, "tablet hardware registry live reload complete");
+
     Ok(())
 }
 

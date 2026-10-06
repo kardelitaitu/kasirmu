@@ -75,8 +75,21 @@ impl DriverRegistry {
     }
 
     /// Look up a cash drawer by id. Returns `None` if no drawer is registered.
+    ///
+    /// If `id` is `"default"` and no standalone cash drawer was registered
+    /// under that exact key, falls back to the companion drawer
+    /// `"drawer:kick:default"` registered alongside the default receipt printer.
     pub async fn cash_drawer(&self, id: &str) -> Option<Arc<dyn CashDrawer>> {
-        self.drawers.read().await.get(id).cloned()
+        let guard = self.drawers.read().await;
+        if let Some(drawer) = guard.get(id).cloned() {
+            return Some(drawer);
+        }
+        if id == "default" {
+            if let Some(companion) = guard.get("drawer:kick:default").cloned() {
+                return Some(companion);
+            }
+        }
+        None
     }
 
     /// Snapshot of registered scanner ids (for the setup wizard's "what's

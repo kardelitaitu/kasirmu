@@ -170,9 +170,16 @@ pub async fn set_hardware_settings_scoped(
 ) -> Result<(), AppError> {
     let ctx = state.bridge_ctx();
     let base_dir = app_data_dir(&state)?;
-    kasirmu_bridge::settings::set_hardware_settings_scoped(&ctx, &session_token, args, &base_dir)
+    kasirmu_bridge::settings::set_hardware_settings_scoped(&ctx, &session_token, args.clone(), &base_dir)
         .await
-        .map_err(Into::into)
+        .map_err(AppError::from)?;
+
+    // Live reload hardware registry so test prints and cash drawer kick immediately use new settings
+    let profile = platform_core::terminal_profile::TerminalProfile::from(args);
+    let report = platform_startup::hardware::register_hardware(&state.registry, &profile).await;
+    tracing::info!(%report, "desktop hardware registry live reload complete");
+
+    Ok(())
 }
 
 // ── User preferences ───────────────────────────────────────────
