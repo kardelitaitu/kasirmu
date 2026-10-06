@@ -208,7 +208,7 @@ export default function StaffManagementScreen() {
       try {
         const [workspaces] = await Promise.all([
           listAllWorkspacesScoped(sessionToken),
-          listLocationsScoped(sessionToken),
+          listLocationsScoped(sessionToken).catch(() => []),
         ]);
         const nameMap = new Map<string, string>();
         for (const w of workspaces) {

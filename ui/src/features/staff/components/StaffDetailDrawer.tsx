@@ -506,8 +506,8 @@ export function StaffDetailDrawer({
         const [profile, workspaces, storeProfiles, legalEntities] = await Promise.all([
           getStaffProfileScoped(sessionToken, member.id),
           listAllWorkspacesScoped(sessionToken),
-          listLocationsScoped(sessionToken),
-          listLegalEntitiesScoped(sessionToken),
+          listLocationsScoped(sessionToken).catch(() => []),
+          listLegalEntitiesScoped(sessionToken).catch(() => []),
         ]);
         setIdentityWithheld(profile.identity_withheld ?? false);
         setForm((prev) => ({
