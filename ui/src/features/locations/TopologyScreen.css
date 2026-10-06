@@ -80,3 +80,71 @@
   border-color: var(--color-border-focus);
   box-shadow: inset 0 0 0 1px var(--color-accent-subtle);
 }
+
+/* ── Branch-to-branch comparison panel ────────────────────────────────
+   Five classes rendered by TopologyScreen.tsx:936-993, none of which any
+   stylesheet defined — the panel is display-only and was added without its
+   rules. Without them the whole comparison rendered as flush-left paragraphs
+   in one column: no panel surface, no header row, and the two action buttons
+   ran into the title. */
+.topology-compare-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: var(--space-3) 0;
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-bg-surface);
+  font-size: var(--text-sm);
+}
+
+.topology-compare-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.topology-compare-header h3 {
+  margin: 0;
+  font-size: var(--text-base);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-fg);
+}
+
+.topology-compare-header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+/* The "compare against" selector row. */
+.topology-compare-other {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.topology-compare-other label {
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-fg-secondary);
+  white-space: nowrap;
+}
+
+/* The counts + per-bucket name lists. */
+.topology-compare-summary {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  color: var(--color-fg-secondary);
+}
+
+.topology-compare-summary p {
+  margin: 0;
+  line-height: var(--leading-normal);
+}

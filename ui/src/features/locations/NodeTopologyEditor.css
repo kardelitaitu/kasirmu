@@ -3145,3 +3145,96 @@
   stroke-width: 1;
   pointer-events: none;
 }
+
+/* ── Gaps in the node-card families ───────────────────────────────────
+   Eight classes rendered by topologyNodeCard.tsx whose siblings above ARE
+   defined but which themselves never got a rule — `.node-action-btn`,
+   `.node-subtitle`, `.node-stock-wire-hint`, `.node-port-column` and
+   `.node-validation-note-dismiss` all exist; only these variants were
+   missing. Each is written to match the sibling it extends. */
+
+/* Properties / Rename: like --disconnect, these are plain action buttons that
+   share the base chrome, so no override is needed beyond the base — declared
+   here so the name resolves and a later restyle has an obvious hook. */
+.node-action-btn--properties,
+.node-action-btn--rename {
+  /* Intentionally inherits .node-action-btn. */
+}
+
+/* The description half of the subtitle line (siblings .node-subtitle-type and
+   .node-subtitle-sep are styled above). */
+.node-subtitle-desc {
+  color: var(--color-fg-muted);
+}
+
+/* The real <input type="checkbox"> behind the config toggle: visually hidden by
+   the shared .sr-only utility, so only the parts .sr-only cannot say are set. */
+.node-config-toggle-input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Body text of the stock-wire hint (its container and icon are styled above). */
+.node-stock-wire-hint-text {
+  min-width: 0;
+  line-height: var(--leading-tight);
+}
+
+/* Left/right halves of the port footer. .node-port-column already sets the
+   column layout and flex:1 1 0; these only name the side so the port markers
+   can be aligned independently. */
+.node-port-column--left {
+  align-items: flex-start;
+}
+
+.node-port-column--right {
+  align-items: flex-end;
+}
+
+/* ── Four more family gaps ────────────────────────────────────────────
+   Same shape as the block above: the family exists, one variant was never
+   written. The bare .node-validation-note is the base its -chip above sits on. */
+.node-validation-note {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  cursor: help;
+}
+
+/* "Later" — the dismiss half of the migration dialog's action row. The row and
+   its generic button rules are above; this names the quiet variant so it does
+   not read as the primary action. */
+.topology-migration-later {
+  color: var(--color-fg-muted);
+}
+
+.topology-migration-later:hover {
+  color: var(--color-fg);
+}
+
+/* One message inside the validation banner. The banner is a flex column, so
+   each item is its own line without needing a separator. */
+.topology-validation-banner-item {
+  display: block;
+}
+
+/* The mono hint line under an inspector field. */
+.inspector-hint {
+  font-size: var(--text-xs);
+  color: var(--color-fg-muted);
+  line-height: var(--leading-tight);
+}
+
+/* The workspace-purpose picker in the inspector drawer. The drawer imports no
+   sheet of its own — it renders through this one, whose .inspector-select above
+   is the same control in a different field — so this matches it exactly rather
+   than defining a second select style. */
+.topology-purpose-select {
+  padding: var(--space-2);
+  background-color: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-fg);
+  font-size: var(--text-sm);
+}
