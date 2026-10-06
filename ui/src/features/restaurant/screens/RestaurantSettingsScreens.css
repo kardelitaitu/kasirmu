@@ -1694,4 +1694,52 @@
   }
 }
 
+/* ── Touch press feedback (restaurant settings) ───────────────────────
+   A tablet has no hover, so a control whose only cue is `:hover` reads as
+   inert under a finger. These carried transitions but no `:active`. Split by
+   resting shape: filled controls scale, transparent/outline ones tint.
+
+   The switch-shaped controls (`.resto-switch-btn`, `.settings-toggle-switch`)
+   are deliberately EXCLUDED from the scale: they are two-state controls whose
+   knob already animates on change, and a press-scale on top would fight the
+   toggle transition. They get the tint only — which is also what keeps the
+   on/off affordance legible mid-press. */
+.resto-test-print-btn:not(:disabled):active,
+.resto-segmented-btn:not(:disabled):active,
+.resto-card-expand-btn:not(:disabled):active,
+.resto-compact-btn:not(:disabled):active,
+.restaurant-settings-back-btn:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+.resto-switch-btn:active,
+.settings-toggle-switch:active,
+.restaurant-rail-remove:active,
+.resto-compact-chip:active {
+  background: color-mix(in srgb, var(--color-fg) 12%, transparent);
+}
+
+@media (pointer: coarse) {
+  .restaurant-settings-back-btn,
+  .resto-test-print-btn,
+  .resto-segmented-btn,
+  .resto-card-expand-btn,
+  .resto-compact-btn,
+  .resto-compact-chip,
+  .restaurant-rail-remove {
+    min-height: var(--touch-target-min);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .resto-test-print-btn:not(:disabled):active,
+  .resto-segmented-btn:not(:disabled):active,
+  .resto-card-expand-btn:not(:disabled):active,
+  .resto-compact-btn:not(:disabled):active,
+  .restaurant-settings-back-btn:not(:disabled):active {
+    transform: none;
+    opacity: 0.75;
+  }
+}
+
 

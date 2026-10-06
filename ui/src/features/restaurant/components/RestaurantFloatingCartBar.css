@@ -166,3 +166,24 @@
     }
   }
 }
+
+/* ── Touch press feedback ────────────────────────────────────────────
+   The floating bar is the always-present route back into the cart on a
+   tablet, tapped repeatedly between orders. It is a filled pill, so scale is
+   the cue that reads on its surface. */
+.restaurant-floating-cart-trigger:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+@media (pointer: coarse) {
+  .restaurant-floating-cart-trigger {
+    min-height: var(--touch-target-min);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .restaurant-floating-cart-trigger:not(:disabled):active {
+    transform: none;
+    opacity: 0.75;
+  }
+}

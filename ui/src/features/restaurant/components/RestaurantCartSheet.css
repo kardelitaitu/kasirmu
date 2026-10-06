@@ -200,3 +200,26 @@
     pointer-events: none;
   }
 }
+
+/* ── Touch press feedback ────────────────────────────────────────────
+   The sheet's close button and its drag handle are the two ways out of the
+   cart on a tablet. The close is a filled round target — scale reads there.
+   The handle is a bare drag affordance whose feedback is the drag itself, so
+   it is excluded rather than given a press state it does not need. */
+.restaurant-cart-sheet-close-btn:not(:disabled):active {
+  transform: scale(0.94);
+}
+
+@media (pointer: coarse) {
+  .restaurant-cart-sheet-close-btn {
+    min-height: var(--touch-target-min);
+    min-width: var(--touch-target-min);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .restaurant-cart-sheet-close-btn:not(:disabled):active {
+    transform: none;
+    opacity: 0.75;
+  }
+}
