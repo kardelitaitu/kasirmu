@@ -696,6 +696,19 @@ const SCREENS: ScreenEntry[] = [
       // fails the dead-class check on settings-loading, settings-loading-card and
       // settings-error (verified: 1 failed | 186 passed, exit 1).
       'settings/components/SettingsLoadChrome.tsx',
+      // The four WORKSPACE CARDS that consume the form-family classes this sheet
+      // defines. Added 2026-10-07, when four of those classes were written for
+      // the first time (.settings-range, .settings-range-value, .settings-select,
+      // .settings-error-banner) and the dead-class walk immediately reported them:
+      // the page's own markup does not use them, and nothing else in this list
+      // does either. Same shape as the four sections above — markup that is
+      // styled by SettingsPage.css but lives outside SettingsPage.tsx, so it has
+      // to be named here or its rules read as dead CSS.
+      'settings/workspace-cards/TerminalPreferencesCard.tsx',
+      'settings/workspace-cards/WorkspaceKdsSettings.tsx',
+      'settings/workspace-cards/WorkspaceInventorySettings.tsx',
+      'settings/workspace-cards/WorkspaceStorePosSettings.tsx',
+      'settings/workspace-cards/WorkspaceRestaurantPosSettings.tsx',
     ],
     knownDynamicFragments: [
       // Object-key strings inside template-literal interpolations that
