@@ -4,37 +4,37 @@
   background: var(--color-bg-surface);
   border: 1px solid var(--color-border, #e2e8f0);
   border-radius: var(--radius-lg, 8px);
-  padding: 1.5rem;
-  margin-top: 1.5rem;
+  padding: var(--space-6);
+  margin-top: var(--space-6);
   display: flex;
   flex-direction: column;
-  gap: 1.25rem;
+  gap: var(--space-5);
 }
 
 .update-settings-header {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  gap: 1rem;
+  gap: var(--space-4);
   flex-wrap: wrap;
 }
 
 .update-settings-title {
   margin: 0;
-  font-size: 1.25rem;
+  font-size: var(--text-xl);
   font-weight: 600;
   color: var(--color-text, #1e293b);
 }
 
 .update-settings-subtitle {
-  margin: 0.25rem 0 0 0;
-  font-size: 0.875rem;
+  margin: var(--space-1) 0 0 0;
+  font-size: var(--text-base);
   color: var(--color-text-secondary, #64748b);
 }
 
 .update-settings-version-tags {
   display: flex;
-  gap: 0.5rem;
+  gap: var(--space-2);
   align-items: center;
   flex-wrap: wrap;
 }
@@ -42,9 +42,9 @@
 .update-badge {
   display: inline-flex;
   align-items: center;
-  padding: 0.25rem 0.625rem;
+  padding: var(--space-1) var(--space-2_5);
   border-radius: var(--radius-full, 9999px);
-  font-size: 0.75rem;
+  font-size: var(--text-sm);
   font-weight: 600;
   letter-spacing: 0.02em;
 }
@@ -56,33 +56,33 @@
 }
 
 .update-badge--latest {
-  background: rgba(16, 185, 129, 0.12);
-  color: #059669;
-  border: 1px solid rgba(16, 185, 129, 0.3);
+  background: var(--color-success-subtle);
+  color: var(--color-success-dim);
+  border: 1px solid var(--color-success-dim);
 }
 
 .update-settings-body {
-  margin-top: 0.5rem;
+  margin-top: var(--space-2);
 }
 
 .update-state-box {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: var(--space-4);
 }
 
 .update-state-box--loading {
   display: flex;
   flex-direction: row;
   align-items: center;
-  gap: 0.75rem;
+  gap: var(--space-3);
   color: var(--color-text-secondary, #64748b);
-  font-size: 0.875rem;
+  font-size: var(--text-base);
 }
 
 .update-spinner {
-  width: 1.25rem;
-  height: 1.25rem;
+  width: var(--space-5);
+  height: var(--space-5);
   border: 2px solid var(--color-border, #cbd5e1);
   border-top-color: var(--color-primary, #2563eb);
   border-radius: 50%;
@@ -110,16 +110,16 @@
 .update-state-box--ok {
   display: flex;
   align-items: center;
-  gap: 1rem;
+  gap: var(--space-4);
   flex-wrap: wrap;
 }
 
 .update-status-icon {
-  width: 2rem;
-  height: 2rem;
+  width: var(--space-8);
+  height: var(--space-8);
   border-radius: 50%;
-  background: rgba(16, 185, 129, 0.15);
-  color: #059669;
+  background: var(--color-success-bg);
+  color: var(--color-success-dim);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -128,7 +128,7 @@
 
 .update-status-message {
   margin: 0;
-  font-size: 0.9375rem;
+  font-size: var(--text-md);
   color: var(--color-text, #1e293b);
   font-weight: 500;
 }
@@ -136,53 +136,53 @@
 .update-banner {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
-  padding: 0.75rem 1rem;
-  background: rgba(37, 99, 235, 0.08);
-  border: 1px solid rgba(37, 99, 235, 0.2);
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-accent-dim);
+  border: 1px solid var(--color-accent-alpha);
   border-radius: var(--radius-md, 6px);
 }
 
 .update-banner-icon {
-  font-size: 1.25rem;
+  font-size: var(--text-xl);
 }
 
 .update-banner-text {
   margin: 0;
-  font-size: 0.875rem;
+  font-size: var(--text-base);
   font-weight: 500;
   color: var(--color-primary-hover);
 }
 
 .update-banner--ready {
-  background: rgba(16, 185, 129, 0.08);
-  border-color: rgba(16, 185, 129, 0.25);
+  background: var(--color-success-subtle);
+  border-color: var(--color-success-dim);
 }
 
 .update-banner--ready .update-banner-text {
-  color: #047857;
+  color: var(--color-success-dim);
 }
 
 .update-release-notes {
   background: var(--color-bg-subtle);
   border: 1px solid var(--color-border, #e2e8f0);
   border-radius: var(--radius-md, 6px);
-  padding: 0.75rem 1rem;
+  padding: var(--space-3) var(--space-4);
   max-height: 180px;
   overflow-y: auto;
 }
 
 .update-notes-title {
-  font-size: 0.75rem;
+  font-size: var(--text-sm);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--color-text-secondary, #64748b);
-  margin-bottom: 0.375rem;
+  margin-bottom: var(--space-1_5);
 }
 
 .update-notes-content {
-  font-size: 0.875rem;
+  font-size: var(--text-base);
   color: var(--color-text, #334155);
   white-space: pre-wrap;
   line-height: var(--leading-snug);
@@ -190,7 +190,7 @@
 
 .update-action-row {
   display: flex;
-  gap: 0.75rem;
+  gap: var(--space-3);
   align-items: center;
   flex-wrap: wrap;
 }
@@ -198,13 +198,13 @@
 .update-state-box--progress {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: var(--space-2);
 }
 
 .update-progress-meta {
   display: flex;
   justify-content: space-between;
-  font-size: 0.8125rem;
+  font-size: var(--text-sm);
   color: var(--color-text-secondary, #475569);
 }
 
@@ -225,45 +225,45 @@
 .update-permission-box {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
-  padding: 1rem;
-  background: rgba(245, 158, 11, 0.08);
-  border: 1px solid rgba(245, 158, 11, 0.25);
+  gap: var(--space-3);
+  padding: var(--space-4);
+  background: var(--color-warning-subtle);
+  border: 1px solid var(--color-warning-dim);
   border-radius: var(--radius-md, 6px);
 }
 
 .update-permission-text {
   margin: 0;
-  font-size: 0.875rem;
-  color: #b45309;
+  font-size: var(--text-base);
+  color: var(--color-warning-dim);
 }
 
 .update-state-box--error {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0.75rem 1rem;
-  background: rgba(239, 68, 68, 0.08);
-  border: 1px solid rgba(239, 68, 68, 0.25);
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-danger-subtle);
+  border: 1px solid var(--color-danger-dim);
   border-radius: var(--radius-md, 6px);
-  gap: 1rem;
+  gap: var(--space-4);
 }
 
 .update-error-text {
   margin: 0;
-  font-size: 0.875rem;
-  color: #b91c1c;
+  font-size: var(--text-base);
+  color: var(--color-danger-700);
 }
 
 .update-modal-actions {
   display: flex;
-  gap: 0.75rem;
+  gap: var(--space-3);
   justify-content: flex-end;
 }
 
 .update-offline-body {
   margin: 0;
-  font-size: 0.9375rem;
+  font-size: var(--text-md);
   color: var(--color-text, #334155);
   line-height: var(--leading-normal);
 }
