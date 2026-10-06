@@ -355,6 +355,69 @@ pub struct AuditChainVerificationResult {
     pub broken_at_id: Option<String>,
 }
 
+/// Action name for off-device audit log shipping (P2).
+pub const AUDIT_SHIP_ACTION: &str = "audit.ship";
+
+/// Audit log shipping payload for off-device sync (P2).
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct AuditShipPayload {
+    /// Original audit log entry ID.
+    pub id: String,
+    /// Actor user ID or empty string.
+    pub user_id: String,
+    /// Audit action.
+    pub action: String,
+    /// Optional target type.
+    pub target_type: Option<String>,
+    /// Optional target ID.
+    pub target_id: Option<String>,
+    /// Redacted and truncated details JSON.
+    pub details: String,
+    /// Outcome status ("success" or "failure").
+    pub outcome: String,
+    /// ISO-8601 creation timestamp.
+    pub created_at: String,
+    /// Previous entry hash for forensic chain validation.
+    pub previous_hash: Option<String>,
+    /// Computed cryptographic hash for forensic integrity.
+    pub hash: String,
+}
+
+/// Best-effort enqueue of an audit entry for off-device sync (P2).
+fn enqueue_audit_for_sync(
+    conn: &rusqlite::Connection,
+    entry: &AuditEntry,
+    sanitized_details: &str,
+    previous_hash: Option<&str>,
+    hash: &str,
+) -> Result<(), CoreError> {
+    let payload_struct = AuditShipPayload {
+        id: entry.id.clone(),
+        user_id: entry.user_id.clone(),
+        action: entry.action.clone(),
+        target_type: entry.target_type.clone(),
+        target_id: entry.target_id.clone(),
+        details: sanitized_details.to_string(),
+        outcome: entry.outcome.clone(),
+        created_at: entry.created_at.clone(),
+        previous_hash: previous_hash.map(String::from),
+        hash: hash.to_string(),
+    };
+    let payload = serde_json::to_string(&payload_struct)
+        .map_err(|e| CoreError::Internal(format!("serializing audit ship payload: {e}")))?;
+
+    let queue_id = crate::new_id();
+    let priority = crate::offline::SyncPriority::Low as i32;
+    let origin = super::offline::enqueue_origin(conn).ok().flatten();
+
+    conn.execute(
+        "INSERT INTO offline_queue (id, action, payload, status, retry_count, last_error, created_at, synced_at, tenant_id, priority, origin_terminal_id)
+         VALUES (?1, ?2, ?3, 'pending', 0, NULL, ?4, NULL, 'default', ?5, ?6)",
+        rusqlite::params![queue_id, AUDIT_SHIP_ACTION, payload, entry.created_at, priority, origin],
+    )?;
+    Ok(())
+}
+
 /// The single INSERT body shared by BOTH writer states ([`Store::log_audit`]
 /// in autocommit and inside a caller's transaction, and
 /// [`Store::log_audit_in_tx`]).
@@ -402,6 +465,12 @@ fn insert_audit(conn: &rusqlite::Connection, entry: &AuditEntry) -> Result<(), C
             previous_hash, hash,
         ],
     )?;
+
+    // P2: Best-effort off-device forensic log shipping.
+    if let Err(err) = enqueue_audit_for_sync(conn, entry, &details, previous_hash.as_deref(), &hash) {
+        tracing::warn!(action = %entry.action, error = %err, "failed to enqueue audit entry for off-device shipping");
+    }
+
     Ok(())
 }
 

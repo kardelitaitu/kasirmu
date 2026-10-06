@@ -1657,3 +1657,128 @@ fn audit_chain_verification_grandfathers_unhashed_rows() {
     assert_eq!(res.total_checked, 1); // Checked the 1 hashed row
     assert!(res.broken_at_id.is_none());
 }
+
+// ── P2 Off-device audit log shipping ──────────────────────────
+
+#[test]
+fn log_audit_enqueues_offline_sync_item() {
+    let conn = fresh();
+    let s = store(&conn);
+    reset_audit_rate_limit_for_test();
+
+    let entry = AuditEntry::new(
+        "user-1",
+        "sale.create",
+        Some("sale".to_string()),
+        Some("sale-42".to_string()),
+        Some(r#"{"total":1000}"#.to_string()),
+        "success",
+    );
+    s.log_audit(&entry).unwrap();
+
+    let pending = s.list_pending_offline().unwrap();
+    let ship_item = pending
+        .iter()
+        .find(|item| item.action == AUDIT_SHIP_ACTION)
+        .expect("expected audit.ship item in offline_queue");
+
+    assert_eq!(ship_item.priority, crate::offline::SyncPriority::Low);
+    assert_eq!(ship_item.tenant_id, "default");
+
+    let payload: AuditShipPayload = serde_json::from_str(&ship_item.payload).unwrap();
+    assert_eq!(payload.id, entry.id);
+    assert_eq!(payload.user_id, "user-1");
+    assert_eq!(payload.action, "sale.create");
+    assert_eq!(payload.target_id.as_deref(), Some("sale-42"));
+    assert_eq!(payload.outcome, "success");
+    assert!(!payload.hash.is_empty());
+}
+
+#[test]
+fn log_audit_in_tx_enqueues_and_commits_sync_item() {
+    let conn = fresh();
+    let s = store(&conn);
+    reset_audit_rate_limit_for_test();
+
+    let entry = AuditEntry::new(
+        "user-2",
+        "product.update",
+        Some("product".to_string()),
+        Some("prod-99".to_string()),
+        Some("{}".to_string()),
+        "success",
+    );
+
+    {
+        let tx = conn.unchecked_transaction().unwrap();
+        Store::log_audit_in_tx(&tx, &entry).unwrap();
+        tx.commit().unwrap();
+    }
+
+    let pending = s.list_pending_offline().unwrap();
+    let ship_item = pending
+        .iter()
+        .find(|item| item.action == AUDIT_SHIP_ACTION)
+        .expect("expected audit.ship item after tx commit");
+
+    let payload: AuditShipPayload = serde_json::from_str(&ship_item.payload).unwrap();
+    assert_eq!(payload.id, entry.id);
+    assert_eq!(payload.action, "product.update");
+}
+
+#[test]
+fn log_audit_in_tx_rolls_back_sync_item_atomically() {
+    let conn = fresh();
+    let s = store(&conn);
+    reset_audit_rate_limit_for_test();
+
+    let entry = AuditEntry::new(
+        "user-3",
+        "sale.void",
+        Some("sale".to_string()),
+        Some("sale-voided".to_string()),
+        Some("{}".to_string()),
+        "success",
+    );
+
+    {
+        let tx = conn.unchecked_transaction().unwrap();
+        Store::log_audit_in_tx(&tx, &entry).unwrap();
+        // Rollback transaction
+        drop(tx);
+    }
+
+    let pending = s.list_pending_offline().unwrap();
+    assert!(
+        pending.iter().all(|item| item.action != AUDIT_SHIP_ACTION),
+        "rolled back audit entry must not leave orphan audit.ship item"
+    );
+}
+
+#[test]
+fn log_audit_is_resilient_when_offline_queue_is_dropped() {
+    let conn = fresh();
+    let s = store(&conn);
+    reset_audit_rate_limit_for_test();
+
+    // Drop offline_queue to simulate missing table or degraded state
+    conn.execute_batch("DROP TABLE offline_queue;").unwrap();
+
+    let entry = AuditEntry::new(
+        "user-4",
+        "login",
+        Some("user".to_string()),
+        Some("user-4".to_string()),
+        Some("{}".to_string()),
+        "success",
+    );
+
+    // log_audit MUST succeed best-effort even when offline_queue table is gone
+    let res = s.log_audit(&entry);
+    assert!(res.is_ok(), "log_audit must never fail on offline shipping error");
+
+    // Audit log entry itself is persisted safely
+    let rows = s.list_audit_entries(10, 0).unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].id, entry.id);
+}

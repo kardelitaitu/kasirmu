@@ -286,6 +286,7 @@ pub fn default_version() -> i64 {
 }
 
 pub use audit::{AuditEntry, AuditReviewCheckpoint};
+pub use db::audit::{AUDIT_SHIP_ACTION, AuditChainVerificationResult, AuditShipPayload};
 #[cfg(feature = "cache-redis")]
 pub use cache::redis_cache::RedisCache;
 pub use cache::{Cache, NoopCache, create_cache};
