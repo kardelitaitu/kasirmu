@@ -130,3 +130,16 @@
 .sc-retry-btn {
   margin-left: var(--space-2);
 }
+
+/* ── Touch press feedback ────────────────────────────────────────────
+   History rows open a past count.
+
+.sc-hist-item:active {
+  background: color-mix(in srgb, var(--color-fg) 12%, transparent);
+}
+
+@media (pointer: coarse) {
+.sc-hist-item:active {
+    min-height: var(--touch-target-min);
+  }
+}

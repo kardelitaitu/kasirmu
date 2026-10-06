@@ -95,3 +95,23 @@
   color: var(--text-secondary, #555);
   font-size: var(--text-base);
 }
+
+/* ── Touch press feedback ────────────────────────────────────────────
+   Save is the card's only action.
+
+.regional-settings-save:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+@media (pointer: coarse) {
+.regional-settings-save:not(:disabled):active {
+    min-height: var(--touch-target-min);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+.regional-settings-save:not(:disabled):active {
+    transform: none;
+    opacity: 0.75;
+  }
+}

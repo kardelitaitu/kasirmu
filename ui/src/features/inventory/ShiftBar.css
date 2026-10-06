@@ -233,3 +233,23 @@
 .summary-item-empty {
   border-left-color: var(--color-danger);
 }
+
+/* ── Touch press feedback ────────────────────────────────────────────
+   The shift bar is pinned at the till on the tablet.
+
+.shift-btn:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+@media (pointer: coarse) {
+.shift-btn:not(:disabled):active {
+    min-height: var(--touch-target-min);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+.shift-btn:not(:disabled):active {
+    transform: none;
+    opacity: 0.75;
+  }
+}

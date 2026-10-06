@@ -151,3 +151,31 @@
   color: var(--text-secondary, #555);
   font-size: var(--text-base);
 }
+
+/* ── Touch press feedback ────────────────────────────────────────────
+   Local payment rails: toggles tint (switch-shaped), add/save scale.
+
+.localpay-add-button:not(:disabled):active,
+.localpay-save:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+.localpay-toggle:active {
+  background: color-mix(in srgb, var(--color-fg) 12%, transparent);
+}
+
+@media (pointer: coarse) {
+.localpay-add-button:not(:disabled):active,
+.localpay-save:not(:disabled):active,
+.localpay-toggle:active {
+    min-height: var(--touch-target-min);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+.localpay-add-button:not(:disabled):active,
+.localpay-save:not(:disabled):active {
+    transform: none;
+    opacity: 0.75;
+  }
+}

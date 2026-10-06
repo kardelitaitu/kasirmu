@@ -198,3 +198,16 @@
   font-weight: 400;
 }
 
+/* ── Touch press feedback ────────────────────────────────────────────
+   The role-holders toggle is a switch-shaped control: tint, so it does not fight its own knob.
+
+.role-holders-toggle:active {
+  background: color-mix(in srgb, var(--color-fg) 12%, transparent);
+}
+
+@media (pointer: coarse) {
+.role-holders-toggle:active {
+    min-height: var(--touch-target-min);
+  }
+}
+

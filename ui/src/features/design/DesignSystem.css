@@ -240,3 +240,23 @@
   white-space: nowrap;
   border: 0;
 }
+
+/* ── Touch press feedback ────────────────────────────────────────────
+   The shared design-system button.
+
+.btn:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+@media (pointer: coarse) {
+.btn:not(:disabled):active {
+    min-height: var(--touch-target-min);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+.btn:not(:disabled):active {
+    transform: none;
+    opacity: 0.75;
+  }
+}

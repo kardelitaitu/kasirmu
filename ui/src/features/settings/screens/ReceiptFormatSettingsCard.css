@@ -116,3 +116,28 @@
   color: var(--text-secondary, #555);
   font-size: var(--text-base);
 }
+
+/* ── Touch press feedback ────────────────────────────────────────────
+   Receipt format save, plus its option checkboxes.
+
+.rcptfmt-save:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+.rcptfmt-check:active {
+  background: color-mix(in srgb, var(--color-fg) 12%, transparent);
+}
+
+@media (pointer: coarse) {
+.rcptfmt-save:not(:disabled):active,
+.rcptfmt-check:active {
+    min-height: var(--touch-target-min);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+.rcptfmt-save:not(:disabled):active {
+    transform: none;
+    opacity: 0.75;
+  }
+}

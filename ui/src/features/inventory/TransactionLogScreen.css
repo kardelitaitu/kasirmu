@@ -174,3 +174,16 @@
   color: var(--color-danger-fg);
   font-size: var(--text-sm);
 }
+
+/* ── Touch press feedback ────────────────────────────────────────────
+   Log rows expand in place; tint, not scale, so the table does not twitch.
+
+.log-row-expandable:active {
+  background: color-mix(in srgb, var(--color-fg) 12%, transparent);
+}
+
+@media (pointer: coarse) {
+.log-row-expandable:active {
+    min-height: var(--touch-target-min);
+  }
+}

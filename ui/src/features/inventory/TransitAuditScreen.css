@@ -179,3 +179,23 @@
     word-break: break-word;
   }
 }
+
+/* ── Touch press feedback ────────────────────────────────────────────
+   Transit audit is reviewed on the tablet.
+
+.reverse-btn:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+@media (pointer: coarse) {
+.reverse-btn:not(:disabled):active {
+    min-height: var(--touch-target-min);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+.reverse-btn:not(:disabled):active {
+    transform: none;
+    opacity: 0.75;
+  }
+}
