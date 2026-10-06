@@ -62,27 +62,26 @@ The scope spans four core pillars:
 
 ## Implementation Phases
 
-### Phase 1: Registry & Companion Drawer Alias Resolution (🔴 Critical Fix)
+### Phase 1: Registry & Companion Drawer Alias Resolution (✅ Completed — commit 77af354e8)
 - **Files**:
   - `crates/kasirmu-hal/src/registry.rs`
-  - `crates/kasirmu-hal/src/bootstrap.rs`
-  - Sibling tests: `registry_tests.rs`, `bootstrap_tests.rs`
+  - `crates/kasirmu-hal/src/registry_tests.rs`
+  - `crates/kasirmu-bridge/src/hardware_tests.rs`
 - **Actions**:
   1. In `DriverRegistry::cash_drawer(&self, id: &str)`:
-     If lookup by `id` is `None` and `id == "default"`, check for `"drawer:kick:default"` before returning `None`.
-  2. In `kasirmu-hal/src/bootstrap.rs`:
-     When registering a printer with `id == "default"`, also ensure `"default"` is registered in `drawers` if no standalone drawer is explicitly named `"default"`.
-  3. Verify unit tests in `kasirmu-hal` and `kasirmu-bridge`.
+     If lookup by `id` is `None` and `id == "default"`, checks for `"drawer:kick:default"` before returning `None`.
+  2. Verified standalone drawer taking precedence over companion drawer when named `"default"`.
+  3. Added unit tests in `kasirmu-hal` and `kasirmu-bridge` asserting `open_cash_drawer_scoped` with default arguments opens companion kick drawer.
 
-### Phase 2: Live Hardware Reload & Tablet Profile Alignment (🟡 High Priority)
+### Phase 2: Live Hardware Reload & Tablet Profile Alignment (✅ Completed — commit 77af354e8)
 - **Files**:
   - `apps/mobile-tauri/src/commands/settings.rs`
-  - `crates/kasirmu-bridge/src/settings.rs`
-  - `crates/kasirmu-bridge/src/hardware.rs`
+  - `apps/desktop-tauri/src/commands/settings.rs`
+  - `crates/kasirmu-bridge/src/settings/dto.rs`
 - **Actions**:
-  1. Align `set_hardware_settings_scoped` in `apps/mobile-tauri` with `apps/desktop-tauri` by delegating to `kasirmu_bridge::settings::set_hardware_settings_scoped`.
-  2. In `kasirmu_bridge::settings::set_hardware_settings_scoped`, after persisting to `hardware_profiles`, invoke live hardware re-registration on `ctx.registry` using `platform_startup::hardware::register_hardware(ctx.registry, &profile)`.
-  3. Ensure both desktop and tablet immediately update their active printer and drawer instances upon save.
+  1. Updated `set_hardware_settings_scoped` in `apps/mobile-tauri` to persist to canonical `hardware_profiles` DB table (plus fallback JSON and legacy store settings).
+  2. Added live hardware re-registration on `state.registry` via `platform_startup::hardware::register_hardware(&state.registry, &profile)` in both mobile and desktop shells upon save.
+  3. Derived `Clone` on `HardwareSettingsDto`. Verified clean checks and test suites across all crates.
 
 ### Phase 3: Android Bluetooth & TCP Printer Verification (🟢 Verification & Polish)
 - **Files**:
