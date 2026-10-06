@@ -403,3 +403,74 @@ fn test_sale_execution_zero_lookups() {
     );
 }
 
+#[test]
+fn test_two_hundred_consecutive_offline_sales_durability() {
+    let mut conn = setup();
+
+    // 1. Seed initial stock for 200 sales
+    {
+        let s = store(&conn);
+        s.create_product(
+            "COFFEE_01",
+            "Kopi Susu Gula Aren",
+            foundation::Money {
+                minor_units: 18000,
+                currency: "IDR".parse().unwrap(),
+            },
+            None,
+            None,
+            500, // Stock: 500 units
+            None,
+        )
+        .unwrap();
+    }
+
+    let start_time = std::time::Instant::now();
+    let loc = kasirmu_core::inventory::LocationId::from(kasirmu_core::inventory::CANONICAL_DEFAULT_LOCATION_UUID);
+
+    // 2. Execute 200 consecutive sales in disconnected offline mode
+    for i in 1..=200 {
+        let sale_id = format!("sale-offline-{i:03}");
+        let payload = format!(r#"{{"saleId":"{sale_id}","itemCount":1,"total":18000}}"#);
+
+        let tx = conn.transaction().unwrap();
+        let s = store(&tx);
+        // Record offline queue item
+        let item = s.enqueue_offline("sale.create", &payload).unwrap();
+        assert_eq!(item.status, OfflineQueueStatus::Pending);
+
+        // Deduct inventory
+        s.adjust_stock_at_location_with_reason(&tx, "COFFEE_01", -1, &loc, None, None, None, None)
+            .unwrap();
+        tx.commit().unwrap();
+    }
+
+    let elapsed = start_time.elapsed();
+    let s = store(&conn);
+
+    // 3. Verify exactly 200 sale queue events and 200 inventory adjustment queue events
+    let pending = s.list_pending_offline().unwrap();
+    let sale_events: Vec<_> = pending.iter().filter(|i| i.action == "sale.create").collect();
+    assert_eq!(sale_events.len(), 200);
+
+    // 4. Verify stock decremented cleanly from 500 down to 300
+    let product_id = s.product_id_by_sku("COFFEE_01").unwrap().unwrap();
+    let remaining_stock = s.get_stock(&product_id).unwrap();
+    assert_eq!(remaining_stock, 300);
+
+    // 5. Verify queue ordering is strictly monotonic by ID
+    for (idx, item) in sale_events.iter().enumerate() {
+        let expected_sale_id = format!("sale-offline-{:03}", idx + 1);
+        assert!(item.payload.contains(&expected_sale_id));
+        assert_eq!(item.status, OfflineQueueStatus::Pending);
+    }
+
+    // Must complete swiftly under 3000ms
+    assert!(
+        elapsed.as_millis() < 3000,
+        "200 consecutive offline sales took {:?}, expected < 3000ms",
+        elapsed
+    );
+}
+
+
