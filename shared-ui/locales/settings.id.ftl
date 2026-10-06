@@ -70,10 +70,11 @@ settings-screen-placeholder = Halaman ini sedang dibangun ulang.
 settings-screen-migrating = Konten setelan yang ada akan dipindahkan ke sini secara selektif.
 # Gerbang lantai halaman Setelan: roleAtLeast (utils/role.ts) menampilkan teks ini
 # untuk peran di bawah lantai admin.
-# Lencana Plus di bilah sisi: dibaca oleh item navigasi datar yang halamannya
-# digerbangi paket Plus. Masuk bersama markup lencana yang mereferensikannya
-# (gerbang orphan: kunci harus direferensikan oleh commitnya sendiri).
-settings-nav-plus-badge-aria = Memerlukan paket Plus
+# (Kunci `settings-nav-plus-badge-aria` lama ada di sini. Dihapus saat pil teks
+# "Plus+" di bilah sisi menjadi TIER_BADGE SVG yang mengikuti paket: lencana kini
+# menyatakan paket lewat `workspace-home-tools-requires-tier-<tier>` di
+# shared.ftl, kunci yang sama dengan kartu Tools beranda, agar kedua permukaan
+# tidak berbeda kata.)
 settings-locked-title = Setelan dibatasi
 settings-locked-desc = Setelan hanya tersedia untuk manajer, administrator, dan pemilik.
 settings-sidebar-nav-aria = Navigasi pengaturan

@@ -223,10 +223,11 @@ settings-screen-placeholder = This page is being rebuilt.
 settings-screen-migrating = Existing settings content will move here selectively.
 # The settings page floor gate: roleAtLeast (utils/role.ts) shows this copy to any
 # role below the admin floor.
-# Sidebar Plus badge: read by the flat nav items whose page is gated behind
-# the Plus plan. Lands together with the badge markup that references it
-# (orphan gate: a key must be referenced by its own commit).
-settings-nav-plus-badge-aria = Requires Plus plan
+# (The old `settings-nav-plus-badge-aria` key lived here. It was retired when the
+# sidebar's hardcoded "Plus+" text pill became a tier-driven TIER_BADGE SVG:
+# the badge now states the plan through `workspace-home-tools-requires-tier-<tier>`
+# in shared.ftl, the same key the home Tools cards use, so the two surfaces
+# cannot word the requirement differently.)
 settings-locked-title = Settings restricted
 settings-locked-desc = Settings are available to managers, administrators, and owners only.
 settings-sidebar-nav-aria = Settings navigation
