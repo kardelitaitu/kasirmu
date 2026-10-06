@@ -3321,15 +3321,21 @@ const LINE_HEIGHT_LITERAL_BASELINE: Array<[string, string, number]> = [
   ["1.4", "ui/src/features/settings/FeatureToggleScreen.css", 1],
   ["1", "ui/src/features/settings/LicenseSettings.css", 1],
   ["1.4", "ui/src/features/settings/LicenseSettings.css", 1],
-  // Restated 2026-10-04: `1.25rem @ ui/src/features/settings/SettingsNavTree.css`
-  // 1 -> 2. Peer commit 75eb83d7c rebuilt the settings nav as a flat page list
-  // and added `.settings-nav-plus-badge` (:470), whose `line-height: 1.25rem`
-  // joins the existing badge at :492. Both are single-line pills that centre
-  // their text inside a fixed-height box -- the 2026-09-19 note's case exactly:
-  // the literal is the box's own height (1.25rem, matching the sibling
-  // `min-width`/`height` at :487-488), not a step on the --leading-* scale. The
-  // commit that added the second site did not restate this count.
-  ["1.25rem", "ui/src/features/settings/SettingsNavTree.css", 2],
+  // Restated 2026-10-07: `1.25rem @ ui/src/features/settings/SettingsNavTree.css`
+  // 2 -> 1. Round 6's tier-badge work (dc8718834) deleted the hardcoded
+  // `.settings-nav-plus-badge`, whose own `line-height: 1.25rem` was the second
+  // site the 2026-10-04 note below counted; a tier-driven SVG badge replaced it
+  // and needs no line-height. The survivor is `.settings-nav-count-badge`
+  // (:493-502), the same single-line pill centring text in a fixed-height box --
+  // the literal is the box's own height (1.25rem, matching its sibling
+  // `min-width`/`height` at :496-497), not a step on the --leading-* scale, so
+  // it does NOT become a token. That commit did not restate this count.
+  //
+  // Prior note, kept for the record -- Restated 2026-10-04: 1 -> 2. Peer commit
+  // 75eb83d7c rebuilt the settings nav as a flat page list and added
+  // `.settings-nav-plus-badge` (:470), whose `line-height: 1.25rem` joined the
+  // existing badge at :492.
+  ["1.25rem", "ui/src/features/settings/SettingsNavTree.css", 1],
   ["1.4", "ui/src/features/settings/SettingsNavTree.css", 1],
   ["1", "ui/src/features/settings/SettingsPage.css", 1],
   ["1.4", "ui/src/features/settings/SettingsPage.css", 3],
