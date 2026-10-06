@@ -27,11 +27,3 @@
   font-size: var(--text-sm);
 }
 
-/* Save affordance for a migrated scaffold whose body owns its own writes.
-   The page's topbar Save is driven by page-level dirty state that a composed
-   body does not hold, so a screen that persists directly renders its own —
-   the same shape AppearanceSettings uses. Sits a comfortable gap below the
-   form so it does not read as part of the last field. */
-.settings-general-save-btn {
-  margin-top: var(--space-4);
-}

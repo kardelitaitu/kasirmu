@@ -1597,13 +1597,17 @@ const SCREENS: ScreenEntry[] = [
     // renders settings-screen-placeholder + -note.
     name: 'GeneralScreen',
     tsx: 'settings/screens/GeneralScreen.tsx',
-    css: ['settings/screens/screens-placeholder.css'],
+    // Two own sheets: the family placeholder sheet for the scaffold chrome, and
+    // GeneralScreen.css for the save rule. The latter is deliberately NOT in the
+    // shared sheet — a General-only class there made the dead-class walker
+    // report it against all thirteen sibling scaffolds that cite the family
+    // sheet.
+    css: ['settings/screens/screens-placeholder.css', 'settings/screens/GeneralScreen.css'],
     // The composed section renders the settings-family form classes, which are
     // DEFINED in settings/SettingsPage.css — so this entry CITES that sheet as a
     // parent rather than muting the names. The section keeps its own ledger
     // entry; the form markup moved here only in the sense that this screen is
-    // what renders it now. `settings-general-save-btn` is this screen's OWN
-    // class and lives in the scaffold sheet (case 3 still walks `css` alone).
+    // what renders it now.
     parentCss: ['settings/SettingsPage.css'],
   },
   {

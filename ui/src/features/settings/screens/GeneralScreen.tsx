@@ -28,6 +28,7 @@ import { Button } from '@/components/Button';
 import { useStoreDraft } from '../hooks/useStoreDraft';
 import GeneralSection from '../sections/GeneralSection';
 import './screens-placeholder.css';
+import './GeneralScreen.css';
 
 /** Settings → General: heading + the real store-identity form as its body. */
 export function GeneralScreen() {
@@ -51,16 +52,16 @@ export function GeneralScreen() {
       <GeneralSection
         store={draft.store}
         setStore={(next) => {
-          // The section writes whole objects (`setStore({ ...store, name })`),
-          // so route each field through the hook to keep error-clearing and
-          // dirty tracking in one place.
-          const value = typeof next === 'function' ? null : next;
-          if (value) {
-            for (const [k, v] of Object.entries(value)) {
-              if (draft.store[k as keyof typeof draft.store] !== v) {
-                draft.setField(k as keyof typeof draft.store, String(v));
-              }
-            }
+          // GeneralSection declares `setStore: (s: StoreSettingsDto) => void`
+          // and every one of its five call sites passes a plain object —
+          // `setStore({ ...store, name: e.target.value })` — so there is no
+          // updater-function form to support. Diffing the incoming object and
+          // routing only the CHANGED fields through the hook keeps
+          // error-clearing and dirty tracking in one place without writing
+          // identical values back.
+          for (const [k, v] of Object.entries(next)) {
+            const field = k as keyof typeof draft.store;
+            if (draft.store[field] !== v) draft.setField(field, String(v));
           }
         }}
         // The section calls this on every keystroke; the hook derives dirtiness
