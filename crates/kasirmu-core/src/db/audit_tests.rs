@@ -1372,3 +1372,132 @@ fn a_forged_sweep_marker_defeats_audit_immutability() {
     );
     assert_eq!(audit_count(&conn), 0, "the row is really gone");
 }
+
+// ── Rate Limiting (P3) ──────────────────────────────────────────
+
+#[test]
+fn audit_rate_limit_allows_writes_under_threshold() {
+    let conn = fresh();
+    let s = store(&conn);
+    reset_audit_rate_limit_for_test();
+
+    let entry = AuditEntry::new(
+        "user-1",
+        "sale.create",
+        Some("sale".to_string()),
+        Some("sale-1".to_string()),
+        Some("{}".to_string()),
+        "success",
+    );
+    s.log_audit(&entry).unwrap();
+
+    let entries = s.list_audit_entries(10, 0).unwrap();
+    assert_eq!(entries.len(), 1);
+    reset_audit_rate_limit_for_test();
+}
+
+#[test]
+fn audit_rate_limit_drops_writes_when_threshold_exceeded() {
+    let conn = fresh();
+    let s = store(&conn);
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+
+    // Saturate the rate limit counter
+    set_audit_rate_limit_for_test(AUDIT_RATE_LIMIT, now);
+
+    let entry = AuditEntry::new(
+        "user-1",
+        "sale.create",
+        Some("sale".to_string()),
+        Some("sale-overflow".to_string()),
+        Some("{}".to_string()),
+        "success",
+    );
+
+    // log_audit returns Ok(()) to avoid disrupting business logic
+    s.log_audit(&entry).unwrap();
+
+    // But the row was NOT written to the database
+    let entries = s.list_audit_entries(10, 0).unwrap();
+    assert_eq!(entries.len(), 0);
+
+    reset_audit_rate_limit_for_test();
+}
+
+#[test]
+fn audit_rate_limit_check_returns_err_when_exceeded() {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+
+    set_audit_rate_limit_for_test(AUDIT_RATE_LIMIT, now);
+    let result = check_audit_rate_limit();
+    assert!(matches!(result, Err(CoreError::RateLimited(_))));
+
+    reset_audit_rate_limit_for_test();
+}
+
+#[test]
+fn audit_rate_limit_resets_after_window_expires() {
+    let conn = fresh();
+    let s = store(&conn);
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+
+    // Set counter to limit, but with window start in the past (> AUDIT_WINDOW_SECS ago)
+    let past = now.saturating_sub(AUDIT_WINDOW_SECS + 10);
+    set_audit_rate_limit_for_test(AUDIT_RATE_LIMIT, past);
+
+    let entry = AuditEntry::new(
+        "user-1",
+        "sale.create",
+        Some("sale".to_string()),
+        Some("sale-after-reset".to_string()),
+        Some("{}".to_string()),
+        "success",
+    );
+
+    // The expired window should reset the counter and allow the write
+    s.log_audit(&entry).unwrap();
+
+    let entries = s.list_audit_entries(10, 0).unwrap();
+    assert_eq!(entries.len(), 1);
+    assert_eq!(entries[0].target_id.as_deref(), Some("sale-after-reset"));
+
+    reset_audit_rate_limit_for_test();
+}
+
+#[test]
+fn log_audit_in_tx_drops_writes_when_rate_limited() {
+    let mut conn = fresh();
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+
+    set_audit_rate_limit_for_test(AUDIT_RATE_LIMIT, now);
+
+    let tx = conn.transaction().unwrap();
+    let entry = AuditEntry::new(
+        "user-1",
+        "sale.create",
+        Some("sale".to_string()),
+        Some("sale-tx-overflow".to_string()),
+        Some("{}".to_string()),
+        "success",
+    );
+
+    Store::log_audit_in_tx(&tx, &entry).unwrap();
+    tx.commit().unwrap();
+
+    let entries = store(&conn).list_audit_entries(10, 0).unwrap();
+    assert_eq!(entries.len(), 0);
+
+    reset_audit_rate_limit_for_test();
+}

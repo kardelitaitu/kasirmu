@@ -17,6 +17,8 @@ findings: exemplary AUD-02..09 implementation — AUD-06 redaction (20 sensitive
 next: none | perf: SQL-computed counts per AUD-02/03
 */
 
+use std::sync::atomic::{AtomicU64, Ordering};
+
 use crate::AuditEntry;
 use crate::error::CoreError;
 
@@ -250,6 +252,56 @@ fn build_audit_where(
     (where_sql, params, idx)
 }
 
+/// Maximum audit log entries allowed in a rate-limit window (P3).
+pub const AUDIT_RATE_LIMIT: u64 = 1000;
+
+/// Rate-limit sliding window duration in seconds (P3).
+pub const AUDIT_WINDOW_SECS: u64 = 60;
+
+static AUDIT_COUNT: AtomicU64 = AtomicU64::new(0);
+static AUDIT_WINDOW_START: AtomicU64 = AtomicU64::new(0);
+
+/// Check if the in-memory audit log rate limit has been exceeded (P3).
+///
+/// Returns `Ok(())` if within the budget, or `Err(CoreError::RateLimited)` if exceeded.
+pub fn check_audit_rate_limit() -> Result<(), CoreError> {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+
+    let window_start = AUDIT_WINDOW_START.load(Ordering::Relaxed);
+    if now.saturating_sub(window_start) >= AUDIT_WINDOW_SECS {
+        if AUDIT_WINDOW_START
+            .compare_exchange(window_start, now, Ordering::Relaxed, Ordering::Relaxed)
+            .is_ok()
+        {
+            AUDIT_COUNT.store(1, Ordering::Relaxed);
+            return Ok(());
+        }
+    }
+
+    let count = AUDIT_COUNT.fetch_add(1, Ordering::Relaxed);
+    if count >= AUDIT_RATE_LIMIT {
+        return Err(CoreError::RateLimited("audit write rate exceeded".into()));
+    }
+    Ok(())
+}
+
+/// Reset rate limit counters to initial state (for testing).
+#[cfg(test)]
+pub(crate) fn reset_audit_rate_limit_for_test() {
+    AUDIT_COUNT.store(0, Ordering::Relaxed);
+    AUDIT_WINDOW_START.store(0, Ordering::Relaxed);
+}
+
+/// Set rate limit counters to specific values (for testing).
+#[cfg(test)]
+pub(crate) fn set_audit_rate_limit_for_test(count: u64, window_start_secs: u64) {
+    AUDIT_COUNT.store(count, Ordering::Relaxed);
+    AUDIT_WINDOW_START.store(window_start_secs, Ordering::Relaxed);
+}
+
 /// The single INSERT body shared by BOTH writer states ([`Store::log_audit`]
 /// in autocommit and inside a caller's transaction, and
 /// [`Store::log_audit_in_tx`]).
@@ -259,6 +311,10 @@ fn build_audit_where(
 /// disagree about what an audit row may contain. Redaction happens HERE, before
 /// the statement, so neither writer can bypass it.
 fn insert_audit(conn: &rusqlite::Connection, entry: &AuditEntry) -> Result<(), CoreError> {
+    if let Err(err) = check_audit_rate_limit() {
+        tracing::warn!(action = %entry.action, error = %err, "audit rate limit exceeded, skipping write");
+        return Ok(());
+    }
     let details = sanitize_details(&entry.details);
     conn.execute(
         "INSERT INTO audit_log (id, user_id, action, target_type, target_id, details, outcome, created_at)

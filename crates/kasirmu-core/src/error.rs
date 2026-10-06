@@ -53,6 +53,8 @@ pub enum CoreErrorKind {
     PermissionDenied,
     /// Stock insufficient at a specific location (ADR-19 §3.3).
     InsufficientStockAtLocation,
+    /// Operation rate-limited by an in-memory sliding window.
+    RateLimited,
 }
 
 /// Errors that can originate in `kasirmu-core` domain logic.
@@ -183,6 +185,10 @@ pub enum CoreError {
         /// The currently available stock at the location.
         available_qty: i64,
     },
+
+    /// An operation exceeded its rate limit.
+    #[error("rate limited: {0}")]
+    RateLimited(String),
 }
 
 impl From<platform_core::CurrencyError> for CoreError {
@@ -260,6 +266,7 @@ impl CoreError {
             CoreError::InsufficientStockAtLocation { .. } => {
                 CoreErrorKind::InsufficientStockAtLocation
             }
+            CoreError::RateLimited(_) => CoreErrorKind::RateLimited,
         }
     }
 }

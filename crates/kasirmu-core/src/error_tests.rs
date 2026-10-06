@@ -133,6 +133,16 @@ fn system_clock_tampered_kind_and_display() {
     assert!(msg.contains("clock rolled back"));
 }
 
+#[test]
+fn rate_limited_kind_and_display() {
+    let err = CoreError::RateLimited("audit write rate exceeded".into());
+    assert!(matches!(err.kind(), CoreErrorKind::RateLimited));
+    let msg = err.to_string();
+    assert!(msg.contains("rate limited"));
+    assert!(msg.contains("audit write rate exceeded"));
+    assert!(!err.is_permanent());
+}
+
 // ── CoreErrorKind serde ──
 
 #[test]
@@ -150,6 +160,7 @@ fn core_error_kind_serde_camel_case() {
         CoreErrorKind::InvalidSubscriptionSignature,
         CoreErrorKind::SubscriptionUpgradeRequired,
         CoreErrorKind::SystemClockTampered,
+        CoreErrorKind::RateLimited,
     ];
     for kind in &kinds {
         let json = serde_json::to_string(kind).unwrap();
