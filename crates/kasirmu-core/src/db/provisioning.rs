@@ -349,6 +349,10 @@ pub struct ProvisionDeviceArgs {
     pub tenant_id: Option<String>,
     /// The credential id from `TerminalCredential`. Required for `linked`.
     pub device_credential_id: Option<String>,
+    /// Tax rate preset to seed during onboarding ('ppn11', 'ppn11_service5', 'tax_free').
+    pub tax_preset: Option<String>,
+    /// Whether to seed 5 starter sample products.
+    pub seed_sample_products: Option<bool>,
 }
 
 /// What provisioning produced, including the ids the caller needs next.
@@ -540,6 +544,82 @@ fn provision_device_inner(
                     params![tenant_id],
                 )?;
             }
+        }
+    }
+
+    // ── Step 5c: tax preset & sample product starter catalog ───────
+    let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+    if let Some(tax_preset) = args.tax_preset.as_deref() {
+        match tax_preset {
+            "ppn11" => {
+                let id = uuid::Uuid::now_v7().to_string();
+                tx.execute(
+                    "INSERT INTO tax_rates (id, name, rate_bps, is_default, is_inclusive, created_at, updated_at)
+                     VALUES (?1, 'PPN 11%', 1100, 1, 0, ?2, ?2)",
+                    params![id, now],
+                )?;
+            }
+            "ppn11_service5" => {
+                let id1 = uuid::Uuid::now_v7().to_string();
+                let id2 = uuid::Uuid::now_v7().to_string();
+                tx.execute(
+                    "INSERT INTO tax_rates (id, name, rate_bps, is_default, is_inclusive, created_at, updated_at)
+                     VALUES (?1, 'PPN 11%', 1100, 1, 0, ?2, ?2)",
+                    params![id1, now],
+                )?;
+                tx.execute(
+                    "INSERT INTO tax_rates (id, name, rate_bps, is_default, is_inclusive, created_at, updated_at)
+                     VALUES (?1, 'Service Charge 5%', 500, 0, 0, ?2, ?2)",
+                    params![id2, now],
+                )?;
+            }
+            "tax_free" | "none" => {
+                let id = uuid::Uuid::now_v7().to_string();
+                tx.execute(
+                    "INSERT INTO tax_rates (id, name, rate_bps, is_default, is_inclusive, created_at, updated_at)
+                     VALUES (?1, 'Non-PKP (0%)', 0, 1, 0, ?2, ?2)",
+                    params![id, now],
+                )?;
+            }
+            _ => {}
+        }
+    }
+
+    if args.seed_sample_products.unwrap_or(false) {
+        let cur = &args.currency;
+        let is_restaurant = args.location_kind == LocationKind::Restaurant
+            || args.preset == "restaurant"
+            || args.preset == "cafe";
+        let sample_items: &[(&str, &str, i64, i64, &str)] = if is_restaurant {
+            &[
+                ("SMPL-REST-01", "Americano (Hot/Iced)", 25_000_00, 100, "restaurant"),
+                ("SMPL-REST-02", "Butter Croissant", 28_000_00, 50, "restaurant"),
+                ("SMPL-REST-03", "Mineral Water 600ml", 8_000_00, 120, "restaurant"),
+                ("SMPL-REST-04", "Nasi Goreng Spesial", 35_000_00, 80, "restaurant"),
+                ("SMPL-REST-05", "Es Teh Manis", 10_000_00, 150, "restaurant"),
+            ]
+        } else {
+            &[
+                ("SMPL-RTL-01", "Air Mineral 600ml", 5_000_00, 100, "retail"),
+                ("SMPL-RTL-02", "Kopi Susu Kemasan", 12_000_00, 60, "retail"),
+                ("SMPL-RTL-03", "Keripik Singkong", 15_000_00, 45, "retail"),
+                ("SMPL-RTL-04", "Buku Catatan A5", 22_000_00, 30, "retail"),
+                ("SMPL-RTL-05", "Kantong Belanja Eco", 5_000_00, 200, "retail"),
+            ]
+        };
+
+        for (sku, name, price_minor, initial_stock, ptype) in sample_items {
+            let id = uuid::Uuid::now_v7().to_string();
+            tx.execute(
+                "INSERT INTO products (id, sku, name, price_minor, currency, is_active, product_type, version, created_at, updated_at, price_updated_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, 1, ?6, 1, ?7, ?7, ?7)",
+                params![id, sku, name, price_minor, cur, ptype, now],
+            )?;
+            tx.execute(
+                "INSERT OR REPLACE INTO inventory (product_id, qty, updated_at)
+                 VALUES (?1, ?2, ?3)",
+                params![id, initial_stock, now],
+            )?;
         }
     }
 

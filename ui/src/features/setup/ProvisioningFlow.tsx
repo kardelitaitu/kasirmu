@@ -104,6 +104,32 @@ const STORE_TYPES: { value: Preset; kind: LocationKind; emoji: string; labelId: 
   },
 ];
 
+export type TaxPreset = 'ppn11' | 'ppn11_service5' | 'tax_free';
+
+const TAX_PRESETS: { value: TaxPreset; labelId: string; fallbackLabel: string; descId: string; fallbackDesc: string }[] = [
+  {
+    value: 'ppn11',
+    labelId: 'setup-tax-preset-ppn11',
+    fallbackLabel: 'PPN 11%',
+    descId: 'setup-tax-preset-ppn11-desc',
+    fallbackDesc: 'Indonesian VAT standard (11%)',
+  },
+  {
+    value: 'ppn11_service5',
+    labelId: 'setup-tax-preset-ppn11-service5',
+    fallbackLabel: 'PPN 11% + Service 5%',
+    descId: 'setup-tax-preset-ppn11-service5-desc',
+    fallbackDesc: 'Restaurant & cafe with service charge',
+  },
+  {
+    value: 'tax_free',
+    labelId: 'setup-tax-preset-tax-free',
+    fallbackLabel: 'Tax-free (0%)',
+    descId: 'setup-tax-preset-tax-free-desc',
+    fallbackDesc: 'Non-taxable enterprise',
+  },
+];
+
 /**
  * The currency and timezone this terminal is provisioned with.
  *
@@ -192,6 +218,8 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
   const [provisionMode, setProvisionMode] = useState<ProvisioningMode>('linked');
   const [isOffline, setIsOffline] = useState(() => (typeof navigator !== 'undefined' ? !navigator.onLine : false));
   const [storeType, setStoreType] = useState<Preset | null>(null);
+  const [taxPreset, setTaxPreset] = useState<TaxPreset>('ppn11');
+  const [seedSampleProducts, setSeedSampleProducts] = useState(true);
   const [locationName, setLocationName] = useState('');
   const [ownerName, setOwnerName] = useState('');
   const [ownerUsername, setOwnerUsername] = useState('');
@@ -559,6 +587,8 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
           mode: provisionMode,
           tenant_id: provisionMode === 'linked' ? (linkedAccount?.tenantId ?? null) : null,
           device_credential_id: provisionMode === 'linked' ? (linkedAccount?.terminal?.terminalId ?? terminalId) : null,
+          tax_preset: taxPreset,
+          seed_sample_products: seedSampleProducts,
         });
         addToast({
           type: 'success',
@@ -587,7 +617,9 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
       pin,
       provisionMode,
       refreshSubscription,
+      seedSampleProducts,
       storeType,
+      taxPreset,
     ],
   );
 
@@ -1042,6 +1074,7 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
         )}
 
         {activeStep === 1 && (
+        <>
         <fieldset className="provisioning-fieldset">
           <legend>
             <Localized id="setup-provision-store-type">
@@ -1070,6 +1103,51 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
             ))}
           </div>
         </fieldset>
+
+        <fieldset className="provisioning-fieldset" style={{ marginTop: 'var(--space-4)' }}>
+          <legend>
+            <Localized id="setup-provision-tax-preset">
+              <span>Tax Preset</span>
+            </Localized>
+          </legend>
+          <div className="provisioning-tax-presets" role="radiogroup">
+            {TAX_PRESETS.map((p) => (
+              <button
+                key={p.value}
+                type="button"
+                className={`provisioning-tax-preset${taxPreset === p.value ? ' is-selected' : ''}`}
+                aria-pressed={taxPreset === p.value}
+                id={`provision-tax-preset-${p.value}`}
+                data-testid={`tax-preset-${p.value}`}
+                onClick={() => setTaxPreset(p.value)}
+              >
+                <Localized id={p.labelId}>
+                  <strong>{p.fallbackLabel}</strong>
+                </Localized>
+                <Localized id={p.descId}>
+                  <small>{p.fallbackDesc}</small>
+                </Localized>
+              </button>
+            ))}
+          </div>
+        </fieldset>
+
+        <div className="provisioning-seed-toggle" style={{ marginTop: 'var(--space-4)' }}>
+          {/* eslint-disable-next-line jsx-a11y/label-has-associated-control -- text via Localized span */}
+          <label className="provisioning-checkbox-label" htmlFor="provision-seed-sample-products">
+            <input
+              id="provision-seed-sample-products"
+              type="checkbox"
+              checked={seedSampleProducts}
+              onChange={(e) => setSeedSampleProducts(e.target.checked)}
+              data-testid="provision-seed-sample-products"
+            />
+            <Localized id="setup-provision-seed-catalog">
+              <span>Seed 5 sample products to get started</span>
+            </Localized>
+          </label>
+        </div>
+        </>
         )}
 
         {activeStep === 2 && (

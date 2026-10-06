@@ -303,7 +303,77 @@ fn args_for(terminal_id: &str) -> ProvisionDeviceArgs {
         mode: ProvisioningMode::Local,
         tenant_id: None,
         device_credential_id: None,
+        tax_preset: None,
+        seed_sample_products: None,
     }
+}
+
+#[test]
+fn provisioning_with_tax_preset_ppn11_and_sample_products_seeds_starter_catalog() {
+    let conn = fresh();
+    let mut args = args_for("dev-starter-01");
+    args.tax_preset = Some("ppn11".to_owned());
+    args.seed_sample_products = Some(true);
+
+    let out = provision_device(&conn, &args).unwrap();
+    assert!(out.created);
+
+    // Verify tax_rates contains default PPN 11%
+    let (tax_name, tax_bps, is_def): (String, i64, i64) = conn
+        .query_row(
+            "SELECT name, rate_bps, is_default FROM tax_rates WHERE is_default = 1",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        )
+        .unwrap();
+    assert_eq!(tax_name, "PPN 11%");
+    assert_eq!(tax_bps, 1100);
+    assert_eq!(is_def, 1);
+
+    // Verify exactly 5 sample products seeded
+    let count: i64 = conn
+        .query_row("SELECT count(*) FROM products", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(count, 5, "must seed exactly 5 starter products");
+
+    // Verify inventory rows seeded with positive stock for each product
+    let inv_count: i64 = conn
+        .query_row("SELECT count(*) FROM inventory WHERE qty > 0", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(inv_count, 5, "all 5 products must have initial inventory");
+}
+
+#[test]
+fn provisioning_with_tax_preset_ppn11_service5() {
+    let conn = fresh();
+    let mut args = args_for("dev-starter-02");
+    args.tax_preset = Some("ppn11_service5".to_owned());
+
+    provision_device(&conn, &args).unwrap();
+
+    let count: i64 = conn
+        .query_row("SELECT count(*) FROM tax_rates", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(count, 2, "must seed PPN 11% and Service Charge 5%");
+}
+
+#[test]
+fn provisioning_with_tax_preset_tax_free() {
+    let conn = fresh();
+    let mut args = args_for("dev-starter-03");
+    args.tax_preset = Some("tax_free".to_owned());
+
+    provision_device(&conn, &args).unwrap();
+
+    let (tax_name, tax_bps): (String, i64) = conn
+        .query_row(
+            "SELECT name, rate_bps FROM tax_rates WHERE is_default = 1",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!(tax_name, "Non-PKP (0%)");
+    assert_eq!(tax_bps, 0);
 }
 
 #[test]

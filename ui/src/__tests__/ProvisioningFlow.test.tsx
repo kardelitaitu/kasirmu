@@ -1504,5 +1504,50 @@ describe('ProvisioningFlow (ADR #56 §2.3 / §2.5)', () => {
       expect(mockOnProvisioned).toHaveBeenCalled();
     }, FAST_WAIT);
   });
+
+  it('sends default tax preset ppn11 and seed_sample_products true when not changed', async () => {
+    render(<ProvisioningFlow onProvisioned={mockOnProvisioned} />);
+    selectOfflineMode();
+    fillBasicForm();
+    fireEvent.click(screen.getByTestId('provision-submit'));
+
+    await waitFor(() => {
+      expect(provisionDevice).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tax_preset: 'ppn11',
+          seed_sample_products: true,
+        }),
+      );
+    }, FAST_WAIT);
+  });
+
+  it('allows selecting alternative tax preset and toggling sample products seeding off', async () => {
+    render(<ProvisioningFlow onProvisioned={mockOnProvisioned} />);
+    selectOfflineMode();
+    nextStep();
+    fireEvent.click(screen.getByTestId('store-type-restaurant'));
+
+    // Change tax preset to PPN 11% + service 5%
+    fireEvent.click(screen.getByTestId('tax-preset-ppn11_service5'));
+    // Toggle sample products off
+    fireEvent.click(screen.getByTestId('provision-seed-sample-products'));
+
+    nextStep();
+    fireEvent.change(screen.getByLabelText(/Shop name/i), { target: { value: 'Kafe Nusantara' } });
+    fireEvent.change(screen.getByLabelText(/Your name/i), { target: { value: 'Siti Rahma' } });
+    fireEvent.change(screen.getByLabelText(/Login name/i), { target: { value: 'siti' } });
+    fireEvent.change(screen.getByLabelText(/^PIN/i), { target: { value: '5678' } });
+    fireEvent.change(screen.getByLabelText(/Confirm PIN/i), { target: { value: '5678' } });
+    fireEvent.click(screen.getByTestId('provision-submit'));
+
+    await waitFor(() => {
+      expect(provisionDevice).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tax_preset: 'ppn11_service5',
+          seed_sample_products: false,
+        }),
+      );
+    }, FAST_WAIT);
+  });
 });
 
