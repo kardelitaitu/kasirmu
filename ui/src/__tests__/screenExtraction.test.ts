@@ -876,7 +876,21 @@ const SCREENS: ScreenEntry[] = [
   {
     name: 'LicenseSettings',
     tsx: 'settings/LicenseSettings.tsx',
-    css: ['settings/LicenseSettings.css'],
+    // OverQuotaCard.css added 2026-10-07: this screen mounts <OverQuotaCard /> at
+    // :662, and that component now imports a sheet of its own. It is cited HERE
+    // rather than given a SCREENS entry because OverQuotaCard is not a screen —
+    // it has no route, no registerPage and no nav item; it is a card this page
+    // renders, the same shape as the sections listed under SettingsPage.
+    //
+    // The sheet was created by the fix that defined the card's seven previously
+    // undefined classes. A NEW sheet may not join BASELINE_UNCITED, so this cite
+    // is the required companion to that change; the missing cite is why this
+    // check reported it.
+    css: ['settings/LicenseSettings.css', 'settings/OverQuotaCard.css'],
+    // The card's markup, so its own sheet's rules are reachable from the entry
+    // that cites it. Without this the whole quota family grades dead — the
+    // dead-class walk reads markup, never the cited sheet's selector list.
+    additionalTsx: ['settings/OverQuotaCard.tsx'],
     // Shape #1 again, and it is complete: the component uses 31 names, its own sheet defines
     // 30 and 26 of those are the same, leaving 5 leaners -- settings-section-title (:288, :344),
     // settings-form (:345) and settings-error, at SettingsPage.css:514, :521 and :835. No other
@@ -1394,7 +1408,17 @@ const SCREENS: ScreenEntry[] = [
     // receiving component to that entry's additionalTsx in the same change-set".
     // Both screens landed together in b3e68d5c7 against this one sheet, and each
     // entry names the other's file rather than muting 9 rules one by one.
-    additionalTsx: ['restaurant/screens/RestaurantPaymentsScreen.tsx'],
+    // Plus the THIRD consumer of this same sheet. RestaurantSettingsScreen.tsx
+    // renders .resto-settings-cards-list and .resto-settings-group-card, which no
+    // other entry's markup reaches — so from here they graded dead, and this is
+    // the failure that sat in the suite from 2026-10-06 until now under the label
+    // "pre-existing, another agent's". It was neither: the screen was simply
+    // never registered, and the two rules had no reachable owner. Same remedy as
+    // the sibling cite below, which is the line-82 rule this entry already cites.
+    additionalTsx: [
+      'restaurant/screens/RestaurantPaymentsScreen.tsx',
+      'restaurant/screens/RestaurantSettingsScreen.tsx',
+    ],
     // The settings-field / settings-form / settings-toggle family is defined
     // once in settings/SettingsPage.css and imported by the settings shell this
     // screen deliberately reuses. Same cite, same reason, as the four settings
@@ -1443,7 +1467,13 @@ const SCREENS: ScreenEntry[] = [
     // names the other's file rather than muting rules one by one" rule at :1338.
     // It went missing while the receipt preview was built out in dc7571036: the
     // Receipts side kept its cite, this side never gained one.
-    additionalTsx: ['restaurant/screens/RestaurantReceiptsScreen.tsx'],
+    // And the third consumer, for the same reason the Receipts sibling is named
+    // here: RestaurantSettingsScreen's two resto-settings-* rules are reachable
+    // from no other entry in this list (see the Receipts note above).
+    additionalTsx: [
+      'restaurant/screens/RestaurantReceiptsScreen.tsx',
+      'restaurant/screens/RestaurantSettingsScreen.tsx',
+    ],
     // Same runtime-composed paper widths as the Receipts entry above: this entry
     // now grades that sibling's markup, so it needs the same prefix door for the
     // `--58mm` / `--80mm` tails the static walk cannot see.
@@ -1454,6 +1484,54 @@ const SCREENS: ScreenEntry[] = [
     // coverage block checks that a cited sheet actually defines what it is
     // cited for, and it will not accept the citation on the Receipts entry.
     parentCss: ['settings/SettingsPage.css', '../theme/components.css'],
+  },
+  {
+    // The restaurant cart pair, as their OWN entry rather than as additionalTsx
+    // on PosScreen. Both components import a stylesheet of their own, which is
+    // the line between them and PosScreen's other children: styling that travels
+    // with the component is owned here. Nothing cited either sheet, and a new one
+    // may not join BASELINE_UNCITED.
+    //
+    // Deliberately ONE entry for the pair: they are two halves of the same
+    // affordance (the sheet, and the bar that opens it), both mounted together by
+    // PosScreen.tsx:1075-1090, and each names the other through additionalTsx the
+    // way the receipts/payments siblings do.
+    name: 'RestaurantCartSheet',
+    tsx: 'restaurant/components/RestaurantCartSheet.tsx',
+    css: [
+      'restaurant/components/RestaurantCartSheet.css',
+      'restaurant/components/RestaurantFloatingCartBar.css',
+    ],
+    // Three cites, each for a different reason:
+    //   * RestaurantFloatingCartBar.tsx — the other half of this affordance and
+    //     the owner of the second sheet above.
+    //   * sales/components/CartPanel.tsx — RestaurantCartSheet.css:133-152 scopes
+    //     three rules under `.restaurant-cart-sheet-body` to OVERRIDE
+    //     .pos-cart-panel / .pos-resize-handle / .pos-cart-header when the panel
+    //     is nested inside the sheet. Those names live in CartPanel.css and are
+    //     referenced from CartPanel.tsx, so without this cite the walk grades the
+    //     three override rules as dead.
+    additionalTsx: [
+      'restaurant/components/RestaurantFloatingCartBar.tsx',
+      'sales/components/CartPanel.tsx',
+    ],
+    // TWO parents, each for a different reason:
+    //   * sales/CartPanel.css — this component's own docstring calls it the
+    //     "Bottom Sheet Drawer hosting CartPanel", and it renders that panel's
+    //     markup (:108), so every pos-cart-* / pos-shift-* name it carries is
+    //     DEFINED there. Citing it is what makes those 45 names resolve; the
+    //     sheet is a genuine parent, not a sibling borrow.
+    //   * ../theme/components.css — `noise-dither`, the elevated-surface grain
+    //     overlay defined once and imported by BOTH shells. The second legal
+    //     parentCss shape, and the same cite the receipt/payment entries make.
+    //   * sales/PosScreen.css — the shift bar. CartPanel.tsx:448 renders
+    //     `pos-shift-bar-label` and its siblings, and those rules live in
+    //     PosScreen.css rather than CartPanel.css, so hosting CartPanel pulls
+    //     them in transitively. Third parent, third reason.
+    parentCss: ['sales/CartPanel.css', 'sales/PosScreen.css', '../theme/components.css'],
+    // The exit state is composed at runtime (`${...}${exiting ? ' --exiting' : ''}`),
+    // so the static walk cannot see either tail.
+    dynamicClassPrefixes: ['restaurant-cart-sheet-backdrop--', 'restaurant-cart-sheet-panel--'],
   },
   {
     name: 'RestaurantMenu',
@@ -1949,7 +2027,20 @@ const SCREENS: ScreenEntry[] = [
     // line it still renders), so no scaffold name is left dead by this entry.
     name: 'SystemDiagnosticsScreen',
     tsx: 'settings/screens/SystemDiagnosticsScreen.tsx',
-    css: ['settings/screens/screens-placeholder.css'],
+    // The updater card's sheet added 2026-10-07: SystemDiagnosticsScreen.tsx :16
+    // imports and :35 mounts <UpdateSettingsCard />, which brings a stylesheet of
+    // its own. Nothing cited that sheet, and a new one may not join
+    // BASELINE_UNCITED, so the cite is the fix — the updater card is styled by
+    // the screen that renders it, not by the scaffold sheet beside it.
+    css: [
+      'settings/screens/screens-placeholder.css',
+      'settings/screens/UpdateSettingsCard.css',
+    ],
+    // The card's markup, so its own sheet's rules are reachable from the entry
+    // that cites it — the dead-class walk reads markup, never the cited sheet's
+    // selector list. Without this the whole update-* family (all 37 rules)
+    // grades dead.
+    additionalTsx: ['settings/screens/UpdateSettingsCard.tsx'],
     externalClasses: [
       'settings-diagnostics-list',
       'settings-diagnostics-row',

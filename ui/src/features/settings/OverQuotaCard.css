@@ -2,7 +2,7 @@
  *
  * This component is mounted by LicenseSettings.tsx:662 (which imports only its
  * own sheet) and renders SEVEN classes that no stylesheet ever defined —
- * `git grep "settings-license-quota-list" -- "ui/src/**/*.css"` finds nothing.
+ * a repo-wide git grep for the first of those names returns nothing.
  * It also uses four shared settings classes (settings-section-title,
  * settings-form, settings-hint, settings-error) that ARE defined in
  * SettingsPage.css, which the settings shell loads; those are inherited, not
