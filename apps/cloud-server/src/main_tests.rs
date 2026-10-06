@@ -1213,3 +1213,88 @@ async fn request_id_middleware_preserves_incoming_id() {
         .unwrap();
     assert_eq!(req_id, custom_id);
 }
+
+// ── RLS boot gate policy (report_rls_posture's decision, pure) ──────
+//
+// The gate refuses to start a production server whose tenant isolation is
+// inert. These pin the policy table rather than the message: a bypass is
+// fatal in production, "nothing to isolate" never is, and the escape hatch
+// is the only thing that softens it.
+
+use crate::db::RlsPosture;
+
+/// Every posture that means "at least one protected table's policies are inert".
+const BYPASSES: [RlsPosture; 3] = [
+    RlsPosture::BypassedBySuperuser { tables: 29 },
+    RlsPosture::BypassedByOwnerRole { total: 29 },
+    RlsPosture::PartiallyEnforced {
+        forced: 22,
+        total: 29,
+    },
+];
+
+#[test]
+fn every_bypass_is_fatal_in_production() {
+    for posture in BYPASSES {
+        assert!(
+            rls_verdict_is_fatal(posture, true, false),
+            "{posture:?} must refuse a production boot"
+        );
+    }
+}
+
+#[test]
+fn a_bypass_never_blocks_a_non_production_boot() {
+    // Dev and test runs connect as the owner by design; refusing to start
+    // there would make the gate unusable on the machines that develop it.
+    for posture in BYPASSES {
+        assert!(
+            !rls_verdict_is_fatal(posture, false, false),
+            "{posture:?} must not block a non-production start"
+        );
+    }
+}
+
+#[test]
+fn the_escape_hatch_softens_a_bypass_and_nothing_else() {
+    for posture in BYPASSES {
+        assert!(
+            !rls_verdict_is_fatal(posture, true, true),
+            "OZ_ALLOW_INERT_RLS=1 must let {posture:?} start"
+        );
+    }
+}
+
+#[test]
+fn enforced_is_never_fatal() {
+    assert!(!rls_verdict_is_fatal(
+        RlsPosture::Enforced { tables: 29 },
+        true,
+        false
+    ));
+}
+
+#[test]
+fn no_protected_tables_is_never_fatal_even_in_production() {
+    // The verdict says this database carries no tenant_isolation policy at all,
+    // so no query can be leaking through one. That is the legitimate shape for a
+    // single-tenant deployment or an unapplied schema, and treating it as a
+    // breach would refuse to boot a configuration with nothing to isolate.
+    assert!(!rls_verdict_is_fatal(
+        RlsPosture::NoProtectedTables,
+        true,
+        false
+    ));
+}
+
+#[test]
+fn the_deployed_posture_would_be_refused() {
+    // The value production actually answered on 2026-10-06
+    // (GET https://license.kasir.mu/health -> "bypassed_by_owner_role").
+    // This is the regression: without the gate, that state starts and serves.
+    assert!(rls_verdict_is_fatal(
+        RlsPosture::BypassedByOwnerRole { total: 29 },
+        true,
+        false
+    ));
+}
