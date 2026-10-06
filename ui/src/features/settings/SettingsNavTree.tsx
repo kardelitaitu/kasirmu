@@ -250,6 +250,38 @@ interface SettingsNavTreeProps {
   deadLetterCount?: number;
 }
 
+// ── Plan badge (shared by the pinned and the main list) ───────────
+//
+// Extracted so the two lists cannot drift: the pinned group rendered icon +
+// label but NO badge, so a pinned "Sync Status" on a Free tier looked entitled
+// — the plan requirement vanished with the pin. Both sites now call this.
+//
+// Returns null when the section is available, which is the common case: the
+// badge states a GAP (`tierSatisfies` fails closed on absent caps, so a paid
+// tenant never sees one). The artwork is decorative; the plan is stated in text
+// for assistive tech, using the same Fluent key the home Tools cards use.
+function renderTierBadge(
+  minimumTier: TierKey | undefined,
+  currentTier: string | null | undefined,
+) {
+  if (!minimumTier || tierSatisfies(currentTier, minimumTier)) return null;
+  const badge = TIER_BADGE[minimumTier];
+  return (
+    <span className="settings-nav-tier-badge">
+      <img
+        src={badge.src}
+        width={badge.width}
+        height={badge.height}
+        alt=""
+        aria-hidden="true"
+      />
+      <Localized id={`workspace-home-tools-requires-tier-${minimumTier}`}>
+        <span className="settings-nav-sr-only">Requires {minimumTier} plan</span>
+      </Localized>
+    </span>
+  );
+}
+
 // ── Component ─────────────────────────────────────────────────────
 
 const SettingsNavTree = function SettingsNavTree({
@@ -721,6 +753,10 @@ const SettingsNavTree = function SettingsNavTree({
                       <span className="settings-nav-label">
                         <Localized id={NAV_L10N_KEYS[item.key] ?? ''}>{item.label}</Localized>
                       </span>
+                      {/* A pinned gated section states its plan like any other
+                          row. Without this the pin HID the requirement, so a
+                          pinned "Sync Status" on Free looked entitled. */}
+                      {renderTierBadge(item.minimumTier, caps?.tier)}
                       {(key === 'data-sync' || key === 'sync-conflicts') &&
                         deadLetterCount !== undefined &&
                         deadLetterCount > 0 &&
@@ -794,33 +830,10 @@ const SettingsNavTree = function SettingsNavTree({
                           <Localized id={l10nKey}>{item.label}</Localized>
                         )}
                       </span>
-                      {/* Plan badge — rendered ONLY when the subscription
-                          actually falls short, carrying the same generated artwork
-                          the home Tools cards use (TIER_BADGE) so the two surfaces
-                          advertise a plan identically. `tierSatisfies` fails closed
-                          on absent caps, so a paid tenant never sees a badge for
-                          something they already own — which the hardcoded
-                          `plus` boolean could not express. */}
-                      {item.minimumTier &&
-                        !sidebarCollapsed &&
-                        !tierSatisfies(caps?.tier, item.minimumTier) && (
-                          <span className="settings-nav-tier-badge">
-                            <img
-                              src={TIER_BADGE[item.minimumTier].src}
-                              width={TIER_BADGE[item.minimumTier].width}
-                              height={TIER_BADGE[item.minimumTier].height}
-                              alt=""
-                              aria-hidden="true"
-                            />
-                            <Localized
-                              id={`workspace-home-tools-requires-tier-${item.minimumTier}`}
-                            >
-                              <span className="settings-nav-sr-only">
-                                Requires {item.minimumTier} plan
-                              </span>
-                            </Localized>
-                          </span>
-                        )}
+                      {/* The plan badge, when this section is gated above the
+                          merchant's tier. Shared with the pinned list via
+                          renderTierBadge so the two cannot drift. */}
+                      {!sidebarCollapsed && renderTierBadge(item.minimumTier, caps?.tier)}
                       {(key === 'data-sync' || key === 'sync-conflicts') &&
                         deadLetterCount !== undefined &&
                         deadLetterCount > 0 &&

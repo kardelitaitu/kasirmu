@@ -415,6 +415,37 @@ describe('SettingsNavTree (flat 14-page IA)', () => {
     expect(JSON.parse(localStorage.getItem('settings-pinned-sections') ?? '[]')).toEqual(['tax-configuration']);
   });
 
+  it('a PINNED gated section still states its plan requirement', () => {
+    // The pinned group renders icon + label but used to omit the plan badge, so
+    // pinning "Sync Status" on a tier that lacks it made the row look entitled
+    // — the requirement vanished with the pin. Both lists now share one
+    // renderTierBadge, and this pins that the pinned copy keeps its badge.
+    subscriptionState.tier = 'free';
+    localStorage.setItem('settings-pinned-sections', JSON.stringify(['sync-status']));
+    render(<SettingsNavTree {...defaultProps} />);
+
+    const group = document.querySelector('[data-testid="settings-sidebar"] .settings-sidebar-pinned');
+    expect(group).not.toBeNull();
+    const badge = group!.querySelector('.settings-nav-tier-badge');
+    expect(badge, 'the pinned gated row must still carry its plan badge').not.toBeNull();
+    expect(badge!.querySelector('img')).not.toBeNull();
+
+    // And the same row in the MAIN list carries one too — i.e. both copies
+    // agree, which is the drift this guards against.
+    const mainList = document.querySelector('[data-testid="settings-sidebar"] .settings-nav-list');
+    expect(mainList!.querySelectorAll('.settings-nav-tier-badge').length).toBeGreaterThan(0);
+  });
+
+  it('a PINNED ungated section carries no plan badge', () => {
+    subscriptionState.tier = 'free';
+    localStorage.setItem('settings-pinned-sections', JSON.stringify(['general']));
+    render(<SettingsNavTree {...defaultProps} />);
+
+    const group = document.querySelector('[data-testid="settings-sidebar"] .settings-sidebar-pinned');
+    expect(group).not.toBeNull();
+    expect(group!.querySelector('.settings-nav-tier-badge')).toBeNull();
+  });
+
   it('unpins from the pinned group, restoring the plain flat list', async () => {
     const user = userEvent.setup();
     localStorage.setItem('settings-pinned-sections', JSON.stringify(['data-sync', 'exchange-rates']));
