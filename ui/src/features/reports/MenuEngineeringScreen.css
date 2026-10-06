@@ -347,3 +347,18 @@
     transition: background var(--duration-150);
   }
 }
+
+/* ── Touch press feedback ────────────────────────────────────────────
+   Rows and scatter dots are the interactive elements on this report; rows
+   tint rather than scale so the table does not twitch, and the scatter dot
+   tints because it encodes a data position a scale would disturb. */
+.menu-eng-table-row:active,
+.menu-eng-scatter-dot:active {
+  background: color-mix(in srgb, var(--color-fg) 12%, transparent);
+}
+
+@media (pointer: coarse) {
+  .menu-eng-table-row {
+    min-height: var(--touch-target-min);
+  }
+}

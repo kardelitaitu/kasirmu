@@ -323,3 +323,16 @@
     gap: var(--space-3);
   }
 }
+
+/* ── Touch press feedback ────────────────────────────────────────────
+   Scope rows tint; the checkbox inside each row already conveys its own
+   state, so the row is the press surface. */
+.memos-scope-option:active {
+  background: color-mix(in srgb, var(--color-fg) 12%, transparent);
+}
+
+@media (pointer: coarse) {
+  .memos-scope-option {
+    min-height: var(--touch-target-min);
+  }
+}
