@@ -464,3 +464,25 @@
   animation: spinner-rotate var(--duration-600) var(--ease-linear) infinite;
 }
 
+/* ── Touch press feedback ────────────────────────────────────────────
+   The audit log is reviewed on the tablet; both controls scale. */
+.audit-log-chip:not(:disabled):active,
+.audit-log-load-more:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+@media (pointer: coarse) {
+  .audit-log-chip,
+.audit-log-load-more {
+    min-height: var(--touch-target-min);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .audit-log-chip:not(:disabled):active,
+.audit-log-load-more:not(:disabled):active {
+    transform: none;
+    opacity: 0.75;
+  }
+}
+

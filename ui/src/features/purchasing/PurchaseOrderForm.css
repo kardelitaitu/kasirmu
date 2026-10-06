@@ -195,3 +195,28 @@
   padding: var(--space-4) var(--space-5);
   border-top: 1px solid var(--color-border);
 }
+
+/* ── Touch press feedback ────────────────────────────────────────────
+   PO entry on the tablet. The close is a discrete button (scale); the line
+   remove is a bare glyph (tint). */
+.po-form-close:not(:disabled):active {
+  transform: scale(0.94);
+}
+
+.po-form-remove-line:active {
+  background: color-mix(in srgb, var(--color-fg) 12%, transparent);
+}
+
+@media (pointer: coarse) {
+  .po-form-close,
+.po-form-remove-line {
+    min-height: var(--touch-target-min);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .po-form-close:not(:disabled):active {
+    transform: none;
+    opacity: 0.75;
+  }
+}

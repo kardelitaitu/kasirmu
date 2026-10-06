@@ -353,3 +353,16 @@
   .topology-apply-confirm-overlay { animation: none; }
   .topology-apply-confirm { animation: none; }
 }
+
+/* ── Touch press feedback ────────────────────────────────────────────
+   Confirming a topology apply is a significant, hard-to-undo action taken on
+   the tablet, so its press cue matters. */
+.topology-apply-confirm-pin-remember:active {
+  background: color-mix(in srgb, var(--color-fg) 12%, transparent);
+}
+
+@media (pointer: coarse) {
+  .topology-apply-confirm-pin-remember {
+    min-height: var(--touch-target-min);
+  }
+}

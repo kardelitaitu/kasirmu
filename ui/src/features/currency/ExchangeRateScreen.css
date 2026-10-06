@@ -231,3 +231,29 @@
 .exchange-rate-select {
   appearance: auto;
 }
+
+/* ── Touch press feedback ────────────────────────────────────────────
+   Rates are edited on the tablet. The action button scales; the switch is a
+   switch-shaped control and tints so it does not fight its own knob. The
+   native <select> is excluded — it owns its press state. */
+.exchange-rate-action-btn:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+.exchange-rate-switch:active {
+  background: color-mix(in srgb, var(--color-fg) 12%, transparent);
+}
+
+@media (pointer: coarse) {
+  .exchange-rate-switch,
+.exchange-rate-action-btn {
+    min-height: var(--touch-target-min);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .exchange-rate-action-btn:not(:disabled):active {
+    transform: none;
+    opacity: 0.75;
+  }
+}

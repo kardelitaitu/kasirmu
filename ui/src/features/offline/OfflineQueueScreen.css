@@ -486,3 +486,22 @@
   border: 1px dashed var(--color-border);
   border-radius: var(--radius-md);
 }
+
+/* ── Touch press feedback ────────────────────────────────────────────
+   Queue actions are taken on the tablet while offline. */
+.offline-queue-action-btn:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+@media (pointer: coarse) {
+  .offline-queue-action-btn {
+    min-height: var(--touch-target-min);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .offline-queue-action-btn:not(:disabled):active {
+    transform: none;
+    opacity: 0.75;
+  }
+}
