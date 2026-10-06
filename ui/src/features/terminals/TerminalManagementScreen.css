@@ -17,15 +17,10 @@
   font-size: var(--text-sm);
 }
 
-.terminal-mgmt-empty {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-8) var(--space-6);
-  text-align: center;
-  color: var(--color-fg-secondary);
-}
+/* .terminal-mgmt-empty is defined once, in the Error/Empty block at the foot of
+   this sheet. An earlier copy here declared the same six properties with
+   different gap/padding values, so every rule in it was unreachable. Removed
+   2026-10-07. */
 
 .terminal-mgmt-header {
   display: flex;
