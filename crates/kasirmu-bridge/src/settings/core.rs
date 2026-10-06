@@ -66,26 +66,15 @@ pub fn run_get_store_settings(
 pub fn run_list_credit_sales(
     conn: &rusqlite::Connection,
 ) -> Result<Vec<CreditSaleDto>, BridgeError> {
-    // ⚠️ MEASURED MISMATCH, deliberately not repaired here. Index 1 of this
-    // projection is `p.gateway_reference`, and it lands in `customer_name`; the
-    // retail credit list renders that field in a column headed Customer
-    // (the retail credit-list modal), so an operator
-    // currently reads the payment gateway's own reference where the buyer's name
-    // belongs. `customers.name` exists and this projection does not join it.
-    //
-    // Not fixed in place because which column a customer name should come from is
-    // a product ruling, not a repair, and this wire was already repaired once
-    // under this name (2026-09-15). The record is docs/records/JOURNAL.md
-    // (2026-10-04) and commit a3c871787; the behaviour is pinned by
-    // `the_credit_sale_projection_maps_gateway_reference_into_the_customer_column`
-    // in settings_tests.rs, and the tree-wide check is
-    // scripts/check-mapper-alignment.py, which reports this one entry on every run
-    // as acknowledged. Change the SELECT and both go red, which is the point.
+    // Joins `customers` to map `c.name` into `customer_name` (falling back to
+    // empty string when unattached), and `users` to map `u.display_name` into
+    // `cashier_name`.
     let mut stmt = conn.prepare(
-        "SELECT s.id, p.gateway_reference, s.total_minor, s.currency, s.created_at,
-                p.settled_at, COALESCE(u.display_name, '')
+        "SELECT s.id, COALESCE(c.name, '') AS customer_name, s.total_minor, s.currency, s.created_at,
+                p.settled_at, COALESCE(u.display_name, '') AS cashier_name
          FROM sales s
          JOIN payments p ON p.sale_id = s.id
+         LEFT JOIN customers c ON c.id = s.customer_id
          LEFT JOIN users u ON u.id = s.user_id
          WHERE s.status = 'completed'
            AND p.method = 'credit'
