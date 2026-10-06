@@ -415,88 +415,14 @@
   border-radius: var(--radius-full);
 }
 
-/* Template sub-widgets */
-.rack-template-pop {
-  display: flex;
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-3);
-}
-
-.rack-template-input {
-  flex: 1;
-  min-width: 0;
-  padding: var(--space-1) var(--space-2);
-  font-size: var(--text-sm);
-  font-family: inherit;
-  background: var(--color-bg-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  color: var(--color-fg);
-}
-
-.rack-template-input:focus {
-  outline: 2px solid var(--color-border-focus);
-  outline-offset: -1px;
-}
-
-.rack-template-save {
-  flex-shrink: 0;
-  padding: var(--space-1) var(--space-3);
-  font-size: var(--text-sm);
-  font-weight: var(--font-weight-semibold);
-  background: var(--color-accent);
-  color: var(--color-accent-fg);
-  border: none;
-  border-radius: var(--radius-md);
-  cursor: pointer;
-}
-
-.rack-template-list {
-  padding: var(--space-2) var(--space-3);
-}
-
-.rack-template-items {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-}
-
-.rack-template-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: var(--space-1) var(--space-2);
-  border-radius: var(--radius-md);
-}
-
-.rack-template-item:hover {
-  background: var(--color-bg-hover);
-}
-
-.rack-template-name {
-  font-size: var(--text-sm);
-  color: var(--color-fg);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.rack-template-actions {
-  display: flex;
-  gap: var(--space-2);
-}
-
-.rack-template-actions button {
-  font-size: var(--text-xs);
-  color: var(--color-accent);
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 0;
-}
+/* Template sub-widgets.
+   These rules live in the .rack-share-row block further down this sheet, where
+   they carry backgrounds, borders and radii the copies here did not. This block
+   was a partial duplicate: its declarations either repeated the later values or
+   were shadowed by them, and the few that had no counterpart (font-family,
+   flex-shrink, font-weight, outline-offset, border-radius, background) were
+   folded into the later rules first. Removed 2026-10-07 — no declaration that
+   was reachable before is unreachable now. */
 
 @media (prefers-reduced-motion: reduce) {
   .rack-panel { animation: none; }
@@ -661,6 +587,14 @@
   flex: 1;
   min-width: 0;
   padding: var(--space-1) var(--space-2);
+  font-family: inherit;
+  /* Kept alongside background-color below: the ORIGINAL sheet had a
+     `background:` shorthand here and a `background-color:` longhand in the
+     later block. Whether the longhand fully replaces the shorthand's colour was
+     not verified on device (style injection is blocked in the app WebView), so
+     the shorthand is preserved rather than reasoned away. If a later audit
+     confirms the longhand wins, delete this line — nothing else depends on it. */
+  background: var(--color-bg-surface);
   background-color: var(--color-bg);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
@@ -670,11 +604,18 @@
 
 .rack-template-input:focus {
   outline: none;
+  outline-offset: -1px;
   border-color: var(--color-accent);
 }
 
 .rack-template-save {
+  flex-shrink: 0;
   padding: var(--space-1) var(--space-3);
+  font-weight: var(--font-weight-semibold);
+  /* Same note as .rack-template-input: the original pair was
+     `background: var(--color-accent)` here and a `background-color:` longhand
+     later. Both are kept. */
+  background: var(--color-accent);
   background-color: var(--color-accent);
   border: 1px solid var(--color-accent);
   border-radius: var(--radius-sm);
@@ -712,10 +653,19 @@
   justify-content: space-between;
   gap: var(--space-2);
   padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-md);
   font-size: var(--text-xs);
 }
 
+/* Kept from the removed early block: this rule had no counterpart in the merged
+   set, so deleting it with the rest would have dropped the row hover tint. */
+.rack-template-item:hover {
+  background: var(--color-bg-hover);
+}
+
 .rack-template-name {
+  font-size: var(--text-sm);
+  color: var(--color-fg);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -729,7 +679,7 @@
 
 .rack-template-actions button {
   padding: var(--space-0) var(--space-2);
-  background-color: transparent;
+  background: none;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
   color: var(--color-fg);
