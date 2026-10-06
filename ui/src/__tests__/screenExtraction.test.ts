@@ -391,6 +391,12 @@ const SCREENS: ScreenEntry[] = [
     name: 'AuditLogScreen',
     tsx: 'audit/AuditLogScreen.tsx',
     css: ['audit/AuditLogScreen.css'],
+    // SecurityTrailScreen.tsx:38 imports this same sheet and renders
+    // audit-log-search-label / audit-log-loading-text, which it shares with the
+    // audit log. Named here because the dead-class walk reads THIS entry's
+    // markup plus additionalTsx alone, so without the line those two rules grade
+    // dead — the same shared-sheet rule the receipts/payments entries document.
+    additionalTsx: ['audit/SecurityTrailScreen.tsx'],
     dynamicClassPrefixes: [ 'audit-log-badge--success', 'audit-log-badge--failure', 'audit-log-badge--info'],
   },
 
@@ -2096,6 +2102,12 @@ const SCREENS: ScreenEntry[] = [
     name: 'LicenseActivationScreen',
     tsx: 'auth/LicenseActivationScreen.tsx',
     css: ['auth/LicenseActivationScreen.css'],
+    // RevokedScreen.tsx:27 imports this sheet by design ("reuse the auth-screen
+    // layout tokens") and renders license-activation-form / license-form-title /
+    // license-submit-button from it. The dead-class walk reads this entry's
+    // markup plus additionalTsx alone, so the three rules grade dead without the
+    // cite. Shared-sheet rule as above.
+    additionalTsx: ['auth/RevokedScreen.tsx'],
   },
   {
     // Routed reports screen, strong mount, all three surfaces checked rather than

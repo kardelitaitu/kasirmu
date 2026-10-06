@@ -201,11 +201,36 @@
   gap: var(--space-2);
 }
 
+/* Two more steps in the same family as --loading / --ok / --progress / --error
+   above: "an update is available" and "ready to install". Both render a
+   .update-banner as their first child, so they share the base column layout and
+   only need the step's own breathing room. */
+.update-state-box--available,
+.update-state-box--ready {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
 .update-progress-meta {
   display: flex;
   justify-content: space-between;
   font-size: var(--text-sm);
   color: var(--color-text-secondary);
+}
+
+/* The "Downloading… (42% · 3.1 MB/s)" line and the ETA beside it. Both sit in
+   .update-progress-meta above, which already sets the row layout and colour —
+   they were the only two members of the update-* family never defined, while
+   -meta / -track / -fill all were. The ETA is the quieter of the pair. */
+.update-progress-label {
+  min-width: 0;
+}
+
+.update-progress-eta {
+  flex-shrink: 0;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
 }
 
 .update-progress-track {

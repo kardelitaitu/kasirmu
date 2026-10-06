@@ -603,3 +603,50 @@
   padding: var(--space-6) 0;
   color: var(--color-fg);
 }
+
+/* ── Three names RevokedScreen.tsx renders from this sheet ────────────
+   The sheet is shared deliberately — RevokedScreen.tsx:27 imports it "to reuse
+   the auth-screen layout tokens" — but these three members of the license-*
+   family were never written, so the suspended-account screen's form, heading
+   and primary button rendered with no styling of their own. */
+.license-activation-form {
+  display: flex;
+  flex-direction: column;
+  margin: 0 auto;
+}
+
+.license-form-title {
+  font-size: var(--text-2xl);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-fg);
+  margin: 0 0 var(--space-3) 0;
+}
+
+.license-submit-button {
+  align-self: flex-start;
+  min-height: var(--touch-target-min);
+  padding: var(--space-2) var(--space-5);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-surface);
+  color: var(--color-fg);
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  transition: background var(--duration-150), border-color var(--duration-150);
+}
+
+.license-submit-button:hover {
+  background: var(--color-bg-hover);
+  border-color: var(--color-border-hover);
+}
+
+.license-submit-button:focus-visible {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 2px;
+}
+
+.license-submit-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

@@ -486,3 +486,20 @@
   }
 }
 
+/* ── Two names the Security Trail reuses from this sheet ──────────────
+   SecurityTrailScreen.tsx:38 imports AuditLogScreen.css; its scope note and its
+   loading line carry audit-log-* names that were never defined. */
+.audit-log-search-label {
+  font-size: var(--text-sm);
+  color: var(--color-fg-muted);
+  line-height: var(--leading-normal);
+  margin: 0;
+}
+
+.audit-log-loading-text {
+  font-size: var(--text-sm);
+  color: var(--color-fg-muted);
+  text-align: center;
+  padding: var(--space-6) 0;
+  margin: 0;
+}
