@@ -649,3 +649,26 @@
 .eod-report-summary-value--danger {
   color: var(--color-danger);
 }
+
+/* ── Touch press feedback ────────────────────────────────────────────
+   The end-of-day report is read and refreshed on the tablet. Both controls
+   are discrete buttons and scale. */
+.eod-report-refresh-btn:not(:disabled):active,
+.eod-report-retry-btn:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+@media (pointer: coarse) {
+  .eod-report-refresh-btn,
+.eod-report-retry-btn {
+    min-height: var(--touch-target-min);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .eod-report-refresh-btn:not(:disabled):active,
+.eod-report-retry-btn:not(:disabled):active {
+    transform: none;
+    opacity: 0.75;
+  }
+}

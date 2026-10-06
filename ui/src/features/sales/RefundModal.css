@@ -328,3 +328,32 @@
 .refund-close:focus-visible {
   box-shadow: inset 0 0 0 1px var(--color-accent);
 }
+
+/* ── Touch press feedback ────────────────────────────────────────────
+   Refunds are processed on the tablet and move money, so the press cue on
+   the confirm path matters. Qty steppers and the close scale; the line label
+   tints (it is a row, and a scale would twitch the list). */
+.refund-qty-btn:not(:disabled):active,
+.refund-close:not(:disabled):active {
+  transform: scale(0.94);
+}
+
+.refund-line-label:active {
+  background: color-mix(in srgb, var(--color-fg) 12%, transparent);
+}
+
+@media (pointer: coarse) {
+  .refund-close,
+.refund-qty-btn,
+.refund-line-label {
+    min-height: var(--touch-target-min);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .refund-qty-btn:not(:disabled):active,
+.refund-close:not(:disabled):active {
+    transform: none;
+    opacity: 0.75;
+  }
+}

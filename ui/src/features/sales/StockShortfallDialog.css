@@ -321,3 +321,21 @@
   justify-content: flex-end;
   gap: var(--space-3);
 }
+
+/* ── Touch press feedback ────────────────────────────────────────────
+   The shortfall dialog appears mid-sale under time pressure. Options are
+   rows (tint); the split toggle is a switch-shaped control, so it tints too
+   rather than scaling over its own knob transition. */
+.shortfall-alt-option:active,
+.shortfall-negative-option:active,
+.shortfall-split-toggle:active {
+  background: color-mix(in srgb, var(--color-fg) 12%, transparent);
+}
+
+@media (pointer: coarse) {
+  .shortfall-alt-option,
+.shortfall-split-toggle,
+.shortfall-negative-option {
+    min-height: var(--touch-target-min);
+  }
+}

@@ -285,3 +285,16 @@
     pointer-events: none;
   }
 }
+
+/* ── Touch press feedback ────────────────────────────────────────────
+   Promotion picker rows, tapped during checkout on the tablet. Tint, not
+   scale: they are list rows and scaling twitches the list. */
+.promo-picker-item-btn:active {
+  background: color-mix(in srgb, var(--color-fg) 12%, transparent);
+}
+
+@media (pointer: coarse) {
+  .promo-picker-item-btn {
+    min-height: var(--touch-target-min);
+  }
+}

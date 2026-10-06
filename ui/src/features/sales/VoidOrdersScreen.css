@@ -461,3 +461,31 @@
     transition: border-color var(--duration-150) var(--ease-out), box-shadow var(--duration-150) var(--ease-out);
   }
 }
+
+/* ── Touch press feedback ────────────────────────────────────────────
+   Voiding is irreversible and performed at the till, so the confirm tap
+   needs a clear cue. Buttons scale; the status chip tints. */
+.void-orders-back-btn:not(:disabled):active,
+.void-orders-action-btn:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+.void-orders-status-chip:active {
+  background: color-mix(in srgb, var(--color-fg) 12%, transparent);
+}
+
+@media (pointer: coarse) {
+  .void-orders-back-btn,
+.void-orders-status-chip,
+.void-orders-action-btn {
+    min-height: var(--touch-target-min);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .void-orders-back-btn:not(:disabled):active,
+.void-orders-action-btn:not(:disabled):active {
+    transform: none;
+    opacity: 0.75;
+  }
+}
