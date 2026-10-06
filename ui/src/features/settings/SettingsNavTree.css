@@ -257,33 +257,8 @@
   width: 100%;
 }
 
-/* The nav item's <Tooltip> wrapper is now the flex item (the button moved
-   inside it), so the wrapper must absorb the free width and the button must
-   fill the wrapper. The direct-child form is kept for the search-results
-   branch, where the item button is not tooltip-wrapped.
-
-   The pin button's own `<Tooltip fit="inline">` ALSO emits a bare
-   `.tooltip-wrapper` as this row's SECOND child, so the unscoped rule handed
-   `flex: 1` to both children and split the row 50/50: measured at 1600px the
-   label fell from its natural 134px to 49.9px and every long name ellipsised
-   to "Licens…", "Devic…", "Busin…". Excluded by the `--inline` flag
-   (Tooltip.tsx:225 sets it for exactly this small-icon case) so only the
-   label's wrapper takes the free width and the pin wrapper stays
-   content-sized — which is what lets `.settings-nav-pin-btn`'s own
-   `width: 1.5rem` / `margin-left: auto` mean anything. Both render branches
-   are covered: the pinned list puts the button directly in the row and its
-   pin in the inline wrapper, the main list tooltip-wraps each. */
-.settings-nav-item-wrapper > .tooltip-wrapper:not(.tooltip-wrapper--inline) {
-  flex: 1;
-  min-width: 0;
-}
-
-.settings-nav-item-wrapper > .tooltip-wrapper--inline {
-  flex: 0 0 auto;
-}
-
-.settings-nav-item-wrapper > button.settings-nav-item,
-.settings-nav-item-wrapper > .tooltip-wrapper > button.settings-nav-item {
+/* Nav item button fills available row space, keeping pin button content-sized on the right. */
+.settings-nav-item-wrapper > button.settings-nav-item {
   flex: 1;
   min-width: 0;
 }

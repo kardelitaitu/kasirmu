@@ -1,7 +1,6 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { Localized, useLocalization } from '@fluent/react';
-import Tooltip from '@/app/Tooltip';
 import Fuse from 'fuse.js';
 import type { FuseResultMatch } from 'fuse.js';
 
@@ -624,19 +623,17 @@ const SettingsNavTree = function SettingsNavTree({
               on the right already owns it.) */}
           {!sidebarCollapsed && (
             <div className="settings-shortcut-btn-wrap" ref={shortcutRef}>
-              <Tooltip content={l10n.getString('settings-shortcut-btn-aria')} fit="inline" portal>
-                <button
-                  type="button"
-                  className="settings-shortcut-btn"
-                  onClick={() => setShowShortcuts((p) => !p)}
-                  aria-label={l10n.getString('settings-shortcut-btn-aria')}
-                >
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="14" height="14" aria-hidden="true">
-                    <rect x="2" y="4" width="20" height="16" rx="2" />
-                    <path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M8 12h.01M12 12h.01M16 12h.01M6 16h.01M10 16h.01M14 16h4" />
-                  </svg>
-                </button>
-              </Tooltip>
+              <button
+                type="button"
+                className="settings-shortcut-btn"
+                onClick={() => setShowShortcuts((p) => !p)}
+                aria-label={l10n.getString('settings-shortcut-btn-aria')}
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="14" height="14" aria-hidden="true">
+                  <rect x="2" y="4" width="20" height="16" rx="2" />
+                  <path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M8 12h.01M12 12h.01M16 12h.01M6 16h.01M10 16h.01M14 16h4" />
+                </svg>
+              </button>
               {showShortcuts && (
                 <div className="settings-shortcuts-popover" role="tooltip">
                   <div className="settings-shortcuts-title">{l10n.getString('settings-shortcuts-title')}</div>
@@ -718,18 +715,16 @@ const SettingsNavTree = function SettingsNavTree({
                           </span>
                         )}
                     </button>
-                    <Tooltip content={l10n.getString('settings-nav-unpin-title')} fit="inline" portal>
-                      <button
-                        type="button"
-                        className="settings-nav-pin-btn pinned"
-                        onClick={() => togglePin(key)}
-                        aria-label={l10n.getString('settings-nav-unpin-aria', { name: item.label })}
-                      >
-                        <svg viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="12" height="12" aria-hidden="true">
-                          <path d="M12 2L9.5 10L2 11l6 6l-1.5 7L12 18l6.5 6L17 17l6-6l-7.5-1z" />
-                        </svg>
-                      </button>
-                    </Tooltip>
+                    <button
+                      type="button"
+                      className="settings-nav-pin-btn pinned"
+                      onClick={() => togglePin(key)}
+                      aria-label={l10n.getString('settings-nav-unpin-aria', { name: item.label })}
+                    >
+                      <svg viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="12" height="12" aria-hidden="true">
+                        <path d="M12 2L9.5 10L2 11l6 6l-1.5 7L12 18l6.5 6L17 17l6-6l-7.5-1z" />
+                      </svg>
+                    </button>
                   </div>
                 );
               })}
@@ -763,58 +758,50 @@ const SettingsNavTree = function SettingsNavTree({
                 const l10nKey = NAV_L10N_KEYS[key] ?? '';
                 return (
                   <div key={key} className="settings-nav-item-wrapper" role="listitem">
-                    <Tooltip content={l10n.getString(l10nKey)} showDelay={800} portal>
+                    <button
+                      type="button"
+                      aria-current={activeSection === key ? 'page' : undefined}
+                      className={`settings-nav-item${item.subpage ? ' settings-nav-item--subpage' : ''}${activeSection === key ? ' settings-nav-item--active' : ''}`}
+                      onClick={() => onNavigate(key)}
+                      aria-label={l10n.getString(l10nKey)}
+                    >
+                      <span className="settings-nav-icon">{item.icon}</span>
+                      <span className="settings-nav-label">
+                        {q ? (
+                          highlightLabel(
+                            resolveLocalizedLabel(l10n, l10nKey || item.key, item.label),
+                            searchMatches?.get(key),
+                          )
+                        ) : (
+                          <Localized id={l10nKey}>{item.label}</Localized>
+                        )}
+                      </span>
+                      {item.plus && !sidebarCollapsed && (
+                        <span className="settings-nav-plus-badge" aria-label={l10n.getString('settings-nav-plus-badge-aria')}>Plus+</span>
+                      )}
+                      {(key === 'data-sync' || key === 'sync-conflicts') &&
+                        deadLetterCount !== undefined &&
+                        deadLetterCount > 0 &&
+                        !sidebarCollapsed && (
+                          <span
+                            className="settings-nav-count-badge"
+                            aria-label={l10n.getString('sync-conflicts-badge-aria', { count: deadLetterCount })}
+                          >
+                            {deadLetterCount}
+                          </span>
+                        )}
+                    </button>
+                    {!sidebarCollapsed && (
                       <button
                         type="button"
-                        aria-current={activeSection === key ? 'page' : undefined}
-                        className={`settings-nav-item${item.subpage ? ' settings-nav-item--subpage' : ''}${activeSection === key ? ' settings-nav-item--active' : ''}`}
-                        onClick={() => onNavigate(key)}
-                        aria-label={l10n.getString(l10nKey)}
+                        className={`settings-nav-pin-btn${pinnedSections.includes(key) ? ' pinned' : ''}`}
+                        onClick={() => togglePin(key)}
+                        aria-label={pinnedSections.includes(key) ? l10n.getString('settings-nav-unpin-aria', { name: item.label }) : l10n.getString('settings-nav-pin-aria', { name: item.label })}
                       >
-                        <span className="settings-nav-icon">{item.icon}</span>
-                        <span className="settings-nav-label">
-                          {q ? (
-                            highlightLabel(
-                              resolveLocalizedLabel(l10n, l10nKey || item.key, item.label),
-                              searchMatches?.get(key),
-                            )
-                          ) : (
-                            <Localized id={l10nKey}>{item.label}</Localized>
-                          )}
-                        </span>
-                        {item.plus && !sidebarCollapsed && (
-                          <span className="settings-nav-plus-badge" aria-label={l10n.getString('settings-nav-plus-badge-aria')}>Plus+</span>
-                        )}
-                        {(key === 'data-sync' || key === 'sync-conflicts') &&
-                          deadLetterCount !== undefined &&
-                          deadLetterCount > 0 &&
-                          !sidebarCollapsed && (
-                            <span
-                              className="settings-nav-count-badge"
-                              aria-label={l10n.getString('sync-conflicts-badge-aria', { count: deadLetterCount })}
-                            >
-                              {deadLetterCount}
-                            </span>
-                          )}
+                        <svg viewBox="0 0 24 24" fill={pinnedSections.includes(key) ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="12" height="12" aria-hidden="true">
+                          <path d="M12 2L9.5 10L2 11l6 6l-1.5 7L12 18l6.5 6L17 17l6-6l-7.5-1z" />
+                        </svg>
                       </button>
-                    </Tooltip>
-                    {!sidebarCollapsed && (
-                      <Tooltip
-                        content={pinnedSections.includes(key) ? l10n.getString('settings-nav-unpin-title') : l10n.getString('settings-nav-pin-title')}
-                        fit="inline"
-                        portal
-                      >
-                        <button
-                          type="button"
-                          className={`settings-nav-pin-btn${pinnedSections.includes(key) ? ' pinned' : ''}`}
-                          onClick={() => togglePin(key)}
-                          aria-label={pinnedSections.includes(key) ? l10n.getString('settings-nav-unpin-aria', { name: item.label }) : l10n.getString('settings-nav-pin-aria', { name: item.label })}
-                        >
-                          <svg viewBox="0 0 24 24" fill={pinnedSections.includes(key) ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="12" height="12" aria-hidden="true">
-                            <path d="M12 2L9.5 10L2 11l6 6l-1.5 7L12 18l6.5 6L17 17l6-6l-7.5-1z" />
-                          </svg>
-                        </button>
-                      </Tooltip>
                     )}
                   </div>
                 );
