@@ -109,6 +109,31 @@
 
 /* ── Reporting Dashboard Grid ─────────────────────────────────────── */
 
+/* ⚠ FOUR NAMES IN THIS BLOCK ARE ALSO DEFINED IN SalesDashboardScreen.css.
+   Measured 2026-10-07: .reporting-dashboard, .reporting-dashboard-title,
+   .reporting-dashboard-grid and .reporting-dashboard-empty appear in BOTH sheets
+   with DIFFERENT values, and SalesDashboardScreen.tsx imports this file at :7 and
+   that one at :8 — later import wins, so every rule in the group below is
+   currently DEAD. The visible differences are:
+
+     .reporting-dashboard-grid   repeat(2, 1fr) / gap --space-3            (here, dead)
+                                 repeat(auto-fill, minmax(17.5rem, 1fr))
+                                 / gap --space-4                          (there, live)
+     .reporting-dashboard-title  font-weight: 700                         (here, dead)
+                                 font-weight: var(--font-weight-bold)     (there)
+     .reporting-dashboard-empty  padding: --space-8 0                     (here, dead)
+                                 padding: --space-6 0                     (there)
+
+   The two sheets disagree on the dashboard's actual grid, so this is a latent
+   bug and not tidiness: swapping the two import lines in SalesDashboardScreen.tsx
+   would silently re-lay-out the dashboard. It is NOT fixed here because choosing
+   the intended grid is a product decision, and the suite that would normally
+   force the question (screenExtraction's per-entry duplicate-name check) does not
+   grade this sheet — widgets.css is in BASELINE_UNCITED, so nothing sees the
+   collision. Decide the grid, delete the losing copy, then cite widgets.css from
+   the SalesDashboardScreen entry so it stays graded. Found while adding that cite;
+   the cite was reverted because the suite fails on exactly this duplication. */
+
 .reporting-dashboard {
   padding: var(--space-4);
 }
