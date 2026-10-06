@@ -22,6 +22,7 @@ import {
   getDeviceId,
   getStorageHealth,
   exportDiagnostics,
+  recordCrashReport,
 } from '@/api/system';
 
 const VERSION = {
@@ -117,8 +118,23 @@ describe('system.ts IPC contract', () => {
     expect(result).toEqual(exportResult);
   });
 
+  it('recordCrashReport → record_crash_report with report payload', async () => {
+    mockInvoke.mockResolvedValue(null);
+    const reportPayload = {
+      timestamp: '2026-10-07T03:30:00Z',
+      kind: 'window_error' as const,
+      message: 'Uncaught TypeError: test',
+      stack: 'at App.tsx:1:1',
+      appVersion: '0.0.41',
+      shell: 'desktop',
+    };
+    await recordCrashReport(reportPayload);
+    expect(mockInvoke).toHaveBeenCalledWith('record_crash_report', { report: reportPayload });
+  });
+
   it('propagates backend errors', async () => {
     mockInvoke.mockRejectedValueOnce(new Error('session expired'));
     await expect(getVersionScoped('tok_sys')).rejects.toThrow('session expired');
   });
 });
+

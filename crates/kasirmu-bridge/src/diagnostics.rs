@@ -317,6 +317,19 @@ pub async fn export_diagnostics(
                 }
             }
         }
+
+        // 5. Always include crash_telemetry.log if present in log_dir
+        let crash_log = dir.join("crash_telemetry.log");
+        let archive_name = "logs/crash_telemetry.log".to_string();
+        if crash_log.is_file() && !files_included.contains(&archive_name) {
+            if let Ok(raw_content) = std::fs::read_to_string(&crash_log) {
+                let sanitized = sanitize_log_text(&raw_content);
+                if zip.start_file::<&str, ()>(&archive_name, options).is_ok() {
+                    let _ = zip.write_all(sanitized.as_bytes());
+                    files_included.push(archive_name);
+                }
+            }
+        }
     }
 
     zip.finish().map_err(|e| {
@@ -330,6 +343,136 @@ pub async fn export_diagnostics(
         size_bytes,
         files_included,
     })
+}
+
+/// Wire payload for crash telemetry report.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CrashReport {
+    /// UTC timestamp of the crash incident.
+    pub timestamp: String,
+    /// Origin category: "panic", "unhandled_rejection", "window_error", or "react_error_boundary".
+    pub kind: String,
+    /// Human-readable panic or error description.
+    pub message: String,
+    /// Optional stack trace.
+    #[serde(default)]
+    pub stack: Option<String>,
+    /// Optional React component hierarchy trace.
+    #[serde(default)]
+    pub component_stack: Option<String>,
+    /// Source file, line, and column coordinates.
+    #[serde(default)]
+    pub location: Option<String>,
+    /// Application semantic version.
+    #[serde(default)]
+    pub app_version: Option<String>,
+    /// Platform shell ("desktop" or "tablet").
+    #[serde(default)]
+    pub shell: Option<String>,
+}
+
+static PANIC_LOG_DIR: std::sync::RwLock<Option<std::path::PathBuf>> = std::sync::RwLock::new(None);
+static PANIC_HOOK_INSTALLED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Record a sanitized crash telemetry entry to the active log directory.
+pub fn write_crash_report_entry(
+    log_dir: Option<&Path>,
+    report: &CrashReport,
+) -> Result<(), BridgeError> {
+    let sanitized_msg = sanitize_log_text(&report.message).trim_end().to_string();
+    let sanitized_stack = report.stack.as_deref().map(|s| sanitize_log_text(s).trim_end().to_string());
+    let sanitized_component_stack = report
+        .component_stack
+        .as_deref()
+        .map(|s| sanitize_log_text(s).trim_end().to_string());
+
+    let sanitized_report = CrashReport {
+        timestamp: report.timestamp.clone(),
+        kind: report.kind.clone(),
+        message: sanitized_msg,
+        stack: sanitized_stack,
+        component_stack: sanitized_component_stack,
+        location: report.location.clone(),
+        app_version: report.app_version.clone(),
+        shell: report.shell.clone(),
+    };
+
+    if let Some(dir) = log_dir {
+        if let Err(e) = std::fs::create_dir_all(dir) {
+            eprintln!("[crash_telemetry] failed to create log directory: {e}");
+        }
+        let crash_file = dir.join("crash_telemetry.log");
+        if let Ok(mut file) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&crash_file)
+        {
+            if let Ok(json_line) = serde_json::to_string(&sanitized_report) {
+                let _ = writeln!(file, "{json_line}");
+            }
+        }
+    } else {
+        // Fallback: log warning to stderr
+        if let Ok(json_line) = serde_json::to_string(&sanitized_report) {
+            eprintln!("[crash_telemetry] {json_line}");
+        }
+    }
+
+    Ok(())
+}
+
+/// Asynchronous wrapper for recording crash reports via Tauri IPC.
+pub async fn record_crash_report(
+    log_dir: Option<&Path>,
+    report: CrashReport,
+) -> Result<(), BridgeError> {
+    write_crash_report_entry(log_dir, &report)
+}
+
+/// Install global unhandled panic hook that logs sanitized panic reports.
+pub fn install_panic_hook(log_dir: Option<std::path::PathBuf>) {
+    if let Ok(mut guard) = PANIC_LOG_DIR.write() {
+        *guard = log_dir;
+    }
+
+    if !PANIC_HOOK_INSTALLED.swap(true, std::sync::atomic::Ordering::SeqCst) {
+        let prev_hook = std::panic::take_hook();
+        std::panic::set_hook(Box::new(move |panic_info| {
+            let timestamp = chrono::Utc::now().to_rfc3339();
+            let payload = if let Some(s) = panic_info.payload().downcast_ref::<&str>() {
+                (*s).to_string()
+            } else if let Some(s) = panic_info.payload().downcast_ref::<String>() {
+                s.clone()
+            } else {
+                "Box<dyn Any>".to_string()
+            };
+            let location = panic_info
+                .location()
+                .map(|loc| format!("{}:{}:{}", loc.file(), loc.line(), loc.column()));
+            let thread_name = std::thread::current()
+                .name()
+                .unwrap_or("unnamed")
+                .to_string();
+            let backtrace = format!("{:?}", std::backtrace::Backtrace::capture());
+
+            let report = CrashReport {
+                timestamp,
+                kind: "panic".to_string(),
+                message: format!("[thread '{thread_name}'] {payload}"),
+                stack: Some(backtrace),
+                component_stack: None,
+                location,
+                app_version: None,
+                shell: None,
+            };
+
+            let dir = PANIC_LOG_DIR.read().ok().and_then(|g| g.clone());
+            let _ = write_crash_report_entry(dir.as_deref(), &report);
+
+            prev_hook(panic_info);
+        }));
+    }
 }
 
 #[cfg(test)]

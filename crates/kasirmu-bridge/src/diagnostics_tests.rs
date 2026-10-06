@@ -34,3 +34,40 @@ fn test_validate_output_path_rejects_traversal() {
     assert!(validate_output_path("normal_export.zip").is_ok());
     assert!(validate_output_path("/var/log/diagnostics.zip").is_ok());
 }
+
+#[test]
+fn test_write_crash_report_entry_sanitizes_pii_and_appends() {
+    let temp_dir = std::env::temp_dir().join(format!("crash_test_{}", uuid::Uuid::new_v4()));
+    let _ = std::fs::create_dir_all(&temp_dir);
+
+    let report = CrashReport {
+        timestamp: "2026-10-07T03:30:00Z".to_string(),
+        kind: "unhandled_rejection".to_string(),
+        message: "Failed auth with Bearer my_secret_token_123".to_string(),
+        stack: Some("Error at login with {\"password\": \"supersecret\"}".to_string()),
+        component_stack: Some("at Component with {\"pin\": \"9999\"}".to_string()),
+        location: Some("App.tsx:42:10".to_string()),
+        app_version: Some("0.0.41".to_string()),
+        shell: Some("desktop".to_string()),
+    };
+
+    let res = write_crash_report_entry(Some(&temp_dir), &report);
+    assert!(res.is_ok());
+
+    let crash_file = temp_dir.join("crash_telemetry.log");
+    assert!(crash_file.is_file());
+
+    let content = std::fs::read_to_string(&crash_file).expect("read crash file");
+    assert!(!content.contains("my_secret_token_123"));
+    assert!(!content.contains("supersecret"));
+    assert!(!content.contains("9999"));
+
+    let decoded: CrashReport = serde_json::from_str(content.trim()).expect("parse json");
+    assert_eq!(decoded.message, "Failed auth with Bearer [REDACTED]");
+    assert!(decoded.stack.unwrap().contains(r#""password": "[REDACTED]""#));
+    assert!(decoded.component_stack.unwrap().contains(r#""pin": "[REDACTED]""#));
+
+    // Cleanup
+    let _ = std::fs::remove_dir_all(&temp_dir);
+}
+

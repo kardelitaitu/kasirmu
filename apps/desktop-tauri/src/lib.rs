@@ -161,6 +161,9 @@ pub fn run() {
                 30,
             );
 
+            // ── Crash telemetry panic hook (Phase 2.2) ────────────────────
+            kasirmu_bridge::diagnostics::install_panic_hook(log_dir.clone());
+
             // ── Pending restore request (C8, slice S4a) ───────────────────
             // Consumed BEFORE `AppState::new` below, which opens the database
             // and runs migrations. This is the only moment the swap is safe:
@@ -1387,6 +1390,7 @@ pub fn run() {
             commands::health::get_local_ip_scoped,
             commands::health::get_storage_health,
             commands::health::export_diagnostics,
+            commands::health::record_crash_report,
             commands::pos::start_sale_scoped,
             commands::pos::add_line_scoped,
             commands::pos::set_line_course_scoped,

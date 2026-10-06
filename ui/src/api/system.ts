@@ -96,3 +96,20 @@ export const exportDiagnostics = (
 ): Promise<DiagnosticExportResult> =>
   loggedInvoke<DiagnosticExportResult>('export_diagnostics', { sessionToken, outputPath });
 
+/** Payload for crash telemetry reporting. */
+export interface CrashReportPayload {
+  timestamp: string;
+  kind: 'panic' | 'unhandled_rejection' | 'window_error' | 'react_error_boundary';
+  message: string;
+  stack?: string | undefined;
+  componentStack?: string | undefined;
+  location?: string | undefined;
+  appVersion?: string | undefined;
+  shell?: string | undefined;
+}
+
+/** Record fatal frontend or runtime crash telemetry report without sensitive PII. */
+export const recordCrashReport = (report: CrashReportPayload): Promise<void> =>
+  loggedInvoke<void>('record_crash_report', { report });
+
+

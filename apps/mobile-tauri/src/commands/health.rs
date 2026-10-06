@@ -14,7 +14,7 @@ use tauri::{Manager, command};
 
 use crate::error::AppError;
 
-pub use kasirmu_bridge::diagnostics::DiagnosticExportResult;
+pub use kasirmu_bridge::diagnostics::{CrashReport, DiagnosticExportResult};
 pub use kasirmu_bridge::health::VersionInfo;
 
 /// Liveness probe. Returns `Ok("pong")` if the Tauri runtime is alive.
@@ -139,6 +139,18 @@ pub async fn export_diagnostics(
     )
     .await
     .map_err(Into::into)
+}
+
+#[command]
+/// Record fatal frontend or runtime crash telemetry report without sensitive PII.
+pub async fn record_crash_report(
+    report: CrashReport,
+    app_handle: tauri::AppHandle,
+) -> Result<(), AppError> {
+    let log_dir = app_handle.path().app_log_dir().ok();
+    kasirmu_bridge::diagnostics::record_crash_report(log_dir.as_deref(), report)
+        .await
+        .map_err(Into::into)
 }
 
 #[cfg(test)]

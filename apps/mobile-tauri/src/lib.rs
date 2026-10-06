@@ -210,6 +210,9 @@ pub fn run() {
                     30,
                 );
 
+                // ── Crash telemetry panic hook (Phase 2.2) ────────────────────
+                kasirmu_bridge::diagnostics::install_panic_hook(log_dir.clone());
+
                 // ── Pending restore request (C8, slice S4b) ───────────────────
                 // Consumed BEFORE `AppState::new` below, which opens the database
                 // and runs migrations. This is the only moment the swap is safe:
@@ -1038,6 +1041,7 @@ pub fn run() {
                 commands::health::get_local_ip,
                 commands::health::get_storage_health,
                 commands::health::export_diagnostics,
+                commands::health::record_crash_report,
                 // ADR #57 §2.1: makes the APK signing-certificate read observable
                 // on any device, including one with no licence activated — the
                 // state in which its only other caller (the licence-status call)

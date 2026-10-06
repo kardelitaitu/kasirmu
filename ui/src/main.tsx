@@ -2,6 +2,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 import { installPerfProbe } from './utils/perf-metrics';
+import { installCrashReporter } from './utils/crashReporter';
 import { setShellKind } from './utils/shellKind';
 import './theme/reset.css';
 import './theme/fonts.css';
@@ -11,6 +12,9 @@ import './theme/responsive.css';
 
 // PERF-06: expose aggregate-only runtime metrics to automated checks.
 installPerfProbe();
+
+// Phase 2.2: wire crash reporter hook for unhandled exceptions and fatal rejections.
+installCrashReporter();
 
 // ADR #54 §2.7: Google sign-in is a desktop control; the shared components ask this.
 setShellKind('desktop');

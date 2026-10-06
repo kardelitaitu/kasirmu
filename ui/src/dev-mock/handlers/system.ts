@@ -471,6 +471,8 @@ export const systemHandlers: Record<string, MockHandler> = {
     };
   },
 
+  'record_crash_report': (_args: unknown) => null,
+
   'bootstrap_owner': (_args) => {
     return {
       session: {

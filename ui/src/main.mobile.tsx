@@ -4,6 +4,7 @@ import { AppProviders } from '@/contexts/AppProviders';
 import TabletAppShell from '@/app/tablet/TabletAppShell';
 import { registerAllFeatures } from '@/features';
 import { installPerfProbe } from './utils/perf-metrics';
+import { installCrashReporter } from './utils/crashReporter';
 import { setShellKind } from './utils/shellKind';
 import './theme/reset.css';
 import './theme/fonts.css';
@@ -16,6 +17,9 @@ registerAllFeatures();
 
 // PERF-06: expose aggregate-only runtime metrics to automated checks.
 installPerfProbe();
+
+// Phase 2.2: wire crash reporter hook for unhandled exceptions and fatal rejections.
+installCrashReporter();
 
 // ADR #54 §2.7: the Google control is excluded from the tablet build.
 setShellKind('tablet');

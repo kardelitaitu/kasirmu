@@ -1,6 +1,7 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 import { FluentBundle, FluentResource } from '@fluent/bundle';
 import { ReactLocalization } from '@fluent/react';
+import { reportClientCrash } from '@/utils/crashReporter';
 import './ErrorBoundary.css';
 
 // Static bundle for ErrorBoundary (class component can't use hooks).
@@ -72,6 +73,12 @@ export default class ErrorBoundary extends Component<Props, State> {
 
   override componentDidCatch(error: Error, info: ErrorInfo) {
     console.error('[ErrorBoundary]', error, info.componentStack);
+    reportClientCrash({
+      kind: 'react_error_boundary',
+      message: error.message,
+      stack: error.stack,
+      componentStack: info.componentStack ?? undefined,
+    });
   }
 
   override componentDidMount() {
