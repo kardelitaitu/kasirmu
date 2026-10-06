@@ -93,7 +93,7 @@ export function RestaurantFloatingCartBar({
           >
             {formattedTotal}
           </span>
-          <span className="restaurant-floating-cart-action-btn">
+          <span className="restaurant-floating-cart-action-btn noise-dither">
             <span>{l10n.getString('restaurant-cart-view-order')}</span>
             <svg
               viewBox="0 0 24 24"

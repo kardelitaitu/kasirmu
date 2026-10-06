@@ -342,6 +342,21 @@
    a genuinely large, soft --shadow-sm pane (the preview column's own rail), so
    it takes the overlay rather than an exemption. */
 .restaurant-preview-card::after,
+/* Restaurant cart sheet + floating cart bar (portrait tablet, 53df57eae). The
+   panel is a --shadow-2xl bottom sheet and the bar a --shadow-xl full-width
+   pill, so both band and both take the overlay. Each element also carries
+   className="noise-dither" in its TSX (RestaurantCartSheet.tsx /
+   RestaurantFloatingCartBar.tsx); the selectors are named here too because
+   noiseDitherCompliance.test.ts walks CSS, not JSX - the same reason stated
+   for .restaurant-preview-card directly above.
+    The bar's inner .restaurant-floating-cart-action-btn is listed as well: it is a
+   small --shadow-sm pill (the .btn case for banding), so it was tried as an
+   exemption first -- and that breached the frozen EXEMPT_SELECTOR_PREFIXES
+   ceiling (8), which is the tripwire doing its job. Giving it the overlay
+   directly needs no waiver on either door, so the narrower fix wins. */
+.restaurant-cart-sheet-panel::after,
+.restaurant-floating-cart-bar::after,
+.restaurant-floating-cart-action-btn::after,
 /* The mat the thermal roll sits on: the full-width stage behind the receipt
    preview, carrying inset --shadow-inner. Large enough to band, so it takes the
    overlay rather than an exemption. (The two other shadowed selectors this
@@ -537,6 +552,9 @@
   .topology-rev-browser::after,
   .restaurant-preview-card::after,
   .resto-receipt-paper-wrapper::after,
+  .restaurant-cart-sheet-panel::after,
+  .restaurant-floating-cart-bar::after,
+  .restaurant-floating-cart-action-btn::after,
   .memo-banner::after,
   .memo-expanded-card::after,
   .retail-shift-modal::after,
@@ -676,6 +694,9 @@
   .topology-rev-browser::after,
   .restaurant-preview-card::after,
   .resto-receipt-paper-wrapper::after,
+  .restaurant-cart-sheet-panel::after,
+  .restaurant-floating-cart-bar::after,
+  .restaurant-floating-cart-action-btn::after,
   .memo-banner::after,
   .memo-expanded-card::after,
   .retail-shift-modal::after,

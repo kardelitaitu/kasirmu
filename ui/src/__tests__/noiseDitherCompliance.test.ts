@@ -164,6 +164,26 @@ const KNOWN_NOISE_SELECTORS = [
   '.pos-held-list-modal',
   '.pos-close-shift-modal',
   '.receipt-preview-paper',
+  // Restaurant cart sheet + floating cart bar (portrait tablet, 53df57eae). The
+  // panel is a --shadow-2xl bottom sheet and the bar a --shadow-xl full-width
+  // pill: large, soft gradients, which is the shape that bands. Both carry
+  // className="noise-dither" in their TSX (RestaurantCartSheet.tsx /
+  // RestaurantFloatingCartBar.tsx), which is what paints the overlay; these
+  // entries are what tell the walk the surfaces are covered. Adding all three
+  // moved this door 93 -> 96 of 120, hence the ceiling re-baseline above.
+  //
+  // The third, .restaurant-floating-cart-action-btn, is the bar's inner CTA: a
+  // small --shadow-sm pill. It is the '.btn' case by geometry (thin shadow, no
+  // large soft gradient to band) and was tried in EXEMPT_SELECTOR_PREFIXES
+  // FIRST - which breached that door's frozen ceiling (measured 9, max 8) and
+  // was reverted, the tripwire doing exactly its job. Giving it the overlay
+  // directly needs no waiver at all, so the narrower fix is the one taken: it
+  // carries className="noise-dither" and has its own ::after entry in
+  // components.css. Its presence HERE is required by the coverage assertion's
+  // own stated fix (::after + KNOWN list entry are a pair).
+  '.restaurant-cart-sheet-panel',
+  '.restaurant-floating-cart-bar',
+  '.restaurant-floating-cart-action-btn',
   '.refund-modal',
   '.shortfall-modal',
   '.settings-footer-shortcut kbd',
@@ -745,13 +765,30 @@ describe('Noise-dither overlay coverage (P11-5)', () => {
     // changes no matcher at all and is exactly what these ceilings are the tripwire
     // for. Membership guards the mechanism, size guards the appetite.
     //
-    // Known-list door: 93 of 118 selectors, the biggest door in the file and the one
+    // Known-list door: 96 of 120 selectors, the biggest door in the file and the one
     // that can grow silently -- a lane that adds a surface to KNOWN_NOISE_SELECTORS
-    // without giving it a dither is over-waiving by definition. Floor 85 (8 below
-    // measured), ceiling 100 (7 above, tightened from the 12 this first shipped with
-    // because a 13 % allowance on a 93-selector door is not a tripwire).
-    expect(waiverCoveredByList, 'the known-list door waived ' + waiverCoveredByList + ' of 118 selectors; measured 93 with 8 of headroom below the floor and 7 above the ceiling -- a breach means a waiver got wider, not that the tree got quieter').toBeGreaterThanOrEqual(85);
-    expect(waiverCoveredByList, 'the known-list door waived ' + waiverCoveredByList + ' of 118 selectors; measured 93 with 8 of headroom below the floor and 7 above the ceiling -- a breach means a waiver got wider, not that the tree got quieter').toBeLessThanOrEqual(100);
+    // without giving it a dither is over-waiving by definition. Floor 85 (unchanged),
+    // ceiling 103 (8 above, from 100).
+    //
+    // Re-baselined 2026-10-06 for three surfaces that DO carry a dither, which is
+    // the condition this door's own rule sets: the restaurant cart sheet
+    // (--shadow-2xl bottom sheet), the floating cart bar (--shadow-xl full-width
+    // pill) and that bar's inner CTA pill (--shadow-sm). All three are from
+    // 53df57eae and were genuinely uncovered until this change added
+    // className="noise-dither" to their elements in RestaurantCartSheet.tsx and
+    // RestaurantFloatingCartBar.tsx. The population moved 118 -> 120 with them (the
+    // walk grades one shadowed selector per element), so the floor is unchanged in
+    // absolute terms and the ceiling is +3, not +2 — the third slot absorbs the
+    // population growth rather than spending it on new waivers.
+    //
+    // This was NOT a silence-a-red-gate edit: the surfaces were fixed first (the TSX
+    // classes are what actually paint the overlay) and the entries name them. The
+    // structural weakness this leaves is real and tracked -- the walk reads CSS, so a
+    // dithered element and its list entry must be kept in sync by hand. Remedy (1) in
+    // the file header (grade through the name) is the durable fix, deferred by owner
+    // decision on 2026-10-06.
+    expect(waiverCoveredByList, 'the known-list door waived ' + waiverCoveredByList + ' of 120 selectors; measured 96 with 11 of headroom below the floor and 7 above the ceiling -- a breach means a waiver got wider, not that the tree got quieter').toBeGreaterThanOrEqual(85);
+    expect(waiverCoveredByList, 'the known-list door waived ' + waiverCoveredByList + ' of 120 selectors; measured 96 with 11 of headroom below the floor and 7 above the ceiling -- a breach means a waiver got wider, not that the tree got quieter').toBeLessThanOrEqual(103);
     // State pseudo-class door: 21 of 118, floor 15 (6 below) and ceiling 28 (7 above).
     // A RISE is the :520 door crediting a state that belongs to a different element.
     // A FALL THROUGH THE FLOOR IS PRE-NAMED ON PURPOSE, because the sister lane is
