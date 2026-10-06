@@ -63,8 +63,23 @@ const emptyForm = (storeTz?: string | null): FormData => ({
 /** Settings key read/written by the auto-sync toggle (platform/core keys.rs). */
 const RATE_SYNC_ENABLED_KEY = 'rate_sync.enabled';
 
+/** Props for {@link ExchangeRateScreen}. */
+export interface ExchangeRateScreenProps {
+  /**
+   * Render as a BODY inside another page rather than as a standalone screen.
+   *
+   * The only difference is the title row: a composing page (Settings →
+   * Exchange Rates) already renders its own <h1>, so this screen's title would
+   * print twice. The Add button STAYS either way — it is the screen's primary
+   * action, not decoration, and the composing page has no equivalent.
+   *
+   * Default false keeps the standalone route (`exchange-rates`) unchanged.
+   */
+  embedded?: boolean;
+}
+
 /** Exchange rate management screen — create and delete currency exchange rates for multi-currency support. */
-export default function ExchangeRateScreen() {
+export default function ExchangeRateScreen({ embedded = false }: ExchangeRateScreenProps = {}) {
   const { l10n } = useLocalization();
   const { addToast } = useToast();
   // CUR-06: route every read/write through the session-scoped commands when
@@ -108,8 +123,18 @@ export default function ExchangeRateScreen() {
         listCurrenciesScoped(sessionToken),
       ]);
       if (seq !== loadSeqRef.current) return;
-      setRates(items);
-      setCurrencies(currs);
+      // Defensive array coercion, matching the repo's other list reads
+      // (EdcTerminalsCard.tsx:71, KdsDeviceStatusIndicator.tsx:98,
+      // useLocalPaymentRails.ts:166). The command's declared type is
+      // `Promise<ExchangeRateDto[]>`, but nothing at runtime ENFORCES that: a
+      // transport that answers `null`/undefined (a legacy build, a mocked or
+      // failed IPC that still resolves) stored `undefined` straight into state
+      // and the render's `rates.length` (below) threw
+      // "Cannot read properties of undefined", blanking the screen. An empty
+      // list is the honest reading of "no rows returned", and it degrades to
+      // the screen's own empty state instead of a crash.
+      setRates(Array.isArray(items) ? items : []);
+      setCurrencies(Array.isArray(currs) ? currs : []);
     } catch {
       if (seq !== loadSeqRef.current) return;
       setError(l10n.getString('currency-load-error'));
@@ -282,10 +307,14 @@ export default function ExchangeRateScreen() {
 
   return (
     <div className="exchange-rate-config">
+      {/* The title row is skipped when embedded (see `embedded` above): the
+          composing page owns the <h1>. The Add button remains in both modes. */}
       <div className="exchange-rate-header">
-        <Localized id="currency-title">
-          <h1 className="exchange-rate-title">Exchange Rates</h1>
-        </Localized>
+        {!embedded && (
+          <Localized id="currency-title">
+            <h1 className="exchange-rate-title">Exchange Rates</h1>
+          </Localized>
+        )}
         <Localized id="currency-btn-add">
           <Button onClick={openCreate}>Add</Button>
         </Localized>

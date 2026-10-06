@@ -415,6 +415,12 @@ describe('SettingsPage admin shell — flat 14-page IA', () => {
       // an empty terminal list, `.edc-terminals-card` is its root and
       // `.edc-terminals-empty` is the state a device with no terminals shows.
       'devices-connectivity': ['edc-terminals-card', 'edc-terminals-empty'],
+      // Migrated 2026-10-06: the screen composes the real
+      // features/currency/ExchangeRateScreen. With the mocked IPC resolving an
+      // empty rate list (and no currencies configured), the body's empty state
+      // is what proves it mounted; .exchange-rate-config is its root, so both
+      // are asserted.
+      'exchange-rates': ['exchange-rate-config', 'exchange-rate-empty'],
     };
 
     for (const item of NAV_ITEMS) {

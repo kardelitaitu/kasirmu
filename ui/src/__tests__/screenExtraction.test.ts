@@ -1695,9 +1695,40 @@ const SCREENS: ScreenEntry[] = [
     css: ['settings/screens/screens-placeholder.css'],
   },
   {
+    // Migrated 2026-10-06: the screen composes the real
+    // features/currency/ExchangeRateScreen as its body, the same way
+    // system-diagnostics composes DiagnosticsSection. The walker reads this
+    // file's markup alone and does NOT follow the composed import, so the
+    // currency screen's own exchange-rate-* classes (defined in
+    // features/currency/ExchangeRateScreen.css) are declared external here.
+    // That feature keeps its own ledger entry; these names are reached through
+    // composition, not spelled in this file. The scaffold still renders
+    // settings-screen-placeholder + -note, so no scaffold name goes dead.
     name: 'ExchangeRatesScreen',
     tsx: 'settings/screens/ExchangeRatesScreen.tsx',
     css: ['settings/screens/screens-placeholder.css'],
+    externalClasses: [
+      'exchange-rate-config',
+      'exchange-rate-header',
+      'exchange-rate-title',
+      'exchange-rate-autosync',
+      'exchange-rate-autosync-text',
+      'exchange-rate-autosync-label',
+      'exchange-rate-autosync-hint',
+      'exchange-rate-switch',
+      'exchange-rate-switch-slider',
+      'exchange-rate-loading-skeleton',
+      'exchange-rate-table-wrap',
+      'exchange-rate-table',
+      'exchange-rate-error',
+      'exchange-rate-empty',
+      'exchange-rate-cell-actions',
+      'exchange-rate-action-btn',
+      'exchange-rate-action-btn--danger',
+      'exchange-rate-field',
+      'exchange-rate-field--horizontal',
+      'exchange-rate-label',
+    ],
   },
   {
     // First scaffold filled in (2026-09-19): the screen composes the real
