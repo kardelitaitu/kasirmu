@@ -57,6 +57,8 @@ export interface RestaurantSidebarActions {
   onOpenReceipts?: () => void;
   onOpenPayments?: () => void;
   onOpenSettings?: () => void;
+  /** Open cash drawer manually */
+  onOpenCashDrawer?: () => void;
   /** Request exit from workspace; handled by host to check shifts. */
   onRequestExit?: () => void;
 }
@@ -175,6 +177,14 @@ const DeductionGlyph = () => (
   <svg {...GLYPH} width={14} height={14}>
     <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
     <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+  </svg>
+);
+
+const DrawerGlyph = () => (
+  <svg {...GLYPH}>
+    <rect x="2" y="4" width="20" height="16" rx="2" />
+    <line x1="2" y1="12" x2="22" y2="12" />
+    <circle cx="12" cy="16" r="1.5" />
   </svg>
 );
 
@@ -515,6 +525,23 @@ export function RestaurantSidebar({
               </span>
             )}
           </button>
+          {cartActions.onOpenCashDrawer && (
+            <button
+              type="button"
+              className="restaurant-sidebar-item"
+              onKeyDown={handleSidebarKeyDown}
+              aria-label={l10n.getString('pos-cart-open-drawer')}
+              onClick={() => {
+                cartActions.onOpenCashDrawer?.();
+                onOpenChange(false);
+              }}
+            >
+              <Tile>
+                <DrawerGlyph />
+              </Tile>
+              <Localized id="pos-cart-open-drawer"><span>Open Cash Drawer</span></Localized>
+            </button>
+          )}
           <div className="restaurant-sidebar-divider" role="separator" />
         </>
       )}

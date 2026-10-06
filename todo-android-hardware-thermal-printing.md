@@ -83,24 +83,31 @@ The scope spans four core pillars:
   2. Added live hardware re-registration on `state.registry` via `platform_startup::hardware::register_hardware(&state.registry, &profile)` in both mobile and desktop shells upon save.
   3. Derived `Clone` on `HardwareSettingsDto`. Verified clean checks and test suites across all crates.
 
-### Phase 3: Android Bluetooth & TCP Printer Verification (🟢 Verification & Polish)
+### Phase 3: Android Bluetooth & TCP Printer Verification (✅ Completed)
 - **Files**:
   - `crates/kasirmu-hal/src/drivers/bt_android_printer.rs`
   - `crates/kasirmu-hal/src/drivers/tcp_printer.rs`
+  - `crates/kasirmu-hal/src/transport/bt_android.rs`
   - `apps/mobile-tauri/gen/android/app/src/main/java/mu/kasir/mobile/MainActivity.kt`
 - **Actions**:
-  1. Verify Bluetooth bond enumeration and exception handling in `bt_android.rs` when permissions are revoked or Bluetooth radio is turned off.
-  2. Verify TCP printer timeout and auto-retry on store Wi-Fi network disconnects.
-  3. Verify cash drawer kick commands from POS checkout modal (`openCashDrawerScoped`).
+  1. Verified Bluetooth bond enumeration and exception handling in `bt_android.rs` (`exception_clear()`, `SecurityException` mapped to `HalError::PermissionDenied`, `adapter_absent` guard).
+  2. Verified TCP printer socket auto-reconnect logic on broken pipes / network disconnects in `tcp_printer.rs`.
+  3. Integrated physical cash drawer kick on cash checkout completion in `PaymentModal.tsx`.
 
-### Phase 4: UI Hardware Setup & Test Print Polish
+### Phase 4: UI Hardware Setup & Test Print Polish (✅ Completed)
 - **Files**:
+  - `ui/src/features/sales/PaymentModal.tsx`
   - `ui/src/features/restaurant/screens/RestaurantReceiptsScreen.tsx`
   - `ui/src/features/settings/workspace-cards/WorkspaceStorePosSettings.tsx`
-  - `ui/src/features/sales/PaymentModal.tsx`
+  - `ui/src/features/sales/PosScreen.tsx`
+  - `ui/src/features/sales/components/CartPanel.tsx`
+  - `ui/src/features/restaurant/components/RestaurantSidebar.tsx`
+  - `shared-ui/locales/`
 - **Actions**:
-  1. Ensure "Open Cash Drawer" manual button in POS / Shift screen correctly invokes `openCashDrawerScoped`.
-  2. Verify Test Print feedback in Restaurant & Store settings.
+  1. Added manual "Open Cash Drawer" buttons in retail POS CartPanel and restaurant POS sidebar popover.
+  2. Added "Test Cash Drawer" alongside "Test Print Receipt" in Restaurant Receipts settings with direct toast feedback.
+  3. Added Bluetooth connection mode (with MAC address entry) and Hardware Actions ("Test Print", "Test Cash Drawer") in WorkspaceStorePosSettings.
+  4. Verified all unit tests and bundle parity across English and Indonesian locales.
 
 ---
 

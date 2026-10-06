@@ -27,6 +27,7 @@ restaurant-settings-error-save = Failed to save settings
 restaurant-test-print = Test Print
 restaurant-test-print-success = Test receipt sent to printer
 restaurant-test-print-failed = Test print failed
+restaurant-test-drawer = Test Cash Drawer
 restaurant-payment-methods-heading = Payment Methods
 restaurant-payment-methods-sub = Enable or disable accepted payment methods at checkout
 restaurant-payment-rails-heading = Local Payment Rails

@@ -32,6 +32,7 @@ pos-cart-deducting-label = Mengurangkan: { $name }
 pos-cart-deduction-badge-aria = Mengurangkan dari { $name }
 pos-cart-unbound-error = Keranjang tidak memiliki lokasi pengurangan — tidak dapat menambahkan item
 pos-cart-lock = Kunci
+pos-cart-open-drawer = Buka Laci Kas
 pos-cart-subtotal = Subtotal
 pos-cart-discount-label = Diskon ({ $label })
 pos-cart-add-discount = + Tambah Diskon

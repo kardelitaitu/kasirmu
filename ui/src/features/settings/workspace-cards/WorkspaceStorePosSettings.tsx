@@ -9,6 +9,8 @@ import { useSettings } from '@/contexts/SettingsContext';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { useTerminalHardware } from '@/hooks/useTerminalHardware';
 import { setReceiptSettingsScoped } from '@/api/settings';
+import { openCashDrawerScoped } from '@/api/hardware';
+import { printSalesReceipt } from '@/api/sales';
 import SettingsSelect from '../SettingsSelect';
 import type { WorkspaceCardProps } from './types';
 import { hasChanges } from './helpers';
@@ -44,6 +46,8 @@ export function WorkspaceStorePosSettings({
   const [taxRoundingMode, setTaxRoundingMode] = useState('half_up');
   const [footer, setFooter] = useState('');
   const [saving, setSaving] = useState(false);
+  const [testingPrint, setTestingPrint] = useState(false);
+  const [testingDrawer, setTestingDrawer] = useState(false);
   const [dirtyVersion, setDirtyVersion] = useState(0);
 
   // Original values for dirty tracking — captured after initial load
@@ -122,6 +126,54 @@ export function WorkspaceStorePosSettings({
       setSaving(false);
     }
   }, [terminalId, hw, showCurrency, showTax, paperWidth, showTableNumber, taxRoundingMode, footer, settings.receipt, onSaved, addToast, l10n, markSettingsUpdated, sessionToken]);
+
+  const handleTestPrint = useCallback(async () => {
+    if (!sessionToken) {
+      addToast({ message: l10n.getString('settings-save-error'), type: 'error' });
+      return;
+    }
+    setTestingPrint(true);
+    try {
+      const currency = settings.store.currency || 'IDR';
+      const res = await printSalesReceipt(sessionToken, {
+        receiptNumber: 'TEST-0001',
+        date: new Date().toLocaleDateString(),
+        subtotal: { minorUnits: 10000, currency },
+        total: { minorUnits: 10000, currency },
+        items: [{ name: 'Test Receipt Item', quantity: 1, unitPrice: { minorUnits: 10000, currency }, totalPrice: { minorUnits: 10000, currency } }],
+        payments: [{ method: 'cash', amount: { minorUnits: 10000, currency }, change: null }],
+      });
+      if (res && res.printed === false) {
+        addToast({ message: 'Printer reported unconfirmed print', type: 'warning' });
+      } else {
+        addToast({ message: 'Test receipt sent successfully', type: 'success' });
+      }
+    } catch (err) {
+      addToast({ message: `Test print failed: ${err instanceof Error ? err.message : String(err)}`, type: 'error' });
+    } finally {
+      setTestingPrint(false);
+    }
+  }, [sessionToken, settings.store.currency, addToast, l10n]);
+
+  const handleTestDrawer = useCallback(async () => {
+    if (!sessionToken) {
+      addToast({ message: l10n.getString('settings-save-error'), type: 'error' });
+      return;
+    }
+    setTestingDrawer(true);
+    try {
+      const res = await openCashDrawerScoped(sessionToken);
+      if (res && res.opened !== false) {
+        addToast({ message: 'Cash drawer kick signal sent successfully', type: 'success' });
+      } else {
+        addToast({ message: 'Cash drawer did not open: device returned unconfirmed', type: 'warning' });
+      }
+    } catch (err) {
+      addToast({ message: `Cash drawer kick failed: ${err instanceof Error ? err.message : String(err)}`, type: 'error' });
+    } finally {
+      setTestingDrawer(false);
+    }
+  }, [sessionToken, addToast, l10n]);
 
   // ── Variant classes ──────────────────────────────────────────
 
@@ -272,10 +324,11 @@ export function WorkspaceStorePosSettings({
           <SettingsSelect
             id="pos-printer-conn"
             value={hw.profile?.hardware.printer.connection ?? 'auto'}
-            onChange={(v) => hw.updatePrinter({ connection: v as 'network' | 'usb' | 'serial' | 'auto' })}
+            onChange={(v) => hw.updatePrinter({ connection: v as 'network' | 'usb' | 'serial' | 'bluetooth' | 'auto' })}
             options={[
               { value: 'auto', label: 'Auto' },
               { value: 'network', label: 'Network' },
+              { value: 'bluetooth', label: 'Bluetooth' },
               { value: 'usb', label: 'USB' },
               { value: 'serial', label: 'Serial' },
             ]}
@@ -290,6 +343,21 @@ export function WorkspaceStorePosSettings({
               id="pos-printer-ip"
               type="text"
               className="settings-input"
+              value={hw.profile.hardware.printer.devicePath}
+              onChange={(e) => hw.updatePrinter({ devicePath: e.target.value })}
+            />
+          </div>
+        )}
+        {hw.profile?.hardware.printer.connection === 'bluetooth' && (
+          <div className="settings-field settings-field--horizontal">
+            <label htmlFor="pos-printer-bt" className="settings-label">
+              <Localized id="workspace-pos-printer-bluetooth">Device Address (MAC)</Localized>
+            </label>
+            <input
+              id="pos-printer-bt"
+              type="text"
+              className="settings-input"
+              placeholder="00:11:22:33:44:55"
               value={hw.profile.hardware.printer.devicePath}
               onChange={(e) => hw.updatePrinter({ devicePath: e.target.value })}
             />
@@ -310,6 +378,29 @@ export function WorkspaceStorePosSettings({
               { value: 'letter', label: 'Letter' },
             ]}
           />
+        </div>
+        <div className="settings-field settings-field--horizontal">
+          <span className="settings-label">
+            <Localized id="workspace-pos-hardware-actions">Hardware Actions</Localized>
+          </span>
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={testingPrint}
+              onClick={handleTestPrint}
+            >
+              <Localized id="workspace-pos-test-print">Test Print</Localized>
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={testingDrawer}
+              onClick={handleTestDrawer}
+            >
+              <Localized id="workspace-pos-test-drawer">Test Cash Drawer</Localized>
+            </Button>
+          </div>
         </div>
       </div>
     </Card>

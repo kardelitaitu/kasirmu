@@ -609,6 +609,7 @@ pos-cart-hold = Hold
 pos-cart-label-placeholder =
     .placeholder = Label (optional)
 pos-cart-lock = Lock
+pos-cart-open-drawer = Open Cash Drawer
 pos-cart-pct-placeholder =
     .placeholder = %
 pos-cart-subtotal = Subtotal

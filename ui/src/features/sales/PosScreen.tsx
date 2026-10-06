@@ -42,7 +42,7 @@ import { CartPanel } from './components/CartPanel';
 import type { CartPanelProps } from './components/CartPanel';
 import { CloseShiftConfirm, ShiftSummary, OpenShiftModal } from './components/ShiftModals';
 import { OpenBillInput, OpenBillsPanel } from './components/OpenBillModals';
-import type { BarcodeScannedPayload } from '@/api/hardware';
+import { openCashDrawerScoped, type BarcodeScannedPayload } from '@/api/hardware';
 import { usePosState } from './usePosState';
 import { useBarcodeScanner } from './useBarcodeScanner';
 import { useCustomerDisplay } from './useCustomerDisplay';
@@ -716,6 +716,26 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     }
   }, [activeShift, handleCloseShiftClick]);
 
+  const handleOpenCashDrawer = useCallback(async () => {
+    if (!sessionToken) {
+      addToast({ message: 'Authentication required to open cash drawer', type: 'error' });
+      return;
+    }
+    try {
+      const res = await openCashDrawerScoped(sessionToken);
+      if (res && res.opened !== false) {
+        addToast({ message: 'Cash drawer opened', type: 'success' });
+      } else {
+        addToast({ message: 'Cash drawer did not open: device returned unconfirmed', type: 'warning' });
+      }
+    } catch (err) {
+      addToast({
+        message: `Cash drawer kick failed: ${err instanceof Error ? err.message : String(err)}`,
+        type: 'error',
+      });
+    }
+  }, [sessionToken, addToast]);
+
   const handleEditModifiers = useCallback(
     async (line: CartLine) => {
       let prod = products.find((p) => p.sku === line.sku);
@@ -941,7 +961,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   };
   const hubNav = {
     isEnabled, setShowTables, setShowSalesHistory, setShowStockInquiry,
-    onNavigate, handleOpenSettings, handleLock,
+    onNavigate, handleOpenSettings, handleLock, onOpenCashDrawer: handleOpenCashDrawer,
   };
   const tableNumberRow = {
     showTableNumberSetting,
@@ -1005,6 +1025,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     onOpenReceipts: () => setShowReceiptsSettings(true),
     onOpenPayments: () => setShowPaymentsSettings(true),
     onOpenSettings: () => setShowRestaurantSettings(true),
+    onOpenCashDrawer: handleOpenCashDrawer,
     onRequestExit: handleRequestExit,
   };
 

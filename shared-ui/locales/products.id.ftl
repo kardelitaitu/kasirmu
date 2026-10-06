@@ -26,6 +26,7 @@ restaurant-settings-error-save = Gagal menyimpan pengaturan
 restaurant-test-print = Uji Cetak
 restaurant-test-print-success = Struk uji coba berhasil dikirim ke printer
 restaurant-test-print-failed = Gagal melakukan uji cetak
+restaurant-test-drawer = Uji Coba Laci Kas
 restaurant-payment-methods-heading = Metode Pembayaran
 restaurant-payment-methods-sub = Aktifkan atau nonaktifkan metode pembayaran saat checkout
 restaurant-payment-rails-heading = Kanal Pembayaran Lokal

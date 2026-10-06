@@ -270,6 +270,18 @@ describe('RestaurantSidebar — manager gating on Receipts/Payments/Settings', (
     fireEvent.click(settings);
     expect(actions.onOpenSettings).toHaveBeenCalled();
   });
+
+  it('renders Open Cash Drawer when onOpenCashDrawer is provided and invokes it on click', () => {
+    const onOpenCashDrawer = vi.fn();
+    const actions = makeActions({ onOpenCashDrawer });
+    const onOpenChange = vi.fn();
+    renderSidebar({ cartActions: actions, onOpenChange });
+    const drawerBtn = screen.getByRole('button', { name: /Open Cash Drawer/i });
+    expect(drawerBtn).toBeInTheDocument();
+    fireEvent.click(drawerBtn);
+    expect(onOpenCashDrawer).toHaveBeenCalled();
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
 });
 
 describe('RestaurantSidebar — exit terminal branch', () => {

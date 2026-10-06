@@ -14,6 +14,7 @@ import { setReceiptSettingsScoped, setUserPreferencesScoped, getUserPreferencesS
 import { getReceiptFormatScoped, setReceiptLayoutScoped } from '@/api/receipt-format';
 import { getPrimaryLocationScoped } from '@/api/locations';
 import { printSalesReceipt } from '@/api/sales';
+import { openCashDrawerScoped } from '@/api/hardware';
 import SettingsSelect from '@/features/settings/SettingsSelect';
 import { tierSatisfies } from '@/utils/tierLevel';
 import {
@@ -170,6 +171,7 @@ export default function RestaurantReceiptsScreen({
   const [saving, setSaving] = useState(false);
   const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
   const [testingPrint, setTestingPrint] = useState(false);
+  const [testingDrawer, setTestingDrawer] = useState(false);
   const [testPrintResult, setTestPrintResult] = useState<TestPrintResult | null>(null);
   const [dirtyVersion, setDirtyVersion] = useState(0);
 
@@ -891,6 +893,44 @@ export default function RestaurantReceiptsScreen({
     dirty,
   ]);
 
+  // ── Test Cash Drawer ─────────────────────────────────────────
+  const handleTestDrawer = useCallback(async () => {
+    if (!sessionToken) {
+      addToast({
+        title: 'Authentication Required',
+        message: 'Authentication session required to open cash drawer',
+        type: 'error',
+      });
+      return;
+    }
+
+    setTestingDrawer(true);
+    try {
+      const res = await openCashDrawerScoped(sessionToken);
+      if (res && res.opened !== false) {
+        addToast({
+          title: 'Drawer Signal Sent',
+          message: 'Cash drawer kick pulse sent to default printer',
+          type: 'success',
+        });
+      } else {
+        addToast({
+          title: 'Drawer Kick Unconfirmed',
+          message: 'Device did not confirm drawer open',
+          type: 'warning',
+        });
+      }
+    } catch (err) {
+      addToast({
+        title: 'Drawer Kick Failed',
+        message: err instanceof Error ? err.message : String(err),
+        type: 'error',
+      });
+    } finally {
+      setTestingDrawer(false);
+    }
+  }, [sessionToken, addToast]);
+
   // ── Save handler ────────────────────────────────────────────
   const handleSave = useCallback(async () => {
     setSaving(true);
@@ -1497,6 +1537,38 @@ export default function RestaurantReceiptsScreen({
                   <rect x="6" y="14" width="12" height="8" />
                 </svg>
                 <Localized id="restaurant-test-print">Test Print Receipt</Localized>
+              </span>
+            </button>
+
+            {/* Test Cash Drawer Button */}
+            <button
+              type="button"
+              className={`resto-test-print-btn resto-anim-btn ${testingDrawer ? 'resto-anim-btn--loading' : ''}`}
+              disabled={testingDrawer}
+              aria-busy={testingDrawer || undefined}
+              onClick={handleTestDrawer}
+              data-testid="restaurant-receipts-test-drawer-btn"
+            >
+              <span className="resto-anim-btn__spinner-wrap" aria-hidden="true">
+                <span className="resto-anim-btn__spinner" />
+              </span>
+              <span className="resto-anim-btn__content resto-test-print-label">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  width="16"
+                  height="16"
+                  aria-hidden="true"
+                >
+                  <rect x="2" y="4" width="20" height="16" rx="2" />
+                  <line x1="2" y1="12" x2="22" y2="12" />
+                  <circle cx="12" cy="16" r="1.5" />
+                </svg>
+                <Localized id="restaurant-test-drawer">Test Cash Drawer</Localized>
               </span>
             </button>
 

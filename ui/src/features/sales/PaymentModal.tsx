@@ -7,6 +7,7 @@ import { requiredLocalized } from '@/components';
 import { Localized, useLocalization } from '@fluent/react';
 import { Skeleton } from '@/components/Skeleton';
 import { startSaleScoped, addLineScoped, completeSaleScoped, printSalesReceipt, getSale, getSaleScoped, issueTaxInvoiceScoped, setCartDiscountScoped, holdCartScoped, finalizeSale, voidPendingSale, previewPromotedTotalFromLinesScoped, type SetCartDiscountScopedArgs, type CompleteSaleScopedArgs, type PaymentSplitArg, type SerialNumberArg, type PartialStockResult, type PreviewPromotedTotalResult } from '@/api/sales';
+import { openCashDrawerScoped } from '@/api/hardware';
 import { createKdsOrderFromSaleScoped, publishCourseFiredScoped } from '@/api/kds';
 import { Button } from '@/components/Button';
 import { formatMoney, minorUnitExponent, parseMinorUnits, type Money } from '@/types/domain';
@@ -1129,6 +1130,17 @@ retryCurrencyLoad,
           }
           // Throw the original finalize error so the outer catch handles it
           throw finalizeErr;
+        }
+      }
+
+      // Auto-kick cash drawer on cash tenders (ADR #7 scoped)
+      const hasCashTender = method === 'cash' || (splitMode && splits.some((s) => s.method === 'cash'));
+      if (sessionToken && hasCashTender) {
+        try {
+          await openCashDrawerScoped(sessionToken);
+        } catch (drawerErr) {
+          // Cash drawer kick failure is non-blocking (printer offline / no drawer attached)
+          console.warn('Cash drawer auto-kick failed', drawerErr);
         }
       }
 

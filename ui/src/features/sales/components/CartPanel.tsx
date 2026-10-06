@@ -137,6 +137,7 @@ export interface CartPanelProps {
   onNavigate: ((route: string) => void) | undefined;
   handleOpenSettings: () => void;
   handleLock: () => void;
+  onOpenCashDrawer?: () => void;
   showTableNumberSetting: boolean;
   tableNumber: string;
   setTableNumber: Dispatch<SetStateAction<string>>;
@@ -246,6 +247,7 @@ export function CartPanel({
   onNavigate,
   handleOpenSettings,
   handleLock,
+  onOpenCashDrawer,
   showTableNumberSetting,
   tableNumber,
   setTableNumber,
@@ -537,6 +539,18 @@ export function CartPanel({
               >
                 <KitchenDisplayIcon />
               </button>
+
+              {onOpenCashDrawer && (
+                <button
+                  type="button"
+                  className="pos-cart-lock-btn"
+                  onClick={onOpenCashDrawer}
+                  aria-label={l10n.getString('pos-cart-open-drawer')}
+                  title={l10n.getString('pos-cart-open-drawer')}
+                >
+                  💵
+                </button>
+              )}
 
               {/* Settings is a manager/owner surface — not needed at the
                   restaurant cashier terminal (reachable from the workspace
