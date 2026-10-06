@@ -1,0 +1,68 @@
+/* Settings → License & Subscription — the over-quota card.
+ *
+ * This component is mounted by LicenseSettings.tsx:662 (which imports only its
+ * own sheet) and renders SEVEN classes that no stylesheet ever defined —
+ * `git grep "settings-license-quota-list" -- "ui/src/**/*.css"` finds nothing.
+ * It also uses four shared settings classes (settings-section-title,
+ * settings-form, settings-hint, settings-error) that ARE defined in
+ * SettingsPage.css, which the settings shell loads; those are inherited, not
+ * restated here.
+ *
+ * The visible effect of the gap: the over-quota list rendered as an unstyled
+ * <ul> with bulleted rows and a dim/current pair jammed together, inside an
+ * otherwise-styled settings card. This sheet is the missing half. */
+
+/* List of dimensions the tenant is over on. */
+.settings-license-quota-list {
+  list-style: none;
+  margin: var(--space-2) 0 var(--space-3);
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+/* One dimension per row: label left, current/limit right. */
+.settings-license-quota-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-subtle);
+}
+
+.settings-license-quota-dim {
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-fg);
+}
+
+.settings-license-quota-detail {
+  font-size: var(--text-sm);
+  color: var(--color-fg-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* The "over quota — archive or upgrade" lead line. It also carries
+   `settings-hint`, so only the emphasis it adds is set here. */
+.settings-license-quota-over-heading {
+  font-weight: var(--font-weight-medium);
+  color: var(--color-fg);
+}
+
+/* The register-recovery block, deliberately outside the over-quota block
+   (see the comment above its conditional in the component). */
+.settings-license-quota-remedy {
+  margin-top: var(--space-4);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border);
+}
+
+.settings-license-quota-remedy-heading {
+  font-weight: var(--font-weight-medium);
+  color: var(--color-fg);
+}
