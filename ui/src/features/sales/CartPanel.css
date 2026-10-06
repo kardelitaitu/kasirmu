@@ -479,10 +479,12 @@
    values are tokens and the guard can see them. */
 .pos-cart-order-type-row {
   display: flex;
-  gap: 6px;
-  padding: 6px 12px;
+  gap: var(--space-1_5);
+  padding: var(--space-1_5) var(--space-3);
   border-bottom: 1px solid var(--color-border);
-  background: var(--color-bg-subtle, rgba(0, 0, 0, 0.02));
+  /* No fallback tail: --color-bg-subtle is declared in every theme block, so the
+     literal could never render (the token-tail guard's own rule). */
+  background: var(--color-bg-subtle);
 }
 
 /* Pax input beside the customer field. Was inline `width: 64px`; 4rem is the

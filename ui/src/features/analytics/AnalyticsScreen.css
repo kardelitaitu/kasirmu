@@ -1765,3 +1765,66 @@
     opacity: 0.75;
   }
 }
+
+/* ── "No workspace selected" empty state ──────────────────────────────
+   NoWorkspacePrompt.tsx renders five classes that NO stylesheet ever
+   defined — `git log --all -S "analytics-no-workspace" -- "*.css"` returns
+   nothing, so this empty state has been unstyled since it was extracted from
+   AnalyticsScreen.tsx, not since some later refactor dropped a rule. It is the
+   screen's whole empty state (icon + title + message + action), so unstyled
+   means four default-styled elements stacked against no layout.
+
+   Centred column, muted copy, and a real touch target on the action — the same
+   shape the other full-screen empty states use. */
+.analytics-no-workspace {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  padding: var(--space-8) var(--space-6);
+  text-align: center;
+  color: var(--color-fg-muted);
+}
+
+.analytics-no-workspace-icon {
+  color: var(--color-fg-tertiary);
+  margin-bottom: var(--space-1);
+}
+
+.analytics-no-workspace-title {
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-fg);
+}
+
+.analytics-no-workspace-message {
+  margin: 0;
+  max-width: 32rem;
+  font-size: var(--text-sm);
+  color: var(--color-fg-muted);
+}
+
+.analytics-no-workspace-action {
+  min-height: var(--touch-target-min);
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-surface);
+  color: var(--color-fg);
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  transition: background var(--duration-150), border-color var(--duration-150);
+}
+
+.analytics-no-workspace-action:hover {
+  background: var(--color-bg-hover);
+  border-color: var(--color-border-hover);
+}
+
+.analytics-no-workspace-action:focus-visible {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 2px;
+}
