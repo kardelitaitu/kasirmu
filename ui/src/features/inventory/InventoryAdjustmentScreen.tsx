@@ -10,6 +10,7 @@ import {
 import { formatMoney } from '@/types/domain';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { l10nErrorMessage } from '@/utils/app-error';
+import { asArray } from '@/utils/ipc-payload';
 import { Card } from '@/components/Card';
 import { Button } from '@/components/Button';
 import { Skeleton } from '@/components/Skeleton';
@@ -64,7 +65,7 @@ export default function InventoryAdjustmentScreen() {
     setLoadError(null);
     try {
       const data = await listProductsScoped(sessionToken);
-      if (mountedRef.current) setProducts(data);
+      if (mountedRef.current) setProducts(asArray<typeof data[number]>(data));
     } catch {
       if (mountedRef.current) {
         // Durable error state (INV-08): the product search area previously

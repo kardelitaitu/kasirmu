@@ -247,7 +247,7 @@ export default function TerminalManagementScreen() {
       setOverridesError(null);
       try {
         const data = await listTerminalOverridesScoped(sessionToken, editingId);
-        if (!cancelled) setOverrides(data);
+        if (!cancelled) setOverrides(asArray<typeof data[number]>(data));
       } catch {
         if (!cancelled) setOverridesError(l10n.getString('terminal-error-overrides-load'));
       } finally {
@@ -400,7 +400,7 @@ export default function TerminalManagementScreen() {
     try {
       await setTerminalOverrideScoped(sessionToken, editingId, featureKey, !currentEnabled);
       const data = await listTerminalOverridesScoped(sessionToken, editingId);
-      setOverrides(data);
+      setOverrides(asArray<typeof data[number]>(data));
     } catch {
       setOverridesError(l10n.getString('terminal-error-override-update'));
     }

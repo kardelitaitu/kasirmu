@@ -164,7 +164,7 @@ function MemosScreenContent() {
     let cancelled = false;
     listLocationsScoped(sessionToken)
       .then((rows) => {
-        if (!cancelled) setLocations(rows);
+        if (!cancelled) setLocations(asArray<typeof rows[number]>(rows));
       })
       .catch(() => {
         // Non-fatal: the scope selector keeps Organization only.

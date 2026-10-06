@@ -193,7 +193,7 @@ export default function ProductManagementScreen() {
       setProductDtos(asArray<typeof dtos[number]>(dtos));
       setProducts(dtos.map(dtoToProduct));
       setTaxRates(rates);
-      setCategories(cats);
+      setCategories(asArray<typeof cats[number]>(cats));
       setCurrencies(currencyList);
       hasLoadedOnceRef.current = true;
     } catch (err) {

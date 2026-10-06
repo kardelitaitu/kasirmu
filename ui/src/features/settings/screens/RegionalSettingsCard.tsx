@@ -31,6 +31,7 @@ import {
 import { getPrimaryLocationScoped } from '@/api/locations';
 import { listCurrenciesScoped, type CurrencyDto } from '@/api/currency';
 import { l10nErrorMessage } from '@/utils/app-error';
+import { asArray } from '@/utils/ipc-payload';
 import './RegionalSettingsCard.css';
 
 /** The provenance row shown under each field: effective value + who answered. */
@@ -110,7 +111,7 @@ export function RegionalSettingsCard() {
   useEffect(() => {
     if (!sessionToken) return;
     listCurrenciesScoped(sessionToken)
-      .then((list) => setCurrencies(list))
+      .then((list) => setCurrencies(asArray<typeof list[number]>(list)))
       .catch(() => {
         /* the currency field degrades to free text — not worth a banner */
       });
