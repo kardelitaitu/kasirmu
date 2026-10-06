@@ -30,6 +30,25 @@
 //     claims, and a blanket `??` collapsed them.
 //
 // Neither helper invents data: they only prevent a read of the wrong shape.
+//
+// SWEEP STATUS (2026-10-07) — both shapes were searched, not just the one that
+// happened to be easy to grep:
+//
+//   * ARRAY shape (`asArray`): 39 call sites fixed across the codebase. The
+//     detector — a `setX(apiResult)` whose state is later `.map`/.filter`/
+//     .length`-ed in render — now reports no genuine instance; its only
+//     remaining hit is components/StoreSwitcher.tsx, a FALSE POSITIVE, because
+//     that file coerces at the `await` (the detector cannot see upstream).
+//   * OBJECT shape (`asObject`): only FOUR call sites ever read a field off a
+//     raw payload. All four are guarded — TerminalManagementScreen (this
+//     helper), useBackupStatus, SettingsPage.tsx:154 (`if (status && …)`) and
+//     PosScreen.tsx:335 (`if (!cancelled && settings.currency)`). The rest of
+//     the object-shaped reads are already null-checked by their authors:
+//     SettingsContext's five scoped loads each open with `if (!v) return;`.
+//
+// So a new call site is the exception, not the rule — but when one appears,
+// this is the file. Do NOT substitute `??` for `asObject`: that is precisely
+// the flattening the useBackupStatus note above records as a bug.
 
 /**
  * Coerce an untrusted IPC payload to an array.
