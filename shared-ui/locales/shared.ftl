@@ -166,6 +166,14 @@ storage-low-banner-title = Low Storage Space
 storage-low-banner-desc = Available disk space is below 500 MB ({ $freeMb } MB remaining). Free up space to prevent transaction errors or database lock.
 storage-low-banner-dismiss-aria = Dismiss low storage warning
 
+# Diagnostics Export
+settings-diagnostics-export-title = Diagnostic Package Export
+settings-diagnostics-export-subtitle = Generate a sanitized .zip archive of system logs, sync health, and hardware state for technical support.
+settings-diagnostics-export-btn = Export Diagnostic Logs
+settings-diagnostics-export-progress = Generating diagnostic archive…
+settings-diagnostics-export-success = Diagnostic archive exported successfully ({ $size } MB).
+settings-diagnostics-export-error = Diagnostic export failed.
+
 # Memo Banner
 memo-banner-open-aria = Read the full memo: { $title }
 memo-banner-open-aria-plain = Read the full memo

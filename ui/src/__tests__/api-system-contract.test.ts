@@ -21,6 +21,7 @@ import {
   getLocalIp,
   getDeviceId,
   getStorageHealth,
+  exportDiagnostics,
 } from '@/api/system';
 
 const VERSION = {
@@ -99,6 +100,21 @@ describe('system.ts IPC contract', () => {
       expect(call?.[1]).toBeUndefined();
     }
     expect(mockInvoke).toHaveBeenCalledTimes(5);
+  });
+
+  it('exportDiagnostics → export_diagnostics with sessionToken and outputPath', async () => {
+    const exportResult = {
+      path: '/tmp/diag.zip',
+      sizeBytes: 1024,
+      filesIncluded: ['system_info.json'],
+    };
+    mockInvoke.mockResolvedValue(exportResult);
+    const result = await exportDiagnostics('tok_test', '/tmp/diag.zip');
+    expect(mockInvoke).toHaveBeenCalledWith('export_diagnostics', {
+      sessionToken: 'tok_test',
+      outputPath: '/tmp/diag.zip',
+    });
+    expect(result).toEqual(exportResult);
   });
 
   it('propagates backend errors', async () => {

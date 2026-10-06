@@ -3422,6 +3422,7 @@ dependencies = [
  "lettre",
  "modules-currency",
  "platform-core",
+ "platform-instance-guard",
  "platform-kernel",
  "rusqlite",
  "serde",
@@ -3433,6 +3434,7 @@ dependencies = [
  "tracing",
  "uuid",
  "webp",
+ "zip 2.4.2",
 ]
 
 [[package]]

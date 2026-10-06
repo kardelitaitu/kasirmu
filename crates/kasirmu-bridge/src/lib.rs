@@ -138,6 +138,8 @@ pub mod browser;
 pub mod bundles;
 /// Data-management command bodies (backup, restore, .kasirpkg export / import) (Wave F). Stub: the bodies land with its lane.
 pub mod data;
+/// System diagnostic export command bodies (Phase 2.2).
+pub mod diagnostics;
 /// Email command bodies (SMTP settings and test-report sending) (Wave F). Stub: the bodies land with its lane.
 pub mod email;
 /// Feature-flag command bodies (Wave F). Stub: the bodies land with its lane.

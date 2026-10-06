@@ -10,10 +10,11 @@
 // needs no BridgeCtx; the scoped twins arrive with a later slice that
 // also builds the tablet seam.
 
-use tauri::command;
+use tauri::{Manager, command};
 
 use crate::error::AppError;
 
+pub use kasirmu_bridge::diagnostics::DiagnosticExportResult;
 pub use kasirmu_bridge::health::VersionInfo;
 
 /// Liveness probe. Returns `Ok("pong")` if the Tauri runtime is alive.
@@ -110,6 +111,34 @@ pub async fn get_storage_health(
         is_low_space,
         threshold_bytes: platform_instance_guard::LOW_STORAGE_THRESHOLD_BYTES,
     })
+}
+
+#[command]
+/// Export comprehensive diagnostic archive (.zip) containing system telemetry,
+/// sync status, and sanitized logs on mobile.
+pub async fn export_diagnostics(
+    session_token: String,
+    output_path: String,
+    app_handle: tauri::AppHandle,
+    state: tauri::State<'_, crate::state::AppState>,
+) -> Result<DiagnosticExportResult, AppError> {
+    let ctx = state.bridge_ctx();
+    let db_path = &state.db_path;
+    let log_dir = app_handle.path().app_log_dir().ok();
+
+    kasirmu_bridge::diagnostics::export_diagnostics(
+        &ctx,
+        &session_token,
+        &output_path,
+        db_path,
+        log_dir.as_deref(),
+        env!("CARGO_PKG_NAME"),
+        env!("CARGO_PKG_VERSION"),
+        env!("CARGO_PKG_RUST_VERSION"),
+        option_env!("TARGET").unwrap_or("unknown"),
+    )
+    .await
+    .map_err(Into::into)
 }
 
 #[cfg(test)]

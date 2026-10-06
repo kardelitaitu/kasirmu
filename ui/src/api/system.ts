@@ -69,3 +69,30 @@ export interface StorageHealth {
 export const getStorageHealth = (): Promise<StorageHealth> =>
   loggedInvoke<StorageHealth>('get_storage_health');
 
+/** Diagnostic export archive result. */
+export interface DiagnosticExportResult {
+  path: string;
+  sizeBytes: number;
+  filesIncluded: string[];
+}
+
+/** Pick output path for diagnostic archive (.zip) via native file dialog. */
+export const pickDiagnosticExportPath = async (): Promise<string | null> => {
+  const { save } = await import('@tauri-apps/plugin-dialog');
+  const { cachePathFor, isContentUri } = await import('@/api/file-bridge');
+  const chosen = await save({
+    defaultPath: `kasirmu_diagnostics_${new Date().toISOString().slice(0, 10)}.zip`,
+    filters: [{ name: 'Zip Archive', extensions: ['zip'] }],
+  });
+  if (!chosen) return null;
+  if (!isContentUri(chosen)) return chosen;
+  return cachePathFor('diagnostics', '.zip');
+};
+
+/** Export diagnostic archive (.zip) containing system telemetry, sync stats, and sanitized logs. */
+export const exportDiagnostics = (
+  sessionToken: string,
+  outputPath: string,
+): Promise<DiagnosticExportResult> =>
+  loggedInvoke<DiagnosticExportResult>('export_diagnostics', { sessionToken, outputPath });
+

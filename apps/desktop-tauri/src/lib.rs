@@ -1386,6 +1386,7 @@ pub fn run() {
             commands::health::get_local_ip,
             commands::health::get_local_ip_scoped,
             commands::health::get_storage_health,
+            commands::health::export_diagnostics,
             commands::pos::start_sale_scoped,
             commands::pos::add_line_scoped,
             commands::pos::set_line_course_scoped,

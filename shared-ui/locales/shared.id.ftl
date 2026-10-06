@@ -194,6 +194,14 @@ storage-low-banner-title = Ruang Penyimpanan Rendah
 storage-low-banner-desc = Ruang disk yang tersedia di bawah 500 MB (tersisa { $freeMb } MB). Kosongkan ruang penyimpanan untuk mencegah kegagalan transaksi atau penguncian basis data.
 storage-low-banner-dismiss-aria = Tutup peringatan ruang penyimpanan rendah
 
+# Diagnostics Export
+settings-diagnostics-export-title = Ekspor Paket Diagnostik
+settings-diagnostics-export-subtitle = Buat arsip .zip bersih dari log sistem, status sinkronisasi, dan perangkat keras untuk dukungan teknis.
+settings-diagnostics-export-btn = Ekspor Log Diagnostik
+settings-diagnostics-export-progress = Membuat arsip diagnostik…
+settings-diagnostics-export-success = Arsip diagnostik berhasil diekspor ({ $size } MB).
+settings-diagnostics-export-error = Ekspor diagnostik gagal.
+
 # Memo Banner
 memo-banner-open-aria = Baca memo lengkap: { $title }
 memo-banner-open-aria-plain = Baca memo lengkap

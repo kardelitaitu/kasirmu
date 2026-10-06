@@ -13,6 +13,7 @@
 
 import { Localized } from '@fluent/react';
 import DiagnosticsSection from '../sections/DiagnosticsSection';
+import { DiagnosticExportCard } from './DiagnosticExportCard';
 import { UpdateSettingsCard } from './UpdateSettingsCard';
 import './screens-placeholder.css';
 
@@ -32,6 +33,7 @@ export function SystemDiagnosticsScreen() {
         </Localized>
       </p>
       <DiagnosticsSection />
+      <DiagnosticExportCard />
       <UpdateSettingsCard />
     </section>
   );

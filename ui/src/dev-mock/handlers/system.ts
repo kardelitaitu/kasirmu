@@ -462,6 +462,15 @@ export const systemHandlers: Record<string, MockHandler> = {
     thresholdBytes: 500 * 1024 * 1024,
   }),
 
+  'export_diagnostics': (args: unknown) => {
+    const a = (args as { outputPath?: string }) ?? {};
+    return {
+      path: a.outputPath ?? '/exports/kasirmu_diagnostics_mock.zip',
+      sizeBytes: 1024 * 1024 * 2,
+      filesIncluded: ['system_info.json', 'sync_diagnostics.json', 'audit_summary.json', 'logs/kasirmu.log'],
+    };
+  },
+
   'bootstrap_owner': (_args) => {
     return {
       session: {
