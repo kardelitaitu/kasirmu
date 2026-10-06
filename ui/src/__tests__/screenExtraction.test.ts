@@ -1731,9 +1731,59 @@ const SCREENS: ScreenEntry[] = [
     css: ['settings/screens/screens-placeholder.css'],
   },
   {
+    // Migrated 2026-10-06: composes the real features/offline screen as its
+    // body, with `embedded` suppressing that screen's duplicate <h1> — its title
+    // reads "Offline Queue", the same accessible name as this scaffold's
+    // heading, so the two would otherwise be ambiguous. The walker reads this
+    // file's markup alone and does NOT follow the composed import, so the
+    // offline-queue-* classes (styled by offline/OfflineQueueScreen.css, which
+    // the composed screen imports) are declared external here. That screen keeps
+    // its own ledger entry above.
     name: 'OfflineQueueScreen',
     tsx: 'settings/screens/OfflineQueueScreen.tsx',
     css: ['settings/screens/screens-placeholder.css'],
+    externalClasses: [
+      'offline-queue-screen',
+      'offline-queue-header',
+      'offline-queue-title-row',
+      'offline-queue-title',
+      'offline-queue-badge',
+      'offline-queue-plan-label',
+      'offline-queue-plan-badge',
+      'offline-queue-plan-upgrade-hint',
+      'offline-queue-plan-required-title',
+      'offline-queue-plan-required-hint',
+      'offline-queue-summary',
+      'offline-queue-summary-grid',
+      'offline-queue-summary-item',
+      'offline-queue-summary-meta',
+      'offline-queue-summary-time',
+      'offline-queue-stale',
+      'offline-queue-stale-time',
+      'offline-queue-loading-skeleton',
+      'offline-queue-skeleton-header',
+      'offline-queue-error',
+      'offline-queue-empty',
+      'offline-queue-table-wrap',
+      'offline-queue-table',
+      'offline-queue-cell-created',
+      'offline-queue-cell-synced',
+      'offline-queue-cell-retries',
+      'offline-queue-cell-error',
+      'offline-queue-cell-none',
+      'offline-queue-cell-actions',
+      'offline-queue-cell-action',
+      'offline-queue-action-btn',
+      'offline-queue-sync-result',
+      'offline-queue-quarantine',
+      'offline-queue-quarantine-header',
+      'offline-queue-quarantine-title',
+      'offline-queue-quarantine-description',
+      'offline-queue-quarantine-empty',
+      'offline-queue-pull-indicator',
+      'offline-queue-refresh-spinner',
+      'offline-queue-refreshing',
+    ],
   },
   {
     // Migrated 2026-10-06: composes the real features/tax screen as its body,

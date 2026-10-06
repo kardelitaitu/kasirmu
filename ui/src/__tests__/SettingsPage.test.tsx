@@ -438,6 +438,9 @@ describe('SettingsPage admin shell — flat 14-page IA', () => {
       // and this file's IPC mock resolves `undefined`, so the composed screen
       // legitimately lands in its error arm instead.
       'features-modules': ['feature-toggle'],
+      // Migrated 2026-10-06: composes the real offline-queue screen with
+      // `embedded`. .offline-queue-screen is its root and always renders.
+      'offline-queue': ['offline-queue-screen'],
     };
 
     for (const item of NAV_ITEMS) {
