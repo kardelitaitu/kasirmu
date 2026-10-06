@@ -216,9 +216,12 @@
    defined in this sheet; the icon span between them was not, so the glyph sat on
    the label's baseline instead of on its own line.
 
-   Scoped to .tablet-shell like its two siblings: an earlier edit here emitted
-   `.tablet-shell /* … */.tablet-tab-icon`, which detached the tab-label rule
-   from its shell scope and left a dangling selector. Restored.
+   Scoped to .tablet-shell like its two siblings. An earlier edit here wrote the
+   broken shape INSIDE this prose — a stray comment-close between the shell
+   prefix and the class name — which ended the comment early and let the rest of
+   it through as live CSS garbage; the parser then dropped the rules around it,
+   including .tablet-shell's own height block. Never put a comment-close
+   sequence in a comment body; describe it instead (as this sentence does).
 
    `line-height: 0` is the sub-token zero the token checker accepts only when
    listed with its decision recorded (themeTokenCompliance "leading-token
