@@ -20,6 +20,7 @@ import {
   getVersionScoped,
   getLocalIp,
   getDeviceId,
+  getStorageHealth,
 } from '@/api/system';
 
 const VERSION = {
@@ -78,13 +79,26 @@ describe('system.ts IPC contract', () => {
     expect(result).toBe('device-abc');
   });
 
+  it('getStorageHealth → get_storage_health (no args)', async () => {
+    const health = {
+      availableBytes: 1000000000,
+      totalBytes: 50000000000,
+      isLowSpace: false,
+      thresholdBytes: 524288000,
+    };
+    mockInvoke.mockResolvedValue(health);
+    const result = await getStorageHealth();
+    expect(mockInvoke).toHaveBeenCalledWith('get_storage_health', undefined);
+    expect(result).toEqual(health);
+  });
+
   it('every unscoped helper forwards exactly one argument', async () => {
     mockInvoke.mockResolvedValue(null);
-    await Promise.all([ping(), getVersion(), getLocalIp(), getDeviceId()]);
+    await Promise.all([ping(), getVersion(), getLocalIp(), getDeviceId(), getStorageHealth()]);
     for (const call of mockInvoke.mock.calls) {
       expect(call?.[1]).toBeUndefined();
     }
-    expect(mockInvoke).toHaveBeenCalledTimes(4);
+    expect(mockInvoke).toHaveBeenCalledTimes(5);
   });
 
   it('propagates backend errors', async () => {

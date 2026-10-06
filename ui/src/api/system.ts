@@ -57,3 +57,15 @@ export const onAppReconnect = async (
   }
 };
 
+/** Storage health status and capacity info. */
+export interface StorageHealth {
+  availableBytes: number;
+  totalBytes: number;
+  isLowSpace: boolean;
+  thresholdBytes: number;
+}
+
+/** Check storage capacity and low space warning (< 500 MB). */
+export const getStorageHealth = (): Promise<StorageHealth> =>
+  loggedInvoke<StorageHealth>('get_storage_health');
+

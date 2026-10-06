@@ -107,3 +107,35 @@ pub async fn get_local_ip_scoped(
         .await
         .map_err(Into::into)
 }
+
+/// Storage health status and capacity info.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StorageHealthResult {
+    /// Available bytes on the database volume.
+    pub available_bytes: u64,
+    /// Total bytes on the database volume.
+    pub total_bytes: u64,
+    /// Whether available space is below the 500 MB threshold.
+    pub is_low_space: bool,
+    /// Critical low storage threshold in bytes (500 MiB).
+    pub threshold_bytes: u64,
+}
+
+#[tauri::command]
+/// Check storage capacity and low space warning.
+pub async fn get_storage_health(
+    state: State<'_, AppState>,
+) -> Result<StorageHealthResult, AppError> {
+    let db_path = &state.db_path;
+    let space = platform_instance_guard::get_disk_space(db_path)
+        .map_err(|e| AppError::Internal(format!("failed to query storage space: {e}")))?;
+    let is_low_space = space.available_bytes < platform_instance_guard::LOW_STORAGE_THRESHOLD_BYTES;
+    Ok(StorageHealthResult {
+        available_bytes: space.available_bytes,
+        total_bytes: space.total_bytes,
+        is_low_space,
+        threshold_bytes: platform_instance_guard::LOW_STORAGE_THRESHOLD_BYTES,
+    })
+}
+

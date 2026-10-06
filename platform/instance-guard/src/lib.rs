@@ -17,5 +17,8 @@
 #![deny(unsafe_op_in_unsafe_fn)]
 
 pub mod single_instance;
+/// Storage health and volume capacity queries.
+pub mod storage;
 
 pub use single_instance::{Acquisition, InstanceGuard, acquire};
+pub use storage::{DiskSpace, LOW_STORAGE_THRESHOLD_BYTES, get_disk_space, is_storage_low};

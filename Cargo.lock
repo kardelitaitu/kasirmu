@@ -5248,6 +5248,8 @@ dependencies = [
 name = "platform-instance-guard"
 version = "0.0.41"
 dependencies = [
+ "libc",
+ "serde",
  "tracing",
 ]
 

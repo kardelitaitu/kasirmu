@@ -455,6 +455,13 @@ export const systemHandlers: Record<string, MockHandler> = {
   // system, since it is a system/boot read.
   'get_local_ip': () => '192.168.1.100',
 
+  'get_storage_health': () => ({
+    availableBytes: 10 * 1024 * 1024 * 1024,
+    totalBytes: 64 * 1024 * 1024 * 1024,
+    isLowSpace: false,
+    thresholdBytes: 500 * 1024 * 1024,
+  }),
+
   'bootstrap_owner': (_args) => {
     return {
       session: {

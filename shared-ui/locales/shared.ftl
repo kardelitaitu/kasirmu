@@ -161,6 +161,11 @@ update-banner-rollback-desc = Previous version { $version } available for downlo
 update-banner-rollback = Restore Previous Version
 update-banner-rollback-aria = Download previous version from GitHub
 
+# Storage Health
+storage-low-banner-title = Low Storage Space
+storage-low-banner-desc = Available disk space is below 500 MB ({ $freeMb } MB remaining). Free up space to prevent transaction errors or database lock.
+storage-low-banner-dismiss-aria = Dismiss low storage warning
+
 # Memo Banner
 memo-banner-open-aria = Read the full memo: { $title }
 memo-banner-open-aria-plain = Read the full memo

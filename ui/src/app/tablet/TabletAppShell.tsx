@@ -12,6 +12,7 @@ import { LazyBoundary } from '@/components/LazyBoundary';
 import { AppBootSplash } from '@/components/AppBootSplash';
 import { useSplashExit } from '@/hooks/useSplashExit';
 import MemoBanner from '@/features/memo/MemoBanner';
+import StorageBanner from '@/app/StorageBanner';
 import { isAnyAriaModalOpen, consumeShortcut } from '@/utils/modal-guard';
 import { useOrientation } from '@/hooks/useOrientation';
 import { toWorkspaceType, type WorkspaceType } from '@/features/settings/workspaceType';
@@ -540,7 +541,12 @@ export default function TabletAppShell() {
     const FullscreenPageComponent = PageComponent as React.ComponentType<{ onProvisioned?: () => void }>;
     return PageComponent ? (
       <>
-        {!isCustomerKiosk && <MemoBanner />}
+        {!isCustomerKiosk && (
+          <>
+            <StorageBanner />
+            <MemoBanner />
+          </>
+        )}
         <div className="workspace-fullscreen" key={pageRegistration.screenGroup ?? currentRoute}>
           {renderPageLayout(
             <LazyBoundary>
@@ -568,6 +574,7 @@ export default function TabletAppShell() {
   if (!activeWorkspace) {
     return (
       <div className="workspace-home-wrapper">
+        <StorageBanner />
         <MemoBanner />
         <LazyBoundary>
           <WorkspaceHome />
@@ -580,6 +587,7 @@ export default function TabletAppShell() {
   if (activeWorkspace === 'restaurant-pos') {
     return (
       <div className="workspace-fullscreen">
+        <StorageBanner />
         <MemoBanner />
         <LazyBoundary>
           <PosScreen onNavigate={handleNavigate} />
@@ -592,6 +600,7 @@ export default function TabletAppShell() {
   if (activeWorkspace === 'store-pos') {
     return (
       <div className="workspace-fullscreen">
+        <StorageBanner />
         <MemoBanner />
         <LazyBoundary>
           <RetailPosScreen onNavigate={handleNavigate} />
@@ -604,6 +613,7 @@ export default function TabletAppShell() {
   if (activeWorkspace === 'kds') {
     return (
       <>
+        <StorageBanner />
         <MemoBanner kds />
         <div className="workspace-fullscreen">
           <LazyBoundary>

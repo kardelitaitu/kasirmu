@@ -189,6 +189,11 @@ update-banner-rollback-desc = Versi sebelumnya { $version } tersedia untuk diund
 update-banner-rollback = Pulihkan Versi Sebelumnya
 update-banner-rollback-aria = Unduh versi sebelumnya dari GitHub
 
+# Storage Health
+storage-low-banner-title = Ruang Penyimpanan Rendah
+storage-low-banner-desc = Ruang disk yang tersedia di bawah 500 MB (tersisa { $freeMb } MB). Kosongkan ruang penyimpanan untuk mencegah kegagalan transaksi atau penguncian basis data.
+storage-low-banner-dismiss-aria = Tutup peringatan ruang penyimpanan rendah
+
 # Memo Banner
 memo-banner-open-aria = Baca memo lengkap: { $title }
 memo-banner-open-aria-plain = Baca memo lengkap
