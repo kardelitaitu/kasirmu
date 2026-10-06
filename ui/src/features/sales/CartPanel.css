@@ -715,3 +715,41 @@
   }
 }
 
+/* ── Touch press feedback ────────────────────────────────────────────
+   A tablet has no hover. These cart controls carried a `transition` and, for
+   some, a `:hover` rule — but a finger never fires hover, so a tap gave no
+   acknowledgement on the surface a cashier taps most. `:active` is the state
+   touch actually produces. Filled controls scale; transparent ones tint. */
+.pos-cart-lock-btn:not(:disabled):active,
+.pos-cart-new-tab-btn:not(:disabled):active,
+.pos-cart-table-select-btn:not(:disabled):active,
+.pos-cart-undo-btn:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+.pos-cart-deduction-badge:active,
+.pos-cart-undo-dismiss:active,
+.pos-cart-held-badge:active {
+  background: color-mix(in srgb, var(--color-fg) 12%, transparent);
+}
+
+@media (pointer: coarse) {
+  .pos-cart-lock-btn,
+  .pos-cart-undo-btn,
+  .pos-cart-new-tab-btn,
+  .pos-cart-table-select-btn,
+  .pos-cart-undo-dismiss {
+    min-height: var(--touch-target-min);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pos-cart-lock-btn:not(:disabled):active,
+  .pos-cart-new-tab-btn:not(:disabled):active,
+  .pos-cart-table-select-btn:not(:disabled):active,
+  .pos-cart-undo-btn:not(:disabled):active {
+    transform: none;
+    opacity: 0.75;
+  }
+}
+

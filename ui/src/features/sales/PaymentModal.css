@@ -1394,3 +1394,81 @@
     width: 100%;
   }
 }
+
+/* ── Touch press feedback ────────────────────────────────────────────
+   This is the checkout modal, so it is the most-tapped surface on a
+   tablet — and a tablet has no hover. Every control below had a `:hover`
+   rule and a `transition`, which is the tell it was meant to animate, but
+   nothing fired on a finger. A tap therefore produced no acknowledgement at
+   all, on the one screen where "did my tap register?" is a money question.
+
+   Split by resting shape, because one gesture does not suit both:
+     - Controls that OWN a filled surface (accent buttons, the EDC button,
+       quick-cash chips, the search row) get a scale, which reads on any
+       fill colour.
+     - Controls that are transparent or outline-at-rest (the close X, the
+       retry links, the remove/change/clear affordances) get a tint, because
+       scaling a bare glyph reads as the whole target shrinking.
+
+   `:not(:disabled)` mirrors the existing `:hover:not(:disabled)` rules so a
+   disabled control gives no press cue, exactly as it gives no hover cue. */
+.payment-close:active,
+.payment-currency-unknown-retry:active,
+.payment-rate-unknown-retry:active,
+.payment-error-retry-btn:active,
+.payment-customer-change:active,
+.payment-customer-remove:active,
+.payment-customer-search-close:active,
+.payment-loyalty-cancel-btn:active {
+  background: color-mix(in srgb, var(--color-fg) 12%, transparent);
+}
+
+.payment-quick-btn:not(:disabled):active,
+.payment-split-btn:not(:disabled):active,
+.payment-qris-btn:not(:disabled):active,
+.payment-customer-select-btn:not(:disabled):active,
+.payment-customer-search-item:not(:disabled):active,
+.payment-loyalty-redeem-btn:not(:disabled):active,
+.payment-edc-btn:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+/* ── Coarse-pointer touch floors ──────────────────────────────────────
+   Sized by padding, these can land under the 44px minimum on a 14px root
+   (tokens.css --touch-target-min). The checkout controls are the worst place
+   to miss a tap, so the floor is explicit rather than inherited. */
+@media (pointer: coarse) {
+  .payment-close,
+  .payment-quick-btn,
+  .payment-split-btn,
+  .payment-split-remove,
+  .payment-currency-unknown-retry,
+  .payment-rate-unknown-retry,
+  .payment-qris-btn,
+  .payment-error-retry-btn,
+  .payment-customer-select-btn,
+  .payment-customer-change,
+  .payment-customer-remove,
+  .payment-customer-search-close,
+  .payment-loyalty-redeem-btn,
+  .payment-loyalty-cancel-btn,
+  .payment-edc-btn {
+    min-height: var(--touch-target-min);
+  }
+}
+
+/* Reduced motion: the transform is the only thing that moves. A
+   vestibular-sensitive user still needs a press cue, so drop the movement
+   and keep a static opacity step. */
+@media (prefers-reduced-motion: reduce) {
+  .payment-quick-btn:not(:disabled):active,
+  .payment-split-btn:not(:disabled):active,
+  .payment-qris-btn:not(:disabled):active,
+  .payment-customer-select-btn:not(:disabled):active,
+  .payment-customer-search-item:not(:disabled):active,
+  .payment-loyalty-redeem-btn:not(:disabled):active,
+  .payment-edc-btn:not(:disabled):active {
+    transform: none;
+    opacity: 0.72;
+  }
+}

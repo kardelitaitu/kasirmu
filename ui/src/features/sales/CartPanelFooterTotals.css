@@ -529,3 +529,40 @@
     transition: none;
   }
 }
+
+/* ── Touch press feedback ────────────────────────────────────────────
+   The totals footer is where the sale is closed, so its controls are tapped
+   under time pressure on a hoverless tablet. `:active` is the only cue a
+   touch gives; these had transitions but no press state. */
+.pos-cart-discount-btn:not(:disabled):active,
+.pos-cart-options-toggle:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+.pos-cart-discount-clear:active,
+.pos-cart-discount-cancel:active,
+.pos-cart-tip-segment:active,
+.pos-cart-service-toggle:active,
+.pos-cart-promotion-chip-clear:active {
+  background: color-mix(in srgb, var(--color-fg) 12%, transparent);
+}
+
+@media (pointer: coarse) {
+  .pos-cart-discount-btn,
+  .pos-cart-discount-clear,
+  .pos-cart-discount-cancel,
+  .pos-cart-tip-segment,
+  .pos-cart-service-toggle,
+  .pos-cart-options-toggle,
+  .pos-cart-promotion-chip-clear {
+    min-height: var(--touch-target-min);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pos-cart-discount-btn:not(:disabled):active,
+  .pos-cart-options-toggle:not(:disabled):active {
+    transform: none;
+    opacity: 0.75;
+  }
+}
