@@ -769,6 +769,64 @@ body:has(.settings-footer) {
   box-shadow: inset 0 0 0 1px var(--color-danger);
 }
 
+/* ── Range input and the value beside it ────────────────────────────
+   `.settings-range` / `.settings-range-value` are used by three workspace
+   cards (TerminalPreferencesCard, WorkspaceKdsSettings, WorkspaceInventory
+   Settings) and were defined in NO sheet — they are family members that were
+   never written, like .settings-select and .settings-error-banner below.
+   Without them a native range rendered at the browser's default width and the
+   value label sat against it. */
+.settings-range {
+  flex: 1;
+  min-width: 0;
+  accent-color: var(--color-accent);
+  cursor: pointer;
+}
+
+.settings-range-value {
+  min-width: 3.5rem;
+  font-size: var(--text-sm);
+  color: var(--color-fg-muted);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* ── Native select ──────────────────────────────────────────────────
+   Matches .settings-input's geometry so a select and a text input in the same
+   form read as the same control. */
+.settings-select {
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-base);
+  color: var(--color-fg);
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-sizing: border-box;
+  cursor: pointer;
+}
+
+.settings-select:focus-visible {
+  outline: none;
+  border-color: var(--color-accent);
+  box-shadow: inset 0 0 0 1px var(--color-accent);
+}
+
+/* ── Error banner ───────────────────────────────────────────────────
+   Distinct from .settings-error (the inline form error): this is a standalone
+   alert block below the card. */
+.settings-error-banner {
+  margin-top: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-danger);
+  border-radius: var(--radius-md);
+  /* No fallback tail: --color-danger-dim is declared in every theme block, so a
+     literal here could never render (the token-tail guard's own rule). */
+  background: var(--color-danger-dim);
+  color: var(--color-danger);
+  font-size: var(--text-sm);
+}
+
 .settings-actions {
   display: flex;
   justify-content: flex-end;
