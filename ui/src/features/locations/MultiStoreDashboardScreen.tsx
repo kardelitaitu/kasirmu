@@ -7,6 +7,7 @@ import { useSubscription } from '@/contexts/SubscriptionContext';
 import { LocaleContext } from '@/i18n/LocaleContext';
 import { useContext } from 'react';
 import { openUpgradePricing } from '@/utils/upgrade';
+import { asArray } from '@/utils/ipc-payload';
 import { Button } from '@/components/Button';
 import { Card } from '@/components/Card';
 import { Modal } from '@/components/Modal';
@@ -54,8 +55,10 @@ export default function MultiStoreDashboardScreen() {
         listLocationsScoped(sessionToken),
         listTerminalsScoped(sessionToken),
       ]);
-      setStores(storeData);
-      setTerminals(termData);
+      // asArray: both commands declare arrays but nothing enforces it, and the
+      // render filters/lengths them (utils/ipc-payload documents the class).
+      setStores(asArray<typeof storeData[number]>(storeData));
+      setTerminals(asArray<typeof termData[number]>(termData));
     } catch {
       setError(l10n.getString('multi-store-error-load'));
     } finally {

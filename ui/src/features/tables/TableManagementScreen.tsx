@@ -4,6 +4,7 @@ import { Localized, useLocalization } from '@fluent/react';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { l10nErrorMessage } from '@/utils/app-error';
+import { asArray } from '@/utils/ipc-payload';
 import { formatMoney } from '@/types/domain';
 import { listOpenBillsScoped, type HeldCartRow } from '@/api/sales';
 import {
@@ -122,8 +123,9 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
         listOpenBillsScoped(sessionToken).catch(() => []),
       ]);
       if (seq !== loadSeqRef.current) return;
-      setTables(tableData);
-      setOpenBills(billData);
+      // asArray: see utils/ipc-payload — the render maps/finds these.
+      setTables(asArray<typeof tableData[number]>(tableData));
+      setOpenBills(asArray<typeof billData[number]>(billData));
     } catch (err) {
       if (seq !== loadSeqRef.current) return;
       setError(l10nErrorMessage(err, l10n, 'app-error-generic'));
