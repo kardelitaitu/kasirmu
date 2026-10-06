@@ -445,6 +445,10 @@ describe('SettingsPage admin shell — flat 14-page IA', () => {
       // hooks/useStoreDraft. The form is the body; there is no wrapper class of
       // its own, so the marker is the store-name field the rebuild dropped.
       'general': ['settings-general-save-btn'],
+      // Migrated 2026-10-06: composes the real SyncSection, driven by
+      // hooks/useDataSyncDraft. The Cloud Sync card is the body; the save button
+      // is this screen's own (the section's own actions live inside the card).
+      'data-sync': ['settings-data-sync-save-btn'],
     };
 
     for (const item of NAV_ITEMS) {

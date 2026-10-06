@@ -1719,9 +1719,18 @@ const SCREENS: ScreenEntry[] = [
     css: ['settings/screens/screens-placeholder.css'],
   },
   {
+    // Migrated 2026-10-06: composes the real sections/SyncSection as its body,
+    // driven by hooks/useDataSyncDraft (the page-owned share of that section's
+    // thirty-four props; the rest is this screen's own interaction state). The
+    // walker reads this file's markup alone and does NOT follow the composed
+    // import, so the settings-sync-* classes — all DEFINED in
+    // settings/SettingsPage.css — are cited as a parent sheet rather than
+    // muted. `settings-data-sync-save-btn` is this screen's OWN class and lives
+    // in DataSyncScreen.css, which case 3 walks.
     name: 'DataSyncScreen',
     tsx: 'settings/screens/DataSyncScreen.tsx',
-    css: ['settings/screens/screens-placeholder.css'],
+    css: ['settings/screens/screens-placeholder.css', 'settings/screens/DataSyncScreen.css'],
+    parentCss: ['settings/SettingsPage.css'],
   },
   {
     // Migrated 2026-10-06: composes the real settings/DataManagementScreen as
