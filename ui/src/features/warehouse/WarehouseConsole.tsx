@@ -14,6 +14,7 @@ import { useFullscreen } from '@/hooks/useFullscreen';
 import { SegmentedTabs, requiredLocalized } from '@/components';
 import { useToast } from '@/components/Toast';
 import { l10nErrorMessage } from '@/utils/app-error';
+import { asArray } from '@/utils/ipc-payload';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { Button } from '@/components/Button';
 import { Skeleton } from '@/components/Skeleton';
@@ -93,8 +94,9 @@ export default function WarehouseConsole() {
     setLoading(true);
     setLoadError(null);
     try {
+      // asArray: the render maps `products` (see utils/ipc-payload).
       const data = await listWarehouseProductsAtLocation(sessionToken, locationId);
-      setProducts(data);
+      setProducts(asArray<typeof data[number]>(data));
     } catch (err) {
       setLoadError(l10nErrorMessage(err, l10n, 'warehouse-load-error'));
     } finally {

@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useRef, type CSSProperties, type KeyboardEvent } from 'react';
 import { contrastFg } from '@/utils/color';
+import { asArray } from '@/utils/ipc-payload';
 import { Localized, useLocalization } from '@fluent/react';
 import {
   listCategoriesScoped,
@@ -270,7 +271,8 @@ export default function CategoryManagementScreen() {
     try {
       const cats = await listCategoriesScoped(sessionToken);
       if (seq !== loadSeqRef.current) return;
-      setCategories(cats);
+      // asArray: the render maps/filters categories (see utils/ipc-payload).
+      setCategories(asArray<typeof cats[number]>(cats));
       hasLoadedOnceRef.current = true;
     } catch (err) {
       // CAT-03: a failed load must not be indistinguishable from an empty store.

@@ -14,6 +14,7 @@ import { SettingsPopup, requiredLocalized, EmptyState } from '@/components';
 import { NoVariantsIcon } from '@/components/EmptyStateIllustrations';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { minorUnitExponent } from '@/types/domain';
+import { asArray } from '@/utils/ipc-payload';
 
 interface Props {
   productSku: string;
@@ -66,7 +67,8 @@ export default function VariantManagementScreen({ productSku, productName, onClo
     setLoadError(null);
     try {
       const dtos = await listProductVariants(sessionToken, productSku);
-      setVariants(dtos);
+      // asArray: the render maps variants (see utils/ipc-payload).
+      setVariants(asArray<typeof dtos[number]>(dtos));
     } catch {
       setLoadError('variant-mgmt-error-load');
     } finally {
