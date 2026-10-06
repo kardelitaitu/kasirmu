@@ -392,6 +392,10 @@
    surface that already shipped. Its two feedback banners take --shadow-* only
    through colour tokens, not elevation, so they are not surfaces. */
 .diagnostic-export-card::after,
+/* Restaurant menu size control — a 48px square button with --shadow-xs. Given the
+   overlay rather than a waiver: the exempt-prefix door it was tried on first
+   breached that door's frozen ceiling (9 > 8). */
+.restaurant-size-btn::after,
 /* ⚠ DEPRECATED LEGACY SELECTORS — do not add new ones here.
    Instead, add className="noise-dither" to the TSX element.
    (wire-rename-input / wire-label-pill are positioned absolute with
@@ -582,6 +586,9 @@
   /* Parity with the dither block: the diagnostic export card is an elevated
      --shadow-sm surface, so it opts out of the overlay in both modes too. */
   .diagnostic-export-card::after,
+  /* Same parity for the restaurant menu size control (see its KNOWN_NOISE_SELECTORS
+     entry: the overlay was granted, not waived). */
+  .restaurant-size-btn::after,
   .retail-shift-modal::after,
   .retail-held-carts-modal::after,
   .retail-discount-modal::after,
@@ -727,6 +734,9 @@
   /* Parity with the dither block: the diagnostic export card is an elevated
      --shadow-sm surface, so it opts out of the overlay in both modes too. */
   .diagnostic-export-card::after,
+  /* Same parity for the restaurant menu size control (see its KNOWN_NOISE_SELECTORS
+     entry: the overlay was granted, not waived). */
+  .restaurant-size-btn::after,
   .retail-shift-modal::after,
   .retail-held-carts-modal::after,
   .retail-discount-modal::after,

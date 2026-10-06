@@ -762,6 +762,8 @@
       transform: scale(1);
     }
   }
+}
+
 /* When dragging the cart divider, freeze card transforms and hover states
    so resizing is 100% fluid and cards don't pop up under the moving cursor */
 body.is-resizing .restaurant-card,
