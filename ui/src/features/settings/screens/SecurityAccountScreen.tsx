@@ -33,7 +33,17 @@
 //! The orphaned `EmailReportSettings` (SMTP credentials, zero props) was
 //! considered for this page and REJECTED: its own title is "Email Reports", and
 //! hosting outbound-report SMTP under "Security & Account" would mislabel it.
-//! It needs its own home, not this one.
+//!
+//! It is NOT simply waiting for a home, though — that was this file's earlier
+//! reading and it was WRONG. The component cannot function on the tablet at all:
+//! `get_report_schedule`, `get_report_schedule_scoped`, `save_report_schedule`
+//! and `send_test_report` are registered in apps/desktop-tauri/src/lib.rs and in
+//! NO mobile registration list, and `apps/mobile-tauri/src/commands/` has no
+//! `email.rs` (it has `reports.rs`, whose 24 commands are the on-screen
+//! analytics the tablet already renders). So the SMTP form is desktop-only
+//! functionality whose shell does not ship it — wiring the component into a
+//! tablet nav entry would render a page where EVERY control errors. Do not add
+//! one without the mobile commands landing first.
 
 import { Localized } from '@fluent/react';
 import { Card } from '@/components/Card';
