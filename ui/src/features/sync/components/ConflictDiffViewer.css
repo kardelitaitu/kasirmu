@@ -1,0 +1,122 @@
+/* ── Conflict diff viewer ──────────────────────────────────────────────
+ * The two-sided conflict comparison mounted by SyncConflictReviewScreen.tsx:184.
+ * Every class below is the component's own, and none was defined anywhere — a
+ * repo-wide grep for the double-underscore element form returns nothing — so a
+ * manager deciding whether to keep the store's copy or the cloud's saw two
+ * unformatted JSON blobs stacked in the default document flow, with no visual
+ * pairing between the two sides they were being asked to choose between.
+ *
+ * BEM naming (element suffix), following the markup rather than the kebab
+ * sheets around it. */
+
+.conflict-diff {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-surface);
+  min-width: 0;
+}
+
+.conflict-diff__head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.conflict-diff__entity {
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-fg);
+}
+
+.conflict-diff__entity-id {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--color-fg-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Severity pill. The two ends of the scale are tinted; anything else keeps the
+   neutral chip, so an unrecognised severity never reads as safe. */
+.conflict-diff__severity {
+  margin-left: auto;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-subtle);
+  color: var(--color-fg-secondary);
+  font-size: var(--text-2xs);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.conflict-diff__severity--high,
+.conflict-diff__severity--critical {
+  background: var(--color-danger-dim);
+  color: var(--color-danger);
+}
+
+/* The two sides. Ordered local-then-remote left-to-right; stacks on narrow
+   shells so neither payload is squeezed into an unreadable column. */
+.conflict-diff__panes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3);
+}
+
+@media (max-width: 900px) {
+  .conflict-diff__panes {
+    grid-template-columns: 1fr;
+  }
+}
+
+.conflict-diff__pane {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.conflict-diff__pane h4 {
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-fg);
+}
+
+/* Vector clock, then the raw payload. Monospace, and the payload is capped so a
+   large record cannot push the Accept buttons off screen. */
+.conflict-diff__vector {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--color-fg-muted);
+  word-break: break-all;
+}
+
+.conflict-diff__payload {
+  margin: 0;
+  padding: var(--space-2);
+  max-height: 16rem;
+  overflow: auto;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  line-height: var(--leading-tight);
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Custom merge applies to the PAIR, not to one side, so it sits outside the
+   two-column grid. */
+.conflict-diff__custom {
+  display: flex;
+  justify-content: center;
+}

@@ -914,6 +914,33 @@ const SCREENS: ScreenEntry[] = [
     knownDynamicFragments: ['server-status'],
   },
   {
+    // The review screen, registered 2026-10-07. It had NO SCREENS entry: it is
+    // the 'sync-conflicts' settings route (screens/registry.ts:70 lazy-imports
+    // it), and it imported only the shared placeholder sheet, so nothing graded
+    // its markup and its own nine classes went unnoticed while being undefined
+    // in every sheet in the tree.
+    //
+    // Both sheets below are NEW, and a new stylesheet may not join
+    // BASELINE_UNCITED, so landing them requires this entry in the same commit.
+    name: 'SyncConflictReviewScreen',
+    tsx: 'sync/SyncConflictReviewScreen.tsx',
+    css: [
+      'settings/screens/screens-placeholder.css',
+      'sync/SyncConflictReviewScreen.css',
+      'sync/components/ConflictDiffViewer.css',
+    ],
+    // The viewer is its own component and carries the conflict-diff__* names;
+    // the screen only mounts it, so its markup must be walked from here.
+    additionalTsx: ['sync/components/ConflictDiffViewer.tsx'],
+    // Composed at runtime from the row's own severity:
+    // `conflict-diff__severity conflict-diff__severity--${conflict.severity}`
+    // (ConflictDiffViewer.tsx:49). The static walk cannot see either tail, so
+    // both rules graded dead. This is the genuine composed-at-runtime case the
+    // field exists for — the rest of that component's names are literals and
+    // stay graded.
+    dynamicClassPrefixes: ['conflict-diff__severity--'],
+  },
+  {
     name: 'SyncConflictsPanel',
     tsx: 'settings/SyncConflictsPanel.tsx',
     css: ['settings/SyncConflictsPanel.css'],

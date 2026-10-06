@@ -1,0 +1,93 @@
+/* ── Sync conflict review ───────────────────────────────────────────────
+ * The manager-facing review of mutations that diverged concurrently
+ * (SyncConflictReviewScreen.tsx). NONE of the nine classes below was defined
+ * anywhere in the tree when this sheet was written — a repo-wide grep for
+ * `sync-conflict-review` returned nothing — so the checklist header, the tab
+ * strip and the conflict list all sat in the default document flow.
+ *
+ * The component's own comment at :153 records that the tab strip was previously
+ * covered by the shared <SegmentedTabs> control; that hook class is kept here so
+ * the screen can adjust spacing without reaching into the shared component.
+ *
+ * Naming is BEM (`__element`), which is this feature's own convention rather
+ * than the kebab convention of the sheets beside it; the selectors follow the
+ * markup they serve. */
+
+.sync-conflict-review {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  margin-top: var(--space-4);
+  min-width: 0;
+}
+
+/* The "show resolved history" checklist row. */
+.sync-conflict-review__head {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+.sync-conflict-review__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--touch-target-min);
+  font-size: var(--text-sm);
+  color: var(--color-fg-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+
+.sync-conflict-review__toggle input {
+  width: var(--space-4);
+  height: var(--space-4);
+  margin: 0;
+  accent-color: var(--color-accent);
+  cursor: pointer;
+}
+
+/* The severity strip. <SegmentedTabs> supplies the control itself; this only
+   gives the strip room to breathe within the review column. */
+.sync-conflict-review__tabs {
+  align-self: flex-start;
+}
+
+/* Status lines. Only one shows at a time, so they share a shape. */
+.sync-conflict-review__error,
+.sync-conflict-review__loading,
+.sync-conflict-review__empty {
+  margin: 0;
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  text-align: center;
+}
+
+.sync-conflict-review__error {
+  border: 1px solid var(--color-danger);
+  background: var(--color-danger-dim);
+  color: var(--color-danger);
+  text-align: left;
+}
+
+.sync-conflict-review__loading,
+.sync-conflict-review__empty {
+  color: var(--color-fg-muted);
+}
+
+/* One conflict per row; the viewer supplies its own card chrome. */
+.sync-conflict-review__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.sync-conflict-review__item {
+  min-width: 0;
+}

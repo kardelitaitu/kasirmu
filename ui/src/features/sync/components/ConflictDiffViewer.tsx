@@ -2,6 +2,8 @@ import { Localized } from '@fluent/react';
 
 import type { SyncConflictDto } from '@/api/syncConflicts';
 
+import './ConflictDiffViewer.css';
+
 // ── Conflict diff viewer ──────────────────────────────────────────
 //
 // Shows the two sides of a conflict side by side. Deliberately dumb: it
