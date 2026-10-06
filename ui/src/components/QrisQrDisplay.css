@@ -311,3 +311,26 @@
   background: transparent;
   color: var(--color-fg-secondary);
 }
+
+/* ── Touch press feedback ────────────────────────────────────────────
+   QRIS confirms and the expired-state action are money-adjacent taps on the
+   tablet, so the press cue matters. */
+.qris-manual-confirm-btn:not(:disabled):active,
+.qris-expired-btn:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+@media (pointer: coarse) {
+  .qris-manual-confirm-btn,
+.qris-expired-btn {
+    min-height: var(--touch-target-min);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .qris-manual-confirm-btn:not(:disabled):active,
+.qris-expired-btn:not(:disabled):active {
+    transform: none;
+    opacity: 0.75;
+  }
+}

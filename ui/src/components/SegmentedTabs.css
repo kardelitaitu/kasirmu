@@ -156,3 +156,24 @@
   outline: 2px solid var(--color-border-focus);
   outline-offset: 2px;
 }
+
+/* ── Touch press feedback ────────────────────────────────────────────
+   Shared segmented control used across tablet screens. The press cue is a
+   scale rather than a tint: the active tab's text sits on an accent-filled
+   thumb, and a fill change would paint over it. */
+.segmented-tab:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+@media (pointer: coarse) {
+  .segmented-tab {
+    min-height: var(--touch-target-min);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .segmented-tab:not(:disabled):active {
+    transform: none;
+    opacity: 0.75;
+  }
+}

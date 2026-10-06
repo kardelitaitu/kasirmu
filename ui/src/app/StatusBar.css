@@ -224,3 +224,22 @@
     outline-offset: 1px;
   }
 }
+
+/* ── Touch press feedback ────────────────────────────────────────────
+   Status-bar buttons are tapped at the till. */
+.statusbar-btn:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+@media (pointer: coarse) {
+  .statusbar-btn {
+    min-height: var(--touch-target-min);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .statusbar-btn:not(:disabled):active {
+    transform: none;
+    opacity: 0.75;
+  }
+}

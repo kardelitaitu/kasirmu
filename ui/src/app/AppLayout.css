@@ -763,3 +763,33 @@
   }
 }
 
+
+/* ── Touch press feedback ────────────────────────────────────────────
+   The nav rail is the tablet's primary navigation. Items tint (they are
+   rows and carry an active fill); the toggle/collapse buttons scale. */
+.sidebar-toggle:not(:disabled):active,
+.sidebar-collapse-btn:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+.app-nav-item:active,
+.app-sidebar-section-header:active {
+  background: color-mix(in srgb, var(--color-fg) 12%, transparent);
+}
+
+@media (pointer: coarse) {
+  .app-sidebar-section-header,
+.app-nav-item,
+.sidebar-toggle,
+.sidebar-collapse-btn {
+    min-height: var(--touch-target-min);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar-toggle:not(:disabled):active,
+.sidebar-collapse-btn:not(:disabled):active {
+    transform: none;
+    opacity: 0.75;
+  }
+}

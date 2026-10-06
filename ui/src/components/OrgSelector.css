@@ -56,3 +56,27 @@
 .org-selector-option[aria-selected='true'] {
   background: var(--accent-subtle, rgba(255, 255, 255, 0.08));
 }
+
+/* ── Touch press feedback ────────────────────────────────────────────
+   Organisation selection: trigger scales, options tint. */
+.org-selector-trigger:not(:disabled):active {
+  transform: scale(0.98);
+}
+
+.org-selector-option:active {
+  background: color-mix(in srgb, var(--color-fg) 12%, transparent);
+}
+
+@media (pointer: coarse) {
+  .org-selector-trigger,
+.org-selector-option {
+    min-height: var(--touch-target-min);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .org-selector-trigger:not(:disabled):active {
+    transform: none;
+    opacity: 0.75;
+  }
+}

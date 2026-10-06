@@ -70,3 +70,22 @@
   outline: 2px solid var(--color-border-focus);
   outline-offset: 2px;
 }
+
+/* ── Touch press feedback ────────────────────────────────────────────
+   Recovery action after a render failure. */
+.error-boundary__retry:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+@media (pointer: coarse) {
+  .error-boundary__retry {
+    min-height: var(--touch-target-min);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .error-boundary__retry:not(:disabled):active {
+    transform: none;
+    opacity: 0.75;
+  }
+}

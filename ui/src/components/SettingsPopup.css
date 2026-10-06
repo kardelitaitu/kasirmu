@@ -154,3 +154,22 @@
     animation: none;
   }
 }
+
+/* ── Touch press feedback ────────────────────────────────────────────
+   The popup's close button. */
+.settings-popup-close:not(:disabled):active {
+  transform: scale(0.94);
+}
+
+@media (pointer: coarse) {
+  .settings-popup-close {
+    min-height: var(--touch-target-min);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .settings-popup-close:not(:disabled):active {
+    transform: none;
+    opacity: 0.75;
+  }
+}

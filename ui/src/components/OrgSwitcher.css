@@ -117,3 +117,30 @@
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+/* ── Touch press feedback ────────────────────────────────────────────
+   Organisation switching: trigger and confirm scale, options tint. */
+.org-switcher-trigger:not(:disabled):active,
+.org-switcher-confirm:not(:disabled):active {
+  transform: scale(0.98);
+}
+
+.org-switcher-option:active {
+  background: color-mix(in srgb, var(--color-fg) 12%, transparent);
+}
+
+@media (pointer: coarse) {
+  .org-switcher-trigger,
+.org-switcher-option,
+.org-switcher-confirm {
+    min-height: var(--touch-target-min);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .org-switcher-trigger:not(:disabled):active,
+.org-switcher-confirm:not(:disabled):active {
+    transform: none;
+    opacity: 0.75;
+  }
+}
