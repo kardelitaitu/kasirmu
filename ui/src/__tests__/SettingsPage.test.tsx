@@ -425,6 +425,13 @@ describe('SettingsPage admin shell — flat 14-page IA', () => {
       // DataManagementScreen. With the mocked IPC (and the admin gate open in
       // this session) the body's tab strip is what proves it mounted.
       'data-management': ['data-mgmt', 'data-mgmt-tabs'],
+      // Migrated 2026-10-06: composes the real features/tax screen with
+      // `embedded`, which suppresses its duplicate <h1>. Without that prop the
+      // section carried TWO headings named "Tax Configuration", and the
+      // `getByRole('heading', { name })` in navigateByNav throws on an
+      // ambiguous match — retried inside waitFor until the worker died with
+      // "Reached heap limit". `.tax-config` is the composed body.
+      'tax-configuration': ['tax-config'],
     };
 
     for (const item of NAV_ITEMS) {

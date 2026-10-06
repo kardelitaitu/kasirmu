@@ -1706,9 +1706,42 @@ const SCREENS: ScreenEntry[] = [
     css: ['settings/screens/screens-placeholder.css'],
   },
   {
+    // Migrated 2026-10-06: composes the real features/tax screen as its body,
+    // the same way its ExchangeRatesScreen / DataManagementScreen siblings
+    // compose theirs. The walker reads this file's markup alone and does NOT
+    // follow the composed import, so the tax screen's own tax-config-* classes
+    // (styled by tax/TaxConfigurationScreen.css, which the composed screen
+    // imports) are declared external here. That screen keeps its own ledger
+    // entry above; these names are reached through composition, not spelled in
+    // this file. The scaffold still renders settings-screen-placeholder + -note,
+    // so no scaffold name goes dead.
     name: 'TaxConfigurationScreen',
     tsx: 'settings/screens/TaxConfigurationScreen.tsx',
     css: ['settings/screens/screens-placeholder.css'],
+    externalClasses: [
+      'tax-config',
+      'tax-config-header',
+      'tax-config-title',
+      'tax-config-load-error',
+      'tax-config-loading-skeleton',
+      'tax-config-table-wrap',
+      'tax-config-table',
+      'tax-config-cell-actions',
+      'tax-config-empty',
+      'tax-config-action-btn',
+      'tax-config-action-btn--danger',
+      'tax-config-section',
+      'tax-config-section-title',
+      'tax-config-section-desc',
+      'tax-config-loading',
+      'tax-config-cat-name',
+      'tax-config-cat-swatch',
+      'tax-config-cat-badges',
+      'tax-config-muted',
+      'tax-config-field',
+      'tax-config-field--horizontal',
+      'tax-config-label',
+    ],
   },
   {
     // Migrated 2026-10-06: the screen composes the real

@@ -62,8 +62,29 @@ const EMPTY_TAX_FORM: TaxFormData = {
   roundingMode: '',
 };
 
+/** Props for {@link TaxConfigurationScreen}. */
+export interface TaxConfigurationScreenProps {
+  /**
+   * Render as a BODY inside another page rather than as a standalone screen.
+   *
+   * The only difference is the title row: a composing page (Settings → Tax
+   * Configuration) already renders its own <h1>, so this screen's title would
+   * print twice. Same opt-in contract as ExchangeRateScreen's `embedded`.
+   *
+   * This is not cosmetic. Two <h1>s with the SAME accessible name inside one
+   * container make `getByRole('heading', { name })` AMBIGUOUS, and a test that
+   * retries that query in a `waitFor` loop churns allocations until the worker
+   * dies with "Reached heap limit" — which is exactly how the settings section
+   * sweep failed before this prop was passed (see the note in
+   * settings/screens/TaxConfigurationScreen.tsx).
+   *
+   * Default false keeps the standalone route (`tax-config`) unchanged.
+   */
+  embedded?: boolean;
+}
+
 /** Tax configuration screen — CRUD for tax rates, inclusive/exclusive toggle, and per-category tax rate assignment. */
-export default function TaxConfigurationScreen() {
+export default function TaxConfigurationScreen({ embedded = false }: TaxConfigurationScreenProps = {}) {
   const { l10n } = useLocalization();
   const { addToast } = useToast();
   const { sessionToken: rawToken } = useWorkspace();
@@ -465,9 +486,14 @@ export default function TaxConfigurationScreen() {
   return (
     <div className="tax-config">
       <div className="tax-config-header">
-        <Localized id="tax-config-title">
-          <h1 className="tax-config-title">Tax Configuration</h1>
-        </Localized>
+        {/* Skipped when embedded: the composing page owns the <h1>. Two headings
+            with one accessible name would make the name ambiguous, which is a
+            correctness problem for assistive tech as well as for the tests. */}
+        {!embedded && (
+          <Localized id="tax-config-title">
+            <h1 className="tax-config-title">Tax Configuration</h1>
+          </Localized>
+        )}
         <Localized id="tax-config-add">
           <Button onClick={openCreate}>Add Tax Rate</Button>
         </Localized>
