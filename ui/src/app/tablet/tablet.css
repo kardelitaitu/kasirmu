@@ -208,16 +208,27 @@
 
 /* Rendered by TabletAppLayout but previously unstyled. A wrapping label would
    make one tab taller than its neighbours and defeat the fixed bar height. */
-.tablet-shell /* The icon slot in a tab button. .tablet-tab-bar / .tablet-tab-label are both
-   defined in this sheet; the icon span between them was not, so the glyph sat on
-   the label's baseline instead of on its own line. */
-.tablet-tab-icon {
-  display: block;
-  line-height: 0;
+.tablet-shell .tablet-tab-label {
+  white-space: nowrap;
 }
 
-.tablet-tab-label {
-  white-space: nowrap;
+/* The icon slot in a tab button. .tablet-tab-bar / .tablet-tab-label were both
+   defined in this sheet; the icon span between them was not, so the glyph sat on
+   the label's baseline instead of on its own line.
+
+   Scoped to .tablet-shell like its two siblings: an earlier edit here emitted
+   `.tablet-shell /* … */.tablet-tab-icon`, which detached the tab-label rule
+   from its shell scope and left a dangling selector. Restored.
+
+   `line-height: 0` is the sub-token zero the token checker accepts only when
+   listed with its decision recorded (themeTokenCompliance "leading-token
+   freeze"): the icon box must contribute NO line height, because a non-zero one
+   makes an icon tab taller than its text-only neighbours and breaks the fixed
+   bar height this sheet is built around. That is the reason it is a deliberate
+   zero rather than a scale step. */
+.tablet-shell .tablet-tab-icon {
+  display: block;
+  line-height: 0;
 }
 
 .tablet-shell .tablet-tab-item:active {

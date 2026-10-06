@@ -3285,7 +3285,11 @@ const LINE_HEIGHT_LITERAL_BASELINE: Array<[string, string, number]> = [
   ["1", "ui/src/features/retail/RetailPosScreen.css", 10],
   ["1.2", "ui/src/features/retail/RetailPosScreen.css", 3],
   ["1.3", "ui/src/features/retail/RetailPosScreen.css", 1],
-  ["1.4", "ui/src/features/retail/RetailPosScreen.css", 3],
+  // 3 -> 2 on 2026-10-07 (b5879c001): the third site was .retail-receipt-preview
+  // (:2131), removed with the rest of the orphaned receipt/recent block. The step
+  // itself is unchanged and still has two live sites in this sheet, so this is a
+  // paid-down deletion, not a vanishing value.
+  ["1.4", "ui/src/features/retail/RetailPosScreen.css", 2],
   ["1.8", "ui/src/features/retail/RetailPosScreen.css", 1],
   // Decision recorded 2026-10-01: `line-height: 1` on `.pos-cart-table-select-btn`
   // is deliberate optical tightening, not a prose measure -- the control is a
@@ -3357,6 +3361,14 @@ const LINE_HEIGHT_LITERAL_BASELINE: Array<[string, string, number]> = [
   ["1", "ui/src/app/StatusBar.css", 1],
   ["1.2", "ui/src/app/tablet/tablet.css", 1],
   ["1.3", "ui/src/app/tablet/tablet.css", 1],
+  // 0 on the tab-icon slot (tablet.css:230, .tablet-shell .tablet-tab-icon). The
+  // step is deliberately BELOW the scale and no --leading-* step expresses it:
+  // the icon must contribute NO line box, otherwise an icon tab is taller than
+  // its text-only neighbours and the fixed tab-bar height this sheet is built
+  // around breaks. The alternative (a --leading-* step) would be 1 or more, which
+  // is exactly the height that causes the defect. Decision: keep 0, scoped to
+  // the icon span.
+  ["0", "ui/src/app/tablet/tablet.css", 1],
   ["1", "ui/src/theme/components.css", 3],
   ["inherit", "ui/src/theme/reset.css", 2],
 ];

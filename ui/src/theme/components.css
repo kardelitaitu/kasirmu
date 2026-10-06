@@ -385,6 +385,13 @@
    the dither from the dithered parent, exactly as .modal-close-btn does. */
 .memo-banner::after,
 .memo-expanded-card::after,
+/* Diagnostic export card — the --shadow-sm pane the one-click archive export
+   renders into (DiagnosticExportCard.css:13). Named here rather than given
+   .noise-dither in the TSX because the card element carries no utility class
+   today, and the explicit-::after route is the one this file documents for a
+   surface that already shipped. Its two feedback banners take --shadow-* only
+   through colour tokens, not elevation, so they are not surfaces. */
+.diagnostic-export-card::after,
 /* ⚠ DEPRECATED LEGACY SELECTORS — do not add new ones here.
    Instead, add className="noise-dither" to the TSX element.
    (wire-rename-input / wire-label-pill are positioned absolute with
@@ -572,6 +579,9 @@
   .restaurant-floating-cart-action-btn::after,
   .memo-banner::after,
   .memo-expanded-card::after,
+  /* Parity with the dither block: the diagnostic export card is an elevated
+     --shadow-sm surface, so it opts out of the overlay in both modes too. */
+  .diagnostic-export-card::after,
   .retail-shift-modal::after,
   .retail-held-carts-modal::after,
   .retail-discount-modal::after,
@@ -714,6 +724,9 @@
   .restaurant-floating-cart-action-btn::after,
   .memo-banner::after,
   .memo-expanded-card::after,
+  /* Parity with the dither block: the diagnostic export card is an elevated
+     --shadow-sm surface, so it opts out of the overlay in both modes too. */
+  .diagnostic-export-card::after,
   .retail-shift-modal::after,
   .retail-held-carts-modal::after,
   .retail-discount-modal::after,

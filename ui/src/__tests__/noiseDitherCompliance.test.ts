@@ -143,6 +143,11 @@ const KNOWN_NOISE_SELECTORS = [
   '.promo-mgmt-table',
   '.menu-eng-tooltip',
   '.retail-menu',
+  // Diagnostic export card (settings) — a --shadow-sm pane. Registered together
+  // with its ::after rule in theme/components.css, which is the pair this test
+  // requires; the list is not a mute, it records that the selector was given the
+  // overlay rather than an exemption.
+  '.diagnostic-export-card',
   // ADR #36 retail grid column-toggle dropdown + ADR #38 row context menu
   // (positioned absolute/fixed — the .noise-dither relative utility would
   // fight their anchoring, so they use the explicit ::after path).
