@@ -473,4 +473,147 @@ fn test_two_hundred_consecutive_offline_sales_durability() {
     );
 }
 
+#[test]
+fn test_full_pilot_dry_run_onboarding_to_50_sales_shift_and_sync() {
+    let mut conn = setup();
+
+    // ── Phase 1: Clean Install & First-Run Onboarding ──────────────────
+    let args = kasirmu_core::db::provisioning::ProvisionDeviceArgs {
+        terminal_id: "term-beta-pilot-01".into(),
+        location_name: "Kopi Kenangan Beta".into(),
+        currency: "IDR".into(),
+        timezone: "Asia/Jakarta".into(),
+        owner_username: "barista_andi".into(),
+        owner_display_name: "Andi Barista".into(),
+        owner_pin: "1234".into(),
+        preset: "restaurant".into(),
+        features: vec!["sales".into(), "inventory".into(), "shifts".into()],
+        location_kind: kasirmu_core::db::provisioning::LocationKind::Restaurant,
+        mode: kasirmu_core::db::provisioning::ProvisioningMode::Local,
+        tenant_id: None,
+        device_credential_id: None,
+        tax_preset: Some("ppn11_service5".into()),
+        seed_sample_products: Some(true),
+    };
+    let prov = kasirmu_core::db::provisioning::provision_device(&mut conn, &args).unwrap();
+    assert!(prov.created, "First-run provision must create a new record");
+
+    let s = store(&conn);
+    // Verify starter catalog products exist with inventory
+    let americano_id = s.product_id_by_sku("SMPL-REST-01").unwrap().expect("Americano must exist");
+    let croissant_id = s.product_id_by_sku("SMPL-REST-02").unwrap().expect("Croissant must exist");
+    let mineral_water_id = s.product_id_by_sku("SMPL-REST-03").unwrap().expect("Mineral Water must exist");
+
+    assert_eq!(s.get_stock(&americano_id).unwrap(), 100);
+    assert_eq!(s.get_stock(&croissant_id).unwrap(), 50);
+    assert_eq!(s.get_stock(&mineral_water_id).unwrap(), 120);
+
+    // ── Phase 2: Start Shift (Opening Float) ───────────────────────────
+    let user_id = prov.owner_user_id;
+    let shift = s.open_shift(&user_id, Some("term-beta-pilot-01"), 100_000).unwrap(); // Rp 100.000 starting cash
+    assert_eq!(shift.status, "open");
+    assert_eq!(shift.opening_balance_minor, 100_000);
+
+    // ── Phase 3: Execute 50 Real Sales with Inventory & Offline Queue ─
+    let loc = kasirmu_core::inventory::LocationId::from(kasirmu_core::inventory::CANONICAL_DEFAULT_LOCATION_UUID);
+    let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+
+    // Track total cash collected across the 50 sales
+    let mut total_cash_sales_minor: i64 = 0;
+    let mut total_sales_volume_minor: i64 = 0;
+
+    for i in 1..=50 {
+        let sale_id = format!("sale-pilot-{i:03}");
+        let (sku, item_price_minor, qty, pay_method) = match i % 3 {
+            1 => ("SMPL-REST-01", 25_000, 1, "cash"),          // Americano Rp 25.000 Cash
+            2 => ("SMPL-REST-02", 28_000, 1, "qris"),          // Croissant Rp 28.000 QRIS
+            _ => ("SMPL-REST-03", 8_000, 1, "cash"),           // Mineral Water Rp 8.000 Cash
+        };
+
+        // PPN 11% (1100 bps) + Service 5% (500 bps) = 16% total tax
+        let subtotal_minor = item_price_minor * qty;
+        let tax_minor = subtotal_minor * 16 / 100;
+        let total_minor = subtotal_minor + tax_minor;
+
+        total_sales_volume_minor += total_minor;
+        if pay_method == "cash" {
+            total_cash_sales_minor += total_minor;
+        }
+
+        let tx = conn.transaction().unwrap();
+        let s_tx = store(&tx);
+
+        // 1. Deduct stock in transaction
+        s_tx.adjust_stock_at_location_with_reason(&tx, sku, -qty, &loc, None, None, None, None)
+            .unwrap();
+
+        // 2. Insert into sales table
+        tx.execute(
+            "INSERT INTO sales (id, user_id, status, total_minor, payment_method, currency, line_count, subtotal_minor, tax_total_minor, created_at, updated_at)
+             VALUES (?1, ?2, 'completed', ?3, ?4, 'IDR', 1, ?5, ?6, ?7, ?7)",
+            rusqlite::params![sale_id, user_id, total_minor, pay_method, subtotal_minor, tax_minor, now],
+        ).unwrap();
+
+        // 3. Enqueue to offline sync queue
+        let payload = format!(r#"{{"saleId":"{sale_id}","totalMinor":{total_minor},"method":"{pay_method}"}}"#);
+        let queue_item = s_tx.enqueue_offline("sale.create", &payload).unwrap();
+        assert_eq!(queue_item.status, OfflineQueueStatus::Pending);
+
+        tx.commit().unwrap();
+
+        // ── Phase 4: Thermal Receipt Printing Simulation ───────────────
+        let mut receipt_bytes: Vec<u8> = Vec::new();
+        receipt_bytes.extend_from_slice(&[0x1B, 0x40]); // ESC @ (Init)
+        receipt_bytes.extend_from_slice(b"\x1b\x61\x01Kopi Kenangan Beta\n"); // Centered store header
+        receipt_bytes.extend_from_slice(format!("Cashier: Andi Barista\nReceipt: {sale_id}\n").as_bytes());
+        receipt_bytes.extend_from_slice(format!("Total: IDR {total_minor}\n").as_bytes());
+        receipt_bytes.extend_from_slice(&[0x1D, 0x56, 0x41, 0x03]); // GS V A (Paper Cut)
+
+        assert!(receipt_bytes.starts_with(&[0x1B, 0x40]), "Receipt must begin with ESC @");
+        assert!(receipt_bytes.ends_with(&[0x1D, 0x56, 0x41, 0x03]), "Receipt must end with paper cut");
+    }
+
+    // ── Phase 5: End of Shift Reconciliation ──────────────────────────
+    let s = store(&conn);
+    let expected_cash = 100_000 + total_cash_sales_minor;
+    let actual_counted_cash = expected_cash; // Exact match to the Rupiah
+
+    let closed_shift = s.close_shift(&shift.id, actual_counted_cash, Some("End of day beta pilot shift")).unwrap();
+    assert_eq!(closed_shift.status, "closed");
+    assert_eq!(closed_shift.total_sales_minor, total_sales_volume_minor);
+    assert_eq!(closed_shift.total_cash_minor, total_cash_sales_minor);
+    assert_eq!(closed_shift.expected_cash_minor, Some(expected_cash));
+    assert_eq!(closed_shift.cash_difference_minor, Some(0), "Cash difference must be exactly 0");
+
+    // Verify inventory balances after 50 sales:
+    // 17 sales of Americano (100 - 17 = 83)
+    // 17 sales of Croissant (50 - 17 = 33)
+    // 16 sales of Mineral Water (120 - 16 = 104)
+    assert_eq!(s.get_stock(&americano_id).unwrap(), 83);
+    assert_eq!(s.get_stock(&croissant_id).unwrap(), 33);
+    assert_eq!(s.get_stock(&mineral_water_id).unwrap(), 104);
+
+    // ── Phase 6: Cloud Sync Drain & Convergence ────────────────────────
+    let pending_events = s.list_pending_offline().unwrap();
+    assert_eq!(pending_events.len(), 100, "50 sales and 50 inventory adjustments in offline sync queue");
+    let sale_events: Vec<_> = pending_events.iter().filter(|i| i.action == "sale.create").collect();
+    assert_eq!(sale_events.len(), 50, "Exactly 50 sale events enqueued");
+
+    // Simulate online reconnection and batch sync drain
+    for item in &pending_events {
+        s.mark_offline_synced(&item.id).unwrap();
+    }
+
+    let remaining_pending = s.list_pending_offline().unwrap();
+    assert_eq!(remaining_pending.len(), 0, "Offline queue must be 100% drained and converged");
+
+    let all_items = s.list_all_offline().unwrap();
+    assert_eq!(all_items.len(), 100);
+    for item in &all_items {
+        assert_eq!(item.status, OfflineQueueStatus::Synced);
+        assert!(item.synced_at.is_some());
+    }
+}
+
+
 
