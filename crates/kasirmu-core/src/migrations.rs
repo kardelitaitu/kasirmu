@@ -458,6 +458,14 @@ pub const ALL: &[Migration] = &[
         id: "20261018_gateway_status_adr64_vocabulary.sql",
         sql: include_str!("../migrations/20261018_gateway_status_adr64_vocabulary.sql"),
     },
+    // Audit log cryptographic chain hashing for tamper detection (P1): adds
+    // `previous_hash` and `hash` to `audit_log`. Date 20261019 sorts last and
+    // only adds columns, so it re-applies cleanly under the statement-level
+    // drift fallback.
+    Migration {
+        id: "20261019_audit_chain_hash.sql",
+        sql: include_str!("../migrations/20261019_audit_chain_hash.sql"),
+    },
 ];
 
 /// Postgres DDL for the full schema, parallel to the SQLite `init.sql`.

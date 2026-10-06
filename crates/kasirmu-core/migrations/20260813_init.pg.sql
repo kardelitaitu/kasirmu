@@ -283,6 +283,8 @@ BEGIN
             ('audit_log', 'details', 'TEXT', '''{}''', false),
             ('audit_log', 'outcome', 'TEXT', '''success''', true),
             ('audit_log', 'created_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('audit_log', 'previous_hash', 'TEXT', NULL::text, false),
+            ('audit_log', 'hash', 'TEXT', '''''', true),
             ('audit_review_checkpoints', 'id', 'TEXT', NULL::text, true),
             ('audit_review_checkpoints', 'store_id', 'TEXT', NULL::text, true),
             ('audit_review_checkpoints', 'reviewer_user_id', 'TEXT', NULL::text, true),
@@ -1434,7 +1436,7 @@ CREATE TABLE IF NOT EXISTS audit_log (
     details     TEXT DEFAULT '{}',                         -- JSON blob with action-specific metadata
     outcome     TEXT NOT NULL DEFAULT 'success',           -- "success" or "failure"
     created_at  TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'))
-);
+, previous_hash TEXT, hash TEXT NOT NULL DEFAULT '');
 
 CREATE TABLE IF NOT EXISTS audit_review_checkpoints (
     id                           TEXT PRIMARY KEY,

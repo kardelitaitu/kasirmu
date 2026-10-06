@@ -1501,3 +1501,159 @@ fn log_audit_in_tx_drops_writes_when_rate_limited() {
 
     reset_audit_rate_limit_for_test();
 }
+
+// ── Chain-Hash Tamper Detection (P1) ────────────────────────────
+
+#[test]
+fn audit_chain_hash_populates_previous_hash_and_hash_on_write() {
+    let conn = fresh();
+    let s = store(&conn);
+    reset_audit_rate_limit_for_test();
+
+    let entry1 = AuditEntry::new(
+        "user-1",
+        "sale.create",
+        Some("sale".to_string()),
+        Some("sale-1".to_string()),
+        Some("{\"total\":100}".to_string()),
+        "success",
+    );
+    s.log_audit(&entry1).unwrap();
+
+    let entry2 = AuditEntry::new(
+        "user-2",
+        "sale.void",
+        Some("sale".to_string()),
+        Some("sale-1".to_string()),
+        Some("{\"reason\":\"error\"}".to_string()),
+        "success",
+    );
+    s.log_audit(&entry2).unwrap();
+
+    // Verify row 1 has NULL previous_hash and valid hash
+    let (prev1, hash1): (Option<String>, String) = conn
+        .query_row(
+            "SELECT previous_hash, hash FROM audit_log WHERE id = ?1",
+            rusqlite::params![entry1.id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .unwrap();
+    assert!(prev1.is_none());
+    assert!(!hash1.is_empty());
+    assert_eq!(hash1.len(), 64); // SHA-256 hex is 64 chars
+
+    // Verify row 2 has previous_hash matching hash 1
+    let (prev2, hash2): (Option<String>, String) = conn
+        .query_row(
+            "SELECT previous_hash, hash FROM audit_log WHERE id = ?1",
+            rusqlite::params![entry2.id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!(prev2.as_deref(), Some(hash1.as_str()));
+    assert!(!hash2.is_empty());
+    assert_eq!(hash2.len(), 64);
+    assert_ne!(hash1, hash2);
+
+    // Chain verification passes
+    let res = s.verify_audit_chain().unwrap();
+    assert!(res.is_valid);
+    assert_eq!(res.total_checked, 2);
+    assert!(res.broken_at_id.is_none());
+}
+
+#[test]
+fn audit_chain_verification_detects_field_tampering() {
+    let conn = fresh();
+    let s = store(&conn);
+    reset_audit_rate_limit_for_test();
+
+    for i in 1..=3 {
+        let entry = AuditEntry::new(
+            format!("user-{i}"),
+            "product.update",
+            Some("product".to_string()),
+            Some(format!("prod-{i}")),
+            Some(format!("{{\"field\":\"price_{i}\"}}")),
+            "success",
+        );
+        s.log_audit(&entry).unwrap();
+    }
+
+    // Tamper with the second entry by dropping the immutable trigger and updating details
+    conn.execute_batch(
+        "DROP TRIGGER audit_log_immutable_update;
+         UPDATE audit_log SET details = '{\"tampered\":true}' WHERE action = 'product.update' AND user_id = 'user-2';",
+    )
+    .unwrap();
+
+    let res = s.verify_audit_chain().unwrap();
+    assert!(!res.is_valid);
+    assert_eq!(res.total_checked, 1); // Row 1 was valid, broke on row 2
+    assert!(res.broken_at_id.is_some());
+}
+
+#[test]
+fn audit_chain_verification_detects_chain_discontinuity() {
+    let conn = fresh();
+    let s = store(&conn);
+    reset_audit_rate_limit_for_test();
+
+    let mut ids = Vec::new();
+    for i in 1..=3 {
+        let entry = AuditEntry::new(
+            format!("user-{i}"),
+            "staff.create",
+            Some("staff".to_string()),
+            Some(format!("staff-{i}")),
+            Some("{}".to_string()),
+            "success",
+        );
+        s.log_audit(&entry).unwrap();
+        ids.push(entry.id);
+    }
+
+    // Delete the middle entry (row 2)
+    conn.execute_batch(&format!(
+        "DROP TRIGGER audit_log_immutable_delete;
+         DELETE FROM audit_log WHERE id = '{}';",
+        ids[1]
+    ))
+    .unwrap();
+
+    let res = s.verify_audit_chain().unwrap();
+    assert!(!res.is_valid);
+    // Row 3's previous_hash pointed to deleted row 2, which does not match row 1's hash
+    assert_eq!(res.broken_at_id.as_deref(), Some(ids[2].as_str()));
+}
+
+#[test]
+fn audit_chain_verification_grandfathers_unhashed_rows() {
+    let conn = fresh();
+    let s = store(&conn);
+    reset_audit_rate_limit_for_test();
+
+    // Insert legacy grandfathered row directly (hash = '')
+    conn.execute(
+        "INSERT INTO audit_log (id, user_id, action, target_type, target_id, details, outcome, created_at, previous_hash, hash)
+         VALUES ('legacy-1', 'system', 'seed', NULL, NULL, '{}', 'success', '2024-01-01T00:00:00.000Z', NULL, '')",
+        [],
+    )
+    .unwrap();
+
+    // Insert new hashed rows via log_audit
+    let entry = AuditEntry::new(
+        "user-1",
+        "sale.create",
+        Some("sale".to_string()),
+        Some("sale-100".to_string()),
+        Some("{}".to_string()),
+        "success",
+    );
+    s.log_audit(&entry).unwrap();
+
+    let res = s.verify_audit_chain().unwrap();
+    assert!(res.is_valid);
+    assert_eq!(res.total_checked, 1); // Checked the 1 hashed row
+    assert!(res.broken_at_id.is_none());
+}

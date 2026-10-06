@@ -19,6 +19,8 @@ next: none | perf: SQL-computed counts per AUD-02/03
 
 use std::sync::atomic::{AtomicU64, Ordering};
 
+use rusqlite::OptionalExtension;
+
 use crate::AuditEntry;
 use crate::error::CoreError;
 
@@ -302,6 +304,57 @@ pub(crate) fn set_audit_rate_limit_for_test(count: u64, window_start_secs: u64) 
     AUDIT_WINDOW_START.store(window_start_secs, Ordering::Relaxed);
 }
 
+/// Canonical SHA-256 hash calculation for an audit log entry (P1).
+///
+/// Hashing payload format:
+/// `{previous_hash}|{id}|{user_id}|{action}|{target_type}|{target_id}|{details}|{outcome}|{created_at}`
+pub fn compute_audit_entry_hash(
+    previous_hash: Option<&str>,
+    id: &str,
+    user_id: &str,
+    action: &str,
+    target_type: Option<&str>,
+    target_id: Option<&str>,
+    details: &str,
+    outcome: &str,
+    created_at: &str,
+) -> String {
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    let prev = previous_hash.unwrap_or("");
+    let tt = target_type.unwrap_or("");
+    let ti = target_id.unwrap_or("");
+    hasher.update(prev.as_bytes());
+    hasher.update(b"|");
+    hasher.update(id.as_bytes());
+    hasher.update(b"|");
+    hasher.update(user_id.as_bytes());
+    hasher.update(b"|");
+    hasher.update(action.as_bytes());
+    hasher.update(b"|");
+    hasher.update(tt.as_bytes());
+    hasher.update(b"|");
+    hasher.update(ti.as_bytes());
+    hasher.update(b"|");
+    hasher.update(details.as_bytes());
+    hasher.update(b"|");
+    hasher.update(outcome.as_bytes());
+    hasher.update(b"|");
+    hasher.update(created_at.as_bytes());
+    hex::encode(hasher.finalize())
+}
+
+/// Result of an audit log hash chain verification sweep (P1).
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct AuditChainVerificationResult {
+    /// Total number of hashed entries checked.
+    pub total_checked: u64,
+    /// Whether the hash chain is unbroken and untampered.
+    pub is_valid: bool,
+    /// ID of the first broken entry, if tamper or discontinuity was detected.
+    pub broken_at_id: Option<String>,
+}
+
 /// The single INSERT body shared by BOTH writer states ([`Store::log_audit`]
 /// in autocommit and inside a caller's transaction, and
 /// [`Store::log_audit_in_tx`]).
@@ -316,13 +369,37 @@ fn insert_audit(conn: &rusqlite::Connection, entry: &AuditEntry) -> Result<(), C
         return Ok(());
     }
     let details = sanitize_details(&entry.details);
+
+    // Read previous row's hash (P1 chain-hash).
+    // Grandfathered rows have hash == '', so we query the latest row where hash != ''.
+    let previous_hash: Option<String> = conn
+        .query_row(
+            "SELECT hash FROM audit_log WHERE hash != '' ORDER BY created_at DESC, id DESC LIMIT 1",
+            [],
+            |row| row.get(0),
+        )
+        .optional()?;
+
+    let hash = compute_audit_entry_hash(
+        previous_hash.as_deref(),
+        &entry.id,
+        &entry.user_id,
+        &entry.action,
+        entry.target_type.as_deref(),
+        entry.target_id.as_deref(),
+        &details,
+        &entry.outcome,
+        &entry.created_at,
+    );
+
     conn.execute(
-        "INSERT INTO audit_log (id, user_id, action, target_type, target_id, details, outcome, created_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+        "INSERT INTO audit_log (id, user_id, action, target_type, target_id, details, outcome, created_at, previous_hash, hash)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
         rusqlite::params![
             entry.id, entry.user_id, entry.action,
             entry.target_type, entry.target_id,
             details, entry.outcome, entry.created_at,
+            previous_hash, hash,
         ],
     )?;
     Ok(())
@@ -790,17 +867,80 @@ impl Store<'_> {
             Some(details),
             "success",
         );
-        tx.execute(
-            "INSERT INTO audit_log (id, user_id, action, target_type, target_id, details, outcome, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-            rusqlite::params![
-                event.id, event.user_id, event.action,
-                event.target_type, event.target_id,
-                event.details, event.outcome, event.created_at,
-            ],
-        )?;
+        insert_audit(&tx, &event)?;
         tx.commit()?;
         Ok(())
+    }
+
+    /// Verify the integrity of the audit log hash chain (P1).
+    ///
+    /// Walks the audit log in chronological order starting from the first hashed entry.
+    /// For each entry, validates that:
+    /// 1. Its `previous_hash` matches the preceding entry's `hash`.
+    /// 2. Its `hash` matches the recomputed canonical SHA-256 hash.
+    pub fn verify_audit_chain(&self) -> Result<AuditChainVerificationResult, CoreError> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, user_id, action, target_type, target_id, details, outcome, created_at, previous_hash, hash
+             FROM audit_log
+             WHERE hash != ''
+             ORDER BY created_at ASC, id ASC",
+        )?;
+
+        let mut rows = stmt.query([])?;
+        let mut expected_previous: Option<String> = None;
+        let mut total_checked = 0u64;
+
+        while let Some(row) = rows.next()? {
+            let id: String = row.get(0)?;
+            let user_id: String = row.get(1)?;
+            let action: String = row.get(2)?;
+            let target_type: Option<String> = row.get(3)?;
+            let target_id: Option<String> = row.get(4)?;
+            let details: String = row.get(5)?;
+            let outcome: String = row.get(6)?;
+            let created_at: String = row.get(7)?;
+            let previous_hash: Option<String> = row.get(8)?;
+            let stored_hash: String = row.get(9)?;
+
+            // Continuity check: previous_hash must match preceding entry's hash
+            if previous_hash != expected_previous {
+                return Ok(AuditChainVerificationResult {
+                    total_checked,
+                    is_valid: false,
+                    broken_at_id: Some(id),
+                });
+            }
+
+            // Integrity check: stored hash must match computed hash
+            let computed_hash = compute_audit_entry_hash(
+                previous_hash.as_deref(),
+                &id,
+                &user_id,
+                &action,
+                target_type.as_deref(),
+                target_id.as_deref(),
+                &details,
+                &outcome,
+                &created_at,
+            );
+
+            if stored_hash != computed_hash {
+                return Ok(AuditChainVerificationResult {
+                    total_checked,
+                    is_valid: false,
+                    broken_at_id: Some(id),
+                });
+            }
+
+            expected_previous = Some(stored_hash);
+            total_checked += 1;
+        }
+
+        Ok(AuditChainVerificationResult {
+            total_checked,
+            is_valid: true,
+            broken_at_id: None,
+        })
     }
 
     /// Most recent review checkpoint for this store (newest first).
