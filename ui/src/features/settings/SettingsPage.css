@@ -211,16 +211,38 @@
     color var(--duration-100) var(--ease-out);
 }
 
-.settings-back-btn:hover {
+/* Off-canvas sidebar drawer toggle button for narrow viewports. Hidden on desktop. */
+.settings-topbar-menu-btn {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: var(--touch-target-min);
+  height: var(--touch-target-min);
+  padding: 0;
+  border: none;
+  flex-shrink: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-fg-secondary);
+  cursor: pointer;
+  transition:
+    background-color var(--duration-100) var(--ease-out),
+    color var(--duration-100) var(--ease-out);
+}
+
+.settings-back-btn:hover,
+.settings-topbar-menu-btn:hover {
   background: var(--color-bg-elevated);
   color: var(--color-fg);
 }
 
-.settings-back-btn:focus-visible {
+.settings-back-btn:focus-visible,
+.settings-topbar-menu-btn:focus-visible {
   box-shadow: inset 0 0 0 1px var(--color-accent);
 }
 
-.settings-back-btn svg {
+.settings-back-btn svg,
+.settings-topbar-menu-btn svg {
   width: 1.25rem;
   height: 1.25rem;
 }
@@ -436,6 +458,10 @@
     width: 2rem;
     height: 2rem;
   }
+
+  .settings-footer-shortcut {
+    display: none;
+  }
 }
 
 /* ── Memo stack bottom clearance (settings route) ─────────── */
@@ -479,6 +505,10 @@ body:has(.settings-footer) {
 
 /* ── Responsive: mobile layout adjustments ──────────────────── */
 @media (max-width: 768px) {
+  .settings-topbar-menu-btn {
+    display: inline-flex;
+  }
+
   .settings-topbar-search-input {
     width: 10rem;
   }
@@ -506,7 +536,21 @@ body:has(.settings-footer) {
   }
 }
 
+@media (max-width: 640px) {
+  .settings-topbar-name {
+    max-width: 9rem;
+  }
+}
+
 @media (max-width: 480px) {
+  .settings-topbar-icon {
+    display: none;
+  }
+
+  .settings-topbar-search-input {
+    width: 7rem;
+  }
+
   .settings-footer-right {
     display: none;
   }
@@ -1191,6 +1235,17 @@ body:has(.settings-footer) {
 
 html[data-shell='tablet'] .settings-topbar {
   padding: var(--space-2) var(--space-4);
+}
+
+/* Tablet keeps the sidebar persistent in-flow (SettingsNavTree.css:811), so the
+   off-canvas hamburger menu button remains hidden on tablet viewports. */
+html[data-shell='tablet'] .settings-topbar-menu-btn {
+  display: none;
+}
+
+/* Tablet is operated by touch: hide desktop Ctrl+S keyboard shortcut. */
+html[data-shell='tablet'] .settings-footer-shortcut {
+  display: none;
 }
 
 html[data-shell='tablet'] .settings-section-content {

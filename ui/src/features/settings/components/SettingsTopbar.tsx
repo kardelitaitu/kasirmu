@@ -52,7 +52,6 @@ import { useMemo } from 'react';
 
 import { Localized, useLocalization } from '@fluent/react';
 import { Button } from '@/components/Button';
-import Tooltip from '@/app/Tooltip';
 import { ContextMenu, useContextMenu, requiredLocalized } from '@/components';
 import { useWorkspaceNav } from '@/hooks/useWorkspaceNav';
 import { NAV_ITEMS, NAV_L10N_KEYS } from '../SettingsNavTree';
@@ -63,6 +62,8 @@ interface SettingsTopbarProps {
   /** Threaded because the sidebar filter reads the same page state. */
   searchQuery: string;
   onSearchChange: (value: string) => void;
+  /** Callback to open off-canvas sidebar drawer on narrow viewports. */
+  onOpenMobileSidebar?: () => void;
   /** Drives the dirty dot, the Revert button's hidden class and its tabIndex. */
   isDirty: boolean;
   saving: boolean;
@@ -76,6 +77,7 @@ export function SettingsTopbar({
   activeSection,
   searchQuery,
   onSearchChange,
+  onOpenMobileSidebar,
   isDirty,
   saving,
   saved,
@@ -120,18 +122,30 @@ export function SettingsTopbar({
       <header className="settings-topbar">
         {/* COL 1: back + title (the lead group, pinned to the start) */}
         <div className="settings-topbar__col settings-topbar__col--lead">
-          <Tooltip content={l10n.getString('settings-back-aria')} fit="inline" portal>
+          {onOpenMobileSidebar && (
             <button
               type="button"
-              className="settings-back-btn"
-              onClick={() => goToWorkspacePicker()}
-              aria-label={l10n.getString('settings-back-aria')}
+              className="settings-topbar-menu-btn"
+              onClick={onOpenMobileSidebar}
+              aria-label={l10n.getString('settings-sidebar-expand-aria')}
             >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <polyline points="16 5 8 12 16 19" />
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <line x1="3" y1="12" x2="21" y2="12" />
+                <line x1="3" y1="6" x2="21" y2="6" />
+                <line x1="3" y1="18" x2="21" y2="18" />
               </svg>
             </button>
-          </Tooltip>
+          )}
+          <button
+            type="button"
+            className="settings-back-btn"
+            onClick={() => goToWorkspacePicker()}
+            aria-label={l10n.getString('settings-back-aria')}
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <polyline points="16 5 8 12 16 19" />
+            </svg>
+          </button>
           <div className="settings-topbar-icon" aria-hidden="true">
             {currentNavItem?.icon ?? (
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">

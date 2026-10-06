@@ -412,6 +412,7 @@ function SettingsPageContent() {
         activeSection={activeSection}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
+        onOpenMobileSidebar={() => setMobileSidebarOpen(true)}
         isDirty={isDirty}
         saving={saving}
         saved={saved}

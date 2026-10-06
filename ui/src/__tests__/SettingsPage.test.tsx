@@ -637,6 +637,26 @@ describe('SettingsPage load lifecycle and chrome (kept)', () => {
     });
   });
 
+  it('opens mobile sidebar drawer when clicking the topbar menu button', async () => {
+    await openShell();
+    const sidebar = screen.getByTestId('settings-sidebar');
+    expect(sidebar).not.toHaveClass('mobile-open');
+
+    const expandAria = ftlValue('settings-sidebar-expand-aria');
+    const menuBtn = screen.getByRole('button', { name: expandAria });
+    expect(menuBtn).toHaveClass('settings-topbar-menu-btn');
+
+    fireEvent.click(menuBtn);
+    expect(sidebar).toHaveClass('mobile-open');
+    const backdrop = document.querySelector('.settings-sidebar-backdrop');
+    expect(backdrop).toHaveClass('visible');
+
+    // Dismiss via backdrop click
+    fireEvent.click(backdrop as HTMLElement);
+    expect(sidebar).not.toHaveClass('mobile-open');
+    expect(backdrop).not.toHaveClass('visible');
+  });
+
   it('does not block window close while nothing is dirty', async () => {
     await openShell();
     const event = new Event('beforeunload', { cancelable: true, bubbles: true });
