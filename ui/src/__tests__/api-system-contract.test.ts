@@ -53,6 +53,17 @@ describe('system.ts IPC contract', () => {
     expect(result.version).toBe('0.0.37');
   });
 
+  it('getVersionScoped falls back to getVersion when version_scoped is not found', async () => {
+    mockInvoke
+      .mockRejectedValueOnce(new Error('Command version_scoped not found'))
+      .mockResolvedValueOnce(VERSION);
+    const result = await getVersionScoped('tok_sys');
+    expect(mockInvoke).toHaveBeenCalledWith('version_scoped', { sessionToken: 'tok_sys' });
+    expect(mockInvoke).toHaveBeenCalledWith('version', undefined);
+    expect(result.version).toBe('0.0.37');
+  });
+
+
   it('getLocalIp → get_local_ip (no args)', async () => {
     mockInvoke.mockResolvedValue('192.168.1.100');
     const result = await getLocalIp();
