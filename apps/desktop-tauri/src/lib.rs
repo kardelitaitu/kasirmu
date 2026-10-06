@@ -991,8 +991,10 @@ pub fn run() {
                         // published by commands/kds.rs to LAN KDS peers,
                         // station-filtered per peer subscription.
                         bus.subscribe("kds.sync", Box::new(handle.kds_sync_handler()));
+                        // table-sync: forwards table status changes across LAN peers.
+                        bus.subscribe("table.sync", Box::new(handle.table_sync_handler()));
                         tracing::info!(
-                            "LAN event forwarder handlers registered for sale.completed, order.course_fired and kds.sync"
+                            "LAN event forwarder handlers registered for sale.completed, order.course_fired, kds.sync, and table.sync"
                         );
                         registered = true;
                         break;

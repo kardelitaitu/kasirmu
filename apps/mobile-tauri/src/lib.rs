@@ -709,6 +709,7 @@ pub fn run() {
                 // up to 40 images per cycle with 2 GETs in flight; LRU
                 // eviction keeps the cache within the 256 MB budget.
                 // Wakes on jittered cadence (configurable via OZ_IMG_PULL_*).
+                let img_app_handle = app_handle.clone();
                 platform_startup::spawn_daemon("tablet image download", async move {
                     let mut manager = crate::image_download::ImageDownloadManager::new();
                     // Initial delay so the daemon doesn't hammer on boot.
@@ -717,7 +718,7 @@ pub fn run() {
                     ))
                     .await;
                     loop {
-                        match app_handle.try_state::<AppState>() {
+                        match img_app_handle.try_state::<AppState>() {
                             Some(state) => {
                                 let cache_dir = state
                                     .app
@@ -741,6 +742,62 @@ pub fn run() {
                             crate::image_download::jitter_max(),
                         ))
                         .await;
+                    }
+                });
+
+                // ── LAN peer client daemon (Track 2 / 3 multi-terminal sync) ──
+                // Connects to the local store LAN server (if configured), receives
+                // live table occupancy transitions, KDS order bumps, and course firing,
+                // and broadcasts them to the WebView via Tauri events.
+                let lan_app_handle = app_handle.clone();
+                platform_startup::spawn_daemon("tablet lan client", async move {
+                    let mut backoff_check = std::time::Duration::from_secs(5);
+                    loop {
+                        let config_opt = if let Some(state) = lan_app_handle.try_state::<AppState>() {
+                            let db = state.db.lock().await;
+                            let server_addr = kasirmu_core::Settings::get(&db, "lan_client.server_addr")
+                                .ok()
+                                .flatten()
+                                .filter(|s| !s.trim().is_empty());
+                            let psk = platform_core::settings::Settings::get_lan_server_psk(&db)
+                                .ok()
+                                .flatten()
+                                .filter(|s| !s.trim().is_empty());
+                            let terminal_id = state.terminal_id.lock().await.clone();
+                            drop(db);
+                            server_addr.map(|addr| kasirmu_lan::LanClientConfig {
+                                server_addr: addr,
+                                psk,
+                                device_id: terminal_id,
+                                station_ids: vec![],
+                                want_queue: true,
+                            })
+                        } else {
+                            None
+                        };
+
+                        if let Some(config) = config_opt {
+                            let (_client_handle, mut rx) = kasirmu_lan::start_lan_client(config);
+                            while let Ok(event) = rx.recv().await {
+                                match event {
+                                    kasirmu_lan::LanEvent::Table(kasirmu_lan::TableSyncEvent::StatusChanged(sc)) => {
+                                        let _ = lan_app_handle.emit("tables:status-changed", &sc.table);
+                                    }
+                                    kasirmu_lan::LanEvent::Kds(_) => {
+                                        let _ = lan_app_handle.emit("kds:orders-changed", serde_json::Value::Null);
+                                    }
+                                    kasirmu_lan::LanEvent::RawJson(raw) => {
+                                        if raw.contains("order.course_fired") || raw.contains("sale.completed") {
+                                            let _ = lan_app_handle.emit("kds:orders-changed", serde_json::Value::Null);
+                                        }
+                                    }
+                                    kasirmu_lan::LanEvent::Discovery(_) => {}
+                                }
+                            }
+                        }
+
+                        tokio::time::sleep(backoff_check).await;
+                        backoff_check = std::cmp::min(backoff_check * 2, std::time::Duration::from_secs(30));
                     }
                 });
 

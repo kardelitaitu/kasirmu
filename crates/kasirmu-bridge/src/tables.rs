@@ -83,6 +83,7 @@ pub async fn create_table_scoped(
     let store = Store::new(&db);
     let result = store.create_table(&table)?;
     drop(db);
+    emit_table_status_changed(ctx, &result);
     Ok(result)
 }
 
@@ -106,6 +107,7 @@ pub async fn update_table_scoped(
     let store = Store::new(&db);
     let result = store.update_table(&table)?;
     drop(db);
+    emit_table_status_changed(ctx, &result);
     Ok(result)
 }
 
@@ -129,6 +131,9 @@ pub async fn delete_table_scoped(
     let store = Store::new(&db);
     store.delete_table(id)?;
     drop(db);
+    if let Some(emitter) = &ctx.emitter {
+        emitter.emit("tables:deleted", serde_json::json!({ "id": id }));
+    }
     Ok(())
 }
 
@@ -153,6 +158,7 @@ pub async fn update_table_status_scoped(
     let store = Store::new(&db);
     let table = store.update_table_status(id, status)?;
     drop(db);
+    emit_table_status_changed(ctx, &table);
     Ok(table)
 }
 
@@ -177,6 +183,7 @@ pub async fn assign_table_order_scoped(
     let store = Store::new(&db);
     let table = store.assign_table_order(table_id, sale_id)?;
     drop(db);
+    emit_table_status_changed(ctx, &table);
     Ok(table)
 }
 
@@ -200,7 +207,16 @@ pub async fn release_table_scoped(
     let store = Store::new(&db);
     let table = store.release_table(table_id)?;
     drop(db);
+    emit_table_status_changed(ctx, &table);
     Ok(table)
+}
+
+fn emit_table_status_changed(ctx: &BridgeCtx<'_>, table: &Table) {
+    if let Some(emitter) = &ctx.emitter {
+        if let Ok(val) = serde_json::to_value(table) {
+            emitter.emit("tables:status-changed", val);
+        }
+    }
 }
 
 #[cfg(test)]

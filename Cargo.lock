@@ -3648,6 +3648,7 @@ dependencies = [
  "kasirmu-bridge",
  "kasirmu-core",
  "kasirmu-hal",
+ "kasirmu-lan",
  "kasirmu-logging",
  "kasirmu-plugin",
  "kasirmu-reporting",

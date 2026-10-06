@@ -13,6 +13,7 @@ import {
   releaseTableScoped,
   type Table,
 } from '@/api/tables';
+import { listen } from '@/api/tauri';
 import './TableManagementScreen.css';
 
 /** Vector Grid icon for empty floor plan state */
@@ -135,6 +136,45 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
     if (!sessionToken) return;
     void loadTables();
   }, [loadTables, sessionToken, refreshKey]);
+
+  // Real-time floor plan synchronization via Tauri events (emitted locally or received via LAN forwarder)
+  useEffect(() => {
+    let unlistenStatus: (() => void) | undefined;
+    let unlistenDeleted: (() => void) | undefined;
+    let cancelled = false;
+
+    listen<Table>('tables:status-changed', (event) => {
+      const updated = event.payload;
+      if (updated && updated.id) {
+        setTables((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
+        setSelected((curr) => (curr && curr.id === updated.id ? updated : curr));
+      }
+    })
+      .then((fn) => {
+        if (cancelled) fn();
+        else unlistenStatus = fn;
+      })
+      .catch(() => {});
+
+    listen<{ id: string }>('tables:deleted', (event) => {
+      const { id } = event.payload;
+      if (id) {
+        setTables((prev) => prev.filter((t) => t.id !== id));
+        setSelected((curr) => (curr && curr.id === id ? null : curr));
+      }
+    })
+      .then((fn) => {
+        if (cancelled) fn();
+        else unlistenDeleted = fn;
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+      unlistenStatus?.();
+      unlistenDeleted?.();
+    };
+  }, []);
 
   const retry = useCallback(() => setRefreshKey((k) => k + 1), []);
 

@@ -176,6 +176,70 @@ where
         .map_err(|e| handshake_failed("transport switch", e))
 }
 
+/// Perform the client (initiator) side of the noise-psk-v1 handshake.
+///
+/// Sends the selector byte `0x01`, then message 1 (`-> e`), reads message 2
+/// (`<- e ee s es`), then sends message 3 (`-> s es psk3`) where the PSK
+/// authenticates the initiator. Every step is bounded by `PSK_HANDSHAKE_TIMEOUT_SECS`.
+pub(crate) async fn noise_handshake_initiator<S>(
+    stream: &mut S,
+    psk: &str,
+) -> std::io::Result<snow::TransportState>
+where
+    S: AsyncRead + AsyncWrite + Unpin,
+{
+    let dur = std::time::Duration::from_secs(crate::PSK_HANDSHAKE_TIMEOUT_SECS);
+    tokio::io::AsyncWriteExt::write_all(stream, &[NOISE_MAGIC_BYTE]).await?;
+
+    let params: snow::params::NoiseParams = NOISE_PATTERN
+        .parse()
+        .map_err(|e| handshake_failed("pattern", e))?;
+    let static_secret = noise_static_secret(psk);
+    let psk_bytes = noise_psk_bytes(psk);
+    let mut hs = snow::Builder::new(params)
+        .local_private_key(&static_secret)
+        .map_err(|e| handshake_failed("static key", e))?
+        .psk(3, &psk_bytes)
+        .map_err(|e| handshake_failed("psk", e))?
+        .build_initiator()
+        .map_err(|e| handshake_failed("initiator init", e))?;
+    let mut buf = vec![0u8; NOISE_MAX_FRAME];
+
+    // Message 1: -> e
+    let n = hs
+        .write_message(&[], &mut buf)
+        .map_err(|e| handshake_failed("msg1 write", e))?;
+    match tokio::time::timeout(dur, write_frame(stream, &buf[..n])).await {
+        Ok(Ok(())) => {}
+        Ok(Err(e)) => return Err(e),
+        Err(_) => return Err(handshake_timeout("msg1 write")),
+    }
+
+    // Message 2: <- e ee s es
+    let msg2 = match tokio::time::timeout(dur, read_frame(stream)).await {
+        Ok(Ok(m)) => m,
+        Ok(Err(e)) => return Err(e),
+        Err(_) => return Err(handshake_timeout("msg2 read")),
+    };
+    let mut pt = vec![0u8; msg2.len()];
+    if let Err(e) = hs.read_message(&msg2, &mut pt) {
+        return Err(handshake_failed("msg2 read", e));
+    }
+
+    // Message 3: -> s es psk3
+    let n = hs
+        .write_message(&[], &mut buf)
+        .map_err(|e| handshake_failed("msg3 write", e))?;
+    match tokio::time::timeout(dur, write_frame(stream, &buf[..n])).await {
+        Ok(Ok(())) => {}
+        Ok(Err(e)) => return Err(e),
+        Err(_) => return Err(handshake_timeout("msg3 write")),
+    }
+
+    hs.into_transport_mode()
+        .map_err(|e| handshake_failed("transport switch", e))
+}
+
 /// Write surface for one authenticated peer session.
 ///
 /// `Plain` preserves the original wire format (newline-delimited JSON).

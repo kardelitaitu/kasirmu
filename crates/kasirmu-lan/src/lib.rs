@@ -132,9 +132,11 @@ use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::broadcast;
 
+pub mod client;
 mod kds_sync;
 mod noise;
 mod replay;
+pub mod table_sync;
 
 use replay::{OfflineReplayBuffer, ReplayKey};
 
@@ -146,11 +148,16 @@ pub(crate) use noise::{
 #[cfg(test)]
 pub(crate) use noise::{NOISE_MAX_FRAME, NOISE_PATTERN, noise_psk_bytes, noise_static_secret};
 
+pub use client::{LanClientConfig, LanClientHandle, LanEvent, start_lan_client};
 pub use kds_sync::{
     EVENT_LINE_ITEM_BUMPED, EVENT_ORDER_PLACED, EVENT_ORDER_READY, EVENT_ORDER_RECALLED,
     KDS_EVENT_TAG_PREFIX, KdsLineItemBumped, KdsOrderPlaced, KdsOrderReady, KdsOrderRecalled,
     KdsQueueProvider, KdsQueueSnapshot, KdsQueueTicket, KdsSyncEvent, KdsSyncHandler,
     PeerSubscription, event_station_scope, should_deliver,
+};
+pub use table_sync::{
+    EVENT_TABLE_STATUS_CHANGED, TABLE_EVENT_TAG_PREFIX, TableStatusChanged, TableSyncEvent,
+    TableSyncHandler,
 };
 
 /// Whether a bind address is loopback-only (LAN-A).
@@ -965,6 +972,20 @@ impl LanForwarderHandle {
         KdsSyncHandler {
             tx: self.tx.clone(),
         }
+    }
+
+    /// Create an `EventHandler<TableSyncEvent>` that serialises the
+    /// table state transition event to JSON and broadcasts it to connected
+    /// LAN peers.
+    pub fn table_sync_handler(&self) -> TableSyncHandler {
+        TableSyncHandler {
+            tx: self.tx.clone(),
+        }
+    }
+
+    /// Broadcast a JSON line to all connected LAN peers.
+    pub fn broadcast(&self, event_json: String) {
+        let _ = self.tx.send(event_json);
     }
 }
 
