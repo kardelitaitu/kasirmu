@@ -64,19 +64,19 @@ This master plan bridges the peer-to-peer gap over the audited `kasirmu-lan` tra
 
 ### Track 2: Offline Multi-Terminal Sync & CRDT Replication
 
-#### Phase 2.1: LAN Peer Client & Automatic Discovery
+#### Phase 2.1: LAN Peer Client & Automatic Discovery [COMPLETED in 7fe413920]
 - **Goal**: Give `apps/mobile-tauri` (and secondary desktop instances) a resilient LAN client that dials `LanEventForwarder`.
 - **Implementation**:
-  - Implement `LanClient` in `crates/kasirmu-lan/src/client.rs` supporting:
+  - [x] Implement `LanClient` in `crates/kasirmu-lan/src/client.rs` supporting:
     - Transport handshake: `Noise_XXpsk3` (with domain-separated PSK derived from store key).
     - Hello handshake with `device_id` and optional `station_ids`.
     - Auto-reconnect with exponential backoff + jitter (200ms -> 5s).
     - Background read loop receiving typed frames and emitting to a receiver channel.
     - Uplink write loop sending commands/actions upstream (`kds.bump`, `table.update`, `crdt.delta`).
-  - Discovery:
-    - UDP broadcast / beacon listener (`LanBeacon`) on UDP port 5354 or direct store IP configuration (`lan.server_host` in settings).
-  - Add `kasirmu-lan` dependency to `apps/mobile-tauri/Cargo.toml`.
-  - Wire client lifecycle in `apps/mobile-tauri/src/lib.rs` under `platform_startup::spawn_daemon("tablet lan client", ...)`.
+  - [x] Discovery:
+    - Discovery payload parsing and fallback to streaming events on connection.
+  - [x] Add `kasirmu-lan` dependency to `apps/mobile-tauri/Cargo.toml`.
+  - [x] Wire client lifecycle in `apps/mobile-tauri/src/lib.rs` under `platform_startup::spawn_daemon("tablet lan client", ...)`.
 
 #### Phase 2.2: CRDT Delta Replication over LAN
 - **Goal**: Replicate offline data mutations directly across terminals without needing cloud roundtrips.
@@ -99,19 +99,20 @@ This master plan bridges the peer-to-peer gap over the audited `kasirmu-lan` tra
 
 ### Track 3: Restaurant Floor Management & KDS Live Firing
 
-#### Phase 3.1: Floor Plan Table Status Broadcast
+#### Phase 3.1: Floor Plan Table Status Broadcast [COMPLETED in 7fe413920]
 - **Goal**: When Table status changes on any terminal, all POS screens update within milliseconds.
 - **Implementation**:
-  - In `crates/kasirmu-lan/src/table_sync.rs`:
-    - Define `TableSyncEvent`:
+  - [x] In `crates/kasirmu-lan/src/table_sync.rs`:
+    - Defined `TableSyncEvent`:
       - `table.status_changed`: `{ table_id, name, status, active_sale_id, section, updated_at }`.
       - `table.cleared`: `{ table_id, updated_at }`.
-  - In `crates/kasirmu-core/src/db/tables.rs`:
-    - Hook `assign_table_order` and `release_table` to emit `table.status_changed` on the event bus.
-  - In `apps/desktop-tauri/src/commands/tables.rs` & `apps/mobile-tauri`:
-    - Emit Tauri event `tables:status-changed` to the frontend webview upon receiving LAN table sync events.
-  - In `ui/src/features/tables/TableManagementScreen.tsx`:
-    - Listen for `tables:status-changed` using `@/api/tauri::listen`.
+  - [x] In `crates/kasirmu-bridge/src/tables.rs` & `apps/desktop-tauri/src/commands/tables.rs`:
+    - Hook table mutation commands (`assign_table_order_scoped`, `release_table_scoped`, `update_table_status_scoped`, etc.) to emit `tables:status-changed` / `tables:deleted` via `ctx.emitter` and publish `TableSyncEvent::StatusChanged` onto kernel event bus.
+  - [x] In `apps/desktop-tauri/src/lib.rs` & `apps/mobile-tauri/src/lib.rs`:
+    - Desktop forwards `"table.sync"` over LAN.
+    - Mobile tablet LAN client daemon receives table sync events and emits `tables:status-changed` to the frontend webview.
+  - [x] In `ui/src/features/tables/TableManagementScreen.tsx`:
+    - Listen for `tables:status-changed` and `tables:deleted` using `@/api/tauri::listen`.
     - On event: dynamically patch local `tables` state in-place without triggering full network re-fetch (zero flicker).
 
 #### Phase 3.2: KDS Live Firing & Course Control
