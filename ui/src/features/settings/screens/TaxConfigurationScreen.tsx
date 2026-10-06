@@ -7,15 +7,15 @@
 //! migration lands and swaps this blank in for the moved screen.
 //!
 //! PARKED 2026-10-06: the composition was attempted and REVERTED. Mounting the
-//! real tax screen here makes SettingsPage.test.tsx's 14-section sweep exceed
-//! the V8 heap (`Reached heap limit`, ~6 GB) — measured with a per-section heap
-//! probe: flat at ~82 MB through eleven sections, then a runaway on this key.
-//! Two genuine robustness bugs in the composed screen were found and fixed on
-//! the way (see `features/tax/TaxConfigurationScreen.tsx` — the unguarded array
-//! reads and the empty-map identity churn), and the runaway survives those
-//! fixes, so the remaining cause is still unproven. Do NOT re-wire this until
-//! the sweep can mount the screen; a placeholder here is honest, an OOM in the
-//! suite is not.
+//! real tax screen here makes SettingsPage.test.tsx's 14-section sweep fail —
+//! measured with per-section heap probes, the process dies inside the
+//! `tax-configuration` iteration having reached neither 3000MB nor a render of
+//! the composed body, while every other section stays flat at ~80MB. The screen
+//! mounts fine in ISOLATION (66MB, its own suite green), so the instability is
+//! specific to composing it inside this sweep. Two genuine robustness bugs in
+//! the composed screen were found and fixed on the way (see
+//! `features/tax/TaxConfigurationScreen.tsx`), but they are not the cause.
+//! Do NOT re-wire this until the sweep can mount the screen.
 
 import { Localized } from '@fluent/react';
 import './screens-placeholder.css';
