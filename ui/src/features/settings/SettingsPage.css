@@ -794,6 +794,21 @@ body:has(.settings-footer) {
   margin-top: var(--space-2);
 }
 
+/* Read-only counterpart of .settings-input in a horizontal settings field: the
+   value sits where an input would, without the control chrome. Used by the
+   workspace store-info card, whose rows all carry .settings-field--horizontal
+   from this sheet. It was the one member of the settings-field-* family with no
+   rule. */
+.settings-field-value {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--text-sm);
+  color: var(--color-fg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* ── Range input and the value beside it ────────────────────────────
    `.settings-range` / `.settings-range-value` are used by three workspace
    cards (TerminalPreferencesCard, WorkspaceKdsSettings, WorkspaceInventory

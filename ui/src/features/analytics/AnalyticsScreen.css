@@ -1227,6 +1227,16 @@
   color: var(--analytics-fg-secondary);
 }
 
+/* The series name between the colour dot and the value. Both siblings
+   (-item, -dot, -value) were defined; only this one was not, so a long series
+   name had nothing to stop it crowding the number beside it. */
+.analytics-legend-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .analytics-legend-dot {
   width: 8px;
   height: 8px;

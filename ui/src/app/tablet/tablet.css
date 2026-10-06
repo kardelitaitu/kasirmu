@@ -208,7 +208,15 @@
 
 /* Rendered by TabletAppLayout but previously unstyled. A wrapping label would
    make one tab taller than its neighbours and defeat the fixed bar height. */
-.tablet-shell .tablet-tab-label {
+.tablet-shell /* The icon slot in a tab button. .tablet-tab-bar / .tablet-tab-label are both
+   defined in this sheet; the icon span between them was not, so the glyph sat on
+   the label's baseline instead of on its own line. */
+.tablet-tab-icon {
+  display: block;
+  line-height: 0;
+}
+
+.tablet-tab-label {
   white-space: nowrap;
 }
 

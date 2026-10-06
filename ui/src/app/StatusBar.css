@@ -114,6 +114,15 @@
   gap: var(--space-1);
 }
 
+/* Conflict-count segment. Same thin-modifier shape as .statusbar-gateway above —
+   it is ALSO a .statusbar-segment, which supplies the pill layout, so this adds
+   only the warning tone. Its own child .statusbar-conflict-icon was already
+   defined while the parent name was not. */
+.statusbar-conflict {
+  gap: var(--space-1);
+  color: var(--color-warning);
+}
+
 .statusbar-gateway-name {
   white-space: nowrap;
 }

@@ -126,6 +126,15 @@
 /* Holders: a disclosure inside each role row. Deliberately quieter than the
    row itself — this is supporting detail, and the grant count above it stays
    the headline. */
+/* One slot in the "role holders" list that reads the scope in words rather than
+   listing names ("all branches and workspaces"). Both branches of that render
+   carry it — RoleAuthoringPanel.tsx:125 and :139 — and it was the only member of
+   the role-holder* family with no rule. */
+.role-holder-dims {
+  color: var(--color-fg-muted);
+  font-style: italic;
+}
+
 .role-holders {
   display: flex;
   align-items: center;

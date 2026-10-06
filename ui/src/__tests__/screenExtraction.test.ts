@@ -679,6 +679,11 @@ const SCREENS: ScreenEntry[] = [
     tsx: 'settings/SettingsPage.tsx',
     css: ['settings/SettingsPage.css'],
     additionalTsx: [
+      // StoreInfoCard renders .settings-field-value, which this entry's sheet
+      // defines and nothing else in the list uses. Same shape as the five
+      // workspace cards below: markup styled by SettingsPage.css but living
+      // outside SettingsPage.tsx.
+      'settings/workspace-cards/StoreInfoCard.tsx',
       'settings/sections/GeneralSection.tsx',
       'settings/sections/AppearanceSection.tsx',
       'settings/sections/SyncSection.tsx',
@@ -2035,12 +2040,15 @@ const SCREENS: ScreenEntry[] = [
     css: [
       'settings/screens/screens-placeholder.css',
       'settings/screens/UpdateSettingsCard.css',
+      'settings/screens/DiagnosticExportCard.css',
     ],
     // The card's markup, so its own sheet's rules are reachable from the entry
     // that cites it — the dead-class walk reads markup, never the cited sheet's
-    // selector list. Without this the whole update-* family (all 37 rules)
-    // grades dead.
-    additionalTsx: ['settings/screens/UpdateSettingsCard.tsx'],
+    // selector list.
+    additionalTsx: [
+      'settings/screens/UpdateSettingsCard.tsx',
+      'settings/screens/DiagnosticExportCard.tsx',
+    ],
     externalClasses: [
       'settings-diagnostics-list',
       'settings-diagnostics-row',

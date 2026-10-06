@@ -857,6 +857,33 @@
   font-size: var(--text-xs);
 }
 
+/* Manager-only "Override" affordance on a cart line's unit price. It sits inside
+   .retail-cart-line-unit above, so it inherits that cell's --text-xs; this adds
+   only the link treatment and a touch-sized hit area. Was the one member of the
+   retail-cart-line-* family with no rule. */
+.retail-cart-line-override {
+  display: block;
+  margin-top: var(--space-0_5);
+  padding: 0;
+  min-height: var(--touch-target-min);
+  border: none;
+  background: none;
+  color: var(--color-accent);
+  font-size: var(--text-xs);
+  font-weight: var(--font-weight-medium);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.retail-cart-line-override:hover {
+  color: var(--color-accent-hover);
+}
+
+.retail-cart-line-override:focus-visible {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 2px;
+}
+
 .retail-cart-line-qty {
   display: inline-flex;
   align-items: center;
@@ -971,6 +998,26 @@
   padding: var(--space-1_5) var(--space-2_5);
   background: var(--color-border-hover);
   border-top: 1px solid var(--color-border);
+}
+
+/* The attached-customer chip under the cart totals (RetailCartPanel.tsx:398):
+   icon + name. Named retail-customer-* but it belongs to the CART, so it is
+   styled with the cart's type scale rather than the customer modal's. Was
+   undefined while the rest of the family (retail-customer-overlay, -modal…,
+   :1207+) was complete. */
+.retail-customer-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  max-width: 100%;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-full, 9999px);
+  background: var(--color-bg-subtle);
+  color: var(--color-fg-secondary);
+  font-size: var(--text-xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .retail-cart-action-btn {
