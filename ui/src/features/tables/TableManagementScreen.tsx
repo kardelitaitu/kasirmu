@@ -242,11 +242,11 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
 
   return (
     <div className="tables" role="region" aria-label={l10n.getString('tables-management-label')}>
-      <div className="tables-header" style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: 'var(--space-3)' }}>
+      <div className="tables-header">
         {onBack && (
           <button
             type="button"
-            className="restaurant-settings-back-btn"
+            className="tables-back-btn"
             onClick={onBack}
             aria-label={l10n.getString('back') || 'Back'}
             data-testid="tables-back-btn"
@@ -257,7 +257,7 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
             </svg>
           </button>
         )}
-        <h1 className="tables-title" style={{ margin: 0 }}><Localized id="tables-title">Table Management</Localized></h1>
+        <h1 className="tables-title"><Localized id="tables-title">Table Management</Localized></h1>
       </div>
       <div className="tables-sections">
         <Button variant="ghost" size="sm" className={`tables-section-btn ${section === null ? 'active' : ''}`}
@@ -347,16 +347,7 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
             <p><Localized id="tables-section-label" vars={{ section: selected.section || '—' }}><span>Section: {selected.section || '—'}</span></Localized></p>
 
             {activeBill && (
-              <div
-                className="tables-active-bill-info"
-                style={{
-                  background: 'var(--color-bg-subtle, rgba(255, 255, 255, 0.05))',
-                  border: '1px solid var(--color-border)',
-                  padding: '10px 12px',
-                  borderRadius: '8px',
-                  margin: '12px 0',
-                }}
-              >
+              <div className="tables-active-bill-info">
                 <div style={{ fontWeight: 600, fontSize: 'var(--text-sm)', color: 'var(--color-fg)' }}>
                   Active Tab: {activeBill.label}
                 </div>
