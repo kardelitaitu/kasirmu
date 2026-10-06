@@ -447,3 +447,35 @@
     padding: var(--space-3);
   }
 }
+
+/* ── Touch press feedback ────────────────────────────────────────────
+   Category rows are edited on the tablet. The edit/delete/icon buttons are
+   discrete targets that scale; the colour swatch tints so its own colour
+   stays visible mid-press (a scale on a swatch hides the hue it encodes). */
+.cat-mgmt-edit-btn:not(:disabled):active,
+.cat-mgmt-delete-btn:not(:disabled):active,
+.cat-mgmt-icon-btn:not(:disabled):active {
+  transform: scale(0.94);
+}
+
+.cat-mgmt-colour-swatch:active {
+  background: color-mix(in srgb, var(--color-fg) 12%, transparent);
+}
+
+@media (pointer: coarse) {
+  .cat-mgmt-edit-btn,
+  .cat-mgmt-delete-btn,
+  .cat-mgmt-icon-btn,
+  .cat-mgmt-colour-swatch {
+    min-height: var(--touch-target-min);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cat-mgmt-edit-btn:not(:disabled):active,
+  .cat-mgmt-delete-btn:not(:disabled):active,
+  .cat-mgmt-icon-btn:not(:disabled):active {
+    transform: none;
+    opacity: 0.75;
+  }
+}

@@ -433,3 +433,23 @@
   color: var(--color-fg);
   white-space: nowrap;
 }
+
+/* ── Touch press feedback ────────────────────────────────────────────
+   The single interactive control on this screen; kept separate so the
+   press state is obvious rather than buried in a shared button rule. */
+.customer-mgmt-action-btn:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+@media (pointer: coarse) {
+  .customer-mgmt-action-btn {
+    min-height: var(--touch-target-min);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .customer-mgmt-action-btn:not(:disabled):active {
+    transform: none;
+    opacity: 0.75;
+  }
+}

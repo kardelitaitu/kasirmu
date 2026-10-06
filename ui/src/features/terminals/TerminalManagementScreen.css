@@ -513,3 +513,32 @@
   gap: var(--space-2);
   margin-top: var(--space-2);
 }
+
+/* ── Touch press feedback ────────────────────────────────────────────
+   Terminal management is done from the tablet itself. The action button
+   scales; the checkbox/toggle rows tint, since their own controls already
+   animate on change and a press-scale on the row would double-move. */
+.terminal-mgmt-action-btn:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+.terminal-mgmt-checkbox:active,
+.terminal-mgmt-checkbox-label:active,
+.terminal-mgmt-toggle-row:active {
+  background: color-mix(in srgb, var(--color-fg) 12%, transparent);
+}
+
+@media (pointer: coarse) {
+  .terminal-mgmt-action-btn,
+  .terminal-mgmt-checkbox-label,
+  .terminal-mgmt-toggle-row {
+    min-height: var(--touch-target-min);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .terminal-mgmt-action-btn:not(:disabled):active {
+    transform: none;
+    opacity: 0.75;
+  }
+}
