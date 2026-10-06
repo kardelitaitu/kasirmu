@@ -363,10 +363,10 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 2.5rem;
-  height: 2.5rem;
-  min-width: 40px;
-  min-height: 40px;
+  width: var(--touch-target-comfortable);
+  height: var(--touch-target-comfortable);
+  min-width: var(--touch-target-comfortable);
+  min-height: var(--touch-target-comfortable);
   padding: 0;
   border: none;
   border-radius: 50%;
@@ -610,6 +610,8 @@
   /* Fluid: each key is ~1/3 of the row, with aspect-ratio for square */
   flex: 1;
   aspect-ratio: 1;
+  min-width: var(--touch-target-comfortable);
+  min-height: var(--touch-target-comfortable);
   max-width: clamp(64px, 18vw, 80px);
   max-height: clamp(64px, 18vw, 80px);
 

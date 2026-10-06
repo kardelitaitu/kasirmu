@@ -2512,6 +2512,8 @@
 }
 
 .retail-qty-num-btn {
+  min-height: var(--touch-target-comfortable);
+  min-width: var(--touch-target-comfortable);
   padding: var(--space-2) 0;
   font-size: var(--text-md);
   font-weight: var(--font-weight-bold);

@@ -761,7 +761,8 @@
   .pos-cart-new-tab-btn,
   .pos-cart-table-select-btn,
   .pos-cart-undo-dismiss {
-    min-height: var(--touch-target-min);
+    min-height: var(--touch-target-comfortable);
+    min-width: var(--touch-target-comfortable);
   }
 }
 
