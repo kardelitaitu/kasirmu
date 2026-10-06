@@ -1,18 +1,30 @@
-//! DataManagementScreen — blank Settings screen scaffold (settings rebuild).
+//! DataManagementScreen — Settings → Data Management.
 //!
-//! Migration provenance (orchestrator contract, settings-screens phase):
-//! Content moves here from `features/settings/DataManagementScreen.tsx` (Plus+ gated); intended tab of `DataSyncScreen`.
-//! The filename intentionally shadows the source screen it replaces — the two
-//! live in different directories, and the import here is never wired until the
-//! migration lands and swaps this blank in for the moved screen.
+//! Migrated 2026-10-06 from `features/settings/DataManagementScreen.tsx`, per
+//! the provenance this scaffold named while it was still blank. Composition, not
+//! a re-export: the route, the scaffold shell and its migrating note stay on
+//! this screen while the data-management feature keeps its own screen and
+//! stylesheet.
 //!
-//! Copy is Fluent-only: `settings-nav-*` for the title, plus the two shared
-//! placeholder notes. Both keys exist in `settings.ftl` and `settings.id.ftl`.
+//! The composed component is a full screen with its own <h1>, so it is passed
+//! `embedded` — that suppresses the duplicate title. Its tab bar
+//! (Export / Import / Backup / Restore) is real navigation and stays.
+//!
+//! Copy is Fluent-only: `settings-nav-data-management` for the heading, the
+//! body's own `data-mgmt-*` keys, and the shared `settings-screen-migrating`
+//! note (the one-off "being rebuilt" line goes away once the body is real).
 
 import { Localized } from '@fluent/react';
+// Aliased: this file's own exported component is ALSO named
+// `DataManagementScreen` (the route keeps the scaffold's name), so a bare
+// import of the same identifier collides — TS2440 "Import declaration
+// conflicts with local declaration". The alias keeps both names readable and
+// makes it explicit that line 22's function is the composition shell while
+// DataManagementBody is the real screen it renders.
+import DataManagementBody from '../DataManagementScreen';
 import './screens-placeholder.css';
 
-/** Placeholder for Settings → Data Management. */
+/** Settings → Data Management: the real data-management screen as the body. */
 export function DataManagementScreen() {
   return (
     <section className="settings-screen-placeholder">
@@ -20,13 +32,11 @@ export function DataManagementScreen() {
         <Localized id="settings-nav-data-management">Data Management</Localized>
       </h1>
       <p className="settings-screen-placeholder-note">
-        <Localized id="settings-screen-placeholder">This page is being rebuilt.</Localized>
-      </p>
-      <p className="settings-screen-placeholder-note">
         <Localized id="settings-screen-migrating">
           Existing settings content will move here selectively.
         </Localized>
       </p>
+      <DataManagementBody embedded />
     </section>
   );
 }
