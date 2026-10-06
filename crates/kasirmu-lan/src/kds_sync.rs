@@ -397,43 +397,64 @@ pub struct KdsQueueSnapshot {
 /// `LanEventForwarder::with_kds_queue`).
 pub type KdsQueueProvider = Arc<dyn Fn() -> KdsQueueSnapshot + Send + Sync>;
 
+/// Source of live floor table snapshots for reconnecting peer terminals.
+pub type TableStateProvider = Arc<dyn Fn() -> Vec<kasirmu_core::Table> + Send + Sync>;
+
 /// Answer one discovery request, optionally injecting the live active
-/// queue under the `active_queue` key of the JSON-object payload.
+/// queue under `active_queue` and table states under `table_states`.
 ///
 /// The payload is returned **byte-identical** unless the peer opted in
-/// with `want_queue: true`, a provider is configured, and the payload
-/// parses as a JSON object — so non-opting (legacy) peers can never
+/// with `want_queue: true` / `want_tables: true`, a corresponding provider is configured,
+/// and the payload parses as a JSON object — so non-opting (legacy) peers can never
 /// observe a changed discovery response.
 pub(crate) fn build_discovery_response(
     payload: &str,
     want_queue: bool,
-    provider: Option<&KdsQueueProvider>,
+    queue_provider: Option<&KdsQueueProvider>,
+    want_tables: bool,
+    table_provider: Option<&TableStateProvider>,
 ) -> String {
-    if !want_queue {
+    if !want_queue && !want_tables {
         return payload.to_string();
     }
-    let Some(provider) = provider else {
+    if queue_provider.is_none() && table_provider.is_none() {
         return payload.to_string();
-    };
+    }
     let Ok(mut value) = serde_json::from_str::<serde_json::Value>(payload) else {
-        tracing::warn!("KDS discovery payload is not JSON — active_queue not injected");
+        tracing::warn!("KDS discovery payload is not JSON — snapshots not injected");
         return payload.to_string();
     };
     if !value.is_object() {
-        tracing::warn!("KDS discovery payload is not a JSON object — active_queue not injected");
+        tracing::warn!("KDS discovery payload is not a JSON object — snapshots not injected");
         return payload.to_string();
     }
-    let snapshot = provider();
-    match serde_json::to_value(&snapshot) {
-        Ok(queue) => {
-            value["active_queue"] = queue;
-            serde_json::to_string(&value).unwrap_or_else(|_| payload.to_string())
-        }
-        Err(e) => {
-            tracing::warn!(error = %e, "failed to serialise KDS queue snapshot — omitted");
-            payload.to_string()
+    if want_queue
+        && let Some(provider) = queue_provider
+    {
+        let snapshot = provider();
+        match serde_json::to_value(&snapshot) {
+            Ok(queue) => {
+                value["active_queue"] = queue;
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "failed to serialise KDS queue snapshot — omitted");
+            }
         }
     }
+    if want_tables
+        && let Some(provider) = table_provider
+    {
+        let tables = provider();
+        match serde_json::to_value(&tables) {
+            Ok(t) => {
+                value["table_states"] = t;
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "failed to serialise table snapshot — omitted");
+            }
+        }
+    }
+    serde_json::to_string(&value).unwrap_or_else(|_| payload.to_string())
 }
 
 #[cfg(test)]

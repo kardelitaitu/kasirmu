@@ -431,6 +431,7 @@ fn new_discovery_response_roundtrips_with_active_queue() {
         version: "0.0.37".into(),
         transports: vec!["noise-psk-v1".into(), "legacy-psk-v1".into()],
         active_queue: Some(snapshot),
+        table_states: None,
     };
     let json = serde_json::to_string(&response).unwrap();
     assert!(json.contains("\"active_queue\""));
@@ -465,16 +466,16 @@ const BASE_PAYLOAD: &str =
 #[test]
 fn non_opting_peer_gets_byte_identical_payload() {
     // No opt-in — even with a provider configured, legacy bytes hold.
-    let out = build_discovery_response(BASE_PAYLOAD, false, Some(&provider()));
+    let out = build_discovery_response(BASE_PAYLOAD, false, Some(&provider()), false, None);
     assert_eq!(out, BASE_PAYLOAD);
     // Opt-in but no provider configured: still unchanged.
-    let out = build_discovery_response(BASE_PAYLOAD, true, None);
+    let out = build_discovery_response(BASE_PAYLOAD, true, None, false, None);
     assert_eq!(out, BASE_PAYLOAD);
 }
 
 #[test]
 fn opt_in_peer_gets_active_queue_injected() {
-    let out = build_discovery_response(BASE_PAYLOAD, true, Some(&provider()));
+    let out = build_discovery_response(BASE_PAYLOAD, true, Some(&provider()), false, None);
     let value: serde_json::Value = serde_json::from_str(&out).unwrap();
     assert_eq!(value["restaurant_pos_id"], "pos-1");
     let queue = value
@@ -489,7 +490,7 @@ fn opt_in_peer_gets_active_queue_injected() {
 fn injection_survives_typed_deserialize_on_client_side() {
     // The client-side apply path: an injected response parses straight
     // into the typed response with the snapshot populated.
-    let out = build_discovery_response(BASE_PAYLOAD, true, Some(&provider()));
+    let out = build_discovery_response(BASE_PAYLOAD, true, Some(&provider()), false, None);
     let parsed: crate::KdsDiscoverResponse =
         serde_json::from_value(serde_json::from_str(&out).unwrap()).unwrap();
     let queue = parsed.active_queue.expect("typed apply path");
@@ -505,15 +506,45 @@ fn injection_survives_typed_deserialize_on_client_side() {
 }
 
 #[test]
+fn opt_in_peer_gets_table_states_injected() {
+    let table_provider: TableStateProvider = Arc::new(|| {
+        vec![kasirmu_core::Table {
+            id: "tbl-1".into(),
+            name: "Table 1".into(),
+            capacity: 4,
+            pos_x: 20.0,
+            pos_y: 30.0,
+            shape: "circle".into(),
+            width: 10.0,
+            height: 10.0,
+            status: "occupied".into(),
+            active_sale_id: Some("sale-99".into()),
+            section: "Main Dining".into(),
+            active: true,
+            sort_order: 1,
+            created_at: "2026-10-07T00:00:00Z".into(),
+            updated_at: "2026-10-07T01:00:00Z".into(),
+        }]
+    });
+    let out = build_discovery_response(BASE_PAYLOAD, false, None, true, Some(&table_provider));
+    let parsed: crate::KdsDiscoverResponse =
+        serde_json::from_value(serde_json::from_str(&out).unwrap()).unwrap();
+    let tables = parsed.table_states.expect("table_states must be injected");
+    assert_eq!(tables.len(), 1);
+    assert_eq!(tables[0].id, "tbl-1");
+    assert_eq!(tables[0].status, "occupied");
+}
+
+#[test]
 fn malformed_payload_is_returned_unchanged() {
     // Non-JSON and non-object payloads must not gain a snapshot key —
     // the response degrades to the legacy bytes instead of breaking.
     assert_eq!(
-        build_discovery_response("not json", true, Some(&provider())),
+        build_discovery_response("not json", true, Some(&provider()), false, None),
         "not json"
     );
     assert_eq!(
-        build_discovery_response("[1,2,3]", true, Some(&provider())),
+        build_discovery_response("[1,2,3]", true, Some(&provider()), false, None),
         "[1,2,3]"
     );
 }
@@ -524,7 +555,7 @@ fn empty_snapshot_still_satisfies_the_opt_in() {
         generated_at: "2026-09-13T09:00:00Z".into(),
         tickets: vec![],
     });
-    let out = build_discovery_response(BASE_PAYLOAD, true, Some(&empty));
+    let out = build_discovery_response(BASE_PAYLOAD, true, Some(&empty), false, None);
     let value: serde_json::Value = serde_json::from_str(&out).unwrap();
     assert_eq!(
         value["active_queue"]["tickets"].as_array().unwrap().len(),

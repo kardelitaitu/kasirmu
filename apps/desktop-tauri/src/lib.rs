@@ -929,7 +929,7 @@ pub fn run() {
             // transition: it runs synchronously inside the per-peer
             // accept task, so it only ever takes the cheap `std` read
             // lock and never touches the async DB mutex.
-            let (kds_discovery_json, kds_queue_provider) = {
+            let (kds_discovery_json, kds_queue_provider, table_provider) = {
                 let state = app.state::<AppState>();
                 let restaurant_pos_id = state
                     .terminal_id
@@ -943,6 +943,7 @@ pub fn run() {
                     version: env!("CARGO_PKG_VERSION").to_string(),
                     transports: vec!["noise-psk-v1".into(), "legacy-psk-v1".into()],
                     active_queue: None,
+                    table_states: None,
                 };
                 let json = serde_json::to_string(&discover).unwrap_or_else(|e| {
                     tracing::warn!(
@@ -958,11 +959,27 @@ pub fn run() {
                         .map(|snapshot| snapshot.clone())
                         .unwrap_or_default()
                 });
-                (json, provider)
+                let table_db_manager = state.db_manager.clone();
+                let table_provider: crate::lan_server::TableStateProvider = std::sync::Arc::new(move || {
+                    let mut all_tables = Vec::new();
+                    for store_id in table_db_manager.open_store_ids() {
+                        if let Ok(conn) = table_db_manager.open_store(&store_id) {
+                            if let Ok(db) = conn.lock() {
+                                let store = kasirmu_core::db::Store::new(&db);
+                                if let Ok(tables) = store.list_tables(None) {
+                                    all_tables.extend(tables);
+                                }
+                            }
+                        }
+                    }
+                    all_tables
+                });
+                (json, provider, table_provider)
             };
             let forwarder = crate::lan_server::LanEventForwarder::new(lan_bind_addr, lan_psk)
                 .with_discovery(kds_discovery_json)
-                .with_kds_queue(kds_queue_provider);
+                .with_kds_queue(kds_queue_provider)
+                .with_table_provider(table_provider);
             let handle = forwarder.handle();
 
             let uplink_db_manager = app.state::<AppState>().db_manager.clone();
@@ -1067,6 +1084,39 @@ pub fn run() {
 
                             let _ = uplink_app_handle.emit("kds:orders-changed", serde_json::Value::Null);
                         }
+                    } else if trimmed.starts_with(crate::lan_server::CRDT_EVENT_TAG_PREFIX) {
+                        if let Ok(event) = serde_json::from_str::<crate::lan_server::CrdtSyncEvent>(trimmed) {
+                            match event {
+                                crate::lan_server::CrdtSyncEvent::DeltaBroadcast(delta) => {
+                                    for store_id in uplink_db_manager.open_store_ids() {
+                                        if let Ok(conn) = uplink_db_manager.open_store(&store_id) {
+                                            if let Ok(mut db) = conn.lock() {
+                                                if let Ok(tx) = db.transaction() {
+                                                    for item in &delta.batch {
+                                                        let _ = tx.execute(
+                                                            "INSERT OR IGNORE INTO offline_queue
+                                                             (id, action, payload, status, retry_count, tenant_id, created_at, priority, origin_terminal_id)
+                                                             VALUES (?1, ?2, ?3, 'pending', 0, ?4, ?5, ?6, ?7)",
+                                                            rusqlite::params![
+                                                                item.id,
+                                                                item.action,
+                                                                item.payload,
+                                                                item.tenant_id,
+                                                                item.created_at,
+                                                                item.priority.as_str(),
+                                                                item.origin_terminal_id,
+                                                            ],
+                                                        );
+                                                    }
+                                                    let _ = tx.commit();
+                                                }
+                                            }
+                                        }
+                                    }
+                                    let _ = uplink_app_handle.emit("sync:crdt-delta-received", serde_json::to_value(&delta).unwrap_or_default());
+                                }
+                            }
+                        }
                     } else if trimmed.starts_with(crate::lan_server::TABLE_EVENT_TAG_PREFIX) {
                         let _ = uplink_app_handle.emit("tables:status-changed", serde_json::Value::Null);
                     }
@@ -1102,8 +1152,10 @@ pub fn run() {
                         bus.subscribe("kds.sync", Box::new(handle.kds_sync_handler()));
                         // table-sync: forwards table status changes across LAN peers.
                         bus.subscribe("table.sync", Box::new(handle.table_sync_handler()));
+                        // crdt-sync: forwards offline mutation deltas across LAN peers.
+                        bus.subscribe("crdt.sync", Box::new(handle.crdt_sync_handler()));
                         tracing::info!(
-                            "LAN event forwarder handlers registered for sale.completed, order.course_fired, kds.sync, and table.sync"
+                            "LAN event forwarder handlers registered for sale.completed, order.course_fired, kds.sync, table.sync, and crdt.sync"
                         );
                         registered = true;
                         break;
@@ -1333,6 +1385,7 @@ pub fn run() {
             commands::health::get_device_id_scoped,
             commands::health::get_local_ip,
             commands::health::get_local_ip_scoped,
+            commands::health::get_storage_health,
             commands::pos::start_sale_scoped,
             commands::pos::add_line_scoped,
             commands::pos::set_line_course_scoped,

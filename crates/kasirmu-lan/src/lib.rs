@@ -133,6 +133,7 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::broadcast;
 
 pub mod client;
+pub mod crdt_sync;
 mod kds_sync;
 mod noise;
 mod replay;
@@ -149,11 +150,15 @@ pub(crate) use noise::{
 pub(crate) use noise::{NOISE_MAX_FRAME, NOISE_PATTERN, noise_psk_bytes, noise_static_secret};
 
 pub use client::{LanClientConfig, LanClientHandle, LanEvent, start_lan_client};
+pub use crdt_sync::{
+    CRDT_EVENT_TAG_PREFIX, CrdtDeltaBroadcast, CrdtSyncEvent, CrdtSyncHandler,
+    EVENT_CRDT_DELTA_BROADCAST,
+};
 pub use kds_sync::{
     EVENT_LINE_ITEM_BUMPED, EVENT_ORDER_PLACED, EVENT_ORDER_READY, EVENT_ORDER_RECALLED,
     KDS_EVENT_TAG_PREFIX, KdsLineItemBumped, KdsOrderPlaced, KdsOrderReady, KdsOrderRecalled,
     KdsQueueProvider, KdsQueueSnapshot, KdsQueueTicket, KdsSyncEvent, KdsSyncHandler,
-    PeerSubscription, event_station_scope, should_deliver,
+    PeerSubscription, TableStateProvider, event_station_scope, should_deliver,
 };
 pub use table_sync::{
     EVENT_TABLE_STATUS_CHANGED, TABLE_EVENT_TAG_PREFIX, TableStatusChanged, TableSyncEvent,
@@ -272,6 +277,8 @@ struct DiscoverMsg {
     #[serde(default)]
     want_queue: bool,
     #[serde(default)]
+    want_tables: bool,
+    #[serde(default)]
     station_ids: Vec<String>,
     #[serde(default)]
     device_id: Option<String>,
@@ -306,6 +313,9 @@ pub struct LanEventForwarder {
     /// (`{"op":"discover","want_queue":true}`). `None` disables snapshot
     /// injection — legacy discovery responses are then byte-identical.
     kds_queue: Option<KdsQueueProvider>,
+    /// Live floor table snapshot source for reconnecting peers
+    /// (`{"op":"discover","want_tables":true}`).
+    table_provider: Option<TableStateProvider>,
     /// Optional handler for processing uplink messages from connected peers.
     uplink_handler: Option<UplinkHandler>,
 }
@@ -332,6 +342,7 @@ impl LanEventForwarder {
             psk: psk.map(Arc::new),
             discovery_payload: None,
             kds_queue: None,
+            table_provider: None,
             uplink_handler: None,
         }
     }
@@ -378,6 +389,12 @@ impl LanEventForwarder {
     // owned by the live registration-gate session.
     pub fn with_kds_queue(mut self, provider: KdsQueueProvider) -> Self {
         self.kds_queue = Some(provider);
+        self
+    }
+
+    /// Attach a live floor table snapshot provider for reconnect reconciliation.
+    pub fn with_table_provider(mut self, provider: TableStateProvider) -> Self {
+        self.table_provider = Some(provider);
         self
     }
 
@@ -429,6 +446,7 @@ impl LanEventForwarder {
 
         let psk = self.psk.clone();
         let kds_queue = self.kds_queue.clone();
+        let table_provider = self.table_provider.clone();
         let uplink = self.uplink_handler.clone();
 
         loop {
@@ -447,6 +465,7 @@ impl LanEventForwarder {
                     let psk_clone = psk.clone();
                     let discovery = self.discovery_payload.clone();
                     let kds_queue_clone = kds_queue.clone();
+                    let table_provider_clone = table_provider.clone();
                     let uplink_clone = uplink.clone();
                     tokio::spawn(handle_peer(
                         stream,
@@ -456,6 +475,7 @@ impl LanEventForwarder {
                         psk_clone,
                         discovery,
                         kds_queue_clone,
+                        table_provider_clone,
                         uplink_clone,
                     ));
                 }
@@ -534,6 +554,12 @@ pub struct KdsDiscoverResponse {
     /// response.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub active_queue: Option<KdsQueueSnapshot>,
+    /// Reconnect reconciliation (multi-terminal floor tables): the current table
+    /// status snapshot, present only when the peer's discovery request opted
+    /// in with `want_tables: true` **and** a provider is configured via
+    /// [`LanEventForwarder::with_table_provider`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub table_states: Option<Vec<kasirmu_core::Table>>,
 }
 
 // ── Peer handler ─────────────────────────────────────────────────────
@@ -581,6 +607,7 @@ async fn handle_peer(
     psk: Option<Arc<String>>,
     discovery_payload: Option<Arc<String>>,
     kds_queue: Option<KdsQueueProvider>,
+    table_provider: Option<TableStateProvider>,
     uplink_handler: Option<UplinkHandler>,
 ) {
     let timeout_dur = std::time::Duration::from_secs(PSK_HANDSHAKE_TIMEOUT_SECS);
@@ -728,6 +755,8 @@ async fn handle_peer(
                                     payload,
                                     d.want_queue,
                                     kds_queue.as_ref(),
+                                    d.want_tables,
+                                    table_provider.as_ref(),
                                 );
                                 let mut out = vec![0u8; response.len() + 32];
                                 if let Ok(en) = state.write_message(response.as_bytes(), &mut out) {
@@ -791,6 +820,8 @@ async fn handle_peer(
                                 payload,
                                 d.want_queue,
                                 kds_queue.as_ref(),
+                                d.want_tables,
+                                table_provider.as_ref(),
                             );
                             let response = format!("{response}\n");
                             if let Err(e) = stream.get_mut().write_all(response.as_bytes()).await {
@@ -938,6 +969,7 @@ async fn handle_peer(
                             let trimmed = line.trim();
                             if trimmed.starts_with(crate::kds_sync::KDS_EVENT_TAG_PREFIX)
                                 || trimmed.starts_with(crate::table_sync::TABLE_EVENT_TAG_PREFIX)
+                                || trimmed.starts_with(crate::crdt_sync::CRDT_EVENT_TAG_PREFIX)
                             {
                                 handler(trimmed.to_string());
                             }
@@ -1055,6 +1087,15 @@ impl LanForwarderHandle {
     /// LAN peers.
     pub fn table_sync_handler(&self) -> TableSyncHandler {
         TableSyncHandler {
+            tx: self.tx.clone(),
+        }
+    }
+
+    /// Create an `EventHandler<CrdtSyncEvent>` that serialises the
+    /// CRDT mutation delta event to JSON and broadcasts it to connected
+    /// LAN peers.
+    pub fn crdt_sync_handler(&self) -> CrdtSyncHandler {
+        CrdtSyncHandler {
             tx: self.tx.clone(),
         }
     }

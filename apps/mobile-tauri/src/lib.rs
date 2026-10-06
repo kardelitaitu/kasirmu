@@ -784,6 +784,7 @@ pub fn run() {
                                 device_id: terminal_id,
                                 station_ids: vec![],
                                 want_queue: true,
+                                want_tables: true,
                             })
                         } else {
                             None
@@ -840,6 +841,31 @@ pub fn run() {
                                         }
                                         let _ = lan_app_handle.emit("kds:orders-changed", serde_json::Value::Null);
                                     }
+                                    kasirmu_lan::LanEvent::Crdt(kasirmu_lan::CrdtSyncEvent::DeltaBroadcast(delta)) => {
+                                        if let Some(state) = lan_app_handle.try_state::<AppState>() {
+                                            let mut db = state.db.lock().await;
+                                            if let Ok(tx) = db.transaction() {
+                                                for item in &delta.batch {
+                                                    let _ = tx.execute(
+                                                        "INSERT OR IGNORE INTO offline_queue
+                                                         (id, action, payload, status, retry_count, tenant_id, created_at, priority, origin_terminal_id)
+                                                         VALUES (?1, ?2, ?3, 'pending', 0, ?4, ?5, ?6, ?7)",
+                                                        rusqlite::params![
+                                                            item.id,
+                                                            item.action,
+                                                            item.payload,
+                                                            item.tenant_id,
+                                                            item.created_at,
+                                                            item.priority.as_str(),
+                                                            item.origin_terminal_id,
+                                                        ],
+                                                    );
+                                                }
+                                                let _ = tx.commit();
+                                            }
+                                        }
+                                        let _ = lan_app_handle.emit("sync:crdt-delta-received", serde_json::to_value(&delta).unwrap_or_default());
+                                    }
                                     kasirmu_lan::LanEvent::RawJson(raw) => {
                                         if raw.contains("order.course_fired") {
                                             if let Ok(val) = serde_json::from_str::<serde_json::Value>(&raw) {
@@ -860,6 +886,20 @@ pub fn run() {
                                                 }
                                             }
                                             let _ = lan_app_handle.emit("kds:orders-changed", serde_json::Value::Null);
+                                        }
+                                        if let Some(tables) = discovery.table_states {
+                                            if let Some(state) = lan_app_handle.try_state::<AppState>() {
+                                                let db = state.db.lock().await;
+                                                let store = kasirmu_core::db::Store::new(&db);
+                                                for table in &tables {
+                                                    if store.get_table(&table.id).ok().flatten().is_some() {
+                                                        let _ = store.update_table(table);
+                                                    } else {
+                                                        let _ = store.create_table(table);
+                                                    }
+                                                }
+                                            }
+                                            let _ = lan_app_handle.emit("tables:status-changed", serde_json::Value::Null);
                                         }
                                     }
                                 }
@@ -996,6 +1036,7 @@ pub fn run() {
                 commands::health::version,
                 commands::health::get_device_id,
                 commands::health::get_local_ip,
+                commands::health::get_storage_health,
                 // ADR #57 §2.1: makes the APK signing-certificate read observable
                 // on any device, including one with no licence activated — the
                 // state in which its only other caller (the licence-status call)

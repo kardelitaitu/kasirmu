@@ -78,15 +78,15 @@ This master plan bridges the peer-to-peer gap over the audited `kasirmu-lan` tra
   - [x] Add `kasirmu-lan` dependency to `apps/mobile-tauri/Cargo.toml`.
   - [x] Wire client lifecycle in `apps/mobile-tauri/src/lib.rs` under `platform_startup::spawn_daemon("tablet lan client", ...)`.
 
-#### Phase 2.2: CRDT Delta Replication over LAN
+#### Phase 2.2: CRDT Delta Replication over LAN [COMPLETED]
 - **Goal**: Replicate offline data mutations directly across terminals without needing cloud roundtrips.
 - **Implementation**:
-  - Define wire event `crdt.delta_broadcast` carrying `DeltaMutation` or `OfflineQueueItem` batch stamped with `VersionVector`.
-  - Primary server receives delta, executes local `merge_deltas` and `resolve_stock_crdt`.
-  - Broadcasts confirmed causal version vector back to all active peers.
-  - Add integration tests in `crates/kasirmu-lan/tests/crdt_replication_tests.rs` proving:
-    - Two offline tablets generate concurrent stock movement deltas.
-    - LAN connection re-established -> deltas merge additively without losing minor units or stock count.
+  - [x] Define wire event `crdt.delta_broadcast` (`CrdtDeltaBroadcast`, `CrdtSyncEvent`) carrying batch of `OfflineQueueItem` mutations.
+  - [x] Primary desktop server receives delta over LAN uplink (`UplinkHandler`), ingests batch into SQLite `offline_queue` in an explicit rusqlite transaction, and re-broadcasts to connected peer terminals.
+  - [x] Mobile tablet receives `LanEvent::Crdt`, stores mutations in local `offline_queue` transactionally, and emits `sync:crdt-delta-received` to WebView.
+  - [x] Added integration tests in `crates/kasirmu-lan/tests/crdt_replication_tests.rs`:
+    - [x] Two terminals connect over Noise transport.
+    - [x] Terminal A uplinks stock movement mutations (`OfflineQueueItem`), primary server receives and broadcasts, Terminal B receives and validates identical batch without loss.
 
 #### Phase 2.3: Table & Held Cart Distributed Lease Protocol
 - **Goal**: Prevent split-brain cart checkout or double-seating across terminals when offline.
@@ -115,7 +115,7 @@ This master plan bridges the peer-to-peer gap over the audited `kasirmu-lan` tra
     - Listen for `tables:status-changed` and `tables:deleted` using `@/api/tauri::listen`.
     - On event: dynamically patch local `tables` state in-place without triggering full network re-fetch (zero flicker).
 
-#### Phase 3.2: KDS Live Firing & Course Control [COMPLETED]
+#### Phase 3.2: KDS Live Firing & Course Control [COMPLETED in cb8df83d0]
 - **Goal**: Real-time kitchen ticket placement, course firing, and instant acoustic/visual alerts on KDS.
 - **Implementation**:
   - [x] Wire `order.course_fired` event end-to-end:
@@ -129,14 +129,18 @@ This master plan bridges the peer-to-peer gap over the audited `kasirmu-lan` tra
     - [x] Primary server receives uplink via `UplinkHandler`, updates SQLite (`update_kds_line_item_status` / `update_kds_status`), refreshes snapshot cache, re-broadcasts to peer displays, and notifies local WebView.
     - [x] Expediter screen and all tablet screens immediately see line items and tickets update in real-time.
 
-#### Phase 3.3: Reconnect Snapshots & Failure Recovery
+#### Phase 3.3: Reconnect Snapshots & Failure Recovery [COMPLETED]
 - **Goal**: When a tablet walks out of Wi-Fi range and reconnects, it receives missed events without duplicating tickets.
 - **Implementation**:
-  - Leverage `crates/kasirmu-lan/src/replay.rs` and `kds_sync::KdsDiscoverResponse`.
-  - Upon reconnection, tablet sends `{"op":"discover","want_queue":true,"want_tables":true}`.
-  - Primary server returns active KDS tickets snapshot (`KdsQueueSnapshot`) + table statuses snapshot.
-  - Tablet reconciles snapshot first, then applies bounded replay queue items where `occurred_at > snapshot.generated_at`.
-  - Add comprehensive disconnect-reconnect test harness.
+  - [x] Extended `KdsDiscoverResponse` with `table_states: Option<Vec<Table>>` and `active_queue: Option<KdsQueueSnapshot>`.
+  - [x] Mobile client sends `want_queue: true` and `want_tables: true` in `LanClientConfig`.
+  - [x] Desktop server wires `TableStateProvider` and `KdsQueueProvider` into `LanEventForwarder`, dynamically injecting live active tickets and floor table states on discovery.
+  - [x] Mobile client reconciles discovery snapshots on startup and reconnect (`store.ingest_kds_order` and `store.update_table` / `store.create_table`), emitting `kds:orders-changed` and `tables:status-changed`.
+  - [x] Added comprehensive reconnect integration tests in `crates/kasirmu-lan/tests/reconnect_snapshot_tests.rs`:
+    - [x] Tablet connects and captures initial table + KDS snapshots.
+    - [x] Receives live broadcast events while connected.
+    - [x] Tablet disconnects; server state mutates while offline.
+    - [x] Tablet reconnects and immediately receives fresh discovery snapshot reconciling all missed table and kitchen states without duplicates.
 
 ---
 

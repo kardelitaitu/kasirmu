@@ -12,6 +12,7 @@ use tokio::net::TcpStream;
 use tokio::sync::{broadcast, mpsc, watch};
 
 use crate::KdsDiscoverResponse;
+use crate::crdt_sync::{CRDT_EVENT_TAG_PREFIX, CrdtSyncEvent};
 use crate::kds_sync::{KDS_EVENT_TAG_PREFIX, KdsSyncEvent};
 use crate::noise::{noise_handshake_initiator, read_frame, write_frame};
 use crate::table_sync::{TABLE_EVENT_TAG_PREFIX, TableSyncEvent};
@@ -29,6 +30,8 @@ pub struct LanClientConfig {
     pub station_ids: Vec<String>,
     /// Whether to request an active KDS queue snapshot in the discovery request.
     pub want_queue: bool,
+    /// Whether to request table states snapshot in the discovery request.
+    pub want_tables: bool,
 }
 
 /// An incoming event received from the LAN server.
@@ -38,6 +41,8 @@ pub enum LanEvent {
     Table(TableSyncEvent),
     /// Kitchen display system order / bump / recall event.
     Kds(KdsSyncEvent),
+    /// CRDT offline mutation delta replication event.
+    Crdt(CrdtSyncEvent),
     /// Discovery response received upon connecting.
     Discovery(KdsDiscoverResponse),
     /// Raw unparsed JSON line (e.g. `sale.completed`, `order.course_fired`).
@@ -55,6 +60,10 @@ impl LanEvent {
         } else if trimmed.starts_with(KDS_EVENT_TAG_PREFIX) {
             if let Ok(ev) = serde_json::from_str::<KdsSyncEvent>(trimmed) {
                 return Self::Kds(ev);
+            }
+        } else if trimmed.starts_with(CRDT_EVENT_TAG_PREFIX) {
+            if let Ok(ev) = serde_json::from_str::<CrdtSyncEvent>(trimmed) {
+                return Self::Crdt(ev);
             }
         }
         Self::RawJson(trimmed.to_string())
@@ -169,6 +178,7 @@ async fn handle_connection(
         "device_id": config.device_id,
         "station_ids": config.station_ids,
         "want_queue": config.want_queue,
+        "want_tables": config.want_tables,
     });
     let discover_str = serde_json::to_string(&discover_msg)
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;

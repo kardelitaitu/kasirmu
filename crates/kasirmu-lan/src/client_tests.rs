@@ -62,6 +62,7 @@ async fn lan_client_noise_connects_and_receives_table_event() {
         version: "0.0.41".into(),
         transports: vec!["noise-psk-v1".into()],
         active_queue: None,
+        table_states: None,
     };
     let discover_json = serde_json::to_string(&discover).unwrap();
 
@@ -79,6 +80,7 @@ async fn lan_client_noise_connects_and_receives_table_event() {
         device_id: Some("tablet-a".into()),
         station_ids: vec![],
         want_queue: false,
+        want_tables: false,
     };
 
     let (client_handle, mut event_rx) = start_lan_client(config);
@@ -138,6 +140,7 @@ async fn lan_client_plain_connects_and_receives_event() {
         device_id: Some("tablet-b".into()),
         station_ids: vec![],
         want_queue: false,
+        want_tables: false,
     };
 
     let (client_handle, mut event_rx) = start_lan_client(config);
@@ -181,6 +184,7 @@ async fn lan_client_sends_uplink_and_triggers_server_handler() {
         version: "0.0.41".into(),
         transports: vec!["noise-psk-v1".into()],
         active_queue: None,
+        table_states: None,
     };
     let discover_json = serde_json::to_string(&discover).unwrap();
 
@@ -199,6 +203,7 @@ async fn lan_client_sends_uplink_and_triggers_server_handler() {
         device_id: Some("tablet-kds".into()),
         station_ids: vec!["grill".into()],
         want_queue: false,
+        want_tables: false,
     };
 
     let (client_handle, _event_rx) = start_lan_client(config);
