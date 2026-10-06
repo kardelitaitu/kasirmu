@@ -3,21 +3,34 @@ import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { Localized, useLocalization } from '@fluent/react';
 import Fuse from 'fuse.js';
 import type { FuseResultMatch } from 'fuse.js';
+import { useSubscription } from '@/contexts/SubscriptionContext';
+import { tierSatisfies, type TierKey } from '@/utils/tierLevel';
+import { TIER_BADGE } from '@/utils/tierBadge';
 
 // ── Sidebar nav item type ─────────────────────────────────────────
 
 /**
  * One page in the flat settings sidebar IA. The category accordion is
  * gone: every entry is a page. `subpage` marks a drill-down page
- * (rendered indented with a guide border); `plus` marks a page gated
- * behind the Plus plan (badged in the nav).
+ * (rendered indented with a guide border).
+ *
+ * `minimumTier` is the PLAN this section needs, read through the same
+ * `tierSatisfies` comparison the home Tools cards use so the two surfaces
+ * cannot disagree. It replaced a hardcoded `plus?: boolean` that rendered a
+ * "Plus+" text pill on EVERY tier — including the ones that already have the
+ * feature. A boolean cannot answer "does THIS merchant have it", which is the
+ * only question the badge is there to answer, so the badge now shows only when
+ * the subscription actually falls short, and names that merchant's gap.
+ *
+ * Omitted = available on every tier (the common case).
  */
 export interface SettingsNavItem {
   key: string;
   label: string;
   icon: React.ReactNode;
   subpage?: boolean;
-  plus?: boolean;
+  /** The lowest plan that unlocks this section. Absent = all tiers. */
+  minimumTier?: TierKey;
 }
 
 // ── Flat page list (13 pages, fixed order) ────────────────────────
@@ -107,7 +120,7 @@ const NAV_ITEMS: SettingsNavItem[] = [
     key: 'data-management',
     label: 'Data Management',
     subpage: true,
-    plus: true,
+    minimumTier: 'plus',
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
         <ellipse cx="12" cy="5" rx="9" ry="3" />
@@ -120,7 +133,7 @@ const NAV_ITEMS: SettingsNavItem[] = [
     key: 'sync-status',
     label: 'Sync Status',
     subpage: true,
-    plus: true,
+    minimumTier: 'plus',
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
         <polyline points="23 4 23 10 17 10" />
@@ -249,6 +262,11 @@ const SettingsNavTree = function SettingsNavTree({
   deadLetterCount,
 }: SettingsNavTreeProps) {
   const { l10n } = useLocalization();
+  // The tenant's tier, for the plan badges on the two Plus-gated rows. The
+  // capability read is already profile-independent and fails closed (no caps
+  // => `tierSatisfies` denies every non-free minimum), so a failed or
+  // in-flight read cannot flash a badge off a paid tenant.
+  const { caps } = useSubscription();
   const sidebarRef = useRef<HTMLElement>(null);
 
   // P60-4b: Focus trap on mobile sidebar overlay
@@ -776,9 +794,33 @@ const SettingsNavTree = function SettingsNavTree({
                           <Localized id={l10nKey}>{item.label}</Localized>
                         )}
                       </span>
-                      {item.plus && !sidebarCollapsed && (
-                        <span className="settings-nav-plus-badge" aria-label={l10n.getString('settings-nav-plus-badge-aria')}>Plus+</span>
-                      )}
+                      {/* Plan badge — rendered ONLY when the subscription
+                          actually falls short, carrying the same generated artwork
+                          the home Tools cards use (TIER_BADGE) so the two surfaces
+                          advertise a plan identically. `tierSatisfies` fails closed
+                          on absent caps, so a paid tenant never sees a badge for
+                          something they already own — which the hardcoded
+                          `plus` boolean could not express. */}
+                      {item.minimumTier &&
+                        !sidebarCollapsed &&
+                        !tierSatisfies(caps?.tier, item.minimumTier) && (
+                          <span className="settings-nav-tier-badge">
+                            <img
+                              src={TIER_BADGE[item.minimumTier].src}
+                              width={TIER_BADGE[item.minimumTier].width}
+                              height={TIER_BADGE[item.minimumTier].height}
+                              alt=""
+                              aria-hidden="true"
+                            />
+                            <Localized
+                              id={`workspace-home-tools-requires-tier-${item.minimumTier}`}
+                            >
+                              <span className="settings-nav-sr-only">
+                                Requires {item.minimumTier} plan
+                              </span>
+                            </Localized>
+                          </span>
+                        )}
                       {(key === 'data-sync' || key === 'sync-conflicts') &&
                         deadLetterCount !== undefined &&
                         deadLetterCount > 0 &&

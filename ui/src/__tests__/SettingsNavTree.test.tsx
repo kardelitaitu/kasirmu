@@ -7,7 +7,7 @@
 // Plus], sync-conflicts [subpage], offline-queue [subpage],
 // tax-configuration, exchange-rates, system-diagnostics). These tests
 // assert that mandated reality:
-// order, roles, subpage/plus marking, pins, flat Fuse search (both
+// order, roles, subpage/minimumTier marking, pins, flat Fuse search (both
 // locales), flat keyboard cycling, the resize separator, and the
 // per-key debounced localStorage persistence.
 //
@@ -76,6 +76,21 @@ vi.mock('@/app/Tooltip', () => ({
     fit?: string;
     portal?: boolean;
   }) => <>{children}</>,
+}));
+
+// The sidebar reads the tenant tier for its plan badges. Mocked as a mutable
+// holder so a test can pin the tier it is asserting about — the badge is
+// CONDITIONAL on the subscription falling short, so "is it rendered" is only
+// meaningful against a known tier.
+const { subscriptionState } = vi.hoisted(() => ({
+  subscriptionState: { tier: 'free' as string | null },
+}));
+
+vi.mock('@/contexts/SubscriptionContext', () => ({
+  useSubscription: () => ({
+    caps: subscriptionState.tier === null ? null : { tier: subscriptionState.tier },
+    state: 'active',
+  }),
 }));
 
 // ── Default props ────────────────────────────────────────────────
@@ -301,27 +316,53 @@ describe('SettingsNavTree (flat 14-page IA)', () => {
     }
   });
 
-  it('badges exactly data-management and sync-status with the Plus pill', () => {
+  it('marks exactly data-management and sync-status with a minimumTier', () => {
+    const tierGated = NAV_ITEMS.filter((n) => n.minimumTier).map((n) => n.key);
+    expect(tierGated).toEqual(['data-management', 'sync-status']);
+    for (const key of tierGated) {
+      expect(NAV_ITEMS.find((n) => n.key === key)?.minimumTier).toBe('plus');
+    }
+    // offline-queue is a subpage but NOT tier-gated — it is the LOCAL pending-
+    // writes queue, which works on every tier. The two marks are independent.
+    expect(NAV_ITEMS.find((n) => n.key === 'offline-queue')?.minimumTier).toBeUndefined();
+  });
+
+  it('shows the plan badge only for tiers BELOW the minimumTier', () => {
+    // The badge means "you do not have this", not "this exists". Free sees
+    // both; Plus and above see neither, because they already own the feature.
+    const badgeCountFor = (tier: string | null) => {
+      subscriptionState.tier = tier;
+      const { unmount } = render(<SettingsNavTree {...defaultProps} />);
+      const n = document.querySelectorAll('.settings-nav-tier-badge').length;
+      unmount();
+      return n;
+    };
+
+    expect(badgeCountFor('free')).toBe(2);
+    expect(badgeCountFor('plus')).toBe(0);
+    expect(badgeCountFor('pro')).toBe(0);
+    expect(badgeCountFor('premium')).toBe(0);
+    expect(badgeCountFor('enterprise')).toBe(0);
+    // No capability payload at all fails closed — the badge stays, rather
+    // than a failed read silently granting a paid feature.
+    expect(badgeCountFor(null)).toBe(2);
+  });
+
+  it('renders the plan badge as tier ARTWORK with an accessible plan name', () => {
+    subscriptionState.tier = 'free';
     render(<SettingsNavTree {...defaultProps} />);
 
-    const badgeAria = ftlResolve(settingsFtl, 'settings-nav-plus-badge-aria');
-    expect(badgeAria).not.toBe('');
-    const plusKeys = NAV_ITEMS.filter((n) => n.plus).map((n) => n.key);
-    expect(plusKeys).toEqual(['data-management', 'sync-status']);
-
-    for (const item of getNavItems()) {
-      const key = visibleNavKeys().find((k) => labelOf(k) === item.getAttribute('aria-label'));
-      const badge = item.querySelector('.settings-nav-plus-badge');
-      if (key && plusKeys.includes(key)) {
-        expect(badge, key + ' must carry the Plus pill').not.toBeNull();
-        expect(badge!.getAttribute('aria-label')).toBe(badgeAria);
-        expect(badge!.textContent).toBe('Plus+');
-      } else {
-        expect(badge, key + ' must NOT carry a Plus pill').toBeNull();
-      }
+    const badges = document.querySelectorAll('.settings-nav-tier-badge');
+    expect(badges).toHaveLength(2);
+    for (const badge of badges) {
+      // The artwork is decorative; the plan is stated in text for assistive tech.
+      const img = badge.querySelector('img');
+      expect(img).not.toBeNull();
+      expect(img!.getAttribute('aria-hidden')).toBe('true');
+      const srText = badge.querySelector('.settings-nav-sr-only');
+      expect(srText).not.toBeNull();
+      expect(srText!.textContent).toContain('plus');
     }
-    // offline-queue is a subpage but NOT Plus-gated — the two marks are independent.
-    expect(NAV_ITEMS.find((n) => n.key === 'offline-queue')?.plus).toBeFalsy();
   });
 
   it('renders the sidebar landmark with its accessible name', () => {
@@ -680,20 +721,21 @@ describe('SettingsNavTree (flat 14-page IA)', () => {
       }
     });
 
-    it('collapses the sidebar via the toggle and hides the Plus pills', async () => {
+    it('collapses the sidebar via the toggle and hides the plan badges', async () => {
+      subscriptionState.tier = 'free';
       const user = userEvent.setup();
       render(<SettingsNavTree {...defaultProps} />);
 
       const sidebar = screen.getByTestId('settings-sidebar');
       expect(sidebar.classList.contains('collapsed')).toBe(false);
-      expect(document.querySelectorAll('.settings-nav-plus-badge')).toHaveLength(2);
+      expect(document.querySelectorAll('.settings-nav-tier-badge')).toHaveLength(2);
 
       await user.click(screen.getByRole('button', { name: ftlResolve(settingsFtl, 'settings-sidebar-collapse-aria') }));
 
       expect(sidebar.classList.contains('collapsed')).toBe(true);
-      // The badge is display-none territory in the rail; the Plus mark itself
-      // is not rendered while collapsed (it is a label-level affordance).
-      expect(document.querySelectorAll('.settings-nav-plus-badge')).toHaveLength(0);
+      // The badge is a label-level affordance: it is not rendered while
+      // collapsed, where there is no label for it to sit beside.
+      expect(document.querySelectorAll('.settings-nav-tier-badge')).toHaveLength(0);
       // And the toggle now offers the expand action.
       expect(screen.getByRole('button', { name: ftlResolve(settingsFtl, 'settings-sidebar-expand-aria') })).toBeInTheDocument();
     });
@@ -862,7 +904,6 @@ describe('SettingsNavTree (flat 14-page IA)', () => {
         'settings-shortcuts-desc-navigate',
         'settings-shortcuts-desc-firstlast',
         'settings-shortcuts-desc-close',
-        'settings-nav-plus-badge-aria',
       ];
       const bundles = [
         ['settings.ftl', settingsFtl] as const,
