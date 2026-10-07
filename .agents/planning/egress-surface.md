@@ -10,6 +10,22 @@ for one narrow question - which names the UI enqueues today - and it is the wron
 number for the question an allow-list has to answer, which is what a CALLER can
 enqueue. Those are different numbers:
 
+> ⚠️ **RE-MEASURED 2026-10-07 — the SECURITY FINDING holds; the door count and every line number have moved.**
+> The load-bearing claim below is that the key parameter is **unbounded** — nothing enumerates or validates
+> it, so the only bound is `IngestPolicy::RemoteSync.admits`' deny-list, which bounds by exclusion and
+> therefore admits everything not thought of. **That still holds today**: `Store::enqueue_settings_update_superseding`
+> takes `key: &str` and passes it straight into the payload
+> (`crates/kasirmu-core/src/db/offline/enqueue.rs:154-165`), with no validation between the setter and the queue.
+> Read the finding as current and the enumeration as historical. **What has changed:** the "five doors, and only
+> five" framing has consolidated — the enqueue function has **two** production callers today
+> (`crates/kasirmu-bridge/src/settings/core.rs:365` and `apps/mobile-tauri/src/commands/settings.rs:455`; the
+> third hit is the definition itself), because the bridge's three setters now funnel through
+> `run_set_setting_for_user` rather than each enqueuing. The `crates/oz-bridge/src/settings.rs:1230/:1297/:1368`
+> and `crates/oz-core/...` paths in the door table are pre-rename (`kasirmu-bridge`, `kasirmu-core`), and the
+> tablet's three setters are `commands/settings.rs:344/:757/:818` today. The "12 / 14 / UNBOUNDED" table's
+> *shape* — that a trace of the admitted set is not a census of the reachable set — is the argument, and it is
+> unaffected by the numbers. NOT re-verified: the per-name UI literal table below.
+
 | Question | Size |
 |---|---|
 | Names a UI screen enqueues today, and that survive the gate | 12 (exactly the traced set) |
