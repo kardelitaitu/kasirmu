@@ -546,7 +546,6 @@ export function CartPanel({
                   className="pos-cart-lock-btn"
                   onClick={onOpenCashDrawer}
                   aria-label={l10n.getString('pos-cart-open-drawer')}
-                  title={l10n.getString('pos-cart-open-drawer')}
                 >
                   💵
                 </button>
@@ -600,7 +599,6 @@ export function CartPanel({
                 setCustomerName?.('');
                 setActiveOpenBillId?.(null);
               }}
-              title={l10n.getString('pos-cart-new-tab-title') || 'Start a new tab without affecting this tab'}
               data-testid="pos-cart-new-tab-btn"
             >
               + {l10n.getString('pos-cart-new-tab') || 'New Tab'}

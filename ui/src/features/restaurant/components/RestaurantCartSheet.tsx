@@ -85,7 +85,6 @@ export function RestaurantCartSheet({
             className="restaurant-cart-sheet-close-btn"
             onClick={requestClose}
             aria-label={l10n.getString('restaurant-cart-sheet-close')}
-            title={l10n.getString('restaurant-cart-sheet-close')}
             data-testid="restaurant-cart-sheet-close-btn"
           >
             <svg
