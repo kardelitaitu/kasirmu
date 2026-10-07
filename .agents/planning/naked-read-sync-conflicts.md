@@ -28,7 +28,7 @@ Authenticate-then-assume on a read whose write neighbour is gated. That is the s
 - `drift_pin_three_way_partition_is_complete_and_sums` — `new_holes = ["sync::list_sync_conflicts_scoped"]`, `paid_stale = []`
 - `drift_pin_debt_ceilings_only_shrink` — 70 ungated against a ceiling of 69, and 27 authenticate-then-assume against 26
 
-The two numbers move **only** with a regenerated ledger plus a recorded decision. The pin's own message says it: record the reason in `docs/records/JOURNAL.md` before the number moves.
+The two numbers move **only** with a regenerated ledger plus a recorded decision. The pin's own message says it: record the reason in `docs/records/journal/JOURNAL.md` before the number moves.
 
 ## Two honest ways out (yours to choose)
 1. **Guard it.** Add `require_permission_for_session(..., permissions::SYNC_MANAGE)` the way the write twin at `:482` does, and the count goes back to 69 by itself. Preferred: a conflict list is the read half of an operation the write half already authorises.
