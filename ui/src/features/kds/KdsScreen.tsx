@@ -35,7 +35,7 @@ import { KdsEnrollmentModal } from '@/features/kds/components/KdsEnrollmentModal
 import { KdsScreenFooter } from '@/features/kds/KdsScreenFooter';
 import { nextKdsStatus } from '@/features/kds/kdsStatus';
 import { isAutoAckEligible } from '@/features/kds/kdsAutoAccept';
-import { sameOrders } from '@/features/kds/kdsOrdersDiff';
+import { arrivedOrderIds, orderIdSet, sameOrders } from '@/features/kds/kdsOrdersDiff';
 import './KdsScreen.css';
 
 /** Props passed to every KDS layout component. */
@@ -155,14 +155,11 @@ export default function KdsScreen() {
     // KdsOrderFiltering.test.ts can import them instead of restating them.
     const filtered = filterKdsOrdersByScope(fetchedOrders, activeStoreId);
 
-    // Track new ticket IDs for arrival animation.
-    const currentIds = new Set(filtered.map((o) => o.id));
-    const arrivedIds = new Set<string>();
-    for (const id of currentIds) {
-      if (!prevOrderIdsRef.current.has(id)) {
-        arrivedIds.add(id);
-      }
-    }
+    // Track new ticket IDs for arrival animation. The diff is named in
+    // kdsOrdersDiff so it can be tested; it had none before (the two suites that
+    // mention newOrderIds pass an empty Set as a prop and never exercise it).
+    const currentIds = orderIdSet(filtered);
+    const arrivedIds = arrivedOrderIds(prevOrderIdsRef.current, filtered);
     prevOrderIdsRef.current = currentIds;
     if (arrivedIds.size > 0) {
       setNewOrderIds(arrivedIds);
