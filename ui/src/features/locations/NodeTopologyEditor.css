@@ -288,8 +288,10 @@
   position: absolute;
   inset: 0;
   border-radius: inherit;
+  /* Same debris as WorkspaceHome.css: nothing sets --mouse-x/-y anywhere in the
+     tree (only a TEST names them), so this read 50%/50% always. */
   background: radial-gradient(
-    120px circle at var(--mouse-x, 50%) var(--mouse-y, 50%),
+    120px circle at 50% 50%,
     color-mix(in srgb, var(--color-accent) 10%, transparent) 0%,
     transparent 70%
   );

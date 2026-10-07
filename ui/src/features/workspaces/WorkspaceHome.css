@@ -376,8 +376,17 @@ body:has(.memo-stack) .ws-layer-content {
   position: absolute;
   inset: 0;
   border-radius: inherit;
+  /* Was `at var(--mouse-x, 50%) var(--mouse-y, 50%)`. d360dc606 replaced the JS
+     cursor tracker with a pure-CSS sway animation and deleted the three
+     setProperty calls that fed --mouse-x/-y/-rotate-x/-rotate-y — but only rewired
+     the ONE tilt rule it was updating. This gradient kept its reference, so it has
+     rendered at a fixed 50%/50% ever since: a static centred glow, not the
+     cursor-following one the token name still implies. The literal that actually
+     renders is now written directly, so the decoration says what it does.
+     Not restored: the tracking effect was removed on purpose (the commit's whole
+     subject is the pure-CSS replacement), and reviving it is a design decision. */
   background: radial-gradient(
-    600px circle at var(--mouse-x, 50%) var(--mouse-y, 50%),
+    600px circle at 50% 50%,
     var(--ws-glow, rgba(99, 102, 241, 0.08)) 0%,
     transparent 60%
   );
@@ -653,7 +662,11 @@ body:has(.memo-stack) .ws-layer-content {
   border-color: var(--ws-accent, var(--color-accent));
   background: var(--ws-accent-bg, var(--color-bg-elevated));
   backdrop-filter: blur(var(--blur-amount));
-  transform: perspective(800px) rotateX(var(--rotate-x, 0deg)) rotateY(var(--rotate-y, 0deg)) translateY(-0.25rem);
+  /* d360dc606's second site (see the gradient note above): the same removal left
+     rotateX(0deg) rotateY(0deg) here, which is the identity matrix — so
+     perspective() and both rotations contributed nothing and only the lift did.
+     The no-op wrappers are dropped rather than kept as decoration. */
+  transform: translateY(-0.25rem);
 }
 
 .workspace-card-active-dot {

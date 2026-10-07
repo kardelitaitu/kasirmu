@@ -2596,10 +2596,6 @@ const UNRESOLVED_VAR_TOKENS_BASELINE: string[] = [
   "--danger-500", // 4 NO FALLBACK - a colour that renders nothing
   "--danger-700", // 1 NO FALLBACK
   "--info-500", // 1 NO FALLBACK
-  "--mouse-x", // 2 - only a TEST sets these, so nothing exists at runtime
-  "--mouse-y", // 2
-  "--rotate-x", // 1 - workspaces/WorkspaceHome.css
-  "--rotate-y", // 1
   "--success-500", // 2 NO FALLBACK
   "--success-bg", // 1
   "--text-muted", // 1
@@ -2741,13 +2737,7 @@ const FOREIGN_SCHEME_BASELINE: Array<[string, string, number]> = [
   ["--color-surface-alt", "ui/src/features/staff/components/RoleAuthoringPanel.css", 1],
   ["--color-text-on-danger", "ui/src/components/StockAlertBell.css", 1],
   ["--danger", "ui/src/components/OrgSwitcher.css", 1],
-  ["--mouse-x", "ui/src/features/locations/NodeTopologyEditor.css", 1],
-  ["--mouse-x", "ui/src/features/workspaces/WorkspaceHome.css", 1],
-  ["--mouse-y", "ui/src/features/locations/NodeTopologyEditor.css", 1],
-  ["--mouse-y", "ui/src/features/workspaces/WorkspaceHome.css", 1],
   ["--muted", "ui/src/components/ExitSurveyModal.css", 1],
-  ["--rotate-x", "ui/src/features/workspaces/WorkspaceHome.css", 1],
-  ["--rotate-y", "ui/src/features/workspaces/WorkspaceHome.css", 1],
   ["--success-bg", "ui/src/features/settings/sections/DiagnosticsSection.css", 1],
   ["--surface", "ui/src/components/ExitSurveyModal.css", 1],
   ["--surface", "ui/src/components/OrgSelector.css", 1],
@@ -2784,8 +2774,8 @@ describe("foreign-scheme token freeze", () => {
     // If a future lane lowers these again, CHECK WHAT PAID THE DEBT first: a drop
     // caused by sheets being fixed is this; one caused by the predicate going blind
     // is the opposite, and looks identical in the count alone.
-    expect(harvested.size, "the foreign-scheme predicate matched no pair").toBeGreaterThanOrEqual(26);
-    expect([...harvested.values()].reduce((a, n) => a + n, 0)).toBeGreaterThanOrEqual(36);
+    expect(harvested.size, "the foreign-scheme predicate matched no pair").toBeGreaterThanOrEqual(20);
+    expect([...harvested.values()].reduce((a, n) => a + n, 0)).toBeGreaterThanOrEqual(30);
   });
 
   it("no new foreign-scheme reference appears, and no frozen one silently vanished", () => {
