@@ -5,6 +5,18 @@ Anchor: HEAD **`c85bae9ef`** (branch `0.0.37`). Tablet sections were measured ea
 (`9d8fbdd778d528eeebac43418e1feeca`). Every desktop number below is from `c85bae9ef`,
 re-anchored at the end of the run.
 
+> **Package names were repointed on 2026-10-07.** `bb1e72eb3` (2026-09-18, *"refactor(mobile):
+> rename the tablet shell to mobile"*) renamed the crate this file measures from `kasirmu-tablet`
+> to `kasirmu-mobile`, and the desktop shell from `kasirmu-desktop` to `kasirmu-app`. The command
+> this file prints — `cargo test -p kasirmu-tablet` — therefore fails at argument parsing today,
+> before reaching a single test. The **measurements** below are the auditor's from `c85bae9ef` and
+> are left exactly as written, [Fact] labels included; only the package name in the reproduction
+> command is current. Read it as `cargo test -p kasirmu-mobile`, and read the exit codes and counts
+> as the 0.0.37 measurements they are rather than as a fresh run. The `apps/{desktop,tablet}-client`
+> paths in the Method paragraph are likewise historical: those shells are `apps/desktop-tauri` and
+> `apps/mobile-tauri`, and `crates/oz-bridge/src` is now `crates/kasirmu-bridge/src` (`36e47f5d7`,
+> 2026-09-17).
+
 **Method, and the fact that licenses everything below:** every count is a reimplementation
 of the harness own predicate over a `git archive HEAD` extract of
 `apps/{desktop,tablet}-client/src/commands`, `lib.rs` and `crates/oz-bridge/src` — not a
