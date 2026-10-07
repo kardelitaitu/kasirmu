@@ -524,3 +524,27 @@ toast is a TIMING artefact, not a second failure: toasts auto-dismiss after
 during general's initialization is still on screen when the license route is
 probed. Whether one intermittent rejection remains behind it is exactly what
 the ERR-06 subscriber probe (§6.3) will answer next session.
+
+### 6.5 The recorder names the causes (`7e8abd275`)
+
+`IpcErrorReporter` (mounted in AppProviders, subscribing through the ERR-06
+boundary) replaced the inert CDP patch, and the first walk with it produced
+named causes instead of a bare toast:
+
+1. **`[permissionDenied] "user not found"`** on `get_default_currency_scoped`,
+   `list_currencies_scoped` and `list_exchange_rates_scoped` — repeated across
+   sections. The scoped currency/exchange-rate reads proxy to the license
+   server, which does not know the tablet session's user. This is a
+   PROVISIONING/SERVER question, not a renderer bug: whether the tablet's
+   session user should exist server-side (linked mode) or those reads should
+   stay local (local mode) needs a domain decision.
+2. **`version_scoped` "Command not found"** — EXPECTED: `api/system.ts` falls
+   back to unscoped `version` per ADR #7; the rejection is handled noise.
+3. **`offline_queue_status_summary_scoped` "Command not found"** — the known
+   reachable-and-wrong name from §2.2; the section degrades gracefully.
+
+Walk verdict with the recorder: 10 ok / 5 warn / 0 fail — the warn count
+ROSE because failures are now visible; nothing regressed. The general
+section's toast did NOT fire this run (the debounce removed the storm), but
+the currency slices still reject per-section, so the underlying
+"user not found" cause is untouched by §6.4's fix.
