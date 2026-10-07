@@ -806,34 +806,31 @@ struct Root<'a> {
     skip: &'a [&'a str],
 }
 
-/// Compare the merged two-root census against the pin, and report EVERY
-/// drifted row in one failure.
+/// The four drift classes, as row strings — pure, so it can be tested on
+/// synthetic input.
 ///
-/// A pinned census is only worth what it shows when it breaks: an assertion
-/// that panics on the first mismatch turns a fifty-row drift into a one-row
-/// report and queues the rest behind repeated reruns. Count drift, key-set
-/// drift, a pinned row with no module on disk, and a gating module missing
-/// from the pin are all collected first, then reported together as one table.
-fn assert_pin(roots: &[Root], pinned: &[(&str, usize, &[&str])]) {
-    let mut actual: BTreeMap<String, (usize, Vec<String>)> = BTreeMap::new();
-    for root in roots {
-        for (stem, (calls, keys)) in census_dir(&root.dir, root.gates, root.skip) {
-            match actual.get_mut(&stem) {
-                Some((c, k)) => {
-                    *c += calls;
-                    k.extend(keys);
-                    k.sort();
-                    k.dedup();
-                }
-                None => {
-                    actual.insert(stem, (calls, keys));
-                }
-            }
-        }
-    }
-
-    // Collect every mismatch before reporting — the full table is the review
-    // signal; the first row alone is a queue.
+/// EXTRACTED from `assert_pin` so the classification is reachable without a
+/// filesystem. Everything here is a decision about a (pin, source) PAIR, and
+/// all four classes matter for different reasons:
+///
+///   - `absent`   the pin names a module that no longer exists. A deregistered
+///                command leaves this row behind, and the pin's own §7 sense is
+///                that a stale exemption outliving its command protects nothing.
+///   - `count`    the module gained or lost gate CALLS.
+///   - `keys`     the permission SET moved, which is behavioural: a module that
+///                now asks for a different permission is doing a different job,
+///                and this is the row `fiscal` currently trips.
+///   - `unpinned` a module gates permissions but appears in no row at all, so
+///                nothing is reviewing it. This is the class the current drift
+///                reports most often (`diagnostics`, `inventory`, `kds_device`,
+///                `kds_routing`, `shifts`, `updater`).
+///
+/// Rows are collected, never short-circuited: the caller asserts on the whole
+/// table because one row at a time turns a fifty-row drift into a queue.
+fn diff_rows(
+    actual: &BTreeMap<String, (usize, Vec<String>)>,
+    pinned: &[(&str, usize, &[&str])],
+) -> Vec<String> {
     let mut rows: Vec<String> = Vec::new();
     for (stem, exp_calls, exp_keys) in pinned {
         let Some((got_calls, got_keys)) = actual.get(*stem) else {
@@ -863,6 +860,36 @@ fn assert_pin(roots: &[Root], pinned: &[(&str, usize, &[&str])]) {
             ));
         }
     }
+    rows
+}
+
+/// Compare the merged two-root census against the pin, and report EVERY
+/// drifted row in one failure.
+///
+/// A pinned census is only worth what it shows when it breaks: an assertion
+/// that panics on the first mismatch turns a fifty-row drift into a one-row
+/// report and queues the rest behind repeated reruns. Count drift, key-set
+/// drift, a pinned row with no module on disk, and a gating module missing
+/// from the pin are all collected first, then reported together as one table.
+fn assert_pin(roots: &[Root], pinned: &[(&str, usize, &[&str])]) {
+    let mut actual: BTreeMap<String, (usize, Vec<String>)> = BTreeMap::new();
+    for root in roots {
+        for (stem, (calls, keys)) in census_dir(&root.dir, root.gates, root.skip) {
+            match actual.get_mut(&stem) {
+                Some((c, k)) => {
+                    *c += calls;
+                    k.extend(keys);
+                    k.sort();
+                    k.dedup();
+                }
+                None => {
+                    actual.insert(stem, (calls, keys));
+                }
+            }
+        }
+    }
+
+    let rows = diff_rows(&actual, pinned);
 
     assert!(
         rows.is_empty(),
@@ -1196,4 +1223,140 @@ fn strip_test_blocks_leaves_the_unbraced_declaration_in_place() {
     let (calls, keys) = census(&stripped, &["require_session_permission("]);
     assert_eq!(calls, 1, "the live call must still be counted; got {calls}");
     assert_eq!(keys, vec!["SETTINGS_READ".to_string()], "and its key kept; got {keys:?}");
+}
+
+// ── `diff_rows`: the four drift classes ─────────────────────────────────
+//
+// WHY THE EXTRACTION. The classification used to live inside `assert_pin`,
+// which takes `&[Root]` -- filesystem paths -- so the only way to exercise it
+// was to run the whole census against the real tree. That made each class
+// testable only in the state the tree happened to be in, and `absent` has never
+// occurred at all: no pin currently names a missing module. These cases drive
+// every class on synthetic maps, so all four are now pinned independently of
+// what the checkout contains.
+
+fn map(rows: &[(&str, usize, &[&str])]) -> BTreeMap<String, (usize, Vec<String>)> {
+    rows.iter()
+        .map(|(stem, calls, keys)| {
+            (
+                (*stem).to_string(),
+                (
+                    *calls,
+                    keys.iter().map(|k| (*k).to_string()).collect::<Vec<_>>(),
+                ),
+            )
+        })
+        .collect()
+}
+
+/// An exactly-matching pin produces no rows.
+///
+/// The control for the four cases below: without it, a classifier that always
+/// emitted a row would satisfy every "this drift is reported" assertion.
+#[test]
+fn diff_rows_is_empty_when_the_pin_matches() {
+    let actual = map(&[("billing", 3, &["SETTINGS_READ"])]);
+    let pinned: &[(&str, usize, &[&str])] = &[("billing", 3, &["SETTINGS_READ"])];
+    let rows = diff_rows(&actual, pinned);
+    assert!(rows.is_empty(), "a matching pin must report nothing: {rows:?}");
+}
+
+/// `absent`: the pin names a module the source no longer has.
+///
+/// The class that has never fired in this repo, and therefore the one with no
+/// incidental coverage at all. A deregistered command must not leave a pin
+/// behind, so this row guards against a stale exemption outliving what it
+/// protected.
+#[test]
+fn diff_rows_reports_a_pinned_module_that_is_absent() {
+    let actual = map(&[]);
+    let pinned: &[(&str, usize, &[&str])] = &[("deleted", 2, &["SETTINGS_READ"])];
+    let rows = diff_rows(&actual, pinned);
+    assert_eq!(rows.len(), 1, "expected one row, got: {rows:?}");
+    assert!(
+        rows[0].contains("absent") && rows[0].contains("deleted"),
+        "the row must name the class and the module: {:?}",
+        rows[0]
+    );
+}
+
+/// `count`: same keys, different call count -- reported with both numbers.
+#[test]
+fn diff_rows_reports_a_count_mismatch() {
+    let actual = map(&[("edc", 11, &["SETTINGS_READ"])]);
+    let pinned: &[(&str, usize, &[&str])] = &[("edc", 8, &["SETTINGS_READ"])];
+    let rows = diff_rows(&actual, pinned);
+    assert_eq!(rows.len(), 1, "expected one row, got: {rows:?}");
+    assert!(
+        rows[0].contains("count") && rows[0].contains("pin 8") && rows[0].contains("source 11"),
+        "the row must carry both numbers so the reader can judge the move: {:?}",
+        rows[0]
+    );
+}
+
+/// `keys`: same count, different permission set -- still reported.
+///
+/// This is the behavioural class. `fiscal` currently trips it by moving from
+/// settings permissions to sales ones, which is a different job, and a
+/// classifier that only compared counts would call that a match.
+#[test]
+fn diff_rows_reports_a_key_set_mismatch_at_equal_count() {
+    let actual = map(&[("fiscal", 5, &["SALES_PROCESS", "SALES_VIEW"])]);
+    let pinned: &[(&str, usize, &[&str])] = &[("fiscal", 5, &["SETTINGS_EDIT", "SETTINGS_READ"])];
+    let rows = diff_rows(&actual, pinned);
+    assert_eq!(rows.len(), 1, "expected exactly one row, got: {rows:?}");
+    assert!(
+        rows[0].contains("keys"),
+        "a key move at equal count must be reported as a keys row: {:?}",
+        rows[0]
+    );
+}
+
+/// `unpinned`: a module gates permissions and appears in no row.
+///
+/// The most common class in the live drift. It is reported for a module with NO
+/// pin entry, so the row must name what was found -- a reader needs the key list
+/// to write the missing entry.
+#[test]
+fn diff_rows_reports_a_gating_module_that_is_unpinned() {
+    let actual = map(&[("diagnostics", 1, &["SETTINGS_READ"])]);
+    let pinned: &[(&str, usize, &[&str])] = &[];
+    let rows = diff_rows(&actual, pinned);
+    assert_eq!(rows.len(), 1, "expected one row, got: {rows:?}");
+    assert!(
+        rows[0].contains("unpinned") && rows[0].contains("SETTINGS_READ"),
+        "the row must name the module and the keys found on disk: {:?}",
+        rows[0]
+    );
+}
+
+/// Every drifted row is reported, not just the first.
+///
+/// The property the function's own doc comment claims: "the first row alone is
+/// a queue". A short-circuiting implementation would still pass every
+/// single-drift case above, so this is the one that pins the contract they all
+/// rely on.
+#[test]
+fn diff_rows_reports_every_drift_in_one_call() {
+    let actual = map(&[
+        ("edc", 11, &["SETTINGS_READ"]),
+        ("fiscal", 5, &["SALES_VIEW"]),
+        ("diagnostics", 1, &["SETTINGS_READ"]),
+    ]);
+    let pinned: &[(&str, usize, &[&str])] = &[
+        ("edc", 8, &["SETTINGS_READ"]),
+        ("fiscal", 5, &["SETTINGS_EDIT"]),
+        ("deleted", 2, &["SETTINGS_READ"]),
+        ("ok", 0, &[]),
+    ];
+    let rows = diff_rows(&actual, pinned);
+    // 5 expected: edc count, fiscal keys, diagnostics unpinned, deleted absent,
+    // and ok absent.
+    assert_eq!(rows.len(), 5, "every drift class must appear in ONE report; got {rows:?}");
+    for needle in ["absent", "count", "keys", "unpinned"] {
+        assert!(
+            rows.iter().any(|r| r.contains(needle)),
+            "the class {needle} is missing from the report: {rows:?}"
+        );
+    }
 }
