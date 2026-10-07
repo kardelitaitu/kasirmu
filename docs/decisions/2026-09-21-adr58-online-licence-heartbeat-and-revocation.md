@@ -1331,7 +1331,7 @@ and it never routes a device check cross-region.
   §2.4) may *inform* a human; it must not ban.
 - **Not a change to downgrade.** A lapsed paid tier keeps dropping to Free with full selling
   rights (§2.2). That behaviour is correct and is preserved.
-- **Not a change to tier limits or grace values** — `docs/guides/subscription-tiers.md` is FINAL.
+- **Not a change to tier limits or grace values** — `docs/guides/user/subscription-tiers.md` is FINAL.
 - **Not a client-side brick.** §2.7 forbids making the app or its database unopenable.
 - **Not coverage of `local` installs** — see §3.4, where the exemption is now a stated decision rather than an open question.
 

@@ -897,7 +897,7 @@ does not. Both classes are now settled.
 
 The benchmark throughout is **how shipped offline-first POS SaaS operates** (Square, Toast, SumUp,
 Shopify POS, Stripe Terminal), read against this repo's own constraints (§1) and its commercial
-model (`docs/guides/subscription-tiers.md`, FINAL 2026-08-17: five tiers, Free permanent at one
+model (`docs/guides/user/subscription-tiers.md`, FINAL 2026-08-17: five tiers, Free permanent at one
 location/one terminal, Phase D1 per-tenant signed overrides).
 
 ### Q1 — Tablet identity: pairing, or emailed-code only? `[was deferrable]` — DECIDED
@@ -910,7 +910,7 @@ location/one terminal, Phase D1 per-tenant signed overrides).
 **Decision: A — device-code pairing is the target, and ships in the first cut.**
 
 The "B now, A later" reflex is what shipped products do *not* do, and this repo's own commercial
-model is why. `docs/guides/subscription-tiers.md` makes Free a **permanent** tier capped at one
+model is why. `docs/guides/user/subscription-tiers.md` makes Free a **permanent** tier capped at one
 location and one terminal, with paid tiers sold on additional terminals
 (`max_pos_instances`, `entitlements.rs:133`). Terminal enrolment is therefore not a
 later-era concern — it is the **upgrade trigger**. A flow that re-runs full onboarding per device
