@@ -14,6 +14,7 @@ import { useSplashExit } from '@/hooks/useSplashExit';
 import MemoBanner from '@/features/memo/MemoBanner';
 import StorageBanner from '@/app/StorageBanner';
 import { isAnyAriaModalOpen, consumeShortcut } from '@/utils/modal-guard';
+import { setActiveRoute } from '@/utils/activeRoute';
 import { useOrientation } from '@/hooks/useOrientation';
 import { toWorkspaceType, type WorkspaceType } from '@/features/settings/workspaceType';
 import { useSubscription } from '@/contexts/SubscriptionContext';
@@ -269,9 +270,14 @@ export default function TabletAppShell() {
         return p && isPageAccessible(p, userRole, userPermissions);
       }) ?? 'products';
       setCurrentRoute(fallback);
+      // Publish for the full-page error boundary's resetKeys: this shell
+      // navigates by state, so a boundary tripped on one tool must clear when
+      // the user switches tools — the hash does not change here.
+      setActiveRoute(fallback);
       return;
     }
     setCurrentRoute(route);
+    setActiveRoute(route);
   }, [userRole, userPermissions]);
 
   // ── Hash-based routing, mirroring AppShell.tsx:350-395 ────────────────

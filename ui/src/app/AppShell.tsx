@@ -18,6 +18,7 @@ import { useTerminalProfile } from '@/hooks/useTerminalProfile';
 import { getPage, isPageAccessible, type PageRegistration } from '@/registries/page-registry';
 import { recordMark } from '@/utils/perf-metrics';
 import { settleRead } from '@/utils/settle-read';
+import { setActiveRoute } from '@/utils/activeRoute';
 import PermissionDenied from '@/components/PermissionDenied';
 import { ErrorState } from '@/components/ErrorState';
 import { LazyBoundary } from '@/components/LazyBoundary';
@@ -524,9 +525,14 @@ export default function AppShell() {
         return p && isPageAccessible(p, userRole, userPermissions);
       }) ?? 'products';
       setCurrentRoute(fallback);
+      // Publish for the full-page error boundary's resetKeys: like the tablet
+      // shell, user-driven navigation here is state, not the hash, so a
+      // boundary tripped on one page must clear when the user moves off it.
+      setActiveRoute(fallback);
       return;
     }
     setCurrentRoute(route);
+    setActiveRoute(route);
   }, [userRole, userPermissions]);
 
   const { splashMounted, splashExiting } = useSplashExit(loading);

@@ -1,5 +1,6 @@
 import { useSyncExternalStore, type ReactNode } from 'react';
 import ErrorBoundary from '@/components/ErrorBoundary';
+import { getActiveRoute, subscribeActiveRoute } from '@/utils/activeRoute';
 import { LocalizedErrorBoundary } from '@/components/LocalizedErrorBoundary';
 import { GlobalErrorReporter } from '@/components/GlobalErrorReporter';
 import { LocaleProvider } from '@/i18n/LocaleContext';
@@ -51,6 +52,17 @@ function useHashRoute(): string {
 }
 
 /**
+ * The route the shell navigated to BY STATE. The tablet shell and the desktop
+ * shell both move between tools with `setCurrentRoute`, never touching the
+ * hash — so a boundary tripped on one tool would not clear when the user
+ * switched tools. Shells publish through `setActiveRoute`; both values feed
+ * `resetKeys` below.
+ */
+function useActiveShellRoute(): string {
+  return useSyncExternalStore(subscribeActiveRoute, getActiveRoute, () => '');
+}
+
+/**
  * Composite provider wrapper that establishes application contexts in optimal dependency order.
  * 
  * Order of nesting:
@@ -69,7 +81,8 @@ function useHashRoute(): string {
  */
 export function AppProviders({ children }: AppProvidersProps) {
   const hashRoute = useHashRoute();
-  const resetKeys = [hashRoute];
+  const shellRoute = useActiveShellRoute();
+  const resetKeys = [hashRoute, shellRoute];
   return (
     <ErrorBoundary autoRefreshMs={ERROR_AUTO_REFRESH_MS} resetKeys={resetKeys}>
       <LocaleProvider>
