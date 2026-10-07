@@ -25,13 +25,19 @@ export function useStorageHealth() {
     }, POLL_INTERVAL_MS);
 
     let unlisten: (() => void) | undefined;
+    let cancelled = false;
     void onAppReconnect(() => {
       void check();
     }).then((cleanup) => {
-      unlisten = cleanup;
+      if (cancelled) {
+        cleanup();
+      } else {
+        unlisten = cleanup;
+      }
     });
 
     return () => {
+      cancelled = true;
       clearInterval(interval);
       if (unlisten) unlisten();
     };

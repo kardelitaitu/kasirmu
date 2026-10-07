@@ -621,6 +621,7 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
 
   useEffect(() => {
     let unlisten: (() => void) | undefined;
+    let cancelled = false;
 
     // onSettingsUpdated (ui/src/api/settings.ts) owns the dynamic import of
     // the Tauri event API and degrades silently outside Tauri (browser dev).
@@ -640,32 +641,43 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
       }
     })
       .then((fn) => {
-        unlisten = fn;
+        if (cancelled) {
+          fn();
+        } else {
+          unlisten = fn;
+        }
       })
       .catch((err) => {
         console.warn('Failed to register settings_updated listener:', err);
       });
 
     return () => {
+      cancelled = true;
       if (unlisten) unlisten();
     };
   }, [markSettingsUpdated]);
 
   useEffect(() => {
     let unlistenReconnect: (() => void) | undefined;
+    let cancelled = false;
 
     // onAppReconnect re-hydrates settings on window/webview resume (e.g. Android foreground)
     onAppReconnect(() => {
       void refetch();
     })
       .then((fn) => {
-        unlistenReconnect = fn;
+        if (cancelled) {
+          fn();
+        } else {
+          unlistenReconnect = fn;
+        }
       })
       .catch((err) => {
         console.warn('Failed to register onAppReconnect listener:', err);
       });
 
     return () => {
+      cancelled = true;
       if (unlistenReconnect) unlistenReconnect();
     };
   }, [refetch]);

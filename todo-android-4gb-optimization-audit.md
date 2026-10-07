@@ -1490,7 +1490,7 @@ Tasks:
 - [x] Memoize selectors (MenuItemTile memoization, categoryOptions & filtered useMemo).
 - [ ] Reduce global state size.
 - [x] Lazy-load images (ProductThumb native loading="lazy", decoding="async", and React.memoization).
-- [ ] Clean up listeners.
+- [x] Clean up listeners (cancelled unmount guards for async onAppReconnect and onSettingsUpdated subscriptions in SettingsContext and useStorageHealth).
 - [ ] Profile React renders.
 - [x] Add bundle size budget (scripts/check-bundle.mjs enforced via npm run bundle:check and bundle:check:mobile with gzip thresholds).
 - [ ] Remove large arrays from persistent global state.
