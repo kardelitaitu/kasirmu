@@ -16,6 +16,7 @@ import { TOOLS, TOOL_GROUP_ORDER, type ToolItem, type ToolGroupId } from './tool
 import { ToolsCategoryGrid } from './components/ToolsCategoryGrid';
 import type { ToolLockReason } from './components/ToolCard';
 import { animDuration } from '@/utils/animation';
+import { isTabletShell } from '@/utils/shellKind';
 import './WorkspaceHome.css';
 
 // ── Per-workspace accent color classes ────────────────────────────
@@ -27,6 +28,25 @@ const WS_COLORS: Record<string, string> = {
   warehouse: 'ws-color-warehouse',
   admin: 'ws-color-admin',
 };
+
+/**
+ * Whether a home-screen tool can actually run on the shell that is rendering.
+ *
+ * `topology` is today the only tool the tablet cannot serve. None of the ten
+ * commands are registered in the mobile shell, so displaying the editor
+ * advertises reads and writes that cannot work. The bridge has portable
+ * command bodies, but a real Android port must also wire the pending-Apply
+ * recovery and revision retention that the desktop startup owns; copying
+ * command registrations alone would risk an interrupted cross-DB Apply on
+ * Android. Keep authoring on desktop until its lifecycle and touch editor
+ * have been verified on a device. Read-only Locations remains available.
+ *
+ * `isTabletShell()` is non-reactive by design (it is set once by the entry
+ * before the first render), so this is safe to call from a memo with no dep.
+ */
+function runsOnThisShell(toolId: string): boolean {
+  return !(isTabletShell() && toolId === 'topology');
+}
 
 // ── Favorites persistence (localStorage) ─────────────────────────
 
@@ -381,7 +401,11 @@ export default function WorkspaceHome() {
    *  NOT mean the route would refuse. Owner ruling 2026-09-20
    *  (`done-todo-owner-rulings.md` R20): the rank stays authoritative for the home
    *  grid, and the policy is cited at the site. */
-  const canAddWorkspace = roleAtLeast(roleName, 'manager') && sortedWorkspaces.length === 0;
+  // The empty-state quick presets set a type key with NO registered instance,
+  // so they cannot mint a session. The adjacent Add Workspace card opens the
+  // desktop-only topology editor. On Android the honest empty state is the
+  // contact-admin guidance, not three buttons that lead to dead routes.
+  const canAddWorkspace = !isTabletShell() && roleAtLeast(roleName, 'manager') && sortedWorkspaces.length === 0;
 
   // ── Tools gates (.agents/archived/done-todo/done-todo-tools.md role/tier matrix) ─────────────
 
@@ -435,11 +459,13 @@ export default function WorkspaceHome() {
   // `canAddWorkspace` above — see `features/workspaces/tools.tsx:20-31`.
   const canSeeTools = roleAtLeast(roleName, 'manager');
 
+  // Tools the tablet shell cannot run are filtered out rather than shown
+  // broken — see `runsOnThisShell` for which and why.
   const toolGroups = useMemo(() => {
     if (!canSeeTools) return [];
     return TOOL_GROUP_ORDER.map((groupId) => ({
       id: groupId as ToolGroupId,
-      tools: TOOLS.filter((t) => t.group === groupId)
+      tools: TOOLS.filter((t) => t.group === groupId && runsOnThisShell(t.id))
         .map((tool) => ({ tool, lock: toolLock(tool) }))
         // Type predicate, not a plain boolean: it must NARROW the element
         // type to the union ToolsCategoryGrid accepts — with a boolean
@@ -979,68 +1005,72 @@ export default function WorkspaceHome() {
                     }
 
                     return (
-                      <button
-                        key={ws.type_key}
-                        type="button"
-                        aria-current={isActive ? 'true' : undefined}
-                        className={`workspace-card ${colorClass}${isActive ? ' workspace-card--active' : ''}`}
-                        data-testid="workspace-card"
-                        onClick={(e) => handleCardClick(ws.type_key, e)}
-                        aria-label={l10n.getString('workspace-card-open-aria', { name: ws.name })}
-                      >
-                        <div className="workspace-card-key-hint">{idx + 1}</div>
-                        <span
-                          role="button"
+                      <div className="workspace-card-container" key={ws.type_key}>
+                        <button
+                          type="button"
+                          aria-current={isActive ? 'true' : undefined}
+                          className={`workspace-card ${colorClass}${isActive ? ' workspace-card--active' : ''}`}
+                          data-testid="workspace-card"
+                          onClick={(e) => handleCardClick(ws.type_key, e)}
+                          aria-label={l10n.getString('workspace-card-open-aria', { name: ws.name })}
+                        >
+                          <div className="workspace-card-key-hint">{idx + 1}</div>
+                          {isActive && (
+                            <div className="workspace-card-active-dot" aria-label={requiredLocalized(l10n, 'workspace-card-active-aria')}>
+                              <svg viewBox="0 0 24 24" fill="currentColor" width="10" height="10" aria-hidden="true">
+                                <circle cx="12" cy="12" r="6" />
+                              </svg>
+                            </div>
+                          )}
+                          <div className="workspace-card-row">
+                            <div className="workspace-card-icon">
+                              <div className="workspace-card-icon-inner">{getIcon(ws.type_key)}</div>
+                            </div>
+                            <div className="workspace-card-body">
+                              <div className="workspace-card-title">
+                                <h2 className="workspace-card-name">{ws.name}</h2>
+                              </div>
+                              <div className="workspace-card-text">
+                                <p className="workspace-card-desc">{ws.description}</p>
+                              </div>
+                              <div className="workspace-card-actions" />
+                            </div>
+                          </div>
+                          <div className="workspace-card-overlay" aria-hidden="true">
+                            {/* Capped at MAX_DIGIT_SHORTCUT: a card past the ninth is real, but
+                                no single keypress can name it -- the handler maps one key
+                                character with parseInt(e.key, 10) - 1. The label is the part
+                                that was wrong, so the label stops advertising it. */}
+                            {idx < MAX_DIGIT_SHORTCUT && (
+                              <span className="workspace-card-overlay-hint">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" width="12" height="12">
+                                  <rect x="2" y="4" width="20" height="16" rx="2" />
+                                  <path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01" />
+                                  <path d="M6 12h.01M10 12h.01M14 12h.01M18 12h.01" />
+                                </svg>
+                                <Localized id="workspace-home-shortcut-hint" vars={{ key: `${idx + 1}` }}>
+                                  <span>Press {idx + 1} to open</span>
+                                </Localized>
+                              </span>
+                            )}
+                          </div>
+                        </button>
+                        {/* Sibling, NOT child: a <button> inside the card <button> makes the
+                            pin ambiguous to keyboard and screen-reader users. `aria-pressed`
+                            replaces the old `role="button" tabIndex={0}` span, which needed a
+                            hand-rolled Enter/Space handler to be operable at all. */}
+                        <button
+                          type="button"
                           className={`workspace-card-pin-btn${pinnedKeys.has(ws.type_key) ? ' workspace-card-pin-btn--pinned' : ''}`}
-                          onClick={(e) => { e.stopPropagation(); togglePin(ws.type_key); }}
-                          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); togglePin(ws.type_key); } }}
+                          onClick={() => togglePin(ws.type_key)}
+                          aria-pressed={pinnedKeys.has(ws.type_key)}
                           aria-label={pinnedKeys.has(ws.type_key) ? l10n.getString('workspace-card-unpin-aria', { name: ws.name }) : l10n.getString('workspace-card-pin-aria', { name: ws.name })}
-                          tabIndex={0}
                         >
                           <svg viewBox="0 0 24 24" fill={pinnedKeys.has(ws.type_key) ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="14" height="14" aria-hidden="true">
                             <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
                           </svg>
-                        </span>
-                        {isActive && (
-                          <div className="workspace-card-active-dot" aria-label={requiredLocalized(l10n, 'workspace-card-active-aria')}>
-                            <svg viewBox="0 0 24 24" fill="currentColor" width="10" height="10" aria-hidden="true">
-                              <circle cx="12" cy="12" r="6" />
-                            </svg>
-                          </div>
-                        )}
-                        <div className="workspace-card-row">
-                          <div className="workspace-card-icon">
-                            <div className="workspace-card-icon-inner">{getIcon(ws.type_key)}</div>
-                          </div>
-                          <div className="workspace-card-body">
-                            <div className="workspace-card-title">
-                              <h2 className="workspace-card-name">{ws.name}</h2>
-                            </div>
-                            <div className="workspace-card-text">
-                              <p className="workspace-card-desc">{ws.description}</p>
-                            </div>
-                            <div className="workspace-card-actions" />
-                          </div>
-                        </div>
-                        <div className="workspace-card-overlay" aria-hidden="true">
-                          {/* Capped at MAX_DIGIT_SHORTCUT: a card past the ninth is real, but
-                              no single keypress can name it -- the handler maps one key
-                              character with parseInt(e.key, 10) - 1. The label is the part
-                              that was wrong, so the label stops advertising it. */}
-                          {idx < MAX_DIGIT_SHORTCUT && (
-                          <span className="workspace-card-overlay-hint">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" width="12" height="12">
-                              <rect x="2" y="4" width="20" height="16" rx="2" />
-                              <path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01" />
-                              <path d="M6 12h.01M10 12h.01M14 12h.01M18 12h.01" />
-                            </svg>
-                            <Localized id="workspace-home-shortcut-hint" vars={{ key: `${idx + 1}` }}>
-                              <span>Press {idx + 1} to open</span>
-                            </Localized>
-                          </span>
-                          )}
-                        </div>
-                      </button>
+                        </button>
+                      </div>
                     );
                   })}
 

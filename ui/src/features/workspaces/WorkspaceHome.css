@@ -327,6 +327,18 @@ body:has(.memo-stack) .ws-layer-content {
 
 /* ── Card ────────────────────────────────────────────────────────── */
 
+/* The open-card and pin actions must be siblings: a button inside a button
+   makes the pin unreachable/ambiguous to keyboard and screen-reader users. */
+.workspace-card-container {
+  position: relative;
+  min-width: 0;
+}
+
+.workspace-card-container > .workspace-card {
+  width: 100%;
+  height: 100%;
+}
+
 .workspace-card {
   position: relative;
   text-align: left;
@@ -703,9 +715,16 @@ body:has(.memo-stack) .ws-layer-content {
   border-radius: var(--radius-md);
 }
 
-.workspace-card-pin-btn:hover {
+.workspace-card-pin-btn:hover,
+.workspace-card-pin-btn:focus-visible {
   color: var(--color-warning);
+  opacity: 1;
   transform: translate(-0.25rem, -0.25rem) scale(1);
+}
+
+.workspace-card-pin-btn:focus-visible {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 2px;
 }
 
 .workspace-card-pin-btn--pinned {
@@ -718,17 +737,33 @@ body:has(.memo-stack) .ws-layer-content {
   opacity: 0.6;
 }
 
-.workspace-card:hover .workspace-card-pin-btn:not(.workspace-card-pin-btn--pinned) {
+.workspace-card-container:hover .workspace-card-pin-btn:not(.workspace-card-pin-btn--pinned),
+.workspace-card-container:focus-within .workspace-card-pin-btn:not(.workspace-card-pin-btn--pinned) {
   opacity: 0.6;
   transform: translate(-0.25rem, -0.25rem) scale(1);
 }
 
-.workspace-card:hover .workspace-card-pin-btn:not(.workspace-card-pin-btn--pinned):hover {
+.workspace-card-container:hover .workspace-card-pin-btn:not(.workspace-card-pin-btn--pinned):hover,
+.workspace-card-container:focus-within .workspace-card-pin-btn:focus-visible {
   opacity: 1;
 }
 
-.workspace-card--disabled .workspace-card-pin-btn {
+/* A disabled card offers nothing to pin, and the star sits outside the card
+   now, so it is hidden as the card's next sibling — not as its descendant. */
+.workspace-card--disabled + .workspace-card-pin-btn {
   display: none;
+}
+
+/* Touch screens have no hover: an opacity-0 1.5rem star is invisible AND
+   unreachable there. Show it always and size it to --space-12, which is 48px
+   at the 16px root (theme/reset.css:24) — Material's 48dp minimum target. */
+@media (hover: none), (pointer: coarse) {
+  .workspace-card-pin-btn {
+    width: var(--space-12);
+    height: var(--space-12);
+    opacity: 1;
+    transform: none;
+  }
 }
 
 /* ── Card key hint (number badge) ──────────────────────────────── */
