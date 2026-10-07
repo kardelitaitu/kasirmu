@@ -47,7 +47,7 @@ This implementation ADR records the four decisions that close that gap:
 
 ### 1. The semantic pairing table (`SEMANTIC_PORT_PAIRINGS`)
 
-A single ordered row list in `ui/src/features/stores/topologySemantics.json` is the
+A single ordered row list in `crates/kasirmu-core/src/topologySemantics.json` is the
 one source of truth for what may connect (imported by `topologyCard.ts` as
 `SEMANTIC_PORT_PAIRINGS`, and shared with the Rust backend via `include_str!`).
 Each row pairs a source semantic with a target semantic, the typed relationship

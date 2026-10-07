@@ -141,8 +141,8 @@ values. The routing engine (`resolve_kds_targets`) maps SKU → kitchen_zone
 
 ### Frontend Files
 
-- `ui/src/features/stores/NodeTopologyEditor.tsx` — peer_group inspector field
-- `ui/src/features/stores/topologyNodeCard.tsx` — peer_group badge rendering
+- `ui/src/features/locations/NodeTopologyEditor.tsx` — peer_group inspector field
+- `ui/src/features/locations/topologyNodeCard.tsx` — peer_group badge rendering
 
 ### Test Coverage
 
