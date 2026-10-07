@@ -355,3 +355,12 @@ work finished, the documents were superseded, and this file carries the closure.
 paragraph above this section is answered — neither branch taken:** the run happened, the print stands,
 and the E2E leg remains unexecuted in this plan's history by recorded choice on a machine that cannot
 execute it, not by silence.
+
+> **Where this file actually lives, and why it is not a contradiction.** The ruling above says it was renamed
+> "**in place at the root**", and this file is at `.agents/reviews/` — not the root. Both halves are correct.
+> `6c789b213` (2026-09-18, *"docs(agents): restore review and audited task documents to reviews/"*) moved
+> this file and 21 others out of the repo root into `.agents/reviews/` in one sweep: a later decision about
+> where *audited* plan docs belong, applied uniformly. The §4 rule the ruling cites is about renames happening
+> in place rather than being smuggled into `.agents/archived/` as a substitute for naming — and that rule was
+> honoured. What changed afterwards is the directory, by policy, for the whole class. **No repair needed and
+> none made**; recorded so the next reader does not read the ruling's "at the root" as an error to fix.
