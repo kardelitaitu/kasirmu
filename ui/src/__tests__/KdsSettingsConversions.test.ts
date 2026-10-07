@@ -1,6 +1,24 @@
 // Unit tests for KDS settings value conversions — the pure mappings
 // between UI slider values (minutes) and internal thresholds (seconds),
 // and the density→compact class determination.
+//
+// ⚠️ READ THIS BEFORE TREATING A GREEN RUN AS COVERAGE. Every function below is
+// a RETYPED COPY, not the production one. The real logic exists and is live, but
+// it is written INLINE inside component bodies, so it cannot be imported:
+//   minutes*60        -> KdsScreen.tsx:323-326 (the slaThresholds useMemo)
+//   density <= 2      -> KdsMainContent.tsx:132  (`settings.density <= 2 ? ' kds--compact' : ''`)
+//   Math.max/min 1,5  -> KdsHamburgerPanel.tsx:315,317 (inline onClick handlers)
+// Consequently these tests CANNOT FAIL when production changes: edit any of the
+// three sites and the 52 tests in this file still pass. Measured 2026-10-07.
+//
+// This is not a reason to delete them — the mappings are worth stating, and the
+// component suites cover the behaviour independently (KdsHamburgerPanel.test.tsx
+// renders the real panel and asserts its steppers). It IS the reason the copies
+// are labelled here rather than left looking like real coverage, and it is why
+// extracting these three mappings into a pure module — the shape kdsStatus.ts
+// and kdsSettingsModel.ts already use — is the change that would make every case
+// below load-bearing. Until then, read this file as documentation of the
+// mapping, not as a guard on it.
 
 import { describe, it, expect } from 'vitest';
 
