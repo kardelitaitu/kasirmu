@@ -14,7 +14,7 @@ What moved, and where to find it:
 | Build & Run Instructions | [`ARCHITECTURE.md`](../../ARCHITECTURE.md) § Build & Run Instructions |
 | Extensibility | [`ARCHITECTURE.md`](../../ARCHITECTURE.md) § Extensibility |
 | License & Commercial Governance | [`ARCHITECTURE.md`](../../ARCHITECTURE.md) § License & Commercial Governance |
-| Directory Layout | root file's § Repository Structure (Target) + § Project Layout (Current State) — this copy's tree was stale and was not merged |
+| Directory Layout | root file's § Repository Structure (Target — Long-Term Vision) + § Project Layout (Post-Restructuring) — Current State — this copy's tree was stale and was not merged |
 | Overview, five-layer stack summary | root file's § Core Goals / § Technology Stack; the audited five-layer narrative also lives in [`guides/product/WHITEPAPER.md`](../guides/product/WHITEPAPER.md) |
 
 Sibling documents in this directory ([`MODULAR_APP_PLAN.md`](../records/superseded/MODULAR_APP_PLAN.md)) are
