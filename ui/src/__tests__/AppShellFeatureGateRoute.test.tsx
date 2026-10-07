@@ -50,7 +50,11 @@
 //
 // WHAT THIS FILE DOES NOT REACH:
 //   * TabletAppShell.tsx:527 carries the same pageDenied expression; only the
-//     desktop shell is rendered here.
+//     desktop shell is rendered here. That twin IS covered — by
+//     __tests__/TabletAppShellFeatureGateRoute.test.tsx, which renders
+//     <TabletAppShell />, asserts the denial path, and carries its own CONTROL
+//     proving the deciding line is live. So this is a scope boundary of THIS
+//     file, not an uncovered behaviour: the two suites are deliberately split.
 //   * Real feature registrations are NOT imported HERE — they are lazy
 //     (ui/src/features/*/register.tsx; 12 of those files carry feature: on
 //     registerPage, measured with
