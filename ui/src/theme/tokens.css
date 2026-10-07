@@ -113,28 +113,42 @@
   /* ── Semantic: Status ─────────────────────────────────────── */
   --color-success:         #6FE884;
   --color-success-bg:      rgba(111, 232, 132, 0.10);
-  /* ── --color-*-dim is a DUPLICATE of its base, in every theme ─────────
-     Measured 2026-10-07: danger #FF6B68 = #FF6B68, warning #FFA94D = #FFA94D,
-     success #6FE884 = #6FE884 (and the same in light and dark-solid). The name
-     promises a dimmer value and the value does not deliver one, so the 71 call
-     sites that use it as a SUBDUED border or foreground (42 are borders) render at
-     full strength instead.
+  /* ── FOUR tokens are now exact duplicates of another token in the set ──
+     Measured 2026-10-07, per theme rather than in aggregate — the families do NOT
+     agree with each other, which is why each row is listed:
 
-     This is a REGRESSION, not a designed alias, and its provenance is exact:
-       3c446e3cf (2026-08-28) rewrote 333 lines of this file and collapsed all
-       three to their base values --
-         success #4ade80 -> #6FE884   warning #fbbf24 -> #FFA94D   danger #fca5a5 -> #FF6B68
-       That commit's subject is "fix(db): add DROP TABLE IF EXISTS to
-       20260824_media_edc.sql", so a token-semantics change rode in under a database
-       commit and nothing reviewing it would have looked here. Before that, a4c59a009
-       (the WCAG rewrite) had deliberately set them distinct.
+       token                  dark      light     dark-solid
+       --color-danger-dim     = danger  = danger  = danger
+       --color-warning-dim    = warning = warning = warning
+       --color-success-dim    = success = success = success
+       --color-danger-border  = danger  = danger  (undefined)
+       --color-warning-border = warning DIFFERS   = warning
 
-     DO NOT "fix" this by editing the three values alone: 71 sites consume the token
-     and the last time the family changed shape it was bundled with a contrast
-     rewrite. The disposition is a design decision — restore a distinct tint, or
-     rename the token to say it aliases the base — and it belongs in a commit about
-     tokens, not in a drive-by. Recorded here because the three definitions are where
-     a reader looks and the reasoning had nowhere to live. */
+     So a name promising a SUBDUED variant delivers the full-strength colour, and 71
+     call sites (42 of them borders, where the intent is clearest) render a hard edge
+     where a quiet one was wanted. --color-warning-border is the one survivor of the
+     collapse, in light only: that asymmetry is the tell that the others were meant to
+     differ too, and it is visible without leaving this file.
+
+     REGRESSION, not a designed alias. Provenance is exact:
+       3c446e3cf (2026-08-28) rewrote 333 lines of this file and collapsed the four —
+         success-dim #4ade80 -> #6FE884   warning-dim #fbbf24 -> #FFA94D
+         danger-dim  #fecaca -> #FF6B68   danger-border #dc2626 -> #FC3D39
+       Its subject is "fix(db): add DROP TABLE IF EXISTS to 20260824_media_edc.sql",
+       so a token-semantics change rode in under a database commit and a reviewer of
+       that commit had no reason to open this file. Before it, a4c59a009 (the WCAG
+       rewrite) had deliberately set the -dim values distinct.
+
+     Audited at the same time, so this note does not overstate its scope: that commit
+     renamed ZERO tokens (74 removed names, 74 still present; 2 genuinely new —
+     --color-text-on-color, --ease-bounce), so no call site could have broken on a
+     name. The defect is entirely in the values.
+
+     DO NOT "fix" this by editing four values in a drive-by: that is how it arrived,
+     and 71 sites consume them. The disposition is a design decision — restore a
+     distinct tint per family, or rename the tokens to admit they alias their base —
+     and it belongs in a commit about tokens. Recorded where a reader of the values
+     will find it. */
 
   --color-success-dim:     #6FE884;
   --color-success-fg:      #12141a;
