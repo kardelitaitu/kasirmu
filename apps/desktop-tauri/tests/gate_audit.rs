@@ -1549,3 +1549,55 @@ fn census_dir_merge_survives_when_the_root_file_is_excluded() {
         "keys from both children must survive the directory branch's merge: {out:?}"
     );
 }
+
+/// `permission_value` must map each NAME to that name's OWN constant.
+///
+/// WHY THIS EXISTS. The registry test above only asks whether the value
+/// `permission_value` returns is REGISTERED. That is a real check, but it cannot
+/// see a wrong-but-plausible arm: changing `"SALES_VIEW" => p::SALES_VIEW` to
+/// `=> p::SALES_PROCESS` still yields a registered permission, so the registry
+/// test passes while the census silently grades the wrong key for that row.
+/// Measured: that swap compiles, recompiles the crate, and leaves
+/// `all_gated_permission_keys_are_registered` GREEN. The map is hand-written,
+/// so this is the gap it can actually fall into.
+///
+/// The arms are an IDENTITY by construction: every permission constant in
+/// `platform/core/src/rbac.rs` is spelled `UPPER_SNAKE` and holds the same text
+/// lowercased with the FIRST underscore replaced by a colon (`SALES_VIEW` ->
+/// `"sales:view"`, `STAFF_READ_IDENTITY` -> `"staff:read_identity"`). Measured
+/// over all 99 constants: the only six that deviate are the `role-*` values
+/// (OWNER -> `role-owner` and friends), which are roles and never appear as
+/// census keys.
+///
+/// So the expected value is DERIVED from the name rather than restated, which is
+/// what makes this able to catch a mismatch instead of duplicating the map.
+fn expected_permission_value(name: &str) -> String {
+    match name.find('_') {
+        Some(i) => format!("{}:{}", name[..i].to_lowercase(), name[i + 1..].to_lowercase()),
+        None => name.to_lowercase(),
+    }
+}
+
+/// Every pinned key resolves to its OWN permission, not merely to some permission.
+#[test]
+fn permission_value_resolves_each_key_to_its_own_constant() {
+    let mut checked = 0usize;
+    for (_, _, keys) in PINNED_DESKTOP.iter().chain(PINNED_TABLET) {
+        for key in *keys {
+            let got = permission_value(key);
+            let want = expected_permission_value(key);
+            assert_eq!(
+                got, want,
+                "permission_value(\"{key}\") resolved to `{got}`, but that name's own \
+                 constant holds `{want}` -- the arm is mapping the key to a different \
+                 permission, so the census would grade the wrong key while the \
+                 registry test still passed"
+            );
+            checked += 1;
+        }
+    }
+    assert!(
+        checked > 0,
+        "no keys were checked -- the pin is empty, so this test proved nothing"
+    );
+}
