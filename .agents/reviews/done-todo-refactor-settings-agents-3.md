@@ -13,6 +13,25 @@
 > `.ozpkg`, not CSV), **one has a live backend and no UI** (audit-log retention), and **one could not be
 > located at any layer** (factory reset). Searched vocabularies and evidence are recorded per item below.
 
+> ⚠️ **RE-MEASURED 2026-10-07 — this status is now STALE in the direction of under-reporting: the
+> decomposition LANDED, under `components/` + `hooks/` rather than the planned `data/`.** The 1,016-line
+> monolith is **214 lines** today (`ui/src/features/settings/DataManagementScreen.tsx`), composing ten
+> extracted modules: `components/{BackupSection,ExportSection,ImportSection,RestoreSection}` and
+> `hooks/{useBackupStatus,useExportWizard,useImportWizard,useRestore,useFlashRows}`, plus
+> `dataManagementIcons`. **All four of the sub-panels this file says are missing or partial now exist** —
+> including the restore path, which the paragraph above records as absent: `useRestore.ts` (224 lines)
+> drives a restore tab whose header says *"**It does not perform a restore.** The request is written to
+> `<db>.restore-request.json` and consumed by the BOOT path"* — so the boot-time safe-mode consumer is
+> the other half, and it is a deliberate design, not an omission.
+>
+> **Why the plan's own prescription is the wrong place to look:** the `data/` directory it names still
+> does not exist, and never did. Reading this file as "not started" would be wrong twice over — the work
+> is done, and its provenance is a **different plan**: `useRestore.ts`'s own header cites *"C8 slice S5b"*,
+> a slice of the C-series remediation checklist, not this lane. That is the pattern this whole review
+> surface shows: the goal is met, but not by the plan that specified it. NOT re-verified: the
+> per-sub-panel evidence blocks below, and whether the audit-log-retention UI this file calls absent has
+> since landed.
+
 **Target File:** `ui/src/features/settings/DataManagementScreen.tsx` (stated baseline: 915 lines · **measured 2026-09-14: 1,016 lines** — it grew)  
 **Sibling Documents:**
 - `done-todo-refactor-settings-agents-1.md` (Agent 1 — Settings Backend IPC Modularization; completed and archived, so cited by name with no path prefix)
