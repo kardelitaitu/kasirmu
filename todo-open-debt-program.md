@@ -93,6 +93,14 @@ Recorded because each one is still live in some document a worker might read, an
 
 ---
 
+## 2026-10-08, latest: the UI is green; the Rust workspace is blocked by ANOTHER LANE's uncommitted work
+
+**UI: 667 files / 11,229 passed / 24 skipped / 3 todo / 0 failed, 112s.** Re-measured after the Rust work; unaffected by anything in this campaign, and the figure to compare against is the earlier 666 files / 11,223 tests — one file and six tests added by other lanes since.
+
+**Rust: `cargo test --workspace` now fails to COMPILE, and it is not this campaign's doing.** `apps/mobile-tauri/src/commands/auth.rs:529` passes `platform_core::database::identity_sync::ensure_session_user_in_store(...)?` where `AppError` is needed, and `From<PlatformError> for AppError` does not exist on the mobile side (`E0277`). **Established as another lane's in-flight work rather than mine, all by measurement:** the whole `identity_sync` feature is UNCOMMITTED — `platform/core/src/database/identity_sync.rs` is untracked, `ensure_session_user_in_store` has **zero** hits in HEAD, and the failing file is dirty alongside `auth_tests.rs` and `database/mod.rs`. The desktop already carries the conversion at `apps/desktop-tauri/src/error.rs:195`; mobile's `error.rs` has six `From` impls and is missing both that one and `SecurityError`, so a parity port is half-applied. **Not touched, not committed** — it is a live edit and the shared-index rule forbids sweeping it.
+
+**The consequence worth recording: one uncommitted crate blocks the ENTIRE workspace run.** `kasirmu-mobile` is the only crate that failed to compile, yet the run reported **zero test-result lines** — cargo aborted before executing a single test anywhere. Re-run with `--exclude kasirmu-mobile`: **exit 0, 10,403 passed, 0 failed.** So the entire Rust workspace except that one shell crate is green — the "red workspace" was one uncommitted feature, and every other crate's tests pass. So "the workspace is red" and "the workspace is red in one shell crate's uncommitted code" are very different claims, and the aggregate hides which one it is. This is also why the previous round's `kasirmu-core` regression surfaced only after the census was cleared: a red or non-compiling crate upstream of the report masks everything behind it.
+
 ## Rust workspace test health — re-measured again 2026-10-08 (after the census fix)
 
 **With the census green, the workspace run got one crate further and found a REAL regression in `kasirmu-core`: 3 failures, all `SQLITE_CONSTRAINT_CHECK` on `payments.method`.** `db::payments::tests::create_payment_zero_amount`, `db::payments::tests::create_payments_multiple_calls_same_sale` and `db::shifts::tests::get_shift_report_with_sales`. **Fixed in `2629c9bf0`** — `kasirmu-core` is now **3595 + 549 + 3 passed, 0 failed**.
