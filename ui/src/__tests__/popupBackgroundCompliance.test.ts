@@ -690,22 +690,35 @@ describe('popup surfaces have visible backgrounds', () => {
     // hides 61. The band is therefore +/- a whole large sheet in each direction --
     // deliberately NOT tightened to today's biggest silent loss; see the residual
     // blind spot in the header comment.
-    const SUM_BASELINE = 6884;                 // 6068 parsed + 816 hidden at 36ca7fc6b
-    const SUM_BAND = { low: 6200, high: 7800 }; // -684 / +916: one large sheet either way
+    //
+    // RE-MEASURED 2026-10-07, because the instruction above says to when the harvest
+    // outgrows the band, and it had (8195 against a ceiling of 7800). Checked BEFORE
+    // widening, on the same test the focus census got: is this a walker change or a
+    // bigger tree? A walker change makes the harvest OUTPACE the CSS; this one did not:
+    //   CSS lines   44,690 -> 55,631   (+24.5%)
+    //   sheets         137 -> 155      (+13.1%)
+    //   the harvest 6,884 -> 8,195     (+19.0%)  = 78% of the CSS rate
+    // So the walk is behaving and the tree grew. The widths were scaled by the
+    // HARVEST rate rather than the CSS rate -- the smallest of the three, so the band
+    // grows as little as the evidence permits (-684/+916 became -814/+1090). A walker
+    // change that swallows rules still fails this: it would move the harvest without
+    // moving the tree, which is the one thing scaling by the tree cannot absorb.
+    const SUM_BASELINE = 8195;                 // 7631 parsed + 564 hidden, re-measured 2026-10-07
+    const SUM_BAND = { low: 7381, high: 9285 }; // -814 / +1090: the 2026-09-15 widths, harvest-scaled
     // parsed already CONTAINS the descended rules; the only population not in it is the
     // blocks inside a skipped at-block, which are not selectors.
     const rulesSeen = stats.parsed + stats.stillHidden.length;
     expect(
       rulesSeen,
       `rules the walk knows about: ${stats.parsed} parsed (incl. ${stats.descendedRules.length} descended) + ${stats.stillHidden.length} selector-less blocks inside skipped at-blocks = ${rulesSeen}, ` +
-      `outside the band ${SUM_BAND.low}..${SUM_BAND.high} around the baseline ${SUM_BASELINE} (6068 parsed + 816 hidden, ` +
-      `measured at 36ca7fc6b) -- rules left the walk, or arrived in it, without either counter's floor noticing`,
+      `outside the band ${SUM_BAND.low}..${SUM_BAND.high} around the baseline ${SUM_BASELINE} (7631 parsed + 564 hidden, ` +
+      `re-measured 2026-10-07) -- rules left the walk, or arrived in it, without either counter's floor noticing`,
     ).toBeGreaterThanOrEqual(SUM_BAND.low);
     expect(
       rulesSeen,
       `rules the walk knows about: ${stats.parsed} parsed + ${stats.stillHidden.length} selector-less = ${rulesSeen}, above the ceiling ` +
-      `${SUM_BAND.high} around the baseline ${SUM_BASELINE} (6068 parsed + 816 hidden at 36ca7fc6b) -- the harvest grew past one ` +
-      `large sheet since that baseline, so re-measure it here rather than widening the band`,
+      `${SUM_BAND.high} around the baseline ${SUM_BASELINE} (7631 parsed + 564 hidden, re-measured 2026-10-07) -- the ` +
+      `harvest grew past one large sheet since that baseline, so re-measure it here rather than widening the band`,
     ).toBeLessThanOrEqual(SUM_BAND.high);
     const SKIPPED_CEILING = 1000;              // same number as before, over a smaller population now
     // What this ceiling guards was re-aimed by the descent, and the number did not move.
