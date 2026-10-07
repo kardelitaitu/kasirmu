@@ -504,6 +504,40 @@ pub async fn create_session(
         }
     }
 
+    // Uphold the authorization invariant before the session exists: every
+    // scoped command authorizes the session user in the STORE DB, and a store
+    // DB created by provisioning has an empty users table — the tablet
+    // rejected `list_currencies_scoped` with `PermissionDenied("user not
+    // found")` on exactly this gap (walk-diag 2026-10-07). The identity is
+    // already proven above (picker ticket + instance access), so the
+    // replication carries no new authority: it only copies the row the
+    // global DB just authenticated.
+    {
+        let global = state.db.lock().await;
+        let store_conn = state
+            .db_manager
+            .open_store(&args.store_id)
+            .map_err(|e| AppError::Internal(format!("opening store db: {e}")))?;
+        let store_guard = store_conn
+            .lock()
+            .map_err(|e| AppError::Internal(format!("store db lock poisoned: {e}")))?;
+        let replicated =
+            platform_core::database::identity_sync::ensure_session_user_in_store(
+                &global,
+                &store_guard,
+                &args.user_id,
+            )
+            .map_err(|e| AppError::Internal(format!("replicating session user: {e}")))?;
+        if !replicated {
+            tracing::error!(
+                user_id = %args.user_id,
+                store_id = %args.store_id,
+                "session creation denied — authenticated user vanished from the global DB"
+            );
+            return Err(AppError::Invalid("Authenticated user no longer exists".into()));
+        }
+    }
+
     // ADR #5: the tenant subscription gates which workspace types a session
     // may open. Role access (above) and tier entitlement are orthogonal —
     // an owner whose subscription no longer covers the type (e.g. kds after

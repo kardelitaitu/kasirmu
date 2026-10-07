@@ -186,6 +186,56 @@ async fn staff_login_returns_granted_permission_keys() {
 }
 
 #[tokio::test]
+async fn create_session_replicates_the_user_into_the_store_db() {
+    // MEASURED on the tablet 2026-10-07 (walk-diag): staff_login authenticates
+    // against the GLOBAL identity DB, but scoped commands authorize the user
+    // in the STORE DB that `open_store(&session.store_id)` opens — and a
+    // store DB created by provisioning has an EMPTY users table. Every
+    // `require_permission_for_user` then failed with
+    // `PermissionDenied("user not found")` (currencies, exchange rates...).
+    // The session mint must uphold the invariant: the session user exists in
+    // the store DB it binds to.
+    let conn = migrations::fresh_db();
+    kasirmu_core::migrations::seed_provisioned_baseline(&conn);
+    seed_owner(&conn);
+    let app = tauri::test::mock_builder()
+        .manage(AppState::for_test_with_conn(conn))
+        .build(tauri::generate_context!())
+        .unwrap();
+
+    let result = create_session(
+        CreateSessionArgs {
+            user_id: "user-owner".into(),
+            picker_ticket: test_ticket("user-owner"),
+            role_id: "role-owner".into(),
+            store_id: "default".into(),
+            instance_id: "default-restaurant-pos".into(),
+            type_key: "restaurant-pos".into(),
+            terminal_id: "terminal-1".into(),
+            org_id: None,
+        },
+        app.state(),
+    )
+    .await
+    .expect("owner session must mint");
+
+    let _ = result;
+    // The invariant the tablet broke: the store DB now authorizes the
+    // session user for a settings read — the exact gate
+    // `list_currencies_scoped` failed on the device.
+    let store_conn = app
+        .state::<AppState>()
+        .db_manager
+        .open_store("default")
+        .expect("store db opens");
+    let guard = store_conn.lock().expect("store db lock");
+    let store = Store::new(&guard);
+    store
+        .require_permission("user-owner", kasirmu_core::permissions::SETTINGS_READ)
+        .expect("the session user must be authorized in the store DB after mint");
+}
+
+#[tokio::test]
 async fn create_session_rejects_forged_role_id() {
     // A staff user whose REAL role is role-staff claims role-owner.
     let conn = migrations::fresh_db();

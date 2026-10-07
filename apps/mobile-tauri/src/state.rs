@@ -613,8 +613,14 @@ impl AppState {
             cache: create_cache("", 300),
             plugins: Mutex::new(None),
             topology_apply_lock: Mutex::new(()),
+            // Per-instance store directory: store DBs PERSIST in temp_dir, and
+            // tests that write users into a store db (session-user replication)
+            // must not collide with rows from earlier runs under different ids.
             db_manager: StoreDatabaseManager::new(
-                std::env::temp_dir(),
+                std::env::temp_dir().join(format!(
+                    "kasirmu-test-store-{}",
+                    uuid::Uuid::now_v7()
+                )),
                 kasirmu_core::migrations::ALL,
             ),
             picker_ticket_secret: b"test-picker-ticket-secret".to_vec(),

@@ -1,6 +1,7 @@
 //! Database infrastructure — migration runner, connection pool,
 //! and store-scoped database manager (ADR #4 Phase 2).
 
+pub mod identity_sync;
 pub mod manager;
 pub mod migrations;
 pub mod pool;
