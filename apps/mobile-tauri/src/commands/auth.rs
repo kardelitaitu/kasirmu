@@ -521,20 +521,21 @@ pub async fn create_session(
         let store_guard = store_conn
             .lock()
             .map_err(|e| AppError::Internal(format!("store db lock poisoned: {e}")))?;
-        let replicated =
-            platform_core::database::identity_sync::ensure_session_user_in_store(
-                &global,
-                &store_guard,
-                &args.user_id,
-            )
-            .map_err(|e| AppError::Internal(format!("replicating session user: {e}")))?;
+        let replicated = platform_core::database::identity_sync::ensure_session_user_in_store(
+            &global,
+            &store_guard,
+            &args.user_id,
+        )
+        .map_err(|e| AppError::Internal(format!("replicating session user: {e}")))?;
         if !replicated {
             tracing::error!(
                 user_id = %args.user_id,
                 store_id = %args.store_id,
                 "session creation denied — authenticated user vanished from the global DB"
             );
-            return Err(AppError::Invalid("Authenticated user no longer exists".into()));
+            return Err(AppError::Invalid(
+                "Authenticated user no longer exists".into(),
+            ));
         }
     }
 

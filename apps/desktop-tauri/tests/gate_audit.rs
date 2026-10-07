@@ -865,17 +865,15 @@ struct Root<'a> {
 /// filesystem. Everything here is a decision about a (pin, source) PAIR, and
 /// all four classes matter for different reasons:
 ///
-///   - `absent`   the pin names a module that no longer exists. A deregistered
-///                command leaves this row behind, and the pin's own §7 sense is
-///                that a stale exemption outliving its command protects nothing.
-///   - `count`    the module gained or lost gate CALLS.
-///   - `keys`     the permission SET moved, which is behavioural: a module that
-///                now asks for a different permission is doing a different job,
-///                and this is the row `fiscal` currently trips.
-///   - `unpinned` a module gates permissions but appears in no row at all, so
-///                nothing is reviewing it. This is the class the current drift
-///                reports most often (`diagnostics`, `inventory`, `kds_device`,
-///                `kds_routing`, `shifts`, `updater`).
+/// - `absent`: the pin names a module that no longer exists. A deregistered
+///   command leaves this row behind, and a stale exemption outliving its
+///   command protects nothing.
+/// - `count`: the module gained or lost gate CALLS.
+/// - `keys`: the permission SET moved, which is behavioural -- a module that
+///   now asks for a different permission is doing a different job.
+/// - `unpinned`: a module gates permissions but appears in no row at all, so
+///   nothing is reviewing it. This is the class the live drift reports most
+///   often (`diagnostics`, `inventory`, `kds_device`, `kds_routing`).
 ///
 /// Rows are collected, never short-circuited: the caller asserts on the whole
 /// table because one row at a time turns a fifty-row drift into a queue.
@@ -1160,7 +1158,10 @@ fn census_counts_a_gate_call_but_not_a_wrapper_definition() {
     // The definition's name carries the vocabularies being counted, AND its body
     // calls one, so both mechanisms are exercised: the tool must skip the
     // definition line and still count the call inside it.
-    let vocab = &["require_session_permission(", "require_inventory_permission("];
+    let vocab = &[
+        "require_session_permission(",
+        "require_inventory_permission(",
+    ];
     let src = "async fn require_inventory_permission(&self, p: Permission) -> Result<(), E> {\n    \
                let x = self.require_session_permission(p, p).await?;\n";
     let (calls, _) = census(src, vocab);
@@ -1171,7 +1172,10 @@ fn census_counts_a_gate_call_but_not_a_wrapper_definition() {
 
     // And directly: a bare definition line is zero calls, a bare call line is one.
     let (def_only, _) = census("async fn require_inventory_permission(&self) {}\n", vocab);
-    assert_eq!(def_only, 0, "a definition alone is not a call; got {def_only}");
+    assert_eq!(
+        def_only, 0,
+        "a definition alone is not a call; got {def_only}"
+    );
     let (call_only, _) = census("self.require_inventory_permission(p).await?;\n", vocab);
     assert_eq!(call_only, 1, "a call alone is one call; got {call_only}");
 }
@@ -1266,7 +1270,10 @@ fn strip_test_blocks_consumes_an_inline_braced_cfg_test_block() {
                #[cfg(test)]\n{\n    let _ = Example { a: 1 };\n    let _ = Example { b: 2 };\n}\n\
                fn after() { let _ = Example { c: 3 }; }\n";
     let stripped = strip_test_blocks(src);
-    assert!(!stripped.contains("b: 2"), "the inline block's body survived:\n{stripped}");
+    assert!(
+        !stripped.contains("b: 2"),
+        "the inline block's body survived:\n{stripped}"
+    );
     assert!(
         stripped.contains("a: 1") && stripped.contains("c: 3"),
         "the walker must return to depth 0 at the block's close and keep the rest:\n{stripped}"
@@ -1293,7 +1300,11 @@ fn strip_test_blocks_leaves_the_unbraced_declaration_in_place() {
     );
     let (calls, keys) = census(&stripped, &["require_session_permission("]);
     assert_eq!(calls, 1, "the live call must still be counted; got {calls}");
-    assert_eq!(keys, vec!["SETTINGS_READ".to_string()], "and its key kept; got {keys:?}");
+    assert_eq!(
+        keys,
+        vec!["SETTINGS_READ".to_string()],
+        "and its key kept; got {keys:?}"
+    );
 }
 
 // ── `diff_rows`: the four drift classes ─────────────────────────────────
@@ -1329,7 +1340,10 @@ fn diff_rows_is_empty_when_the_pin_matches() {
     let actual = map(&[("billing", 3, &["SETTINGS_READ"])]);
     let pinned: &[(&str, usize, &[&str])] = &[("billing", 3, &["SETTINGS_READ"])];
     let rows = diff_rows(&actual, pinned);
-    assert!(rows.is_empty(), "a matching pin must report nothing: {rows:?}");
+    assert!(
+        rows.is_empty(),
+        "a matching pin must report nothing: {rows:?}"
+    );
 }
 
 /// `absent`: the pin names a module the source no longer has.
@@ -1423,7 +1437,11 @@ fn diff_rows_reports_every_drift_in_one_call() {
     let rows = diff_rows(&actual, pinned);
     // 5 expected: edc count, fiscal keys, diagnostics unpinned, deleted absent,
     // and ok absent.
-    assert_eq!(rows.len(), 5, "every drift class must appear in ONE report; got {rows:?}");
+    assert_eq!(
+        rows.len(),
+        5,
+        "every drift class must appear in ONE report; got {rows:?}"
+    );
     for needle in ["absent", "count", "keys", "unpinned"] {
         assert!(
             rows.iter().any(|r| r.contains(needle)),
@@ -1481,8 +1499,7 @@ fn census_dir_reads_a_plain_module_file() {
 /// count the wrapper definitions themselves and inflate every module.
 #[test]
 fn census_dir_skips_test_wrappers_and_the_skip_list() {
-    let body =
-        "fn f() { ctx.require_session_permission(&s, permissions::SETTINGS_READ).await; }\n";
+    let body = "fn f() { ctx.require_session_permission(&s, permissions::SETTINGS_READ).await; }\n";
     let dir = fixture(&[
         ("keep.rs", body),
         ("thing_tests.rs", body),
@@ -1567,7 +1584,11 @@ fn census_dir_sums_a_split_module_root_file_with_its_directory() {
         "require_permission_for_user(",
     ];
     let out = census_dir(dir.path(), gates, &[]);
-    assert_eq!(out.len(), 1, "the root file and the dir are ONE module: {out:?}");
+    assert_eq!(
+        out.len(),
+        1,
+        "the root file and the dir are ONE module: {out:?}"
+    );
     assert_eq!(
         out["topology"].0, 3,
         "the root file's call must add to the directory's, not replace it: {out:?}"
@@ -1604,9 +1625,18 @@ fn census_dir_returns_nothing_for_an_empty_directory() {
 fn census_dir_merge_survives_when_the_root_file_is_excluded() {
     let dir = fixture(&[
         // Skipped by the `mod` filter, so only the directory branch writes.
-        ("mod.rs", "fn f() { ctx.require_session_permission(&s, permissions::SALES_VIEW).await; }\n"),
-        ("mod/a.rs", "fn g() { ctx.require_session_permission(&s, permissions::SALES_VIEW).await; }\n"),
-        ("mod/b.rs", "fn h() { ctx.require_session_permission(&s, permissions::SETTINGS_READ).await; }\n"),
+        (
+            "mod.rs",
+            "fn f() { ctx.require_session_permission(&s, permissions::SALES_VIEW).await; }\n",
+        ),
+        (
+            "mod/a.rs",
+            "fn g() { ctx.require_session_permission(&s, permissions::SALES_VIEW).await; }\n",
+        ),
+        (
+            "mod/b.rs",
+            "fn h() { ctx.require_session_permission(&s, permissions::SETTINGS_READ).await; }\n",
+        ),
     ]);
     let out = census_dir(dir.path(), GATE, &[]);
     assert_eq!(out.len(), 1, "one module expected: {out:?}");
@@ -1644,7 +1674,11 @@ fn census_dir_merge_survives_when_the_root_file_is_excluded() {
 /// what makes this able to catch a mismatch instead of duplicating the map.
 fn expected_permission_value(name: &str) -> String {
     match name.find('_') {
-        Some(i) => format!("{}:{}", name[..i].to_lowercase(), name[i + 1..].to_lowercase()),
+        Some(i) => format!(
+            "{}:{}",
+            name[..i].to_lowercase(),
+            name[i + 1..].to_lowercase()
+        ),
         None => name.to_lowercase(),
     }
 }
@@ -1692,7 +1726,10 @@ fn diff_rows_separates_an_empty_module_from_an_unpinned_gate() {
     let rows = diff_rows(&actual, pinned);
     assert_eq!(rows.len(), 2, "both modules must be reported: {rows:?}");
 
-    let shifts = rows.iter().find(|r| r.contains("shifts")).expect("shifts row");
+    let shifts = rows
+        .iter()
+        .find(|r| r.contains("shifts"))
+        .expect("shifts row");
     assert!(
         !shifts.contains("gates permissions on disk"),
         "a module with no gate calls must not claim it gates permissions: {shifts:?}"
@@ -1702,7 +1739,10 @@ fn diff_rows_separates_an_empty_module_from_an_unpinned_gate() {
         "the row must say what to add, since the fix is bookkeeping: {shifts:?}"
     );
 
-    let updater = rows.iter().find(|r| r.contains("updater")).expect("updater row");
+    let updater = rows
+        .iter()
+        .find(|r| r.contains("updater"))
+        .expect("updater row");
     assert!(
         updater.contains("gates permissions on disk"),
         "a module WITH gate calls is genuine debt and must still say so: {updater:?}"

@@ -506,7 +506,7 @@ fn test_full_pilot_dry_run_onboarding_to_50_sales_shift_and_sync() {
         tax_preset: Some("ppn11_service5".into()),
         seed_sample_products: Some(true),
     };
-    let prov = kasirmu_core::db::provisioning::provision_device(&mut conn, &args).unwrap();
+    let prov = kasirmu_core::db::provisioning::provision_device(&conn, &args).unwrap();
     assert!(prov.created, "First-run provision must create a new record");
 
     let s = store(&conn);

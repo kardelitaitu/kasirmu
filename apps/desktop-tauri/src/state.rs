@@ -309,20 +309,18 @@ impl AppState {
                 |row| row.get(0),
             )
             .unwrap_or(false);
-        if !has_default {
-            if let Ok(written) = conn.execute(
+        if !has_default
+            && let Ok(written) = conn.execute(
                 "INSERT OR IGNORE INTO tenant_subscription (tenant_id, tier_key, status, expires_at, max_locations, max_pos_instances, allowed_types_json, signature, signed_payload, api_key)
                  SELECT 'default', tier_key, status, expires_at, max_locations, max_pos_instances, allowed_types_json, signature, signed_payload, api_key
                  FROM tenant_subscription
                  ORDER BY updated_at DESC
                  LIMIT 1",
                 [],
-            ) {
-                if written > 0 {
+            )
+                && written > 0 {
                     tracing::info!("reconciled 'default' tenant_subscription from existing tenant row");
                 }
-            }
-        }
 
         // ── Tenant-integrity gate (fail loud) ────────────────────────
         // Desktop store DBs are scoped by construction to the `default`

@@ -342,18 +342,18 @@ impl SubscriptionLoader for crate::db::Store<'_> {
                         |r| r.get(0),
                     )
                     .ok();
-                if let Some(ref tid) = provisioned_tenant {
-                    if let Ok(Some(sub)) = TenantSubscription::load(self.conn, tid) {
-                        return match sub.verify_signature() {
-                            Ok(()) => Some(sub),
-                            Err(e) => {
-                                tracing::warn!(
-                                    "subscription signature verification failed — failing closed: {e}"
-                                );
-                                None
-                            }
-                        };
-                    }
+                if let Some(ref tid) = provisioned_tenant
+                    && let Ok(Some(sub)) = TenantSubscription::load(self.conn, tid)
+                {
+                    return match sub.verify_signature() {
+                        Ok(()) => Some(sub),
+                        Err(e) => {
+                            tracing::warn!(
+                                "subscription signature verification failed — failing closed: {e}"
+                            );
+                            None
+                        }
+                    };
                 }
                 tracing::warn!("no tenant_subscription row found — failing closed");
                 None

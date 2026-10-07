@@ -298,11 +298,21 @@ async fn record_crash_report_works_without_a_session_and_still_sanitizes() {
     let _ = std::fs::create_dir_all(&dir);
 
     let res = record_crash_report(Some(&dir), report_with_secrets()).await;
-    assert!(res.is_ok(), "the async door must accept a session-less call: {res:?}");
+    assert!(
+        res.is_ok(),
+        "the async door must accept a session-less call: {res:?}"
+    );
 
-    let content = std::fs::read_to_string(dir.join("crash_telemetry.log")).expect("read crash file");
-    assert!(!content.contains("my_secret_token_123"), "bearer token leaked:\n{content}");
-    assert!(!content.contains("supersecret"), "password leaked:\n{content}");
+    let content =
+        std::fs::read_to_string(dir.join("crash_telemetry.log")).expect("read crash file");
+    assert!(
+        !content.contains("my_secret_token_123"),
+        "bearer token leaked:\n{content}"
+    );
+    assert!(
+        !content.contains("supersecret"),
+        "password leaked:\n{content}"
+    );
     assert!(!content.contains("9999"), "pin leaked:\n{content}");
     assert!(
         content.contains("[REDACTED]"),

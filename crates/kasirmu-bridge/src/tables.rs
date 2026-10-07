@@ -212,10 +212,10 @@ pub async fn release_table_scoped(
 }
 
 fn emit_table_status_changed(ctx: &BridgeCtx<'_>, table: &Table) {
-    if let Some(emitter) = &ctx.emitter {
-        if let Ok(val) = serde_json::to_value(table) {
-            emitter.emit("tables:status-changed", val);
-        }
+    if let Some(emitter) = &ctx.emitter
+        && let Ok(val) = serde_json::to_value(table)
+    {
+        emitter.emit("tables:status-changed", val);
     }
 }
 

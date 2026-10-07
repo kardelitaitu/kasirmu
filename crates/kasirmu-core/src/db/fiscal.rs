@@ -579,10 +579,11 @@ impl crate::db::Store<'_> {
             .optional()?
             .flatten();
 
-        if let Some(existing_num) = existing {
-            if !seq.prefix.is_empty() && existing_num.starts_with(&seq.prefix) {
-                return Ok(existing_num);
-            }
+        if let Some(existing_num) = existing
+            && !seq.prefix.is_empty()
+            && existing_num.starts_with(&seq.prefix)
+        {
+            return Ok(existing_num);
         }
 
         let claimed =

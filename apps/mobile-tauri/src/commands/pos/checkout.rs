@@ -589,7 +589,7 @@ pub(super) fn run_complete_sale_scoped(
     let deduct = store.complete_sale_deduction_with_locations_and_estimate(
         &sale,
         Some(&session.instance_id),
-        &[primary.clone()],
+        std::slice::from_ref(&primary),
         &splits,
         &session.user_id,
         Some(&session.terminal_id),

@@ -502,7 +502,7 @@ pub async fn list_remote_failures_scoped(
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
     let db = &*db_guard;
-    let failures = run_list_remote_failures(&db)?;
+    let failures = run_list_remote_failures(db)?;
     let _ = db;
     Ok(failures)
 }

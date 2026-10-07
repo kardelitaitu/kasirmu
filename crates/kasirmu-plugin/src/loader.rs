@@ -11,7 +11,7 @@ use crate::manifest::PluginManifest;
 use crate::package::sanitise_entry_name;
 
 /// Maximum allowable script file size (1 MiB) to guard against runaway allocations.
-pub const MAX_SCRIPT_FILE_SIZE: u64 = 1 * 1024 * 1024;
+pub const MAX_SCRIPT_FILE_SIZE: u64 = 1024 * 1024;
 
 /// A loaded plugin with its manifest and script paths.
 #[derive(Debug, Clone)]

@@ -92,45 +92,45 @@ pub fn sanitize_log_text(input: &str) -> String {
         }
 
         // JSON PIN: "pin": "..."
-        if let Some(idx) = clean.to_lowercase().find("\"pin\"") {
-            if let Some(colon) = clean[idx..].find(':') {
-                let after_colon = idx + colon + 1;
-                let trimmed = clean[after_colon..].trim_start();
-                let start = after_colon + (clean[after_colon..].len() - trimmed.len());
-                if trimmed.starts_with('"') {
-                    if let Some(end_quote) = clean[start + 1..].find('"') {
-                        clean.replace_range((start + 1)..(start + 1 + end_quote), "[REDACTED]");
-                    }
-                }
+        if let Some(idx) = clean.to_lowercase().find("\"pin\"")
+            && let Some(colon) = clean[idx..].find(':')
+        {
+            let after_colon = idx + colon + 1;
+            let trimmed = clean[after_colon..].trim_start();
+            let start = after_colon + (clean[after_colon..].len() - trimmed.len());
+            if trimmed.starts_with('"')
+                && let Some(end_quote) = clean[start + 1..].find('"')
+            {
+                clean.replace_range((start + 1)..(start + 1 + end_quote), "[REDACTED]");
             }
         }
 
         // JSON Password: "password": "..."
-        if let Some(idx) = clean.to_lowercase().find("\"password\"") {
-            if let Some(colon) = clean[idx..].find(':') {
-                let after_colon = idx + colon + 1;
-                let trimmed = clean[after_colon..].trim_start();
-                let start = after_colon + (clean[after_colon..].len() - trimmed.len());
-                if trimmed.starts_with('"') {
-                    if let Some(end_quote) = clean[start + 1..].find('"') {
-                        clean.replace_range((start + 1)..(start + 1 + end_quote), "[REDACTED]");
-                    }
-                }
+        if let Some(idx) = clean.to_lowercase().find("\"password\"")
+            && let Some(colon) = clean[idx..].find(':')
+        {
+            let after_colon = idx + colon + 1;
+            let trimmed = clean[after_colon..].trim_start();
+            let start = after_colon + (clean[after_colon..].len() - trimmed.len());
+            if trimmed.starts_with('"')
+                && let Some(end_quote) = clean[start + 1..].find('"')
+            {
+                clean.replace_range((start + 1)..(start + 1 + end_quote), "[REDACTED]");
             }
         }
 
         // JSON Session Token: "session_token" or "sessionToken"
         for key in &["\"session_token\"", "\"sessiontoken\""] {
-            if let Some(idx) = clean.to_lowercase().find(key) {
-                if let Some(colon) = clean[idx..].find(':') {
-                    let after_colon = idx + colon + 1;
-                    let trimmed = clean[after_colon..].trim_start();
-                    let start = after_colon + (clean[after_colon..].len() - trimmed.len());
-                    if trimmed.starts_with('"') {
-                        if let Some(end_quote) = clean[start + 1..].find('"') {
-                            clean.replace_range((start + 1)..(start + 1 + end_quote), "[REDACTED]");
-                        }
-                    }
+            if let Some(idx) = clean.to_lowercase().find(key)
+                && let Some(colon) = clean[idx..].find(':')
+            {
+                let after_colon = idx + colon + 1;
+                let trimmed = clean[after_colon..].trim_start();
+                let start = after_colon + (clean[after_colon..].len() - trimmed.len());
+                if trimmed.starts_with('"')
+                    && let Some(end_quote) = clean[start + 1..].find('"')
+                {
+                    clean.replace_range((start + 1)..(start + 1 + end_quote), "[REDACTED]");
                 }
             }
         }
@@ -175,12 +175,12 @@ pub async fn export_diagnostics(
         .await?;
 
     let out_file = Path::new(output_path);
-    if let Some(parent) = out_file.parent() {
-        if !parent.as_os_str().is_empty() {
-            std::fs::create_dir_all(parent).map_err(|e| {
-                BridgeError::Internal(format!("failed to create output parent directory: {e}"))
-            })?;
-        }
+    if let Some(parent) = out_file.parent()
+        && !parent.as_os_str().is_empty()
+    {
+        std::fs::create_dir_all(parent).map_err(|e| {
+            BridgeError::Internal(format!("failed to create output parent directory: {e}"))
+        })?;
     }
 
     let file = File::create(out_file).map_err(|e| {
@@ -302,40 +302,39 @@ pub async fn export_diagnostics(
 
     // 4. app_logs
     if let Some(dir) = log_dir {
-        if dir.is_dir() {
-            if let Ok(entries) = std::fs::read_dir(dir) {
-                let mut log_files: Vec<_> = entries
-                    .filter_map(|e| e.ok())
-                    .filter(|e| {
-                        e.path().is_file()
-                            && e.path().extension().and_then(|s| s.to_str()) == Some("log")
-                    })
-                    .collect();
+        if dir.is_dir()
+            && let Ok(entries) = std::fs::read_dir(dir)
+        {
+            let mut log_files: Vec<_> = entries
+                .filter_map(|e| e.ok())
+                .filter(|e| {
+                    e.path().is_file()
+                        && e.path().extension().and_then(|s| s.to_str()) == Some("log")
+                })
+                .collect();
 
-                // Sort by modified descending (newest first)
-                log_files.sort_by(|a, b| {
-                    let ma = a.metadata().and_then(|m| m.modified()).ok();
-                    let mb = b.metadata().and_then(|m| m.modified()).ok();
-                    mb.cmp(&ma)
-                });
+            // Sort by modified descending (newest first)
+            log_files.sort_by(|a, b| {
+                let ma = a.metadata().and_then(|m| m.modified()).ok();
+                let mb = b.metadata().and_then(|m| m.modified()).ok();
+                mb.cmp(&ma)
+            });
 
-                // Package the top 3 newest log files
-                for entry in log_files.into_iter().take(3) {
-                    let file_name = entry.file_name().to_string_lossy().to_string();
-                    let archive_name = format!("logs/{file_name}");
-                    if let Ok(raw_content) = std::fs::read_to_string(entry.path()) {
-                        let sanitized = sanitize_log_text(&raw_content);
-                        zip.start_file::<&str, ()>(&archive_name, options)
-                            .map_err(|e| {
-                                BridgeError::Internal(format!(
-                                    "starting zip entry for {archive_name}: {e}"
-                                ))
-                            })?;
-                        zip.write_all(sanitized.as_bytes()).map_err(|e| {
-                            BridgeError::Internal(format!("writing log content: {e}"))
+            // Package the top 3 newest log files
+            for entry in log_files.into_iter().take(3) {
+                let file_name = entry.file_name().to_string_lossy().to_string();
+                let archive_name = format!("logs/{file_name}");
+                if let Ok(raw_content) = std::fs::read_to_string(entry.path()) {
+                    let sanitized = sanitize_log_text(&raw_content);
+                    zip.start_file::<&str, ()>(&archive_name, options)
+                        .map_err(|e| {
+                            BridgeError::Internal(format!(
+                                "starting zip entry for {archive_name}: {e}"
+                            ))
                         })?;
-                        files_included.push(archive_name);
-                    }
+                    zip.write_all(sanitized.as_bytes())
+                        .map_err(|e| BridgeError::Internal(format!("writing log content: {e}")))?;
+                    files_included.push(archive_name);
                 }
             }
         }
@@ -343,13 +342,14 @@ pub async fn export_diagnostics(
         // 5. Always include crash_telemetry.log if present in log_dir
         let crash_log = dir.join("crash_telemetry.log");
         let archive_name = "logs/crash_telemetry.log".to_string();
-        if crash_log.is_file() && !files_included.contains(&archive_name) {
-            if let Ok(raw_content) = std::fs::read_to_string(&crash_log) {
-                let sanitized = sanitize_log_text(&raw_content);
-                if zip.start_file::<&str, ()>(&archive_name, options).is_ok() {
-                    let _ = zip.write_all(sanitized.as_bytes());
-                    files_included.push(archive_name);
-                }
+        if crash_log.is_file()
+            && !files_included.contains(&archive_name)
+            && let Ok(raw_content) = std::fs::read_to_string(&crash_log)
+        {
+            let sanitized = sanitize_log_text(&raw_content);
+            if zip.start_file::<&str, ()>(&archive_name, options).is_ok() {
+                let _ = zip.write_all(sanitized.as_bytes());
+                files_included.push(archive_name);
             }
         }
     }
@@ -432,10 +432,9 @@ pub fn write_crash_report_entry(
             .create(true)
             .append(true)
             .open(&crash_file)
+            && let Ok(json_line) = serde_json::to_string(&sanitized_report)
         {
-            if let Ok(json_line) = serde_json::to_string(&sanitized_report) {
-                let _ = writeln!(file, "{json_line}");
-            }
+            let _ = writeln!(file, "{json_line}");
         }
     } else {
         // Fallback: log warning to stderr

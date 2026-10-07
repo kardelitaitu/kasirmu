@@ -86,10 +86,10 @@ pub static LAN_CLIENT_HANDLE: std::sync::RwLock<Option<kasirmu_lan::LanClientHan
 
 /// Send a raw JSON uplink event (e.g. KdsSyncEvent or TableSyncEvent) to the LAN server.
 pub fn send_lan_uplink(msg: String) {
-    if let Ok(guard) = LAN_CLIENT_HANDLE.read() {
-        if let Some(ref handle) = *guard {
-            let _ = handle.send(msg);
-        }
+    if let Ok(guard) = LAN_CLIENT_HANDLE.read()
+        && let Some(ref handle) = *guard
+    {
+        let _ = handle.send(msg);
     }
 }
 

@@ -448,20 +448,20 @@ pub async fn run_print_receipt_inner(
     }
 
     let mut store_info = store_info;
-    if let Some(ref name) = args.store_name {
-        if !name.is_empty() {
-            store_info.name = name.clone();
-        }
+    if let Some(ref name) = args.store_name
+        && !name.is_empty()
+    {
+        store_info.name = name.clone();
     }
-    if let Some(ref tax_id) = args.tax_id {
-        if !tax_id.is_empty() {
-            store_info.tax_id = Some(tax_id.clone());
-        }
+    if let Some(ref tax_id) = args.tax_id
+        && !tax_id.is_empty()
+    {
+        store_info.tax_id = Some(tax_id.clone());
     }
-    if let Some(ref label) = args.tax_id_label {
-        if !label.is_empty() {
-            store_info.tax_id_label = Some(label.clone());
-        }
+    if let Some(ref label) = args.tax_id_label
+        && !label.is_empty()
+    {
+        store_info.tax_id_label = Some(label.clone());
     }
 
     let receipt = receipt::SalesReceipt {
@@ -512,12 +512,11 @@ pub async fn run_print_receipt_inner(
         .payments
         .iter()
         .any(|p| p.method.eq_ignore_ascii_case("cash"));
-    if has_cash {
-        if let Some(drawer) = ctx.registry.cash_drawer("default").await {
-            if let Err(e) = drawer.open().await {
-                tracing::warn!(error = %e, "cash drawer pulse on cash sale failed");
-            }
-        }
+    if has_cash
+        && let Some(drawer) = ctx.registry.cash_drawer("default").await
+        && let Err(e) = drawer.open().await
+    {
+        tracing::warn!(error = %e, "cash drawer pulse on cash sale failed");
     }
 
     if let Some(sink) = &ctx.emitter {

@@ -384,9 +384,7 @@ impl Store<'_> {
 
         // 6. Audit log entry (P1.1).
         let audit = crate::AuditEntry::new(
-            source_user_id
-                .map(platform_core::staff::UserId::as_str)
-                .unwrap_or("system"),
+            source_user_id.map_or("system", platform_core::staff::UserId::as_str),
             "stock.adjust",
             Some("product"),
             Some(sku),

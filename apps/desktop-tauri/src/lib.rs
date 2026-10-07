@@ -1049,14 +1049,13 @@ pub fn run() {
                 let table_provider: crate::lan_server::TableStateProvider = std::sync::Arc::new(move || {
                     let mut all_tables = Vec::new();
                     for store_id in table_db_manager.open_store_ids() {
-                        if let Ok(conn) = table_db_manager.open_store(&store_id) {
-                            if let Ok(db) = conn.lock() {
+                        if let Ok(conn) = table_db_manager.open_store(&store_id)
+                            && let Ok(db) = conn.lock() {
                                 let store = kasirmu_core::db::Store::new(&db);
                                 if let Ok(tables) = store.list_tables(None) {
                                     all_tables.extend(tables);
                                 }
                             }
-                        }
                     }
                     all_tables
                 });
@@ -1097,41 +1096,38 @@ pub fn run() {
                             match &event {
                                 crate::lan_server::KdsSyncEvent::LineItemBumped(bump) => {
                                     for store_id in uplink_db_manager.open_store_ids() {
-                                        if let Ok(conn) = uplink_db_manager.open_store(&store_id) {
-                                            if let Ok(db) = conn.lock() {
+                                        if let Ok(conn) = uplink_db_manager.open_store(&store_id)
+                                            && let Ok(db) = conn.lock() {
                                                 let store = kasirmu_core::db::Store::new(&db);
                                                 let _ = store.update_kds_line_item_status(
                                                     &bump.line_item_id,
                                                     &bump.to_status,
                                                 );
                                             }
-                                        }
                                     }
                                 }
                                 crate::lan_server::KdsSyncEvent::OrderReady(ready) => {
                                     for store_id in uplink_db_manager.open_store_ids() {
-                                        if let Ok(conn) = uplink_db_manager.open_store(&store_id) {
-                                            if let Ok(db) = conn.lock() {
+                                        if let Ok(conn) = uplink_db_manager.open_store(&store_id)
+                                            && let Ok(db) = conn.lock() {
                                                 let store = kasirmu_core::db::Store::new(&db);
                                                 let _ = store.update_kds_status(
                                                     &ready.kds_order_id,
                                                     "ready",
                                                 );
                                             }
-                                        }
                                     }
                                 }
                                 crate::lan_server::KdsSyncEvent::Recalled(recalled) => {
                                     for store_id in uplink_db_manager.open_store_ids() {
-                                        if let Ok(conn) = uplink_db_manager.open_store(&store_id) {
-                                            if let Ok(db) = conn.lock() {
+                                        if let Ok(conn) = uplink_db_manager.open_store(&store_id)
+                                            && let Ok(db) = conn.lock() {
                                                 let store = kasirmu_core::db::Store::new(&db);
                                                 let _ = store.update_kds_status(
                                                     &recalled.kds_order_id,
                                                     &recalled.recall_to,
                                                 );
                                             }
-                                        }
                                     }
                                 }
                                 _ => {}
@@ -1140,8 +1136,8 @@ pub fn run() {
                             // Refresh KDS queue snapshot cache from open store databases
                             let mut tickets = Vec::new();
                             for store_id in uplink_db_manager.open_store_ids() {
-                                if let Ok(conn) = uplink_db_manager.open_store(&store_id) {
-                                    if let Ok(db) = conn.lock() {
+                                if let Ok(conn) = uplink_db_manager.open_store(&store_id)
+                                    && let Ok(db) = conn.lock() {
                                         let store = kasirmu_core::db::Store::new(&db);
                                         if let Ok(orders) = store.get_kds_queue(None) {
                                             for order in orders {
@@ -1172,7 +1168,6 @@ pub fn run() {
                                             }
                                         }
                                     }
-                                }
                             }
                             if let Ok(mut guard) = uplink_kds_cache.write() {
                                 *guard = crate::lan_server::KdsQueueSnapshot {
@@ -1188,9 +1183,9 @@ pub fn run() {
                             match event {
                                 crate::lan_server::CrdtSyncEvent::DeltaBroadcast(delta) => {
                                     for store_id in uplink_db_manager.open_store_ids() {
-                                        if let Ok(conn) = uplink_db_manager.open_store(&store_id) {
-                                            if let Ok(mut db) = conn.lock() {
-                                                if let Ok(tx) = db.transaction() {
+                                        if let Ok(conn) = uplink_db_manager.open_store(&store_id)
+                                            && let Ok(mut db) = conn.lock()
+                                                && let Ok(tx) = db.transaction() {
                                                     for item in &delta.batch {
                                                         let _ = tx.execute(
                                                             "INSERT OR IGNORE INTO offline_queue
@@ -1209,8 +1204,6 @@ pub fn run() {
                                                     }
                                                     let _ = tx.commit();
                                                 }
-                                            }
-                                        }
                                     }
                                     let _ = uplink_app_handle.emit("sync:crdt-delta-received", serde_json::to_value(&delta).unwrap_or_default());
                                 }

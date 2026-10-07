@@ -536,14 +536,14 @@ fn provision_device_inner(
              VALUES ('default', 'free', 'active', NULL, 1, 1, '[\"store-pos\", \"restaurant-pos\", \"admin\"]', 'BOOTSTRAP_FREE')",
             [],
         )?;
-        if let Some(tenant_id) = args.tenant_id.as_deref() {
-            if tenant_id != "default" {
-                tx.execute(
-                    "INSERT OR IGNORE INTO tenant_subscription (tenant_id, tier_key, status, expires_at, max_locations, max_pos_instances, allowed_types_json, signature)
-                     VALUES (?1, 'free', 'active', NULL, 1, 1, '[\"store-pos\", \"restaurant-pos\", \"admin\"]', 'BOOTSTRAP_FREE')",
-                    params![tenant_id],
-                )?;
-            }
+        if let Some(tenant_id) = args.tenant_id.as_deref()
+            && tenant_id != "default"
+        {
+            tx.execute(
+                "INSERT OR IGNORE INTO tenant_subscription (tenant_id, tier_key, status, expires_at, max_locations, max_pos_instances, allowed_types_json, signature)
+                 VALUES (?1, 'free', 'active', NULL, 1, 1, '[\"store-pos\", \"restaurant-pos\", \"admin\"]', 'BOOTSTRAP_FREE')",
+                params![tenant_id],
+            )?;
         }
     }
 
@@ -595,46 +595,40 @@ fn provision_device_inner(
                 (
                     "SMPL-REST-01",
                     "Americano (Hot/Iced)",
-                    25_000_00,
+                    2_500_000,
                     100,
                     "restaurant",
                 ),
                 (
                     "SMPL-REST-02",
                     "Butter Croissant",
-                    28_000_00,
+                    2_800_000,
                     50,
                     "restaurant",
                 ),
                 (
                     "SMPL-REST-03",
                     "Mineral Water 600ml",
-                    8_000_00,
+                    800_000,
                     120,
                     "restaurant",
                 ),
                 (
                     "SMPL-REST-04",
                     "Nasi Goreng Spesial",
-                    35_000_00,
+                    3_500_000,
                     80,
                     "restaurant",
                 ),
-                ("SMPL-REST-05", "Es Teh Manis", 10_000_00, 150, "restaurant"),
+                ("SMPL-REST-05", "Es Teh Manis", 1_000_000, 150, "restaurant"),
             ]
         } else {
             &[
-                ("SMPL-RTL-01", "Air Mineral 600ml", 5_000_00, 100, "retail"),
-                ("SMPL-RTL-02", "Kopi Susu Kemasan", 12_000_00, 60, "retail"),
-                ("SMPL-RTL-03", "Keripik Singkong", 15_000_00, 45, "retail"),
-                ("SMPL-RTL-04", "Buku Catatan A5", 22_000_00, 30, "retail"),
-                (
-                    "SMPL-RTL-05",
-                    "Kantong Belanja Eco",
-                    5_000_00,
-                    200,
-                    "retail",
-                ),
+                ("SMPL-RTL-01", "Air Mineral 600ml", 500_000, 100, "retail"),
+                ("SMPL-RTL-02", "Kopi Susu Kemasan", 1_200_000, 60, "retail"),
+                ("SMPL-RTL-03", "Keripik Singkong", 1_500_000, 45, "retail"),
+                ("SMPL-RTL-04", "Buku Catatan A5", 2_200_000, 30, "retail"),
+                ("SMPL-RTL-05", "Kantong Belanja Eco", 500_000, 200, "retail"),
             ]
         };
 

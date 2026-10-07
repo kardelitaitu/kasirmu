@@ -84,10 +84,10 @@ impl DriverRegistry {
         if let Some(drawer) = guard.get(id).cloned() {
             return Some(drawer);
         }
-        if id == "default" {
-            if let Some(companion) = guard.get("drawer:kick:default").cloned() {
-                return Some(companion);
-            }
+        if id == "default"
+            && let Some(companion) = guard.get("drawer:kick:default").cloned()
+        {
+            return Some(companion);
         }
         None
     }

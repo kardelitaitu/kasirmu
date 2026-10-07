@@ -686,7 +686,7 @@ pub fn load_active_market_profile(
             row.get(0)
         })
         .map_err(crate::CoreError::Db)?
-        .filter_map(|r| r.ok())
+        .filter_map(std::result::Result::ok)
         .collect();
 
     // Deduplicate while preserving location-wins-over-entity order:

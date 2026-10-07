@@ -47,20 +47,20 @@ async fn distributed_table_leases_sync_and_reconcile_over_lan() {
     let forwarder_broadcast = handle.clone();
     let uplink_handler = Arc::new(move |raw: String| {
         let trimmed = raw.trim();
-        if trimmed.starts_with(kasirmu_lan::TABLE_EVENT_TAG_PREFIX) {
-            if let Ok(ev) = serde_json::from_str::<TableSyncEvent>(trimmed) {
-                let now_ms = now_epoch_ms();
-                match &ev {
-                    TableSyncEvent::LockAcquired(lock) => {
-                        let mut trk = tracker_uplink.write().unwrap();
-                        let _ = trk.try_acquire(lock.clone(), now_ms);
-                    }
-                    TableSyncEvent::LockReleased(rel) => {
-                        let mut trk = tracker_uplink.write().unwrap();
-                        let _ = trk.release(rel);
-                    }
-                    _ => {}
+        if trimmed.starts_with(kasirmu_lan::TABLE_EVENT_TAG_PREFIX)
+            && let Ok(ev) = serde_json::from_str::<TableSyncEvent>(trimmed)
+        {
+            let now_ms = now_epoch_ms();
+            match &ev {
+                TableSyncEvent::LockAcquired(lock) => {
+                    let mut trk = tracker_uplink.write().unwrap();
+                    let _ = trk.try_acquire(lock.clone(), now_ms);
                 }
+                TableSyncEvent::LockReleased(rel) => {
+                    let mut trk = tracker_uplink.write().unwrap();
+                    let _ = trk.release(rel);
+                }
+                _ => {}
             }
         }
         forwarder_broadcast.broadcast(raw);

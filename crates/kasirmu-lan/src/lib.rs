@@ -620,6 +620,9 @@ pub struct KdsDiscoverResponse {
 ///
 /// The handshake runs inside the spawned task so a slow/malicious peer
 /// cannot block the accept loop (DoS protection).
+#[allow(clippy::too_many_arguments)] // the accept loop's wiring point: each provider is an
+// independently-optional collaborator, and grouping them would add a struct whose
+// only purpose is to satisfy this lint
 async fn handle_peer(
     stream: TcpStream,
     peer_addr: String,

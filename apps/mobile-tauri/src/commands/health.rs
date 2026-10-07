@@ -73,18 +73,17 @@ pub(crate) fn resolve_persistent_device_id(
     conn: &rusqlite::Connection,
     is_android: bool,
 ) -> Result<String, AppError> {
-    if !is_android {
-        if let Ok(id) = std::env::var("COMPUTERNAME").or_else(|_| std::env::var("HOSTNAME")) {
-            if !id.trim().is_empty() {
-                return Ok(id);
-            }
-        }
+    if !is_android
+        && let Ok(id) = std::env::var("COMPUTERNAME").or_else(|_| std::env::var("HOSTNAME"))
+        && !id.trim().is_empty()
+    {
+        return Ok(id);
     }
 
-    if let Ok(Some(existing_id)) = kasirmu_core::Settings::get(conn, "device.terminal_id") {
-        if !existing_id.trim().is_empty() {
-            return Ok(existing_id);
-        }
+    if let Ok(Some(existing_id)) = kasirmu_core::Settings::get(conn, "device.terminal_id")
+        && !existing_id.trim().is_empty()
+    {
+        return Ok(existing_id);
     }
 
     let existing_rows: Vec<String> = conn

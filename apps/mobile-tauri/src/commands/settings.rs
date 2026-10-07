@@ -669,17 +669,16 @@ pub async fn set_hardware_settings_scoped(
     require_permission_for_session(&state, &session, permissions::SETTINGS_EDIT).await?;
 
     // 1. Sync legacy per-store settings table
-    if let Ok(conn_arc) = state.resolve_store(&session_token) {
-        if let Ok(db_guard) = conn_arc.lock() {
-            if let Ok(tx) = db_guard.unchecked_transaction() {
-                let _ = Settings::set_printer_connection(&tx, &args.printer_connection);
-                let _ = Settings::set_printer_device_path(&tx, &args.printer_device_path);
-                let _ = Settings::set_printer_paper_size(&tx, &args.printer_paper_size);
-                let _ = Settings::set_scanner_device_id(&tx, &args.scanner_device_id);
-                let _ = Settings::set_scanner_input_mode(&tx, &args.scanner_input_mode);
-                let _ = tx.commit();
-            }
-        }
+    if let Ok(conn_arc) = state.resolve_store(&session_token)
+        && let Ok(db_guard) = conn_arc.lock()
+        && let Ok(tx) = db_guard.unchecked_transaction()
+    {
+        let _ = Settings::set_printer_connection(&tx, &args.printer_connection);
+        let _ = Settings::set_printer_device_path(&tx, &args.printer_device_path);
+        let _ = Settings::set_printer_paper_size(&tx, &args.printer_paper_size);
+        let _ = Settings::set_scanner_device_id(&tx, &args.scanner_device_id);
+        let _ = Settings::set_scanner_input_mode(&tx, &args.scanner_input_mode);
+        let _ = tx.commit();
     }
 
     // 2. Persist to canonical hardware_profiles DB table

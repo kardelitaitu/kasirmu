@@ -293,10 +293,10 @@ pub async fn start_apk_download(
     let client = reqwest::Client::new();
     let mut initial_offset = 0u64;
 
-    if part_path.exists() {
-        if let Ok(metadata) = tokio::fs::metadata(&part_path).await {
-            initial_offset = metadata.len();
-        }
+    if part_path.exists()
+        && let Ok(metadata) = tokio::fs::metadata(&part_path).await
+    {
+        initial_offset = metadata.len();
     }
 
     let mut request = client.get(&url);
@@ -371,7 +371,9 @@ pub async fn start_apk_download(
                 0
             };
             let remaining = total_bytes.saturating_sub(received_bytes);
-            let eta = if speed > 0 { remaining / speed } else { 0 };
+            // checked_div keeps the guard explicit: no division by zero, and no
+            // branch that duplicates what the type system can express.
+            let eta = remaining.checked_div(speed).unwrap_or(0);
             let percentage = if total_bytes > 0 {
                 (received_bytes as f64 / total_bytes as f64) * 100.0
             } else {

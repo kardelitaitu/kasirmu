@@ -200,5 +200,9 @@ fn max_print_payload_bytes_is_positive_and_bounded() {
 
 #[test]
 fn default_print_job_timeout_is_bounded() {
-    assert!(DEFAULT_PRINT_JOB_TIMEOUT_SECS >= 5 && DEFAULT_PRINT_JOB_TIMEOUT_SECS <= 60);
+    // A compile-time bound rather than a runtime assert on a const, which clippy
+    // flags as an assertion with a constant value. The intent is unchanged: the
+    // default must sit inside a sane window, and this fails the BUILD if it does not.
+    const _: () = assert!(DEFAULT_PRINT_JOB_TIMEOUT_SECS >= 5);
+    const _: () = assert!(DEFAULT_PRINT_JOB_TIMEOUT_SECS <= 60);
 }

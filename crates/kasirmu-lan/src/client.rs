@@ -61,10 +61,10 @@ impl LanEvent {
             if let Ok(ev) = serde_json::from_str::<KdsSyncEvent>(trimmed) {
                 return Self::Kds(ev);
             }
-        } else if trimmed.starts_with(CRDT_EVENT_TAG_PREFIX) {
-            if let Ok(ev) = serde_json::from_str::<CrdtSyncEvent>(trimmed) {
-                return Self::Crdt(ev);
-            }
+        } else if trimmed.starts_with(CRDT_EVENT_TAG_PREFIX)
+            && let Ok(ev) = serde_json::from_str::<CrdtSyncEvent>(trimmed)
+        {
+            return Self::Crdt(ev);
         }
         Self::RawJson(trimmed.to_string())
     }

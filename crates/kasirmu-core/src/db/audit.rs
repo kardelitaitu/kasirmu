@@ -273,14 +273,13 @@ pub fn check_audit_rate_limit() -> Result<(), CoreError> {
         .as_secs();
 
     let window_start = AUDIT_WINDOW_START.load(Ordering::Relaxed);
-    if now.saturating_sub(window_start) >= AUDIT_WINDOW_SECS {
-        if AUDIT_WINDOW_START
+    if now.saturating_sub(window_start) >= AUDIT_WINDOW_SECS
+        && AUDIT_WINDOW_START
             .compare_exchange(window_start, now, Ordering::Relaxed, Ordering::Relaxed)
             .is_ok()
-        {
-            AUDIT_COUNT.store(1, Ordering::Relaxed);
-            return Ok(());
-        }
+    {
+        AUDIT_COUNT.store(1, Ordering::Relaxed);
+        return Ok(());
     }
 
     let count = AUDIT_COUNT.fetch_add(1, Ordering::Relaxed);
@@ -308,6 +307,9 @@ pub(crate) fn set_audit_rate_limit_for_test(count: u64, window_start_secs: u64) 
 ///
 /// Hashing payload format:
 /// `{previous_hash}|{id}|{user_id}|{action}|{target_type}|{target_id}|{details}|{outcome}|{created_at}`
+#[allow(clippy::too_many_arguments)] // one parameter per hashed field, on purpose: the
+// field list IS the hash contract, so bundling them into a struct would hide
+// which fields are covered and make an omission easy to miss in review
 pub fn compute_audit_entry_hash(
     previous_hash: Option<&str>,
     id: &str,

@@ -124,18 +124,22 @@ impl TableLeaseTracker {
     /// If table is not locked or its lease has expired, or if locked by the
     /// same terminal, the lease is granted/renewed and returns `Ok(lease)`.
     /// If locked by another terminal and lease is still valid, returns `Err(current_lease)`.
+    #[allow(clippy::result_large_err)] // see the comment inside
     pub fn try_acquire(
         &mut self,
         lock: TableLockAcquired,
         now_epoch_ms: u64,
     ) -> Result<TableLease, TableLease> {
+        // The Err variant deliberately carries the CONFLICTING lease, so a refused
+        // caller can report which terminal holds the table without a second lookup.
+        // Boxing it would save 136 bytes on a path that runs once per acquisition
+        // attempt and complicate every caller for no measured benefit.
         self.prune_expired(now_epoch_ms);
-        if let Some(existing) = self.leases.get(&lock.table_id) {
-            if existing.terminal_id != lock.terminal_id
-                && existing.expires_at_epoch_ms > now_epoch_ms
-            {
-                return Err(existing.clone());
-            }
+        if let Some(existing) = self.leases.get(&lock.table_id)
+            && existing.terminal_id != lock.terminal_id
+            && existing.expires_at_epoch_ms > now_epoch_ms
+        {
+            return Err(existing.clone());
         }
         let lease = TableLease {
             table_id: lock.table_id.clone(),
@@ -152,11 +156,11 @@ impl TableLeaseTracker {
 
     /// Release a lease if held by the given terminal.
     pub fn release(&mut self, release: &TableLockReleased) -> bool {
-        if let Some(existing) = self.leases.get(&release.table_id) {
-            if existing.terminal_id == release.terminal_id {
-                self.leases.remove(&release.table_id);
-                return true;
-            }
+        if let Some(existing) = self.leases.get(&release.table_id)
+            && existing.terminal_id == release.terminal_id
+        {
+            self.leases.remove(&release.table_id);
+            return true;
         }
         false
     }

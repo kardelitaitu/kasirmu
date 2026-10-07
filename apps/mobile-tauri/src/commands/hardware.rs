@@ -364,20 +364,20 @@ pub async fn print_sales_receipt_scoped(
     }; // db_guard dropped here
 
     let mut store_info = store_info;
-    if let Some(ref name) = args.store_name {
-        if !name.is_empty() {
-            store_info.name = name.clone();
-        }
+    if let Some(ref name) = args.store_name
+        && !name.is_empty()
+    {
+        store_info.name = name.clone();
     }
-    if let Some(ref tax_id) = args.tax_id {
-        if !tax_id.is_empty() {
-            store_info.tax_id = Some(tax_id.clone());
-        }
+    if let Some(ref tax_id) = args.tax_id
+        && !tax_id.is_empty()
+    {
+        store_info.tax_id = Some(tax_id.clone());
     }
-    if let Some(ref label) = args.tax_id_label {
-        if !label.is_empty() {
-            store_info.tax_id_label = Some(label.clone());
-        }
+    if let Some(ref label) = args.tax_id_label
+        && !label.is_empty()
+    {
+        store_info.tax_id_label = Some(label.clone());
     }
 
     let receipt = receipt::SalesReceipt {
@@ -432,12 +432,10 @@ pub async fn print_sales_receipt_scoped(
         .payments
         .iter()
         .any(|p| p.method.eq_ignore_ascii_case("cash"))
+        && let Some(drawer) = state.registry.cash_drawer("default").await
+        && let Err(err) = drawer.open().await
     {
-        if let Some(drawer) = state.registry.cash_drawer("default").await {
-            if let Err(err) = drawer.open().await {
-                tracing::warn!(?err, "failed to pulse cash drawer on cash payment");
-            }
-        }
+        tracing::warn!(?err, "failed to pulse cash drawer on cash payment");
     }
 
     // R10 #3: broadcast through the bridge's EventSink, not a raw handle.
