@@ -304,6 +304,15 @@ when `c5fee807` landed with it and could not be amended; the list in
   contains `todo-`, `plan-`, or `prd-` — keep the token wherever the file lives.
 - **Never rename or move another session's uncommitted plan file** — the name is shared
   state, like the index.
+- **`done-` is earned by an acceptance, and a BULK rename does not earn it.** This clause was
+  added 2026-10-07 after `68cecff21` archived ten plan files in one commit under the subject
+  *"archive completed pre-rebrand todo files to .agents/ with done- prefix"*, with an `R100` on
+  each and no acceptance run — seven of the ten argue against the prefix in their own text.
+  The rule above was already correct and was simply not read: a rename that classifies a batch
+  cannot have run each file's own command. **If a file is archived without its acceptance
+  being satisfied, say so in the file** (an *ARCHIVED, NOT EARNED* note naming the commit that
+  renamed it) rather than leaving the prefix to be read as a pass. Archival and acceptance are
+  different facts and the filename carries only one of them.
 
 ### 7.5 Orientation & freshness (the only sanctioned probes)
 When §0/§2 values must be re-verified, run these — chained (E2) into a call you already
