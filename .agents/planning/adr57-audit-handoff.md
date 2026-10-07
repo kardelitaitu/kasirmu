@@ -11,6 +11,17 @@
 > `escalation_rule_matches_the_go_scanner` (Rust) and `TestEscalationRuleMatchesTheRustSpecification`
 > (Go) — so changing one without the other fails a build. See `4e716d13a`.** Read this file as
 > evidence, not as work to pick up.
+>
+> **Re-verified 2026-10-07 — every checkable claim holds.** The two parity tests exist and do what
+> this note says: `escalation_rule_matches_the_go_scanner` (`crates/kasirmu-core/src/build_fingerprint_tests.rs:253`)
+> and `TestEscalationRuleMatchesTheRustSpecification` (`apps/license-server/build_integrity_alerts_test.go:370`),
+> the latter asserting the literals `7` and `7` directly against a comment naming
+> `kasirmu_core::build_fingerprint::UNKNOWN_REPORTS_BEFORE_ESCALATION`, so the cross-language drift
+> this file worried about is genuinely pinned. `4e716d13a` is the pinning commit. The ADR carries
+> §Q4 as a DECIDED section (`:874`) with the state machine at `:903`. §6's line numbers have drifted
+> as it predicted they would (`buildIntegrityUnknownThreshold` is at `:75` today, not `L56`;
+> `buildIntegrityUnknownWindow` at `:66`, not `L49`) — re-located by anchor text, which is what the
+> note tells the reader to do. NOT re-verified: §5's "verified true" list beyond the renewal refusal.
 
 **From:** DSH docs-auditor pass (separate session), 2026-09-22
 **For:** the session currently editing `docs/decisions/2026-10-04-adr57-client-tamper-resistance.md`
