@@ -589,6 +589,51 @@ pub fn run() {
                     });
                 }
 
+                // ── Audit log hash chain integrity verification daemon (P1) ──
+                // Periodically walks the audit log hash chain and logs a warning
+                // if tampering is detected. The `verify_audit_chain()` method
+                // checks continuity (each entry's previous_hash matches the prior
+                // entry's hash) and integrity (each entry's hash matches its
+                // recomputed canonical SHA-256). A broken chain is critical — it
+                // means the audit log has been tampered with.
+                {
+                    let chain_handle = app_handle.clone();
+                    platform_startup::spawn_daemon("tablet audit chain verification", async move {
+                        let mut interval =
+                            tokio::time::interval(std::time::Duration::from_secs(3600));
+                        interval.tick().await;
+                        loop {
+                            interval.tick().await;
+                            let Some(state) = chain_handle.try_state::<AppState>() else {
+                                continue;
+                            };
+                            let conn = state.db.lock().await;
+                            let store = kasirmu_core::db::Store::new(&conn);
+                            match store.verify_audit_chain() {
+                                Ok(result) if result.is_valid => {
+                                    tracing::debug!(
+                                        checked = result.total_checked,
+                                        "tablet audit chain verification: hash chain is valid"
+                                    );
+                                }
+                                Ok(result) => {
+                                    tracing::error!(
+                                        checked = result.total_checked,
+                                        broken_at_id = ?result.broken_at_id,
+                                        "CRITICAL: tablet audit log hash chain integrity check FAILED — audit tampering detected"
+                                    );
+                                }
+                                Err(e) => {
+                                    tracing::warn!(
+                                        error = %e,
+                                        "tablet audit chain verification query failed"
+                                    );
+                                }
+                            }
+                        }
+                    });
+                }
+
                 // ── Background sync daemon ────────────────────────────────
                 // Uses the same 3-phase split as the Tauri commands:
                 // read DB → async HTTP → write DB, so the DB lock is never

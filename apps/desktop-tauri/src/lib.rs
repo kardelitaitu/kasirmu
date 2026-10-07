@@ -869,6 +869,88 @@ pub fn run() {
                 });
             }
 
+            // ── Audit log hash chain integrity verification daemon (P1) ──
+            // Periodically walks every open DB's audit log hash chain and logs
+            // a warning if tampering is detected. The `verify_audit_chain()`
+            // method checks continuity (each entry's previous_hash matches the
+            // prior entry's hash) and integrity (each entry's hash matches its
+            // recomputed canonical SHA-256). A broken chain is critical — it
+            // means the audit log has been tampered with.
+            {
+                let chain_db = app.state::<AppState>().db.clone();
+                let chain_db_manager = app.state::<AppState>().db_manager.clone();
+                platform_startup::spawn_daemon("audit chain verification", async move {
+                    let mut interval =
+                        tokio::time::interval(std::time::Duration::from_secs(3600));
+                    interval.tick().await;
+                    loop {
+                        interval.tick().await;
+                        // Verify the global DB first.
+                        {
+                            let conn = chain_db.lock().await;
+                            let store = kasirmu_core::db::Store::new(&conn);
+                            match store.verify_audit_chain() {
+                                Ok(result) if result.is_valid => {
+                                    tracing::debug!(
+                                        checked = result.total_checked,
+                                        "audit chain verification (global): hash chain is valid"
+                                    );
+                                }
+                                Ok(result) => {
+                                    tracing::error!(
+                                        checked = result.total_checked,
+                                        broken_at_id = ?result.broken_at_id,
+                                        "CRITICAL: audit log (global) hash chain integrity check FAILED — audit tampering detected"
+                                    );
+                                }
+                                Err(e) => {
+                                    tracing::warn!(
+                                        error = %e,
+                                        "audit chain verification (global) query failed"
+                                    );
+                                }
+                            }
+                        }
+                        // Then verify every open per-store DB.
+                        for store_id in chain_db_manager.open_store_ids() {
+                            let Ok(conn) = chain_db_manager.open_store(&store_id) else {
+                                tracing::warn!(store_id, "audit chain verification: store db unavailable");
+                                continue;
+                            };
+                            let Ok(db) = conn.lock() else {
+                                tracing::warn!(store_id, "audit chain verification: store db lock poisoned");
+                                continue;
+                            };
+                            let store = kasirmu_core::db::Store::new(&db);
+                            match store.verify_audit_chain() {
+                                Ok(result) if result.is_valid => {
+                                    tracing::debug!(
+                                        store_id,
+                                        checked = result.total_checked,
+                                        "audit chain verification: hash chain is valid"
+                                    );
+                                }
+                                Ok(result) => {
+                                    tracing::error!(
+                                        store_id,
+                                        checked = result.total_checked,
+                                        broken_at_id = ?result.broken_at_id,
+                                        "CRITICAL: audit log hash chain integrity check FAILED — audit tampering detected"
+                                    );
+                                }
+                                Err(e) => {
+                                    tracing::warn!(
+                                        store_id,
+                                        error = %e,
+                                        "audit chain verification query failed"
+                                    );
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+
             // ── LAN event forwarder ────────────────────────────────────
             // Read LAN server config from the settings table (C-4).
             // Default: loopback-only, no PSK. External bind requires
