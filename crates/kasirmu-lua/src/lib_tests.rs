@@ -879,3 +879,25 @@ fn apply_discount_boundary_percents_are_accepted() {
         assert_eq!(result.unwrap().percent, pct);
     }
 }
+
+#[test]
+fn runaway_infinite_loop_aborts_cleanly_without_hanging() {
+    let lua = runtime();
+    let res = lua.load_str("while true do end");
+    assert!(res.is_err(), "runaway loop must abort");
+    let err_str = res.unwrap_err().to_string();
+    assert!(
+        err_str.contains("instruction limit exceeded"),
+        "error must name instruction limit: {err_str}"
+    );
+}
+
+#[test]
+fn memory_limit_exceeded_aborts_cleanly_without_host_oom() {
+    let lua = runtime();
+    // Attempt to allocate beyond the 10 MiB native memory limit
+    let res = lua.load_str(
+        "local t = {} for i = 1, 1000000 do t[i] = string.rep('x', 100) end"
+    );
+    assert!(res.is_err(), "excessive allocation must fail with memory limit error");
+}
