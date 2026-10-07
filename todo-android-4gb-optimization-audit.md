@@ -1454,8 +1454,8 @@ Goal: prevent SQLite/sync/report memory explosions.
 
 Tasks:
 
-- [ ] Audit all unbounded queries.
-- [ ] Add pagination/streaming to reports.
+- [x] Audit all unbounded queries (clamped top_products limit 1..=1000, added list_sales_with_history_cap_bounded with SQLite LIMIT/OFFSET pushdown in core, bridge, desktop, and mobile).
+- [x] Add pagination/streaming to reports (paged sales queries with SQLite LIMIT and OFFSET pushdown).
 - [ ] Add indexes for hot queries.
 - [x] Bound sync outbox (list_pending_offline_bounded in Store & mobile sync daemon).
 - [x] Make sync queue disk-backed (SQLite offline_queue table).
@@ -1465,14 +1465,14 @@ Tasks:
 - [x] Add WAL checkpoint policy (wal_autocheckpoint=1000, blur checkpoint).
 - [x] Add query plan tests (offline_queue and analytics expression indexes).
 - [x] Remove `SELECT *` from large-table hot paths (explicit column projection in tables.rs).
-- [ ] Fix N+1 query patterns.
+- [x] Fix N+1 query patterns (get_product_tax_rates_batch in map_products_to_dtos, sale_display_codes and faktur_pajak batch in history).
 - [ ] Bound prepared statement cache.
 
 Exit criteria:
 
 - [ ] Large dataset scenario stays within budget.
 - [x] Backup/restore does not load full archive into memory.
-- [ ] Reports stream or page results.
+- [x] Reports stream or page results (list_sales_scoped and list_sales_for_customer paginated at the database layer).
 - [ ] Sync queue remains bounded after offline shift.
 
 ---

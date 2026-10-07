@@ -158,6 +158,7 @@ impl Store<'_> {
         // REP-03: the range filter is evaluated in store-local dates.
         check_date_bound("start_date", start_date)?;
         check_date_bound("end_date", end_date)?;
+        let limit = limit.clamp(1, 1000);
         let tz = self.tz_modifier();
         let order_clause = if order_by == "profit" {
             "gross_profit_minor DESC"
