@@ -113,6 +113,29 @@
   /* ── Semantic: Status ─────────────────────────────────────── */
   --color-success:         #6FE884;
   --color-success-bg:      rgba(111, 232, 132, 0.10);
+  /* ── --color-*-dim is a DUPLICATE of its base, in every theme ─────────
+     Measured 2026-10-07: danger #FF6B68 = #FF6B68, warning #FFA94D = #FFA94D,
+     success #6FE884 = #6FE884 (and the same in light and dark-solid). The name
+     promises a dimmer value and the value does not deliver one, so the 71 call
+     sites that use it as a SUBDUED border or foreground (42 are borders) render at
+     full strength instead.
+
+     This is a REGRESSION, not a designed alias, and its provenance is exact:
+       3c446e3cf (2026-08-28) rewrote 333 lines of this file and collapsed all
+       three to their base values --
+         success #4ade80 -> #6FE884   warning #fbbf24 -> #FFA94D   danger #fca5a5 -> #FF6B68
+       That commit's subject is "fix(db): add DROP TABLE IF EXISTS to
+       20260824_media_edc.sql", so a token-semantics change rode in under a database
+       commit and nothing reviewing it would have looked here. Before that, a4c59a009
+       (the WCAG rewrite) had deliberately set them distinct.
+
+     DO NOT "fix" this by editing the three values alone: 71 sites consume the token
+     and the last time the family changed shape it was bundled with a contrast
+     rewrite. The disposition is a design decision — restore a distinct tint, or
+     rename the token to say it aliases the base — and it belongs in a commit about
+     tokens, not in a drive-by. Recorded here because the three definitions are where
+     a reader looks and the reasoning had nowhere to live. */
+
   --color-success-dim:     #6FE884;
   --color-success-fg:      #12141a;
   --color-success-subtle:  rgba(111, 232, 132, 0.08);
