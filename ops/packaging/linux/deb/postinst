@@ -10,7 +10,16 @@ if command -v gtk-update-icon-cache >/dev/null 2>&1 && [ -d /usr/share/icons/hic
     gtk-update-icon-cache -f /usr/share/icons/hicolor
 fi
 
-# Ensure app directory exists for data persistence.
-mkdir -p /var/lib/oz-pos
+# Ensure the data directory exists. Renamed from /var/lib/oz-pos 2026-10-08: the
+# product is kasir.mu, and the old name was a pre-rebrand leftover. The app itself
+# uses Tauri's app_data_dir() (bundle id mu.kasir.app) and never read the old path,
+# so this is a naming fix rather than a data migration -- but an installation from
+# before the rename may still hold a directory, so it is moved rather than abandoned.
+DATA_DIR=/var/lib/kasir.mu
+LEGACY_DIR=/var/lib/oz-pos
+if [ -d "$LEGACY_DIR" ] && [ ! -e "$DATA_DIR" ]; then
+    mv "$LEGACY_DIR" "$DATA_DIR"
+fi
+mkdir -p "$DATA_DIR"
 
 exit 0

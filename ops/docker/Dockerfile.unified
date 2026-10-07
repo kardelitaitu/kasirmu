@@ -8,12 +8,12 @@
 #
 # Usage:
 #
-#   docker build -f ops/docker/Dockerfile.unified -t oz-pos-unified:latest .
+#   docker build -f ops/docker/Dockerfile.unified -t kasirmu-unified:latest .
 #   docker run -d -p 80:80 \
-#     -v oz_data:/data \
+#     -v kasirmu_data:/data \
 #     -e OZ_API_SECRET="$(openssl rand -hex 32)" \
 #     -e OZ_LICENSE_PRIVATE_KEY="$(cat crates/kasirmu-core/oz-license-private.pem)" \
-#     oz-pos-unified:latest
+#     kasirmu-unified:latest
 #
 # Sync defaults to SQLite at /data/kasir.db; set DATABASE_URL to switch
 # to the managed Postgres addon (see unify-auth-and-sync.md and the

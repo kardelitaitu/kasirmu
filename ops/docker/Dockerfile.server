@@ -5,8 +5,8 @@
 #
 # Usage:
 #
-#   docker build -f ops/docker/Dockerfile.server -t oz-pos-cloud:latest .
-#   docker run -d -p 3099:3099 -v oz-data:/data oz-pos-cloud:latest
+#   docker build -f ops/docker/Dockerfile.server -t kasirmu-cloud:latest .
+#   docker run -d -p 3099:3099 -v kasirmu-data:/data kasirmu-cloud:latest
 #
 # Environment variables:
 #   OZ_DB_PATH   — SQLite database path (default: /data/kasir.db)
