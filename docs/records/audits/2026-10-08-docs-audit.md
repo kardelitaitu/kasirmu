@@ -107,9 +107,32 @@ Fixed (commit `f408108c5` plus `ca43cd6d3`):
 
 ---
 
+## 3d. Independent verification of the availability markers
+
+The api-reference repair was the pass with the largest volume of mechanical change — **54 rows flipped `[D]` → `[D+T]`** and 10 rows added — and it carried a specific risk: if the checker and the independent parser used to confirm it shared a blind spot (for example, matching a name in a comment rather than in the actual handler list), all 54 would be wrong in the same way and **every detector would still be green**, because the checker would be validating against its own parse. This is the "a green you can't make red is not evidence" trap the skill warns about, and no tooling in the repository can catch it.
+
+So the markers were re-verified by a **third**, deliberately different method, reading the source rather than any parser output: each `generate_handler![ … ]` block was extracted by **brace-depth matching** over the raw file, and the command names inside it collected with a single regex. The result:
+
+| Measure | Raw extraction | Checker |
+|---|---|---|
+| desktop commands | **494** | 494 |
+| tablet commands | **415** | 415 |
+| in both | **396** | — |
+
+Both figures match the checker exactly, reached by different means. Then, against those raw sets:
+
+- **All 54 flipped commands** are genuinely present in **both** shells' handler blocks — 0 exceptions.
+- **All 10 added rows** carry the marker their registration implies: seven `[D+T]`, and `check_app_update`, `start_apk_download`, `prepare_and_launch_update` correctly `[T]` (absent from desktop).
+- `notify_memory_pressure` and `get_build_fingerprint` independently confirmed `[T]`-only.
+- **Every one of the 513 documented rows** was cross-checked against the raw sets: **0 marker mismatches**.
+
+The marker set is therefore correct on evidence that does not depend on the checker that produced it. This is the strongest verification in the audit: three independent instruments (the shipped checker, a subagent's parser, and direct brace-matched extraction) agree.
+
+---
+
 ## 4. Outstanding
 
-- **`check-api-surface.py` reports 1 discrepancy: `print_edc_settlement_slip_scoped`.** The command is registered in a peer **uncommitted** working tree (`apps/*/src/lib.rs` modified, absent from HEAD), so no doc row was added - a row for in-flight work goes stale the moment its owner revises it. It needs a row in `docs/guides/developer/api-reference.md` when that change lands. This is the ONLY red detector.
+- ~~**`check-api-surface.py` reports 1 discrepancy: `print_edc_settlement_slip_scoped`.**~~ **CLOSED** (commit `8c3e86eff`). The deferred rows were added once the peer's work landed in HEAD: `print_edc_settlement_slip_scoped` `[D+T]` and `notify_memory_pressure` `[T]`. **All nine docs detectors now pass.**
 - `website/src/content/docs/en/user-roles.md` has an internal contradiction (a "## The planned model" section vs a later line saying the four gaps are closed). Reported, not repaired - the section may be deliberate history.
 - `scripts/gates.json`'s `rust-clippy` `_note` still asserts no live workflow runs Clippy. Config registry, not documentation; flagged for its owner.
 - `docs/records/**`, `docs/decisions/**` and `docs/specs/**` were left alone: dated records are exempt by convention, and editing one falsifies it.
