@@ -407,7 +407,7 @@ docker volume prune
 | Dockerfile | `ops/docker/Dockerfile.unified` (under `ops/docker/`) |
 | Port | `80` (caddy; routes to :8080 PocketBase / :3099 Rust) |
 | Volume | single volume at `/data` (Northflank free tier = 1 volume) |
-| Build trigger | A push to **`main`** runs Dev CI, and `northflank-deploy` builds the linked branch automatically when `NORTHFLANK_API_TOKEN` is set (`dev-ci.yml:791`). A manual **Actions → Dev CI → Run workflow** also works — but dispatch it **from `main`**: Northflank builds the service's linked branch (`main`, see §8.6) and a dispatch from a `0.0.*` branch is deliberately refused (§8.5), so **code reaches production by landing on `main`, not by dispatching from a release branch**. |
+| Build trigger | A push to **`main`** runs Dev CI, and `northflank-deploy` builds the linked branch automatically when `NORTHFLANK_API_TOKEN` is set (`dev-ci.yml:1671`, consumed as `secrets.NORTHFLANK_API_TOKEN` at `:1685`). A manual **Actions → Dev CI → Run workflow** also works — but dispatch it **from `main`**: Northflank builds the service's linked branch (`main`, see §8.6) and a dispatch from a `0.0.*` branch is deliberately refused (§8.5), so **code reaches production by landing on `main`, not by dispatching from a release branch**. |
 
 **Single-volume layout (DOCKER-11):**
 
@@ -485,7 +485,7 @@ Sessions are in-memory (`web_otp.go:13-19`), so a restart drops admin sessions: 
 > **empty** — the Caddy reverse-proxy peer, i.e. loopback. Nothing in this repo seeded it, so the
 > production key collapsed to loopback and **all clients shared ONE 5-per-hour budget across nine
 > lanes**, meaning the fifth request from anywhere on earth 429'd everyone else. Full analysis:
-> `docs/records/2026-09-21-license-ratelimit-collapse.md`. A fix exists in commits `fb0626518`
+> `docs/records/snapshots/2026-09-21-license-ratelimit-collapse.md`. A fix exists in commits `fb0626518`
 > (attest split onto its own 60/hr budget), `e6e254881` (`seedClientIPSettings` + the
 > XFF-collapsing middleware, `apps/license-server/main.go:131-144`), `0ce2483a1` (hop-index clamp,
 > `helpers.go:307-310`) and `061f3bff6` (a 429 no longer advances the origin ladder) — **and it is
@@ -1133,7 +1133,7 @@ pairing path at `apps/desktop-tauri/src/sync_bootstrap.rs:248`; `set_pg_sync_pas
 `set_lan_server_psk` (`platform/core/src/settings/typed.rs:643`) have **no production
 caller at all** — the only hits are their own definitions, the never-invoked
 `crates/kasirmu-core/src/settings.rs:570` facade wrapper, tests and comments, and
-`crates/kasirmu-core/tests/credential_storage_form.rs:258` already records one of them in
+`crates/kasirmu-core/tests/integration/credential_storage_form.rs:258` already records one of them in
 those terms. So the only production write of `rate_sync.api_key` and `lan_server.psk`
 is `platform/core/src/settings/typed.rs:560` and
 `platform/core/src/settings/typed.rs:646`, inside setters nobody invokes, while both
