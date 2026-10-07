@@ -45,6 +45,33 @@ phrases split across a line break, which is what defeated a naive sentence-level
 all in text that read as a live pointer and had drifted — the fix each time was to
 re-point by *searching for the code the comment describes*, never by guessing an offset.
 
+## The failure mode a line-RANGE check misses entirely
+
+A range check only tests the upper bound. The worse case is a provenance note whose
+numbers still point INSIDE the target file, at code that is now something else. It passes
+every mechanical test and is still wrong, because the reader lands on unrelated lines and
+believes them.
+
+This happens by construction when a refactor *replaces* the code it extracted: the call
+site inherits the old line numbers. Three citations written during the 2026-10-07 KDS
+passes hit exactly this — `kdsOrdersDiff.ts` said "Extracted from KdsScreen.tsx:159-165",
+and `:159-165` is now the extracted call itself:
+
+```ts
+// KdsScreen.tsx today
+161  const currentIds = orderIdSet(filtered);
+162  const arrivedIds = arrivedOrderIds(prevOrderIdsRef.current, filtered);
+```
+
+Verified against history (`git show <sha>^:<path>`): the ORIGINAL numbers were correct —
+`:303`, `:312`, `:393`, `:153` all matched before the extraction. So the note was
+accurate when written and decayed the moment its own commit landed.
+
+**The convention this argues for, on its own merits regardless of any guard:** a provenance
+citation should carry the revision it describes, `AS OF <sha>^`, so it is never mistaken
+for a live pointer even when the numbers happen to be in range. Applied to the three
+affected sites on 2026-10-07.
+
 ## Recommendation
 
 A line-existence guard is **not worth building as specified**, because its signal-to-noise

@@ -49,8 +49,10 @@ export function sameOrders(a: KdsOrder[], b: KdsOrder[]): boolean {
  * The ids present in \`next\` that were NOT in \`previous\` — the set that drives
  * the arrival animation.
  *
- * Extracted from KdsScreen.tsx:159-165, the loop that built \`arrivedIds\` inside
- * fetchOrders. It had no test of its own: the two suites that mention
+ * Extracted from KdsScreen.tsx:159-165 AS OF 1d0be5fdf^, the loop that built \`arrivedIds\` inside
+ * fetchOrders. Those numbers now hold the extracted call itself, so read them
+ * as the ORIGINAL range rather than a pointer.
+ * It had no test of its own: the two suites that mention
  * \`newOrderIds\` (KdsLayoutMasonry, emptyStateCompliance) pass an empty Set as a
  * prop, so neither exercises the diff. Naming it here is what makes it testable —
  * the same move as sameOrders above.

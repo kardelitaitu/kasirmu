@@ -62,7 +62,9 @@ export function filterKdsOrders(
  * Whether the board is showing a narrowed view — the flag the empty state and the
  * "N filtered" affordance read.
  *
- * Extracted from KdsScreen.tsx:393-395, where the completed branch reads a
+ * Extracted from KdsScreen.tsx:393-395 AS OF f68cb3e16^ — those numbers now
+ * hold the extracted call itself, so read them as the ORIGINAL range, not as a
+ * pointer. The completed branch reads a
  * different source (\`completedFilter\`) and only the open branch consults these two.
  */
 export function isBoardFiltered(
@@ -75,7 +77,9 @@ export function isBoardFiltered(
 /**
  * Narrow a fetched batch to the active store and drop cancelled tickets.
  *
- * Extracted from KdsScreen.tsx:154-162, inside fetchOrders — a useCallback with
+ * Extracted from KdsScreen.tsx:154-162 AS OF df585537d^ (as with the note above,
+ * the current lines hold the call, not the original code). It lived inside
+ * fetchOrders — a useCallback with
  * I/O either side, which is why the retyped copy in KdsOrderFiltering.test.ts
  * restated it instead of importing anything. The two rules it encodes are not
  * incidental:
