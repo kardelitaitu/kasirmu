@@ -11,7 +11,7 @@
 
 .fiscalnum-intro {
   margin: 0 0 var(--space-3);
-  color: var(--text-secondary, #555);
+  color: var(--color-fg-secondary);
   font-size: var(--text-base);
 }
 
@@ -34,7 +34,7 @@
 .fiscalnum-field label {
   font-size: var(--text-sm);
   font-weight: 600;
-  color: var(--text-primary, #1a1a1a);
+  color: var(--color-fg-primary);
 }
 
 .fiscalnum-current {
@@ -43,7 +43,7 @@
   gap: var(--space-1);
   margin: 0 0 var(--space-3);
   padding: 0.5rem;
-  border: 1px dashed var(--border-color, #ddd);
+  border: 1px dashed var(--color-border);
   border-radius: 6px;
 }
 
@@ -52,7 +52,7 @@
 .fiscalnum-empty,
 .fiscalnum-loading {
   font-size: var(--text-sm);
-  color: var(--text-tertiary, #888);
+  color: var(--color-fg-tertiary);
 }
 
 .fiscalnum-actions {
@@ -63,10 +63,16 @@
 
 .fiscalnum-saved {
   font-size: var(--text-sm);
-  color: var(--text-secondary, #555);
+  color: var(--color-fg-secondary);
 }
 
 .fiscalnum-error {
   font-size: var(--text-sm);
-  color: var(--danger-text, #b00020);
+  /* Was var(--danger-text) — a name declared nowhere, and with NO fallback, so the
+     error text inherited the surrounding colour and never rendered red. The sibling
+     cards in this cluster carried the same family of dead names, but with
+     light-theme literals as tails; this one had no tail at all, so it failed
+     silently rather than visibly. --color-danger is the error-foreground token the
+     rest of the tree uses. */
+  color: var(--color-danger);
 }

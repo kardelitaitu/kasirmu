@@ -493,7 +493,16 @@ export function KdsHamburgerPanel({
                     value={settings.yellowThresholdMin}
                     onChange={onChangeYellowThreshold}
                     onDragValue={(v) => setDragYellow(v || null)}
-                    color="var(--kds-warning, #fd9426)"
+                    // Was `var(--kds-warning, #fd9426)` — a token that is defined
+                    // NOWHERE, so the hardcoded fallback always rendered. Two
+                    // problems in one: the dead reference, and #fd9426 itself, which
+                    // measures 2.04:1 on the light background (the same value the
+                    // KDS family's only contrast failure was fixed from, 2026-10-07).
+                    // --color-warning is what the sibling value label
+                    // (.kds-slider-value--warning, KdsScreen.css:875) already uses, so
+                    // the number beside the track and the track's own colour now agree
+                    // by construction rather than by two literals happening to match.
+                    color="var(--color-warning)"
                     ariaLabel={requiredLocalized(l10n, 'kds-settings-yellow-aria')}
                     ariaValueText={l10n.getString('kds-slider-value-min', { min: settings.yellowThresholdMin })}
                     dataTestId="kds-settings-yellow-slider"
@@ -511,7 +520,13 @@ export function KdsHamburgerPanel({
                     value={settings.redThresholdMin}
                     onChange={onChangeRedThreshold}
                     onDragValue={(v) => setDragRed(v || null)}
-                    color="var(--kds-danger, #fc3d39)"
+                    // Same dead reference as the yellow slider above, same fix, and
+                    // for the same reason: --color-danger is what
+                    // .kds-slider-value--danger (KdsScreen.css:876) uses. #fc3d39
+                    // happened to be the correct value already, which is exactly why
+                    // the dead token went unnoticed for so long — the fallback looked
+                    // right. The reference was still unreachable.
+                    color="var(--color-danger)"
                     ariaLabel={requiredLocalized(l10n, 'kds-settings-red-aria')}
                     ariaValueText={l10n.getString('kds-slider-value-min', { min: settings.redThresholdMin })}
                     dataTestId="kds-settings-red-slider"

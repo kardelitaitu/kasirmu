@@ -2576,29 +2576,33 @@ function describeUnresolved(misses: Map<string, VarRef[]>): string {
  * add one.
  */
 const UNRESOLVED_VAR_TOKENS_BASELINE: string[] = [
-  "--accent-color", // 3 - settings/screens/*Card.css use a foreign naming scheme
-  "--accent-contrast", // 3 - the same three cards
-  "--bg-primary", // 3
-  "--bg-secondary", // 1
-  "--border-color", // 8
-  "--border-subtle", // 2 - settings/sections/DiagnosticsSection.css
+  // SEVEN NAMES DELETED 2026-10-07, not added: the four Business Defaults cards
+  // (Regional / ReceiptFormat / StatutoryNumbering / LocalPayment) declared their
+  // entire colour surface in a foreign naming scheme with light-theme literals as
+  // tails. Because :root is the DEFAULT theme and those literals were light, the
+  // cards rendered --color-fg-primary-ish text at 1.06:1 on the dark background --
+  // #1a1a1a on #12141a -- i.e. invisible in the app's default theme. Re-pointed at
+  // the real tokens and the now-dead tails removed.
+  //   deleted: --accent-color, --bg-primary, --bg-secondary, --border-color,
+  //            --status-danger, --status-success, --text-secondary, --text-tertiary
+  // The remaining entries are a DIFFERENT population and are NOT the same defect:
+  // --mouse-x/-y and --rotate-x/-y are set at runtime by a component; --danger-500
+  // /--danger-700/--info-500/--success-500 are NO-FALLBACK names from another lane;
+  // --border-subtle/--color-surface-alt/--success-bg/--text-muted and the Org*
+  // components are third-party-shaped sheets. They stay until their own owners
+  // close them, which is what shrink-only means.
+  "--border-subtle", // 9
   "--color-surface-alt", // 1 - staff/components/RoleAuthoringPanel.css
   "--danger-500", // 4 NO FALLBACK - a colour that renders nothing
   "--danger-700", // 1 NO FALLBACK
-  "--danger-text", // 1 - settings/screens/StatutoryNumberingCard.css
   "--info-500", // 1 NO FALLBACK
   "--mouse-x", // 2 - only a TEST sets these, so nothing exists at runtime
   "--mouse-y", // 2
   "--rotate-x", // 1 - workspaces/WorkspaceHome.css
   "--rotate-y", // 1
-  "--status-danger", // 3
-  "--status-success", // 3
   "--success-500", // 2 NO FALLBACK
   "--success-bg", // 1
   "--text-muted", // 1
-  "--text-primary", // 10
-  "--text-secondary", // 8
-  "--text-tertiary", // 7
 ];
 
 describe("var() token existence", () => {
@@ -2727,31 +2731,16 @@ const FOREIGN_SCHEME_BASELINE: Array<[string, string, number]> = [
   ["--accent", "ui/src/components/ExitSurveyModal.css", 2],
   ["--accent", "ui/src/components/OrgSwitcher.css", 2],
   ["--accent-bg", "ui/src/components/ExitSurveyModal.css", 1],
-  ["--accent-color", "ui/src/features/settings/screens/LocalPaymentSettingsCard.css", 1],
-  ["--accent-color", "ui/src/features/settings/screens/ReceiptFormatSettingsCard.css", 1],
-  ["--accent-color", "ui/src/features/settings/screens/RegionalSettingsCard.css", 1],
   ["--accent-contrast", "ui/src/components/OrgSwitcher.css", 1],
-  ["--accent-contrast", "ui/src/features/settings/screens/LocalPaymentSettingsCard.css", 1],
-  ["--accent-contrast", "ui/src/features/settings/screens/ReceiptFormatSettingsCard.css", 1],
-  ["--accent-contrast", "ui/src/features/settings/screens/RegionalSettingsCard.css", 1],
   ["--accent-subtle", "ui/src/components/OrgSelector.css", 1],
   ["--accent-subtle", "ui/src/components/OrgSwitcher.css", 1],
-  ["--bg-primary", "ui/src/features/settings/screens/LocalPaymentSettingsCard.css", 1],
-  ["--bg-primary", "ui/src/features/settings/screens/ReceiptFormatSettingsCard.css", 1],
-  ["--bg-primary", "ui/src/features/settings/screens/RegionalSettingsCard.css", 1],
-  ["--bg-secondary", "ui/src/features/settings/screens/LocalPaymentSettingsCard.css", 1],
   ["--border", "ui/src/components/ExitSurveyModal.css", 2],
-  ["--border-color", "ui/src/features/settings/screens/LocalPaymentSettingsCard.css", 4],
-  ["--border-color", "ui/src/features/settings/screens/ReceiptFormatSettingsCard.css", 2],
-  ["--border-color", "ui/src/features/settings/screens/RegionalSettingsCard.css", 1],
-  ["--border-color", "ui/src/features/settings/screens/StatutoryNumberingCard.css", 1],
   ["--border-subtle", "ui/src/components/OrgSelector.css", 2],
   ["--border-subtle", "ui/src/components/OrgSwitcher.css", 5],
   ["--border-subtle", "ui/src/features/settings/sections/DiagnosticsSection.css", 2],
   ["--color-surface-alt", "ui/src/features/staff/components/RoleAuthoringPanel.css", 1],
   ["--color-text-on-danger", "ui/src/components/StockAlertBell.css", 1],
   ["--danger", "ui/src/components/OrgSwitcher.css", 1],
-  ["--danger-text", "ui/src/features/settings/screens/StatutoryNumberingCard.css", 1],
   ["--mouse-x", "ui/src/features/locations/NodeTopologyEditor.css", 1],
   ["--mouse-x", "ui/src/features/workspaces/WorkspaceHome.css", 1],
   ["--mouse-y", "ui/src/features/locations/NodeTopologyEditor.css", 1],
@@ -2759,30 +2748,12 @@ const FOREIGN_SCHEME_BASELINE: Array<[string, string, number]> = [
   ["--muted", "ui/src/components/ExitSurveyModal.css", 1],
   ["--rotate-x", "ui/src/features/workspaces/WorkspaceHome.css", 1],
   ["--rotate-y", "ui/src/features/workspaces/WorkspaceHome.css", 1],
-  ["--status-danger", "ui/src/features/settings/screens/LocalPaymentSettingsCard.css", 1],
-  ["--status-danger", "ui/src/features/settings/screens/ReceiptFormatSettingsCard.css", 1],
-  ["--status-danger", "ui/src/features/settings/screens/RegionalSettingsCard.css", 1],
-  ["--status-success", "ui/src/features/settings/screens/LocalPaymentSettingsCard.css", 1],
-  ["--status-success", "ui/src/features/settings/screens/ReceiptFormatSettingsCard.css", 1],
-  ["--status-success", "ui/src/features/settings/screens/RegionalSettingsCard.css", 1],
   ["--success-bg", "ui/src/features/settings/sections/DiagnosticsSection.css", 1],
   ["--surface", "ui/src/components/ExitSurveyModal.css", 1],
   ["--surface", "ui/src/components/OrgSelector.css", 1],
   ["--surface", "ui/src/components/OrgSwitcher.css", 2],
   ["--surface-input", "ui/src/components/OrgSwitcher.css", 1],
   ["--text-muted", "ui/src/features/settings/sections/DiagnosticsSection.css", 1],
-  ["--text-primary", "ui/src/features/settings/screens/LocalPaymentSettingsCard.css", 3],
-  ["--text-primary", "ui/src/features/settings/screens/ReceiptFormatSettingsCard.css", 4],
-  ["--text-primary", "ui/src/features/settings/screens/RegionalSettingsCard.css", 2],
-  ["--text-primary", "ui/src/features/settings/screens/StatutoryNumberingCard.css", 1],
-  ["--text-secondary", "ui/src/features/settings/screens/LocalPaymentSettingsCard.css", 2],
-  ["--text-secondary", "ui/src/features/settings/screens/ReceiptFormatSettingsCard.css", 2],
-  ["--text-secondary", "ui/src/features/settings/screens/RegionalSettingsCard.css", 2],
-  ["--text-secondary", "ui/src/features/settings/screens/StatutoryNumberingCard.css", 2],
-  ["--text-tertiary", "ui/src/features/settings/screens/LocalPaymentSettingsCard.css", 2],
-  ["--text-tertiary", "ui/src/features/settings/screens/ReceiptFormatSettingsCard.css", 2],
-  ["--text-tertiary", "ui/src/features/settings/screens/RegionalSettingsCard.css", 2],
-  ["--text-tertiary", "ui/src/features/settings/screens/StatutoryNumberingCard.css", 1],
 ];
 
 describe("foreign-scheme token freeze", () => {
@@ -2798,8 +2769,23 @@ describe("foreign-scheme token freeze", () => {
       .filter((s) => /var\(/.test(s.text) && varRefsFromCss(s.file, s.text).length === 0)
       .map((s) => shortFile(s.file));
     expect(silent, "sheets hold a literal var() the parser did not record:\n  " + silent.join("\n  ")).toEqual([]);
-    expect(harvested.size, "the foreign-scheme predicate matched no pair").toBeGreaterThanOrEqual(50);
-    expect([...harvested.values()].reduce((a, n) => a + n, 0)).toBeGreaterThanOrEqual(80);
+    // LOWERED 2026-10-07, 50 -> 26 and 80 -> 36, because the debt this freeze
+    // grandfathers was PAID for four sheets. The Business Defaults cards
+    // (Regional / ReceiptFormat / StatutoryNumbering / LocalPayment) declared their
+    // whole colour surface in a foreign scheme with light-theme literals as tails;
+    // :root is the default theme, so those literals rendered at 1.06:1 on the dark
+    // background. Re-pointed at real tokens and their 33 frozen rows deleted.
+    //
+    // The bounds are the measured population (26 pairs / 36 sites), not a guess:
+    // they exist to prove this case has an input, and a floor left at 50 would have
+    // failed on the FIX rather than on a regression -- which is the failure mode
+    // this whole file keeps warning about. They stay well above zero, and rise as
+    // frozen debt is paid back in, which is what the comment above asks for.
+    // If a future lane lowers these again, CHECK WHAT PAID THE DEBT first: a drop
+    // caused by sheets being fixed is this; one caused by the predicate going blind
+    // is the opposite, and looks identical in the count alone.
+    expect(harvested.size, "the foreign-scheme predicate matched no pair").toBeGreaterThanOrEqual(26);
+    expect([...harvested.values()].reduce((a, n) => a + n, 0)).toBeGreaterThanOrEqual(36);
   });
 
   it("no new foreign-scheme reference appears, and no frozen one silently vanished", () => {
