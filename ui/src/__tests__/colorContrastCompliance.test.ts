@@ -362,6 +362,25 @@ function assertContrast(pair: ContrastPair, tokens: Record<string, string>): voi
 // (danger-fg on the popover surface, tested only against --color-danger).
 // Widening this suite to feature sheets is a separate decision, not a
 // follow-up fix — recorded here so a green is never read as "colours checked".
+//
+// ADDED 2026-10-07 — a second blind spot, and a sharper one: this suite grades
+// the BASE tokens of each semantic family and SKIPS the derived variants. Measured
+// with a grep over this file: ZERO references to any *-dim or *-border token. The
+// pair list reads --color-danger / --color-warning / --color-success (via the
+// `danger`/`warning`/`success` locals at :191, :205-206) and nothing else in
+// those families.
+//
+// That matters because the variants are the ones that MOVE. 3c446e3cf collapsed four
+// of them onto their base values (#fca5a5 -> #FF6B68 for danger-dim, and three more),
+// and this suite stayed green through it — correctly, since it never read them. The
+// same silence had covered the values the collapse REPLACED, which measured 1.33-1.60
+// against the light background, below every floor. So the family was ungraded in both
+// directions, and a green here has never meant the variants are legible.
+//
+// The fix is a floor for the family, not a value edit — see the measurement table in
+// theme/tokens.css, which has the before/after contrast per theme. Recorded here
+// because "which tokens does this suite actually read" is the question a reader of a
+// passing contrast run needs answered, and the list above covers surfaces, not tokens.
 const TOKENS_PATH = resolve(__dirname, '../theme/tokens.css');
 
 interface ThemeInfo {

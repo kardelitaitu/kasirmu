@@ -130,25 +130,44 @@
      collapse, in light only: that asymmetry is the tell that the others were meant to
      differ too, and it is visible without leaving this file.
 
-     REGRESSION, not a designed alias. Provenance is exact:
-       3c446e3cf (2026-08-28) rewrote 333 lines of this file and collapsed the four —
-         success-dim #4ade80 -> #6FE884   warning-dim #fbbf24 -> #FFA94D
-         danger-dim  #fecaca -> #FF6B68   danger-border #dc2626 -> #FC3D39
-       Its subject is "fix(db): add DROP TABLE IF EXISTS to 20260824_media_edc.sql",
-       so a token-semantics change rode in under a database commit and a reviewer of
-       that commit had no reason to open this file. Before it, a4c59a009 (the WCAG
-       rewrite) had deliberately set the -dim values distinct.
-
-     Audited at the same time, so this note does not overstate its scope: that commit
+     Provenance is exact — 3c446e3cf (2026-08-28) rewrote 333 lines of this file and
+     collapsed the four:
+       success-dim #4ade80 -> #6FE884   warning-dim #fbbf24 -> #FFA94D
+       danger-dim  #fecaca -> #FF6B68   danger-border #dc2626 -> #FC3D39
+     Its subject is "fix(db): add DROP TABLE IF EXISTS to 20260824_media_edc.sql", so
+     a token-semantics change rode in under a database commit and a reviewer of that
+     commit had no reason to open this file. Audited at the same time: that commit
      renamed ZERO tokens (74 removed names, 74 still present; 2 genuinely new —
-     --color-text-on-color, --ease-bounce), so no call site could have broken on a
-     name. The defect is entirely in the values.
+     --color-text-on-color, --ease-bounce), so nothing could have broken on a name.
 
-     DO NOT "fix" this by editing four values in a drive-by: that is how it arrived,
-     and 71 sites consume them. The disposition is a design decision — restore a
-     distinct tint per family, or rename the tokens to admit they alias their base —
-     and it belongs in a commit about tokens. Recorded where a reader of the values
-     will find it. */
+     ── WAS THIS A MISTAKE? MEASURED, AND THE ANSWER IS NOT THE OBVIOUS ONE ──
+     Contrast of each old value against its theme's --color-bg (#12141a dark /
+     #f4f5f7 light), WCAG relative-luminance:
+
+       token/theme         BEFORE          AFTER
+       danger-dim/dark    #fca5a5  9.70   #FF6B68  6.62    both pass 3:1
+       danger-dim/light   #fecaca  1.33   #FC3D39  3.28    BEFORE FAILS
+       warning-dim/dark   #fbbf24 11.03   #FFA94D  9.67    both pass
+       warning-dim/light  #fbbf24  1.53   #CC6600  3.52    BEFORE FAILS
+       success-dim/dark   #4ade80 10.56   #6FE884 11.88    both pass
+       success-dim/light  #4ade80  1.60   #2E9E3E  3.17    BEFORE FAILS
+
+     In the LIGHT theme the old values were 1.33-1.60 — unreadable — and the collapse
+     is what brought them to 3.2-3.5. So this was NOT a pure regression, and an earlier
+     version of this note called it one. The dark theme lost some headroom (9.70 -> 6.62)
+     but never fell below the floor.
+
+     WHY NOTHING CAUGHT IT EITHER WAY: colorContrastCompliance.test.ts grades the BASE
+     tokens only — it contains ZERO references to any *-dim or *-border token. So this
+     family has no contrast floor at all, which is why the collapse was silent AND why
+     the old unreadable values were silent before it. That is the finding worth acting
+     on: not "restore the old values" (they fail in light) and not "raise the alarm"
+     (the current ones pass), but that these four tokens are outside every gate.
+
+     DO NOT edit the four values in a drive-by: 71 sites consume them (42 borders),
+     and any distinct "dim" must be chosen against BOTH backgrounds, which is a design
+     task with an arithmetic constraint — see the table. The durable fix is a floor for
+     the family in the contrast suite; the value choice follows from it. */
 
   --color-success-dim:     #6FE884;
   --color-success-fg:      #12141a;
