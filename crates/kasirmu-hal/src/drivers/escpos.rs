@@ -13,6 +13,9 @@ next: none | perf: N/A
 /// Maximum allowable raw print payload in bytes (4 MB) to guard against unbounded memory buffers.
 pub const MAX_PRINT_PAYLOAD_BYTES: usize = 4 * 1024 * 1024;
 
+/// Default timeout for completing a single receipt print job (15 seconds).
+pub const DEFAULT_PRINT_JOB_TIMEOUT_SECS: u64 = 15;
+
 /// Initialize printer.
 pub const ESC_INIT: &[u8] = &[0x1B, 0x40];
 /// Print and carriage return.

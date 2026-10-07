@@ -197,3 +197,9 @@ fn byte_based_padding_misaligns_and_cell_based_padding_does_not() {
 fn max_print_payload_bytes_is_positive_and_bounded() {
     assert_eq!(MAX_PRINT_PAYLOAD_BYTES, 4 * 1024 * 1024);
 }
+
+#[test]
+fn default_print_job_timeout_is_bounded() {
+    assert!(DEFAULT_PRINT_JOB_TIMEOUT_SECS >= 5 && DEFAULT_PRINT_JOB_TIMEOUT_SECS <= 60);
+}
+

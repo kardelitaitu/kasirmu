@@ -61,7 +61,10 @@ pub async fn write_all(stream: &mut TcpStream, data: &[u8]) -> Result<(), HalErr
             }
         })?;
 
-    stream.flush().await.map_err(HalError::Io)?;
+    timeout(Duration::from_secs(5), stream.flush())
+        .await
+        .map_err(|_| HalError::Timeout(5_000))?
+        .map_err(HalError::Io)?;
 
     Ok(())
 }

@@ -1520,7 +1520,7 @@ Tasks:
 - [ ] Test sustained scanning.
 - [ ] Test sustained printing.
 - [x] Add scanner cooldown (250ms debounce window in useBarcodeScanner & useWarehouseScanner; MAX_BARCODE_LEN = 1024 bound in HAL USB/Serial/BT).
-- [ ] Add print job timeout.
+- [x] Add print job timeout (DEFAULT_PRINT_JOB_TIMEOUT_SECS = 15s in escpos.rs, socket flush timeout 5s in transport/tcp.rs).
 - [x] Clean printer sockets (resets cached stream/port on write/flush failure in serial_printer.rs and bt_android_printer.rs).
 
 Exit criteria:
