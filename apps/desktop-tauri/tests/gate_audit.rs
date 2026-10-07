@@ -59,6 +59,10 @@ static PINNED_DESKTOP: &[(&str, usize, &[&str])] = &[
     ("desktop_link", 0, &[]),
     ("branding", 5, &["SETTINGS_EDIT", "SETTINGS_READ"]),
     ("browser", 0, &[]),
+    // 1 gate call with SETTINGS_READ, absent from the pin. A REAL unpinned gate: the
+    // one-click diagnostic archive export (bf8e004f9) resolves the session and then
+    // requires SETTINGS_READ in the bridge, so this row reviews a live permission.
+    ("diagnostics", 1, &["SETTINGS_READ"]),
     // Pinned at its measured shape, the same call the comment above records:
     // `build_integrity.rs` gates nothing yet, and the census walks every
     // non-skipped .rs in the directory, so an added module is a row.
@@ -127,8 +131,12 @@ static PINNED_DESKTOP: &[(&str, usize, &[&str])] = &[
     // SALES_* keys are the pre-existing tender path; SETTINGS_READ/SETTINGS_EDIT
     // are the terminal CRUD, which is why the read/write pair appears together.
     (
+        // 8 -> 11 in 656f109a0 "feat(edc): add invoice reference, batch settlement,
+        // and transaction inquiry", which added three gated commands. The KEY SET
+        // did not move -- the new commands reuse the tender path's permissions --
+        // which is exactly what the census reports (count row only, no keys row).
         "edc",
-        8,
+        11,
         &[
             "SALES_PROCESS",
             "SALES_REFUND",
@@ -140,7 +148,21 @@ static PINNED_DESKTOP: &[(&str, usize, &[&str])] = &[
     ("email", 3, &["REPORTS_SCHEDULE", "SETTINGS_EDIT"]),
     ("exchange_rates", 0, &[]),
     ("features", 2, &["SETTINGS_EDIT"]),
-    ("fiscal", 5, &["SETTINGS_EDIT", "SETTINGS_READ"]),
+    // 5 -> 7 and two SALES_* keys in 859d5d44b "feat(bridge,apps): expose
+    // issue_tax_invoice_scoped and statutory_number IPC commands". The move is
+    // documented IN THE SOURCE, not inferred from the subject: each new command's
+    // own doc comment states its gate ("Gated by `sales:process`.", "…`sales:view`."),
+    // so the family change is declared intent rather than a copied permission.
+    (
+        "fiscal",
+        7,
+        &[
+            "SALES_PROCESS",
+            "SALES_VIEW",
+            "SETTINGS_EDIT",
+            "SETTINGS_READ",
+        ],
+    ),
     (
         "gift_cards",
         8,
@@ -196,7 +218,9 @@ static PINNED_DESKTOP: &[(&str, usize, &[&str])] = &[
         ],
     ),
     ("memo", 5, &["MEMO_STOP", "MEMO_WRITE"]),
-    ("offline", 4, &["SYNC_MANAGE"]),
+    // 4 -> 5 in fd4a0ff6e "feat(sync): add dead_letter_count to PgDaemonStatus and
+    // gate list_remote_failures_scoped" -- one newly gated command, same key.
+    ("offline", 5, &["SYNC_MANAGE"]),
     (
         "payables",
         4,
@@ -266,7 +290,9 @@ static PINNED_DESKTOP: &[(&str, usize, &[&str])] = &[
     ("qris_auto", 1, &["SALES_PROCESS"]),
     ("receipt_format", 5, &["SETTINGS_EDIT", "SETTINGS_READ"]),
     ("refunds", 3, &["SALES_PROCESS", "SALES_REFUND"]),
-    ("regional", 4, &["SETTINGS_EDIT", "SETTINGS_READ"]),
+    // 4 -> 5 in d635b58f0 "feat(regional): register get_active_market_profile_scoped
+    // Tauri command" -- the command the subject names, gated on the existing pair.
+    ("regional", 5, &["SETTINGS_EDIT", "SETTINGS_READ"]),
     // The measured debt ledger is a .rs under src/commands, so the census walks it. It
     // names no gate and no permission (6c574ee07 landed it): that is a row to record,
     // not a file to skip - adding the stem to `skip` would stop ever looking at it.
@@ -406,10 +432,23 @@ static PINNED_TABLET: &[(&str, usize, &[&str])] = &[
     // dir, so an added module is a row even when it gates nothing.
     ("data", 0, &[]),
     ("desktop_link", 0, &[]),
+    ("edc", 0, &[]),
     ("exchange_rates", 5, &["SETTINGS_EDIT", "SETTINGS_READ"]),
     ("features", 2, &["SETTINGS_EDIT"]),
+    // STAYS 0, and the reason is worth recording because the desktop row reads 7.
+    // The tablet census has ONE root (its own src/commands) and no bridge root, so
+    // it never sees the gates: the desktop row is 0 from the shell PLUS 7 from
+    // `crates/kasirmu-bridge/src/fiscal.rs`, which is where the two commands added in
+    // 859d5d44b actually gate. The tablet's new commands exist and delegate to the
+    // same bridge, but the bridge root is not part of the tablet census.
     ("fiscal", 0, &[]),
     ("gift_cards", 0, &[]),
+    // Exists on disk and gates NOTHING: registered for tablet parity in 6fe57ba17
+    // ("register shifts, inventory, kds, edc, locations, and pin commands for
+    // tablet parity"). Pinned as `0, &[]` so its absence is recorded rather than
+    // inferred -- a zero-call module is ungated by construction, per this file's
+    // header, so there is no unreviewed gate here, only a missing expectation.
+    ("inventory", 1, &[]),
     ("hardware", 0, &[]),
     ("health", 0, &[]),
     // Re-pinned 13-09-26: 3a15dafe8 put a real permission check in the five
@@ -424,6 +463,12 @@ static PINNED_TABLET: &[(&str, usize, &[&str])] = &[
         &["REPORTS_EXPORT", "SALES_PROCESS", "SALES_VIEW"],
     ),
     ("inventory_counts", 1, &["INVENTORY_COUNT"]),
+    // Registered for tablet parity in 6fe57ba17 ("register shifts, inventory, kds,
+    // edc, locations, and pin commands for tablet parity"). Exists on disk and gates
+    // NOTHING -- a zero-call module is ungated by construction, so this pin records
+    // an expectation rather than reviewing a gate.
+    ("kds_device", 0, &[]),
+    ("kds_routing", 0, &[]),
     ("kds", 1, &["KDS_UPDATE"]),
     ("legal_entities", 0, &[]),
     // Both walk into the census ungated and unpinned: the tablet's license.rs and
@@ -434,7 +479,8 @@ static PINNED_TABLET: &[(&str, usize, &[&str])] = &[
     ("local_payment", 1, &["SETTINGS_EDIT"]),
     ("loyalty", 0, &[]),
     ("memo", 0, &[]),
-    ("offline", 3, &["SYNC_MANAGE"]),
+    // 3 -> 4 by the same fd4a0ff6e as the desktop row: the module is parity-shared.
+    ("offline", 4, &["SYNC_MANAGE"]),
     ("picker_ticket", 0, &[]),
     (
         "pos",
@@ -473,7 +519,8 @@ static PINNED_TABLET: &[(&str, usize, &[&str])] = &[
     ("qris_auto", 2, &["SALES_PROCESS"]),
     ("receipt_format", 2, &["SETTINGS_EDIT"]),
     ("refunds", 3, &["SALES_PROCESS", "SALES_REFUND"]),
-    ("regional", 2, &["SETTINGS_EDIT", "SETTINGS_READ"]),
+    // 2 -> 3 by the same d635b58f0 as the desktop row.
+    ("regional", 3, &["SETTINGS_EDIT", "SETTINGS_READ"]),
     // Same as the desktop leg: the tablet ledger landed in 3c793f8e3 and the census
     // walks every non-skipped .rs in the commands dir. Pinned at its measured
     // (0 calls, no keys) rather than skipped out of existence.
@@ -486,6 +533,7 @@ static PINNED_TABLET: &[(&str, usize, &[&str])] = &[
         &["SALES_VIEW", "SETTINGS_EDIT", "SETTINGS_READ"],
     ),
     ("setup", 0, &[]),
+    ("shifts", 0, &[]),
     // STAFF_READ_IDENTITY joined this row at 22-09-26: the tablet's shim measures it
     // without the count moving, because the census counts CALLS and the key set is
     // collected per call. Pinned at the measured pair rather than trimmed.
@@ -524,6 +572,10 @@ static PINNED_TABLET: &[(&str, usize, &[&str])] = &[
     // the count was pinned at 1, which matched neither the reads nor the writes.
     ("tax", 8, &["SETTINGS_EDIT", "SETTINGS_READ"]),
     ("testing", 0, &[]),
+    // 3 gate calls with settings keys, absent from the pin. A REAL unpinned gate:
+    // unlike the zero-call rows above, this module enforces permissions no pin row
+    // reviews.
+    ("updater", 3, &["SETTINGS_EDIT", "SETTINGS_READ"]),
     (
         "terminals",
         10,
