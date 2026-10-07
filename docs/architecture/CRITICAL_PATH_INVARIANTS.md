@@ -21,18 +21,27 @@ without saying so below.
 
 **The invariant is conditional, and stating it unconditionally would be false.**
 `WorkspaceInventoryLocation.allow_negative_stock`
-(`modules/inventory/src/models.rs:368`) is a per-location policy flag, and
-`Repository::adjust_stock_tx` (`modules/inventory/src/repository.rs:130`) applies
-a raw `UPDATE inventory SET qty = qty + ?1`. A location that opts in may
+(`foundation/src/inventory.rs:359`) is a per-location policy flag, and the stock
+write is a raw `UPDATE inventory SET qty = qty + ?1`. A location that opts in may
 oversell; a location that does not must be refused.
+
+> **Repaired 2026-10-07.** This paragraph cited `modules/inventory/src/models.rs:368`
+> for the policy flag and `Repository::adjust_stock_tx` (`modules/inventory/src/repository.rs:130`)
+> for the raw UPDATE. Both were stale: the flag now lives in `foundation` (the inventory
+> model was extracted there), and `adjust_stock_tx` **no longer exists** — `get_stock` and
+> `adjust_stock_tx` were REMOVED on 2026-09-29 (`modules/inventory/src/repository.rs:147`)
+> because they read `inventory.sku` / `low_stock_threshold`, columns the migrations do not
+> carry, and had no caller. The raw `UPDATE` shape they described is still the live write
+> path, so the invariant itself is unchanged; only the anchors were. See the "Not a gate"
+> note at the foot of this file for why this drifted unnoticed.
 
 Where it is enforced — **two independent layers**, which is worth knowing:
 
 | Layer | Where | What it does |
 |---|---|---|
-| Rust guard | `crates/kasirmu-core/src/db/products_stock_query.rs:453` | `.filter(\|&v\| v >= 0)` on the new quantity; rejects with `"adjustment would cause negative stock (previous: N, delta: M)"` |
+| Rust guard | `crates/kasirmu-core/src/db/products_stock_query.rs:460` | `.filter(\|&v\| v >= 0)` on the new quantity; rejects with `"adjustment would cause negative stock (previous: N, delta: M)"` |
 | Rust guard (batch) | `crates/kasirmu-core/src/db/products_stock_adjust/batch.rs:156` | same, for a batch whose ANY member would go negative |
-| **Database** | CHECK constraint `qty >= 0` on `inventory` | refuses the write even if the Rust guard is removed |
+| **Database** | CHECK constraint `qty >= 0` on `inventory` (`crates/kasirmu-core/migrations/20260813_init.sql:171`) | refuses the write even if the Rust guard is removed |
 
 **Measured, not assumed:** relaxing the Rust guard to `v >= i64::MIN` still
 fails, with `CHECK constraint failed: qty >= 0` — the floor is defended at both
@@ -129,5 +138,16 @@ items are never delivered back to it, since they are already local.
   this file goes stale silently — the failure mode P3-1's own sibling (P3-3)
   solved with a checker. A future pass could assert each named test exists by
   name; that is not done here.
+
+  > **Confirmed the hard way, 2026-10-07.** A manual pass checked every claim:
+  > all **17** named tests still exist and all **11** cited line numbers still land
+  > exactly on their `fn`, so §2–§4 are intact. §1 was NOT: it cited
+  > `modules/inventory/src/models.rs:368` and `Repository::adjust_stock_tx`
+  > (`repository.rs:130`), and both were stale — the flag moved to `foundation`, and
+  > `adjust_stock_tx` was deleted on 2026-09-29. Repaired above. **This is exactly the
+  > drift this note predicts**, and it took a hand pass to find: the failing citation
+  > was in PROSE, which is the kind the dead-ref checker does not grade. A checker
+  > that parsed this file for `path.rs:NN` — `fn name` pairs and asserted the `fn`
+  > exists at that line would be ~20 lines and is still not written.
 
 > last audited 29-09-26 by docs-auditor
