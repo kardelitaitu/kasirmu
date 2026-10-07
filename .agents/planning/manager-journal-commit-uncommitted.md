@@ -7,6 +7,22 @@ Hard rules (AGENTS.md §1-§3): never branch/switch; never push; only one-line p
 new files use the one-line `git add -- new && git commit -m ... -- new` chain; never commit .env/*.db/secrets;
 version locked 0.0.37; never sweep another session work under our subject; inspect paths immediately before naming them.
 
+> ⚠️ **PRE-PASS RE-MEASURE, 2026-10-07 — the ledger below is ACCURATE; two of its premises are not.**
+> All **9 relocation commits verified** (`c503f1454` … `8ecd3cafe`): each shows the claimed file count
+> with `0 insertions(+), 0 deletions(-)`, i.e. pure renames, exactly as recorded.
+>
+> **What has moved since.** (1) **There is no second AGENTS.md mirror any more.** This wave's whole
+> premise at :14 and :16 is "BOTH AGENTS.md mirrors" — root `AGENTS.md` and `.agents/AGENTS.md`.
+> `edd97e5c0` (2026-09-18, *"refactor(agents): reorganize .agents/ into logical sandbox
+> subdirectories"*) removed `.agents/AGENTS.md`; that path does not exist today, and
+> `scripts/verify-agents-mirrors.py` now reports *"every policed mirror (**1**)"*. Read every "both
+> mirrors" instruction here as obsolete — there is one file to edit, and the worker-fence rationale
+> built on the pair no longer applies. (2) **`git ls-files .agents/archived` is 46, not 0** — the
+> wave's Gate E expecting 0 was correct *at the time* (the moves were still uncommitted), and is now
+> simply the before-state of a completed move. The 37-count in the mirrors this wave expected to go
+> false was reconciled separately. NOT re-verified: the wave-4 contention section and the peer-commit
+> analysis beyond confirming the five SHAs resolve to genuinely unrelated work.
+
 ## WAVE 3 — OWNER RULING RECEIVED, PLAN A AUTHORIZED
 User: "we want to commit the done-todo*". Scope read literally: the 37 `done-todo-*` relocations ONLY.
 - IN SCOPE: G1..G9 (37 docs, 9 atomic both-sides commits, expected R100 x N, `| 0` churn each).
