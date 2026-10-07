@@ -1028,3 +1028,172 @@ fn all_gated_permission_keys_are_registered() {
         }
     }
 }
+
+// ── The census parser's own contract ────────────────────────────────────
+//
+// WHY THESE EXIST. Everything above asserts a NUMBER against a pin. That
+// number comes from `census()`, which strips comments, skips `use` lines,
+// discards wrapper DEFINITIONS, and pulls permission keys out of
+// `permissions::IDENT`. None of that machinery had a test — the file held
+// exactly three, all asserting counts against the pin. So a parser bug and a
+// genuine registration drift produce the SAME failure: a count that disagrees
+// with the pin. That is the failure mode worth closing, because the pin's whole
+// purpose is to be the review signal, and a miscount launders a real drift into
+// "the pin is stale" or the reverse.
+//
+// These cases drive the helpers on SYNTHETIC source, so they cannot be
+// satisfied by the current tree's contents and cannot drift with it.
+
+/// A gate CALL is counted; a wrapper DEFINITION is not -- and the definition
+/// must match the GATE VOCABULARY for the guard to matter.
+///
+/// A first draft of this case used a definition named \`require_inventory_permission\`
+/// while matching the vocabulary \`require_session_permission(\`, and it passed
+/// with the guard DISABLED: the definition line happened to contain no gate
+/// token, so skipping it changed nothing (found by mutation, not by reading).
+/// The load-bearing shape is a definition whose NAME contains a gate spelling --
+/// which is exactly the bridge's own layout, where each module keeps a thin
+/// \`require_<domain>_permission\` wrapper beside calls to
+/// \`require_session_permission\`. Without the guard, every such wrapper would be
+/// counted as a call site and every module would gain a phantom gate -- the
+/// exact shape of an "unpinned gates permissions on disk" row.
+#[test]
+fn census_counts_a_gate_call_but_not_a_wrapper_definition() {
+    // The definition's name carries the vocabularies being counted, AND its body
+    // calls one, so both mechanisms are exercised: the tool must skip the
+    // definition line and still count the call inside it.
+    let vocab = &["require_session_permission(", "require_inventory_permission("];
+    let src = "async fn require_inventory_permission(&self, p: Permission) -> Result<(), E> {\n    \
+               let x = self.require_session_permission(p, p).await?;\n";
+    let (calls, _) = census(src, vocab);
+    assert_eq!(
+        calls, 1,
+        "the DEFINITION line must not count and the call inside the body must; got {calls}"
+    );
+
+    // And directly: a bare definition line is zero calls, a bare call line is one.
+    let (def_only, _) = census("async fn require_inventory_permission(&self) {}\n", vocab);
+    assert_eq!(def_only, 0, "a definition alone is not a call; got {def_only}");
+    let (call_only, _) = census("self.require_inventory_permission(p).await?;\n", vocab);
+    assert_eq!(call_only, 1, "a call alone is one call; got {call_only}");
+}
+
+/// A commented-out gate call is NOT counted.
+///
+/// Prose and dead code mention these identifiers constantly -- the module docs
+/// in this repo name every wrapper. Counting them would inflate every module
+/// that documents its own gate.
+#[test]
+fn census_ignores_commented_gate_calls() {
+    let src = "// ctx.require_session_permission(&s, p).await?;\n\
+               let y = 1; // ctx.require_session_permission(&s, p).await?;\n";
+    let (calls, _) = census(src, &["require_session_permission("]);
+    assert_eq!(calls, 0, "a commented call is not a call; got {calls}");
+}
+
+/// A `use` line is skipped, so an imported gate name is not a call.
+#[test]
+fn census_ignores_use_lines() {
+    let src = "use crate::ctx::require_session_permission;\n";
+    let (calls, _) = census(src, &["require_session_permission"]);
+    assert_eq!(calls, 0, "an import is not a call site; got {calls}");
+}
+
+/// Permission keys are collected from `permissions::IDENT`, and only the
+/// IDENT part.
+///
+/// The key list is what `all_gated_permission_keys_are_registered` grades, so a
+/// truncated or over-long extraction would silently check the wrong constant.
+#[test]
+fn census_extracts_permission_keys_from_the_path() {
+    let src = "ctx.require_session_permission(&s, permissions::SETTINGS_READ).await?;\n";
+    let (_, keys) = census(src, &["require_session_permission("]);
+    assert_eq!(
+        keys,
+        vec!["SETTINGS_READ".to_string()],
+        "the key must be the constant with no path left on it; got {keys:?}"
+    );
+}
+
+/// Several keys on one line all land in the set, deduplicated and ordered.
+///
+/// `fiscal`'s pin is a KEY LIST, not a count, so a parser that took only the
+/// first key would under-report exactly the row the current drift names.
+#[test]
+fn census_collects_every_key_on_a_line_once_each() {
+    let src = "// a comment naming permissions::NOT_A_KEY\n\
+               let _ = permissions::SALES_PROCESS;\n\
+               let _ = permissions::SETTINGS_READ;\n\
+               let _ = permissions::SALES_PROCESS;\n";
+    let (_, keys) = census(src, &["require_session_permission("]);
+    assert_eq!(
+        keys,
+        vec!["SALES_PROCESS".to_string(), "SETTINGS_READ".to_string()],
+        "keys must be deduplicated and sorted, and a commented one excluded; got {keys:?}"
+    );
+}
+
+/// A raw string-literal permission at a gate is reported.
+///
+/// This is the "typo'd permission fails closed for everyone" guard. It is
+/// reported rather than counted, so the assertion is on the list contents.
+#[test]
+fn raw_permission_literals_reports_a_string_literal_argument() {
+    let src = "ctx.require_session_permission(&s, \"sales:typo\").await?;\n";
+    let bad = raw_permission_literals(src, &["require_session_permission("]);
+    assert_eq!(
+        bad,
+        vec!["sales:typo".to_string()],
+        "a literal permission must be reported; got {bad:?}"
+    );
+}
+
+/// `strip_test_blocks` consumes an INLINE braced `#[cfg(test)] { … }`, which is
+/// the only shape its brace walker handles.
+///
+/// MEASURED, and the measurement corrects an assumption: this branch handles a
+/// shape that appears **zero times** in \`crates/kasirmu-bridge/src\`. All 76
+/// \`#[cfg(test)]\` declarations there are the UNBRACED \`#[cfg(test)] #[path = …] mod
+/// tests;\` form -- a declaration with no body in the file to strip, which is why
+/// the else-branch below is the one that actually runs. So this case pins the
+/// walker's real behaviour on the shape it was written for, and the next one
+/// pins the shape the tree actually uses. Neither is a claim that the brace
+/// branch is LOAD-BEARING: test bodies are also excluded by FILENAME, since
+/// \`census_dir\` skips any file whose stem ends in \`_tests\` (gate_audit.rs:780)
+/// before this function is ever called. Recording the redundancy so nobody
+/// "removes the dead branch" without knowing what else depends on it.
+#[test]
+fn strip_test_blocks_consumes_an_inline_braced_cfg_test_block() {
+    let src = "fn live() { let _ = Example { a: 1 }; }\n\
+               #[cfg(test)]\n{\n    let _ = Example { a: 1 };\n    let _ = Example { b: 2 };\n}\n\
+               fn after() { let _ = Example { c: 3 }; }\n";
+    let stripped = strip_test_blocks(src);
+    assert!(!stripped.contains("b: 2"), "the inline block's body survived:\n{stripped}");
+    assert!(
+        stripped.contains("a: 1") && stripped.contains("c: 3"),
+        "the walker must return to depth 0 at the block's close and keep the rest:\n{stripped}"
+    );
+}
+
+/// The UNBRACED form -- `#[cfg(test)] #[path = …] mod tests;` -- is what the tree
+/// actually uses (76 occurrences in \`kasirmu-bridge\`), and the walker must leave
+/// the declaration's line in place rather than eating the rest of the file.
+///
+/// This is the else-branch, and it is the branch that fires on every real input.
+/// A regression here would delete code from the point of the marker onward, which
+/// would UNDER-count gates and make the pin silently permissive -- the direction
+/// that matters, because a pin that reports zero drift is indistinguishable from
+/// a tree with no drift.
+#[test]
+fn strip_test_blocks_leaves_the_unbraced_declaration_in_place() {
+    let src = "#[cfg(test)]\n#[path = \"x_tests.rs\"]\nmod tests;\n\
+               fn live() { ctx.require_session_permission(&s, permissions::SETTINGS_READ); }\n";
+    let stripped = strip_test_blocks(src);
+    assert!(
+        stripped.contains("fn live") && stripped.contains("permissions::SETTINGS_READ"),
+        "an unbraced declaration must not consume the rest of the file:\n{stripped}"
+    );
+    let (calls, keys) = census(&stripped, &["require_session_permission("]);
+    assert_eq!(calls, 1, "the live call must still be counted; got {calls}");
+    assert_eq!(keys, vec!["SETTINGS_READ".to_string()], "and its key kept; got {keys:?}");
+}
