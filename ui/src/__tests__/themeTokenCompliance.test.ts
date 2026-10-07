@@ -2591,14 +2591,10 @@ const UNRESOLVED_VAR_TOKENS_BASELINE: string[] = [
   // --border-subtle/--color-surface-alt/--success-bg/--text-muted and the Org*
   // components are third-party-shaped sheets. They stay until their own owners
   // close them, which is what shrink-only means.
-  "--border-subtle", // 9
-  "--color-surface-alt", // 1 - staff/components/RoleAuthoringPanel.css
   "--danger-500", // 4 NO FALLBACK - a colour that renders nothing
   "--danger-700", // 1 NO FALLBACK
   "--info-500", // 1 NO FALLBACK
   "--success-500", // 2 NO FALLBACK
-  "--success-bg", // 1
-  "--text-muted", // 1
 ];
 
 describe("var() token existence", () => {
@@ -2724,26 +2720,6 @@ function foreignSchemePairs(refs: VarRef[], declared: Set<string>): Map<string, 
  * freeze that only covered the named 15 would leave the pattern unpoliced.
  */
 const FOREIGN_SCHEME_BASELINE: Array<[string, string, number]> = [
-  ["--accent", "ui/src/components/ExitSurveyModal.css", 2],
-  ["--accent", "ui/src/components/OrgSwitcher.css", 2],
-  ["--accent-bg", "ui/src/components/ExitSurveyModal.css", 1],
-  ["--accent-contrast", "ui/src/components/OrgSwitcher.css", 1],
-  ["--accent-subtle", "ui/src/components/OrgSelector.css", 1],
-  ["--accent-subtle", "ui/src/components/OrgSwitcher.css", 1],
-  ["--border", "ui/src/components/ExitSurveyModal.css", 2],
-  ["--border-subtle", "ui/src/components/OrgSelector.css", 2],
-  ["--border-subtle", "ui/src/components/OrgSwitcher.css", 5],
-  ["--border-subtle", "ui/src/features/settings/sections/DiagnosticsSection.css", 2],
-  ["--color-surface-alt", "ui/src/features/staff/components/RoleAuthoringPanel.css", 1],
-  ["--color-text-on-danger", "ui/src/components/StockAlertBell.css", 1],
-  ["--danger", "ui/src/components/OrgSwitcher.css", 1],
-  ["--muted", "ui/src/components/ExitSurveyModal.css", 1],
-  ["--success-bg", "ui/src/features/settings/sections/DiagnosticsSection.css", 1],
-  ["--surface", "ui/src/components/ExitSurveyModal.css", 1],
-  ["--surface", "ui/src/components/OrgSelector.css", 1],
-  ["--surface", "ui/src/components/OrgSwitcher.css", 2],
-  ["--surface-input", "ui/src/components/OrgSwitcher.css", 1],
-  ["--text-muted", "ui/src/features/settings/sections/DiagnosticsSection.css", 1],
 ];
 
 describe("foreign-scheme token freeze", () => {
@@ -2771,11 +2747,29 @@ describe("foreign-scheme token freeze", () => {
     // failed on the FIX rather than on a regression -- which is the failure mode
     // this whole file keeps warning about. They stay well above zero, and rise as
     // frozen debt is paid back in, which is what the comment above asks for.
-    // If a future lane lowers these again, CHECK WHAT PAID THE DEBT first: a drop
-    // caused by sheets being fixed is this; one caused by the predicate going blind
-    // is the opposite, and looks identical in the count alone.
-    expect(harvested.size, "the foreign-scheme predicate matched no pair").toBeGreaterThanOrEqual(20);
-    expect([...harvested.values()].reduce((a, n) => a + n, 0)).toBeGreaterThanOrEqual(30);
+    // EMPTIED 2026-10-07, and the shape of this clause changed with it. The last
+    // 20 pairs were paid off in the same pass that took the count 26 -> 0:
+    // components/OrgSelector.css, OrgSwitcher.css, ExitSurveyModal.css,
+    // StockAlertBell.css and features/.../DiagnosticsSection.css all referenced a
+    // foreign naming scheme (--surface, --border-subtle, --accent, ...) with
+    // theme-inappropriate literals as tails. Re-pointed at the semantic tokens.
+    //
+    // A floor cannot assert "there is input" when the correct population is ZERO,
+    // so this is now an EXACT bound in the direction that matters: the harvest must
+    // stay empty. That is a stronger statement than any floor was, and it is the
+    // one the freeze was always aiming at -- the list can only shrink to nothing,
+    // and nothing is where it got. If a foreign-scheme reference appears again the
+    // next case catches it by name; this case fails if the PREDICATE goes blind,
+    // because a blind predicate and a clean tree both read as an empty map.
+    // What distinguishes them is the second assertion: the parser must still be
+    // able to see a pair when one exists, which the probe case below exercises.
+    expect(
+      harvested.size,
+      "the foreign-scheme harvest is no longer empty -- a sheet went back to a " +
+        "foreign naming scheme. Add it to the baseline deliberately, with a reason, " +
+        "or re-point it at the semantic tokens as the last 20 were.",
+    ).toBe(0);
+    expect([...harvested.values()].reduce((a, n) => a + n, 0)).toBe(0);
   });
 
   it("no new foreign-scheme reference appears, and no frozen one silently vanished", () => {

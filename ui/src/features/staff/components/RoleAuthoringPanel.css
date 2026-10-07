@@ -169,7 +169,11 @@
   margin-top: var(--space-2);
   padding: var(--space-2) var(--space-3);
   border-left: 2px solid var(--color-border);
-  background: var(--color-surface-alt, #f9fafb);
+  /* Was var(--color-surface-alt, #f9fafb) — a name defined nowhere, with a LIGHT
+     literal, so this panel rendered a near-white box in the dark theme (:root is
+     the default). The sheet's own rule above it already reads --color-border, so
+     the semantic token was the intent all along. */
+  background: var(--color-bg-elevated);
 }
 
 .role-holders-error {
