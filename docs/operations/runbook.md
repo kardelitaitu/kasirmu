@@ -1490,12 +1490,12 @@ The swap therefore happens at boot, before anything opens the database.
 
 The request is a file beside the live database:
 
-- **`<db>.restore-request.json`** — writer `crates/kasirmu-bridge/src/data.rs:1001-1019`
-  (constant `:1009`); consumers `apps/desktop-tauri/src/recovery.rs:31` and
+- **`<db>.restore-request.json`** — writer `crates/kasirmu-bridge/src/data/restore.rs:184-262`
+  (constant `:41`); consumers `apps/desktop-tauri/src/recovery.rs:31` and
   `apps/mobile-tauri/src/recovery.rs:36`. The suffix exists as two copies on purpose (the
   bridge's is private) and is pinned against the **consumer's own literal** by a bridge test
   (`crates/kasirmu-bridge/src/data_tests.rs:995-1002`).
-- **Shape** — five keys (`crates/kasirmu-bridge/src/data.rs:211-224`): `candidate_path`,
+- **Shape** — five keys (`crates/kasirmu-bridge/src/data/restore.rs:228-235`): `candidate_path`,
   `requested_at`, `verdict`, `candidate_schema`, `confirmed_store_name`. The boot path
   deserializes **only** `candidate_path` and re-validates everything itself, so a verdict
   written by an earlier process is never trusted
@@ -1508,9 +1508,9 @@ Two mechanisms exist, and **which one is available is not the same on the two sh
 **A. In-app request — the preferred path. Registered on the DESKTOP shell only.**
 `restore_prepare` validates the candidate, checks a typed confirmation against the candidate's
 own `store.name`, requires `SETTINGS_EDIT`, and writes the request file
-(`crates/kasirmu-bridge/src/data.rs:1152-1221`). `list_restore_candidates` lists the backup
-generations with their verdicts (`:1092-1128`); `restore_status` reports what is pending
-(`:1233-1266`).
+(`crates/kasirmu-bridge/src/data/restore.rs:184-262`). `list_restore_candidates` lists the backup
+generations with their verdicts (`:124-175`); `restore_status` reports what is pending
+(`:265-299`).
 
 > **Re-derive this, do not trust it — it changed once already.**
 > This section stated "no IPC command is registered for any of the three" until 2026-09-23,
@@ -1519,7 +1519,7 @@ generations with their verdicts (`:1092-1128`); `restore_status` reports what is
 > ```bash
 > grep -n 'list_restore_candidates\|restore_prepare\|restore_status' apps/*/src/lib.rs
 > ```
-> **Expected today: three hits, all in `apps/desktop-tauri/src/lib.rs` (`:971`, `:972`, `:973`)
+> **Expected today: three hits, all in `apps/desktop-tauri/src/lib.rs` (`:1341`, `:1342`, `:1343`)
 > and none in `apps/mobile-tauri/src/lib.rs`.** If that changes, this section is stale again.
 
 **The three commands, and the permission each one enforces.** The gate sits on the
@@ -1542,9 +1542,9 @@ at `apps/desktop-tauri/tests/gate_audit.rs:117-121`.
 
 > ⚠️ **What the bridge functions themselves take is NOT uniform — do not generalise from the two
 > reads.** `list_restore_candidates(db_path)` and `restore_status(db_path)` take **no session
-> token by design** — they are pure reads (`crates/kasirmu-bridge/src/data.rs:1092`, `:1233`).
+> token by design** — they are pure reads (`crates/kasirmu-bridge/src/data/restore.rs:124`, `:265`).
 > `restore_prepare` **does** take one: its signature is
-> `(ctx, session_token, db_path, args)` and it enforces `SETTINGS_EDIT` itself at `:1158-1160`.
+> `(ctx, session_token, db_path, args)` and it enforces `SETTINGS_EDIT` itself at `:190-192`.
 > So the wrapper gate on `restore_prepare` is not an independent second check — removing it still
 > denies via the bridge, which is why `gate_audit.rs:111-116` calls the ledger row, not the
 > runtime behaviour, the thing that makes the wrapper gate observable.
@@ -1641,7 +1641,7 @@ A `Refused` reason always carries the verdict name and the validator's own sente
 `CandidateVerdict` (`crates/kasirmu-core/src/db/recovery.rs:50-64`) has exactly four values,
 each carrying a human-readable `reason`. The wire names are spelled out rather than derived
 from `Debug`, so a refactor cannot silently change what the file and the IPC surface say
-(`crates/kasirmu-bridge/src/data.rs:1043-1054`).
+(`crates/kasirmu-bridge/src/data/restore.rs:75-86`).
 
 | Verdict | Meaning | Restorable? | What the boot does |
 |---|---|---|---|
@@ -1714,7 +1714,7 @@ invariant (`crates/kasirmu-core/src/db/recovery.rs:20-21`), pinned on both shell
 3. **Fix the cause, or decide not to restore.** The common cases:
    - `Corrupt` — the candidate is unusable. Choose another generation.
      `list_restore_candidates` lists every generation that exists **including** the unusable
-     ones, precisely so you can read why (`crates/kasirmu-bridge/src/data.rs:1075-1085`).
+     ones, precisely so you can read why (`crates/kasirmu-bridge/src/data/restore.rs:124-159`).
      `list_restore_candidates` is itself an IPC command on the desktop shell (§11.2), so you can
      read the verdicts without leaving the app.
    - `NewerThanThisBuild` — the candidate came from a **newer** build. Do not force it: run the
