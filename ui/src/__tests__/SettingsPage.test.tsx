@@ -39,7 +39,7 @@ import { getAvailableLocales, getLocaleLabel } from '@/i18n';
 import { NAV_ITEMS, NAV_L10N_KEYS } from '@/features/settings/SettingsNavTree';
 import { SETTINGS_SCREENS } from '@/features/settings/screens/registry';
 import { KEPT_SECTIONS } from '@/features/settings/hooks/useSettingsHashSection';
-import { withSyncDefaults } from '@/contexts/SettingsContext';
+import { INITIAL_LOAD_DEBOUNCE_MS, withSyncDefaults } from '@/contexts/SettingsContext';
 import { setShellKind } from '@/utils/shellKind';
 
 // KEPT_SECTIONS is imported, not copied: the sweep below compares it against the
@@ -757,6 +757,38 @@ describe('SettingsPage load lifecycle and chrome (kept)', () => {
         await vi.advanceTimersByTimeAsync(PARTIAL_ERROR_TOAST_MS + 500);
       });
       expect(screen.queryByText(ftlValue('settings-load-partial'))).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('collapses a token-swap storm into one fan-out', async () => {
+    // The tablet's cold start: the provider mounts on the first (fallback)
+    // token and the workspace activation replaces it within moments. Firing
+    // one full fan-out per token races the activation writes and rejected a
+    // currency read mid-storm (walk-diag 2026-10-07). The initial load must
+    // wait for the token to be quiet, then run ONCE with the final token.
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const page = renderPage();
+      workspaceState.sessionToken = 'token-b';
+      rerenderWithProviders(page, <TestWrapper><SettingsPage /></TestWrapper>, settingsFtl, sharedFtl);
+      workspaceState.sessionToken = 'token-c';
+      rerenderWithProviders(page, <TestWrapper><SettingsPage /></TestWrapper>, settingsFtl, sharedFtl);
+      await act(async () => {});
+
+      const storeCalls = () => invokeMock.mock.calls.filter((c) => c[0] === 'get_store_settings_scoped');
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(INITIAL_LOAD_DEBOUNCE_MS - 100); // inside the window
+      });
+      expect(storeCalls().length).toBe(0); // nothing fired mid-storm
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(INITIAL_LOAD_DEBOUNCE_MS + 250); // past the quiet window
+      });
+      const calls = storeCalls();
+      expect(calls.length).toBe(1);
+      expect(calls[0]![1]).toEqual({ sessionToken: 'token-c' });
     } finally {
       vi.useRealTimers();
     }

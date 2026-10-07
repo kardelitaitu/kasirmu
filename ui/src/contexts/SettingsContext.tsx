@@ -194,11 +194,14 @@ interface SettingsProviderProps {
  * internal listener will subscribe to `settings_updated` events
  * from the Rust backend for true real-time cross-terminal reactivity.
  */
+export const INITIAL_LOAD_DEBOUNCE_MS = 250;
+
 export function SettingsProvider({ children }: SettingsProviderProps) {
   const [settings, setSettings] = useState<SettingsState>(DEFAULT_SETTINGS);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [hasPartialError, setHasPartialError] = useState(false);
+  const initialLoadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [lastChangedKeys, setLastChangedKeys] = useState<string[]>([]);
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -325,7 +328,11 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
     };
   }, [terminalId, sessionToken]);
 
-  // ── Full load (all APIs) ────────────────────────────────────
+  /**
+ * How long the initial load waits for the session token to stop changing
+ * before it fires. Exported: the collapse contract is pinned by test.
+ */
+// ── Full load (all APIs) ────────────────────────────────────
 
   const loadAll = useCallback(async () => {
     if (!sessionToken) {
@@ -586,9 +593,23 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
 
   useEffect(() => {
     mountedRef.current = true;
-    loadAll();
+    // Debounced: the tablet's cold start mounts this provider on the first
+    // (fallback-instance) token and the workspace activation replaces it
+    // moments later. One full fan-out per token raced the activation writes
+    // and rejected a currency read mid-storm (walk-diag 2026-10-07). Waiting
+    // for the token to be quiet collapses the storm into a single load that
+    // runs against the final token.
+    if (initialLoadTimerRef.current) clearTimeout(initialLoadTimerRef.current);
+    initialLoadTimerRef.current = setTimeout(() => {
+      initialLoadTimerRef.current = null;
+      if (mountedRef.current) void loadAll();
+    }, INITIAL_LOAD_DEBOUNCE_MS);
     return () => {
       mountedRef.current = false;
+      if (initialLoadTimerRef.current) {
+        clearTimeout(initialLoadTimerRef.current);
+        initialLoadTimerRef.current = null;
+      }
       // Retire any load still in flight: `mountedRef` guards the effect body but
       // not a `loadAll`/`loadScoped` that has already awaited past it.
       loadSeq.current += 1;
