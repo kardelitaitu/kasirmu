@@ -407,6 +407,40 @@ Measured after the change: 665 tests green across
 tablet leg **unchanged** (82 unregistered, 82 allowlisted) and still exit 1 from
 its **dev-mock** leg — the pre-existing red the plan already names.
 
+### 6.2 Verified on the device 2026-10-07, second build (HEAD `d7c80facc+`)
+
+The debug APK built from these commits was installed over wireless ADB and the
+walk run three times (cold start each time). Measured results:
+
+- **H1 (topology crash): fixed.** No `SettingsProvider` error anywhere.
+- **Sticky error boundary: fixed.** With `#/topology` walked FIRST, all 14
+  settings sections render normally afterwards — the exact sequence that
+  produced 15/15 failure on the stale bundle. The boundary resets on
+  navigation (`resetKeys` from the hash and the shells' route signal) and the
+  30s auto-reload never fires.
+- **H4/H5 completion: the deep link is closed.** `#/topology` on the tablet
+  renders the explanatory notice (`topology-tablet-unavailable`), not an
+  editor. The first post-fix build still mounted the editor and toasted
+  "Failed to load topology" — the route had to be withdrawn too, not just the
+  cards.
+- **Settings sections:** 14/14 mount, none hit a boundary. Control counts
+  unchanged from §6.1. `general`'s currency list now populates (the §5.5
+  scoped-token fix), confirming the stuck "Loading currencies…" was the
+  missing token, not a missing command.
+- **§2.2 verdict revised:** `pg_sync_status_scoped` and
+  `offline_queue_status_summary_scoped` turn out to be the ONLY two
+  reachable-and-wrong names — `general`'s stuck currency list was the token
+  problem all along, and the quota card was already guarded.
+
+One NEW transient, documented not fixed: on two of three cold starts,
+`general` toasted "Some settings could not be loaded. Try again." A scripted
+cold start with `__TAURI_INTERNALS__.invoke` patched before login captured
+ZERO failing commands — so the fan-out itself succeeds when it starts after
+the workspace settles. The toast appears only when the provider mounts on the
+first token and that token is replaced mid-fan-out by the workspace-activation
+refresh. Benign (a refetch follows), but the provider should either await a
+stable token or refetch on replacement. Left as a recorded follow-up.
+
 ### 6.1 Re-measured on the device 2026-10-07 — with two caveats
 
 `scripts/android-settings-walk.mjs` (committed `552a4ab6b`) now walks the hub
