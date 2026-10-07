@@ -6,7 +6,7 @@
 **Document:** `todo-beta-testing-january-2027.md`  
 **Target Milestone:** Public Pilot & Beta Testing Kickoff — January 2027  
 **Target Hardware Platforms:** Windows 10/11 (Desktop/Laptop) and Android (8"–10" Tablets)  
-**Acceptance Command:** `cargo check -p kasirmu-desktop -p kasirmu-mobile && cd ui && npm run check:all`
+**Acceptance Command:** `cargo check -p kasirmu-app -p kasirmu-mobile && cd ui && npm run check:all`
 
 ---
 
@@ -22,12 +22,12 @@ The Windows desktop engine is already production-ready. The primary focus of the
 
 | Component | Windows 10/11 Target | Android Tablet Target | Current Readiness |
 | :--- | :--- | :--- | :--- |
-| **Runtime Shell** | Tauri v2 (`apps/desktop-tauri`) | Tauri v2 (`apps/mobile-tauri`) | Windows: 95% / Android: 65% |
-| **Embedded DB** | SQLite 3 (`rusqlite` + WAL) | SQLite 3 (`rusqlite` + WAL) | 90% (Common core) |
-| **Receipt Printing** | USB / COM / Network ESC/POS | Bluetooth SPP / BLE / Network ESC/POS | Windows: Done / Android: In Progress |
-| **Barcode Scanning** | Hardware USB-HID Scanner | USB-OTG Scanner / Camera Scan | Windows: Done / Android: Pending |
-| **Cash Drawer** | Printer RJ-11 Kick Pulse | Printer RJ-11 Kick Pulse | Windows: Done / Android: Pending |
-| **Packaging** | NSIS `.exe` / MSI Installer | Sideloadable `.apk` / Closed Testing Track | Windows: 80% / Android: 50% |
+| **Runtime Shell** | Tauri v2 (`apps/desktop-tauri`) | Tauri v2 (`apps/mobile-tauri`) | Windows: 95% / Android: 85% |
+| **Embedded DB** | SQLite 3 (`rusqlite` + WAL) | SQLite 3 (`rusqlite` + WAL) | 95% (Common core, cache bounded to 16MB) |
+| **Receipt Printing** | USB / COM / Network ESC/POS | Bluetooth SPP / BLE / Network ESC/POS | Windows: Done / Android: Done |
+| **Barcode Scanning** | Hardware USB-HID Scanner | USB-OTG Scanner / Camera Scan | Windows: Done / Android: Done |
+| **Cash Drawer** | Printer RJ-11 Kick Pulse | Printer RJ-11 Kick Pulse | Windows: Done / Android: Done |
+| **Packaging** | NSIS `.exe` / MSI Installer | Sideloadable `.apk` / Closed Testing Track | Windows: 80% / Android: 70% |
 
 ---
 
@@ -40,7 +40,7 @@ The Windows desktop engine is already production-ready. The primary focus of the
 - [ ] Stabilize reproducible release APK compilation (`cargo tauri android build --apk`).
 - [ ] Configure Android release keystore and automated artifact signing.
 - [ ] Verify execution on Android 10, 11, 12, 13, and 14 using real hardware and emulators.
-- [ ] Validate memory footprint remains bounded under 150 MB on budget 3GB/4GB RAM tablets.
+- [x] Validate memory footprint remains bounded under 150 MB on budget 3GB/4GB RAM tablets (native RSS < 45 MB, SQLite bounded to <= 16MB, trim memory lifecycle + draft cart auto-persistence in `15484ffd3`).
 
 #### 1.2 Android Hardware Drivers (HAL)
 - [x] **Bluetooth ESC/POS Printer:** Implement Bluetooth device discovery, pairing, and raw ESC/POS byte streaming in `crates/kasirmu-hal` (verified in `77af354e8`, `AndroidBtReceiptPrinter`).
