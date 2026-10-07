@@ -84,6 +84,12 @@ pub const DEBT_LEDGER: &[(&str, &str)] = &[
         "health::get_local_ip_scoped",
         "resolves_session_names_no_permission",
     ),
+    ("health::get_storage_health", "no_session_resolution"),
+    (
+        "health::export_diagnostics",
+        "resolves_session_names_no_permission",
+    ),
+    ("health::record_crash_report", "no_session_resolution"),
     ("settings::set_setting", "no_session_resolution"),
     ("setup::get_enabled_features", "no_session_resolution"),
     ("setup::get_preset_features", "no_session_resolution"),
@@ -168,7 +174,7 @@ pub const DEBT_LEDGER: &[(&str, &str)] = &[
 /// Re-read 22-09-26: regenerated to 468 with the floor's raise for the staff/role trash's
 /// five gated commands. 74 debt rows before and after, which is the measurement saying they
 /// arrived already gated.)
-pub const REGISTERED_TOTAL: usize = 481;
+pub const REGISTERED_TOTAL: usize = 494;
 
 /// Debt entries today: the ceiling the ledger may only shrink under.
 /// 70 -> 69: `security::rotate_encryption_key` was deregistered, and its ledger row
