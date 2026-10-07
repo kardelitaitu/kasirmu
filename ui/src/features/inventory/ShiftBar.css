@@ -125,6 +125,19 @@
 }
 
 .shift-btn-danger {
+  /* MEASURED 2026-10-07, because a gradient has no single background and the
+     contrast suite can only grade a solid pair. White (--color-fg-primary) against
+     this ramp in the dark theme:
+       t=0.00 #ff6b68  2.54 | t=0.25 #ee5755  3.13 | t=0.50 #dc4442  3.87
+       t=0.75 #cb302f  4.79 | t=1.00 #b91c1c  5.91
+     Only the first ~15% of the ramp is under the 3:1 AA-large floor, and a centred
+     label does not sit there. --color-danger-fg (#1C2B45) was the alternative and
+     is WORSE where the text actually is: 3.34 at the midpoint against white's 3.87,
+     and 2.66 in the light theme. So the existing pairing is kept deliberately
+     rather than by inattention -- the trade is legibility at the midpoint against
+     the extreme of the ramp, and the midpoint is where the label is.
+     If this ramp is ever flattened, re-measure: the numbers above are for THIS
+     pair of stops. */
   background: linear-gradient(135deg, var(--color-danger) 0%, var(--color-danger-700) 100%);
   color: var(--color-fg-primary);
   box-shadow: var(--shadow-lg);
