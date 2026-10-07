@@ -24,6 +24,7 @@ import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
 import { useKeyboardAvoidance } from '@/hooks/useKeyboardAvoidance';
 import { useSettingsHashSection } from './hooks/useSettingsHashSection';
+import { isTabletShell } from '@/utils/shellKind';
 import { useSettingsSave } from './hooks/useSettingsSave';
 import SettingsNavTree from './SettingsNavTree';
 import { SettingsFooter } from './components/SettingsFooter';
@@ -69,6 +70,33 @@ function renderSection(key: string) {
 
 /** Settings hub — sidebar-driven navigation across general, appearance, features, data management, staff, terminals, multi-store, audit, offline queue, shifts, tax, currency, and promotions. */
 export default function SettingsPage() {
+  const {
+    sessionToken,
+    availableWorkspaces,
+    loading: workspacesLoading,
+    sessionError,
+    retry,
+    retrySessionToken,
+  } = useWorkspace();
+
+  // SettingsProvider treats a missing scoped token as an answered load and
+  // publishes DEFAULT_SETTINGS. On the tablet the settings route is fullscreen
+  // (no active workspace required), so its forms otherwise render defaults and
+  // Save silently returns false. Keep the provider UNMOUNTED until the context
+  // mints a real scoped token; otherwise the page's one-time draft initialization
+  // would snapshot those defaults and never adopt the subsequent store read.
+  if (isTabletShell() && !sessionToken) {
+    if (sessionError || (!workspacesLoading && availableWorkspaces.length === 0)) {
+      return (
+        <SettingsLoadError
+          errorId={sessionError ? 'workspace-session-token-error' : 'workspace-home-empty-desc'}
+          onRetry={sessionError ? () => retrySessionToken?.() : retry}
+        />
+      );
+    }
+    return <SettingsLoadingChrome />;
+  }
+
   return (
     <SettingsProvider>
       <SettingsPageContent />
@@ -150,6 +178,13 @@ function SettingsPageContent() {
 
   useEffect(() => {
     if (!sessionToken) return;
+    // PG sync is a desktop/server capability: `pg_sync_status_scoped` lives in
+    // apps/desktop-tauri/src/commands/sync.rs and there is no Postgres sync
+    // daemon on a tablet, which registers no door for it. Skipping the read
+    // keeps the nav's dead-letter badge hidden rather than rendering a
+    // fabricated zero — the same "not answered" discipline the queue summary
+    // uses (hooks/useDataSyncDraft.ts).
+    if (isTabletShell()) return;
     pgSyncStatusScoped(sessionToken)
       .then((status) => {
         if (status && status.deadLetterCount > 0) {

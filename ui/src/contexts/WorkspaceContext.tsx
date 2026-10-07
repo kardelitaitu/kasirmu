@@ -23,6 +23,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { requiredLocalized, useToast } from "@/components";
 import { errorDetail } from "@/utils/app-error";
 import { useLocalization } from "@fluent/react";
+import { isTabletShell } from "@/utils/shellKind";
 
 
 
@@ -576,12 +577,14 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   // This effect fires after activeInstance changes (set by handleSetActiveInstance
   // or the useEffect that syncs from activeWorkspace).
   //
-  // Settings/admin shell fallback: the topology editor, stores dashboard,
-  // and offline-queue header make scoped commands without an active POS
-  // workspace instance. When an authenticated user has no activeInstance,
-  // mint a session scoped to the resolved store's admin instance so those
-  // screens work. Activating a POS workspace afterwards re-runs this
-  // effect and replaces the token (the refresh branch below).
+  // Settings/admin shell fallback: some fullscreen routes make scoped calls
+  // without selecting a POS workspace. Prefer the admin instance; on Android
+  // an enrolled store may expose only POS/warehouse/KDS instances. In that
+  // case use an instance returned by the picker-ticket-verified list, without
+  // setting activeWorkspace or activeInstance. The backend still authorizes
+  // every scoped command against the signed-in user's permissions. Never
+  // invent an instance or mint a session when the list is empty. Activating
+  // another workspace replaces this temporary token (refresh branch below).
   //
   // ADR #6: Skips token creation when isHotSwappingRef is set, because
   // swapSessionToken handles token lifecycle during a hot-swap.
@@ -589,12 +592,14 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     if (!session?.user_id) return;
     if (isHotSwappingRef.current) return; // ADR #6: swapSessionToken handles this
 
-    // Active POS workspace first; otherwise the admin instance of the
-    // resolved store (list_workspaces is picker-ticket verified, so the
-    // instance id is trustworthy).
+    // Active workspace first, then the admin instance; Android alone can
+    // fall back to another REAL assigned instance when the store has no admin.
+    // The list was returned by `list_workspaces` for this picker ticket and
+    // resolved store, and `create_session` rechecks the ticket/assignment.
     const tokenInstance =
       activeInstance ??
       availableWorkspaces.find((i) => i.type_key === 'admin') ??
+      (isTabletShell() ? availableWorkspaces[0] : undefined) ??
       null;
     if (!tokenInstance) return;
 

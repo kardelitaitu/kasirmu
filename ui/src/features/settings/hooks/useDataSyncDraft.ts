@@ -32,6 +32,7 @@ import { useLocalization } from '@fluent/react';
 import { useToast } from '@/components/Toast';
 import { useSettings } from '@/contexts/SettingsContext';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
+import { isTabletShell } from '@/utils/shellKind';
 import {
   getSyncPlanScoped,
   getOfflineQueueStatusSummaryScoped,
@@ -146,6 +147,14 @@ export function useDataSyncDraft(): DataSyncDraft {
 
   const refreshQueueSummary = useCallback(async () => {
     if (!sessionToken) return;
+    // The tablet shell registers no `offline_queue_status_summary_scoped` door,
+    // and ADR #49 forbids opening one here: the bridge fn is UNGATED
+    // (`crates/kasirmu-bridge/src/offline.rs:285`, "ungated-ok" — it resolves a
+    // session and enforces nothing), so delegating it would be case-2 debt
+    // erasure, which the mobile module header records as an owner ruling rather
+    // than part of an extraction. Skip the read instead: `queueSummary` stays
+    // null, which the UI already treats as "not answered" — not as zero.
+    if (isTabletShell()) return;
     try {
       const summary = await getOfflineQueueStatusSummaryScoped(sessionToken);
       setQueueSummary(summary ?? null);
