@@ -51,7 +51,8 @@ vi.mock('@fluent/react', async () => {
 });
 
 vi.mock('@/contexts/SettingsContext', () => ({
-  useSettings: () => ({
+  useSettings: () => ({ settings: { receipt: { paperWidth: 'standard' } } }),
+  useOptionalSettings: () => ({
     settings: {
       receipt: {
         showCurrency: false,

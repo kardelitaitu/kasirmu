@@ -229,35 +229,49 @@ vi.mock('@fluent/react', async () => {
   };
 });
 
-vi.mock('@/contexts/SettingsContext', () => ({
-  useSettings: () => ({
-    settings: {
-      receipt: {
-        showCurrency: false,
-        decimalSeparator: 'dot',
-        showTax: true,
-        footer: '',
-        paperWidth: 'standard',
-        showTableNumber: false,
-        marginTop: 0,
-        marginBottom: 0,
-        marginLeft: 0,
-        marginRight: 0,
-      },
-      store: { name: 'Test Store', address: '', taxId: '', currency: 'IDR', branch: '' },
-      sync: { serverUrl: null, hasApiKey: false, enabled: false },
-      brand: { colour: '#147EFB', storeName: 'Test Store' },
-      preferences: { cardSize: 0, fontSize: 0, fontSmoothing: 'antialiased' },
-      currencies: [],
-      appVersion: '0.0.19',
+const settingsProviderPresent = vi.hoisted(() => ({ value: true }));
+
+// Hoisted so BOTH accessors below can share it: the settings cards rendered
+// inside the inspector call `useSettings()` and dereference
+// `settings.store.currency` on mount, so a receipt-only stub crashes them.
+// It is a hoisted FACTORY, not a value, because `vi.mock` factories run before
+// any plain `const` in this file is initialized.
+const settingsContextValue = vi.hoisted(() => () => ({
+  settings: {
+    receipt: {
+      showCurrency: false,
+      decimalSeparator: 'dot',
+      showTax: true,
+      footer: '',
+      paperWidth: 'standard',
+      showTableNumber: false,
+      marginTop: 0,
+      marginBottom: 0,
+      marginLeft: 0,
+      marginRight: 0,
     },
-    loading: false,
-    error: null,
-    hasPartialError: false,
-    refetch: vi.fn(),
-    lastChangedKeys: [],
-    markSettingsUpdated: vi.fn(),
-  }),
+    store: { name: 'Test Store', address: '', taxId: '', currency: 'IDR', branch: '' },
+    sync: { serverUrl: null, hasApiKey: false, enabled: false },
+    brand: { colour: '#147EFB', storeName: 'Test Store' },
+    preferences: { cardSize: 0, fontSize: 0, fontSmoothing: 'antialiased' },
+    currencies: [],
+    appVersion: '0.0.19',
+  },
+  loading: false,
+  error: null,
+  hasPartialError: false,
+  refetch: vi.fn(),
+  lastChangedKeys: [],
+  markSettingsUpdated: vi.fn(),
+}));
+
+vi.mock('@/contexts/SettingsContext', () => ({
+  // The settings cards under the inspector (WorkspaceStorePosSettings et al.)
+  // render inside a provider, so this is the throwing accessor for them.
+  useSettings: () => settingsContextValue(),
+  // The editor itself reads the OPTIONAL accessor: null stands for "no
+  // SettingsProvider mounted", which is the Android/topology-route case.
+  useOptionalSettings: () => (settingsProviderPresent.value ? settingsContextValue() : null),
 }));
 
 // The Apply flow now requires PIN verification before onSave (the redesign
@@ -523,8 +537,16 @@ const applyWithPin = async (pin = '1234') => {
 describe('NodeTopologyEditor Component', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    settingsProviderPresent.value = true;
     clearDevLog(); // no dev-log diagnostics may leak across tests
     mockLoadTopology.mockResolvedValue(null);
+  });
+
+  it('renders outside SettingsProvider instead of crashing the fullscreen topology route', () => {
+    settingsProviderPresent.value = false;
+    renderEditor();
+    expect(document.querySelector('.node-canvas-container')).toBeInTheDocument();
+    expect(screen.getByText('Retail POS #1')).toBeInTheDocument();
   });
 
   it('renders tier badge and default retail preset nodes', () => {

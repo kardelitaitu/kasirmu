@@ -22,7 +22,7 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { screen, waitFor, cleanup, fireEvent, within, configure } from '@testing-library/react';
 import type { ReactNode } from 'react';
-import { renderWithProvidersSync } from '@/__tests__/test-utils/render';
+import { renderWithProvidersSync, rerenderWithProviders } from '@/__tests__/test-utils/render';
 
 // The page mounts IPC-driven context + lazy screens; under parallel CI load a
 // full render + microtask flush can exceed the default 1s waitFor timeout.
@@ -40,6 +40,7 @@ import { NAV_ITEMS, NAV_L10N_KEYS } from '@/features/settings/SettingsNavTree';
 import { SETTINGS_SCREENS } from '@/features/settings/screens/registry';
 import { KEPT_SECTIONS } from '@/features/settings/hooks/useSettingsHashSection';
 import { withSyncDefaults } from '@/contexts/SettingsContext';
+import { setShellKind } from '@/utils/shellKind';
 
 // KEPT_SECTIONS is imported, not copied: the sweep below compares it against the
 // nav items and the screen registry rather than adding a fourth list of the 14
@@ -182,21 +183,32 @@ vi.mock('@/contexts/ZoomContext', () => ({
   ZoomProvider: ({ children }: { children: ReactNode }) => <>{children}</>,
 }));
 
+const workspaceState = vi.hoisted(() => ({
+  sessionToken: 'test-token' as string | null,
+  availableWorkspaces: [] as Array<{ instance_id: string }>,
+  loading: false,
+  sessionError: null as string | null,
+  retry: vi.fn(),
+  retrySessionToken: vi.fn(),
+}));
+
 vi.mock('@/contexts/WorkspaceContext', () => ({
   useWorkspace: () => ({
     activeWorkspace: 'admin',
     setActiveWorkspace: vi.fn(),
     activeInstance: null,
     setActiveInstance: vi.fn(),
-    availableWorkspaces: [],
+    availableWorkspaces: workspaceState.availableWorkspaces,
     workspaceScreens: [],
-    loading: false,
+    loading: workspaceState.loading,
     error: null,
-    retry: vi.fn(),
+    retry: workspaceState.retry,
+    retrySessionToken: workspaceState.retrySessionToken,
+    sessionError: workspaceState.sessionError,
     lastWorkspace: null,
     switchStore: vi.fn(),
     resolvedStoreId: 'default',
-    sessionToken: 'test-token',
+    sessionToken: workspaceState.sessionToken,
     swapSessionToken: vi.fn(),
   }),
   useWorkspaceScope: () => null,
@@ -212,6 +224,13 @@ Element.prototype.scrollIntoView = vi.fn();
 
 beforeEach(() => {
   cleanup();
+  setShellKind('desktop');
+  workspaceState.sessionToken = 'test-token';
+  workspaceState.availableWorkspaces = [];
+  workspaceState.loading = false;
+  workspaceState.sessionError = null;
+  workspaceState.retry.mockClear();
+  workspaceState.retrySessionToken.mockClear();
   failCommands.clear();
   invokeMock.mockReset();
   invokeMock.mockImplementation(defaultImpl);
@@ -226,6 +245,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  setShellKind('desktop');
 });
 
 function TestWrapper({ children }: { children: ReactNode }) {
@@ -300,6 +320,33 @@ async function navigateCheck(key: string) {
     expect(within(sectionRoot()).getByRole('heading', { level: 1, name: label })).toBeInTheDocument();
   });
 }
+
+describe('SettingsPage on Android without an admin instance', () => {
+  it('waits for a scoped token before mounting settings defaults or saving', async () => {
+    setShellKind('tablet');
+    workspaceState.sessionToken = null;
+    workspaceState.availableWorkspaces = [{ instance_id: 'assigned-pos' }];
+    const page = renderPage();
+    expect(document.querySelector('.settings-loading')).toBeInTheDocument();
+    expect(screen.queryByTestId('settings-sidebar')).not.toBeInTheDocument();
+    expect(invokeMock).not.toHaveBeenCalledWith('get_store_settings_scoped', expect.anything());
+
+    workspaceState.sessionToken = 'scoped-tablet-token';
+    rerenderWithProviders(page, <TestWrapper><SettingsPage /></TestWrapper>, settingsFtl, sharedFtl);
+    await waitFor(() => expect(screen.getByTestId('settings-sidebar')).toBeInTheDocument());
+    expect(lastInvokeArgs('get_store_settings_scoped')).toEqual({ sessionToken: 'scoped-tablet-token' });
+  });
+
+  it('shows a retryable error instead of an editable form when no instance exists', async () => {
+    setShellKind('tablet');
+    workspaceState.sessionToken = null;
+    renderPage();
+    expect(screen.getByRole('alert')).toHaveTextContent(/Contact an administrator/i);
+    expect(screen.queryByTestId('settings-sidebar')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /retry/i }));
+    expect(workspaceState.retry).toHaveBeenCalledTimes(1);
+  });
+});
 
 describe('SettingsPage role gate', () => {
   it('shows the locked card — not the shell — to a staff session', async () => {

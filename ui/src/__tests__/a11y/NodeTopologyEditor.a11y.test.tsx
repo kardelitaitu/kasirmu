@@ -24,7 +24,8 @@ vi.mock('@/api/topology', () => ({
 }));
 
 vi.mock('@/contexts/SettingsContext', () => ({
-  useSettings: () => ({
+  useSettings: () => ({ settings: { receipt: { paperWidth: 'standard' } } }),
+  useOptionalSettings: () => ({
     settings: {
       receipt: { showCurrency: false, decimalSeparator: 'dot', showTax: true, footer: '', paperWidth: 'standard', showTableNumber: false, marginTop: 0, marginBottom: 0, marginLeft: 0, marginRight: 0 },
       store: { name: 'Test Store', address: '', taxId: '', currency: 'IDR', branch: '' },

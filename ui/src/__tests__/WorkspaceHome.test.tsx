@@ -4,13 +4,14 @@
 // state, main workspace card rendering, keyboard navigation, role-
 // based access control, and per-workspace accent colors.
 
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { screen, waitFor, fireEvent, within, configure, cleanup } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderWithFluent } from '@/__tests__/test-utils/render';
 import WorkspaceHome from '@/features/workspaces/WorkspaceHome';
 import { useSubscription, useAdminGate } from '@/contexts/SubscriptionContext';
 import { makeSubscriptionCaps } from '@/__tests__/test-utils/mocks/subscriptionCaps';
+import { setShellKind } from '@/utils/shellKind';
 
 // WorkspaceHome renders a heavy multi-section screen driven by async
 // context mocks; under parallel CI load a full render can exceed the
@@ -177,8 +178,10 @@ function mockEmptyWorkspaces() {
 
 describe('WorkspaceHome', () => {
   beforeEach(() => {
+    setShellKind('desktop');
     mockDefaultUser();
   });
+  afterEach(() => setShellKind('desktop'));
 
   // ── Loading state ──────────────────────────────────────────
 
@@ -305,6 +308,16 @@ describe('WorkspaceHome', () => {
       });
     });
 
+    it('does not advertise unregistered instances or the desktop topology editor on Android', async () => {
+      setShellKind('tablet');
+      mockEmptyWorkspaces();
+      await renderWithFluent(<WorkspaceHome />);
+      expect(screen.queryByTestId('workspace-card-add')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('workspace-card-quick-retail')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('workspace-card-quick-restaurant')).not.toBeInTheDocument();
+      expect(screen.getByText(/Contact an administrator/)).toBeInTheDocument();
+    });
+
     it('shows Add Workspace card for manager when no workspaces exist', async () => {
       mockManagerUser();
       mockEmptyWorkspaces();
@@ -411,6 +424,44 @@ describe('WorkspaceHome', () => {
       // 4 workspace cards + optional tools/add cards
       expect(hints.length).toBeGreaterThanOrEqual(4);
       expect(hints[0]?.textContent).toMatch(/1/);
+    });
+
+    it('exposes a separate accessible pin button that does not launch the workspace', async () => {
+      mockWorkspaceValue.mockReturnValue({
+        availableWorkspaces: sampleWorkspaces,
+        loading: false,
+        error: null,
+        retry: vi.fn(),
+        setActiveWorkspace: mockSetActiveWorkspace,
+        activeWorkspace: null,
+        workspaceScreens: [],
+        lastWorkspace: null,
+      });
+      await renderWithFluent(<WorkspaceHome />);
+      const pin = screen.getByRole('button', { name: /Pin Restaurant POS to top/i });
+      const card = screen.getByRole('button', { name: /Open Restaurant POS/i });
+      expect(card.contains(pin)).toBe(false);
+      mockSetActiveWorkspace.mockClear();
+      await userEvent.click(pin);
+      expect(mockSetActiveWorkspace).not.toHaveBeenCalled();
+      expect(screen.getByRole('button', { name: /Unpin Restaurant POS/i })).toHaveAttribute('aria-pressed', 'true');
+    });
+
+    it('hides the unsupported topology editor tool on Android', async () => {
+      setShellKind('tablet');
+      mockWorkspaceValue.mockReturnValue({
+        availableWorkspaces: sampleWorkspaces,
+        loading: false,
+        error: null,
+        retry: vi.fn(),
+        setActiveWorkspace: mockSetActiveWorkspace,
+        activeWorkspace: null,
+        workspaceScreens: [],
+        lastWorkspace: null,
+      });
+      await renderWithFluent(<WorkspaceHome />);
+      expect(screen.queryByText('Topology Editor')).not.toBeInTheDocument();
+      expect(screen.getByText('Settings')).toBeInTheDocument();
     });
 
     it('calls setActiveWorkspace when a card is clicked', async () => {
