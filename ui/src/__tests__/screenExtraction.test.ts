@@ -484,6 +484,80 @@ const SCREENS: ScreenEntry[] = [
     dynamicClassPrefixes: ['session-lock-pin-dot--', 'session-lock-card--'],
   },
 
+  {
+    // RetailPosScreen.css, landed 2026-10-07 (BASELINE_UNCITED 12 -> 11).
+    //
+    // The sheet is 293 classes across 13 sibling components, so the used-class walk
+    // has to be handed all of them. Measured as a ladder: screen alone 284
+    // unreachable, + header/cart/fnbar 220, + grid/subviews/modals 87, + the rest 49.
+    // That 284 is what a naive read of this sheet would call dead CSS; the truthful
+    // figure is 0 once the components are named.
+    //
+    // 17 rules and 4 selector entries were then STRUCK, because they were genuinely
+    // orphaned and survived the full-component walk:
+    //   - the whole "Options Menu" block (retail-menu, -overlay, -header, -item,
+    //     -item--danger, -divider, -footer): 0 references anywhere in ui/src, and it
+    //     was never rendered since the sheet landed.
+    //   - retail-grid-loading and its retail-loading-spin keyframes: 0 references,
+    //     including the prefers-reduced-motion guard that existed only for it.
+    //   - retail-product-name, retail-product-price (and the scoped
+    //     .retail-product-btn--out-of-stock .retail-product-price): 0 references.
+    //   - retail-credit-reminder-container and -btn: 0 references.
+    //   - retail-skeleton-shimmer--narrow, retail-preview-modal,
+    //     retail-quick-return-modal, retail-preview-overlay and
+    //     retail-quick-return-overlay: removed from their shared selector lists
+    //     (every sibling in those lists is live, so only the entries went).
+    // Separately, 29 classes the walk reports as unreachable ARE live: each is the
+    // BASE of a composed pair whose tail the walk can see, e.g.
+    //   retail-clear-overlay${x.exit.exiting ? ' retail-clear-overlay--exiting' : ''}
+    // at RetailModals.tsx:408 and its siblings. A prefix covers them.
+    name: 'RetailPosScreen',
+    tsx: 'retail/RetailPosScreen.tsx',
+    css: ['retail/RetailPosScreen.css'],
+    // RetailProductGrid renders ScaleIndicator at :604 (imported :9), so that
+    // component's scale-indicator* markup is part of this screen's render. Its sheet
+    // is cited as a PARENT rather than added to css: ScaleIndicator has its own entry
+    // (see the ScaleIndicator block above), and naming its sheet here would make the
+    // duplicate-name check compare two entries' sheets. A parent cite resolves the
+    // names for the used-but-undefined walk without claiming ownership.
+    parentCss: ['retail/ScaleIndicator.css'],
+    additionalTsx: [
+      'retail/RetailCartPanel.tsx',
+      'retail/RetailFnBar.tsx',
+      'retail/RetailHeader.tsx',
+      'retail/RetailModals.tsx',
+      'retail/RetailProductContextMenu.tsx',
+      'retail/RetailProductGrid.tsx',
+      'retail/RetailReminderPopup.tsx',
+      'retail/RetailSubViews.tsx',
+      'retail/AddCategoryModal.tsx',
+      'retail/AddProductModal.tsx',
+      'retail/EditProductModal.tsx',
+      'retail/ScaleIndicator.tsx',
+    ],
+    // The composed families. The 29 bases plus the retail-stock-${level literals
+    // (RetailProductGrid.tsx:303) are covered here; each key matches one family.
+    dynamicClassPrefixes: [
+      'retail-cart-course-',
+      'retail-clear-',
+      'retail-col-toggle-',
+      'retail-credit-',
+      'retail-customer-',
+      'retail-discount-',
+      'retail-held-carts-',
+      'retail-product-',
+      'retail-qty-',
+      'retail-reminder-row-',
+      'retail-shift-',
+      'retail-shortcuts-',
+      'retail-sort-',
+      'retail-stock-',
+      'retail-th-',
+      'retail-tile',
+      'retail-undo-',
+      'retail-view-toggle-',
+    ],
+  },
   // ── Warehouse ─────────────────────────────────────────
   {
     // WarehouseConsole.css, landed 2026-10-07 (BASELINE_UNCITED 13 -> 12). Routed:
@@ -3061,7 +3135,6 @@ const BASELINE_UNCITED: string[] = [
   'inventory/TransactionLogScreen.css',
   'inventory/TransitAuditScreen.css',
   'marketplace/AddonsMarketplace.css',
-  'retail/RetailPosScreen.css',
   'sales/widgets/widgets.css',
   'settings/WorkspaceSettingsModal.module.css',
 ];

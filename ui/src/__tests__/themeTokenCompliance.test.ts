@@ -2583,7 +2583,6 @@ const UNRESOLVED_VAR_TOKENS_BASELINE: string[] = [
   "--border-color", // 8
   "--border-subtle", // 2 - settings/sections/DiagnosticsSection.css
   "--color-surface-alt", // 1 - staff/components/RoleAuthoringPanel.css
-  "--color-warning-pos-darker", // 1 - retail/RetailPosScreen.css
   "--danger-500", // 4 NO FALLBACK - a colour that renders nothing
   "--danger-700", // 1 NO FALLBACK
   "--danger-text", // 1 - settings/screens/StatutoryNumberingCard.css
@@ -2751,7 +2750,6 @@ const FOREIGN_SCHEME_BASELINE: Array<[string, string, number]> = [
   ["--border-subtle", "ui/src/features/settings/sections/DiagnosticsSection.css", 2],
   ["--color-surface-alt", "ui/src/features/staff/components/RoleAuthoringPanel.css", 1],
   ["--color-text-on-danger", "ui/src/components/StockAlertBell.css", 1],
-  ["--color-warning-pos-darker", "ui/src/features/retail/RetailPosScreen.css", 1],
   ["--danger", "ui/src/components/OrgSwitcher.css", 1],
   ["--danger-text", "ui/src/features/settings/screens/StatutoryNumberingCard.css", 1],
   ["--mouse-x", "ui/src/features/locations/NodeTopologyEditor.css", 1],
@@ -3280,12 +3278,13 @@ const LINE_HEIGHT_LITERAL_BASELINE: Array<[string, string, number]> = [
   ["1", "ui/src/features/reports/MenuEngineeringScreen.css", 1],
   ["1", "ui/src/features/restaurant/RestaurantMenu.css", 2],
   ["1", "ui/src/features/retail/RetailPosScreen.css", 10],
-  ["1.2", "ui/src/features/retail/RetailPosScreen.css", 3],
+  // 3 -> 2 on 2026-10-07, named step: .retail-product-name carried
+  // `line-height: 1.2` and was struck with the rest of the orphaned retail block
+  // (retail-product-name and retail-product-price had zero references anywhere in
+  // ui/src). The remaining two sites are live, so this is a paid-down deletion and
+  // not a value that vanished.
+  ["1.2", "ui/src/features/retail/RetailPosScreen.css", 2],
   ["1.3", "ui/src/features/retail/RetailPosScreen.css", 1],
-  // 3 -> 2 on 2026-10-07 (b5879c001): the third site was .retail-receipt-preview
-  // (:2131), removed with the rest of the orphaned receipt/recent block. The step
-  // itself is unchanged and still has two live sites in this sheet, so this is a
-  // paid-down deletion, not a vanishing value.
   ["1.4", "ui/src/features/retail/RetailPosScreen.css", 2],
   ["1.8", "ui/src/features/retail/RetailPosScreen.css", 1],
   // Decision recorded 2026-10-01: `line-height: 1` on `.pos-cart-table-select-btn`
