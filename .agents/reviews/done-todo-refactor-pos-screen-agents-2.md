@@ -9,6 +9,23 @@
 
 <!-- Audit stamp: 2026-09-15 · DSH · status: SUPERSEDED-BY-EXECUTION (the plan largely landed; PosScreen.tsx down to 749 ln at 39f6ef7d4 and 742 in working tree, meeting the <= 760 wave-1 gate; 6 Cart*.test.tsx files present; only 3 verify/bar checkboxes open on fence/run grounds) · Every "NEW" component in the path fence exists. -->
 
+> ⚠️ **RE-MEASURED 2026-10-07 — the sizing gate this file PASSED is now failed, and it was failed by
+> later FEATURE work, not by a regression of this plan's own slices.** Clause (2) above says the adopted
+> `<= 760` gate *"the file **passes** -- 19 lines of margin on the HEAD blob"*. Measured at `39f6ef7d4`
+> the file is **706** lines, matching that claim. At HEAD it is **1,258** — roughly **500 lines over** the
+> gate the plan adopted. The trajectory is monotonic and recent: the last four commits touching it
+> (`d3799c005`, `7c629f936`, `9c452e25a`, `f101e8acb`, all 2026-10-07) are feature and fix work.
+>
+> **Why this is NOT a failure of this plan, stated so it is not misfiled.** The decomposition holds: all
+> five extracted components are still imported by the screen today (`CartPanel` twice, `ShiftModals`,
+> `OpenBillModals`, `ItemModifierModal`), and clause (4)'s named seams are all still live. Nothing was
+> re-inlined. What happened is that `PosScreen.tsx` is a screen that keeps accreting features, and a
+> whole-file line gate on an accretion site is a gate with an expiry date — it measured right once and
+> could not stay right. **The two surviving slices at `:6` are therefore still the right ones**, and the
+> argument for them is now stronger than when written: S1's mechanical sub-screen extraction is the kind
+> of change that would pull ~500 lines back under the gate. Read clause (2) as a 2026-09-15 measurement
+> and re-take it before quoting; the plan's own opening parenthetical asks for exactly that.
+
 **Document:** `todo-refactor-pos-screen-agents-2.md`  
 **Role:** Orchestrator Agent 2 (UI Decomposition & Peripheral Wiring)  
 **Goal:** Extract large JSX sub-trees from `PosScreen.tsx` (cart line items, totals footer, action bar, promotions modal, price override modal, and hardware listeners) into modular presentation components. Reduce `PosScreen.tsx` into a thin composition root.
