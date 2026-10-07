@@ -15,7 +15,7 @@
 //     RestaurantMenu.test.tsx and restaurantCardHeight.test.ts — never
 //     rename them here.
 
-import { useCallback, useEffect, useRef } from 'react';
+import { memo, useCallback, useEffect, useRef } from 'react';
 import { requiredLocalized } from '@/components';
 import Tooltip from '@/app/Tooltip';
 import { Localized } from '@/components/Localized';
@@ -69,7 +69,7 @@ export interface MenuItemTileProps {
   index?: number;
 }
 
-export function MenuItemTile({ product, sourceInStock, pinned, color, onAdd, onContextMenu, added, index }: MenuItemTileProps) {
+export const MenuItemTile = memo(function MenuItemTile({ product, sourceInStock, pinned, color, onAdd, onContextMenu, added, index }: MenuItemTileProps) {
   const { l10n } = useLocalization();
   const touchLongPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
@@ -250,4 +250,4 @@ export function MenuItemTile({ product, sourceInStock, pinned, color, onAdd, onC
       )}
     </button>
   );
-}
+});

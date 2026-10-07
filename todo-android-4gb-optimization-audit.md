@@ -1483,18 +1483,18 @@ Goal: reduce JS heap and UI jank.
 
 Tasks:
 
-- [ ] Add route-level code splitting.
-- [ ] Lazy-load reports/admin.
-- [ ] Virtualize product lists.
-- [ ] Virtualize sale history.
-- [ ] Memoize selectors.
+- [x] Add route-level code splitting (lazy() across all pageRegistry & settings screens).
+- [x] Lazy-load reports/admin (lazy() for reports, dashboard, analytics).
+- [x] Virtualize product lists (RetailProductGrid react-window & MenuItemTile memoization).
+- [x] Virtualize sale history (SalesHistoryScreen paged table).
+- [x] Memoize selectors (MenuItemTile memoization, categoryOptions & filtered useMemo).
 - [ ] Reduce global state size.
 - [ ] Lazy-load images.
 - [ ] Clean up listeners.
 - [ ] Profile React renders.
 - [ ] Add bundle size budget.
 - [ ] Remove large arrays from persistent global state.
-- [ ] Ensure navigation clears disposable caches.
+- [x] Ensure navigation clears disposable caches (detailCacheRef and report series cleared on memory trim/navigation).
 
 Exit criteria:
 
