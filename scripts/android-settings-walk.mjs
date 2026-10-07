@@ -143,6 +143,7 @@ const PROBE = `(() => {
     crash: boundaryMsgs.length > 0,
     boundaryMsgs,
     toasts,
+    invokeFailures: (window.__TAURI_INTERNALS__?.__invokeFailures || []),
     hash: location.hash,
   });
 })()`;
@@ -218,6 +219,26 @@ async function main() {
   await send('Runtime.enable');
   await send('Page.enable');
 
+  // Capture every rejected invoke from before the first navigation onward:
+  // the partial-load toast ("Some settings could not be loaded") names no
+  // command, and its source is intermittent — attaching the patch here is
+  // what makes a walk that reproduces the toast also name the cause.
+  await evaluate(`(() => {
+    const internals = window.__TAURI_INTERNALS__;
+    if (!internals || internals.__walkPatched) return;
+    internals.__walkPatched = true;
+    const orig = internals.invoke.bind(internals);
+    internals.__invokeFailures = [];
+    internals.invoke = (cmd, payload, options) => {
+      const p = Promise.resolve(orig(cmd, payload, options));
+      p.catch((e) => {
+        const list = internals.__invokeFailures;
+        if (list.length < 40) list.push(cmd + ': ' + String((e && e.message) || e).slice(0, 120));
+      });
+      return p;
+    };
+  })()`);
+
   // ── Login ────────────────────────────────────────────────────────────────
   let state = JSON.parse(await evaluate(PROBE));
   if (state.login && !SKIP_LOGIN) {
@@ -290,6 +311,9 @@ async function main() {
       problems.push(`toast: ${probe.toasts.join(' | ')}`);
       if (verdict === 'ok') verdict = 'WARN';
     }
+    if ((probe.invokeFailures ?? []).length) {
+      problems.push(`invoke failed: ${[...new Set(probe.invokeFailures)].join(' | ')}`);
+    }
     if (errs.some((e) => e.startsWith('uncaught'))) {
       problems.push(`uncaught exception (${errs.find((e) => e.startsWith('uncaught'))})`);
       verdict = 'FAIL';
@@ -307,7 +331,7 @@ async function main() {
       if (verdict === 'ok') verdict = 'WARN';
     }
 
-    results.push({ route, verdict, controls: probe.controls, container: probe.container, problems, text: probe.text, toasts: probe.toasts ?? [] });
+    results.push({ route, verdict, controls: probe.controls, container: probe.container, problems, text: probe.text, toasts: probe.toasts ?? [], invokeFailures: probe.invokeFailures ?? [] });
     const marker = verdict === 'FAIL' ? 'x' : verdict === 'WARN' ? '!' : '.';
     console.log(`  ${marker} ${route.padEnd(30)} controls=${String(probe.controls).padStart(3)}  ${problems.join('; ')}`);
   }

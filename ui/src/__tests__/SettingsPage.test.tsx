@@ -737,6 +737,31 @@ describe('SettingsPage load lifecycle and chrome (kept)', () => {
     });
   });
 
+  it('treats an absent settings row as defaults, not a partial failure', async () => {
+    // A fresh provisioned store has NO sync row: `get_sync_settings_scoped`
+    // resolves null. That is absence, not failure — measured on the tablet
+    // 2026-10-07, where loadAll counted a resolved null as a failed source
+    // and every cold start toasted "Some settings could not be loaded" with
+    // zero rejected invokes behind it.
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      invokeMock.mockImplementation((cmd: string): Promise<unknown> => {
+        if (cmd === 'get_sync_settings_scoped') return Promise.resolve(null);
+        return defaultImpl(cmd);
+      });
+      renderPage();
+      await waitFor(() => {
+        expect(screen.getByTestId('settings-sidebar')).toBeInTheDocument();
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(PARTIAL_ERROR_TOAST_MS + 500);
+      });
+      expect(screen.queryByText(ftlValue('settings-load-partial'))).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('toasts a partial-load warning that persists past the confirmation window', async () => {
     // The toast is confirmation-gated (see SettingsPage): a failure must still
     // be present PARTIAL_ERROR_TOAST_MS after initialization. A real failure

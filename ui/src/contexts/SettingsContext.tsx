@@ -362,22 +362,30 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
       if (stale()) return;
       if (rR.status === 'fulfilled' && rR.value) {
         setSettings((prev) => ({ ...prev, receipt: rR.value }));
-      } else {
+      } else if (rR.status === 'rejected') {
+        // fulfilled with null/undefined = the row is ABSENT on this store;
+        // the defaults already in state stand. Not a failure.
         hasAnyFailure = true;
       }
       if (sR.status === 'fulfilled' && sR.value) {
         setSettings((prev) => ({ ...prev, store: sR.value }));
-      } else {
+      } else if (sR.status === 'rejected') {
+        // fulfilled with null/undefined = the row is ABSENT on this store;
+        // the defaults already in state stand. Not a failure.
         hasAnyFailure = true;
       }
       if (cR.status === 'fulfilled' && cR.value) {
         setSettings((prev) => ({ ...prev, currencies: cR.value }));
-      } else {
+      } else if (cR.status === 'rejected') {
+        // fulfilled with null/undefined = the row is ABSENT on this store;
+        // the defaults already in state stand. Not a failure.
         hasAnyFailure = true;
       }
       if (syncR.status === 'fulfilled' && syncR.value) {
         setSettings((prev) => ({ ...prev, sync: withSyncDefaults(syncR.value) }));
-      } else {
+      } else if (syncR.status === 'rejected') {
+        // fulfilled with null/undefined = the row is ABSENT on this store;
+        // the defaults already in state stand. Not a failure.
         hasAnyFailure = true;
       }
       if (prefsR.status === 'fulfilled' && prefsR.value) {
@@ -393,7 +401,9 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
           ...prev,
           preferences: { cardSize, fontSize, fontSmoothing },
         }));
-      } else {
+      } else if (prefsR.status === 'rejected') {
+        // fulfilled with null/undefined = the row is ABSENT on this store;
+        // the defaults already in state stand. Not a failure.
         hasAnyFailure = true;
       }
       if (brandR.status === 'fulfilled' && brandR.value) {
@@ -404,12 +414,16 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
             storeName: brandR.value.store_name,
           },
         }));
-      } else {
+      } else if (brandR.status === 'rejected') {
+        // fulfilled with null/undefined = the row is ABSENT on this store;
+        // the defaults already in state stand. Not a failure.
         hasAnyFailure = true;
       }
       if (verR.status === 'fulfilled' && verR.value) {
         setSettings((prev) => ({ ...prev, appVersion: verR.value.version }));
-      } else {
+      } else if (verR.status === 'rejected') {
+        // fulfilled with null/undefined = the row is ABSENT on this store;
+        // the defaults already in state stand. Not a failure.
         hasAnyFailure = true;
       }
 
