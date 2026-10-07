@@ -93,6 +93,18 @@ Recorded because each one is still live in some document a worker might read, an
 
 ---
 
+## 2026-10-08: the CI LINT gate was red — `cargo clippy -D warnings` failed on 40+ accumulated lints. Cleared in `714422107`.
+
+**Found by running the gate rather than the tests, and it was red before I touched anything.** `cargo fmt --all --check` reported **17 violations** across 5 files and `cargo clippy --workspace --all-targets -- -D warnings` (the exact `dev-ci.yml:353` command) exited **101**. Neither `cargo check` nor `cargo test` sees any of this — `cargo check --workspace` returned `Finished` the whole time — which is why two rounds of "the workspace is green" could be true and this still be broken. `dev-ci.yml:326` gates on `if: needs.changes.outputs.rust == 'true'`, so it fires on any Rust PR.
+
+**The lint set, all pre-existing and unowned:** 23 collapsible `if`s, 10 inconsistently-grouped integer literals, 4 more collapsible `if`s deeper in, a redundant closure, a `map().unwrap_or()`, a function with 9 and another with 10 arguments, a constant-valued assertion, an unnecessary `&mut`, a manual checked division, and 7 overindented doc-list items (mine). Fixed across 33 files: mechanical ones via `cargo clippy --fix -p <crate>`, and the rest by hand.
+
+**Three fixes were not mechanical and are worth naming.** (a) `escpos_tests.rs` asserted a `const` boundary at runtime; rewritten as `const _: () = assert!(....)` so it fails the BUILD, which is what the test was reaching for. (b) `lan/lib.rs:623` `handle_peer` takes 10 arguments — an `#[allow]` with the reason recorded, since each is an independently-optional collaborator and a bundling struct would exist only to satisfy the lint. (c) `table_sync.rs` returns `Result<TableLease, TableLease>`, flagged as a large `Err`; allowed with the reason, because the `Err` deliberately CARRIES the conflicting lease so a refused caller can name the holder without a second lookup.
+
+**A real correctness catch inside the cosmetic-looking ones:** the 10 grouped literals in `provisioning.rs` were written `5_000_00`, `12_000_00`, `2500_000` — inconsistent grouping of IDR minor units. The VALUES were right (500,000 minor = Rp 5,000) and only the grouping was non-standard, so this is a readability fix rather than a money bug; I verified the scale against `products.price_minor` before touching any of them.
+
+**Two mistakes of mine, both caught by re-running the gate rather than by reading.** I collapsed `provisioning.rs:539` and removed the WRONG closing brace (the `if let`'s instead of the outer `if args.mode`'s), which the next clippy run reported as `unclosed delimiter`. A second pass on `table_sync.rs` looked unbalanced only because a raw `{`/`}` count is skewed by braces inside format strings — HEAD has the same skew (35/34), so the ratio was never evidence. **The lesson repeated from R146: verify an edit landed and the tree still builds before trusting the next verdict.**
+
 ## 2026-10-08, latest: the UI is green; the Rust workspace is blocked by ANOTHER LANE's uncommitted work
 
 **UI: 667 files / 11,229 passed / 24 skipped / 3 todo / 0 failed, 112s.** Re-measured after the Rust work; unaffected by anything in this campaign, and the figure to compare against is the earlier 666 files / 11,223 tests — one file and six tests added by other lanes since.
