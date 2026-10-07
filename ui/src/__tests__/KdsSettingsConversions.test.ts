@@ -38,6 +38,19 @@
 // and SettingsContext render or mount the real thing; dev-mock-scoped-aliases
 // reads the real registry, "real registry, not a fixture", :181; cartExtraction
 // and screenExtraction.utils read real files or import the real util).
+//
+// A SECOND SWEEP looked for the sibling failure mode — a test that LOOKS like
+// coverage because it feeds a prop an empty default (new Set() / [] / {}), the
+// shape that hid the arrival diff in KdsScreen (see kdsArrivalDiff.test.ts).
+// It found twelve such sites across ui/src and adjudicated every one: NONE is a
+// stub. Each is the SUBJECT of an explicit empty-state case that sits beside
+// populated ones — chartsA11y's "empty dataset: no data list is rendered",
+// RestaurantFloatingCartBar's "renders empty cart state", the
+// topologyValidationWidget's "empty panel when no issues", and LiveSetupPreview's
+// "shows only admin workspace as active when no features are enabled" (which
+// renders the same component again with real feature sets in the next cases).
+// Recorded because a negative result still needs a home: the next reader should
+// not re-run this sweep on a hunch.
 
 import { describe, it, expect } from 'vitest';
 import { compactClass, stepDensity } from '@/features/kds/kdsDensity';
