@@ -67,10 +67,58 @@ Verified against history (`git show <sha>^:<path>`): the ORIGINAL numbers were c
 `:303`, `:312`, `:393`, `:153` all matched before the extraction. So the note was
 accurate when written and decayed the moment its own commit landed.
 
-**The convention this argues for, on its own merits regardless of any guard:** a provenance
-citation should carry the revision it describes, `AS OF <sha>^`, so it is never mistaken
-for a live pointer even when the numbers happen to be in range. Applied to the three
-affected sites on 2026-10-07.
+## The convention — adopted, and what it looks like
+
+A provenance citation carries **the revision it describes**, so it can never be mistaken
+for a live pointer even when its numbers happen to be in range:
+
+```ts
+// Before — true when written, silently false the moment the file shrinks
+* Extracted verbatim from KdsScreen.tsx:519-566 by the KDS merged-lane
+
+// After — read the number as history, and the reader can check it
+* Extracted verbatim from KdsScreen.tsx:519-566 AS OF de165c118^ by the KDS merged-lane
+```
+
+The `^` matters: `<sha>^` is the commit **before** the extraction, so
+`git show de165c118^:ui/src/features/kds/KdsScreen.tsx` reproduces the range, while
+`<sha>` alone would already show the replacement.
+
+### Where it was applied (2026-10-07)
+
+**17 markers across 16 files** (`kdsOrderView.ts` carries two — its zone/filter and its
+scope/filter notes were separate extractions), all in `ui/src`, found by the in-range
+sweep described above:
+
+| | |
+|---|---|
+| KDS components (`KdsHeaderLeft/Right/Tabs`, `KdsMainContent`, `KdsNoticeBanners`, `KdsZoneChips`) | 6 |
+| KDS hooks and modules (`useKdsKeyboardShortcuts`, `useKdsFilterNav`, `useKdsRealtime`, `useKdsTabIndicator`, `kdsOrderView`, `kdsOrdersDiff`) | 6 |
+| Test headers naming an extraction (`KdsBoardFiltered`, `KdsOrderFiltering`, `screenExtraction`) | 3 |
+| `CartTaxWatcher` (the one non-KDS site) | 1 |
+
+(The counts are files; `kdsOrderView.ts` contributes two markers, which is why the rows
+sum to 16 and the marker count is 17.)
+
+### Two suspects that were NOT edited, and why
+
+The sweep flagged both; reading the target said otherwise.
+
+- `pageLayoutRender.test.ts` cites `AppShell.tsx:341` — that line **is**
+  `admin: 'settings'`, exactly as the note claims. Annotated `re-verified 2026-10-07`
+  rather than `AS OF`, because it is a **current** pointer and should stay one.
+- `kdsDensity.ts` cites `hooks/useTicketSla.ts:66-90` — that range **is** the SLA
+  conversion. The word "extracted" in the surrounding prose is what tripped the matcher.
+
+**A provenance marker and a live pointer must not be conflated.** The marker says *"this
+number is history"*; adding it to a correct current pointer would make the pointer
+unverifiable.
+
+### Coverage limit
+
+The sweep resolves **528 of 548** citations via `git grep` and basename lookup. The
+remaining ~20 use a bare filename that matches several files and a script cannot route
+them; they were **not** checked by hand here.
 
 ## Recommendation
 
