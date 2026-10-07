@@ -12,7 +12,7 @@ import { useKdsFilterNav } from '@/features/kds/useKdsFilterNav';
 // Zone extraction and the board filter, named so the suite that used to retype
 // them (KdsZoneExtraction.test.ts) imports the real thing — including the
 // prepared-beats-zone PRECEDENCE, which no copy exercised.
-import { extractZones, filterKdsOrders, isBoardFiltered } from '@/features/kds/kdsOrderView';
+import { extractZones, filterKdsOrders, filterKdsOrdersByScope, isBoardFiltered } from '@/features/kds/kdsOrderView';
 import { useKdsShortcuts } from '@/features/kds/hooks/useKdsKeyboardShortcuts';
 import { useKdsTabIndicator } from '@/features/kds/useKdsTabIndicator';
 import { useKdsRealtime } from '@/features/kds/useKdsRealtime';
@@ -151,15 +151,9 @@ export default function KdsScreen() {
       getKdsQueueScoped(sessionToken, zone),
     );
     const activeStoreId = workspaceScope?.storeId;
-    let filtered = fetchedOrders;
-    if (activeStoreId) {
-      filtered = fetchedOrders.filter((order) =>
-        !order.store_id || order.store_id === activeStoreId,
-      );
-    }
-    // A cancelled ticket is terminal history — it must never surface on
-    // the active kitchen board (it would only show in the history panel).
-    filtered = filtered.filter((order) => order.status !== 'cancelled');
+    // Scope + cancelled rules live in kdsOrderView.filterKdsOrdersByScope, so
+    // KdsOrderFiltering.test.ts can import them instead of restating them.
+    const filtered = filterKdsOrdersByScope(fetchedOrders, activeStoreId);
 
     // Track new ticket IDs for arrival animation.
     const currentIds = new Set(filtered.map((o) => o.id));

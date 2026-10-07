@@ -71,3 +71,31 @@ export function isBoardFiltered(
 ): boolean {
   return filterMode === 'prepared' || (filterCats !== null && filterCats.size > 0);
 }
+
+/**
+ * Narrow a fetched batch to the active store and drop cancelled tickets.
+ *
+ * Extracted from KdsScreen.tsx:154-162, inside fetchOrders — a useCallback with
+ * I/O either side, which is why the retyped copy in KdsOrderFiltering.test.ts
+ * restated it instead of importing anything. The two rules it encodes are not
+ * incidental:
+ *   - STORE SCOPE is permissive about a missing id: an order with `store_id: null`
+ *     is kept, because null means "not store-bound" rather than "another store".
+ *     Reading it as strict equality would silently hide unscoped tickets.
+ *   - CANCELLED is terminal: a cancelled ticket is history and must never reach
+ *     the active board. That drop is unconditional and applies after the scope
+ *     filter, so it cannot be skipped by a store that fails to match.
+ *
+ * Pure: no refs, no async, no side effects. The caller still owns the fetch, the
+ * arrival-animation bookkeeping and the cache flag.
+ */
+export function filterKdsOrdersByScope(
+  orders: KdsOrder[],
+  activeStoreId: string | null | undefined,
+): KdsOrder[] {
+  let filtered = orders;
+  if (activeStoreId) {
+    filtered = filtered.filter((o) => !o.store_id || o.store_id === activeStoreId);
+  }
+  return filtered.filter((o) => o.status !== 'cancelled');
+}

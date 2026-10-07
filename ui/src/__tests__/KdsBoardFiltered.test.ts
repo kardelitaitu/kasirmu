@@ -1,9 +1,19 @@
-// Unit tests for boardFiltered — the boolean expression that determines
-// whether any filter is active on the KDS board.
+// boardFiltered — whether any filter is active on the KDS board.
+//
+// The OPEN-tab half now IMPORTS production (2026-10-07): isBoardFiltered lives in
+// features/kds/kdsOrderView.ts, extracted verbatim from KdsScreen.tsx:393-395, and
+// the 'prepared wins over zones' case below is the same precedence pinned in
+// KdsZoneExtraction.test.ts against filterKdsOrders. The COMPLETED half still
+// delegates to its own comparison, because production reads a second source there
+// (completedFilter) that this file models as a prop.
+//
+// One of five KDS suites that retyped production logic; see the header of
+// KdsSettingsConversions.test.ts for the sweep.
 
 import { describe, it, expect } from 'vitest';
+import { isBoardFiltered } from '@/features/kds/kdsOrderView';
 
-/** Same logic as KdsScreen.tsx boardFiltered. */
+/** The tab dispatch the screen performs, with the open branch delegated. */
 function boardFiltered(
   activeTab: 'open' | 'completed',
   completedFilter: 'all' | 'dinein' | 'takeaway',
@@ -12,7 +22,7 @@ function boardFiltered(
 ): boolean {
   return activeTab === 'completed'
     ? completedFilter !== 'all'
-    : (filterMode === 'prepared' || (filterCats !== null && filterCats.size > 0));
+    : isBoardFiltered(filterMode, filterCats);
 }
 
 describe('boardFiltered', () => {
