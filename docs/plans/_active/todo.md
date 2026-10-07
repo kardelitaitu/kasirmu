@@ -132,7 +132,7 @@ Current `kds.spec.ts` covers basic render + single advance. Missing:
 
 ## ⏳ Phase C — Subscription Tier Implementation (`subscription-tiers.md`)
 
-> Source of truth: [`subscription-tiers.md`](../guides/subscription-tiers.md)
+> Source of truth: [`subscription-tiers.md`](../../guides/user/subscription-tiers.md)
 >
 > ⚠️ **There are currently two files with this name, both stamped "single source
 > of truth", and they disagree about entitlements.** `f3d9cca6` moved the
@@ -154,7 +154,7 @@ Current `kds.spec.ts` covers basic render + single advance. Missing:
 > These are inline-code paths, not Markdown links, so no link checker can
 > catch their rot; treat `docs/**` path citations as unverified unless a gate
 > resolves them.
-> See **R36-14** in [`0.0.36-backlog.md`](./0.0.36-backlog.md).
+> See **R36-14** in [`0.0.36-backlog.md`](../_backlog/0.0.36-backlog.md).
 >
 > **Legend:** `[ ]` todo · `[/]` in progress · `[x]` done
 >

@@ -211,4 +211,4 @@ but the map's silence is a real gap the T5 inventory surfaces for the Phase 2 st
 - `crates/kasirmu-bridge/src/reports.rs` — the live scoped consumer surface (~37 functions).
 - `modules/reporting/src/lib.rs` — the module shell that remains after P3.1 retired the bypass edge.
 - [docs/architecture/namespaced-store-api-draft.md](namespaced-store-api-draft.md) §5 row 2.4 — the migration this stages.
-- [done-todo-modular-scaffolding.md](../../../../docs/plans/_done/done-todo-modular-scaffolding.md) §9.5 — the plan paragraph being reconciled.
+- [done-todo-modular-scaffolding.md](../../plans/_done/done-todo-modular-scaffolding.md) §9.5 — the plan paragraph being reconciled.
