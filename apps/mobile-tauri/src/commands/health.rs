@@ -36,12 +36,80 @@ pub async fn version() -> Result<VersionInfo, AppError> {
     .map_err(Into::into)
 }
 
-/// Get the stable device identifier (hostname) for terminal binding.
+/// Get the stable device identifier for terminal binding.
+///
+/// On Android, resolves or generates a persistent device UUID stored in
+/// settings (`device.terminal_id`) and cached in `AppState::terminal_id`.
+/// If an existing provisioning row exists (e.g. legacy `unknown-device`),
+/// it adopts that row so existing installs do not re-onboard on update.
+/// On desktop/host builds, falls back to `COMPUTERNAME` / `HOSTNAME` or persistent ID.
 #[command]
-pub async fn get_device_id() -> Result<String, AppError> {
-    kasirmu_bridge::health::get_device_id()
-        .await
-        .map_err(Into::into)
+pub async fn get_device_id(
+    state: tauri::State<'_, crate::state::AppState>,
+) -> Result<String, AppError> {
+    resolve_device_id(&state).await
+}
+
+pub(crate) async fn resolve_device_id(
+    state: &crate::state::AppState,
+) -> Result<String, AppError> {
+    {
+        let cached = state.terminal_id.lock().await;
+        if let Some(id) = cached.as_ref() {
+            return Ok(id.clone());
+        }
+    }
+
+    let is_android = cfg!(target_os = "android");
+    let id = {
+        let conn = state.db.lock().await;
+        resolve_persistent_device_id(&conn, is_android)?
+    };
+
+    let mut cached = state.terminal_id.lock().await;
+    *cached = Some(id.clone());
+    Ok(id)
+}
+
+pub(crate) fn resolve_persistent_device_id(
+    conn: &rusqlite::Connection,
+    is_android: bool,
+) -> Result<String, AppError> {
+    if !is_android {
+        if let Ok(id) = std::env::var("COMPUTERNAME").or_else(|_| std::env::var("HOSTNAME")) {
+            if !id.trim().is_empty() {
+                return Ok(id);
+            }
+        }
+    }
+
+    if let Ok(Some(existing_id)) = kasirmu_core::Settings::get(conn, "device.terminal_id") {
+        if !existing_id.trim().is_empty() {
+            return Ok(existing_id);
+        }
+    }
+
+    let existing_rows: Vec<String> = conn
+        .prepare("SELECT terminal_id FROM provisioning")
+        .and_then(|mut stmt| {
+            let rows = stmt.query_map([], |r| r.get(0))?;
+            Ok(rows.filter_map(Result::ok).collect())
+        })
+        .unwrap_or_default();
+
+    let id = if existing_rows.len() == 1 {
+        // Adopt the single existing provisioned terminal_id (e.g. legacy 'unknown-device')
+        existing_rows[0].clone()
+    } else {
+        // Fresh install: generate a persistent random device UUID
+        format!("android-{}", uuid::Uuid::new_v4().simple())
+    };
+
+    if let Err(e) = kasirmu_core::Settings::set(conn, "device.terminal_id", &id) {
+        tracing::warn!(error = %e, "failed to persist device.terminal_id to settings");
+    }
+
+    Ok(id)
 }
 
 /// Get the local IP address of the machine.

@@ -232,7 +232,11 @@ mod debt;
 /// The 405 -> 408 step, 2026-10-05. 3 commands registered for Android in-app self-updater:
 /// check_app_update (SETTINGS_READ), start_apk_download (SETTINGS_EDIT), prepare_and_launch_update (SETTINGS_EDIT).
 /// All 3 arrive already gated on the bridge side, so they move no debt ledger row or ceiling.
-const REGISTERED_FLOOR: usize = 408;
+///
+/// The 408 -> 413 step, 2026-10-07. 5 commands registered:
+/// 2 EDC commands (`edc_settle`, `edc_inquiry`) and 3 diagnostics/storage health commands
+/// (`health::export_diagnostics`, `health::get_storage_health`, `health::record_crash_report`).
+const REGISTERED_FLOOR: usize = 413;
 /// How far the parsed count may rise without regenerating: names are added by ordinary
 /// feature work, so the floor is a lower bound plus slack and never an equality.
 /// Crossing the slack is the signal that the ledger needs regenerating in the same pass.

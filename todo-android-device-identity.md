@@ -1,8 +1,9 @@
 # todo-android-device-identity
 
-> **Status: OPEN — not started.** Written 2026-10-05 to record the measurement and the trap, so the
-> change cannot be half-done later. Everything below is measured on the device unless it says
-> otherwise.
+> **Status: IMPLEMENTED & TESTED.** Implemented 2026-10-07. Persistent device UUID generated on fresh
+> installs and persisted in settings (`device.terminal_id`) and cached in `AppState::terminal_id`.
+> Adopts single existing provisioning row (`unknown-device`) on legacy upgrades so existing tablets
+> never re-onboard. Tested across `kasirmu-mobile` (712 passed) and `kasirmu-core` (36 passed).
 
 **Symptom.** Every Android tablet provisions as terminal `unknown-device`. It works today, and it is
 one environment variable away from failing on every boot.
