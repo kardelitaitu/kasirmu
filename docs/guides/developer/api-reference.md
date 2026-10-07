@@ -1,3 +1,5 @@
+<!-- FOLLOW-UP 2 2026-10-08: four KDS commands landed on the tablet shell (tablet 415 -> 419; `distinct` stays 513 because all four already existed on desktop), and their rows were marked [D]. Corrected to **[D+T]** — `list_kds_devices_scoped`, `register_kds_device_scoped`, `get_kds_routing_rules_scoped`, `save_kds_routing_rules_scoped` are each present in BOTH `generate_handler!` blocks, confirmed by brace-matched extraction of the raw files rather than by any parser. Re-swept after: all 513 rows cross-checked against the raw registries -> **0 marker mismatches, 0 registered-but-undocumented**. Live: `registered desktop=494 tablet=419 distinct=513`. -->
+
 <!-- FOLLOW-UP 2026-10-08 (later the same day): the 1-row gap this stamp anticipated was closed. Two commands had landed in the registries after the repair and are now documented — `print_edc_settlement_slip_scoped` [D+T] (`commands::hardware`, 11) and `notify_memory_pressure` [T] (`commands::health`, 13). Live state: `registered desktop=494 tablet=415 distinct=513`, `documented 513 entries`, four buckets 0, `CLEAN`. -->
 
 <!-- Audit stamp: 2026-10-08 · docs-auditor · status: ACCURATE AFTER REPAIR (major drift repaired) — doc and registries agree again (all four drift buckets zero, `CLEAN`, exit 0) · Supersedes the 2026-09-29 stamp, which was true when written and went false as the tablet shell gained commands without doc rows. Drift found and repaired this pass: 54 rows carried the wrong availability marker (all said `[D]` for commands now registered in BOTH shells — `edc` 8, `inventory` 17, `kds` 4, `regional` 1, `shifts` 7, `locations` 9, `products_images` 1, `auth::verify_pin` 1; root commit `6fe57ba17` "register shifts, inventory, kds, edc, locations, and pin commands for tablet parity", plus `edc_inquiry`/`edc_settle` from `656f109a0`); 10 registered commands had no row (`edc_inquiry`, `edc_settle` → `commands::edc`; `export_diagnostics`, `get_storage_health`, `record_crash_report` → `commands::health`; `get_sale_statutory_number_scoped`, `issue_tax_invoice_scoped` → `commands::fiscal`; `check_app_update`, `start_apk_download`, `prepare_and_launch_update` → a new `commands::updater` section, all three `[T]` because the Android updater is tablet-only by design); and one row's PROSE was stale as well as its marker — `get_active_market_profile_scoped` claimed "Desktop-only … not in the tablet shell" while `apps/mobile-tauri/src/lib.rs:1250` registers it, so the sentence was corrected with the marker. Section counts regenerated (`edc` 9→11, `fiscal` 5→7, `health` 9→12, new `updater` 3); every `(N)` on every heading now agrees with its own row count (verified programmatically). Final measured state: `registered desktop=493 tablet=413 distinct=511`, `documented 511 entries`, all four buckets 0. The 64-name drift was re-derived by an independent parser over both `generate_handler!` lists (`493/413/511` exactly, zero difference). · Repaired against branch `0.0.41` at `134aaed1b`. -->
@@ -440,8 +442,8 @@ Statutory number series and fiscal schemes, per legal entity. Desktop and tablet
 - **`ack_kds_order_scoped`** [D] — Acknowledge a KDS order — the device accepted the ticket and started
 - **`deactivate_kds_device_scoped`** [D] — Deactivate a KDS device (soft-delete).
 - **`get_kds_device_scoped`** [D] — Get a single KDS device by ID.
-- **`list_kds_devices_scoped`** [D] — List all KDS devices for the Restaurant POS bound to the current session.
-- **`register_kds_device_scoped`** [D] — Register a new KDS device bound to a Restaurant POS.
+- **`list_kds_devices_scoped`** [D+T] — List all KDS devices for the Restaurant POS bound to the current session.
+- **`register_kds_device_scoped`** [D+T] — Register a new KDS device bound to a Restaurant POS.
 - **`update_kds_device_status_scoped`** [D] — Update a KDS device's connection status.
 
 ### `commands::kds_routing` (3)
@@ -449,8 +451,8 @@ Statutory number series and fiscal schemes, per legal entity. Desktop and tablet
 - **`resolve_kds_targets_scoped`** [D] — Resolve which KDS device IDs should receive an order based on its
 
 
-- **`get_kds_routing_rules_scoped`** [D] — List the KDS routing rules of the session's restaurant, highest priority first (lower number wins).
-- **`save_kds_routing_rules_scoped`** [D] — Replace the complete KDS routing rule set of the session's restaurant.
+- **`get_kds_routing_rules_scoped`** [D+T] — List the KDS routing rules of the session's restaurant, highest priority first (lower number wins).
+- **`save_kds_routing_rules_scoped`** [D+T] — Replace the complete KDS routing rule set of the session's restaurant.
 
 ### `commands::legal_entities` (4)
 
