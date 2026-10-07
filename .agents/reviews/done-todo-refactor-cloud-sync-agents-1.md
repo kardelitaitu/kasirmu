@@ -778,8 +778,9 @@ The victim alternated between `pg_integration_migrate_and_verify` and `pg_integr
 > RUN and PASSED. Six of the ten renamed files carry text refusing the prefix — this one (*STILL
 > UNEARNED*), `pos-screen-agents-3` (*NOT A RENAME*), `tools` (*CLOSED, NOT RENAMEABLE*),
 > `font-system` (*not renameable*), `settings-agents-2` (*The file stays `todo-`*) and
-> `operational-integrity`. **Not repaired here, and the repair is not obvious:** renaming back would
-> have to be applied consistently across all ten or the convention stays inconsistent either way, and
-> the names are load-bearing — `check-dead-refs.py` exempts any doc whose name contains `todo-`,
-> `plan-` or `prd-`, so stripping `done-` changes which checker even sees these files. Recorded for the
-> owner as a naming-convention decision, with the evidence gathered.
+> `operational-integrity`. **Resolved 2026-10-07 by annotation, not by rename.** The seven files that still refuse the
+> prefix now carry an *ARCHIVED, NOT EARNED* note recording that the token came from `68cecff21`'s bulk
+> classification rather than from their own acceptance. The names are left alone: `check-dead-refs.py:393`
+> tests `"todo-" in name`, and `done-todo-*` matches on that substring, so renaming would change no
+> checker's view — it would be churn on a settled archive. `operational-integrity` is named above
+> in error: it carries no refusal, and was listed here from a keyword match rather than a read.
