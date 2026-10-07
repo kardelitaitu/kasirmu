@@ -6,6 +6,9 @@ import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { useSwipe } from '@/hooks/useSwipe';
 import type { DisplayDensity, KdsSettings } from '@/features/kds/kdsSettingsModel';
 import { RED_MAX_MIN, YELLOW_MAX_MIN } from '@/features/kds/kdsThresholdMinutes';
+// The density bounds live in a module so the copies that used to sit in
+// KdsSettingsConversions.test.ts can import them instead of restating them.
+import { isDensityAtMax, isDensityAtMin, stepDensity } from '@/features/kds/kdsDensity';
 import { useKdsCardColors } from '@/features/kds/KdsCardColorsContext';
 import { KdsRoutingRulesSection } from '@/features/kds/components/KdsRoutingRulesEditor';
 import { requiredLocalized } from '@/components';
@@ -312,9 +315,9 @@ export function KdsHamburgerPanel({
                 <div className="kds-setting-row">
                   <span className="kds-setting-label"><Localized id="kds-settings-density">Column</Localized></span>
                   <div className="kds-zoom-row">
-                    <button className="kds-btn kds-btn--muted kds-zoom-btn" onClick={() => onChangeDensity(Math.max(1, settings.density - 1))} disabled={settings.density <= 1} aria-label="Decrease columns" data-testid="kds-settings-density-out">−</button>
+                    <button className="kds-btn kds-btn--muted kds-zoom-btn" onClick={() => onChangeDensity(stepDensity(settings.density, 'down'))} disabled={isDensityAtMin(settings.density)} aria-label="Decrease columns" data-testid="kds-settings-density-out">−</button>
                     <span className="kds-zoom-value" data-testid="kds-settings-density-value">{settings.density}</span>
-                    <button className="kds-btn kds-btn--muted kds-zoom-btn" onClick={() => onChangeDensity(Math.min(5, settings.density + 1))} disabled={settings.density >= 5} aria-label="Increase columns" data-testid="kds-settings-density-in">+</button>
+                    <button className="kds-btn kds-btn--muted kds-zoom-btn" onClick={() => onChangeDensity(stepDensity(settings.density, 'up'))} disabled={isDensityAtMax(settings.density)} aria-label="Increase columns" data-testid="kds-settings-density-in">+</button>
                   </div>
                 </div>
 

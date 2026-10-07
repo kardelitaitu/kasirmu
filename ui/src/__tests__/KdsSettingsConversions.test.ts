@@ -2,14 +2,19 @@
 // between UI slider values (minutes) and internal thresholds (seconds),
 // and the density→compact class determination.
 //
-// ⚠️ READ THIS BEFORE TREATING A GREEN RUN AS COVERAGE. Every function below is
-// a RETYPED COPY, not the production one. The real logic exists and is live, but
-// it is written INLINE inside component bodies, so it cannot be imported:
-//   minutes*60        -> KdsScreen.tsx:323-326 (the slaThresholds useMemo)
-//   density <= 2      -> KdsMainContent.tsx:132  (`settings.density <= 2 ? ' kds--compact' : ''`)
-//   Math.max/min 1,5  -> KdsHamburgerPanel.tsx:315,317 (inline onClick handlers)
-// Consequently these tests CANNOT FAIL when production changes: edit any of the
-// three sites and every case in this file still passes. Measured 2026-10-07.
+// PARTLY LOAD-BEARING, and the split matters. Two of the three mappings below
+// now IMPORT production instead of restating it, so their cases fail when the
+// real bound moves:
+//   stepDensity / compactClass -> @/features/kds/kdsDensity (extracted 2026-10-07
+//     out of KdsHamburgerPanel.tsx:315,317 and KdsMainContent.tsx:132, which now
+//     call the module — the same move kdsThresholdMinutes.ts and useTicketSla.ts
+//     already record for the SLA bounds).
+// The third is still a retyped copy and CANNOT fail:
+//   minutes*60 -> KdsScreen.tsx:323-326, still inline inside the slaThresholds
+//     useMemo. Extracting it means threading SlaThresholds through a memo that
+//     also feeds every ticket card, so it is deliberately left for a dedicated
+//     pass rather than folded into this one. Its cases below remain documentation
+//     of the mapping, not a guard on it.
 //
 // THIS FILE IS ONE OF FIVE with the same property, all in this feature. Across
 // ui/src the pattern was swept for and adjudicated: of the test files whose own
@@ -47,17 +52,7 @@ function toSlaThresholds(yellowMin: number, redMin: number) {
   };
 }
 
-/** Same compact class logic as KdsScreen.tsx. */
-function compactClass(density: number): string {
-  return density <= 2 ? 'kds--compact' : '';
-}
-
-/** Same density clamping as KdsHamburgerPanel buttons. */
-function clampDensity(density: number, direction: 'up' | 'down'): number {
-  return direction === 'down'
-    ? Math.max(1, density - 1)
-    : Math.min(5, density + 1);
-}
+import { compactClass, stepDensity } from '@/features/kds/kdsDensity';
 
 describe('toSlaThresholds', () => {
   it('converts default thresholds (5 min / 10 min)', () => {
@@ -92,12 +87,18 @@ describe('toSlaThresholds', () => {
 });
 
 describe('compactClass', () => {
-  it('density 1 → compact', () => {
-    expect(compactClass(1)).toBe('kds--compact');
+  // The expected values carry a LEADING SPACE, which is the production contract:
+  // the call site interpolates the result straight after 'kds-content-wrap', so
+  // the separator belongs to this function. The retyped copy this suite used to
+  // hold returned 'kds--compact' with no space and asserted that — the copy was
+  // not merely inert, it was WRONG, and adopting the real module is what exposed
+  // it (both cases failed on the first run after the swap).
+  it('density 1 → compact, with the leading separator the call site needs', () => {
+    expect(compactClass(1)).toBe(' kds--compact');
   });
 
   it('density 2 → compact', () => {
-    expect(compactClass(2)).toBe('kds--compact');
+    expect(compactClass(2)).toBe(' kds--compact');
   });
 
   it('density 3 → not compact', () => {
@@ -113,28 +114,28 @@ describe('compactClass', () => {
   });
 });
 
-describe('clampDensity', () => {
+describe('stepDensity', () => {
   it('decrease from 3 → 2', () => {
-    expect(clampDensity(3, 'down')).toBe(2);
+    expect(stepDensity(3, 'down')).toBe(2);
   });
 
   it('decrease from 1 → 1 (floor)', () => {
-    expect(clampDensity(1, 'down')).toBe(1);
+    expect(stepDensity(1, 'down')).toBe(1);
   });
 
   it('decrease from 2 → 1', () => {
-    expect(clampDensity(2, 'down')).toBe(1);
+    expect(stepDensity(2, 'down')).toBe(1);
   });
 
   it('increase from 3 → 4', () => {
-    expect(clampDensity(3, 'up')).toBe(4);
+    expect(stepDensity(3, 'up')).toBe(4);
   });
 
   it('increase from 5 → 5 (ceiling)', () => {
-    expect(clampDensity(5, 'up')).toBe(5);
+    expect(stepDensity(5, 'up')).toBe(5);
   });
 
   it('increase from 4 → 5', () => {
-    expect(clampDensity(4, 'up')).toBe(5);
+    expect(stepDensity(4, 'up')).toBe(5);
   });
 });

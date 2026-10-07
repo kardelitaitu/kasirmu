@@ -815,6 +815,15 @@ const SCREENS: ScreenEntry[] = [
       'kds/components/KdsTimerBadge.tsx',
       'kds/components/KdsHeaderTabs.tsx',
       'kds/components/KdsMainContent.tsx',
+      // kdsDensity.ts is cited from 2026-10-07, when the density arithmetic was
+      // extracted out of KdsMainContent.tsx:132 and KdsHamburgerPanel.tsx:315,317
+      // into that module. The extraction moved the LITERAL ' kds--compact' out of
+      // the walked .tsx, so the guard immediately reported it dead — the class is
+      // still applied, by KdsMainContent via compactClass(settings.density), and
+      // naming the module here restores the pairing rather than muting it. This is
+      // the citation route, not dynamicClassPrefixes: the name is a whole literal
+      // in the module, not a composed family.
+      'kds/kdsDensity.ts',
     ],
     // Three names that exist ONLY to be selected: string literals in the
     // `statusClasses` array at features/kds/KdsLayoutMasonry.tsx:74, read back as

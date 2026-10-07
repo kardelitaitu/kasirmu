@@ -44,6 +44,7 @@ import type { KdsLineItem, KdsOrder } from '@/api/kds';
 import type { KdsSettings } from '@/features/kds/kdsSettingsModel';
 import type { KdsPreferences } from '@/features/kds/hooks/useKdsPreferences';
 import type { SlaThresholds } from '@/features/kds/hooks/useTicketSla';
+import { compactClass } from '@/features/kds/kdsDensity';
 
 export interface KdsMainContentProps {
   /** True until the first queue fetch settles — renders the skeleton branch. */
@@ -129,7 +130,7 @@ export function KdsMainContent({
           className="kds-main-pane kds-main-pane--open"
           aria-hidden={activeTab !== 'open'}
         >
-          <div className={`kds-content-wrap${settings.density <= 2 ? ' kds--compact' : ''}`} {...pullRefreshProps}>
+          <div className={`kds-content-wrap${compactClass(settings.density)}`} {...pullRefreshProps}>
             <KdsLayoutMasonry
               orders={filteredOrders}
               filtered={boardFiltered}
