@@ -168,4 +168,24 @@ When the two platforms differ, suspect **device database state**, not the code.
 | Drive the live DOM, tap an element, read the WebView console | `android-ui-automation` (`scripts/android-cdp.mjs`) |
 | A frame when CDP cannot produce one (locked or panel-off tablet) | `scripts/android-screen.mjs` |
 
+### Caveat: `scripts/android-cdp.mjs` may not be able to spawn adb
+
+In a sandboxed shell the script's `execFileSync("adb", …)` fails with
+`spawnSync adb EBUSY`, and the script then reports *"mu.kasir.mobile is not
+running"* even though `adb shell pidof mu.kasir.mobile` returns a pid in the
+same call. Workaround, measured 2026-10-07:
+
+1. From bash, run the §1 wait loop, then
+   `adb forward tcp:9222 localabstract:webview_devtools_remote_$(adb shell pidof mu.kasir.mobile)`.
+2. Read `curl -s http://127.0.0.1:9222/json` and attach any WebSocket client
+   straight to that page's `webSocketDebuggerUrl`, then speak
+   `Runtime.enable` + `Runtime.evaluate`. No adb call from the child process, so
+   nothing can hit EBUSY.
+
+Two related traps: `uiautomator dump` **cannot see inside the WebView** — the
+node is `NAF="true"` with no children, so CDP is the only way to read the
+rendered DOM; and a `location.reload()` closes the CDP target
+(`Inspected target navigated or closed`), so re-attach after one.
+
 > last audited 02-10-26 by Budak-Korporat
+> amended 2026-10-07 by Budak-Korporat (adb EBUSY / direct-WebSocket workaround)
