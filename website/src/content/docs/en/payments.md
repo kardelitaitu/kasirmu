@@ -57,3 +57,5 @@ next one, and resume when the first customer is ready to pay.
 
 A refund requires manager permission and writes a matching stock movement, so
 inventory and the audit log stay consistent.
+
+> last audited 08-10-26 by docs-auditor

@@ -76,3 +76,5 @@ and signs the device out.
 until, max locations and POS instances, tenant ID, and allowed workspace types.
 The website's account page shows the same from your browser, with machine
 management. See [License Activation](../activation/).
+
+> last audited 08-10-26 by docs-auditor

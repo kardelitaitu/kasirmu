@@ -141,3 +141,5 @@ Kami berupaya menanggapi setiap permintaan privasi dalam 30 hari.
 | Versi | Tanggal berlaku | Ringkasan perubahan |
 | --- | --- | --- |
 | 1.0 | 17 Agustus 2026 | Publikasi awal. |
+
+> last audited 08-10-26 by docs-auditor

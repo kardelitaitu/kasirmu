@@ -141,3 +141,5 @@ We aim to respond to every privacy request within 30 days.
 | Version | Effective date | Summary of changes |
 | --- | --- | --- |
 | 1.0 | August 17, 2026 | Initial publication. |
+
+> last audited 08-10-26 by docs-auditor

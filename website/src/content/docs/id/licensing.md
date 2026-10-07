@@ -81,3 +81,5 @@ masa tenggang, maksimal lokasi dan instance POS, ID tenant, dan tipe ruang
 kerja yang diizinkan. Halaman akun di situs web menampilkan hal yang sama
 dari browser Anda, lengkap dengan manajemen perangkat. Lihat
 [Aktivasi Lisensi](../activation/).
+
+> last audited 08-10-26 by docs-auditor

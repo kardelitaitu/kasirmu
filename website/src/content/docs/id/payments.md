@@ -63,3 +63,5 @@ membayar.
 
 Refund memerlukan izin manajer dan menulis pergerakan stok yang berpasangan,
 sehingga inventaris dan log audit tetap konsisten.
+
+> last audited 08-10-26 by docs-auditor
