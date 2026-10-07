@@ -309,7 +309,13 @@ where
             }
         }
     }
-    Err(BridgeError::from(last_err.expect("attempt loop ran")))
+    // INVARIANT: the loop above iterates 0..4, so its body runs at least once and always
+    // either returns Ok or returns early on Validation — every remaining path assigns to
+    // last_err. The Option is therefore Some here; the expect documents that, and cannot
+    // fire. (ADR #33 requires the invariant be stated, not merely true.)
+    Err(BridgeError::from(last_err.expect(
+        "the 0..4 loop always assigns last_err before falling through",
+    )))
 }
 #[cfg(test)]
 #[path = "desktop_link_tests.rs"]
