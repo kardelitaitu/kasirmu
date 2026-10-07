@@ -438,8 +438,14 @@ async fn a_registered_terminal_still_fails_closed() {
         minor_units: 100,
         currency: "USD".parse::<kasirmu_core::Currency>().unwrap(),
     };
+    // `reference` (the invoice/order number printed on the bank slip) was added
+    // to the trait in 656f109a0, which updated every other call site; this one was
+    // missed because the commit did not touch platform/startup at all. `None`
+    // matches the sibling assertions -- wired_tests.rs:55, wireless_tests.rs:59,
+    // registry_tests.rs:217 -- and this terminal is an unconfigured stub, so there
+    // is no reference to tie to a transaction it will never authorise.
     assert!(matches!(
-        terminal.authorize(money).await,
+        terminal.authorize(money, None).await,
         Err(kasirmu_hal::HalError::Unsupported(_))
     ));
 }
