@@ -1,3 +1,4 @@
+<!-- Audit stamp: 2026-10-08 · docs-auditor · status: ACCURATE AFTER REPAIR (2 findings) · Supersedes the 2026-07-22 marker below, kept verbatim. (1) The Module Info table and Manifest block declared dependencies ["crm"]; the manifest, `dependencies()` (modules/loyalty/src/lib.rs:98) and the drift test all carry **["crm","giftcards"]**. This is a BOOT contract, not a cosmetic list: `namespace_grants()` names `giftcards` so loyalty may read the `gift_cards` table, and the kernel refuses to boot if a grant names an undeclared dependency — so the README understated what the module cannot start without. (2) It described `src/models.rs` as DEFINING the loyalty and gift-card types; that file is now a re-export stub (`pub use foundation::loyalty::*`), the definitions having moved to foundation/src/loyalty.rs under ADR-61 on 2026-09-28. Both corrected. · Repaired against branch 0.0.41. -->
 <!-- Audit stamp: 2026-07-26 · rewritten after the previous file was found corrupted (2.8 MB of repeated garbage text); content reconstructed from modules/loyalty/manifest.json, src/{lib,models,repository,service,error}.rs, and platform/startup/src/lib.rs · RE-AUDITED 31-08 (cont) by docs-auditor: lifecycle hooks are stubs (lib.rs:98-118) — corrected the Lifecycle section which claimed on_load "validates dependencies" and on_start "initialises state" (both are "future phases" comments); earn-handler-wired-in-platform and the not-registered-history claims re-confirmed. CAUTION resolved: src/models.rs has since LANDED (LOYALTY-01, 803f6239 — earn_multiplier f64 -> earn_multiplier_millionths i64 fixed-point); re-verified the Models list (LoyaltyTier/Account/Transaction/AccountWithDetails all present) and the "Misplaced: gift cards" section (GiftCard/GiftCardTransaction/GiftCardWithTransactions/IssueGiftCardInput/GiftCardFilter/RedeemGiftCardResult still live here — the gift-card migration has NOT landed, so that section remains accurate); Overview updated to note the fixed-point multiplier -->
 
 # Loyalty Module
@@ -21,13 +22,13 @@ round-half-up so no float ever touches the points.
 | ID           | `loyalty` |
 | Crate        | `modules-loyalty` |
 | Version      | `1.0.0` |
-| Dependencies | `["crm"]` — a loyalty account belongs to a CRM customer |
+| Dependencies | `["crm", "giftcards"]` — a loyalty account belongs to a CRM customer, and loyalty redeems gift cards whose table the `giftcards` module owns (the P4.1 namespace grant names it, so the kernel refuses boot without it) |
 | Permissions  | `loyalty:view`, `loyalty:earn`, `loyalty:redeem`, `loyalty:manage` |
 
 ## Currently Owns
 
 - **Models** — `LoyaltyTier`, `LoyaltyAccount`, `LoyaltyTransaction`,
-  `LoyaltyAccountWithDetails` (`src/models.rs`)
+  `LoyaltyAccountWithDetails` — **re-exported** from `foundation::loyalty` via `src/models.rs` (`pub use foundation::loyalty::*;`), where the definitions live since ADR-61 moved them on 2026-09-28
 - **Repository** — account and transaction queries (`src/repository.rs`)
 - **Service** — earn/redeem orchestration (`src/service.rs`)
 - **Errors** — `LoyaltyError` (`src/error.rs`)
@@ -36,11 +37,11 @@ round-half-up so no float ever touches the points.
 
 ## Misplaced: gift cards
 
-`src/models.rs` also defines `GiftCard`, `GiftCardTransaction`,
+`src/models.rs` also re-exports `GiftCard`, `GiftCardTransaction`,
 `GiftCardWithTransactions`, `IssueGiftCardInput`, `GiftCardFilter`, and
-`RedeemGiftCardResult`. These are stored-value instruments, not loyalty
-points, and belong to `modules/giftcards` — which now exists as a stub for
-exactly that reason. Until the migration lands, treat these types as
+`RedeemGiftCardResult` from `foundation::loyalty`. These are stored-value
+instruments, not loyalty points, and belong to `modules/giftcards` — which
+now exists as a stub for exactly that reason. Treat these types as
 deprecated in this crate and do not add to them here.
 
 ## Lifecycle
@@ -51,8 +52,12 @@ Implements `foundation::contracts::Module`. The lifecycle hooks are currently **
 2. **`on_start`** — logs "ready to process loyalty operations" (a future phase will start the point-expiry checker and cache tier definitions)
 3. **`on_stop`** — logs "cleaning up"
 
-`dependencies()` returns `&["crm"]`, matching `manifest.json`; a test asserts
-the two cannot drift apart.
+`dependencies()` returns `&["crm", "giftcards"]` (`src/lib.rs:98`), matching
+`manifest.json`; `loyalty_module_manifest_matches_declaration`
+(`src/lib_tests.rs`) asserts the two cannot drift apart. `giftcards` is
+load-bearing, not cosmetic: `namespace_grants()` names it so loyalty may read
+the `gift_cards` table, and the kernel refuses to boot if that grant names an
+undeclared dependency.
 
 ## Registration
 
@@ -91,4 +96,4 @@ kernel.start_all()?;
 }
 ```
 
-> last audited 31-08-26 by docs-auditor
+> last audited 08-10-26 by docs-auditor

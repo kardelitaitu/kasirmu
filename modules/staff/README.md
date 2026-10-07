@@ -1,3 +1,4 @@
+<!-- Audit stamp: 2026-10-08 · docs-auditor · status: ACCURATE AFTER REPAIR (1 finding) · Supersedes the 2026-07-22 marker below, kept verbatim. Repaired: the §Lifecycle section described the three hooks as performing work ("Validates configuration", "Prepares for staff operations", "Cleans up resources"). Verified against modules/staff/src/lib.rs: each hook is a STUB — it logs a message and returns Ok(()) — with "In future phases, this will:" comments naming what is planned (event-bus handler registration, cache warm-up). The section now says so, matching the correction modules/sales/README.md already carries. Note the sibling paragraph on the transitional boundary — that staff CRUD IPC is disabled/unregistered and physical migration into modules/staff/ is a separate phase — was re-verified and still reads correctly. · Repaired against branch 0.0.41. -->
 <!-- Audit stamp: 2026-07-22 · Hermes-Agent · status: ACCURATE (0 findings) · all owned paths verified: crates/kasirmu-core/src/user.rs + db/staff.rs, commands/{staff,auth}.rs, features/staff, api/staff.ts, shared-ui/locales/staff.ftl; modules/staff/src/lib.rs has StaffModule; manifest deps [] + permissions [staff:view,staff:edit,staff:auth] match · Kernel API matches -->
 <!-- 2026-07-31 · audit/06 remediation: commands are session-scoped (*_scoped, STAFF-01), role-hierarchy enforced (STAFF-02), PIN rotation invalidates sessions (STAFF-03), profile+workspace save has compensating rollback (STAFF-05), uniform pre-auth response (STAFF-06), device/global login rate limiter (STAFF-07); legacy staff IPC commands disabled/unregistered; see the Staff section in docs/records/audit-open-findings.md -->
 
@@ -31,11 +32,11 @@ These files remain in their original locations while the module boundary is tran
 
 ## Lifecycle
 
-The module implements `foundation::contracts::Module` and follows the standard lifecycle:
+The module implements `foundation::contracts::Module`. **Its lifecycle hooks are currently stubs** — each logs a message and returns `Ok(())`; none touches the database or event bus yet (`modules/staff/src/lib.rs`):
 
-1. **`on_load`** — Validates configuration
-2. **`on_start`** — Prepares for staff operations
-3. **`on_stop`** — Cleans up resources
+1. **`on_load`** — logs "validating configuration" (a future phase will register event handlers with the event bus, e.g. `staff.created`)
+2. **`on_start`** — logs "ready to manage staff" (a future phase will warm any in-memory caches for staff lookup)
+3. **`on_stop`** — logs "cleaning up"
 
 ## Registration
 
@@ -63,6 +64,6 @@ kernel.start_all()?;
 }
 ```
 
-> last audited 09-08-26 by buffy
+> last audited 08-10-26 by docs-auditor
 > audit: Phase 3 Module-Level Documentation Audit
 > status: ACCURATE (verified against actual codebase)

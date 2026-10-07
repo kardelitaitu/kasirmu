@@ -1,3 +1,4 @@
+<!-- Audit stamp: 2026-10-08 · docs-auditor · status: ACCURATE AFTER REPAIR (1 finding) · Supersedes the 2026-07-22 marker below, kept verbatim. Repaired: the §Lifecycle section described the three hooks as performing work ("Validates configuration", "Prepares for currency operations", "Cleans up resources"). Verified against modules/currency/src/lib.rs: each hook is a STUB — it logs a message and returns Ok(()) — with "In future phases, this will:" comments naming what is planned. The section now says so, matching the correction modules/sales/README.md already carries. The 2026-07-22 stamp's other claims (manifest, permissions, owned paths) were re-verified and still hold. · Repaired against branch 0.0.41. -->
 <!-- Audit stamp: 2026-08-31 · docs-auditor · status: ACCURATE (1 finding repaired) · F1: added CUR-11 exchange-rate methods to the repository list — list_latest_exchange_rates() (bounded latest-per-pair, repository.rs:84) and list_exchange_rates_for_pair() (repository.rs:121) · carried from 2026-07-25: CurrencyModule implements foundation::contracts::Module; CurrencyRepository migrated from kasirmu-core (R2 Phase 1-6); Platform error variant for settings delegation -->
 
 # Currency/Exchange Module
@@ -19,11 +20,11 @@ The Currency/Exchange module manages currencies and exchange rates. It provides 
 
 ## Lifecycle
 
-The module implements `foundation::contracts::Module` and follows the standard lifecycle:
+The module implements `foundation::contracts::Module`. **Its lifecycle hooks are currently stubs** — each logs a message and returns `Ok(())`; none touches the database, cache or event bus yet (`modules/currency/src/lib.rs`):
 
-1. **`on_load`** — Validates configuration
-2. **`on_start`** — Prepares for currency operations
-3. **`on_stop`** — Cleans up resources
+1. **`on_load`** — logs "validating configuration" (a future phase will validate exchange-rate configuration)
+2. **`on_start`** — logs "ready for currency operations" (a future phase will initialize the exchange-rate cache)
+3. **`on_stop`** — logs "cleaning up" (a future phase will flush the exchange-rate cache)
 
 ## Registration
 
@@ -98,4 +99,4 @@ The original 15 delegating Store methods in `kasirmu-core` are marked `#[depreca
 }
 ```
 
-> last audited 31-08-26 by docs-auditor
+> last audited 08-10-26 by docs-auditor
