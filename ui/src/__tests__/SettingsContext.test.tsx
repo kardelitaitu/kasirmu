@@ -11,6 +11,7 @@ import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { type ReactNode } from 'react';
 import {
+  INITIAL_LOAD_DEBOUNCE_MS,
   SettingsProvider,
   useSettings,
   useOptionalSettings,
@@ -274,6 +275,15 @@ describe('SettingsContext', () => {
 
     const { result, rerender } = renderHook(() => useSettings(), { wrapper });
 
+    // Load A's fan-out is DEBOUNCED (SettingsContext.INITIAL_LOAD_DEBOUNCE_MS,
+    // d8d6a6aa2), so it does not touch the gated store read until the quiet window
+    // passes. Waiting for that first is what makes "store A is still loading"
+    // true: without it the gate is never consumed, the swap's own store read gets
+    // gated by the SAME deferred, and neither load can ever resolve.
+    await waitFor(() => {
+      expect(mocks.gate).toBeNull();
+    });
+
     // Store A is still loading, because its read has not resolved.
     await waitFor(() => {
       expect(mocks.failStore).toBe(false);
@@ -413,7 +423,7 @@ describe('SettingsContext', () => {
     const { result } = renderHook(() => useSettings(), { wrapper });
 
     // Flush initial loadAll (all API calls are instant with fake timers)
-    await act(async () => { vi.advanceTimersByTime(0); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(INITIAL_LOAD_DEBOUNCE_MS + 500); });
     expect(result.current.loading).toBe(false);
 
     Object.assign(mocks.receiptSettings, { footer: 'Updated Footer' });
@@ -432,7 +442,7 @@ describe('SettingsContext', () => {
   it('refetches only store scope when store.* key changes', async () => {
     vi.useFakeTimers();
     const { result } = renderHook(() => useSettings(), { wrapper });
-    await act(async () => { vi.advanceTimersByTime(0); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(INITIAL_LOAD_DEBOUNCE_MS + 500); });
     expect(result.current.loading).toBe(false);
 
     Object.assign(mocks.storeSettings, { name: 'Updated Store' });
@@ -446,7 +456,7 @@ describe('SettingsContext', () => {
   it('does a full refetch for unknown keys', async () => {
     vi.useFakeTimers();
     const { result } = renderHook(() => useSettings(), { wrapper });
-    await act(async () => { vi.advanceTimersByTime(0); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(INITIAL_LOAD_DEBOUNCE_MS + 500); });
     expect(result.current.loading).toBe(false);
 
     Object.assign(mocks.storeSettings, { name: 'Full Refresh Store' });
@@ -462,7 +472,7 @@ describe('SettingsContext', () => {
   it('coalesces multiple markSettingsUpdated calls within 300ms into one refetch', async () => {
     vi.useFakeTimers();
     const { result } = renderHook(() => useSettings(), { wrapper });
-    await act(async () => { vi.advanceTimersByTime(0); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(INITIAL_LOAD_DEBOUNCE_MS + 500); });
     expect(result.current.loading).toBe(false);
 
     Object.assign(mocks.receiptSettings, { footer: 'Coalesced', showTax: false });
@@ -548,6 +558,12 @@ describe('SettingsContext', () => {
     // Unmount while all 7 promises are still pending — loadAll is suspended.
     // Because hangPromise never settles, no stale setState can fire.
     expect(() => unmount()).not.toThrow();
+
+    // The debounce can cancel this render's loadAll before it runs, which leaves
+    // every `mockReturnValueOnce` above UNCONSUMED in the mock's queue -- and the
+    // next test's load then hangs on a promise that never settles. Drain them so
+    // the one-shots stay scoped to the case that queued them.
+    for (const m of mocksToHang) m.mockReset();
   });
 
   // ── useOptionalSettings ─────────────────────────────────────
@@ -573,7 +589,7 @@ describe('SettingsContext', () => {
   it('maps receipt.* keys to receipt scope', async () => {
     vi.useFakeTimers();
     const { result } = renderHook(() => useSettings(), { wrapper });
-    await act(async () => { vi.advanceTimersByTime(0); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(INITIAL_LOAD_DEBOUNCE_MS + 500); });
     expect(result.current.loading).toBe(false);
 
     Object.assign(mocks.receiptSettings, { showCurrency: true });
@@ -587,7 +603,7 @@ describe('SettingsContext', () => {
   it('maps store.* keys to store scope', async () => {
     vi.useFakeTimers();
     const { result } = renderHook(() => useSettings(), { wrapper });
-    await act(async () => { vi.advanceTimersByTime(0); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(INITIAL_LOAD_DEBOUNCE_MS + 500); });
     expect(result.current.loading).toBe(false);
 
     Object.assign(mocks.storeSettings, { address: '456 Oak' });
@@ -601,7 +617,7 @@ describe('SettingsContext', () => {
   it('maps sync.* keys to sync scope', async () => {
     vi.useFakeTimers();
     const { result } = renderHook(() => useSettings(), { wrapper });
-    await act(async () => { vi.advanceTimersByTime(0); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(INITIAL_LOAD_DEBOUNCE_MS + 500); });
     expect(result.current.loading).toBe(false);
 
     Object.assign(mocks.syncSettings, { serverUrl: 'https://sync.test', hasApiKey: true, enabled: true });
@@ -615,7 +631,7 @@ describe('SettingsContext', () => {
   it('maps user.* keys to preferences scope', async () => {
     vi.useFakeTimers();
     const { result } = renderHook(() => useSettings(), { wrapper });
-    await act(async () => { vi.advanceTimersByTime(0); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(INITIAL_LOAD_DEBOUNCE_MS + 500); });
     expect(result.current.loading).toBe(false);
 
     Object.assign(mocks.userPreferences, { cardsize: '4' });
@@ -629,7 +645,7 @@ describe('SettingsContext', () => {
   it('maps brand.* keys to brand scope', async () => {
     vi.useFakeTimers();
     const { result } = renderHook(() => useSettings(), { wrapper });
-    await act(async () => { vi.advanceTimersByTime(0); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(INITIAL_LOAD_DEBOUNCE_MS + 500); });
     expect(result.current.loading).toBe(false);
 
     Object.assign(mocks.brandSettings, { primary_colour: '#ff0000', store_name: 'Brand Refreshed' });
@@ -659,7 +675,7 @@ describe('SettingsContext', () => {
   it('settings_updated event triggers scoped refetch', async () => {
     vi.useFakeTimers();
     const { result } = renderHook(() => useSettings(), { wrapper });
-    await act(async () => { vi.advanceTimersByTime(0); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(INITIAL_LOAD_DEBOUNCE_MS + 500); });
 
     // Wait for the dynamic import + listen promise to resolve
     // (the useEffect sets up the listener via import().then())
@@ -686,8 +702,8 @@ describe('SettingsContext', () => {
   it('settings_updated event with empty keys list does not crash', async () => {
     vi.useFakeTimers();
     const { result } = renderHook(() => useSettings(), { wrapper });
-    await act(async () => { vi.advanceTimersByTime(0); });
-    await act(async () => { await Promise.resolve(); vi.advanceTimersByTime(0); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(INITIAL_LOAD_DEBOUNCE_MS + 500); });
+    await act(async () => { await Promise.resolve(); vi.advanceTimersByTime(INITIAL_LOAD_DEBOUNCE_MS + 50); });
     expect(result.current.loading).toBe(false);
 
     // Event with empty changed_keys — should be a no-op
@@ -731,9 +747,9 @@ describe('SettingsContext', () => {
     const { result } = renderHook(() => useSettings(), { wrapper });
 
     // Flush initial loadAll + listener registration + identity resolution
-    await act(async () => { await Promise.resolve(); vi.advanceTimersByTime(0); });
-    await act(async () => { await Promise.resolve(); vi.advanceTimersByTime(0); });
-    await act(async () => { await Promise.resolve(); vi.advanceTimersByTime(0); });
+    await act(async () => { await Promise.resolve(); vi.advanceTimersByTime(INITIAL_LOAD_DEBOUNCE_MS + 50); });
+    await act(async () => { await Promise.resolve(); vi.advanceTimersByTime(INITIAL_LOAD_DEBOUNCE_MS + 50); });
+    await act(async () => { await Promise.resolve(); vi.advanceTimersByTime(INITIAL_LOAD_DEBOUNCE_MS + 50); });
     expect(result.current.loading).toBe(false);
     expect(tauriListenHandler.fn).not.toBeNull();
 
@@ -753,9 +769,9 @@ describe('SettingsContext', () => {
     identityMocks.terminals = []; // no registered terminal matches
     const { result } = renderHook(() => useSettings(), { wrapper });
 
-    await act(async () => { await Promise.resolve(); vi.advanceTimersByTime(0); });
-    await act(async () => { await Promise.resolve(); vi.advanceTimersByTime(0); });
-    await act(async () => { await Promise.resolve(); vi.advanceTimersByTime(0); });
+    await act(async () => { await Promise.resolve(); vi.advanceTimersByTime(INITIAL_LOAD_DEBOUNCE_MS + 50); });
+    await act(async () => { await Promise.resolve(); vi.advanceTimersByTime(INITIAL_LOAD_DEBOUNCE_MS + 50); });
+    await act(async () => { await Promise.resolve(); vi.advanceTimersByTime(INITIAL_LOAD_DEBOUNCE_MS + 50); });
     expect(result.current.loading).toBe(false);
 
     Object.assign(mocks.storeSettings, { name: 'Should Not Apply 2' });
@@ -771,9 +787,9 @@ describe('SettingsContext', () => {
     identityMocks.terminals = []; // unregistered single-terminal deployment
     const { result } = renderHook(() => useSettings(), { wrapper });
 
-    await act(async () => { await Promise.resolve(); vi.advanceTimersByTime(0); });
-    await act(async () => { await Promise.resolve(); vi.advanceTimersByTime(0); });
-    await act(async () => { await Promise.resolve(); vi.advanceTimersByTime(0); });
+    await act(async () => { await Promise.resolve(); vi.advanceTimersByTime(INITIAL_LOAD_DEBOUNCE_MS + 50); });
+    await act(async () => { await Promise.resolve(); vi.advanceTimersByTime(INITIAL_LOAD_DEBOUNCE_MS + 50); });
+    await act(async () => { await Promise.resolve(); vi.advanceTimersByTime(INITIAL_LOAD_DEBOUNCE_MS + 50); });
     expect(result.current.loading).toBe(false);
 
     Object.assign(mocks.storeSettings, { name: 'Should Not Apply 3' });
@@ -790,9 +806,9 @@ describe('SettingsContext', () => {
     identityMocks.terminals = [{ id: 'term-row-1', deviceId: 'dev-registered', isActive: true }];
     const { result } = renderHook(() => useSettings(), { wrapper });
 
-    await act(async () => { await Promise.resolve(); vi.advanceTimersByTime(0); });
-    await act(async () => { await Promise.resolve(); vi.advanceTimersByTime(0); });
-    await act(async () => { await Promise.resolve(); vi.advanceTimersByTime(0); });
+    await act(async () => { await Promise.resolve(); vi.advanceTimersByTime(INITIAL_LOAD_DEBOUNCE_MS + 50); });
+    await act(async () => { await Promise.resolve(); vi.advanceTimersByTime(INITIAL_LOAD_DEBOUNCE_MS + 50); });
+    await act(async () => { await Promise.resolve(); vi.advanceTimersByTime(INITIAL_LOAD_DEBOUNCE_MS + 50); });
     expect(result.current.loading).toBe(false);
 
     // We ARE registered — "unknown" can only be an unregistered peer's
@@ -810,7 +826,7 @@ describe('SettingsContext', () => {
   it('maps currencies.* keys to currencies scope', async () => {
     vi.useFakeTimers();
     const { result } = renderHook(() => useSettings(), { wrapper });
-    await act(async () => { vi.advanceTimersByTime(0); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(INITIAL_LOAD_DEBOUNCE_MS + 500); });
     expect(result.current.loading).toBe(false);
 
     // Mutate currencies list
@@ -827,7 +843,7 @@ describe('SettingsContext', () => {
   it('mixed known and unknown keys triggers full refetch', async () => {
     vi.useFakeTimers();
     const { result } = renderHook(() => useSettings(), { wrapper });
-    await act(async () => { vi.advanceTimersByTime(0); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(INITIAL_LOAD_DEBOUNCE_MS + 500); });
     expect(result.current.loading).toBe(false);
 
     Object.assign(mocks.storeSettings, { name: 'Mixed Key Store' });
@@ -842,7 +858,7 @@ describe('SettingsContext', () => {
   it('re-hydrates settings when app reconnects', async () => {
     vi.useFakeTimers();
     const { result } = renderHook(() => useSettings(), { wrapper });
-    await act(async () => { vi.advanceTimersByTime(0); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(INITIAL_LOAD_DEBOUNCE_MS + 500); });
     expect(result.current.loading).toBe(false);
 
     Object.assign(mocks.storeSettings, { name: 'Reconnected Store' });
