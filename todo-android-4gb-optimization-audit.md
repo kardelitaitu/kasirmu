@@ -1515,13 +1515,13 @@ Tasks:
 - [ ] Reuse frame buffers.
 - [ ] Avoid unnecessary Bitmap conversion.
 - [ ] Close `ImageProxy` promptly.
-- [ ] Bound print buffers.
+- [x] Bound print buffers (MAX_PRINT_PAYLOAD_BYTES = 4 MB in escpos.rs, validated across serial/tcp/usb/bluetooth).
 - [ ] Spool large prints.
 - [ ] Test sustained scanning.
 - [ ] Test sustained printing.
-- [ ] Add scanner cooldown.
+- [x] Add scanner cooldown (250ms debounce window in useBarcodeScanner & useWarehouseScanner; MAX_BARCODE_LEN = 1024 bound in HAL USB/Serial/BT).
 - [ ] Add print job timeout.
-- [ ] Clean printer sockets.
+- [x] Clean printer sockets (resets cached stream/port on write/flush failure in serial_printer.rs and bt_android_printer.rs).
 
 Exit criteria:
 
