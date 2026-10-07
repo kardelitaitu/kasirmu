@@ -5,6 +5,7 @@ category: reference
 order: 1
 updated: "2026-10-01"
 ---
+<!-- Audit stamp: 2026-10-08 · docs-auditor · status: ACCURATE AFTER REPAIR (1 major finding) · Baris QRIS di matriks paket menyatakan "✓ (statis + dinamis)" pada kolom Gratis. Terverifikasi salah untuk bagian DINAMIS: SubscriptionTier::supports_qris() mengembalikan false pada Free/OneTime (crates/kasirmu-core/src/subscription/tier.rs:217-222) dan kasir membatasi rail ini di balik prompt upgrade (ui/src/features/sales/PaymentModal.tsx:1909, QrisTenderPanel.tsx). QR STATIS tidak memerlukan entitlement dan tersedia di semua paket. Baris kini berbunyi "Statis saja" pada Gratis dengan catatan kaki pemisah, dan subscription-tiers.md §3 dikoreksi untuk mencatat keputusan pemilik 2026-09-29 bahwa QRIS dinamis SEHARUSNYA ada di Gratis — keputusan yang belum ditegakkan aplikasi. Penunjuk navigasi juga diperbarui: "Pengaturan → Lisensi" menjadi "Lisensi & Langganan" (label terverifikasi di shared-ui/locales/settings.id.ftl:56). · Repaired against branch 0.0.41. -->
 
 ## Paket
 
@@ -20,8 +21,14 @@ pembayaran QRIS, sinkron cloud, dan skrip — ditampilkan di
 | Gudang              | Tidak  | Tidak | Tidak | Tanpa batas | Tanpa batas |
 | Staf pengguna       | 1      | 5    | 20  | 50      | Tanpa batas |
 | Riwayat penjualan   | 3 bulan | 1 tahun | 5 tahun | Tanpa batas | Tanpa batas |
-| Pembayaran QRIS     | ✓ (statis + dinamis) | ✓ (statis + dinamis) | ✓ | ✓ | ✓ |
+| Pembayaran QRIS     | Statis saja ¹ | ✓ (statis + dinamis) | ✓ | ✓ | ✓ |
 | Sinkron cloud       | Tidak  | ✓    | ✓   | ✓       | ✓         |
+
+¹ **QR statis** (stiker QR toko Anda sendiri, direkonsiliasi pada struk) tidak
+memerlukan entitlement dan tersedia di semua paket. **QR dinamis** (kasir
+membuat QR per transaksi melalui Midtrans) dibatasi pada paket Plus ke atas,
+sesuai `SubscriptionTier::supports_qris()` — pada paket Gratis kasir
+menampilkan prompt upgrade, bukan kode QR.
 | Skrip (Lua)         | Tidak  | Tidak | Tidak | ✓     | ✓         |
 
 Paket tahunan = 2 bulan gratis (bayar 10 bulan, dapat 12).
@@ -41,7 +48,7 @@ Paket berbayar dibeli di checkout situs web. Pembayaran bersifat
 register-first: checkout meminta Anda masuk dengan email (kode sekali pakai
 atau kata sandi) sehingga langganan terhubung ke akun Anda. Kunci lisensi dan
 tanda terima tiba melalui email, lalu Anda tempel kunci ke
-**Pengaturan → Lisensi** untuk mengaktifkan. Lihat
+**Pengaturan → Lisensi & Langganan** untuk mengaktifkan. Lihat
 [Aktivasi Lisensi](../activation/) untuk perjalanan lengkap, dan
 [halaman harga](../../pricing/) untuk harga terkini.
 
@@ -69,7 +76,7 @@ dari jarak jauh, yang membebaskan slot dan menandatangani keluar perangkat.
 
 ## Melihat lisensi Anda
 
-**Pengaturan → Lisensi** menampilkan paket Anda, status, tanggal kedaluwarsa,
+**Pengaturan → Lisensi & Langganan** menampilkan paket Anda, status, tanggal kedaluwarsa,
 masa tenggang, maksimal lokasi dan instance POS, ID tenant, dan tipe ruang
 kerja yang diizinkan. Halaman akun di situs web menampilkan hal yang sama
 dari browser Anda, lengkap dengan manajemen perangkat. Lihat

@@ -39,12 +39,12 @@ the Start menu.
 
 The setup wizard asks for an account (or offline-only setup), the shop type,
 and an owner login — see [Setup Wizard](../setup-wizard/). The free plan
-starts on first launch; you can upgrade any time from Settings → License.
+starts on first launch; you can upgrade any time from Settings → License & Subscription.
 
 ## Updates
 
 kasir.mu checks for updates on startup, and you can check any time from
-Settings → About → Check for Updates. Updates are signature-verified and
+Settings → System Diagnostics → Check for Updates. Updates are signature-verified and
 installed through the platform installer, so nothing is applied without your
 confirmation. There is no rollback button — a previous version can be
 reinstalled manually from the releases page.

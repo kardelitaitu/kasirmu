@@ -40,12 +40,12 @@ menu Mulai.
 Wizard pengaturan menanyakan akun (atau pengaturan tanpa akun), jenis toko,
 dan login owner — lihat [Wizard Pengaturan](../setup-wizard/). Paket gratis
 dimulai pada peluncuran pertama; Anda dapat naik paket kapan saja dari
-Pengaturan → Lisensi.
+Pengaturan → Lisensi & Langganan.
 
 ## Pembaruan
 
 kasir.mu memeriksa pembaruan saat dimulai, dan Anda dapat memeriksanya kapan
-saja dari Pengaturan → Tentang → Periksa Pembaruan. Pembaruan diverifikasi
+saja dari Pengaturan → Diagnostik Sistem → Periksa Pembaruan. Pembaruan diverifikasi
 tanda tangannya dan dipasang lewat penginstal platform, jadi tidak ada yang
 diterapkan tanpa konfirmasi Anda. Tidak ada tombol rollback — versi
 sebelumnya dapat dipasang ulang secara manual dari halaman rilis.

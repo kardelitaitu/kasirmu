@@ -20,7 +20,7 @@ moving to a paid plan.
 
 ## Enter the key in the app
 
-Open Settings → License, paste your license key (for example
+Open Settings → License & Subscription, paste your license key (for example
 `OZ-PRO-ABCD-EFGH`), and activate. The key is verified against the license
 server and a signed subscription is stored on the device.
 

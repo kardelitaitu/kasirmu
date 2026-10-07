@@ -3,6 +3,7 @@ title: Kebijakan Privasi
 version: "1.0"
 effective: "17 Agustus 2026"
 ---
+<!-- Audit stamp: 2026-10-08 · docs-auditor · status: ACCURATE AFTER REPAIR (1 finding) · §8 Keamanan menyatakan kata sandi disimpan sebagai hash bcrypt. Terverifikasi salah: API cloud menyimpan Argon2id ($argon2id$v=19$…, crates/kasirmu-api/src/routes/users.rs:34) dan CLI mensyaratkan string PHC argon2 (crates/kasirmu-cli/src/commands/user.rs:91-96). bcrypt hanya dipakai untuk API key license server (apps/license-server/api_key.go), bukan kata sandi akun. Dikoreksi menjadi Argon2id. Klaim penyimpanan lokal (sesi masuk + tema) terverifikasi benar. · Repaired against branch 0.0.41. -->
 
 Kebijakan Privasi ini menjelaskan data apa saja yang dikumpulkan oleh kasir.mu ("Perusahaan", "kami", atau "kita") melalui situs web, aplikasi desktop, layanan cloud, dan layanan terkait kasir.mu (secara bersama-sama, "Layanan"), alasan pengumpulannya, cara kami menggunakan dan melindunginya, serta hak-hak Anda atas data tersebut.
 
@@ -88,7 +89,7 @@ Ketika Anda meminta penghapusan data, kami menghapus atau menganonimkannya dalam
 Kami menerapkan langkah keamanan teknis dan organisasi yang wajar untuk melindungi data Anda, antara lain:
 
 - Enkripsi selama transmisi (TLS) untuk seluruh komunikasi dengan server kami;
-- Kata sandi hanya disimpan sebagai hash satu arah yang kuat (bcrypt);
+- Kata sandi hanya disimpan sebagai hash satu arah yang kuat (Argon2id);
 - Kunci lisensi yang ditandatangani secara kriptografis untuk mencegah pemalsuan;
 - Kontrol akses dan pencatatan pada sistem produksi;
 - Pembatasan akses ke data produksi bagi tim dan penyedia kami.

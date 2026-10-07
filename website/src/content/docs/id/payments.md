@@ -5,6 +5,7 @@ category: guides
 order: 1
 updated: "2026-10-01"
 ---
+<!-- Audit stamp: 2026-10-08 · docs-auditor · status: ACCURATE AFTER REPAIR (1 major finding) · Butir QRIS menyatakan "tersedia di semua paket, termasuk Gratis" dan menempatkan QR dinamis lebih dulu. Terverifikasi: hanya QR STATIS yang ada di semua paket; QR DINAMIS memerlukan entitlement Plus (SubscriptionTier::supports_qris(), crates/kasirmu-core/src/subscription/tier.rs:217-222; gate checkout di ui/src/features/sales/PaymentModal.tsx:1909). Butir kini memisahkan keduanya dan menyatakan pembagiannya. · Repaired against branch 0.0.41. -->
 
 ## Metode pembayaran
 
@@ -16,13 +17,14 @@ updated: "2026-10-01"
   menempel atau memasukkan kartu di sana. Tombol terminal hanya muncul bila
   daftar rail situs menawarkannya; tanpanya, input kartu manual tetap
   berfungsi.
-- **QRIS** — tersedia di semua paket, termasuk Gratis. Dua cara pakai:
-  - **QR dinamis** — kasir menampilkan kode QR dengan nominal transaksi
-    (via Midtrans), pelanggan pindai, status settlement dipolling otomatis
-    dan dicocokkan kembali ke transaksi.
-  - **QR statis (manual)** — tampilkan stiker QR toko Anda sendiri
-    (payload NMID tersimpan); kasir mencatat referensi yang ditegaskan
-    kasir dan merekonsiliasi dari server untuk struk.
+- **QRIS** — dua cara pakai, dan keduanya tidak ada di paket yang sama:
+  - **QR statis (manual)** — tersedia di **semua paket, termasuk Gratis**. Tampilkan
+    stiker QR toko Anda sendiri (payload NMID tersimpan); kasir mencatat referensi
+    yang ditegaskan kasir dan merekonsiliasi dari server untuk struk.
+  - **QR dinamis** — **Plus ke atas**. Kasir menampilkan kode QR dengan nominal
+    transaksi (via Midtrans), pelanggan pindai, status settlement dipolling otomatis
+    dan dicocokkan kembali ke transaksi. Pada paket Gratis kasir menampilkan prompt
+    upgrade, bukan kode QR, karena entitlement membatasi rail ini.
 - **Kredit** — tersedia hari ini. **Penjualan Kredit** tidak mengambil
   pembayaran di konter: transaksi dicatat atas nama pelanggan (wajib) dan
   muncul di daftar kredit dengan pengingat serta saldo yang masih

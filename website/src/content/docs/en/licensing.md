@@ -5,6 +5,7 @@ category: reference
 order: 1
 updated: "2026-10-01"
 ---
+<!-- Audit stamp: 2026-10-08 · docs-auditor · status: ACCURATE AFTER REPAIR (1 major finding) · The plan matrix's QRIS row claimed "✓ (static + dynamic)" on the Free column. Verified false for the DYNAMIC half: SubscriptionTier::supports_qris() returns false on Free/OneTime (crates/kasirmu-core/src/subscription/tier.rs:217-222) and the POS gates the rail behind the upgrade prompt (ui/src/features/sales/PaymentModal.tsx:1909, QrisTenderPanel.tsx). STATIC QR needs no entitlement and does ride every plan. The row now reads "Static only" on Free with a footnote splitting the two, and subscription-tiers.md §3 (the declared single source of truth) was corrected to record the owner's 2026-09-29 ruling that dynamic QRIS SHOULD be on Free — a decision the app does not yet enforce, pinned by website/src/components/__tests__/pricing-content-invariants.test.ts. The nav pointers on this page were also updated: "Settings → License" is now "License & Subscription" (SettingsNavTree.tsx:54). · Repaired against branch 0.0.41. -->
 
 ## Plans
 
@@ -19,8 +20,14 @@ sync, and scripting — is shown on the [pricing page](../../pricing/).
 | Warehouses      | No   | No   | No  | Unlimited | Unlimited |
 | Staff users     | 1    | 5    | 20  | 50      | Unlimited |
 | Sales history   | 3 months | 1 year | 5 years | Unlimited | Unlimited |
-| QRIS payments   | ✓ (static + dynamic) | ✓ (static + dynamic) | ✓ | ✓ | ✓ |
+| QRIS payments   | Static only ¹ | ✓ (static + dynamic) | ✓ | ✓ | ✓ |
 | Cloud sync      | No   | ✓    | ✓   | ✓       | ✓         |
+
+¹ **Static QR** (your own store QR sticker, reconciled on the receipt) needs no
+entitlement and rides every plan. **Dynamic QR** (the checkout generates a
+per-transaction QR through Midtrans) is gated behind the Plus plan, matching
+`SubscriptionTier::supports_qris()` — on Free the checkout shows the upgrade
+prompt instead of the QR.
 | Scripting (Lua) | No   | No   | No  | ✓       | ✓         |
 
 Yearly plans = 2 months free (pay 10 months, get 12).
@@ -38,7 +45,7 @@ an upgrade prompt — nothing is deleted.
 Paid plans are bought on the website checkout. Payment is register-first:
 the checkout asks you to sign in with your email (a one-time code or your
 password) so the subscription attaches to your account. The license key and
-receipt arrive by email, and you paste the key into **Settings → License** to
+receipt arrive by email, and you paste the key into **Settings → License & Subscription** to
 activate. See [License Activation](../activation/) for the full journey, and
 the [pricing page](../../pricing/) for current prices.
 
@@ -65,7 +72,7 @@ and signs the device out.
 
 ## Where to see it
 
-**Settings → License** shows your tier, status, expiry date, grace period
+**Settings → License & Subscription** shows your tier, status, expiry date, grace period
 until, max locations and POS instances, tenant ID, and allowed workspace types.
 The website's account page shows the same from your browser, with machine
 management. See [License Activation](../activation/).

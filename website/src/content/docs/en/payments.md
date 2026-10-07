@@ -5,6 +5,7 @@ category: guides
 order: 1
 updated: "2026-10-01"
 ---
+<!-- Audit stamp: 2026-10-08 · docs-auditor · status: ACCURATE AFTER REPAIR (1 major finding) · The QRIS bullet said "available on every plan, including Free" and listed dynamic QR first. Verified: only STATIC QR is on every plan; DYNAMIC QR requires the Plus entitlement (SubscriptionTier::supports_qris(), crates/kasirmu-core/src/subscription/tier.rs:217-222; checkout gate at ui/src/features/sales/PaymentModal.tsx:1909). The bullet now separates the two and states the split. · Repaired against branch 0.0.41. -->
 
 ## Payment methods
 
@@ -15,13 +16,14 @@ updated: "2026-10-01"
   total to the connected terminal and let the customer tap or insert on it.
   The terminal button appears only when the site's rail list offers one;
   without it, the manual card entry still works.
-- **QRIS** — available on every plan, including Free. Two ways to use it:
-  - **Dynamic QR** — the checkout shows a QR code with the transaction amount
-    (via Midtrans); the customer scans it, settlement status is polled
-    automatically and matched back to the sale.
-  - **Static QR (manual)** — show your own store QR sticker (stored NMID
-    payload); the cashier records a cashier-asserted reference and the
-    server read-back reconciles it for the receipt.
+- **QRIS** — two ways to use it, and they are not on the same plans:
+  - **Static QR (manual)** — available on **every plan, including Free**. Show your
+    own store QR sticker (stored NMID payload); the cashier records a
+    cashier-asserted reference and the server read-back reconciles it for the receipt.
+  - **Dynamic QR** — **Plus and above**. The checkout shows a QR code with the
+    transaction amount (via Midtrans); the customer scans it, settlement status is
+    polled automatically and matched back to the sale. On Free the checkout shows the
+    upgrade prompt instead of the QR, because the entitlement gates this rail.
 - **Credit** — available today. A **Credit Sale** takes no payment at the
   counter: the sale is recorded against a named customer (required) and
   shows up in the credit list with reminders and an outstanding balance.
