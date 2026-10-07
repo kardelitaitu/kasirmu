@@ -240,10 +240,14 @@ cleaner change than fixing them; do not conflate the two.
 
 Ordered so each step is independently verifiable:
 
-1. **Write rationales into the allowlist.** Every `tablet` entry is a bare name;
-   `dev_mock` and `shell_blind` entries carry `reason` strings. Convert the ones
-   you touch to `{"name": …, "reason": …}`. The gate prints how many entries lack
-   a reason — make that number move in the right direction.
+1. **Write rationales down — but NOT into the `tablet` allowlist array.**
+   ~~Convert the ones you touch to `{"name": …, "reason": …}`.~~ **Corrected
+   2026-10-07 by running the gate.** `verify-ipc-parity.py` rejects the object
+   form in the `tablet` section outright: `scripts/verify-scoped-reads.py`
+   grades that section as bare names, so an object there fails a gate its owner
+   may not be working in. The gate's own message names the two places a reason
+   may live: the `_tablet_comment` prose **or a tracking doc**. This file is
+   that tracking doc — see §5.
 2. **`pg_sync_status_scoped`** — smallest fix with the widest blast radius
    (fires on every hub mount). Either register it in `apps/mobile-tauri/src/lib.rs`
    (it is a scoped read; check the permission it asserts) or drop the call behind
@@ -313,17 +317,95 @@ Ordered so each step is independently verifiable:
 4. H2, H3 — cosmetic, independent.
 5. Retirements + the repeatable CDP walk (§2.4 step 1).
 
-## 5. Open decisions for the owner
+## 5. Decisions
 
-1. **Does the tablet get a topology editor?** Register (port `topology.rs`) or
-   withdraw (hide card + repoint "Add Workspace"). Cost differs by ~an order of
-   magnitude.
-2. **Is the empty `.workspace-home-header` intentional?** `OrgSelector` is
-   mounted in the skeleton branch only.
-3. **`pg_sync_status_scoped` and `offline_queue_status_summary_scoped`:**
-   register on the tablet, or stop asking? Registering grows the tablet's IPC
-   surface; guarding removes features from a screen that advertises them.
-4. **Who re-runs the live walk?** The script in §2.4 needs a logged-in tablet.
-   Without a recorded credential the settings half of this audit cannot be
-   re-measured, and it will rot the way the 2026-10-07 walk already has — the
-   registry cites a commit, not a procedure.
+The owner delegated all four ("you decide; we want a good Android experience").
+Recorded here because §2.3 step 1 establishes this file as the tracking doc the
+parity gate points at.
+
+### 5.1 Does the tablet get a topology editor? — **Withdraw.**
+
+Not a cost call alone. A port is ten registrations **plus** the lifecycle the
+desktop owns: pending-Apply recovery and topology revision retention. No Android
+build has ever exercised an interrupted cross-DB Apply, and a node-graph editor
+is the wrong surface for a 10-inch touch screen regardless. So:
+
+- `WorkspaceHome.tsx` — `runsOnThisShell()` filters `topology` out of the tool
+  grid on the tablet.
+- The empty-state "Add Workspace" card is hidden on the tablet too (H5). It
+  called `handleShortcutNav('topology')`, and its quick-start presets set a type
+  key with **no registered instance**, so they cannot mint a session either. The
+  honest Android empty state is the contact-admin guidance.
+- **Read-only Locations stays available** — this withdraws authoring, not
+  viewing.
+- The ten command names stay in the `tablet` allowlist, because the shared UI
+  still names them. Delete them when a real port ships.
+
+### 5.2 Is the empty `.workspace-home-header` intentional? — **Yes; H2 is closed
+as not-a-defect.**
+
+`OrgSelector` is a **pre-login** control. Restoring it into the signed-in header
+would put an organization switcher where the session already fixes the
+organization. The empty element is left alone deliberately.
+
+### 5.3 `pg_sync_status_scoped` / `offline_queue_status_summary_scoped` —
+**Guard both; register neither.**
+
+The deciding fact is different for each, and neither is "it is expensive":
+
+- `pg_sync_status_scoped` has no counterpart on a tablet — there is no Postgres
+  sync daemon, and the command lives in the desktop's `sync.rs`. Registering a
+  read with nothing behind it would not make it work.
+- `offline_queue_status_summary_scoped` **could** be registered cheaply, and
+  that is exactly why it must not be: `crates/kasirmu-bridge/src/offline.rs`
+  carries the `ungated-ok` marker — the fn resolves a session and **enforces no
+  permission**. Delegating it under ADR #49 would be case-2 debt erasure, which
+  the mobile module header records as an owner ruling.
+
+Both reads are now skipped behind `isTabletShell()`. In both cases the UI's
+`null` state means "not answered", so the badge hides rather than rendering a
+fabricated zero.
+
+### 5.4 Who re-runs the live walk? — **Still open.**
+
+Neither §5.1-5.3 depends on it, but §2.4 step 1 does. The settings half of this
+audit is static-only until someone records how to reach a logged-in tablet
+without a human typing a PIN. Unchanged from the original audit.
+
+### 5.5 Extra: the settings hub needed a scoped token, not a guard
+
+Found while implementing, not in the original audit. `SettingsProvider` treats a
+missing scoped token as an *answered* load and publishes `DEFAULT_SETTINGS`, so
+on a tablet — where the settings route is fullscreen and no workspace is
+selected — every form rendered defaults and Save silently returned false.
+`WorkspaceContext` now falls back to a **real** instance returned by
+`list_workspaces` when the store has no `admin` instance (Android only; the list
+is picker-ticket verified and `create_session` rechecks the assignment), and
+`SettingsPage` keeps the provider **unmounted** until a real token exists. It
+never invents an instance and never mints a session from an empty list.
+
+---
+
+## 6. Status — implemented 2026-10-07
+
+| Item | State |
+|---|---|
+| H1 topology crash | Done — `useOptionalSettings()`, shared with the desktop route |
+| H2 empty header | Closed as not-a-defect (§5.2) |
+| H3 nested pin | Done — sibling `<button aria-pressed>`, 48px touch target under `(pointer: coarse)` |
+| H4 topology on tablet | Withdrawn (§5.1) |
+| H5 Add Workspace | Withdrawn with it (§5.1) |
+| §2.3 pg_sync / queue reads | Guarded (§5.3) |
+| §2.3 OverQuotaCard | **No change needed** — `actionsAvailable = !isTabletShell()` already gates it |
+| §2.3 retirements (`LocalApiSection`, `AboutSection`, `EmailReportSettings`) | **Not done** — deliberately separate; §2.2 note about `tablet-unrequested` applies |
+| §2.4 repeatable live walk | **Not done** — §5.4 |
+
+Measured after the change: 665 tests green across
+`NodeTopologyEditor`/`WorkspaceHome`/`WorkspaceContext`/`SettingsPage`;
+`npm run typecheck` exit 0; `npm run lint` exit 0 (61 pre-existing
+`react-refresh` warnings, none in touched files); `verify-ipc-parity.py`
+tablet leg **unchanged** (82 unregistered, 82 allowlisted) and still exit 1 from
+its **dev-mock** leg — the pre-existing red the plan already names.
+
+**Not re-measured on the device.** No live CDP walk was run after these edits
+(§5.4), so H1's acceptance criterion 3 is still outstanding.
