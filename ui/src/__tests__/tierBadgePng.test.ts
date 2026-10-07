@@ -30,12 +30,20 @@ import { describe, it, expect } from 'vitest';
  * repo root — `npx --prefix ui vitest run ui/src/__tests__/tierBadgePng.test.ts`,
  * an easy mistake that AGENTS.md §5.1 warns about without saying why — and it
  * resolves one level ABOVE the checkout:
- *     repo root -> C:\dev\assets\tier-badges\pngh      (does not exist)
+ *     repo root -> C:\dev\assets\tier-badges\png      (does not exist)
  *     ui/       -> C:\dev\kasirmu\assets\tier-badges\png  (correct)
  * Every existsSync then returns false, BOTH skipIf() guards fire, and the suite
  * reports "21 skipped | exit 0" — a PASSING RUN THAT GRADED NOTHING. That is the
  * one failure mode a skip-guard cannot see, because a legitimate skip and this one
  * are the same shape.
+ *
+ * WHAT THIS DID *NOT* AFFECT, checked rather than assumed: CI. dev-ci.yml:732 runs
+ * `cd ui && npm test`, so the automated suite always had the correct working
+ * directory and these 21 cases were graded there all along. The exposure was to
+ * anyone running vitest by hand from the repo root — which is exactly how it was
+ * found — not to the pipeline. Saying so matters: the fix is worth having because
+ * a manual run now means the same thing as a CI run, not because coverage was
+ * silently missing.
  *
  * Measured 2026-10-07 across all nineteen suites under this directory that touch
  * process.cwd(): this was the ONLY one where a wrong cwd was silently green. The
