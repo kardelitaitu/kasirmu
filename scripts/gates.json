@@ -186,7 +186,7 @@
           "clippy"
         ]
       },
-      "_note": "Runs locally only, and not everywhere locally: its two runners are scripts/check.sh (step \"clippy workspace\") and scripts/release.sh. No live workflow runs it -- clippy occurs 0 times in both dev-ci.yml and release.yml -- so a green CI says nothing about clippy. It is also NOT run before a push: .githooks/pre-push invokes scripts/run-pre-push.py, which carries no clippy task at any tier. status=\"required\" is the policy this project holds, not a claim that a gate enforces it."
+      "_note": "Runs locally AND in CI. Locally its runners are scripts/check.sh (step \"clippy workspace\") and scripts/release.sh. **Corrected 2026-10-07:** this note asserted \"No live workflow runs it -- clippy occurs 0 times in both dev-ci.yml and release.yml\". That was true when written and is now HALF wrong: release.yml still has 0 clippy references, but dev-ci.yml has 11 and defines a live `cargo-clippy` job (`:326`, ubuntu-latest, rust 1.98.1 + the clippy component, `cargo clippy --workspace --all-targets -- -D warnings` at `:353`), and the deploy job lists it in `needs:` (`:1585`). So a green CI DOES now say something about clippy. Still true: clippy is NOT run before a push -- .githooks/pre-push invokes scripts/run-pre-push.py, which carries no clippy task at any tier -- so the pre-push lane remains the one this gate cannot rely on. The job landed in b2bf2c69d. status=\"required\" is the policy this project holds."
     },
     {
       "id": "rust-tests",
