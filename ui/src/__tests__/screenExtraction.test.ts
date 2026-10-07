@@ -775,7 +775,23 @@ const SCREENS: ScreenEntry[] = [
   {
     name: 'SettingsPage',
     tsx: 'settings/SettingsPage.tsx',
+    // SettingsNavTree.css joined 2026-10-07 (BASELINE_UNCITED 14 -> 13). The owner
+    // is this entry rather than a new one, because the PAGE imports the sheet
+    // DIRECTLY — SettingsPage.tsx:38 `import './SettingsNavTree.css'`, and :28
+    // imports the component — so the sheet is part of this page's render, not a
+    // separate screen's. Same additionalTsx+css pair as the workspace cards below.
     css: ['settings/SettingsPage.css'],
+    // SettingsNavTree.css is a PARENT, not own css. It legitimately re-scopes
+    // .settings-body — "one band, on .settings-body, replaces the per-sidebar rule
+    // round 9 added here" at SettingsNavTree.css:326-333, where
+    // body:has(.memo-stack) .settings-body bands the flex ROW so the memo stack
+    // cannot cover the main content's cards. The duplicate-name check reads own css
+    // only (:2721), so a re-scoping parent belongs to the parent door and still
+    // resolves the component's class names (:2705). Same shape as
+    // NodeTopologyEditor.css under TopologyScreen and app/Tooltip.css under
+    // TooltipPreview's failed attempt — except this one does not escape
+    // src/features, so the ../theme/ rule at :3046 is satisfied.
+    parentCss: ['settings/SettingsNavTree.css'],
     additionalTsx: [
       // StoreInfoCard renders .settings-field-value, which this entry's sheet
       // defines and nothing else in the list uses. Same shape as the five
@@ -818,6 +834,12 @@ const SCREENS: ScreenEntry[] = [
       'settings/workspace-cards/WorkspaceInventorySettings.tsx',
       'settings/workspace-cards/WorkspaceStorePosSettings.tsx',
       'settings/workspace-cards/WorkspaceRestaurantPosSettings.tsx',
+      // The sidebar nav tree, imported at :28 and rendered in the page's own
+      // sidebar slot. Its sheet is cited in the css list above, not merely named
+      // here: additionalTsx feeds the USED-class walk and css feeds the
+      // DEFINED-rule walk, so naming the component alone would make all 36 of its
+      // classes read as used-but-undefined.
+      'settings/SettingsNavTree.tsx',
     ],
     knownDynamicFragments: [
       // Object-key strings inside template-literal interpolations that
@@ -3009,7 +3031,6 @@ const BASELINE_UNCITED: string[] = [
   'marketplace/AddonsMarketplace.css',
   'retail/RetailPosScreen.css',
   'sales/widgets/widgets.css',
-  'settings/SettingsNavTree.css',
   'settings/WorkspaceSettingsModal.module.css',
   'warehouse/WarehouseConsole.css',
 ];
