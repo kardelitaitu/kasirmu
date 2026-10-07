@@ -74,6 +74,20 @@ One gap remains un-actioned by design: dead-ref coverage excludes prose and fenc
 
 ---
 
+## 3b. Skill drift guard (separate tool, separate corpus)
+
+`.agents/skills/*/SKILL.md` is **skill-drift-guard's** scope, not docs-auditor's, so it was run as its own pass: `bash .agents/skills/skill-drift-guard/scripts/detect.sh`, all sixteen checks.
+
+**Result: 2 findings, both resolved.** Both were in `.agents/skills/codebase-memory/SKILL.md`, and both were the same defect: the journal index cited without its `journal/` directory segment (the real path is `docs/records/journal/JOURNAL.md`). One was a live teaching example in the "Noise you must filter" section; the other was a superseded stamp asserting the short form among "all nine paths the skill cites exist". The live example was repointed, and the stamp — normally kept verbatim — had that single token corrected in place with the change noted inline, because it carried a verifiably false path a reader would act on.
+
+Found and fixed while triaging, from a manual probe rather than the detector (its version check matches explicit lock assertions and did not see these): **three stale version references**. `pr-create-pull-request/SKILL.md` used the `0.0.40` branch prefix in four examples (lines 28, 101-103) while its own golden rule 6 warns that "a number written in this file silently goes stale at the next bump"; `project-scaffold/SKILL.md:190` used `0.0.40` as the current version branch. All corrected to `0.0.41`. The workspace is at `0.0.41` (`Cargo.toml`).
+
+**One deliberate non-change, recorded because it was nearly a fabrication:** triaging `codebase-memory`'s "Indexed branch `0.0.40`" table row, I first rewrote it to `0.0.41` — then reverted, because there is no evidence the graph was rebuilt at 0.0.41 (the last documented full rebuild was 2026-09-27). The row now says `0.0.40`, labelled "as of the last full rebuild", and tells the reader to re-read it from `list_projects` rather than quoting the cell. The skill's own rule 8 — "quote the index generation alongside any number you report" — is why the version in a stale cell must not be advanced by assumption.
+
+**Checker observation (not fixed):** `detect.sh` Check 1 extracts path tokens with an `awk` pass that has **no comment context**, so a stamp that documents a broken path is flagged as if it were a live reference — and a correction note that QUOTES the bad path re-flags itself. This is the same trap taxonomy #15 records ("do not reproduce the false phrasing ... quoting it made the guard report drift against its own skill"). The note written here therefore describes the defect without spelling the short form as a token. A comment-aware extractor would remove the class; that is a change to `detect.sh`, so it is reported rather than made.
+
+---
+
 ## 4. Outstanding
 
 - **`check-api-surface.py` reports 1 discrepancy: `print_edc_settlement_slip_scoped`.** The command is registered in a peer **uncommitted** working tree (`apps/*/src/lib.rs` modified, absent from HEAD), so no doc row was added - a row for in-flight work goes stale the moment its owner revises it. It needs a row in `docs/guides/developer/api-reference.md` when that change lands. This is the ONLY red detector.
