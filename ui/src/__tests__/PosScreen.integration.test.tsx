@@ -623,10 +623,10 @@ describe('PosScreen — Sub-screens navigation', () => {
   // Un-skipped. The comment here previously said the header "exposes no
   // control resolving to that name" and that this "needs a product decision"
   // — that was wrong, and the entry point has been in place the whole time:
-  // PosScreen.tsx:1442 `onClick={() => setShowSalesHistory(true)}` with
-  // aria-label from `retail-fn-history`, and :1255 renders
+  // PosScreen.tsx:1105 `onOpenHistory: () => setShowSalesHistory(true)` with
+  // aria-label from `retail-fn-history`, and :934 renders
   // <SalesHistoryScreen/> whose <h1 className="sales-history-title">
-  // Sales History</h1> is at :610. The bug was only that the button's
+  // Sales History</h1> is at SalesHistoryScreen.tsx:886. The bug was only that the button's
   // accessible name is "History" (sales.ftl:713; "Riwayat" in
   // sales.id.ftl:658), not "Sales History" — /sales history/i is too narrow,
   // the mirror image of the /charge/i query being too broad further down.
@@ -1803,7 +1803,7 @@ describe('PosScreen — Live tax preview (computeCartTax)', () => {
   //
   // The previous body only did getByText(/total/i), which would pass on the
   // cart panel's own subtotal row and proves nothing about tax, so it did not
-  // test what its name claims. The arithmetic under test is PosScreen.tsx:1974
+  // test what its name claims. The arithmetic under test is PosScreen.tsx:1190
   // — when `cartTaxExclusive && cartTax > 0` the modal is handed
   // `total.minor_units + cartTax`. With the file's tax mock returning
   // { taxMinor: 1000, hasExclusive: true } and one 400-minor line, the modal
