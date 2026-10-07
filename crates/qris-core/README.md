@@ -1,3 +1,5 @@
+<!-- Audit stamp: 2026-10-08 · docs-auditor · status: ACCURATE AFTER REPAIR (1 finding) · First audit stamp this file has carried — it was the only README of the 31 under modules/, crates/, platform/, ops/ and ui/ without one. Repaired: §MSRV said "Rust 1.88 or newer (matches the workspace MSRV of the oz-pos project)" — the project was renamed, and the MSRV now reads from the root Cargo.toml, so it cites that instead. Everything else was verified rather than assumed: the three feature flags (`decode`, `render`, `serde`) match crates/qris-core/Cargo.toml's [features] block exactly, MSRV 1.88 matches rust-version in the root manifest, and every public symbol the two code examples use exists in crates/qris-core/src (QrisPayload, QrisBuilder, from_image, from_bytes, to_qr_png/_svg/_with_logo, into_dynamic, and the merchant fields). The crate is deliberately NOT named kasirmu-* — it is a standalone QRIS codec, which is why the crate-name prefix checks allow it. · Repaired against branch 0.0.41. -->
+
 # qris-core
 
 [![License: Proprietary](https://img.shields.io/badge/license-Proprietary-red.svg)](../../LICENSE)
@@ -82,7 +84,7 @@ let dynamic_png = static_payload
 
 ## MSRV
 
-Rust **1.88** or newer (matches the workspace MSRV of the oz-pos project).
+Rust **1.88** or newer (matches the workspace MSRV — `rust-version = "1.88"` in the root `Cargo.toml`).
 
 ## License
 
@@ -90,3 +92,5 @@ Rust **1.88** or newer (matches the workspace MSRV of the oz-pos project).
 
 Part of the proprietary kasir.mu workspace: this crate is not published and is not open
 source. See the repository [LICENSE](../../LICENSE) for terms and restrictions.
+
+> last audited 08-10-26 by docs-auditor
