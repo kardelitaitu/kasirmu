@@ -2240,6 +2240,54 @@ const SCREENS: ScreenEntry[] = [
     css: ['locations/TopologyApplyConfirm.css'],
   },
   {
+    // The topology trio, landed 2026-10-07 (BASELINE_UNCITED 21 -> 18). All three
+    // sheets are cited by this ONE entry because the walk's contract (:6-8) is that
+    // additionalTsx feeds the USED-class walk and css feeds the DEFINED-rule walk —
+    // so naming a child in additionalTsx without also citing its sheet makes every
+    // class that child renders read as used-but-undefined (measured: 40+ on the
+    // first attempt, which is what forced this shape).
+    //
+    // Reached by HASH DEEP LINK, not a route: register.tsx:6 lazy-imports
+    // TopologyScreen but nothing binds the route from outside — MultiStoreDashboard
+    // Screen pushes #/settings/topology?… . Registered because the markup renders,
+    // not because a page is routed.
+    name: 'TopologyScreen',
+    tsx: 'locations/TopologyScreen.tsx',
+    css: [
+      'locations/TopologyScreen.css',
+      'locations/TopologyRevisionBrowser.css',
+    ],
+    // The two children TopologyScreen renders (imported :12-13, mounted in the body).
+    additionalTsx: [
+      'locations/TopologyRevisionBrowser.tsx',
+      'locations/NodeTopologyEditor.tsx',
+    ],
+    // TopologyRevisionBrowser is reached only through this one, so its composed
+    // tail is credited here: change-kind composed with c.kind at
+    // TopologyRevisionBrowser.tsx:413.
+    dynamicClassPrefixes: ['topology-rev-browser-change-kind--'],
+    // Three names in the children's markup are defined outside the three sheets
+    // above. The used-but-undefined case resolves against own css UNION parentCss
+    // (:2599), so they are cited as parents — externalClasses does NOT feed this
+    // case, it only widens the dead-class door:
+    //   ../theme/components.css     -> noise-dither (:346), sr-only (:1803)
+    //   settings/SettingsPage.css   -> settings-topology-container (:629), the
+    //     cross-consumer borrow the SettingsPage entry already ledgers at :2801
+    //     (it is SettingsPage's class that this screen reads, not the reverse).
+    // NodeTopologyEditor.css is a PARENT, not own css: the duplicate check reads own
+    // css only (:2615), and NodeTopologyEditor.css legitimately RE-SCOPES
+    // .topology-branch-toolbar under .node-topology-header (:29 — flex-shrink: 1,
+    // padding: 0, background: transparent, border-bottom: none) when the toolbar sits
+    // inside the editor header. That is a deliberate context override, not a second
+    // definition, so it belongs to the parent door. It still resolves the children's
+    // class names, because used-but-undefined reads own css UNION parentCss (:2599).
+    parentCss: [
+      'locations/NodeTopologyEditor.css',
+      '../theme/components.css',
+      'settings/SettingsPage.css',
+    ],
+  },
+  {
     // Gate screen, strong mount: AppShell.tsx:27 imports it and renders it BEFORE
     // routing (features/index.ts:43 names the class of thing — "gate screens
     // rendered before page routing"), opened by the user-count check at
@@ -2829,9 +2877,6 @@ const BASELINE_UNCITED: string[] = [
   'inventory/ThresholdConfigScreen.css',
   'inventory/TransactionLogScreen.css',
   'inventory/TransitAuditScreen.css',
-  'locations/NodeTopologyEditor.css',
-  'locations/TopologyRevisionBrowser.css',
-  'locations/TopologyScreen.css',
   'marketplace/AddonsMarketplace.css',
   'retail/RetailPosScreen.css',
   'sales/widgets/widgets.css',
