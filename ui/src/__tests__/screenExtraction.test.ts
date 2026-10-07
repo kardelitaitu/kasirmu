@@ -336,6 +336,27 @@ const SCREENS: ScreenEntry[] = [
     dynamicClassPrefixes: ['segmented-tab', 'memo-stack'],
   },
 
+  // ── Design ────────────────────────────────────────────
+  {
+    // DevToolbar.css joined 2026-10-07 (BASELINE_UNCITED 16 -> 15). Mounted at
+    // App.tsx:35, dev-mode gated: DEV_TOOLBAR_ENABLED && DevToolbar && <DevToolbar />.
+    // The gate is a build-time constant, not a route, so there is no registerPage
+    // and none is owed — the component renders in development, which is how every
+    // developer sees it.
+    name: 'DevToolbar',
+    tsx: 'design/DevToolbar.tsx',
+    css: ['design/DevToolbar.css'],
+    // Two shapes, one prefix each:
+    //   dev-toolbar-status-- (spawnStatus.tone) at :453, where tone is typed
+    //     'ok' | 'error' at :260 — exactly the two rules the sheet defines
+    //     (:209, :213);
+    //   dev-toolbar-theme-btn--active, a conditional ternary at :379 and :401,
+    //     whose rule is :98. The prefix form is used rather than the whole name
+    //     because the name is composed in a template, and a whole-name entry is
+    //     not a wildcard.
+    dynamicClassPrefixes: ['dev-toolbar-status--', 'dev-toolbar-theme-btn--'],
+  },
+
   // ── Setup ─────────────────────────────────────────────
   {
     // First-run provisioning (ADR #56 §2.3). Its own sheet rather than a reuse
@@ -352,6 +373,25 @@ const SCREENS: ScreenEntry[] = [
     // KdsScreen and SettingsSelect above — a real dependency on a global
     // utility sheet, not a class this feature's own sheet should have to own.
     parentCss: ['../theme/components.css'],
+  },
+  {
+    // LiveSetupPreview.css joined 2026-10-07 (BASELINE_UNCITED 17 -> 16). Mounted
+    // at FeatureToggleScreen.tsx:433, so it is reachable; a component rather than
+    // a page, hence an entry of its own rather than an additionalTsx line on the
+    // FeatureToggleScreen entry — the screen imports it and passes props, and its
+    // sheet is entirely its own.
+    name: 'LiveSetupPreview',
+    tsx: 'setup/components/LiveSetupPreview.tsx',
+    css: ['setup/components/LiveSetupPreview.css'],
+    // Seven modifiers never appear as literals at a className site:
+    //   lsp-ws--restaurant-pos / --store-pos / --kds / --warehouse / --admin
+    //     are string literals in the WORKSPACE_TYPES table (:41-65), assigned to
+    //     `colorClass` and applied as `lsp-ws-chip ${ws.colorClass}` at :200;
+    //   lsp-ws-chip--active (:200) and lsp-ws-dot--on (:215) are conditionals in
+    //     the same template.
+    // Three prefixes, not seven names: each covers exactly the rules its own group
+    // defines and nothing else.
+    dynamicClassPrefixes: ['lsp-ws--', 'lsp-ws-chip--', 'lsp-ws-dot--'],
   },
 
   // ── Customers ─────────────────────────────────────────
@@ -2921,7 +2961,6 @@ const BASELINE_UNCITED: string[] = [
   'analytics/AnalyticsScreen.css',
   'auth/SessionLockScreen.css',
   'design/DesignSystem.css',
-  'design/DevToolbar.css',
   'design/TooltipPreview.css',
   'design/brand-tokens.css',
   'inventory/ShiftBar.css',
@@ -2933,7 +2972,6 @@ const BASELINE_UNCITED: string[] = [
   'sales/widgets/widgets.css',
   'settings/SettingsNavTree.css',
   'settings/WorkspaceSettingsModal.module.css',
-  'setup/components/LiveSetupPreview.css',
   'warehouse/WarehouseConsole.css',
 ];
 
