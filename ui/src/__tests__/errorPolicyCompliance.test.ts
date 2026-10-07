@@ -22,6 +22,22 @@ import path from 'path';
 // NB: vitest's `__dirname` points at the compiled test output, not the
 // repo layout — follow the cartExtraction.test.ts convention and resolve
 // against the working directory (ui/ when vitest runs from ui/).
+//
+// ⚠️ WHAT RUNNING FROM THE WRONG DIRECTORY LOOKS LIKE, measured 2026-10-07:
+// `npx --prefix ui vitest run ui/src/__tests__/errorPolicyCompliance.test.ts`
+// from the repo root fails with
+//     AssertionError: expected 0 to be greater than 50
+// — that is the `scans a meaningful set of source files` floor below, firing
+// because cwd is the repo root and `src` does not exist there. So it reads as a
+// broken suite on a clean tree, when the suite is working perfectly and simply
+// scanned nothing. Nineteen suites under this directory share the dependency
+// (`git grep -l 'process.cwd()' -- ui/src/__tests__`), so the same misread is
+// available on any of them. Run vitest with ui/ as the working directory — the
+// rule AGENTS.md §5.1 already states, and this is the reason it exists.
+//
+// The floor is what makes this diagnosable rather than silent: a collector that
+// found nothing fails loudly instead of reporting zero violations, which is the
+// one way an empty file set could masquerade as compliance.
 const SRC = path.resolve(process.cwd(), 'src');
 const SCAN_DIRS = ['features', 'hooks', 'contexts', 'components', 'app', 'theme'];
 const ALLOWED_EXT = ['.ts', '.tsx'];
