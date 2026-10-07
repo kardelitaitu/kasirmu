@@ -129,7 +129,7 @@ verified to FAIL with the fix disabled and PASS with it restored.
 | PLG-C | — | Left as designed; the stamp already names `sqlite3_set_authorizer` as the durable fix, and PLG-A now covers the bypass class. |
 | CORE-A | `0ff1abe99` | Upsert is one `INSERT ... ON CONFLICT DO UPDATE`, matching `set_terminal_profile`. |
 | CORE-B | `3c141c75c` | Inline tests moved to `db/recovery_inline_tests.rs`; all 4 still run. |
-| CORE-C | `0ff1abe99` | `clippy -D warnings` now passes on `kasirmu-core`. |
+| CORE-C | `0ff1abe99` | `clippy -D warnings` passes on `kasirmu-core` **as of this repair pass**. ⚠️ **REGRESSED — re-measured 2026-10-07:** the crate now fails with **19** errors across at least three lints — `inconsistent_digit_grouping` (e.g. `crates/kasirmu-core/src/db/provisioning.rs:598` `25_000_00`, `:605` `28_000_00`, `:612` `8_000_00`, `:634` `5_000_00`), `collapsible_if` and `map_unwrap_or` — none in a file `0ff1abe99` touched, so this is new debt rather than an undone fix. The arrivals are `9b2c7380a` (tax presets + starter catalog seeding, 2026-10-07) and `508523c63`/`ec908a1ed` (audit-log shipping + EventSink routing, 2026-10-07). The Status table above still reads "1 warning (CORE-C)" and is left as the review snapshot it is; this row is the current state. |
 | QRIS-A/B/C | `1b27cad83` | Byte offsets throughout the TLV codec; `encode_field` returns `Result` (`FieldTooLong`); `crc::verify` uses `split_at_checked`. |
 | QRIS-D | `29ac4bd96` | Fee computed in exact `u128` integer arithmetic; float removed. |
 | MED-A | `8bc70a4dc` | `crop_target` threaded through `transform`/`process`; CenterCrop and Smart now work. |
