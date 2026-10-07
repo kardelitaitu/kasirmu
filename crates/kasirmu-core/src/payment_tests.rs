@@ -39,7 +39,7 @@ fn payment_serde_roundtrip_with_gateway() {
         },
         created_at: "2025-07-07T12:00:00.000Z".into(),
         gateway_reference: Some("txn_abc123".into()),
-        gateway_status: Some("approved".into()),
+        gateway_status: Some("settled".into()),
         gateway_response: Some(r#"{"id":"txn_abc123"}"#.into()),
         idempotency_key: Some("key_abc".into()),
     };
@@ -47,7 +47,7 @@ fn payment_serde_roundtrip_with_gateway() {
     let back: Payment = serde_json::from_str(&json).unwrap();
     assert_eq!(back.idempotency_key.as_deref(), Some("key_abc"));
     assert_eq!(back.gateway_reference.as_deref(), Some("txn_abc123"));
-    assert_eq!(back.gateway_status.as_deref(), Some("approved"));
+    assert_eq!(back.gateway_status.as_deref(), Some("settled"));
     assert!(back.gateway_response.is_some());
 }
 
@@ -57,7 +57,7 @@ fn payment_split_arg_serde_roundtrip() {
         method: "card".into(),
         amount_minor: 30000,
         gateway_reference: Some("txn_def456".into()),
-        gateway_status: Some("approved".into()),
+        gateway_status: Some("settled".into()),
         gateway_response: None,
         idempotency_key: Some("key_def".into()),
     };
@@ -66,7 +66,7 @@ fn payment_split_arg_serde_roundtrip() {
     assert_eq!(back.method, "card");
     assert_eq!(back.amount_minor, 30000);
     assert_eq!(back.gateway_reference.as_deref(), Some("txn_def456"));
-    assert_eq!(back.gateway_status.as_deref(), Some("approved"));
+    assert_eq!(back.gateway_status.as_deref(), Some("settled"));
     assert!(back.gateway_response.is_none());
 }
 
@@ -188,7 +188,7 @@ fn payment_split_arg_debug_output() {
         method: "card".into(),
         amount_minor: 30000,
         gateway_reference: Some("txn_123".into()),
-        gateway_status: Some("approved".into()),
+        gateway_status: Some("settled".into()),
         gateway_response: None,
         idempotency_key: None,
     };
@@ -249,11 +249,11 @@ fn payment_declined_gateway() {
         },
         created_at: String::new(),
         gateway_reference: Some("txn_fail".into()),
-        gateway_status: Some("declined".into()),
+        gateway_status: Some("failed".into()),
         gateway_response: Some(r#"{"error":"insufficient_funds"}"#.into()),
         idempotency_key: None,
     };
-    assert_eq!(payment.gateway_status.as_deref(), Some("declined"));
+    assert_eq!(payment.gateway_status.as_deref(), Some("failed"));
     assert!(payment.gateway_response.is_some());
 }
 
@@ -263,12 +263,12 @@ fn payment_split_arg_all_gateway_fields() {
         method: "card".into(),
         amount_minor: 75000,
         gateway_reference: Some("txn_full".into()),
-        gateway_status: Some("approved".into()),
+        gateway_status: Some("settled".into()),
         gateway_response: Some(r#"{"id":"txn_full","amount":75000}"#.into()),
         idempotency_key: None,
     };
     assert_eq!(split.gateway_reference.as_deref(), Some("txn_full"));
-    assert_eq!(split.gateway_status.as_deref(), Some("approved"));
+    assert_eq!(split.gateway_status.as_deref(), Some("settled"));
     assert!(split.gateway_response.is_some());
 }
 
@@ -303,7 +303,7 @@ fn payment_json_field_names() {
         },
         created_at: String::new(),
         gateway_reference: Some("ref_1".into()),
-        gateway_status: Some("approved".into()),
+        gateway_status: Some("settled".into()),
         gateway_response: None,
         idempotency_key: None,
     };
@@ -311,7 +311,7 @@ fn payment_json_field_names() {
     assert_eq!(json["method"], "cash");
     assert_eq!(json["sale_id"], "sale-1");
     assert_eq!(json["gateway_reference"], "ref_1");
-    assert_eq!(json["gateway_status"], "approved");
+    assert_eq!(json["gateway_status"], "settled");
     assert!(json.get("gateway_response").unwrap().is_null());
 }
 
@@ -321,7 +321,7 @@ fn payment_split_arg_json_field_names() {
         method: "card".into(),
         amount_minor: 50000,
         gateway_reference: Some("txn_abc".into()),
-        gateway_status: Some("approved".into()),
+        gateway_status: Some("settled".into()),
         gateway_response: None,
         idempotency_key: None,
     };
@@ -352,7 +352,7 @@ fn payment_clone_preserves_all_fields() {
         },
         created_at: "2025-01-01T00:00:00.000Z".into(),
         gateway_reference: Some("txn_abc".into()),
-        gateway_status: Some("approved".into()),
+        gateway_status: Some("settled".into()),
         gateway_response: Some(r#"{"ok":true}"#.into()),
         idempotency_key: None,
     };
@@ -374,7 +374,7 @@ fn payment_with_idempotency_key_serde() {
         },
         created_at: String::new(),
         gateway_reference: Some("txn_456".into()),
-        gateway_status: Some("approved".into()),
+        gateway_status: Some("settled".into()),
         gateway_response: None,
         idempotency_key: Some("01926b3a-0000-7000-8000-000000000001".into()),
     };

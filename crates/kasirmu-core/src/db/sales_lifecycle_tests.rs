@@ -310,7 +310,7 @@ fn split_settlement_writes_one_payment_outbox_row_per_split() {
             method: "card".into(),
             amount_minor: 600,
             gateway_reference: Some("gw-ref-1".into()),
-            gateway_status: Some("approved".into()),
+            gateway_status: Some("settled".into()),
             gateway_response: None,
             idempotency_key: None,
         },
@@ -371,7 +371,7 @@ fn split_settlement_writes_one_payment_outbox_row_per_split() {
     assert_eq!(card["method"], serde_json::json!("card"));
     assert_eq!(card["amount_minor"], serde_json::json!(600));
     assert_eq!(card["gateway_reference"], serde_json::json!("gw-ref-1"));
-    assert_eq!(card["gateway_status"], serde_json::json!("approved"));
+    assert_eq!(card["gateway_status"], serde_json::json!("settled"));
     assert_eq!(
         card["idempotency_key"],
         serde_json::Value::Null,
