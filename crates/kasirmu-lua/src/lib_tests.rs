@@ -896,8 +896,9 @@ fn runaway_infinite_loop_aborts_cleanly_without_hanging() {
 fn memory_limit_exceeded_aborts_cleanly_without_host_oom() {
     let lua = runtime();
     // Attempt to allocate beyond the 10 MiB native memory limit
-    let res = lua.load_str(
-        "local t = {} for i = 1, 1000000 do t[i] = string.rep('x', 100) end"
+    let res = lua.load_str("local t = {} for i = 1, 1000000 do t[i] = string.rep('x', 100) end");
+    assert!(
+        res.is_err(),
+        "excessive allocation must fail with memory limit error"
     );
-    assert!(res.is_err(), "excessive allocation must fail with memory limit error");
 }

@@ -346,5 +346,8 @@ scripts = ["huge.lua"]
     std::fs::write(plugin_dir.join("huge.lua"), huge_content).unwrap();
 
     let registry = load_plugins(dir.path()).unwrap();
-    assert!(registry.is_empty(), "oversized script must cause plugin to be rejected");
+    assert!(
+        registry.is_empty(),
+        "oversized script must cause plugin to be rejected"
+    );
 }
