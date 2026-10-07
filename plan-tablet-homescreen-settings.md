@@ -442,6 +442,36 @@ first token and that token is replaced mid-fan-out by the workspace-activation
 refresh. Benign (a refetch follows), but the provider should either await a
 stable token or refetch on replacement. Left as a recorded follow-up.
 
+### 6.3 TDD session follow-up 2026-10-07 afternoon (HEAD `2d05fb199`)
+
+Three further fixes, each test-first, all green, committed:
+
+1. **Gated partial-load toast** (`91bdbb9e3`): the toast fired at snapshot
+   time even when a replacement load cleared the failure seconds later.
+   It now fires only if `hasPartialError` persists past
+   `PARTIAL_ERROR_TOAST_MS` (2s). Two pins: persistent failure still toasts;
+   a token-swapped transient stays silent.
+2. **Superseded load must not clear the spinner** (`91bdbb9e3`): `loadAll`'s
+   finally lacked the `stale()` check `loadScoped` documents. A gated-load
+   test proves a superseded load no longer flips the hub out of its skeleton
+   mid-swap — which is what let the page initialize from `DEFAULT_SETTINGS`
+   in the gap (empty version, blank store).
+3. **Absent row ≠ failure** (`45ebc9985`): the device toast fired with ZERO
+   rejected invokes behind it. `loadAll` counted a fulfilled-null source
+   (`get_sync_settings_scoped` on a store with no sync row) as a failure.
+   Only rejections count now; a null row leaves the defaults standing.
+
+Device status after all of the above: the walk is 12 ok / 3 warn / 0 fail,
+the topology route renders its withdrawal notice, and — measured, not
+resolved — the partial toast STILL appears on `general` and
+`license-subscription` while the walk's invoke-failure capture records
+NOTHING: the capture into `window.__TAURI_INTERNALS__.invoke` is inert
+against this app's transport (`ui/src/api/tauri.ts` → `rawInvoke` from
+`@tauri-apps/api/core`; likely the dev-mock layer or a captured reference
+replaces the door before the walk attaches). The productive next probe is a
+subscriber on the ERR-06 telemetry channel (`emitIpcError` in
+`utils/logged-invoke.ts`), which sees every failure by construction.
+
 ### 6.2 First walk, stale bundle — kept for the contrast
 
 `scripts/android-settings-walk.mjs` (committed `552a4ab6b`) now walks the hub
