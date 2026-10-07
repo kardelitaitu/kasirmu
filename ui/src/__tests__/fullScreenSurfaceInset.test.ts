@@ -109,7 +109,7 @@ describe('the live full-screen surface needs no orientation branch', () => {
     expect(PROVISIONING_CSS).toMatch(/@media\s*\(max-height:\s*900px\)/);
     // The compact body must actually restate both properties, or the query is
     // inert — the declaration-present-but-does-not-apply shape this repo has
-    // been bitten by (docs/frontend/css-verification.md).
+    // been bitten by (docs/records/audits/frontend/css-verification.md).
     // `ruleBodies` also matches the reduced-motion block, so pick the body that
     // actually carries padding — the one under the height query.
     const bodies = ruleBodies(PROVISIONING_CSS, '\\.provisioning-card');

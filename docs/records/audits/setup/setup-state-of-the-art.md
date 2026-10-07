@@ -290,7 +290,7 @@ coverage.
 
 **What I did instead: measured the round-1 inset fix in a real browser.** That fix was never
 verified visually, and the question is exactly the one a string assertion cannot settle — where
-the card actually lands. Method from `docs/frontend/css-verification.md`, harness built **outside
+the card actually lands. Method from `docs/records/audits/frontend/css-verification.md`, harness built **outside
 the checkout**.
 
 **Measured in Chromium**, 412x915 notched viewport, insets 44/0/34/0, gutter `var(--space-8)` = 32px:

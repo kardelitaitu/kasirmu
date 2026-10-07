@@ -84,6 +84,15 @@ that hard-codes an orientation assumption is wrong on hardware the product alrea
 anything about orientation or adaptiveness, and no CSS linter exists in this repo at all.
 A rule added as prose is a rule that will not survive the next feature.
 
+> **Closed 2026-10-07.** Half of this was already fixed when the ADR was accepted and the rest
+> followed: `ui/src/__tests__/orientationAdaptiveWalker.test.ts` is the SIXTH suite in that family
+> and enforces exactly this — an `orientation` literal outside the shell sheets
+> (`ui/src/app/AppLayout.css`, `ui/src/app/tablet/tablet.css`) fails, and a declared `layout` no call
+> site consumes fails. It runs green (6/6) and carries a planted-violation case, so it is known to be
+> able to go red rather than merely red today. **The second half of the claim still holds:** there is
+> still no CSS linter in this repo, so a rule that is not one of the graded shapes is still prose.
+> See `docs/records/audits/frontend/css-verification.md` for the family and its stated limits.
+
 ## Decision
 
 Adopt a **hybrid, four-tier strategy**, applied in this precedence order:
