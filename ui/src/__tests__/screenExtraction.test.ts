@@ -2866,6 +2866,37 @@ const EXTERNAL_CLASS_LEDGER: { entry: string; value: string; reason: string }[] 
   },
 ];
 
+// HOW A LINE LEAVES THIS LIST — two different routes, and only one is a citation.
+//
+// (a) BY REGISTRATION. The sheet's component (or the component that mounts it) is
+//     reachable in production, so an entry can cite the sheet and the line is
+//     deleted. Rounds 58-62 of this thread cleared five this way — SettingsScope
+//     Tag.css (via LocalPaymentSettingsCard's additionalTsx), MemoBanner.css,
+//     TopologyScreen.css, TopologyRevisionBrowser.css and NodeTopologyEditor.css —
+//     taking the list 23 -> 18. This is the majority case.
+//
+// (b) ONLY BY DELETION, or by deciding a never-rendered component should mount.
+//     Five sheets BELOW have no mount at all: their component is referenced by
+//     nothing but its own file and its own test, and every other "reference" in the
+//     tree is prose inside a CSS comment. They are inventory/ShiftBar.css,
+//     inventory/ThresholdConfigScreen.css, inventory/TransactionLogScreen.css,
+//     inventory/TransitAuditScreen.css and (elsewhere) WeightScaleWidget.
+//     Registering one of these would buy a green over markup no user can reach.
+//
+// This split is not new here — it is recorded in
+// .agents/planning/manager-journal-pos-screen-refactor-23.md:4276 ("THE NINE
+// NO-MOUNT SHEETS ... Possible dead CSS, not a missing registration") and :4425
+// ("roughly 20 of the 28 leave by registration, and the other 8 leave only by
+// deletion or by deciding a never-rendered component should mount"), where a prior
+// pass already REFUSED to register TransactionLogScreen for exactly this reason.
+// The note is repeated at the list because that is where a reader stands when the
+// question comes up.
+//
+// Three more in the list cannot be cleared by citing the obvious owner either:
+//   - design/brand-tokens.css and design/DesignSystem.css: imported by no file at
+//     all, so no entry can honestly claim them.
+//   - settings/WorkspaceSettingsModal.module.css: a CSS MODULE, whose class names
+//     are hashed at build; the guard may be structurally unable to grade it.
 const BASELINE_UNCITED: string[] = [
   'analytics/AnalyticsScreen.css',
   'auth/SessionLockScreen.css',
