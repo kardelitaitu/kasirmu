@@ -219,6 +219,25 @@ fn list_pending_offline_returns_only_pending_oldest_first() {
     assert_eq!(items[1].last_error.as_deref(), Some("timeout"));
 }
 
+#[test]
+fn list_pending_offline_bounded_respects_limit() {
+    let conn = fresh();
+    seed_pending_and_synced(&conn);
+    let items = store(&conn).list_pending_offline_bounded(1).unwrap();
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].id, "oq-1");
+}
+
+#[test]
+fn list_pending_offline_for_tenant_bounded_respects_limit() {
+    let conn = fresh();
+    seed_pending_and_synced(&conn);
+    let s = store(&conn);
+    let items = s.list_pending_offline_for_tenant_bounded("default", 1).unwrap();
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].id, "oq-1");
+}
+
 // ── List all ────────────────────────────────────────────────────
 
 #[test]

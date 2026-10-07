@@ -1457,14 +1457,14 @@ Tasks:
 - [ ] Audit all unbounded queries.
 - [ ] Add pagination/streaming to reports.
 - [ ] Add indexes for hot queries.
-- [ ] Bound sync outbox.
-- [ ] Make sync queue disk-backed.
+- [x] Bound sync outbox (list_pending_offline_bounded in Store & mobile sync daemon).
+- [x] Make sync queue disk-backed (SQLite offline_queue table).
 - [ ] Stream backup creation.
 - [ ] Stream backup restore.
 - [ ] Add temp-space preflight.
-- [ ] Add WAL checkpoint policy.
-- [ ] Add query plan tests.
-- [ ] Remove `SELECT *` from large-table hot paths.
+- [x] Add WAL checkpoint policy (wal_autocheckpoint=1000, blur checkpoint).
+- [x] Add query plan tests (offline_queue and analytics expression indexes).
+- [x] Remove `SELECT *` from large-table hot paths (explicit column projection in tables.rs).
 - [ ] Fix N+1 query patterns.
 - [ ] Bound prepared statement cache.
 

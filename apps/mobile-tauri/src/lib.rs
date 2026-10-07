@@ -703,7 +703,7 @@ pub fn run() {
                                         }
                                     };
                                     let pending =
-                                        store.list_pending_offline().unwrap_or_else(|e| {
+                                        store.list_pending_offline_bounded(100).unwrap_or_else(|e| {
                                             tracing::error!(
                                                 error = %e,
                                                 "tablet sync daemon: failed to list pending offline"

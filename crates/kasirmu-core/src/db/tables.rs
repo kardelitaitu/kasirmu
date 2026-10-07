@@ -67,7 +67,10 @@ fn validate_table_geometry(table: &Table) -> Result<(), CoreError> {
 /// back through the SAME transaction they wrote in; `Store::get_table` is the
 /// public wrapper over this.
 fn read_table(conn: &rusqlite::Connection, id: &str) -> Result<Option<Table>, CoreError> {
-    let mut stmt = conn.prepare("SELECT * FROM tables WHERE id = ?1")?;
+    let mut stmt = conn.prepare(
+        "SELECT id, name, capacity, pos_x, pos_y, shape, width, height, status, active_sale_id, section, active, sort_order, created_at, updated_at
+         FROM tables WHERE id = ?1",
+    )?;
     let result = stmt.query_row(params![id], Store::row_to_table);
     match result {
         Ok(t) => Ok(Some(t)),
@@ -78,23 +81,23 @@ fn read_table(conn: &rusqlite::Connection, id: &str) -> Result<Option<Table>, Co
 
 impl Store<'_> {
     fn row_to_table(row: &rusqlite::Row) -> rusqlite::Result<Table> {
-        let active_int: i64 = row.get("active")?;
+        let active_int: i64 = row.get(11)?;
         Ok(Table {
-            id: row.get("id")?,
-            name: row.get("name")?,
-            capacity: row.get("capacity")?,
-            pos_x: row.get("pos_x")?,
-            pos_y: row.get("pos_y")?,
-            shape: row.get("shape")?,
-            width: row.get("width")?,
-            height: row.get("height")?,
-            status: row.get("status")?,
-            active_sale_id: row.get("active_sale_id")?,
-            section: row.get("section")?,
+            id: row.get(0)?,
+            name: row.get(1)?,
+            capacity: row.get(2)?,
+            pos_x: row.get(3)?,
+            pos_y: row.get(4)?,
+            shape: row.get(5)?,
+            width: row.get(6)?,
+            height: row.get(7)?,
+            status: row.get(8)?,
+            active_sale_id: row.get(9)?,
+            section: row.get(10)?,
             active: active_int != 0,
-            sort_order: row.get("sort_order")?,
-            created_at: row.get("created_at")?,
-            updated_at: row.get("updated_at")?,
+            sort_order: row.get(12)?,
+            created_at: row.get(13)?,
+            updated_at: row.get(14)?,
         })
     }
 
@@ -102,11 +105,13 @@ impl Store<'_> {
     pub fn list_tables(&self, section: Option<&str>) -> Result<Vec<Table>, CoreError> {
         let mut stmt = match section {
             Some(_) => self.conn.prepare(
-                "SELECT * FROM tables WHERE active = 1 AND section = ?1 ORDER BY sort_order, name",
+                "SELECT id, name, capacity, pos_x, pos_y, shape, width, height, status, active_sale_id, section, active, sort_order, created_at, updated_at
+                 FROM tables WHERE active = 1 AND section = ?1 ORDER BY sort_order, name",
             )?,
-            None => self
-                .conn
-                .prepare("SELECT * FROM tables WHERE active = 1 ORDER BY sort_order, name")?,
+            None => self.conn.prepare(
+                "SELECT id, name, capacity, pos_x, pos_y, shape, width, height, status, active_sale_id, section, active, sort_order, created_at, updated_at
+                 FROM tables WHERE active = 1 ORDER BY sort_order, name",
+            )?,
         };
         let rows = if section.is_some() {
             stmt.query_map(params![section], Self::row_to_table)?

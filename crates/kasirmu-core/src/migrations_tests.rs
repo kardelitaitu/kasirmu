@@ -984,6 +984,34 @@ fn analytics_query_uses_status_created_date_index() {
     );
 }
 
+#[test]
+fn offline_queue_query_uses_status_or_tenant_status_index() {
+    let mut conn = fresh();
+    run(&mut conn).unwrap();
+
+    let mut stmt = conn
+        .prepare(
+            "EXPLAIN QUERY PLAN
+             SELECT id, action, payload, status, retry_count, last_error, created_at, synced_at, tenant_id, priority, origin_terminal_id
+               FROM offline_queue
+              WHERE status = 'pending' AND tenant_id = ?1
+              ORDER BY created_at ASC
+              LIMIT 100",
+        )
+        .unwrap();
+    let plan = stmt
+        .query_map(["default"], |r| r.get::<_, String>(3))
+        .unwrap()
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap()
+        .join("\n");
+
+    assert!(
+        plan.contains("idx_offline_queue"),
+        "offline queue query did not use an offline_queue index; plan:\n{plan}"
+    );
+}
+
 /// Simulate the documented existing-dev-DB upgrade path. A pre-reset
 /// database carries legacy `schema_migrations` rows (now absent from the
 /// registry) and has already been seeded. Running the incremental
