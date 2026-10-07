@@ -9,6 +9,19 @@ and it is the second finding: 11-12 relayed premises were killed, 7 of the revie
 status.*  The spine, earned by seven independent observations: This codebase already contains the correct implementation and exactly one call site misses it** — The clamped token TTL exists in oz-local-api (lib.rs:240-242) and not oz-api (auth.rs:200-202); the retail register has an aria-live announcer (RetailCartPanel.tsx:392) and the desktop cart does not (CartPanel.tsx:511-512 puts it on the undo pill); the pre-apply snapshot probe fails loudly (persistence.rs:520-536) and recovery discards every result (:563,:569); per-store opens soft-fail (desktop lib.rs:378,:632) while the global migration call is fatal (state.rs:212-213); the duplicate-id predicate guards two of three push handlers and not pg_daemon; store_db_exists() exists
 (manager.rs:170-173) and recovery never calls it; **And now the cleanest instance: The desktop checkout does verify the subscription signature (oz-bridge/src/pos.rs:1557-1571: Load -> verify_signature()? -> enforce_pos_writable()?) and the queue path at offline.rs:238 does not — Same subscription row, one path signed and early, one not, separated by a discarded publish (P0-2).  Not missing knowledge — Missing application; the fix class is convention-enforcement, not seven patches.****
 
+> **Currency note, added 2026-10-07 by a docs-auditor pass.** This backlog is rev 4 of
+> 2026-09-12 and its own intro already warns that *"every file:line cite here predates a moving
+> baseline and should be re-resolved before being edited against"* — that is still true, and more so
+> at three weeks' distance. What this pass re-checked holds: **P0-7's closure is real** — `53fffa8c1`
+> (*"fix(core): bound refunds by cumulative quantity per sale line"*) is exactly the commit this file
+> names, and the cumulative-quantity bound is live at `crates/kasirmu-core/src/db/refunds.rs:265`
+> (independently cited by `docs/architecture/CRITICAL_PATH_INVARIANTS.md` §3). The per-item status
+> markers in the body ("now fixed in head", "outcome settled", "confirmed live") are the tracking
+> mechanism and are worth trusting over the section headings they sit under. **Names have moved since:
+> `crates/oz-core` is `kasirmu-core`, `crates/oz-bridge` is `kasirmu-bridge`, and
+> `apps/{desktop,tablet}-client` are `apps/{desktop,mobile}-tauri`** — resolve a cite by its anchor
+> text, not its path. NOT re-verified by this pass: P0-1..P0-6 and P0-9..P0-11.
+
 ## P0 — Money and data that is wrong today
 
 **P0-1. A tablet sale never leaves the device, silently, and every visible surface agrees that it has.** The escape hatch that was expected to soften this turned out not to exist; the qualification first carried here has been resolved to absence (see the killed-claims section). The sale is written to the global oz-pos.db (tablet pos.rs:1186-1187 state.db.lock ->:1187 Store::new), the reaper voids it there, and the queue row is enqueued there and is visible to the daemon — same file, two WAL connections (enqueue = startup/src/lib.rs:112 open_handler_connection(db_path) ->:49-55 Connection::open(the global path) -> SaleSyncEnqueuer:120-122 -> enqueue_offline_priority('complete_sale', Critical) at event_handlers.rs:63-72, fed live from
