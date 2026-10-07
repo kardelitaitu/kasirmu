@@ -2585,16 +2585,20 @@ const UNRESOLVED_VAR_TOKENS_BASELINE: string[] = [
   // the real tokens and the now-dead tails removed.
   //   deleted: --accent-color, --bg-primary, --bg-secondary, --border-color,
   //            --status-danger, --status-success, --text-secondary, --text-tertiary
-  // The remaining entries are a DIFFERENT population and are NOT the same defect:
-  // --mouse-x/-y and --rotate-x/-y are set at runtime by a component; --danger-500
-  // /--danger-700/--info-500/--success-500 are NO-FALLBACK names from another lane;
-  // --border-subtle/--color-surface-alt/--success-bg/--text-muted and the Org*
-  // components are third-party-shaped sheets. They stay until their own owners
-  // close them, which is what shrink-only means.
-  "--danger-500", // 4 NO FALLBACK - a colour that renders nothing
-  "--danger-700", // 1 NO FALLBACK
-  "--info-500", // 1 NO FALLBACK
-  "--success-500", // 2 NO FALLBACK
+  // EMPTIED 2026-10-07, completing the sweep. The last four names were the
+  // Tailwind-step family from features/inventory/ (ShiftBar.css,
+  // TransitAuditScreen.css, TransactionLogScreen.css): a status dot, two gradient
+  // buttons and the OVERDUE badge referenced --success-500 / --info-500 /
+  // --danger-500 / --danger-700. None is defined, and -- unlike every entry that
+  // came before -- none carried a fallback, so they rendered NOTHING: no dot, no
+  // gradient, no badge fill. Re-pointed at --color-success / --color-info /
+  // --color-danger / --color-danger-700, the semantic tokens their own siblings
+  // already use.
+  //
+  // The list is empty and that is the asserted state, not a floor: a NEW name here
+  // means a sheet references a token nothing defines. The probe case below fails
+  // if the PARSER stops seeing references, so an empty list cannot be mistaken for
+  // a clean tree -- which is the one way "no entries" could lie.
 ];
 
 describe("var() token existence", () => {
@@ -2644,6 +2648,49 @@ describe("var() token existence", () => {
         "delete their lines -- the list is shrink-only in both directions.",
     ).toEqual([]);
     expect(misses.size, "the miss set moved off its own baseline").toBe(UNRESOLVED_VAR_TOKENS_BASELINE.length);
+  });
+
+  /* ── The SILENT half: a miss with NO fallback renders nothing at all ──
+     Why this is a separate case rather than a sharper version of the one above:
+     that case reports a token that is undefined, and every site it had ever been
+     calibrated on carried a comma fallback, so the reader could be shown the
+     literal that was silently doing the work. The foreign-scheme freeze has the
+     same requirement by construction (\`hasFallback\` is its predicate). A site that
+     is undefined AND fallback-less satisfies neither, so it was reported by
+     nothing — and it is the WORSE of the two, because a fallback at least paints
+     something: here the declaration is dropped and the element keeps whatever it
+     inherited.
+
+     Measured before this case existed: nine such references across three
+     features/inventory sheets, rendering no status dot, no button gradient and no
+     OVERDUE badge fill. The closure is exact rather than a floor: any
+     fallback-less miss is a bug with no legitimate shape, since the only way to
+     "accept" one is to want an element to render nothing. */
+  it("no var() reference names an undefined token WITHOUT a fallback", () => {
+    const silent = [...VAR_REFS, ...NESTED_REFS]
+      .filter((r) => !r.hasFallback && !TOKEN_DEFINED.has(r.token))
+      .map((r) => r.file + ":" + r.line + "  var(" + r.token + ") -- undefined, no fallback: renders nothing");
+    expect(
+      silent,
+      "A reference with no comma fallback and no definition paints nothing at all, "
+        + "so the declaration is dropped and the element inherits instead. Two fix "
+        + "shapes, and the token decides which: if a real token exists, name it "
+        + "(that is what every one of the nine inventory sites wanted); if none does, "
+        + "the literal has to be written out. Do not add a fallback to silence this "
+        + "— a fallback would only turn a visible bug into the invisible kind the "
+        + "case above grades:\n  " + silent.join("\n  "),
+    ).toEqual([]);
+    // The predicate must be able to fire, or an empty list means the filter is
+    // broken rather than the tree being clean -- the same discipline the probe
+    // below applies to the parser itself.
+    const probe = [
+      { file: "p.css", line: 1, token: "--not-defined-anywhere", hasFallback: false, nested: false },
+      { file: "p.css", line: 2, token: "--not-defined-either", hasFallback: true, nested: false },
+    ] as VarRef[];
+    expect(
+      probe.filter((r) => !r.hasFallback && !TOKEN_DEFINED.has(r.token)).length,
+      "the fallback-less predicate matched nothing in a probe built to match one",
+    ).toBe(1);
   });
 
   it("probe: a renamed token is caught; a runtime-set token is not", () => {

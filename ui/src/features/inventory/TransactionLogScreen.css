@@ -134,10 +134,10 @@
 }
 
 .badge-sale { background: var(--color-accent-dim); color: var(--color-accent); }
-.badge-void { background: var(--color-danger-bg); color: var(--danger-500); }
+.badge-void { background: var(--color-danger-bg); color: var(--color-danger); }
 .badge-refund { background: var(--color-accent-alpha); color: var(--color-link-visited); }
 .badge-transfer { background: var(--color-warning-bg); color: var(--color-warning); }
-.badge-purchase-order-receive { background: var(--color-success-bg); color: var(--success-500); }
+.badge-purchase-order-receive { background: var(--color-success-bg); color: var(--color-success); }
 .badge-stock-count { background: var(--color-info-bg); color: var(--color-info); }
 .badge-manual-adjustment { background: var(--color-bg-hover); color: var(--neutral-600); }
 

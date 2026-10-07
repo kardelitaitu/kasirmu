@@ -1,3 +1,21 @@
+/* ShiftBar — the inventory shift strip.
+ *
+ * Tailwind-palette names removed 2026-10-07, in this file and its two siblings
+ * (TransitAuditScreen.css, TransactionLogScreen.css). They referenced
+ * --success-500 / --info-500 / --danger-500 / --danger-700 / --primary-600, the
+ * Tailwind step convention this repo never ported: nothing defines any of them and
+ * NONE carried a fallback, so every one of these declarations rendered NOTHING.
+ * The status dot here had no background, the two buttons below had no gradient,
+ * and the OVERDUE badge in TransitAuditScreen had no fill.
+ *
+ * Why nothing caught it: a fallback-less miss is invisible to BOTH token gates.
+ * The existence clause only reports a reference when it has a comma fallback (so
+ * the literal it silently renders can be pointed at), and the foreign-scheme
+ * freeze has the same requirement by construction. A site with neither is silent
+ * in the browser and silent in CI. That gap is now closed by a case in
+ * themeTokenCompliance that grades fallback-less misses separately.
+ */
+
 .inventory-shift-bar {
   display: flex;
   align-items: center;
@@ -24,7 +42,7 @@
   width: 10px;
   height: 10px;
   border-radius: var(--radius-full);
-  background-color: var(--success-500);
+  background-color: var(--color-success);
   box-shadow: var(--shadow-glow-success);
   animation: pulse 1.8s infinite;
 }
@@ -96,7 +114,7 @@
 }
 
 .shift-btn-primary {
-  background: linear-gradient(135deg, var(--info-500) 0%, var(--primary-600) 100%);
+  background: linear-gradient(135deg, var(--color-info) 0%, var(--color-primary) 100%);
   color: var(--color-fg-primary);
   box-shadow: var(--shadow-lg);
 }
@@ -107,7 +125,7 @@
 }
 
 .shift-btn-danger {
-  background: linear-gradient(135deg, var(--danger-500) 0%, var(--danger-700) 100%);
+  background: linear-gradient(135deg, var(--color-danger) 0%, var(--color-danger-700) 100%);
   color: var(--color-fg-primary);
   box-shadow: var(--shadow-lg);
 }
