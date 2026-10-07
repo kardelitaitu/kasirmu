@@ -53,6 +53,10 @@ pub mod inventory;
 pub mod inventory_counts;
 /// KDS commands.
 pub mod kds;
+/// KDS device enrollment + device list — ADR #49 shims over `kasirmu_bridge::kds_device`.
+pub mod kds_device;
+/// KDS routing rules — ADR #49 shims over `kasirmu_bridge::kds_routing`.
+pub mod kds_routing;
 /// Organization/Tenant Legal Entity commands.
 pub mod legal_entities;
 /// Read-only licence commands (the tablet's half of the licence surface).
