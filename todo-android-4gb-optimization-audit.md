@@ -1489,10 +1489,10 @@ Tasks:
 - [x] Virtualize sale history (SalesHistoryScreen paged table).
 - [x] Memoize selectors (MenuItemTile memoization, categoryOptions & filtered useMemo).
 - [ ] Reduce global state size.
-- [ ] Lazy-load images.
+- [x] Lazy-load images (ProductThumb native loading="lazy", decoding="async", and React.memoization).
 - [ ] Clean up listeners.
 - [ ] Profile React renders.
-- [ ] Add bundle size budget.
+- [x] Add bundle size budget (scripts/check-bundle.mjs enforced via npm run bundle:check and bundle:check:mobile with gzip thresholds).
 - [ ] Remove large arrays from persistent global state.
 - [x] Ensure navigation clears disposable caches (detailCacheRef and report series cleared on memory trim/navigation).
 
