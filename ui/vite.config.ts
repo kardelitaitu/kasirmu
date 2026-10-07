@@ -141,30 +141,40 @@ export default defineConfig(({ command }) => ({
     // jsdom window plus the module graph it imported, and this suite has 610
     // test files, so the ceiling is how many the pool will start at once.
     //
-    // THE FIGURES ARE ATTRIBUTED, and an earlier draft of this comment got
-    // that wrong in a way worth leaving on the record. Sampling Get-Process
-    // node counts EVERY node on the box — this machine idles at ~20 node
-    // processes and ~1.99 GB from Adobe Creative Cloud, the DSH harness, an
-    // Astro dev server and an npm dev run. Those runs therefore reported a
-    // "7.5 GB peak" that was never vitest's. Measured again with the
-    // unattributed baseline subtracted: vitest's own footprint peaks near
-    // 4.0 GB, against ~1.99 GB of unrelated node that was already resident.
+    // WHAT JUSTIFIES THIS IS THE CONTENDED RUN, not the solitary one, and the
+    // round that established it had to discard two earlier answers first — both
+    // are recorded here because each one looked right at the time.
     //
-    // What the cap actually changes, three full runs on 2026-10-07:
-    //   uncapped (host default)   ~5.8 GB all-node   ~80-105s
-    //   maxWorkers: 16            ~5.9 GB all-node   ~160s
-    //   maxWorkers: 8             ~4.8 GB all-node   ~175s
-    // Reading WITH the baseline included because that is what the OS sees and
-    // what decides whether the machine OOMs. So the peak difference between
-    // uncapped and 16 is inside the noise of other agents' activity; the firm
-    // number is that the cap COSTS ROUGHLY DOUBLE the wall-clock, and the
-    // memory it saves is modest. It is kept because this checkout is shared and
-    // the uncapped run is what has been observed to die under contention — not
-    // because the saving measured large.
-    // 16 rather than 8 because 8 measured no better on the all-node peak and
-    // ~15s slower, and because the machine has 63 GB in total — the failure
-    // mode is contention, not absolute shortage. Re-measure before changing it,
-    // and for a one-off run override without touching this file:
+    // Mistake 1 — unattributed memory. Sampling Get-Process node counts EVERY
+    // node on the box. This machine idles at ~20 node processes and ~2.0 GB
+    // from Adobe Creative Cloud, the DSH harness, an Astro dev server and an
+    // npm dev run, so the first pass reported a "7.5 GB peak" that was never
+    // vitest's.
+    // Mistake 2 — measuring an idle machine. A cap can only pay for itself
+    // under the load it exists to survive, and a solitary run never produces
+    // that load. Solo, the comparison was "uncapped ~80s / capped ~160s", which
+    // made the cap look like a pure loss.
+    //
+    // The experiment that decides it: TWO FULL SUITES AT ONCE, which is this
+    // checkout's normal state (other agent sessions run here constantly).
+    // Measured 2026-10-07, wall-clock and low-water free memory for the pair:
+    //   uncapped (--maxWorkers=32)   26 and 13 test failures   low free 2855 MB   217s
+    //   capped   (this file)          9 and  9 test failures   low free 8506 MB   156s
+    // The differences are not noise and not about speed:
+    //   * 9/9 is EXACTLY the solitary baseline, so under the cap the pair
+    //     produces ZERO contention-induced failures. Uncapped it produced 39.
+    //   * The extra failures are starvation, not defects — e.g.
+    //     useNewTicketSound "Hook timed out in 5000ms", plus AppShell,
+    //     ConfirmDialog, FastPINOverlay and SubscriptionContext. Every one of
+    //     them passes on its own.
+    //   * The cap is FASTER on the contended pair (156s vs 217s), because work
+    //     that starves does not finish.
+    // So: cap for correctness under contention. Speed on an idle machine is not
+    // the property being optimised, and a solitary run is not the measurement
+    // that justifies or condemns it.
+    //
+    // 16 rather than 8 because 8 measured no better and ~15s slower. Re-measure
+    // with the CONTENDED pair before changing it. For a one-off run:
     //   npx vitest run --maxWorkers=32
     maxWorkers: 16,
     minWorkers: 2,
