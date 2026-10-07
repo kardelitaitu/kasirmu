@@ -173,6 +173,11 @@ impl AppState {
             .map_err(|e| AppError::Internal(format!("enabling foreign_keys: {e}")))?;
         conn.pragma_update(None, "journal_mode", "WAL")
             .map_err(|e| AppError::Internal(format!("enabling WAL: {e}")))?;
+        // 4GB Android memory budget: bound page cache to 16MB (-16384 KiB) and auto-checkpoint WAL every 1,000 pages (~4MB)
+        conn.pragma_update(None, "cache_size", "-16384")
+            .map_err(|e| AppError::Internal(format!("setting cache_size: {e}")))?;
+        conn.pragma_update(None, "wal_autocheckpoint", "1000")
+            .map_err(|e| AppError::Internal(format!("setting wal_autocheckpoint: {e}")))?;
 
         // ── Lock tolerance, then a writability gate ──────────────────
         // A tablet shares this file with the bridge, the sync daemon and any second

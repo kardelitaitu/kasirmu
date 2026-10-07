@@ -74,6 +74,31 @@ class MainActivity : TauriActivity() {
     hideSystemBars()
   }
 
+  /**
+   * Forward Android OS memory pressure callbacks to the WebView.
+   *
+   * Dispatches 'kasirmu:trimMemory' with numeric level (ComponentCallbacks2)
+   * and 'kasirmu:lowMemory' so the POS shell can flush active cart drafts
+   * to persistent storage and evict non-critical disposable caches.
+   */
+  override fun onTrimMemory(level: Int) {
+    super.onTrimMemory(level)
+    val webView = findWebView(window.decorView)
+    webView?.evaluateJavascript(
+      "(function() { window.dispatchEvent(new CustomEvent('kasirmu:trimMemory', { detail: { level: $level } })); })()",
+      null
+    )
+  }
+
+  override fun onLowMemory() {
+    super.onLowMemory()
+    val webView = findWebView(window.decorView)
+    webView?.evaluateJavascript(
+      "(function() { window.dispatchEvent(new CustomEvent('kasirmu:lowMemory')); })()",
+      null
+    )
+  }
+
   private fun findWebView(view: View): WebView? {
     if (view is WebView) return view
     if (view is ViewGroup) {

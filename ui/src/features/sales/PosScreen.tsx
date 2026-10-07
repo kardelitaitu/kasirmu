@@ -144,8 +144,9 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     }
   }, [onNavigate, setActiveWorkspace]);
 
-  // ── Restore locked cart on mount ────────────────────────────────
+  // ── Restore locked cart or active draft on mount ────────────────
   const LOCKED_CART_KEY = 'pos-locked-cart';
+  const ACTIVE_DRAFT_KEY = 'pos-active-draft';
   // PROMO-5/PROMO-3: promotions selected in the picker. They no longer
   // map onto the cart-discount pipeline — the selected ids ride to
   // checkout (PaymentModal → complete_sale promotionIds) and the backend
@@ -156,7 +157,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   const [appliedPromotions, setAppliedPromotions] = useState<Promotion[]>([]);
   useEffect(() => {
     try {
-      const raw = localStorage.getItem(LOCKED_CART_KEY);
+      const raw = localStorage.getItem(LOCKED_CART_KEY) ?? localStorage.getItem(ACTIVE_DRAFT_KEY);
       if (!raw) return;
       const data = JSON.parse(raw);
       if (data.lines && Array.isArray(data.lines)) {
@@ -207,6 +208,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
       localStorage.removeItem(LOCKED_CART_KEY);
     } catch { /* ignore */ }
   }, [setLines, setDiscount, setAppliedPromotions, setTipPercent, setServiceCharge]);
+
   const [showOptions, setShowOptions] = useState(false);
   const [showTables, setShowTables] = useState(false);
   const [showSalesHistory, setShowSalesHistory] = useState(false);
@@ -225,6 +227,80 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   const [editingCartLine, setEditingCartLine] = useState<CartLine | null>(null);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [showTableNumberSetting, setShowTableNumberSetting] = useState(false);
+
+  // ── Auto-persist active draft cart (crash & low-memory recovery) ─
+  useEffect(() => {
+    if (lines.length > 0) {
+      try {
+        const draft = {
+          lines: lines.map((l) => ({
+            sku: l.sku,
+            name: l.name,
+            category: l.category,
+            qty: l.qty,
+            unit_price: l.unit_price,
+            ...(l.courseId ? { courseId: l.courseId } : {}),
+            ...(l.coursingStatus ? { coursingStatus: l.coursingStatus } : {}),
+            ...(l.modifiers && l.modifiers.length > 0 ? { modifiers: l.modifiers } : {}),
+            ...(l.note ? { note: l.note } : {}),
+          })),
+          discountPercent,
+          discountLabel,
+          appliedPromotions,
+          tipPercent,
+          serviceChargeEnabled,
+          serviceChargePercent,
+          tableNumber,
+          customerName,
+          guestCount,
+        };
+        localStorage.setItem(ACTIVE_DRAFT_KEY, JSON.stringify(draft));
+      } catch {
+        // Storage quota or transient browser fault
+      }
+    } else {
+      localStorage.removeItem(ACTIVE_DRAFT_KEY);
+    }
+  }, [lines, discountPercent, discountLabel, appliedPromotions, tipPercent, serviceChargeEnabled, serviceChargePercent, tableNumber, customerName, guestCount]);
+
+  // ── Listen for Android OS memory trim callbacks (Phase 2 audit) ─
+  useEffect(() => {
+    const handleMemoryTrim = () => {
+      if (lines.length > 0) {
+        try {
+          const draft = {
+            lines: lines.map((l) => ({
+              sku: l.sku,
+              name: l.name,
+              category: l.category,
+              qty: l.qty,
+              unit_price: l.unit_price,
+              ...(l.courseId ? { courseId: l.courseId } : {}),
+              ...(l.coursingStatus ? { coursingStatus: l.coursingStatus } : {}),
+              ...(l.modifiers && l.modifiers.length > 0 ? { modifiers: l.modifiers } : {}),
+              ...(l.note ? { note: l.note } : {}),
+            })),
+            discountPercent,
+            discountLabel,
+            appliedPromotions,
+            tipPercent,
+            serviceChargeEnabled,
+            serviceChargePercent,
+            tableNumber,
+            customerName,
+            guestCount,
+          };
+          localStorage.setItem(ACTIVE_DRAFT_KEY, JSON.stringify(draft));
+        } catch { /* ignore */ }
+      }
+    };
+    window.addEventListener('kasirmu:trimMemory', handleMemoryTrim);
+    window.addEventListener('kasirmu:lowMemory', handleMemoryTrim);
+    return () => {
+      window.removeEventListener('kasirmu:trimMemory', handleMemoryTrim);
+      window.removeEventListener('kasirmu:lowMemory', handleMemoryTrim);
+    };
+  }, [lines, discountPercent, discountLabel, appliedPromotions, tipPercent, serviceChargeEnabled, serviceChargePercent, tableNumber, customerName, guestCount]);
   // Restaurant coursing: `restaurant.course_firing` gates the firing bar +
   // per-line course chip. Defaults to the workspace check alone until the
   // setting loads, so a slow settings read never hides coursing that the
@@ -590,6 +666,9 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
       loadOpenBills();
     }
     resetCart();
+    try {
+      localStorage.removeItem(ACTIVE_DRAFT_KEY);
+    } catch { /* ignore */ }
     setTableNumber('');
     setCustomerName('');
     setGuestCount('');

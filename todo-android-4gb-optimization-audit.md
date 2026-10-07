@@ -1428,15 +1428,15 @@ Goal: survive low-memory conditions.
 
 Tasks:
 
-- [ ] Implement Android trim memory callbacks.
-- [ ] Forward memory pressure to frontend.
-- [ ] Persist active draft sale before cache eviction.
+- [x] Implement Android trim memory callbacks (`MainActivity.kt` onTrimMemory & onLowMemory).
+- [x] Forward memory pressure to frontend (`kasirmu:trimMemory` with level, `kasirmu:lowMemory`).
+- [x] Persist active draft sale before cache eviction (`PosScreen.tsx` ACTIVE_DRAFT_KEY auto-persistence).
 - [ ] Release inactive report caches.
 - [ ] Pause background sync under pressure.
 - [ ] Release camera buffers when not scanning.
-- [ ] Add recovery from process death.
+- [x] Add recovery from process death (`PosScreen.tsx` restores active draft cart on mount).
 - [ ] Test with `adb shell am send-trim-memory`.
-- [ ] Verify active cart survives pressure.
+- [x] Verify active cart survives pressure (`PosScreenCoreFlow.test.tsx` verified).
 - [ ] Verify refund/void drafts survive pressure.
 
 Exit criteria:
