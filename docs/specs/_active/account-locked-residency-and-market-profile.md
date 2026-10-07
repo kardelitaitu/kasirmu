@@ -1,5 +1,7 @@
 <!-- Spec: Account-Locked Data Residency & Store-Locked Market Profile · 2026-10-02 · status: IMPLEMENTED · owner: Architecture / Core -->
 
+<!-- Audit stamp: 2026-10-07 · docs-auditor · status: ACCURATE — AUDITED AGAINST THE TREE, all three named tests run GREEN · This spec carried no stamp and no footer, and unlike a pure market-research note it makes checkable claims about this repository, so the claims were traced rather than trusted. VERIFIED: the named implementation targets all exist — `crates/kasirmu-core/src/regional.rs`, `ui/src/contexts/WorkspaceContext.tsx`, `platform/kernel/` — and the in-memory snapshot type the whole design rests on, `ActiveMarketProfile` (§4.1), is real with 13 references including its bridge and its own test module. VERIFIED §6: the three tests it names all exist and all pass together — `cargo test -p kasirmu-core --test integration -- test_sale_execution_zero_lookups test_shift_locks_regional_settings test_regional_scope_chain_resolution` reports 3 passed, 0 failed. §6's Shift-Immunity Lock is the load-bearing claim (the "dual-axis lock" of §2) and its test is the one that binds it: `shift.rs:499 fn test_shift_locks_regional_settings`, alongside `settings.rs:1513` and `offline.rs:351`. NOTE the runners in §6 name `--test integration`, which is correct: these are integration tests, so a `--lib` invocation filters them all out and reports 0 (verified, and the reason this audit used the integration target). NOT CHECKED: the "sub-10ms" and "zero network requests" assertions inside the tests themselves — those are the tests' business and they pass; this audit confirms the tests exist, are reachable by the stated runner, and are green. Footer added: the file had no machine-readable footer either. -->
+
 # Account-Locked Data Residency & Store-Locked Market Profile
 
 > **Status: ACCEPTED & TESTED.**  
@@ -172,3 +174,4 @@ The implementation must pass three automated test cases:
    - Verify that an unset location correctly inherits currency and country from its parent `LegalEntity` without requiring manual duplication.
    - Runner: `cargo test -p kasirmu-core --test integration settings::test_regional_scope_chain_resolution`
 
+> last audited 07-10-26 by docs-auditor
