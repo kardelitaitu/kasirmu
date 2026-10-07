@@ -266,6 +266,19 @@ export default function SalesHistoryScreen() {
   // Invalidated when a sale is voided or refunded (status-changing events).
   const detailCacheRef = useRef<Map<string, SaleDetail>>(new Map());
 
+  // ── Evict detail cache on Android OS memory trim callbacks (Phase 2 audit) ─
+  useEffect(() => {
+    const handleMemoryTrim = () => {
+      detailCacheRef.current.clear();
+    };
+    window.addEventListener('kasirmu:trimMemory', handleMemoryTrim);
+    window.addEventListener('kasirmu:lowMemory', handleMemoryTrim);
+    return () => {
+      window.removeEventListener('kasirmu:trimMemory', handleMemoryTrim);
+      window.removeEventListener('kasirmu:lowMemory', handleMemoryTrim);
+    };
+  }, []);
+
   const invalidateCache = useCallback((saleId: string) => {
     detailCacheRef.current.delete(saleId);
   }, []);

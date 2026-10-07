@@ -57,6 +57,7 @@ import PromotionsModal from './PromotionsModal';
 import ItemModifierModal from './components/ItemModifierModal';
 import type { Promotion } from '@/api/promotions';
 import FastPINOverlay from '@/components/FastPINOverlay';
+import { notifyMemoryPressure } from '@/api/system';
 
 import './PosScreen.css';
 import './CartPanel.css';
@@ -265,7 +266,9 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
 
   // ── Listen for Android OS memory trim callbacks (Phase 2 audit) ─
   useEffect(() => {
-    const handleMemoryTrim = () => {
+    const handleMemoryTrim = (e: Event) => {
+      const level = (e as CustomEvent<{ level?: number }>).detail?.level ?? 80;
+      void notifyMemoryPressure(level).catch(() => {});
       if (lines.length > 0) {
         try {
           const draft = {

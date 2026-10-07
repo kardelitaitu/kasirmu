@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 // renderWithProviders* (not renderWithFluentSync): the reprint button now reports a
 // failed print through the toast context, so the screen needs a ToastProvider.
@@ -857,5 +857,42 @@ describe('SalesHistoryScreen', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     // The filter is populated again, not merely the table.
     expect(screen.getByRole('option', { name: 'Bob' })).toBeInTheDocument();
+  });
+
+  it('clears detail cache when kasirmu:trimMemory event is dispatched', async () => {
+    mockListSalesScoped.mockResolvedValue({ sales: sampleSales, salesHistoryCapped: false });
+    mockGetSaleScoped.mockResolvedValue(sampleDetail);
+    mockListRefunds.mockResolvedValue([]);
+    const user = userEvent.setup();
+    renderWithProvidersSync(<SalesHistoryScreen />, salesFtl, sharedFtl);
+
+    await waitFor(() => {
+      expect(screen.getByText('sale-001…')).toBeInTheDocument();
+    });
+
+    const viewButtons = screen.getAllByRole('button', { name: /view/i });
+    await user.click(viewButtons[0]!);
+
+    await waitFor(() => {
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+    });
+
+    // Close detail dialog
+    const closeButtons = screen.getAllByRole('button', { name: /close/i });
+    await user.click(closeButtons[0]!);
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+
+    // Dispatch memory trim event
+    act(() => {
+      window.dispatchEvent(new CustomEvent('kasirmu:trimMemory', { detail: { level: 80 } }));
+    });
+
+    // Re-opening succeeds cleanly
+    await user.click(viewButtons[0]!);
+    await waitFor(() => {
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+    });
   });
 });

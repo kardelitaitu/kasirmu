@@ -268,6 +268,20 @@ function DashboardScreenContent() {
     return () => { cancelled = true; };
   }, [granularity, from, to, sessionToken, series, l10n]);
 
+  // ── Evict report series & previous period cache under memory pressure ─
+  useEffect(() => {
+    const handleMemoryTrim = () => {
+      setSeries(null);
+      setPrevDaily([]);
+    };
+    window.addEventListener('kasirmu:trimMemory', handleMemoryTrim);
+    window.addEventListener('kasirmu:lowMemory', handleMemoryTrim);
+    return () => {
+      window.removeEventListener('kasirmu:trimMemory', handleMemoryTrim);
+      window.removeEventListener('kasirmu:lowMemory', handleMemoryTrim);
+    };
+  }, []);
+
   // ── Revenue series for chart ─────────────────────────────────────
 
   const revenueSeries = useMemo(() => {

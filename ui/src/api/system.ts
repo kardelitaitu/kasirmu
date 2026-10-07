@@ -112,4 +112,13 @@ export interface CrashReportPayload {
 export const recordCrashReport = (report: CrashReportPayload): Promise<void> =>
   loggedInvoke<void>('record_crash_report', { report });
 
+/**
+ * Notify the native backend of Android OS memory pressure callbacks (`onTrimMemory` / `onLowMemory`).
+ *
+ * Levels >= 10 cause non-essential background daemons (such as background sync and sweeps)
+ * to temporarily back off, preserving process RAM and thread pool resources for cashier checkout.
+ */
+export const notifyMemoryPressure = (level: number): Promise<void> =>
+  loggedInvoke<void>('notify_memory_pressure', { level });
+
 

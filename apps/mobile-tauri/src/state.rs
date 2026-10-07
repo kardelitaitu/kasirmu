@@ -155,6 +155,9 @@ pub struct AppState {
     /// immediately. Wired here so Tauri commands (e.g. `complete_sale_scoped`)
     /// can fire it without reaching into the daemon's closure.
     pub sync_wakeup: Arc<tokio::sync::Notify>,
+
+    /// Current memory pressure level reported by the Android OS (0 = none, 5 = moderate, 10 = low, 15 = critical, 80 = complete).
+    pub memory_pressure_level: Arc<std::sync::atomic::AtomicU8>,
 }
 
 impl AppState {
@@ -309,6 +312,7 @@ impl AppState {
             db_manager,
             picker_ticket_secret: uuid::Uuid::new_v4().as_bytes().to_vec(),
             sync_wakeup: Arc::new(tokio::sync::Notify::new()),
+            memory_pressure_level: Arc::new(std::sync::atomic::AtomicU8::new(0)),
         })
     }
 
@@ -615,6 +619,7 @@ impl AppState {
             ),
             picker_ticket_secret: b"test-picker-ticket-secret".to_vec(),
             sync_wakeup: Arc::new(tokio::sync::Notify::new()),
+            memory_pressure_level: Arc::new(std::sync::atomic::AtomicU8::new(0)),
         }
     }
 
@@ -640,6 +645,7 @@ impl AppState {
             ),
             picker_ticket_secret: b"test-picker-ticket-secret".to_vec(),
             sync_wakeup: Arc::new(tokio::sync::Notify::new()),
+            memory_pressure_level: Arc::new(std::sync::atomic::AtomicU8::new(0)),
         }
     }
 

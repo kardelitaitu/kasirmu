@@ -626,6 +626,23 @@ pub fn run() {
 
                         match sync_app_handle.try_state::<AppState>() {
                             Some(state) => {
+                                let pressure = state
+                                    .memory_pressure_level
+                                    .load(std::sync::atomic::Ordering::Relaxed);
+                                if pressure >= 10 {
+                                    tracing::warn!(
+                                        level = pressure,
+                                        "tablet sync daemon: memory pressure active ({pressure}) — backing off background sync cycle"
+                                    );
+                                    let _ = state.memory_pressure_level.compare_exchange(
+                                        pressure,
+                                        pressure.saturating_sub(5),
+                                        std::sync::atomic::Ordering::Relaxed,
+                                        std::sync::atomic::Ordering::Relaxed,
+                                    );
+                                    continue;
+                                }
+
                                 // Phase 1: Read config + pending items (brief lock).
                                 let (config_opt, pending_items) = {
                                     let db = state.db.lock().await;
@@ -1064,6 +1081,7 @@ pub fn run() {
                 commands::health::get_storage_health,
                 commands::health::export_diagnostics,
                 commands::health::record_crash_report,
+                commands::health::notify_memory_pressure,
                 // ADR #57 §2.1: makes the APK signing-certificate read observable
                 // on any device, including one with no licence activated — the
                 // state in which its only other caller (the licence-status call)

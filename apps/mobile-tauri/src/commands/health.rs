@@ -221,6 +221,24 @@ pub async fn record_crash_report(
         .map_err(Into::into)
 }
 
+#[command]
+/// Dispatched when Android OS reports memory pressure (onTrimMemory / onLowMemory).
+///
+/// Levels >= 10 (`TRIM_MEMORY_RUNNING_LOW` or higher) cause background sync
+/// to back off, conserving process memory and thread pool resources for cashier checkout.
+pub async fn notify_memory_pressure(
+    level: u8,
+    state: tauri::State<'_, crate::state::AppState>,
+) -> Result<(), AppError> {
+    state
+        .memory_pressure_level
+        .store(level, std::sync::atomic::Ordering::Relaxed);
+    if level >= 10 {
+        tracing::warn!(level, "Android memory pressure notification received; background sync backed off");
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 #[path = "health_tests.rs"]
 mod tests;

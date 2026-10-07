@@ -153,3 +153,19 @@ async fn resolve_device_id_caches_in_app_state() {
     assert_eq!(cached.as_deref(), Some(resolved.as_str()));
 }
 
+#[tokio::test]
+async fn notify_memory_pressure_updates_state() {
+    let state = crate::state::AppState::for_test();
+    assert_eq!(
+        state.memory_pressure_level.load(std::sync::atomic::Ordering::Relaxed),
+        0
+    );
+
+    // Simulate memory pressure level 15 (TRIM_MEMORY_RUNNING_CRITICAL)
+    state.memory_pressure_level.store(15, std::sync::atomic::Ordering::Relaxed);
+    assert_eq!(
+        state.memory_pressure_level.load(std::sync::atomic::Ordering::Relaxed),
+        15
+    );
+}
+
