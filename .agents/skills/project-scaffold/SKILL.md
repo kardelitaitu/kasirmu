@@ -187,7 +187,7 @@ subdirectory is a Cargo crate.
 
 ### Branch naming
 
-> **Repo policy (AGENTS.md): never create new branches, never switch branches.** Always work directly on the currently active branch — the version branch, e.g. `0.0.40` — and let the user manage branching. The table below applies only when the user explicitly requests a named branch.
+> **Repo policy (AGENTS.md): never create new branches, never switch branches.** Always work directly on the currently active branch — the version branch, e.g. `0.0.41` — and let the user manage branching. The table below applies only when the user explicitly requests a named branch.
 
 | Prefix | When to use | Example |
 |--------|-------------|---------|

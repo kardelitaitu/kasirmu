@@ -25,7 +25,7 @@ This skill defines the standardized workflow for opening new pull requests again
 
 | # | Rule | Why |
 |---|------|-----|
-| 1 | **Title format: `<branch_name> <summarized title>`.** | Must always prefix with the current branch name (e.g. `0.0.40 fix(ci): repair Trivy SARIF upload, KDS E2E tests...`). |
+| 1 | **Title format: `<branch_name> <summarized title>`.** | Must always prefix with the current branch name (e.g. `0.0.41 fix(ci): repair Trivy SARIF upload, KDS E2E tests...`). |
 | 2 | **Comprehensive descriptions from commit history.** | Always inspect the last 50 to 100 commits (`git log -n 100 --oneline` or `git log origin/main..HEAD --oneline`) and summarize key changes grouped by domain. |
 | 3 | **Base branch is always `main`.** | All PRs in kasir.mu target `main` unless the user explicitly specifies another target. PRs are opened **from the current active branch only** — the repo policy forbids creating or switching branches. |
 | 4 | **Never `git push` without explicit user permission.** | Before pushing local commits or branch to remote, you MUST present the plan to the user and obtain explicit push authorization. |
@@ -98,9 +98,9 @@ Categorize the findings into the following domains:
 Format: `<branch_name> <type>(<scope>): <summary>`
 
 Examples:
-- `0.0.40 fix(ci): repair Trivy SARIF upload, KDS E2E tests, tablet touch targets, and CI docs drift`
-- `0.0.40 feat(payment): add QRIS payment processor and terminal fallback`
-- `0.0.40 docs(agents): revise ui-components skill with design-language reference`
+- `0.0.41 fix(ci): repair Trivy SARIF upload, KDS E2E tests, tablet touch targets, and CI docs drift`
+- `0.0.41 feat(payment): add QRIS payment processor and terminal fallback`
+- `0.0.41 docs(agents): revise ui-components skill with design-language reference`
 
 #### 2. Body Structure (`pr_body.md`)
 Create a markdown file (e.g. `pr_body.md` at repo root) containing structured sections:
