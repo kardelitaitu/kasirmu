@@ -9,7 +9,7 @@ import {
   type TopologyNodePayload,
   type TopologyWirePayload,
 } from '@/api/topology';
-import { useSettings } from '@/contexts/SettingsContext';
+import { useOptionalSettings } from '@/contexts/SettingsContext';
 import TopologyApplyConfirm from './TopologyApplyConfirm';
 import { TopologyEmptyState } from './topologyEmptyState';
 import { TopologyAlignBar } from './topologyAlignBar';
@@ -252,7 +252,14 @@ export default function NodeTopologyEditor({
   const l10nRef = useRef(l10n);
   l10nRef.current = l10n;
 
-  const { settings } = useSettings();
+  // `useOptionalSettings`, NOT `useSettings`: this editor is reachable from the
+  // Topology page, which no `SettingsProvider` wraps — only `SettingsPage`
+  // mounts one. `useSettings` threw there and the whole route rendered the
+  // error boundary ("Something went wrong"), measured on the tablet
+  // 2026-10-07 and reproducible on the desktop shell via `#/settings/topology`
+  // (AppShell.tsx:385). The value below is read for ONE badge label, so a null
+  // provider degrades to the default paper width instead of crashing.
+  const settings = useOptionalSettings()?.settings ?? null;
 
   const canvasRef = useRef<HTMLDivElement>(null);
 
@@ -2030,7 +2037,7 @@ export default function NodeTopologyEditor({
         return { badge: 'KDS Ready', status: 'online' };
       }
       return {
-        badge: settings.receipt.paperWidth === 'standard' ? 'Receipt ✓' : 'Receipt 58mm',
+        badge: (settings?.receipt.paperWidth ?? 'standard') === 'standard' ? 'Receipt ✓' : 'Receipt 58mm',
         status: 'online',
       };
     }
