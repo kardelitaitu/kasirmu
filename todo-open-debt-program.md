@@ -93,6 +93,14 @@ Recorded because each one is still live in some document a worker might read, an
 
 ---
 
+## Rust workspace test health — re-measured again 2026-10-08 (after the census fix)
+
+**With the census green, the workspace run got one crate further and found a REAL regression in `kasirmu-core`: 3 failures, all `SQLITE_CONSTRAINT_CHECK` on `payments.method`.** `db::payments::tests::create_payment_zero_amount`, `db::payments::tests::create_payments_multiple_calls_same_sale` and `db::shifts::tests::get_shift_report_with_sales`. **Fixed in `2629c9bf0`** — `kasirmu-core` is now **3595 + 549 + 3 passed, 0 failed**.
+
+**The cause is a migration that landed after the tests and never swept them.** `925f3316b` (10-02, "feat(payment): add payments.method and gateway_status CHECK constraints migration") introduced a CHECK listing the 12 valid methods (`cash, card, card_debit, card_credit, qris_manual, qris, bank_transfer, ewallet, open_bill, credit, pay_later, other`). The tests date from **09-17** (`11a6d27cd`) and used two strings that had been valid **by omission** and were not in the new list: `"voucher"` and `"mobile_wallet"`. **Measured: neither string appears anywhere in production code or in any migration — only in test files**, so these were never real methods and there was nothing to restore; the tests were simply stale. Replaced with the nearest valid vocabulary — `voucher` -> `credit`, `mobile_wallet` -> `ewallet` (the spelling the migration and `payment_methods.rs` both use). `899`/8-line diff, four files, nothing else touched.
+
+**Worth noting HOW this was found, because the earlier rounds could not have.** Rounds 146-151 measured the Rust workspace while `kasirmu-app` was red on the census; `cargo test --workspace` stops reporting meaningfully once a crate fails, and the census noise masked whether anything else was broken. Clearing the census is what let the run proceed far enough to surface a genuine constraint violation in a different crate. **The two were unrelated, and fixing the first is what made the second visible** — a reason to finish a blocking pin rather than keep annotating it.
+
 ## Rust workspace test health — re-measured 2026-10-08
 
 **The workspace is close to green, and the two remaining failures are a census pin, not a defect.** Measured this round with an isolated `CARGO_TARGET_DIR` (the default target was locked by another session's build — see the note on concurrency below).
