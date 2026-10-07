@@ -59,6 +59,17 @@ cargo tauri build --bundles deb,appimage,msi,nsis,dmg
   > it is still present. `ops/install/uninstall.sh` deliberately still lists the legacy
   > `oz-pos` binaries and `.desktop` entry, so an upgrade cleans them up rather than
   > leaving both installed.
+- **Some `oz-pos` strings elsewhere in the tree are load-bearing and must NOT be
+  rebranded.** The naming cleanup above applies to names that were simply stale. Three sites
+  outside this directory hold `oz-pos` as a real infrastructure identifier: the Northflank
+  **project id** (an API path segment — `/v1/projects/oz-pos/services/cloud/…`, and
+  `NF_PROJECT_ID` at .github/workflows/dev-ci.yml:1675), the Cloudflare **Worker name**, and
+  the historical image tags. Renaming any of them turns working URLs into 404s; the
+  skill-drift guard allow-lists them for exactly this reason (`PREFIX_ALLOWLIST` in
+  `.agents/skills/skill-drift-guard/scripts/detect.sh`). The live skills say so themselves —
+  `deploy-northflank/SKILL.md`, `northflank-deploy-diagnosis/SKILL.md`, `deploy-cloudflare/SKILL.md`.
+  Flagged here because "finish the rebrand" is the natural next move for a reader who finds
+  them, and on those three it is the wrong one.
 - Auto-update uses Tauri's updater plugin; the **public** signing key is `kasirmu-updater.key.pub` (repo root). The private half is not committed. (This line said `oz-pos-updater.key` until 2026-10-08 — no such file has existed since the rebrand; the 2026-07-22 stamp that certified it as existing was wrong.)
 - Release workflow in `.github/workflows/release.yml` builds all platforms on tag push
 
