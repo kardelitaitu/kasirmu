@@ -51,12 +51,19 @@
 // WHAT THIS FILE DOES NOT REACH:
 //   * TabletAppShell.tsx:527 carries the same pageDenied expression; only the
 //     desktop shell is rendered here.
-//   * Real feature registrations are NOT imported — they are lazy
+//   * Real feature registrations are NOT imported HERE — they are lazy
 //     (ui/src/features/*/register.tsx; 12 of those files carry feature: on
 //     registerPage, measured with
 //     'grep -rl "feature:" --include=register.tsx ui/src/features | wc -l' = 12).
 //     Every page below is a SYNTHETIC registration of the same shape, so real
 //     registration order / route-override behaviour is not exercised.
+//     PARTLY CLOSED 2026-10-07 by __tests__/realFeatureRegistrations.test.tsx,
+//     which drives four real register* functions against the real registries and
+//     pins the real cardinality (kds installs TWO routes behind one feature;
+//     reports mixes one gated page with four role-gated; registration is
+//     idempotent). That file is a REGISTRY test and mounts no shell, so what
+//     remains open here is specifically the RENDER path over real pages — this
+//     file still does not render one.
 //   * The backend that decides which features are enabled (getEnabledFeatures) is
 //     mocked at the API boundary, as in AppShell.test.tsx, and the useFeatures
 //     mock below is the only source of 'enabled'. That narrows the claim but not
