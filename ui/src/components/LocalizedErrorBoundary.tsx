@@ -9,6 +9,8 @@ interface LocalizedErrorBoundaryProps {
   onReset?: () => void;
   /** Auto-reload the fallback after this many ms (full-page boundaries only). */
   autoRefreshMs?: number;
+  /** Values whose change clears a caught error (see `ErrorBoundary.resetKeys`). */
+  resetKeys?: ReadonlyArray<unknown>;
 }
 
 /**
@@ -24,6 +26,7 @@ export function LocalizedErrorBoundary({
   children,
   onReset,
   autoRefreshMs,
+  resetKeys,
 }: LocalizedErrorBoundaryProps) {
   const { l10n } = useLocalization();
   return (
@@ -32,6 +35,7 @@ export function LocalizedErrorBoundary({
       retryLabel={requiredLocalized(l10n, 'error-boundary-retry')}
       {...(onReset ? { onReset } : {})}
       {...(autoRefreshMs ? { autoRefreshMs } : {})}
+      {...(resetKeys ? { resetKeys } : {})}
     >
       {children}
     </ErrorBoundary>

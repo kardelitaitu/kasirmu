@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useSyncExternalStore, type ReactNode } from 'react';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import { LocalizedErrorBoundary } from '@/components/LocalizedErrorBoundary';
 import { GlobalErrorReporter } from '@/components/GlobalErrorReporter';
@@ -30,6 +30,27 @@ interface AppProvidersProps {
 const ERROR_AUTO_REFRESH_MS = 30_000;
 
 /**
+ * The current hash route. Both shells navigate by `location.hash`, so this is
+ * the one value that means "the user moved somewhere else".
+ *
+ * It feeds `resetKeys` on the full-page boundaries below. Measured on the
+ * tablet 2026-10-07: a single bad route left the fallback up for every
+ * subsequent section, and the only recovery was the 30s auto-reload — a full
+ * process reload that logs the cashier out mid-shift. Resetting on navigation
+ * recovers in place instead.
+ */
+function useHashRoute(): string {
+  return useSyncExternalStore(
+    (onStoreChange) => {
+      window.addEventListener('hashchange', onStoreChange);
+      return () => window.removeEventListener('hashchange', onStoreChange);
+    },
+    () => window.location.hash,
+    () => '',
+  );
+}
+
+/**
  * Composite provider wrapper that establishes application contexts in optimal dependency order.
  * 
  * Order of nesting:
@@ -47,13 +68,15 @@ const ERROR_AUTO_REFRESH_MS = 30_000;
  * 11. HardwareAccelProvider (CSS GPU acceleration flags)
  */
 export function AppProviders({ children }: AppProvidersProps) {
+  const hashRoute = useHashRoute();
+  const resetKeys = [hashRoute];
   return (
-    <ErrorBoundary autoRefreshMs={ERROR_AUTO_REFRESH_MS}>
+    <ErrorBoundary autoRefreshMs={ERROR_AUTO_REFRESH_MS} resetKeys={resetKeys}>
       <LocaleProvider>
         {/* ERR-02: inner boundary resolves fallback copy through the active
             locale; the outer ErrorBoundary stays as the locale-independent
             emergency fallback in case LocaleProvider itself fails. */}
-        <LocalizedErrorBoundary autoRefreshMs={ERROR_AUTO_REFRESH_MS}>
+        <LocalizedErrorBoundary autoRefreshMs={ERROR_AUTO_REFRESH_MS} resetKeys={resetKeys}>
         <BrandProvider>
           <ThemeProvider>
             <CurrencyProvider>

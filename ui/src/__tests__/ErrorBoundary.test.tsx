@@ -237,6 +237,71 @@ describe('ErrorBoundary', () => {
     }
   });
 
+  // ── Navigation recovery (tablet: one bad route disabled the whole app) ──
+
+  it('clears a caught error when a resetKey changes, without a reload', () => {
+    const { rerender } = render(
+      <ErrorBoundary resetKeys={['#/topology']} autoRefreshMs={30_000}>
+        <SometimesBroken fail />
+      </ErrorBoundary>,
+    );
+    expect(screen.getByText('Something went wrong')).toBeInTheDocument();
+
+    rerender(
+      <ErrorBoundary resetKeys={['#/settings/general']} autoRefreshMs={30_000}>
+        <SometimesBroken fail={false} />
+      </ErrorBoundary>,
+    );
+
+    expect(screen.getByText('Recovered')).toBeInTheDocument();
+    expect(screen.queryByText('Something went wrong')).not.toBeInTheDocument();
+    expect(reloadSpy).not.toHaveBeenCalled();
+  });
+
+  it('cancels the pending auto-reload when a resetKey change recovers it', () => {
+    vi.useFakeTimers();
+    try {
+      const { rerender } = render(
+        <ErrorBoundary resetKeys={['#/topology']} autoRefreshMs={30_000}>
+          <SometimesBroken fail />
+        </ErrorBoundary>,
+      );
+      expect(screen.getByText('Something went wrong')).toBeInTheDocument();
+
+      rerender(
+        <ErrorBoundary resetKeys={['#/settings/general']} autoRefreshMs={30_000}>
+          <SometimesBroken fail={false} />
+        </ErrorBoundary>,
+      );
+      expect(screen.getByText('Recovered')).toBeInTheDocument();
+
+      act(() => {
+        vi.advanceTimersByTime(60_000);
+      });
+      expect(reloadSpy).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps holding the error when no resetKeys are passed (unchanged default)', () => {
+    const { rerender } = render(
+      <ErrorBoundary>
+        <SometimesBroken fail />
+      </ErrorBoundary>,
+    );
+    expect(screen.getByText('Something went wrong')).toBeInTheDocument();
+
+    rerender(
+      <ErrorBoundary>
+        <SometimesBroken fail={false} />
+      </ErrorBoundary>,
+    );
+    // Documented behaviour: without resetKeys the stale fallback persists
+    // until Try Again or the auto-reload. The recovery above is opt-in.
+    expect(screen.getByText('Something went wrong')).toBeInTheDocument();
+  });
+
   it('does not catch async errors in useEffect (class boundary limitation)', () => {
     render(
       <ErrorBoundary>
