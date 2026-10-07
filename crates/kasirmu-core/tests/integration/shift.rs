@@ -207,7 +207,7 @@ fn shift_close_different_payment_methods() {
         "INSERT INTO sales (id, user_id, status, total_minor, payment_method, currency, line_count, created_at, updated_at) VALUES
          ('sale-c1', 'user-alice', 'completed', 500, 'cash', 'USD', 1, '{now}', '{now}'),
          ('sale-c2', 'user-alice', 'completed', 300, 'card', 'USD', 1, '{now}', '{now}'),
-         ('sale-c3', 'user-alice', 'completed', 200, 'mobile_wallet', 'USD', 1, '{now}', '{now}');"
+         ('sale-c3', 'user-alice', 'completed', 200, 'ewallet', 'USD', 1, '{now}', '{now}');"
     )).unwrap();
 
     let closed = s.close_shift(&shift.id, 700, None).unwrap();

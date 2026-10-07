@@ -204,7 +204,7 @@ fn payment_zero_amount() {
     let payment = Payment {
         id: "pay-zero".into(),
         sale_id: "sale-1".into(),
-        method: "voucher".into(),
+        method: "credit".into(),
         amount: Money {
             minor_units: 0,
             currency: "IDR".parse().unwrap(),

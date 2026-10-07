@@ -425,12 +425,12 @@ fn get_shift_report_with_sales() {
         "INSERT INTO sales (id, user_id, status, total_minor, payment_method, currency, line_count, created_at, updated_at) VALUES
          ('sale-c1', 'user-1', 'completed', 500, 'cash', 'USD', 1, '{now}', '{now}'),
          ('sale-c2', 'user-1', 'completed', 300, 'card', 'USD', 1, '{now}', '{now}'),
-         ('sale-c3', 'user-1', 'completed', 200, 'mobile_wallet', 'USD', 1, '{now}', '{now}'),
+         ('sale-c3', 'user-1', 'completed', 200, 'ewallet', 'USD', 1, '{now}', '{now}'),
          ('sale-v1', 'user-1', 'voided', 100, 'cash', 'USD', 1, '{now}', '{now}');
          INSERT INTO payments (id, sale_id, method, amount_minor, currency, created_at) VALUES
          ('pmt-1', 'sale-c1', 'cash', 500, 'USD', '{now}'),
          ('pmt-2', 'sale-c2', 'card', 300, 'USD', '{now}'),
-         ('pmt-3', 'sale-c3', 'mobile_wallet', 200, 'USD', '{now}');"
+         ('pmt-3', 'sale-c3', 'ewallet', 200, 'USD', '{now}');"
     )).unwrap();
 
     // Close the shift so totals are stored.
@@ -448,7 +448,7 @@ fn get_shift_report_with_sales() {
     assert_eq!(report.payment_breakdown[0].count, 1);
     assert_eq!(report.payment_breakdown[0].total_minor, 500);
     assert_eq!(report.payment_breakdown[1].method, "card");
-    assert_eq!(report.payment_breakdown[2].method, "mobile_wallet");
+    assert_eq!(report.payment_breakdown[2].method, "ewallet");
 
     // Counts.
     assert_eq!(report.sale_count, 3, "completed sales");

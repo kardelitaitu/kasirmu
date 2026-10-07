@@ -168,7 +168,7 @@ fn create_payment_zero_amount() {
     insert_sale(&conn, &sale_id, 0, now);
 
     let splits = vec![PaymentSplitArg {
-        method: "voucher".into(),
+        method: "credit".into(),
         amount_minor: 0,
         gateway_reference: None,
         gateway_status: None,
@@ -372,12 +372,12 @@ fn create_payments_multiple_calls_same_sale() {
         .unwrap();
     assert_eq!(batch1.len(), 2);
 
-    // Second batch: voucher
+    // Second batch: credit
     let batch2 = store
         .create_payments(
             &sale_id,
             &[PaymentSplitArg {
-                method: "voucher".into(),
+                method: "credit".into(),
                 amount_minor: 1000,
                 gateway_reference: None,
                 gateway_status: None,
