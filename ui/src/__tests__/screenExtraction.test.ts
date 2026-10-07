@@ -275,7 +275,20 @@ const SCREENS: ScreenEntry[] = [
   {
     name: 'StaffManagementScreen',
     tsx: 'staff/StaffManagementScreen.tsx',
-    css: ['staff/StaffManagementScreen.css'],
+    // RoleAuthoringPanel.css joined 2026-10-07 (BASELINE_UNCITED 18 -> 17). The
+    // panel is mounted at StaffManagementScreen.tsx:651 (imported :59, ref held at
+    // :313), so it is reachable and this entry is the right owner — it is a
+    // component, not a screen, exactly like the six staff/components files below.
+    //
+    // The sheet is cited in `css`, not only the component in `additionalTsx`,
+    // because the walk's contract is that additionalTsx feeds the USED-class walk
+    // and css feeds the DEFINED-rule walk; naming the component alone would make
+    // all 34 of its classes read as used-but-undefined. Measured before citing:
+    // 34 defined, 0 undefined, 0 dead — the cleanest sheet left in the array.
+    css: [
+      'staff/StaffManagementScreen.css',
+      'staff/components/RoleAuthoringPanel.css',
+    ],
     // The Agent 3 extraction moved the table/drawer/assignment JSX into
     // components/*.tsx; they share the screen's stylesheet (global classes).
     additionalTsx: [
@@ -290,6 +303,11 @@ const SCREENS: ScreenEntry[] = [
       'staff/components/StaffTabs.tsx',
       // The Trash tab's panel renders staff-mgmt-trash* from the same sheet.
       'staff/components/StaffTrashPanel.tsx',
+      // The role editor drawer, mounted at :651. It carries its OWN sheet
+      // (components/RoleAuthoringPanel.css), cited in this entry's css list above
+      // — the component is named here so its markup is walked, and the sheet is
+      // named there so its rules are defined.
+      'staff/components/RoleAuthoringPanel.tsx',
     ],
     // The sheet gates ONE rule on the memo stack's presence — see the
     // EXTERNAL_CLASS_LEDGER entry below for the measurement. The stack is a
@@ -2080,11 +2098,13 @@ const SCREENS: ScreenEntry[] = [
     // line it still renders), so no scaffold name is left dead by this entry.
     name: 'SystemDiagnosticsScreen',
     tsx: 'settings/screens/SystemDiagnosticsScreen.tsx',
-    // The updater card's sheet added 2026-10-07: SystemDiagnosticsScreen.tsx :16
-    // imports and :35 mounts <UpdateSettingsCard />, which brings a stylesheet of
+    // The updater card's sheet added 2026-10-07: SystemDiagnosticsScreen.tsx :17
+    // imports and :42 mounts <UpdateSettingsCard />, which brings a stylesheet of
     // its own. Nothing cited that sheet, and a new one may not join
     // BASELINE_UNCITED, so the cite is the fix — the updater card is styled by
-    // the screen that renders it, not by the scaffold sheet beside it.
+    // the screen that renders it, not by the scaffold sheet beside it. The mount
+    // is shell-gated (isTabletShell()): the card is Android-only, so desktop never
+    // renders it, but the walker still reads the cite from this file.
     css: [
       'settings/screens/screens-placeholder.css',
       'settings/screens/UpdateSettingsCard.css',
@@ -2914,7 +2934,6 @@ const BASELINE_UNCITED: string[] = [
   'settings/SettingsNavTree.css',
   'settings/WorkspaceSettingsModal.module.css',
   'setup/components/LiveSetupPreview.css',
-  'staff/components/RoleAuthoringPanel.css',
   'warehouse/WarehouseConsole.css',
 ];
 
