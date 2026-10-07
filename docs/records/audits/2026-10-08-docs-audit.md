@@ -138,6 +138,25 @@ Fixed in `5535ec01d`: `list_kds_devices_scoped`, `register_kds_device_scoped`, `
 
 This is worth recording for what it demonstrates rather than as a finding: **the drift this audit fixed is not a one-off.** Pattern A ("commands register faster than the docs that describe them") reproduced within hours of the repair, from unrelated feature work by another session — which is the argument for the gate rather than the pass. `check-api-surface.py` caught it on the next run with no human intervention, and the page's own `CLEAN` claim is now a property a script re-establishes rather than a statement someone once verified.
 
+## 3f. A checker change investigated and REJECTED on evidence
+
+`detect.sh` Check 1 (paths) extracts tokens from a SKILL.md by piping the file straight into an `awk` pass (line 426). Its siblings — Checks 11–15 — instead run through `strip_skill_comments()` (line 713), which blanks HTML stamp comments. So Check 1, alone, has no comment context: a stamp that *documents* a broken path is read as a live reference to one.
+
+This looked like the same "gate that cries wolf" class the script's own comments call its worst failure mode, and it had already bitten once in this audit — the correction note written for `codebase-memory/SKILL.md` had to be worded to avoid spelling the dead path as a bare token, because quoting it re-flagged the line. The obvious fix was to route Check 1 through the existing helper.
+
+**The fix was measured before it was made, and the measurement says no.** Against a faithful copy of Check 1's extractor, comparing the tokens found with comments intact against those found with comments stripped:
+
+| Question | Result |
+|---|---|
+| Does Check 1 flag anything today? | **No** — "No drift detected" |
+| Tokens comment-stripping would remove from the flag-eligible set | **2**, both the same value: `crates/oz-` |
+| What are those two? | A regex-truncation artifact of `crates/oz-*`, already suppressed by the skip at line 378 (`*[-.]|*...|*..`) — **not currently flagged** |
+| What stripping would COST | It would blind Check 1 to **real repo paths cited only inside stamps** — `ui/src/theme/tokens.css`, `ui/src/contexts/ZoomContext.tsx`, `crates/kasirmu-core/src/money.rs`, `assets/branding/default/`… and the `docs-auditor` script paths all appear ONLY in comments and are validated today |
+
+The change would trade **real coverage for zero benefit**: it suppresses no finding and hides several real paths from the one check that verifies them. That is exactly the weakening the script's own comment at lines 402–408 warns against — a shape-based sentinel was tried there and had to be removed because it "also swallowed real 4+-slash repo paths". Not weakened on this pass either.
+
+**NOT CHANGED.** The residual issue is far narrower than it first appeared, and is stated here so the next reader does not re-investigate it: a stamp naming a genuinely dead path will be flagged, and the remedy is to describe the defect without writing the path as a bare token — which is how the `codebase-memory` correction note is now written.
+
 ---
 
 ## 4. Outstanding
