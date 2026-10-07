@@ -1521,6 +1521,16 @@ generations with their verdicts (`:124-175`); `restore_status` reports what is p
 > ```
 > **Expected today: three hits, all in `apps/desktop-tauri/src/lib.rs` (`:1341`, `:1342`, `:1343`)
 > and none in `apps/mobile-tauri/src/lib.rs`.** If that changes, this section is stale again.
+>
+> **It changed once, and the block above caught it — 2026-10-07.** The count and the file were
+> still right (three hits, all desktop, none mobile); the LINE numbers had moved `:971-973` →
+> `:1341-1343`, which is exactly the drift the "re-derive, do not trust it" instruction exists
+> for. The same pass found six more citations in §11 that a **module split on 2026-09-28** had
+> invalidated: the restore surface moved out of `crates/kasirmu-bridge/src/data.rs` into
+> `crates/kasirmu-bridge/src/data/restore.rs` (`restore.rs:8` records the split), leaving that
+> file 786 lines where the doc quoted `:1043`, `:1075`, `:1092`, `:1152` and `:1233` — the last
+> three past its own end. All six were repointed to the module they now live in, and each was
+> verified to land on the named item rather than merely on an existing line.
 
 **The three commands, and the permission each one enforces.** The gate sits on the
 renderer-reachable wrapper in `apps/desktop-tauri/src/commands/data.rs`, not on the bridge
