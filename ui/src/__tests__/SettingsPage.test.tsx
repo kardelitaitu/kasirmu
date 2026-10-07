@@ -821,6 +821,12 @@ describe('SettingsPage load lifecycle and chrome (kept)', () => {
     try {
       failOnceCommands.set('get_sync_settings_scoped', 1);
       const page = renderPage();
+      // Both loads below are DEBOUNCED (SettingsContext.INITIAL_LOAD_DEBOUNCE_MS,
+      // d8d6a6aa2). Under fake timers the quiet window only elapses when advanced,
+      // so each render's load must be released explicitly.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(INITIAL_LOAD_DEBOUNCE_MS + 50);
+      });
       await waitFor(() => {
         expect(screen.getByTestId('settings-sidebar')).toBeInTheDocument();
       });
@@ -829,7 +835,9 @@ describe('SettingsPage load lifecycle and chrome (kept)', () => {
       // rerenders — the provider's loadAll is keyed on sessionToken.
       workspaceState.sessionToken = 'swapped-token';
       rerenderWithProviders(page, <TestWrapper><SettingsPage /></TestWrapper>, settingsFtl, sharedFtl);
-      await act(async () => {});
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(INITIAL_LOAD_DEBOUNCE_MS + 50);
+      });
 
       await act(async () => {
         await vi.advanceTimersByTimeAsync(PARTIAL_ERROR_TOAST_MS + 500);
@@ -866,21 +874,27 @@ describe('SettingsPage load lifecycle and chrome (kept)', () => {
       });
 
       const page = renderPage();
-      await act(async () => {});
+      // The initial load is DEBOUNCED (SettingsContext.INITIAL_LOAD_DEBOUNCE_MS,
+      // added in d8d6a6aa2): nothing is in flight until the quiet window elapses,
+      // so the deferred gate below is not reached until it does. Advancing here is
+      // what makes "load A is in flight" true rather than assumed.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(INITIAL_LOAD_DEBOUNCE_MS + 50);
+      });
       // Load A (token A) is in flight and held: the hub is still a skeleton.
       expect(document.querySelector('.settings-loading')).not.toBeNull();
 
       // Swap the token: the provider starts load B (held via its own gate).
       workspaceState.sessionToken = 'swapped-token';
       rerenderWithProviders(page, <TestWrapper><SettingsPage /></TestWrapper>, settingsFtl, sharedFtl);
-      await act(async () => {});
+      // The token swap re-runs the same debounced effect, so load B is scheduled
+      // rather than immediate. Advancing is what puts B in flight.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(INITIAL_LOAD_DEBOUNCE_MS + 50);
+      });
 
       // A resolves now. A is stale — it must NOT clear B's spinner.
       await act(async () => { releaseA({ name: '', address: '', taxId: '', currency: 'USD', branch: '' }); });
-      // eslint-disable-next-line no-console -- temporary diagnostic
-      console.log('DIAG after releaseA, calls so far:', invokeMock.mock.calls.map((c) => c[0]).join(','));
-      // eslint-disable-next-line no-console -- temporary diagnostic
-      console.log('DIAG html after releaseA:', document.body.innerHTML.replace(/\s+/g,' ').slice(0,300));
       expect(document.querySelector('.settings-loading')).not.toBeNull();
       expect(screen.queryByTestId('settings-sidebar')).not.toBeInTheDocument();
 
