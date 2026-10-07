@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Localized, useLocalization } from '@fluent/react';
+import { l10nErrorMessage } from '@/utils/app-error';
 import { Button } from '@/components/Button';
 import { Modal } from '@/components/Modal';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
@@ -129,9 +130,11 @@ export function UpdateSettingsCard() {
       }
     } catch (err: unknown) {
       setStep('error');
-      setErrorMessage(err instanceof Error ? err.message : String(err));
+      // ERR-05: never render the raw updater error — a plugin/IO failure message
+      // is developer-facing text and this card shows it directly to the user.
+      setErrorMessage(l10nErrorMessage(err, l10n, 'settings-updater-check-failed'));
     }
-  }, [sessionToken]);
+  }, [sessionToken, l10n]);
 
   // Execute actual download after safety check
   const executeDownload = useCallback(async () => {
@@ -192,9 +195,11 @@ export function UpdateSettingsCard() {
         unlistenRef.current = null;
       }
       setStep('error');
-      setErrorMessage(err instanceof Error ? err.message : String(err));
+      // ERR-05: never render the raw updater error — a plugin/IO failure message
+      // is developer-facing text and this card shows it directly to the user.
+      setErrorMessage(l10nErrorMessage(err, l10n, 'settings-updater-check-failed'));
     }
-  }, [sessionToken, updateInfo]);
+  }, [sessionToken, updateInfo, l10n]);
 
   // Execute actual install after safety check
   const executeInstall = useCallback(async () => {
@@ -217,9 +222,11 @@ export function UpdateSettingsCard() {
       }
     } catch (err: unknown) {
       setStep('error');
-      setErrorMessage(err instanceof Error ? err.message : String(err));
+      // ERR-05: never render the raw updater error — a plugin/IO failure message
+      // is developer-facing text and this card shows it directly to the user.
+      setErrorMessage(l10nErrorMessage(err, l10n, 'settings-updater-check-failed'));
     }
-  }, [sessionToken, downloadedApkPath, canRequestInstall, openPermissionSettings]);
+  }, [sessionToken, downloadedApkPath, canRequestInstall, openPermissionSettings, l10n]);
 
   // Safety Gate: check offline queue before proceeding with download or install
   const checkSafetyAndProceed = useCallback(

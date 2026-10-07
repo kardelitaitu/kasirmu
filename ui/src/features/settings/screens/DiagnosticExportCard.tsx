@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
-import { Localized } from '@fluent/react';
+import { Localized, useLocalization } from '@fluent/react';
+import { l10nErrorMessage } from '@/utils/app-error';
 import { Button } from '@/components/Button';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import {
@@ -18,6 +19,7 @@ import './DiagnosticExportCard.css';
  */
 export function DiagnosticExportCard() {
   const { sessionToken } = useWorkspace();
+  const { l10n } = useLocalization();
 
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<DiagnosticExportResult | null>(null);
@@ -45,11 +47,15 @@ export function DiagnosticExportCard() {
 
       setResult(res);
     } catch (err: unknown) {
-      setErrorMessage(err instanceof Error ? err.message : String(err));
+      // ERR-05: the raw backend message must never render. This card surfaces the
+      // failure directly under the button, so a message like os error 13 would
+      // reach the user verbatim. l10nErrorMessage maps a typed AppError to shared
+      // copy and falls back to this screen's own key otherwise.
+      setErrorMessage(l10nErrorMessage(err, l10n, 'settings-diagnostics-export-failed'));
     } finally {
       setLoading(false);
     }
-  }, [sessionToken]);
+  }, [sessionToken, l10n]);
 
   const sizeMb = result ? (result.sizeBytes / (1024 * 1024)).toFixed(2) : '0';
 

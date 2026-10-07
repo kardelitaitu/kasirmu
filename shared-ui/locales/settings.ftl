@@ -1068,6 +1068,7 @@ settings-diagnostics-title = Diagnostics
 settings-diagnostics-intro = Why each feature is available or locked for you right now — the same gates the app enforces, with the reason named. Read-only, works offline.
 settings-diagnostics-refresh = Refresh
 settings-diagnostics-load-failed = Could not load the verdicts. Try again.
+settings-diagnostics-export-failed = Could not export the diagnostics archive. Try again.
 settings-diagnostics-list-aria = Feature availability verdicts
 settings-diagnostics-status-available = Available
 settings-diagnostics-loading = …
@@ -1236,6 +1237,9 @@ sync-conflicts-badge-aria = { $count } quarantined sync conflicts
 
 # Android In-App Self-Updater
 settings-updater-title = Application Updates
+receipts-drawer-kick-failed = Could not open the cash drawer. Check the device.
+settings-pos-hardware-failed = The hardware action failed. Check the device and try again.
+settings-updater-check-failed = Could not check for updates. Try again.
 settings-updater-subtitle = Check for and install Android POS system updates safely.
 settings-updater-current-version = Current Version: { $version }
 settings-updater-latest-version = Available Version: v{ $version }

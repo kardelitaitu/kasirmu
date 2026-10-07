@@ -8,6 +8,7 @@ cart-total-label = Total
 
 # POS
 sale-pay-button = Pay
+pos-cash-drawer-failed = Could not open the cash drawer. Check the device and try again.
 pos-cart-panel-title = Current Sale
 pos-cart-panel-title-order = Current Order
 pos-cart-deducting-label = Deducting: { $name }

@@ -4,6 +4,7 @@ import { requiredLocalized } from '@/components';
 import { useAuth } from '@/contexts/AuthContext';
 import { Localized } from '@/components/Localized';
 import { useLocalization } from '@fluent/react';
+import { l10nErrorMessage } from '@/utils/app-error';
 import ProductLookupScreen from '@/features/products/ProductLookupScreen';
 import { useProducts } from '@/features/products/useProducts';
 import RestaurantMenu from '@/features/restaurant/RestaurantMenu';
@@ -812,11 +813,13 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
       }
     } catch (err) {
       addToast({
-        message: `Cash drawer kick failed: ${err instanceof Error ? err.message : String(err)}`,
+        // ERR-05: the interpolated raw error was reaching the cashier. The prefix
+        // carried the context; the localized copy now carries it entirely.
+        message: l10nErrorMessage(err, l10n, 'pos-cash-drawer-failed'),
         type: 'error',
       });
     }
-  }, [sessionToken, addToast]);
+  }, [sessionToken, addToast, l10n]);
 
   const handleEditModifiers = useCallback(
     async (line: CartLine) => {

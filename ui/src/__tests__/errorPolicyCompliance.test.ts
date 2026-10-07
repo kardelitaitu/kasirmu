@@ -73,6 +73,29 @@ const WHITELISTED_RAW_PARSE: Array<{ file: string; anchor: RegExp; context: RegE
     anchor: /err instanceof Error \? err\.message : String\(err\)/,
     context: /tryParsePartialStockResult/,
   },
+  {
+    // ErrorBoundary.componentDidCatch -> reportClientCrash: a TELEMETRY payload,
+    // not display text. The message and stack go to the crash reporter so a
+    // support ticket can name the fault; nothing in this path renders.
+    //
+    // The adjacent render at ErrorBoundary.tsx:171 DOES print
+    // this.state.error.message, and that is deliberate rather than a leak this
+    // whitelist is hiding: ErrorBoundary is the emergency fallback for a crash
+    // OUTSIDE the locale tree (see its header, ":8-11"), so there may be no
+    // bundle to map to. A blank frame is the worse outcome. The localized path
+    // is LocalizedErrorBoundary, which is what the app mounts inside the tree.
+    //
+    // Anchored on reportClientCrash within the following lines so a refactor
+    // that starts RENDERING this value fails the whitelist instead of silently
+    // riding on it.
+    // The context window is FORWARD-ONLY (see whitelistedLines: slice(i+1, i+4)),
+    // so the anchor cannot look back at reportClientCrash. It anchors on what
+    // follows instead: the crash payload's own sibling fields. A refactor that
+    // rendered this value would move it away from `stack:` and fail closed.
+    file: path.join(SRC, 'components/ErrorBoundary.tsx'),
+    anchor: /message: error\.message,/,
+    context: /stack: error\.stack/,
+  },
 ];
 
 /** 1-based line numbers whitelisted for `file` (anchor + context match). */
@@ -177,7 +200,12 @@ describe('error-policy compliance (ERR-10)', () => {
             /err\.message|error\.message|e\.message|ex\.message/.test(line);
           const mapped =
             /l10nErrorMessage|userErrorMessage|plainErrorMessage|normalizeError|requiredLocalized/.test(line);
-          if (rawConsumed && !mapped) {
+          // isWhitelisted belongs here too. Rules 1 and 2 consult it; this one did
+          // not until 2026-10-07, which made WHITELISTED_RAW_PARSE silently
+          // ineffective for every legacy-pattern hit — an entry could be added,
+          // reviewed, and still not excuse the line it named. Found when the
+          // ErrorBoundary telemetry entry did not take effect.
+          if (rawConsumed && !mapped && !isWhitelisted(file, n)) {
             leaks.push(`${path.relative(SRC, file)}:${n}`);
           }
         }

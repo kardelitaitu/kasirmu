@@ -5,6 +5,7 @@ import { Button } from '@/components/Button';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import { useToast } from '@/components/Toast';
 import { requiredLocalized } from '@/components';
+import { l10nErrorMessage } from '@/utils/app-error';
 import { useSettings } from '@/contexts/SettingsContext';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { useTerminalHardware } from '@/hooks/useTerminalHardware';
@@ -149,7 +150,7 @@ export function WorkspaceStorePosSettings({
         addToast({ message: 'Test receipt sent successfully', type: 'success' });
       }
     } catch (err) {
-      addToast({ message: `Test print failed: ${err instanceof Error ? err.message : String(err)}`, type: 'error' });
+      addToast({ message: `Test print failed: ${l10nErrorMessage(err, l10n, 'settings-pos-hardware-failed')}`, type: 'error' });
     } finally {
       setTestingPrint(false);
     }
@@ -169,7 +170,7 @@ export function WorkspaceStorePosSettings({
         addToast({ message: 'Cash drawer did not open: device returned unconfirmed', type: 'warning' });
       }
     } catch (err) {
-      addToast({ message: `Cash drawer kick failed: ${err instanceof Error ? err.message : String(err)}`, type: 'error' });
+      addToast({ message: `Cash drawer kick failed: ${l10nErrorMessage(err, l10n, 'settings-pos-hardware-failed')}`, type: 'error' });
     } finally {
       setTestingDrawer(false);
     }

@@ -1046,6 +1046,7 @@ settings-diagnostics-title = Diagnostik
 settings-diagnostics-intro = Mengapa setiap fitur tersedia atau terkunci untuk Anda saat ini — gerbang yang sama yang diterapkan aplikasi, dengan alasannya disebutkan. Hanya baca, bekerja offline.
 settings-diagnostics-refresh = Segarkan
 settings-diagnostics-load-failed = Tidak dapat memuat hasil pemeriksaan. Coba lagi.
+settings-diagnostics-export-failed = Tidak dapat mengekspor arsip diagnostik. Coba lagi.
 settings-diagnostics-list-aria = Hasil pemeriksaan ketersediaan fitur
 settings-diagnostics-status-available = Tersedia
 settings-diagnostics-loading = …
@@ -1214,6 +1215,9 @@ sync-conflicts-badge-aria = { $count } konflik sinkronisasi terkarantina
 
 # Android In-App Self-Updater
 settings-updater-title = Pembaruan Aplikasi
+receipts-drawer-kick-failed = Tidak dapat membuka laci kas. Periksa perangkat.
+settings-pos-hardware-failed = Tindakan perangkat keras gagal. Periksa perangkat dan coba lagi.
+settings-updater-check-failed = Tidak dapat memeriksa pembaruan. Coba lagi.
 settings-updater-subtitle = Periksa dan pasang pembaruan sistem POS Android dengan aman.
 settings-updater-current-version = Versi Saat Ini: { $version }
 settings-updater-latest-version = Versi Tersedia: v{ $version }

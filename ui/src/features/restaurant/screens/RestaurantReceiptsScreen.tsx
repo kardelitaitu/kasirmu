@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef, type ChangeEvent } from 'react';
 import { Localized, useLocalization } from '@fluent/react';
+import { l10nErrorMessage } from '@/utils/app-error';
 import { Card } from '@/components/Card';
 import { Button } from '@/components/Button';
 import { UnsavedChangesDialog } from '@/components/UnsavedChangesDialog';
@@ -924,13 +925,15 @@ export default function RestaurantReceiptsScreen({
     } catch (err) {
       addToast({
         title: 'Drawer Kick Failed',
-        message: err instanceof Error ? err.message : String(err),
+        // ERR-05: the drawer-kick failure text is backend hardware detail; render
+        // the screen's own localized copy instead of surfacing it verbatim.
+        message: l10nErrorMessage(err, l10n, 'receipts-drawer-kick-failed'),
         type: 'error',
       });
     } finally {
       setTestingDrawer(false);
     }
-  }, [sessionToken, addToast]);
+  }, [sessionToken, addToast, l10n]);
 
   // ── Save handler ────────────────────────────────────────────
   const handleSave = useCallback(async () => {

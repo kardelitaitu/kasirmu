@@ -26,6 +26,7 @@ pos-tax = Pajak
 pos-hold = Tahan
 pos-cart-remove = Hapus
 pos-cart-title = Penjualan Saat Ini
+pos-cash-drawer-failed = Tidak dapat membuka laci kas. Periksa perangkat dan coba lagi.
 pos-cart-panel-title = Penjualan Saat Ini
 pos-cart-panel-title-order = Pesanan Saat Ini
 pos-cart-deducting-label = Mengurangkan: { $name }
