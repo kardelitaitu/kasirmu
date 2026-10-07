@@ -40,7 +40,7 @@ HOW IT DECIDES
           and requires the type to appear in ``scripts/handler-classification.json``.
           A type that is absent is a NEW handler added without classification, and
           is blocking. Types that are present are NOT re-graded: the Phase 0 census
-          (``docs/architecture/handler-census-phase0.md``) classified them, and
+          (``docs/records/superseded/handler-census-phase0.md``) classified them, and
           re-grading them here would duplicate that work.
 
   Rule 3  Reported, never failed. For every cross-vertical table a module names,
@@ -259,7 +259,7 @@ REGISTRY_DESCRIPTION = (
     "(docs/architecture/module-namespace-governance.md, Rule 2). Every EventHandler "
     "impl a production file declares must appear here with one of the ADR-62 D4 "
     "categories. The populating classification is the Phase 0 census "
-    "(docs/architecture/handler-census-phase0.md §3); scripts/verify-namespace-governance.py "
+    "(docs/records/superseded/handler-census-phase0.md §3); scripts/verify-namespace-governance.py "
     "fails when a NEW impl type is absent, and deliberately does not re-grade existing rows. "
     "The handlers array is GENERATED from each type's EventHandler::handler_type method "
     "(Phase 1 ticket T2): regenerate with --emit-registry, verify with --check."
@@ -1279,7 +1279,7 @@ def emit_census(root: Path, entries: list[dict[str, Any]]) -> int:
 
     Columns follow the Phase 1 ticket shape (Handler, Category, Subscribed
     topic(s), Site, Note, Status). That is a superset of the hand-written
-    ``docs/architecture/handler-census-phase0.md`` §3 columns: the registry Site
+    ``docs/records/superseded/handler-census-phase0.md`` §3 columns: the registry Site
     is the impl pointer and Status adds the tree-resolution verdict the hand
     census could not compute. A difference in the Registrant/Live columns is
     therefore expected, since this mode does not carry them.

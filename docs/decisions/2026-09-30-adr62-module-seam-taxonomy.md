@@ -2,12 +2,12 @@
 num: 62
 area: architecture
 title: "ADR-62: Module Seam Taxonomy — command contributors, projection subscribers, and the reporting-facade exception"
-status: Accepted (2026-09-30) — the taxonomy is written and grounded in the Phase 0 handler census; the check that enforces it (a handler_type classification gate) is not built
+status: Accepted (2026-09-30) — the taxonomy is written and grounded in the Phase 0 handler census; the check that enforces it IS BUILT (scripts/verify-namespace-governance.py, Rule 2, registered as `namespace-governance` in scripts/gates.json). Amended 2026-10-07: this line and the body said the gate "is not built" and that it "must be registered when built" — both were true on 2026-09-30 and stale by 2026-10-05, when the gate was registered.
 ---
 
 # ADR-62: Module Seam Taxonomy
 
-**Status:** Accepted (2026-09-30) — the taxonomy is written and grounded in the Phase 0 handler census; the check that enforces it (a handler-type classification gate) is not built.
+**Status:** Accepted (2026-09-30) — the taxonomy is written and grounded in the Phase 0 handler census. **Amended 2026-10-07:** the check that enforces it IS BUILT and registered — `scripts/verify-namespace-governance.py` (Rule 2: a handler absent from `scripts/handler-classification.json` is a blocking finding), registered as the `namespace-governance` gate in `scripts/gates.json`. The original text said the gate "is not built"; that was accurate on 2026-09-30 and false from 2026-09-30, when the gate landed in the same round that accepted this ADR.
 **Date:** 2026-09-30
 **Recorded against:** branch `0.0.40`
 **Tags:** architecture, module-system, seams, reporting, gates, event-bus
@@ -17,7 +17,7 @@ status: Accepted (2026-09-30) — the taxonomy is written and grounded in the Ph
 **1. Modularization needs its seams named before it moves code.** The modular-scaffolding plan
 (`todo-modular-scaffolding.md`) defines five resolved decisions and a seam taxonomy in §5, but the
 taxonomy lives only in an untracked planning document. Phase 0 produced a handler census
-(`docs/architecture/handler-census-phase0.md`, commit `f018704c9`) that classified 13 production
+(`docs/records/superseded/handler-census-phase0.md`, commit `f018704c9`) that classified 13 production
 handlers; the classification vocabulary ("command contributor", "projection subscriber") is used
 there without a decision record defining it. This ADR makes the vocabulary binding.
 
@@ -25,7 +25,7 @@ there without a decision record defining it. This ADR makes the vocabulary bindi
 (`todo-modular-scaffolding.md:552-553`) that `InventoryStockHandler` "is not orphaned" and
 "performs important BOM/recipe-aware stock deduction". The census proved it is referenced ONLY from
 `modules/inventory/src/handlers_tests.rs` — it is never subscribed or constructed in production
-(`docs/architecture/handler-census-phase0.md` §3). The real BOM/recipe deduction is transactional on
+(`docs/records/superseded/handler-census-phase0.md` §3). The real BOM/recipe deduction is transactional on
 the checkout path: `Store::complete_sale_with_resolved_shortfalls`
 (`crates/kasirmu-core/src/db/sales_lifecycle.rs:152`) reads `self.get_recipe_ingredients(pid)?`
 (`:237`, defined `crates/kasirmu-core/src/db/recipes.rs:25`). So a seam taxonomy cannot treat
@@ -130,23 +130,27 @@ classification whose supporting evidence is only a test is not a live classifica
   and the in-transaction award both still exist (Context §3), and
   `modules/reporting/src/repository.rs` still issues raw SQL (Context §4). Recording the debt rather
   than fixing it is deliberate — Phase 1 is soft governance, and strict enforcement is Phase 4.
-- **Known gap, accepted:** no gate enforces `handler_type` yet. Until §11.3 is built, D4 is a
-  convention documented by the census, not a failing check.
+- **Known gap, CLOSED 2026-10-07:** this said "no gate enforces `handler_type` yet", which was true
+  at acceptance and is not any more. §11.3 is built: `scripts/verify-namespace-governance.py` Rule 2
+  fails any `impl EventHandler` type absent from `scripts/handler-classification.json`, and the gate
+  is registered as `namespace-governance` in `scripts/gates.json`. D4 is a failing check, not a
+  convention. The registry is generated from the Rust `handler_type` method, so a category flip
+  regenerates the row (`--emit-registry`) and `--check` catches a hand-edit that drifts.
 - **Verification:** the census this ADR grounds in is committed at `f018704c9`
-  (`docs/architecture/handler-census-phase0.md`); the plan sections cited are
+  (`docs/records/superseded/handler-census-phase0.md`); the plan sections cited are
   `todo-modular-scaffolding.md` §5, §9.1–§9.5, §11.1–§11.5; the reporting facade is
   `crates/kasirmu-core/src/db/reports.rs`; the checkout transaction is
   `crates/kasirmu-core/src/db/sales_lifecycle.rs`.
 
 ## References
 
-- `docs/architecture/handler-census-phase0.md` — the Phase 0 population this taxonomy classifies
+- `docs/records/superseded/handler-census-phase0.md` — the Phase 0 population this taxonomy classifies
 - `todo-modular-scaffolding.md` — §5 (seam taxonomy), §9 (decision details), §11 (governance gates), §14 (next actions)
 - `crates/kasirmu-core/src/db/reports.rs` and `reports/` — the sanctioned reporting facade
 - `crates/kasirmu-core/src/db/sales_lifecycle.rs` — the checkout transaction (command contributor path)
 - `platform/startup/src/lib.rs` — the 11 live bus subscriptions (projection subscribers)
 - `modules/reporting/src/repository.rs`, `modules/inventory/src/handlers.rs` — the recorded debt
-- `scripts/gates.json` — where the §11.3 gate must be registered when built
+- `scripts/gates.json` — where the §11.3 gate IS registered (`namespace-governance`, line ~1567)
 - ADR-61 — the tier/boundary precedent for a statically-checked architecture rule
 
 > last audited 30-09-26 by session-agent
