@@ -17,6 +17,18 @@
      visible to check-env-docs.py only after that checker's scope was widened to the
      Rust cloud server in round 5. -->
 
+<!-- Amendment 2026-10-07 (docs-auditor, round 52): §7.4 gains a clause the file
+     already implied but did not state — a BULK rename cannot earn `done-`. The rule
+     itself was correct and unchanged; what was missing is that nothing said a
+     batch classification is not an acceptance, which is how `68cecff21` archived ten
+     plan files under one commit subject with an R100 each and no command run. Seven of
+     the ten refuse the prefix in their own text. §7.4 now requires an ARCHIVED, NOT
+     EARNED note in any file archived that way, and the seven carry one. §0's Plan docs
+     row is left as written: "done- is earned only when the file's acceptance command
+     ran and passed" remains the whole of the earning rule. Verified with
+     `python scripts/verify-agents-mirrors.py` (exit 0, every policed mirror agrees)
+     and all eight docs checkers (exit 0). -->
+
 ## 0. Quick card — read this first
 
 Every value measured 2026-09-27 on branch `0.0.41`. Do not probe to orient (E3); if a
