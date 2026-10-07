@@ -59,6 +59,7 @@ import ItemModifierModal from './components/ItemModifierModal';
 import type { Promotion } from '@/api/promotions';
 import FastPINOverlay from '@/components/FastPINOverlay';
 import { notifyMemoryPressure } from '@/api/system';
+import { isTabletShell } from '@/utils/shellKind';
 
 import './PosScreen.css';
 import './CartPanel.css';
@@ -269,7 +270,9 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   useEffect(() => {
     const handleMemoryTrim = (e: Event) => {
       const level = (e as CustomEvent<{ level?: number }>).detail?.level ?? 80;
-      void notifyMemoryPressure(level).catch(() => {});
+      if (isTabletShell()) {
+        void notifyMemoryPressure(level).catch(() => {});
+      }
       if (lines.length > 0) {
         try {
           const draft = {

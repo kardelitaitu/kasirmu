@@ -1002,6 +1002,8 @@ export const systemHandlers: Record<string, MockHandler> = {
     backup_path: '/mock/cache/backups/pre_update_mock.db',
     apk_path: '/mock/cache/updates/kasirmu-mock.apk',
   }),
+
+  'notify_memory_pressure': (_args) => null,
 };
 
 export { MOCK_ROLE_PERMISSIONS, mockHandlerPayload };

@@ -11,6 +11,7 @@
     "get_hardware_settings",
     "get_sale",
     "list_sales",
+    "notify_memory_pressure",
     "prepare_and_launch_update",
     "read_scale_weight",
     "start_apk_download"

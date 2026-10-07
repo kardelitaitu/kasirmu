@@ -153,14 +153,16 @@ export function useDataSyncDraft(): DataSyncDraft {
     // session and enforces nothing), so delegating it would be case-2 debt
     // erasure, which the mobile module header records as an owner ruling rather
     // than part of an extraction. Skip the read instead: `queueSummary` stays
-    // null, which the UI already treats as "not answered" — not as zero.
-    if (isTabletShell()) return;
-    try {
-      const summary = await getOfflineQueueStatusSummaryScoped(sessionToken);
-      setQueueSummary(summary ?? null);
-    } catch {
-      // A failed summary read is not an answered-empty one; keep the previous
-      // value rather than claiming zero pending.
+    // The call sits inside this `if` block on purpose: that brace is the guard
+    // scripts/verify-ipc-parity.py's shell-blind leg reads.
+    if (!isTabletShell()) {
+      try {
+        const summary = await getOfflineQueueStatusSummaryScoped(sessionToken);
+        setQueueSummary(summary ?? null);
+      } catch {
+        // A failed summary read is not an answered-empty one; keep the previous
+        // value rather than claiming zero pending.
+      }
     }
   }, [sessionToken]);
 

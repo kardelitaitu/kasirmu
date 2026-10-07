@@ -183,17 +183,19 @@ function SettingsPageContent() {
     // daemon on a tablet, which registers no door for it. Skipping the read
     // keeps the nav's dead-letter badge hidden rather than rendering a
     // fabricated zero — the same "not answered" discipline the queue summary
-    // uses (hooks/useDataSyncDraft.ts).
-    if (isTabletShell()) return;
-    pgSyncStatusScoped(sessionToken)
-      .then((status) => {
-        if (status && status.deadLetterCount > 0) {
-          setDeadLetterCount(status.deadLetterCount);
-        } else {
-          setDeadLetterCount(0);
-        }
-      })
-      .catch(() => {});
+    // The call sits inside this `if` block on purpose: that brace is the guard
+    // scripts/verify-ipc-parity.py's shell-blind leg reads.
+    if (!isTabletShell()) {
+      pgSyncStatusScoped(sessionToken)
+        .then((status) => {
+          if (status && status.deadLetterCount > 0) {
+            setDeadLetterCount(status.deadLetterCount);
+          } else {
+            setDeadLetterCount(0);
+          }
+        })
+        .catch(() => {});
+    }
   }, [sessionToken]);
 
   const [displayCardSize, setDisplayCardSize] = useState(0);
