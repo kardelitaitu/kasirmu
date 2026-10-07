@@ -18,8 +18,8 @@ keystore to git):
 
 ```bash
 keytool -genkey -v \
-  -keystore oz-pos-release.keystore \
-  -alias oz-pos-key \
+  -keystore kasirmu-release.keystore \
+  -alias kasirmu-key \
   -keyalg RSA \
   -keysize 2048 \
   -validity 1825 \
@@ -38,7 +38,7 @@ passwords will fail signing at build time.
 
 | Parameter | Description | Example |
 |-----------|-------------|---------|
-| `-alias` | Key alias used in gradle/CI | `oz-pos-key` |
+| `-alias` | Key alias used in gradle/CI | `kasirmu-key` |
 | `-validity` | Validity in days | `1825` (5 years) |
 | `-storepass` | Keystore master password | Keep secret |
 | `-keypass` | Private key password | Keep secret |
@@ -49,10 +49,10 @@ Base64-encode the keystore so it can be stored as a GitHub secret:
 
 ```bash
 # Encode
-base64 -w0 oz-pos-release.keystore > oz-pos-release.keystore.b64
+base64 -w0 kasirmu-release.keystore > kasirmu-release.keystore.b64
 
 # Verify it decodes correctly
-base64 -d oz-pos-release.keystore.b64 > /tmp/verify.keystore
+base64 -d kasirmu-release.keystore.b64 > /tmp/verify.keystore
 keytool -list -keystore /tmp/verify.keystore -storepass <password>
 ```
 
@@ -62,11 +62,12 @@ Add these secrets to the repository (Settings → Secrets and variables → Acti
 
 | Secret Name | Value | Required |
 |-------------|-------|----------|
-| `ANDROID_KEYSTORE_BASE64` | Contents of `oz-pos-release.keystore.b64` | Required by the live `android.yml` |
-| `KEYSTORE_PASSWORD` | The `-storepass` value (also used as key password — the Tauri v2 `keystore.properties` route has a single `password` field for both; generate the keystore with matching `-storepass`/`-keypass`) | Only when the Android workflow is restored |
-| `KEY_ALIAS` | The `-alias` value (e.g. `oz-pos-key`) | Only when the Android workflow is restored |
+| `ANDROID_KEYSTORE_BASE64` | Contents of your keystore's `.b64` (e.g. `kasirmu-release.keystore.b64`) | **Yes** — the live `android.yml` reads it (`a9dca0610`, 2026-09-22) |
+| `KEYSTORE_PASSWORD` | The `-storepass` value (also used as key password — the Tauri v2 `keystore.properties` route has a single `password` field for both; generate the keystore with matching `-storepass`/`-keypass`) | **Yes** — the live `android.yml` reads it |
+| `KEY_ALIAS` | The `-alias` value (e.g. `kasirmu-key`) | **Yes** — the live `android.yml` reads it |
 
-> ⚠️ **No live workflow reads these secrets today.** The retired `android.yml`
+> ⚠️ **HISTORICAL — this paragraph's opening claim was true when written and no
+> longer is; the table above and the correction below are the current state.** The retired `android.yml`
 > workflow wrote `keystore.properties` (password / keyAlias / storeFile) into
 > `apps/mobile-tauri/gen/android/` (`android.yml.bak:119-132`); `23c963303`
 > (2026-09-02) renamed it to `.bak` and nothing replaced it. Locally, you write
@@ -132,7 +133,7 @@ When the keystore expires (or is compromised):
 ## Security Notes
 
 - **Never** commit `.keystore`, `.jks`, or `.p12` files to git
-- ✅ The project `.gitignore` excludes `*.keystore`, `*.jks`, and `*.p12` (added 2026-08-08 alongside the existing `*.key`/`*.pem`) — verify with `git check-ignore oz-pos-release.keystore`
+- ✅ The project `.gitignore` excludes `*.keystore`, `*.jks`, and `*.p12` (added 2026-08-08 alongside the existing `*.key`/`*.pem`) — verify with `git check-ignore kasirmu-release.keystore`
 - Rotate the keystore at least 30 days before expiry
 - Store the keystore password and key password in a password manager
 - The base64-encoded secret in GitHub is encrypted at rest and masked in logs

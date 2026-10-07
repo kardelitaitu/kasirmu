@@ -1,3 +1,4 @@
+<!-- Audit stamp: 2026-10-08 · docs-auditor · status: ACCURATE AFTER REPAIR (3 findings) · Supersedes the 2026-09-29 marker below, kept verbatim. Repaired in §2c/§2d, which claim specific gate expressions per screen: (1) §2c listed a fifth screen `SetupWizard.tsx`, which does not exist in `ui/src` (only `docs/plans/_done/done-mobile-setupwizard.md`), and it is removed — the qris gate the row described belongs to the `PaymentModal.tsx` row already present; (2) `PaymentModal.tsx`'s gate was quoted `caps && !caps.supportsQris` but the code's expression is the inverse `!caps || caps.supportsQris` (`:1909`, a `qrisAllowed` prop); (3) §2d's third row named `StaffManagementScreen.tsx` reading `maxStaffUsers`, which no production screen reads — the two real quota checks (`TerminalManagementScreen.tsx:164`, `TopologyScreen.tsx:547`) are now the whole list, and the staff question is flagged rather than invented. Every surviving row now names file:line. · Repaired against branch `0.0.41` at `134aaed1b`. -->
 <!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 164 lines, with a prior marker re-verified rather than replaced. A developer checklist is a live procedure, so the audit question is whether its steps would work if followed today. · THE STRUCTURAL POINT WORTH RECORDING, because it is the kind of thing that compounds silently: this file is a checklist of commands, and the commands age at a different rate from the prose around them. Re-running every step would mean a full build and test cycle, which is not a documentation task — so this pass checked the class of reference the checklist depends on and recorded the result honestly. Where a step names a pre-restructure path, that is the normal consequence of the crate and shell renames recorded throughout this campaign, and a checklist sits in the middle ground the changelogs do not: a changelog is history and must not be updated, while a checklist is instructions, and a dead path in it costs a reader a failed command. That distinction is why checklists have been repaired this campaign and changelogs preserved intact. · WHAT IS NOT RE-MEASURED, and the limit is inherent: whether each listed step still passes, whether the ordering is still right, and whether anything new should be listed. A checklist is only as current as its last full run by someone with the tree built, and this pass does not have that. What is recorded is the state of the file, not a claim that the checklist is current — a distinction worth making explicit, because a reader is entitled to know which of the two they are getting. · Prior marker retained as original evidence; footer re-dated to match the new stamp. -->
 # Development Checklist — kasir.mu Desktop
 
@@ -72,25 +73,29 @@ Features are gated by the `get_subscription_capabilities` IPC. The dev database 
 - [ ] **`get_license_status` returns active** — Returns `{ isActive: true, status: 'valid', tier: 'pro', ... }`.
 - [ ] **`check_license_status` returns active** — Returns `{ status: 'active', tier: 'Pro', active: true, ... }`.
 
-### 2c. UI Feature Gates (5 screens)
+### 2c. UI Feature Gates (4 screens)
+
+Re-verified 2026-10-08. The prior version listed a fifth row for `SetupWizard.tsx`, which **does not exist** in `ui/src` (the only path by that name is the plan doc `docs/plans/_done/done-mobile-setupwizard.md`), and quoted `PaymentModal.tsx`'s gate as `caps && !caps.supportsQris` when the code's own expression is the inverse, `!caps || caps.supportsQris` (`PaymentModal.tsx:1909`, a `qrisAllowed` prop). Both are corrected below; each row now names the file and line the expression is read at.
 
 | Screen | Gate check | Unlocked when |
 |--------|-----------|---------------|
-| `AnalyticsScreen.tsx` | `caps && !caps.supportsAnalytics` | `supportsAnalytics: true` |
-| `LoyaltyManagementScreen.tsx` | `caps && !caps.supportsLoyalty` | `supportsLoyalty: true` |
-| `DailyTotalWidget.tsx` | `caps && !caps.supportsDailyDashboard` | `supportsDailyDashboard: true` |
-| `SetupWizard.tsx` | `!!caps && !caps.supportsQris` | `supportsQris: true` |
-| `PaymentModal.tsx` | `caps && !caps.supportsQris` | `supportsQris: true` |
+| `analytics/AnalyticsScreen.tsx:532` | `caps && !caps.supportsAnalytics` | `supportsAnalytics: true` |
+| `loyalty/LoyaltyManagementScreen.tsx:161` | `caps && !caps.supportsLoyalty` | `supportsLoyalty: true` |
+| `sales/widgets/DailyTotalWidget.tsx:52` | `caps && !caps.supportsDailyDashboard` | `supportsDailyDashboard: true` |
+| `sales/PaymentModal.tsx:1909` | `qrisAllowed={!caps || caps.supportsQris}` | `supportsQris: true` |
 
-**Key behavior**: When `caps` is `null` (loading/error), `caps && !caps.supportsX` evaluates to `false` — features render **open**, not locked. This is the correct fallback.
+**Key behavior**: When `caps` is `null` (loading/error), `caps && !caps.supportsX` evaluates to `false` — features render **open**, not locked. This is the correct fallback. (`PaymentModal` writes the same rule from the other side: `!caps || …` is true when caps are absent, so the tender stays available.)
 
-### 2d. Quota Limit Checks (3 screens)
+### 2d. Quota Limit Checks (2 screens)
+
+Re-verified 2026-10-08. The prior version's third row named `StaffManagementScreen.tsx` with `caps.staffCount >= caps.maxStaffUsers`, but that screen does not read `maxStaffUsers` at all (the only hits are its test file and the dev-mock). The two quota checks that ARE in the tree are below, both written as `caps !== null && caps.<count> !== null && caps.<count> >= caps.max<Quota>`.
 
 | Screen | Gate check | Unlocked when |
 |--------|-----------|---------------|
-| `TerminalManagementScreen.tsx` | `caps.terminalCount >= caps.maxPosInstances` | `maxPosInstances: null` (unlimited) |
-| `TopologyScreen.tsx` (lives in `ui/src/features/locations/`, not `stores/`) | `caps.locationCount >= caps.maxLocations` | `maxLocations: null` (unlimited) |
-| `StaffManagementScreen.tsx` | `caps.staffCount >= caps.maxStaffUsers` | `caps.tier === 'premium'` check for approaching limit |
+| `terminals/TerminalManagementScreen.tsx:164` | `caps !== null && caps.maxPosInstances !== null && caps.terminalCount >= caps.maxPosInstances` | `maxPosInstances: null` (unlimited) |
+| `locations/TopologyScreen.tsx:547` | `caps !== null && caps.maxLocations !== null && caps.locationCount >= caps.maxLocations` | `maxLocations: null` (unlimited) |
+
+> Whether the **staff** quota is surfaced in a screen at all is left open rather than invented here: `maxStaffUsers` exists on the caps type (`ui/src/api/subscription.ts:65`) and is exercised by `StaffManagementScreen.test.tsx`, but no production screen reads it in this tree. Flagged for the owner — do not re-add a row without a file:line.
 
 ## 3. AppShell Startup Flow
 
@@ -165,4 +170,4 @@ cd ui && npx vitest run
 | Home screen opens wrong page (e.g. analytics instead of settings) | Stale `#/analytics` hash from shortcut persists across workspace switches | Clear hash after consuming it in AppShell workspace routing effect |
 | Home screen looks like old settings page | WorkspaceHome renders stale analytics/reports shortcuts inline instead of using tools section | Ensure WorkspaceHome uses `.workspace-home-content` with two `.workspace-section` divs (Workspaces + Tools) |
 
-> last audited 29-09-26 by docs-auditor
+> last audited 08-10-26 by docs-auditor

@@ -238,9 +238,9 @@ one (`drivers/scale.rs`, `drivers/edc/`), which is what the "v1.0" heading conce
 | `ReceiptPrinter` | `kasirmu-hal` | Print receipts, barcodes, QR codes, cash drawer kick |
 | `CashDrawer` | `kasirmu-hal` | Open drawer, detect drawer state |
 | `CustomerDisplay` | `kasirmu-hal` | Show/hide messages, update totals |
-| `WeightScale` | `traits/weight_scale.rs:26` | USB HID weight scale; a reading carries a `stable` flag so the caller can wait for the item to settle |
-| `EdcTerminal` | `traits/edc.rs:76` | Card-present payment terminal. `authorize` and `capture` are **separate** because a terminal can hold a funds authorisation without taking the money; `sale` covers the common case in one call |
-| `ProtocolCodec` | `drivers/edc/protocol/mod.rs:61` | **PLANNED — do not implement against it.** Encodes/decodes a vendor-specific EDC protocol, and every method currently returns `HalError::Unsupported` until a real vendor protocol lands |
+| `WeightScale` | `traits/weight_scale.rs:27` | USB HID weight scale; a reading carries a `stable` flag so the caller can wait for the item to settle |
+| `EdcTerminal` | `traits/edc.rs:99` | Card-present payment terminal. `authorize` and `capture` are **separate** because a terminal can hold a funds authorisation without taking the money; `sale` covers the common case in one call |
+| `ProtocolCodec` | `drivers/edc/protocol/mod.rs:71` | **PLANNED — do not implement against it.** Encodes/decodes a vendor-specific EDC protocol, and every method currently returns `HalError::Unsupported` until a real vendor protocol lands |
 
 ### Implementing a Custom Driver
 

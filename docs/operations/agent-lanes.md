@@ -118,7 +118,7 @@ ui/src/dev-mock/**                             the invoke target for local dev
   `scripts/verify-agents-mirrors.py` polices that count, its names, and the job list in the
   workflows. Promoting this checker means editing the hook, `gates.json`, `check:all`, the
   workflows and the two docs together — a deliberate change, not a side effect.
-- **Lane-scoped CI.** Today one push runs `dev-ci.yml`'s eighteen jobs including the full 9,922-test suite. That
+- **Lane-scoped CI.** Today one push runs `dev-ci.yml`'s eighteen jobs including the full 9,922-test suite <!-- docs-auditor 2026-10-08: the 9,922 figure has no deriving artifact in the tree (no script computes it and stats.json has no test-only breakdown), and the two measurable bases today are 9,378 `#[test]` fns (grep -rn --include='*.rs' -o '#\[test\]' . | wc -l) and 11,078 counting `#[tokio::test]` — left here rather than swapped for a guess; supersede when a runner can produce the real case count -->. That
   is the real ceiling on how many lanes can land per hour, and splitting it is the highest
   value follow-up on this page.
 

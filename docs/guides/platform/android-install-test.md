@@ -136,11 +136,11 @@ apps/mobile-tauri/gen/android/app/build/outputs/apk/debug/oz-pos-tablet-arm64-v8
 cd ui && npx vite build --config vite.mobile.config.ts && cd ..
 
 # Generate a keystore if you don't have one — same names the keystore guide
-# mandates (android-keystore-guide.md §1): oz-pos-release.keystore / oz-pos-key
-# / 1825 days
+# mandates (android-keystore-guide.md §1): kasirmu-release.keystore /
+# kasirmu-key / 1825 days
 cd apps/mobile-tauri
-keytool -genkey -v -keystore oz-pos-release.keystore \
-  -alias oz-pos-key -keyalg RSA -keysize 2048 -validity 1825
+keytool -genkey -v -keystore kasirmu-release.keystore \
+  -alias kasirmu-key -keyalg RSA -keysize 2048 -validity 1825
 # You will be prompted for the keystore password, then the key password —
 # answer with the SAME password. build.gradle.kts feeds one `password` key to
 # both keyPassword and storePassword (:44,46); a mismatched keystore fails
@@ -156,8 +156,8 @@ APK builds unsigned. Write it from PowerShell:
 ```powershell
 Set-Location apps/mobile-tauri/gen/android
 "password=<same-password>" | Out-File keystore.properties -Encoding ascii
-"keyAlias=oz-pos-key" | Add-Content keystore.properties
-"storeFile=<full path to>\apps\mobile-tauri\oz-pos-release.keystore" | Add-Content keystore.properties
+"keyAlias=kasirmu-key" | Add-Content keystore.properties
+"storeFile=<full path to>\apps\mobile-tauri\kasirmu-release.keystore" | Add-Content keystore.properties
 ```
 
 or from a POSIX shell:
@@ -165,8 +165,8 @@ or from a POSIX shell:
 ```bash
 cat > apps/mobile-tauri/gen/android/keystore.properties <<'EOF'
 password=<same-password>
-keyAlias=oz-pos-key
-storeFile=/abs/path/to/apps/mobile-tauri/oz-pos-release.keystore
+keyAlias=kasirmu-key
+storeFile=/abs/path/to/apps/mobile-tauri/kasirmu-release.keystore
 EOF
 ```
 
