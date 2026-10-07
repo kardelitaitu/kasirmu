@@ -20,7 +20,7 @@ E4: *read whole files, one call, up to 2,000 lines*. At 13,433 lines the journal
 | [part 5](JOURNAL-part-5.md) | 6266-8222 | 1957 | 146 KB |
 | [part 6](JOURNAL-part-6.md) | 8223-10168 | 1946 | 112 KB |
 | [part 7](JOURNAL-part-7.md) | 10169-12153 | 1985 | 177 KB |
-| [part 8](JOURNAL-part-8.md) | 12154-13432 | 1279 | 103 KB |
+| [part 8](JOURNAL-part-8.md) | 12154-13432 | 1341 | 105 KB |
 
 ## Reading a legacy JOURNAL.md:<line> citation
 

@@ -1285,3 +1285,56 @@ where the same commit moved both.
 passed. `cargo test -p kasirmu-mobile --lib registration_gate` → 12 passed, floor
 unchanged.
 
+
+## 2026-10-07 — The desktop registration floor lagged by eight, and three of them were real debt (`kasirmu-app` / `kasirmu-mobile`)
+
+Found by re-running the gate the two shells carry rather than trusting the file that
+describes it. **Both floors were red on committed code and neither was in-flight** —
+which is the state that makes a gate finding actionable rather than someone else's edit:
+`git status --porcelain -- apps/desktop-tauri/src/lib.rs apps/mobile-tauri/src/lib.rs`
+was empty.
+
+**The tablet was already fixed and the desktop was not.** `806a443d3` (2026-10-07 19:59,
+*chore(mobile): graduate device identity plan and align gate registration floor*) raised
+`REGISTERED_FLOOR` 413 -> 419 and named all six additions in its own comment — the ritual
+the failing assertion asks for, done properly. The desktop twin was left at **486** while
+`lib.rs` registered **494**.
+
+**The eight, with provenance — five gated, three not:**
+
+| name | arrived in |
+|---|---|
+| `edc::edc_inquiry` | `656f109a0` |
+| `edc::edc_settle`, `hardware::print_edc_settlement_slip_scoped` | `fbf2b35d5` |
+| `fiscal::issue_tax_invoice_scoped`, `fiscal::get_sale_statutory_number_scoped` | `859d5d44b` |
+| `health::export_diagnostics` | `bf8e004f9` |
+| `health::record_crash_report` | `f25a91e7c` |
+| `health::get_storage_health` | `9d46d3912` |
+
+**What makes this step different from every one recorded above it.** The floor comment's
+own history is a run of *"all N arrive GATED, so this step touches the floor alone: there
+is no new debt to record, only new registrations to count."* That is not true here. The
+three `health::` names arrive **ungated** — `get_storage_health` and
+`record_crash_report` as `no_session_resolution`, `export_diagnostics` as
+`resolves_session_names_no_permission` — so the same sweep that moved the floor also had
+to move a **per-state ceiling**, which is the first time this file has spent debt headroom
+while raising the count. The ledger went **68 -> 71 rows** against `DEBT_CEILING` 78.
+
+**Measured, in the failing assertion's own words:** `measured 53 no_session_resolution
+(ceiling 51) and 18 resolves_session_names_no_permission (ceiling 27)`. So
+`NO_SESSION_RESOLUTION` 51 -> 53, and **class 2's pin was deliberately left at 27** because
+its own measurement FELL to 18. Forcing the two back to a `51 + 27 = 78` sum would mean
+raising a ceiling for a class that had shrunk — the opposite of what this ratchet exists to
+do. The honest partition is now `53 + 18 = 71`, the live row count.
+
+**Regenerated, not typed.** The ledger first got a hand-edit and it was reverted
+byte-identical to HEAD (`3f4e92e1e1eae87b435d244cd9695ce8e34c98c2`) before doing it the
+supported way: `KASIRMU_REGENERATE_GATE_LEDGER=1 cargo test -p kasirmu-app --lib
+drift_pin_generated_ledger_is_the_sweeps_own_output` → *"regenerated …: 71 debt row(s),
+registered total 494"*. That command rewrites the rows and `REGISTERED_TOTAL` but **not**
+the two per-state pins — its own comment says they are "a pin the generator does not
+recompute", which is why those two move by hand in the same pass.
+
+**Verified:** `cargo test -p kasirmu-app --lib registration_gate` → **14 passed, 0 failed**;
+`cargo test -p kasirmu-mobile --lib registration_gate` → **12 passed, 0 failed**. Both were
+red before this entry: the desktop at 10 passed / 4 failed, the tablet at 8 / 4.

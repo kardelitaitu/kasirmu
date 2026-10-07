@@ -165,7 +165,32 @@ mod debt;
 /// the pre-raise assertion reported `left: 481, right: 485`, and the four `+` lines in
 /// that commit's `lib.rs` diff are exactly the four names — the delta and the cause
 /// agree. Provenance recorded in docs/records/journal/JOURNAL.md.
-const REGISTERED_FLOOR: usize = 486;
+/// 486 -> 494, closing the 2026-10-07 drift. EIGHT names registered across five
+/// commits, none of which moved this floor; the generated ledger WAS regenerated in
+/// the same window, so only this constant lagged:
+///   * `656f109a0` (feat(edc): add invoice reference, batch settlement, and transaction
+///     inquiry) — `edc::edc_inquiry`.
+///   * `fbf2b35d5` (feat(hardware): card receipt details, auto cash drawer kick, and edc
+///     settlement slip) — `edc::edc_settle` and `hardware::print_edc_settlement_slip_scoped`.
+///   * `859d5d44b` (feat(bridge,apps): expose issue_tax_invoice_scoped and
+///     statutory_number IPC commands) — `fiscal::issue_tax_invoice_scoped` and
+///     `fiscal::get_sale_statutory_number_scoped`.
+///   * `bf8e004f9` (feat(settings): add one-click diagnostic archive export) and
+///     `f25a91e7c` (feat(system): wire crash reporter hook…) — `health::export_diagnostics`
+///     and `health::record_crash_report`.
+///   * `9d46d3912` (feat(lan): implement CRDT delta replication…) — `health::get_storage_health`.
+///
+/// Unlike every step above, this one is **not** uniformly gated: **five arrive GATED**
+/// (`edc::*` on the settings/EDC pair, `hardware::print_edc_settlement_slip_scoped` and
+/// both `fiscal::*`), while **three arrive as new DEBT** — `health::get_storage_health`
+/// and `health::record_crash_report` as `no_session_resolution`, and
+/// `health::export_diagnostics` as `resolves_session_names_no_permission`. Those three
+/// are therefore the first entries this file has had to add to the ceiling as well as
+/// the floor: the ledger now carries **71** rows against a ceiling of **78**, so the
+/// raise consumed three of the nine rows of headroom rather than none. Recorded rather
+/// than smoothed over, because a floor step that also spends debt is the one shape this
+/// ratchet is meant to make visible. Provenance in docs/records/journal/JOURNAL.md.
+const REGISTERED_FLOOR: usize = 494;
 /// How far the GENERATED ledger's total may lag the tree before the ledger is overdue a
 /// regeneration. It is not slack on this floor — the floor is measured, not padded — and
 /// the hard pin on the ledger's own rows is

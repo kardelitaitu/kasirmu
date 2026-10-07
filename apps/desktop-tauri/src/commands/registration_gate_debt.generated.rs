@@ -217,7 +217,17 @@ pub const DEBT_CEILING: usize = 78;
 /// 48 -> 51: the three email sign-in commands above. This count is a pin the generator
 /// does not recompute, so it moves by hand in the same pass as the ceiling.
 /// `51 + 27 = 78` partitions `DEBT_CEILING`.
-pub const NO_SESSION_RESOLUTION: usize = 51;
+/// 51 -> 53: the three `health::` rows added on 2026-10-07. `health::get_storage_health`
+/// (`9d46d3912`) and `health::record_crash_report` (`f25a91e7c`) land in THIS class;
+/// `health::export_diagnostics` (`bf8e004f9`) lands in class 2. Measured, not carried: the
+/// pre-raise assertion read `measured 53 no_session_resolution (ceiling 51) and 18
+/// resolves_session_names_no_permission (ceiling 27)`. Like every step above, this pin is one
+/// the generator does not recompute, so it moves by hand in the same pass as the ceiling.
+/// **The sum no longer partitions `DEBT_CEILING` and should not be made to:** class 2's own
+/// measurement FELL to 18, so `53 + 18 = 71` is the live row count and the two ceilings are
+/// now independently slack rather than jointly tight. Forcing them back to a 78 sum would
+/// mean raising a ceiling for a class that shrank — the opposite of what this ratchet is for.
+pub const NO_SESSION_RESOLUTION: usize = 53;
 
 /// Authenticate-then-assume: a session is resolved and no permission asked.
 pub const RESOLVES_SESSION_NAMES_NO_PERMISSION: usize = 27;
