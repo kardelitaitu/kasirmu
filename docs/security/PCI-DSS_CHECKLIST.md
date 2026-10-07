@@ -132,7 +132,7 @@ kasir.mu processes, transmits, and stores cardholder data when processing credit
 | **Key management** | OS-level keyring (`kasirmu_security::Keyring`) |
 | **RBAC** | `platform_core::rbac` — `has_permission` over `role-owner`/`role-admin`/`role-manager`/`role-staff` constants, re-exported as `kasirmu_core::rbac` |
 | **Audit logging** | `AuditLog` feature — immutable, append-only |
-| **Dependency scanning** | `cargo audit` weekly via GitHub Actions |
+| **Dependency scanning** | ❌ **Runs nowhere.** `cargo audit` and `cargo deny` lived in `.github/workflows/security.yml`, retired 2026-09-18 and now `.github/workflows/attic/security.yml.bak`. Nothing replaced them: no live workflow, `scripts/check.sh`, or `scripts/release.sh` invokes `cargo audit`. Dependabot still opens dependency PRs, so the *input* exists — the scan that would flag an advisory does not. Same finding as 6.2.2, stated once in each place. |
 | **Coding standards** | `AGENTS.md` with security rules |
 
 ---
