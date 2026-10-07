@@ -9,6 +9,10 @@ import { getKdsQueueScoped, updateKdsStatusScoped, updateKdsOrderItemsScoped, up
 import { useKdsPreferences } from '@/features/kds/hooks/useKdsPreferences';
 import { useNewTicketSound } from '@/features/kds/hooks/useNewTicketSound';
 import { useKdsFilterNav } from '@/features/kds/useKdsFilterNav';
+// Zone extraction and the board filter, named so the suite that used to retype
+// them (KdsZoneExtraction.test.ts) imports the real thing — including the
+// prepared-beats-zone PRECEDENCE, which no copy exercised.
+import { extractZones, filterKdsOrders, isBoardFiltered } from '@/features/kds/kdsOrderView';
 import { useKdsShortcuts } from '@/features/kds/hooks/useKdsKeyboardShortcuts';
 import { useKdsTabIndicator } from '@/features/kds/useKdsTabIndicator';
 import { useKdsRealtime } from '@/features/kds/useKdsRealtime';
@@ -300,22 +304,15 @@ export default function KdsScreen() {
   }, [prefs.kdsZone]);
 
   // 3a: Extract unique kitchen zones from orders for the zone-switching chips and filter grid.
-  const zones = useMemo(() => {
-    const zoneSet = new Set<string>();
-    for (const order of orders) {
-      if (order.kitchen_zone) zoneSet.add(order.kitchen_zone);
-    }
-    return [...zoneSet].sort();
-  }, [orders]);
+  const zones = useMemo(() => extractZones(orders), [orders]);
 
   // Filtered orders: All = all open orders; Prepared = only ready orders; Categories = zone filter.
-  const filteredOrders = useMemo(() => {
-    if (filterMode === 'prepared') return orders.filter((o) => o.status === 'ready');
-    if (filterCats && filterCats.size > 0) {
-      return orders.filter((o) => o.kitchen_zone && filterCats.has(o.kitchen_zone));
-    }
-    return orders;
-  }, [orders, filterMode, filterCats]);
+  // The precedence lives in kdsOrderView.filterKdsOrders — 'prepared' wins over a
+  // non-empty zone set, which is the part the retyped tests never covered.
+  const filteredOrders = useMemo(
+    () => filterKdsOrders(orders, filterMode, filterCats),
+    [orders, filterMode, filterCats],
+  );
 
   // H3: the settings sliders are now wired — thresholds flow into every
   // card's useTicketSla. Memoized so KdsTicketCard's memo still holds when
@@ -392,7 +389,7 @@ export default function KdsScreen() {
 
   const boardFiltered = activeTab === 'completed'
     ? completedFilter !== 'all'
-    : (filterMode === 'prepared' || (filterCats !== null && filterCats.size > 0));
+    : isBoardFiltered(filterMode, filterCats);
 
   return (
     <KdsCardColorsProvider>
