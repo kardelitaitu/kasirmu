@@ -151,7 +151,10 @@ fn mint(bridge: &TestBridge, user_id: &str, role_id: &str) -> String {
 async fn call_export(
     bridge: &TestBridge,
     token: &str,
-) -> (Result<DiagnosticExportResult, BridgeError>, std::path::PathBuf) {
+) -> (
+    Result<DiagnosticExportResult, BridgeError>,
+    std::path::PathBuf,
+) {
     let dir = std::env::temp_dir().join(format!("diag_gate_{}", uuid::Uuid::new_v4()));
     let _ = std::fs::create_dir_all(&dir);
     let out = dir.join("diagnostics.zip");

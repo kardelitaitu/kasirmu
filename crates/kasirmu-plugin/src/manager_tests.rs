@@ -909,7 +909,8 @@ fn aggregate_plugin_memory_limit_exceeded_protects_vm() {
     std::fs::write(
         plugin_a.join("script.lua"),
         "t_a = string.rep('A', 6 * 1024 * 1024)\n",
-    ).unwrap();
+    )
+    .unwrap();
 
     let plugin_b = dir.path().join("plugin-b");
     std::fs::create_dir_all(&plugin_b).unwrap();
@@ -920,7 +921,8 @@ fn aggregate_plugin_memory_limit_exceeded_protects_vm() {
     std::fs::write(
         plugin_b.join("script.lua"),
         "t_b = string.rep('B', 6 * 1024 * 1024)\n",
-    ).unwrap();
+    )
+    .unwrap();
 
     grant_all_declared(dir.path());
     let result = PluginManager::new(dir.path());
@@ -930,7 +932,8 @@ fn aggregate_plugin_memory_limit_exceeded_protects_vm() {
     );
     let err_msg = result.err().unwrap().to_string();
     assert!(
-        err_msg.to_lowercase().contains("memory") || err_msg.to_lowercase().contains("not enough memory"),
+        err_msg.to_lowercase().contains("memory")
+            || err_msg.to_lowercase().contains("not enough memory"),
         "expected memory exhaustion error, got: {err_msg}"
     );
 }
@@ -945,7 +948,8 @@ fn runaway_hook_aborts_without_hanging_pos() {
         &["cart:read"],
     );
     let mgr = PluginManager::new(&root).unwrap();
-    let res = mgr.fire_sale_before_complete(&[line("ITEM-1", 1, 1000, "USD")], 1000, "USD", "user_1");
+    let res =
+        mgr.fire_sale_before_complete(&[line("ITEM-1", 1, 1000, "USD")], 1000, "USD", "user_1");
     assert!(res.is_err(), "runaway hook must be interrupted");
     let err_msg = res.unwrap_err().to_string();
     assert!(
@@ -990,16 +994,22 @@ fn unregistered_or_disabled_plugin_hook_is_skipped() {
     let mgr = PluginManager::new(&root).unwrap();
     // Inject a hook belonging to an unregistered/disabled plugin
     if let Ok(mut hooks) = mgr.hook_names.lock() {
-        hooks.entry("sale.before_complete".to_string()).or_default().push(HookRef {
-            plugin_id: "disabled-plugin-id".to_string(),
-            func_name: "ghost_function".to_string(),
-        });
+        hooks
+            .entry("sale.before_complete".to_string())
+            .or_default()
+            .push(HookRef {
+                plugin_id: "disabled-plugin-id".to_string(),
+                func_name: "ghost_function".to_string(),
+            });
     }
     // fire_sale_before_complete should succeed, skipping the disabled hook and executing the active one
-    let res = mgr.fire_sale_before_complete(&[line("ITEM-1", 1, 1000, "USD")], 1000, "USD", "user_1");
-    assert!(res.is_ok(), "event dispatch must skip hooks from unlisted/disabled plugins");
+    let res =
+        mgr.fire_sale_before_complete(&[line("ITEM-1", 1, 1000, "USD")], 1000, "USD", "user_1");
+    assert!(
+        res.is_ok(),
+        "event dispatch must skip hooks from unlisted/disabled plugins"
+    );
     let discounts = mgr.drain_pending_discounts();
     assert_eq!(discounts.len(), 1);
     assert_eq!(discounts[0].percent, 10);
 }
-

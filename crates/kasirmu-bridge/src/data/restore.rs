@@ -228,7 +228,9 @@ pub async fn restore_prepare(
     if let Ok(space) = platform_instance_guard::get_disk_space(db_path) {
         let candidate_size = std::fs::metadata(candidate).map(|m| m.len()).unwrap_or(0);
         let live_size = std::fs::metadata(db_path).map(|m| m.len()).unwrap_or(0);
-        let required_bytes = candidate_size.saturating_add(live_size).saturating_add(50 * 1024 * 1024);
+        let required_bytes = candidate_size
+            .saturating_add(live_size)
+            .saturating_add(50 * 1024 * 1024);
         if space.available_bytes < required_bytes {
             return Err(BridgeError::Invalid(format!(
                 "insufficient disk space for restore: {} bytes available, {} bytes required",
