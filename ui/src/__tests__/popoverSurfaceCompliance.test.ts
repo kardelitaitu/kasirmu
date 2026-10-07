@@ -36,7 +36,15 @@ const POPOVER_SURFACES: ReadonlyArray<{ selector: string; file: string }> = [
   { selector: '.location-picker-dropdown', file: 'features/inventory/LocationPicker.css' },
   { selector: '.ssel-dropdown', file: 'features/settings/SettingsSelect.css' },
   { selector: '.retail-cart-course-dropdown', file: 'features/retail/RetailPosScreen.css' },
-  { selector: '.retail-menu', file: 'features/retail/RetailPosScreen.css' },
+  // '.retail-menu' was listed here (added by 766321c5f, a broad "popover tokens"
+  // sweep) but NO component ever rendered it: git log -S retail-menu over
+  // ui/src/features/retail/*.tsx returns nothing, and the family's only non-sheet
+  // history is the entry in this list. The rules were the whole "Options Menu"
+  // block, struck 2026-10-07 (Round 71) with the rest of the orphaned retail CSS,
+  // which is when this entry began failing with "rule for .retail-menu not found".
+  // Removing it is the correct resolution: the entry asserted a surface that was
+  // never built, and keeping it would mean keeping dead CSS to satisfy a list item
+  // about CSS that nothing uses.
   { selector: '.settings-shortcuts-popover', file: 'features/settings/SettingsNavTree.css' },
   // `.kds-settings-popover` retired with KdsSettingsPanel (renders nowhere;
   // todo-kds-agents-6). Its companion stylesheet was deleted with the

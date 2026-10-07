@@ -75,7 +75,12 @@ const KNOWN_NOISE_SELECTORS = [
   '.retail-discount-modal',
   '.retail-qty-modal',
   '.retail-shortcuts-modal',
-  '.retail-preview-modal',
+  // '.retail-preview-modal' was here until 2026-10-07. It was listed as a
+  // DEPRECATED LEGACY SELECTOR, but the selector itself was still live in the sheet
+  // and rendered by nothing, so it was struck with the rest of the orphaned retail
+  // CSS in Round 71 — at which point this entry (and the count at the foot of this
+  // list) had to come down with it: an exemption for a selector that no longer
+  // exists inflates the baseline the count check is guarding.
   '.retail-customer-modal',
   '.tables-detail',
   '.settings-popup',
