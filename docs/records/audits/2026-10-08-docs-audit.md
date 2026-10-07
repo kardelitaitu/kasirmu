@@ -157,6 +157,29 @@ The change would trade **real coverage for zero benefit**: it suppresses no find
 
 **NOT CHANGED.** The residual issue is far narrower than it first appeared, and is stated here so the next reader does not re-investigate it: a stamp naming a genuinely dead path will be flagged, and the remedy is to describe the defect without writing the path as a bare token — which is how the `codebase-memory` correction note is now written.
 
+## 3g. A process proposal investigated and NARROWED on evidence
+
+The first pass of this audit repaired `cargo fmt` drift in CI (**17 files**). A second pass, after the branch moved 35 commits, repaired it again (**2 files**). Two occurrences in one session prompted a proposal: reinstate `cargo fmt --check` as a pre-commit step, which would catch the class at commit time instead of in CI.
+
+**Reading the history first showed the original proposal was wrong.** The gate existed and was removed deliberately on 2026-09-13. The recorded reason is specific:
+
+> Removed 2026-09-13: the `cargo fmt --all` pre-commit step (**reformatted other agents' in-flight files**).
+
+and `.githooks/pre-commit:4-6` carries the same note. That is the shared-index hazard: this checkout has several agents committing concurrently, and a commit-time `--all` rewrite touches every `.rs` in the tree, including files another lane is mid-edit on. The removal was correct and this audit should not have assumed otherwise.
+
+**A narrowed version does survive the objection, and was measured rather than argued:**
+
+| Question | Measurement |
+|---|---|
+| Does `--check` mutate the working tree? | **No** — `git status --porcelain` before and after a run are byte-identical |
+| Cost per invocation | **2.95s** |
+| What the removed step ran | `cargo fmt --all` (the **write** form) |
+| What it would run | `cargo fmt --all -- --check` (**read-only**) |
+
+So the hazard the removal cites does not apply to the check-only form: it reports a file list and blocks, instead of rewriting anyone's in-flight work. Where it still differs from the status quo is that it moves a 2.95s cost onto **every Rust commit from every agent**, and would require editing `.githooks/pre-commit` and AGENTS.md §2 — and it re-opens a decision an owner already weighed once.
+
+**NOT CHANGED.** Left as a recorded recommendation rather than applied, on the grounds that reversing a deliberate, documented process decision is the owner's call and not an audit's. The measurements above are the part worth keeping: whoever next considers this does not have to rediscover that `--check` is safe and that the removal concerned the write form. Both fmt repairs in this session are committed (`780b0d51a`, `cc557b083`).
+
 ---
 
 ## 4. Outstanding
