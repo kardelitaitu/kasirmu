@@ -505,3 +505,22 @@ location profile. `general` mounts 9 controls but its currency select stays at
 
 **Not walked:** the checkout and KDS flows. See
 `plan-tablet-checkout-kds.md`.
+
+### 6.4 Debounced initial load — device-verified (`d8d6a6aa2`)
+
+The walk-diag build named the failing slice: **`list_currencies_scoped`
+rejected** during the cold-start window. The durable fix is the plan's own
+recommendation: the provider's initial load now waits
+`INITIAL_LOAD_DEBOUNCE_MS` (250 ms, exported) for the session token to stop
+changing, so a token-swap storm collapses into ONE fan-out against the final
+token. Pinned by a collapse test (three rapid tokens → exactly one fan-out,
+with the final token) plus debounce-sequencing rewrites of the two earlier
+gated-load tests.
+
+Device walk after install: **13 ok / 2 warn / 0 fail.** `general` — the
+primary surface — no longer toasts. The one remaining `license-subscription`
+toast is a TIMING artefact, not a second failure: toasts auto-dismiss after
+4 s (Toast.tsx:71) and the walk probes every 2.2 s, so the single toast fired
+during general's initialization is still on screen when the license route is
+probed. Whether one intermittent rejection remains behind it is exactly what
+the ERR-06 subscriber probe (§6.3) will answer next session.
