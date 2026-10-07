@@ -760,3 +760,26 @@ The victim alternated between `pg_integration_migrate_and_verify` and `pg_integr
 **Consequence for §4.** The box `:59`/`:100` condition is a run with **zero** skips. A single clean run does not satisfy a condition the suite misses ~1-in-5 times — that is a *lucky* green, not a met gate. So **this plan is NOT renamed**; the fourth-pass "done- unearned" stance (line 11) is *strengthened by fresh evidence*, not overturned. The intermittent throwaway-DB-creation contention (whether displaced by the earlier race fix or merely unmasked) remains the open substance, and it is also tracked as `todo-open-debt-program.md` Phase 5 — so decommissioning this file is gated on that flakiness clearing, not on one green run.
 
 **`:76` — owner ruling recorded (endorsing the agent recommendation):** retire as **done-by-perf**. The `0e52f1d46` `sqlite_push_batch_multirow` / `pg_push_batch_multirow` extraction *is* the "dedicated transaction chunks" answer; no separate named chunk type is required. `:76` was already `[x] RETIRED`; this is the owner confirming that retirement on the merits, so no box moves. Box census unchanged: **0 open / 5 ticked** — but acceptance still flaky, so the filename still says `todo-`, correctly.
+> ⚠️ **THE FILENAME CONTRADICTS THIS FILE'S OWN LAST VERDICT — and the cause is now identified.** The
+> verdict above says, in its own words, *"the green is FLAKY, so `done-` is correctly **STILL UNEARNED**"*,
+> and the fourth-pass state line at `:11` says *"acceptance UNRUN, and therefore deliberately NOT
+> renamed."* Both are accurate about the code. The `done-` prefix nonetheless sits on this file, and no
+> section anywhere in it records a waiver — before this note was added, `waiver` had **zero** occurrences in the file.
+>
+> **Where the prefix actually came from: `68cecff21` (2026-09-17, *"docs(plans): archive completed
+> pre-rebrand todo files to .agents/ with done- prefix"*).** One commit, one line of message, **ten files
+> renamed in bulk** — `todo-font-system`, `todo-kds`, `todo-operational-integrity`, this file,
+> `refactor-{oz-pos-app,pos-screen,settings}-agents-{2,3}`, `refactor-cloud-sync-agents-1` and
+> `todo-tools` — with an explicit `R100` (no content change) on each. It is a blanket archival
+> classification, not ten acceptance runs.
+>
+> **The consequence, stated plainly: the rename and the earning rule are in direct conflict, and the
+> rename won.** AGENTS.md §7.4 says `done-` is earned *only* when the file's own acceptance command was
+> RUN and PASSED. Six of the ten renamed files carry text refusing the prefix — this one (*STILL
+> UNEARNED*), `pos-screen-agents-3` (*NOT A RENAME*), `tools` (*CLOSED, NOT RENAMEABLE*),
+> `font-system` (*not renameable*), `settings-agents-2` (*The file stays `todo-`*) and
+> `operational-integrity`. **Not repaired here, and the repair is not obvious:** renaming back would
+> have to be applied consistently across all ten or the convention stays inconsistent either way, and
+> the names are load-bearing — `check-dead-refs.py` exempts any doc whose name contains `todo-`,
+> `plan-` or `prd-`, so stripping `done-` changes which checker even sees these files. Recorded for the
+> owner as a naming-convention decision, with the evidence gathered.
