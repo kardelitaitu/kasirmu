@@ -187,7 +187,7 @@ Evaluated only after Layer 1 permissions pass. Enforces SaaS tier limits (Free, 
   * Wraps gated tools. If current tier < required tier, attaches lock badge and intercepts click with `UpgradeModal`.
 
 ### 4.2 Backend & Engine Integration (`crates/` & `apps/`)
-* **`crates/oz-core/src/subscription.rs`**: Single source of truth for tier definitions and feature capability checks (`allows_audit_log()`, `allows_kds()`, `allows_whitelabel()`).
+* **`crates/kasirmu-core/src/subscription/tier.rs`**: Single source of truth for tier definitions and feature capability checks. **Corrected 2026-10-07:** this line named `allows_audit_log()`, `allows_kds()` and `allows_whitelabel()` — one of the three exists in no form, and the other two do not under those names. The shipped predicates are the `supports_*` family in `crates/kasirmu-core/src/subscription/tier.rs` from `:209` (`supports_cloud_sync`, `supports_qris`, `supports_stripe`, `supports_lua_engine`, `supports_regional_zones`, `supports_loyalty`, `supports_analytics`, `supports_daily_dashboard`) plus `allows_workspace_type()` at `:294`, which is the membership test a gated feature actually calls. The crate also moved to `kasirmu-core` and the type split into `subscription/tier.rs`. Named capabilities for audit-log, KDS and whitelabel are gated by the permission registry (`permissions.rs`) and the `require_permission` choke point, not by subscription predicates — which is the two-layer split this ADR's own §4.1 describes..
 * **`apps/desktop-client/src/commands/setup.rs`**: Implements the setup wizard device initialization and cloud credential minting routines.
 
 ---
