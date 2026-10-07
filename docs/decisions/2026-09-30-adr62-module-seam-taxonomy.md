@@ -98,7 +98,7 @@ relocated because the write is a self-guarding status flip on a row the facade a
 of (`active_stock_alerts`), and splitting it out would give one narrow table two owners. Option 2b
 (reclassify `acknowledge_stock_alert` as a command contributor outside the facade) was rejected: no
 command-contributor home exists for it today. Full reconciliation:
-[docs/architecture/reporting-facade-inventory.md](../architecture/reporting-facade-inventory.md) §4.
+[docs/records/superseded/reporting-facade-inventory.md](../records/superseded/reporting-facade-inventory.md) §4.
 
 **D6 — Lifecycle handlers, plugin bridges and internal helpers are internal, not seams.** They are
 classified so the census is complete, but they carry no cross-module contract: a lifecycle handler

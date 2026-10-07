@@ -32,7 +32,7 @@ next: none | perf: N/A
 //! facade with its own SQL and carried a frozen baseline entry plus a T3 grant
 //! marker for the privilege of doing so.
 //!
-//! The Phase 1 inventory (`docs/architecture/reporting-facade-inventory.md`)
+//! The Phase 1 inventory (`docs/records/superseded/reporting-facade-inventory.md`)
 //! recorded the disposition: route through the facade, then delete the method,
 //! the marker and the baseline entry together. Because the method had no
 //! callers, the migration is the deletion. The frozen cross-vertical edge count
