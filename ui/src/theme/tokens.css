@@ -591,7 +591,17 @@
   --color-warning-dim:     #CC6600;
   --color-warning-fg:      #ffffff;
   --color-warning-subtle:  rgba(253, 148, 38, 0.08);
-  --color-warning-border:  #FD9426;
+  /* Was #FD9426 — the light-theme amber, for visual continuity with the subtle
+     tint above, and the ONE member of this family in any theme that did not carry
+     its base value. It measured 2.04:1 on --color-bg #f4f5f7, below the 3:1 floor,
+     and it is used as a border and as a 2px focus ring (CartPanel.css:201/:212,
+     LicenseSettings.css:195, SettingsPage.css:1123, OfflineQueueScreen.css:91,
+     RestaurantSettingsScreens.css:1199) — so the low-contrast case was the one
+     that carries meaning. Set to the base value, which matches what its danger
+     sibling has always done (--color-danger-border == --color-danger) and measures
+     3.52:1. Found by the derived-variant floor added to colorContrastCompliance
+     the same day; before that test existed, nothing read this token at all. */
+  --color-warning-border:  #CC6600;
   --color-warning-pos:     #d97706;
 
   --color-danger:          #FC3D39;
