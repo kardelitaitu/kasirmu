@@ -176,6 +176,27 @@ export default defineConfig(({ command }) => ({
     // 16 rather than 8 because 8 measured no better and ~15s slower. Re-measure
     // with the CONTENDED pair before changing it. For a one-off run:
     //   npx vitest run --maxWorkers=32
+    //
+    // ── The "tax OOM" is NOT REPRODUCIBLE, measured 2026-10-07 ────────────
+    // A reported heap failure on TaxConfigurationScreen.test.tsx prompted this.
+    // Four measurements, all on this checkout, all clean:
+    //   * alone                          35 passed, exit 0
+    //   * with 3 heavy neighbours at once 35 passed, low free 19391 MB
+    //   * FULL suite (662 files, 11150 tests) 105s, low free 18699 MB, NO OOM
+    //   * NODE_OPTIONS=--max-old-space-size=512  still 35 passed  <-- the
+    //     decisive one: a 512 MB heap cap is nowhere near being hit, so the
+    //     suite is not memory-heavy at all
+    // For scale: it is 696 lines / 35 tests with 62 userEvent calls and ZERO
+    // large inline fixtures (longest line 318 chars) -- render-and-interact
+    // cost, not retained data.
+    // The full suite's 9 failures are guard suites (composedRuleIdenticalPair,
+    // errorPolicyCompliance, focusVisible, mockFactorySurface, nativeTooltip,
+    // popupBackground, SegmentedTabs) owned by other sessions' in-flight work;
+    // none is TaxConfiguration, and no log line shows starvation or timeout.
+    // Conclusion: do not add isolation for a memory problem that is not there.
+    // If an OOM is seen again, capture the free-memory figure and the worker
+    // count in the same run — those are what distinguished the real contention
+    // case above from this non-finding.
     maxWorkers: 16,
     minWorkers: 2,
     // maxConcurrency stays at its default: it bounds tests per worker, and
