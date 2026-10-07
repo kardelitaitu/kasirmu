@@ -173,6 +173,36 @@ describe('SegmentedTabs box contract', () => {
    *  about it (this file's own rule comment talks about `line-height`). */
   const stripComments = (source: string) => source.replace(/\/\*[\s\S]*?\*\//g, '');
 
+  /**
+   * Remove every `@media` / `@supports` / `@container` block, brace-matched.
+   *
+   * Brace-matched rather than regex-lazy: an at-block contains nested `{ }`, so
+   * a non-greedy body capture would stop at the FIRST inner close and leave the
+   * rest of the block in the source — exactly the leak that would let a nested
+   * override satisfy a top-level assertion.
+   */
+  const stripAtBlocks = (source: string): string => {
+    let out = '';
+    let i = 0;
+    while (i < source.length) {
+      const at = source.indexOf('@', i);
+      if (at === -1) { out += source.slice(i); break; }
+      const brace = source.indexOf('{', at);
+      const semi = source.indexOf(';', at);
+      // A statement at-rule (@import …; / @charset …;) has no block — keep it.
+      if (brace === -1 || (semi !== -1 && semi < brace)) { out += source.slice(i, at + 1); i = at + 1; continue; }
+      out += source.slice(i, at);
+      let depth = 0;
+      let j = brace;
+      for (; j < source.length; j++) {
+        if (source[j] === '{') depth++;
+        else if (source[j] === '}') { depth--; if (depth === 0) { j++; break; } }
+      }
+      i = j;
+    }
+    return out;
+  };
+
   const css = stripComments(
     readFileSync(resolve(__dirname, '..', 'components', 'SegmentedTabs.css'), 'utf8'),
   );
@@ -181,15 +211,30 @@ describe('SegmentedTabs box contract', () => {
   );
 
   /**
-   * The single top-level rule body for `selector`. Anchored to a line start
-   * with optional indentation so a descendant selector's body cannot be matched
-   * first, and collected globally so a selector with two top-level rules is
-   * reported rather than silently read as its first body.
+   * The single TOP-LEVEL rule body for `selector`.
+   *
+   * "Top-level" is the load-bearing word, and it was not true until 2026-10-07:
+   * the regex matched a selector at ANY indentation, so a rule nested inside an
+   * at-block counted as a second top-level rule. That was invisible while the
+   * sheet had none — then `@media (pointer: coarse)` added
+   * `  .segmented-tab { min-height: var(--touch-target-min) }`, which is a
+   * coarse-pointer touch-target bump (the correct shape for a tablet), and both
+   * cases below failed claiming a duplicate rule that does not exist in the
+   * cascade's top level.
+   *
+   * The fix is to strip at-blocks BEFORE matching, so a media/supports override
+   * is neither counted here nor able to satisfy an assertion about the base rule.
+   * That matters beyond the count: without it, a declaration moved only into the
+   * coarse-pointer override would still appear to satisfy the base contract.
+   *
+   * Collection stays global so a selector genuinely declared twice at top level
+   * is still reported rather than silently read as its first body.
    */
   function ruleBody(source: string, selector: string): string {
     const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const topLevelOnly = stripAtBlocks(source);
     const re = new RegExp(`(?:^|\\n)[ \\t]*${escaped}\\s*\\{([^}]*)\\}`, 'g');
-    const bodies = [...source.matchAll(re)].map((m) => m[1]!);
+    const bodies = [...topLevelOnly.matchAll(re)].map((m) => m[1]!);
     expect(bodies, `${selector} must have exactly one top-level rule`).toHaveLength(1);
     return bodies[0]!;
   }
