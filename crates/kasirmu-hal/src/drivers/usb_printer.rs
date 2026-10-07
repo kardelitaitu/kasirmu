@@ -79,6 +79,14 @@ impl UsbReceiptPrinter {
     }
 
     async fn write_to_endpoint(&self, data: &[u8]) -> Result<(), HalError> {
+        if data.len() > escpos::MAX_PRINT_PAYLOAD_BYTES {
+            return Err(HalError::Protocol(format!(
+                "print payload ({} bytes) exceeds maximum allowable size ({} bytes)",
+                data.len(),
+                escpos::MAX_PRINT_PAYLOAD_BYTES
+            )));
+        }
+
         self.ensure_connected().await?;
 
         let handle_arc = self.handle.clone();
@@ -118,7 +126,7 @@ impl UsbReceiptPrinter {
 impl ReceiptPrinter for UsbReceiptPrinter {
     async fn print_receipt(&self, body: &str) -> Result<(), HalError> {
         let data = escpos::format_receipt(body);
-        self.write_to_endpoint(&data).await
+        self.print_raw(&data).await
     }
 
     async fn print_raw(&self, data: &[u8]) -> Result<(), HalError> {

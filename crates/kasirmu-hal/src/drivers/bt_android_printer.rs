@@ -102,6 +102,14 @@ impl AndroidBtReceiptPrinter {
     }
 
     async fn write_to_stream(&self, data: &[u8]) -> Result<(), HalError> {
+        if data.len() > escpos::MAX_PRINT_PAYLOAD_BYTES {
+            return Err(HalError::Protocol(format!(
+                "print payload ({} bytes) exceeds maximum allowable size ({} bytes)",
+                data.len(),
+                escpos::MAX_PRINT_PAYLOAD_BYTES
+            )));
+        }
+
         let stream_arc = self.stream.clone();
         let data_owned = data.to_vec();
 
@@ -111,12 +119,10 @@ impl AndroidBtReceiptPrinter {
                 .as_mut()
                 .ok_or_else(|| HalError::Bluetooth("not connected".into()))?;
             use std::io::Write;
-            stream
-                .write_all(&data_owned)
-                .map_err(|e| HalError::Io(std::io::Error::other(e.to_string())))?;
-            stream
-                .flush()
-                .map_err(|e| HalError::Io(std::io::Error::other(e.to_string())))?;
+            if let Err(e) = stream.write_all(&data_owned).and_then(|()| stream.flush()) {
+                *guard = None;
+                return Err(HalError::Io(std::io::Error::other(e.to_string())));
+            }
             Ok(())
         })
         .await
@@ -127,12 +133,18 @@ impl AndroidBtReceiptPrinter {
 #[async_trait]
 impl ReceiptPrinter for AndroidBtReceiptPrinter {
     async fn print_receipt(&self, body: &str) -> Result<(), HalError> {
-        self.ensure_connected().await?;
         let data = escpos::format_receipt(body);
-        self.write_to_stream(&data).await
+        self.print_raw(&data).await
     }
 
     async fn print_raw(&self, data: &[u8]) -> Result<(), HalError> {
+        if data.len() > escpos::MAX_PRINT_PAYLOAD_BYTES {
+            return Err(HalError::Protocol(format!(
+                "print payload ({} bytes) exceeds maximum allowable size ({} bytes)",
+                data.len(),
+                escpos::MAX_PRINT_PAYLOAD_BYTES
+            )));
+        }
         self.ensure_connected().await?;
         self.write_to_stream(data).await
     }

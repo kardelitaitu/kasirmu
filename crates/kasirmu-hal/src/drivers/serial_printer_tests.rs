@@ -78,3 +78,11 @@ fn default_baud_matches_the_other_serial_drivers() {
         crate::drivers::serial_display::DISPLAY_DEFAULT_BAUD
     );
 }
+
+#[tokio::test]
+async fn oversized_payload_is_rejected() {
+    let printer = SerialReceiptPrinter::new("COM1", 9600, info("ghost"));
+    let huge_data = vec![0u8; escpos::MAX_PRINT_PAYLOAD_BYTES + 1];
+    let res = printer.print_raw(&huge_data).await;
+    assert!(matches!(res, Err(HalError::Protocol(_))));
+}

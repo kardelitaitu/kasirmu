@@ -192,3 +192,8 @@ fn byte_based_padding_misaligns_and_cell_based_padding_does_not() {
     let new_line = format!("{}{}", " ".repeat(10 - cell_width(s)), s);
     assert_eq!(cell_width(&new_line), 10, "cell-based pad aligns");
 }
+
+#[test]
+fn max_print_payload_bytes_is_positive_and_bounded() {
+    assert_eq!(MAX_PRINT_PAYLOAD_BYTES, 4 * 1024 * 1024);
+}

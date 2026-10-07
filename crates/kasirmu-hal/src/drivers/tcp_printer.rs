@@ -72,6 +72,14 @@ impl TcpReceiptPrinter {
     /// `ensure_connected` still sees `guard.is_some()` and never
     /// reconnects, so every subsequent print silently fails or errors.
     async fn write_to_stream(&self, data: &[u8]) -> Result<(), HalError> {
+        if data.len() > escpos::MAX_PRINT_PAYLOAD_BYTES {
+            return Err(HalError::Protocol(format!(
+                "print payload ({} bytes) exceeds maximum allowable size ({} bytes)",
+                data.len(),
+                escpos::MAX_PRINT_PAYLOAD_BYTES
+            )));
+        }
+
         let mut guard = self.stream.lock().await;
 
         // First attempt: write to the cached stream (if any).
@@ -106,12 +114,18 @@ impl TcpReceiptPrinter {
 #[async_trait]
 impl ReceiptPrinter for TcpReceiptPrinter {
     async fn print_receipt(&self, body: &str) -> Result<(), HalError> {
-        self.ensure_connected().await?;
         let data = escpos::format_receipt(body);
-        self.write_to_stream(&data).await
+        self.print_raw(&data).await
     }
 
     async fn print_raw(&self, data: &[u8]) -> Result<(), HalError> {
+        if data.len() > escpos::MAX_PRINT_PAYLOAD_BYTES {
+            return Err(HalError::Protocol(format!(
+                "print payload ({} bytes) exceeds maximum allowable size ({} bytes)",
+                data.len(),
+                escpos::MAX_PRINT_PAYLOAD_BYTES
+            )));
+        }
         self.ensure_connected().await?;
         self.write_to_stream(data).await
     }
