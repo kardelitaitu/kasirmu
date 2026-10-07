@@ -925,7 +925,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
             </svg>
             <span>{l10n.getString('back') || 'Back'}</span>
           </button>
-          <h2 className="restaurant-subscreen-top-title">{l10n.getString('sales-history-title') || 'Sales History'}</h2>
+          <span className="restaurant-subscreen-top-title">{l10n.getString('sales-history-title') || 'Sales History'}</span>
         </header>
         <div style={{ flex: 1, overflow: 'auto' }}>
           <SalesHistoryScreen />
