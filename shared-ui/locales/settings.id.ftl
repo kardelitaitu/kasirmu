@@ -1046,7 +1046,6 @@ settings-diagnostics-title = Diagnostik
 settings-diagnostics-intro = Mengapa setiap fitur tersedia atau terkunci untuk Anda saat ini — gerbang yang sama yang diterapkan aplikasi, dengan alasannya disebutkan. Hanya baca, bekerja offline.
 settings-diagnostics-refresh = Segarkan
 settings-diagnostics-load-failed = Tidak dapat memuat hasil pemeriksaan. Coba lagi.
-settings-diagnostics-export-failed = Tidak dapat mengekspor arsip diagnostik. Coba lagi.
 settings-diagnostics-list-aria = Hasil pemeriksaan ketersediaan fitur
 settings-diagnostics-status-available = Tersedia
 settings-diagnostics-loading = …

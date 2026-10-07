@@ -173,6 +173,7 @@ settings-diagnostics-export-btn = Export Diagnostic Logs
 settings-diagnostics-export-progress = Generating diagnostic archive…
 settings-diagnostics-export-success = Diagnostic archive exported successfully ({ $size } MB).
 settings-diagnostics-export-error = Diagnostic export failed.
+settings-diagnostics-export-failed = Could not export the diagnostics archive. Try again.
 
 # Memo Banner
 memo-banner-open-aria = Read the full memo: { $title }

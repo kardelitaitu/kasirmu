@@ -201,6 +201,7 @@ settings-diagnostics-export-btn = Ekspor Log Diagnostik
 settings-diagnostics-export-progress = Membuat arsip diagnostik…
 settings-diagnostics-export-success = Arsip diagnostik berhasil diekspor ({ $size } MB).
 settings-diagnostics-export-error = Ekspor diagnostik gagal.
+settings-diagnostics-export-failed = Tidak dapat mengekspor arsip diagnostik. Coba lagi.
 
 # Memo Banner
 memo-banner-open-aria = Baca memo lengkap: { $title }

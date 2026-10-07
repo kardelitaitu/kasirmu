@@ -1068,7 +1068,6 @@ settings-diagnostics-title = Diagnostics
 settings-diagnostics-intro = Why each feature is available or locked for you right now — the same gates the app enforces, with the reason named. Read-only, works offline.
 settings-diagnostics-refresh = Refresh
 settings-diagnostics-load-failed = Could not load the verdicts. Try again.
-settings-diagnostics-export-failed = Could not export the diagnostics archive. Try again.
 settings-diagnostics-list-aria = Feature availability verdicts
 settings-diagnostics-status-available = Available
 settings-diagnostics-loading = …

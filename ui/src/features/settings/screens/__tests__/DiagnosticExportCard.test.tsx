@@ -96,6 +96,20 @@ describe('DiagnosticExportCard', () => {
       // the assertion reads that key. That is the mock's contract, not a bug: it is
       // how this suite stays independent of the .ftl bundle, which is where the real
       // copy lives and which FTL-parity gates check separately.
+      //
+      // The other two assertions in this file read ENGLISH prose ("Diagnostic export
+      // failed.") and still pass, which looks contradictory until you see why: those
+      // strings are the <Localized> FALLBACK CHILDREN, and the mock replaces
+      // <Localized> with a passthrough, so the fallback is what renders. So this file
+      // verifies the fallbacks and the mapper's key — never the bundle. That is the
+      // intended division of labour, and it is worth knowing before reading a green
+      // run here as "the copy is correct in every locale".
+      //
+      // A NOTE ON SEARCHING FOR KEYS, learned the hard way on 2026-10-07: this key
+      // lives in shared.ftl with its six siblings, NOT in settings.ftl where the
+      // sibling FEATURE's keys live. A grep limited to settings.ftl reports all seven
+      // as missing and reads exactly like a real i18n defect. Search shared-ui/locales
+      // as a whole, or the finding is an artifact of the search.
       expect(screen.getByText(/settings-diagnostics-export-failed/)).toBeInTheDocument();
       expect(screen.queryByText(/Disk write failed/i)).not.toBeInTheDocument();
     });
