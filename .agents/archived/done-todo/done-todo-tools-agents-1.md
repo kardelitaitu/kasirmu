@@ -6,8 +6,8 @@
 
 **Target Crates:** `crates/oz-core/src/subscription.rs`, `apps/desktop-tauri/src/commands/license.rs`  
 **Sibling Documents:**
-- [`todo-tools-agents-2.md`](./todo-tools-agents-2.md) (Agent 2 — Workspace Navigation & Home Grid Categorization)
-- [`done-todo-tools-agents-3.md`](../../done-todo-tools-agents-3.md) (Agent 3 — Route Guards, Locked Badges & Upgrade Modals)
+- [`done-todo-tools-agents-2.md`](./done-todo-tools-agents-2.md) (Agent 2 — Workspace Navigation & Home Grid Categorization)
+- [`done-todo-tools-agents-3.md`](../../reviews/done-todo-tools-agents-3.md) (Agent 3 — Route Guards, Locked Badges & Upgrade Modals)
 
 ---
 
