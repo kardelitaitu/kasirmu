@@ -130,6 +130,16 @@ The marker set is therefore correct on evidence that does not depend on the chec
 
 ---
 
+## 3e. Pattern A recurred the same day — the value of a re-runnable check
+
+Four KDS commands landed on the tablet shell **after** this audit's repair was committed (tablet 415 → 419; `distinct` stayed 513, because all four already existed on desktop). Their reference rows were marked `[D]`.
+
+Fixed in `5535ec01d`: `list_kds_devices_scoped`, `register_kds_device_scoped`, `get_kds_routing_rules_scoped` and `save_kds_routing_rules_scoped` are each present in BOTH `generate_handler!` blocks and are now `[D+T]`. Confirmed by brace-matched extraction of the raw files, not by the checker; the re-sweep gave **0 marker mismatches across all 513 rows** and **0 registered-but-undocumented**.
+
+This is worth recording for what it demonstrates rather than as a finding: **the drift this audit fixed is not a one-off.** Pattern A ("commands register faster than the docs that describe them") reproduced within hours of the repair, from unrelated feature work by another session — which is the argument for the gate rather than the pass. `check-api-surface.py` caught it on the next run with no human intervention, and the page's own `CLEAN` claim is now a property a script re-establishes rather than a statement someone once verified.
+
+---
+
 ## 4. Outstanding
 
 - ~~**`check-api-surface.py` reports 1 discrepancy: `print_edc_settlement_slip_scoped`.**~~ **CLOSED** (commit `8c3e86eff`). The deferred rows were added once the peer's work landed in HEAD: `print_edc_settlement_slip_scoped` `[D+T]` and `notify_memory_pressure` `[T]`. **All nine docs detectors now pass.**
