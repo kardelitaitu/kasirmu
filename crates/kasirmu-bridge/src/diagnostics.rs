@@ -6,9 +6,10 @@
 //! `.zip` package.
 //!
 //! Key functions:
-//! - [`export_diagnostics`]: Validates permissions, extracts health/sync info, sanitizes logs,
-//!   and writes the diagnostic `.zip` archive.
-//! - [`sanitize_log_text`]: Redacts authorization tokens, bearer headers, PINs, and passwords.
+//! - [`export_diagnostics`](crate::diagnostics::export_diagnostics): Validates permissions,
+//!   extracts health/sync info, sanitizes logs, and writes the diagnostic `.zip` archive.
+//! - [`sanitize_log_text`](crate::diagnostics::sanitize_log_text): Redacts authorization tokens,
+//!   bearer headers, PINs, and passwords.
 
 use std::fs::File;
 use std::io::Write;
