@@ -735,7 +735,8 @@ const SCREENS: ScreenEntry[] = [
       // git grep -rn kds-workspace -- ui/src names ONLY this sheet (:2134/:2141/:2149)
       // -- not AppShell.tsx, the stale claim that stood here before.
       'kds-workspace', 'kds-workspace-header', 'kds-workspace-back',
-      // Was stem 'status--'. The composition that comment cited (KdsTicketCard.tsx:307) no longer names a bare status-- in any .tsx, so these 2 rules are the whole family and a third variant must read dead.
+      // Was stem 'status--'. The composition that comment cited (KdsTicketCard.tsx:307
+// as of 2026-09-15; the live template literal is at :349 today) no longer names a bare status-- in any .tsx, so these 2 rules are the whole family and a third variant must read dead.
       'status--preparing', 'status--ready',
       // `kds-main-track active-${activeTab}` at components/KdsMainContent.tsx:127 -- the old pointer,
       // KdsScreen.tsx:627, is stale. Both real rules named whole, so a third variant reads dead:
@@ -817,7 +818,10 @@ const SCREENS: ScreenEntry[] = [
       'kds/components/KdsMainContent.tsx',
       // kdsDensity.ts is cited from 2026-10-07, when the density arithmetic was
       // extracted out of KdsMainContent.tsx:132 and KdsHamburgerPanel.tsx:315,317
-      // into that module. The extraction moved the LITERAL ' kds--compact' out of
+      // AS OF 38d64900e^ — read those as the ORIGINAL range, not as pointers. The
+      // call site has since shifted (the compactClass call is at :133 now) and the
+      // stepper handlers referenced at :315,317 are now the button tags that call
+      // stepDensity. The extraction moved the LITERAL ' kds--compact' out of
       // the walked .tsx, so the guard immediately reported it dead — the class is
       // still applied, by KdsMainContent via compactClass(settings.density), and
       // naming the module here restores the pairing rather than muting it. This is

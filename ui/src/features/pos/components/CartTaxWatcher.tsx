@@ -10,7 +10,9 @@
 // MOVING IT HERE CHANGED NO BEHAVIOUR: the body below is byte-identical to
 // the file it was copied from -- CartTaxWatcher.tsx (34 ln, 1,085 bytes,
 // dffe250a5), which lived one directory over under features/sales/ and is now
-// deleted. Retail still re-declares its own copy at RetailPosScreen.tsx:61;
+// deleted. Retail still re-declares its own copy at RetailPosScreen.tsx:61
+// AS OF dffe250a5 (the copy today is the taxState cluster at
+// RetailPosScreen.tsx:1044-1052, so read :61 as the ORIGINAL site, not a pointer);
 // converging on this file is a SEPARATE commit by a separate brief.
 //
 // CHANGES HERE ARE A SEPARATE COMMIT BY ONE NAMED OWNER, agreed before the

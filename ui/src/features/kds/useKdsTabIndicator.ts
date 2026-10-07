@@ -3,7 +3,7 @@
  * effect that moves it to the active tab button, the `resize` re-measure effect
  * that keeps it aligned, and the refs plus the `isTabMountedRef` latch they read.
  *
- * Extracted verbatim from KdsScreen.tsx:447-466 (measure + squeeze/overshoot
+ * Extracted verbatim from KdsScreen.tsx:447-466 AS OF 17977fc02^ (measure + squeeze/overshoot
  * animation) and :468-479 (the window `resize` listener). Both effect bodies are
  * the sed output: no keyframe, no `offset`, no duration, no easing, no
  * `typeof … .animate === 'function'` guard and no add/removeEventListener pair

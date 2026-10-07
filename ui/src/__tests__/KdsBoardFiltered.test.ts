@@ -1,7 +1,8 @@
 // boardFiltered — whether any filter is active on the KDS board.
 //
 // The OPEN-tab half now IMPORTS production (2026-10-07): isBoardFiltered lives in
-// features/kds/kdsOrderView.ts, extracted verbatim from KdsScreen.tsx:393-395, and
+// features/kds/kdsOrderView.ts, extracted verbatim from KdsScreen.tsx:393-395
+// AS OF f68cb3e16^ (the number holds the extracted call now, not the original), and
 // the 'prepared wins over zones' case below is the same precedence pinned in
 // KdsZoneExtraction.test.ts against filterKdsOrders. The COMPLETED half still
 // delegates to its own comparison, because production reads a second source there

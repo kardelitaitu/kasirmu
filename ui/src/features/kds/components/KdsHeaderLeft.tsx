@@ -3,7 +3,7 @@
  * workspace-picker button, the filter control with its popover panel, and the
  * prepared/category filter chips.
  *
- * Extracted verbatim from KdsScreen.tsx:718-855 by KDS merged-lane slice 2.
+ * Extracted verbatim from KdsScreen.tsx:718-855 AS OF 7d0dc4d60^ by KDS merged-lane slice 2.
  * The moved block is byte-identical to that range: it is the sed output with a
  * component wrapper around it, so no string, class, aria attribute or svg path
  * was retyped. Unlike the notice banners, no handler needed converting to a

@@ -6,7 +6,8 @@
 // That label is worth keeping: the logic lives INSIDE a useCallback with the
 // fetch above it and the arrival-animation bookkeeping below, which is why there
 // was nothing to import. It is now filterKdsOrdersByScope in
-// features/kds/kdsOrderView.ts, extracted verbatim from KdsScreen.tsx:154-162.
+// features/kds/kdsOrderView.ts, extracted verbatim from KdsScreen.tsx:154-162
+// AS OF df585537d^ (the number holds the extracted call now, not the original).
 //
 // One of five KDS suites that retyped production logic; see the header of
 // KdsSettingsConversions.test.ts for the sweep that found them.

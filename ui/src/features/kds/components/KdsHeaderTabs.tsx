@@ -2,7 +2,7 @@
  * KdsHeaderTabs — the middle column of the KDS header: the Open/Completed tab
  *   track, its animated indicator pill and the two tab buttons.
  *
- * Extracted verbatim from KdsScreen.tsx:487-515 by the KDS merged-lane header
+ * Extracted verbatim from KdsScreen.tsx:487-515 AS OF 02dd03278^ by the KDS merged-lane header
  * TABS slice. The moved block is byte-identical in structure — same classes,
  * same `role`/`aria-*` attributes, same `data-testid`s, same order, same
  * conditional class expressions — and its reads became props. The Fluent ids

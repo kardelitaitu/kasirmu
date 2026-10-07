@@ -348,7 +348,8 @@ describe('AppShell — T3 declared-layout render branches', () => {
 describe('TabletAppShell — T3 declared-layout render branches', () => {
   // Register the probe on the route the `admin` workspace actually opens.
   // `admin` maps to 'settings' (WORKSPACE_ROUTE in TabletAppShell.tsx, and the
-  // desktop's AppShell.tsx:341 agrees). This block used to register 'pos'
+  // desktop's AppShell.tsx:341 agrees — re-verified 2026-10-07, that line IS
+  // `admin: 'settings'`). This block used to register 'pos'
   // because the tablet's empty-hash fallback forced 'pos' whatever the active
   // workspace — corrected 2026-10-04, so the probe now targets the real route.
   // The layout assertions below are unchanged: this describes only WHERE the

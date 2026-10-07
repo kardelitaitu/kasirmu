@@ -2,7 +2,7 @@
  * useKdsFilterNav — the roving-tabindex keyboard trio for the KDS zone chips
  * and the filter popover, plus the popover's Escape / outside-click dismiss.
  *
- * Extracted verbatim from KdsScreen.tsx:493-515 (handleZoneTablistKeyDown),
+ * Extracted verbatim from KdsScreen.tsx:493-515 AS OF 3ad157d05^ (handleZoneTablistKeyDown),
  * :551-571 (the dismiss effect) and :573-616 (handleFilterPanelKeyDown,
  * handleFilterBtnKeyDown). The three handlers and the effect bodies are the
  * sed output — no key, no branch, no preventDefault and no focus() call was

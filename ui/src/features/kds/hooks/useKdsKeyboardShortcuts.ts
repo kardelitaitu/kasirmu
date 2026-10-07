@@ -5,6 +5,7 @@
  * modal-open guards.
  *
  * Extracted verbatim from KdsScreen.tsx:406-411 (deselect), :413-421 (refs +
+ * — the whole cluster AS OF c965baddb^, where those numbers held it,
  * autofocus) and :423-470 (the KEY-07 listener). The handler body is the sed
  * output: no key, no branch, no precedence and no `preventDefault()` call was
  * retyped, and the declaration order of the three effects (deselect → focus →

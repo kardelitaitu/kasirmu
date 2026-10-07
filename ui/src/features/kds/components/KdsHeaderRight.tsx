@@ -2,7 +2,7 @@
  * KdsHeaderRight — the right column of the KDS header: the shift start/stop
  *   button, the device status indicator, and the hamburger settings panel.
  *
- * Extracted verbatim from KdsScreen.tsx:519-566 by the KDS merged-lane
+ * Extracted verbatim from KdsScreen.tsx:519-566 AS OF de165c118^ by the KDS merged-lane
  * header-right slice (the region the plan's region table still lists as the
  * unextracted "header RIGHT"). The moved block is byte-identical except that
  * its reads became props — including `prefs`, passed whole so the three

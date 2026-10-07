@@ -3,7 +3,7 @@
  *   skeleton columns, and the Open/Completed swipe track that hosts
  *   KdsLayoutMasonry and KdsCompletedView.
  *
- * Extracted verbatim from KdsScreen.tsx:390-451 — the `renderContent` closure,
+ * Extracted verbatim from KdsScreen.tsx:390-451 AS OF fc29f3690^ — the `renderContent` closure,
  * which the KDS census measured as the largest remaining self-contained block of
  * the screen. The moved markup is byte-identical except for a uniform two-space
  * de-indent and five reads that became props (`onAdvance`, `onAdvanceItem`,

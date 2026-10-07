@@ -4,7 +4,7 @@
  * its cancel/unlisten guard, the `visibilitychange` fallback re-fetch, the
  * mount/dep re-fetch effect, and the unmount cleanup that tears all three down.
  *
- * Extracted verbatim from KdsScreen.tsx:200-249 (the ref at :205-206, the
+ * Extracted verbatim from KdsScreen.tsx:200-249 AS OF 9fe87671b^ (the ref at :205-206, the
  * subscribe effect at :213-244, the dep fetch at :247-249). The effect bodies
  * and the `.then`/`.catch` chain are the sed output: no event name, no guard,
  * no `addEventListener`/`removeEventListener` pair and no `clearTimeout` was
