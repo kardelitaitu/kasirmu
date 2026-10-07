@@ -2578,7 +2578,6 @@ function describeUnresolved(misses: Map<string, VarRef[]>): string {
 const UNRESOLVED_VAR_TOKENS_BASELINE: string[] = [
   "--accent-color", // 3 - settings/screens/*Card.css use a foreign naming scheme
   "--accent-contrast", // 3 - the same three cards
-  "--animation-play", // 1 - warehouse/WarehouseConsole.css
   "--bg-primary", // 3
   "--bg-secondary", // 1
   "--border-color", // 8
@@ -2738,7 +2737,6 @@ const FOREIGN_SCHEME_BASELINE: Array<[string, string, number]> = [
   ["--accent-contrast", "ui/src/features/settings/screens/RegionalSettingsCard.css", 1],
   ["--accent-subtle", "ui/src/components/OrgSelector.css", 1],
   ["--accent-subtle", "ui/src/components/OrgSwitcher.css", 1],
-  ["--animation-play", "ui/src/features/warehouse/WarehouseConsole.css", 1],
   ["--bg-primary", "ui/src/features/settings/screens/LocalPaymentSettingsCard.css", 1],
   ["--bg-primary", "ui/src/features/settings/screens/ReceiptFormatSettingsCard.css", 1],
   ["--bg-primary", "ui/src/features/settings/screens/RegionalSettingsCard.css", 1],
@@ -3353,7 +3351,6 @@ const LINE_HEIGHT_LITERAL_BASELINE: Array<[string, string, number]> = [
   ["1.3", "ui/src/features/staff/StaffManagementScreen.css", 1],
   ["1.4", "ui/src/features/staff/StaffManagementScreen.css", 1],
   ["1", "ui/src/features/stock-transfers/StockTransfersScreen.css", 2],
-  ["1", "ui/src/features/warehouse/WarehouseConsole.css", 1],
   ["1", "ui/src/features/workspaces/WorkspaceHome.css", 1],
   ["1.2", "ui/src/features/workspaces/WorkspaceHome.css", 1],
   ["1.3", "ui/src/app/AppLayout.css", 2],

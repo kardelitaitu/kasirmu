@@ -484,6 +484,38 @@ const SCREENS: ScreenEntry[] = [
     dynamicClassPrefixes: ['session-lock-pin-dot--', 'session-lock-card--'],
   },
 
+  // ── Warehouse ─────────────────────────────────────────
+  {
+    // WarehouseConsole.css, landed 2026-10-07 (BASELINE_UNCITED 13 -> 12). Routed:
+    // warehouse/register.tsx:9 binds route 'warehouse' to this component.
+    //
+    // This entry could not be authored until 49 orphaned rules were struck. They
+    // are two groups, both traceable to one commit:
+    //   544b37707 "chore(warehouse): rename screen stylesheet and drop legacy screen
+    //   file" renamed WarehouseScreen.css -> WarehouseConsole.css with ZERO content
+    //   changes and deleted WarehouseScreen.tsx (479 lines). Every rule the deleted
+    //   screen had used became orphaned at that moment and stayed for ~6 weeks.
+    //   Measured before striking: 30 of the sheet's 87 classes were unreachable from
+    //   the three live .tsx files (Console, CountFlow, FnBar), 29 of them used by the
+    //   DELETED WarehouseScreen.tsx, and ZERO referenced by any other source file in
+    //   the tree. The @keyframes warehouse-shimmer went with them, since its only
+    //   consumer was the dead .warehouse-skeleton.
+    //   19 more fell out as their bare parents were removed (.warehouse-btn--adjust,
+    //   .warehouse-table-wrap and the dead-only @media (prefers-reduced-motion: reduce)
+    //   block). Final read: 57 defined, 0 unmatched.
+    //
+    // CountFlow and FnBar are named rather than given entries of their own: they are
+    // components of this screen, not screens, and they render classes WarehouseConsole.css
+    // defines (that is what took the initial 49 down to 30).
+    name: 'WarehouseConsole',
+    tsx: 'warehouse/WarehouseConsole.tsx',
+    css: ['warehouse/WarehouseConsole.css'],
+    additionalTsx: [
+      'warehouse/WarehouseCountFlow.tsx',
+      'warehouse/WarehouseFnBar.tsx',
+    ],
+  },
+
   // ── Audit ─────────────────────────────────────────────
   {
     name: 'AuditLogScreen',
@@ -3032,7 +3064,6 @@ const BASELINE_UNCITED: string[] = [
   'retail/RetailPosScreen.css',
   'sales/widgets/widgets.css',
   'settings/WorkspaceSettingsModal.module.css',
-  'warehouse/WarehouseConsole.css',
 ];
 
 describe('stylesheet coverage', () => {
