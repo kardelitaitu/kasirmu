@@ -443,6 +443,46 @@ const SCREENS: ScreenEntry[] = [
       'connection-latency',
     ],
   },
+  {
+    // SessionLockScreen.css, landed 2026-10-07 (BASELINE_UNCITED 15 -> 14) after
+    // eleven of its thirty-seven rules were REMOVED rather than excused. This is
+    // the first sheet in this thread cleared by deletion, and it is why the count
+    // reads both ways: the entry could not be authored honestly until the stale
+    // CSS was struck.
+    //
+    // The eleven were two orphaned groups, both verifiable from history:
+    //   (a) nine connection-pill rules — .connection-status, .connection-status:hover,
+    //       .status-indicator, .status-indicator.checking/.online/.offline,
+    //       .connection-label, .connection-latency, .session-lock-connection-group
+    //       and the cs-pulse keyframes. They were a hand-copied duplicate of
+    //       components/ConnectionStatus.css, carrying the sheet's own comment
+    //       "matches ConnectionStatus.css". f215ca336 ("refactor: use
+    //       ConnectionStatus component on login/session lock screens") moved the
+    //       markup onto the shared component and left the copy behind; this screen
+    //       renders no ConnectionStatus, and all nine names are defined in
+    //       components/ConnectionStatus.css, so the copy was dead the moment it landed.
+    //   (b) .session-lock-rate-limit and its session-lock-rate-pulse keyframes.
+    //       b47727174 ("harden login flow — ... lockout countdown") deleted the
+    //       `<span className="session-lock-rate-limit">` from the markup and replaced
+    //       it with .session-lock-countdown, which is what :350-354 renders today.
+    //       git log -S on the TSX shows the removal and no re-add.
+    // Both were confirmed absent from every non-sheet reference before striking, and
+    // the sheet still parses with balanced braces (77/77).
+    name: 'SessionLockScreen',
+    tsx: 'auth/SessionLockScreen.tsx',
+    css: ['auth/SessionLockScreen.css'],
+    // Two names reach className through paths the static walk cannot follow:
+    //   session-lock-pin-dot--filled — conditional at :261,
+    //     `session-lock-pin-dot ${i < pin.length ? 'session-lock-pin-dot--filled' : ''}`;
+    //   session-lock-card--shake — applied imperatively at :100-101,
+    //     card.classList.add('session-lock-card--shake') then removed on a 350ms
+    //     timer, so it never appears in a className at all. The identical shape on
+    //     StaffLoginScreen (staff-login-card--shake) is documented the same way at
+    //     :428: "a classList toggle the walker cannot reach".
+    // A prefix is right for both rather than a whole name: each is composed or
+    // toggled, and a whole-name entry is not a wildcard.
+    dynamicClassPrefixes: ['session-lock-pin-dot--', 'session-lock-card--'],
+  },
 
   // ── Audit ─────────────────────────────────────────────
   {
@@ -2959,7 +2999,6 @@ const EXTERNAL_CLASS_LEDGER: { entry: string; value: string; reason: string }[] 
 //     are hashed at build; the guard may be structurally unable to grade it.
 const BASELINE_UNCITED: string[] = [
   'analytics/AnalyticsScreen.css',
-  'auth/SessionLockScreen.css',
   'design/DesignSystem.css',
   'design/TooltipPreview.css',
   'design/brand-tokens.css',

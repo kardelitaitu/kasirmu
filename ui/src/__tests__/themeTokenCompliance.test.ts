@@ -2969,7 +2969,6 @@ const DISAGREEING_TAIL_BASELINE: Array<[string, string, number]> = [
   ["--color-accent-subtle-fg", "ui/src/features/locations/MultiStoreDashboardScreen.css", 1],
   ["--color-bg", "ui/src/theme/reset.css", 1],
   ["--color-bg-hover", "ui/src/components/ConnectionStatus.css", 1],
-  ["--color-bg-hover", "ui/src/features/auth/SessionLockScreen.css", 1],
   ["--color-bg-hover", "ui/src/features/auth/StaffLoginScreen.css", 1],
   ["--color-bg-hover", "ui/src/features/sales/EodReportScreen.css", 2],
   ["--color-bg-hover", "ui/src/features/sales/widgets/widgets.css", 1],
