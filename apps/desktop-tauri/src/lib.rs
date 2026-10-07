@@ -1350,6 +1350,8 @@ pub fn run() {
             commands::edc::edc_sale,
             commands::edc::edc_refund,
             commands::edc::edc_void,
+            commands::edc::edc_settle,
+            commands::edc::edc_inquiry,
             commands::edc::list_edc_terminals_scoped,
             commands::edc::create_edc_terminal_scoped,
             commands::edc::update_edc_terminal_scoped,

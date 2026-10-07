@@ -214,7 +214,7 @@ async fn register_wired_terminal_installs_the_real_stub_driver() {
     // closed rather than report an approval.
     assert!(
         matches!(
-            t.authorize(usd(1000)).await,
+            t.authorize(usd(1000), None).await,
             Err(crate::error::HalError::Unsupported(_))
         ),
         "wired stub must not authorize"

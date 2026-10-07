@@ -245,11 +245,19 @@ async fn edc_mock_fails_closed_until_armed() {
     assert!(!m.is_armed());
     assert!(matches!(m.status().await, Err(HalError::Unsupported(_))));
     assert!(matches!(
-        m.authorize(usd(1000)).await,
+        m.authorize(usd(1000), None).await,
         Err(HalError::Unsupported(_))
     ));
     assert!(matches!(
-        m.sale(usd(1000)).await,
+        m.sale(usd(1000), None).await,
+        Err(HalError::Unsupported(_))
+    ));
+    assert!(matches!(
+        m.settle().await,
+        Err(HalError::Unsupported(_))
+    ));
+    assert!(matches!(
+        m.inquiry("inv-1").await,
         Err(HalError::Unsupported(_))
     ));
     assert!(matches!(
@@ -262,7 +270,7 @@ async fn edc_mock_fails_closed_until_armed() {
 async fn edc_mock_approved_sale_carries_card_details() {
     let m = MockEdcTerminal::new();
     m.set_success();
-    let r = m.sale(usd(1320)).await.unwrap();
+    let r = m.sale(usd(1320), Some("INV-001")).await.unwrap();
     assert!(r.success);
     assert_eq!(r.transaction_id.as_deref(), Some("mock-txn-001"));
     assert_eq!(r.auth_code.as_deref(), Some("MOCKAUTH"));
@@ -271,10 +279,25 @@ async fn edc_mock_approved_sale_carries_card_details() {
 }
 
 #[tokio::test]
+async fn edc_mock_settle_and_inquiry_succeed_when_armed() {
+    let m = MockEdcTerminal::new();
+    m.set_success();
+    let settle_res = m.settle().await.unwrap();
+    assert!(settle_res.success);
+    assert_eq!(settle_res.batch_number.as_deref(), Some("000001"));
+    assert_eq!(m.settle_calls.load(Ordering::SeqCst), 1);
+
+    let inq_res = m.inquiry("INV-001").await.unwrap();
+    assert!(inq_res.success);
+    assert_eq!(inq_res.transaction_id.as_deref(), Some("mock-inq-INV-001"));
+    assert_eq!(m.inquiry_calls.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
 async fn edc_mock_sale_chains_through_authorize_and_capture() {
     let m = MockEdcTerminal::new();
     m.set_success();
-    m.sale(usd(500)).await.unwrap();
+    m.sale(usd(500), None).await.unwrap();
     assert_eq!(m.sale_calls.load(Ordering::SeqCst), 1);
     assert_eq!(
         m.authorize_calls.load(Ordering::SeqCst),
@@ -292,10 +315,10 @@ async fn edc_mock_sale_chains_through_authorize_and_capture() {
 async fn edc_mock_disarm_returns_it_to_failing_closed() {
     let m = MockEdcTerminal::new();
     m.set_success();
-    assert!(m.sale(usd(500)).await.is_ok());
+    assert!(m.sale(usd(500), None).await.is_ok());
     m.set_failure();
     assert!(matches!(
-        m.sale(usd(500)).await,
+        m.sale(usd(500), None).await,
         Err(HalError::Unsupported(_))
     ));
 }

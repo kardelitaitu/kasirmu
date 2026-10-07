@@ -52,7 +52,7 @@ async fn every_operation_fails_closed() {
     let t = terminal();
     assert!(matches!(t.status().await, Err(HalError::Unsupported(_))));
     assert!(matches!(
-        t.authorize(usd(1000)).await,
+        t.authorize(usd(1000), None).await,
         Err(HalError::Unsupported(_))
     ));
     assert!(matches!(
@@ -68,6 +68,14 @@ async fn every_operation_fails_closed() {
         Err(HalError::Unsupported(_))
     ));
     assert!(matches!(
+        t.settle().await,
+        Err(HalError::Unsupported(_))
+    ));
+    assert!(matches!(
+        t.inquiry("inv-1").await,
+        Err(HalError::Unsupported(_))
+    ));
+    assert!(matches!(
         t.print_receipt("txn-1").await,
         Err(HalError::Unsupported(_))
     ));
@@ -80,7 +88,7 @@ async fn sale_never_reports_success_while_stubbed() {
     // an approved receipt.
     let t = terminal();
     assert!(matches!(
-        t.sale(usd(1000)).await,
+        t.sale(usd(1000), None).await,
         Err(HalError::Unsupported(_))
     ));
 }

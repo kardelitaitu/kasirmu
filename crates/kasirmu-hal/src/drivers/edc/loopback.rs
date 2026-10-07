@@ -42,7 +42,7 @@ use async_trait::async_trait;
 use kasirmu_core::Money;
 
 use crate::error::HalError;
-use crate::traits::edc::{EdcPaymentResult, EdcTerminal, TerminalStatus};
+use crate::traits::edc::{EdcPaymentResult, EdcSettlementResult, EdcTerminal, TerminalStatus};
 use crate::types::DeviceInfo;
 
 /// How one call against the simulator should behave.
@@ -331,11 +331,14 @@ impl EdcTerminal for LoopbackEdcTerminal {
         Ok(TerminalStatus::Ready)
     }
 
-    async fn authorize(&self, _amount: Money) -> Result<String, HalError> {
+    async fn authorize(&self, _amount: Money, reference: Option<&str>) -> Result<String, HalError> {
         self.apply_delay().await;
         self.result().map(|r| {
-            r.transaction_id
-                .unwrap_or_else(|| "LOOPBACK-unknown".into())
+            r.transaction_id.unwrap_or_else(|| {
+                reference
+                    .map(|ref_str| format!("LOOPBACK-{ref_str}"))
+                    .unwrap_or_else(|| "LOOPBACK-unknown".into())
+            })
         })
     }
 
@@ -353,9 +356,19 @@ impl EdcTerminal for LoopbackEdcTerminal {
     /// the script drives per-operation behaviour rather than per-call arming:
     /// a one-flag mock cannot express "this sale declines" distinctly from
     /// "this capture succeeds", so it would have hidden the bug.
-    async fn sale(&self, _amount: Money) -> Result<EdcPaymentResult, HalError> {
+    async fn sale(
+        &self,
+        _amount: Money,
+        reference: Option<&str>,
+    ) -> Result<EdcPaymentResult, HalError> {
         self.apply_delay().await;
-        self.result()
+        let mut res = self.result()?;
+        if let Some(ref_str) = reference {
+            if res.success && res.transaction_id.as_deref().unwrap_or("").starts_with("LOOPBACK-") {
+                res.transaction_id = Some(format!("LOOPBACK-{ref_str}"));
+            }
+        }
+        Ok(res)
     }
 
     async fn capture(&self, transaction_id: &str) -> Result<EdcPaymentResult, HalError> {
@@ -419,6 +432,88 @@ impl EdcTerminal for LoopbackEdcTerminal {
                 card_last4: None,
                 message: "voided".into(),
             }),
+        }
+    }
+
+    async fn settle(&self) -> Result<EdcSettlementResult, HalError> {
+        self.apply_delay().await;
+        match self.next_behaviour() {
+            EdcBehaviour::Offline => Err(HalError::NotFound(
+                "loopback terminal is unreachable".into(),
+            )),
+            EdcBehaviour::TimeoutAfterCharge => Err(HalError::Timeout(30_000)),
+            EdcBehaviour::TruncatedResponse => Err(HalError::Protocol(
+                "loopback: settlement frame truncated".into(),
+            )),
+            EdcBehaviour::HardwareFault { code, message } => Ok(EdcSettlementResult {
+                success: false,
+                batch_number: None,
+                transaction_count: 0,
+                total_amount: None,
+                message: format!("terminal fault {code}: {message}"),
+            }),
+            EdcBehaviour::Decline { reason } => Ok(EdcSettlementResult {
+                success: false,
+                batch_number: None,
+                transaction_count: 0,
+                total_amount: None,
+                message: reason,
+            }),
+            EdcBehaviour::Approve => {
+                let attempts = self.attempts.load(Ordering::SeqCst);
+                Ok(EdcSettlementResult {
+                    success: true,
+                    batch_number: Some(format!("{attempts:06}")),
+                    transaction_count: attempts as u32,
+                    total_amount: None,
+                    message: "settlement ok".into(),
+                })
+            }
+        }
+    }
+
+    async fn inquiry(&self, invoice: &str) -> Result<EdcPaymentResult, HalError> {
+        self.apply_delay().await;
+        if invoice.is_empty() {
+            return Err(HalError::Unsupported(
+                "inquiry requires an invoice reference".into(),
+            ));
+        }
+        match self.next_behaviour() {
+            EdcBehaviour::Offline => Err(HalError::NotFound(
+                "loopback terminal is unreachable".into(),
+            )),
+            EdcBehaviour::TimeoutAfterCharge => Err(HalError::Timeout(30_000)),
+            EdcBehaviour::TruncatedResponse => Err(HalError::Protocol(
+                "loopback: inquiry frame truncated".into(),
+            )),
+            EdcBehaviour::HardwareFault { code, message } => Ok(EdcPaymentResult {
+                success: false,
+                transaction_id: None,
+                auth_code: None,
+                card_scheme: None,
+                card_last4: None,
+                message: format!("terminal fault {code}: {message}"),
+            }),
+            EdcBehaviour::Decline { reason } => Ok(EdcPaymentResult {
+                success: false,
+                transaction_id: None,
+                auth_code: None,
+                card_scheme: None,
+                card_last4: None,
+                message: reason,
+            }),
+            EdcBehaviour::Approve => {
+                let attempts = self.attempts.load(Ordering::SeqCst);
+                Ok(EdcPaymentResult {
+                    success: true,
+                    transaction_id: Some(format!("LOOPBACK-INQ-{invoice}")),
+                    auth_code: Some(format!("{:06}", 200000 + attempts)),
+                    card_scheme: Some("Visa".into()),
+                    card_last4: Some("4242".into()),
+                    message: "approved".into(),
+                })
+            }
         }
     }
 

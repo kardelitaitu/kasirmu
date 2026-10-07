@@ -71,6 +71,25 @@ pub struct EdcPaymentResult {
     pub message: String,
 }
 
+/// The outcome of an EDC batch settlement operation (closing the active batch).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EdcSettlementResult {
+    /// Whether the batch settlement was accepted by the acquirer/terminal.
+    pub success: bool,
+    /// Host or terminal batch number (e.g. `"000001"`).
+    pub batch_number: Option<String>,
+    /// Total number of transactions settled in this batch.
+    pub transaction_count: u32,
+    /// Total monetary amount settled, if reported by the terminal.
+    pub total_amount: Option<Money>,
+    /// Host response message (e.g. `"SETTLEMENT OK"`, `"BATCH EMPTY"`).
+    pub message: String,
+}
+
+/// Convenience alias matching conventional protocol nomenclature.
+pub type EdcResponse = EdcPaymentResult;
+
 /// A card-present payment terminal attached to the register.
 ///
 /// `authorize` + `capture` are separate because a terminal can hold a
@@ -82,7 +101,14 @@ pub trait EdcTerminal: Send + Sync {
     async fn status(&self) -> Result<TerminalStatus, HalError>;
 
     /// Authorise `amount` against a card, returning the transaction id.
-    async fn authorize(&self, amount: Money) -> Result<String, HalError>;
+    ///
+    /// Accepts an optional `reference` (e.g. invoice or order number) to be
+    /// tied to the transaction on the EDC and printed on the bank slip.
+    async fn authorize(
+        &self,
+        amount: Money,
+        reference: Option<&str>,
+    ) -> Result<String, HalError>;
 
     /// Capture a transaction previously returned by [`Self::authorize`].
     async fn capture(&self, transaction_id: &str) -> Result<EdcPaymentResult, HalError>;
@@ -91,8 +117,12 @@ pub trait EdcTerminal: Send + Sync {
     ///
     /// The default implementation chains [`Self::authorize`] and
     /// [`Self::capture`]; terminals with a native one-step sale override it.
-    async fn sale(&self, amount: Money) -> Result<EdcPaymentResult, HalError> {
-        let txn_id = self.authorize(amount).await?;
+    async fn sale(
+        &self,
+        amount: Money,
+        reference: Option<&str>,
+    ) -> Result<EdcPaymentResult, HalError> {
+        let txn_id = self.authorize(amount, reference).await?;
         self.capture(&txn_id).await
     }
 
@@ -105,6 +135,15 @@ pub trait EdcTerminal: Send + Sync {
 
     /// Void a pending authorisation before it is captured.
     async fn void(&self, transaction_id: &str) -> Result<EdcPaymentResult, HalError>;
+
+    /// Perform a batch settlement / closing on the terminal.
+    async fn settle(&self) -> Result<EdcSettlementResult, HalError>;
+
+    /// Query or reconcile transaction status by invoice / bill reference.
+    ///
+    /// Allows the POS to safely recover transaction state after a timeout or
+    /// communication interruption without blindly retrying or double charging.
+    async fn inquiry(&self, invoice: &str) -> Result<EdcPaymentResult, HalError>;
 
     /// Print a receipt for a completed transaction on the terminal's own
     /// built-in printer, returning the raw bytes the device was sent.

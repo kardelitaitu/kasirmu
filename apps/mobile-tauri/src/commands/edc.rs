@@ -9,8 +9,8 @@ use crate::error::AppError;
 use crate::state::AppState;
 
 pub use kasirmu_bridge::edc::{
-    CreateEdcTerminalArgs, DEFAULT_TERMINAL_ID, EdcResultDto, EdcStatusDto, EdcTerminalDto,
-    UpdateEdcTerminalArgs,
+    CreateEdcTerminalArgs, DEFAULT_TERMINAL_ID, EdcResultDto, EdcSettlementDto, EdcStatusDto,
+    EdcTerminalDto, UpdateEdcTerminalArgs,
 };
 
 /// Query the EDC terminal's current status (scoped).
@@ -34,6 +34,7 @@ pub async fn edc_sale(
     amount_minor: i64,
     currency: String,
     terminal_id: Option<String>,
+    reference: Option<String>,
 ) -> Result<EdcResultDto, AppError> {
     let ctx = state.bridge_ctx();
     kasirmu_bridge::edc::edc_sale(
@@ -42,6 +43,7 @@ pub async fn edc_sale(
         amount_minor,
         &currency,
         terminal_id.as_deref(),
+        reference.as_deref(),
     )
     .await
     .map_err(Into::into)
@@ -61,9 +63,9 @@ pub async fn edc_refund(
     kasirmu_bridge::edc::edc_refund(
         &ctx,
         &session_token,
-        &currency,
-        amount_minor,
         &transaction_id,
+        amount_minor,
+        &currency,
         terminal_id.as_deref(),
     )
     .await
@@ -87,6 +89,33 @@ pub async fn edc_void(
     )
     .await
     .map_err(Into::into)
+}
+
+/// Perform batch settlement on the EDC terminal.
+#[tauri::command]
+pub async fn edc_settle(
+    session_token: String,
+    state: State<'_, AppState>,
+    terminal_id: Option<String>,
+) -> Result<EdcSettlementDto, AppError> {
+    let ctx = state.bridge_ctx();
+    kasirmu_bridge::edc::edc_settle(&ctx, &session_token, terminal_id.as_deref())
+        .await
+        .map_err(Into::into)
+}
+
+/// Query or reconcile transaction status by invoice reference.
+#[tauri::command]
+pub async fn edc_inquiry(
+    session_token: String,
+    state: State<'_, AppState>,
+    invoice: String,
+    terminal_id: Option<String>,
+) -> Result<EdcResultDto, AppError> {
+    let ctx = state.bridge_ctx();
+    kasirmu_bridge::edc::edc_inquiry(&ctx, &session_token, &invoice, terminal_id.as_deref())
+        .await
+        .map_err(Into::into)
 }
 
 /// List all EDC terminals for the active store (scoped - ADR #7).

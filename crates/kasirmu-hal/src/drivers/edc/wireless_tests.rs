@@ -56,7 +56,7 @@ async fn every_operation_fails_closed() {
     let t = WirelessEdcTerminal::over_network("127.0.0.1:9500", DeviceInfo::new("v", "m", "s"));
     assert!(matches!(t.status().await, Err(HalError::Unsupported(_))));
     assert!(matches!(
-        t.authorize(usd(1000)).await,
+        t.authorize(usd(1000), None).await,
         Err(HalError::Unsupported(_))
     ));
     assert!(matches!(
@@ -72,11 +72,19 @@ async fn every_operation_fails_closed() {
         Err(HalError::Unsupported(_))
     ));
     assert!(matches!(
+        t.settle().await,
+        Err(HalError::Unsupported(_))
+    ));
+    assert!(matches!(
+        t.inquiry("inv-1").await,
+        Err(HalError::Unsupported(_))
+    ));
+    assert!(matches!(
         t.print_receipt("txn-1").await,
         Err(HalError::Unsupported(_))
     ));
     assert!(matches!(
-        t.sale(usd(1000)).await,
+        t.sale(usd(1000), None).await,
         Err(HalError::Unsupported(_))
     ));
 }

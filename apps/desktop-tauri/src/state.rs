@@ -975,6 +975,7 @@ impl AppState {
             local_api: Mutex::new(None),
             local_api_op: Mutex::new(()),
             kds_queue_cache: Arc::new(RwLock::new(kasirmu_lan::KdsQueueSnapshot::default())),
+            table_lease_tracker: Arc::new(RwLock::new(kasirmu_lan::TableLeaseTracker::new())),
         }
     }
 
