@@ -6,6 +6,18 @@ Make the two root doc mirrors and README state CI truth (dev-ci.yml DOES have a 
 live workflow) and carry measured counts; fix two stale code comments that misdirect readers; then make the claim
 machine-policed so it cannot rot again.
 
+> ⚠️ **SUPERSEDED 2026-10-07 — the second CI fact above is now false, and the fix went the way this wave hoped.**
+> "clippy runs in NO live workflow" was true on 2026-09-14 and is not true now: `.github/workflows/dev-ci.yml`
+> carries a live `cargo-clippy` job at `:326` (11 clippy references in the file), added after this wave. The job's
+> own header comment at `:310` describes the state this journal was written in — *"clippy appeared in NO workflow
+> -- 0 hits across"* — so read that comment as the BEFORE, not the present. The first fact (dev-ci.yml has a push
+> trigger) still holds. **This is the outcome the wave wanted**, not a failure of it: the claim did not rot, it was
+> acted on, and `policies.rust-clippy` in `scripts/gates.json` now records the live job. Two other numbers in this
+> file are stale but NOT defects, because each carries its own re-measure instruction: `453` command paths
+> (`apps/desktop-tauri/src/lib.rs:21-23`; the block holds **494** today) and the `verify-ipc-parity.py` output counts
+> at `:23-25`. Read those as "measured 2026-09-14, re-measure me" — which is exactly what they say. NOT re-verified:
+> §"MANAGER VERIFICATION of C1's comment edits" and the terminal_override findings.
+
 ## Fences (one owner per file, recorded before launch)
 | owner | role | files | state |
 |---|---|---|---|
