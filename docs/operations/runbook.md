@@ -1398,7 +1398,8 @@ a fresh-install-only path:
    present, which **gives up per-file atomicity** (`:119-125`, and the audit note at `:5-6`).
 
 That is survivable for most of the registry and **not** survivable for four entries, which are
-pinned as a measured residual by `crates/kasirmu-core/src/migrations_tests.rs:361-366`:
+nailed by the dropped/renamed source each one reads — verified in the migration SQL itself, and
+incident-documented for the first of them at `crates/kasirmu-core/src/migrations_tests.rs:493-503`:
 
 | Migration | Why re-running it is impossible by construction |
 |---|---|
@@ -1407,9 +1408,10 @@ pinned as a measured residual by `crates/kasirmu-core/src/migrations_tests.rs:36
 | `20260911_memo_fk_restrict.sql` | Rebuilds `memos` reading `location_id`, which its successor then drops |
 | `20260913_memo_locations.sql` | Rebuilds a table out of a definition it replaces |
 
-All four files are present in `crates/kasirmu-core/migrations/`. The reasoning is the test's
-own (`:343-354`): each is a one-shot data/rename migration whose script **consumes the state it
-transforms**, and the forward-only contract (DB-03, `crates/kasirmu-core/src/migrations.rs:20-37`)
+All four files are present in `crates/kasirmu-core/migrations/`. The reasoning is the SQL's
+own: each is a one-shot data/rename migration whose script **consumes the state it transforms**
+— `20260831` drops the `earn_multiplier` column it converted FROM, `20260906` renames six tables,
+and `20260911`/`20260913` drop and recreate `memos`/`memo_recipients`. The forward-only contract (DB-03, `crates/kasirmu-core/src/migrations.rs:20-37`)
 already assigns that class to *backup-plus-forward-repair* rather than to re-apply.
 
 **This is why an operator must not start an upgrade without the snapshot.** A migration that
