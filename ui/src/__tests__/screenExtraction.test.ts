@@ -356,6 +356,33 @@ const SCREENS: ScreenEntry[] = [
     //     not a wildcard.
     dynamicClassPrefixes: ['dev-toolbar-status--', 'dev-toolbar-theme-btn--'],
   },
+  {
+    // DesignSystem.css, landed 2026-10-07 (BASELINE_UNCITED 11 -> 10). Routed:
+    // design/register.tsx:9 binds route 'design' to this page.
+    //
+    // This sheet was NOT uncited because nothing owned it — it was uncited because
+    // NOTHING COULD LOAD IT. The page writes 28 ds-* classes and every one is defined
+    // in this sheet and nowhere else, but DesignSystem.tsx imported no CSS at all, so
+    // the page rendered unstyled and the sheet was reachable by no route. Both sibling
+    // pages in this feature import their own sheet (TooltipPreview.tsx:6,
+    // DevToolbar.tsx:16); this one did not. The missing `import './DesignSystem.css'`
+    // was added in the same change, which is what makes this entry honest rather than a
+    // cite of a sheet no user could ever have seen.
+    name: 'DesignSystem',
+    tsx: 'design/DesignSystem.tsx',
+    css: ['design/DesignSystem.css'],
+    // Cited, not muted: the page's button row writes `btn btn--primary` and its three
+    // siblings as STATIC className strings (:177-181), and all four modifiers are
+    // defined in theme/components.css (:56 and its siblings) — a sheet both entry points
+    // import (main.tsx:7, main.mobile.tsx:20). This is the same legitimate parent cite
+    // SettingsSelect and ProvisioningFlow carry.
+    //
+    // The sheet's own .sr-only was a different matter and was DELETED rather than
+    // excused: it was a second, inferior copy of the theme utility (it omitted
+    // `padding: 0; margin: -1px` from theme/components.css:1803) that no markup used.
+    // After that strike the sheet reads 29 defined, 0 dead.
+    parentCss: ['../theme/components.css'],
+  },
 
   // ── Setup ─────────────────────────────────────────────
   {
@@ -3127,7 +3154,6 @@ const EXTERNAL_CLASS_LEDGER: { entry: string; value: string; reason: string }[] 
 //     are hashed at build; the guard may be structurally unable to grade it.
 const BASELINE_UNCITED: string[] = [
   'analytics/AnalyticsScreen.css',
-  'design/DesignSystem.css',
   'design/TooltipPreview.css',
   'design/brand-tokens.css',
   'inventory/ShiftBar.css',
