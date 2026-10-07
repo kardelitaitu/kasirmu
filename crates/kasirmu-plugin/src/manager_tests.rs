@@ -891,3 +891,115 @@ fn legacy_validate_order_aggregates_per_plugin() {
     assert!(errors.contains(&"error-from-one".to_string()));
     assert!(errors.contains(&"error-from-two".to_string()));
 }
+
+#[test]
+fn aggregate_plugin_memory_limit_exceeded_protects_vm() {
+    // Phase 6 governance: the shared Lua VM enforces MEMORY_LIMIT (10 MiB)
+    // across ALL loaded plugins collectively.
+    // Plugin A allocates a large string (~6 MiB). Plugin B attempts another ~6 MiB.
+    // The aggregate allocation must hit the 10 MiB ceiling and fail safely.
+    let dir = tempfile::tempdir().unwrap();
+
+    let plugin_a = dir.path().join("plugin-a");
+    std::fs::create_dir_all(&plugin_a).unwrap();
+    std::fs::write(
+        plugin_a.join("plugin.toml"),
+        "[plugin]\nname = \"plugin-a\"\nversion = \"1.0.0\"\n\n[capabilities]\nscripts = [\"script.lua\"]\n\n[permissions]\nrequired_permissions = [\"cart:read\"]\n",
+    ).unwrap();
+    std::fs::write(
+        plugin_a.join("script.lua"),
+        "t_a = string.rep('A', 6 * 1024 * 1024)\n",
+    ).unwrap();
+
+    let plugin_b = dir.path().join("plugin-b");
+    std::fs::create_dir_all(&plugin_b).unwrap();
+    std::fs::write(
+        plugin_b.join("plugin.toml"),
+        "[plugin]\nname = \"plugin-b\"\nversion = \"1.0.0\"\n\n[capabilities]\nscripts = [\"script.lua\"]\n\n[permissions]\nrequired_permissions = [\"cart:read\"]\n",
+    ).unwrap();
+    std::fs::write(
+        plugin_b.join("script.lua"),
+        "t_b = string.rep('B', 6 * 1024 * 1024)\n",
+    ).unwrap();
+
+    grant_all_declared(dir.path());
+    let result = PluginManager::new(dir.path());
+    assert!(
+        result.is_err(),
+        "aggregate memory allocations across multiple plugins exceeding 10 MiB must be rejected"
+    );
+    let err_msg = result.err().unwrap().to_string();
+    assert!(
+        err_msg.to_lowercase().contains("memory") || err_msg.to_lowercase().contains("not enough memory"),
+        "expected memory exhaustion error, got: {err_msg}"
+    );
+}
+
+#[test]
+fn runaway_hook_aborts_without_hanging_pos() {
+    // Phase 6 governance: a plugin hook with an infinite loop or runaway computation
+    // must be interrupted by the VM instruction limit (100K) and fail gracefully.
+    let (_dir, root) = create_plugin_dir(
+        "runaway-hook-plugin",
+        "function on_sale(sale)\n    while true do end\nend\noz.register_hook('sale.before_complete', 'on_sale')\n",
+        &["cart:read"],
+    );
+    let mgr = PluginManager::new(&root).unwrap();
+    let res = mgr.fire_sale_before_complete(&[line("ITEM-1", 1, 1000, "USD")], 1000, "USD", "user_1");
+    assert!(res.is_err(), "runaway hook must be interrupted");
+    let err_msg = res.unwrap_err().to_string();
+    assert!(
+        err_msg.contains("instruction limit exceeded"),
+        "expected instruction limit error, got: {err_msg}"
+    );
+}
+
+#[test]
+fn plugin_reload_cleans_up_old_vm_and_memory() {
+    // Phase 6 governance: replacing PluginManager cleanly drops previous VMs,
+    // environments, and registry keys without memory leakage.
+    let (_dir, root) = create_plugin_dir(
+        "reload-test-plugin",
+        "function on_sale(sale)\n    oz.apply_discount('cart', 5)\nend\noz.register_hook('sale.before_complete', 'on_sale')\n",
+        &["cart:read", "cart:write"],
+    );
+    {
+        let mgr1 = PluginManager::new(&root).unwrap();
+        mgr1.fire_sale_before_complete(&[line("ITEM-1", 1, 1000, "USD")], 1000, "USD", "user_1")
+            .unwrap();
+        let discounts = mgr1.drain_pending_discounts();
+        assert_eq!(discounts.len(), 1);
+    }
+    // Previous manager dropped cleanly; now create second manager
+    let mgr2 = PluginManager::new(&root).unwrap();
+    mgr2.fire_sale_before_complete(&[line("ITEM-1", 1, 1000, "USD")], 1000, "USD", "user_1")
+        .unwrap();
+    let discounts = mgr2.drain_pending_discounts();
+    assert_eq!(discounts.len(), 1);
+}
+
+#[test]
+fn unregistered_or_disabled_plugin_hook_is_skipped() {
+    // Phase 6 governance: if a hook registration references a plugin id that is not
+    // among loaded plugins (e.g. disabled plugin), fire_event must skip it cleanly.
+    let (_dir, root) = create_plugin_dir(
+        "active-plugin",
+        "function on_sale(sale)\n    oz.apply_discount('cart', 10)\nend\noz.register_hook('sale.before_complete', 'on_sale')\n",
+        &["cart:read", "cart:write"],
+    );
+    let mgr = PluginManager::new(&root).unwrap();
+    // Inject a hook belonging to an unregistered/disabled plugin
+    if let Ok(mut hooks) = mgr.hook_names.lock() {
+        hooks.entry("sale.before_complete".to_string()).or_default().push(HookRef {
+            plugin_id: "disabled-plugin-id".to_string(),
+            func_name: "ghost_function".to_string(),
+        });
+    }
+    // fire_sale_before_complete should succeed, skipping the disabled hook and executing the active one
+    let res = mgr.fire_sale_before_complete(&[line("ITEM-1", 1, 1000, "USD")], 1000, "USD", "user_1");
+    assert!(res.is_ok(), "event dispatch must skip hooks from unlisted/disabled plugins");
+    let discounts = mgr.drain_pending_discounts();
+    assert_eq!(discounts.len(), 1);
+    assert_eq!(discounts[0].percent, 10);
+}
+

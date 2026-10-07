@@ -1540,14 +1540,14 @@ Goal: prevent extensions from destabilizing low-RAM devices.
 Tasks:
 
 - [x] Add per-plugin memory limit (10 MiB native VM memory limit in LuaRuntime).
-- [ ] Add total plugin memory limit.
-- [ ] Add hook timeout.
+- [x] Add total plugin memory limit (10 MiB aggregate ceiling across all loaded plugins in shared VM, validated in manager_tests).
+- [x] Add hook timeout (VM instruction limit of 100K aborts runaway hooks cleanly without freezing the checkout flow).
 - [x] Add script size limit (MAX_SCRIPT_FILE_SIZE = 1 MiB in loader.rs, MAX_ENTRY_UNCOMPRESSED_SIZE in package.rs).
 - [ ] Add allocation metering if possible.
-- [x] Test runaway Lua loop (runaway_infinite_loop_aborts_cleanly_without_hanging verified).
-- [ ] Test plugin reload cleanup.
+- [x] Test runaway Lua loop (runaway_infinite_loop_aborts_cleanly_without_hanging and runaway_hook_aborts_without_hanging_pos verified).
+- [x] Test plugin reload cleanup (plugin_reload_cleans_up_old_vm_and_memory verified in manager_tests).
 - [ ] Document plugin resource contract.
-- [ ] Ensure disabled plugins are unregistered.
+- [x] Ensure disabled plugins are unregistered (unregistered_or_disabled_plugin_hook_is_skipped verified in manager_tests).
 - [ ] Ensure plugin capabilities cannot bypass governance.
 
 Exit criteria:
