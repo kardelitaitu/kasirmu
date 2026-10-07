@@ -8,7 +8,7 @@
 //!   and "Add location" (`#/topology?create=1`)
 //! - Legacy alias `#/settings/topology` routed via AppShell / TabletAppShell
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { useLocalization } from '@fluent/react';
+import { useLocalization, Localized } from '@fluent/react';
 import AdminLockedFeature from '@/components/AdminLockedFeature';
 import { listLocationsScoped, createLocationProfileScoped, updateLocationProfileScoped, deleteLocationProfileScoped, type LocationProfile } from '@/api/locations';
 import {
@@ -23,6 +23,7 @@ import {
   type TopologyData,
 } from '@/api/topology';
 import { isTopologyInstance } from './topologyContract';
+import { isTabletShell } from '@/utils/shellKind';
 import TopologyRevisionBrowser from './TopologyRevisionBrowser';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -45,6 +46,36 @@ import NodeTopologyEditor, {
   type BranchLocationSeed,
 } from './NodeTopologyEditor';
 import { applyTopologyWithDiagram } from './topologyApply';
+
+/**
+ * Route-level withdrawal (plan-tablet-homescreen-settings.md §5.1).
+ *
+ * The tablet shell registers NONE of the ten topology commands, so an editor
+ * mounted there cannot load or save — measured 2026-10-07: every cold-start
+ * entry on the tablet toasts "Failed to load topology" and leaves the default
+ * preset on canvas. The tool cards and the empty-state Add Workspace card are
+ * already hidden (`WorkspaceHome` `runsOnThisShell`); this closes the deep
+ * link, which still reached the route through `#/topology` and the
+ * `#/settings/topology` alias. Desktop is unaffected — `isTabletShell()` is
+ * false there.
+ *
+ * Deliberately hook-free and class-shared with nothing: it renders before
+ * `TopologyScreenContent` mounts, so not one unregistered command fires.
+ */
+function TopologyTabletNotice() {
+  return (
+    <section className="topology-tablet-unavailable" data-testid="topology-tablet-unavailable">
+      <h2 className="topology-tablet-unavailable__title">
+        <Localized id="topology-tablet-unavailable-title">Topology authoring needs the desktop</Localized>
+      </h2>
+      <p className="topology-tablet-unavailable__body">
+        <Localized id="topology-tablet-unavailable-body">
+          Store layout editing runs on the desktop app. This tablet keeps read-only Locations and every checkout surface.
+        </Localized>
+      </p>
+    </section>
+  );
+}
 import {
   buildTopologyOverlay,
   compareBranchTopologies,
@@ -109,6 +140,7 @@ function parseTopologyHash(): { branchId: string | null; create: boolean } {
 export default function TopologyScreen({ initialBranchId, openCreateOnMount }: TopologyScreenProps = {}) {
   const { locked } = useAdminGate();
   if (locked) return <AdminLockedFeature />;
+  if (isTabletShell()) return <TopologyTabletNotice />;
 
   const hashHints = parseTopologyHash();
   const effectiveBranchId = initialBranchId ?? hashHints.branchId ?? undefined;

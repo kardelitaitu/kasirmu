@@ -115,6 +115,13 @@ vi.mock('@/components/Toast', () => ({
   useToast: () => ({ addToast: mockAddToast }),
 }));
 
+// Shell switch for the route-level withdrawal: on the tablet the screen must
+// explain itself instead of mounting an editor that cannot load or save.
+const mockIsTablet = vi.hoisted(() => ({ value: false }));
+vi.mock('@/utils/shellKind', () => ({
+  isTabletShell: () => mockIsTablet.value,
+}));
+
 vi.mock('@fluent/react', () => {
   // Minimal stand-in for ErrorBoundary's module-level bundle: it constructs
   // `new ReactLocalization([bundle])` and formats its emergency fallback
@@ -353,6 +360,7 @@ describe('TopologyScreen', () => {
     mockIsManager = true;
     mockSessionPermissions = null;
     mockRenderRealHeader = false;
+    mockIsTablet.value = false;
     mockCanSaveTopology.mockImplementation(() => Promise.resolve(mockIsManager));
     capturedEditorProps = {};
     capturedBranchOnChange = null;
@@ -374,11 +382,28 @@ describe('TopologyScreen', () => {
     );
   };
 
+  // ── Tablet withdrawal (plan-tablet-homescreen-settings.md §5.1) ──
+
+  it('explains itself on the tablet instead of mounting an editor that cannot run', () => {
+    // The tablet shell registers none of the ten topology commands, so a
+    // mounted editor cannot load or save — measured 2026-10-07 as a
+    // "Failed to load topology" toast on every cold-start entry. The tool
+    // cards are hidden (`runsOnThisShell`); the deep link must be closed too.
+    mockIsTablet.value = true;
+    render(<TopologyScreen />);
+
+    expect(screen.getByTestId('topology-tablet-unavailable')).toBeInTheDocument();
+    // Not a single unregistered command may fire from the notice.
+    expect(mockLoadTopology).not.toHaveBeenCalled();
+    expect(mockListStores).not.toHaveBeenCalled();
+    expect(mockListWorkspacesScoped).not.toHaveBeenCalled();
+    expect(document.querySelector('.node-canvas-container')).toBeNull();
+  });
+
   // ── Seed ──────────────────────────────────────────────────────
 
   it('seeds the editor with loaded workspace instances', async () => {
-    await renderReady();
-    expect(capturedEditorProps.workspaceInstances).toEqual([
+    await renderReady();    expect(capturedEditorProps.workspaceInstances).toEqual([
       {
         instanceId: 'ws-existing',
         typeKey: 'store-pos',

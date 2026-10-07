@@ -441,3 +441,8 @@ multi-store-prefix-error-load = Gagal membaca awalan tiket.
 multi-store-prefix-error-save = Gagal menyimpan awalan tiket.
 
 # ── Offline Queue ──
+
+# Tablet withdrawal (plan-tablet-homescreen-settings.md §5.1): the deep link
+# must explain itself instead of mounting an editor that cannot load or save.
+topology-tablet-unavailable-title = Penyuntingan topologi butuh desktop
+topology-tablet-unavailable-body = Menyusun tata letak toko dijalankan di aplikasi desktop. Tablet ini tetap bisa membuka Locations (baca-saja) dan semua layar kasir.

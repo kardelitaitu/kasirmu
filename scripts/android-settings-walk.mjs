@@ -125,12 +125,24 @@ const PROBE = `(() => {
     || document.querySelector('.node-canvas-container');
   const scope = root || document.body;
   const text = (scope.textContent || '').replace(/\\s+/g, ' ').trim();
+  // WHERE the crash text lives, not just that it does. MUST be boundary
+  // elements specifically: measured 2026-10-07, matching the raw string in
+  // body text false-FAILed the topology route — its load-failure TOAST reads
+  // "Failed to load topology: Something went wrong. Please try again.", which
+  // is a real defect signal but not a boundary, and it belongs to WARN.
+  const boundaryMsgs = [...document.querySelectorAll('.error-boundary__message')]
+    .map((e) => e.textContent.trim().slice(0, 160));
+  const toasts = [...document.querySelectorAll('.toast__message')]
+    .map((e) => e.textContent.trim().slice(0, 160))
+    .slice(0, 3);
   return JSON.stringify({
     login,
     container: root ? String(root.className).slice(0, 70) : null,
     controls: scope.querySelectorAll('input,select,textarea,button').length,
     text: text.slice(0, 130),
-    crash: /Something went wrong/.test(document.body.textContent || ''),
+    crash: boundaryMsgs.length > 0,
+    boundaryMsgs,
+    toasts,
     hash: location.hash,
   });
 })()`;
@@ -256,8 +268,12 @@ async function main() {
     const problems = [];
     let verdict = 'ok';
     if (probe.crash) {
-      problems.push('rendered the error boundary');
+      problems.push(`rendered the error boundary — ${probe.boundaryMsgs.join(' | ')}`);
       verdict = 'FAIL';
+    }
+    if (probe.toasts.length) {
+      problems.push(`toast: ${probe.toasts.join(' | ')}`);
+      if (verdict === 'ok') verdict = 'WARN';
     }
     if (errs.some((e) => e.startsWith('uncaught'))) {
       problems.push(`uncaught exception (${errs.find((e) => e.startsWith('uncaught'))})`);
@@ -276,7 +292,7 @@ async function main() {
       if (verdict === 'ok') verdict = 'WARN';
     }
 
-    results.push({ route, verdict, controls: probe.controls, container: probe.container, problems, text: probe.text });
+    results.push({ route, verdict, controls: probe.controls, container: probe.container, problems, text: probe.text, toasts: probe.toasts ?? [] });
     const marker = verdict === 'FAIL' ? 'x' : verdict === 'WARN' ? '!' : '.';
     console.log(`  ${marker} ${route.padEnd(30)} controls=${String(probe.controls).padStart(3)}  ${problems.join('; ')}`);
   }
