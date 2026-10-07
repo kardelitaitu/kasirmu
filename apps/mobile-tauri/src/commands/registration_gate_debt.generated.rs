@@ -57,6 +57,7 @@ pub const DEBT_LEDGER: &[(&str, &str)] = &[
         "resolves_session_names_no_permission",
     ),
     ("health::record_crash_report", "no_session_resolution"),
+    ("health::notify_memory_pressure", "no_session_resolution"),
     ("health::get_build_fingerprint", "no_session_resolution"),
     (
         "pos::add_line_scoped",
@@ -281,7 +282,7 @@ pub const DEBT_LEDGER: &[(&str, &str)] = &[
 /// Re-read 23-09-26: 342, with the floor raised to it in the same pass that absorbed the
 /// three `desktop_link` email sign-in commands — 92 debt rows, up from 89. The floor, this
 /// total and `DEBT_CEILING` all move together; the generator writes only this number.
-pub const REGISTERED_TOTAL: usize = 413;
+pub const REGISTERED_TOTAL: usize = 419;
 
 /// Debt entries today: the ceiling the ledger may only shrink under.
 ///
@@ -365,8 +366,9 @@ pub const REGISTERED_TOTAL: usize = 413;
 /// checked against or is the step immediately before it. A session permission here would
 /// guard a door no session can reach. This is the TABLET twin of the desktop rise in
 /// `7a5292530` (75 -> 78); the two shells carry separate pins and separate numbers. The
-/// reason is recorded in docs/records/JOURNAL.md, which is what this pin asks of a rise.
-pub const DEBT_CEILING: usize = 94;
+/// 48 -> 50 with `health::get_storage_health` and `health::record_crash_report` (50 + 44 = 94).
+/// 50 -> 51 with `health::notify_memory_pressure` (51 + 44 = 95).
+pub const DEBT_CEILING: usize = 95;
 
 /// Lowered from 89 by T11: `settings::set_hardware_settings` shed its row by deletion,
 /// not by gating. Its only argument beyond the DTO was a renderer-supplied `user_id` --
@@ -404,7 +406,8 @@ pub const DEBT_CEILING: usize = 94;
 /// 45 -> 48 with the three email sign-in commands above. This count is a pin the generator
 /// does not recompute, so it moves by hand in the same pass as the ceiling: `48 + 44 = 92`.
 /// 48 -> 50 with `health::get_storage_health` and `health::record_crash_report` (50 + 44 = 94).
-pub const NO_SESSION_RESOLUTION: usize = 50;
+/// 50 -> 51 with `health::notify_memory_pressure` (51 + 44 = 95).
+pub const NO_SESSION_RESOLUTION: usize = 51;
 
 /// Authenticate-then-assume: a session is resolved and no permission asked.
 /// 45 + 44 = 89 = `DEBT_CEILING`, as the class counts must sum to the ledger.

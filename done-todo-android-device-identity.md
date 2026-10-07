@@ -1,9 +1,10 @@
-# todo-android-device-identity
+# done-todo-android-device-identity
 
-> **Status: IMPLEMENTED & TESTED.** Implemented 2026-10-07. Persistent device UUID generated on fresh
+> **Status: VERIFIED & ACCEPTED.** Implemented and verified 2026-10-07. Persistent device UUID generated on fresh
 > installs and persisted in settings (`device.terminal_id`) and cached in `AppState::terminal_id`.
 > Adopts single existing provisioning row (`unknown-device`) on legacy upgrades so existing tablets
-> never re-onboard. Tested across `kasirmu-mobile` (712 passed) and `kasirmu-core` (36 passed).
+> never re-onboard. Acceptance commands passed: `cargo test -p kasirmu-core --lib db::provisioning` (36 passed),
+> `cargo test -p kasirmu-mobile` (715 passed), and `npm run test -- src/__tests__/ProvisioningFlow.test.tsx` (48 passed).
 
 **Symptom.** Every Android tablet provisions as terminal `unknown-device`. It works today, and it is
 one environment variable away from failing on every boot.

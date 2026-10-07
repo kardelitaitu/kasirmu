@@ -236,7 +236,12 @@ mod debt;
 /// The 408 -> 413 step, 2026-10-07. 5 commands registered:
 /// 2 EDC commands (`edc_settle`, `edc_inquiry`) and 3 diagnostics/storage health commands
 /// (`health::export_diagnostics`, `health::get_storage_health`, `health::record_crash_report`).
-const REGISTERED_FLOOR: usize = 413;
+///
+/// The 413 -> 419 step, 2026-10-07. 6 commands registered:
+/// `health::notify_memory_pressure` (ungated, client health callback for OS trim memory)
+/// and 5 KDS commands (`kds::enroll_kds_device_scoped`, `kds::list_kds_routing_rules_scoped`,
+/// `kds::set_kds_routing_rule_scoped`, `kds::delete_kds_routing_rule_scoped`, `kds::publish_course_fired_scoped`).
+const REGISTERED_FLOOR: usize = 419;
 /// How far the parsed count may rise without regenerating: names are added by ordinary
 /// feature work, so the floor is a lower bound plus slack and never an equality.
 /// Crossing the slack is the signal that the ledger needs regenerating in the same pass.
