@@ -52,8 +52,15 @@ in two variants, `(default)` and `id`. The mechanism is the right one (@fluent/r
 held a second language, so its failure mode is unknown.
 
 **1.5 The state machine that a chain would hang from does not exist yet.** ADR-64 D4 defines the
-tender states and names the transition as the anchor (§2.1 there). ADR-64 is **Proposed**; nothing
-is built.
+tender states and names the transition as the anchor (§2.1 there). ADR-64 is **Proposed**.
+
+> **Amended 2026-10-07.** "nothing is built" was accurate on 2026-10-02 and is now half true. ADR-64
+> **D4's CHECK constraint has shipped** (`20261018_gateway_status_adr64_vocabulary.sql`):
+> `payments.gateway_status` carries the nine states (including `unconfirmed`), so the *vocabulary* a
+> chain could hang from exists. What does not exist is the **state machine** — nothing writes
+> `settled_at`/`settled_by`, nothing enforces D4's rules, and no transition is recorded. This
+> paragraph's point therefore stands, but for a narrower reason than originally written: the anchor
+> is a column, not a lifecycle.
 
 ## 2. Decision
 

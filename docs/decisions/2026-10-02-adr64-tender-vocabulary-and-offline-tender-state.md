@@ -2,13 +2,19 @@
 num: 64
 area: payments
 title: "ADR-64: The Tender Vocabulary and the Offline Tender State — one classification per payment, and no electronic tender settles on trust"
-status: Proposed (2026-10-02) — every decision below is TO BUILD; nothing in this record has landed
+status: Proposed (2026-10-02) — mostly TO BUILD, with one part landed. Amended 2026-10-07: D4's CHECK constraint has shipped (`20261018_gateway_status_adr64_vocabulary.sql` places `gateway_status` over the nine values in §D4, `unconfirmed` included). Everything else is still TO BUILD — D1's `method_kind`/`method_mode` columns do not exist, and D4's RULES 1–4 (who may write `settled`, what sets `settled_at`) are not enforced by anything. Read "nothing has landed" as "no decision but the D4 vocabulary".
 ---
 
 # ADR-64: The Tender Vocabulary and the Offline Tender State
 
-**Status:** Proposed (2026-10-02) — every decision below is **TO BUILD**. The measurements in §1
-were taken in this checkout on branch `0.0.41`; the decisions in §2 are not.
+**Status:** Proposed (2026-10-02) — every decision below is **TO BUILD** except one.
+**Amended 2026-10-07:** D4's CHECK constraint is SHIPPED — `20261018_gateway_status_adr64_vocabulary.sql`
+constrains `payments.gateway_status` over the nine values §D4 names, `unconfirmed` included (the value
+this record says the tree could not express). D4's **rules** are still unbuilt: nothing enforces "only
+`cash` may be written `settled` at record time", nothing writes `settled_at`/`settled_by`, and D1's
+`method_kind`/`method_mode` columns do not exist in any migration or Rust type. So the vocabulary
+half of D4 landed; the state machine the vocabulary was for did not.
+The measurements in §1 were taken in this checkout on branch `0.0.41`; the rest of §2 was not.
 **Date:** 2026-10-02
 **Recorded against:** branch `0.0.41`
 **Scope of:** the draft formerly filed as `2026-10-02-adr64-global-kernel-and-region-pack.md`, now
