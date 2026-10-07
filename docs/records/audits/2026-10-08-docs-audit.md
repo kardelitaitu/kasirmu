@@ -143,8 +143,8 @@ This is worth recording for what it demonstrates rather than as a finding: **the
 ## 4. Outstanding
 
 - ~~**`check-api-surface.py` reports 1 discrepancy: `print_edc_settlement_slip_scoped`.**~~ **CLOSED** (commit `8c3e86eff`). The deferred rows were added once the peer's work landed in HEAD: `print_edc_settlement_slip_scoped` `[D+T]` and `notify_memory_pressure` `[T]`. **All nine docs detectors now pass.**
-- `website/src/content/docs/en/user-roles.md` has an internal contradiction (a "## The planned model" section vs a later line saying the four gaps are closed). Reported, not repaired - the section may be deliberate history.
-- `scripts/gates.json`'s `rust-clippy` `_note` still asserts no live workflow runs Clippy. Config registry, not documentation; flagged for its owner.
+- ~~`website/src/content/docs/en/user-roles.md` has an internal contradiction (a "## The planned model" section vs a later line saying the four gaps are closed).~~ **CLOSED 2026-10-07** (commit `3f638ce6c`). It was not deliberate history: the matrix IS the shipped model — `platform/core/src/rbac_presets.rs:164` describes Staff as a "Checkout-operations role" with exactly the column the table shows and none of the management ones the old heading implied. Heading corrected to "The model in force" in BOTH languages (the `id/` copy carried the same defect), with the anchors re-verified (`#implementation-status`, `#status-implementasi`).
+- ~~`scripts/gates.json`'s `rust-clippy` `_note` still asserts no live workflow runs Clippy.~~ **CLOSED 2026-10-07** (commit `d963b3bc9`). The note was self-refuting on the numbers it volunteered: it claimed "clippy occurs 0 times in both dev-ci.yml and release.yml", and `dev-ci.yml` has **11** with a live `cargo-clippy` job at `:326`. Corrected while keeping the half that is still true (the pre-push hook genuinely runs no clippy at any tier), so the note no longer trades one error for another.
 - `docs/records/**`, `docs/decisions/**` and `docs/specs/**` were left alone: dated records are exempt by convention, and editing one falsifies it.
 
 > last audited 08-10-26 by docs-auditor
