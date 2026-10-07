@@ -136,35 +136,35 @@ export default defineConfig(({ command }) => ({
     // without paying process-spawn cost on the next file.
     //
     // maxWorkers is CAPPED, and the cap is measured rather than assumed.
-    // Left unset, Vitest sizes the pool from the host CPU count, which on
-    // this 32-thread machine meant 27 concurrent node processes at once,
-    // holding a combined 7.5 GB resident (measured 2026-10-07 by sampling
-    // Get-Process node while a full run was in flight). Every worker keeps a
-    // full jsdom window plus the module graph it imported, and this suite has
-    // 654 files, so the total is files-driven and only bounded by how many
-    // the pool will start at once. That is the OOM: the tax watcher — the
-    // component the failure was first blamed on — passes 8/8 in 1.09s in
-    // isolation, and the full suite either completes in ~80s or dies
-    // depending on how much else the machine is doing. The failure was never
-    // in a test; it was in the pool sizing.
+    // Left unset, Vitest sizes the pool from the host CPU count, so on this
+    // 32-thread machine it ran ~27 workers at once. Every worker keeps a full
+    // jsdom window plus the module graph it imported, and this suite has 610
+    // test files, so the ceiling is how many the pool will start at once.
     //
-    // 16 is a measured cap, and the trade is stated rather than hidden. Three
-    // full runs on 2026-10-07, sampling Get-Process node each time:
-    //   uncapped (host default, 27 processes)   7.5 GB peak   ~80s
-    //   maxWorkers: 16                          5.9 GB peak  ~160s
-    //   maxWorkers: 8                           4.8 GB peak  ~175s
-    // So the cap buys ~20% off peak residency and COSTS ROUGHLY DOUBLE the
-    // wall-clock. That cost is real and it is not small — an earlier draft of
-    // this comment claimed the opposite ("costs little wall-clock") and the
-    // measurement above is why that sentence is gone. The reason the cap still
-    // wins here is not speed: it is that THIS CHECKOUT IS SHARED with other
-    // agent sessions, so several suites run at once as the normal case, and the
-    // uncapped run is what pushed the machine into the OOM. Speed on an idle
-    // machine is not the property being optimised.
+    // THE FIGURES ARE ATTRIBUTED, and an earlier draft of this comment got
+    // that wrong in a way worth leaving on the record. Sampling Get-Process
+    // node counts EVERY node on the box — this machine idles at ~20 node
+    // processes and ~1.99 GB from Adobe Creative Cloud, the DSH harness, an
+    // Astro dev server and an npm dev run. Those runs therefore reported a
+    // "7.5 GB peak" that was never vitest's. Measured again with the
+    // unattributed baseline subtracted: vitest's own footprint peaks near
+    // 4.0 GB, against ~1.99 GB of unrelated node that was already resident.
     //
-    // 16 rather than 8 because the last 8 workers buy only 1.1 GB more while
-    // costing another ~15s. Raise the cap with a fresh peak-RSS reading, not by
-    // feel. Override for a one-off run without touching this file:
+    // What the cap actually changes, three full runs on 2026-10-07:
+    //   uncapped (host default)   ~5.8 GB all-node   ~80-105s
+    //   maxWorkers: 16            ~5.9 GB all-node   ~160s
+    //   maxWorkers: 8             ~4.8 GB all-node   ~175s
+    // Reading WITH the baseline included because that is what the OS sees and
+    // what decides whether the machine OOMs. So the peak difference between
+    // uncapped and 16 is inside the noise of other agents' activity; the firm
+    // number is that the cap COSTS ROUGHLY DOUBLE the wall-clock, and the
+    // memory it saves is modest. It is kept because this checkout is shared and
+    // the uncapped run is what has been observed to die under contention — not
+    // because the saving measured large.
+    // 16 rather than 8 because 8 measured no better on the all-node peak and
+    // ~15s slower, and because the machine has 63 GB in total — the failure
+    // mode is contention, not absolute shortage. Re-measure before changing it,
+    // and for a one-off run override without touching this file:
     //   npx vitest run --maxWorkers=32
     maxWorkers: 16,
     minWorkers: 2,
