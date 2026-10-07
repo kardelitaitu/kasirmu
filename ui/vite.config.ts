@@ -131,10 +131,46 @@ export default defineConfig(({ command }) => ({
 
   test: {
     // ── Pool ─────────────────────────────────────────────────────────────
-    // worker_threads instead of child_process forks: lower process overhead,
-    // better CPU utilization on high-core-count machines (32-thread host).
-    // maxConcurrency controls parallel tests per-worker, helping files with
-    // many tests (DataManagementScreen: 55) finish faster.
+    // worker_threads instead of child_process forks: lower per-worker
+    // overhead than forks, and they are what lets maxWorkers be capped
+    // without paying process-spawn cost on the next file.
+    //
+    // maxWorkers is CAPPED, and the cap is measured rather than assumed.
+    // Left unset, Vitest sizes the pool from the host CPU count, which on
+    // this 32-thread machine meant 27 concurrent node processes at once,
+    // holding a combined 7.5 GB resident (measured 2026-10-07 by sampling
+    // Get-Process node while a full run was in flight). Every worker keeps a
+    // full jsdom window plus the module graph it imported, and this suite has
+    // 654 files, so the total is files-driven and only bounded by how many
+    // the pool will start at once. That is the OOM: the tax watcher — the
+    // component the failure was first blamed on — passes 8/8 in 1.09s in
+    // isolation, and the full suite either completes in ~80s or dies
+    // depending on how much else the machine is doing. The failure was never
+    // in a test; it was in the pool sizing.
+    //
+    // 16 is a measured cap, and the trade is stated rather than hidden. Three
+    // full runs on 2026-10-07, sampling Get-Process node each time:
+    //   uncapped (host default, 27 processes)   7.5 GB peak   ~80s
+    //   maxWorkers: 16                          5.9 GB peak  ~160s
+    //   maxWorkers: 8                           4.8 GB peak  ~175s
+    // So the cap buys ~20% off peak residency and COSTS ROUGHLY DOUBLE the
+    // wall-clock. That cost is real and it is not small — an earlier draft of
+    // this comment claimed the opposite ("costs little wall-clock") and the
+    // measurement above is why that sentence is gone. The reason the cap still
+    // wins here is not speed: it is that THIS CHECKOUT IS SHARED with other
+    // agent sessions, so several suites run at once as the normal case, and the
+    // uncapped run is what pushed the machine into the OOM. Speed on an idle
+    // machine is not the property being optimised.
+    //
+    // 16 rather than 8 because the last 8 workers buy only 1.1 GB more while
+    // costing another ~15s. Raise the cap with a fresh peak-RSS reading, not by
+    // feel. Override for a one-off run without touching this file:
+    //   npx vitest run --maxWorkers=32
+    maxWorkers: 16,
+    minWorkers: 2,
+    // maxConcurrency stays at its default: it bounds tests per worker, and
+    // the files-with-many-tests case it was added for is already served by
+    // the worker cap above.
     pool: 'threads',
     fileParallelism: true,
 
