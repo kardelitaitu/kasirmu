@@ -88,8 +88,14 @@ fn resolve_persistent_device_id_fresh_install_generates_stable_id() {
 
     // 1. Fresh install on Android generates a unique persistent ID
     let first = resolve_persistent_device_id(&conn, true).unwrap();
-    assert!(first.starts_with("android-"), "device id must start with android- prefix: {first}");
-    assert_ne!(first, "unknown-device", "fresh install must NOT use unknown-device");
+    assert!(
+        first.starts_with("android-"),
+        "device id must start with android- prefix: {first}"
+    );
+    assert_ne!(
+        first, "unknown-device",
+        "fresh install must NOT use unknown-device"
+    );
 
     // 2. Saved into settings
     let saved = kasirmu_core::Settings::get(&conn, "device.terminal_id").unwrap();
@@ -116,7 +122,10 @@ fn resolve_persistent_device_id_adopts_existing_unknown_device_row() {
 
     // On update, resolving device ID must adopt the single existing row
     let resolved = resolve_persistent_device_id(&conn, true).unwrap();
-    assert_eq!(resolved, "unknown-device", "must adopt existing unknown-device row to avoid re-onboarding");
+    assert_eq!(
+        resolved, "unknown-device",
+        "must adopt existing unknown-device row to avoid re-onboarding"
+    );
 
     // Setting is persisted
     let saved = kasirmu_core::Settings::get(&conn, "device.terminal_id").unwrap();
@@ -157,15 +166,20 @@ async fn resolve_device_id_caches_in_app_state() {
 async fn notify_memory_pressure_updates_state() {
     let state = crate::state::AppState::for_test();
     assert_eq!(
-        state.memory_pressure_level.load(std::sync::atomic::Ordering::Relaxed),
+        state
+            .memory_pressure_level
+            .load(std::sync::atomic::Ordering::Relaxed),
         0
     );
 
     // Simulate memory pressure level 15 (TRIM_MEMORY_RUNNING_CRITICAL)
-    state.memory_pressure_level.store(15, std::sync::atomic::Ordering::Relaxed);
+    state
+        .memory_pressure_level
+        .store(15, std::sync::atomic::Ordering::Relaxed);
     assert_eq!(
-        state.memory_pressure_level.load(std::sync::atomic::Ordering::Relaxed),
+        state
+            .memory_pressure_level
+            .load(std::sync::atomic::Ordering::Relaxed),
         15
     );
 }
-

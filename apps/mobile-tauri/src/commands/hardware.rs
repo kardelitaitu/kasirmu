@@ -428,7 +428,11 @@ pub async fn print_sales_receipt_scoped(
     printer.print_raw(&data).await?;
 
     // Pulse cash drawer automatically if any payment is cash.
-    if receipt.payments.iter().any(|p| p.method.eq_ignore_ascii_case("cash")) {
+    if receipt
+        .payments
+        .iter()
+        .any(|p| p.method.eq_ignore_ascii_case("cash"))
+    {
         if let Some(drawer) = state.registry.cash_drawer("default").await {
             if let Err(err) = drawer.open().await {
                 tracing::warn!(?err, "failed to pulse cash drawer on cash payment");
@@ -455,10 +459,13 @@ pub async fn print_edc_settlement_slip_scoped(
     state: State<'_, AppState>,
 ) -> Result<PrintSalesReceiptResult, AppError> {
     let ctx = state.bridge_ctx();
-    let res = kasirmu_bridge::hardware::print_edc_settlement_slip_scoped(&ctx, args, &session_token)
-        .await
-        .map_err(AppError::from)?;
-    Ok(PrintSalesReceiptResult { printed: res.printed })
+    let res =
+        kasirmu_bridge::hardware::print_edc_settlement_slip_scoped(&ctx, args, &session_token)
+            .await
+            .map_err(AppError::from)?;
+    Ok(PrintSalesReceiptResult {
+        printed: res.printed,
+    })
 }
 
 /// Move the preferred scanner to the front, leaving the rest in order.

@@ -722,8 +722,14 @@ fn sales_receipt_prints_card_last_four_and_approval_code() {
     let data = format_sales_receipt(&receipt, &default_config());
     let text = String::from_utf8_lossy(&data);
     assert!(text.contains("CARD"), "must print payment method");
-    assert!(text.contains("Card: **** 4242"), "must print masked card: {text}");
-    assert!(text.contains("Appr: AUTH-9912"), "must print approval code: {text}");
+    assert!(
+        text.contains("Card: **** 4242"),
+        "must print masked card: {text}"
+    );
+    assert!(
+        text.contains("Appr: AUTH-9912"),
+        "must print approval code: {text}"
+    );
 }
 
 #[test]

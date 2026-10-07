@@ -24,8 +24,14 @@ fn idr(minor: i64) -> Money {
 #[tokio::test]
 async fn default_simulator_approves_with_distinct_transaction_ids() {
     let t = LoopbackEdcTerminal::new();
-    let first = t.sale(idr(15000), None).await.expect("armed simulator approves");
-    let second = t.sale(idr(15000), None).await.expect("armed simulator approves");
+    let first = t
+        .sale(idr(15000), None)
+        .await
+        .expect("armed simulator approves");
+    let second = t
+        .sale(idr(15000), None)
+        .await
+        .expect("armed simulator approves");
     assert!(first.success && second.success);
     assert_ne!(
         first.transaction_id, second.transaction_id,
@@ -47,7 +53,10 @@ async fn decline_returns_an_unsuccessful_result_not_an_error() {
         }],
         EdcBehaviour::Approve,
     );
-    let r = t.sale(idr(15000), None).await.expect("a decline is an answer");
+    let r = t
+        .sale(idr(15000), None)
+        .await
+        .expect("a decline is an answer");
     assert!(!r.success);
     assert_eq!(r.message, "insufficient funds");
     assert!(
@@ -117,7 +126,10 @@ async fn hardware_fault_reports_the_terminal_code() {
         }],
         EdcBehaviour::Approve,
     );
-    let r = t.sale(idr(15000), None).await.expect("a fault is an answer");
+    let r = t
+        .sale(idr(15000), None)
+        .await
+        .expect("a fault is an answer");
     assert!(!r.success);
     assert!(
         r.message.contains("42") && r.message.contains("printer jam"),
@@ -203,7 +215,10 @@ async fn from_address_default_approves() {
 async fn from_address_decline_with_reason() {
     let t = LoopbackEdcTerminal::from_address("loopback://decline?reason=card_expired");
     assert_eq!(t.status().await.unwrap(), TerminalStatus::Ready);
-    let r = t.sale(idr(50000), None).await.expect("decline is a response");
+    let r = t
+        .sale(idr(50000), None)
+        .await
+        .expect("decline is a response");
     assert!(!r.success);
     assert_eq!(r.message, "card expired");
 }

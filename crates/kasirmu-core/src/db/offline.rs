@@ -197,7 +197,10 @@ impl Store<'_> {
             "SELECT id, action, payload, status, retry_count, last_error, created_at, synced_at, tenant_id, priority, origin_terminal_id
              FROM offline_queue WHERE status = 'pending' AND tenant_id = ?1 ORDER BY created_at ASC LIMIT ?2",
         )?;
-        let rows = stmt.query_map(params![tenant_id, limit as i64], Self::row_to_offline_queue_item)?;
+        let rows = stmt.query_map(
+            params![tenant_id, limit as i64],
+            Self::row_to_offline_queue_item,
+        )?;
         rows.map(|r| Ok(r?)).collect()
     }
 

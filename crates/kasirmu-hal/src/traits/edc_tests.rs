@@ -58,15 +58,11 @@ impl EdcTerminal for TestTerminal {
         Ok(TerminalStatus::Ready)
     }
 
-    async fn authorize(
-        &self,
-        _amount: Money,
-        reference: Option<&str>,
-    ) -> Result<String, HalError> {
-        self.calls.lock().unwrap().push(format!(
-            "authorize:{}",
-            reference.unwrap_or("none")
-        ));
+    async fn authorize(&self, _amount: Money, reference: Option<&str>) -> Result<String, HalError> {
+        self.calls
+            .lock()
+            .unwrap()
+            .push(format!("authorize:{}", reference.unwrap_or("none")));
         if self.fail_authorize {
             Err(HalError::Unsupported("declined at auth".into()))
         } else {
@@ -103,7 +99,10 @@ impl EdcTerminal for TestTerminal {
     }
 
     async fn inquiry(&self, invoice: &str) -> Result<EdcPaymentResult, HalError> {
-        self.calls.lock().unwrap().push(format!("inquiry:{invoice}"));
+        self.calls
+            .lock()
+            .unwrap()
+            .push(format!("inquiry:{invoice}"));
         Ok(approved("inquiry-txn-42"))
     }
 

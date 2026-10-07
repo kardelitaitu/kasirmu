@@ -50,9 +50,7 @@ pub async fn get_device_id(
     resolve_device_id(&state).await
 }
 
-pub(crate) async fn resolve_device_id(
-    state: &crate::state::AppState,
-) -> Result<String, AppError> {
+pub(crate) async fn resolve_device_id(state: &crate::state::AppState) -> Result<String, AppError> {
     {
         let cached = state.terminal_id.lock().await;
         if let Some(id) = cached.as_ref() {
@@ -234,7 +232,10 @@ pub async fn notify_memory_pressure(
         .memory_pressure_level
         .store(level, std::sync::atomic::Ordering::Relaxed);
     if level >= 10 {
-        tracing::warn!(level, "Android memory pressure notification received; background sync backed off");
+        tracing::warn!(
+            level,
+            "Android memory pressure notification received; background sync backed off"
+        );
     }
     Ok(())
 }

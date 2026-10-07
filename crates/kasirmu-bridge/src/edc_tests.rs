@@ -268,9 +268,16 @@ async fn loopback_terminal_dynamic_sync_and_payment_simulation() {
     .await
     .unwrap();
 
-    let dec_res = edc_sale(&ctx, &token_cashier, 15000, "IDR", Some(&decline_term.id), None)
-        .await
-        .unwrap();
+    let dec_res = edc_sale(
+        &ctx,
+        &token_cashier,
+        15000,
+        "IDR",
+        Some(&decline_term.id),
+        None,
+    )
+    .await
+    .unwrap();
     assert!(!dec_res.success);
     assert_eq!(dec_res.message, "lost card");
 }
@@ -281,7 +288,9 @@ async fn edc_settle_and_inquiry_permission_and_execution() {
     let token_cashier = tb
         .token_granting(kasirmu_core::permissions::SALES_PROCESS)
         .await;
-    let token_guest = tb.token_granting(kasirmu_core::permissions::SETTINGS_READ).await;
+    let token_guest = tb
+        .token_granting(kasirmu_core::permissions::SETTINGS_READ)
+        .await;
     let ctx = tb.ctx();
 
     let driver = Arc::new(MockEdcTerminal::new());
@@ -290,7 +299,10 @@ async fn edc_settle_and_inquiry_permission_and_execution() {
 
     // 1. Permission checks
     let guest_settle = edc_settle(&ctx, &token_guest, Some("edc-pos1")).await;
-    assert!(matches!(guest_settle, Err(BridgeError::PermissionDenied(_))));
+    assert!(matches!(
+        guest_settle,
+        Err(BridgeError::PermissionDenied(_))
+    ));
 
     let guest_inq = edc_inquiry(&ctx, &token_guest, "INV-100", Some("edc-pos1")).await;
     assert!(matches!(guest_inq, Err(BridgeError::PermissionDenied(_))));

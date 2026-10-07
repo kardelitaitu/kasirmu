@@ -364,7 +364,13 @@ impl EdcTerminal for LoopbackEdcTerminal {
         self.apply_delay().await;
         let mut res = self.result()?;
         if let Some(ref_str) = reference {
-            if res.success && res.transaction_id.as_deref().unwrap_or("").starts_with("LOOPBACK-") {
+            if res.success
+                && res
+                    .transaction_id
+                    .as_deref()
+                    .unwrap_or("")
+                    .starts_with("LOOPBACK-")
+            {
                 res.transaction_id = Some(format!("LOOPBACK-{ref_str}"));
             }
         }

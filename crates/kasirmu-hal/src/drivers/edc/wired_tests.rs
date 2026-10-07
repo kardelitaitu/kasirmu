@@ -67,10 +67,7 @@ async fn every_operation_fails_closed() {
         t.void("txn-1").await,
         Err(HalError::Unsupported(_))
     ));
-    assert!(matches!(
-        t.settle().await,
-        Err(HalError::Unsupported(_))
-    ));
+    assert!(matches!(t.settle().await, Err(HalError::Unsupported(_))));
     assert!(matches!(
         t.inquiry("inv-1").await,
         Err(HalError::Unsupported(_))

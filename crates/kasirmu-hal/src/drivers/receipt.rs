@@ -660,12 +660,20 @@ pub fn format_edc_settlement_slip(
         b.text(&format!("Batch: {batch}"));
     }
     b.separator();
-    b.text(&right_line("TOTAL TXNS:", &settlement.transaction_count.to_string(), w));
+    b.text(&right_line(
+        "TOTAL TXNS:",
+        &settlement.transaction_count.to_string(),
+        w,
+    ));
     if let Some(ref total) = settlement.total_amount {
         b.bold(&right_line("BATCH TOTAL:", &format_money(total, config), w));
     }
     b.separator();
-    let status_str = if settlement.success { "SETTLEMENT SUCCESS" } else { "SETTLEMENT FAILED" };
+    let status_str = if settlement.success {
+        "SETTLEMENT SUCCESS"
+    } else {
+        "SETTLEMENT FAILED"
+    };
     b.bold_center(status_str);
     if !settlement.message.is_empty() {
         b.center(&settlement.message);

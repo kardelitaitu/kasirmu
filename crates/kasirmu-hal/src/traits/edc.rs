@@ -104,11 +104,7 @@ pub trait EdcTerminal: Send + Sync {
     ///
     /// Accepts an optional `reference` (e.g. invoice or order number) to be
     /// tied to the transaction on the EDC and printed on the bank slip.
-    async fn authorize(
-        &self,
-        amount: Money,
-        reference: Option<&str>,
-    ) -> Result<String, HalError>;
+    async fn authorize(&self, amount: Money, reference: Option<&str>) -> Result<String, HalError>;
 
     /// Capture a transaction previously returned by [`Self::authorize`].
     async fn capture(&self, transaction_id: &str) -> Result<EdcPaymentResult, HalError>;

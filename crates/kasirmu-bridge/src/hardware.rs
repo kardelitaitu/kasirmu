@@ -508,7 +508,10 @@ pub async fn run_print_receipt_inner(
     printer.print_raw(&data).await?;
 
     // Automatically pulse the cash drawer if the sale includes a CASH payment
-    let has_cash = receipt.payments.iter().any(|p| p.method.eq_ignore_ascii_case("cash"));
+    let has_cash = receipt
+        .payments
+        .iter()
+        .any(|p| p.method.eq_ignore_ascii_case("cash"));
     if has_cash {
         if let Some(drawer) = ctx.registry.cash_drawer("default").await {
             if let Err(e) = drawer.open().await {

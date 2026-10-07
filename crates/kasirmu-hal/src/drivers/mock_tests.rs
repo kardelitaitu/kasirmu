@@ -252,10 +252,7 @@ async fn edc_mock_fails_closed_until_armed() {
         m.sale(usd(1000), None).await,
         Err(HalError::Unsupported(_))
     ));
-    assert!(matches!(
-        m.settle().await,
-        Err(HalError::Unsupported(_))
-    ));
+    assert!(matches!(m.settle().await, Err(HalError::Unsupported(_))));
     assert!(matches!(
         m.inquiry("inv-1").await,
         Err(HalError::Unsupported(_))

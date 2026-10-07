@@ -21,9 +21,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 use kasirmu_core::db::edc_terminals::{EdcTerminalConfig, NewEdcTerminal};
-use kasirmu_hal::{
-    EdcPaymentResult, EdcTerminal, HalErrorKind, TerminalStatus,
-};
+use kasirmu_hal::{EdcPaymentResult, EdcTerminal, HalErrorKind, TerminalStatus};
 pub use kasirmu_hal::{EdcResponse, EdcSettlementResult};
 
 use crate::ctx::BridgeCtx;
