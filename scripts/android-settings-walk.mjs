@@ -143,7 +143,7 @@ const PROBE = `(() => {
     crash: boundaryMsgs.length > 0,
     boundaryMsgs,
     toasts,
-    invokeFailures: (window.__TAURI_INTERNALS__?.__invokeFailures || []),
+    invokeFailures: (window.__ipcFailures || []).map((f) => f.command + ': ' + f.message),
     hash: location.hash,
   });
 })()`;
@@ -219,35 +219,18 @@ async function main() {
   await send('Runtime.enable');
   await send('Page.enable');
 
-  // Capture every rejected invoke from before the first navigation onward:
-  // the partial-load toast ("Some settings could not be loaded") names no
-  // command, and its source is intermittent.
+  // ERR-06 field diagnostics: the app records every rejected invoke itself
+  // (IpcErrorReporter, mounted in AppProviders) into a bounded
+  // `window.__ipcFailures` array. The probe reads it per route and attributes
+  // new entries to the route being probed.
   //
-  // MEASURED 2026-10-07, INERT on this build: the patch attaches to
-  // `window.__TAURI_INTERNALS__.invoke`, but the app's transport is
-  // `ui/src/api/tauri.ts` `invoke` → `rawInvoke` from `@tauri-apps/api/core`,
-  // and on-device traces showed ZERO calls through the patched door while the
-  // fan-out demonstrably ran. Likely the dev-mock layer or a captured module
-  // reference replaces the door before we attach. Left in place because it is
-  // harmless and will start biting the moment the transport is understood;
-  // the productive next probe is a debug build with a subscriber on the
-  // ERR-06 telemetry channel (`utils/logged-invoke.ts` `emitIpcError`), which
-  // sees every failure by construction.
-  await evaluate(`(() => {
-    const internals = window.__TAURI_INTERNALS__;
-    if (!internals || internals.__walkPatched) return;
-    internals.__walkPatched = true;
-    const orig = internals.invoke.bind(internals);
-    internals.__invokeFailures = [];
-    internals.invoke = (cmd, payload, options) => {
-      const p = Promise.resolve(orig(cmd, payload, options));
-      p.catch((e) => {
-        const list = internals.__invokeFailures;
-        if (list.length < 40) list.push(cmd + ': ' + String((e && e.message) || e).slice(0, 120));
-      });
-      return p;
-    };
-  })()`);
+  // MEASURED 2026-10-07: the earlier approach — patching
+  // `window.__TAURI_INTERNALS__.invoke` from CDP — was INERT: the app's
+  // transport is `ui/src/api/tauri.ts` → `rawInvoke` (`@tauri-apps/api/core`),
+  // and zero calls came through the patched door while the fan-out
+  // demonstrably ran. The app-side recorder replaces it.
+
+  let prevFailureCount = 0; // failures are cumulative; attribute the delta
 
   // ── Login ────────────────────────────────────────────────────────────────
   let state = JSON.parse(await evaluate(PROBE));
@@ -321,9 +304,12 @@ async function main() {
       problems.push(`toast: ${probe.toasts.join(' | ')}`);
       if (verdict === 'ok') verdict = 'WARN';
     }
-    if ((probe.invokeFailures ?? []).length) {
-      problems.push(`invoke failed: ${[...new Set(probe.invokeFailures)].join(' | ')}`);
+    const newFailures = (probe.invokeFailures ?? []).slice(prevFailureCount);
+    if (newFailures.length) {
+      problems.push(`invoke failed: ${[...new Set(newFailures)].join(' | ')}`);
+      if (verdict === 'ok') verdict = 'WARN';
     }
+    prevFailureCount = (probe.invokeFailures ?? []).length;
     if (errs.some((e) => e.startsWith('uncaught'))) {
       problems.push(`uncaught exception (${errs.find((e) => e.startsWith('uncaught'))})`);
       verdict = 'FAIL';
