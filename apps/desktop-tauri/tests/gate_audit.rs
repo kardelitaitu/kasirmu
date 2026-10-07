@@ -1360,3 +1360,192 @@ fn diff_rows_reports_every_drift_in_one_call() {
         );
     }
 }
+// ── `census_dir`: the walker, its filters, and the split-module merge ────
+//
+// WHY. `census_dir` decides WHICH FILES enter the census at all; the
+// parser tests above start from source that has already been selected. Five
+// behaviours live here and none had a case:
+//   1. filename filters -- `authz`, `mod`, `*_tests`, and the caller's `skip`
+//   2. non-`.rs` extensions are ignored
+//   3. a DIRECTORY recurses and its children merge into ONE stem
+//   4. a split module (root file BESIDE a same-named dir) SUMS rather than one
+//      winning -- `topology.rs` beside `topology/` is that shape in this tree
+//   5. keys are sorted and deduplicated across the merge
+//
+// These need a real directory, so they build one with `tempfile` (already a
+// dev-dependency) rather than mocking the filesystem.
+
+/// Write `files` (relative path -> contents) under a fresh temp dir.
+fn fixture(files: &[(&str, &str)]) -> tempfile::TempDir {
+    let dir = tempfile::tempdir().expect("temp dir");
+    for (rel, body) in files {
+        let path = dir.path().join(rel);
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).expect("create parent");
+        }
+        fs::write(&path, body).expect("write fixture file");
+    }
+    dir
+}
+
+const GATE: &[&str] = &["require_session_permission("];
+
+/// A plain `.rs` file is read and its gate call counted.
+#[test]
+fn census_dir_reads_a_plain_module_file() {
+    let dir = fixture(&[(
+        "billing.rs",
+        "fn f() { ctx.require_session_permission(&s, permissions::SETTINGS_READ).await; }\n",
+    )]);
+    let out = census_dir(dir.path(), GATE, &[]);
+    assert_eq!(out.len(), 1, "one module expected: {out:?}");
+    assert_eq!(out["billing"].0, 1, "one gate call expected: {out:?}");
+    assert_eq!(out["billing"].1, vec!["SETTINGS_READ".to_string()]);
+}
+
+/// `*_tests`, `authz`, `mod` and the caller's `skip` list are all excluded.
+///
+/// This is the filter that keeps test fixtures and gate WRAPPERS out of the
+/// census. Losing `_tests` would count every fixture; losing `authz` would
+/// count the wrapper definitions themselves and inflate every module.
+#[test]
+fn census_dir_skips_test_wrappers_and_the_skip_list() {
+    let body =
+        "fn f() { ctx.require_session_permission(&s, permissions::SETTINGS_READ).await; }\n";
+    let dir = fixture(&[
+        ("keep.rs", body),
+        ("thing_tests.rs", body),
+        ("authz.rs", body),
+        ("mod.rs", body),
+        ("error.rs", body),
+    ]);
+    let out = census_dir(dir.path(), GATE, &["error"]);
+    assert_eq!(
+        out.keys().collect::<Vec<_>>(),
+        vec!["keep"],
+        "only the non-excluded module may survive: {out:?}"
+    );
+}
+
+/// A non-`.rs` file is ignored even when it contains gate-shaped text.
+#[test]
+fn census_dir_ignores_non_rust_files() {
+    let dir = fixture(&[
+        (
+            "notes.txt",
+            "ctx.require_session_permission(&s, permissions::SETTINGS_READ);\n",
+        ),
+        ("keep.rs", "fn f() {}\n"),
+    ]);
+    let out = census_dir(dir.path(), GATE, &[]);
+    assert_eq!(out.keys().collect::<Vec<_>>(), vec!["keep"], "{out:?}");
+}
+
+/// A directory recurses, and its children merge into ONE entry named for the
+/// directory -- calls summed, keys unioned.
+///
+/// This is why the census keys on the module and not the file: `topology/`
+/// holds several files that are one module to a reviewer.
+#[test]
+fn census_dir_merges_a_directory_into_one_stem() {
+    let dir = fixture(&[
+        (
+            "split/a.rs",
+            "fn f() { ctx.require_session_permission(&s, permissions::SALES_VIEW).await; }\n",
+        ),
+        (
+            "split/b.rs",
+            "fn g() { ctx.require_session_permission(&s, permissions::SETTINGS_READ).await; }\n",
+        ),
+    ]);
+    let out = census_dir(dir.path(), GATE, &[]);
+    assert_eq!(out.len(), 1, "one module from two files: {out:?}");
+    assert_eq!(out["split"].0, 2, "calls must be summed: {out:?}");
+    assert_eq!(
+        out["split"].1,
+        vec!["SALES_VIEW".to_string(), "SETTINGS_READ".to_string()],
+        "keys must be unioned and sorted: {out:?}"
+    );
+}
+
+/// THE SPLIT-MODULE MERGE: a root file beside a same-named directory adds to
+/// the same entry rather than one overwriting the other.
+///
+/// `topology.rs` sits beside `topology/` in THIS tree, so this is live rather
+/// than hypothetical. The comment at the merge site says the alternative is to
+/// "let read_dir order decide which entry wins" -- so the failure mode is a
+/// count that changes between runs on the same source. Summing is the contract.
+#[test]
+fn census_dir_sums_a_split_module_root_file_with_its_directory() {
+    let dir = fixture(&[
+        (
+            "topology.rs",
+            "fn f() { ctx.require_session_permission(&s, permissions::SETTINGS_READ).await; }\n",
+        ),
+        (
+            "topology/a.rs",
+            "fn g() { ctx.require_permission_for_user(&s, permissions::SALES_VIEW).await; }\n",
+        ),
+        (
+            "topology/b.rs",
+            "fn h() { ctx.require_permission_for_user(&s, permissions::SALES_VIEW).await; }\n",
+        ),
+    ]);
+    let gates: &[&str] = &[
+        "require_session_permission(",
+        "require_permission_for_user(",
+    ];
+    let out = census_dir(dir.path(), gates, &[]);
+    assert_eq!(out.len(), 1, "the root file and the dir are ONE module: {out:?}");
+    assert_eq!(
+        out["topology"].0, 3,
+        "the root file's call must add to the directory's, not replace it: {out:?}"
+    );
+    assert_eq!(
+        out["topology"].1,
+        vec!["SALES_VIEW".to_string(), "SETTINGS_READ".to_string()],
+        "keys from both halves must survive: {out:?}"
+    );
+}
+
+/// An empty directory yields no rows rather than panicking.
+#[test]
+fn census_dir_returns_nothing_for_an_empty_directory() {
+    let dir = fixture(&[]);
+    assert!(census_dir(dir.path(), GATE, &[]).is_empty());
+}
+
+/// THE DIR BRANCH'S MERGE, isolated from the file branch's copy.
+///
+/// WHY A SEPARATE CASE. The merge appears TWICE in `census_dir` -- once in the
+/// directory branch and once in the file branch -- and for a plain split module
+/// either copy alone produces the same sum, because the second one to run merges
+/// into whatever the first inserted. Measured: disabling the DIRECTORY branch's
+/// merge leaves the split-module case above passing 6/6, so that case cannot
+/// tell the two copies apart.
+///
+/// This fixture forces the directory branch to be the ONLY writer for its stem,
+/// by giving the same-named root file a name the walker SKIPS (`mod.rs`). The
+/// directory's own children still merge among themselves, so if that branch stops
+/// summing, two children collapse to whichever `into_values()` happened to end
+/// on -- a count that changes with the map's contents rather than the source.
+#[test]
+fn census_dir_merge_survives_when_the_root_file_is_excluded() {
+    let dir = fixture(&[
+        // Skipped by the `mod` filter, so only the directory branch writes.
+        ("mod.rs", "fn f() { ctx.require_session_permission(&s, permissions::SALES_VIEW).await; }\n"),
+        ("mod/a.rs", "fn g() { ctx.require_session_permission(&s, permissions::SALES_VIEW).await; }\n"),
+        ("mod/b.rs", "fn h() { ctx.require_session_permission(&s, permissions::SETTINGS_READ).await; }\n"),
+    ]);
+    let out = census_dir(dir.path(), GATE, &[]);
+    assert_eq!(out.len(), 1, "one module expected: {out:?}");
+    assert_eq!(
+        out["mod"].0, 2,
+        "both children must sum, with no file branch to do it for them: {out:?}"
+    );
+    assert_eq!(
+        out["mod"].1,
+        vec!["SALES_VIEW".to_string(), "SETTINGS_READ".to_string()],
+        "keys from both children must survive the directory branch's merge: {out:?}"
+    );
+}
