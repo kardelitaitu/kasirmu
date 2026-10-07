@@ -31,8 +31,8 @@ not for manager review.
 
 **Target Crate:** `apps/cloud-server/` (package name `oz-cloud-server`)
 **Sibling Documents:**
-- [`todo-sync-conflict-agents-1.md`](done-todo-sync-conflict-agents-1.md) (Agent 1 — Causality Clock & Delta Merge Contract)
-- [`todo-sync-conflict-agents-3.md`](done-todo-sync-conflict-agents-3.md) (Agent 3 — Resolution UI & Audit)
+- [`done-todo-sync-conflict-agents-1.md`](done-todo-sync-conflict-agents-1.md) (Agent 1 — Causality Clock & Delta Merge Contract)
+- [`done-todo-sync-conflict-agents-3.md`](done-todo-sync-conflict-agents-3.md) (Agent 3 — Resolution UI & Audit)
 
 ---
 

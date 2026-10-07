@@ -6,8 +6,8 @@
 
 **Target File:** `ui/src/features/sales/PosScreen.tsx` (Baseline: 2,329 lines)  
 **Sibling Documents:**
-- [`todo-refactor-pos-screen-agents-2.md`](../../reviews/done-todo-refactor-pos-screen-agents-2.md) (Agent 2 — Cart UI Panels, Modals & Peripherals)
-- [`todo-refactor-pos-screen-agents-3.md`](../../reviews/done-todo-refactor-pos-screen-agents-3.md) (Agent 3 — PaymentModal & Split Tenders Deconstruction)
+- [`done-todo-refactor-pos-screen-agents-2.md`](../../reviews/done-todo-refactor-pos-screen-agents-2.md) (Agent 2 — Cart UI Panels, Modals & Peripherals)
+- [`done-todo-refactor-pos-screen-agents-3.md`](../../reviews/done-todo-refactor-pos-screen-agents-3.md) (Agent 3 — PaymentModal & Split Tenders Deconstruction)
 
 ---
 

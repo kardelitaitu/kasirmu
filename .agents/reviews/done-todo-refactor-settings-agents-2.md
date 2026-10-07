@@ -18,7 +18,7 @@
 **Target File:** `ui/src/features/settings/SettingsPage.tsx` (stated baseline: 844 lines · **measured 2026-09-14: 921 lines** — it grew)  
 **Sibling Documents:**
 - `done-todo-refactor-settings-agents-1.md` (Agent 1 — Settings Backend IPC Modularization; completed and archived, so cited by name with no path prefix)
-- [`todo-refactor-settings-agents-3.md`](done-todo-refactor-settings-agents-3.md) (Agent 3 — Database Management & Factory Reset Workflows)
+- [`done-todo-refactor-settings-agents-3.md`](done-todo-refactor-settings-agents-3.md) (Agent 3 — Database Management & Factory Reset Workflows)
 
 ---
 

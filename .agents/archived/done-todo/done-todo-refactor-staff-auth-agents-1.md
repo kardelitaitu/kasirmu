@@ -13,8 +13,8 @@ No checklist item here was ever run. -->
 
 **Target File:** `apps/desktop-tauri/src/commands/auth.rs`  
 **Sibling Documents:**
-- [`todo-refactor-staff-auth-agents-2.md`](done-todo-refactor-staff-auth-agents-2.md) (Agent 2 — Staff Profile & Permissions Engine)
-- [`todo-refactor-staff-auth-agents-3.md`](done-todo-refactor-staff-auth-agents-3.md) (Agent 3 — Staff Management UI Deconstruction)
+- [`done-todo-refactor-staff-auth-agents-2.md`](done-todo-refactor-staff-auth-agents-2.md) (Agent 2 — Staff Profile & Permissions Engine)
+- [`done-todo-refactor-staff-auth-agents-3.md`](done-todo-refactor-staff-auth-agents-3.md) (Agent 3 — Staff Management UI Deconstruction)
 
 ---
 

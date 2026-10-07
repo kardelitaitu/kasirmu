@@ -13,7 +13,7 @@
 
 **Sibling Documents:**
 - `done-todo-refactor-pos-screen-agents-1.md` (Agent 1 — Cart Engine & State Architect) — **FINISHED**; cited by bare name with no `./` prefix: retired under the `done-todo-` convention (its only root commit is `238912974`; `git log -- todo-refactor-pos-screen-agents-1.md` under the old name is empty, so there is **no rename event to cite for this file**, and `94b5da2cc`, which renamed other work orders, never touched it), and one clause only: a separate session has an *uncommitted, in-flight* move of retired work orders out of the repo root, which is why no path is written here. This is the same fact as the "wait for Agent 1" gate in the sibling doc: that gate is waiting on completed work.
-- [`todo-refactor-pos-screen-agents-2.md`](done-todo-refactor-pos-screen-agents-2.md) (Agent 2 — Cart UI Panels, Modals & Peripherals)
+- [`done-todo-refactor-pos-screen-agents-2.md`](done-todo-refactor-pos-screen-agents-2.md) (Agent 2 — Cart UI Panels, Modals & Peripherals)
 
 > ⚠️ **Blast-radius correction:** this modal has **two** consumers, not one. It is imported at `ui/src/features/sales/PosScreen.tsx:43` (rendered `:800`) **and** at `ui/src/features/retail/RetailPosScreen.tsx:15` — the 1,808-line tablet/desktop `store-pos` screen (`ui/src/app/AppShell.tsx:551`, `ui/src/app/tablet/TabletAppShell.tsx:173`). Any decomposition here changes both POS shells.
 >

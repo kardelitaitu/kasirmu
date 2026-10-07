@@ -7,7 +7,7 @@
 **Target File:** `ui/src/features/kds/`  
 **Sibling Documents:**
 - [`done-todo-kds-agents-1.md`](./done-todo-kds-agents-1.md) (Agent 1 — Multi-Station KDS Routing Engine)
-- [`todo-kds-agents-2.md`](done-todo-kds-agents-2.md) (Agent 2 — LAN Order Event Dispatcher & State Sync)
+- [`done-todo-kds-agents-2.md`](done-todo-kds-agents-2.md) (Agent 2 — LAN Order Event Dispatcher & State Sync)
 
 ---
 

@@ -5,8 +5,8 @@
 **Goal:** Scaffold `crates/oz-bridge` and systematically extract the business logic, SQL access, and DTO handling from all 120+ command files in `apps/desktop-tauri/src/commands/` into headless Rust modules. Transform Tauri commands in `desktop-tauri` into lightweight shims.
 
 **Sibling Documents:**
-- [`todo-refactor-oz-pos-app-agents-1.md`](done-todo-refactor-oz-pos-app-agents-1.md) (Agent 1 — Infrastructure, Daemons & CI Stabilizer)
-- [`todo-refactor-oz-pos-app-agents-3.md`](../../reviews/done-todo-refactor-oz-pos-app-agents-3.md) (Agent 3 — Test Relocation, Thin Shell & IPC Parity)
+- [`done-todo-refactor-oz-pos-app-agents-1.md`](done-todo-refactor-oz-pos-app-agents-1.md) (Agent 1 — Infrastructure, Daemons & CI Stabilizer)
+- [`done-todo-refactor-oz-pos-app-agents-3.md`](../../reviews/done-todo-refactor-oz-pos-app-agents-3.md) (Agent 3 — Test Relocation, Thin Shell & IPC Parity)
 
 ---
 
