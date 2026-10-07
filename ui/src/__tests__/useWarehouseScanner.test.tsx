@@ -115,6 +115,21 @@ describe('useWarehouseScanner', () => {
 
       expect(mocks.stopScannerScoped).toHaveBeenCalledWith(TOKEN);
     });
+
+    it('stops the scanner if unmounted while startScannerScoped is in flight', async () => {
+      let resolveStart: () => void = () => {};
+      mocks.startScannerScoped.mockImplementationOnce(
+        () => new Promise<void>((resolve) => { resolveStart = resolve; })
+      );
+      const { unmount } = await renderHookInAct(
+        () => useWarehouseScanner(makeOpts({ sessionToken: TOKEN }))
+      );
+      unmount();
+      await act(async () => {
+        resolveStart();
+      });
+      expect(mocks.stopScannerScoped).toHaveBeenCalledWith(TOKEN);
+    });
   });
 
   describe('scan handling', () => {

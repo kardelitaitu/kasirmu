@@ -71,6 +71,10 @@ export function useBarcodeScanner({
       if (!scannerId || cancelled) return;
 
       await startScannerScoped(sessionToken, scannerId);
+      if (cancelled) {
+        stopScannerScoped(sessionToken).catch(() => {});
+        return;
+      }
       startedRef.current = true;
     })();
 

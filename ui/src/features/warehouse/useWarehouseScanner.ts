@@ -67,6 +67,10 @@ export function useWarehouseScanner({
       const scannerId = preferredId ?? (await autoDetectScanner(sessionToken));
       if (!scannerId || cancelled) return;
       await startScannerScoped(sessionToken, scannerId);
+      if (cancelled) {
+        stopScannerScoped(sessionToken).catch(() => {});
+        return;
+      }
       startedRef.current = true;
     })();
 
