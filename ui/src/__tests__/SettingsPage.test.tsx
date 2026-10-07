@@ -20,7 +20,7 @@
 // SettingsContext lifecycle, topbar) and stays covered below.
 
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { screen, waitFor, cleanup, fireEvent, within, configure } from '@testing-library/react';
+import { act, screen, waitFor, cleanup, fireEvent, within, configure } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { renderWithProvidersSync, rerenderWithProviders } from '@/__tests__/test-utils/render';
 
@@ -31,7 +31,7 @@ configure({ asyncUtilTimeout: 5000 });
 
 import settingsFtl from '@/locales/settings.ftl?raw';
 import sharedFtl from '@/locales/shared.ftl?raw';
-import SettingsPage from '@/features/settings/SettingsPage';
+import SettingsPage, { PARTIAL_ERROR_TOAST_MS } from '@/features/settings/SettingsPage';
 import { BrandProvider } from '@/contexts/BrandContext';
 import { CurrencyProvider } from '@/contexts/CurrencyContext';
 import { LocaleContext } from '@/i18n/LocaleContext';
@@ -90,15 +90,24 @@ vi.mock('@/contexts/AuthContext', async (importOriginal) => ({
   }),
 }));
 
-const { invokeMock, defaultImpl, failCommands } = vi.hoisted(() => {
+const { invokeMock, defaultImpl, failCommands, failOnceCommands } = vi.hoisted(() => {
   const SAMPLE_CURRENCIES = [
     { code: 'USD', name: 'US Dollar', minor_exponent: 2, symbol: '$' },
     { code: 'EUR', name: 'Euro', minor_exponent: 2, symbol: '\u20ac' },
   ];
   const failCommands = new Set<string>();
+  // Commands that reject only for their next N calls — the shape of the
+  // tablet's cold-start race, where one fan-out source fails on the first
+  // (fallback) token and succeeds once the workspace token replaces it.
+  const failOnceCommands = new Map<string, number>();
 
   const impl = (_cmd: string, _args?: unknown): Promise<unknown> => {
     const cmd = _cmd;
+    const onceLeft = failOnceCommands.get(cmd);
+    if (onceLeft !== undefined && onceLeft > 0) {
+      failOnceCommands.set(cmd, onceLeft - 1);
+      return Promise.reject(new Error('Mock failure (once): ' + cmd));
+    }
     if (failCommands.has(cmd)) {
       return Promise.reject(new Error('Mock failure: ' + cmd));
     }
@@ -171,7 +180,7 @@ const { invokeMock, defaultImpl, failCommands } = vi.hoisted(() => {
     }
     return Promise.resolve(undefined);
   };
-  return { invokeMock: vi.fn(impl), defaultImpl: impl, failCommands };
+  return { invokeMock: vi.fn(impl), defaultImpl: impl, failCommands, failOnceCommands };
 });
 
 vi.mock('@tauri-apps/api/core', () => ({
@@ -232,6 +241,7 @@ beforeEach(() => {
   workspaceState.retry.mockClear();
   workspaceState.retrySessionToken.mockClear();
   failCommands.clear();
+  failOnceCommands.clear();
   invokeMock.mockReset();
   invokeMock.mockImplementation(defaultImpl);
   // Sidebar prefs must not leak between tests.
@@ -727,12 +737,103 @@ describe('SettingsPage load lifecycle and chrome (kept)', () => {
     });
   });
 
-  it('toasts a partial-load warning when one source fails', async () => {
-    failCommands.add('get_sync_settings_scoped');
-    await openShell();
-    await waitFor(() => {
+  it('toasts a partial-load warning that persists past the confirmation window', async () => {
+    // The toast is confirmation-gated (see SettingsPage): a failure must still
+    // be present PARTIAL_ERROR_TOAST_MS after initialization. A real failure
+    // is — so it still surfaces, just not at the first paint.
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      failCommands.add('get_sync_settings_scoped');
+      await openShell();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(PARTIAL_ERROR_TOAST_MS + 500);
+      });
       expect(screen.getByText(ftlValue('settings-load-partial'))).toBeInTheDocument();
-    });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not toast a partial load that the replacement token clears', async () => {
+    // The tablet race, measured 2026-10-07: the provider mounts on the first
+    // (fallback-instance) token, one source rejects, and the workspace
+    // activation swaps the token — the initial-load effect then re-runs the
+    // whole fan-out and every source succeeds. A toast fired at snapshot time
+    // was already stale by the time anyone could read it.
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      failOnceCommands.set('get_sync_settings_scoped', 1);
+      const page = renderPage();
+      await waitFor(() => {
+        expect(screen.getByTestId('settings-sidebar')).toBeInTheDocument();
+      });
+
+      // The swap: WorkspaceContext hands out the real token and the page
+      // rerenders — the provider's loadAll is keyed on sessionToken.
+      workspaceState.sessionToken = 'swapped-token';
+      rerenderWithProviders(page, <TestWrapper><SettingsPage /></TestWrapper>, settingsFtl, sharedFtl);
+      await act(async () => {});
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(PARTIAL_ERROR_TOAST_MS + 500);
+      });
+      expect(screen.queryByText(ftlValue('settings-load-partial'))).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps the skeleton while a superseded load is still outstanding', async () => {
+    // loadAll's finally must honour the same invariant loadScoped documents:
+    // a load that a token swap superseded may NOT clear the CURRENT load's
+    // spinner. If it does, the page initializes from DEFAULT_SETTINGS in the
+    // gap — empty version, blank store — and B's real data lands into an
+    // already-initialized snapshot that never adopts it.
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    // Manual deferreds: `Promise.withResolvers` needs the ES2024 lib, which
+    // this package does not target.
+    let releaseA: (v: unknown) => void = () => {};
+    const gateA = new Promise<unknown>((resolve) => { releaseA = resolve; });
+    let releaseB: (v: unknown) => void = () => {};
+    const gateB = new Promise<unknown>((resolve) => { releaseB = resolve; });
+    try {
+      let storeCalls = 0;
+      invokeMock.mockImplementation((cmd: string) => {
+        if (cmd === 'get_store_settings_scoped') {
+          const n = storeCalls;
+          storeCalls += 1;
+          if (n === 0) return gateA;
+          if (n === 1) return gateB;
+        }
+        return defaultImpl(cmd);
+      });
+
+      const page = renderPage();
+      await act(async () => {});
+      // Load A (token A) is in flight and held: the hub is still a skeleton.
+      expect(document.querySelector('.settings-loading')).not.toBeNull();
+
+      // Swap the token: the provider starts load B (held via its own gate).
+      workspaceState.sessionToken = 'swapped-token';
+      rerenderWithProviders(page, <TestWrapper><SettingsPage /></TestWrapper>, settingsFtl, sharedFtl);
+      await act(async () => {});
+
+      // A resolves now. A is stale — it must NOT clear B's spinner.
+      await act(async () => { releaseA({ name: '', address: '', taxId: '', currency: 'USD', branch: '' }); });
+      // eslint-disable-next-line no-console -- temporary diagnostic
+      console.log('DIAG after releaseA, calls so far:', invokeMock.mock.calls.map((c) => c[0]).join(','));
+      // eslint-disable-next-line no-console -- temporary diagnostic
+      console.log('DIAG html after releaseA:', document.body.innerHTML.replace(/\s+/g,' ').slice(0,300));
+      expect(document.querySelector('.settings-loading')).not.toBeNull();
+      expect(screen.queryByTestId('settings-sidebar')).not.toBeInTheDocument();
+
+      // B resolves: the hub initializes from B's data.
+      await act(async () => { releaseB({ name: '', address: '', taxId: '', currency: 'USD', branch: '' }); });
+      expect(screen.getByTestId('settings-sidebar')).toBeInTheDocument();
+      expect(document.body.textContent).toContain('0.0.4');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('renders the footer theme toggle and app version', async () => {

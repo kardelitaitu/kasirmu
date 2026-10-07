@@ -68,6 +68,13 @@ function renderSection(key: string) {
 
 // ── Component ─────────────────────────────────────────────────────
 
+/**
+ * How long a partial-load failure must persist before its toast fires.
+ * Exported because the contract is pinned by test: a failure that clears
+ * inside this window (the tablet's token-swap race) toasts nothing.
+ */
+export const PARTIAL_ERROR_TOAST_MS = 2_000;
+
 /** Settings hub — sidebar-driven navigation across general, appearance, features, data management, staff, terminals, multi-store, audit, offline queue, shifts, tax, currency, and promotions. */
 export default function SettingsPage() {
   const {
@@ -311,14 +318,30 @@ function SettingsPageContent() {
         brandStoreName: s.brand.storeName,
       };
 
-      // Show toast for partial load failures (regression guard from Phase 0b)
-      if (settingsCtx.hasPartialError) {
-        addToast({ message: l10n.getString('settings-load-partial'), type: 'error' });
-      }
-
       setInitialized(true);
     }
-  }, [settingsCtx.loading, settingsCtx.settings, settingsCtx.hasPartialError, initialized, defaultCurrency, addToast, l10n]);
+  }, [settingsCtx.loading, settingsCtx.settings, initialized, defaultCurrency]);
+
+  // ── Partial-load toast (confirmation-gated) ─────────────────
+  // The snapshot effect above runs the moment the FIRST load settles. On the
+  // tablet that first load can start on a soon-to-be-replaced session token:
+  // one source rejects, `hasPartialError` flips true, and the workspace
+  // activation swaps the token — the provider's initial-load effect re-runs
+  // the fan-out and clears the flag. Measured 2026-10-07: every cold start
+  // toasted a failure that was already stale by the time it could be read.
+  // So the toast fires only if the failure is STILL present after this
+  // window; a real persistent failure surfaces just as surely, 2s later.
+  const settingsCtxRef = useRef(settingsCtx);
+  settingsCtxRef.current = settingsCtx;
+  useEffect(() => {
+    if (!initialized || !settingsCtx.hasPartialError) return;
+    const timer = setTimeout(() => {
+      if (settingsCtxRef.current.hasPartialError) {
+        addToast({ message: l10n.getString('settings-load-partial'), type: 'error' });
+      }
+    }, PARTIAL_ERROR_TOAST_MS);
+    return () => clearTimeout(timer);
+  }, [initialized, settingsCtx.hasPartialError, addToast, l10n]);
 
   // Derive loading/error state from context
   const loading = settingsCtx.loading && !initialized;

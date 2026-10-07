@@ -420,7 +420,13 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
         setHasPartialError(hasAnyFailure);
       }
     } finally {
-      if (mountedRef.current) setLoading(false);
+      // Same invariant as loadScoped (see its tail): a load the token swap
+      // superseded must not clear the CURRENT load's spinner. Measured via
+      // the gated-load test: without the stale() check here, the hub left its
+      // skeleton mid-swap and initialized from DEFAULT_SETTINGS in the gap —
+      // empty version, blank store — and B's data landed into a snapshot that
+      // never adopted it.
+      if (mountedRef.current && !stale()) setLoading(false);
     }
   }, [sessionToken]);
 
