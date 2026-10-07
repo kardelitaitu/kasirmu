@@ -863,7 +863,11 @@ body:has(.settings-footer) {
   /* No fallback tail: --color-danger-dim is declared in every theme block, so a
      literal here could never render (the token-tail guard's own rule). */
   background: var(--color-danger-dim);
-  color: var(--color-danger);
+  /* --color-danger-fg, not --color-danger: tokens.css declares color and
+     danger-dim as the SAME hex in every theme (#FF6B68 dark), so the old pair
+     was 1.00:1 and the banner text did not render at all. Same fix and same
+     reasoning as VoidOrdersScreen.css:239, which found this first. */
+  color: var(--color-danger-fg);
   font-size: var(--text-sm);
 }
 
