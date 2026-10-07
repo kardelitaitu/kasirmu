@@ -212,6 +212,12 @@ pub struct PaymentDto {
     pub amount: MoneyDto,
     /// Change.
     pub change: Option<MoneyDto>,
+    #[serde(default)]
+    /// Optional authorization / gateway reference (e.g. EDC RRN or approval code).
+    pub reference: Option<String>,
+    #[serde(default)]
+    /// Optional masked card number or last 4 digits.
+    pub card_last_four: Option<String>,
 }
 
 /// Flat serialisable representation of Money — the front-end sends
@@ -488,6 +494,8 @@ pub async fn run_print_receipt_inner(
                     method: p.method,
                     amount: p.amount.to_money()?,
                     change: p.change.map(|c| c.to_money()).transpose()?,
+                    reference: p.reference,
+                    card_last_four: p.card_last_four,
                 })
             })
             .collect::<Result<Vec<_>, _>>()?,
@@ -498,6 +506,16 @@ pub async fn run_print_receipt_inner(
     let line_count = receipt.items.len() + 6;
 
     printer.print_raw(&data).await?;
+
+    // Automatically pulse the cash drawer if the sale includes a CASH payment
+    let has_cash = receipt.payments.iter().any(|p| p.method.eq_ignore_ascii_case("cash"));
+    if has_cash {
+        if let Some(drawer) = ctx.registry.cash_drawer("default").await {
+            if let Err(e) = drawer.open().await {
+                tracing::warn!(error = %e, "cash drawer pulse on cash sale failed");
+            }
+        }
+    }
 
     if let Some(sink) = &ctx.emitter {
         sink.emit(
@@ -597,6 +615,70 @@ pub async fn print_receipt_scoped(
         sink.emit("receipt:printed", serde_json::json!({ "lines": n }));
     }
     Ok(PrintReceiptResult { printed_lines: n })
+}
+
+/// Print an EDC settlement slip on the default receipt printer.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PrintEdcSettlementArgs {
+    /// Settlement summary data.
+    pub settlement: crate::edc::EdcSettlementDto,
+    /// Formatted date string for the settlement slip.
+    pub date: String,
+}
+
+/// Print an EDC settlement slip (scoped — requires valid session).
+pub async fn print_edc_settlement_slip_scoped(
+    ctx: &BridgeCtx<'_>,
+    args: PrintEdcSettlementArgs,
+    session_token: &str,
+) -> Result<PrintSalesReceiptResult, BridgeError> {
+    ctx.resolve_scope(session_token)?;
+    let terminal_id = ctx.terminal_id().await;
+    let (config, store_info) = {
+        let conn = ctx.resolve_store(session_token)?;
+        let db = conn
+            .lock()
+            .map_err(|e| BridgeError::Internal(format!("locking store db: {e}")))?;
+        read_receipt_config_for_scope(&db, terminal_id.as_deref())?
+    };
+    let printer = ctx
+        .registry
+        .printer("default")
+        .await
+        .ok_or_else(|| BridgeError::Invalid("no receipt printer registered".into()))?;
+
+    let total_amount = args.settlement.total_amount.map(|units| {
+        let curr_bytes = args
+            .settlement
+            .currency
+            .as_deref()
+            .and_then(|c| c.as_bytes().try_into().ok())
+            .unwrap_or(*b"IDR");
+        kasirmu_core::Money {
+            minor_units: units,
+            currency: kasirmu_core::Currency(curr_bytes),
+        }
+    });
+
+    let settlement_result = kasirmu_hal::EdcSettlementResult {
+        success: args.settlement.success,
+        batch_number: args.settlement.batch_number,
+        transaction_count: args.settlement.transaction_count,
+        total_amount,
+        message: args.settlement.message,
+    };
+
+    let tid = terminal_id.unwrap_or_else(|| "default".into());
+    let data = kasirmu_hal::drivers::receipt::format_edc_settlement_slip(
+        &settlement_result,
+        &store_info,
+        &tid,
+        &args.date,
+        &config,
+    );
+    printer.print_raw(&data).await?;
+    Ok(PrintSalesReceiptResult { printed: true })
 }
 
 /// Move the preferred scanner to the front, leaving the rest in order.

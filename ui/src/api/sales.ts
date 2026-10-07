@@ -815,6 +815,8 @@ export interface PaymentDto {
   method: string;
   amount: MoneyDto;
   change: MoneyDto | null;
+  reference?: string | null | undefined;
+  cardLastFour?: string | null | undefined;
 }
 
 /** Monetary value representation for receipt printing. */

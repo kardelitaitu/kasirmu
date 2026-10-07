@@ -176,6 +176,36 @@ pub struct PaymentInfo {
     pub amount: Money,
     /// Change returned, if applicable.
     pub change: Option<Money>,
+    /// Optional authorization or gateway reference (e.g. approval code, RRN).
+    pub reference: Option<String>,
+    /// Optional masked card number or card last four digits (e.g. `"1234"`).
+    pub card_last_four: Option<String>,
+}
+
+impl PaymentInfo {
+    /// Create a standard cash or simple payment info without card reference.
+    #[must_use]
+    pub fn new(method: impl Into<String>, amount: Money, change: Option<Money>) -> Self {
+        Self {
+            method: method.into(),
+            amount,
+            change,
+            reference: None,
+            card_last_four: None,
+        }
+    }
+
+    /// Add card authorization and last four digits details.
+    #[must_use]
+    pub fn with_card_details(
+        mut self,
+        reference: Option<String>,
+        card_last_four: Option<String>,
+    ) -> Self {
+        self.reference = reference;
+        self.card_last_four = card_last_four;
+        self
+    }
 }
 
 // ── Sales receipt ────────────────────────────────────────
@@ -539,6 +569,12 @@ pub fn format_sales_receipt(r: &SalesReceipt, config: &ReceiptConfig) -> Vec<u8>
             &format_money(&pmt.amount, config),
             w,
         ));
+        if let Some(ref card) = pmt.card_last_four {
+            b.text(&format!("  Card: **** {card}"));
+        }
+        if let Some(ref ref_code) = pmt.reference {
+            b.text(&format!("  Appr: {ref_code}"));
+        }
         if let Some(ref chg) = pmt.change {
             b.text(&right_line("CHANGE:", &format_money(chg, config), w));
         }
@@ -598,6 +634,45 @@ fn right_line(label: &str, value: &str, width: usize) -> String {
     } else {
         format!("{label}{}{value}", " ".repeat(gap_cells))
     }
+}
+
+// ── EDC Settlement Slip ──────────────────────────────────
+
+/// Format an EDC settlement / batch-close slip as an ESC/POS byte buffer.
+pub fn format_edc_settlement_slip(
+    settlement: &crate::EdcSettlementResult,
+    store: &StoreInfo,
+    terminal_id: &str,
+    date_str: &str,
+    config: &ReceiptConfig,
+) -> Vec<u8> {
+    let w = config.paper_width.chars();
+    let mut b = ReceiptBuilder::new(w);
+    b.init();
+    b.bold_center(&store.name);
+    b.center(&store.address);
+    b.separator();
+    b.bold_center("EDC SETTLEMENT SLIP");
+    b.separator();
+    b.text(&format!("Date: {date_str}"));
+    b.text(&format!("Terminal: {terminal_id}"));
+    if let Some(ref batch) = settlement.batch_number {
+        b.text(&format!("Batch: {batch}"));
+    }
+    b.separator();
+    b.text(&right_line("TOTAL TXNS:", &settlement.transaction_count.to_string(), w));
+    if let Some(ref total) = settlement.total_amount {
+        b.bold(&right_line("BATCH TOTAL:", &format_money(total, config), w));
+    }
+    b.separator();
+    let status_str = if settlement.success { "SETTLEMENT SUCCESS" } else { "SETTLEMENT FAILED" };
+    b.bold_center(status_str);
+    if !settlement.message.is_empty() {
+        b.center(&settlement.message);
+    }
+    b.feed(3);
+    b.cut();
+    b.build()
 }
 
 // ── Tests ────────────────────────────────────────────────

@@ -21,9 +21,22 @@ use crate::state::AppState;
 
 pub use kasirmu_bridge::hardware::{
     DisplayShowArgs, LineItemDto, MoneyDto, OpenCashDrawerArgs, OpenCashDrawerResult, PaymentDto,
-    PrintReceiptArgs, PrintReceiptResult, PrintSalesReceiptArgs, PrintSalesReceiptResult,
-    ScannerInfo,
+    PrintEdcSettlementArgs, PrintReceiptArgs, PrintReceiptResult, PrintSalesReceiptArgs,
+    PrintSalesReceiptResult, ScannerInfo,
 };
+
+/// Print an EDC settlement slip on the default receipt printer (scoped).
+#[tauri::command]
+pub async fn print_edc_settlement_slip_scoped(
+    session_token: String,
+    args: PrintEdcSettlementArgs,
+    state: State<'_, AppState>,
+) -> Result<PrintSalesReceiptResult, AppError> {
+    let ctx = state.bridge_ctx();
+    kasirmu_bridge::hardware::print_edc_settlement_slip_scoped(&ctx, args, &session_token)
+        .await
+        .map_err(Into::into)
+}
 
 /// Print sales receipt for the store resolved from a session token. ADR #7.
 /// Settings (store name, address, receipt config) are loaded from the

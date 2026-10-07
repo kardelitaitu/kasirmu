@@ -33,7 +33,9 @@ use crate::state::AppState;
 // omits `device_id` entirely would have deserialised before and error now.
 // `hardware_tests.rs::open_cash_drawer_args_default_device` deserialises `{}`
 // and asserts `None`, so it is the pin: it passes today and must still pass.
-pub use kasirmu_bridge::hardware::{OpenCashDrawerArgs, OpenCashDrawerResult};
+pub use kasirmu_bridge::hardware::{
+    OpenCashDrawerArgs, OpenCashDrawerResult, PrintEdcSettlementArgs,
+};
 
 // ── Raw text receipt (legacy) ───────────────────────────
 
@@ -126,6 +128,12 @@ pub struct PaymentDto {
     pub amount: MoneyDto,
     /// Change.
     pub change: Option<MoneyDto>,
+    #[serde(default)]
+    /// Reference / approval code.
+    pub reference: Option<String>,
+    #[serde(default)]
+    /// Card last four digits.
+    pub card_last_four: Option<String>,
 }
 
 /// Flat serialisable representation of Money — the front-end sends
@@ -406,6 +414,8 @@ pub async fn print_sales_receipt_scoped(
                     method: p.method,
                     amount: p.amount.to_money()?,
                     change: p.change.map(|c| c.to_money()).transpose()?,
+                    reference: p.reference,
+                    card_last_four: p.card_last_four,
                 })
             })
             .collect::<Result<Vec<_>, _>>()?,
@@ -417,6 +427,15 @@ pub async fn print_sales_receipt_scoped(
 
     printer.print_raw(&data).await?;
 
+    // Pulse cash drawer automatically if any payment is cash.
+    if receipt.payments.iter().any(|p| p.method.eq_ignore_ascii_case("cash")) {
+        if let Some(drawer) = state.registry.cash_drawer("default").await {
+            if let Err(err) = drawer.open().await {
+                tracing::warn!(?err, "failed to pulse cash drawer on cash payment");
+            }
+        }
+    }
+
     // R10 #3: broadcast through the bridge's EventSink, not a raw handle.
     if let Some(sink) = state.bridge_ctx().emitter {
         sink.emit(
@@ -426,6 +445,20 @@ pub async fn print_sales_receipt_scoped(
     }
 
     Ok(PrintSalesReceiptResult { printed: true })
+}
+
+/// Print an EDC settlement slip (scoped — requires valid session).
+#[command]
+pub async fn print_edc_settlement_slip_scoped(
+    session_token: String,
+    args: PrintEdcSettlementArgs,
+    state: State<'_, AppState>,
+) -> Result<PrintSalesReceiptResult, AppError> {
+    let ctx = state.bridge_ctx();
+    let res = kasirmu_bridge::hardware::print_edc_settlement_slip_scoped(&ctx, args, &session_token)
+        .await
+        .map_err(AppError::from)?;
+    Ok(PrintSalesReceiptResult { printed: res.printed })
 }
 
 /// Move the preferred scanner to the front, leaving the rest in order.

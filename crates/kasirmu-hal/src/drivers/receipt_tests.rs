@@ -53,11 +53,11 @@ fn sample_receipt() -> SalesReceipt {
         subtotal: usd_money(1200),
         tax: Some(usd_money(120)),
         total: usd_money(1320),
-        payments: vec![PaymentInfo {
-            method: "CASH".into(),
-            amount: usd_money(2000),
-            change: Some(usd_money(680)),
-        }],
+        payments: vec![PaymentInfo::new(
+            "CASH",
+            usd_money(2000),
+            Some(usd_money(680)),
+        )],
         faktur_pajak: None,
     }
 }
@@ -361,11 +361,7 @@ fn sales_receipt_prints_idr_without_trailing_decimal() {
         subtotal: money(4_450_000),
         tax: None,
         total: money(4_450_000),
-        payments: vec![PaymentInfo {
-            method: "CASH".into(),
-            amount: money(4_450_000),
-            change: None,
-        }],
+        payments: vec![PaymentInfo::new("CASH", money(4_450_000), None)],
         faktur_pajak: None,
     };
 
@@ -714,4 +710,50 @@ fn sales_receipt_contains_dynamic_tax_id_label() {
         text.contains("GST Reg No: 99-8888777"),
         "receipt must print dynamic tax id label: {text}"
     );
+}
+
+#[test]
+fn sales_receipt_prints_card_last_four_and_approval_code() {
+    let mut receipt = sample_receipt();
+    receipt.payments = vec![
+        PaymentInfo::new("CARD", usd_money(1320), None)
+            .with_card_details(Some("AUTH-9912".into()), Some("4242".into())),
+    ];
+    let data = format_sales_receipt(&receipt, &default_config());
+    let text = String::from_utf8_lossy(&data);
+    assert!(text.contains("CARD"), "must print payment method");
+    assert!(text.contains("Card: **** 4242"), "must print masked card: {text}");
+    assert!(text.contains("Appr: AUTH-9912"), "must print approval code: {text}");
+}
+
+#[test]
+fn edc_settlement_slip_formats_expected_sections() {
+    let settlement = crate::EdcSettlementResult {
+        success: true,
+        batch_number: Some("000123".into()),
+        transaction_count: 14,
+        total_amount: Some(usd_money(254000)),
+        message: "BATCH CLOSED".into(),
+    };
+    let store = StoreInfo {
+        name: "Warung Kopi Mantap".into(),
+        address: "Jl. Sudirman 45, Jakarta".into(),
+        tax_id: None,
+        tax_id_label: None,
+    };
+    let data = format_edc_settlement_slip(
+        &settlement,
+        &store,
+        "EDC-T1",
+        "2026-10-07 21:00:00",
+        &default_config(),
+    );
+    let text = String::from_utf8_lossy(&data);
+    assert!(text.contains("Warung Kopi Mantap"));
+    assert!(text.contains("EDC SETTLEMENT SLIP"));
+    assert!(text.contains("Batch: 000123"));
+    assert!(text.contains("TOTAL TXNS:"));
+    assert!(text.contains("14"));
+    assert!(text.contains("SETTLEMENT SUCCESS"));
+    assert!(text.contains("BATCH CLOSED"));
 }

@@ -1200,6 +1200,7 @@ pub fn run() {
                 commands::hardware::open_cash_drawer_scoped,
                 commands::hardware::print_receipt_scoped,
                 commands::hardware::print_sales_receipt_scoped,
+                commands::hardware::print_edc_settlement_slip_scoped,
                 commands::hardware::start_scanner_scoped,
                 commands::hardware::stop_scanner_scoped,
                 commands::hardware::list_displays_scoped,

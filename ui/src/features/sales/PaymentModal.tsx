@@ -769,7 +769,11 @@ retryCurrencyLoad,
   // finalize_sale from the settlement webhook completes it on the next
   // sync apply instead.
   const settleGatewaySale = useCallback(
-    async (saleResult: Awaited<ReturnType<typeof completeSaleScoped>>, voidOnFinalizeFailure: boolean) => {
+    async (
+      saleResult: Awaited<ReturnType<typeof completeSaleScoped>>,
+      voidOnFinalizeFailure: boolean,
+      tenderInfo?: { method?: string; reference?: string | null; cardLastFour?: string | null },
+    ) => {
       try {
         // ADR #7: read the sale back from the same store completeSaleScoped just wrote it to.
         // The value feeds the receipt preview, so an ambient read here showed a customer a
@@ -787,12 +791,15 @@ retryCurrencyLoad,
           cartCurrency,
           fallbackTotalMinor: effectiveTotalInCartCurrency,
           // The one field this site and the direct-checkout site below really
-          // do differ: a gateway sale is a single QRIS tender with no change.
+          // do differ: a gateway sale defaults to a single QRIS tender with no change,
+          // or takes explicit tender details (e.g. Card with authCode and cardLast4 for EDC).
           payments: [
             {
-              method: resolveTenderDisplayName('qris', paymentRails, activeMarketProfile, 'QRIS'),
+              method: tenderInfo?.method ?? resolveTenderDisplayName('qris', paymentRails, activeMarketProfile, 'QRIS'),
               amount: { minorUnits: effectiveTotalInCartCurrency, currency: cartCurrency },
               change: null,
+              reference: tenderInfo?.reference,
+              cardLastFour: tenderInfo?.cardLastFour,
             },
           ],
           tableNumber,

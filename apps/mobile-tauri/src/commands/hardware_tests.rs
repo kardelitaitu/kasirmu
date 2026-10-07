@@ -87,6 +87,42 @@ fn print_sales_receipt_args_deserialise_camel_case() {
     assert_eq!(args.payments[0].amount.minor_units, 500);
 }
 
+#[test]
+fn payment_dto_with_card_details_deserialise() {
+    let json = r#"{
+        "method": "CARD",
+        "amount": { "minorUnits": 50000, "currency": "IDR" },
+        "reference": "APPR-9988",
+        "cardLastFour": "1234"
+    }"#;
+    let dto: PaymentDto = serde_json::from_str(json).unwrap();
+    assert_eq!(dto.method, "CARD");
+    assert_eq!(dto.amount.minor_units, 50000);
+    assert_eq!(dto.reference.as_deref(), Some("APPR-9988"));
+    assert_eq!(dto.card_last_four.as_deref(), Some("1234"));
+    assert!(dto.change.is_none());
+}
+
+#[test]
+fn print_edc_settlement_args_deserialise() {
+    let json = r#"{
+        "settlement": {
+            "success": true,
+            "batchNumber": "000012",
+            "transactionCount": 15,
+            "totalAmount": 1500000,
+            "currency": "IDR",
+            "message": "SETTLEMENT SUCCESS"
+        },
+        "date": "2026-10-07 11:30"
+    }"#;
+    let args: PrintEdcSettlementArgs = serde_json::from_str(json).unwrap();
+    assert!(args.settlement.success);
+    assert_eq!(args.settlement.batch_number.as_deref(), Some("000012"));
+    assert_eq!(args.settlement.transaction_count, 15);
+    assert_eq!(args.date, "2026-10-07 11:30");
+}
+
 // -- DTO struct tests --
 
 #[test]

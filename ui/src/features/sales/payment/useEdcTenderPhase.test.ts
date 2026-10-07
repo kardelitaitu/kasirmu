@@ -156,7 +156,11 @@ describe('useEdcTenderPhase', () => {
         message: 'APPROVED',
       }),
     });
-    expect(mockSettleGatewaySale).toHaveBeenCalledWith({ sale_id: 'sale-1' }, false);
+    expect(mockSettleGatewaySale).toHaveBeenCalledWith({ sale_id: 'sale-1' }, false, {
+      method: 'Card',
+      reference: 'AUTH999',
+      cardLastFour: '4321',
+    });
     expect(result.current.edc).toBeNull();
   });
 

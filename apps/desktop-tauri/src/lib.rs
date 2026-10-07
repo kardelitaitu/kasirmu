@@ -1502,6 +1502,7 @@ pub fn run() {
             commands::history::export_eod_report_scoped,
             commands::void::void_sale_scoped,
             commands::hardware::print_sales_receipt_scoped,
+            commands::hardware::print_edc_settlement_slip_scoped,
             commands::fiscal::get_document_number_sequence_scoped,
             commands::fiscal::upsert_document_number_sequence_scoped,
             commands::fiscal::list_document_number_sequences_scoped,

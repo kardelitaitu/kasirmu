@@ -79,7 +79,11 @@ export interface UseEdcTenderPhaseParams {
   /** Shared gateway-tender front half (manual QRIS + Auto + EDC), shell-owned. */
   buildGatewaySale: (split: GatewaySaleSplit) => Promise<CompleteSaleResult>;
   /** Shared gateway-tender tail, shell-owned; it writes done/receiptArgs there. */
-  settleGatewaySale: (saleResult: CompleteSaleResult, voidOnFinalizeFailure: boolean) => Promise<void>;
+  settleGatewaySale: (
+    saleResult: CompleteSaleResult,
+    voidOnFinalizeFailure: boolean,
+    tenderInfo?: { method?: string; reference?: string | null; cardLastFour?: string | null },
+  ) => Promise<void>;
   /** Bundle ref for the two failure toasts. */
   l10nRef: L10nRef;
   addToast: AddToast;
@@ -193,7 +197,11 @@ export function useEdcTenderPhase({
       // voidOnFinalizeFailure = false: the terminal holds captured money;
       // a local finalize fault keeps the sale pending for reconciliation,
       // it must not void a PAID sale.
-      await settleGatewaySale(saleResult, false);
+      await settleGatewaySale(saleResult, false, {
+        method: 'Card',
+        reference: result.authCode ?? result.transactionId,
+        cardLastFour: result.cardLast4,
+      });
       setEdc(null);
     } catch (err) {
       // Back to tender selection with the reason (the capture, if any, is
