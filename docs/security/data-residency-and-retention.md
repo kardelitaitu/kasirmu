@@ -67,8 +67,8 @@ Cloud Postgres (row-level-security enforced on all tenant-bearing tables —
   one narrow exception since `20260920_audit_retention.sql`: DELETE is allowed
   only while a `settings` row with key `audit.retention_sweep_active` exists,
   which `Store::sweep_audit_retention` writes around its own deletes
-  (`SWEEP_MARKER_KEY`, `crates/kasirmu-core/src/db/audit.rs:126`, inserted at :196/
-  :204 and removed at :226/:231). An auditor asking whether audit rows can be
+  (`SWEEP_MARKER_KEY`, `crates/kasirmu-core/src/db/audit.rs:484`, inserted at :551-555
+  and removed at :560-563, both inside the one transaction the sweep opens). An auditor asking whether audit rows can be
   deleted therefore gets a two-part answer: not by any ordinary path, and yes
   by the tier retention sweep, which announces itself in the same database.
 - **Ops**: `offline_queue`, `sent_reports`, `exchange_rates`,
@@ -108,7 +108,7 @@ leave via metrics has to look at the sync server, not at the absence of a route 
 | `offline_queue` (cloud) | **90 days**, enforced | hourly prune, 500-row batches (`start_prune_loop_pg`; runbook §3.6) |
 | `sent_reports` dedup claims (cloud) | **90 days**, enforced | same prune |
 | Memos (device) | archived → purged at **30 days** | retention sweep (`c8d2a54f` enforced via `archived_at`; daemon `5ee1064a`; `20260914_memo_retention.sql`) |
-| `audit_log` (tenant-facing) | **tier window**, enforced | hourly daemon sweep: `Store::sweep_audit_retention` (`db/audit.rs:162`), called from `apps/desktop-tauri/src/lib.rs:614`/`:639` and `apps/mobile-tauri/src/lib.rs:284`. Plus 90d / Pro 180d / Premium 365d / Enterprise 1095d / Free & OneTime no entitlement (`subscription.rs:243-251`) |
+| `audit_log` (tenant-facing) | **tier window**, enforced | hourly daemon sweep: `Store::sweep_audit_retention` (`db/audit.rs:520`), called from `apps/desktop-tauri/src/lib.rs:830`/`:855` and `apps/mobile-tauri/src/lib.rs:577`. Plus 90d / Pro 180d / Premium 365d / Enterprise 1095d / Free & OneTime no entitlement (`subscription.rs`, `audit_retention_days`) |
 | `audit_log` rows within the window | **infinite**, immutable by trigger | the sweep only deletes PAST the window; see the trigger exception in §2 |
 | Sales, catalog, inventory, users, memos (cloud) | **no expiry** — kept while the tenant exists | no purge path in `crates/kasirmu-api` (verified: no per-tenant `DELETE`) |
 | Local device DB | kept until operator action (backup/restore) | — |
@@ -138,7 +138,7 @@ edit. Deferred as such — an unsigned local override would let a tenant extend 
 retention window their own compliance story depends on, which inverts the point.
 
 **Retained is not the same as visible.** The tier gate on reading the audit surface
-is Premium-or-above (`require_audit_tier`, `commands/audit.rs:265`), while the
+is Premium-or-above (`require_audit_tier`, `crates/kasirmu-bridge/src/audit.rs:270`), while the
 retention schedule sweeps Plus and Pro data too. So a Plus tenant's audit rows age
 out on a 90-day window that they cannot inspect. That is consistent with the box
 text as written — paid tiers *retain*, Premium and above *receive* the views — but
@@ -168,7 +168,7 @@ Implemented today:
 1. **No sync-DB purge.** License-server tenant deletion does not touch the
    Postgres sync DB: there is no per-tenant **erasure** in `crates/kasirmu-api`
    (verified at HEAD). Wording matters here, because the crate does contain one
-   tenant-scoped `DELETE` in production code — `pg.rs:1975`,
+   tenant-scoped `DELETE` in production code — `pg/memos.rs:261`,
    `DELETE FROM memos WHERE tenant_id = $1 AND NOT (id = ANY($2))` — and it is
    snapshot *reconciliation* during a memo push, not a right-to-be-forgotten
    path. Grep alone would therefore report a false purge capability: what is
