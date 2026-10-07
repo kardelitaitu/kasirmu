@@ -22,6 +22,11 @@ export interface UseBarcodeScannerOptions {
   onProductNotFound?: (code: string) => void;
   /** Called on scanner errors. */
   onError?: (error: string) => void;
+  /**
+   * Minimum time (ms) between identical scans to suppress contact bounce or trigger hold.
+   * Defaults to 250ms.
+   */
+  cooldownMs?: number;
 }
 
 /**
@@ -34,11 +39,13 @@ export function useBarcodeScanner({
   enabled = true,
   sessionToken,
   scannerId: preferredId,
+  cooldownMs = 250,
   onProductFound,
   onProductNotFound,
   onError,
 }: UseBarcodeScannerOptions) {
   const startedRef = useRef(false);
+  const lastScanRef = useRef<{ code: string; time: number } | null>(null);
 
   // Keep callbacks in refs so the event subscription doesn't re-register
   // every time the parent passes a fresh inline callback (e.g. on every
@@ -81,6 +88,17 @@ export function useBarcodeScanner({
   const handleScan = useCallback(
     async (payload: BarcodeScannedPayload) => {
       if (!enabled) return;
+
+      const now = Date.now();
+      if (
+        lastScanRef.current &&
+        lastScanRef.current.code === payload.code &&
+        now - lastScanRef.current.time < cooldownMs
+      ) {
+        return;
+      }
+      lastScanRef.current = { code: payload.code, time: now };
+
       // T21 (b2): `lookup_by_barcode` is registered in neither shell -- the tablet has an
       // unregistered body and the desktop has no body at all -- so the fallback half could only
       // answer "command not found". PosScreen.tsx:290 and RetailPosScreen.tsx:842 already call the
@@ -110,7 +128,7 @@ export function useBarcodeScanner({
     // token (WorkspaceContext.tsx:273) before setting the new one, so a stale handleScan looks
     // up barcodes against a session that no longer exists. The mount effect at :78 already
     // lists sessionToken; this array just omitted it.
-    [enabled, sessionToken],
+    [enabled, sessionToken, cooldownMs],
   );
 
   const handleError = useCallback(

@@ -38,6 +38,9 @@ use crate::types::{Barcode, DeviceInfo};
 /// models support 115200; configure via `Self::new()`.
 pub const DEFAULT_BAUD: u32 = 9600;
 
+/// Maximum length of a single scanned barcode buffer (1024 bytes) to bound memory.
+pub const MAX_BARCODE_LEN: usize = 1024;
+
 /// A barcode scanner driven through a Bluetooth serial (SPP) connection.
 pub struct BtBarcodeScanner {
     port_name: String,
@@ -159,6 +162,10 @@ impl BarcodeScanner for BtBarcodeScanner {
                             return Ok(Some(Barcode::new(code)));
                         }
                         buf.push(byte[0]);
+                        if buf.len() >= MAX_BARCODE_LEN {
+                            let code = String::from_utf8_lossy(&buf).trim().to_owned();
+                            return Ok(Some(Barcode::new(code)));
+                        }
                     }
                     Ok(n) => {
                         for &b in &byte[..n] {
@@ -170,6 +177,10 @@ impl BarcodeScanner for BtBarcodeScanner {
                                 return Ok(Some(Barcode::new(code)));
                             }
                             buf.push(b);
+                            if buf.len() >= MAX_BARCODE_LEN {
+                                let code = String::from_utf8_lossy(&buf).trim().to_owned();
+                                return Ok(Some(Barcode::new(code)));
+                            }
                         }
                     }
                 }

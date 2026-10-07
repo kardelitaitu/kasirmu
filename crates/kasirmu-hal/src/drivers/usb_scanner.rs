@@ -30,6 +30,9 @@ use crate::traits::barcode::BarcodeScanner;
 use crate::transport::usb::{UsbDeviceInfo, open_device};
 use crate::types::{Barcode, DeviceInfo};
 
+/// Maximum length of a single scanned barcode string (1024 chars) to bound heap buffers.
+pub const MAX_BARCODE_LEN: usize = 1024;
+
 // ---------------------------------------------------------------------------
 // HID Keyboard usage-ID → ASCII lookup
 // ---------------------------------------------------------------------------
@@ -219,7 +222,12 @@ impl BarcodeScanner for UsbHidBarcodeScanner {
                                     return Ok(Some(Barcode::new(&code)));
                                 }
                             }
-                            Some(ch) => code.push(ch),
+                            Some(ch) => {
+                                code.push(ch);
+                                if code.len() >= MAX_BARCODE_LEN {
+                                    return Ok(Some(Barcode::new(&code)));
+                                }
+                            }
                             None => { /* key-up report or modifier — ignore */ }
                         }
                     }
