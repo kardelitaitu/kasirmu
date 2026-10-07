@@ -1466,7 +1466,7 @@ Tasks:
 - [x] Add query plan tests (offline_queue and analytics expression indexes).
 - [x] Remove `SELECT *` from large-table hot paths (explicit column projection in tables.rs).
 - [x] Fix N+1 query patterns (get_product_tax_rates_batch in map_products_to_dtos, sale_display_codes and faktur_pajak batch in history).
-- [ ] Bound prepared statement cache.
+- [x] Bound prepared statement cache (conn.set_prepared_statement_cache_capacity(64) and PRAGMA cache_size=-8000 in StoreDatabaseManager).
 
 Exit criteria:
 
