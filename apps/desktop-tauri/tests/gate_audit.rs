@@ -854,10 +854,29 @@ fn diff_rows(
     for stem in actual.keys() {
         if !pinned.iter().any(|(s, _, _)| s == stem) {
             let (calls, keys) = &actual[stem];
-            rows.push(format!(
-                "{stem:<20} unpinned gates permissions on disk but is NOT in the pinned \
-                 census (source: {calls} gate calls, keys {keys:?})"
-            ));
+            // TWO DIFFERENT FACTS, and the earlier single wording was false for one
+            // of them. A module with gate calls is real debt: it enforces
+            // permissions that no pin row reviews. A module with NO gate calls is
+            // "ungated by construction" in this file's own words, and its absence
+            // from the pin means only that nobody wrote the expected `0, &[]` row --
+            // which is bookkeeping, not an unreviewed gate. Reporting both as
+            // "gates permissions on disk" overstated the second: four of the
+            // tablet rows currently read that way while carrying zero calls and
+            // zero keys. Split because the reader's next action differs -- add a
+            // gate to the review, versus record an expectation that will never
+            // change.
+            if *calls == 0 && keys.is_empty() {
+                rows.push(format!(
+                    "{stem:<20} unmapped module has no gate calls and is absent from the \
+                     pinned census; add it as `0, &[]` so the absence is recorded rather \
+                     than inferred"
+                ));
+            } else {
+                rows.push(format!(
+                    "{stem:<20} unpinned gates permissions on disk but is NOT in the pinned \
+                     census (source: {calls} gate calls, keys {keys:?})"
+                ));
+            }
         }
     }
     rows
@@ -1074,14 +1093,14 @@ fn all_gated_permission_keys_are_registered() {
 /// A gate CALL is counted; a wrapper DEFINITION is not -- and the definition
 /// must match the GATE VOCABULARY for the guard to matter.
 ///
-/// A first draft of this case used a definition named \`require_inventory_permission\`
-/// while matching the vocabulary \`require_session_permission(\`, and it passed
+/// A first draft of this case used a definition named `require_inventory_permission`
+/// while matching the vocabulary `require_session_permission(`, and it passed
 /// with the guard DISABLED: the definition line happened to contain no gate
 /// token, so skipping it changed nothing (found by mutation, not by reading).
 /// The load-bearing shape is a definition whose NAME contains a gate spelling --
 /// which is exactly the bridge's own layout, where each module keeps a thin
-/// \`require_<domain>_permission\` wrapper beside calls to
-/// \`require_session_permission\`. Without the guard, every such wrapper would be
+/// `require_<domain>_permission` wrapper beside calls to
+/// `require_session_permission`. Without the guard, every such wrapper would be
 /// counted as a call site and every module would gain a phantom gate -- the
 /// exact shape of an "unpinned gates permissions on disk" row.
 #[test]
@@ -1179,14 +1198,14 @@ fn raw_permission_literals_reports_a_string_literal_argument() {
 /// the only shape its brace walker handles.
 ///
 /// MEASURED, and the measurement corrects an assumption: this branch handles a
-/// shape that appears **zero times** in \`crates/kasirmu-bridge/src\`. All 76
-/// \`#[cfg(test)]\` declarations there are the UNBRACED \`#[cfg(test)] #[path = …] mod
-/// tests;\` form -- a declaration with no body in the file to strip, which is why
+/// shape that appears **zero times** in `crates/kasirmu-bridge/src`. All 76
+/// `#[cfg(test)]` declarations there are the UNBRACED `#[cfg(test)] #[path = …] mod
+/// tests;` form -- a declaration with no body in the file to strip, which is why
 /// the else-branch below is the one that actually runs. So this case pins the
 /// walker's real behaviour on the shape it was written for, and the next one
 /// pins the shape the tree actually uses. Neither is a claim that the brace
 /// branch is LOAD-BEARING: test bodies are also excluded by FILENAME, since
-/// \`census_dir\` skips any file whose stem ends in \`_tests\` (gate_audit.rs:780)
+/// `census_dir` skips any file whose stem ends in `_tests` (gate_audit.rs:780)
 /// before this function is ever called. Recording the redundancy so nobody
 /// "removes the dead branch" without knowing what else depends on it.
 #[test]
@@ -1203,7 +1222,7 @@ fn strip_test_blocks_consumes_an_inline_braced_cfg_test_block() {
 }
 
 /// The UNBRACED form -- `#[cfg(test)] #[path = …] mod tests;` -- is what the tree
-/// actually uses (76 occurrences in \`kasirmu-bridge\`), and the walker must leave
+/// actually uses (76 occurrences in `kasirmu-bridge`), and the walker must leave
 /// the declaration's line in place rather than eating the rest of the file.
 ///
 /// This is the else-branch, and it is the branch that fires on every real input.
@@ -1599,5 +1618,45 @@ fn permission_value_resolves_each_key_to_its_own_constant() {
     assert!(
         checked > 0,
         "no keys were checked -- the pin is empty, so this test proved nothing"
+    );
+}
+
+/// A zero-call, zero-key module is reported as BOOKKEEPING, not as an unreviewed gate.
+///
+/// WHY. Four tablet rows (`edc`, `kds_device`, `kds_routing`, `shifts`) currently
+/// fail the census while carrying `0` calls and `[]` keys -- modules that exist
+/// on disk and gate nothing. The single previous wording called every one of
+/// them "gates permissions on disk", which is false for these four and sends the
+/// reader looking for a gate that does not exist. This file's own header says a
+/// zero-call module is "ungated by construction (its census is pinned as `0, &[]`)",
+/// so the honest report is that the expected row was never written.
+#[test]
+fn diff_rows_separates_an_empty_module_from_an_unpinned_gate() {
+    let actual = map(&[
+        ("shifts", 0, &[]),
+        ("updater", 3, &["SETTINGS_EDIT", "SETTINGS_READ"]),
+    ]);
+    let pinned: &[(&str, usize, &[&str])] = &[];
+    let rows = diff_rows(&actual, pinned);
+    assert_eq!(rows.len(), 2, "both modules must be reported: {rows:?}");
+
+    let shifts = rows.iter().find(|r| r.contains("shifts")).expect("shifts row");
+    assert!(
+        !shifts.contains("gates permissions on disk"),
+        "a module with no gate calls must not claim it gates permissions: {shifts:?}"
+    );
+    assert!(
+        shifts.contains("0, &[]"),
+        "the row must say what to add, since the fix is bookkeeping: {shifts:?}"
+    );
+
+    let updater = rows.iter().find(|r| r.contains("updater")).expect("updater row");
+    assert!(
+        updater.contains("gates permissions on disk"),
+        "a module WITH gate calls is genuine debt and must still say so: {updater:?}"
+    );
+    assert!(
+        updater.contains("SETTINGS_READ"),
+        "the real-debt row must carry the keys for the reviewer: {updater:?}"
     );
 }
