@@ -407,7 +407,7 @@ Measured after the change: 665 tests green across
 tablet leg **unchanged** (82 unregistered, 82 allowlisted) and still exit 1 from
 its **dev-mock** leg — the pre-existing red the plan already names.
 
-### 6.2 Verified on the device 2026-10-07, second build (HEAD `d7c80facc+`)
+### 6.1 Verified on the device 2026-10-07, second build (HEAD `d7c80facc+`)
 
 The debug APK built from these commits was installed over wireless ADB and the
 walk run three times (cold start each time). Measured results:
@@ -426,7 +426,8 @@ walk run three times (cold start each time). Measured results:
 - **Settings sections:** 14/14 mount, none hit a boundary. Control counts
   unchanged from §6.1. `general`'s currency list now populates (the §5.5
   scoped-token fix), confirming the stuck "Loading currencies…" was the
-  missing token, not a missing command.
+  missing token, not a missing command. Control counts are unchanged from the
+  first walk (§6.2).
 - **§2.2 verdict revised:** `pg_sync_status_scoped` and
   `offline_queue_status_summary_scoped` turn out to be the ONLY two
   reachable-and-wrong names — `general`'s stuck currency list was the token
@@ -441,7 +442,7 @@ first token and that token is replaced mid-fan-out by the workspace-activation
 refresh. Benign (a refetch follows), but the provider should either await a
 stable token or refetch on replacement. Left as a recorded follow-up.
 
-### 6.1 Re-measured on the device 2026-10-07 — with two caveats
+### 6.2 First walk, stale bundle — kept for the contrast
 
 `scripts/android-settings-walk.mjs` (committed `552a4ab6b`) now walks the hub
 repeatably. With `--routes=sections` — i.e. **without** visiting `#/topology`
