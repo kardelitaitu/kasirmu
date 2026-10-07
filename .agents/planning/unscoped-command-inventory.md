@@ -24,7 +24,28 @@
 > (`require_inventory_count_permission` and kin), so tablet debt is **overstated** — 105 on the
 > widened vocabulary. Safe direction: a ceiling correction, not a hole.
 
-Measured 2026-09-13 against HEAD `90b7132ca` (branch `0.0.37`). Read-only run: no source file edited, nothing committed, no build. Reproducible via `.agents/scripts/measure_gate_gap.mjs`; raw output in `.agents/gate-gap.raw.txt`.
+Measured 2026-09-13 against HEAD `90b7132ca` (branch `0.0.37`). Read-only run: no source file edited, nothing committed, no build.
+
+> ⚠️ **RE-MEASURED 2026-10-07 — the reconciliation this file is built on no longer holds.** §0's
+> load-bearing claim is that the generated ledger is a *complete partition* of the live registration
+> list ("448/448 and 318/318 with zero orphan rows"). It is not any more, on either shell. Parsing the
+> `generate_handler![ … ]` block the way §0 says to:
+>
+> | source | desktop | tablet |
+> |---|---|---|
+> | live `lib.rs` block | **494** | **419** |
+> | generated ledger `REGISTERED_TOTAL` | **481** | **413** |
+> | test `REGISTERED_FLOOR` | **486** | **413** |
+>
+> So the ledger is stale by 13 names on desktop and 6 on tablet, and the three counts disagree with
+> each other — the ledger was not regenerated after those registrations landed. **Do not cite
+> `REGISTERED_TOTAL` or `DEBT_CEILING` from this file or from the ledger without regenerating first.**
+> The method in §0 is still the right method — parse the block, compare against the ledger, expect zero
+> orphan rows — and running it is exactly how the gap above was found. The correction block at the top
+> (the desktop `gated` column being a stem-match, not a permission-check, claim) is unaffected and is
+> still the most important thing on this page. NOT re-verified: the per-command classifications below.
+
+Reproducible via `.agents/scripts/measure_gate_gap.mjs`; raw output in `.agents/gate-gap.raw.txt`.
 
 ---
 
