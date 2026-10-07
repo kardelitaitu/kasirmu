@@ -38,7 +38,7 @@
 
 **Sibling Documents:**
 - `done-todo-refactor-pos-screen-agents-1.md` (Agent 1 — Cart Engine & State Architect) — **FINISHED**; cited by bare name with no `./` prefix: retired under the `done-todo-` convention (its only root commit is `238912974`; `git log -- todo-refactor-pos-screen-agents-1.md` under the old name is empty, so there is **no rename event to cite for this file**, and `94b5da2cc`, which renamed other work orders, never touched it), and one clause only: a separate session has an *uncommitted, in-flight* move of retired work orders out of the repo root, which is why no path is written here.
-- [`todo-refactor-pos-screen-agents-3.md`](./todo-refactor-pos-screen-agents-3.md) (Agent 3 — PaymentModal & Split Tenders Deconstruction)
+- [`todo-refactor-pos-screen-agents-3.md`](done-todo-refactor-pos-screen-agents-3.md) (Agent 3 — PaymentModal & Split Tenders Deconstruction)
 
 > ⚠️ **Scope gap found by the audit:** `PosScreen.tsx` is not the only POS screen. The `store-pos` workspace renders `ui/src/features/retail/RetailPosScreen.tsx` (**1,808 lines**) — `ui/src/app/AppShell.tsx:36,:519,:551` and `ui/src/app/tablet/TabletAppShell.tsx:19,:173` — which owns its own `RetailCartPanel.tsx` and is untouched by this plan. The "reduce to a composition root" goal below therefore covers the sales/restaurant POS only.
 

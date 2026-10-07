@@ -34,8 +34,8 @@ for stock movements — the two pieces that do **not** exist yet.
 
 **Target Crate:** `platform/sync/` (package name `platform-sync`)
 **Sibling Documents:**
-- [`todo-sync-conflict-agents-2.md`](./todo-sync-conflict-agents-2.md) (Agent 2 — Cloud Conflict Detection)
-- [`todo-sync-conflict-agents-3.md`](./todo-sync-conflict-agents-3.md) (Agent 3 — Resolution UI & Audit)
+- [`todo-sync-conflict-agents-2.md`](done-todo-sync-conflict-agents-2.md) (Agent 2 — Cloud Conflict Detection)
+- [`todo-sync-conflict-agents-3.md`](done-todo-sync-conflict-agents-3.md) (Agent 3 — Resolution UI & Audit)
 
 ---
 

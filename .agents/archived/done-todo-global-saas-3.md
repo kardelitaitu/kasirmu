@@ -1,10 +1,10 @@
 # Global SaaS POS — Phase 3: P2 Scale & Operations
 
 Phase 3 of 3. Sibling phases:
-[`todo-global-saas-1.md`](./todo-global-saas-1.md) (Phase 1 — P0 platform
+[`todo-global-saas-1.md`](done-todo-global-saas-1.md) (Phase 1 — P0 platform
 foundations; carries the shared contract: baseline, access contract, canonical
 hierarchy, adopted policy §A/B/E/F/G/H/I, and the decisions list) ·
-[`todo-global-saas-2.md`](./todo-global-saas-2.md) (Phase 2 — P1 product
+[`todo-global-saas-2.md`](done-todo-global-saas-2.md) (Phase 2 — P1 product
 maturity).
 
 This file holds the P2 work list and the regional/compliance policy (§K) it

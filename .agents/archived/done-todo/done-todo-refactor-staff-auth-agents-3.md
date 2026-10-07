@@ -6,8 +6,8 @@
 
 **Target File:** `ui/src/features/staff/StaffManagementScreen.tsx` (Baseline: 1,380 lines)  
 **Sibling Documents:**
-- [`todo-refactor-staff-auth-agents-1.md`](./todo-refactor-staff-auth-agents-1.md) (Agent 1 — Auth & PIN Verification Core)
-- [`todo-refactor-staff-auth-agents-2.md`](./todo-refactor-staff-auth-agents-2.md) (Agent 2 — Staff Profile & Permissions Engine)
+- [`todo-refactor-staff-auth-agents-1.md`](done-todo-refactor-staff-auth-agents-1.md) (Agent 1 — Auth & PIN Verification Core)
+- [`todo-refactor-staff-auth-agents-2.md`](done-todo-refactor-staff-auth-agents-2.md) (Agent 2 — Staff Profile & Permissions Engine)
 
 ---
 

@@ -6,8 +6,8 @@
 
 **Target Crates:** `crates/oz-core/src/db/`  
 **Sibling Documents:**
-- [`todo-refactor-backend-db-agents-1.md`](./todo-refactor-backend-db-agents-1.md) (Agent 1 — Financial & Reporting DB Services)
-- [`todo-refactor-backend-db-agents-3.md`](./todo-refactor-backend-db-agents-3.md) (Agent 3 — Inventory, Stock & Catalog Repositories)
+- [`todo-refactor-backend-db-agents-1.md`](done-todo-refactor-backend-db-agents-1.md) (Agent 1 — Financial & Reporting DB Services)
+- [`todo-refactor-backend-db-agents-3.md`](done-todo-refactor-backend-db-agents-3.md) (Agent 3 — Inventory, Stock & Catalog Repositories)
 
 ---
 

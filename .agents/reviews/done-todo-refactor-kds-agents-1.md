@@ -25,7 +25,7 @@
 **Feature directory today:** `ui/src/features/kds/` = 33 files (15 `.tsx`, 10,865 lines).
 
 **Sibling Documents:**
-- [`todo-refactor-kds-agents-2.md`](./todo-refactor-kds-agents-2.md) (Agent 2 — Order Ticket Cards & Station Timers) — still live at the root.
+- [`todo-refactor-kds-agents-2.md`](done-todo-refactor-kds-agents-2.md) (Agent 2 — Order Ticket Cards & Station Timers) — still live at the root.
 - `done-todo-refactor-kds-agents-3.md` (Agent 3 — Restaurant Menu, Course Grouping & Modifier Popups) — **finished and archived**; its target, `ui/src/features/restaurant/RestaurantMenu.tsx` (438 ln), is already decomposed.
 
 ---

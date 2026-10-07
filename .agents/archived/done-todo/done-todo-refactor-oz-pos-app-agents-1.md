@@ -5,8 +5,8 @@
 **Goal:** Stabilize CI execution by eliminating the memory killer, extract non-GUI networking and background daemons (`lan_server`, `local_api`, `image_push`, `email_scheduler`) from `apps/desktop-tauri` into dedicated headless crates, and drastically reduce the dependency footprint of the GUI shell.
 
 **Sibling Documents:**
-- [`todo-refactor-oz-pos-app-agents-2.md`](./todo-refactor-oz-pos-app-agents-2.md) (Agent 2 — Core Command Middleware & `oz-bridge`)
-- [`todo-refactor-oz-pos-app-agents-3.md`](../../todo-refactor-oz-pos-app-agents-3.md) (Agent 3 — Test Relocation, Thin Shell & IPC Parity)
+- [`todo-refactor-oz-pos-app-agents-2.md`](done-todo-refactor-oz-pos-app-agents-2.md) (Agent 2 — Core Command Middleware & `oz-bridge`)
+- [`todo-refactor-oz-pos-app-agents-3.md`](../../reviews/done-todo-refactor-oz-pos-app-agents-3.md) (Agent 3 — Test Relocation, Thin Shell & IPC Parity)
 
 ---
 
