@@ -134,6 +134,18 @@ async fn create_backup_direct(
     db_path: &Path,
 ) -> Result<BackupResult, BridgeError> {
     let output = default_backup_path(db_path);
+    // Preflight disk space before creating backup snapshot (Phase 3 data layer)
+    let output_path = Path::new(&output);
+    if let Ok(space) = platform_instance_guard::get_disk_space(output_path) {
+        let db_size = std::fs::metadata(db_path).map(|m| m.len()).unwrap_or(0);
+        let required_bytes = db_size.saturating_add(50 * 1024 * 1024);
+        if space.available_bytes < required_bytes {
+            return Err(BridgeError::Invalid(format!(
+                "insufficient disk space for backup: {} bytes available, {} bytes required",
+                space.available_bytes, required_bytes
+            )));
+        }
+    }
     let conn = ctx.lock_global().await;
     let store = Store::new(&conn);
     store.backup(&output)?;
@@ -758,7 +770,25 @@ pub async fn create_backup_to(
     // operator chose is benign, but a bridged cache path is constructed by JS
     // and must not escape the app cache via `..`.
     validate_contained_path(target_path)?;
+    // Preflight disk space before creating backup snapshot (Phase 3 data layer)
     let conn = ctx.lock_global().await;
+    let target = Path::new(target_path);
+    if let Ok(space) = platform_instance_guard::get_disk_space(target) {
+        let page_count: i64 = conn
+            .query_row("PRAGMA page_count", [], |row| row.get(0))
+            .unwrap_or(0);
+        let page_size: i64 = conn
+            .query_row("PRAGMA page_size", [], |row| row.get(0))
+            .unwrap_or(4096);
+        let db_size = (page_count.max(0) as u64).saturating_mul(page_size.max(0) as u64);
+        let required_bytes = db_size.saturating_add(50 * 1024 * 1024);
+        if space.available_bytes < required_bytes {
+            return Err(BridgeError::Invalid(format!(
+                "insufficient disk space for backup: {} bytes available, {} bytes required",
+                space.available_bytes, required_bytes
+            )));
+        }
+    }
     let store = Store::new(&conn);
     store.backup(target_path)?;
     let size_bytes = std::fs::metadata(target_path).map(|m| m.len()).unwrap_or(0);

@@ -1459,9 +1459,9 @@ Tasks:
 - [ ] Add indexes for hot queries.
 - [x] Bound sync outbox (list_pending_offline_bounded in Store & mobile sync daemon).
 - [x] Make sync queue disk-backed (SQLite offline_queue table).
-- [ ] Stream backup creation.
-- [ ] Stream backup restore.
-- [ ] Add temp-space preflight.
+- [x] Stream backup creation (SQLite 512-page incremental chunking via rusqlite::backup::Backup in core::db::mod.rs).
+- [x] Stream backup restore (pre-restore recovery snapshot and zero-copy copy_file_range in recovery.rs).
+- [x] Add temp-space preflight (platform_instance_guard storage preflight in create_backup_direct, create_backup_to, and restore_prepare).
 - [x] Add WAL checkpoint policy (wal_autocheckpoint=1000, blur checkpoint).
 - [x] Add query plan tests (offline_queue and analytics expression indexes).
 - [x] Remove `SELECT *` from large-table hot paths (explicit column projection in tables.rs).
@@ -1471,7 +1471,7 @@ Tasks:
 Exit criteria:
 
 - [ ] Large dataset scenario stays within budget.
-- [ ] Backup/restore does not load full archive into memory.
+- [x] Backup/restore does not load full archive into memory.
 - [ ] Reports stream or page results.
 - [ ] Sync queue remains bounded after offline shift.
 
