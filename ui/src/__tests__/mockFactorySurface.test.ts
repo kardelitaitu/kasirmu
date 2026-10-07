@@ -252,15 +252,26 @@ const KNOWN_GAPS: Record<string, string[]> = {
     'getInventoryTurnover', 'getPaymentMethodBreakdown', 'getSaleLineMarginsScoped',
     'getTableTurnover', 'getVoidedItems', 'getVoidedSalesSummary',
   ],
-  // 13 names. `ScannerError` is a class, and `readScaleWeight` / `getCurrencyInfo`
+  // 14 names. `ScannerError` is a class, and `readScaleWeight` / `getCurrencyInfo`
   // style helpers are value exports; a `typeof x === 'function'` audit would have
   // missed all three, which is why this counts keys, not functions.
+  //
+  // `printEdcSettlementSlipScoped` joined 2026-10-07 and is recorded rather than
+  // mocked, deliberately. It is fully wired on the Rust side — registered in BOTH
+  // shells (desktop-tauri/lib.rs:1505, mobile-tauri/lib.rs:1221) and implemented in
+  // kasirmu-bridge/src/hardware.rs:631 — but it has ZERO callers under ui/src: the
+  // only occurrence is its own definition at api/hardware.ts:103. So no suite can
+  // route through it, and a mock would configure nothing. This is the case the
+  // gap list exists for: the guard cannot tell "unmocked and unreachable" from
+  // "unmocked and about to throw", and a reader can. When a caller appears, the
+  // mock and this deletion move together — which is exactly what the failure
+  // message instructs.
   '@/api/hardware <- createHardwareApiMock': [
     'ScannerError', 'discoverHardwareScoped', 'displayClearScoped',
     'displayShowScoped', 'listDisplaysScoped', 'listScannersScoped',
-    'openCashDrawerScoped', 'printReceiptScoped', 'printSalesReceiptScoped',
-    'readScaleWeight', 'readScaleWeightScoped', 'startScannerScoped',
-    'stopScannerScoped',
+    'openCashDrawerScoped', 'printEdcSettlementSlipScoped', 'printReceiptScoped',
+    'printSalesReceiptScoped', 'readScaleWeight', 'readScaleWeightScoped',
+    'startScannerScoped', 'stopScannerScoped',
   ],
   // 8 names.
   '@/api/products <- createRetailProductsApiMock': [
