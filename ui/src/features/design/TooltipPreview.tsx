@@ -353,6 +353,20 @@ export default function TooltipPreview() {
                 Beta
               </button>
             </Tooltip>
+
+            {/* Inline text trigger. The section's own description above names
+                "inline text, spans, and custom components", and the sheet has
+                carried a complete .tp-trigger--inline rule (:164, with its :hover
+                at :176) since the page was written — but no demo ever applied it,
+                so the rule read as dead CSS. This is the demo the copy promises:
+                a <button>, because a tooltip trigger must be focusable, styled by
+                the sheet rather than by an inline style object so the rule is
+                exercised rather than duplicated. */}
+            <Tooltip content="Inline text trigger — dotted underline" position="bottom">
+              <button type="button" className="tp-trigger tp-trigger--inline">
+                inline trigger
+              </button>
+            </Tooltip>
           </div>
 
           <code className="tp-code">{`{/* Icon button */}
@@ -365,6 +379,11 @@ export default function TooltipPreview() {
 {/* Badge trigger */}
 <Tooltip content="Beta feature">
   <span tabIndex={0} role="button">Beta</span>
+</Tooltip>
+
+{/* Inline text trigger */}
+<Tooltip content="Inline text trigger">
+  <button className="tp-trigger tp-trigger--inline">inline trigger</button>
 </Tooltip>`}</code>
         </section>
 
