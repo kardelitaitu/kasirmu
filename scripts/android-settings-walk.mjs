@@ -221,8 +221,18 @@ async function main() {
 
   // Capture every rejected invoke from before the first navigation onward:
   // the partial-load toast ("Some settings could not be loaded") names no
-  // command, and its source is intermittent — attaching the patch here is
-  // what makes a walk that reproduces the toast also name the cause.
+  // command, and its source is intermittent.
+  //
+  // MEASURED 2026-10-07, INERT on this build: the patch attaches to
+  // `window.__TAURI_INTERNALS__.invoke`, but the app's transport is
+  // `ui/src/api/tauri.ts` `invoke` → `rawInvoke` from `@tauri-apps/api/core`,
+  // and on-device traces showed ZERO calls through the patched door while the
+  // fan-out demonstrably ran. Likely the dev-mock layer or a captured module
+  // reference replaces the door before we attach. Left in place because it is
+  // harmless and will start biting the moment the transport is understood;
+  // the productive next probe is a debug build with a subscriber on the
+  // ERR-06 telemetry channel (`utils/logged-invoke.ts` `emitIpcError`), which
+  // sees every failure by construction.
   await evaluate(`(() => {
     const internals = window.__TAURI_INTERNALS__;
     if (!internals || internals.__walkPatched) return;
