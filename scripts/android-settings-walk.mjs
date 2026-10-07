@@ -267,6 +267,21 @@ async function main() {
 
     const problems = [];
     let verdict = 'ok';
+    if (route === TOPOLOGY_ROUTE) {
+      // The route is WITHDRAWN on the tablet (plan §5.1): the expected state
+      // is the explanatory notice. The editor mounting here — or a toast —
+      // is the regression, not the absence of a canvas.
+      const notice = await evaluate(
+        `!!document.querySelector('[data-testid="topology-tablet-unavailable"]')`,
+      );
+      if (notice && !probe.crash && probe.toasts.length === 0) {
+        results.push({ route, verdict: 'ok', controls: 0, container: 'withdrawn — notice', problems: [], text: probe.text, toasts: [] });
+        console.log(`  . ${route.padEnd(30)} withdrawn — notice rendered`);
+        continue;
+      }
+      problems.push(notice ? 'notice rendered alongside errors' : 'editor mounted on the tablet');
+      verdict = 'FAIL';
+    }
     if (probe.crash) {
       problems.push(`rendered the error boundary — ${probe.boundaryMsgs.join(' | ')}`);
       verdict = 'FAIL';
