@@ -88,6 +88,25 @@ Found and fixed while triaging, from a manual probe rather than the detector (it
 
 ---
 
+## 3c. Module / crate / platform / ops READMEs (31 files)
+
+The last surface no pass had covered. 30 of the 31 carry audit stamps, **13 of them from 2026-07-22** — a date that predates the oz-* → kasirmu-* rebrand, the store→location rename and the tablet-parity work — so the question was staleness, not virginity.
+
+**Mechanically clean:** the dead-refs checker over this corpus reports 0 unresolved references. The drift here is **semantic** — claims about what code does.
+
+Fixed (commit `f408108c5` plus `ca43cd6d3`):
+
+- **`modules/loyalty/README.md` — a BOOT contract, wrong.** Declared `dependencies: ["crm"]`; the manifest, `dependencies()` (`src/lib.rs:98`) and the drift test all carry `["crm", "giftcards"]`. Not cosmetic: `namespace_grants()` names `giftcards` so loyalty may read the `gift_cards` table, and the kernel refuses to boot if a grant names an undeclared dependency. Also corrected: it described `src/models.rs` as defining the type set, when the file is now a re-export stub (`pub use foundation::loyalty::*`, moved by ADR-61 on 2026-09-28).
+- **`crates/kasirmu-core/README.md` — the structural map was six modules behind.** Heading said 66 `pub mod`, measured **72**; the table had 68 rows, measured **74**. Seven modules had no row (`attestation`, `build_fingerprint`, `desktop_link`, `kasirpkg`, `server_origin`, `stock_variance`, `workspace_type`) and one row still carried the retired name `ozpkg` for `kasirpkg`. The section's own two-count explanation had stale citations too (`sync_client.rs`, `lib.rs:254`); its reasoning was re-verified and holds.
+- **`ops/packaging/mobile/README.md` — described a workflow that does not run.** Its §CI/CD described TWO live pipelines; `.github/workflows/ios.yml` has been `attic/ios.yml.bak` since `23c963303` (2026-09-02). The iOS half is now marked retired with its secret manifest kept as revival documentation; the Android half was corrected against the live file (**JDK 21** not 17, explicit **NDK 30.0.14904198**, **no `cargo tauri android init`** since the scaffold is committed, and `v*`/`workflow_dispatch` only with **no PR trigger**). An internal touch-target contradiction (48px stated vs a 44×44px table) was reconciled.
+- **`ops/packaging/README.md` — a certified path that does not exist.** Its 2026-07-22 stamp claimed "all referenced paths exist", including `oz-pos-updater.key`; the real key is `kasirmu-updater.key.pub`. Corrected. `/var/lib/oz-pos/` was kept but annotated — it is accurate about what `postinst`/`prerm`/`kasir.mu.desktop` still do, so it is an unresolved rebrand in the packaging layer, not doc drift.
+- **`modules/currency` + `modules/staff` — stub hooks described as live.** Both presented the lifecycle hooks in the present tense ("Validates configuration", "Prepares for … operations"); both are stubs that only log, the same defect `modules/sales` had already corrected. Fixed to match.
+- `modules/settings` (kernel line `:97` → `:127`), `modules/reporting` (`SaleCompletedReporter` was REMOVED by MSL-11; the README implied it was merely wired elsewhere), `crates/qris-core` (retired "oz-pos project" name; this was also the one README with no stamp at all).
+
+**PASS (24 files, verified clean):** every other module and crate README, `platform/sync`, `ops/install`, `ops/install/win`, and the qris feature flags / lua limits / HAL traits / CLI subcommands where spot-checked.
+
+---
+
 ## 4. Outstanding
 
 - **`check-api-surface.py` reports 1 discrepancy: `print_edc_settlement_slip_scoped`.** The command is registered in a peer **uncommitted** working tree (`apps/*/src/lib.rs` modified, absent from HEAD), so no doc row was added - a row for in-flight work goes stale the moment its owner revises it. It needs a row in `docs/guides/developer/api-reference.md` when that change lands. This is the ONLY red detector.
