@@ -1,3 +1,4 @@
+<!-- Audit stamp: 2026-10-08 · docs-auditor · status: ACCURATE AFTER REPAIR (2 findings) · Supersedes the 2026-09-29 marker below, kept verbatim. Repaired: (1) the page asserted "It runs no Clippy, and no live workflow does … grep -c clippy … prints 0" — FALSE: `dev-ci.yml#cargo-clippy` (`name: Cargo Clippy`, `dev-ci.yml:326`) runs `cargo clippy --workspace --all-targets -- -D warnings` as a live, path-gated job; the sentence now names it, and the local-vs-CI flag difference (`--all-features` local-only) is stated. (2) the crate tree listed 13 members; `crates/` holds **17** — added `kasirmu-bridge`, `kasirmu-lan`, `kasirmu-local-api`, `qris-core` (all verified under `crates/`). · Repaired against branch `0.0.41` at `134aaed1b`. -->
 <!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 333 lines, with a prior marker re-verified rather than replaced. A quickstart is the highest-leverage document in a repository for a new developer, because it is the one most likely to be followed literally and least likely to be read twice, so it was checked for the thing that matters most: do its commands still work. · THEY DO, and that is worth stating precisely because it is NOT the norm in this tree. A scan of the whole file finds ZERO pre-restructure crate or app names — no `oz-core`, no `apps/desktop-client`, no `oz-pos-app` — and the build commands use current paths: `cargo build --workspace`, `cd ui && npm ci --no-audit --no-fund`, `cd apps/desktop-tauri && cargo tauri dev`, `cd apps/mobile-tauri && cargo tauri dev`. A prior audit repaired four command-level errors here and they are all still repaired, which is the useful signal: this file has been the beneficiary of a recent pass and has not regressed. · THE DETAIL THAT MAKES IT TRUSTWORTHY is the note about where the Tauri dev server command is run from. A quickstart that says `cd apps/desktop-tauri && cargo tauri dev` without mentioning that the beforeDevCommand resolves its npm prefix relative to the app directory would send a new developer to a missing node_modules. This file states the resolution problem, shows the probe command, and explains the prefix — the kind of trap documentation that is invisible to anyone who already has the tree working and fatal to someone who does not. · The exclusion note about `cargo check --workspace --all-features` and the two app crates is the same class of care: a quickstart that tells a reader to run a command that fails for a known reason is worse than one that omits it. · NOT re-measured, because a quickstart's real test is running it: this pass did not build the workspace, install the UI dependencies or launch either Tauri dev server. What is verified is that the documented commands name current paths and packages. · Prior marker retained; footer re-dated to match the new stamp. -->
 # Quickstart
 
@@ -161,14 +162,17 @@ CI's `cargo-check` job runs **fmt → check**, and that is all. Its two steps ar
 then `Cargo check workspace` — `cargo fmt --all -- --check`, then
 `cargo check --workspace --all-targets --all-features` — so what a PR is rejected for is
 unformatted Rust, or a workspace that fails to compile across every target and every feature.
-**It runs no Clippy, and no live workflow does** — re-measure with
-`grep -c clippy .github/workflows/dev-ci.yml .github/workflows/release.yml`
-and it prints `0` for both files. Clippy is local policy —
-`scripts/check.sh` runs it in the step named `clippy workspace`, and `scripts/release.sh` runs it
-too (`grep -n 'clippy workspace' scripts/check.sh`, `grep -n 'cargo clippy' scripts/release.sh`;
-cite them by those names, not by line number, because lines move whenever a step is inserted
-above them). A green PR is therefore not proof Clippy passed — running
-`cargo clippy --all-targets --all-features -- -D warnings` yourself before you push is the only thing that makes it so.
+**Clippy is a SEPARATE job in the same workflow**: `dev-ci.yml#cargo-clippy` (`name: Cargo
+Clippy`) runs `cargo clippy --workspace --all-targets -- -D warnings` on the Rust path gate,
+so a green PR *is* proof Clippy passed on that shape. Re-measure with
+`grep -n 'cargo-clippy' .github/workflows/dev-ci.yml` (it appears as a job, a `needs:` entry
+and a `-D warnings` step; `release.yml` has none). It is not folded into `cargo-check`
+deliberately, so a lint failure and a compile failure stay distinguishable verdicts.
+Locally, `scripts/check.sh` runs the same check in the step named `clippy workspace`, and
+`scripts/release.sh` runs it too — note that those local runners pass only
+`--all-targets --all-features` (no `--workspace`), so they are close to, but not identical
+with, the CI lane. Cite them by those names, not by line number, because lines move whenever a
+step is inserted above them.
 
 ---
 
@@ -203,10 +207,9 @@ If you only want the i18n quality gate as a quick pre-flight, run `bash scripts/
 ```
 kasirmu/
 ├── Cargo.toml                  # workspace root
-├── crates/                     # Rust workspace members (one per kasirmu-* responsibility)
+├── crates/                     # 17 Rust workspace members (mostly one per kasirmu-* responsibility)
 │   ├── kasirmu-core/                # money, currency, cart, sale, inventory
 │   ├── kasirmu-crypto/              # cryptographic primitives (secret encryption at rest)
-│   ├── kasirmu-hal/                 # hardware abstraction + drivers
 │   ├── kasirmu-lua/                 # mlua runtime + script bindings
 │   ├── kasirmu-media/               # media pipeline (compress, crop, thumbnail)
 │   ├── kasirmu-security/            # encryption, secrets, PCI helpers
@@ -216,7 +219,12 @@ kasirmu/
 │   ├── kasirmu-api/                 # HTTP API server (axum)
 │   ├── kasirmu-notification/        # email & push notification dispatching
 │   ├── kasirmu-plugin/              # plugin sandbox & lifecycle
-│   └── kasirmu-cli/                 # migrations, backup, export CLI
+│   ├── kasirmu-cli/                 # migrations, backup, export CLI
+│   ├── kasirmu-hal/                 # hardware abstraction + drivers
+│   ├── kasirmu-bridge/              # shell-agnostic command bodies both Tauri apps share
+│   ├── kasirmu-lan/                 # LAN sync (CRDT replication, table/KDS sync, noise)
+│   ├── kasirmu-local-api/           # loopback HTTP API for local integrations
+│   └── qris-core/                   # QRIS payload codec (kept unprefixed on purpose)
 ├── apps/desktop-tauri/        # the desktop Tauri shell
 │   └── src/commands/           # Tauri commands (one folder per feature)
 ├── ui/                         # React + TypeScript front-end
@@ -331,4 +339,4 @@ Welcome to kasir.mu. Keep the curtain closed, the merchant happy, and the money 
 
 ---
 
-> last audited 29-09-26 by docs-auditor
+> last audited 08-10-26 by docs-auditor

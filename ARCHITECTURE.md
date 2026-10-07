@@ -1,5 +1,6 @@
 # kasir.mu Architecture
 
+<!-- Audit stamp: 2026-10-08 · docs-auditor · status: ACCURATE AFTER REPAIR (3 findings repaired) · Supersedes the 2026-08-09 marker below, kept verbatim. Repaired this pass: ADR count 74 -> **79** (`ls docs/decisions/*.md | grep -v README | grep -v '\.status\.md$' | wc -l` -> 79); migration file count 69 -> **74** (73 SQLite + 1 generated PG, `ls crates/kasirmu-core/migrations/*.sql | wc -l` -> 74); the Platform Core Services tree gained the two files it omitted (`staff.rs`, `error.rs` — verified present in `platform/core/src/`). Verified and left alone as accurate: 40 workspace packages, the Core Traits block (matches `foundation/src/contracts.rs` verbatim), and the AGENTS.md §4 env-var spellings. · Repaired against branch `0.0.41` at `134aaed1b`. -->
 <!-- Audit stamp: 2026-08-31 · docs-auditor · status: ACCURATE (5 structural majors repaired) · FIXED 31-08: Core Traits rewritten verbatim from foundation/src/contracts.rs (Module id/dependencies/on_load/on_start/on_stop->ModuleResult; Service id/start/stop; EventHandler<E> generic; DomainEvent added; invented `trait Integration` removed); Platform Core Services tree trimmed to the 6 real services (auth/rbac/rbac_presets/permission_registry/database/settings/terminal_profile) with a note that logging/audit/cache live elsewhere; permission delimiter domain.action -> domain:action with real keys (sales:process/view/refund); Event Flow invented names (stock.updated/customer.history.updated/points.awarded/report.data.changed) replaced with real handlers (SaleSyncEnqueuer/InventorySyncEnqueuer/AuditLogHandler/LoyaltyEarnHandler) incl. the Rule-2 diagram; ADR #31 -> #43 (react-only); foundation/ -> foundation/src/; HAL/payment/reporting device lists synced; module tree corrected to the 14 active modules (loyalty/purchasing were wrongly marked 'planned', 8 real modules omitted); apps/unified added; foundation contracts list +DomainEvent · REMAINING (minor backlog, not falsehoods): no dedicated HAL/driver-trait section (EdcTerminal detail lives in crates/kasirmu-hal/README.md); manifest example now complete (description+permissions); scoped-IPC (ADR #7) noted at commands/; remaining: PROMO-3/CUR-11/LOY-03/COR-7 not shown in any flow · counts (35 members / 13 crates / 14 modules / 61 ADRs) verified accurate at the time · SUPERSEDED 2026-09-18 by the P7 tree rewrite in this file (39 members / 17 crates / 14 modules / 71 ADRs) -->
 
 **Version:** 2.0 (Post-Restructuring)
@@ -234,6 +235,8 @@ platform/core/src/
 ├─ permission_registry.rs Canonical permission keys (domain:action)
 ├─ database/             SQLite management (connection, transactions, migrations)
 ├─ settings/             Application configuration (store name, tax, currency)
+├─ staff.rs              Staff/directory helpers over the identity DB
+├─ error.rs              Shared error types for the platform layer
 └─ terminal_profile.rs   Terminal profile resolution
 ```
 
@@ -537,8 +540,8 @@ All 6 restructuring phases have been completed.
   - `Product`, `Category`, `Inventory`, `Sku` — domain types with serde.
   - `Feature` — **39** toggleable feature flags (counted over the `pub enum Feature` variants in `crates/kasirmu-core/src/features.rs`; the file's own `//!` header still says 32 and is stale — a code finding, left alone) with dependency resolution, and **6** setup presets: `simple-retail`, `restaurant`, `full-store`, `cafe`, `franchise`, `custom` (union in `ui/src/api/settings.ts`, keys in `shared-ui/locales/settings.ftl`, preset→feature bundles owned by `preset_feature_keys` in `crates/kasirmu-core/src/features.rs`). The count on this line said 5 until 08-09-26, the same stale count corrected in `docs/guides/developer/admin-guide.md` the same day.
   - `Store<'a>` — typed CRUD facade over `&Connection`. All writes inside transactions.
-- **Migrations**: 68 SQLite `.sql` files plus the generated PG file, **69 in all as measured
-  2026-09-29** (`ls crates/kasirmu-core/migrations/*.sql | wc -l` → 69, of which
+- **Migrations**: 73 SQLite `.sql` files plus the generated PG file, **74 in all as measured
+  2026-10-08** (`ls crates/kasirmu-core/migrations/*.sql | wc -l` → 74, of which
   `ls crates/kasirmu-core/migrations/*.pg.sql | wc -l` → 1 is the generated PG schema), embedded by the
   `include_str!` list in `crates/kasirmu-core/src/migrations.rs`. Re-derive both numbers — this
   line has now been corrected three times (44 → 59 → 67 → 69) because a migration lands with most slices.
@@ -669,8 +672,8 @@ no tooling reads them, so the rule was dropped by the 2026-09-23 documentation
 audit rather than kept as a requirement nothing satisfies.
 
 Every architectural change must create an Architecture Decision Record (ADR).
-As of 2026-09-29 there are 74 ADRs in `docs/decisions/` (plus 2 archived) —
-`ls docs/decisions/*.md | grep -v README | grep -v '\.status\.md$' | wc -l` → 74, where the
+As of 2026-10-08 there are 79 ADRs in `docs/decisions/` (plus 2 archived) —
+`ls docs/decisions/*.md | grep -v README | grep -v '\.status\.md$' | wc -l` → 79, where the
 two `.status.md` sidecars are frontmatter mirrors and not ADRs. Key documents include:
 ```
 docs/decisions/2026-01-15-module-system-design.md
@@ -709,7 +712,7 @@ For the full list see the `docs/decisions/` directory.
 not hard deadlines. Every PR should move the codebase closer to the target
 architecture.*
 
-> last audited 08-09-26 by docs-auditor
+> last audited 08-10-26 by docs-auditor
 
 > status: ACCURATE (5 structural majors repaired 31-08-26) · Core Traits rewritten verbatim from foundation/src/contracts.rs (invented `Integration` removed, `DomainEvent` added); Platform Core Services trimmed to the 6 real services; permission delimiter corrected to `domain:action`; Event Flow invented names replaced with real handlers; ADR #43 and foundation/src/ corrected; counts verified accurate at the time (35 members / 13 crates / 14 modules / 61 ADRs — superseded 2026-09-18: 39 members / 17 crates / 14 modules / 71 ADRs). Minor backlog in the top audit comment (no dedicated HAL section; feature flows not shown).
 

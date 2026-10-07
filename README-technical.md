@@ -4,6 +4,8 @@
 
 # kasir.mu
 
+<!-- Audit stamp: 2026-10-08 · docs-auditor · status: ACCURATE AFTER REPAIR (2 findings) · First audit stamp this page has carried. Repaired: (1) the Enterprise-grade-code-quality bullet claimed "Strict Clippy … enforced, not CI" — false; `dev-ci.yml#cargo-clippy` is a live path-gated job, and the same file's own **Clippy** note (`:240`) already said so correctly, so the body contradicted itself. The bullet now names the CI lane. (2) test counts 9,026 / 623 -> **9,378 `#[test]`** (11,078 with `#[tokio::test]`; both bases stated) / **654** front-end files, in the principle bullet, the command table and the **Test count** note, which keeps its dated series and adds the 2026-10-08 reading. · Repaired against branch `0.0.41` at `134aaed1b`. -->
+
 > **A modular, offline-first Point-of-Sale platform built with Rust and Tauri v2.**
 
 kasir.mu is a Point-of-Sale platform designed for **retail, restaurants, cafés, and specialty businesses** that require reliability, performance, and long-term maintainability.
@@ -33,7 +35,7 @@ Modern POS systems often suffer from vendor lock-in, expensive subscriptions, cl
 - **Modular by design** — Independent modules for inventory, CRM, reporting, etc.
 - **Secure by default** — Encrypted `.kasirpkg` snapshots (whole-file `.db` backups are unencrypted), PAN masking, platform keychains
 - **Hardware abstraction** — Vendor-independent drivers for printers, scanners, displays, payment terminals, scales
-- **Enterprise-grade code quality** — 9,026 Rust `#[test]` functions and 623 front-end test files (measured 2026-09-29; re-derive both, they move with every slice: `grep -rn --include='*.rs' -o '#\[test\]' . | wc -l` → 9,026; `ls ui/src/**/*.test.* | wc -l` → 623). Note the two front-end bases differ and are not interchangeable: 623 is `ui/src/**/*.test.*` (what the command above counts), while `ls ui/src/__tests__/**/* | wc -l` → 628 counts every file in that directory including one `.json` fixture. Quote the base with the number. Strict Clippy (a project standard that developers and `scripts/check.sh` enforce, not CI); typed Money; transactional DB. The Vitest **case** total is not measured — it exists only in a run, and none is recorded here.
+- **Enterprise-grade code quality** — 9,378 Rust `#[test]` functions (11,078 counting `#[tokio::test]` too) and 654 front-end test files (re-measured 2026-10-08; re-derive both, they move with every slice: `grep -rn --include='*.rs' -o '#\[test\]' . | wc -l` → 9,378; `grep -rnE --include='*.rs' -o '#\[(tokio::)?test\]' . | wc -l` → 11,078; `ls ui/src/**/*.test.* | wc -l` → 654). Note the two front-end bases differ and are not interchangeable: 654 is `ui/src/**/*.test.*` (what the command above counts); the `ui/src/__tests__/**/*` directory base adds every extra file in that directory and counted 628 against the older 623, so quote the base with the number. Quote the base with the number. Strict Clippy runs in CI (`dev-ci.yml#cargo-clippy`, `cargo clippy --workspace --all-targets -- -D warnings`) AND locally in `scripts/check.sh`; typed Money; transactional DB. The Vitest **case** total is not measured — it exists only in a run, and none is recorded here.
 
 ---
 
@@ -230,7 +232,7 @@ See [docs/guides/developer/QUICKSTART.md](./docs/guides/developer/QUICKSTART.md)
 |---|---|
 | `cargo fmt --all` | Format Rust code (CI checks it: the `Cargo fmt check` step in `dev-ci.yml` runs `cargo fmt --all -- --check` — cited by step name, not line number, because lines move) |
 | `cargo clippy --all-targets --all-features -- -D warnings` | Lint — CI runs the `--workspace --all-targets` lane, `--all-features` is local-only (**Clippy** below) |
-| `cargo test --workspace` | Run tests — 9,026 `#[test]` fns (**Test count** below) |
+| `cargo test --workspace` | Run tests — 9,378 `#[test]` fns, 11,078 with `#[tokio::test]` (**Test count** below) |
 | `cargo test -p kasirmu-core --test integration` | Run consolidated core integration test suite (547 tests across 24 modules in 1 binary; e.g. `--test integration audit::` for scoped runs) |
 | `cargo test -p kasirmu-core --lib` | Fast unit iteration for `kasirmu-core` (skips integration binary) |
 | `bash scripts/check.sh` | The FULL local matrix (Rust + UI + migrations), run by hand — **not** what `git push` runs (**What a push runs** below) |
@@ -239,7 +241,7 @@ See [docs/guides/developer/QUICKSTART.md](./docs/guides/developer/QUICKSTART.md)
 
 **Clippy.** CI does run it: `dev-ci.yml#cargo-clippy`, path-gated on Rust changes (`if: needs.changes.outputs.rust == 'true'`), executing `cargo clippy --workspace --all-targets -- -D warnings` as its own job so a lint failure and a compile failure stay distinguishable verdicts. The one lane CI does **not** cover is `--all-features`, which is why `scripts/release.sh` and the step NAMED `clippy workspace` inside `scripts/check.sh` still run locally — re-find that step by name with `grep -n 'clippy workspace' scripts/check.sh`, because the `:44` this row once carried predates `ee5aacd46`, and a pointer verified today is false the next time anyone inserts a leg above it. **Changed 2026-09-29:** this note said clippy ran in no live workflow, on the strength of `grep -c clippy .github/workflows/*.yml` = 0 — true when measured, false from 2026-09-25 (C25), when the job landed.
 
-**Test count.** `grep -rn --include='*.rs' -o '#\[test\]' . \| wc -l` = 9,026 on 2026-09-29. The series is 8,280 (2026-09-15), 8,355 (2026-09-18), 8,695 (2026-09-23) — quote the command, not the figure.
+**Test count.** `grep -rn --include='*.rs' -o '#\[test\]' . \| wc -l` = 9,378 on 2026-10-08 (11,078 if `#[tokio::test]` is counted with it — `grep -rnE --include='*.rs' -o '#\[(tokio::)?test\]' . \| wc -l`). The `#[test]`-only series is 8,280 (2026-09-15), 8,355 (2026-09-18), 8,695 (2026-09-23), 9,026 (2026-09-29) — quote the command, not the figure.
 
 **What a push runs.** `.githooks/pre-push` invokes `scripts/run-pre-push.py` and nothing else (one call site, re-find it with `grep -n 'run-pre-push.py \$FLAGS' .githooks/pre-push`; the `:83-84` this row once carried moved to a lower line when `f5ec19201` widened the hook, which is why it is cited by pattern and not by number), and that script never calls `check.sh` (`grep -n check.sh .githooks/pre-push scripts/run-pre-push.py` exits 1, on the working copy and on the `HEAD` blob). What a push does run is a SUBSET of this matrix: the always-on Tier-0 static gates, then path-routed Tier-1 checks — `cargo check --workspace`, `cargo fmt --check`, `ui typecheck`, `ui vitest`, `analytics timezone invariance`, the three website checks and `lint-i18n` — with unrouted and dependency-blocked checks reported as skipped rather than passing (`scripts/run-pre-push.py`, `plan_area_tasks`).
 
@@ -304,3 +306,7 @@ This software (`kasir.mu`) is **NOT open source**. No part of this codebase, ass
 See [LICENSE](./LICENSE) for terms and restrictions. For commercial licensing and pricing inquiries, contact: **support@kasir.mu**.
 
 ![GitHub Profile Stats](https://kgnio-profile-card.vercel.app/api/card?user=kardelitaitu&theme=azure-noir)
+
+---
+
+> last audited 08-10-26 by docs-auditor

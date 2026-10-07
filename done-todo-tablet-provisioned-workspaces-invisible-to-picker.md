@@ -716,7 +716,7 @@ design preserves deliberately (and the pre-existing tablet caps gap its owner ma
 separately)."* That gap is about a Free row being promoted to Premium in dev; it is **not** the
 absent-row lock-out, and conflating the two is what produced the wrong framing above.
 
-#### The shared path, confirmed by the command bodies
+### The shared path, confirmed by the command bodies
 
 Both shells register a `get_subscription_capabilities` command and both reach the same
 fail-closed logic; the tablet's is a duplicate body rather than a delegation, which is why the two

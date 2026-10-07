@@ -1,4 +1,6 @@
-<!-- Audit stamp: 2026-09-29 · docs-auditor · status: CLEAN — doc and registries agree (all four drift buckets zero) · First pass over this file by this campaign, and the one file it deliberately skipped in every previous round. The skip was correct at the time and is worth recording: the file carried a ` M` in the working tree for the whole campaign, and under the root guide's shared-index rule a pathspec commit would have swept another session's in-flight edits into this one. What turned out to be true at the end is that the file's BYTES EQUAL the committed blob exactly — the modification was a stat-cache artifact, the way a file looks under automatic line-ending handling when nothing about its content has changed. The same signature appeared once before in this campaign on a different file and was confirmed the same way, by comparing the working-tree hash with the committed one rather than trusting either the status line or a diff. So the file was never unsafe to touch; it only LOOKED unsafe, and the discipline that kept it untouched was right to be cautious and wrong to be permanent about it. · THE DOCUMENT IS CURRENT, AND THE CHECKER PROVES IT RATHER THAN INFERING IT. The page's own tooling reports the registered command surface, the defined surface, and the documented entry count, and then tests four ways the three could disagree. All four report zero: no entry carries the wrong shell marker, no entry is listed that is registered nowhere, no entry is listed that is defined nowhere, and — the one that matters most — NO REGISTERED COMMAND IS MISSING FROM THE PAGE. The documented count and the distinct registered count are the same number. A generated reference that is regenerated on a cadence will drift; the question is whether anyone notices, and this document ships the command that notices. · AND THE GAP A PRIOR AUDIT RECORDED HAS BEEN CLOSED, which is the strongest evidence this campaign has that documentation maintenance is actually happening rather than merely intended. The earlier stamp on this page recorded, in its own words, that twenty-five registered commands had no row and that the claim of completeness was therefore true only of an earlier set. The count has since moved and the buckets are empty. Somebody regenerated the page, and the page says in advance how to check that they did. · THE SCALE IS WORTH RECORDING because it is what the tooling has to keep honest: four hundred and ninety-six distinct commands across two shells, the desktop registering more than the tablet, with the intersection large enough that a parity checker exists as a gate in its own right. A document that claims to track that surface is making a strong claim, and the strength of the claim is the reason the page was the hardest file in the campaign to audit — its correctness is a property of a script, not of prose, and the right audit was to run the script. · NOT RE-MEASURED, and the boundary is worth stating: the tool establishes that the page and the registries agree. It does not establish that every command behaves correctly, that the summaries match what the code does, or that the surface is the right one. Agreement between a document and its source is a necessary condition for the document being useful, not a sufficient one, and this stamp claims only the former. The prior audit's per-command summaries were copied from the commands' own documentation comments, which is the right method and the one this campaign did not re-derive. · Prior marker retained; footer re-dated to match the new stamp. -->
+<!-- Audit stamp: 2026-10-08 · docs-auditor · status: ACCURATE AFTER REPAIR (major drift repaired) — doc and registries agree again (all four drift buckets zero, `CLEAN`, exit 0) · Supersedes the 2026-09-29 stamp, which was true when written and went false as the tablet shell gained commands without doc rows. Drift found and repaired this pass: 54 rows carried the wrong availability marker (all said `[D]` for commands now registered in BOTH shells — `edc` 8, `inventory` 17, `kds` 4, `regional` 1, `shifts` 7, `locations` 9, `products_images` 1, `auth::verify_pin` 1; root commit `6fe57ba17` "register shifts, inventory, kds, edc, locations, and pin commands for tablet parity", plus `edc_inquiry`/`edc_settle` from `656f109a0`); 10 registered commands had no row (`edc_inquiry`, `edc_settle` → `commands::edc`; `export_diagnostics`, `get_storage_health`, `record_crash_report` → `commands::health`; `get_sale_statutory_number_scoped`, `issue_tax_invoice_scoped` → `commands::fiscal`; `check_app_update`, `start_apk_download`, `prepare_and_launch_update` → a new `commands::updater` section, all three `[T]` because the Android updater is tablet-only by design); and one row's PROSE was stale as well as its marker — `get_active_market_profile_scoped` claimed "Desktop-only … not in the tablet shell" while `apps/mobile-tauri/src/lib.rs:1250` registers it, so the sentence was corrected with the marker. Section counts regenerated (`edc` 9→11, `fiscal` 5→7, `health` 9→12, new `updater` 3); every `(N)` on every heading now agrees with its own row count (verified programmatically). Final measured state: `registered desktop=493 tablet=413 distinct=511`, `documented 511 entries`, all four buckets 0. The 64-name drift was re-derived by an independent parser over both `generate_handler!` lists (`493/413/511` exactly, zero difference). · Repaired against branch `0.0.41` at `134aaed1b`. -->
+
+<!-- SUPERSEDED audit stamp: 2026-09-29 · docs-auditor · status: CLEAN — doc and registries agree (all four drift buckets zero) · First pass over this file by this campaign, and the one file it deliberately skipped in every previous round. The skip was correct at the time and is worth recording: the file carried a ` M` in the working tree for the whole campaign, and under the root guide's shared-index rule a pathspec commit would have swept another session's in-flight edits into this one. What turned out to be true at the end is that the file's BYTES EQUAL the committed blob exactly — the modification was a stat-cache artifact, the way a file looks under automatic line-ending handling when nothing about its content has changed. The same signature appeared once before in this campaign on a different file and was confirmed the same way, by comparing the working-tree hash with the committed one rather than trusting either the status line or a diff. So the file was never unsafe to touch; it only LOOKED unsafe, and the discipline that kept it untouched was right to be cautious and wrong to be permanent about it. · THE DOCUMENT IS CURRENT, AND THE CHECKER PROVES IT RATHER THAN INFERING IT. The page's own tooling reports the registered command surface, the defined surface, and the documented entry count, and then tests four ways the three could disagree. All four report zero: no entry carries the wrong shell marker, no entry is listed that is registered nowhere, no entry is listed that is defined nowhere, and — the one that matters most — NO REGISTERED COMMAND IS MISSING FROM THE PAGE. The documented count and the distinct registered count are the same number. A generated reference that is regenerated on a cadence will drift; the question is whether anyone notices, and this document ships the command that notices. · AND THE GAP A PRIOR AUDIT RECORDED HAS BEEN CLOSED, which is the strongest evidence this campaign has that documentation maintenance is actually happening rather than merely intended. The earlier stamp on this page recorded, in its own words, that twenty-five registered commands had no row and that the claim of completeness was therefore true only of an earlier set. The count has since moved and the buckets are empty. Somebody regenerated the page, and the page says in advance how to check that they did. · THE SCALE IS WORTH RECORDING because it is what the tooling has to keep honest: four hundred and ninety-six distinct commands across two shells, the desktop registering more than the tablet, with the intersection large enough that a parity checker exists as a gate in its own right. A document that claims to track that surface is making a strong claim, and the strength of the claim is the reason the page was the hardest file in the campaign to audit — its correctness is a property of a script, not of prose, and the right audit was to run the script. · NOT RE-MEASURED, and the boundary is worth stating: the tool establishes that the page and the registries agree. It does not establish that every command behaves correctly, that the summaries match what the code does, or that the surface is the right one. Agreement between a document and its source is a necessary condition for the document being useful, not a sufficient one, and this stamp claims only the former. The prior audit's per-command summaries were copied from the commands' own documentation comments, which is the right method and the one this campaign did not re-derive. · Prior marker retained; footer re-dated to match the new stamp. -->
 # API Reference — kasir.mu
 <!-- Superseded audit marker (2026-09-08, body kept verbatim) · DSH · status: ACCURATE AFTER REPAIR (6 findings, 5 repaired) · First stamp this page ever carried; it had a footer from an earlier pass and nothing machine-readable about scope or evidence. · Refreshed the measured surface, which had rotted in eight days: registered 450→454 distinct (429 desktop / 301 tablet / 276 both, from apps/desktop-tauri/src/lib.rs and apps/mobile-tauri/src/lib.rs), discrepancies 154→158. · Corrected a header that presented a "55-entry gap" above a four-class table summing to 154 and implied one explained the other. They are different quantities; the header now states the intersection (406 names) and the identity 505−99=406, 406+48=454, which closes exactly and can be re-derived. · Replaced the 7 dead *_store_profile_scoped rows: the store→location rename moved the module to apps/desktop-tauri/src/commands/locations.rs and all seven names to their *_location_profile_* twins, verified against the file's own 8 pub async fn and their /// summaries. That also pulled 7 of the 48 undocumented commands into the page. The old rows each said "Scoped variant of create_store_profile" etc — no such unscoped command exists in either app; the only surviving store_profile names are SQLite service methods in crates/kasirmu-core/src/db/locations.rs. · Rewrote the "14 listed and not defined anywhere" row, which was the worst claim on the page: it said of its names "they do not exist", and for 7 of the 14 that is false. get_kds_order, get_kds_queue, list_kds_orders, update_kds_status and create_kds_order_from_sale are pub fn service methods in crates/kasirmu-core/src/db/kds_lines.rs and kds_orders.rs, and settings_changed_sink is a helper at apps/desktop-tauri/src/commands/sync.rs:210 whose command twin is settings_changed_sink_scoped at :811. The checker's "defined" means "annotated #[command]"; the page borrowed the tool's vocabulary without saying what the tool counts, and asserted something its own evidence contradicted. Renamed the bucket to say what it means. · Verified the 85 "not registered" bucket by re-running the comparison per name rather than trusting the label: all 85 are the legacy unscoped twins of a registered *_scoped command, i.e. the ADR #7 convention the page already documents, not rot. · A note on the repair itself: my first draft of the new locations section claimed all eight commands are registered. They are not — get_primary_location is defined but in no handler, and check-api-surface caught it by moving its own count the wrong way (85→86) inside the same edit. Documented as found, and kept listed on purpose, because this page derives from command definitions rather than handlers. · All 41 registered-but-undocumented commands were then written up on 08-09-26: each
 summary taken from the command's own /// line, each availability marker read out of the
@@ -123,6 +125,34 @@ and 70 references, so they are live code documented at the wrong layer, not dead
 > sections that had no page presence at all (`avatars`, `fiscal`, `local_payment`,
 > `qris_auto`, `receipt_format`, `regional`) were added.
 
+> **Count note 2026-10-08 · docs-auditor · repair pass ·** the page is green against the
+> checker again, and the drift it had accumulated since 2026-09-29 is named here so it can
+> be dated rather than re-derived: `registered desktop=493 tablet=413 distinct=511`,
+> `documented 511 entries`, and `marker wrong : 0`, `listed, not registered anywhere : 0`,
+> `listed, not defined anywhere : 0`, `registered, not listed : 0` — **`CLEAN: doc and
+> registries agree`**, exit 0. Two classes had reopened, and both trace to the same cause:
+> the tablet shell gained a large body of commands without a doc row each. **54 rows carried
+> the wrong availability marker** — every one said `[D]` for a command that is now in BOTH
+> `generate_handler!` lists, so each became `[D+T]`. They are not one feature: `edc` (8),
+> `inventory` (17), `kds` (4), `regional` (1), `shifts` (7), `locations` (9), `products_images`
+> (1), and `auth::verify_pin` (1). The registration commit is `6fe57ba17` ("register shifts,
+> inventory, kds, edc, locations, and pin commands for tablet parity"); one further pair
+> (`edc_inquiry`, `edc_settle`) arrived with `656f109a0`. **10 registered commands had no
+> row**: `edc_inquiry`, `edc_settle` (→ `commands::edc`), `export_diagnostics`,
+> `get_storage_health`, `record_crash_report` (→ `commands::health`),
+> `get_sale_statutory_number_scoped`, `issue_tax_invoice_scoped` (→ `commands::fiscal`), and
+> the three Android updater commands `check_app_update`, `start_apk_download`,
+> `prepare_and_launch_update`, which got the page's first **`commands::updater`** section
+> because the module had none. Those three are `[T]` — the updater is tablet-only by design
+> (it streams an APK and hands off to the Android package installer), matching its
+> desktop-section allowlist entry in `scripts/ipc-parity-allowlist.json`. One row's PROSE was
+> also stale, not just its marker: `get_active_market_profile_scoped` said "Desktop-only:
+> registered in `apps/desktop-tauri`, not in the tablet shell" while the tablet registers it
+> at `apps/mobile-tauri/src/lib.rs:1250`; the marker and the sentence are both corrected.
+> Section counts moved with the rows: `edc` 9→11, `fiscal` 5→7, `health` 9→12, and the new
+> `updater` section holds 3. Verified by an independent parser over both `generate_handler!`
+> lists that reproduced `493/413/511` exactly.
+
 <!-- regenerate: parse generate_handler! in both lib.rs for the surface, and the /// doc comments in commands/*.rs for the summaries -->
 ### `commands::analytics` (2)
 
@@ -149,7 +179,7 @@ and 70 references, so they are live code documented at the wrong layer, not dead
 - **`session_keepalive`** [D+T] — Refresh the current session's TTL so long-lived screens (analytics,
 - **`staff_check_username`** [D+T] — Check a username before the PIN step (STAFF-06).
 - **`staff_login`** [D+T] — Authenticate a staff member by username and PIN.
-- **`verify_pin`** [D] — Verify the current session user's PIN.
+- **`verify_pin`** [D+T] — Verify the current session user's PIN.
 
 - **`list_organizations`** [D+T] — Enumerate the Organizations (legal entities) this device knows about.
 - **`switch_organization`** [D+T] — Switch the active Organization (legal entity) for an authenticated session.
@@ -228,18 +258,20 @@ and 70 references, so they are live code documented at the wrong layer, not dead
 - **`restore_prepare`** [D] — Request a restore of the named candidate on the next boot (gated).
 - **`restore_status`** [D] — Report whether a restore request is pending beside the live database.
 
-### `commands::edc` (9)
+### `commands::edc` (11)
 
-- **`edc_refund`** [D] — Refund a previously captured card transaction.
-- **`edc_sale`** [D] — Process a card-present sale (authorize + capture in one call).
+- **`edc_refund`** [D+T] — Refund a previously captured card transaction.
+- **`edc_sale`** [D+T] — Process a card-present sale (authorize + capture in one call).
 - **`edc_terminal_status`** [D] — Query the EDC terminal's current status.
-- **`edc_terminal_status_scoped`** [D] — Session-scoped variant of [`edc_terminal_status`].
-- **`edc_void`** [D] — Void a pending authorisation before capture.
+- **`edc_terminal_status_scoped`** [D+T] — Session-scoped variant of [`edc_terminal_status`].
+- **`edc_void`** [D+T] — Void a pending authorisation before capture.
 
-- **`create_edc_terminal_scoped`** [D] — Create a new card-payment terminal (session-scoped).
-- **`delete_edc_terminal_scoped`** [D] — Delete a card-payment terminal (session-scoped).
-- **`list_edc_terminals_scoped`** [D] — List configured card-payment terminals (session-scoped).
-- **`update_edc_terminal_scoped`** [D] — Update an existing card-payment terminal (session-scoped).
+- **`create_edc_terminal_scoped`** [D+T] — Create a new card-payment terminal (session-scoped).
+- **`delete_edc_terminal_scoped`** [D+T] — Delete a card-payment terminal (session-scoped).
+- **`list_edc_terminals_scoped`** [D+T] — List configured card-payment terminals (session-scoped).
+- **`update_edc_terminal_scoped`** [D+T] — Update an existing card-payment terminal (session-scoped).
+- **`edc_inquiry`** [D+T] — Query or reconcile transaction status by invoice reference.
+- **`edc_settle`** [D+T] — Perform batch settlement on the EDC terminal.
 
 ### `commands::email` (4)
 
@@ -263,7 +295,7 @@ and 70 references, so they are live code documented at the wrong layer, not dead
 - **`set_feature`** [D+T] — Enable or disable a single feature flag.
 - **`set_features_bulk`** [D+T] — Enable or disable multiple feature flags atomically in a single
 
-### `commands::fiscal` (5)
+### `commands::fiscal` (7)
 
 Statutory number series and fiscal schemes, per legal entity. Desktop and tablet both register all five.
 
@@ -272,6 +304,8 @@ Statutory number series and fiscal schemes, per legal entity. Desktop and tablet
 - **`list_document_number_sequences_scoped`** [D+T] — List every statutory number series configured for the tenant.
 - **`list_fiscal_schemes_scoped`** [D+T] — List the tenant's fiscal schemes — the entity-level anchor the number series hang off.
 - **`upsert_document_number_sequence_scoped`** [D+T] — Create or update the statutory number series for one legal entity and document kind.
+- **`issue_tax_invoice_scoped`** [D+T] — Issue a formal statutory Tax Invoice for a sale in the store resolved from a session token.
+- **`get_sale_statutory_number_scoped`** [D+T] — Read the statutory document number stamped on a sale in the store resolved from a session token.
 
 ### `commands::gift_cards` (8)
 
@@ -297,7 +331,7 @@ Statutory number series and fiscal schemes, per legal entity. Desktop and tablet
 - **`start_scanner_scoped`** [D+T] — Start a barcode scanner (scoped).
 - **`stop_scanner_scoped`** [D+T] — Stop the active barcode scanner (scoped).
 
-### `commands::health` (9)
+### `commands::health` (12)
 
 - **`get_device_id`** [D+T] — Get the stable device identifier (hostname) for terminal binding.
 - **`get_device_id_scoped`** [D] — Session-scoped variant of [`get_device_id`].
@@ -309,6 +343,9 @@ Statutory number series and fiscal schemes, per legal entity. Desktop and tablet
 - **`version_scoped`** [D] — Version info resolved from a session token. ADR #7.
 
 - **`get_build_fingerprint`** [T] — Report this installation's APK signing-certificate fingerprint (ADR #57 §2.1).
+- **`export_diagnostics`** [D+T] — Export comprehensive diagnostic archive (.zip) containing system telemetry, sync status, and sanitized logs.
+- **`get_storage_health`** [D+T] — Check storage capacity and low space warning.
+- **`record_crash_report`** [D+T] — Record fatal frontend or runtime crash telemetry report without sensitive PII.
 
 ### `commands::history` (12)
 
@@ -328,30 +365,30 @@ Statutory number series and fiscal schemes, per legal entity. Desktop and tablet
 
 ### `commands::inventory` (24)
 
-- **`acknowledge_stock_alert_scoped`** [D] — Acknowledge a stock alert event (records who acknowledged it).
-- **`active_stock_alerts_scoped`** [D] — Get active stock alerts for a location (enriched with product SKU/name).
-- **`create_inventory_location`** [D] — Create a new inventory location.
-- **`create_inventory_transaction`** [D] — Create a new manual / staff inventory transaction audit log session.
-- **`deactivate_inventory_location`** [D] — Deactivate an inventory location (fails if contains stock or pending transfers).
-- **`delete_stock_threshold`** [D] — Delete a stock alert threshold boundary.
-- **`end_inventory_shift`** [D] — End an active inventory shift.
-- **`finalize_sale`** [D] — Transition a pending sale's status to completed after payment capture.
-- **`get_active_inventory_shift`** [D] — Retrieve the active inventory shift for the current user, if any.
-- **`get_inventory_transaction`** [D] — Retrieve details of a single transaction, including its lines.
-- **`get_low_stock_alerts_at_location_scoped`** [D] — Get per-location low stock alerts.
-- **`get_stock_thresholds`** [D] — Get stock alert thresholds for a location.
-- **`get_workspace_inventory_locations`** [D] — Get inventory location bindings for a workspace instance.
-- **`get_workspace_locations_scoped`** [D] — Resolve locations bound to a workspace instance (unified resolver ADR-19 §10).
-- **`invalidate_location_cache_scoped`** [D] — Invalidate the location resolver cache.
-- **`list_inventory_locations`** [D] — List all inventory locations.
-- **`list_inventory_shifts`** [D] — List all inventory shifts history.
-- **`list_inventory_transactions`** [D] — List all inventory transactions.
-- **`list_inventory_transactions_for_shift`** [D] — List inventory transactions for a specific shift (staff + location + time window).
-- **`set_stock_threshold`** [D] — Set a stock alert threshold boundary.
-- **`set_workspace_inventory_locations`** [D] — Set inventory location bindings for a workspace instance.
-- **`start_inventory_shift`** [D] — Start a new inventory shift for the current user at a location.
-- **`update_inventory_location`** [D] — Update details of an existing inventory location.
-- **`void_pending_sale`** [D] — Void a pending sale and restore stock.
+- **`acknowledge_stock_alert_scoped`** [D+T] — Acknowledge a stock alert event (records who acknowledged it).
+- **`active_stock_alerts_scoped`** [D+T] — Get active stock alerts for a location (enriched with product SKU/name).
+- **`create_inventory_location`** [D+T] — Create a new inventory location.
+- **`create_inventory_transaction`** [D+T] — Create a new manual / staff inventory transaction audit log session.
+- **`deactivate_inventory_location`** [D+T] — Deactivate an inventory location (fails if contains stock or pending transfers).
+- **`delete_stock_threshold`** [D+T] — Delete a stock alert threshold boundary.
+- **`end_inventory_shift`** [D+T] — End an active inventory shift.
+- **`finalize_sale`** [D+T] — Transition a pending sale's status to completed after payment capture.
+- **`get_active_inventory_shift`** [D+T] — Retrieve the active inventory shift for the current user, if any.
+- **`get_inventory_transaction`** [D+T] — Retrieve details of a single transaction, including its lines.
+- **`get_low_stock_alerts_at_location_scoped`** [D+T] — Get per-location low stock alerts.
+- **`get_stock_thresholds`** [D+T] — Get stock alert thresholds for a location.
+- **`get_workspace_inventory_locations`** [D+T] — Get inventory location bindings for a workspace instance.
+- **`get_workspace_locations_scoped`** [D+T] — Resolve locations bound to a workspace instance (unified resolver ADR-19 §10).
+- **`invalidate_location_cache_scoped`** [D+T] — Invalidate the location resolver cache.
+- **`list_inventory_locations`** [D+T] — List all inventory locations.
+- **`list_inventory_shifts`** [D+T] — List all inventory shifts history.
+- **`list_inventory_transactions`** [D+T] — List all inventory transactions.
+- **`list_inventory_transactions_for_shift`** [D+T] — List inventory transactions for a specific shift (staff + location + time window).
+- **`set_stock_threshold`** [D+T] — Set a stock alert threshold boundary.
+- **`set_workspace_inventory_locations`** [D+T] — Set inventory location bindings for a workspace instance.
+- **`start_inventory_shift`** [D+T] — Start a new inventory shift for the current user at a location.
+- **`update_inventory_location`** [D+T] — Update details of an existing inventory location.
+- **`void_pending_sale`** [D+T] — Void a pending sale and restore stock.
 
 ### `commands::inventory_counts` (10)
 
@@ -385,13 +422,13 @@ Statutory number series and fiscal schemes, per legal entity. Desktop and tablet
 ### `commands::kds` (9)
 
 - **`create_kds_order_from_sale_scoped`** [D+T] — Create KDS orders in the store resolved from a session token. ADR #7.
-- **`get_kds_order_lines_scoped`** [D] — Get all line items for a KDS order (scoped — ADR #7).
+- **`get_kds_order_lines_scoped`** [D+T] — Get all line items for a KDS order (scoped — ADR #7).
 - **`get_kds_order_scoped`** [D+T] — Get a KDS order from the store resolved from a session token. ADR #7.
 - **`get_kds_queue_scoped`** [D+T] — Get the kitchen queue for the store resolved from a session token. ADR #7.
 - **`list_kds_orders_scoped`** [D+T] — List KDS orders for the store resolved from a session token. ADR #7.
-- **`print_kds_chit_scoped`** [D] — Print a kitchen chit for a specific KDS order by ID (scoped — ADR #7).
-- **`update_kds_line_item_status_scoped`** [D] — Update the status of a single KDS line item in the store resolved
-- **`update_kds_order_items_scoped`** [D] — Update the items on a KDS order in the store resolved from a session token. ADR #7.
+- **`print_kds_chit_scoped`** [D+T] — Print a kitchen chit for a specific KDS order by ID (scoped — ADR #7).
+- **`update_kds_line_item_status_scoped`** [D+T] — Update the status of a single KDS line item in the store resolved
+- **`update_kds_order_items_scoped`** [D+T] — Update the items on a KDS order in the store resolved from a session token. ADR #7.
 - **`update_kds_status_scoped`** [D+T] — Update a KDS order's status in the store resolved from a session token. ADR #7.
 
 ### `commands::kds_device` (6)
@@ -583,7 +620,7 @@ Supplier debts raised outside a purchase order. Desktop-only for now.
 Product image slot assignment (slots 1..=5). The bytes live on disk; these commands move the assignment rows.
 
 - **`products_clear_image_scoped`** [D+T] — Remove the image at `slot` for `product_id`. Only the DB assignment is removed; the file on disk is left for the GC.
-- **`products_list_images_scoped`** [D] — List the image assignments for a product (slots 1..=5), ordered by slot. The editor flow calls this on open to show the primary + alternatives.
+- **`products_list_images_scoped`** [D+T] — List the image assignments for a product (slots 1..=5), ordered by slot. The editor flow calls this on open to show the primary + alternatives.
 - **`products_set_image_scoped`** [D+T] — Assign the image at `source_path` to `product_id` at `slot` (1..=5). The ingest pipeline runs entirely in Rust: `source_path` is the file.
 
 ### `commands::promotions` (7)
@@ -637,7 +674,7 @@ compiled cold-boot market profile.
 
 - **`get_regional_config_scoped`** [D+T] — Read the effective regional configuration for one location of the session's store.
 - **`set_regional_config_scoped`** [D+T] — Write the regional configuration for one location of the session's store.
-- **`get_active_market_profile_scoped`** [D] — Read the compiled, locked market profile for one location of the session's store. Gate `settings:read` in `kasirmu_bridge::regional`; loaded once on cold boot and cached in application state, so **zero database reads happen during the sale lifecycle**. Desktop-only: registered in `apps/desktop-tauri`, not in the tablet shell.
+- **`get_active_market_profile_scoped`** [D+T] — Read the compiled, locked market profile for one location of the session's store. Gate `settings:read` in `kasirmu_bridge::regional`; loaded once on cold boot and cached in application state, so **zero database reads happen during the sale lifecycle**. Registered in both shells (`apps/desktop-tauri/src/lib.rs:1763`, `apps/mobile-tauri/src/lib.rs:1250`).
 
 ### `commands::reports` (24)
 
@@ -712,13 +749,13 @@ compiled cold-boot market profile.
 
 ### `commands::shifts` (7)
 
-- **`close_shift_scoped`** [D] — Close a shift in the store resolved from a session token. ADR #7.
-- **`create_cash_payout_scoped`** [D] — Scoped variant of `create_cash_payout` (ADR #7).
-- **`get_active_shift_scoped`** [D] — Get the active shift for the session user from the store-scoped DB. ADR #7.
-- **`get_shift_report_scoped`** [D] — Scoped variant of `get_shift_report` (ADR #7).
-- **`get_shift_scoped`** [D] — Scoped variant of `get_shift` (ADR #7).
-- **`list_shifts_scoped`** [D] — List shifts for the store resolved from a session token. ADR #7.
-- **`open_shift_scoped`** [D] — Open a shift in the store resolved from a session token. ADR #7.
+- **`close_shift_scoped`** [D+T] — Close a shift in the store resolved from a session token. ADR #7.
+- **`create_cash_payout_scoped`** [D+T] — Scoped variant of `create_cash_payout` (ADR #7).
+- **`get_active_shift_scoped`** [D+T] — Get the active shift for the session user from the store-scoped DB. ADR #7.
+- **`get_shift_report_scoped`** [D+T] — Scoped variant of `get_shift_report` (ADR #7).
+- **`get_shift_scoped`** [D+T] — Scoped variant of `get_shift` (ADR #7).
+- **`list_shifts_scoped`** [D+T] — List shifts for the store resolved from a session token. ADR #7.
+- **`open_shift_scoped`** [D+T] — Open a shift in the store resolved from a session token. ADR #7.
 
 ### `commands::staff` (16)
 
@@ -779,16 +816,16 @@ compiled cold-boot market profile.
 > The section keeps the seven `_scoped` commands, all of which are registered in the
 > desktop handler.
 
-- **`list_locations_scoped`** [D] — List location profiles for the session's tenant (ADR #7).
-- **`get_location_profile_scoped`** [D] — Get a location profile for the session's tenant (ADR #7).
+- **`list_locations_scoped`** [D+T] — List location profiles for the session's tenant (ADR #7).
+- **`get_location_profile_scoped`** [D+T] — Get a location profile for the session's tenant (ADR #7).
 - **`get_primary_location_scoped`** [D+T] — Get the primary location for the session's tenant (ADR #7).
-- **`create_location_profile_scoped`** [D] — Create a location profile for the session's tenant (ADR #7).
-- **`update_location_profile_scoped`** [D] — Update a location profile for the session's tenant (ADR #7).
-- **`set_primary_location_scoped`** [D] — Set a location as primary for the session's tenant (ADR #7).
-- **`delete_location_profile_scoped`** [D] — Delete a location profile for the session's tenant (ADR #7).
+- **`create_location_profile_scoped`** [D+T] — Create a location profile for the session's tenant (ADR #7).
+- **`update_location_profile_scoped`** [D+T] — Update a location profile for the session's tenant (ADR #7).
+- **`set_primary_location_scoped`** [D+T] — Set a location as primary for the session's tenant (ADR #7).
+- **`delete_location_profile_scoped`** [D+T] — Delete a location profile for the session's tenant (ADR #7).
 
-- **`get_location_ticket_prefix_scoped`** [D] — Read one location's KDS ticket prefix for the session's tenant (`None` means no prefix).
-- **`set_location_ticket_prefix_scoped`** [D] — Set (or clear) one location's KDS ticket prefix; returns the value as stored.
+- **`get_location_ticket_prefix_scoped`** [D+T] — Read one location's KDS ticket prefix for the session's tenant (`None` means no prefix).
+- **`set_location_ticket_prefix_scoped`** [D+T] — Set (or clear) one location's KDS ticket prefix; returns the value as stored.
 
 ### `commands::subscription` (4)
 
@@ -874,6 +911,14 @@ compiled cold-boot market profile.
 - **`load_topology_template`** [D] — Load one diagram template. `None` when it never existed or is unreadable.
 - **`pin_topology_revision`** [D] — ADR #46 §4: pin or unpin one revision, exempting it from deflation. Gated on `TOPOLOGY_WRITE`, deliberately unlike its two read siblings.
 - **`save_topology_template`** [D] — Save a diagram template under a branch, replacing any template of that name.
+
+### `commands::updater` (3)
+
+Android in-app self-updater. **Tablet-only ([T]): the module lives in `apps/mobile-tauri/src/commands/updater.rs` and no desktop command exists for it** — the desktop keeps its own updater surface (the `@tauri-apps/plugin-updater` probe behind `useVersionStatus`).
+
+- **`check_app_update`** [T] — Query release manifest and check for available Android updates.
+- **`start_apk_download`** [T] — Download APK streaming with resume and SHA-256 verification.
+- **`prepare_and_launch_update`** [T] — Create safety SQLite backup snapshot before installing update.
 
 ### `commands::void` (1)
 
@@ -968,5 +1013,5 @@ sections because this page documents the **callable** surface.
 
 ---
 
-> last audited 29-09-26 by docs-auditor
+> last audited 08-10-26 by docs-auditor
 

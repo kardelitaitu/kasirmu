@@ -1,12 +1,15 @@
 # Module namespace firewall — completion criteria
 
+<!-- Audit stamp: 2026-10-08 · docs-auditor · status: ACCURATE AFTER REPAIR (1 finding) · Repaired: the Tickets line cited `docs/architecture/phase4-implementation-tickets.md`, which is not in `docs/architecture/` — the target is `docs/records/superseded/phase4-implementation-tickets.md` (verified present). The completion-criteria claims were re-measured and hold: `scripts/verify-namespace-governance.py --strict` is a live `check.sh` step (`:509`) and its `--check-ownership`/`--check-capabilities` legs are at `:521` and `:532`. · Repaired against branch `0.0.41` at `134aaed1b`. -->
+
+
 Status: **Phase 4 (firewall) — mechanically enforced except for one named runtime gap.**
 Last updated 2026-10-03. This page is the single place that states what the module
 namespace firewall now *mechanically* guarantees, and — in the last section — what it
 does not yet. Every claim below names the file, line, or gate id that makes it true.
 
 Source plan: `todo-modular-scaffolding.md` §10 (boundary rules) and §13 (acceptance
-criteria). Tickets: `docs/architecture/phase4-implementation-tickets.md`.
+criteria). Tickets: `docs/records/superseded/phase4-implementation-tickets.md`.
 
 ## 1. One table, one owner
 
@@ -145,3 +148,7 @@ Everything the firewall was built to enforce is now mechanical:
 
 All four are `status: required` in `scripts/gates.json` and run from `scripts/check.sh`
 (checkers under `scripts/`); the static-gates CI job is `dev-ci.yml` / `static-gates`.
+
+---
+
+> last audited 08-10-26 by docs-auditor
