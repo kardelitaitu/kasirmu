@@ -716,7 +716,8 @@ pub async fn set_hardware_settings_scoped(
         .parent()
         .unwrap_or(std::path::Path::new("."))
         .to_path_buf();
-    let path = platform_core::terminal_profile::TerminalProfile::profile_path(&base_dir, &terminal_id);
+    let path =
+        platform_core::terminal_profile::TerminalProfile::profile_path(&base_dir, &terminal_id);
     if let Err(e) = profile.save(&path) {
         tracing::warn!(
             terminal_id = %terminal_id,

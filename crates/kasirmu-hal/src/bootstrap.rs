@@ -344,11 +344,7 @@ pub async fn apply_config(registry: &DriverRegistry, config: &HardwareConfig) ->
                 #[cfg(target_os = "android")]
                 {
                     registry
-                        .register_bt_android_printer(
-                            &printer.id,
-                            port,
-                            printer.info.clone(),
-                        )
+                        .register_bt_android_printer(&printer.id, port, printer.info.clone())
                         .await;
                     report.registered.push(key);
                 }

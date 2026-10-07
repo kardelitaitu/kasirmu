@@ -191,7 +191,9 @@ impl Store<'_> {
                 .iter()
                 .flat_map(|item| {
                     item.modifiers.iter().filter_map(|m| {
-                        if m.name.eq_ignore_ascii_case("note") || m.name.eq_ignore_ascii_case("catatan") {
+                        if m.name.eq_ignore_ascii_case("note")
+                            || m.name.eq_ignore_ascii_case("catatan")
+                        {
                             Some(format!("{}: {}", item.display_name, m.choice))
                         } else {
                             None

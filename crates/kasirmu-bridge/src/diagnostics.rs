@@ -170,7 +170,8 @@ pub async fn export_diagnostics(
     validate_output_path(output_path)?;
 
     let session = ctx.resolve_session(session_token)?;
-    ctx.require_session_permission(&session, permissions::SETTINGS_READ).await?;
+    ctx.require_session_permission(&session, permissions::SETTINGS_READ)
+        .await?;
 
     let out_file = Path::new(output_path);
     if let Some(parent) = out_file.parent() {
@@ -182,7 +183,9 @@ pub async fn export_diagnostics(
     }
 
     let file = File::create(out_file).map_err(|e| {
-        BridgeError::Internal(format!("failed to create diagnostic zip file at '{output_path}': {e}"))
+        BridgeError::Internal(format!(
+            "failed to create diagnostic zip file at '{output_path}': {e}"
+        ))
     })?;
 
     let mut zip = zip::ZipWriter::new(file);
@@ -192,10 +195,12 @@ pub async fn export_diagnostics(
     let mut files_included = Vec::new();
 
     // 1. system_info.json
-    let space = platform_instance_guard::get_disk_space(db_path).unwrap_or(platform_instance_guard::DiskSpace {
-        available_bytes: 0,
-        total_bytes: 0,
-    });
+    let space = platform_instance_guard::get_disk_space(db_path).unwrap_or(
+        platform_instance_guard::DiskSpace {
+            available_bytes: 0,
+            total_bytes: 0,
+        },
+    );
     let is_low_space = space.available_bytes < platform_instance_guard::LOW_STORAGE_THRESHOLD_BYTES;
     let terminal_id = ctx.terminal_id.lock().await.clone();
 
@@ -226,9 +231,9 @@ pub async fn export_diagnostics(
         let mut failed_count: u64 = 0;
         let mut recent_failures = Vec::new();
 
-        if let Ok(mut stmt) = db.prepare(
-            "SELECT status, COUNT(*) FROM offline_queue GROUP BY status"
-        ) {
+        if let Ok(mut stmt) =
+            db.prepare("SELECT status, COUNT(*) FROM offline_queue GROUP BY status")
+        {
             let mut rows = stmt.query([]).map_err(BridgeError::from)?;
             while let Ok(Some(row)) = rows.next() {
                 let status: String = row.get(0).unwrap_or_default();
@@ -271,8 +276,16 @@ pub async fn export_diagnostics(
         files_included.push("sync_diagnostics.json".to_string());
 
         // 3. audit_summary.json
-        let total_events: u64 = db.query_row("SELECT COUNT(*) FROM audit_log", [], |r| r.get(0)).unwrap_or(0);
-        let last_event_at: Option<String> = db.query_row("SELECT created_at FROM audit_log ORDER BY id DESC LIMIT 1", [], |r| r.get(0)).ok();
+        let total_events: u64 = db
+            .query_row("SELECT COUNT(*) FROM audit_log", [], |r| r.get(0))
+            .unwrap_or(0);
+        let last_event_at: Option<String> = db
+            .query_row(
+                "SELECT created_at FROM audit_log ORDER BY id DESC LIMIT 1",
+                [],
+                |r| r.get(0),
+            )
+            .ok();
         let audit_rep = AuditDiagnosticReport {
             total_events,
             last_event_at,
@@ -292,7 +305,10 @@ pub async fn export_diagnostics(
             if let Ok(entries) = std::fs::read_dir(dir) {
                 let mut log_files: Vec<_> = entries
                     .filter_map(|e| e.ok())
-                    .filter(|e| e.path().is_file() && e.path().extension().and_then(|s| s.to_str()) == Some("log"))
+                    .filter(|e| {
+                        e.path().is_file()
+                            && e.path().extension().and_then(|s| s.to_str()) == Some("log")
+                    })
                     .collect();
 
                 // Sort by modified descending (newest first)
@@ -309,9 +325,14 @@ pub async fn export_diagnostics(
                     if let Ok(raw_content) = std::fs::read_to_string(entry.path()) {
                         let sanitized = sanitize_log_text(&raw_content);
                         zip.start_file::<&str, ()>(&archive_name, options)
-                            .map_err(|e| BridgeError::Internal(format!("starting zip entry for {archive_name}: {e}")))?;
-                        zip.write_all(sanitized.as_bytes())
-                            .map_err(|e| BridgeError::Internal(format!("writing log content: {e}")))?;
+                            .map_err(|e| {
+                                BridgeError::Internal(format!(
+                                    "starting zip entry for {archive_name}: {e}"
+                                ))
+                            })?;
+                        zip.write_all(sanitized.as_bytes()).map_err(|e| {
+                            BridgeError::Internal(format!("writing log content: {e}"))
+                        })?;
                         files_included.push(archive_name);
                     }
                 }
@@ -332,9 +353,8 @@ pub async fn export_diagnostics(
         }
     }
 
-    zip.finish().map_err(|e| {
-        BridgeError::Internal(format!("finalizing zip archive: {e}"))
-    })?;
+    zip.finish()
+        .map_err(|e| BridgeError::Internal(format!("finalizing zip archive: {e}")))?;
 
     let size_bytes = std::fs::metadata(out_file).map(|m| m.len()).unwrap_or(0);
 
@@ -358,7 +378,7 @@ pub struct CrashReport {
     /// Optional stack trace.
     #[serde(default)]
     pub stack: Option<String>,
-    /// Optional React component hierarchy trace.
+    /// Optional renderer component hierarchy trace.
     #[serde(default)]
     pub component_stack: Option<String>,
     /// Source file, line, and column coordinates.
@@ -373,7 +393,8 @@ pub struct CrashReport {
 }
 
 static PANIC_LOG_DIR: std::sync::RwLock<Option<std::path::PathBuf>> = std::sync::RwLock::new(None);
-static PANIC_HOOK_INSTALLED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+static PANIC_HOOK_INSTALLED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
 
 /// Record a sanitized crash telemetry entry to the active log directory.
 pub fn write_crash_report_entry(
@@ -381,7 +402,10 @@ pub fn write_crash_report_entry(
     report: &CrashReport,
 ) -> Result<(), BridgeError> {
     let sanitized_msg = sanitize_log_text(&report.message).trim_end().to_string();
-    let sanitized_stack = report.stack.as_deref().map(|s| sanitize_log_text(s).trim_end().to_string());
+    let sanitized_stack = report
+        .stack
+        .as_deref()
+        .map(|s| sanitize_log_text(s).trim_end().to_string());
     let sanitized_component_stack = report
         .component_stack
         .as_deref()

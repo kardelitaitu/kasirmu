@@ -592,10 +592,34 @@ fn provision_device_inner(
             || args.preset == "cafe";
         let sample_items: &[(&str, &str, i64, i64, &str)] = if is_restaurant {
             &[
-                ("SMPL-REST-01", "Americano (Hot/Iced)", 25_000_00, 100, "restaurant"),
-                ("SMPL-REST-02", "Butter Croissant", 28_000_00, 50, "restaurant"),
-                ("SMPL-REST-03", "Mineral Water 600ml", 8_000_00, 120, "restaurant"),
-                ("SMPL-REST-04", "Nasi Goreng Spesial", 35_000_00, 80, "restaurant"),
+                (
+                    "SMPL-REST-01",
+                    "Americano (Hot/Iced)",
+                    25_000_00,
+                    100,
+                    "restaurant",
+                ),
+                (
+                    "SMPL-REST-02",
+                    "Butter Croissant",
+                    28_000_00,
+                    50,
+                    "restaurant",
+                ),
+                (
+                    "SMPL-REST-03",
+                    "Mineral Water 600ml",
+                    8_000_00,
+                    120,
+                    "restaurant",
+                ),
+                (
+                    "SMPL-REST-04",
+                    "Nasi Goreng Spesial",
+                    35_000_00,
+                    80,
+                    "restaurant",
+                ),
                 ("SMPL-REST-05", "Es Teh Manis", 10_000_00, 150, "restaurant"),
             ]
         } else {
@@ -604,7 +628,13 @@ fn provision_device_inner(
                 ("SMPL-RTL-02", "Kopi Susu Kemasan", 12_000_00, 60, "retail"),
                 ("SMPL-RTL-03", "Keripik Singkong", 15_000_00, 45, "retail"),
                 ("SMPL-RTL-04", "Buku Catatan A5", 22_000_00, 30, "retail"),
-                ("SMPL-RTL-05", "Kantong Belanja Eco", 5_000_00, 200, "retail"),
+                (
+                    "SMPL-RTL-05",
+                    "Kantong Belanja Eco",
+                    5_000_00,
+                    200,
+                    "retail",
+                ),
             ]
         };
 

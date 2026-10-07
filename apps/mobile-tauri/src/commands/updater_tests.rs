@@ -78,9 +78,7 @@ fn test_detect_device_abi_is_valid() {
     let abi = detect_device_abi();
     assert!(!abi.is_empty());
     assert!(
-        abi == "android-arm64-v8a"
-            || abi == "android-armeabi-v7a"
-            || abi == "android-universal"
+        abi == "android-arm64-v8a" || abi == "android-armeabi-v7a" || abi == "android-universal"
     );
 }
 

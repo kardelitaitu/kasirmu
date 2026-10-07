@@ -1019,19 +1019,45 @@ fn update_location_profile_currency_and_timezone_blocked_by_open_shift() {
 
     // Attempting to change currency while shift is open MUST be blocked
     let err = store
-        .update_location_profile(&id, "Renamed Store", "456 New St", "TAX-002", "IDR", "America/New_York")
+        .update_location_profile(
+            &id,
+            "Renamed Store",
+            "456 New St",
+            "TAX-002",
+            "IDR",
+            "America/New_York",
+        )
         .expect_err("mutating currency while shift is open must be blocked");
     assert!(
-        matches!(err, CoreError::Validation { field: "regional_settings", .. }),
+        matches!(
+            err,
+            CoreError::Validation {
+                field: "regional_settings",
+                ..
+            }
+        ),
         "expected CoreError::Validation on regional_settings, got {err:?}"
     );
 
     // Attempting to change timezone while shift is open MUST be blocked
     let err_tz = store
-        .update_location_profile(&id, "Renamed Store", "456 New St", "TAX-002", "USD", "Asia/Jakarta")
+        .update_location_profile(
+            &id,
+            "Renamed Store",
+            "456 New St",
+            "TAX-002",
+            "USD",
+            "Asia/Jakarta",
+        )
         .expect_err("mutating timezone while shift is open must be blocked");
     assert!(
-        matches!(err_tz, CoreError::Validation { field: "regional_settings", .. }),
+        matches!(
+            err_tz,
+            CoreError::Validation {
+                field: "regional_settings",
+                ..
+            }
+        ),
         "expected CoreError::Validation on regional_settings, got {err_tz:?}"
     );
 
@@ -1046,9 +1072,15 @@ fn update_location_profile_currency_and_timezone_blocked_by_open_shift() {
 
     // After shift is closed, currency & timezone changes SUCCEED
     let final_profile = store
-        .update_location_profile(&id, "Renamed Store", "456 New St", "TAX-002", "IDR", "Asia/Jakarta")
+        .update_location_profile(
+            &id,
+            "Renamed Store",
+            "456 New St",
+            "TAX-002",
+            "IDR",
+            "Asia/Jakarta",
+        )
         .expect("after shift is closed, currency/timezone mutation must succeed");
     assert_eq!(final_profile.currency, "IDR");
     assert_eq!(final_profile.timezone, "Asia/Jakarta");
 }
-

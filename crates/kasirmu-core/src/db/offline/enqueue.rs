@@ -9,7 +9,7 @@
 //! never commit — they exist so the queue row is written in the SAME transaction
 //! as the mutation it describes, which is what makes the outbox crash-safe.
 
-use rusqlite::{params, OptionalExtension};
+use rusqlite::{OptionalExtension, params};
 
 use crate::db::Store;
 use crate::error::CoreError;
@@ -325,7 +325,8 @@ impl Store<'_> {
             "line_items": line_items,
         });
         if let Some(profile) = market_profile {
-            payload_map["market_profile"] = serde_json::to_value(profile).unwrap_or(serde_json::Value::Null);
+            payload_map["market_profile"] =
+                serde_json::to_value(profile).unwrap_or(serde_json::Value::Null);
         }
         let payload = payload_map.to_string();
         Self::enqueue_offline_in_tx(

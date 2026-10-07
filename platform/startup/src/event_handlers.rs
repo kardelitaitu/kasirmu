@@ -75,7 +75,8 @@ impl EventHandler<SaleCompleted> for SaleSyncEnqueuer {
             "line_items": event.line_items,
         });
         if let Some(profile) = market_profile {
-            payload_map["market_profile"] = serde_json::to_value(profile).unwrap_or(serde_json::Value::Null);
+            payload_map["market_profile"] =
+                serde_json::to_value(profile).unwrap_or(serde_json::Value::Null);
         }
         let payload = payload_map.to_string();
 

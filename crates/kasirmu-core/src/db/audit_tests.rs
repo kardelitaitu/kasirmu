@@ -1775,7 +1775,10 @@ fn log_audit_is_resilient_when_offline_queue_is_dropped() {
 
     // log_audit MUST succeed best-effort even when offline_queue table is gone
     let res = s.log_audit(&entry);
-    assert!(res.is_ok(), "log_audit must never fail on offline shipping error");
+    assert!(
+        res.is_ok(),
+        "log_audit must never fail on offline shipping error"
+    );
 
     // Audit log entry itself is persisted safely
     let rows = s.list_audit_entries(10, 0).unwrap();

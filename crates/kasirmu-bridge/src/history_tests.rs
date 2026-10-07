@@ -415,4 +415,3 @@ fn sale_detail_serializes_statutory_number() {
     let json = serde_json::to_value(&detail).unwrap();
     assert_eq!(json["statutoryNumber"], "INV-2026-0001");
 }
-

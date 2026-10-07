@@ -240,11 +240,8 @@ pub async fn issue_tax_invoice_scoped(
     let store = Store::new(&db);
     let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
 
-    let primary_location = kasirmu_core::location_resolver::resolve_primary_location(
-        &db,
-        &session.instance_id,
-        None,
-    )?;
+    let primary_location =
+        kasirmu_core::location_resolver::resolve_primary_location(&db, &session.instance_id, None)?;
 
     let invoice_number =
         store.issue_tax_invoice_for_sale(sale_id, primary_location.as_str(), &now)?;

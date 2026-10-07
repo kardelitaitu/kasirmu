@@ -121,9 +121,9 @@ pub mod terminals;
 /// predicate + the seeded-row refusal guard). Test-only.
 #[cfg(test)]
 pub(crate) mod testing;
-/// Void / cancel commands.
-pub mod void;
 /// In-App self-updater commands (todo-android-updater.md).
 pub mod updater;
+/// Void / cancel commands.
+pub mod void;
 /// Workspace listing + boot-resolution commands (audit-open-findings residual, desktop parity).
 pub mod workspaces;

@@ -6,9 +6,7 @@ use tokio::time::timeout;
 
 use kasirmu_core::offline::{OfflineQueueItem, OfflineQueueStatus, SyncPriority};
 use kasirmu_lan::crdt_sync::{CrdtDeltaBroadcast, CrdtSyncEvent, EVENT_CRDT_DELTA_BROADCAST};
-use kasirmu_lan::{
-    LanClientConfig, LanEvent, LanEventForwarder, start_lan_client,
-};
+use kasirmu_lan::{LanClientConfig, LanEvent, LanEventForwarder, start_lan_client};
 
 fn sample_item(id: &str, action: &str, payload: &str, terminal: &str) -> OfflineQueueItem {
     OfflineQueueItem {
@@ -69,7 +67,12 @@ async fn crdt_delta_broadcast_replicates_to_peer_terminals() {
     let _ = timeout(Duration::from_secs(2), rx_b.recv()).await;
 
     // Terminal A performs a stock adjustment mutation and uplinks delta broadcast
-    let item_a = sample_item("q-item-1", "stock.adjusted", r#"{"sku":"COFFEE","qty_delta":-2}"#, "tablet-a");
+    let item_a = sample_item(
+        "q-item-1",
+        "stock.adjusted",
+        r#"{"sku":"COFFEE","qty_delta":-2}"#,
+        "tablet-a",
+    );
     let delta_a = CrdtSyncEvent::DeltaBroadcast(CrdtDeltaBroadcast {
         batch: vec![item_a],
         origin_terminal_id: "tablet-a".into(),
@@ -100,7 +103,10 @@ async fn crdt_delta_broadcast_replicates_to_peer_terminals() {
             assert_eq!(b_delta.origin_terminal_id, "tablet-a");
             assert_eq!(b_delta.batch.len(), 1);
             assert_eq!(b_delta.batch[0].id, "q-item-1");
-            assert_eq!(b_delta.batch[0].payload, r#"{"sku":"COFFEE","qty_delta":-2}"#);
+            assert_eq!(
+                b_delta.batch[0].payload,
+                r#"{"sku":"COFFEE","qty_delta":-2}"#
+            );
         }
         other => panic!("expected LanEvent::Crdt, got {other:?}"),
     }

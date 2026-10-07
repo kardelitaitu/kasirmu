@@ -33,7 +33,10 @@ pub async fn link_device_google(
         }
     };
     let base_url = kasirmu_core::attestation::resolved_origin().url;
-    tracing::info!("link_device_google: starting Google link flow for machine_id={}", machine_id);
+    tracing::info!(
+        "link_device_google: starting Google link flow for machine_id={}",
+        machine_id
+    );
     let app_handle = state.app.clone();
     let account = match kasirmu_bridge::desktop_link::link_device(
         &base_url,
@@ -49,9 +52,13 @@ pub async fn link_device_google(
             }
         },
     )
-    .await {
+    .await
+    {
         Ok(acc) => {
-            tracing::info!("link_device_google: successfully linked account email={}", acc.email);
+            tracing::info!(
+                "link_device_google: successfully linked account email={}",
+                acc.email
+            );
             acc
         }
         Err(e) => {

@@ -13,6 +13,7 @@ import {
   type DownloadProgressPayload,
 } from '@/api/updater';
 import { pendingOfflineCountScoped, retryOfflineSyncScoped } from '@/api/offline';
+import { isTabletShell } from '@/utils/shellKind';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import './UpdateSettingsCard.css';
 
@@ -112,12 +113,19 @@ export function UpdateSettingsCard() {
     setErrorMessage(null);
 
     try {
-      const res = await checkAppUpdate(sessionToken);
-      setUpdateInfo(res);
-      if (res.updateAvailable) {
-        setStep('available');
+      // Android-only, like the download and install legs below: only the tablet
+      // shell registers this door.
+      if (isTabletShell()) {
+        const res = await checkAppUpdate(sessionToken);
+        setUpdateInfo(res);
+        if (res.updateAvailable) {
+          setStep('available');
+        } else {
+          setStep('up_to_date');
+        }
       } else {
-        setStep('up_to_date');
+        setStep('error');
+        setErrorMessage('In-app updates are Android-only');
       }
     } catch (err: unknown) {
       setStep('error');
@@ -156,21 +164,28 @@ export function UpdateSettingsCard() {
       );
       unlistenRef.current = unlisten;
 
-      const fileName = `kasirmu-${updateInfo.latestVersion}-${updateInfo.abiMatched || 'universal'}.apk`;
-      const apkPath = await startApkDownload(
-        sessionToken,
-        updateInfo.downloadUrl,
-        updateInfo.sha256,
-        fileName,
-      );
+      // Android-only: the APK download and install handoff exist on the tablet
+      // shell alone, so the call is guarded rather than routed (no scoped twin).
+      if (isTabletShell()) {
+        const fileName = `kasirmu-${updateInfo.latestVersion}-${updateInfo.abiMatched || 'universal'}.apk`;
+        const apkPath = await startApkDownload(
+          sessionToken,
+          updateInfo.downloadUrl,
+          updateInfo.sha256,
+          fileName,
+        );
 
-      if (unlistenRef.current) {
-        unlistenRef.current();
-        unlistenRef.current = null;
+        if (unlistenRef.current) {
+          unlistenRef.current();
+          unlistenRef.current = null;
+        }
+
+        setDownloadedApkPath(apkPath);
+        setStep('ready');
+      } else {
+        setStep('error');
+        setErrorMessage('In-app updates are Android-only');
       }
-
-      setDownloadedApkPath(apkPath);
-      setStep('ready');
     } catch (err: unknown) {
       if (unlistenRef.current) {
         unlistenRef.current();
@@ -194,9 +209,11 @@ export function UpdateSettingsCard() {
     setErrorMessage(null);
 
     try {
-      await prepareAndLaunchUpdate(sessionToken, downloadedApkPath);
-      if (window.__kasirmuNative?.launchPackageInstaller) {
-        window.__kasirmuNative.launchPackageInstaller(downloadedApkPath);
+      if (isTabletShell()) {
+        await prepareAndLaunchUpdate(sessionToken, downloadedApkPath);
+        if (window.__kasirmuNative?.launchPackageInstaller) {
+          window.__kasirmuNative.launchPackageInstaller(downloadedApkPath);
+        }
       }
     } catch (err: unknown) {
       setStep('error');

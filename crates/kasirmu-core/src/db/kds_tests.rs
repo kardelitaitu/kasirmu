@@ -4281,4 +4281,3 @@ fn ingest_kds_order_persists_order_lines_and_targets() {
     assert_eq!(fetched_lines[0].display_name, "Cheeseburger");
     assert_eq!(fetched_lines[0].modifiers.len(), 1);
 }
-

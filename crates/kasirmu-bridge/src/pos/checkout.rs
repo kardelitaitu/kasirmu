@@ -884,7 +884,8 @@ pub async fn complete_sale_scoped(
                 deduction_instance_id,
                 None,
             )?;
-            if let Ok(inv_num) = store.issue_tax_invoice_for_sale(&sale_id, primary.as_str(), &now) {
+            if let Ok(inv_num) = store.issue_tax_invoice_for_sale(&sale_id, primary.as_str(), &now)
+            {
                 statutory_number = Some(inv_num);
             }
         }

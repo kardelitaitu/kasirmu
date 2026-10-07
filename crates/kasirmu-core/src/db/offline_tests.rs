@@ -1861,13 +1861,15 @@ fn settled_sale_outbox_row_carries_market_profile_snapshot() {
         )
         .unwrap();
     let parsed: serde_json::Value = serde_json::from_str(&payload).unwrap();
-    assert!(parsed.get("market_profile").is_some(), "payload must carry market_profile: {payload}");
+    assert!(
+        parsed.get("market_profile").is_some(),
+        "payload must carry market_profile: {payload}"
+    );
     let profile = parsed["market_profile"].as_object().unwrap();
     assert_eq!(profile["country_code"], "ID");
     assert_eq!(profile["tax_regime"], "PB1");
     assert_eq!(profile["currency"], "IDR");
 }
-
 
 /// An UNPAIRED install must behave exactly as it does today: no id, no stamp,
 /// SQL NULL. A guess here would make the gate suppress a legitimate deduction.

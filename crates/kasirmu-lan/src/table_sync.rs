@@ -131,7 +131,9 @@ impl TableLeaseTracker {
     ) -> Result<TableLease, TableLease> {
         self.prune_expired(now_epoch_ms);
         if let Some(existing) = self.leases.get(&lock.table_id) {
-            if existing.terminal_id != lock.terminal_id && existing.expires_at_epoch_ms > now_epoch_ms {
+            if existing.terminal_id != lock.terminal_id
+                && existing.expires_at_epoch_ms > now_epoch_ms
+            {
                 return Err(existing.clone());
             }
         }

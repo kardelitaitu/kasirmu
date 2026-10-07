@@ -552,7 +552,9 @@ fn opt_in_peer_gets_table_states_injected() {
     assert_eq!(tables.len(), 1);
     assert_eq!(tables[0].id, "tbl-1");
     assert_eq!(tables[0].status, "occupied");
-    let leases = parsed.active_leases.expect("active_leases must be injected");
+    let leases = parsed
+        .active_leases
+        .expect("active_leases must be injected");
     assert_eq!(leases.len(), 1);
     assert_eq!(leases[0].table_id, "tbl-1");
     assert_eq!(leases[0].terminal_id, "term-pos-1");

@@ -611,7 +611,13 @@ fn load_active_market_profile_missing_location() {
     let conn = crate::migrations::fresh_db();
     let err = load_active_market_profile(&conn, "loc-does-not-exist").unwrap_err();
     assert!(
-        matches!(err, crate::CoreError::NotFound { entity: "location", .. }),
+        matches!(
+            err,
+            crate::CoreError::NotFound {
+                entity: "location",
+                ..
+            }
+        ),
         "missing location must produce NotFound"
     );
 }
@@ -717,7 +723,10 @@ fn active_market_profile_serializes_as_snake_case_json() {
         enabled_payment_rails: vec!["cash".into(), "qris".into()],
     };
     let json = serde_json::to_string(&profile).unwrap();
-    assert!(json.contains("\"location_id\""), "must serialize as snake_case");
+    assert!(
+        json.contains("\"location_id\""),
+        "must serialize as snake_case"
+    );
     assert!(json.contains("\"enabled_payment_rails\""));
     assert!(json.contains("\"statutory_rounding\""));
 }

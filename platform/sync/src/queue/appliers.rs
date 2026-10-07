@@ -781,7 +781,10 @@ pub(super) fn insert_payment_in_tx(
     payload: &PaymentPayload,
 ) -> Result<(), CoreError> {
     let method = payload.method.to_ascii_lowercase();
-    let gateway_status = payload.gateway_status.as_deref().map(str::to_ascii_lowercase);
+    let gateway_status = payload
+        .gateway_status
+        .as_deref()
+        .map(str::to_ascii_lowercase);
     tx.execute(
         "INSERT INTO payments (id, sale_id, method, amount_minor, currency, created_at,
                                gateway_reference, gateway_status, gateway_response, idempotency_key)

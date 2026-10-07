@@ -433,9 +433,7 @@ pub(crate) fn build_discovery_response(
         tracing::warn!("KDS discovery payload is not a JSON object — snapshots not injected");
         return payload.to_string();
     }
-    if want_queue
-        && let Some(provider) = queue_provider
-    {
+    if want_queue && let Some(provider) = queue_provider {
         let snapshot = provider();
         match serde_json::to_value(&snapshot) {
             Ok(queue) => {

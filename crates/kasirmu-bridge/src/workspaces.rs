@@ -162,10 +162,15 @@ pub async fn list_workspaces(
     if has_empty {
         let global_db = ctx.lock_global().await;
         let global_store = Store::new(&global_db);
-        let mut global_rows = global_store.list_workspaces(&real_role_id, Some(&real_user_id), &store_id)?;
+        let mut global_rows =
+            global_store.list_workspaces(&real_role_id, Some(&real_user_id), &store_id)?;
         if global_rows.is_empty() && store_id == "default" {
             if let Ok(Some(primary)) = global_store.get_primary_location() {
-                global_rows = global_store.list_workspaces(&real_role_id, Some(&real_user_id), &primary.id)?;
+                global_rows = global_store.list_workspaces(
+                    &real_role_id,
+                    Some(&real_user_id),
+                    &primary.id,
+                )?;
             }
         }
         drop(global_db);

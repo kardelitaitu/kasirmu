@@ -299,7 +299,7 @@ async fn list_workspaces_repairs_from_global_when_the_store_db_is_empty() {
         db.execute("DELETE FROM locations", []).unwrap();
     }
     // The repair lives in `list_workspaces` — the PICKER path, which is the one the
-    // reported defect was measured through (`WorkspaceContext.tsx:329` calls
+    // reported defect was measured through (the workspace-picker provider calls
     // `listWorkspaces` -> the `list_workspaces` command). Its sibling
     // `list_workspaces_for_store_scoped` (the terminal-management screen's cross-store
     // picker) has no repair, which is worth knowing but is not this test's subject.
@@ -371,8 +371,7 @@ async fn list_workspaces_for_store_scoped_has_no_read_repair() {
     }
     mint_session(&tb, "owner-token", "user-owner", "role-owner", "store-a");
 
-    let listed =
-        list_workspaces_for_store_scoped(&tb.ctx(), "owner-token", "store-a".into()).await;
+    let listed = list_workspaces_for_store_scoped(&tb.ctx(), "owner-token", "store-a".into()).await;
     if !seeded_row_loads() {
         assert_refused_by_the_seeded_row(&tb, listed, "free").await;
         return;

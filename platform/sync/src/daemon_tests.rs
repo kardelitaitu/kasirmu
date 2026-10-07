@@ -2430,7 +2430,10 @@ async fn reconnection_and_deterministic_monotonic_delta_sync_after_offline_sales
     })
     .await
     .unwrap();
-    assert_eq!(pending_mid, 5, "items must remain pending after failed sync cycle");
+    assert_eq!(
+        pending_mid, 5,
+        "items must remain pending after failed sync cycle"
+    );
 
     // 3. Re-establish network connection: start live recording sync server
     let received_items = std::sync::Arc::new(tokio::sync::Mutex::new(Vec::new()));
@@ -2455,11 +2458,18 @@ async fn reconnection_and_deterministic_monotonic_delta_sync_after_offline_sales
         }
         tokio::time::sleep(Duration::from_millis(15)).await;
     }
-    assert!(drained, "all offline items must be synced after reconnection");
+    assert!(
+        drained,
+        "all offline items must be synced after reconnection"
+    );
 
     // 4. Invariant checks
     let recorded = received_items.lock().await.clone();
-    assert_eq!(recorded.len(), 5, "server must have received exactly 5 items");
+    assert_eq!(
+        recorded.len(),
+        5,
+        "server must have received exactly 5 items"
+    );
 
     // Verify deterministic order: priority tiers obeyed
     // sale.create has Critical priority; inventory.adjust has Normal priority
@@ -2596,9 +2606,11 @@ async fn network_jitter_resilience_and_exponential_backoff_retry() {
     })
     .await
     .unwrap();
-    assert_eq!(pending_remaining, 0, "all items must be synced after jitter retry");
+    assert_eq!(
+        pending_remaining, 0,
+        "all items must be synced after jitter retry"
+    );
 
     assert!(daemon.stop().await);
     wait_for_stopped(&daemon).await;
 }
-

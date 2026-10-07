@@ -124,7 +124,9 @@ fn table_lease_tracker_acquire_conflict_and_expiration() {
     };
 
     // Initial acquire succeeds
-    let lease = tracker.try_acquire(acq.clone(), now).expect("acquire should succeed");
+    let lease = tracker
+        .try_acquire(acq.clone(), now)
+        .expect("acquire should succeed");
     assert_eq!(lease.expires_at_epoch_ms, now + 60_000);
     assert_eq!(tracker.active_leases(now).len(), 1);
 
@@ -137,11 +139,15 @@ fn table_lease_tracker_acquire_conflict_and_expiration() {
         lease_ttl_ms: 60_000,
         acquired_at: "2026-10-07T03:50:30Z".into(),
     };
-    let conflict = tracker.try_acquire(acq_b.clone(), now + 30_000).expect_err("should conflict");
+    let conflict = tracker
+        .try_acquire(acq_b.clone(), now + 30_000)
+        .expect_err("should conflict");
     assert_eq!(conflict.terminal_id, "tablet-a");
 
     // Same terminal renews -> succeeds
-    let renewed = tracker.try_acquire(acq, now + 30_000).expect("renew should succeed");
+    let renewed = tracker
+        .try_acquire(acq, now + 30_000)
+        .expect("renew should succeed");
     assert_eq!(renewed.expires_at_epoch_ms, now + 30_000 + 60_000);
 
     // Wrong terminal cannot release
@@ -163,7 +169,9 @@ fn table_lease_tracker_acquire_conflict_and_expiration() {
     assert!(tracker.get_lease("tbl-10", now + 30_000).is_none());
 
     // Terminal B can now acquire
-    let granted_b = tracker.try_acquire(acq_b, now + 35_000).expect("now B should succeed");
+    let granted_b = tracker
+        .try_acquire(acq_b, now + 35_000)
+        .expect("now B should succeed");
     assert_eq!(granted_b.terminal_id, "tablet-b");
 
     // After TTL passes, lease expires automatically

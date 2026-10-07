@@ -338,7 +338,9 @@ fn provisioning_with_tax_preset_ppn11_and_sample_products_seeds_starter_catalog(
 
     // Verify inventory rows seeded with positive stock for each product
     let inv_count: i64 = conn
-        .query_row("SELECT count(*) FROM inventory WHERE qty > 0", [], |r| r.get(0))
+        .query_row("SELECT count(*) FROM inventory WHERE qty > 0", [], |r| {
+            r.get(0)
+        })
         .unwrap();
     assert_eq!(inv_count, 5, "all 5 products must have initial inventory");
 }
@@ -687,9 +689,9 @@ fn a_linked_provision_requires_its_tenant_and_credential() {
 /// the design says the server's grant belongs, under a tenant no tablet reader
 /// consults.
 ///
-/// Reachable through the shipping first-run flow: `ProvisioningFlow.tsx`
-/// initialises `provisionMode` to `'linked'` and sends the account's
-/// `tenantId`. The fix is one guard — write only for `ProvisioningMode::Local`,
+/// Reachable through the shipping first-run flow: the setup wizard's
+/// provisioning screen initialises `provisionMode` to `'linked'` and sends the
+/// account's `tenantId`. The fix is one guard — write only for `ProvisioningMode::Local`,
 /// mirroring the reconcile — which also settles the tenant question, because a
 /// `local` install's tenant is `None` and therefore `"default"`.
 ///

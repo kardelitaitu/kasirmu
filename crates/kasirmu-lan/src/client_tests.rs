@@ -67,8 +67,8 @@ async fn lan_client_noise_connects_and_receives_table_event() {
     };
     let discover_json = serde_json::to_string(&discover).unwrap();
 
-    let forwarder = LanEventForwarder::new(bind_addr.clone(), Some(psk.into()))
-        .with_discovery(discover_json);
+    let forwarder =
+        LanEventForwarder::new(bind_addr.clone(), Some(psk.into())).with_discovery(discover_json);
     let handle = forwarder.handle();
     tokio::spawn(forwarder.run());
 
@@ -215,7 +215,9 @@ async fn lan_client_sends_uplink_and_triggers_server_handler() {
 
     // Send KdsLineItemBumped uplink event
     let bump_event = r#"{"type":"kds.line_item_bumped","kds_order_id":"ord-1","sale_id":"sale-1","line_item_id":"line-1","stations":["grill"],"to_status":"prepared","bumped_by":"tablet-kds","occurred_at":"2026-10-06T04:00:00Z"}"#;
-    client_handle.send(bump_event.to_string()).expect("send failed");
+    client_handle
+        .send(bump_event.to_string())
+        .expect("send failed");
 
     let received = timeout(Duration::from_secs(3), uplink_received_rx.recv())
         .await
@@ -228,4 +230,3 @@ async fn lan_client_sends_uplink_and_triggers_server_handler() {
 
     client_handle.stop();
 }
-

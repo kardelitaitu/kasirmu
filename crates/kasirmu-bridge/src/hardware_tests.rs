@@ -476,7 +476,9 @@ async fn open_cash_drawer_scoped_resolves_companion_drawer_when_default() {
 
     assert!(res.is_ok());
     assert_eq!(
-        companion.open_calls.load(std::sync::atomic::Ordering::SeqCst),
+        companion
+            .open_calls
+            .load(std::sync::atomic::Ordering::SeqCst),
         1
     );
 }

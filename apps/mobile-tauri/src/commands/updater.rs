@@ -11,7 +11,7 @@ use std::time::Instant;
 use kasirmu_core::permissions;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use tauri::{command, AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Manager, State, command};
 use tokio::io::AsyncWriteExt;
 
 use crate::commands::authz::require_permission_for_session;
@@ -378,16 +378,20 @@ pub async fn start_apk_download(
                 0.0
             };
 
-            let _ = app.emit(
-                "update-download-progress",
-                DownloadProgressPayload {
+            // R10 #3: the progress event rides the bridge's injected EventSink
+            // (BridgeCtx::emitter), the same seam the delegated doors use, not a
+            // raw AppHandle.
+            if let Some(sink) = state.bridge_ctx().emitter {
+                let payload = serde_json::to_value(DownloadProgressPayload {
                     received_bytes,
                     total_bytes,
                     percentage,
                     speed_bytes_per_sec: speed,
                     eta_seconds: eta,
-                },
-            );
+                })
+                .unwrap_or(serde_json::Value::Null);
+                sink.emit("update-download-progress", payload);
+            }
 
             last_progress_emit = Instant::now();
             last_received_sample = received_bytes;
@@ -465,10 +469,7 @@ pub async fn prepare_and_launch_update(
     // Perform safe SQLite snapshot via global db connection
     let db_guard = state.db.lock().await;
 
-    let backup_result = db_guard.execute(
-        "VACUUM INTO ?1",
-        rusqlite::params![backup_str],
-    );
+    let backup_result = db_guard.execute("VACUUM INTO ?1", rusqlite::params![backup_str]);
 
     let backup_path_opt = match backup_result {
         Ok(_) => Some(backup_str.clone()),

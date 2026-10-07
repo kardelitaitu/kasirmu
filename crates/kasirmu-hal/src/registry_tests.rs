@@ -41,11 +41,9 @@ async fn register_printer_and_drawer() {
 #[tokio::test]
 async fn cash_drawer_default_falls_back_to_companion_kick_drawer() {
     let reg = DriverRegistry::default();
-    let companion_drawer: Arc<dyn CashDrawer> = Arc::new(MockCashDrawer::with_info(DeviceInfo::new(
-        "test",
-        "MockKickDrawer",
-        "0004",
-    )));
+    let companion_drawer: Arc<dyn CashDrawer> = Arc::new(MockCashDrawer::with_info(
+        DeviceInfo::new("test", "MockKickDrawer", "0004"),
+    ));
     reg.register_cash_drawer("drawer:kick:default", companion_drawer)
         .await;
     let found = reg.cash_drawer("default").await;
@@ -67,7 +65,8 @@ async fn cash_drawer_default_prefers_exact_standalone_drawer() {
         "0006",
     )));
     reg.register_cash_drawer("default", standalone).await;
-    reg.register_cash_drawer("drawer:kick:default", companion).await;
+    reg.register_cash_drawer("drawer:kick:default", companion)
+        .await;
     let found = reg.cash_drawer("default").await;
     assert!(found.is_some());
     assert_eq!(found.unwrap().device_info().model, "StandaloneDrawer");

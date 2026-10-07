@@ -124,9 +124,10 @@ pub async fn update_table_status_scoped(
     state: State<'_, AppState>,
 ) -> Result<Table, AppError> {
     let ctx = state.bridge_ctx();
-    let res = kasirmu_bridge::tables::update_table_status_scoped(&ctx, &session_token, &id, &status)
-        .await
-        .map_err(AppError::from)?;
+    let res =
+        kasirmu_bridge::tables::update_table_status_scoped(&ctx, &session_token, &id, &status)
+            .await
+            .map_err(AppError::from)?;
     publish_table_sync(&state, &res).await;
     Ok(res)
 }
@@ -140,9 +141,14 @@ pub async fn assign_table_order_scoped(
     state: State<'_, AppState>,
 ) -> Result<Table, AppError> {
     let ctx = state.bridge_ctx();
-    let res = kasirmu_bridge::tables::assign_table_order_scoped(&ctx, &session_token, &table_id, &sale_id)
-        .await
-        .map_err(AppError::from)?;
+    let res = kasirmu_bridge::tables::assign_table_order_scoped(
+        &ctx,
+        &session_token,
+        &table_id,
+        &sale_id,
+    )
+    .await
+    .map_err(AppError::from)?;
     publish_table_sync(&state, &res).await;
     Ok(res)
 }

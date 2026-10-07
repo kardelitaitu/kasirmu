@@ -19,7 +19,11 @@ fn sample_item(id: &str, action: &str, payload: &str) -> OfflineQueueItem {
 
 #[test]
 fn crdt_delta_broadcast_serde_roundtrip() {
-    let item = sample_item("q-1", "stock.adjusted", r#"{"sku":"COFFEE","qty_delta":-2}"#);
+    let item = sample_item(
+        "q-1",
+        "stock.adjusted",
+        r#"{"sku":"COFFEE","qty_delta":-2}"#,
+    );
     let event = CrdtSyncEvent::DeltaBroadcast(CrdtDeltaBroadcast {
         batch: vec![item],
         origin_terminal_id: "tablet-a".into(),

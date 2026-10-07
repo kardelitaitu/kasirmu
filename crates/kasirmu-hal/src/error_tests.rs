@@ -55,4 +55,3 @@ fn permission_denied_display() {
     assert_eq!(e.to_string(), "permission denied: BLUETOOTH_CONNECT");
     assert_eq!(e.kind(), HalErrorKind::PermissionDenied);
 }
-

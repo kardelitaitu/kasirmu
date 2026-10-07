@@ -891,7 +891,8 @@ pub async fn set_settings_scoped(
             .lock()
             .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
         let tx = db.unchecked_transaction()?;
-        let written = run_set_settings_batch_for_user(&tx, &entries, &terminal_id, Some(&session.user_id))?;
+        let written =
+            run_set_settings_batch_for_user(&tx, &entries, &terminal_id, Some(&session.user_id))?;
         tx.commit()?;
         written
     };

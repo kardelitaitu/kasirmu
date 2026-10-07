@@ -5,11 +5,18 @@ use std::path::PathBuf;
 fn test_get_disk_space_current_dir() {
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
     let res = get_disk_space(&cwd);
-    assert!(res.is_ok(), "failed to read disk space on current dir: {:?}", res.err());
+    assert!(
+        res.is_ok(),
+        "failed to read disk space on current dir: {:?}",
+        res.err()
+    );
     let space = res.unwrap();
     assert!(space.total_bytes > 0, "total bytes must be > 0");
     assert!(space.available_bytes > 0, "available bytes must be > 0");
-    assert!(space.available_bytes <= space.total_bytes, "available cannot exceed total");
+    assert!(
+        space.available_bytes <= space.total_bytes,
+        "available cannot exceed total"
+    );
 }
 
 #[test]

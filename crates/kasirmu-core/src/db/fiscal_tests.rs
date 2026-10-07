@@ -593,7 +593,14 @@ fn issue_tax_invoice_for_sale_claims_number_and_is_idempotent() {
     seed_sale(&store, "sale-inv-1");
 
     store
-        .upsert_document_number_sequence("ent-inv", "invoice", "TAX-INV/", ResetPeriod::Never, 5, NOW)
+        .upsert_document_number_sequence(
+            "ent-inv",
+            "invoice",
+            "TAX-INV/",
+            ResetPeriod::Never,
+            5,
+            NOW,
+        )
         .unwrap();
 
     // 1. Issue invoice for sale-inv-1
@@ -602,7 +609,10 @@ fn issue_tax_invoice_for_sale_claims_number_and_is_idempotent() {
         .unwrap();
     assert_eq!(inv1, "TAX-INV/00001");
     assert_eq!(
-        store.sale_statutory_number("sale-inv-1").unwrap().as_deref(),
+        store
+            .sale_statutory_number("sale-inv-1")
+            .unwrap()
+            .as_deref(),
         Some("TAX-INV/00001")
     );
 
@@ -616,7 +626,10 @@ fn issue_tax_invoice_for_sale_claims_number_and_is_idempotent() {
         .document_number_sequence("ent-inv", "invoice")
         .unwrap()
         .unwrap();
-    assert_eq!(seq.current_value, 1, "counter must not have advanced for idempotent call");
+    assert_eq!(
+        seq.current_value, 1,
+        "counter must not have advanced for idempotent call"
+    );
 
     // 3. Issue for a second sale advances counter
     seed_sale(&store, "sale-inv-2");
@@ -640,7 +653,10 @@ fn issue_tax_invoice_rejects_voided_sale() {
 
     store
         .conn
-        .execute("UPDATE sales SET status = 'voided' WHERE id = 'sale-void'", [])
+        .execute(
+            "UPDATE sales SET status = 'voided' WHERE id = 'sale-void'",
+            [],
+        )
         .unwrap();
 
     let err = store
@@ -669,4 +685,3 @@ fn issue_tax_invoice_rejects_when_sequence_unconfigured() {
         other => panic!("expected Validation on document_number_sequences, got {other:?}"),
     }
 }
-

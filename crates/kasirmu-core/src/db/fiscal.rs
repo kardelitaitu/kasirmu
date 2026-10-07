@@ -585,13 +585,8 @@ impl crate::db::Store<'_> {
             }
         }
 
-        let claimed = self.claim_statutory_number_for_sale(
-            &tx,
-            sale_id,
-            location_id,
-            "invoice",
-            now,
-        )?;
+        let claimed =
+            self.claim_statutory_number_for_sale(&tx, sale_id, location_id, "invoice", now)?;
 
         let Some(invoice_number) = claimed else {
             return Err(CoreError::Validation {

@@ -2,6 +2,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { UpdateSettingsCard } from '../screens/UpdateSettingsCard';
+import { isTabletShell } from '@/utils/shellKind';
 
 const { mockInvoke } = vi.hoisted(() => ({
   mockInvoke: vi.fn(),
@@ -17,6 +18,13 @@ vi.mock('@tauri-apps/api/event', () => ({
 
 vi.mock('@/contexts/WorkspaceContext', () => ({
   useWorkspace: () => ({ sessionToken: 'mock-session-token' }),
+}));
+
+// The in-app updater is Android-only: its three commands exist on the tablet
+// shell alone, so the card's real flow is exercised on that shell. The desktop
+// shell's inert path is covered by its own case below.
+vi.mock('@/utils/shellKind', () => ({
+  isTabletShell: vi.fn().mockReturnValue(true),
 }));
 
 vi.mock('@fluent/react', () => ({
@@ -49,6 +57,7 @@ vi.mock('@fluent/react', () => ({
 describe('UpdateSettingsCard', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(isTabletShell).mockReturnValue(true);
     delete window.__kasirmuNative;
   });
 
@@ -216,5 +225,22 @@ describe('UpdateSettingsCard', () => {
       });
       expect(mockLaunchInstaller).toHaveBeenCalledWith('/cache/updates/app.apk');
     });
+  });
+
+  it('refuses to check for updates on the desktop shell', async () => {
+    vi.mocked(isTabletShell).mockReturnValue(false);
+    const user = userEvent.setup();
+
+    render(<UpdateSettingsCard />);
+    await user.click(screen.getByTestId('updater-check-btn'));
+
+    await waitFor(() => {
+      expect(screen.getByText(/updates are Android-only/)).toBeInTheDocument();
+    });
+    // The desktop shell registers none of the updater doors, so nothing reaches IPC.
+    expect(mockInvoke).not.toHaveBeenCalledWith(
+      'check_app_update',
+      expect.anything(),
+    );
   });
 });

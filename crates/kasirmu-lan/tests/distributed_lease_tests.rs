@@ -1,11 +1,11 @@
 //! Integration tests for distributed table and held cart lease protocol over LAN.
 
+use kasirmu_lan::{
+    LanClientConfig, LanEvent, LanEventForwarder, TableLeaseTracker, TableLockAcquired,
+    TableLockReleased, TableSyncEvent, start_lan_client,
+};
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use kasirmu_lan::{
-    LanClientConfig, LanEvent, LanEventForwarder, TableLeaseTracker,
-    TableLockAcquired, TableLockReleased, TableSyncEvent, start_lan_client,
-};
 
 fn now_epoch_ms() -> u64 {
     SystemTime::now()
@@ -208,7 +208,9 @@ async fn distributed_table_leases_sync_and_reconcile_over_lan() {
         .expect("term C rx error");
     match ev_c {
         LanEvent::Discovery(discovery) => {
-            let leases = discovery.active_leases.expect("active_leases must be present");
+            let leases = discovery
+                .active_leases
+                .expect("active_leases must be present");
             assert_eq!(leases.len(), 1);
             assert_eq!(leases[0].table_id, "table-12");
             assert_eq!(leases[0].terminal_id, "term-waiter-2");

@@ -682,10 +682,9 @@ pub fn load_active_market_profile(
         .map_err(crate::CoreError::Db)?;
 
     let rails: Vec<String> = stmt
-        .query_map(
-            rusqlite::params![legal_entity_id, location_id],
-            |row| row.get(0),
-        )
+        .query_map(rusqlite::params![legal_entity_id, location_id], |row| {
+            row.get(0)
+        })
         .map_err(crate::CoreError::Db)?
         .filter_map(|r| r.ok())
         .collect();

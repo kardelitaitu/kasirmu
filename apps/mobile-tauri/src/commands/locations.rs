@@ -8,9 +8,7 @@ use tauri::State;
 use crate::error::AppError;
 use crate::state::AppState;
 
-pub use kasirmu_bridge::locations::{
-    CreateLocationArgs, LocationProfileDto, UpdateLocationArgs,
-};
+pub use kasirmu_bridge::locations::{CreateLocationArgs, LocationProfileDto, UpdateLocationArgs};
 
 /// List all location profiles for the session's tenant (ADR #7).
 #[tauri::command]

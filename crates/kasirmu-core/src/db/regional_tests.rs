@@ -553,7 +553,10 @@ fn update_regional_config_for_location_blocked_by_open_shift() {
     assert!(
         matches!(
             err,
-            CoreError::Validation { field: "regional_settings", .. }
+            CoreError::Validation {
+                field: "regional_settings",
+                ..
+            }
         ),
         "expected CoreError::Validation on regional_settings, got {err:?}"
     );
@@ -576,4 +579,3 @@ fn update_regional_config_for_location_blocked_by_open_shift() {
     assert_eq!(cfg.timezone.value, "Asia/Jakarta");
     assert_eq!(cfg.locale.value, "id-ID");
 }
-

@@ -1534,7 +1534,10 @@ fn test_regional_scope_chain_resolution() {
     let cfg = s.regional_config_for_location("loc-orchard").unwrap();
     assert_eq!(cfg.country_code, Some("SG".to_string()));
     assert_eq!(cfg.currency.value, "SGD");
-    assert_eq!(cfg.currency.scope, kasirmu_core::regional::ConfigScope::LegalEntity);
+    assert_eq!(
+        cfg.currency.scope,
+        kasirmu_core::regional::ConfigScope::LegalEntity
+    );
 
     // 4. Load ActiveMarketProfile and verify market facts match inherited profile
     let profile = kasirmu_core::load_active_market_profile(&conn, "loc-orchard").unwrap();
@@ -1542,4 +1545,3 @@ fn test_regional_scope_chain_resolution() {
     assert_eq!(profile.currency, "SGD");
     assert_eq!(profile.tax_regime, "LOCAL/SG");
 }
-

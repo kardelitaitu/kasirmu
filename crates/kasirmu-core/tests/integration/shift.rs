@@ -518,7 +518,9 @@ fn test_shift_locks_regional_settings() {
     .unwrap();
 
     // 1. Open shift for this terminal
-    let shift = s.open_shift("user-alice", Some("term-shift-test"), 1000).unwrap();
+    let shift = s
+        .open_shift("user-alice", Some("term-shift-test"), 1000)
+        .unwrap();
     assert_eq!(shift.status, "open");
 
     // 2. Attempt to update regional settings to change currency from IDR to USD
@@ -529,19 +531,32 @@ fn test_shift_locks_regional_settings() {
     assert!(
         matches!(
             err,
-            kasirmu_core::CoreError::Validation { field: "regional_settings", .. }
+            kasirmu_core::CoreError::Validation {
+                field: "regional_settings",
+                ..
+            }
         ),
         "expected CoreError::Validation on regional_settings, got {err:?}"
     );
 
     // Also attempt via location profile update
     let err_loc = s
-        .update_location_profile("loc-shift-test", "Shift Store", "Address", "", "USD", "Asia/Jakarta")
+        .update_location_profile(
+            "loc-shift-test",
+            "Shift Store",
+            "Address",
+            "",
+            "USD",
+            "Asia/Jakarta",
+        )
         .expect_err("mutating currency via location profile while shift is open must be blocked");
     assert!(
         matches!(
             err_loc,
-            kasirmu_core::CoreError::Validation { field: "regional_settings", .. }
+            kasirmu_core::CoreError::Validation {
+                field: "regional_settings",
+                ..
+            }
         ),
         "expected CoreError::Validation on regional_settings, got {err_loc:?}"
     );
@@ -556,4 +571,3 @@ fn test_shift_locks_regional_settings() {
         .expect("mutation must succeed once all shifts are closed");
     assert_eq!(updated.currency.value, "USD");
 }
-

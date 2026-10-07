@@ -467,7 +467,8 @@ fn insert_audit(conn: &rusqlite::Connection, entry: &AuditEntry) -> Result<(), C
     )?;
 
     // P2: Best-effort off-device forensic log shipping.
-    if let Err(err) = enqueue_audit_for_sync(conn, entry, &details, previous_hash.as_deref(), &hash) {
+    if let Err(err) = enqueue_audit_for_sync(conn, entry, &details, previous_hash.as_deref(), &hash)
+    {
         tracing::warn!(action = %entry.action, error = %err, "failed to enqueue audit entry for off-device shipping");
     }
 

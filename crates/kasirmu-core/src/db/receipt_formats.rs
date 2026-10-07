@@ -377,7 +377,8 @@ impl crate::db::Store<'_> {
         // ── content: the primary entity's row, or legacy, or unset ──
         let mut entity_id: Option<String> = None;
         if let Some(t_id) = terminal_id {
-            entity_id = self.conn
+            entity_id = self
+                .conn
                 .query_row(
                     "SELECT l.legal_entity_id
                      FROM terminals t
@@ -437,16 +438,27 @@ impl crate::db::Store<'_> {
             if let Some(raw) = raw {
                 let map = parse_json_object(&raw, "config")?;
                 let get_bool = |key: &str| map.get(key).and_then(serde_json::Value::as_bool);
-                let custom_label = map.get("tax_id_label").and_then(serde_json::Value::as_str).map(str::to_string);
-                let tax_regime = map.get("tax_regime").and_then(serde_json::Value::as_str).map(str::to_string)
-                    .or_else(|| country_code.as_ref().map(|cc| {
-                        if cc.eq_ignore_ascii_case("ID") {
-                            "PB1".to_string()
-                        } else {
-                            format!("LOCAL/{cc}")
-                        }
-                    }));
-                let statutory_rounding = map.get("statutory_rounding").and_then(serde_json::Value::as_str).map(str::to_string);
+                let custom_label = map
+                    .get("tax_id_label")
+                    .and_then(serde_json::Value::as_str)
+                    .map(str::to_string);
+                let tax_regime = map
+                    .get("tax_regime")
+                    .and_then(serde_json::Value::as_str)
+                    .map(str::to_string)
+                    .or_else(|| {
+                        country_code.as_ref().map(|cc| {
+                            if cc.eq_ignore_ascii_case("ID") {
+                                "PB1".to_string()
+                            } else {
+                                format!("LOCAL/{cc}")
+                            }
+                        })
+                    });
+                let statutory_rounding = map
+                    .get("statutory_rounding")
+                    .and_then(serde_json::Value::as_str)
+                    .map(str::to_string);
 
                 content = Some(ReceiptContent {
                     required_fields: map

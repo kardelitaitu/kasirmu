@@ -469,4 +469,3 @@ fn effective_receipt_format_derives_entity_tax_label_and_regime() {
     assert_eq!(content.tax_id_label.as_deref(), Some("GST Reg No"));
     assert_eq!(content.tax_regime.as_deref(), Some("LOCAL/SG"));
 }
-

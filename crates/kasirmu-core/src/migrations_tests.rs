@@ -3562,9 +3562,18 @@ fn payments_method_check_and_gateway_status_constraints_enforced() {
     .unwrap();
 
     let valid_methods = [
-        "cash", "card", "card_debit", "card_credit",
-        "qris_manual", "qris", "bank_transfer", "ewallet",
-        "open_bill", "credit", "pay_later", "other",
+        "cash",
+        "card",
+        "card_debit",
+        "card_credit",
+        "qris_manual",
+        "qris",
+        "bank_transfer",
+        "ewallet",
+        "open_bill",
+        "credit",
+        "pay_later",
+        "other",
     ];
 
     for (i, method) in valid_methods.iter().enumerate() {
@@ -3583,7 +3592,10 @@ fn payments_method_check_and_gateway_status_constraints_enforced() {
              VALUES (?1, 'sale-pm-test', ?2, 1000, 'IDR', '2026-10-02T00:00:00.000Z')",
             rusqlite::params![format!("pay-invalid-{invalid}"), invalid],
         );
-        assert!(res.is_err(), "invalid method {invalid} must be rejected by CHECK constraint");
+        assert!(
+            res.is_err(),
+            "invalid method {invalid} must be rejected by CHECK constraint"
+        );
     }
 
     // ADR-64 D4's decided set, not the set 20261017 happened to ship. The two
@@ -3592,8 +3604,15 @@ fn payments_method_check_and_gateway_status_constraints_enforced() {
     // decided values is the point -- a list copied from the implementation
     // cannot detect the implementation disagreeing with the decision.
     let valid_statuses = [
-        "pending", "authorized", "confirmed", "settled",
-        "failed", "voided", "refunded", "disputed", "unconfirmed",
+        "pending",
+        "authorized",
+        "confirmed",
+        "settled",
+        "failed",
+        "voided",
+        "refunded",
+        "disputed",
+        "unconfirmed",
     ];
 
     for (i, status) in valid_statuses.iter().enumerate() {
@@ -3602,7 +3621,10 @@ fn payments_method_check_and_gateway_status_constraints_enforced() {
              VALUES (?1, 'sale-pm-test', 'card', 1000, 'IDR', '2026-10-02T00:00:00.000Z', ?2)",
             rusqlite::params![format!("pay-status-{i}"), status],
         );
-        assert!(res.is_ok(), "valid gateway_status {status} must succeed: {res:?}");
+        assert!(
+            res.is_ok(),
+            "valid gateway_status {status} must succeed: {res:?}"
+        );
     }
 
     // Invalid gateway_status must be rejected. 'chargeback' belongs here now:
@@ -3614,7 +3636,10 @@ fn payments_method_check_and_gateway_status_constraints_enforced() {
              VALUES (?1, 'sale-pm-test', 'card', 1000, 'IDR', '2026-10-02T00:00:00.000Z', ?2)",
             rusqlite::params![format!("pay-status-inv-{invalid_status}"), invalid_status],
         );
-        assert!(res.is_err(), "invalid gateway_status {invalid_status} must be rejected");
+        assert!(
+            res.is_err(),
+            "invalid gateway_status {invalid_status} must be rejected"
+        );
     }
 
     // Reconstructed indexes must exist on payments
@@ -3626,7 +3651,10 @@ fn payments_method_check_and_gateway_status_constraints_enforced() {
             |r| r.get(0),
         )
         .unwrap();
-    assert_eq!(index_count, 2, "both idx_payments_idempotency_key and idx_payments_sale_id must exist");
+    assert_eq!(
+        index_count, 2,
+        "both idx_payments_idempotency_key and idx_payments_sale_id must exist"
+    );
 }
 
 // ── The bootstrap-subscription reconcile (ADR #56 §2.6 option C / §2.4) ──────

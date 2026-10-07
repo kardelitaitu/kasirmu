@@ -146,14 +146,18 @@ async fn reconnect_fetches_fresh_table_snapshot_and_reconciles() {
 
     match first_ev {
         LanEvent::Discovery(discovery) => {
-            let tables = discovery.table_states.expect("table_states must be present");
+            let tables = discovery
+                .table_states
+                .expect("table_states must be present");
             assert_eq!(tables.len(), 2);
             assert_eq!(tables[0].id, "t-1");
             assert_eq!(tables[0].status, "available");
             assert_eq!(tables[1].id, "t-2");
             assert_eq!(tables[1].status, "occupied");
 
-            let queue = discovery.active_queue.expect("active_queue must be present");
+            let queue = discovery
+                .active_queue
+                .expect("active_queue must be present");
             assert_eq!(queue.tickets.len(), 1);
             assert_eq!(queue.tickets[0].order.id, "kds-1");
         }
@@ -197,7 +201,9 @@ async fn reconnect_fetches_fresh_table_snapshot_and_reconciles() {
 
     match reconnect_ev {
         LanEvent::Discovery(discovery) => {
-            let tables = discovery.table_states.expect("reconnect table_states must be present");
+            let tables = discovery
+                .table_states
+                .expect("reconnect table_states must be present");
             assert_eq!(tables.len(), 2);
             assert_eq!(tables[0].id, "t-1");
             assert_eq!(tables[0].status, "cleaning"); // Reconciled!

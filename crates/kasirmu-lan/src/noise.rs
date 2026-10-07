@@ -7,9 +7,7 @@
 //! frames). Behaviour is byte-for-byte the original; `lib_tests.rs`
 //! exercises it through `handle_peer`.
 
-use tokio::io::{
-    AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufReader,
-};
+use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufReader};
 use tokio::net::TcpStream;
 
 use sha2::{Digest, Sha256};
@@ -299,11 +297,7 @@ impl PeerTx {
             PeerTx::Plain(reader) => {
                 let mut line = String::new();
                 let n = reader.read_line(&mut line).await?;
-                if n == 0 {
-                    Ok(None)
-                } else {
-                    Ok(Some(line))
-                }
+                if n == 0 { Ok(None) } else { Ok(Some(line)) }
             }
             PeerTx::Noise(reader, state) => {
                 let frame = match read_frame(reader).await {
@@ -321,9 +315,8 @@ impl PeerTx {
                         format!("noise decrypt failed: {e}"),
                     )
                 })?;
-                let text = String::from_utf8(out[..n].to_vec()).map_err(|e| {
-                    std::io::Error::new(std::io::ErrorKind::InvalidData, e)
-                })?;
+                let text = String::from_utf8(out[..n].to_vec())
+                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
                 Ok(Some(text))
             }
         }

@@ -136,4 +136,3 @@ pub async fn get_active_market_profile_scoped(
 #[cfg(test)]
 #[path = "regional_tests.rs"]
 mod tests;
-

@@ -64,10 +64,19 @@ fn test_write_crash_report_entry_sanitizes_pii_and_appends() {
 
     let decoded: CrashReport = serde_json::from_str(content.trim()).expect("parse json");
     assert_eq!(decoded.message, "Failed auth with Bearer [REDACTED]");
-    assert!(decoded.stack.unwrap().contains(r#""password": "[REDACTED]""#));
-    assert!(decoded.component_stack.unwrap().contains(r#""pin": "[REDACTED]""#));
+    assert!(
+        decoded
+            .stack
+            .unwrap()
+            .contains(r#""password": "[REDACTED]""#)
+    );
+    assert!(
+        decoded
+            .component_stack
+            .unwrap()
+            .contains(r#""pin": "[REDACTED]""#)
+    );
 
     // Cleanup
     let _ = std::fs::remove_dir_all(&temp_dir);
 }
-

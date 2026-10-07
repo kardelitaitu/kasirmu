@@ -179,5 +179,3 @@ pub async fn record_crash_report(
         .await
         .map_err(Into::into)
 }
-
-

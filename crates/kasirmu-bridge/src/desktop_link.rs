@@ -300,7 +300,11 @@ where
                 if matches!(e, kasirmu_core::error::CoreError::Validation { .. }) {
                     return Err(BridgeError::from(e));
                 }
-                tracing::warn!("consume_desktop_link attempt {} failed: {:?}", attempt + 1, e);
+                tracing::warn!(
+                    "consume_desktop_link attempt {} failed: {:?}",
+                    attempt + 1,
+                    e
+                );
                 last_err = Some(e);
             }
         }

@@ -68,12 +68,7 @@ mod imp {
 
         // SAFETY: wide is a null-terminated UTF-16 string; out pointers are valid stack references.
         let ret = unsafe {
-            GetDiskFreeSpaceExW(
-                wide.as_ptr(),
-                &mut available,
-                &mut total,
-                &mut total_free,
-            )
+            GetDiskFreeSpaceExW(wide.as_ptr(), &mut available, &mut total, &mut total_free)
         };
 
         if ret != 0 {

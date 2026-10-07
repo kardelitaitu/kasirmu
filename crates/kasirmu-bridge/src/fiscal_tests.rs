@@ -116,4 +116,3 @@ async fn get_sale_statutory_number_scoped_rejects_invalid_token() {
     let result = get_sale_statutory_number_scoped(&ctx, "invalid-token", "sale-1").await;
     assert!(matches!(result, Err(BridgeError::InvalidSession)));
 }
-

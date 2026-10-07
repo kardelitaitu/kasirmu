@@ -378,7 +378,10 @@ fn test_sale_execution_zero_lookups() {
     assert_eq!(profile.country_code, "ID");
     assert_eq!(profile.currency, "IDR");
     assert_eq!(profile.tax_regime, "PB1");
-    assert_eq!(profile.statutory_rounding, kasirmu_core::tax_rate::RoundingMode::HalfUp);
+    assert_eq!(
+        profile.statutory_rounding,
+        kasirmu_core::tax_rate::RoundingMode::HalfUp
+    );
 
     // 2. Run a 100-item checkout calculation cycle using the compiled in-memory profile
     let start = std::time::Instant::now();
@@ -387,7 +390,10 @@ fn test_sale_execution_zero_lookups() {
 
     for i in 1..=100 {
         let item_price = 10_000i64 * (i % 5 + 1); // 10k to 50k IDR
-        let tax_amount = profile.statutory_rounding.divide(item_price * 1000, 10000).unwrap();
+        let tax_amount = profile
+            .statutory_rounding
+            .divide(item_price * 1000, 10000)
+            .unwrap();
         total_gross += item_price + tax_amount;
         total_tax += tax_amount;
     }
@@ -426,7 +432,9 @@ fn test_two_hundred_consecutive_offline_sales_durability() {
     }
 
     let start_time = std::time::Instant::now();
-    let loc = kasirmu_core::inventory::LocationId::from(kasirmu_core::inventory::CANONICAL_DEFAULT_LOCATION_UUID);
+    let loc = kasirmu_core::inventory::LocationId::from(
+        kasirmu_core::inventory::CANONICAL_DEFAULT_LOCATION_UUID,
+    );
 
     // 2. Execute 200 consecutive sales in disconnected offline mode
     for i in 1..=200 {
@@ -450,7 +458,10 @@ fn test_two_hundred_consecutive_offline_sales_durability() {
 
     // 3. Verify exactly 200 sale queue events and 200 inventory adjustment queue events
     let pending = s.list_pending_offline().unwrap();
-    let sale_events: Vec<_> = pending.iter().filter(|i| i.action == "sale.create").collect();
+    let sale_events: Vec<_> = pending
+        .iter()
+        .filter(|i| i.action == "sale.create")
+        .collect();
     assert_eq!(sale_events.len(), 200);
 
     // 4. Verify stock decremented cleanly from 500 down to 300
@@ -500,9 +511,18 @@ fn test_full_pilot_dry_run_onboarding_to_50_sales_shift_and_sync() {
 
     let s = store(&conn);
     // Verify starter catalog products exist with inventory
-    let americano_id = s.product_id_by_sku("SMPL-REST-01").unwrap().expect("Americano must exist");
-    let croissant_id = s.product_id_by_sku("SMPL-REST-02").unwrap().expect("Croissant must exist");
-    let mineral_water_id = s.product_id_by_sku("SMPL-REST-03").unwrap().expect("Mineral Water must exist");
+    let americano_id = s
+        .product_id_by_sku("SMPL-REST-01")
+        .unwrap()
+        .expect("Americano must exist");
+    let croissant_id = s
+        .product_id_by_sku("SMPL-REST-02")
+        .unwrap()
+        .expect("Croissant must exist");
+    let mineral_water_id = s
+        .product_id_by_sku("SMPL-REST-03")
+        .unwrap()
+        .expect("Mineral Water must exist");
 
     assert_eq!(s.get_stock(&americano_id).unwrap(), 100);
     assert_eq!(s.get_stock(&croissant_id).unwrap(), 50);
@@ -510,12 +530,16 @@ fn test_full_pilot_dry_run_onboarding_to_50_sales_shift_and_sync() {
 
     // ── Phase 2: Start Shift (Opening Float) ───────────────────────────
     let user_id = prov.owner_user_id;
-    let shift = s.open_shift(&user_id, Some("term-beta-pilot-01"), 100_000).unwrap(); // Rp 100.000 starting cash
+    let shift = s
+        .open_shift(&user_id, Some("term-beta-pilot-01"), 100_000)
+        .unwrap(); // Rp 100.000 starting cash
     assert_eq!(shift.status, "open");
     assert_eq!(shift.opening_balance_minor, 100_000);
 
     // ── Phase 3: Execute 50 Real Sales with Inventory & Offline Queue ─
-    let loc = kasirmu_core::inventory::LocationId::from(kasirmu_core::inventory::CANONICAL_DEFAULT_LOCATION_UUID);
+    let loc = kasirmu_core::inventory::LocationId::from(
+        kasirmu_core::inventory::CANONICAL_DEFAULT_LOCATION_UUID,
+    );
     let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
 
     // Track total cash collected across the 50 sales
@@ -525,9 +549,9 @@ fn test_full_pilot_dry_run_onboarding_to_50_sales_shift_and_sync() {
     for i in 1..=50 {
         let sale_id = format!("sale-pilot-{i:03}");
         let (sku, item_price_minor, qty, pay_method) = match i % 3 {
-            1 => ("SMPL-REST-01", 25_000, 1, "cash"),          // Americano Rp 25.000 Cash
-            2 => ("SMPL-REST-02", 28_000, 1, "qris"),          // Croissant Rp 28.000 QRIS
-            _ => ("SMPL-REST-03", 8_000, 1, "cash"),           // Mineral Water Rp 8.000 Cash
+            1 => ("SMPL-REST-01", 25_000, 1, "cash"), // Americano Rp 25.000 Cash
+            2 => ("SMPL-REST-02", 28_000, 1, "qris"), // Croissant Rp 28.000 QRIS
+            _ => ("SMPL-REST-03", 8_000, 1, "cash"),  // Mineral Water Rp 8.000 Cash
         };
 
         // PPN 11% (1100 bps) + Service 5% (500 bps) = 16% total tax
@@ -555,7 +579,9 @@ fn test_full_pilot_dry_run_onboarding_to_50_sales_shift_and_sync() {
         ).unwrap();
 
         // 3. Enqueue to offline sync queue
-        let payload = format!(r#"{{"saleId":"{sale_id}","totalMinor":{total_minor},"method":"{pay_method}"}}"#);
+        let payload = format!(
+            r#"{{"saleId":"{sale_id}","totalMinor":{total_minor},"method":"{pay_method}"}}"#
+        );
         let queue_item = s_tx.enqueue_offline("sale.create", &payload).unwrap();
         assert_eq!(queue_item.status, OfflineQueueStatus::Pending);
 
@@ -565,12 +591,19 @@ fn test_full_pilot_dry_run_onboarding_to_50_sales_shift_and_sync() {
         let mut receipt_bytes: Vec<u8> = Vec::new();
         receipt_bytes.extend_from_slice(&[0x1B, 0x40]); // ESC @ (Init)
         receipt_bytes.extend_from_slice(b"\x1b\x61\x01Kopi Kenangan Beta\n"); // Centered store header
-        receipt_bytes.extend_from_slice(format!("Cashier: Andi Barista\nReceipt: {sale_id}\n").as_bytes());
+        receipt_bytes
+            .extend_from_slice(format!("Cashier: Andi Barista\nReceipt: {sale_id}\n").as_bytes());
         receipt_bytes.extend_from_slice(format!("Total: IDR {total_minor}\n").as_bytes());
         receipt_bytes.extend_from_slice(&[0x1D, 0x56, 0x41, 0x03]); // GS V A (Paper Cut)
 
-        assert!(receipt_bytes.starts_with(&[0x1B, 0x40]), "Receipt must begin with ESC @");
-        assert!(receipt_bytes.ends_with(&[0x1D, 0x56, 0x41, 0x03]), "Receipt must end with paper cut");
+        assert!(
+            receipt_bytes.starts_with(&[0x1B, 0x40]),
+            "Receipt must begin with ESC @"
+        );
+        assert!(
+            receipt_bytes.ends_with(&[0x1D, 0x56, 0x41, 0x03]),
+            "Receipt must end with paper cut"
+        );
     }
 
     // ── Phase 5: End of Shift Reconciliation ──────────────────────────
@@ -578,12 +611,22 @@ fn test_full_pilot_dry_run_onboarding_to_50_sales_shift_and_sync() {
     let expected_cash = 100_000 + total_cash_sales_minor;
     let actual_counted_cash = expected_cash; // Exact match to the Rupiah
 
-    let closed_shift = s.close_shift(&shift.id, actual_counted_cash, Some("End of day beta pilot shift")).unwrap();
+    let closed_shift = s
+        .close_shift(
+            &shift.id,
+            actual_counted_cash,
+            Some("End of day beta pilot shift"),
+        )
+        .unwrap();
     assert_eq!(closed_shift.status, "closed");
     assert_eq!(closed_shift.total_sales_minor, total_sales_volume_minor);
     assert_eq!(closed_shift.total_cash_minor, total_cash_sales_minor);
     assert_eq!(closed_shift.expected_cash_minor, Some(expected_cash));
-    assert_eq!(closed_shift.cash_difference_minor, Some(0), "Cash difference must be exactly 0");
+    assert_eq!(
+        closed_shift.cash_difference_minor,
+        Some(0),
+        "Cash difference must be exactly 0"
+    );
 
     // Verify inventory balances after 50 sales:
     // 17 sales of Americano (100 - 17 = 83)
@@ -595,8 +638,15 @@ fn test_full_pilot_dry_run_onboarding_to_50_sales_shift_and_sync() {
 
     // ── Phase 6: Cloud Sync Drain & Convergence ────────────────────────
     let pending_events = s.list_pending_offline().unwrap();
-    assert_eq!(pending_events.len(), 100, "50 sales and 50 inventory adjustments in offline sync queue");
-    let sale_events: Vec<_> = pending_events.iter().filter(|i| i.action == "sale.create").collect();
+    assert_eq!(
+        pending_events.len(),
+        100,
+        "50 sales and 50 inventory adjustments in offline sync queue"
+    );
+    let sale_events: Vec<_> = pending_events
+        .iter()
+        .filter(|i| i.action == "sale.create")
+        .collect();
     assert_eq!(sale_events.len(), 50, "Exactly 50 sale events enqueued");
 
     // Simulate online reconnection and batch sync drain
@@ -605,7 +655,11 @@ fn test_full_pilot_dry_run_onboarding_to_50_sales_shift_and_sync() {
     }
 
     let remaining_pending = s.list_pending_offline().unwrap();
-    assert_eq!(remaining_pending.len(), 0, "Offline queue must be 100% drained and converged");
+    assert_eq!(
+        remaining_pending.len(),
+        0,
+        "Offline queue must be 100% drained and converged"
+    );
 
     let all_items = s.list_all_offline().unwrap();
     assert_eq!(all_items.len(), 100);
@@ -614,6 +668,3 @@ fn test_full_pilot_dry_run_onboarding_to_50_sales_shift_and_sync() {
         assert!(item.synced_at.is_some());
     }
 }
-
-
-

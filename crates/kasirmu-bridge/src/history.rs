@@ -217,7 +217,15 @@ pub async fn get_sale_scoped(
         None => None,
     };
     drop(db);
-    Ok(sale.map(|s| map_sale_to_detail(s, tax_estimate_note, display_code, faktur_pajak, statutory_number)))
+    Ok(sale.map(|s| {
+        map_sale_to_detail(
+            s,
+            tax_estimate_note,
+            display_code,
+            faktur_pajak,
+            statutory_number,
+        )
+    }))
 }
 
 /// Shared mapping from `kasirmu_core::Sale` to `SaleDetail`.
