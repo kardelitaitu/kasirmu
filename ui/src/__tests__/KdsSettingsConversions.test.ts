@@ -9,7 +9,24 @@
 //   density <= 2      -> KdsMainContent.tsx:132  (`settings.density <= 2 ? ' kds--compact' : ''`)
 //   Math.max/min 1,5  -> KdsHamburgerPanel.tsx:315,317 (inline onClick handlers)
 // Consequently these tests CANNOT FAIL when production changes: edit any of the
-// three sites and the 52 tests in this file still pass. Measured 2026-10-07.
+// three sites and every case in this file still passes. Measured 2026-10-07.
+//
+// THIS FILE IS ONE OF FIVE with the same property, all in this feature. Across
+// ui/src the pattern was swept for and adjudicated: of the test files whose own
+// comments claim to mirror production, twelve name a module without importing
+// it, and every one outside KDS turned out to be a false positive — Topology
+// Screen and SettingsContext render or mount the real thing, dev-mock-scoped-
+// aliases reads the real registry ("real registry, not a fixture", :181), and
+// cartExtraction / screenExtraction.utils read real files or import the real
+// util. The five below are the genuine remainder, each retyping logic that lives
+// inline in a component body:
+//   KdsBoardFiltered         -> boardFiltered, KdsScreen.tsx:393
+//   KdsDeselectOnFilter      -> the deselect effect, now really covered by
+//                               useKdsShortcuts.test.tsx (2026-10-07)
+//   KdsOrderFiltering        -> filteredOrders, KdsScreen.tsx:312-318
+//   KdsSettingsConversions   -> this file, three sites above
+//   KdsZoneExtraction        -> zones / filterByZones / filterByStatus,
+//                               KdsScreen.tsx:303-309
 //
 // This is not a reason to delete them — the mappings are worth stating, and the
 // component suites cover the behaviour independently (KdsHamburgerPanel.test.tsx
