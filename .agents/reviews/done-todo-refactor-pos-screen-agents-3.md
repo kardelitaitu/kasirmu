@@ -2,6 +2,22 @@
 
 <!-- Audit stamp: 2026-09-15 · DSH · status: SUPERSEDED-BY-EXECUTION (15 payment/ files landed, 2,120 ln total; PaymentModal.tsx reduced from 2,436 to 1,810 lines (-626 ln); usePaymentStateMachine declined on processing invariant; useSplitTenders superseded by discrete math/state/currency/rows parts; both 3.1 seams landed: splitDistribution.ts in 8213cfa49 and useEdcTenderPhase.ts in 80afc7e02; no file in payment/ exceeds 450 lines) -->
 
+> ✅ **RE-VERIFIED 2026-10-07 — this file is the best-maintained doc on this surface, and the check is
+> worth recording BECAUSE it is the one place where stale headings are already annotated rather than
+> left to mislead.** Every `❌ NOT STARTED` heading in §3.1–3.4 above is contradicted by the tree and by
+> this file's own later sections; the stamp at `:3` says so first (*SUPERSEDED-BY-EXECUTION*), and the later
+> sections `:373` (§"Verdict on Phase 3.1"), `:381` (§3.2's *SUPERSEDED-BY-PARTS* line) and `:393`
+> (§"Execution Update") annotate each stale heading with the commits that closed it. Verified independently: **all four
+> tender panels exist** (`CashTenderPanel`, `CardTenderPanel`, `QrisTenderPanel`, `LoyaltyTenderPanel` in
+> `ui/src/features/sales/payment/`), so §3.3's "the inline blocks are still inline" is false; and §3.2's
+> split-tender work is `useSplitTenderState.ts` — **landed under a different name and from a different
+> campaign**, its own header citing *"Slice W5-c of the PaymentModal extraction campaign"*. §3.1's exact
+> artifact (`usePaymentStateMachine.ts`) still does not exist and its `NOT-A-TASK` annotation correctly says
+> so. **The two headline figures have moved past the stamp, as expected:** `payment/` holds **17 files /
+> 2,708 lines** today against the stamp's 15 / 2,120, and `PaymentModal.tsx` is **2,103** — larger than the
+> 1,810 recorded, because later work added to it. Read those as 2026-09-15 measurements, not as current
+> drift. NOT re-verified: the per-phase commit attributions.
+
 **Document:** `todo-refactor-pos-screen-agents-3.md`  
 **Role:** Orchestrator Agent 3 (Payment & Checkout Architect)  
 **Goal:** Decompose `PaymentModal.tsx` (2,436 lines as measured 2026-09-14 by `wc -l ui/src/features/sales/PaymentModal.tsx`) from a monolithic checkout modal into modular tender providers, split-payment state machines, currency conversion helpers, and receipt preview layers.
