@@ -14,6 +14,24 @@
 > - Phase 3 (`done-todo-open-debt-agents-3.md`) — rank table folded, home gates unified on `roleAtLeast`, R5 owner ruling declining org axis.
 > - Phase 4 (`done-todo-open-debt-agents-4.md`) — triage done, R5 design doc written, R9(b) decorator wired, R4/R6/R7 owner question filed.
 > - Phase 5 (`done-todo-open-debt-agents-5.md`) — PG test honesty enforced across 3 crates with 88 skip arms and live container validation.
+>
+> ✅ **RE-VERIFIED 2026-10-07 — the name-refresh discipline this file applies is the model the rest of the
+> tree lacks, and its central claim still holds.** The claim that the live scaffolding carries
+> **0** stale `oz-` names* (its own words at the end of the name-refresh section) — was checked by
+> locating every `oz-` occurrence in the file and classifying it:
+> **10 lines** carry an `oz-` token and **none of them is a live acceptance command.** Two are dated records
+> preserved on purpose — `:61`'s comparison row and `:95`'s open item, both quoting the pre-2026-09-18
+> measurement, which this file's own rule at `:206` explicitly protects. Two are dated-detail lines inside
+> later sections (`:119`, `:136`). The remaining six (`:186`, `:190`, `:206`, `:209`, and this note) are prose
+> *about* the rename, including the headline finding at `:190` that the old names no longer run. The commands that do run
+> resolve: `cargo test -p kasirmu-bridge --release` is the current spelling, and the stale form demonstrably
+> fails — `cargo test -p oz-bridge --release --no-run` → *"package ID specification `oz-bridge` did not match
+> any packages"*, exit 101. The note at `:210` that the cloud crate is `kasirmu-cloud` while its *directory* stays
+> `apps/cloud-server` is also right and is the kind of dir-vs-package trap worth keeping written down.
+> **Why this is recorded at all:** rounds of this audit found the same defect in a dozen sibling files — a
+> rename applied to a command but not to the prose around it, or vice versa. This file drew that line
+> explicitly, on one line, in September (*"live scaffolding renamed, dated records untouched"*), and it is
+> the reason a reader can still trust the measurements above without re-running them.
 
 ## Dispatch order and dependencies
 
