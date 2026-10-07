@@ -12,7 +12,7 @@ import { useKdsFilterNav } from '@/features/kds/useKdsFilterNav';
 import { useKdsShortcuts } from '@/features/kds/hooks/useKdsKeyboardShortcuts';
 import { useKdsTabIndicator } from '@/features/kds/useKdsTabIndicator';
 import { useKdsRealtime } from '@/features/kds/useKdsRealtime';
-import type { SlaThresholds } from '@/features/kds/hooks/useTicketSla';
+import { minutesToSlaThresholds, type SlaThresholds } from '@/features/kds/hooks/useTicketSla';
 import { useSound } from '@/components/useSound';
 import { requiredLocalized } from '@/components';
 import { useWorkspaceNav } from '@/hooks/useWorkspaceNav';
@@ -320,10 +320,10 @@ export default function KdsScreen() {
   // H3: the settings sliders are now wired — thresholds flow into every
   // card's useTicketSla. Memoized so KdsTicketCard's memo still holds when
   // unrelated state re-renders the screen.
-  const slaThresholds = useMemo<SlaThresholds>(() => ({
-    yellowAtSec: settings.yellowThresholdMin * 60,
-    redAtSec: settings.redThresholdMin * 60,
-  }), [settings.yellowThresholdMin, settings.redThresholdMin]);
+  const slaThresholds = useMemo<SlaThresholds>(
+    () => minutesToSlaThresholds(settings.yellowThresholdMin, settings.redThresholdMin),
+    [settings.yellowThresholdMin, settings.redThresholdMin],
+  );
 
   // KEY-07 (extracted): the board keyboard cluster - deselect-on-filter, the
   // mount autofocus and the document-level keydown handler with its editable +

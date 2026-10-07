@@ -63,6 +63,32 @@ export const SLA_RED_MAX_SEC = RED_URGENT;
 /** Tick interval in milliseconds (every second). */
 const TICK_MS = 1000;
 
+/** Seconds in a minute — the one place the settings domain meets the engine domain. */
+const SEC_PER_MIN = 60;
+
+/**
+ * Convert the settings panel's MINUTE values to the engine's SECONDS thresholds.
+ *
+ * The same extraction as clampSlaThresholds below, one round later: the conversion
+ * lived inline in KdsScreen.tsx:323-326 inside a useMemo
+ * (`yellowAtSec: settings.yellowThresholdMin * 60`), and
+ * __tests__/KdsSettingsConversions.test.ts retyped it as `toSlaThresholds` because
+ * production had no name to import. Naming it is what makes those cases
+ * load-bearing: they import this function now, so moving the factor to 3600 — or
+ * swapping the two thresholds — fails them instead of silently diverging from a copy.
+ *
+ * No clamping here. The minute clamp (kdsThresholdMinutes.clampYellowThreshold /
+ * clampRedThreshold) runs in the settings UI, and the second clamp
+ * (clampSlaThresholds) runs when the values reach the engine. This function is the
+ * bare unit change between them and must not acquire a third bound.
+ */
+export function minutesToSlaThresholds(yellowMin: number, redMin: number): SlaThresholds {
+  return {
+    yellowAtSec: yellowMin * SEC_PER_MIN,
+    redAtSec: redMin * SEC_PER_MIN,
+  };
+}
+
 /**
  * Clamp thresholds so the state machine stays monotonic: yellow must precede red.
  *

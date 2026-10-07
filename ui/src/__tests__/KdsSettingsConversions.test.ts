@@ -2,85 +2,74 @@
 // between UI slider values (minutes) and internal thresholds (seconds),
 // and the density→compact class determination.
 //
-// PARTLY LOAD-BEARING, and the split matters. Two of the three mappings below
-// now IMPORT production instead of restating it, so their cases fail when the
-// real bound moves:
-//   stepDensity / compactClass -> @/features/kds/kdsDensity (extracted 2026-10-07
-//     out of KdsHamburgerPanel.tsx:315,317 and KdsMainContent.tsx:132, which now
-//     call the module — the same move kdsThresholdMinutes.ts and useTicketSla.ts
-//     already record for the SLA bounds).
-// The third is still a retyped copy and CANNOT fail:
-//   minutes*60 -> KdsScreen.tsx:323-326, still inline inside the slaThresholds
-//     useMemo. Extracting it means threading SlaThresholds through a memo that
-//     also feeds every ticket card, so it is deliberately left for a dedicated
-//     pass rather than folded into this one. Its cases below remain documentation
-//     of the mapping, not a guard on it.
+// FULLY LOAD-BEARING as of 2026-10-07. Every mapping below now IMPORTS
+// production instead of restating it, so a moved bound fails a case here:
+//   minutesToSlaThresholds -> @/features/kds/hooks/useTicketSla
+//   stepDensity / compactClass -> @/features/kds/kdsDensity
 //
-// THIS FILE IS ONE OF FIVE with the same property, all in this feature. Across
-// ui/src the pattern was swept for and adjudicated: of the test files whose own
-// comments claim to mirror production, twelve name a module without importing
-// it, and every one outside KDS turned out to be a false positive — Topology
-// Screen and SettingsContext render or mount the real thing, dev-mock-scoped-
-// aliases reads the real registry ("real registry, not a fixture", :181), and
-// cartExtraction / screenExtraction.utils read real files or import the real
-// util. The five below are the genuine remainder, each retyping logic that lives
-// inline in a component body:
-//   KdsBoardFiltered         -> boardFiltered, KdsScreen.tsx:393
-//   KdsDeselectOnFilter      -> the deselect effect, now really covered by
-//                               useKdsShortcuts.test.tsx (2026-10-07)
-//   KdsOrderFiltering        -> filteredOrders, KdsScreen.tsx:312-318
-//   KdsSettingsConversions   -> this file, three sites above
-//   KdsZoneExtraction        -> zones / filterByZones / filterByStatus,
-//                               KdsScreen.tsx:303-309
+// Both were extractions, not rewrites: the expressions were lifted verbatim out
+// of the inline sites and the sites now call them —
+//   yellowMin * 60 / redMin * 60  -> was KdsScreen.tsx:323-326 (slaThresholds useMemo)
+//   Math.max(1, d - 1)            -> was KdsHamburgerPanel.tsx:315
+//   Math.min(5, d + 1)            -> was KdsHamburgerPanel.tsx:317
+//   d <= 2 ? ' kds--compact' : '' -> was KdsMainContent.tsx:132
+// This is the move useTicketSla.ts:66-90 and kdsThresholdMinutes.ts already
+// record for the SLA clamps, and for the same stated reason: a retyped copy is
+// invisible to a name-matching detector because there is no name to collide
+// with, and only naming the expression makes it testable.
 //
-// This is not a reason to delete them — the mappings are worth stating, and the
-// component suites cover the behaviour independently (KdsHamburgerPanel.test.tsx
-// renders the real panel and asserts its steppers). It IS the reason the copies
-// are labelled here rather than left looking like real coverage, and it is why
-// extracting these three mappings into a pure module — the shape kdsStatus.ts
-// and kdsSettingsModel.ts already use — is the change that would make every case
-// below load-bearing. Until then, read this file as documentation of the
-// mapping, not as a guard on it.
+// WHAT THE EXTRACTION CAUGHT: adopting the real compactClass failed two cases
+// immediately, because the copy had returned 'kds--compact' with NO leading
+// space while production emits ' kds--compact' (the separator belongs to the
+// function; the call site interpolates it straight after the base class). The
+// copy was not merely inert — it asserted a value production never produces.
+//
+// Still retyped elsewhere in this feature, and NOT covered by this file:
+//   KdsBoardFiltered    -> boardFiltered,   KdsScreen.tsx:393
+//   KdsOrderFiltering   -> filteredOrders,  KdsScreen.tsx:312-318
+//   KdsZoneExtraction   -> zones + the zone/status filters, KdsScreen.tsx:303-309
+// Those three read memos that close over screen state; extracting them is the
+// same opportunity and a separate pass.
+//
+// History: this file was one of five that retyped production logic and could not
+// fail. Across ui/src that pattern was swept for and adjudicated — of the test
+// files whose comments claim to mirror production, twelve name a module without
+// importing it, and every one outside KDS was a false positive (TopologyScreen
+// and SettingsContext render or mount the real thing; dev-mock-scoped-aliases
+// reads the real registry, "real registry, not a fixture", :181; cartExtraction
+// and screenExtraction.utils read real files or import the real util).
 
 import { describe, it, expect } from 'vitest';
-
-/** Same conversion as KdsScreen.tsx slaThresholds useMemo. */
-function toSlaThresholds(yellowMin: number, redMin: number) {
-  return {
-    yellowAtSec: yellowMin * 60,
-    redAtSec: redMin * 60,
-  };
-}
-
 import { compactClass, stepDensity } from '@/features/kds/kdsDensity';
+import { minutesToSlaThresholds } from '@/features/kds/hooks/useTicketSla';
 
-describe('toSlaThresholds', () => {
+describe('minutesToSlaThresholds', () => {
   it('converts default thresholds (5 min / 10 min)', () => {
-    const t = toSlaThresholds(5, 10);
+    const t = minutesToSlaThresholds(5, 10);
     expect(t.yellowAtSec).toBe(300);
     expect(t.redAtSec).toBe(600);
   });
 
   it('converts minimum thresholds (3 min / 4 min)', () => {
-    const t = toSlaThresholds(3, 4);
+    const t = minutesToSlaThresholds(3, 4);
     expect(t.yellowAtSec).toBe(180);
     expect(t.redAtSec).toBe(240);
   });
 
   it('converts maximum thresholds (30 min / 60 min)', () => {
-    const t = toSlaThresholds(30, 60);
+    const t = minutesToSlaThresholds(30, 60);
     expect(t.yellowAtSec).toBe(1800);
     expect(t.redAtSec).toBe(3600);
   });
 
   it('converts 1 min / 2 min', () => {
-    const t = toSlaThresholds(1, 2);
+    const t = minutesToSlaThresholds(1, 2);
     expect(t.yellowAtSec).toBe(60);
     expect(t.redAtSec).toBe(120);
   });
 
   it('converts 0 min (edge case)', () => {
-    const t = toSlaThresholds(0, 0);
+    const t = minutesToSlaThresholds(0, 0);
     expect(t.yellowAtSec).toBe(0);
     expect(t.redAtSec).toBe(0);
   });
