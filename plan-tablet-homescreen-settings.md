@@ -1,0 +1,329 @@
+# Plan — tablet homescreen & settings: verification, defects, repair
+
+<!-- Audit stamp: 2026-10-07 · Budak Korporat · branch `0.0.41` · HEAD `367e6a634`
+     Evidence: live Redmi 23073RPBFG (Android 15) over wireless ADB + CDP against
+     `mu.kasir.mobile`, plus `scripts/verify-ipc-parity.py` and the two
+     `invoke_handler` blocks. Claims below are marked MEASURED or STATIC; nothing
+     in this file is an estimate dressed as a measurement. -->
+
+## 0. How this was measured
+
+| Instrument | What it produced |
+|---|---|
+| ADB + CDP (`adb forward tcp:9222 localabstract:webview_devtools_remote_<pid>`, then `Runtime.evaluate`) | live DOM of the running tablet app: 1920x1200 landscape, debug APK, footer reads `v0.0.41 · 5a94f99+dirty` |
+| `apps/mobile-tauri/src/lib.rs:941-1408` vs `apps/desktop-tauri/src/lib.rs:1285-1823` | 413 vs 494 registered command fns |
+| `scripts/verify-ipc-parity.py` | `info[tablet]: 484 UI command strings, 414 registered, 82 unregistered UI command names … (82 allowlisted)` |
+| `scripts/ipc-parity-allowlist.json` | the same 82, as bare names — no per-entry rationale on the `tablet` leg |
+
+Two limits on this audit, stated so nothing is over-read:
+
+- **Live walking stopped at the homescreen.** The tablet's session expired
+  mid-audit (the app returned to `staff-login-screen`) and I did not guess a
+  PIN to get back in. §2 is therefore STATIC for the settings hub, except where
+  a line is marked MEASURED. §2.4 says exactly how to close that gap.
+- **The installed APK is `DEBUGGABLE`.** Debug hides the licence gate
+  (`get_license_status` reports free/valid in debug), so nothing here exercises
+  the release-only licensing path.
+
+---
+
+## 1. Homescreen — `ui/src/features/workspaces/WorkspaceHome.tsx`
+
+### 1.1 Current state — MEASURED
+
+Rendered at hash `""`, logged in, 1920x1200:
+
+- **3 workspace cards** — Restaurant POS (`workspace-card--active`), Warehouse,
+  Kitchen Display. Each carries a pin control and a digit hint ("Press 1 to open"
+  … "Press 3 to open"). `store-pos` is absent because this device's store has no
+  retail instance, not because of a code fault.
+- **11 tool cards** — 6 unlocked (Staff Management, Locations, Terminals, Shifts,
+  Settings, Topology Editor) and 5 locked (Memos, Promotions, Analytics, Reports,
+  Audit Log). The locks are tier locks (pro/premium against a free entitlement),
+  which is the designed behaviour.
+- **No licence notice** — `subscriptionState` is open, so the notice at
+  `WorkspaceHome.tsx:768` correctly stays hidden.
+- Greeting renders ("Hola, Adikara Dwi Atmaja").
+- `.workspace-home-header` is **empty** in the loaded state.
+
+Verdict: the homescreen loads, sorts, pins, gates and announces correctly. It is
+not broken; it has one hard crash and three smaller defects.
+
+### 1.2 Defects
+
+| ID | Sev | Defect | Evidence |
+|---|---|---|---|
+| **H1** | **P0** | Opening the Topology Editor crashes the app | MEASURED: `location.hash='#/topology'` → body text `Something went wrong` / `useSettings must be used within a <SettingsProvider>` |
+| **H2** | P1 | `OrgSelector` never renders once loaded | MEASURED: `.workspace-home-header` innerHTML is `""`. It is mounted only in the skeleton branch (`WorkspaceHome.tsx:704`); the loaded render has an empty `<header className="workspace-home-header" />` at `:740` |
+| **H3** | P2 | Nested interactive control | STATIC: `WorkspaceHome.tsx:992-1003` — a `<span role="button" tabIndex={0}>` (the pin) inside the card `<button>` at `:982` |
+| **H4** | P1 | Even with H1 fixed, the editor cannot load or save on this shell | STATIC: 10 topology commands are unregistered on the tablet and `apps/mobile-tauri/src/commands/` has **no** `topology` module (desktop has `topology.rs` + `topology/`) |
+| **H5** | P2 | "Add Workspace" leads to the same dead end | STATIC: the empty-state card calls `handleShortcutNav('topology')` (`:862`); the Topology tool card (`:238-252`) is unlocked at manager |
+
+#### H1 root cause — measured, not inferred
+
+`SettingsProvider` is mounted by exactly one component in the tree
+(`ui/src/features/settings/SettingsPage.tsx:73`; grep over `ui/src` returns only
+`SettingsContext.tsx` and `SettingsPage.tsx`). `NodeTopologyEditor` consumes the
+context anyway:
+
+- `ui/src/features/locations/NodeTopologyEditor.tsx:255` — `const { settings } = useSettings();`
+- `ui/src/contexts/SettingsContext.tsx:661` — throws when the context is null.
+
+The value is used for **one** thing: a badge label at
+`NodeTopologyEditor.tsx:2033`
+(`settings.receipt.paperWidth === 'standard' ? 'Receipt ✓' : 'Receipt 58mm'`).
+
+This is **not tablet-specific**. `ui/src/app/AppShell.tsx:385-387` routes
+`settings/topology` onto the same `topology` page, so the desktop crashes
+identically. Fix it once, in the shared component.
+
+#### H4 scope — the ten unregistered topology commands
+
+`load_topology`, `apply_topology_diff`, `can_save_topology`,
+`load_topology_revision`, `list_topology_revisions`, `list_topology_templates`,
+`load_topology_template`, `save_topology_template`, `delete_topology_template`,
+`pin_topology_revision`.
+
+All ten sit in `scripts/ipc-parity-allowlist.json` under `tablet` **with no
+reason recorded** — unlike the memo-authoring and quota-remediation entries,
+which the allowlist's own `_comment` justifies as deliberate product choices.
+That absence is the finding: nobody has written down whether the tablet is
+supposed to have a topology editor.
+
+### 1.3 Implementation plan
+
+**H1 — make the topology editor survive outside `SettingsProvider`.**
+
+Follow the pattern the repo already uses rather than inventing one:
+`useOptionalTheme()` (`SettingsPage.tsx:22`) and BrandContext's documented
+"returns `null` if no provider" accessor (`BrandContext.tsx:113`) both exist for
+exactly this case.
+
+1. Add `useOptionalSettings()` to `ui/src/contexts/SettingsContext.tsx` — reads
+   the same context, returns `null` instead of throwing. Do **not** relax
+   `useSettings()`; its throw is load-bearing.
+2. `NodeTopologyEditor.tsx:255` — `const settings = useOptionalSettings()?.settings ?? null;`
+3. `:2033` — `settings?.receipt.paperWidth ?? 'standard'` as the fallback, so the
+   badge degrades to "Receipt ✓" rather than lying about a 58mm printer.
+4. **Do not** hoist `SettingsProvider` into `AppProviders`. It runs the whole
+   settings fan-out on every boot; on a 4 GiB tablet that is the wrong trade for
+   one badge label.
+
+Alternative if the owner prefers the value to be real rather than defaulted:
+read `getReceiptSettingsScoped(sessionToken)` inside `TopologyScreen` —
+`commands::settings::get_receipt_settings_scoped` **is** registered on the tablet
+(`apps/mobile-tauri/src/lib.rs:1321`) — and pass `paperWidth` down as a prop.
+Cheaper than a provider, but it adds a prop and an IPC that the badge does not
+justify. Recommendation: the optional hook.
+
+**H2 — restore the org selector.** Confirm intent first: the empty loaded header
+may be deliberate (the skeleton mounts `<OrgSelector />` at `:704`, so someone
+moved it out and left the element). If it is a regression, restore
+`<OrgSelector />` at `:740`. `switch_organization` is registered on the tablet,
+so multi-org switching works there — this is a UI omission, not an IPC gap.
+
+**H3 — unnest the pin.** Move the pin out of the card `<button>` into a
+sibling positioned over it (the card keeps `position: relative` already), or
+make the card a `<div role="group">` containing two real `<button>`s. The
+sibling form is smaller and keeps the existing keyboard handler intact. Watch
+`focusVisibleCompliance`: a new `button.<class>` compound is a **waived** base
+and `BOUNDARY_WAIVED_BASELINE` is frozen — use a modifier class such as
+`.workspace-card-pin-btn--button`.
+
+**H4 — decide, then either register or withdraw.** This is an owner decision,
+not an implementation detail, because the two answers differ in cost by an
+order of magnitude:
+
+- **Register (recommended).** Add `apps/mobile-tauri/src/commands/topology.rs`
+  re-exporting the bridge command fns (desktop's `topology.rs` + `topology/`
+  are the model), register the ten in `lib.rs`, then delete the ten allowlist
+  entries. Cost: a real port, plus a mobile compile of the topology module.
+  Rationale: topology is the tablet's only front door to creating a workspace
+  (the "Add Workspace" card), and the tool card is already advertised to
+  managers.
+- **Withdraw.** Hide the Topology Editor card on the tablet (a shell branch in
+  `WorkspaceHome.tsx`, the same `isTabletShell()` idiom `LicenseSettings.tsx:129`
+  already uses) and repoint "Add Workspace" at something the tablet can do.
+  Cost: small. Rationale: topology authoring may genuinely be back-office only,
+  as the memo-authoring precedent rules.
+
+Either way, **write the decision into the allowlist** as a per-entry `reason`,
+so the next reader is not re-deriving it from a bare name.
+
+**H5** falls out of H4 — it is the same route.
+
+### 1.4 Verification criteria
+
+1. **Crash pin (new test).** Render `TopologyScreen` (or `NodeTopologyEditor`)
+   with **no** `SettingsProvider` above it and assert no throw and that the
+   receipt badge renders. Prove the pin can go red: revert to `useSettings()`
+   and watch it fail with the current message.
+2. **Route pin.** `TabletAppShell` renders `route: 'topology'` from
+   `#/settings/topology` without the error boundary. Add it beside
+   `TabletAppShellWorkspaceRoute.test.tsx`.
+3. **Live re-measure (the acceptance command).** On the tablet, logged in:
+   navigate `#/topology` and assert the boundary text is absent and
+   `.settings-section-content`-equivalent content mounts. This is the same CDP
+   walk §2.4 describes.
+4. **Parity gate.** `python scripts/verify-ipc-parity.py` — exit 0, and the
+   tablet count in `info[tablet]` drops by the number of commands registered.
+   The gate fails on a **stale** allowlist entry, so deleting the entries is
+   enforced, not optional.
+5. **UI gates.** From `ui/`: `npm run lint && npm run typecheck`. Any CSS you
+   touch additionally trips `screenExtraction` and `themeTokenCompliance`.
+
+---
+
+## 2. Settings — `ui/src/features/settings/SettingsPage.tsx` and its 14 sections
+
+### 2.1 Current state
+
+The hub is a `SettingsProvider` shell with a `SettingsNavTree` sidebar and one
+lazy screen per section. `KEPT_SECTIONS`
+(`hooks/useSettingsHashSection.ts:38-40`) and `SETTINGS_SCREENS`
+(`screens/registry.ts`) agree on 14 keys: general, license-subscription,
+devices-connectivity, business-defaults, features-modules, security-account,
+data-sync, data-management, sync-status, sync-conflicts, offline-queue,
+tax-configuration, exchange-rates, system-diagnostics.
+
+`ui/src/features/settings/SettingsNavTree.tsx` carries the third independent
+list; `SettingsPage.test.tsx` asserts all three agree. **Keep them independent**
+— deriving one from another turns that assertion into a list compared with
+itself.
+
+The rebuild is claimed complete: `screens/registry.ts` records a 2026-10-07
+tablet walk (CDP, debug APK embedding commit `7198980`) in which **no** section
+rendered the "This page is being rebuilt" notice and Data & Sync, Sync Status,
+General and Security & Account each rendered their controls. I could not
+re-run that walk (§0); treat it as a peer measurement, not mine.
+
+### 2.2 The structural fact
+
+**82 command names that shipped UI code invokes are not registered in the tablet
+shell.** All 82 are allowlisted, so `verify-ipc-parity.py` passes its tablet leg.
+The allowlist is a *record of debt*, not a fix: an unregistered `invoke`
+rejects, and each call site decides whether that surfaces.
+
+Sorted by whether the hub can actually reach it:
+
+**Reachable, and wrong today**
+
+| Commands | Where | Effect | Fix |
+|---|---|---|---|
+| `pg_sync_status_scoped` | `SettingsPage.tsx:153`, on **every** hub mount | `.catch(() => {})` swallows it, so the nav's dead-letter badge is permanently 0 | register it, or stop asking on tablet |
+| `offline_queue_status_summary_scoped` | `hooks/useDataSyncDraft.ts` → `GeneralScreen`, `DataSyncScreen`, `SyncStatusScreen` (3 sections) | queue summary never populates | register, or guard |
+| `suspend_surplus_workspace_instances_scoped`, `recover_workspace_instances_scoped` | `OverQuotaCard.tsx`, reachable via `license-subscription` → `LicenseSettings` | the remediation buttons cannot work | **guard**, following `LicenseSettings.tsx:129` `actionsAvailable = !isTabletShell()`; the allowlist already records these as a deliberate back-office-only product choice |
+
+**Reachable, and correctly handled — do not "fix" these**
+
+- `LicenseActivationScreen.tsx:293` — the licence-key path is wrapped in
+  `if (!isTabletShell())` (C47), and the key tab is hidden at `:605`. The
+  tablet's route is device pairing, whose commands *are* registered.
+- `LicenseSettings.tsx:129` — `actionsAvailable = !isTabletShell()` gates
+  pause/resume.
+- `hooks/useBackupStatus.ts:140,153` — uses the tablet twin `create_backup_to`.
+- `hooks/useRestore.ts:121` — `isAvailable = !isTabletShell()`.
+- `api/system.ts:27` — `version_scoped` falls back to the registered `version`
+  with a comment saying so.
+
+**Not reachable from the hub — no work**
+
+- `LocalApiSection` — 0 importers (6 `local_api_*` commands).
+- `AboutSection` — 0 importers.
+- `EmailReportSettings` — the only reference is a comment.
+- `AppearanceSettings`' `pick_logo_file` — not in the 14-section map.
+
+These are the allowlist's real dead surface. Deleting them is a separate,
+cleaner change than fixing them; do not conflate the two.
+
+### 2.3 Implementation plan
+
+Ordered so each step is independently verifiable:
+
+1. **Write rationales into the allowlist.** Every `tablet` entry is a bare name;
+   `dev_mock` and `shell_blind` entries carry `reason` strings. Convert the ones
+   you touch to `{"name": …, "reason": …}`. The gate prints how many entries lack
+   a reason — make that number move in the right direction.
+2. **`pg_sync_status_scoped`** — smallest fix with the widest blast radius
+   (fires on every hub mount). Either register it in `apps/mobile-tauri/src/lib.rs`
+   (it is a scoped read; check the permission it asserts) or drop the call behind
+   `isTabletShell()` so the badge stops implying a value it never read.
+3. **`offline_queue_status_summary_scoped`** — same decision, for 3 sections.
+   Read `useDataSyncDraft.ts` first: if the value already degrades cleanly, this
+   may only need the guard, not the registration.
+4. **OverQuotaCard** — add the `isTabletShell()` guard so the two buttons are not
+   rendered where they cannot work. This is the C41/C47 shape the allowlist
+   already names for the licence commands.
+5. **Topology** — see H4. It is one decision covering both pages.
+6. **Retire, do not repair**, the three unreachable sections once confirmed:
+   `LocalApiSection`, `AboutSection`, `EmailReportSettings`. Check the *other*
+   shell's UI first — `verify-ipc-parity.py` prints `info[tablet-unrequested]`
+   and warns explicitly that a command named by neither side is the only
+   population a retirement can start from.
+
+### 2.4 Verification criteria
+
+1. **A scripted live walk, and it must be repeatable.** The gap in this audit is
+   that nobody can re-run it without a person typing a PIN. Add a CDP walk
+   (the `scripts/android-cdp.mjs` seam, or the same
+   `adb forward` + `Runtime.evaluate` pair used here) that, given a logged-in
+   tablet, visits all 14 `#/settings/<section>` hashes and asserts for each:
+   the section container is non-empty, the control count is > 0, and no
+   `console.error` / `window.error` fired. Record the login it needs in the
+   script's header.
+2. **Per-section parity.** For each of the 14, list the commands its screen
+   reaches and mark each registered / guarded / retired. This is the artefact
+   §2.2 is a first draft of; finish it as a table in the PR.
+3. **Gate.** `python scripts/verify-ipc-parity.py` → exit 0. Note it **exits 1
+   today**, from its **dev-mock** leg, on `edc_inquiry`, `edc_settle` and
+   `print_edc_settlement_slip_scoped` — a separate live red, not caused by
+   anything in this plan, and not fixed by it.
+4. **UI gates.** From `ui/`: `npm run lint && npm run typecheck`, plus
+   `screenExtraction` / `themeTokenCompliance` for any CSS touched.
+
+---
+
+## 3. Conventions this plan must respect
+
+- **Branch `0.0.41`, version locked.** No branch creation or switch; no version
+  bumps in `Cargo.toml` / `package.json` / `tauri.conf.json`.
+- **Commit form** — `git commit -m "<type>(<area>): <subject>" -- path/one path/two`.
+  No `git add`, no `-a`, no `--amend`, no `stash`. New files: one chained
+  `git add -- <p> && git commit -m "..." -- <p>`.
+- **Shell parity is a gate, not a style.** Any command you register must come
+  off `scripts/ipc-parity-allowlist.json` in the same commit — a stale entry
+  fails the gate.
+- **Renderer conventions.** A new class name must exist in the screen's own sheet
+  or one it cites as `parentCss` (`screenExtraction`). Never write a `var()`
+  fallback tail on a token all three blocks define. Never add a `button.X`
+  compound (`focusVisibleCompliance`). `align-items` on buttons comes from
+  `reset.css` and is not inherited — restate it if you override `display`.
+- **Money stays `i64`**; SQLite writes stay inside a rusqlite transaction.
+- **Pre-existing `ui` reds.** Two were recorded at HEAD on 2026-10-04:
+  `screenExtraction` on `settings/SyncConflictsPanel.css` and
+  `themeTokenCompliance` on `WorkspaceHome.css:958`. **Re-measure them before
+  you start** — if still red, do not attribute them to your change and do not
+  "fix" them in a settings commit.
+
+## 4. Suggested sequencing
+
+1. H1 (crash) + its test — small, shared, unblocks the rest.
+2. Allowlist rationales + the three reachable settings gaps (§2.3 steps 1-4).
+3. H4 topology decision — needs the owner.
+4. H2, H3 — cosmetic, independent.
+5. Retirements + the repeatable CDP walk (§2.4 step 1).
+
+## 5. Open decisions for the owner
+
+1. **Does the tablet get a topology editor?** Register (port `topology.rs`) or
+   withdraw (hide card + repoint "Add Workspace"). Cost differs by ~an order of
+   magnitude.
+2. **Is the empty `.workspace-home-header` intentional?** `OrgSelector` is
+   mounted in the skeleton branch only.
+3. **`pg_sync_status_scoped` and `offline_queue_status_summary_scoped`:**
+   register on the tablet, or stop asking? Registering grows the tablet's IPC
+   surface; guarding removes features from a screen that advertises them.
+4. **Who re-runs the live walk?** The script in §2.4 needs a logged-in tablet.
+   Without a recorded credential the settings half of this audit cannot be
+   re-measured, and it will rot the way the 2026-10-07 walk already has — the
+   registry cites a commit, not a procedure.
