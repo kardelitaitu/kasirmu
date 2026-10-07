@@ -407,5 +407,36 @@ Measured after the change: 665 tests green across
 tablet leg **unchanged** (82 unregistered, 82 allowlisted) and still exit 1 from
 its **dev-mock** leg — the pre-existing red the plan already names.
 
-**Not re-measured on the device.** No live CDP walk was run after these edits
-(§5.4), so H1's acceptance criterion 3 is still outstanding.
+### 6.1 Re-measured on the device 2026-10-07 — with two caveats
+
+`scripts/android-settings-walk.mjs` (committed `552a4ab6b`) now walks the hub
+repeatably. With `--routes=sections` — i.e. **without** visiting `#/topology`
+first — all 14 sections mount, none renders the error boundary, and control
+counts are: general 9, license-subscription 0, devices-connectivity 1,
+business-defaults 0, features-modules 54, security-account 1, data-sync 8,
+data-management 14, sync-status 3, sync-conflicts 5, offline-queue 13,
+tax-configuration 2, exchange-rates 3, system-diagnostics 3.
+
+Two caveats, both material:
+
+1. **The installed APK is stale.** It still throws
+   `useSettings must be used within a <SettingsProvider>` on `#/topology`, so it
+   predates `4a90d10e5`. Every number above describes **pre-fix** behaviour.
+   H1's acceptance criterion 3 stays open until the bundle is rebuilt and
+   reinstalled.
+2. **The hub's error boundary is STICKY.** Visiting `#/topology` first trips it,
+   and every section afterwards renders "Something went wrong" until the app is
+   force-stopped — same run, same session, 15/15 fail. That is a real Android
+   defect in its own right (one crash disables the whole settings hub) and is
+   why the walk carries `--routes=sections`. Not yet fixed; it needs a decision
+   on whether navigating away should reset the boundary.
+
+The two zero-control sections are not crashes: `license-subscription` renders
+its status and quota text but no buttons, which is `actionsAvailable =
+!isTabletShell()` working as designed; `business-defaults` renders
+"No location to configure yet." for each of its cards because this tablet has no
+location profile. `general` mounts 9 controls but its currency select stays at
+"Loading currencies…" — a live defect not yet diagnosed.
+
+**Not walked:** the checkout and KDS flows. See
+`plan-tablet-checkout-kds.md`.
