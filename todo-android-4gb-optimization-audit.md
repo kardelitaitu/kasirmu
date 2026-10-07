@@ -1488,12 +1488,12 @@ Tasks:
 - [x] Virtualize product lists (RetailProductGrid react-window & MenuItemTile memoization).
 - [x] Virtualize sale history (SalesHistoryScreen paged table).
 - [x] Memoize selectors (MenuItemTile memoization, categoryOptions & filtered useMemo).
-- [ ] Reduce global state size.
+- [x] Reduce global state size (Contexts restricted to compact configuration DTOs; zero multi-KB arrays in React contexts).
 - [x] Lazy-load images (ProductThumb native loading="lazy", decoding="async", and React.memoization).
 - [x] Clean up listeners (cancelled unmount guards for async onAppReconnect and onSettingsUpdated subscriptions in SettingsContext and useStorageHealth).
 - [ ] Profile React renders.
 - [x] Add bundle size budget (scripts/check-bundle.mjs enforced via npm run bundle:check and bundle:check:mobile with gzip thresholds).
-- [ ] Remove large arrays from persistent global state.
+- [x] Remove large arrays from persistent global state (all catalog grids, cart items, and sales rows scoped strictly to screen lifecycle and evicted on memory trim/navigation).
 - [x] Ensure navigation clears disposable caches (detailCacheRef and report series cleared on memory trim/navigation).
 
 Exit criteria:
