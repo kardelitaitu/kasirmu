@@ -638,6 +638,25 @@ for the shipped banner at all** — `UpdateBanner.test.tsx` imports the DEAD
 imported by `AppLayout.tsx:5`). Fixed by deriving the flag from its inputs, and
 `ui/src/__tests__/appUpdateBanner.test.tsx` now covers the shipped component.
 
+**THE DEAD TWIN IS RETIRED (round 11).** `components/UpdateBanner.tsx` + its CSS +
+`UpdateBanner.test.tsx` are DELETED (`f9d6f2e65`, 523 lines). Three greps proved it
+reachable from nothing: not exported from `components/index.ts`, its only importer was
+its own test, and the shipped banner is `app/UpdateBanner.tsx` (`AppLayout.tsx:5`).
+The journal had already scoped this retirement; round 11 did it.
+
+**The part worth remembering is not the dead code — it is the test.**
+`UpdateBanner.test.tsx` had 7 passing tests for a component no user can reach, while
+the SHIPPED banner had none. A green suite covering unreachable code is worse than no
+test: it reports safety it does not have. That is the same false-confidence shape as
+the vacuous tests caught in rounds 3-9, one level up — the assertions were fine, the
+SUBJECT was wrong.
+
+Two compliance baselines listed the deleted sheet and were updated in the same commit;
+both still pass. All FTL keys the twin used are still consumed by the shipped banner,
+so no keys were orphaned. The stale doc reference in
+`docs/decisions/2026-07-16-desktop-app-updater.md` was corrected separately
+(`3f4422c20`).
+
 **A guard for the whole class** (round 10): `ui/src/__tests__/disabledFlagLatch.test.ts`
 asserts no production flag that gates a `disabled` prop is only ever set to `true`.
 Its detector reads the ARGUMENT, not the call count — counting calls flagged
