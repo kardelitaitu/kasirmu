@@ -501,7 +501,7 @@ export default function RestaurantMenu({
   // derived from restaurant products rather than the shared catalog category
   // list, otherwise a retail-only category can leak into this menu.
   const restaurantProducts = useMemo(
-    () => products.filter((p) => p.productType === 'restaurant'),
+    () => products.filter((p) => p.productType === 'restaurant' && p.isActive !== false),
     [products],
   );
 

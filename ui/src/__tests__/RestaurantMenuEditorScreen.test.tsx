@@ -197,4 +197,65 @@ describe('RestaurantMenuEditorScreen', () => {
       );
     });
   });
+
+  it('prompts confirmation dialog before deleting an item and executes delete on confirm', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<RestaurantMenuEditorScreen />, productsFtl);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('restaurant-menu-editor-del-MN001')).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByTestId('restaurant-menu-editor-del-MN001'));
+
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(screen.getByText('Delete Menu Item')).toBeInTheDocument();
+    expect(screen.getByText(/Are you sure you want to delete "Nasi Goreng Kampung"/i)).toBeInTheDocument();
+
+    const confirmBtn = screen.getByTestId('confirm-dialog-confirm');
+    await user.click(confirmBtn);
+
+    await waitFor(() => {
+      expect(productsApi.deleteProductScoped).toHaveBeenCalledWith(expect.any(String), 'MN001');
+    });
+  });
+
+  it('cancels item deletion without calling API when cancel is clicked in confirm dialog', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<RestaurantMenuEditorScreen />, productsFtl);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('restaurant-menu-editor-del-MN001')).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByTestId('restaurant-menu-editor-del-MN001'));
+    expect(screen.getByText('Delete Menu Item')).toBeInTheDocument();
+
+    const cancelBtn = screen.getByTestId('confirm-dialog-cancel');
+    await user.click(cancelBtn);
+
+    expect(productsApi.deleteProductScoped).not.toHaveBeenCalled();
+  });
+
+  it('prompts confirmation dialog before deleting a category and executes delete on confirm', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<RestaurantMenuEditorScreen />, productsFtl);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('restaurant-menu-editor-cat-del-cat-mains')).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByTestId('restaurant-menu-editor-cat-del-cat-mains'));
+
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(screen.getByText('Delete Category')).toBeInTheDocument();
+    expect(screen.getByText(/Are you sure you want to delete category "Mains"/i)).toBeInTheDocument();
+
+    const confirmBtn = screen.getByTestId('confirm-dialog-confirm');
+    await user.click(confirmBtn);
+
+    await waitFor(() => {
+      expect(productsApi.deleteCategoryScoped).toHaveBeenCalledWith(expect.any(String), 'cat-mains');
+    });
+  });
 });

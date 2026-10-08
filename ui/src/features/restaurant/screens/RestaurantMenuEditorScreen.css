@@ -364,6 +364,15 @@
   box-shadow: var(--shadow-sm);
 }
 
+.restaurant-menu-editor-card--hidden {
+  opacity: 0.72;
+  border-style: dashed;
+}
+
+.restaurant-menu-editor-card--hidden:hover {
+  opacity: 1;
+}
+
 .restaurant-menu-editor-card-body {
   flex: 1;
   display: flex;

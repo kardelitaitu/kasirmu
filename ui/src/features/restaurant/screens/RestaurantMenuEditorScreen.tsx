@@ -27,8 +27,10 @@ import { useState, useEffect, useCallback, useMemo, useRef, type CSSProperties }
 import { Localized, useLocalization } from '@fluent/react';
 import { l10nErrorMessage } from '@/utils/app-error';
 import { UnsavedChangesDialog } from '@/components/UnsavedChangesDialog';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useToast } from '@/components/Toast';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
+import { useOptionalCurrency } from '@/contexts/CurrencyContext';
 import { formatMoney } from '@/types/domain';
 import {
   listProductsScoped,
@@ -216,10 +218,15 @@ export default function RestaurantMenuEditorScreen({ onBack }: RestaurantMenuEdi
   const [dirty, setDirty] = useState(false);
   const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
 
+  const [deleteItemTarget, setDeleteItemTarget] = useState<ProductDto | null>(null);
+  const [deleteCategoryTarget, setDeleteCategoryTarget] = useState<CategoryDto | null>(null);
+
   const iconRadioRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const loadedRef = useRef(false);
+  const formRef = useRef<HTMLFormElement>(null);
 
-  const currency = 'IDR';
+  const currencyCtx = useOptionalCurrency();
+  const currency = currencyCtx?.currency || 'IDR';
 
   // Load menu products and categories
   useEffect(() => {
@@ -286,6 +293,9 @@ export default function RestaurantMenuEditorScreen({ onBack }: RestaurantMenuEdi
       notes: '',
     });
     setDirty(true);
+    setTimeout(() => {
+      formRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' });
+    }, 50);
   }, [selectedCategoryName, categories]);
 
   const beginEdit = useCallback((p: ProductDto) => {
@@ -298,6 +308,9 @@ export default function RestaurantMenuEditorScreen({ onBack }: RestaurantMenuEdi
       notes: p.notes ?? '',
     });
     setDirty(true);
+    setTimeout(() => {
+      formRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' });
+    }, 50);
   }, []);
 
   const cancelDraft = useCallback(() => {
@@ -340,7 +353,7 @@ export default function RestaurantMenuEditorScreen({ onBack }: RestaurantMenuEdi
         });
       }
     },
-    [sessionToken, categoryIdFor, addToast, l10n],
+    [sessionToken, categoryIdFor, addToast, l10n, currency],
   );
 
   const handleSaveDraft = useCallback(async () => {
@@ -419,7 +432,7 @@ export default function RestaurantMenuEditorScreen({ onBack }: RestaurantMenuEdi
     } finally {
       setSaving(false);
     }
-  }, [draft, sessionToken, categoryIdFor, addToast, l10n]);
+  }, [draft, sessionToken, categoryIdFor, addToast, l10n, currency]);
 
   const handleDeleteItem = useCallback(
     async (sku: string) => {
@@ -768,7 +781,7 @@ export default function RestaurantMenuEditorScreen({ onBack }: RestaurantMenuEdi
                     <button
                       type="button"
                       className="restaurant-menu-editor-category-action-btn restaurant-menu-editor-category-action-btn--delete"
-                      onClick={() => handleDeleteCategory(c)}
+                      onClick={() => setDeleteCategoryTarget(c)}
                       aria-label={l10n.getString('restaurant-menu-editor-delete-category-aria', { name: c.name })}
                       data-testid={`restaurant-menu-editor-cat-del-${c.id}`}
                     >
@@ -874,6 +887,7 @@ export default function RestaurantMenuEditorScreen({ onBack }: RestaurantMenuEdi
                 {/* ── Item Draft Form ── */}
                 {draft && (
                   <form
+                    ref={formRef}
                     className="restaurant-menu-editor-form"
                     onSubmit={(e) => {
                       e.preventDefault();
@@ -908,7 +922,9 @@ export default function RestaurantMenuEditorScreen({ onBack }: RestaurantMenuEdi
                       </label>
 
                       <label htmlFor="restaurant-menu-editor-price" className="restaurant-menu-editor-field">
-                        <Localized id="restaurant-menu-editor-field-price">Price</Localized>
+                        <span>
+                          <Localized id="restaurant-menu-editor-field-price">Price</Localized> ({currency})
+                        </span>
                         <input
                           id="restaurant-menu-editor-price"
                           type="text"
@@ -1015,7 +1031,11 @@ export default function RestaurantMenuEditorScreen({ onBack }: RestaurantMenuEdi
                     {filteredItems.map((p) => {
                       const isActive = p.is_active !== false;
                       return (
-                        <div key={p.sku} className="restaurant-menu-editor-card" data-testid={`menu-item-card-${p.sku}`}>
+                        <div
+                          key={p.sku}
+                          className={`restaurant-menu-editor-card${isActive ? '' : ' restaurant-menu-editor-card--hidden'}`}
+                          data-testid={`menu-item-card-${p.sku}`}
+                        >
                           {/* Card Main Body */}
                           <button
                             type="button"
@@ -1080,7 +1100,7 @@ export default function RestaurantMenuEditorScreen({ onBack }: RestaurantMenuEdi
                               <button
                                 type="button"
                                 className="restaurant-menu-editor-card-btn restaurant-menu-editor-card-btn--delete"
-                                onClick={() => handleDeleteItem(p.sku)}
+                                onClick={() => setDeleteItemTarget(p)}
                                 aria-label={l10n.getString('restaurant-menu-editor-delete-item-aria', { name: p.name })}
                                 data-testid={`restaurant-menu-editor-del-${p.sku}`}
                               >
@@ -1237,6 +1257,50 @@ export default function RestaurantMenuEditorScreen({ onBack }: RestaurantMenuEdi
           onBack?.();
         }}
         saving={saving}
+      />
+
+      {/* ── Delete Item Confirmation Dialog ───────────────────── */}
+      <ConfirmDialog
+        open={Boolean(deleteItemTarget)}
+        title={l10n.getString('restaurant-menu-editor-delete-item-title') || 'Delete Menu Item'}
+        confirmLabel={l10n.getString('delete') || 'Delete'}
+        message={
+          deleteItemTarget
+            ? l10n.getString('restaurant-menu-editor-delete-item-confirm', { name: deleteItemTarget.name }) ||
+              `Are you sure you want to delete "${deleteItemTarget.name}"?`
+            : ''
+        }
+        variant="danger"
+        onCancel={() => setDeleteItemTarget(null)}
+        onConfirm={() => {
+          if (deleteItemTarget) {
+            const sku = deleteItemTarget.sku;
+            setDeleteItemTarget(null);
+            void handleDeleteItem(sku);
+          }
+        }}
+      />
+
+      {/* ── Delete Category Confirmation Dialog ───────────────── */}
+      <ConfirmDialog
+        open={Boolean(deleteCategoryTarget)}
+        title={l10n.getString('restaurant-menu-editor-delete-category-title') || 'Delete Category'}
+        confirmLabel={l10n.getString('delete') || 'Delete'}
+        message={
+          deleteCategoryTarget
+            ? l10n.getString('restaurant-menu-editor-delete-category-confirm', { name: deleteCategoryTarget.name }) ||
+              `Are you sure you want to delete category "${deleteCategoryTarget.name}"?`
+            : ''
+        }
+        variant="danger"
+        onCancel={() => setDeleteCategoryTarget(null)}
+        onConfirm={() => {
+          if (deleteCategoryTarget) {
+            const cat = deleteCategoryTarget;
+            setDeleteCategoryTarget(null);
+            void handleDeleteCategory(cat);
+          }
+        }}
       />
     </div>
   );

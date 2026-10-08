@@ -999,4 +999,39 @@ describe('RestaurantMenu', () => {
 
     expect(onAddProduct).toHaveBeenCalledWith(expect.objectContaining({ sku: 'NASI-GORENG' }));
   });
+
+  it('excludes inactive or hidden products from restaurant selling grid', () => {
+    mockUseProducts.mockReturnValue({
+      products: [
+        {
+          sku: 'NASI-GORENG',
+          name: 'Nasi Goreng',
+          category: 'Makanan',
+          productType: 'restaurant',
+          isActive: true,
+          price: { minor_units: 25000, currency: 'IDR' },
+          inStock: true,
+        },
+        {
+          sku: 'AYAM-BAKAR',
+          name: 'Ayam Bakar (86)',
+          category: 'Makanan',
+          productType: 'restaurant',
+          isActive: false,
+          price: { minor_units: 30000, currency: 'IDR' },
+          inStock: true,
+        },
+      ],
+      categories: ['Makanan'],
+      categoryMeta: [],
+      loading: false,
+      error: null,
+      reload: vi.fn(),
+    });
+
+    renderMenu();
+
+    expect(screen.getByText('Nasi Goreng')).toBeInTheDocument();
+    expect(screen.queryByText('Ayam Bakar (86)')).not.toBeInTheDocument();
+  });
 });
