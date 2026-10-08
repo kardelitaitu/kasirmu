@@ -93,6 +93,25 @@ Recorded because each one is still live in some document a worker might read, an
 
 ---
 
+## 2026-10-08: `wiring_audit.rs` had a PROVEN false negative — it missed a duplicate that panics Tauri at startup. Fixed in `f9674e550`.
+
+**The guard's purpose is narrow and severe:** a duplicate entry in `generate_handler![` makes Tauri v2 panic at runtime, so `desktop_client_no_duplicate_handler_commands` exists to catch it before shipping. Its six tests all passed, and the tree is genuinely clean today — which is why nothing had found the parser's two defects.
+
+**DEFECT 1, proven by round-trip against the real `lib.rs`, not argued from reading.** I duplicated `commands::audit::list_audit_log_scoped` — a command that already appears once — and ran the audit:
+
+| probe | result |
+|---|---|
+| duplicate, both lines bare | **CAUGHT** ("Duplicate command(s) found") |
+| duplicate, second line `commands::…, // probe` | **MISSED — audit green** |
+
+The parser stripped the comment with `trim_end_matches(',')` FIRST, leaving `"commands::a::b, // note"` as the path, so the HashSet held two different strings for one command. A trailing comment is ordinary in a long registration list; the control above is what makes this a measurement rather than a hypothesis.
+
+**DEFECT 2, found while fixing the first:** an unterminated `generate_handler![` left `end = 0`, so the sliced block was empty and every duplicate assertion passed **without examining anything** — the guard reported clean wiring for a file it had not read. A guard that fails OPEN on malformed input is worse than no guard, because its green is indistinguishable from a real pass. It now panics with a message naming the condition.
+
+**My own fix was wrong first, and the new test caught it.** Slicing at `//` leaves the space that preceded it — `"commands::a::b, "` — so `trim_end_matches(',')` saw a string ending in a space, removed nothing, and the comma survived into the path. The order has to be `trim()` → `trim_end_matches(',')` → `trim()`. **Six new cases** now pin the parser's own contract (trailing comment, duplicate-with-comment collapsing to one path, whole-line comments, nested brackets, unterminated-panics, macro-absent), taking the file 6 → 12, and **three mutants were killed**: comment-strip removed, comma-trim before the trim, and the silent-empty-block regression.
+
+**Also fixed, from another lane:** `platform/sync/src/daemon_tick.rs:461` was a collapsible `if` (`if let Some(msg) = anchor_err { if sync_error.is_none() { … } }`), committed at 11:47 by `80da8b8cd`, which made `cargo clippy -D warnings` fail again for the whole workspace. Collapsed to `if let … && sync_error.is_none()`; `cargo clippy -p platform-sync --all-targets -- -D warnings` Finished and its 479+4+3 tests still pass. **Recorded because the lint gate re-breaking the same day it was cleared is the signal that it needs to be a pre-commit step rather than a CI-only one** — the paths for that wiring exist (`scripts/run-pre-push.py`), which is a lane for someone who owns the hook.
+
 ## 2026-10-08 (same day, later): the remaining lanes swept — all GREEN. One caveat worth stating plainly.
 
 **Lanes exercised this round, each in isolation and none requiring a workspace run:**
