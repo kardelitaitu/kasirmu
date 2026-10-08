@@ -149,6 +149,18 @@ effects that are not awaited with the write: `setInteractionSoundEnabled` /
 `setInteractionVibrationEnabled` (`:323-324`) mutate localStorage **before** the DB
 write resolves, so a rejected save leaves local and remote disagreeing.
 
+**A THIRD instance, found in round 4:** `RestaurantReceiptsScreen` wrote its whole
+localStorage cache (`resto_rcpt_*`, 14 keys) at `:1010-1028`, **before**
+`await Promise.all(tasks)` at `:1030`. A rejected save therefore advanced the cache
+while the DB kept the old values, and the next mount rendered the un-persisted edit
+as saved. Fixed in `f0a2a8b25`.
+
+**What the third instance says about the finding:** F5 was filed as two sites and
+was actually three. All three are the same mistake — mutating a client-side mirror
+before the durable write resolves — which suggests the pattern, not the file, is
+the thing to watch for. A future sweep should grep for `localStorage.setItem`
+preceding an `await` rather than trust a per-file list.
+
 ### F6 — Interaction prefs are stored twice and only the local copy is honoured (MEDIUM)
 
 `RestaurantSettingsScreen` persists `restaurant.interaction_sound` and
@@ -671,6 +683,10 @@ _Fill in as phases land. One row per acceptance command run._
 | 2026-10-09 | P6 | `cd ui && npx eslint <changed files>` | exit 0 | 0 errors |
 | 2026-10-09 | P7 | `python scripts/verify-ipc-parity.py` + `git diff --stat scripts/ipc-parity-allowlist.json` | exit 0 | parity OK; allowlist **unchanged** (empty diff) |
 | 2026-10-09 | all | `cd ui && npx vitest run` (full suite, round 4) | exit 0 | **673 files, 11355 passed / 24 skipped / 3 todo** |
+| 2026-10-09 | P6/F5 | `cd ui && npx vitest run RestaurantReceiptsScreen -t 'save is rejected'` (kill-test) | **first version PASSED against the bug** | vacuous test caught; rewritten, then fails on the bug as required |
+| 2026-10-09 | P6/F5 | `cd ui && npx vitest run RestaurantReceiptsScreen` | exit 0 | **36 passed** |
+| 2026-10-09 | all | `cd ui && npx vitest run` (full suite, round 4 final) | exit 0 | **673 files, 11356 passed / 24 skipped / 3 todo** |
+| 2026-10-09 | all | `python scripts/verify-ipc-parity.py` (round 4 final) | exit 0 | IPC parity: OK |
 
 **P0 baseline (measured 2026-10-09).** These four are the reference figures for
 attributing any later regression:
