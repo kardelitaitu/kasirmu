@@ -59,6 +59,22 @@ pub const DEFAULT_PORT: u16 = 3099;
 /// Default token lifetime for UI-minted keys (30 days).
 pub const DEFAULT_TOKEN_HOURS: i64 = 720;
 /// Upper bound for UI-minted token lifetime (1 year).
+///
+/// THE SAME NUMBER EXISTS IN TWO CRATES, deliberately, and they answer different
+/// questions. `kasirmu_api::auth::MAX_TOKEN_HOURS` is the authoritative CEILING: it is
+/// enforced inside `create_token_full`, which that module documents as "the single funnel
+/// both mint doors pass through". This copy supplies the OPERATOR DOOR's clamp, which is
+/// `clamp(1, MAX_TOKEN_HOURS)` -- a floor as well as a ceiling, because the IPC mint must
+/// refuse a zero-length token. The api funnel enforces the ceiling only and says why: a
+/// floor there "would break the legitimate use of this primitive to mint an ALREADY-EXPIRED
+/// token". So neither copy can simply become the other.
+///
+/// They are kept in step by construction rather than by a constant reference:
+/// `mint_token` clamps to this value and then delegates to `kasirmu_api::auth::create_token_full`,
+/// which re-clamps to its own. The effective bound is therefore `min` of the two, and
+/// `mint_token_roundtrip_and_clamp` asserts the minted lifetime equals THIS constant --
+/// which fails if either copy moves in either direction. Verified by lowering the api copy
+/// to 24: the test fails, so the coupling is real.
 pub const MAX_TOKEN_HOURS: i64 = 8760;
 
 /// A running local API server and the means to stop it.
