@@ -5,7 +5,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--color-pos-modal-overlay, rgba(0, 0, 0, 0.65));
+  background: var(--color-pos-modal-overlay);
   container-type: inline-size;
 }
 
@@ -128,57 +128,24 @@
   }
 }
 
-@media (min-width: 640px) and (orientation: landscape) {
-  .payment-modal {
-    width: 52rem;
-    max-width: min(56rem, calc(100vw - 2rem));
-    max-height: min(44rem, calc(100vh - 1.5rem));
-  }
+/* ADR-0060 T1/T2. This block used to be a second copy of the `@container`
+   tier directly above, under `@media (min-width: 640px) and (orientation:
+   landscape)`. Both carried the SAME nine rules, byte-identical, so removing
+   this one changes no rendered output: `.pos-screen` is the page's query
+   container (PosScreen.css:40), and the container tier measures the space the
+   shell grants the modal rather than the viewport.
 
-  .payment-modal-layout {
-    display: grid;
-    grid-template-columns: 19rem 1fr;
-    overflow: hidden;
-  }
+   It had to go for two reasons, and only the second is stylistic:
+     1. T1 licenses `@media (orientation: ...)` ONLY in the shell
+        (ui/src/app/AppLayout.css, ui/src/app/tablet/tablet.css). A feature
+        sheet holding one is the violation orientationAdaptiveWalker.test.ts
+        exists to catch, and it caught this one.
+     2. Duplication is what let the drift happen: the container tier and this
+        block could diverge, and whichever the cascade resolved last would win
+        in landscape only -- a difference no portrait test can see.
 
-  .payment-summary-col {
-    background: var(--color-bg-surface);
-    border-right: 1px solid var(--color-border);
-    padding: var(--space-4) var(--space-5);
-    overflow-y: auto;
-  }
-
-  .payment-tender-col {
-    padding: var(--space-4) var(--space-5);
-    overflow-y: auto;
-    gap: var(--space-2_5);
-  }
-
-  .payment-methods {
-    padding: 0;
-  }
-
-  .payment-method-options {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: var(--space-2);
-  }
-
-  .payment-method-label {
-    min-height: 2.375rem;
-  }
-
-  .payment-cash-section,
-  .payment-open-bill-section {
-    padding: 0;
-  }
-
-  .payment-actions {
-    margin-top: auto;
-    padding: var(--space-3) 0 0;
-    border-top: 1px solid var(--color-border);
-  }
-}
+   If a landscape-specific difference is ever genuinely needed here, it is a
+   T2 change (another `@container` tier), not a return of this query. */
 
 .payment-modal:has(.payment-done),
 .payment-modal:has(.receipt-preview) {
@@ -324,8 +291,8 @@
 }
 
 .payment-method-label:hover {
-  background: var(--color-bg-subtle, rgba(255, 255, 255, 0.04));
-  border-color: var(--color-border-hover, var(--color-border));
+  background: var(--color-bg-subtle);
+  border-color: var(--color-border-hover);
 }
 
 .payment-method-label:has(input[type="radio"]:focus-visible) {
@@ -1076,7 +1043,7 @@
 
 .payment-error-text {
   flex: 1;
-  line-height: 1.4;
+  line-height: var(--leading-snug);
 }
 
 .payment-error-retry-btn {
@@ -1624,59 +1591,20 @@
   }
 }
 
-/* ── Rails-degraded notice ─────────────────────────────────────────
-   Shown in the tender column when the rail read failed or came back empty,
-   so the modal is offering the anchored cash floor alone. Reads as a fault,
-   not as the operator's own settings — a cashier who thinks the site dropped
-   card support will ring a card sale as cash. */
-.payment-rails-degraded {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-3);
-  margin-bottom: var(--space-3);
-  background: var(--color-danger-bg);
-  border: 1px solid var(--color-danger);
-  border-radius: var(--radius-md);
-  font-size: var(--text-sm);
-  color: var(--color-danger);
-}
+/* ── Rails-degraded notice ── REMOVED 2026-10-08 ────────────────────
+   Nine rules stood here (.payment-rails-degraded, -icon, -text, -retry and
+   their :hover / :focus-visible / pointer:coarse variants), describing a notice
+   for when the rail read failed or came back empty.
 
-.payment-rails-degraded-icon {
-  flex-shrink: 0;
-}
+   They were deleted rather than kept because nothing ever rendered them:
+   `git grep -rn degraded ui/src/features/sales ui/e2e` returns this sheet and
+   nothing else -- no JSX, no hook state, no e2e locator. The rules arrived with
+   add32d8e6, whose own subject is a layout redesign, so this was CSS written
+   ahead of markup that never landed; screenExtraction's dead-class walk was
+   right to flag it and the block sat red until now.
 
-.payment-rails-degraded-text {
-  flex: 1;
-  line-height: 1.4;
-}
-
-.payment-rails-degraded-retry {
-  flex-shrink: 0;
-  padding: var(--space-1) var(--space-3);
-  font-family: var(--font-sans);
-  font-size: var(--text-xs);
-  font-weight: var(--font-weight-semibold);
-  color: var(--color-danger);
-  background: var(--color-bg-primary);
-  border: 1px solid var(--color-danger);
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.payment-rails-degraded-retry:hover {
-  background: var(--color-danger);
-  color: var(--color-accent-fg);
-}
-
-.payment-rails-degraded-retry:focus-visible {
-  box-shadow: 0 0 0 2px var(--color-danger);
-}
-
-/* Touch target: the retry sits inside the tender column on a tablet. */
-@media (pointer: coarse) {
-  .payment-rails-degraded-retry {
-    min-height: var(--touch-target-min);
-  }
-}
+   Recover it from add32d8e6 if the notice is built: the markup it expected is
+   a danger-tinted row in the tender column carrying an icon, a message and a
+   Retry button, with the retry at --touch-target-min under (pointer: coarse).
+   Note that no Fluent key for the message exists either, so restoring this is
+   a feature (key + JSX + state), not a revert. */
