@@ -603,3 +603,20 @@ Two further closures, both from measuring rather than assuming:
 
 Renamed `plan-` → `done-plan-` under §7.4: the file's own acceptance command
 (item 3) ran and passed.
+
+### 6.8 Post-rename verification — 2026-10-08, 11:09
+
+Rebuilt with the two commands registered and walked the tablet again:
+**13 ok / 2 warn / 0 fail** (the run before registration was 11 ok / 4 warn).
+`general` and `offline-queue` are clean — the recorder's two
+"Command not found" entries are gone, no toast fires, and no invoke rejects
+anywhere. The two remaining warnings are `license-subscription` and
+`business-defaults` reporting 0 interactive controls, which is the
+no-location-profile and guarded-action data condition, not a failure.
+
+Desktop side of the bridge fix (`dedf821b9`): `kasirmu-app` lib suite
+177 passed, with one unrelated failure in
+`commands::local_api::tests::set_port_restarts_running_server_on_new_port`
+(a local HTTP socket test asserting the old port stops answering — no path
+through session minting). The bridge's own `auth` (74) and `locations` (13)
+modules are green.
