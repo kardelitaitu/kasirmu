@@ -118,9 +118,27 @@ export interface SetCartDiscountArgs {
   userId: string;
 }
 
+interface RawStartSale {
+  cartId?: CartId;
+  cart_id?: CartId;
+  deductionLocationId?: string;
+  deduction_location_id?: string;
+}
+
 /** ADR #7: Start a new sale in the store resolved from a session token. */
-export const startSaleScoped = (sessionToken: string, args: StartSaleArgs): Promise<StartSaleResult> =>
-  loggedInvoke<StartSaleResult>('start_sale_scoped', { sessionToken, args });
+export const startSaleScoped = async (
+  sessionToken: string,
+  args: StartSaleArgs,
+): Promise<StartSaleResult> => {
+  const raw = await loggedInvoke<RawStartSale>('start_sale_scoped', { sessionToken, args });
+  const cartId = (raw.cartId ?? raw.cart_id ?? '') as CartId;
+  const locId = raw.deductionLocationId ?? raw.deduction_location_id;
+  const result: StartSaleResult = { cartId };
+  if (locId) {
+    result.deductionLocationId = locId;
+  }
+  return result;
+};
 
 /** ADR-19: Info about the deduction location locked on a cart. */
 export interface DeductionLocationInfo {

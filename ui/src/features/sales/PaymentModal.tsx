@@ -1611,256 +1611,269 @@ retryCurrencyLoad,
               </Localized>
             </div>
 
-            {tableNumber && (
-              <div className="payment-table-badge">
-                <Localized id="payment-table-number" vars={{ number: tableNumber }}>
-                  <span>Table {tableNumber}</span>
-                </Localized>
-              </div>
-            )}
-
-            <div className="payment-total-row">
-              <Localized id="payment-total-due">
-                <span className="payment-total-label">Total Due</span>
-              </Localized>
-              <span className="payment-total-amount">
-                {promoPreview
-                  ? formatMoney({ minor_units: effectiveTotalInCartCurrency, currency: cartCurrency })
-                  : loyaltyDiscount > 0n ? formatMoney(effectiveTotalMoney) : formatMoney(total)}
-              </span>
-            </div>
-
-            {promoPreview && promoPreview.discounts.length > 0 && (
-              <div className="payment-promotions-row">
-                {promoPreview.discounts.map((d) => (
-                  <div key={d.promotionId} className="payment-promotions-item">
-                    <span className="payment-promotions-label">{d.description}</span>
-                    <span className="payment-promotions-amount">
-                      −{formatMoney({ minor_units: d.discountMinor, currency: cartCurrency })}
-                    </span>
+            <div className="payment-modal-layout">
+              <div className="payment-summary-col">
+                {tableNumber && (
+                  <div className="payment-table-badge">
+                    <Localized id="payment-table-number" vars={{ number: tableNumber }}>
+                      <span>Table {tableNumber}</span>
+                    </Localized>
                   </div>
-                ))}
-              </div>
-            )}
+                )}
 
-            {multiCurrency && (
-              <div className="payment-currency-selector">
-                  <Localized id="payment-currency-aria" attrs={{ 'aria-label': true }}>
-                  {/* eslint-disable-next-line jsx-a11y/label-has-associated-control -- accessible text via Localized span at runtime */}
-                  <label htmlFor="payment-currency-select">
-                    <Localized id="payment-currency-label">
-                      <span className="payment-currency-label">Charge Currency</span>
-                    </Localized>
-                      <Localized id="payment-currency-select-aria" attrs={{ 'aria-label': true }}>
-                      <select
-                        id="payment-currency-select"
-                        className="payment-currency-select"
-                        value={selectedCurrency}
-                        onChange={(e) => setSelectedCurrency(e.target.value)}
-                      >
-                        {currencies.length === 0 && (
-                          <option value={total.currency}>{total.currency}</option>
-                        )}
-                        {currencies.map((c) => (
-                          <option key={c.code} value={c.code}>
-                            {c.code} — {c.name}
-                          </option>
-                        ))}
-                      </select>
-                      </Localized>
-                  </label>
+                <div className="payment-total-row">
+                  <Localized id="payment-total-due">
+                    <span className="payment-total-label">Total Due</span>
                   </Localized>
-              </div>
-            )}
-            {(currenciesUnknown || baseCurrencyUnknown) && (
-              <div className="payment-currency-unknown" role="alert">
-                <div className="payment-currency-unknown-text">
-                  {currenciesUnknown && (
-                    <Localized id="payment-currency-list-unknown">
-                      <span>The list of supported currencies could not be loaded.</span>
-                    </Localized>
-                  )}
-                  {baseCurrencyUnknown && (
-                    <Localized id="payment-default-currency-unknown">
-                      <span>The default currency for this store could not be loaded.</span>
-                    </Localized>
-                  )}
-                </div>
-                <Localized id="payment-retry-aria" attrs={{ 'aria-label': true }}>
-                <button
-                  type="button"
-                  className="payment-currency-unknown-retry"
-                  onClick={retryCurrencyLoad}
-                >
-                  <Localized id="payment-retry">
-                    <span>Retry</span>
-                  </Localized>
-                </button>
-                </Localized>
-              </div>
-            )}
-
-            {selectedCurrency !== total.currency && rateUnknown && (
-              <div className="payment-rate-unknown" role="alert">
-                <Localized id="payment-rate-unknown">
-                  <span className="payment-rate-unknown-text">
-                    Could not load the exchange rate for this pair.
-                  </span>
-                </Localized>
-                <Localized id="payment-retry-aria" attrs={{ 'aria-label': true }}>
-                <button
-                  type="button"
-                  className="payment-rate-unknown-retry"
-                  onClick={retryRateRead}
-                >
-                  <Localized id="payment-retry">
-                    <span>Retry</span>
-                  </Localized>
-                </button>
-                </Localized>
-              </div>
-            )}
-
-            {selectedCurrency !== total.currency && effectiveRateInfo && (
-              <Localized id="payment-exchange-aria" attrs={{ 'aria-label': true }}>
-              <div className="payment-exchange-notice">
-                <div className="payment-exchange-row">
-                  <Localized id="payment-exchange-rate">
-                    <span>Exchange rate</span>
-                  </Localized>
-                  <span>
-                    1 {effectiveRateInfo.from_currency} = {effectiveRateInfo.rate.toFixed(6)} {effectiveRateInfo.to_currency}
+                  <span className="payment-total-amount">
+                    {promoPreview
+                      ? formatMoney({ minor_units: effectiveTotalInCartCurrency, currency: cartCurrency })
+                      : loyaltyDiscount > 0n ? formatMoney(effectiveTotalMoney) : formatMoney(total)}
                   </span>
                 </div>
-                <div className="payment-exchange-row">
-                  <Localized id="payment-rate-source">
-                    <span>Rate source</span>
-                  </Localized>
-                  <span>{effectiveRateInfo.source || l10n.getString('payment-rate-source-manual')}</span>
-                </div>
-                <div className="payment-exchange-row">
-                  <Localized id="payment-rate-timestamp">
-                    <span>Rate timestamp</span>
-                  </Localized>
-                  <span>{effectiveRateInfo.effective_date}</span>
-                </div>
-              </div>
-              </Localized>
-            )}
 
-            {selectedCurrency !== total.currency && (
-              <Localized id="payment-receipt-currency-aria" attrs={{ 'aria-label': true }}>
-              <div className="payment-receipt-currency">
-                <div className="payment-receipt-currency-row">
-                  <Localized id="payment-charged-in">
-                    <span>Charged in</span>
-                  </Localized>
-                  <span>{selectedCurrency}</span>
-                </div>
-                <div className="payment-receipt-currency-row">
-                  <Localized id="payment-default-currency">
-                    <span>Default currency</span>
-                  </Localized>
-                  <span>{baseCurrencyUnknown ? '—' : baseCurrency}</span>
-                </div>
-                <div className="payment-receipt-currency-row">
-                  <Localized id="payment-base-amount">
-                    <span>Base amount</span>
-                  </Localized>
-                  <span>{formatMoney(total)}</span>
-                </div>
-                <div className="payment-receipt-currency-row">
-                  <Localized id="payment-charge-amount">
-                    <span>Charge amount</span>
-                  </Localized>
-                  <span>
-                    {formatMoney({
-                      minor_units: convertToChargeCurrency(total.minor_units),
-                      currency: selectedCurrency,
-                    } as Money)}
-                  </span>
-                </div>
-              </div>
-              </Localized>
-            )}
-
-            {!splitMode && (
-              <>
-                <fieldset className="payment-methods">
-                  <Localized id="payment-method-label">
-                    <legend className="payment-section-title">Payment Method</legend>
-                  </Localized>
-                  <div className="payment-method-options">
-                    {visibleMethods(paymentRails, activeMarketProfile).map((m) => (
-                      <label key={m} className="payment-method-label" data-testid="quick-pay-button">
-                        <input
-                          type="radio"
-                          name="payment-method"
-                          value={m}
-                          checked={method === m}
-                          onChange={() => setMethod(m)}
-                        />
-                        <span className="payment-method-name">
-                          {m === 'qris'
-                            ? resolveTenderDisplayName('qris', paymentRails, activeMarketProfile, requiredLocalized(l10n, PAYMENT_METHOD_MESSAGE_IDS[m]))
-                            : requiredLocalized(l10n, PAYMENT_METHOD_MESSAGE_IDS[m])}
+                {promoPreview && promoPreview.discounts.length > 0 && (
+                  <div className="payment-promotions-row">
+                    {promoPreview.discounts.map((d) => (
+                      <div key={d.promotionId} className="payment-promotions-item">
+                        <span className="payment-promotions-label">{d.description}</span>
+                        <span className="payment-promotions-amount">
+                          −{formatMoney({ minor_units: d.discountMinor, currency: cartCurrency })}
                         </span>
-                      </label>
+                      </div>
                     ))}
-                    <div className="payment-method-label">
-                      {/* This row is a div, not a label, because it holds two controls —
-                          the radio and the name field. Nothing in the row therefore names the
-                          radio, and an unselected "Other" shows an empty DISABLED input, so the
-                          accessible name has to come from here or the radio announces as bare
-                          "radio button". */}
-                      <Localized id="payment-method-other" attrs={{ 'aria-label': true }}>
-                      <input
-                        type="radio"
-                        name="payment-method"
-                        value="other"
-                        checked={method === 'other'}
-                        onChange={() => setMethod('other')}
-                      />
-                      </Localized>
-                      {/* .payment-method-name on the text input below is not decoration:
-                          the checked-tender rule (PaymentModal.css:184) is an ADJACENT-SIBLING
-                          selector, so that input - the radio's next sibling, and the element
-                          the cashier actually reads for this row - is the only one the rule
-                          can treat. Without the class, Other was the one selected tender
-                          whose name kept neither the accent nor the semibold. */}
-                        <Localized id="payment-other-placeholder" attrs={{ 'aria-label': true, placeholder: true }}>
-                        <input
-                          type="text"
-                          className="payment-other-input payment-method-name"
-                          value={otherLabel}
-                          onChange={(e) => {
-                            setMethod('other');
-                            setOtherLabel(e.target.value);
-                          }}
-                          disabled={method !== 'other'}
-                        />
+                  </div>
+                )}
+
+                {multiCurrency && (
+                  <div className="payment-currency-selector">
+                      <Localized id="payment-currency-aria" attrs={{ 'aria-label': true }}>
+                      {/* eslint-disable-next-line jsx-a11y/label-has-associated-control -- accessible text via Localized span at runtime */}
+                      <label htmlFor="payment-currency-select">
+                        <Localized id="payment-currency-label">
+                          <span className="payment-currency-label">Charge Currency</span>
                         </Localized>
+                          <Localized id="payment-currency-select-aria" attrs={{ 'aria-label': true }}>
+                          <select
+                            id="payment-currency-select"
+                            className="payment-currency-select"
+                            value={selectedCurrency}
+                            onChange={(e) => setSelectedCurrency(e.target.value)}
+                          >
+                            {currencies.length === 0 && (
+                              <option value={total.currency}>{total.currency}</option>
+                            )}
+                            {currencies.map((c) => (
+                              <option key={c.code} value={c.code}>
+                                {c.code} — {c.name}
+                              </option>
+                            ))}
+                          </select>
+                          </Localized>
+                      </label>
+                      </Localized>
+                  </div>
+                )}
+                {(currenciesUnknown || baseCurrencyUnknown) && (
+                  <div className="payment-currency-unknown" role="alert">
+                    <div className="payment-currency-unknown-text">
+                      {currenciesUnknown && (
+                        <Localized id="payment-currency-list-unknown">
+                          <span>The list of supported currencies could not be loaded.</span>
+                        </Localized>
+                      )}
+                      {baseCurrencyUnknown && (
+                        <Localized id="payment-default-currency-unknown">
+                          <span>The default currency for this store could not be loaded.</span>
+                        </Localized>
+                      )}
                     </div>
-                    {isRestaurantPos && (
-                      <>
-                        {/* eslint-disable-next-line jsx-a11y/label-has-associated-control */}
-                        <label className="payment-method-label" htmlFor="payment-method-open-bill">
+                    <Localized id="payment-retry-aria" attrs={{ 'aria-label': true }}>
+                    <button
+                      type="button"
+                      className="payment-currency-unknown-retry"
+                      onClick={retryCurrencyLoad}
+                    >
+                      <Localized id="payment-retry">
+                        <span>Retry</span>
+                      </Localized>
+                    </button>
+                    </Localized>
+                  </div>
+                )}
+
+                {selectedCurrency !== total.currency && rateUnknown && (
+                  <div className="payment-rate-unknown" role="alert">
+                    <Localized id="payment-rate-unknown">
+                      <span className="payment-rate-unknown-text">
+                        Could not load the exchange rate for this pair.
+                      </span>
+                    </Localized>
+                    <Localized id="payment-retry-aria" attrs={{ 'aria-label': true }}>
+                    <button
+                      type="button"
+                      className="payment-rate-unknown-retry"
+                      onClick={retryRateRead}
+                    >
+                      <Localized id="payment-retry">
+                        <span>Retry</span>
+                      </Localized>
+                    </button>
+                    </Localized>
+                  </div>
+                )}
+
+                {selectedCurrency !== total.currency && effectiveRateInfo && (
+                  <Localized id="payment-exchange-aria" attrs={{ 'aria-label': true }}>
+                  <div className="payment-exchange-notice">
+                    <div className="payment-exchange-row">
+                      <Localized id="payment-exchange-rate">
+                        <span>Exchange rate</span>
+                      </Localized>
+                      <span>
+                        1 {effectiveRateInfo.from_currency} = {effectiveRateInfo.rate.toFixed(6)} {effectiveRateInfo.to_currency}
+                      </span>
+                    </div>
+                    <div className="payment-exchange-row">
+                      <Localized id="payment-rate-source">
+                        <span>Rate source</span>
+                      </Localized>
+                      <span>{effectiveRateInfo.source || l10n.getString('payment-rate-source-manual')}</span>
+                    </div>
+                    <div className="payment-exchange-row">
+                      <Localized id="payment-rate-timestamp">
+                        <span>Rate timestamp</span>
+                      </Localized>
+                      <span>{effectiveRateInfo.effective_date}</span>
+                    </div>
+                  </div>
+                  </Localized>
+                )}
+
+                {selectedCurrency !== total.currency && (
+                  <Localized id="payment-receipt-currency-aria" attrs={{ 'aria-label': true }}>
+                  <div className="payment-receipt-currency">
+                    <div className="payment-receipt-currency-row">
+                      <Localized id="payment-charged-in">
+                        <span>Charged in</span>
+                      </Localized>
+                      <span>{selectedCurrency}</span>
+                    </div>
+                    <div className="payment-receipt-currency-row">
+                      <Localized id="payment-default-currency">
+                        <span>Default currency</span>
+                      </Localized>
+                      <span>{baseCurrencyUnknown ? '—' : baseCurrency}</span>
+                    </div>
+                    <div className="payment-receipt-currency-row">
+                      <Localized id="payment-base-amount">
+                        <span>Base amount</span>
+                      </Localized>
+                      <span>{formatMoney(total)}</span>
+                    </div>
+                    <div className="payment-receipt-currency-row">
+                      <Localized id="payment-charge-amount">
+                        <span>Charge amount</span>
+                      </Localized>
+                      <span>
+                        {formatMoney({
+                          minor_units: convertToChargeCurrency(total.minor_units),
+                          currency: selectedCurrency,
+                        } as Money)}
+                      </span>
+                    </div>
+                  </div>
+                  </Localized>
+                )}
+              </div>
+
+              <div className="payment-tender-col">
+                {!splitMode && (
+                  <>
+                    <fieldset className="payment-methods">
+                      <Localized id="payment-method-label">
+                        <legend className="payment-section-title">Payment Method</legend>
+                      </Localized>
+                      <div className="payment-method-options">
+                        {visibleMethods(paymentRails, activeMarketProfile).map((m) => (
+                          <label
+                            key={m}
+                            className={`payment-method-label payment-method-label--${m}${method === m ? ' payment-method-label--active' : ''}`}
+                            data-testid="quick-pay-button"
+                          >
+                            <input
+                              type="radio"
+                              name="payment-method"
+                              value={m}
+                              checked={method === m}
+                              onChange={() => setMethod(m)}
+                            />
+                            <span className="payment-method-name">
+                              {m === 'qris'
+                                ? resolveTenderDisplayName('qris', paymentRails, activeMarketProfile, requiredLocalized(l10n, PAYMENT_METHOD_MESSAGE_IDS[m]))
+                                : requiredLocalized(l10n, PAYMENT_METHOD_MESSAGE_IDS[m])}
+                            </span>
+                          </label>
+                        ))}
+                        <div
+                          className={`payment-method-label payment-method-label--other${method === 'other' ? ' payment-method-label--active' : ''}`}
+                        >
+                          {/* This row is a div, not a label, because it holds two controls —
+                              the radio and the name field. Nothing in the row therefore names the
+                              radio, and an unselected "Other" shows an empty DISABLED input, so the
+                              accessible name has to come from here or the radio announces as bare
+                              "radio button". */}
+                          <Localized id="payment-method-other" attrs={{ 'aria-label': true }}>
                           <input
-                            id="payment-method-open-bill"
                             type="radio"
                             name="payment-method"
-                            value="open_bill"
-                            checked={method === 'open_bill'}
-                            onChange={() => setMethod('open_bill')}
+                            value="other"
+                            checked={method === 'other'}
+                            onChange={() => setMethod('other')}
                           />
-                          <span className="payment-method-name">
-                            <Localized id="payment-open-bill"><span>Open Bill</span></Localized>
-                          </span>
-                        </label>
-                      </>
-                    )}
-                  </div>
-                </fieldset>
+                          </Localized>
+                          {/* .payment-method-name on the text input below is not decoration:
+                              the checked-tender rule (PaymentModal.css:184) is an ADJACENT-SIBLING
+                              selector, so that input - the radio's next sibling, and the element
+                              the cashier actually reads for this row - is the only one the rule
+                              can treat. Without the class, Other was the one selected tender
+                              whose name kept neither the accent nor the semibold. */}
+                            <Localized id="payment-other-placeholder" attrs={{ 'aria-label': true, placeholder: true }}>
+                            <input
+                              type="text"
+                              className="payment-other-input payment-method-name"
+                              value={otherLabel}
+                              onChange={(e) => {
+                                setMethod('other');
+                                setOtherLabel(e.target.value);
+                              }}
+                              disabled={method !== 'other'}
+                            />
+                            </Localized>
+                        </div>
+                        {isRestaurantPos && (
+                          <>
+                            {/* eslint-disable-next-line jsx-a11y/label-has-associated-control */}
+                            <label
+                              className={`payment-method-label payment-method-label--open_bill${method === 'open_bill' ? ' payment-method-label--active' : ''}`}
+                              htmlFor="payment-method-open-bill"
+                            >
+                              <input
+                                id="payment-method-open-bill"
+                                type="radio"
+                                name="payment-method"
+                                value="open_bill"
+                                checked={method === 'open_bill'}
+                                onChange={() => setMethod('open_bill')}
+                              />
+                              <span className="payment-method-name">
+                                <Localized id="payment-open-bill"><span>Open Bill</span></Localized>
+                              </span>
+                            </label>
+                          </>
+                        )}
+                      </div>
+                    </fieldset>
 
                 {(method === 'open_bill' || method === 'credit') && (
                   <div className="payment-open-bill-section">
@@ -1964,32 +1977,61 @@ retryCurrencyLoad,
               />
             )}
 
-            {paymentError && (
-              <div className="payment-error-banner" role="alert">
-                <svg className="payment-error-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16" aria-hidden="true">
-                  <circle cx="12" cy="12" r="10" />
-                  <line x1="12" y1="8" x2="12" y2="12" />
-                  <line x1="12" y1="16" x2="12.01" y2="16" />
-                </svg>
-                <span className="payment-error-text">{paymentError.message}</span>
-                {paymentError.retryable && (
-                  <Localized id="payment-retry-aria" attrs={{ 'aria-label': true }}>
-                  <button
-                    type="button"
-                    className="payment-error-retry-btn"
-                    onClick={() => {
-                      setPaymentError(null);
-                      complete();
-                    }}
-                  >
-                    <Localized id="payment-retry">
-                      <span>Retry</span>
-                    </Localized>
-                  </button>
-                  </Localized>
+                {paymentError && (
+                  <div className="payment-error-banner" role="alert">
+                    <svg className="payment-error-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16" aria-hidden="true">
+                      <circle cx="12" cy="12" r="10" />
+                      <line x1="12" y1="8" x2="12" y2="12" />
+                      <line x1="12" y1="16" x2="12.01" y2="16" />
+                    </svg>
+                    <span className="payment-error-text">{paymentError.message}</span>
+                    {paymentError.retryable && (
+                      <Localized id="payment-retry-aria" attrs={{ 'aria-label': true }}>
+                      <button
+                        type="button"
+                        className="payment-error-retry-btn"
+                        onClick={() => {
+                          setPaymentError(null);
+                          complete();
+                        }}
+                      >
+                        <Localized id="payment-retry">
+                          <span>Retry</span>
+                        </Localized>
+                      </button>
+                      </Localized>
+                    )}
+                  </div>
                 )}
+
+                <div className="payment-actions">
+                  <Localized id="payment-cancel">
+                    <Button variant="ghost" onClick={() => animateLeave(onClose)} disabled={processing}>
+                      Cancel
+                    </Button>
+                  </Localized>
+                  <Button
+                    variant="primary"
+                    loading={processing}
+                    disabled={!canComplete}
+                    onClick={complete}
+                    data-testid="settle-button"
+                  >
+                    {method === 'open_bill' ? (
+                      <Localized id="payment-open-bill">
+                        <span>Open Bill</span>
+                      </Localized>
+                    ) : method === 'credit' ? (
+                      <Localized id="payment-credit-sale"><span>Credit Sale</span></Localized>
+                    ) : (
+                      <Localized id="payment-complete">
+                        <span>Complete Sale</span>
+                      </Localized>
+                    )}
+                  </Button>
+                </div>
               </div>
-            )}
+            </div>
 
             {showCustomerSearch && (
               <>
@@ -2065,33 +2107,6 @@ retryCurrencyLoad,
                 </div>
               </div>
             </>)}
-
-            <div className="payment-actions">
-              <Localized id="payment-cancel">
-                <Button variant="ghost" onClick={() => animateLeave(onClose)} disabled={processing}>
-                  Cancel
-                </Button>
-              </Localized>
-              <Button
-                variant="primary"
-                loading={processing}
-                disabled={!canComplete}
-                onClick={complete}
-                data-testid="settle-button"
-              >
-                {method === 'open_bill' ? (
-                  <Localized id="payment-open-bill">
-                    <span>Open Bill</span>
-                  </Localized>
-                ) : method === 'credit' ? (
-                  <Localized id="payment-credit-sale"><span>Credit Sale</span></Localized>
-                ) : (
-                  <Localized id="payment-complete">
-                    <span>Complete Sale</span>
-                  </Localized>
-                )}
-              </Button>
-            </div>
           </>
         )}
       </div>
