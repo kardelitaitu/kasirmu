@@ -53,7 +53,10 @@
 --
 -- Or reverse a committed cutover with:
 --
---     ALTER TABLE ... NO FORCE ROW LEVEL SECURITY  (all 19 tables)
+--     ALTER TABLE ... NO FORCE ROW LEVEL SECURITY  (all 22 tables — the
+--       count matches step 3's array below; it read "19" while that array
+--       already held 22, the same three-table drift db_tests.rs:971 records
+--       having fixed in the TEST's copy of this list and left here)
 --     DROP ROLE oz_app;
 --     DROP ROLE oz_webhook_resolver;
 
