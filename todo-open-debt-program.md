@@ -93,6 +93,14 @@ Recorded because each one is still live in some document a worker might read, an
 
 ---
 
+## 2026-10-08: `kernel_lifecycle.rs` documented the wrong shutdown window — 500ms where production is 2000ms. Fixed in `9d55b1836`.
+
+**A smaller finding than R160's, and worth recording for what it says about the guards as a class.** The file's module doc stated *"The Drop implementation uses a **500ms** bounded retry loop"* and *"should either acquire within **500ms** or log a warning"*. Production at `apps/desktop-tauri/src/state.rs:924` is `DROP_LOCK_RETRIES: usize = 200` with a 10ms sleep — **2000ms**. The test's own replica runs `simulate_drop_retry(&kernel, 50, 10)`, i.e. the 500ms figure, so the number was consistent with the replica and wrong about the code the replica stands in for.
+
+**What I checked before calling it a defect, and what turned out fine.** The replica is a COPY of the retry pattern rather than a call into `AppState::drop`, which is the shape that made `wiring_audit` worth probing — so the question was whether the copy had drifted from the original in BEHAVIOUR. Read both: production acquires with `try_lock`, calls `kernel.stop_all()` on success, `break`s, and on exhaustion emits `tracing::warn!("kernel lock contended after {}ms, skipping stop_all …")` and returns — bounded, no panic, no unbounded wait. The replica does the same with a caller-supplied count and delay. **The shape matches; only the documented number was stale**, so the fix is the docstring plus an explicit note that the replica's retry count is deliberately not the production constant (a replica that tracked it would need re-tuning every time the window moves). No behavioural change.
+
+**The class-level observation, since it is now three rounds of the same thing.** Every guard examined this campaign has had a defect on the FIRST probe, and in each case the six/seven tests it shipped were green: `gate_audit`'s parser (R147), its classifier (R148), its walker (R149) and its key map (R150); `wiring_audit`'s duplicate detection (R160, a proven false negative against a startup panic); and now this. **The guards are not badly written — they are simply never probed, and a green suite over a guard reads exactly like a green suite over correct code.** The one thing that has found every one of these is a probe that makes the guard FAIL on purpose.
+
 ## 2026-10-08: `wiring_audit.rs` had a PROVEN false negative — it missed a duplicate that panics Tauri at startup. Fixed in `f9674e550`.
 
 **The guard's purpose is narrow and severe:** a duplicate entry in `generate_handler![` makes Tauri v2 panic at runtime, so `desktop_client_no_duplicate_handler_commands` exists to catch it before shipping. Its six tests all passed, and the tree is genuinely clean today — which is why nothing had found the parser's two defects.
