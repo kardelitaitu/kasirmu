@@ -114,6 +114,8 @@ pub struct PluginManager {
     /// Content hash of the plugin set this runtime was built from (C2).
     /// Recorded at load time; see [`Self::content_hash`].
     content_hash: u64,
+    /// Map from plugin id to index in `plugins` for O(1) sandbox lookup (O-L17).
+    plugin_index: HashMap<String, usize>,
     /// Shared Lua VM. Declared LAST so it drops AFTER the per-plugin env
     /// `RegistryKey`s above: mlua 0.9's `RegistryKey::drop` touches the Lua
     /// state, so freeing the VM before the keys would be a use-after-free.
@@ -509,8 +511,15 @@ impl PluginManager {
         drop(log_fn);
         drop(apply_discount_fn);
 
+        let plugin_index: HashMap<String, usize> = plugins
+            .iter()
+            .enumerate()
+            .map(|(idx, p)| (p.id.clone(), idx))
+            .collect();
+
         Ok(Self {
             plugins,
+            plugin_index,
             hook_names,
             pending_discounts,
             bridge,
@@ -682,15 +691,17 @@ impl PluginManager {
     /// no longer loaded, or whose function no longer exists, is skipped with a
     /// warning rather than aborting the event.
     pub fn fire_event(&self, event: &str, args: mlua::Value) -> Result<(), LuaError> {
-        let hook_refs = self
-            .hook_names
-            .lock()
-            .map(|g| g.get(event).cloned().unwrap_or_default())
-            .unwrap_or_default();
+        let guard = match self.hook_names.lock() {
+            Ok(g) => g,
+            Err(_) => return Ok(()),
+        };
+        let Some(hooks) = guard.get(event) else {
+            return Ok(());
+        };
 
         let lua = self.runtime.inner();
-        for hook in &hook_refs {
-            let Some(sandbox) = self.plugins.iter().find(|p| p.id == hook.plugin_id) else {
+        for hook in hooks {
+            let Some(&sandbox_idx) = self.plugin_index.get(&hook.plugin_id) else {
                 tracing::warn!(
                     event,
                     plugin = %hook.plugin_id,
@@ -698,6 +709,7 @@ impl PluginManager {
                 );
                 continue;
             };
+            let sandbox = &self.plugins[sandbox_idx];
             let Ok(env) = lua.registry_value::<mlua::Table>(&sandbox.env_key) else {
                 tracing::warn!(
                     event,
