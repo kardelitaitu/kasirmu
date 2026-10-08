@@ -268,9 +268,13 @@ impl PgSyncDaemon {
                 // a failed read would skip the push and report a clean cycle while
                 // the durable backlog kept growing — indistinguishable from a
                 // healthy idle terminal. Propagate so it reaches `read_error`.
-                let pending = store.list_pending_offline().map_err(|e| {
+                let mut pending = store.list_pending_offline().map_err(|e| {
                     format!("could not read the offline queue; refusing to report an empty push list: {e}")
                 })?;
+                kasirmu_core::offline::order_for_push(&mut pending);
+                if pending.len() > crate::daemon::DEFAULT_MAX_OUTBOX_BATCH_ITEMS {
+                    pending.truncate(crate::daemon::DEFAULT_MAX_OUTBOX_BATCH_ITEMS);
+                }
                 // SYNC-01 parity: the durable pull anchor (since + composite
                 // cursor) survives restarts and advances only after a page
                 // applied — never re-derive it from the local queue's synced

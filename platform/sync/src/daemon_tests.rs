@@ -794,6 +794,44 @@ fn read_config_and_pending_returns_pending_count() {
     assert!(config.is_none());
 }
 
+#[test]
+fn read_config_and_pending_bounds_batch_size_to_max_outbox_items() {
+    use kasirmu_core::offline::SyncPriority;
+
+    let conn = kasirmu_core::migrations::fresh_db();
+    let store = Store::new(&conn);
+
+    // Enqueue 150 items: 140 Low items, then 10 Critical items.
+    for i in 0..140 {
+        store
+            .enqueue_offline_priority(&format!("bulk_{i}"), r#"{}"#, SyncPriority::Low)
+            .unwrap();
+    }
+    for i in 0..10 {
+        store
+            .enqueue_offline_priority(&format!("critical_{i}"), r#"{}"#, SyncPriority::Critical)
+            .unwrap();
+    }
+
+    let (_config, pending) = read_config_and_pending(&conn).unwrap();
+
+    assert_eq!(
+        pending.len(),
+        DEFAULT_MAX_OUTBOX_BATCH_ITEMS,
+        "read_config_and_pending must bound outbox items to DEFAULT_MAX_OUTBOX_BATCH_ITEMS"
+    );
+
+    // All 10 critical items must be present in the truncated batch
+    let critical_count = pending
+        .iter()
+        .filter(|item| item.priority == SyncPriority::Critical)
+        .count();
+    assert_eq!(
+        critical_count, 10,
+        "Critical priority items must be ordered first and retained in the bounded batch"
+    );
+}
+
 /// A queue that cannot be read must NOT look like an empty queue.
 ///
 /// An empty `pending` is indistinguishable from a healthy idle terminal: the
