@@ -2021,6 +2021,13 @@ fn is_guard_shape(id: &str) -> bool {
 /// to require_session_permission (220 sites in 47 files) and every per-domain
 /// require-domain-permission helper. Widening the list fixes today; this leg is what keeps it
 /// true the day someone writes a bespoke guard, which the census shows is the norm here.
+///
+/// THOSE FIGURES ARE DATED, and re-measured on 2026-10-08 they have moved: 242 -> 309 production
+/// files and 657 -> 595 call sites (my count of the same shape). The SPELLING count, which is the
+/// one this leg enforces, still holds at 18 — and that is the number worth reading, because the
+/// other two grow whenever anyone registers a command. Run this leg with `--nocapture` to print
+/// the live triple; before that was added, the assertions compared against loose FLOORS (14 and
+/// 200) and a vocabulary that doubled or halved would have passed with nobody able to see it.
 #[test]
 fn drift_pin_guard_marker_vocabulary_is_closed() {
     // The two floors are anti-vacuity, not the finding. A sweep that read nothing would
@@ -2130,6 +2137,22 @@ fn drift_pin_guard_marker_vocabulary_is_closed() {
     assert!(
         stale.is_empty(),
         "GUARD-VOCABULARY DRIFT: {stale:?} are excepted but the sweep found no such call site in {files} files — the guard was renamed or deleted, so the exemption now covers nothing. Delete the entry rather than keep a list that no longer matches the tree."
+    );
+
+    // REPORT THE LIVE SHAPE, because on a GREEN run nothing else in this leg publishes it.
+    // The header's "242 production files, 18 distinct spellings, 657 call sites" is dated
+    // to e046e2f26 and honest as provenance, but a reader had no way to tell whether those
+    // numbers still described the tree — the assertions above compare against FLOORS (14
+    // and 200), deliberately loose, so a vocabulary that doubled or halved would pass
+    // silently. Printing the measured triple costs nothing, appears only under
+    // `--nocapture`, and is what a reviewer needs to see that the dated figures have or
+    // have not moved. It is not an assertion: pinning these would red on every unrelated
+    // command, which is the brittleness the floors exist to avoid.
+    println!(
+        "guard vocabulary (live): {files} production files, {sites} call sites, {} distinct          spellings, {} markers, {} exceptions",
+        seen.len(),
+        GUARD_MARKERS.len(),
+        GUARD_VOCAB_EXCEPTIONS.len()
     );
 }
 
