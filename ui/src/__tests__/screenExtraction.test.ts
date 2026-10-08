@@ -1397,7 +1397,22 @@ const SCREENS: ScreenEntry[] = [
     // alone, so the shared sheet is never graded for dead or duplicate rules
     // through this entry.
     parentCss: ['../theme/components.css'],
-    dynamicClassPrefixes: [ 'payment-overlay--enter', 'payment-overlay--exit', 'payment-modal--enter', 'payment-modal--exit'],
+    dynamicClassPrefixes: [
+      'payment-overlay--enter', 'payment-overlay--exit', 'payment-modal--enter', 'payment-modal--exit',
+      // The tender grid composes its modifier from the method key at :1801 --
+      // `payment-method-label--${m}` -- so the four literal modifiers the sheet
+      // styles (--cash, --qris, --card, --credit) never appear verbatim in the
+      // TSX. They are reachable at runtime; the static extractor cannot see the
+      // interpolation, which is what this field is for.
+      'payment-method-label--',
+    ],
+    // The modal renders <ReceiptPreview> at :1549, and that component applies
+    // `receipt-preview` from its OWN sheet (ReceiptPreview.tsx:66 imports
+    // ReceiptPreview.css). PaymentModal.css only ever SELECTS it, from the
+    // `:has(.receipt-preview)` width rule at :151 -- an ancestor selector
+    // reaching into a child's class, which is a real cross-component reference
+    // rather than a rule this sheet owes and never uses.
+    externalClasses: ['receipt-preview'],
     additionalTsx: [
       'sales/payment/CashTenderPanel.tsx',
       'sales/payment/CardTenderPanel.tsx',

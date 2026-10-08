@@ -3320,7 +3320,15 @@ const LINE_HEIGHT_LITERAL_BASELINE: Array<[string, string, number]> = [
   ["1.3", "ui/src/features/sales/CartPanelLineItem.css", 3],
   ["1.6", "ui/src/features/sales/EodReportScreen.css", 1],
   ["1", "ui/src/features/sales/PaymentModal.css", 3],
-  ["1.4", "ui/src/features/sales/PaymentModal.css", 1],
+  // The ["1.4", …, 1] row was REMOVED 2026-10-08, not moved: both of its sites
+  // (:1046 .payment-error-text, :1618 .payment-rails-degraded-text) were body
+  // copy at exactly 1.4, which IS the --leading-snug step, so they adopted
+  // `var(--leading-snug)` rather than staying literals. That is a real
+  // token adoption, not a deletion, and it is the direction this freeze wants
+  // sites to travel -- but a paid-down freeze still has to name its step, which
+  // is what this note does. The second site is gone entirely: the whole
+  // .payment-rails-degraded block was dead CSS and was removed in the same pass
+  // (see the block comment in PaymentModal.css).
   ["1", "ui/src/features/sales/PosScreen.css", 2],
   ["1.4", "ui/src/features/sales/PosScreen.css", 2],
   ["1", "ui/src/features/sales/PromotionsModal.css", 1],
