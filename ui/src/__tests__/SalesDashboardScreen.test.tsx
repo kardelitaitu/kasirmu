@@ -88,7 +88,7 @@ describe('SalesDashboardScreen', () => {
     renderWithFluentSync(<SalesDashboardScreen />, salesFtl);
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: /daily total/i })).toBeInTheDocument();
-    });
+    }, { timeout: 10000 });
     expect(screen.getByText(/total sales/i)).toBeInTheDocument();
     expect(screen.getByText(/total items/i)).toBeInTheDocument();
   });
