@@ -61,6 +61,16 @@ def get_cargo():
         return str(cargo_home)
     return "cargo"
 
+def get_rustfmt():
+    """rustfmt sits beside cargo in a rustup install; PATH is the fallback."""
+    found = shutil.which("rustfmt")
+    if found:
+        return found
+    beside_cargo = Path(get_cargo()).parent / "rustfmt.exe"
+    if beside_cargo.exists():
+        return str(beside_cargo)
+    return "rustfmt"
+
 def get_npm():
     if os.name == "nt":
         return shutil.which("npm.cmd") or "npm.cmd"
@@ -134,18 +144,58 @@ def plan_area_tasks(area_tasks, routed, dep_present, dep_rel):
     return [], [(t[1], reason) for t in area_tasks], []
 
 
+# The workspace-wide formatting check is ADVISORY, not a verdict. Measured
+# 2026-10-08: `cargo fmt --all -- --check` is red at HEAD almost always in this
+# shared checkout (8 hunks / 6 files that day, 10 / 6 on 2026-10-04 -- different
+# files each time), because it asks "is the whole tree formatted" while the
+# push only owes "did THIS push add drift". Failing every Rust-touching push on
+# other lanes' hunks is what made the check read as permanently broken, so the
+# verdict moved to the diff-scoped task below and this one reports.
+ADVISORY_FMT_LABEL = "cargo fmt --all --check (workspace, advisory)"
+FMT_CHUNK_SIZE = 25
+
+
+def plan_fmt_tasks(changed_rs, rustfmt, cargo, repo_root, chunk=FMT_CHUNK_SIZE):
+    """Decide the formatting checks for one push. Pure: no disk, no subprocess.
+
+    `changed_rs` is the push's own `*.rs` paths (as handed over by the hook's
+    `git diff --name-only <merge-base> <local-oid>`), so the enforcing check
+    can only ever fail on drift this push introduced. The workspace-wide check
+    is always created, always advisory.
+
+    Returns (enforcing, advisory_labels):
+      * enforcing  -- task tuples; one per chunk of <= `chunk` files, so a long
+                      push parallelises instead of blowing the argv limit
+                      (Windows caps a command line near 32k characters).
+      * advisory_labels -- labels whose failure must be REPORTED, never counted.
+    """
+    enforcing = []
+    for start in range(0, len(changed_rs), chunk):
+        batch = list(changed_rs[start:start + chunk])
+        label = "rustfmt --check (diff"
+        if len(changed_rs) > chunk:
+            label += f" {start // chunk + 1}/{-(-len(changed_rs) // chunk)}"
+        label += ")"
+        enforcing.append(
+            ("Tier 1: Rust", label, [rustfmt, "--check", "--edition", "2024", *batch], repo_root)
+        )
+    advisory = [("Tier 1: Rust", ADVISORY_FMT_LABEL, [cargo, "fmt", "--all", "--", "--check"], repo_root)]
+    return enforcing, advisory
+
+
 def format_skips(skipped):
     """The loud record: one named line per check this run could not run."""
     return [f"  {YELLOW}SKIP{NC}  {label:<44} {reason}" for label, reason in skipped]
 
 
-def summary_lines(ran, elapsed, skipped, not_routed):
+def summary_lines(ran, elapsed, skipped, not_routed, advisory=()):
     """The closing lines. Pure.
 
-    With zero skips the final line is LEGACY_PASS_LINE, unchanged. With any
-    skip the total-shaped line is replaced by one that states what did not
-    run; the routing count is reported separately so it cannot be misread as
-    a list of skipped checks.
+    With zero skips and zero advisory drift the final line is LEGACY_PASS_LINE,
+    unchanged. With any skip the total-shaped line is replaced by one that
+    states what did not run; the routing count is reported separately so it
+    cannot be misread as a list of skipped checks. Advisory drift is named the
+    same way: a check that reported drift must never hide behind "all N passed".
     """
     lines = [
         f"pre-push accounting: {ran} checks RAN, {len(skipped)} SKIPPED "
@@ -153,8 +203,19 @@ def summary_lines(ran, elapsed, skipped, not_routed):
         f"routing (ROUTING, not a skip)."
     ]
     lines.extend(format_skips(skipped))
-    if not skipped:
+    if advisory:
+        lines.append(
+            f"{YELLOW}pre-push: {len(advisory)} advisory check(s) reported drift "
+            f"(REPORTED, not a verdict): {', '.join(advisory)}{NC}"
+        )
+    if not skipped and not advisory:
         lines.append(f"\n{GREEN}" + LEGACY_PASS_LINE.format(n=ran, t=elapsed) + f"{NC}")
+        return lines
+    if not skipped:
+        lines.append(
+            f"\n{GREEN}pre-push: {ran} checks passed in {elapsed}s (parallel); "
+            f"advisory drift reported above -- the verdict is the diff-scoped checks.{NC}"
+        )
         return lines
     names = ", ".join(label for label, _ in skipped)
     lines.append(
@@ -162,6 +223,27 @@ def summary_lines(ran, elapsed, skipped, not_routed):
         f"{len(skipped)} did NOT run: {names}. Not a total.{NC}"
     )
     return lines
+
+
+def read_rust_file_list(argv):
+    """Read the `--rust-files <path>` list the hook wrote. One line per path.
+
+    Absent flag (a by-hand run, or a hook that could not compute the range)
+    yields an empty list: no diff-scoped verdict is owed, and the advisory
+    workspace check still reports. Never guesses a range -- a wrong base would
+    make the verdict mean something other than "this push".
+    """
+    if "--rust-files" not in argv:
+        return []
+    idx = argv.index("--rust-files") + 1
+    if idx >= len(argv):
+        return []
+    try:
+        text = Path(argv[idx]).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return []
+    return [line.strip().replace("\\", "/") for line in text.splitlines()
+            if line.strip().endswith(".rs")]
 
 
 def self_test():
@@ -214,6 +296,54 @@ def self_test():
     expect("all 13 checks passed" not in joined, "the total-shaped green line is suppressed when anything was skipped")
     expect("ui typecheck" in joined, "the summary repeats which check did not run")
     expect("routing" in joined and "1 SKIPPED" in joined, "ran / skipped / routed-off are stated as three counts")
+
+    print("  run-pre-push self-test / the fmt verdict is diff-scoped, the workspace check reports")
+    enforcing, advisory = plan_fmt_tasks(["crates/a/src/x.rs"], "rustfmt", "cargo", ".")
+    expect(len(enforcing) == 1, "one changed .rs file yields exactly one enforcing task")
+    expect(enforcing[0][2] == ["rustfmt", "--check", "--edition", "2024", "crates/a/src/x.rs"],
+           "the enforcing task checks ONLY the push's own file")
+    expect(advisory == [("Tier 1: Rust", ADVISORY_FMT_LABEL, ["cargo", "fmt", "--all", "--", "--check"], ".")],
+           "the workspace check still runs, and is the advisory one")
+    expect(ADVISORY_FMT_LABEL not in [t[1] for t in enforcing],
+           "the advisory label is never an enforcing label")
+
+    print("  run-pre-push self-test / no .rs in the push means no diff-scoped verdict")
+    enforcing, advisory = plan_fmt_tasks([], "rustfmt", "cargo", ".")
+    expect(enforcing == [], "an empty file list creates no enforcing task (routing, not a skip)")
+    expect(len(advisory) == 1, "the advisory workspace check is still created")
+
+    print("  run-pre-push self-test / a long push chunks instead of blowing argv")
+    many = [f"crates/c/src/f{i}.rs" for i in range(30)]
+    enforcing, _ = plan_fmt_tasks(many, "rustfmt", "cargo", ".", chunk=25)
+    expect(len(enforcing) == 2, f"30 files at chunk 25 yields 2 tasks (got {len(enforcing)})")
+    expect(all(len(t[2]) <= 4 + 25 for t in enforcing), "no task carries more than its chunk of paths")
+    expect(enforcing[0][1].endswith("1/2)") and enforcing[1][1].endswith("2/2)"),
+           "chunked tasks are numbered so a failure names which batch drifted")
+    covered = [p for t in enforcing for p in t[2][4:]]
+    expect(covered == many, "every file is checked exactly once, in order")
+
+    print("  run-pre-push self-test / advisory drift cannot read as a verdict")
+    lines = summary_lines(12, 3.0, [], [], [ADVISORY_FMT_LABEL])
+    joined = "\n".join(lines)
+    expect("all 12 checks passed" not in joined,
+           "the total-shaped green line is suppressed when an advisory reported drift")
+    expect(ADVISORY_FMT_LABEL in joined, "the advisory drift is named in the closing lines")
+    clean = "\n".join(summary_lines(12, 3.0, [], []))
+    expect(LEGACY_PASS_LINE.format(n=12, t=3.0) in clean,
+           "a run with no skips and no advisory drift still prints the historical pass line")
+
+    print("  run-pre-push self-test / the hook's file list is read, filtered and normalised")
+    import tempfile
+    with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False, encoding="utf-8") as fh:
+        fh.write("crates\\a\\src\\x.rs\nui/src/y.ts\n\ncrates/b/src/z.rs\n")
+        listing = fh.name
+    got = read_rust_file_list(["--rust", "--rust-files", listing])
+    expect(got == ["crates/a/src/x.rs", "crates/b/src/z.rs"],
+           f"only .rs entries survive, with forward slashes (got {got})")
+    expect(read_rust_file_list(["--all"]) == [],
+           "a by-hand run with no --rust-files owes no diff-scoped verdict")
+    expect(read_rust_file_list(["--rust-files", listing + ".missing"]) == [],
+           "an unreadable list is empty, never a guessed range")
 
     if failures:
         print(f"\nself-test: {len(failures)} FAILURE(S)")
@@ -270,14 +400,29 @@ def main():
         tasks.append(("Tier 0: static", label, cmd, REPO_ROOT))
 
     # ── Tier 1: Path-Routed Tasks (Run in parallel alongside Tier 0) ──
-    rust_tasks = [
+    #
+    # The formatting VERDICT is diff-scoped: the hook hands over the push's own
+    # `*.rs` list (`--rust-files`), so this can only fail on drift the push
+    # introduced. The workspace-wide check still runs and still prints, as an
+    # ADVISORY -- see ADVISORY_FMT_LABEL for why failing on it was wrong.
+    changed_rs = read_rust_file_list(sys.argv)
+    rust_check = [
         ("Tier 1: Rust", "cargo check --workspace", [cargo, "check", "--workspace", "--message-format", "short"], REPO_ROOT),
-        ("Tier 1: Rust", "cargo fmt --check", [cargo, "fmt", "--all", "--", "--check"], REPO_ROOT),
     ]
-    created, dropped, routed_off = plan_area_tasks(rust_tasks, run_rust, True, "rust")
+    created, dropped, routed_off = plan_area_tasks(rust_check, run_rust, True, "rust")
     tasks.extend(created)
     skipped.extend(dropped)
     not_routed.extend(routed_off)
+    if run_rust:
+        fmt_enforcing, fmt_advisory = plan_fmt_tasks(
+            changed_rs, get_rustfmt(), cargo, REPO_ROOT
+        )
+        tasks.extend(fmt_enforcing)
+        tasks.extend(fmt_advisory)
+        if not changed_rs:
+            not_routed.extend(["rustfmt --check (diff) -- no .rs files in this push"])
+    else:
+        not_routed.extend(["rustfmt --check (diff)", ADVISORY_FMT_LABEL])
 
     # Tier 1 UI: all three depend on ui/node_modules. The old code built them
     # inside that existence check, so their absence was invisible.
@@ -349,11 +494,19 @@ def main():
     start_time = time.time()
 
     failures = []
+    advisory_labels = {ADVISORY_FMT_LABEL}
+    advisory_drift = []
 
     with ThreadPoolExecutor(max_workers=cap) as pool:
         futures = {pool.submit(run_task, t): t for t in tasks}
         for future in as_completed(futures):
             tier, label, ok, duration, output = future.result()
+            if not ok and label in advisory_labels:
+                # REPORTED, never counted: see ADVISORY_FMT_LABEL.
+                print(f"  {YELLOW}INFO{NC}  {label:<44} {duration:>4}s")
+                sys.stdout.flush()
+                advisory_drift.append(label)
+                continue
             status = f"{GREEN}PASS{NC}" if ok else f"{RED}FAIL{NC}"
             print(f"  {status}  {label:<44} {duration:>4}s")
             sys.stdout.flush()
@@ -376,7 +529,7 @@ def main():
             print(f"{RED}--------------------------------{NC}")
         sys.exit(1)
 
-    for line in summary_lines(total_tasks, total_elapsed, skipped, not_routed):
+    for line in summary_lines(total_tasks, total_elapsed, skipped, not_routed, advisory_drift):
         print(line)
     sys.exit(0)
 
