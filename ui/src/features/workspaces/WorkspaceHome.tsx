@@ -498,11 +498,21 @@ export default function WorkspaceHome() {
   // ── Exit animation orchestration for smooth page transitions ────
   const [isExiting, setIsExiting] = useState(false);
   const exitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // The navigation the running animation is holding. Unmount cancels the
+  // ANIMATION, never the intent: see the cleanup below.
+  const pendingNavRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     return () => {
       if (exitTimerRef.current !== null) {
         clearTimeout(exitTimerRef.current);
+        // The operator asked for this navigation before whatever unmounted the
+        // screen did. The actions are window/context-level and safe past
+        // unmount, so fire instead of dropping: otherwise any unmount inside
+        // the 150ms window (session expiry, a shell-level route change) would
+        // swallow the click without a trace.
+        pendingNavRef.current?.();
+        pendingNavRef.current = null;
       }
     };
   }, []);
@@ -516,7 +526,9 @@ export default function WorkspaceHome() {
         action();
         return;
       }
+      pendingNavRef.current = action;
       exitTimerRef.current = setTimeout(() => {
+        pendingNavRef.current = null;
         action();
       }, delay);
     },
