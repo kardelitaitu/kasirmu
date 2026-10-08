@@ -45,6 +45,24 @@ describe('parsePriceToMinor', () => {
     expect(parsePriceToMinor('50.1234', 'IDR')).toBeNull();
   });
 
+  it('handles zero prices accurately', () => {
+    expect(parsePriceToMinor('0', 'IDR')).toBe(0);
+    expect(parsePriceToMinor('0.00', 'IDR')).toBe(0);
+    expect(parsePriceToMinor('0,00', 'IDR')).toBe(0);
+  });
+
+  it('strips underscores and spaces commonly found in copy-pasted numbers', () => {
+    expect(parsePriceToMinor(' 50_000 ', 'IDR')).toBe(5000000);
+    expect(parsePriceToMinor('1_234_567', 'IDR')).toBe(123456700);
+  });
+
+  it('rejects negative prices and ill-formed numeric strings', () => {
+    expect(parsePriceToMinor('-50', 'IDR')).toBeNull();
+    expect(parsePriceToMinor('-0.50', 'IDR')).toBeNull();
+    expect(parsePriceToMinor('50..00', 'IDR')).toBeNull();
+    expect(parsePriceToMinor('.50.50', 'IDR')).toBeNull();
+  });
+
   it('rejects empty and non-numeric input rather than coercing to zero', () => {
     // A silent 0 here would price an item as free.
     expect(parsePriceToMinor('', 'IDR')).toBeNull();
@@ -59,14 +77,26 @@ describe('formatMinorForInput', () => {
     expect(formatMinorForInput(5000)).toBe('50');
   });
 
+  it('renders zero accurately', () => {
+    expect(formatMinorForInput(0)).toBe('0');
+  });
+
   it('renders a fractional part with two digits', () => {
     expect(formatMinorForInput(5050)).toBe('50.50');
     expect(formatMinorForInput(5005)).toBe('50.05');
   });
 
+  it('renders small sub-unit amounts with leading zero', () => {
+    expect(formatMinorForInput(5)).toBe('0.05');
+    expect(formatMinorForInput(50)).toBe('0.50');
+    expect(formatMinorForInput(99)).toBe('0.99');
+  });
+
   it('returns empty for values an operator could not have entered', () => {
     expect(formatMinorForInput(-1)).toBe('');
     expect(formatMinorForInput(Number.NaN)).toBe('');
+    expect(formatMinorForInput(Number.POSITIVE_INFINITY)).toBe('');
+    expect(formatMinorForInput(Number.NEGATIVE_INFINITY)).toBe('');
   });
 });
 
@@ -216,6 +246,41 @@ describe('filterMenuItems', () => {
     });
     expect(noMatch).toHaveLength(0);
   });
+
+  it('performs case-insensitive searches and trims whitespace in search queries', () => {
+    const uppercaseQuery = filterMenuItems({
+      items: sampleItems,
+      selectedCategoryName: '',
+      searchQuery: '  NASI GORENG  ',
+      statusFilter: 'all',
+    });
+    expect(uppercaseQuery).toHaveLength(1);
+    expect(uppercaseQuery[0]?.sku).toBe('MN1');
+  });
+
+  it('handles items with null or missing categories and notes safely', () => {
+    const sparseItems = [
+      { sku: 'SP1', name: 'Air Mineral', category: null, notes: null, is_active: true },
+      { sku: 'SP2', name: 'Kopi Hitam', category: undefined, notes: '', is_active: false },
+    ];
+
+    const res = filterMenuItems({
+      items: sparseItems,
+      selectedCategoryName: '',
+      searchQuery: 'mineral',
+      statusFilter: 'all',
+    });
+    expect(res).toHaveLength(1);
+    expect(res[0]?.sku).toBe('SP1');
+
+    const empty = filterMenuItems({
+      items: [],
+      selectedCategoryName: 'Main',
+      searchQuery: '',
+      statusFilter: 'all',
+    });
+    expect(empty).toEqual([]);
+  });
 });
 
 describe('sortMenuItems', () => {
@@ -229,9 +294,14 @@ describe('sortMenuItems', () => {
     expect(sortMenuItems(items, 'default')).toEqual(items);
   });
 
-  it('sorts by name ascending and descending', () => {
-    const asc = sortMenuItems(items, 'name-asc');
-    expect(asc.map((i) => i.name)).toEqual(['Apple Pie', 'Burger', 'Steak']);
+  it('sorts by name ascending and descending with case insensitivity', () => {
+    const mixedCase = [
+      { name: 'banana', price: { minor_units: 1000 } },
+      { name: 'Apple', price: { minor_units: 2000 } },
+      { name: 'Cherry', price: { minor_units: 3000 } },
+    ];
+    const asc = sortMenuItems(mixedCase, 'name-asc');
+    expect(asc.map((i) => i.name)).toEqual(['Apple', 'banana', 'Cherry']);
 
     const desc = sortMenuItems(items, 'name-desc');
     expect(desc.map((i) => i.name)).toEqual(['Steak', 'Burger', 'Apple Pie']);
@@ -243,6 +313,11 @@ describe('sortMenuItems', () => {
 
     const highLow = sortMenuItems(items, 'price-desc');
     expect(highLow.map((i) => i.price.minor_units)).toEqual([120000, 45000, 20000]);
+  });
+
+  it('handles empty or single-item lists without error', () => {
+    expect(sortMenuItems([], 'price-asc')).toEqual([]);
+    expect(sortMenuItems([items[0]!], 'name-desc')).toEqual([items[0]!]);
   });
 });
 
@@ -265,6 +340,22 @@ describe('createDuplicateDraft', () => {
     expect(draft.notes).toBe('Extra pedas');
     expect(draft.isActive).toBe(true);
     expect(draft.modifierGroups).toEqual([]);
+  });
+
+  it('supports custom copy suffixes and preserves inactive status', () => {
+    const original = {
+      sku: 'MN001',
+      name: 'Ayam Bakar',
+      category: 'Mains',
+      price: { minor_units: 28000 },
+      notes: null,
+      is_active: false,
+    };
+
+    const draft = createDuplicateDraft(original, ' [Duplikat]');
+    expect(draft.name).toBe('Ayam Bakar [Duplikat]');
+    expect(draft.notes).toBe('');
+    expect(draft.isActive).toBe(false);
   });
 
   it('parses modifier groups into draft when notes contains serialized groups', () => {
@@ -297,9 +388,10 @@ describe('modifier groups serialization & parsing', () => {
     expect(parseDraftModifierGroups('')).toEqual([]);
     expect(parseDraftModifierGroups('Allergens: nuts')).toEqual([]);
     expect(parseDraftModifierGroups('{invalid')).toEqual([]);
+    expect(parseDraftModifierGroups('{"not": "array"}')).toEqual([]);
   });
 
-  it('parses valid modifier groups from JSON notes', () => {
+  it('parses multiple modifier groups and fills defaults for missing fields', () => {
     const json = JSON.stringify([
       {
         id: 'mg-1',
@@ -311,13 +403,27 @@ describe('modifier groups serialization & parsing', () => {
           { id: 'opt-lrg', name: 'Large', priceMinor: 5000 },
         ],
       },
+      {
+        name: 'Toppings',
+        modifiers: [
+          { name: 'Boba', priceMinor: 3000 },
+        ],
+      },
     ]);
 
     const parsed = parseDraftModifierGroups(json);
-    expect(parsed).toHaveLength(1);
+    expect(parsed).toHaveLength(2);
     expect(parsed[0]?.name).toBe('Size');
     expect(parsed[0]?.options).toHaveLength(2);
     expect(parsed[0]?.options[1]?.priceMinor).toBe(5000);
+
+    // Second group: defaults applied for missing id, minSelections, maxSelections, opt id
+    expect(parsed[1]?.id).toBe('mg-1');
+    expect(parsed[1]?.name).toBe('Toppings');
+    expect(parsed[1]?.minSelections).toBe(0);
+    expect(parsed[1]?.maxSelections).toBe(1);
+    expect(parsed[1]?.options[0]?.id).toBe('opt-0');
+    expect(parsed[1]?.options[0]?.name).toBe('Boba');
   });
 
   it('serializes draft groups into JSON compatible with domain getProductModifierGroups', () => {
@@ -343,8 +449,45 @@ describe('modifier groups serialization & parsing', () => {
     expect(decoded[0].modifiers[1].priceMinor).toBe(2000);
   });
 
+  it('trims whitespace and excludes groups or options with blank names', () => {
+    const draftGroups = [
+      {
+        id: 'mg-valid',
+        name: '  Temperature  ',
+        minSelections: 0,
+        maxSelections: 1,
+        options: [
+          { id: 'opt-hot', name: '  Hot  ', priceMinor: 0 },
+          { id: 'opt-blank', name: '   ', priceMinor: 1000 },
+        ],
+      },
+      {
+        id: 'mg-blank',
+        name: '   ',
+        minSelections: 0,
+        maxSelections: 1,
+        options: [{ id: 'opt-1', name: 'Option', priceMinor: 0 }],
+      },
+    ];
+
+    const serialized = serializeDraftModifierGroups(draftGroups);
+    expect(serialized).not.toBeNull();
+    const decoded = JSON.parse(serialized!);
+    expect(decoded).toHaveLength(1);
+    expect(decoded[0].name).toBe('Temperature');
+    expect(decoded[0].modifiers).toHaveLength(1);
+    expect(decoded[0].modifiers[0].name).toBe('Hot');
+    // When minSelections is 0, isDefault is false
+    expect(decoded[0].modifiers[0].isDefault).toBe(false);
+  });
+
   it('returns null when groups are empty or have no options', () => {
     expect(serializeDraftModifierGroups([])).toBeNull();
     expect(serializeDraftModifierGroups([{ id: '1', name: '', minSelections: 0, maxSelections: 1, options: [] }])).toBeNull();
+    expect(
+      serializeDraftModifierGroups([
+        { id: '1', name: 'Empty Opts', minSelections: 0, maxSelections: 1, options: [{ id: '2', name: '  ', priceMinor: 0 }] },
+      ]),
+    ).toBeNull();
   });
 });

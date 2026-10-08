@@ -115,9 +115,9 @@ export function filterMenuItems<
   T extends {
     name: string;
     sku: string;
-    category?: string | null;
-    notes?: string | null;
-    is_active?: boolean;
+    category?: string | null | undefined;
+    notes?: string | null | undefined;
+    is_active?: boolean | undefined;
   },
 >({ items, selectedCategoryName, searchQuery, statusFilter }: FilterMenuItemsParams<T>): T[] {
   const query = searchQuery.trim().toLowerCase();
@@ -178,10 +178,10 @@ export function sortMenuItems<
 export function createDuplicateDraft<
   T extends {
     name: string;
-    category?: string | null;
+    category?: string | null | undefined;
     price: { minor_units: number };
-    notes?: string | null;
-    is_active?: boolean;
+    notes?: string | null | undefined;
+    is_active?: boolean | undefined;
   },
 >(item: T, copySuffix = ' (Copy)'): {
   sku: null;

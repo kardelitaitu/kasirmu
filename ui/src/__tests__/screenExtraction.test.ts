@@ -1832,6 +1832,12 @@ const SCREENS: ScreenEntry[] = [
     dynamicClassPrefixes: ['restaurant-cart-sheet-backdrop--', 'restaurant-cart-sheet-panel--'],
   },
   {
+    name: 'RestaurantMenuEditorScreen',
+    tsx: 'restaurant/screens/RestaurantMenuEditorScreen.tsx',
+    css: ['restaurant/screens/RestaurantMenuEditorScreen.css'],
+    parentCss: ['restaurant/screens/RestaurantSettingsScreens.css', '../theme/components.css'],
+  },
+  {
     name: 'RestaurantMenu',
     tsx: 'restaurant/RestaurantMenu.tsx',
     css: ['restaurant/RestaurantMenu.css'],

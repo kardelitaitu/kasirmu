@@ -397,4 +397,158 @@ describe('RestaurantMenuEditorScreen', () => {
       );
     });
   });
+
+  it('supports adding and removing modifier options and groups interactively in the draft form', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<RestaurantMenuEditorScreen />, productsFtl);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('restaurant-menu-editor-new-item')).toBeInTheDocument();
+    });
+
+    // Open new item draft
+    await user.click(screen.getByTestId('restaurant-menu-editor-new-item'));
+
+    // Add first group
+    await user.click(screen.getByTestId('restaurant-menu-editor-add-group-btn'));
+    expect(screen.getByTestId('modifier-group-0')).toBeInTheDocument();
+
+    // Add a second option to group 0
+    await user.click(screen.getByTestId('modifier-option-add-0'));
+    expect(screen.getByTestId('modifier-option-name-0-1')).toBeInTheDocument();
+
+    // Remove the first option (index 0)
+    await user.click(screen.getByTestId('modifier-option-remove-0-0'));
+    // Only one option should remain in group 0
+    expect(screen.queryByTestId('modifier-option-name-0-1')).not.toBeInTheDocument();
+    expect(screen.getByTestId('modifier-option-name-0-0')).toBeInTheDocument();
+
+    // Remove the whole group
+    await user.click(screen.getByTestId('modifier-group-remove-0'));
+    expect(screen.queryByTestId('modifier-group-0')).not.toBeInTheDocument();
+  });
+
+  it('filters dishes by availability status tabs', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<RestaurantMenuEditorScreen />, productsFtl);
+
+    await waitFor(() => {
+      expect(screen.getByText('Nasi Goreng Kampung')).toBeInTheDocument();
+      expect(screen.getByText('Es Teh Manis')).toBeInTheDocument();
+    });
+
+    // Click "Available" tab (MN001 is active, MN002 is inactive)
+    const availTab = screen.getByRole('tab', { name: /Available/i });
+    await user.click(availTab);
+    expect(screen.getByText('Nasi Goreng Kampung')).toBeInTheDocument();
+    expect(screen.queryByText('Es Teh Manis')).not.toBeInTheDocument();
+
+    // Click "Hidden (86)" tab
+    const hiddenTab = screen.getByRole('tab', { name: /Hidden/i });
+    await user.click(hiddenTab);
+    expect(screen.queryByText('Nasi Goreng Kampung')).not.toBeInTheDocument();
+    expect(screen.getByText('Es Teh Manis')).toBeInTheDocument();
+
+    // Click "All" tab
+    const allTab = screen.getByRole('tab', { name: /All/i });
+    await user.click(allTab);
+    expect(screen.getByText('Nasi Goreng Kampung')).toBeInTheDocument();
+    expect(screen.getByText('Es Teh Manis')).toBeInTheDocument();
+  });
+
+  it('clears search via the search clear button', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<RestaurantMenuEditorScreen />, productsFtl);
+
+    await waitFor(() => {
+      expect(screen.getByText('Nasi Goreng Kampung')).toBeInTheDocument();
+    });
+
+    const searchInput = screen.getByTestId('restaurant-menu-editor-search-input');
+    await user.type(searchInput, 'Teh');
+    expect(screen.queryByText('Nasi Goreng Kampung')).not.toBeInTheDocument();
+    expect(screen.getByText('Es Teh Manis')).toBeInTheDocument();
+
+    // Clear button appears when query is non-empty
+    const clearBtn = screen.getByLabelText('Clear search');
+    await user.click(clearBtn);
+
+    expect(screen.getByText('Nasi Goreng Kampung')).toBeInTheDocument();
+    expect(screen.getByText('Es Teh Manis')).toBeInTheDocument();
+  });
+
+  it('guards unsaved draft changes when back button is pressed', async () => {
+    const user = userEvent.setup();
+    const handleBack = vi.fn();
+    renderWithProviders(<RestaurantMenuEditorScreen onBack={handleBack} />, productsFtl);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('restaurant-menu-editor-new-item')).toBeInTheDocument();
+    });
+
+    // Open new item draft (marks form dirty)
+    await user.click(screen.getByTestId('restaurant-menu-editor-new-item'));
+    await user.type(screen.getByTestId('restaurant-menu-editor-name'), 'Draft Dish');
+
+    // Attempt back navigation
+    await user.click(screen.getByTestId('restaurant-menu-editor-back-btn'));
+
+    // Unsaved changes dialog should open
+    expect(screen.getByText('You have unsaved changes.')).toBeInTheDocument();
+    expect(handleBack).not.toHaveBeenCalled();
+
+    // Click discard
+    const discardBtn = screen.getByTestId('unsaved-dialog-discard');
+    await user.click(discardBtn);
+
+    expect(handleBack).toHaveBeenCalled();
+  });
+
+  it('allows editing an existing category from the category rail', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<RestaurantMenuEditorScreen />, productsFtl);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('restaurant-menu-editor-cat-edit-cat-mains')).toBeInTheDocument();
+    });
+
+    // Click edit on Mains category
+    await user.click(screen.getByTestId('restaurant-menu-editor-cat-edit-cat-mains'));
+
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(screen.getByText('Edit Category')).toBeInTheDocument();
+
+    const nameInput = screen.getByTestId('restaurant-menu-editor-cat-input-name') as HTMLInputElement;
+    expect(nameInput.value).toBe('Mains');
+
+    await user.clear(nameInput);
+    await user.type(nameInput, 'Main Courses');
+    await user.click(screen.getByTestId('restaurant-menu-editor-cat-save'));
+
+    await waitFor(() => {
+      expect(productsApi.updateCategoryScoped).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          id: 'cat-mains',
+          name: 'Main Courses',
+        }),
+      );
+    });
+  });
+
+  it('closes category modal when Escape key is pressed', async () => {
+    const user = userEvent.setup();
+    const handleBack = vi.fn();
+    renderWithProviders(<RestaurantMenuEditorScreen onBack={handleBack} />, productsFtl);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('restaurant-menu-editor-btn-add-cat')).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByTestId('restaurant-menu-editor-btn-add-cat'));
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
 });
