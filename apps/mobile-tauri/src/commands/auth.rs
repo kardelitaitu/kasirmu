@@ -513,11 +513,16 @@ pub async fn create_session(
     // replication carries no new authority: it only copies the row the
     // global DB just authenticated.
     {
-        let global = state.db.lock().await;
+        // Open the store db BEFORE taking the global lock: on a cache miss
+        // `open_store` creates the file and runs migrations, and every other
+        // command goes through the global db lock — holding it across that
+        // work would stall the shell. No await follows the store lock, so
+        // the std guard never spans a suspension point.
         let store_conn = state
             .db_manager
             .open_store(&args.store_id)
             .map_err(|e| AppError::Internal(format!("opening store db: {e}")))?;
+        let global = state.db.lock().await;
         let store_guard = store_conn
             .lock()
             .map_err(|e| AppError::Internal(format!("store db lock poisoned: {e}")))?;
