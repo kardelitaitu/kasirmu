@@ -93,6 +93,18 @@ Recorded because each one is still live in some document a worker might read, an
 
 ---
 
+## 2026-10-08: an UNGUARDED security invariant — deleting the credential-exfiltration key from its refusal list broke nothing. Fixed in `b9d484bd8`.
+
+**Found by asking a different question of the audit surface: not "is this guard's parser right" but "does any test consume what this list produces".** `PEER_NAMED_HAZARD_KEYS` (`platform/core/src/settings/keys.rs:393`) is the six-name list `RemoteSync` refuses so a peer cannot redirect this install's transport. Its own doc calls `sync_server_url` *"the sharpest"* of the six, because `crates/kasirmu-core/src/sync_auth.rs:72` sends `Authorization: Bearer <sync api key>` to whatever that setting holds — **planting the name exfiltrates a credential without ever naming a credential key.**
+
+**MEASURED: deleting `SYNC_SERVER_URL` from that list left `platform-core`'s entire settings suite GREEN — 168 passed, 0 failed.** The protection could be removed with nothing objecting. Two existing assertions are adjacent but neither covers it: the fold-leg test in `raw_tests.rs` names only three of the six (and repeats one as two spellings, so it is really two), and the three-list disjointness sweep in `raw.rs:854` checks only that the lists do not OVERLAP — neither drives the whole list through the gate that consumes it. `sync_server_url` was asserted refused by nothing anywhere.
+
+**My first fix reproduced the bug it was fixing, which is the part worth recording.** I wrote the sweep as `for key in keys::PEER_NAMED_HAZARD_KEYS`, deriving the expected set from the subject — and it **SURVIVED the very mutation it was written for**, because deleting an entry shrinks the list and every remaining name still passes. That is the identical failure mode `gate_error_mapping_tests` documents avoiding with its hardcoded `CANONICAL_ARMS`, arriving through a door I had read about one round earlier and still walked through. The fix anchors membership to a literal first (`EXPECTED_HAZARD_KEYS`, naming the drift and the reason) and only then sweeps. Re-measured: the same mutation is now **KILLED**, with `sync_server_url` named in the diff.
+
+**A second correction, caught by the anchored literal itself:** my first literal spelled the four PG/redis names `pg_sync_host`-style. The constants are SNAKE_CASE but their VALUES use dots — `pg_sync.host`, `redis.cache_ttl` — so the test failed on real data and the literal is now right. Worth noting only because it is the second time this round that writing the oracle down first is what surfaced a wrong assumption.
+
+**Suite: 169 passed (was 168), clippy Finished, fmt clean.**
+
 ## 2026-10-08: `gate_error_mapping_tests.rs` is a THIRD sound guard — and its design is the one to copy.
 
 **`crates/kasirmu-bridge/src/gate_error_mapping_tests.rs` (2 tests, 102 lines)** pins that eleven copies of `map_gate_error` still translate a gate denial identically: `ctx.rs` canonical, nine bridge modules, and the desktop shell's `authz.rs`. The copies are load-bearing — `impl From<CoreError> for BridgeError` maps `PermissionDenied` to a generic `BridgeError::Core`, while the UI branches on `BridgeError::PermissionDenied` itself — so a drifted copy hands the front end the wrong wire shape for a denial.
