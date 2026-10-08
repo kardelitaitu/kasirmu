@@ -349,6 +349,10 @@ pub struct ProvisionDeviceArgs {
     pub tenant_id: Option<String>,
     /// The credential id from `TerminalCredential`. Required for `linked`.
     pub device_credential_id: Option<String>,
+    /// Tax rate preset to seed during onboarding ('ppn11', 'ppn11_service5', 'tax_free').
+    pub tax_preset: Option<String>,
+    /// Whether to seed 5 starter sample products.
+    pub seed_sample_products: Option<bool>,
 }
 
 /// What provisioning produced, including the ids the caller needs next.
@@ -518,6 +522,130 @@ fn provision_device_inner(
     // Written directly rather than through Settings::set_batch, which opens
     // its own transaction (see the doc comment above).
     write_provisioning_settings(tx, args)?;
+
+    // ── Step 5b: bootstrap Free subscription if no subscription row exists ──
+    // ADR #56 §2.4: `local` is a supported permanent Free tier. Ensure the
+    // install has an active Free subscription so capabilities fail-closed
+    // checks permit normal offline terminal operation.
+    //
+    // All client quota readers load tenant "default" (see license.rs:143-154),
+    // so "default" MUST be populated even when args.tenant_id is a server-assigned ID.
+    if args.mode == ProvisioningMode::Local {
+        tx.execute(
+            "INSERT OR IGNORE INTO tenant_subscription (tenant_id, tier_key, status, expires_at, max_locations, max_pos_instances, allowed_types_json, signature)
+             VALUES ('default', 'free', 'active', NULL, 1, 1, '[\"store-pos\", \"restaurant-pos\", \"admin\"]', 'BOOTSTRAP_FREE')",
+            [],
+        )?;
+        if let Some(tenant_id) = args.tenant_id.as_deref()
+            && tenant_id != "default"
+        {
+            tx.execute(
+                "INSERT OR IGNORE INTO tenant_subscription (tenant_id, tier_key, status, expires_at, max_locations, max_pos_instances, allowed_types_json, signature)
+                 VALUES (?1, 'free', 'active', NULL, 1, 1, '[\"store-pos\", \"restaurant-pos\", \"admin\"]', 'BOOTSTRAP_FREE')",
+                params![tenant_id],
+            )?;
+        }
+    }
+
+    // ── Step 5c: tax preset & sample product starter catalog ───────
+    let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+    if let Some(tax_preset) = args.tax_preset.as_deref() {
+        match tax_preset {
+            "ppn11" => {
+                let id = uuid::Uuid::now_v7().to_string();
+                tx.execute(
+                    "INSERT INTO tax_rates (id, name, rate_bps, is_default, is_inclusive, created_at, updated_at)
+                     VALUES (?1, 'PPN 11%', 1100, 1, 0, ?2, ?2)",
+                    params![id, now],
+                )?;
+            }
+            "ppn11_service5" => {
+                let id1 = uuid::Uuid::now_v7().to_string();
+                let id2 = uuid::Uuid::now_v7().to_string();
+                tx.execute(
+                    "INSERT INTO tax_rates (id, name, rate_bps, is_default, is_inclusive, created_at, updated_at)
+                     VALUES (?1, 'PPN 11%', 1100, 1, 0, ?2, ?2)",
+                    params![id1, now],
+                )?;
+                tx.execute(
+                    "INSERT INTO tax_rates (id, name, rate_bps, is_default, is_inclusive, created_at, updated_at)
+                     VALUES (?1, 'Service Charge 5%', 500, 0, 0, ?2, ?2)",
+                    params![id2, now],
+                )?;
+            }
+            "tax_free" | "none" => {
+                let id = uuid::Uuid::now_v7().to_string();
+                tx.execute(
+                    "INSERT INTO tax_rates (id, name, rate_bps, is_default, is_inclusive, created_at, updated_at)
+                     VALUES (?1, 'Non-PKP (0%)', 0, 1, 0, ?2, ?2)",
+                    params![id, now],
+                )?;
+            }
+            _ => {}
+        }
+    }
+
+    if args.seed_sample_products.unwrap_or(false) {
+        let cur = &args.currency;
+        let is_restaurant = args.location_kind == LocationKind::Restaurant
+            || args.preset == "restaurant"
+            || args.preset == "cafe";
+        let sample_items: &[(&str, &str, i64, i64, &str)] = if is_restaurant {
+            &[
+                (
+                    "SMPL-REST-01",
+                    "Americano (Hot/Iced)",
+                    2_500_000,
+                    100,
+                    "restaurant",
+                ),
+                (
+                    "SMPL-REST-02",
+                    "Butter Croissant",
+                    2_800_000,
+                    50,
+                    "restaurant",
+                ),
+                (
+                    "SMPL-REST-03",
+                    "Mineral Water 600ml",
+                    800_000,
+                    120,
+                    "restaurant",
+                ),
+                (
+                    "SMPL-REST-04",
+                    "Nasi Goreng Spesial",
+                    3_500_000,
+                    80,
+                    "restaurant",
+                ),
+                ("SMPL-REST-05", "Es Teh Manis", 1_000_000, 150, "restaurant"),
+            ]
+        } else {
+            &[
+                ("SMPL-RTL-01", "Air Mineral 600ml", 500_000, 100, "retail"),
+                ("SMPL-RTL-02", "Kopi Susu Kemasan", 1_200_000, 60, "retail"),
+                ("SMPL-RTL-03", "Keripik Singkong", 1_500_000, 45, "retail"),
+                ("SMPL-RTL-04", "Buku Catatan A5", 2_200_000, 30, "retail"),
+                ("SMPL-RTL-05", "Kantong Belanja Eco", 500_000, 200, "retail"),
+            ]
+        };
+
+        for (sku, name, price_minor, initial_stock, ptype) in sample_items {
+            let id = uuid::Uuid::now_v7().to_string();
+            tx.execute(
+                "INSERT INTO products (id, sku, name, price_minor, currency, is_active, product_type, version, created_at, updated_at, price_updated_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, 1, ?6, 1, ?7, ?7, ?7)",
+                params![id, sku, name, price_minor, cur, ptype, now],
+            )?;
+            tx.execute(
+                "INSERT OR REPLACE INTO inventory (product_id, qty, updated_at)
+                 VALUES (?1, ?2, ?3)",
+                params![id, initial_stock, now],
+            )?;
+        }
+    }
 
     // ── Step 6: the marker, LAST ─────────────────────────────────
     let (record, _) = store.provision_terminal(&ProvisioningRecord {

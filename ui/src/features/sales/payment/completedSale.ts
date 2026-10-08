@@ -26,6 +26,7 @@
  */
 import type { CartLine, Money } from '@/types/domain';
 import type { PaymentDto, PrintSalesReceiptArgs, SaleDetail } from '@/api/sales';
+import type { ActiveMarketProfile } from '@/api/regional';
 
 export interface CompletedSaleReceiptInput {
   /** `saleResult.saleId` — keys the receipt number. */
@@ -48,6 +49,16 @@ export interface CompletedSaleReceiptInput {
   payments: PaymentDto[];
   /** Restaurant table, printed only when present. */
   tableNumber?: string | undefined;
+  /** Market profile for fiscal tax regime, rounding, and tax registration label. */
+  marketProfile?: ActiveMarketProfile | null | undefined;
+  /** Whether this receipt should be formatted as a formal statutory Tax Invoice. */
+  isInvoice?: boolean | undefined;
+  /** Statutory document number (e.g. Tax Invoice number) stamped on the sale. */
+  statutoryNumber?: string | null | undefined;
+  /** Customer or business name for B2B statutory invoice header. */
+  customerName?: string | null | undefined;
+  /** Customer Tax ID (e.g. NPWP, VAT ID) for B2B statutory invoice header. */
+  customerTaxId?: string | null | undefined;
 }
 
 /**
@@ -73,12 +84,40 @@ export function buildCompletedSaleReceipt({
   fallbackTotalMinor,
   payments,
   tableNumber,
+  marketProfile,
+  isInvoice: isInvoiceProp,
+  statutoryNumber: statutoryNumberProp,
+  customerName,
+  customerTaxId,
 }: CompletedSaleReceiptInput): PrintSalesReceiptArgs {
+  const isInvoice = isInvoiceProp ?? Boolean(statutoryNumberProp ?? completedSale?.statutoryNumber);
+  const statutoryNumber = statutoryNumberProp ?? completedSale?.statutoryNumber ?? null;
+
+  const taxIdLabel = marketProfile
+    ? marketProfile.country_code === 'ID'
+      ? 'NPWP'
+      : marketProfile.country_code === 'SG'
+      ? 'GST Reg No'
+      : marketProfile.country_code === 'MY'
+      ? 'SST ID'
+      : marketProfile.country_code === 'AU'
+      ? 'ABN'
+      : marketProfile.country_code === 'GB'
+      ? 'VAT Reg No'
+      : marketProfile.country_code === 'US'
+      ? 'EIN'
+      : 'Tax ID'
+    : undefined;
+
+  const taxRegime = marketProfile?.tax_regime && marketProfile.tax_regime !== 'NONE'
+    ? marketProfile.tax_regime
+    : undefined;
+
   return {
     date: new Date().toLocaleDateString('en-US', {
       year: 'numeric', month: 'short', day: 'numeric',
     }),
-    receiptNumber: `SALE-${saleId}`,
+    receiptNumber: (isInvoice && statutoryNumber) ? statutoryNumber : (completedSale?.displayCode ?? `SALE-${saleId}`),
     items: cartLines.map((line, i) => {
       const computedLine = completedSale?.lines?.[i];
       const tax = computedLine?.tax_amount
@@ -105,5 +144,12 @@ export function buildCompletedSaleReceipt({
     total: { minorUnits: saleTotal?.minor_units ?? fallbackTotalMinor, currency: cartCurrency },
     payments,
     ...(tableNumber ? { tableNumber } : {}),
+    ...(taxIdLabel ? { taxIdLabel } : {}),
+    ...(taxRegime ? { taxRegime } : {}),
+    ...(marketProfile?.statutory_rounding ? { statutoryRounding: marketProfile.statutory_rounding } : {}),
+    ...(isInvoice ? { isInvoice: true, documentKind: 'invoice' as const } : {}),
+    ...(statutoryNumber ? { statutoryNumber } : {}),
+    ...(customerName ? { customerName } : {}),
+    ...(customerTaxId ? { customerTaxId } : {}),
   };
 }

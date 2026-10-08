@@ -26,7 +26,7 @@ import {
   type CurrencyDto,
 } from '@/api/currency';
 import { getBrandSettingsScoped } from '@/api/branding';
-import { getVersionScoped, getDeviceId, type VersionInfo } from '@/api/system';
+import { getVersionScoped, getDeviceId, onAppReconnect, type VersionInfo } from '@/api/system';
 import { listTerminalsScoped } from '@/api/terminals';
 import { useWorkspace } from './WorkspaceContext';
 
@@ -194,11 +194,14 @@ interface SettingsProviderProps {
  * internal listener will subscribe to `settings_updated` events
  * from the Rust backend for true real-time cross-terminal reactivity.
  */
+export const INITIAL_LOAD_DEBOUNCE_MS = 250;
+
 export function SettingsProvider({ children }: SettingsProviderProps) {
   const [settings, setSettings] = useState<SettingsState>(DEFAULT_SETTINGS);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [hasPartialError, setHasPartialError] = useState(false);
+  const initialLoadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [lastChangedKeys, setLastChangedKeys] = useState<string[]>([]);
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -325,7 +328,11 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
     };
   }, [terminalId, sessionToken]);
 
-  // ── Full load (all APIs) ────────────────────────────────────
+  /**
+ * How long the initial load waits for the session token to stop changing
+ * before it fires. Exported: the collapse contract is pinned by test.
+ */
+// ── Full load (all APIs) ────────────────────────────────────
 
   const loadAll = useCallback(async () => {
     if (!sessionToken) {
@@ -362,22 +369,30 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
       if (stale()) return;
       if (rR.status === 'fulfilled' && rR.value) {
         setSettings((prev) => ({ ...prev, receipt: rR.value }));
-      } else {
+      } else if (rR.status === 'rejected') {
+        // fulfilled with null/undefined = the row is ABSENT on this store;
+        // the defaults already in state stand. Not a failure.
         hasAnyFailure = true;
       }
       if (sR.status === 'fulfilled' && sR.value) {
         setSettings((prev) => ({ ...prev, store: sR.value }));
-      } else {
+      } else if (sR.status === 'rejected') {
+        // fulfilled with null/undefined = the row is ABSENT on this store;
+        // the defaults already in state stand. Not a failure.
         hasAnyFailure = true;
       }
       if (cR.status === 'fulfilled' && cR.value) {
         setSettings((prev) => ({ ...prev, currencies: cR.value }));
-      } else {
+      } else if (cR.status === 'rejected') {
+        // fulfilled with null/undefined = the row is ABSENT on this store;
+        // the defaults already in state stand. Not a failure.
         hasAnyFailure = true;
       }
       if (syncR.status === 'fulfilled' && syncR.value) {
         setSettings((prev) => ({ ...prev, sync: withSyncDefaults(syncR.value) }));
-      } else {
+      } else if (syncR.status === 'rejected') {
+        // fulfilled with null/undefined = the row is ABSENT on this store;
+        // the defaults already in state stand. Not a failure.
         hasAnyFailure = true;
       }
       if (prefsR.status === 'fulfilled' && prefsR.value) {
@@ -393,7 +408,9 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
           ...prev,
           preferences: { cardSize, fontSize, fontSmoothing },
         }));
-      } else {
+      } else if (prefsR.status === 'rejected') {
+        // fulfilled with null/undefined = the row is ABSENT on this store;
+        // the defaults already in state stand. Not a failure.
         hasAnyFailure = true;
       }
       if (brandR.status === 'fulfilled' && brandR.value) {
@@ -404,12 +421,16 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
             storeName: brandR.value.store_name,
           },
         }));
-      } else {
+      } else if (brandR.status === 'rejected') {
+        // fulfilled with null/undefined = the row is ABSENT on this store;
+        // the defaults already in state stand. Not a failure.
         hasAnyFailure = true;
       }
       if (verR.status === 'fulfilled' && verR.value) {
         setSettings((prev) => ({ ...prev, appVersion: verR.value.version }));
-      } else {
+      } else if (verR.status === 'rejected') {
+        // fulfilled with null/undefined = the row is ABSENT on this store;
+        // the defaults already in state stand. Not a failure.
         hasAnyFailure = true;
       }
 
@@ -420,7 +441,13 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
         setHasPartialError(hasAnyFailure);
       }
     } finally {
-      if (mountedRef.current) setLoading(false);
+      // Same invariant as loadScoped (see its tail): a load the token swap
+      // superseded must not clear the CURRENT load's spinner. Measured via
+      // the gated-load test: without the stale() check here, the hub left its
+      // skeleton mid-swap and initialized from DEFAULT_SETTINGS in the gap —
+      // empty version, blank store — and B's data landed into a snapshot that
+      // never adopted it.
+      if (mountedRef.current && !stale()) setLoading(false);
     }
   }, [sessionToken]);
 
@@ -566,9 +593,23 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
 
   useEffect(() => {
     mountedRef.current = true;
-    loadAll();
+    // Debounced: the tablet's cold start mounts this provider on the first
+    // (fallback-instance) token and the workspace activation replaces it
+    // moments later. One full fan-out per token raced the activation writes
+    // and rejected a currency read mid-storm (walk-diag 2026-10-07). Waiting
+    // for the token to be quiet collapses the storm into a single load that
+    // runs against the final token.
+    if (initialLoadTimerRef.current) clearTimeout(initialLoadTimerRef.current);
+    initialLoadTimerRef.current = setTimeout(() => {
+      initialLoadTimerRef.current = null;
+      if (mountedRef.current) void loadAll();
+    }, INITIAL_LOAD_DEBOUNCE_MS);
     return () => {
       mountedRef.current = false;
+      if (initialLoadTimerRef.current) {
+        clearTimeout(initialLoadTimerRef.current);
+        initialLoadTimerRef.current = null;
+      }
       // Retire any load still in flight: `mountedRef` guards the effect body but
       // not a `loadAll`/`loadScoped` that has already awaited past it.
       loadSeq.current += 1;
@@ -580,6 +621,7 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
 
   useEffect(() => {
     let unlisten: (() => void) | undefined;
+    let cancelled = false;
 
     // onSettingsUpdated (ui/src/api/settings.ts) owns the dynamic import of
     // the Tauri event API and degrades silently outside Tauri (browser dev).
@@ -599,16 +641,46 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
       }
     })
       .then((fn) => {
-        unlisten = fn;
+        if (cancelled) {
+          fn();
+        } else {
+          unlisten = fn;
+        }
       })
       .catch((err) => {
         console.warn('Failed to register settings_updated listener:', err);
       });
 
     return () => {
+      cancelled = true;
       if (unlisten) unlisten();
     };
   }, [markSettingsUpdated]);
+
+  useEffect(() => {
+    let unlistenReconnect: (() => void) | undefined;
+    let cancelled = false;
+
+    // onAppReconnect re-hydrates settings on window/webview resume (e.g. Android foreground)
+    onAppReconnect(() => {
+      void refetch();
+    })
+      .then((fn) => {
+        if (cancelled) {
+          fn();
+        } else {
+          unlistenReconnect = fn;
+        }
+      })
+      .catch((err) => {
+        console.warn('Failed to register onAppReconnect listener:', err);
+      });
+
+    return () => {
+      cancelled = true;
+      if (unlistenReconnect) unlistenReconnect();
+    };
+  }, [refetch]);
 
   const value = useMemo<SettingsContextValue>(
     () => ({

@@ -75,3 +75,22 @@
   outline: none;
   box-shadow: inset 0 0 0 2px var(--color-accent);
 }
+
+/* ── Touch press feedback ────────────────────────────────────────────
+   The single recovery action on the denial screen. */
+.permission-denied-btn:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+@media (pointer: coarse) {
+  .permission-denied-btn {
+    min-height: var(--touch-target-min);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .permission-denied-btn:not(:disabled):active {
+    transform: none;
+    opacity: 0.75;
+  }
+}

@@ -126,6 +126,15 @@
 /* Holders: a disclosure inside each role row. Deliberately quieter than the
    row itself — this is supporting detail, and the grant count above it stays
    the headline. */
+/* One slot in the "role holders" list that reads the scope in words rather than
+   listing names ("all branches and workspaces"). Both branches of that render
+   carry it — RoleAuthoringPanel.tsx:125 and :139 — and it was the only member of
+   the role-holder* family with no rule. */
+.role-holder-dims {
+  color: var(--color-fg-muted);
+  font-style: italic;
+}
+
 .role-holders {
   display: flex;
   align-items: center;
@@ -160,7 +169,11 @@
   margin-top: var(--space-2);
   padding: var(--space-2) var(--space-3);
   border-left: 2px solid var(--color-border);
-  background: var(--color-surface-alt, #f9fafb);
+  /* Was var(--color-surface-alt, #f9fafb) — a name defined nowhere, with a LIGHT
+     literal, so this panel rendered a near-white box in the dark theme (:root is
+     the default). The sheet's own rule above it already reads --color-border, so
+     the semantic token was the intent all along. */
+  background: var(--color-bg-elevated);
 }
 
 .role-holders-error {
@@ -196,5 +209,19 @@
   color: var(--color-text-muted);
   font-size: var(--text-sm);
   font-weight: 400;
+}
+
+/* ── Touch press feedback ────────────────────────────────────────────
+   The role-holders toggle is a switch-shaped control: tint, so it does not fight its own knob.
+   ────────────────────────────────────────────────────────────────── */
+
+.role-holders-toggle:active {
+  background: color-mix(in srgb, var(--color-fg) 12%, transparent);
+}
+
+@media (pointer: coarse) {
+.role-holders-toggle:active {
+    min-height: var(--touch-target-min);
+  }
 }
 

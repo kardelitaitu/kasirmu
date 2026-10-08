@@ -275,7 +275,20 @@ const SCREENS: ScreenEntry[] = [
   {
     name: 'StaffManagementScreen',
     tsx: 'staff/StaffManagementScreen.tsx',
-    css: ['staff/StaffManagementScreen.css'],
+    // RoleAuthoringPanel.css joined 2026-10-07 (BASELINE_UNCITED 18 -> 17). The
+    // panel is mounted at StaffManagementScreen.tsx:651 (imported :59, ref held at
+    // :313), so it is reachable and this entry is the right owner — it is a
+    // component, not a screen, exactly like the six staff/components files below.
+    //
+    // The sheet is cited in `css`, not only the component in `additionalTsx`,
+    // because the walk's contract is that additionalTsx feeds the USED-class walk
+    // and css feeds the DEFINED-rule walk; naming the component alone would make
+    // all 34 of its classes read as used-but-undefined. Measured before citing:
+    // 34 defined, 0 undefined, 0 dead — the cleanest sheet left in the array.
+    css: [
+      'staff/StaffManagementScreen.css',
+      'staff/components/RoleAuthoringPanel.css',
+    ],
     // The Agent 3 extraction moved the table/drawer/assignment JSX into
     // components/*.tsx; they share the screen's stylesheet (global classes).
     additionalTsx: [
@@ -290,6 +303,11 @@ const SCREENS: ScreenEntry[] = [
       'staff/components/StaffTabs.tsx',
       // The Trash tab's panel renders staff-mgmt-trash* from the same sheet.
       'staff/components/StaffTrashPanel.tsx',
+      // The role editor drawer, mounted at :651. It carries its OWN sheet
+      // (components/RoleAuthoringPanel.css), cited in this entry's css list above
+      // — the component is named here so its markup is walked, and the sheet is
+      // named there so its rules are defined.
+      'staff/components/RoleAuthoringPanel.tsx',
     ],
     // The sheet gates ONE rule on the memo stack's presence — see the
     // EXTERNAL_CLASS_LEDGER entry below for the measurement. The stack is a
@@ -318,6 +336,54 @@ const SCREENS: ScreenEntry[] = [
     dynamicClassPrefixes: ['segmented-tab', 'memo-stack'],
   },
 
+  // ── Design ────────────────────────────────────────────
+  {
+    // DevToolbar.css joined 2026-10-07 (BASELINE_UNCITED 16 -> 15). Mounted at
+    // App.tsx:35, dev-mode gated: DEV_TOOLBAR_ENABLED && DevToolbar && <DevToolbar />.
+    // The gate is a build-time constant, not a route, so there is no registerPage
+    // and none is owed — the component renders in development, which is how every
+    // developer sees it.
+    name: 'DevToolbar',
+    tsx: 'design/DevToolbar.tsx',
+    css: ['design/DevToolbar.css'],
+    // Two shapes, one prefix each:
+    //   dev-toolbar-status-- (spawnStatus.tone) at :453, where tone is typed
+    //     'ok' | 'error' at :260 — exactly the two rules the sheet defines
+    //     (:209, :213);
+    //   dev-toolbar-theme-btn--active, a conditional ternary at :379 and :401,
+    //     whose rule is :98. The prefix form is used rather than the whole name
+    //     because the name is composed in a template, and a whole-name entry is
+    //     not a wildcard.
+    dynamicClassPrefixes: ['dev-toolbar-status--', 'dev-toolbar-theme-btn--'],
+  },
+  {
+    // DesignSystem.css, landed 2026-10-07 (BASELINE_UNCITED 11 -> 10). Routed:
+    // design/register.tsx:9 binds route 'design' to this page.
+    //
+    // This sheet was NOT uncited because nothing owned it — it was uncited because
+    // NOTHING COULD LOAD IT. The page writes 28 ds-* classes and every one is defined
+    // in this sheet and nowhere else, but DesignSystem.tsx imported no CSS at all, so
+    // the page rendered unstyled and the sheet was reachable by no route. Both sibling
+    // pages in this feature import their own sheet (TooltipPreview.tsx:6,
+    // DevToolbar.tsx:16); this one did not. The missing `import './DesignSystem.css'`
+    // was added in the same change, which is what makes this entry honest rather than a
+    // cite of a sheet no user could ever have seen.
+    name: 'DesignSystem',
+    tsx: 'design/DesignSystem.tsx',
+    css: ['design/DesignSystem.css'],
+    // Cited, not muted: the page's button row writes `btn btn--primary` and its three
+    // siblings as STATIC className strings (:177-181), and all four modifiers are
+    // defined in theme/components.css (:56 and its siblings) — a sheet both entry points
+    // import (main.tsx:7, main.mobile.tsx:20). This is the same legitimate parent cite
+    // SettingsSelect and ProvisioningFlow carry.
+    //
+    // The sheet's own .sr-only was a different matter and was DELETED rather than
+    // excused: it was a second, inferior copy of the theme utility (it omitted
+    // `padding: 0; margin: -1px` from theme/components.css:1803) that no markup used.
+    // After that strike the sheet reads 29 defined, 0 dead.
+    parentCss: ['../theme/components.css'],
+  },
+
   // ── Setup ─────────────────────────────────────────────
   {
     // First-run provisioning (ADR #56 §2.3). Its own sheet rather than a reuse
@@ -334,6 +400,25 @@ const SCREENS: ScreenEntry[] = [
     // KdsScreen and SettingsSelect above — a real dependency on a global
     // utility sheet, not a class this feature's own sheet should have to own.
     parentCss: ['../theme/components.css'],
+  },
+  {
+    // LiveSetupPreview.css joined 2026-10-07 (BASELINE_UNCITED 17 -> 16). Mounted
+    // at FeatureToggleScreen.tsx:433, so it is reachable; a component rather than
+    // a page, hence an entry of its own rather than an additionalTsx line on the
+    // FeatureToggleScreen entry — the screen imports it and passes props, and its
+    // sheet is entirely its own.
+    name: 'LiveSetupPreview',
+    tsx: 'setup/components/LiveSetupPreview.tsx',
+    css: ['setup/components/LiveSetupPreview.css'],
+    // Seven modifiers never appear as literals at a className site:
+    //   lsp-ws--restaurant-pos / --store-pos / --kds / --warehouse / --admin
+    //     are string literals in the WORKSPACE_TYPES table (:41-65), assigned to
+    //     `colorClass` and applied as `lsp-ws-chip ${ws.colorClass}` at :200;
+    //   lsp-ws-chip--active (:200) and lsp-ws-dot--on (:215) are conditionals in
+    //     the same template.
+    // Three prefixes, not seven names: each covers exactly the rules its own group
+    // defines and nothing else.
+    dynamicClassPrefixes: ['lsp-ws--', 'lsp-ws-chip--', 'lsp-ws-dot--'],
   },
 
   // ── Customers ─────────────────────────────────────────
@@ -385,12 +470,164 @@ const SCREENS: ScreenEntry[] = [
       'connection-latency',
     ],
   },
+  {
+    // SessionLockScreen.css, landed 2026-10-07 (BASELINE_UNCITED 15 -> 14) after
+    // eleven of its thirty-seven rules were REMOVED rather than excused. This is
+    // the first sheet in this thread cleared by deletion, and it is why the count
+    // reads both ways: the entry could not be authored honestly until the stale
+    // CSS was struck.
+    //
+    // The eleven were two orphaned groups, both verifiable from history:
+    //   (a) nine connection-pill rules — .connection-status, .connection-status:hover,
+    //       .status-indicator, .status-indicator.checking/.online/.offline,
+    //       .connection-label, .connection-latency, .session-lock-connection-group
+    //       and the cs-pulse keyframes. They were a hand-copied duplicate of
+    //       components/ConnectionStatus.css, carrying the sheet's own comment
+    //       "matches ConnectionStatus.css". f215ca336 ("refactor: use
+    //       ConnectionStatus component on login/session lock screens") moved the
+    //       markup onto the shared component and left the copy behind; this screen
+    //       renders no ConnectionStatus, and all nine names are defined in
+    //       components/ConnectionStatus.css, so the copy was dead the moment it landed.
+    //   (b) .session-lock-rate-limit and its session-lock-rate-pulse keyframes.
+    //       b47727174 ("harden login flow — ... lockout countdown") deleted the
+    //       `<span className="session-lock-rate-limit">` from the markup and replaced
+    //       it with .session-lock-countdown, which is what :350-354 renders today.
+    //       git log -S on the TSX shows the removal and no re-add.
+    // Both were confirmed absent from every non-sheet reference before striking, and
+    // the sheet still parses with balanced braces (77/77).
+    name: 'SessionLockScreen',
+    tsx: 'auth/SessionLockScreen.tsx',
+    css: ['auth/SessionLockScreen.css'],
+    // Two names reach className through paths the static walk cannot follow:
+    //   session-lock-pin-dot--filled — conditional at :261,
+    //     `session-lock-pin-dot ${i < pin.length ? 'session-lock-pin-dot--filled' : ''}`;
+    //   session-lock-card--shake — applied imperatively at :100-101,
+    //     card.classList.add('session-lock-card--shake') then removed on a 350ms
+    //     timer, so it never appears in a className at all. The identical shape on
+    //     StaffLoginScreen (staff-login-card--shake) is documented the same way at
+    //     :428: "a classList toggle the walker cannot reach".
+    // A prefix is right for both rather than a whole name: each is composed or
+    // toggled, and a whole-name entry is not a wildcard.
+    dynamicClassPrefixes: ['session-lock-pin-dot--', 'session-lock-card--'],
+  },
+
+  {
+    // RetailPosScreen.css, landed 2026-10-07 (BASELINE_UNCITED 12 -> 11).
+    //
+    // The sheet is 293 classes across 13 sibling components, so the used-class walk
+    // has to be handed all of them. Measured as a ladder: screen alone 284
+    // unreachable, + header/cart/fnbar 220, + grid/subviews/modals 87, + the rest 49.
+    // That 284 is what a naive read of this sheet would call dead CSS; the truthful
+    // figure is 0 once the components are named.
+    //
+    // 17 rules and 4 selector entries were then STRUCK, because they were genuinely
+    // orphaned and survived the full-component walk:
+    //   - the whole "Options Menu" block (retail-menu, -overlay, -header, -item,
+    //     -item--danger, -divider, -footer): 0 references anywhere in ui/src, and it
+    //     was never rendered since the sheet landed.
+    //   - retail-grid-loading and its retail-loading-spin keyframes: 0 references,
+    //     including the prefers-reduced-motion guard that existed only for it.
+    //   - retail-product-name, retail-product-price (and the scoped
+    //     .retail-product-btn--out-of-stock .retail-product-price): 0 references.
+    //   - retail-credit-reminder-container and -btn: 0 references.
+    //   - retail-skeleton-shimmer--narrow, retail-preview-modal,
+    //     retail-quick-return-modal, retail-preview-overlay and
+    //     retail-quick-return-overlay: removed from their shared selector lists
+    //     (every sibling in those lists is live, so only the entries went).
+    // Separately, 29 classes the walk reports as unreachable ARE live: each is the
+    // BASE of a composed pair whose tail the walk can see, e.g.
+    //   retail-clear-overlay${x.exit.exiting ? ' retail-clear-overlay--exiting' : ''}
+    // at RetailModals.tsx:408 and its siblings. A prefix covers them.
+    name: 'RetailPosScreen',
+    tsx: 'retail/RetailPosScreen.tsx',
+    css: ['retail/RetailPosScreen.css'],
+    // RetailProductGrid renders ScaleIndicator at :604 (imported :9), so that
+    // component's scale-indicator* markup is part of this screen's render. Its sheet
+    // is cited as a PARENT rather than added to css: ScaleIndicator has its own entry
+    // (see the ScaleIndicator block above), and naming its sheet here would make the
+    // duplicate-name check compare two entries' sheets. A parent cite resolves the
+    // names for the used-but-undefined walk without claiming ownership.
+    parentCss: ['retail/ScaleIndicator.css'],
+    additionalTsx: [
+      'retail/RetailCartPanel.tsx',
+      'retail/RetailFnBar.tsx',
+      'retail/RetailHeader.tsx',
+      'retail/RetailModals.tsx',
+      'retail/RetailProductContextMenu.tsx',
+      'retail/RetailProductGrid.tsx',
+      'retail/RetailReminderPopup.tsx',
+      'retail/RetailSubViews.tsx',
+      'retail/AddCategoryModal.tsx',
+      'retail/AddProductModal.tsx',
+      'retail/EditProductModal.tsx',
+      'retail/ScaleIndicator.tsx',
+    ],
+    // The composed families. The 29 bases plus the retail-stock-${level literals
+    // (RetailProductGrid.tsx:303) are covered here; each key matches one family.
+    dynamicClassPrefixes: [
+      'retail-cart-course-',
+      'retail-clear-',
+      'retail-col-toggle-',
+      'retail-credit-',
+      'retail-customer-',
+      'retail-discount-',
+      'retail-held-carts-',
+      'retail-product-',
+      'retail-qty-',
+      'retail-reminder-row-',
+      'retail-shift-',
+      'retail-shortcuts-',
+      'retail-sort-',
+      'retail-stock-',
+      'retail-th-',
+      'retail-tile',
+      'retail-undo-',
+      'retail-view-toggle-',
+    ],
+  },
+  // ── Warehouse ─────────────────────────────────────────
+  {
+    // WarehouseConsole.css, landed 2026-10-07 (BASELINE_UNCITED 13 -> 12). Routed:
+    // warehouse/register.tsx:9 binds route 'warehouse' to this component.
+    //
+    // This entry could not be authored until 49 orphaned rules were struck. They
+    // are two groups, both traceable to one commit:
+    //   544b37707 "chore(warehouse): rename screen stylesheet and drop legacy screen
+    //   file" renamed WarehouseScreen.css -> WarehouseConsole.css with ZERO content
+    //   changes and deleted WarehouseScreen.tsx (479 lines). Every rule the deleted
+    //   screen had used became orphaned at that moment and stayed for ~6 weeks.
+    //   Measured before striking: 30 of the sheet's 87 classes were unreachable from
+    //   the three live .tsx files (Console, CountFlow, FnBar), 29 of them used by the
+    //   DELETED WarehouseScreen.tsx, and ZERO referenced by any other source file in
+    //   the tree. The @keyframes warehouse-shimmer went with them, since its only
+    //   consumer was the dead .warehouse-skeleton.
+    //   19 more fell out as their bare parents were removed (.warehouse-btn--adjust,
+    //   .warehouse-table-wrap and the dead-only @media (prefers-reduced-motion: reduce)
+    //   block). Final read: 57 defined, 0 unmatched.
+    //
+    // CountFlow and FnBar are named rather than given entries of their own: they are
+    // components of this screen, not screens, and they render classes WarehouseConsole.css
+    // defines (that is what took the initial 49 down to 30).
+    name: 'WarehouseConsole',
+    tsx: 'warehouse/WarehouseConsole.tsx',
+    css: ['warehouse/WarehouseConsole.css'],
+    additionalTsx: [
+      'warehouse/WarehouseCountFlow.tsx',
+      'warehouse/WarehouseFnBar.tsx',
+    ],
+  },
 
   // ── Audit ─────────────────────────────────────────────
   {
     name: 'AuditLogScreen',
     tsx: 'audit/AuditLogScreen.tsx',
     css: ['audit/AuditLogScreen.css'],
+    // SecurityTrailScreen.tsx:38 imports this same sheet and renders
+    // audit-log-search-label / audit-log-loading-text, which it shares with the
+    // audit log. Named here because the dead-class walk reads THIS entry's
+    // markup plus additionalTsx alone, so without the line those two rules grade
+    // dead — the same shared-sheet rule the receipts/payments entries document.
+    additionalTsx: ['audit/SecurityTrailScreen.tsx'],
     dynamicClassPrefixes: [ 'audit-log-badge--success', 'audit-log-badge--failure', 'audit-log-badge--info'],
   },
 
@@ -498,7 +735,8 @@ const SCREENS: ScreenEntry[] = [
       // git grep -rn kds-workspace -- ui/src names ONLY this sheet (:2134/:2141/:2149)
       // -- not AppShell.tsx, the stale claim that stood here before.
       'kds-workspace', 'kds-workspace-header', 'kds-workspace-back',
-      // Was stem 'status--'. The composition that comment cited (KdsTicketCard.tsx:307) no longer names a bare status-- in any .tsx, so these 2 rules are the whole family and a third variant must read dead.
+      // Was stem 'status--'. The composition that comment cited (KdsTicketCard.tsx:307
+// as of 2026-09-15; the live template literal is at :349 today) no longer names a bare status-- in any .tsx, so these 2 rules are the whole family and a third variant must read dead.
       'status--preparing', 'status--ready',
       // `kds-main-track active-${activeTab}` at components/KdsMainContent.tsx:127 -- the old pointer,
       // KdsScreen.tsx:627, is stale. Both real rules named whole, so a third variant reads dead:
@@ -578,6 +816,18 @@ const SCREENS: ScreenEntry[] = [
       'kds/components/KdsTimerBadge.tsx',
       'kds/components/KdsHeaderTabs.tsx',
       'kds/components/KdsMainContent.tsx',
+      // kdsDensity.ts is cited from 2026-10-07, when the density arithmetic was
+      // extracted out of KdsMainContent.tsx:132 and KdsHamburgerPanel.tsx:315,317
+      // AS OF 38d64900e^ — read those as the ORIGINAL range, not as pointers. The
+      // call site has since shifted (the compactClass call is at :133 now) and the
+      // stepper handlers referenced at :315,317 are now the button tags that call
+      // stepDensity. The extraction moved the LITERAL ' kds--compact' out of
+      // the walked .tsx, so the guard immediately reported it dead — the class is
+      // still applied, by KdsMainContent via compactClass(settings.density), and
+      // naming the module here restores the pairing rather than muting it. This is
+      // the citation route, not dynamicClassPrefixes: the name is a whole literal
+      // in the module, not a composed family.
+      'kds/kdsDensity.ts',
     ],
     // Three names that exist ONLY to be selected: string literals in the
     // `statusClasses` array at features/kds/KdsLayoutMasonry.tsx:74, read back as
@@ -671,8 +921,29 @@ const SCREENS: ScreenEntry[] = [
   {
     name: 'SettingsPage',
     tsx: 'settings/SettingsPage.tsx',
+    // SettingsNavTree.css joined 2026-10-07 (BASELINE_UNCITED 14 -> 13). The owner
+    // is this entry rather than a new one, because the PAGE imports the sheet
+    // DIRECTLY — SettingsPage.tsx:38 `import './SettingsNavTree.css'`, and :28
+    // imports the component — so the sheet is part of this page's render, not a
+    // separate screen's. Same additionalTsx+css pair as the workspace cards below.
     css: ['settings/SettingsPage.css'],
+    // SettingsNavTree.css is a PARENT, not own css. It legitimately re-scopes
+    // .settings-body — "one band, on .settings-body, replaces the per-sidebar rule
+    // round 9 added here" at SettingsNavTree.css:326-333, where
+    // body:has(.memo-stack) .settings-body bands the flex ROW so the memo stack
+    // cannot cover the main content's cards. The duplicate-name check reads own css
+    // only (:2721), so a re-scoping parent belongs to the parent door and still
+    // resolves the component's class names (:2705). Same shape as
+    // NodeTopologyEditor.css under TopologyScreen and app/Tooltip.css under
+    // TooltipPreview's failed attempt — except this one does not escape
+    // src/features, so the ../theme/ rule at :3046 is satisfied.
+    parentCss: ['settings/SettingsNavTree.css'],
     additionalTsx: [
+      // StoreInfoCard renders .settings-field-value, which this entry's sheet
+      // defines and nothing else in the list uses. Same shape as the five
+      // workspace cards below: markup styled by SettingsPage.css but living
+      // outside SettingsPage.tsx.
+      'settings/workspace-cards/StoreInfoCard.tsx',
       'settings/sections/GeneralSection.tsx',
       'settings/sections/AppearanceSection.tsx',
       'settings/sections/SyncSection.tsx',
@@ -696,6 +967,25 @@ const SCREENS: ScreenEntry[] = [
       // fails the dead-class check on settings-loading, settings-loading-card and
       // settings-error (verified: 1 failed | 186 passed, exit 1).
       'settings/components/SettingsLoadChrome.tsx',
+      // The four WORKSPACE CARDS that consume the form-family classes this sheet
+      // defines. Added 2026-10-07, when four of those classes were written for
+      // the first time (.settings-range, .settings-range-value, .settings-select,
+      // .settings-error-banner) and the dead-class walk immediately reported them:
+      // the page's own markup does not use them, and nothing else in this list
+      // does either. Same shape as the four sections above — markup that is
+      // styled by SettingsPage.css but lives outside SettingsPage.tsx, so it has
+      // to be named here or its rules read as dead CSS.
+      'settings/workspace-cards/TerminalPreferencesCard.tsx',
+      'settings/workspace-cards/WorkspaceKdsSettings.tsx',
+      'settings/workspace-cards/WorkspaceInventorySettings.tsx',
+      'settings/workspace-cards/WorkspaceStorePosSettings.tsx',
+      'settings/workspace-cards/WorkspaceRestaurantPosSettings.tsx',
+      // The sidebar nav tree, imported at :28 and rendered in the page's own
+      // sidebar slot. Its sheet is cited in the css list above, not merely named
+      // here: additionalTsx feeds the USED-class walk and css feeds the
+      // DEFINED-rule walk, so naming the component alone would make all 36 of its
+      // classes read as used-but-undefined.
+      'settings/SettingsNavTree.tsx',
     ],
     knownDynamicFragments: [
       // Object-key strings inside template-literal interpolations that
@@ -704,8 +994,12 @@ const SCREENS: ScreenEntry[] = [
       'address',
       'tax-id',
       'branch',
-      'settings-sync-token-actions',
-      'settings-sync-status-text',
+      // 'settings-sync-token-actions' and 'settings-sync-status-text' were
+      // REMOVED from this list on 2026-10-07: both are written literally in
+      // markup (SyncSection.tsx:280/:353, LocalApiSection.tsx:387), so muting
+      // them here asserted they were composed at runtime — which was never true
+      // — and the muting suppressed the dead-class check for names nobody had
+      // defined. They are now real rules in SettingsPage.css instead.
       'topology',
       'free',
     ],
@@ -853,7 +1147,21 @@ const SCREENS: ScreenEntry[] = [
   {
     name: 'LicenseSettings',
     tsx: 'settings/LicenseSettings.tsx',
-    css: ['settings/LicenseSettings.css'],
+    // OverQuotaCard.css added 2026-10-07: this screen mounts <OverQuotaCard /> at
+    // :662, and that component now imports a sheet of its own. It is cited HERE
+    // rather than given a SCREENS entry because OverQuotaCard is not a screen —
+    // it has no route, no registerPage and no nav item; it is a card this page
+    // renders, the same shape as the sections listed under SettingsPage.
+    //
+    // The sheet was created by the fix that defined the card's seven previously
+    // undefined classes. A NEW sheet may not join BASELINE_UNCITED, so this cite
+    // is the required companion to that change; the missing cite is why this
+    // check reported it.
+    css: ['settings/LicenseSettings.css', 'settings/OverQuotaCard.css'],
+    // The card's markup, so its own sheet's rules are reachable from the entry
+    // that cites it. Without this the whole quota family grades dead — the
+    // dead-class walk reads markup, never the cited sheet's selector list.
+    additionalTsx: ['settings/OverQuotaCard.tsx'],
     // Shape #1 again, and it is complete: the component uses 31 names, its own sheet defines
     // 30 and 26 of those are the same, leaving 5 leaners -- settings-section-title (:288, :344),
     // settings-form (:345) and settings-error, at SettingsPage.css:514, :521 and :835. No other
@@ -870,6 +1178,47 @@ const SCREENS: ScreenEntry[] = [
     parentCss: ['settings/SettingsPage.css'],
     dynamicClassPrefixes: [ 'settings-license-value--tier-free', 'settings-license-value--tier-pro', 'settings-license-value--tier-premium', 'settings-license-value--tier-enterprise'], // settings-license-value--tier-plus struck 2026-09-15 · DSH · 0 rules (LicenseSettings.css defines -free/-pro/-premium/-enterprise at :244/:249/:254/:259) and 0 composition sites; the name is built as settings-license-value--tier- plus payload.tier_key, so if a plus tier is ever real the missing piece is the CSS rule, not this mute. Graded by the prefix arm at the foot of this file.
     knownDynamicFragments: ['server-status'],
+  },
+  {
+    // The review screen, registered 2026-10-07. It had NO SCREENS entry: it is
+    // the 'sync-conflicts' settings route (screens/registry.ts:70 lazy-imports
+    // it), and it imported only the shared placeholder sheet, so nothing graded
+    // its markup and its own nine classes went unnoticed while being undefined
+    // in every sheet in the tree.
+    //
+    // Both sheets below are NEW, and a new stylesheet may not join
+    // BASELINE_UNCITED, so landing them requires this entry in the same commit.
+    name: 'SyncConflictReviewScreen',
+    tsx: 'sync/SyncConflictReviewScreen.tsx',
+    css: [
+      'settings/screens/screens-placeholder.css',
+      'sync/SyncConflictReviewScreen.css',
+      'sync/components/ConflictDiffViewer.css',
+    ],
+    // The viewer is its own component and carries the conflict-diff__* names;
+    // the screen only mounts it, so its markup must be walked from here.
+    additionalTsx: ['sync/components/ConflictDiffViewer.tsx'],
+    // Composed at runtime from the row's own severity:
+    // `conflict-diff__severity conflict-diff__severity--${conflict.severity}`
+    // (ConflictDiffViewer.tsx:49). The static walk cannot see either tail, so
+    // both rules graded dead. This is the genuine composed-at-runtime case the
+    // field exists for — the rest of that component's names are literals and
+    // stay graded.
+    dynamicClassPrefixes: ['conflict-diff__severity--'],
+  },
+  {
+    name: 'SyncConflictsPanel',
+    tsx: 'settings/SyncConflictsPanel.tsx',
+    css: ['settings/SyncConflictsPanel.css'],
+    // Registered 2026-10-04: the sheet shipped with peer commit ce1098170 (the
+    // sync payload inspector) and no entry cited it, so this check reported it
+    // uncited. Shape #1, and it is COMPLETE: the panel imports its own sheet at
+    // :12 and every name it composes is defined there, including
+    // `sync-conflicts-table` at :40 — so no parent is owed anything. No
+    // `parentCss` is carried deliberately: an earlier draft cited
+    // SettingsPage.css out of habit and the vacuous-citation check rejected it,
+    // which is the correct answer. The panel mounts inside the settings shell,
+    // but mounting is not borrowing.
   },
 
   // ── Locations (moved from stores/ in the Store→Location rename) ──
@@ -1357,7 +1706,17 @@ const SCREENS: ScreenEntry[] = [
     // receiving component to that entry's additionalTsx in the same change-set".
     // Both screens landed together in b3e68d5c7 against this one sheet, and each
     // entry names the other's file rather than muting 9 rules one by one.
-    additionalTsx: ['restaurant/screens/RestaurantPaymentsScreen.tsx'],
+    // Plus the THIRD consumer of this same sheet. RestaurantSettingsScreen.tsx
+    // renders .resto-settings-cards-list and .resto-settings-group-card, which no
+    // other entry's markup reaches — so from here they graded dead, and this is
+    // the failure that sat in the suite from 2026-10-06 until now under the label
+    // "pre-existing, another agent's". It was neither: the screen was simply
+    // never registered, and the two rules had no reachable owner. Same remedy as
+    // the sibling cite below, which is the line-82 rule this entry already cites.
+    additionalTsx: [
+      'restaurant/screens/RestaurantPaymentsScreen.tsx',
+      'restaurant/screens/RestaurantSettingsScreen.tsx',
+    ],
     // The settings-field / settings-form / settings-toggle family is defined
     // once in settings/SettingsPage.css and imported by the settings shell this
     // screen deliberately reuses. Same cite, same reason, as the four settings
@@ -1406,7 +1765,13 @@ const SCREENS: ScreenEntry[] = [
     // names the other's file rather than muting rules one by one" rule at :1338.
     // It went missing while the receipt preview was built out in dc7571036: the
     // Receipts side kept its cite, this side never gained one.
-    additionalTsx: ['restaurant/screens/RestaurantReceiptsScreen.tsx'],
+    // And the third consumer, for the same reason the Receipts sibling is named
+    // here: RestaurantSettingsScreen's two resto-settings-* rules are reachable
+    // from no other entry in this list (see the Receipts note above).
+    additionalTsx: [
+      'restaurant/screens/RestaurantReceiptsScreen.tsx',
+      'restaurant/screens/RestaurantSettingsScreen.tsx',
+    ],
     // Same runtime-composed paper widths as the Receipts entry above: this entry
     // now grades that sibling's markup, so it needs the same prefix door for the
     // `--58mm` / `--80mm` tails the static walk cannot see.
@@ -1417,6 +1782,60 @@ const SCREENS: ScreenEntry[] = [
     // coverage block checks that a cited sheet actually defines what it is
     // cited for, and it will not accept the citation on the Receipts entry.
     parentCss: ['settings/SettingsPage.css', '../theme/components.css'],
+  },
+  {
+    // The restaurant cart pair, as their OWN entry rather than as additionalTsx
+    // on PosScreen. Both components import a stylesheet of their own, which is
+    // the line between them and PosScreen's other children: styling that travels
+    // with the component is owned here. Nothing cited either sheet, and a new one
+    // may not join BASELINE_UNCITED.
+    //
+    // Deliberately ONE entry for the pair: they are two halves of the same
+    // affordance (the sheet, and the bar that opens it), both mounted together by
+    // PosScreen.tsx:1075-1090, and each names the other through additionalTsx the
+    // way the receipts/payments siblings do.
+    name: 'RestaurantCartSheet',
+    tsx: 'restaurant/components/RestaurantCartSheet.tsx',
+    css: [
+      'restaurant/components/RestaurantCartSheet.css',
+      'restaurant/components/RestaurantFloatingCartBar.css',
+    ],
+    // Three cites, each for a different reason:
+    //   * RestaurantFloatingCartBar.tsx — the other half of this affordance and
+    //     the owner of the second sheet above.
+    //   * sales/components/CartPanel.tsx — RestaurantCartSheet.css:133-152 scopes
+    //     three rules under `.restaurant-cart-sheet-body` to OVERRIDE
+    //     .pos-cart-panel / .pos-resize-handle / .pos-cart-header when the panel
+    //     is nested inside the sheet. Those names live in CartPanel.css and are
+    //     referenced from CartPanel.tsx, so without this cite the walk grades the
+    //     three override rules as dead.
+    additionalTsx: [
+      'restaurant/components/RestaurantFloatingCartBar.tsx',
+      'sales/components/CartPanel.tsx',
+    ],
+    // TWO parents, each for a different reason:
+    //   * sales/CartPanel.css — this component's own docstring calls it the
+    //     "Bottom Sheet Drawer hosting CartPanel", and it renders that panel's
+    //     markup (:108), so every pos-cart-* / pos-shift-* name it carries is
+    //     DEFINED there. Citing it is what makes those 45 names resolve; the
+    //     sheet is a genuine parent, not a sibling borrow.
+    //   * ../theme/components.css — `noise-dither`, the elevated-surface grain
+    //     overlay defined once and imported by BOTH shells. The second legal
+    //     parentCss shape, and the same cite the receipt/payment entries make.
+    //   * sales/PosScreen.css — the shift bar. CartPanel.tsx:448 renders
+    //     `pos-shift-bar-label` and its siblings, and those rules live in
+    //     PosScreen.css rather than CartPanel.css, so hosting CartPanel pulls
+    //     them in transitively. Third parent, third reason.
+    parentCss: ['sales/CartPanel.css', 'sales/PosScreen.css', '../theme/components.css'],
+    // The exit state is composed at runtime (`${...}${exiting ? ' --exiting' : ''}`),
+    // so the static walk cannot see either tail.
+    dynamicClassPrefixes: ['restaurant-cart-sheet-backdrop--', 'restaurant-cart-sheet-panel--'],
+  },
+  {
+    name: 'RestaurantMenuEditorScreen',
+    tsx: 'restaurant/screens/RestaurantMenuEditorScreen.tsx',
+    css: ['restaurant/screens/RestaurantMenuEditorScreen.css'],
+    parentCss: ['restaurant/screens/RestaurantSettingsScreens.css', '../theme/components.css'],
   },
   {
     name: 'RestaurantMenu',
@@ -1561,7 +1980,28 @@ const SCREENS: ScreenEntry[] = [
     // its markup that its own sheet does not define.
     name: 'LocalPaymentSettingsCard',
     tsx: 'settings/screens/LocalPaymentSettingsCard.tsx',
-    css: ['settings/screens/LocalPaymentSettingsCard.css'],
+    // SettingsScopeTag.css joins the css list, not just additionalTsx: the header
+    // contract at :6-8 is that additionalTsx feeds the USED-class walk and css feeds
+    // the DEFINED-rule walk. Citing only the component left settings-scope-tag
+    // reported as used-but-undefined, because its own sheet was still unclaimed.
+    css: [
+      'settings/screens/LocalPaymentSettingsCard.css',
+      'settings/SettingsScopeTag.css',
+    ],
+    // The component itself is mounted at :167 (imported :18). An additionalTsx line
+    // rather than an entry of its own is the right shape: SettingsScopeTag is a
+    // component, not a screen — no route, no registerPage, no nav item — the same
+    // relationship the settings sections and the four workspace cards have to
+    // SettingsPage. It sat in BASELINE_UNCITED until now, so neither half of this
+    // suite graded it in either direction.
+    additionalTsx: ['settings/SettingsScopeTag.tsx'],
+    // The five scope modifiers are composed from the prop:
+    // `settings-scope-tag settings-scope-tag--${scope}` (SettingsScopeTag.tsx:45),
+    // so the static walk reaches the base and none of the tails. This is the
+    // genuine composed-at-runtime case, and SettingsScopeTag.test.tsx:23 asserts
+    // the composed name directly — the prefix covers exactly the five variants the
+    // sheet defines and no more.
+    dynamicClassPrefixes: ['settings-scope-tag--'],
     parentCss: ['settings/SettingsPage.css'],
   },
 
@@ -1573,9 +2013,28 @@ const SCREENS: ScreenEntry[] = [
   // Each scaffold is swapped for the migrated screen during the settings
   // campaign, at which point its entry points at that screen's own sheet.
   {
+    // Migrated 2026-10-06: composes the real sections/GeneralSection as its
+    // body, driven by hooks/useStoreDraft (the eleven props the section takes
+    // are supplied by that hook, not spelled here). The walker reads this file's
+    // markup alone and does NOT follow the composed import, so the
+    // settings-* classes the section renders from SettingsPage.css are declared
+    // external here. That section keeps its own ledger entry; these names are
+    // reached through composition, not spelled in this file. The scaffold still
+    // renders settings-screen-placeholder + -note.
     name: 'GeneralScreen',
     tsx: 'settings/screens/GeneralScreen.tsx',
-    css: ['settings/screens/screens-placeholder.css'],
+    // Two own sheets: the family placeholder sheet for the scaffold chrome, and
+    // GeneralScreen.css for the save rule. The latter is deliberately NOT in the
+    // shared sheet — a General-only class there made the dead-class walker
+    // report it against all thirteen sibling scaffolds that cite the family
+    // sheet.
+    css: ['settings/screens/screens-placeholder.css', 'settings/screens/GeneralScreen.css'],
+    // The composed section renders the settings-family form classes, which are
+    // DEFINED in settings/SettingsPage.css — so this entry CITES that sheet as a
+    // parent rather than muting the names. The section keeps its own ledger
+    // entry; the form markup moved here only in the sense that this screen is
+    // what renders it now.
+    parentCss: ['settings/SettingsPage.css'],
   },
   {
     name: 'LicenseSubscriptionScreen',
@@ -1646,44 +2105,239 @@ const SCREENS: ScreenEntry[] = [
     css: ['settings/screens/screens-placeholder.css'],
   },
   {
+    // Migrated 2026-10-06: composes the real settings/FeatureToggleScreen as its
+    // body, the same way the ExchangeRatesScreen / DataManagementScreen /
+    // TaxConfigurationScreen scaffolds compose theirs. The walker reads this
+    // file's markup alone and does NOT follow the composed import, so that
+    // screen's own feature-toggle-* classes (styled by
+    // settings/FeatureToggleScreen.css, which the composed screen imports) are
+    // declared external here. The screen keeps its own ledger entry; these names
+    // are reached through composition, not spelled in this file. The scaffold
+    // still renders settings-screen-placeholder + -note, so no scaffold name
+    // goes dead.
     name: 'FeaturesModulesScreen',
     tsx: 'settings/screens/FeaturesModulesScreen.tsx',
     css: ['settings/screens/screens-placeholder.css'],
+    externalClasses: [
+      'feature-toggle',
+      'feature-toggle-header',
+      'feature-toggle-title',
+      'feature-toggle-subtitle',
+      'feature-toggle-loading-skeleton',
+      'feature-toggle-skeleton-search',
+      'feature-toggle-error',
+      'feature-toggle-search',
+      'feature-toggle-search-icon',
+      'feature-toggle-search-input',
+      'feature-toggle-search-clear',
+      'feature-toggle-group',
+      'feature-toggle-group-header',
+      'feature-toggle-group-title',
+      'feature-toggle-bulk-actions',
+      'feature-toggle-list',
+      'feature-toggle-item',
+      'feature-toggle-item-info',
+    ],
   },
   {
+    // Migrated 2026-10-06: the last scaffold, and the only greenfield one — its
+    // provenance named no source section, so the content was chosen from what the
+    // app already has and does not expose on the tablet (the shared RoleBadge,
+    // whose only production import was the DESKTOP shell's AppLayout). RoleBadge
+    // and Card are imported components that render their own classes
+    // (`role-badge*`, `card`) from their own sheets — declared external so
+    // neither is read as this screen's dead rule. `settings-hint` is defined in
+    // settings/SettingsPage.css and cited as a parent.
     name: 'SecurityAccountScreen',
     tsx: 'settings/screens/SecurityAccountScreen.tsx',
-    css: ['settings/screens/screens-placeholder.css'],
+    css: ['settings/screens/screens-placeholder.css', 'settings/screens/SecurityAccountScreen.css'],
+    parentCss: ['settings/SettingsPage.css'],
+    externalClasses: [
+      'role-badge',
+      'role-badge-avatar',
+      'role-badge-info',
+      'role-badge-name',
+      'role-badge-role',
+      'role-badge-role-icon',
+      'role-badge-logout',
+    ],
   },
   {
+    // Migrated 2026-10-06: composes the real sections/SyncSection as its body,
+    // driven by hooks/useDataSyncDraft (the page-owned share of that section's
+    // thirty-four props; the rest is this screen's own interaction state). The
+    // walker reads this file's markup alone and does NOT follow the composed
+    // import, so the settings-sync-* classes — all DEFINED in
+    // settings/SettingsPage.css — are cited as a parent sheet rather than
+    // muted. `settings-data-sync-save-btn` is this screen's OWN class and lives
+    // in DataSyncScreen.css, which case 3 walks.
     name: 'DataSyncScreen',
     tsx: 'settings/screens/DataSyncScreen.tsx',
-    css: ['settings/screens/screens-placeholder.css'],
+    css: ['settings/screens/screens-placeholder.css', 'settings/screens/DataSyncScreen.css'],
+    parentCss: ['settings/SettingsPage.css'],
   },
   {
+    // Migrated 2026-10-06: composes the real settings/DataManagementScreen as
+    // its body, the same way system-diagnostics composes DiagnosticsSection and
+    // its ExchangeRatesScreen sibling composes the currency screen. The walker
+    // reads this file's markup alone and does NOT follow the composed import,
+    // so the data-mgmt-* classes (styled by settings/DataManagementScreen.css,
+    // which the composed screen imports) are declared external here. That
+    // screen keeps its own ledger entry; these names are reached through
+    // composition, not spelled in this file. The scaffold still renders
+    // settings-screen-placeholder + -note, so no scaffold name goes dead.
     name: 'DataManagementScreen (placeholder)',
     tsx: 'settings/screens/DataManagementScreen.tsx',
     css: ['settings/screens/screens-placeholder.css'],
+    externalClasses: [
+      'data-mgmt',
+      'data-mgmt-header',
+      'data-mgmt-title',
+      'data-mgmt-tabs',
+      'data-mgmt-tab-icon',
+    ],
   },
   {
+    // Migrated 2026-10-06: renders the sync-status half of SyncSection as its
+    // body, sharing hooks/useDataSyncDraft with Data Sync. The walker reads this
+    // file's markup alone and does NOT follow the composed section — here the
+    // markup was MOVED here rather than imported, so the settings-sync-* classes
+    // are spelled in this file and resolve against the parent sheet that DEFINES
+    // them (settings/SettingsPage.css). `sync-status-configured` is this
+    // screen's own class and lives in SyncStatusScreen.css.
     name: 'SyncStatusScreen',
     tsx: 'settings/screens/SyncStatusScreen.tsx',
-    css: ['settings/screens/screens-placeholder.css'],
+    css: ['settings/screens/screens-placeholder.css', 'settings/screens/SyncStatusScreen.css'],
+    parentCss: ['settings/SettingsPage.css'],
   },
   {
+    // Migrated 2026-10-06: composes the real features/offline screen as its
+    // body, with `embedded` suppressing that screen's duplicate <h1> — its title
+    // reads "Offline Queue", the same accessible name as this scaffold's
+    // heading, so the two would otherwise be ambiguous. The walker reads this
+    // file's markup alone and does NOT follow the composed import, so the
+    // offline-queue-* classes (styled by offline/OfflineQueueScreen.css, which
+    // the composed screen imports) are declared external here. That screen keeps
+    // its own ledger entry above.
     name: 'OfflineQueueScreen',
     tsx: 'settings/screens/OfflineQueueScreen.tsx',
     css: ['settings/screens/screens-placeholder.css'],
+    externalClasses: [
+      'offline-queue-screen',
+      'offline-queue-header',
+      'offline-queue-title-row',
+      'offline-queue-title',
+      'offline-queue-badge',
+      'offline-queue-plan-label',
+      'offline-queue-plan-badge',
+      'offline-queue-plan-upgrade-hint',
+      'offline-queue-plan-required-title',
+      'offline-queue-plan-required-hint',
+      'offline-queue-summary',
+      'offline-queue-summary-grid',
+      'offline-queue-summary-item',
+      'offline-queue-summary-meta',
+      'offline-queue-summary-time',
+      'offline-queue-stale',
+      'offline-queue-stale-time',
+      'offline-queue-loading-skeleton',
+      'offline-queue-skeleton-header',
+      'offline-queue-error',
+      'offline-queue-empty',
+      'offline-queue-table-wrap',
+      'offline-queue-table',
+      'offline-queue-cell-created',
+      'offline-queue-cell-synced',
+      'offline-queue-cell-retries',
+      'offline-queue-cell-error',
+      'offline-queue-cell-none',
+      'offline-queue-cell-actions',
+      'offline-queue-cell-action',
+      'offline-queue-action-btn',
+      'offline-queue-sync-result',
+      'offline-queue-quarantine',
+      'offline-queue-quarantine-header',
+      'offline-queue-quarantine-title',
+      'offline-queue-quarantine-description',
+      'offline-queue-quarantine-empty',
+      'offline-queue-pull-indicator',
+      'offline-queue-refresh-spinner',
+      'offline-queue-refreshing',
+    ],
   },
   {
+    // Migrated 2026-10-06: composes the real features/tax screen as its body,
+    // the same way its ExchangeRatesScreen / DataManagementScreen siblings
+    // compose theirs. The walker reads this file's markup alone and does NOT
+    // follow the composed import, so the tax screen's own tax-config-* classes
+    // (styled by tax/TaxConfigurationScreen.css, which the composed screen
+    // imports) are declared external here. That screen keeps its own ledger
+    // entry above; these names are reached through composition, not spelled in
+    // this file. The scaffold still renders settings-screen-placeholder + -note,
+    // so no scaffold name goes dead.
     name: 'TaxConfigurationScreen',
     tsx: 'settings/screens/TaxConfigurationScreen.tsx',
     css: ['settings/screens/screens-placeholder.css'],
+    externalClasses: [
+      'tax-config',
+      'tax-config-header',
+      'tax-config-title',
+      'tax-config-load-error',
+      'tax-config-loading-skeleton',
+      'tax-config-table-wrap',
+      'tax-config-table',
+      'tax-config-cell-actions',
+      'tax-config-empty',
+      'tax-config-action-btn',
+      'tax-config-action-btn--danger',
+      'tax-config-section',
+      'tax-config-section-title',
+      'tax-config-section-desc',
+      'tax-config-loading',
+      'tax-config-cat-name',
+      'tax-config-cat-swatch',
+      'tax-config-cat-badges',
+      'tax-config-muted',
+      'tax-config-field',
+      'tax-config-field--horizontal',
+      'tax-config-label',
+    ],
   },
   {
+    // Migrated 2026-10-06: the screen composes the real
+    // features/currency/ExchangeRateScreen as its body, the same way
+    // system-diagnostics composes DiagnosticsSection. The walker reads this
+    // file's markup alone and does NOT follow the composed import, so the
+    // currency screen's own exchange-rate-* classes (defined in
+    // features/currency/ExchangeRateScreen.css) are declared external here.
+    // That feature keeps its own ledger entry; these names are reached through
+    // composition, not spelled in this file. The scaffold still renders
+    // settings-screen-placeholder + -note, so no scaffold name goes dead.
     name: 'ExchangeRatesScreen',
     tsx: 'settings/screens/ExchangeRatesScreen.tsx',
     css: ['settings/screens/screens-placeholder.css'],
+    externalClasses: [
+      'exchange-rate-config',
+      'exchange-rate-header',
+      'exchange-rate-title',
+      'exchange-rate-autosync',
+      'exchange-rate-autosync-text',
+      'exchange-rate-autosync-label',
+      'exchange-rate-autosync-hint',
+      'exchange-rate-switch',
+      'exchange-rate-switch-slider',
+      'exchange-rate-loading-skeleton',
+      'exchange-rate-table-wrap',
+      'exchange-rate-table',
+      'exchange-rate-error',
+      'exchange-rate-empty',
+      'exchange-rate-cell-actions',
+      'exchange-rate-action-btn',
+      'exchange-rate-action-btn--danger',
+      'exchange-rate-field',
+      'exchange-rate-field--horizontal',
+      'exchange-rate-label',
+    ],
   },
   {
     // First scaffold filled in (2026-09-19): the screen composes the real
@@ -1698,7 +2352,25 @@ const SCREENS: ScreenEntry[] = [
     // line it still renders), so no scaffold name is left dead by this entry.
     name: 'SystemDiagnosticsScreen',
     tsx: 'settings/screens/SystemDiagnosticsScreen.tsx',
-    css: ['settings/screens/screens-placeholder.css'],
+    // The updater card's sheet added 2026-10-07: SystemDiagnosticsScreen.tsx :17
+    // imports and :42 mounts <UpdateSettingsCard />, which brings a stylesheet of
+    // its own. Nothing cited that sheet, and a new one may not join
+    // BASELINE_UNCITED, so the cite is the fix — the updater card is styled by
+    // the screen that renders it, not by the scaffold sheet beside it. The mount
+    // is shell-gated (isTabletShell()): the card is Android-only, so desktop never
+    // renders it, but the walker still reads the cite from this file.
+    css: [
+      'settings/screens/screens-placeholder.css',
+      'settings/screens/UpdateSettingsCard.css',
+      'settings/screens/DiagnosticExportCard.css',
+    ],
+    // The card's markup, so its own sheet's rules are reachable from the entry
+    // that cites it — the dead-class walk reads markup, never the cited sheet's
+    // selector list.
+    additionalTsx: [
+      'settings/screens/UpdateSettingsCard.tsx',
+      'settings/screens/DiagnosticExportCard.tsx',
+    ],
     externalClasses: [
       'settings-diagnostics-list',
       'settings-diagnostics-row',
@@ -1731,6 +2403,30 @@ const SCREENS: ScreenEntry[] = [
 
   // ── Landed from the array: each entry below is one sheet that no check
   // read, registered only after its own walk came back 0 undefined / 0 dead.
+  {
+    // memo/MemoBanner.css, landed 2026-10-07 (BASELINE_UNCITED 22 -> 21).
+    // MemoBanner is a COMPONENT, not a screen: it has no route, no registerPage
+    // and no nav item, and it is mounted from the shells rather than any one page
+    // (AppLayout.tsx:388, AppShell.tsx:623/660/688/703/729/747/773/789 and
+    // TabletAppLayout.tsx:127, TabletAppShell.tsx:547/578/591/604/617). None of
+    // those hosts is itself registered, so the entry is the component's own —
+    // the same shape 34 other non-Screen entries already use (StockCountDetail,
+    // TerminalStatusPanel, SalesHistoryScreen's siblings, …).
+    name: 'MemoBanner',
+    tsx: 'memo/MemoBanner.tsx',
+    css: ['memo/MemoBanner.css'],
+    // Three names reach className through a LOCAL, not through JSX:
+    //   const itemClass = ['memo-stack-item', mounted ? 'is-mounted' : '',
+    //                      exit.exiting ? 'is-exiting' : ''].filter(Boolean).join(' ')
+    // at :198-200, applied as className={itemClass} at :204. The static walk sees
+    // the identifier, never the three literals, so all three rules graded dead.
+    // dynamicClassPrefixes, NOT externalClasses: this sheet defines all three names
+    // itself, and the ledger case at :3011 requires an externalClasses value to be
+    // defined OUTSIDE the declaring entry's own css. A whole name is not a wildcard,
+    // so these three prefixes excuse exactly the three rules and nothing else — the
+    // same reasoning the WorkspaceHome entry records at :1013 for memo-stack.
+    dynamicClassPrefixes: ['memo-stack-item', 'is-mounted', 'is-exiting'],
+  },
   {
     // 673-line screen over a 350-line sheet; lazy-registered page, so the
     // mount is proven by reports/register.tsx:8 and the registerPage route
@@ -1818,6 +2514,54 @@ const SCREENS: ScreenEntry[] = [
     css: ['locations/TopologyApplyConfirm.css'],
   },
   {
+    // The topology trio, landed 2026-10-07 (BASELINE_UNCITED 21 -> 18). All three
+    // sheets are cited by this ONE entry because the walk's contract (:6-8) is that
+    // additionalTsx feeds the USED-class walk and css feeds the DEFINED-rule walk —
+    // so naming a child in additionalTsx without also citing its sheet makes every
+    // class that child renders read as used-but-undefined (measured: 40+ on the
+    // first attempt, which is what forced this shape).
+    //
+    // Reached by HASH DEEP LINK, not a route: register.tsx:6 lazy-imports
+    // TopologyScreen but nothing binds the route from outside — MultiStoreDashboard
+    // Screen pushes #/settings/topology?… . Registered because the markup renders,
+    // not because a page is routed.
+    name: 'TopologyScreen',
+    tsx: 'locations/TopologyScreen.tsx',
+    css: [
+      'locations/TopologyScreen.css',
+      'locations/TopologyRevisionBrowser.css',
+    ],
+    // The two children TopologyScreen renders (imported :12-13, mounted in the body).
+    additionalTsx: [
+      'locations/TopologyRevisionBrowser.tsx',
+      'locations/NodeTopologyEditor.tsx',
+    ],
+    // TopologyRevisionBrowser is reached only through this one, so its composed
+    // tail is credited here: change-kind composed with c.kind at
+    // TopologyRevisionBrowser.tsx:413.
+    dynamicClassPrefixes: ['topology-rev-browser-change-kind--'],
+    // Three names in the children's markup are defined outside the three sheets
+    // above. The used-but-undefined case resolves against own css UNION parentCss
+    // (:2599), so they are cited as parents — externalClasses does NOT feed this
+    // case, it only widens the dead-class door:
+    //   ../theme/components.css     -> noise-dither (:346), sr-only (:1803)
+    //   settings/SettingsPage.css   -> settings-topology-container (:629), the
+    //     cross-consumer borrow the SettingsPage entry already ledgers at :2801
+    //     (it is SettingsPage's class that this screen reads, not the reverse).
+    // NodeTopologyEditor.css is a PARENT, not own css: the duplicate check reads own
+    // css only (:2615), and NodeTopologyEditor.css legitimately RE-SCOPES
+    // .topology-branch-toolbar under .node-topology-header (:29 — flex-shrink: 1,
+    // padding: 0, background: transparent, border-bottom: none) when the toolbar sits
+    // inside the editor header. That is a deliberate context override, not a second
+    // definition, so it belongs to the parent door. It still resolves the children's
+    // class names, because used-but-undefined reads own css UNION parentCss (:2599).
+    parentCss: [
+      'locations/NodeTopologyEditor.css',
+      '../theme/components.css',
+      'settings/SettingsPage.css',
+    ],
+  },
+  {
     // Gate screen, strong mount: AppShell.tsx:27 imports it and renders it BEFORE
     // routing (features/index.ts:43 names the class of thing — "gate screens
     // rendered before page routing"), opened by the user-count check at
@@ -1851,6 +2595,12 @@ const SCREENS: ScreenEntry[] = [
     name: 'LicenseActivationScreen',
     tsx: 'auth/LicenseActivationScreen.tsx',
     css: ['auth/LicenseActivationScreen.css'],
+    // RevokedScreen.tsx:27 imports this sheet by design ("reuse the auth-screen
+    // layout tokens") and renders license-activation-form / license-form-title /
+    // license-submit-button from it. The dead-class walk reads this entry's
+    // markup plus additionalTsx alone, so the three rules grade dead without the
+    // cite. Shared-sheet rule as above.
+    additionalTsx: ['auth/RevokedScreen.tsx'],
   },
   {
     // Routed reports screen, strong mount, all three surfaces checked rather than
@@ -2390,30 +3140,66 @@ const EXTERNAL_CLASS_LEDGER: { entry: string; value: string; reason: string }[] 
   },
 ];
 
+// HOW A LINE LEAVES THIS LIST — two different routes, and only one is a citation.
+//
+// (a) BY REGISTRATION. The sheet's component (or the component that mounts it) is
+//     reachable in production, so an entry can cite the sheet and the line is
+//     deleted. Rounds 58-62 of this thread cleared five this way — SettingsScope
+//     Tag.css (via LocalPaymentSettingsCard's additionalTsx), MemoBanner.css,
+//     TopologyScreen.css, TopologyRevisionBrowser.css and NodeTopologyEditor.css —
+//     taking the list 23 -> 18. This is the majority case.
+//
+// (b) ONLY BY DELETION, or by deciding a never-rendered component should mount.
+//     Five sheets BELOW have no mount at all: their component is referenced by
+//     nothing but its own file and its own test, and every other "reference" in the
+//     tree is prose inside a CSS comment. They are inventory/ShiftBar.css,
+//     inventory/ThresholdConfigScreen.css, inventory/TransactionLogScreen.css,
+//     inventory/TransitAuditScreen.css and (elsewhere) WeightScaleWidget.
+//     Registering one of these would buy a green over markup no user can reach.
+//
+// This split is not new here — it is recorded in
+// .agents/planning/manager-journal-pos-screen-refactor-23.md:4276 ("THE NINE
+// NO-MOUNT SHEETS ... Possible dead CSS, not a missing registration") and :4425
+// ("roughly 20 of the 28 leave by registration, and the other 8 leave only by
+// deletion or by deciding a never-rendered component should mount"), where a prior
+// pass already REFUSED to register TransactionLogScreen for exactly this reason.
+// The note is repeated at the list because that is where a reader stands when the
+// question comes up.
+//
+// Three more in the list cannot be cleared by citing the obvious owner either:
+//   - sales/widgets/widgets.css: OWNED AND IMPORTED (SalesDashboardScreen.tsx:7), but
+//     blocked on a PRODUCT DECISION, not on measurement. It collides with the screen's
+//     own sheet: reporting-dashboard and reporting-dashboard-grid are defined in BOTH
+//     widgets.css and SalesDashboardScreen.css, and the two grids disagree —
+//     widgets.css uses auto-fill with grid-column spans, SalesDashboardScreen.css uses
+//     repeat(2, 1fr). Which one is intended is a design question; import order is NOT a
+//     tiebreak (auto-fill creates real columns and honours spans, so neither grid is
+//     provably inert — a claim I made once and had to retract). Until an owner picks,
+//     no entry can cite it without asserting an answer nobody made.
+//   - design/brand-tokens.css: imported by no file BY DESIGN, and this one is NOT a
+//     gap. It is auto-generated by scripts/sync-branding.ps1:364 ("DO NOT EDIT BY
+//     HAND") and holds five --brand-* tokens for tenant overrides. The runtime theme
+//     path is JS, not CSS — ThemeProvider.tsx:121-122 calls deriveAccentPalette() and
+//     applyAccentPalette() against the database primary_colour setting — so the sheet
+//     is a build-time reference that nothing needs to load. The ADR that owns it says
+//     so in as many words: docs/decisions/2026-07-15-whitelabel-branding-system.md:392
+//     "Brand CSS is reference-only ... This is a documented gap that could be addressed
+//     in the future". It stays listed until that future arrives; it is not work.
+//     (design/DesignSystem.css WAS a real gap of this shape and is now fixed and cited:
+//     the page wrote 28 ds-* classes and imported no CSS at all.)
+//   - settings/WorkspaceSettingsModal.module.css: a CSS MODULE, whose class names
+//     are hashed at build; the guard may be structurally unable to grade it.
 const BASELINE_UNCITED: string[] = [
   'analytics/AnalyticsScreen.css',
-  'auth/SessionLockScreen.css',
-  'design/DesignSystem.css',
-  'design/DevToolbar.css',
   'design/TooltipPreview.css',
   'design/brand-tokens.css',
   'inventory/ShiftBar.css',
   'inventory/ThresholdConfigScreen.css',
   'inventory/TransactionLogScreen.css',
   'inventory/TransitAuditScreen.css',
-  'locations/NodeTopologyEditor.css',
-  'locations/TopologyRevisionBrowser.css',
-  'locations/TopologyScreen.css',
   'marketplace/AddonsMarketplace.css',
-  'memo/MemoBanner.css',
-  'retail/RetailPosScreen.css',
   'sales/widgets/widgets.css',
-  'settings/SettingsNavTree.css',
-  'settings/SettingsScopeTag.css',
   'settings/WorkspaceSettingsModal.module.css',
-  'setup/components/LiveSetupPreview.css',
-  'staff/components/RoleAuthoringPanel.css',
-  'warehouse/WarehouseConsole.css',
 ];
 
 describe('stylesheet coverage', () => {

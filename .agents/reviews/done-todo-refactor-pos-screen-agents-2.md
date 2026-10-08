@@ -9,6 +9,23 @@
 
 <!-- Audit stamp: 2026-09-15 · DSH · status: SUPERSEDED-BY-EXECUTION (the plan largely landed; PosScreen.tsx down to 749 ln at 39f6ef7d4 and 742 in working tree, meeting the <= 760 wave-1 gate; 6 Cart*.test.tsx files present; only 3 verify/bar checkboxes open on fence/run grounds) · Every "NEW" component in the path fence exists. -->
 
+> ⚠️ **RE-MEASURED 2026-10-07 — the sizing gate this file PASSED is now failed, and it was failed by
+> later FEATURE work, not by a regression of this plan's own slices.** Clause (2) above says the adopted
+> `<= 760` gate *"the file **passes** -- 19 lines of margin on the HEAD blob"*. Measured at `39f6ef7d4`
+> the file is **706** lines, matching that claim. At HEAD it is **1,258** — roughly **500 lines over** the
+> gate the plan adopted. The trajectory is monotonic and recent: the last four commits touching it
+> (`d3799c005`, `7c629f936`, `9c452e25a`, `f101e8acb`, all 2026-10-07) are feature and fix work.
+>
+> **Why this is NOT a failure of this plan, stated so it is not misfiled.** The decomposition holds: all
+> five extracted components are still imported by the screen today (`CartPanel` twice, `ShiftModals`,
+> `OpenBillModals`, `ItemModifierModal`), and clause (4)'s named seams are all still live. Nothing was
+> re-inlined. What happened is that `PosScreen.tsx` is a screen that keeps accreting features, and a
+> whole-file line gate on an accretion site is a gate with an expiry date — it measured right once and
+> could not stay right. **The two surviving slices at `:6` are therefore still the right ones**, and the
+> argument for them is now stronger than when written: S1's mechanical sub-screen extraction is the kind
+> of change that would pull ~500 lines back under the gate. Read clause (2) as a 2026-09-15 measurement
+> and re-take it before quoting; the plan's own opening parenthetical asks for exactly that.
+
 **Document:** `todo-refactor-pos-screen-agents-2.md`  
 **Role:** Orchestrator Agent 2 (UI Decomposition & Peripheral Wiring)  
 **Goal:** Extract large JSX sub-trees from `PosScreen.tsx` (cart line items, totals footer, action bar, promotions modal, price override modal, and hardware listeners) into modular presentation components. Reduce `PosScreen.tsx` into a thin composition root.
@@ -38,7 +55,7 @@
 
 **Sibling Documents:**
 - `done-todo-refactor-pos-screen-agents-1.md` (Agent 1 — Cart Engine & State Architect) — **FINISHED**; cited by bare name with no `./` prefix: retired under the `done-todo-` convention (its only root commit is `238912974`; `git log -- todo-refactor-pos-screen-agents-1.md` under the old name is empty, so there is **no rename event to cite for this file**, and `94b5da2cc`, which renamed other work orders, never touched it), and one clause only: a separate session has an *uncommitted, in-flight* move of retired work orders out of the repo root, which is why no path is written here.
-- [`todo-refactor-pos-screen-agents-3.md`](./todo-refactor-pos-screen-agents-3.md) (Agent 3 — PaymentModal & Split Tenders Deconstruction)
+- [`done-todo-refactor-pos-screen-agents-3.md`](done-todo-refactor-pos-screen-agents-3.md) (Agent 3 — PaymentModal & Split Tenders Deconstruction)
 
 > ⚠️ **Scope gap found by the audit:** `PosScreen.tsx` is not the only POS screen. The `store-pos` workspace renders `ui/src/features/retail/RetailPosScreen.tsx` (**1,808 lines**) — `ui/src/app/AppShell.tsx:36,:519,:551` and `ui/src/app/tablet/TabletAppShell.tsx:19,:173` — which owns its own `RetailCartPanel.tsx` and is untouched by this plan. The "reduce to a composition root" goal below therefore covers the sales/restaurant POS only.
 
@@ -245,3 +262,19 @@ Current measurement: `wc -l ui/src/features/sales/PosScreen.tsx` = **749** (file
   3. Box `:116`: Formally accepted as superseded by the `<= 760` wave-1 gate.
   4. Box `:119`: Remains parked pending Docker environment for E2E tests.
 
+> **ARCHIVED, NOT EARNED — recorded 2026-10-07 so the prefix is not read as a passed acceptance.**
+> This file's own text refuses the `done-` token at :7: its acceptance command is `npm run check:all`, recorded NOT ATTEMPTED in its own table. That reading was correct
+> when written and is not withdrawn here. **The `done-` prefix nonetheless sits on the filename, and its
+> origin is not this plan's acceptance at all** — `68cecff21` (2026-09-17, *"docs(plans): archive completed
+> pre-rebrand todo files to .agents/ with done- prefix"*) renamed **ten files in one commit** with an
+> explicit `R100` and a one-line message. It was a blanket **archival** classification, and it could not
+> have run ten acceptance commands.
+>
+> **So read `done-` here as "archived" — the state `AGENTS.md` §7.4 does not currently distinguish.** §7.4
+> defines the token as *earned by a passed acceptance*, and says nothing about a file archived with a
+> different history. The name is kept because it is **load-bearing** — and *not* for the reason it first appeared.
+> `check-dead-refs.py:393` exempts any doc whose name contains `todo-`, `plan-` or `prd-`, and
+> `done-todo-*` matches on its `todo-` substring, so BOTH spellings stay exempt and this file's
+> checker coverage is unaffected either way. The prefix therefore decides nothing about which tool
+> reads the file; it is kept only because a second rename would be churn on a settled archive. The refusal above stays as written: it is a dated
+> verdict and rewriting it to match today would falsify it.

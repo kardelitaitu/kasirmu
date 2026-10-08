@@ -125,4 +125,30 @@
   outline-offset: -2px;
 }
 
+/* ── Touch press feedback ────────────────────────────────────────────
+   This is a custom select replacement (not a native <select>), so it does
+   NOT inherit the platform's own press handling and must supply its own.
+   The trigger is a filled control (scale); options are rows (tint). */
+.ssel-trigger:not(:disabled):active {
+  transform: scale(0.98);
+}
+
+.ssel-option:active {
+  background: color-mix(in srgb, var(--color-fg) 12%, transparent);
+}
+
+@media (pointer: coarse) {
+  .ssel-trigger,
+  .ssel-option {
+    min-height: var(--touch-target-min);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ssel-trigger:not(:disabled):active {
+    transform: none;
+    opacity: 0.75;
+  }
+}
+
 

@@ -59,6 +59,19 @@ pub async fn list_sections_scoped(
 
 // ── Write Commands ───────────────────────────────────────────────────
 
+/// Publish one Table sync event on the kernel bus, best-effort.
+async fn publish_table_sync(state: &AppState, table: &Table) {
+    let kernel = state.kernel.lock().await;
+    let bus = kernel.event_bus();
+    let event = kasirmu_lan::TableSyncEvent::StatusChanged(kasirmu_lan::TableStatusChanged {
+        table: table.clone(),
+        occurred_at: chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
+    });
+    if let Err(e) = bus.publish(&event) {
+        tracing::warn!(error = %e, "table.sync publish failed");
+    }
+}
+
 /// Create a table in the store resolved from a session token. ADR #7.
 #[tauri::command]
 pub async fn create_table_scoped(
@@ -67,9 +80,11 @@ pub async fn create_table_scoped(
     state: State<'_, AppState>,
 ) -> Result<Table, AppError> {
     let ctx = state.bridge_ctx();
-    kasirmu_bridge::tables::create_table_scoped(&ctx, &session_token, table)
+    let res = kasirmu_bridge::tables::create_table_scoped(&ctx, &session_token, table)
         .await
-        .map_err(Into::into)
+        .map_err(AppError::from)?;
+    publish_table_sync(&state, &res).await;
+    Ok(res)
 }
 
 /// Update a table in the store resolved from a session token. ADR #7.
@@ -80,9 +95,11 @@ pub async fn update_table_scoped(
     state: State<'_, AppState>,
 ) -> Result<Table, AppError> {
     let ctx = state.bridge_ctx();
-    kasirmu_bridge::tables::update_table_scoped(&ctx, &session_token, table)
+    let res = kasirmu_bridge::tables::update_table_scoped(&ctx, &session_token, table)
         .await
-        .map_err(Into::into)
+        .map_err(AppError::from)?;
+    publish_table_sync(&state, &res).await;
+    Ok(res)
 }
 
 /// Delete a table in the store resolved from a session token. ADR #7.
@@ -107,9 +124,12 @@ pub async fn update_table_status_scoped(
     state: State<'_, AppState>,
 ) -> Result<Table, AppError> {
     let ctx = state.bridge_ctx();
-    kasirmu_bridge::tables::update_table_status_scoped(&ctx, &session_token, &id, &status)
-        .await
-        .map_err(Into::into)
+    let res =
+        kasirmu_bridge::tables::update_table_status_scoped(&ctx, &session_token, &id, &status)
+            .await
+            .map_err(AppError::from)?;
+    publish_table_sync(&state, &res).await;
+    Ok(res)
 }
 
 /// Assign an order to a table in the store resolved from a session token. ADR #7.
@@ -121,9 +141,16 @@ pub async fn assign_table_order_scoped(
     state: State<'_, AppState>,
 ) -> Result<Table, AppError> {
     let ctx = state.bridge_ctx();
-    kasirmu_bridge::tables::assign_table_order_scoped(&ctx, &session_token, &table_id, &sale_id)
-        .await
-        .map_err(Into::into)
+    let res = kasirmu_bridge::tables::assign_table_order_scoped(
+        &ctx,
+        &session_token,
+        &table_id,
+        &sale_id,
+    )
+    .await
+    .map_err(AppError::from)?;
+    publish_table_sync(&state, &res).await;
+    Ok(res)
 }
 
 /// Release a table in the store resolved from a session token. ADR #7.
@@ -134,7 +161,9 @@ pub async fn release_table_scoped(
     state: State<'_, AppState>,
 ) -> Result<Table, AppError> {
     let ctx = state.bridge_ctx();
-    kasirmu_bridge::tables::release_table_scoped(&ctx, &session_token, &table_id)
+    let res = kasirmu_bridge::tables::release_table_scoped(&ctx, &session_token, &table_id)
         .await
-        .map_err(Into::into)
+        .map_err(AppError::from)?;
+    publish_table_sync(&state, &res).await;
+    Ok(res)
 }

@@ -452,3 +452,33 @@ async fn starting_a_scanner_without_an_event_sink_fails_closed() {
         .unwrap_err();
     assert!(matches!(err, BridgeError::Internal(m) if m == "AppHandle unavailable"));
 }
+
+#[tokio::test]
+async fn open_cash_drawer_scoped_resolves_companion_drawer_when_default() {
+    let bridge = TestBridge::new();
+    let token = bridge
+        .token_granting(kasirmu_core::permissions::PAYMENTS_CASH)
+        .await;
+
+    let companion = std::sync::Arc::new(kasirmu_hal::drivers::mock::MockCashDrawer::default());
+    bridge
+        .registry()
+        .register_cash_drawer("drawer:kick:default", companion.clone())
+        .await;
+
+    let ctx = bridge.ctx();
+    let res = crate::hardware::open_cash_drawer_scoped(
+        &ctx,
+        OpenCashDrawerArgs { device_id: None },
+        &token,
+    )
+    .await;
+
+    assert!(res.is_ok());
+    assert_eq!(
+        companion
+            .open_calls
+            .load(std::sync::atomic::Ordering::SeqCst),
+        1
+    );
+}

@@ -26,6 +26,7 @@ export interface PaymentModalProps {
   /** ADR #7 session token for scoped commands (deduction-aware cart lifecycle). */
   sessionToken?: string;
   tableNumber?: string;
+  orderType?: 'dine_in' | 'takeaway' | 'delivery';
   selectedCustomer?: CustomerDto | null;
   onCustomerChange?: (customer: CustomerDto | null) => void;
   onComplete: () => void;

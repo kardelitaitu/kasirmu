@@ -1,5 +1,8 @@
 # Module Namespace Governance (Phase 1 — now strict)
 
+<!-- Audit stamp: 2026-10-08 · docs-auditor · status: ACCURATE AFTER REPAIR (1 finding class, 5 references) · Repaired: five path references named ticket/inventory docs under `docs/architecture/` (`handler-census-phase0.md`, `phase4-implementation-tickets.md`, `reporting-facade-inventory.md`, `phase2-implementation-tickets.md`) that are not there; all four targets live in `docs/records/superseded/` and were verified present. The "strict since 2026-10-03" status claim was re-measured and holds (`check.sh:509` `--strict`). · Repaired against branch `0.0.41` at `134aaed1b`. -->
+
+
 **Status:** Adopted 2026-09-30; made **strict** 2026-10-03 (Phase 4 P4.5) — an undeclared cross-vertical
 dependency now fails the gate; the one remaining edge is baselined and grant-marked
 **Scope:** Phase 1 of the modular scaffolding plan (`todo-modular-scaffolding.md` §9.2), following ADR-62
@@ -61,7 +64,7 @@ visible, reviewable grant.
 
 Every registered event handler carries a classification, drawn from ADR-62 D4's vocabulary:
 `command_contributor | projection_subscriber | query_facade | lifecycle | plugin_bridge |
-internal_helper`. The Phase 0 census (`docs/architecture/handler-census-phase0.md` §3) supplies the
+internal_helper`. The Phase 0 census (`docs/records/superseded/handler-census-phase0.md` §3) supplies the
 initial population.
 
 **Rationale:** an unclassified handler is a seam nobody has decided about. ADR-62 D3's test ("would
@@ -122,7 +125,7 @@ the module owns tables, plus `read:<dep>` per dependency — 36 capabilities acr
 `capability-parity` gate (`scripts/gates.json`; `verify-namespace-governance.py --check-capabilities`)
 fails on any drift, and `--emit-capabilities` rewrites the manifests. The **runtime** half — routing the
 `NamespacedStore` grant set from the manifest at wrap time, and rejecting a grant naming an undeclared
-module — remains open (recorded as PARTIAL in `docs/architecture/phase4-implementation-tickets.md`); each
+module — remains open (recorded as PARTIAL in `docs/records/superseded/phase4-implementation-tickets.md`); each
 module still constructs its store with an explicit `Grants` value.
 
 ---
@@ -190,7 +193,7 @@ the marker, so the baseline can shrink to zero without weakening the gate.
 `modules/reporting/src/repository.rs:34` `generate_daily_report`) was deleted, not rerouted — its whole
 domain surface had zero non-test callers and the facade `kasirmu_core::db::reports` already ships the
 capability. Its baseline entry and T3 marker went with it. See
-`docs/architecture/reporting-facade-inventory.md` §3, §6.
+`docs/records/superseded/reporting-facade-inventory.md` §3, §6.
 
 ---
 
@@ -208,7 +211,7 @@ The plan's Phase 4 replaces the soft posture. Delivered so far:
 
 Still open: **P4.1 runtime half** (route `Grants` from the manifest at wrap time), **P4.2**
 (`trait ReportingFacade`), and **P4.6** (the completion page). The breakdown is in
-`docs/architecture/phase4-implementation-tickets.md`; the map is `modules/ownership.json`.
+`docs/records/superseded/phase4-implementation-tickets.md`; the map is `modules/ownership.json`.
 
 When P4.6 lands, the allowlist and the baseline in §4 both empty. Until then, this document and
 `scripts/namespace-governance-baseline.json` are the frozen record of what is tolerated, and
@@ -224,10 +227,14 @@ When P4.6 lands, the allowlist and the baseline in §4 both empty. Until then, t
 ## References
 
 - ADR-62 — `docs/decisions/2026-09-30-adr62-module-seam-taxonomy.md` (the seams this governs)
-- `docs/architecture/handler-census-phase0.md` §3 (the classified handler population)
+- `docs/records/superseded/handler-census-phase0.md` §3 (the classified handler population)
 - `todo-modular-scaffolding.md` §9.2 (phased enforcement), §9.5 (reporting facade), §14 (actions)
 - `platform/kernel/src/manifest.rs` (the declaration Rule 3 reads)
 - `scripts/verify-namespace-governance.py` (the checker)
-- `docs/architecture/phase2-implementation-tickets.md` (the Phase 2 tickets these rules feed)
+- `docs/records/superseded/phase2-implementation-tickets.md` (the Phase 2 tickets these rules feed)
 - `docs/architecture/module-boot-sequence.md` (how a module is registered, gated, loaded, and started)
 - `modules/ownership.json` (the single source of the §3 table map)
+
+---
+
+> last audited 08-10-26 by docs-auditor

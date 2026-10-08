@@ -432,38 +432,42 @@ pub(super) async fn run_tick(
                             let next_cursor = pull_resp.next_cursor;
                             let prev_since = pull_since.clone();
                             let prev_cursor = pull_cursor.clone();
-                            // SYNC-10: own the sink (an owned `Arc`) so the
-                            // `'static` spawn_blocking closure can call it
-                            // after each applied settings item.
-                            let settings_sink = settings_sink.clone();
+                            // O-M38: collect settings events in the blocking phase, then
+                            // dispatch through settings_sink AFTER the DB connection lock drops.
                             let outcome = tokio::task::spawn_blocking(move || {
-                                let conn = db_clone.blocking_lock();
-                                let store = Store::new(&conn);
-                                apply_pulled_page(
-                                    &store,
-                                    &items,
-                                    prev_since.as_deref(),
-                                    prev_cursor.as_deref(),
-                                    next_cursor.as_deref(),
-                                    &settings_sink,
-                                )
+                                let mut settings_events = Vec::new();
+                                let anchor_err = {
+                                    let conn = db_clone.blocking_lock();
+                                    let store = Store::new(&conn);
+                                    apply_pulled_page(
+                                        &store,
+                                        &items,
+                                        prev_since.as_deref(),
+                                        prev_cursor.as_deref(),
+                                        next_cursor.as_deref(),
+                                        &mut settings_events,
+                                    )
+                                };
+                                (anchor_err, settings_events)
                             })
                             .await;
-                            // SYNC-01: propagate both spawn_blocking panics AND
-                            // anchor-persistence failures into sync_error so the
-                            // daemon status/backoff reflect them.
-                            match outcome {
-                                Ok(Some(msg)) => {
-                                    if sync_error.is_none() {
-                                        sync_error = Some(msg);
-                                    }
-                                }
-                                Ok(None) => {}
-                                Err(e) => {
-                                    if sync_error.is_none() {
-                                        sync_error = Some(format!("apply pull phase: {e}"));
-                                    }
-                                }
+
+                            let (anchor_err, settings_events) = match outcome {
+                                Ok((err, events)) => (err, events),
+                                Err(e) => (Some(format!("apply pull phase: {e}")), Vec::new()),
+                            };
+
+                            // SYNC-01: propagate anchor-persistence failures into sync_error
+                            if let Some(msg) = anchor_err
+                                && sync_error.is_none()
+                            {
+                                sync_error = Some(msg);
+                            }
+
+                            // O-M38: Fire settings_sink AFTER releasing the blocking DB connection lock
+                            // so Tauri IPC emits or UI listeners never stall SQLite operations.
+                            for event in &settings_events {
+                                settings_sink(event);
                             }
                         }
                     }
@@ -540,6 +544,28 @@ pub(super) async fn run_tick(
 /// never depends on the local DB refusing to open"). §2.5's at-once sweep for
 /// the already-open session happens on the paths that have the bridge in
 /// scope — which is why the cache write is the load-bearing half here.
+/// Default interval between Certificate Revocation List (CRL) network polls (O-M37).
+/// Prevents downloading, verifying RSA signatures, and rewriting DB on every sync tick.
+pub const DEFAULT_CRL_POLL_INTERVAL_SECS: i64 = 900; // 15 minutes
+
+/// Determine if CRL should be polled based on last checked timestamp and TTL window (O-M37).
+pub fn should_poll_crl(
+    crl_checked_at: Option<&str>,
+    now: chrono::DateTime<chrono::Utc>,
+    ttl_secs: i64,
+) -> bool {
+    match crl_checked_at {
+        Some(ts) => match chrono::DateTime::parse_from_rfc3339(ts) {
+            Ok(dt) => {
+                let age = now.signed_duration_since(dt.with_timezone(&chrono::Utc));
+                age.num_seconds() >= ttl_secs
+            }
+            Err(_) => true,
+        },
+        None => true,
+    }
+}
+
 async fn run_license_ride_along(db: &DbConnection) {
     // Read the credentials this needs. The api key is stored encrypted
     // (machine-bound); a decrypt failure falls back to the legacy plaintext
@@ -574,18 +600,40 @@ async fn run_license_ride_along(db: &DbConnection) {
             .ok()
             .flatten()
             .filter(|s| !s.is_empty());
+            let crl_checked_at = kasirmu_core::settings::Settings::get(
+                &conn,
+                kasirmu_core::settings::keys::CRL_CHECKED_AT,
+            )
+            .ok()
+            .flatten();
+            let cached_crl_json = kasirmu_core::settings::Settings::get(
+                &conn,
+                kasirmu_core::settings::keys::CRL_CACHE_JSON,
+            )
+            .ok()
+            .flatten();
             Some((
                 api_key_enc,
                 machine_id,
                 hardware_fingerprint,
                 hardware_token,
+                crl_checked_at,
+                cached_crl_json,
             ))
         })
         .await
         .unwrap_or(None)
     };
 
-    let Some((api_key_enc, machine_id, hardware_fingerprint, hardware_token)) = creds else {
+    let Some((
+        api_key_enc,
+        machine_id,
+        hardware_fingerprint,
+        hardware_token,
+        crl_checked_at,
+        cached_crl_json,
+    )) = creds
+    else {
         // No licence activated on this terminal — nothing to ask about.
         // This is the common path for a free/local install, so it is debug.
         tracing::debug!("licence ride-along skipped: no stored api key");
@@ -651,27 +699,53 @@ async fn run_license_ride_along(db: &DbConnection) {
         );
     }
 
-    // Also poll the signed CRL to enforce instantaneous revocation (ADR #58 §2.1/§2.2).
-    if let Ok(crl_resp) = kasirmu_core::license_verification::fetch_license_crl(None).await
-        && let Ok(crl_payload) = kasirmu_core::license_verification::verify_crl_signature(
-            &crl_resp.payload,
-            &crl_resp.signature,
-        )
-    {
-        let db_clone = db.clone();
-        let mid = machine_id.clone();
-        let tid = tenant_id.clone();
-        let _ = tokio::task::spawn_blocking(move || {
-            let conn = db_clone.blocking_lock();
-            kasirmu_core::license_verification::apply_crl_to_cache(
-                &conn,
-                &crl_payload,
-                Some(&tid),
-                None,
-                Some(&mid),
-            )
-        })
-        .await;
+    // Poll the signed CRL to enforce instantaneous revocation (ADR #58 §2.1/§2.2, O-M37).
+    // Gated by TTL cache so full CRL download, RSA signature verification,
+    // and database writes do not fire on every short sync tick.
+    if should_poll_crl(
+        crl_checked_at.as_deref(),
+        chrono::Utc::now(),
+        DEFAULT_CRL_POLL_INTERVAL_SECS,
+    ) {
+        if let Ok(crl_resp) = kasirmu_core::license_verification::fetch_license_crl(None).await {
+            let is_unchanged = cached_crl_json
+                .as_deref()
+                .map(|cached| cached.trim() == crl_resp.payload.trim())
+                .unwrap_or(false);
+
+            if is_unchanged {
+                let db_clone = db.clone();
+                let _ = tokio::task::spawn_blocking(move || {
+                    let conn = db_clone.blocking_lock();
+                    let _ = kasirmu_core::settings::Settings::set(
+                        &conn,
+                        kasirmu_core::settings::keys::CRL_CHECKED_AT,
+                        &chrono::Utc::now().to_rfc3339(),
+                    );
+                })
+                .await;
+            } else if let Ok(crl_payload) = kasirmu_core::license_verification::verify_crl_signature(
+                &crl_resp.payload,
+                &crl_resp.signature,
+            ) {
+                let db_clone = db.clone();
+                let mid = machine_id.clone();
+                let tid = tenant_id.clone();
+                let _ = tokio::task::spawn_blocking(move || {
+                    let conn = db_clone.blocking_lock();
+                    kasirmu_core::license_verification::apply_crl_to_cache(
+                        &conn,
+                        &crl_payload,
+                        Some(&tid),
+                        None,
+                        Some(&mid),
+                    )
+                })
+                .await;
+            }
+        }
+    } else {
+        tracing::debug!("licence ride-along: skipping CRL poll, cache within TTL window");
     }
 }
 
@@ -754,7 +828,7 @@ fn apply_pulled_page(
     prev_since: Option<&str>,
     prev_cursor: Option<&str>,
     next_cursor: Option<&str>,
-    settings_sink: &SettingsChangedSink,
+    settings_events: &mut Vec<SettingsUpdated>,
 ) -> Option<String> {
     let queue = SyncQueue::new();
     let mut has_stock_movements = false;
@@ -776,14 +850,14 @@ fn apply_pulled_page(
         match queue.apply_remote_atomic_full(store, item) {
             Ok(outcome) => {
                 // SYNC-10: a settings change applied from a remote terminal is
-                // re-emitted as `SettingsUpdated` so the UI refetches. The tx
-                // committed inside apply_remote_atomic_full before this runs.
+                // collected into settings_events so it can be re-emitted as
+                // `SettingsUpdated` after the blocking DB lock is released (O-M38).
                 if let Some((key, terminal_id)) = outcome.settings_change {
                     let event = SettingsUpdated {
                         changed_keys: vec![key],
                         terminal_id,
                     };
-                    settings_sink(&event);
+                    settings_events.push(event);
                 }
                 if !outcome.applied
                     && store

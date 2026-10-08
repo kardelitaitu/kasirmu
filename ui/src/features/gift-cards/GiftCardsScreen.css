@@ -454,3 +454,15 @@
     transition: transform var(--duration-150) var(--ease-out);
   }
 }
+
+/* ── Touch press feedback ────────────────────────────────────────────
+   The gift-card summary is checkable/actionable at the till. */
+.gift-card-summary:active {
+  background: color-mix(in srgb, var(--color-fg) 12%, transparent);
+}
+
+@media (pointer: coarse) {
+  .gift-card-summary {
+    min-height: var(--touch-target-min);
+  }
+}

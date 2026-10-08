@@ -22,6 +22,22 @@ import path from 'path';
 // NB: vitest's `__dirname` points at the compiled test output, not the
 // repo layout — follow the cartExtraction.test.ts convention and resolve
 // against the working directory (ui/ when vitest runs from ui/).
+//
+// ⚠️ WHAT RUNNING FROM THE WRONG DIRECTORY LOOKS LIKE, measured 2026-10-07:
+// `npx --prefix ui vitest run ui/src/__tests__/errorPolicyCompliance.test.ts`
+// from the repo root fails with
+//     AssertionError: expected 0 to be greater than 50
+// — that is the `scans a meaningful set of source files` floor below, firing
+// because cwd is the repo root and `src` does not exist there. So it reads as a
+// broken suite on a clean tree, when the suite is working perfectly and simply
+// scanned nothing. Nineteen suites under this directory share the dependency
+// (`git grep -l 'process.cwd()' -- ui/src/__tests__`), so the same misread is
+// available on any of them. Run vitest with ui/ as the working directory — the
+// rule AGENTS.md §5.1 already states, and this is the reason it exists.
+//
+// The floor is what makes this diagnosable rather than silent: a collector that
+// found nothing fails loudly instead of reporting zero violations, which is the
+// one way an empty file set could masquerade as compliance.
 const SRC = path.resolve(process.cwd(), 'src');
 const SCAN_DIRS = ['features', 'hooks', 'contexts', 'components', 'app', 'theme'];
 const ALLOWED_EXT = ['.ts', '.tsx'];
@@ -72,6 +88,29 @@ const WHITELISTED_RAW_PARSE: Array<{ file: string; anchor: RegExp; context: RegE
     file: path.join(SRC, 'features/sales/PaymentModal.tsx'),
     anchor: /err instanceof Error \? err\.message : String\(err\)/,
     context: /tryParsePartialStockResult/,
+  },
+  {
+    // ErrorBoundary.componentDidCatch -> reportClientCrash: a TELEMETRY payload,
+    // not display text. The message and stack go to the crash reporter so a
+    // support ticket can name the fault; nothing in this path renders.
+    //
+    // The adjacent render at ErrorBoundary.tsx:171 DOES print
+    // this.state.error.message, and that is deliberate rather than a leak this
+    // whitelist is hiding: ErrorBoundary is the emergency fallback for a crash
+    // OUTSIDE the locale tree (see its header, ":8-11"), so there may be no
+    // bundle to map to. A blank frame is the worse outcome. The localized path
+    // is LocalizedErrorBoundary, which is what the app mounts inside the tree.
+    //
+    // Anchored on reportClientCrash within the following lines so a refactor
+    // that starts RENDERING this value fails the whitelist instead of silently
+    // riding on it.
+    // The context window is FORWARD-ONLY (see whitelistedLines: slice(i+1, i+4)),
+    // so the anchor cannot look back at reportClientCrash. It anchors on what
+    // follows instead: the crash payload's own sibling fields. A refactor that
+    // rendered this value would move it away from `stack:` and fail closed.
+    file: path.join(SRC, 'components/ErrorBoundary.tsx'),
+    anchor: /message: error\.message,/,
+    context: /stack: error\.stack/,
   },
 ];
 
@@ -177,7 +216,12 @@ describe('error-policy compliance (ERR-10)', () => {
             /err\.message|error\.message|e\.message|ex\.message/.test(line);
           const mapped =
             /l10nErrorMessage|userErrorMessage|plainErrorMessage|normalizeError|requiredLocalized/.test(line);
-          if (rawConsumed && !mapped) {
+          // isWhitelisted belongs here too. Rules 1 and 2 consult it; this one did
+          // not until 2026-10-07, which made WHITELISTED_RAW_PARSE silently
+          // ineffective for every legacy-pattern hit — an entry could be added,
+          // reviewed, and still not excuse the line it named. Found when the
+          // ErrorBoundary telemetry entry did not take effect.
+          if (rawConsumed && !mapped && !isWhitelisted(file, n)) {
             leaks.push(`${path.relative(SRC, file)}:${n}`);
           }
         }

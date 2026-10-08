@@ -37,7 +37,7 @@
   padding: 0 4px;
   border-radius: var(--radius-full);
   background-color: var(--color-danger);
-  color: var(--color-text-on-danger, #fff);
+  color: var(--color-danger-fg);
   font-size: 10px;
   font-weight: 700;
   line-height: 16px;
@@ -56,5 +56,24 @@
   .stock-alert-bell:focus-visible {
     outline: 2px solid Highlight;
     outline-offset: 2px;
+  }
+}
+
+/* ── Touch press feedback ────────────────────────────────────────────
+   The alert bell is a persistent tablet affordance. */
+.stock-alert-bell:not(:disabled):active {
+  transform: scale(0.94);
+}
+
+@media (pointer: coarse) {
+  .stock-alert-bell {
+    min-height: var(--touch-target-min);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stock-alert-bell:not(:disabled):active {
+    transform: none;
+    opacity: 0.75;
   }
 }

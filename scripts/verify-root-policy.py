@@ -51,28 +51,45 @@ ROOT_FILE_ALLOWLIST = frozenset({
     ".gitleaks.toml", ".trivyignore", ".cbmignore", ".mcp.json",
     ".tarpaulin.toml", ".env.example",
     # Human entry points.
-    "README.md", "CHANGELOG.md", "CONTRIBUTING.md", "LICENSE", "AGENTS.md",
-    "ARCHITECTURE.md", "DSH.md", "done-todo-rebrand.md", "done-todo-rebrand-2.md",
-    "done-todo-tablet-device-verify.md", "done-todo-tablet-dialog-content-uri.md",
-    "done-todo-project-folder-restructure.md",
+    # README-technical.md is the developer-facing technical README (repository
+    # structure, technology stack, commands). It was README-3.md until
+    # 2026-10-02 -- a merge-conflict suffix -- and it is the ONLY document in the
+    # repo carrying a Technology Stack table or a repo-root Repository Structure
+    # tree, so it belongs with the entry points, not beside README.md.
+    "README.md", "README-technical.md", "CHANGELOG.md", "CONTRIBUTING.md",
+    "LICENSE", "AGENTS.md", "ARCHITECTURE.md", "DSH.md",
+
+
     "todo-open-debt-program.md", "todo-review-type.md",
-    "done-todo-owner-rulings.md", "done-todo-sync-endpoint-derivation.md",
+
     # Owner plan docs, same class as the two above: named individually on purpose,
     # because the allowlist is names-not-patterns so adding one is a decision.
     "todo-android-4gb-optimization-audit.md", "todo-optimize-crates.md",
+    # Added 2026-10-02. Both were committed to the repo without the list being
+    # extended, which is the oversight the comment at the top of this file
+    # describes: the rule is "extend the list in the same commit that adds the
+    # file". The decision to have them at the root was made when each landed,
+    # so adding them here enforces the stated invariant rather than making a
+    # new one. Both are tracked, clean, carry the `todo-` token AGENTS.md 7.4
+    # gives plan docs, and are plans in substance (20 and 36 open checkboxes).
+    "todo-android-updater.md", "todo-beta-testing-january-2027.md",
+    # todo-docs-restructure.md — the docs/ restructure plan (A1-A5, B0-B4). Same
+    # class: an owner plan doc at the root, added deliberately per AGENTS.md 7.4,
+    # which puts plan files at the root and exempts `todo-` names in check-dead-refs.
+    "todo-docs-restructure.md",
     "manager-codebase-review-checklist.md",
     "manager-codebase-review-decisions.md",
     "manager-codebase-review.md",
-    "README-2.md",
     # Two in-flight plan docs that were left out of their own commits, which made
     # this gate the only thing reporting them. Both are the class named above, not
     # scratch: `plan-c1-install-key-s2b-s2c.md` is TRACKED (landed with 461b04c25 /
     # 73109ee91) and carries the `plan-` token its §7.4 exemption requires;
-    # `todo-modular-scaffolding.md` is the same shape and keeps the `todo-` token.
-    # Recorded rather than renamed: §7.4 makes the name shared state, and moving
-    # another lane's plan file to satisfy a checker would be the wrong repair.
+    # `done-todo-modular-scaffolding.md` is the same shape and still carries the
+    # `todo-` token its §7.4 exemption needs. It was renamed on 2026-10-02 once
+    # its own acceptance command ran and passed (3543 core tests, all governance
+    # gates green), which is what §7.4 says earns the `done-` prefix.
     "plan-c1-install-key-s2b-s2c.md",
-    "todo-modular-scaffolding.md",
+
     # Measured exception (§5): not a duplicate of scripts/stats.json —
     # scripts/stats.ps1 and scripts/check.ps1 read this name.
     "stats.json",
@@ -92,13 +109,13 @@ ROOT_FILE_ALLOWLIST = frozenset({
     "C-dev-encapsule.db",
     # Owner plan docs that earned their `done-` rename; same class as the done-todo-*
     # names above, added when the sweep caught them (2026-09-28).
-    "done-mobile-setupwizard.md",
-    "done-todo-codebase-reliability.md",
-    "done-todo-open-debt-agents-1.md",
-    "done-todo-open-debt-agents-2.md",
-    "done-todo-open-debt-agents-3.md",
-    "done-todo-open-debt-agents-4.md",
-    "done-todo-open-debt-agents-5.md",
+
+
+
+
+
+
+
 })
 
 # Directories the empty-dir sweep must not descend into. `.git` is git's own;

@@ -6,7 +6,8 @@ import { useWorkspaceScope } from '@/contexts/WorkspaceContext';
 import { requiredLocalized } from '@/components';
 import { Localized, useLocalization } from '@fluent/react';
 import { Skeleton } from '@/components/Skeleton';
-import { startSaleScoped, addLineScoped, completeSaleScoped, printSalesReceipt, getSale, getSaleScoped, setCartDiscountScoped, holdCartScoped, finalizeSale, voidPendingSale, previewPromotedTotalFromLinesScoped, type SetCartDiscountScopedArgs, type CompleteSaleScopedArgs, type PaymentSplitArg, type SerialNumberArg, type PartialStockResult, type PreviewPromotedTotalResult } from '@/api/sales';
+import { startSaleScoped, addLineScoped, completeSaleScoped, printSalesReceipt, getSale, getSaleScoped, issueTaxInvoiceScoped, setCartDiscountScoped, holdCartScoped, finalizeSale, voidPendingSale, previewPromotedTotalFromLinesScoped, type SetCartDiscountScopedArgs, type CompleteSaleScopedArgs, type PaymentSplitArg, type SerialNumberArg, type PartialStockResult, type PreviewPromotedTotalResult } from '@/api/sales';
+import { openCashDrawerScoped } from '@/api/hardware';
 import { createKdsOrderFromSaleScoped, publishCourseFiredScoped } from '@/api/kds';
 import { Button } from '@/components/Button';
 import { formatMoney, minorUnitExponent, parseMinorUnits, type Money } from '@/types/domain';
@@ -17,7 +18,8 @@ import { reciprocalMillionths } from '@/api/currency';
 import { listCustomersScoped, type CustomerDto } from '@/api/customers';
 import { getLoyaltyAccount, redeemLoyaltyPoints, getPointsValue, type LoyaltyAccountWithDetails } from '@/api/loyalty';
 import QrisQrDisplay from '@/components/QrisQrDisplay';
-import { railOffered, staticQrisPayload, useLocalPaymentRails, visibleMethods } from './useLocalPaymentRails';
+import { railOffered, staticQrisPayload, useLocalPaymentRails, visibleMethods, resolveTenderDisplayName } from './useLocalPaymentRails';
+import { useActiveMarketProfile } from '@/hooks/useActiveMarketProfile';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { useSwipe } from '@/hooks/useSwipe';
 import { useKeyboardAvoidance } from '@/hooks/useKeyboardAvoidance';
@@ -43,7 +45,8 @@ import type { PaymentModalProps } from './payment/types';
 import { classifyRetry, plainErrorMessage } from '@/utils/app-error';
 import './PaymentModal.css';
 
-type PaymentMethod = 'cash' | 'card' | 'qris' | 'other' | 'open_bill' | 'credit';
+import type { PaymentMethod } from '@/api/types/payment';
+export type { PaymentMethod };
 
 /**
  * The Fluent message that carries each tender's visible name. TOTAL over
@@ -67,10 +70,16 @@ type PaymentMethod = 'cash' | 'card' | 'qris' | 'other' | 'open_bill' | 'credit'
 const PAYMENT_METHOD_MESSAGE_IDS: Record<PaymentMethod, string> = {
   cash: 'payment-method-cash',
   card: 'payment-method-card',
+  card_debit: 'payment-method-card-debit',
+  card_credit: 'payment-method-card-credit',
+  qris_manual: 'payment-method-qris-manual',
   qris: 'payment-method-qris',
-  other: 'payment-other-placeholder',
+  bank_transfer: 'payment-method-bank-transfer',
+  ewallet: 'payment-method-ewallet',
   open_bill: 'payment-open-bill',
   credit: 'payment-method-credit',
+  pay_later: 'payment-method-pay-later',
+  other: 'payment-other-placeholder',
 };
 
 // PaymentModalProps moved to ./payment/types (slice S1 of the contract-first
@@ -94,6 +103,7 @@ export default function PaymentModal({
   // it is a real cleanup but a separate, wider change. Recorded in docs/plans/0.0.36-backlog.md.
   sessionToken,
   tableNumber,
+  orderType = 'dine_in',
   selectedCustomer: selectedCustomerProp,
   onCustomerChange,
   onComplete,
@@ -114,6 +124,7 @@ export default function PaymentModal({
   // surface for "does this location offer QRIS" (the master doc's
   // payment:* keys were never implemented). Fail-open until loaded.
   const { rails: paymentRails } = useLocalPaymentRails(sessionToken);
+  const { profile: activeMarketProfile } = useActiveMarketProfile(sessionToken);
   // visibleMethods() owns which tabs the tender list offers; the two reads
   // below are the gates that live OUTSIDE that list -- qrisOffered also kicks
   // the selection back to cash when a reload withholds QRIS, and edcOffered
@@ -254,6 +265,8 @@ export default function PaymentModal({
 
   const [shortfallResult, setShortfallResult] = useState<PartialStockResult | null>(null);
   const [receiptArgs, setReceiptArgs] = useState<PrintSalesReceiptArgs | null>(null);
+  const [completedSaleId, setCompletedSaleId] = useState<string | null>(null);
+  const [issuingTaxInvoice, setIssuingTaxInvoice] = useState(false);
 
   const [paymentError, setPaymentError] = useState<{ message: string; retryable: boolean } | null>(null);
 
@@ -357,6 +370,8 @@ retryCurrencyLoad,
       setQrReference('');
       setShortfallResult(null);
       setReceiptArgs(null);
+      setCompletedSaleId(null);
+      setIssuingTaxInvoice(false);
       setSelectedCurrency(total.currency);
       setCustomerSearchQuery('');
       setCustomerRoster([]); // the derived rows are empty with it — no second list to clear
@@ -681,6 +696,18 @@ retryCurrencyLoad,
           // Restaurant coursing: carry the assignment so `sale_lines.course`
           // reaches the KDS fan-out. Normalized backend-side.
           ...(line.courseId ? { course: line.courseId } : {}),
+          ...(line.modifiers && line.modifiers.length > 0
+            ? {
+                modifiersJson: JSON.stringify(
+                  line.modifiers.map((m) => ({
+                    name: m.groupName,
+                    choice: m.modifierName,
+                    price_minor: m.priceMinor,
+                  })),
+                ),
+              }
+            : {}),
+          ...(line.note ? { note: line.note } : {}),
         };
         await addLineScoped(sessionToken!, lineArgs);
       }
@@ -742,7 +769,11 @@ retryCurrencyLoad,
   // finalize_sale from the settlement webhook completes it on the next
   // sync apply instead.
   const settleGatewaySale = useCallback(
-    async (saleResult: Awaited<ReturnType<typeof completeSaleScoped>>, voidOnFinalizeFailure: boolean) => {
+    async (
+      saleResult: Awaited<ReturnType<typeof completeSaleScoped>>,
+      voidOnFinalizeFailure: boolean,
+      tenderInfo?: { method?: string; reference?: string | null; cardLastFour?: string | null },
+    ) => {
       try {
         // ADR #7: read the sale back from the same store completeSaleScoped just wrote it to.
         // The value feeds the receipt preview, so an ambient read here showed a customer a
@@ -751,6 +782,7 @@ retryCurrencyLoad,
           ? await getSaleScoped(sessionToken, saleResult.saleId)
           : await getSale(saleResult.saleId);
 
+        setCompletedSaleId(saleResult.saleId);
         setReceiptArgs(buildCompletedSaleReceipt({
           saleId: saleResult.saleId,
           saleTotal: saleResult.total,
@@ -759,15 +791,20 @@ retryCurrencyLoad,
           cartCurrency,
           fallbackTotalMinor: effectiveTotalInCartCurrency,
           // The one field this site and the direct-checkout site below really
-          // do differ: a gateway sale is a single QRIS tender with no change.
+          // do differ: a gateway sale defaults to a single QRIS tender with no change,
+          // or takes explicit tender details (e.g. Card with authCode and cardLast4 for EDC).
           payments: [
             {
-              method: 'QRIS',
+              method: tenderInfo?.method ?? resolveTenderDisplayName('qris', paymentRails, activeMarketProfile, 'QRIS'),
               amount: { minorUnits: effectiveTotalInCartCurrency, currency: cartCurrency },
               change: null,
+              reference: tenderInfo?.reference,
+              cardLastFour: tenderInfo?.cardLastFour,
             },
           ],
           tableNumber,
+          marketProfile: activeMarketProfile,
+          customerName: selectedCustomer?.name,
         }));
       } catch {
         // Sale fetch may fail in edge cases — non-blocking.
@@ -823,7 +860,7 @@ retryCurrencyLoad,
     },
     [sessionToken, lineItemsInCartCurrency, cartCurrency, tableNumber, addToast,
      loyaltyAccount, redeemPoints, loyaltyDiscount, selectedCustomer, effectiveTotalInCartCurrency,
-     publishFiredCourses],
+     publishFiredCourses, activeMarketProfile, paymentRails],
   );
 
   // ── Manual QRIS (gateway tender, cashier-asserted reference) ─────────
@@ -976,6 +1013,7 @@ retryCurrencyLoad,
           discountLabel,
           ...(trimmedTable ? { tableNumber: trimmedTable } : {}),
           ...(trimmedName ? { customerName: trimmedName } : {}),
+          orderType,
         });
         const label = trimmedTable
           ? (trimmedName ? `Table ${trimmedTable} (${trimmedName})` : `Table ${trimmedTable}`)
@@ -1016,6 +1054,18 @@ retryCurrencyLoad,
           // Restaurant coursing: carry the assignment so `sale_lines.course`
           // reaches the KDS fan-out. Normalized backend-side.
           ...(line.courseId ? { course: line.courseId } : {}),
+          ...(line.modifiers && line.modifiers.length > 0
+            ? {
+                modifiersJson: JSON.stringify(
+                  line.modifiers.map((m) => ({
+                    name: m.groupName,
+                    choice: m.modifierName,
+                    price_minor: m.priceMinor,
+                  })),
+                ),
+              }
+            : {}),
+          ...(line.note ? { note: line.note } : {}),
         };
         await addLineScoped(sessionToken!, lineArgs);
       }
@@ -1034,7 +1084,9 @@ retryCurrencyLoad,
         ? 'split'
         : method === 'other'
           ? otherLabel.trim() || 'OTHER'
-          : method.toUpperCase();
+          : method === 'qris'
+            ? resolveTenderDisplayName('qris', paymentRails, activeMarketProfile, 'QRIS')
+            : method.toUpperCase();
 
       const serialNumberArgs: SerialNumberArg[] | undefined = serialNumbers
         ? Object.entries(serialNumbers)
@@ -1088,6 +1140,17 @@ retryCurrencyLoad,
         }
       }
 
+      // Auto-kick cash drawer on cash tenders (ADR #7 scoped)
+      const hasCashTender = method === 'cash' || (splitMode && splits.some((s) => s.method === 'cash'));
+      if (sessionToken && hasCashTender) {
+        try {
+          await openCashDrawerScoped(sessionToken);
+        } catch (drawerErr) {
+          // Cash drawer kick failure is non-blocking (printer offline / no drawer attached)
+          console.warn('Cash drawer auto-kick failed', drawerErr);
+        }
+      }
+
       try {
         // ADR #7: read the sale back from the same store completeSaleScoped just wrote it to.
         // The value feeds the receipt preview, so an ambient read here showed a customer a
@@ -1096,6 +1159,7 @@ retryCurrencyLoad,
           ? await getSaleScoped(sessionToken, saleResult.saleId)
           : await getSale(saleResult.saleId);
 
+        setCompletedSaleId(saleResult.saleId);
         const receiptData = buildCompletedSaleReceipt({
           saleId: saleResult.saleId,
           saleTotal: saleResult.total,
@@ -1121,6 +1185,8 @@ retryCurrencyLoad,
                 },
               ],
           tableNumber,
+          marketProfile: activeMarketProfile,
+          customerName: selectedCustomer?.name ?? (method === 'credit' && customerName.trim() ? customerName.trim() : undefined),
         });
         // Store receipt data for preview (user chooses to print or skip)
         setReceiptArgs(receiptData);
@@ -1172,7 +1238,7 @@ retryCurrencyLoad,
     } finally {
       setProcessing(false);
     }
-  }, [method, customerName, lineItems, discountPercent, discountLabel, promotionIds, splitMode, splits, otherLabel, change, sessionToken, selectedCustomer, loyaltyAccount, redeemPoints, loyaltyDiscount, serialNumbers, tableNumber, addToast, classifyError, l10n, cartCurrency, effectiveTotalInCartCurrency, lineItemsInCartCurrency, tenderedMinorInCartCurrency, total.currency, total.minor_units, tenderSnapshot, taxEstimated, publishFiredCourses]);
+  }, [method, customerName, lineItems, discountPercent, discountLabel, promotionIds, splitMode, splits, otherLabel, change, sessionToken, selectedCustomer, loyaltyAccount, redeemPoints, loyaltyDiscount, serialNumbers, tableNumber, orderType, addToast, classifyError, l10n, cartCurrency, effectiveTotalInCartCurrency, lineItemsInCartCurrency, tenderedMinorInCartCurrency, total.currency, total.minor_units, tenderSnapshot, taxEstimated, publishFiredCourses, activeMarketProfile, paymentRails]);
 
   useEffect(() => {
     if (!done) return;
@@ -1234,6 +1300,37 @@ retryCurrencyLoad,
         return { sku: String(line?.sku ?? lineId), serial };
       });
   }, [serialNumbers, lineItems]);
+
+  const handleIssueTaxInvoice = useCallback(async () => {
+    if (!completedSaleId || !sessionToken || !receiptArgs) return;
+    setIssuingTaxInvoice(true);
+    try {
+      const invoiceNumber = await issueTaxInvoiceScoped(sessionToken, completedSaleId);
+      setReceiptArgs((prev) =>
+        prev
+          ? {
+              ...prev,
+              isInvoice: true,
+              documentKind: 'invoice',
+              statutoryNumber: invoiceNumber,
+              receiptNumber: invoiceNumber,
+            }
+          : null,
+      );
+      addToast({
+        message: `${l10nRef.current.getString('payment-toast-invoice-issued', null, 'Tax invoice issued')}: ${invoiceNumber}`,
+        type: 'success',
+      });
+    } catch (err) {
+      console.error('issueTaxInvoiceScoped failed', err);
+      addToast({
+        message: l10nRef.current.getString('payment-toast-invoice-failed', null, 'Failed to issue tax invoice'),
+        type: 'error',
+      });
+    } finally {
+      setIssuingTaxInvoice(false);
+    }
+  }, [completedSaleId, sessionToken, receiptArgs, addToast]);
 
   if (!open && !leaving) return null;
 
@@ -1381,6 +1478,7 @@ retryCurrencyLoad,
               const completedSale = sessionToken
                 ? await getSaleScoped(sessionToken, result.saleId)
                 : await getSale(result.saleId);
+              setCompletedSaleId(result.saleId);
               const shortfallTotalMinor = result.total?.minor_units ?? completedSale?.total.minor_units ?? effectiveTotalInCartCurrency;
               const shortfallCurrency = result.total?.currency ?? completedSale?.total.currency ?? cartCurrency;
               const receiptData: PrintSalesReceiptArgs = {
@@ -1421,6 +1519,11 @@ retryCurrencyLoad,
                       },
                     ],
                 ...(tableNumber ? { tableNumber } : {}),
+                ...(activeMarketProfile ? {
+                  taxIdLabel: activeMarketProfile.country_code === 'ID' ? 'NPWP' : activeMarketProfile.country_code === 'SG' ? 'GST Reg No' : 'Tax ID',
+                  taxRegime: activeMarketProfile.tax_regime !== 'NONE' ? activeMarketProfile.tax_regime : undefined,
+                  statutoryRounding: activeMarketProfile.statutory_rounding,
+                } : {}),
               };
               setReceiptArgs(receiptData);
             } catch {
@@ -1445,6 +1548,8 @@ retryCurrencyLoad,
         {done && receiptArgs ? (
           <ReceiptPreview
             receipt={receiptArgs}
+            onIssueTaxInvoice={sessionToken && completedSaleId ? handleIssueTaxInvoice : undefined}
+            issuingTaxInvoice={issuingTaxInvoice}
             onPrint={async () => {
               try {
                 await printSalesReceipt(sessionToken!, receiptArgs);
@@ -1686,7 +1791,7 @@ retryCurrencyLoad,
                     <legend className="payment-section-title">Payment Method</legend>
                   </Localized>
                   <div className="payment-method-options">
-                    {visibleMethods(paymentRails).map((m) => (
+                    {visibleMethods(paymentRails, activeMarketProfile).map((m) => (
                       <label key={m} className="payment-method-label" data-testid="quick-pay-button">
                         <input
                           type="radio"
@@ -1696,7 +1801,9 @@ retryCurrencyLoad,
                           onChange={() => setMethod(m)}
                         />
                         <span className="payment-method-name">
-                          {requiredLocalized(l10n, PAYMENT_METHOD_MESSAGE_IDS[m])}
+                          {m === 'qris'
+                            ? resolveTenderDisplayName('qris', paymentRails, activeMarketProfile, requiredLocalized(l10n, PAYMENT_METHOD_MESSAGE_IDS[m]))
+                            : requiredLocalized(l10n, PAYMENT_METHOD_MESSAGE_IDS[m])}
                         </span>
                       </label>
                     ))}

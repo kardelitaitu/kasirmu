@@ -718,3 +718,79 @@ async fn get_customer_scoped_denies_user_without_view_permission() {
     let result = get_scoped(&state.ctx(), "cust-1", "kitchen-token").await;
     assert!(matches!(result, Err(BridgeError::PermissionDenied(_))));
 }
+
+// ── validate_customer_fields: the refusals the commands rely on ──────
+
+/// WHY THESE EXIST. `validate_customer_fields` (`customers.rs:233`) guards FOUR call
+/// sites -- `create_customer`, `update_customer`, `create_customer_scoped` and
+/// `update_customer_scoped` -- and had no direct test: `customers_tests.rs` covered the
+/// args structs' serde and Debug shapes instead. MEASURED: replacing the whole body with
+/// `let _ = (name, email, phone);` left all 50 tests in this file GREEN. A customer could
+/// then be created with an empty name or a malformed email/phone, and every downstream
+/// reader that treats those fields as validated would be reading something the
+/// foundation value objects exist to reject.
+#[test]
+fn validate_customer_fields_rejects_an_empty_or_blank_name() {
+    for blank in ["", "   ", "\t"] {
+        let err =
+            validate_customer_fields(blank, None, None).expect_err("a blank name must be refused");
+        assert!(
+            matches!(&err, BridgeError::Invalid(msg) if msg.contains("name")),
+            "the refusal must name the field it rejected; got: {err:?}"
+        );
+    }
+}
+
+/// A malformed email is refused; a well-formed one is accepted.
+///
+/// Both directions are pinned deliberately. A check that refused EVERY address would
+/// satisfy the refusals alone, so the accepted case is what proves the guard is a shape
+/// test rather than a blanket refusal. The malformed values are the ones
+/// `foundation::Email::validate` names: no '@', more than one '@', an empty local part,
+/// an empty domain, and a domain with no dot.
+#[test]
+fn validate_customer_fields_checks_the_email_shape() {
+    for bad in [
+        "not-an-email",
+        "two@at@signs.com",
+        "@no-local.com",
+        "no-domain@",
+        "dotless@localhost",
+    ] {
+        let err = validate_customer_fields("Ada", Some(bad), None)
+            .expect_err("a malformed email must be refused");
+        assert!(
+            matches!(&err, BridgeError::Invalid(msg) if msg.contains("email")),
+            "{bad:?} must be refused with a message naming the email field; got: {err:?}"
+        );
+    }
+
+    // The accepted case, so the loop above cannot be satisfied by refusing everything.
+    assert!(
+        validate_customer_fields("Ada", Some("ada@example.com"), None).is_ok(),
+        "a well-formed address must pass"
+    );
+}
+
+/// A malformed phone is refused; a plain one is accepted.
+///
+/// `phone` is optional, so this also pins that OMITTING it is allowed -- the branch the
+/// whole `if let Some(...)` exists for.
+#[test]
+fn validate_customer_fields_checks_the_phone_shape() {
+    let err = validate_customer_fields("Ada", None, Some("not a phone"))
+        .expect_err("a malformed phone must be refused");
+    assert!(
+        matches!(&err, BridgeError::Invalid(msg) if msg.contains("phone")),
+        "the refusal must name the phone field; got: {err:?}"
+    );
+
+    assert!(
+        validate_customer_fields("Ada", None, Some("+6281234567890")).is_ok(),
+        "a well-formed phone must pass"
+    );
+    assert!(
+        validate_customer_fields("Ada", None, None).is_ok(),
+        "email and phone are both optional; omitting them must be allowed"
+    );
+}

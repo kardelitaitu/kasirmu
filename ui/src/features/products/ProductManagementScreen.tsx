@@ -24,6 +24,7 @@ import { listTaxRatesScoped, type TaxRateDto } from '@/api/tax';
 import { listCurrenciesScoped, type CurrencyDto } from '@/api/currency';
 import { formatMoney, type Product, type Sku } from '@/types/domain';
 import { l10nErrorMessage } from '@/utils/app-error';
+import { asArray } from '@/utils/ipc-payload';
 import { Card } from '@/components/Card';
 import { Button } from '@/components/Button';
 import { Skeleton } from '@/components/Skeleton';
@@ -189,10 +190,10 @@ export default function ProductManagementScreen() {
       // store the products came from.
       const [dtos, rates, cats, currencyList] = await Promise.all([listProductsScoped(sessionToken), listTaxRatesScoped(sessionToken), listCategoriesScoped(sessionToken), listCurrenciesScoped(sessionToken)]);
       if (seq !== loadSeqRef.current) return;
-      setProductDtos(dtos);
+      setProductDtos(asArray<typeof dtos[number]>(dtos));
       setProducts(dtos.map(dtoToProduct));
       setTaxRates(rates);
-      setCategories(cats);
+      setCategories(asArray<typeof cats[number]>(cats));
       setCurrencies(currencyList);
       hasLoadedOnceRef.current = true;
     } catch (err) {

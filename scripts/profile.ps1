@@ -64,7 +64,7 @@ param(
     # every invocation died with "Cannot overwrite variable PID because it is
     # read-only or constant" before this script reached its first line of work.
     # The alias keeps the documented call `profile.ps1 -PID 1234` working, which is
-    # what docs/benchmarks/baseline-2026-07-20.md:139 tells a reader to type.
+    # what docs/records/benchmarks/baseline-2026-07-20.md:139 tells a reader to type.
     [Alias('PID')]
     [int]$ProcessId = 0,
 
@@ -101,7 +101,7 @@ if ($List) {
     # object whose ToString is bare "crates", and Get-ChildItem then receives three
     # positional arguments instead of one -- so this listing failed with "A positional
     # parameter cannot be found that accepts argument 'crates'" every time, which is
-    # the first thing docs/benchmarks/baseline-2026-07-20.md:99 tells a reader to run.
+    # the first thing docs/records/benchmarks/baseline-2026-07-20.md:99 tells a reader to run.
     $benchDir = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot "..\crates\kasirmu-core\benches"))
     $benches = Get-ChildItem -Path $benchDir -Filter "*.rs" | Select-Object -ExpandProperty BaseName
     foreach ($b in $benches | Sort-Object) {

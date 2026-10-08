@@ -20,3 +20,5 @@
 - Successful replay is idempotent and clears stale failure state.
 - The `sync_remote_failures` dead-letter table is created by the registered
   migration set and expected-table coverage passes.
+
+> last audited 29-09-26 by docs-auditor

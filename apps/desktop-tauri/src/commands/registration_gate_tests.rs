@@ -109,7 +109,7 @@ mod debt;
 /// and it arrives UNGATED — the wizard reads the store-type presets before any session
 /// exists, the class `setup::get_first_run_state` and `setup::provision_device` have always
 /// occupied. So this step moves the floor, the debt ceiling and the class-1 count together
-/// and records the reason in docs/records/JOURNAL.md, which is what the ceiling pin asks of
+/// and records the reason in docs/records/journal/JOURNAL.md, which is what the ceiling pin asks of
 /// a RISE. The provenance is the point: this pass records what landed, it does not approve
 /// it.
 ///
@@ -133,7 +133,7 @@ mod debt;
 /// from `LicenseActivationScreen` — the pre-session boot gate — and each one either
 /// creates the session a permission would be checked against or is the step immediately
 /// before it. So this step moves the floor, the debt ceiling and the class-1 count
-/// together and records the reason in docs/records/JOURNAL.md, which is what the ceiling
+/// together and records the reason in docs/records/journal/JOURNAL.md, which is what the ceiling
 /// pin asks of a RISE. The provenance is the point: this pass records what landed, it
 /// does not approve it.
 ///
@@ -154,7 +154,7 @@ mod debt;
 /// `history::*` carries `SALES_PROCESS`, so the regeneration below rewrote only
 /// `REGISTERED_TOTAL` (475 -> 481) and left all 68 debt rows identical. That is why
 /// this step touches the floor alone: there is no new debt to record, only new
-/// registrations to count. Provenance recorded in docs/records/JOURNAL.md.
+/// registrations to count. Provenance recorded in docs/records/journal/JOURNAL.md.
 ///
 /// 481 -> 485, for `a5212ca5f` (feat(payments): persist payment gateways with
 /// at-rest encryption and wire frontend settings), which registered FOUR names in
@@ -164,8 +164,33 @@ mod debt;
 /// there is no new debt row, only new registrations to count. Measured, not assumed:
 /// the pre-raise assertion reported `left: 481, right: 485`, and the four `+` lines in
 /// that commit's `lib.rs` diff are exactly the four names — the delta and the cause
-/// agree. Provenance recorded in docs/records/JOURNAL.md.
-const REGISTERED_FLOOR: usize = 485;
+/// agree. Provenance recorded in docs/records/journal/JOURNAL.md.
+/// 486 -> 494, closing the 2026-10-07 drift. EIGHT names registered across five
+/// commits, none of which moved this floor; the generated ledger WAS regenerated in
+/// the same window, so only this constant lagged:
+///   * `656f109a0` (feat(edc): add invoice reference, batch settlement, and transaction
+///     inquiry) — `edc::edc_inquiry`.
+///   * `fbf2b35d5` (feat(hardware): card receipt details, auto cash drawer kick, and edc
+///     settlement slip) — `edc::edc_settle` and `hardware::print_edc_settlement_slip_scoped`.
+///   * `859d5d44b` (feat(bridge,apps): expose issue_tax_invoice_scoped and
+///     statutory_number IPC commands) — `fiscal::issue_tax_invoice_scoped` and
+///     `fiscal::get_sale_statutory_number_scoped`.
+///   * `bf8e004f9` (feat(settings): add one-click diagnostic archive export) and
+///     `f25a91e7c` (feat(system): wire crash reporter hook…) — `health::export_diagnostics`
+///     and `health::record_crash_report`.
+///   * `9d46d3912` (feat(lan): implement CRDT delta replication…) — `health::get_storage_health`.
+///
+/// Unlike every step above, this one is **not** uniformly gated: **five arrive GATED**
+/// (`edc::*` on the settings/EDC pair, `hardware::print_edc_settlement_slip_scoped` and
+/// both `fiscal::*`), while **three arrive as new DEBT** — `health::get_storage_health`
+/// and `health::record_crash_report` as `no_session_resolution`, and
+/// `health::export_diagnostics` as `resolves_session_names_no_permission`. Those three
+/// are therefore the first entries this file has had to add to the ceiling as well as
+/// the floor: the ledger now carries **71** rows against a ceiling of **78**, so the
+/// raise consumed three of the nine rows of headroom rather than none. Recorded rather
+/// than smoothed over, because a floor step that also spends debt is the one shape this
+/// ratchet is meant to make visible. Provenance in docs/records/journal/JOURNAL.md.
+const REGISTERED_FLOOR: usize = 494;
 /// How far the GENERATED ledger's total may lag the tree before the ledger is overdue a
 /// regeneration. It is not slack on this floor — the floor is measured, not padded — and
 /// the hard pin on the ledger's own rows is
@@ -856,7 +881,7 @@ fn drift_pin_registration_floor_is_met() {
          only way to be red here is that names were registered — and a command that arrives \
          ALREADY GATED moves no ceiling and no ledger row, which makes this leg the only \
          thing in the file able to see it. Raise the floor to {measured} in the same \
-         deliberate pass that names each addition in docs/records/JOURNAL.md; raising it \
+         deliberate pass that names each addition in docs/records/journal/JOURNAL.md; raising it \
          records what landed, it does not approve it.",
     );
     assert!(
@@ -933,7 +958,7 @@ fn drift_pin_three_way_partition_is_complete_and_sums() {
         "the generated ledger disagrees with the sweep. Ungated now and NOT on the ledger \
          ({} names, first few {:?}); on the ledger but no longer ungated ({} names, first \
          few {:?}). The first set is new debt and needs its reason in \
-         docs/records/JOURNAL.md; the second is debt paid and left behind. Regenerate the \
+         docs/records/journal/JOURNAL.md; the second is debt paid and left behind. Regenerate the \
          file either way rather than hand-editing it.",
         new_holes.len(),
         new_holes.iter().take(6).collect::<Vec<_>>(),
@@ -996,7 +1021,7 @@ fn drift_pin_debt_ceilings_only_shrink() {
         "PIN OF A KNOWN HAZARD, NOT AN ENDORSEMENT: {} ungated registered commands \
          against a ceiling of {}. Debt leaves this list and never joins it, so a rise \
          means a newly registered command shipped ungated: record the reason in \
-         docs/records/JOURNAL.md before the number moves.",
+         docs/records/journal/JOURNAL.md before the number moves.",
         ungated,
         debt::DEBT_CEILING,
     );
@@ -1044,7 +1069,7 @@ fn drift_pin_debt_ceilings_only_shrink() {
          without a permission check, which is a class-1 door becoming a class-2 door and \
          empties one ceiling while filling the other. Either gate it, or move its ledger \
          row to the true class AND raise that ceiling deliberately, naming the decision in \
-         docs/records/JOURNAL.md.",
+         docs/records/journal/JOURNAL.md.",
         debt::NO_SESSION_RESOLUTION,
         debt::RESOLVES_SESSION_NAMES_NO_PERMISSION,
         if migrated.is_empty() {
@@ -1128,7 +1153,7 @@ fn drift_pin_generated_ledger_is_the_sweeps_own_output() {
             "registration_gate_debt.generated.rs disagrees with this sweep. Regenerate it \
              rather than editing it:\n  {REGENERATE_ENV}=1 cargo test -p kasirmu-app --lib \
              drift_pin_generated_ledger_is_the_sweeps_own_output -- --nocapture\n\
-             New debt needs its reason in docs/records/JOURNAL.md and a ceiling that still \
+             New debt needs its reason in docs/records/journal/JOURNAL.md and a ceiling that still \
              covers it; paid debt needs its row deleted in the same pass that lowers the \
              ceiling. The disagreement:\n{diff}"
         );
@@ -1996,6 +2021,13 @@ fn is_guard_shape(id: &str) -> bool {
 /// to require_session_permission (220 sites in 47 files) and every per-domain
 /// require-domain-permission helper. Widening the list fixes today; this leg is what keeps it
 /// true the day someone writes a bespoke guard, which the census shows is the norm here.
+///
+/// THOSE FIGURES ARE DATED, and re-measured on 2026-10-08 they have moved: 242 -> 309 production
+/// files and 657 -> 595 call sites (my count of the same shape). The SPELLING count, which is the
+/// one this leg enforces, still holds at 18 — and that is the number worth reading, because the
+/// other two grow whenever anyone registers a command. Run this leg with `--nocapture` to print
+/// the live triple; before that was added, the assertions compared against loose FLOORS (14 and
+/// 200) and a vocabulary that doubled or halved would have passed with nobody able to see it.
 #[test]
 fn drift_pin_guard_marker_vocabulary_is_closed() {
     // The two floors are anti-vacuity, not the finding. A sweep that read nothing would
@@ -2105,6 +2137,22 @@ fn drift_pin_guard_marker_vocabulary_is_closed() {
     assert!(
         stale.is_empty(),
         "GUARD-VOCABULARY DRIFT: {stale:?} are excepted but the sweep found no such call site in {files} files — the guard was renamed or deleted, so the exemption now covers nothing. Delete the entry rather than keep a list that no longer matches the tree."
+    );
+
+    // REPORT THE LIVE SHAPE, because on a GREEN run nothing else in this leg publishes it.
+    // The header's "242 production files, 18 distinct spellings, 657 call sites" is dated
+    // to e046e2f26 and honest as provenance, but a reader had no way to tell whether those
+    // numbers still described the tree — the assertions above compare against FLOORS (14
+    // and 200), deliberately loose, so a vocabulary that doubled or halved would pass
+    // silently. Printing the measured triple costs nothing, appears only under
+    // `--nocapture`, and is what a reviewer needs to see that the dated figures have or
+    // have not moved. It is not an assertion: pinning these would red on every unrelated
+    // command, which is the brittleness the floors exist to avoid.
+    println!(
+        "guard vocabulary (live): {files} production files, {sites} call sites, {} distinct          spellings, {} markers, {} exceptions",
+        seen.len(),
+        GUARD_MARKERS.len(),
+        GUARD_VOCAB_EXCEPTIONS.len()
     );
 }
 

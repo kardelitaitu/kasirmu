@@ -100,7 +100,7 @@ mod debt;
 /// modules that name a permission, so `gated_bridge_stems()` reads them Gated and they
 /// moved no ceiling and no ledger row. The eighth, `auth::has_users`, was authored in
 /// another lane and travelled here because `lib.rs` could not be committed without it —
-/// it is the single new debt row, and it is recorded in docs/records/JOURNAL.md. Raising
+/// it is the single new debt row, and it is recorded in docs/records/journal/JOURNAL.md. Raising
 /// this records what landed; it does not approve it.
 ///
 /// The 20-09-20 backup closeout step (332 -> 333) adds `data::create_backup_to`, the
@@ -149,7 +149,7 @@ mod debt;
 /// The 344 -> 345 step is **not this lane's**: `setup::get_preset_features` arrived with
 /// `6ac851dd4` (the desktop half of the same commit) and lands here on the SAME pass that
 /// absorbed it on the desktop — floor 345, ceiling 95, class 1 51, ledger regenerated. Its
-/// reason is recorded in docs/records/JOURNAL.md with the desktop entry; this line exists so
+/// reason is recorded in docs/records/journal/JOURNAL.md with the desktop entry; this line exists so
 /// the two shells' floors cannot drift apart on a command both of them register.
 ///
 /// The 345 -> 342 step is C17 (2026-09-22), the first floor move for a RETIREMENT since the
@@ -185,7 +185,7 @@ mod debt;
 /// pre-session boot gate — and each either mints the web session a permission would be
 /// checked against or is the step immediately before it. So this step moves the floor, the
 /// debt ceiling and the class-1 count together and records the reason in
-/// docs/records/JOURNAL.md, which is what the ceiling pin asks of a RISE. This is the
+/// docs/records/journal/JOURNAL.md, which is what the ceiling pin asks of a RISE. This is the
 /// tablet twin of the desktop step in `7a5292530` (there 472 -> 475); the two shells carry
 /// separate floors and separate numbers, and only the registering commit's own shape — one
 /// that touched neither pin — is common to both. The provenance is the point: this pass
@@ -211,7 +211,7 @@ mod debt;
 /// constant. Both arrive GATED on `SALES_PROCESS`, which is why the ledger's register
 /// (`registration_gate_debt.generated.rs`) did not move — the pair is a write door, and an
 /// already-gated arrival is exactly the case only this leg can see. Provenance recorded in
-/// docs/records/JOURNAL.md.
+/// docs/records/journal/JOURNAL.md.
 ///
 /// The 345 -> 349 step, 2026-10-02. Four payment gateway commands were registered in
 /// `apps/mobile-tauri/src/lib.rs` for parity with desktop:
@@ -220,8 +220,32 @@ mod debt;
 /// `local_payment::set_payment_gateway_config_scoped`, and
 /// `local_payment::delete_payment_gateway_scoped`. All four arrive already gated,
 /// so they move no debt ledger row or ceiling, making this registration floor
-/// the only check that observes them. Provenance recorded in docs/records/JOURNAL.md.
-const REGISTERED_FLOOR: usize = 349;
+///
+/// The 352 -> 359 step, 2026-10-04. Seven shift management commands were registered in
+/// `apps/mobile-tauri/src/lib.rs` for parity with desktop:
+/// `shifts::open_shift_scoped`, `shifts::close_shift_scoped`,
+/// `shifts::get_active_shift_scoped`, `shifts::list_shifts_scoped`,
+/// `shifts::get_shift_scoped`, `shifts::create_cash_payout_scoped`, and
+/// `shifts::get_shift_report_scoped`. All seven arrive already gated, so they move no
+/// debt ledger row or ceiling, making this registration floor the only check that observes them.
+///
+/// The 405 -> 408 step, 2026-10-05. 3 commands registered for Android in-app self-updater:
+/// check_app_update (SETTINGS_READ), start_apk_download (SETTINGS_EDIT), prepare_and_launch_update (SETTINGS_EDIT).
+/// All 3 arrive already gated on the bridge side, so they move no debt ledger row or ceiling.
+///
+/// The 408 -> 413 step, 2026-10-07. 5 commands registered:
+/// 2 EDC commands (`edc_settle`, `edc_inquiry`) and 3 diagnostics/storage health commands
+/// (`health::export_diagnostics`, `health::get_storage_health`, `health::record_crash_report`).
+///
+/// The 413 -> 419 step, 2026-10-07. 6 commands registered:
+/// `health::notify_memory_pressure` (ungated, client health callback for OS trim memory)
+/// and 5 KDS commands (`kds::enroll_kds_device_scoped`, `kds::list_kds_routing_rules_scoped`,
+/// `kds::set_kds_routing_rule_scoped`, `kds::delete_kds_routing_rule_scoped`, `kds::publish_course_fired_scoped`).
+// 419 -> 421 with `health::version_scoped` and
+// `offline::offline_queue_status_summary_scoped` (2026-10-08). Both are
+// ungated by design, so the ceiling moved too — see
+// docs/records/journal/JOURNAL-part-8.md.
+const REGISTERED_FLOOR: usize = 421;
 /// How far the parsed count may rise without regenerating: names are added by ordinary
 /// feature work, so the floor is a lower bound plus slack and never an equality.
 /// Crossing the slack is the signal that the ledger needs regenerating in the same pass.
@@ -926,7 +950,7 @@ fn drift_pin_registration_floor_is_met() {
          to be red here is that names were registered -- and a command that arrives ALREADY \
          GATED moves no ceiling and no ledger row, which makes this leg the only thing in the \
          file able to see it. Raise the floor to {} in the same deliberate pass that names \
-         each addition in docs/records/JOURNAL.md; raising it records what landed, it does \
+         each addition in docs/records/journal/JOURNAL.md; raising it records what landed, it does \
          not approve it.",
         pairs.len(),
         pairs.len()
@@ -1005,7 +1029,7 @@ fn drift_pin_three_way_partition_is_complete_and_sums() {
         "the generated ledger disagrees with the sweep. Ungated now and NOT on the ledger \
          ({} names, first few {:?}); on the ledger but no longer ungated ({} names, first \
          few {:?}). The first set is new debt and needs its reason in \
-         docs/records/JOURNAL.md; the second is debt paid and left behind. Regenerate the \
+         docs/records/journal/JOURNAL.md; the second is debt paid and left behind. Regenerate the \
          file either way rather than hand-editing it.",
         new_holes.len(),
         new_holes.iter().take(6).collect::<Vec<_>>(),
@@ -1068,7 +1092,7 @@ fn drift_pin_debt_ceilings_only_shrink() {
         "PIN OF A KNOWN HAZARD, NOT AN ENDORSEMENT: {} ungated registered commands \
          against a ceiling of {}. Debt leaves this list and never joins it, so a rise \
          means a newly registered command shipped ungated: record the reason in \
-         docs/records/JOURNAL.md before the number moves.",
+         docs/records/journal/JOURNAL.md before the number moves.",
         ungated,
         debt::DEBT_CEILING,
     );
@@ -1115,7 +1139,7 @@ fn drift_pin_debt_ceilings_only_shrink() {
          without a permission check, which is a class-1 door becoming a class-2 door and \
          empties one ceiling while filling the other. Either gate it, or move its ledger \
          row to the true class AND raise that ceiling deliberately, naming the decision in \
-         docs/records/JOURNAL.md.",
+         docs/records/journal/JOURNAL.md.",
         debt::NO_SESSION_RESOLUTION,
         debt::RESOLVES_SESSION_NAMES_NO_PERMISSION,
         if migrated.is_empty() {
@@ -1199,7 +1223,7 @@ fn drift_pin_generated_ledger_is_the_sweeps_own_output() {
             "registration_gate_debt.generated.rs disagrees with this sweep. Regenerate it \
              rather than editing it:\n  {REGENERATE_ENV}=1 cargo test -p kasirmu-mobile --lib \
              drift_pin_generated_ledger_is_the_sweeps_own_output -- --nocapture\n\
-             New debt needs its reason in docs/records/JOURNAL.md and a ceiling that still \
+             New debt needs its reason in docs/records/journal/JOURNAL.md and a ceiling that still \
              covers it; paid debt needs its row deleted in the same pass that lowers the \
              ceiling. The disagreement:\n{diff}"
         );

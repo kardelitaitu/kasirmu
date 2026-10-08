@@ -289,11 +289,29 @@ impl Store<'_> {
         &self,
         days: Option<i64>,
     ) -> Result<(Vec<Sale>, bool), CoreError> {
+        self.list_sales_with_history_cap_bounded(days, None, None)
+    }
+
+    /// List sales restricted to `days` history cap, bounded by optional `limit`
+    /// and `offset` pushed down to SQLite (Phase 3 unbounded query protection).
+    pub fn list_sales_with_history_cap_bounded(
+        &self,
+        days: Option<i64>,
+        limit: Option<u64>,
+        offset: Option<u64>,
+    ) -> Result<(Vec<Sale>, bool), CoreError> {
         let mut clause = String::from("FROM sales");
         if let Some(d) = days {
             clause.push_str(&format!(" WHERE created_at >= date('now', '-{d} days')"));
         }
         clause.push_str(" ORDER BY created_at DESC");
+        if let Some(lim) = limit {
+            let clamped = lim.clamp(1, 1000);
+            clause.push_str(&format!(" LIMIT {clamped}"));
+            if let Some(off) = offset {
+                clause.push_str(&format!(" OFFSET {off}"));
+            }
+        }
         Ok((self.list_sales_sql(&clause)?, days.is_some()))
     }
 

@@ -3089,3 +3089,56 @@ fn a_details_row_that_cannot_be_read_does_not_default_its_popularity_score() {
         "expected the missing column to be named, got {err:?}"
     );
 }
+
+#[test]
+fn product_crud_writes_audit_log_entries() {
+    let conn = fresh();
+    let s = store(&conn);
+
+    // 1. Create product
+    let created = s
+        .create_product(
+            "SKU-PROD-AUDIT",
+            "Audit Product",
+            price(1000),
+            None,
+            None,
+            5,
+            Some("retail"),
+        )
+        .unwrap();
+
+    let entries = s.list_audit_entries(10, 0).unwrap();
+    assert_eq!(entries.len(), 1);
+    assert_eq!(entries[0].action, "product.create");
+    assert_eq!(entries[0].target_type.as_deref(), Some("product"));
+    assert_eq!(entries[0].target_id.as_deref(), Some("SKU-PROD-AUDIT"));
+    assert_eq!(entries[0].outcome, "success");
+
+    // 2. Update product
+    s.update_product(
+        "SKU-PROD-AUDIT",
+        "Updated Audit Product",
+        price(1200),
+        None,
+        None,
+        Some("retail"),
+        Some(created.version),
+    )
+    .unwrap();
+
+    let entries = s.list_audit_entries(10, 0).unwrap();
+    assert_eq!(entries.len(), 2);
+    assert_eq!(entries[0].action, "product.update");
+    assert_eq!(entries[0].target_type.as_deref(), Some("product"));
+    assert_eq!(entries[0].target_id.as_deref(), Some("SKU-PROD-AUDIT"));
+
+    // 3. Delete product
+    s.delete_product("SKU-PROD-AUDIT").unwrap();
+
+    let entries = s.list_audit_entries(10, 0).unwrap();
+    assert_eq!(entries.len(), 3);
+    assert_eq!(entries[0].action, "product.delete");
+    assert_eq!(entries[0].target_type.as_deref(), Some("product"));
+    assert_eq!(entries[0].target_id.as_deref(), Some("SKU-PROD-AUDIT"));
+}

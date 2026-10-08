@@ -24,8 +24,14 @@ fn idr(minor: i64) -> Money {
 #[tokio::test]
 async fn default_simulator_approves_with_distinct_transaction_ids() {
     let t = LoopbackEdcTerminal::new();
-    let first = t.sale(idr(15000)).await.expect("armed simulator approves");
-    let second = t.sale(idr(15000)).await.expect("armed simulator approves");
+    let first = t
+        .sale(idr(15000), None)
+        .await
+        .expect("armed simulator approves");
+    let second = t
+        .sale(idr(15000), None)
+        .await
+        .expect("armed simulator approves");
     assert!(first.success && second.success);
     assert_ne!(
         first.transaction_id, second.transaction_id,
@@ -47,7 +53,10 @@ async fn decline_returns_an_unsuccessful_result_not_an_error() {
         }],
         EdcBehaviour::Approve,
     );
-    let r = t.sale(idr(15000)).await.expect("a decline is an answer");
+    let r = t
+        .sale(idr(15000), None)
+        .await
+        .expect("a decline is an answer");
     assert!(!r.success);
     assert_eq!(r.message, "insufficient funds");
     assert!(
@@ -70,13 +79,13 @@ async fn timeout_after_charge_is_a_timeout_and_not_a_silent_success() {
         vec![EdcBehaviour::TimeoutAfterCharge],
         EdcBehaviour::Approve,
     );
-    let r = t.sale(idr(15000)).await;
+    let r = t.sale(idr(15000), None).await;
     assert!(
         matches!(r, Err(HalError::Timeout(_))),
         "a quiet terminal must surface as a timeout, got {r:?}"
     );
     // And the NEXT call still works: a timeout is not a poisoned terminal.
-    assert!(t.sale(idr(15000)).await.is_ok());
+    assert!(t.sale(idr(15000), None).await.is_ok());
 }
 
 /// A truncated frame fails closed, as `Protocol`, rather than reading as an
@@ -91,7 +100,7 @@ async fn truncated_response_fails_closed() {
         vec![EdcBehaviour::TruncatedResponse],
         EdcBehaviour::Approve,
     );
-    let r = t.sale(idr(15000)).await;
+    let r = t.sale(idr(15000), None).await;
     assert!(
         matches!(r, Err(HalError::Protocol(_))),
         "an incomplete read must fail closed, got {r:?}"
@@ -103,7 +112,7 @@ async fn truncated_response_fails_closed() {
 #[tokio::test]
 async fn offline_terminal_is_not_found() {
     let t = LoopbackEdcTerminal::with_script(vec![EdcBehaviour::Offline], EdcBehaviour::Approve);
-    let r = t.sale(idr(15000)).await;
+    let r = t.sale(idr(15000), None).await;
     assert!(matches!(r, Err(HalError::NotFound(_))), "got {r:?}");
 }
 
@@ -117,7 +126,10 @@ async fn hardware_fault_reports_the_terminal_code() {
         }],
         EdcBehaviour::Approve,
     );
-    let r = t.sale(idr(15000)).await.expect("a fault is an answer");
+    let r = t
+        .sale(idr(15000), None)
+        .await
+        .expect("a fault is an answer");
     assert!(!r.success);
     assert!(
         r.message.contains("42") && r.message.contains("printer jam"),
@@ -135,7 +147,7 @@ async fn script_runs_in_order_so_a_cancel_follows_the_timeout_it_cancels() {
         EdcBehaviour::Approve,
     );
     assert!(matches!(
-        t.sale(idr(15000)).await,
+        t.sale(idr(15000), None).await,
         Err(HalError::Timeout(_))
     ));
     let void = t
@@ -151,9 +163,9 @@ async fn script_runs_in_order_so_a_cancel_follows_the_timeout_it_cancels() {
 #[tokio::test]
 async fn script_drains_then_default_applies() {
     let t = LoopbackEdcTerminal::with_script(vec![EdcBehaviour::Offline], EdcBehaviour::Approve);
-    assert!(t.sale(idr(1000)).await.is_err(), "scripted step");
-    assert!(t.sale(idr(1000)).await.is_ok(), "default after drain");
-    assert!(t.sale(idr(1000)).await.is_ok(), "default persists");
+    assert!(t.sale(idr(1000), None).await.is_err(), "scripted step");
+    assert!(t.sale(idr(1000), None).await.is_ok(), "default after drain");
+    assert!(t.sale(idr(1000), None).await.is_ok(), "default persists");
 }
 
 /// Capture and refund refuse an empty transaction id.
@@ -194,7 +206,7 @@ async fn status_is_always_ready_and_not_scriptable() {
 async fn from_address_default_approves() {
     let t = LoopbackEdcTerminal::from_address("loopback");
     assert_eq!(t.status().await.unwrap(), TerminalStatus::Ready);
-    let r = t.sale(idr(50000)).await.expect("approves");
+    let r = t.sale(idr(50000), None).await.expect("approves");
     assert!(r.success);
 }
 
@@ -203,7 +215,10 @@ async fn from_address_default_approves() {
 async fn from_address_decline_with_reason() {
     let t = LoopbackEdcTerminal::from_address("loopback://decline?reason=card_expired");
     assert_eq!(t.status().await.unwrap(), TerminalStatus::Ready);
-    let r = t.sale(idr(50000)).await.expect("decline is a response");
+    let r = t
+        .sale(idr(50000), None)
+        .await
+        .expect("decline is a response");
     assert!(!r.success);
     assert_eq!(r.message, "card expired");
 }
@@ -212,7 +227,7 @@ async fn from_address_decline_with_reason() {
 #[tokio::test]
 async fn from_address_timeout() {
     let t = LoopbackEdcTerminal::from_address("loopback://timeout");
-    let r = t.sale(idr(10000)).await;
+    let r = t.sale(idr(10000), None).await;
     assert!(matches!(r, Err(HalError::Timeout(_))));
 }
 
@@ -221,7 +236,7 @@ async fn from_address_timeout() {
 async fn from_address_offline() {
     let t = LoopbackEdcTerminal::from_address("loopback://offline");
     assert_eq!(t.status().await.unwrap(), TerminalStatus::Offline);
-    let r = t.sale(idr(10000)).await;
+    let r = t.sale(idr(10000), None).await;
     assert!(matches!(r, Err(HalError::NotFound(_))));
 }
 
@@ -229,7 +244,7 @@ async fn from_address_offline() {
 #[tokio::test]
 async fn from_address_hardware_fault() {
     let t = LoopbackEdcTerminal::from_address("loopback://fault?code=88&msg=sensor_broken");
-    let r = t.sale(idr(10000)).await.expect("fault is a response");
+    let r = t.sale(idr(10000), None).await.expect("fault is a response");
     assert!(!r.success);
     assert!(r.message.contains("88"));
     assert!(r.message.contains("sensor broken"));
@@ -265,8 +280,44 @@ async fn artificial_delay_slows_execution() {
     t.set_delay(Some(std::time::Duration::from_millis(30)));
 
     let start = tokio::time::Instant::now();
-    let _ = t.sale(idr(1000)).await;
+    let _ = t.sale(idr(1000), None).await;
     assert!(start.elapsed() >= std::time::Duration::from_millis(25));
+}
+
+/// Loopback terminal supports batch settlement and transaction inquiry.
+#[tokio::test]
+async fn loopback_settle_and_inquiry_support() {
+    let t = LoopbackEdcTerminal::new();
+    // 1. Settle
+    let settle_res = t.settle().await.expect("settlement succeeds");
+    assert!(settle_res.success);
+    assert!(settle_res.batch_number.is_some());
+    assert_eq!(settle_res.message, "settlement ok");
+
+    // 2. Inquiry with invoice
+    let inq_res = t.inquiry("INV-2026-001").await.expect("inquiry succeeds");
+    assert!(inq_res.success);
+    assert_eq!(
+        inq_res.transaction_id.as_deref(),
+        Some("LOOPBACK-INQ-INV-2026-001")
+    );
+    assert_eq!(inq_res.message, "approved");
+
+    // 3. Inquiry fails on empty invoice
+    let empty_inq = t.inquiry("").await;
+    assert!(matches!(empty_inq, Err(HalError::Unsupported(_))));
+}
+
+/// Sale with invoice reference attaches the reference to the transaction id.
+#[tokio::test]
+async fn sale_with_reference_attaches_invoice_to_transaction_id() {
+    let t = LoopbackEdcTerminal::new();
+    let res = t
+        .sale(idr(25000), Some("BILL-777"))
+        .await
+        .expect("sale succeeds");
+    assert!(res.success);
+    assert_eq!(res.transaction_id.as_deref(), Some("LOOPBACK-BILL-777"));
 }
 
 /// LoopbackCodec frame encoding and decoding roundtrip.

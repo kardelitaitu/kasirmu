@@ -175,6 +175,68 @@
   min-height: 25rem;
 }
 
+/* Header row. The name existed in the markup with an inline style block and no
+   rule behind it, so screenExtraction reported it used-but-undefined. The inline
+   values move here as tokens; 12px is --space-3 and the gap was already a token. */
+.tables-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+/* Back button. This element carried `restaurant-settings-back-btn`, which is
+   defined ONLY in restaurant/screens/RestaurantSettingsScreens.css — a sheet this
+   screen does not import — so the control rendered with no styling at all:
+   a bare browser button beside a styled heading. It now owns a tables-native
+   class. Same geometry as the restaurant control it was reaching for (the
+   --touch-target-min square), which is the shared tablet contract anyway. */
+.tables-back-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--touch-target-min);
+  height: var(--touch-target-min);
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-fg-secondary);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background var(--duration-150), color var(--duration-150);
+}
+
+.tables-back-btn:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-fg);
+}
+
+.tables-back-btn:focus-visible {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 2px;
+}
+
+/* The active-tab summary in the detail panel. Same story as .tables-header: an
+   inline style block on a class with no rule. 10px/12px/8px/12px are all on the
+   spacing scale (--space-2_5 does not exist, so 10px stays a literal — it is a
+   sub-token value the theme checker exempts at <=10px). */
+.tables-active-bill-info {
+  /* No fallback tail: --color-bg-subtle is declared in every theme block, so the
+     literal could never render. */
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border);
+  padding: 10px var(--space-3);
+  border-radius: var(--radius-md);
+  margin: var(--space-3) 0;
+}
+
+/* A table that currently has an open bill. Belongs to the --status family
+   defined below, and was genuinely missing from it. */
+.tables-table--has-bill {
+  box-shadow: inset 0 0 0 3px var(--color-accent);
+}
+
 /* Base table style */
 .tables-table {
   position: absolute;

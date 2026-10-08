@@ -161,6 +161,9 @@ pub fn run() {
                 30,
             );
 
+            // ── Crash telemetry panic hook (Phase 2.2) ────────────────────
+            kasirmu_bridge::diagnostics::install_panic_hook(log_dir.clone());
+
             // ── Pending restore request (C8, slice S4a) ───────────────────
             // Consumed BEFORE `AppState::new` below, which opens the database
             // and runs migrations. This is the only moment the swap is safe:
@@ -866,6 +869,88 @@ pub fn run() {
                 });
             }
 
+            // ── Audit log hash chain integrity verification daemon (P1) ──
+            // Periodically walks every open DB's audit log hash chain and logs
+            // a warning if tampering is detected. The `verify_audit_chain()`
+            // method checks continuity (each entry's previous_hash matches the
+            // prior entry's hash) and integrity (each entry's hash matches its
+            // recomputed canonical SHA-256). A broken chain is critical — it
+            // means the audit log has been tampered with.
+            {
+                let chain_db = app.state::<AppState>().db.clone();
+                let chain_db_manager = app.state::<AppState>().db_manager.clone();
+                platform_startup::spawn_daemon("audit chain verification", async move {
+                    let mut interval =
+                        tokio::time::interval(std::time::Duration::from_secs(3600));
+                    interval.tick().await;
+                    loop {
+                        interval.tick().await;
+                        // Verify the global DB first.
+                        {
+                            let conn = chain_db.lock().await;
+                            let store = kasirmu_core::db::Store::new(&conn);
+                            match store.verify_audit_chain() {
+                                Ok(result) if result.is_valid => {
+                                    tracing::debug!(
+                                        checked = result.total_checked,
+                                        "audit chain verification (global): hash chain is valid"
+                                    );
+                                }
+                                Ok(result) => {
+                                    tracing::error!(
+                                        checked = result.total_checked,
+                                        broken_at_id = ?result.broken_at_id,
+                                        "CRITICAL: audit log (global) hash chain integrity check FAILED — audit tampering detected"
+                                    );
+                                }
+                                Err(e) => {
+                                    tracing::warn!(
+                                        error = %e,
+                                        "audit chain verification (global) query failed"
+                                    );
+                                }
+                            }
+                        }
+                        // Then verify every open per-store DB.
+                        for store_id in chain_db_manager.open_store_ids() {
+                            let Ok(conn) = chain_db_manager.open_store(&store_id) else {
+                                tracing::warn!(store_id, "audit chain verification: store db unavailable");
+                                continue;
+                            };
+                            let Ok(db) = conn.lock() else {
+                                tracing::warn!(store_id, "audit chain verification: store db lock poisoned");
+                                continue;
+                            };
+                            let store = kasirmu_core::db::Store::new(&db);
+                            match store.verify_audit_chain() {
+                                Ok(result) if result.is_valid => {
+                                    tracing::debug!(
+                                        store_id,
+                                        checked = result.total_checked,
+                                        "audit chain verification: hash chain is valid"
+                                    );
+                                }
+                                Ok(result) => {
+                                    tracing::error!(
+                                        store_id,
+                                        checked = result.total_checked,
+                                        broken_at_id = ?result.broken_at_id,
+                                        "CRITICAL: audit log hash chain integrity check FAILED — audit tampering detected"
+                                    );
+                                }
+                                Err(e) => {
+                                    tracing::warn!(
+                                        store_id,
+                                        error = %e,
+                                        "audit chain verification query failed"
+                                    );
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+
             // ── LAN event forwarder ────────────────────────────────────
             // Read LAN server config from the settings table (C-4).
             // Default: loopback-only, no PSK. External bind requires
@@ -929,7 +1014,7 @@ pub fn run() {
             // transition: it runs synchronously inside the per-peer
             // accept task, so it only ever takes the cheap `std` read
             // lock and never touches the async DB mutex.
-            let (kds_discovery_json, kds_queue_provider) = {
+            let (kds_discovery_json, kds_queue_provider, table_provider, table_lease_provider) = {
                 let state = app.state::<AppState>();
                 let restaurant_pos_id = state
                     .terminal_id
@@ -943,6 +1028,8 @@ pub fn run() {
                     version: env!("CARGO_PKG_VERSION").to_string(),
                     transports: vec!["noise-psk-v1".into(), "legacy-psk-v1".into()],
                     active_queue: None,
+                    table_states: None,
+                    active_leases: None,
                 };
                 let json = serde_json::to_string(&discover).unwrap_or_else(|e| {
                     tracing::warn!(
@@ -958,12 +1045,203 @@ pub fn run() {
                         .map(|snapshot| snapshot.clone())
                         .unwrap_or_default()
                 });
-                (json, provider)
+                let table_db_manager = state.db_manager.clone();
+                let table_provider: crate::lan_server::TableStateProvider = std::sync::Arc::new(move || {
+                    let mut all_tables = Vec::new();
+                    for store_id in table_db_manager.open_store_ids() {
+                        if let Ok(conn) = table_db_manager.open_store(&store_id)
+                            && let Ok(db) = conn.lock() {
+                                let store = kasirmu_core::db::Store::new(&db);
+                                if let Ok(tables) = store.list_tables(None) {
+                                    all_tables.extend(tables);
+                                }
+                            }
+                    }
+                    all_tables
+                });
+                let lease_tracker = state.table_lease_tracker.clone();
+                let table_lease_provider: crate::lan_server::TableLeaseProvider = std::sync::Arc::new(move || {
+                    let now_ms = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_millis() as u64;
+                    lease_tracker
+                        .read()
+                        .map(|t| t.active_leases(now_ms))
+                        .unwrap_or_default()
+                });
+                (json, provider, table_provider, table_lease_provider)
             };
             let forwarder = crate::lan_server::LanEventForwarder::new(lan_bind_addr, lan_psk)
                 .with_discovery(kds_discovery_json)
-                .with_kds_queue(kds_queue_provider);
+                .with_kds_queue(kds_queue_provider)
+                .with_table_provider(table_provider)
+                .with_table_leases(table_lease_provider);
             let handle = forwarder.handle();
+
+            let uplink_db_manager = app.state::<AppState>().db_manager.clone();
+            let uplink_app_handle = app.handle().clone();
+            let uplink_kds_cache = app.state::<AppState>().kds_queue_cache.clone();
+            let uplink_table_leases = app.state::<AppState>().table_lease_tracker.clone();
+            let uplink_forwarder_handle = handle.clone();
+
+            let uplink_handler: crate::lan_server::UplinkHandler =
+                std::sync::Arc::new(move |raw_msg: String| {
+                    // Re-broadcast uplink event to all other connected peers
+                    uplink_forwarder_handle.broadcast(raw_msg.clone());
+
+                    let trimmed = raw_msg.trim();
+                    if trimmed.starts_with(crate::lan_server::KDS_EVENT_TAG_PREFIX) {
+                        if let Ok(event) = serde_json::from_str::<crate::lan_server::KdsSyncEvent>(trimmed) {
+                            match &event {
+                                crate::lan_server::KdsSyncEvent::LineItemBumped(bump) => {
+                                    for store_id in uplink_db_manager.open_store_ids() {
+                                        if let Ok(conn) = uplink_db_manager.open_store(&store_id)
+                                            && let Ok(db) = conn.lock() {
+                                                let store = kasirmu_core::db::Store::new(&db);
+                                                let _ = store.update_kds_line_item_status(
+                                                    &bump.line_item_id,
+                                                    &bump.to_status,
+                                                );
+                                            }
+                                    }
+                                }
+                                crate::lan_server::KdsSyncEvent::OrderReady(ready) => {
+                                    for store_id in uplink_db_manager.open_store_ids() {
+                                        if let Ok(conn) = uplink_db_manager.open_store(&store_id)
+                                            && let Ok(db) = conn.lock() {
+                                                let store = kasirmu_core::db::Store::new(&db);
+                                                let _ = store.update_kds_status(
+                                                    &ready.kds_order_id,
+                                                    "ready",
+                                                );
+                                            }
+                                    }
+                                }
+                                crate::lan_server::KdsSyncEvent::Recalled(recalled) => {
+                                    for store_id in uplink_db_manager.open_store_ids() {
+                                        if let Ok(conn) = uplink_db_manager.open_store(&store_id)
+                                            && let Ok(db) = conn.lock() {
+                                                let store = kasirmu_core::db::Store::new(&db);
+                                                let _ = store.update_kds_status(
+                                                    &recalled.kds_order_id,
+                                                    &recalled.recall_to,
+                                                );
+                                            }
+                                    }
+                                }
+                                _ => {}
+                            }
+
+                            // Refresh KDS queue snapshot cache from open store databases
+                            let mut tickets = Vec::new();
+                            for store_id in uplink_db_manager.open_store_ids() {
+                                if let Ok(conn) = uplink_db_manager.open_store(&store_id)
+                                    && let Ok(db) = conn.lock() {
+                                        let store = kasirmu_core::db::Store::new(&db);
+                                        if let Ok(orders) = store.get_kds_queue(None) {
+                                            for order in orders {
+                                                let line_items = store
+                                                    .get_kds_order_lines(&order.id)
+                                                    .unwrap_or_default();
+                                                let stations: Vec<String> = if let Ok(mut stmt) = db
+                                                    .prepare(
+                                                        "SELECT target_instance_id FROM kds_order_targets WHERE kds_order_id = ?1",
+                                                    ) {
+                                                    stmt.query_map(
+                                                        rusqlite::params![&order.id],
+                                                        |r| r.get(0),
+                                                    )
+                                                    .ok()
+                                                    .map(|rows| {
+                                                        rows.filter_map(Result::ok).collect()
+                                                    })
+                                                    .unwrap_or_default()
+                                                } else {
+                                                    Vec::new()
+                                                };
+                                                tickets.push(crate::lan_server::KdsQueueTicket {
+                                                    order,
+                                                    line_items,
+                                                    stations,
+                                                });
+                                            }
+                                        }
+                                    }
+                            }
+                            if let Ok(mut guard) = uplink_kds_cache.write() {
+                                *guard = crate::lan_server::KdsQueueSnapshot {
+                                    generated_at: chrono::Utc::now().to_rfc3339(),
+                                    tickets,
+                                };
+                            }
+
+                            let _ = uplink_app_handle.emit("kds:orders-changed", serde_json::Value::Null);
+                        }
+                    } else if trimmed.starts_with(crate::lan_server::CRDT_EVENT_TAG_PREFIX) {
+                        if let Ok(event) = serde_json::from_str::<crate::lan_server::CrdtSyncEvent>(trimmed) {
+                            match event {
+                                crate::lan_server::CrdtSyncEvent::DeltaBroadcast(delta) => {
+                                    for store_id in uplink_db_manager.open_store_ids() {
+                                        if let Ok(conn) = uplink_db_manager.open_store(&store_id)
+                                            && let Ok(mut db) = conn.lock()
+                                                && let Ok(tx) = db.transaction() {
+                                                    for item in &delta.batch {
+                                                        let _ = tx.execute(
+                                                            "INSERT OR IGNORE INTO offline_queue
+                                                             (id, action, payload, status, retry_count, tenant_id, created_at, priority, origin_terminal_id)
+                                                             VALUES (?1, ?2, ?3, 'pending', 0, ?4, ?5, ?6, ?7)",
+                                                            rusqlite::params![
+                                                                item.id,
+                                                                item.action,
+                                                                item.payload,
+                                                                item.tenant_id,
+                                                                item.created_at,
+                                                                item.priority.as_str(),
+                                                                item.origin_terminal_id,
+                                                            ],
+                                                        );
+                                                    }
+                                                    let _ = tx.commit();
+                                                }
+                                    }
+                                    let _ = uplink_app_handle.emit("sync:crdt-delta-received", serde_json::to_value(&delta).unwrap_or_default());
+                                }
+                            }
+                        }
+                    } else if trimmed.starts_with(crate::lan_server::TABLE_EVENT_TAG_PREFIX) {
+                        if let Ok(event) = serde_json::from_str::<crate::lan_server::TableSyncEvent>(trimmed) {
+                            let now_ms = std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .unwrap_or_default()
+                                .as_millis() as u64;
+                            match &event {
+                                crate::lan_server::TableSyncEvent::LockAcquired(lock) => {
+                                    if let Ok(mut trk) = uplink_table_leases.write() {
+                                        let _ = trk.try_acquire(lock.clone(), now_ms);
+                                    }
+                                    let _ = uplink_app_handle.emit("tables:lock-acquired", lock);
+                                }
+                                crate::lan_server::TableSyncEvent::LockReleased(rel) => {
+                                    if let Ok(mut trk) = uplink_table_leases.write() {
+                                        let _ = trk.release(rel);
+                                    }
+                                    let _ = uplink_app_handle.emit("tables:lock-released", rel);
+                                }
+                                crate::lan_server::TableSyncEvent::ClaimRequested(claim) => {
+                                    let _ = uplink_app_handle.emit("tables:claim-requested", claim);
+                                }
+                                crate::lan_server::TableSyncEvent::StatusChanged(_) => {
+                                    let _ = uplink_app_handle.emit("tables:status-changed", serde_json::Value::Null);
+                                }
+                            }
+                        } else {
+                            let _ = uplink_app_handle.emit("tables:status-changed", serde_json::Value::Null);
+                        }
+                    }
+                });
+
+            let forwarder = forwarder.with_uplink_handler(uplink_handler);
             platform_startup::spawn_daemon("LAN event forwarder", forwarder.run());
 
             // Subscribe event bus handlers for LAN forwarding.
@@ -991,8 +1269,12 @@ pub fn run() {
                         // published by commands/kds.rs to LAN KDS peers,
                         // station-filtered per peer subscription.
                         bus.subscribe("kds.sync", Box::new(handle.kds_sync_handler()));
+                        // table-sync: forwards table status changes across LAN peers.
+                        bus.subscribe("table.sync", Box::new(handle.table_sync_handler()));
+                        // crdt-sync: forwards offline mutation deltas across LAN peers.
+                        bus.subscribe("crdt.sync", Box::new(handle.crdt_sync_handler()));
                         tracing::info!(
-                            "LAN event forwarder handlers registered for sale.completed, order.course_fired and kds.sync"
+                            "LAN event forwarder handlers registered for sale.completed, order.course_fired, kds.sync, table.sync, and crdt.sync"
                         );
                         registered = true;
                         break;
@@ -1143,6 +1425,8 @@ pub fn run() {
             commands::edc::edc_sale,
             commands::edc::edc_refund,
             commands::edc::edc_void,
+            commands::edc::edc_settle,
+            commands::edc::edc_inquiry,
             commands::edc::list_edc_terminals_scoped,
             commands::edc::create_edc_terminal_scoped,
             commands::edc::update_edc_terminal_scoped,
@@ -1222,6 +1506,9 @@ pub fn run() {
             commands::health::get_device_id_scoped,
             commands::health::get_local_ip,
             commands::health::get_local_ip_scoped,
+            commands::health::get_storage_health,
+            commands::health::export_diagnostics,
+            commands::health::record_crash_report,
             commands::pos::start_sale_scoped,
             commands::pos::add_line_scoped,
             commands::pos::set_line_course_scoped,
@@ -1290,11 +1577,14 @@ pub fn run() {
             commands::history::export_eod_report_scoped,
             commands::void::void_sale_scoped,
             commands::hardware::print_sales_receipt_scoped,
+            commands::hardware::print_edc_settlement_slip_scoped,
             commands::fiscal::get_document_number_sequence_scoped,
             commands::fiscal::upsert_document_number_sequence_scoped,
             commands::fiscal::list_document_number_sequences_scoped,
             commands::fiscal::list_document_number_sequences_for_entity_scoped,
             commands::fiscal::list_fiscal_schemes_scoped,
+            commands::fiscal::issue_tax_invoice_scoped,
+            commands::fiscal::get_sale_statutory_number_scoped,
             commands::settings::get_receipt_settings_scoped,
             commands::settings::set_receipt_settings_scoped,
             commands::settings::get_store_settings_scoped,
@@ -1545,6 +1835,8 @@ pub fn run() {
             commands::regional::get_regional_config_scoped,
             // Regional configuration write path (slice 3, saas-2 design).
             commands::regional::set_regional_config_scoped,
+            // Active market profile (slice 7, cold-boot locked profile).
+            commands::regional::get_active_market_profile_scoped,
             // Local payment methods (slice 6, saas-2 design).
             commands::local_payment::get_local_payment_methods_scoped,
             commands::local_payment::set_local_payment_methods_scoped,

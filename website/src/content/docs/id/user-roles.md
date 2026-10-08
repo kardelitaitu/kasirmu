@@ -45,9 +45,12 @@ yang ditawarkan di pemilih staf ada lima, dan yang keenam dijelaskan di bawah.
 Legenda: **✓** akses penuh · **baca** hanya lihat · **sesuai penugasan**
 hanya ruang kerja yang ditugaskan ke akun · **—** tidak ada akses.
 
-## Model yang direncanakan
+## Model yang berlaku
 
-Matriks ini adalah target untuk basis kode:
+Matriks ini adalah model yang **sudah diterapkan**, bukan target — empat celah yang pernah
+memisahkan rencana dari kode telah ditutup (lihat [Status implementasi](#status-implementasi)).
+Matriks ini disalin dari `platform/core/src/rbac_presets.rs`, tempat `ROLE_PRESETS` menjadi
+daftar yang berwenang:
 
 - **Staf adalah peran operasional kasir.** Ia mempertahankan tindakan di
   register — memproses penjualan, pembayaran, diskon di keranjang,

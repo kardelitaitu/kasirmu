@@ -15,6 +15,7 @@ import { SettingsPopup, requiredLocalized, EmptyState } from '@/components';
 import { NoSuppliersIcon, NotFoundIcon } from '@/components/EmptyStateIllustrations';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { l10nErrorMessage } from '@/utils/app-error';
+import { asArray } from '@/utils/ipc-payload';
 import './SuppliersScreen.css';
 
 interface FormData {
@@ -58,8 +59,9 @@ export default function SuppliersScreen() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
+      // asArray: the render filters `suppliers` (see utils/ipc-payload).
       const data = await listSuppliers(sessionToken);
-      setSuppliers(data);
+      setSuppliers(asArray<typeof data[number]>(data));
     } catch {
       setSuppliers([]);
     } finally {

@@ -1,6 +1,8 @@
 import Tooltip from '@/app/Tooltip';
 import ThemeToggle from '@/app/ThemeToggle';
 import { useLocalization } from '@fluent/react';
+import { useVersionStatus } from '@/hooks/useVersionStatus';
+import { formatDisplayVersion } from '@/build-id';
 import './TooltipPreview.css';
 
 /**
@@ -17,6 +19,9 @@ import './TooltipPreview.css';
  */
 export default function TooltipPreview() {
   const { l10n } = useLocalization();
+  // Show the real version: this surface renders a mock status pill, and a
+  // hardcoded one advertised a stale version on the design page.
+  const { currentVersion, buildId } = useVersionStatus();
   return (
     <div className="tp-page">
       <header className="tp-header">
@@ -348,6 +353,20 @@ export default function TooltipPreview() {
                 Beta
               </button>
             </Tooltip>
+
+            {/* Inline text trigger. The section's own description above names
+                "inline text, spans, and custom components", and the sheet has
+                carried a complete .tp-trigger--inline rule (:164, with its :hover
+                at :176) since the page was written — but no demo ever applied it,
+                so the rule read as dead CSS. This is the demo the copy promises:
+                a <button>, because a tooltip trigger must be focusable, styled by
+                the sheet rather than by an inline style object so the rule is
+                exercised rather than duplicated. */}
+            <Tooltip content="Inline text trigger — dotted underline" position="bottom">
+              <button type="button" className="tp-trigger tp-trigger--inline">
+                inline trigger
+              </button>
+            </Tooltip>
           </div>
 
           <code className="tp-code">{`{/* Icon button */}
@@ -360,6 +379,11 @@ export default function TooltipPreview() {
 {/* Badge trigger */}
 <Tooltip content="Beta feature">
   <span tabIndex={0} role="button">Beta</span>
+</Tooltip>
+
+{/* Inline text trigger */}
+<Tooltip content="Inline text trigger">
+  <button className="tp-trigger tp-trigger--inline">inline trigger</button>
 </Tooltip>`}</code>
         </section>
 
@@ -437,7 +461,7 @@ export default function TooltipPreview() {
                 <Tooltip content="Backend connected" position="top">
                   <div style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
                     <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--color-success)', boxShadow: '0 0 4px var(--color-success)', display: 'inline-block' }} />
-                    <span style={{ fontSize: '0.625rem', fontWeight: 600, color: 'var(--color-fg-secondary)' }}>kasir.mu v0.0.40</span>
+                    <span style={{ fontSize: '0.625rem', fontWeight: 600, color: 'var(--color-fg-secondary)' }}>{`kasir.mu ${formatDisplayVersion(currentVersion, null, buildId)}`}</span>
                   </div>
                 </Tooltip>
 

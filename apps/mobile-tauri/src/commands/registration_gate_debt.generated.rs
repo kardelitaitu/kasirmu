@@ -49,8 +49,19 @@ pub const DEBT_LEDGER: &[(&str, &str)] = &[
     ),
     ("health::ping", "no_session_resolution"),
     ("health::version", "no_session_resolution"),
+    (
+        "health::version_scoped",
+        "resolves_session_names_no_permission",
+    ),
     ("health::get_device_id", "no_session_resolution"),
     ("health::get_local_ip", "no_session_resolution"),
+    ("health::get_storage_health", "no_session_resolution"),
+    (
+        "health::export_diagnostics",
+        "resolves_session_names_no_permission",
+    ),
+    ("health::record_crash_report", "no_session_resolution"),
+    ("health::notify_memory_pressure", "no_session_resolution"),
     ("health::get_build_fingerprint", "no_session_resolution"),
     (
         "pos::add_line_scoped",
@@ -184,11 +195,11 @@ pub const DEBT_LEDGER: &[(&str, &str)] = &[
         "resolves_session_names_no_permission",
     ),
     (
-        "offline::list_remote_failures_scoped",
+        "offline::pending_offline_count_scoped",
         "resolves_session_names_no_permission",
     ),
     (
-        "offline::pending_offline_count_scoped",
+        "offline::offline_queue_status_summary_scoped",
         "resolves_session_names_no_permission",
     ),
     (
@@ -279,7 +290,7 @@ pub const DEBT_LEDGER: &[(&str, &str)] = &[
 /// Re-read 23-09-26: 342, with the floor raised to it in the same pass that absorbed the
 /// three `desktop_link` email sign-in commands — 92 debt rows, up from 89. The floor, this
 /// total and `DEBT_CEILING` all move together; the generator writes only this number.
-pub const REGISTERED_TOTAL: usize = 349;
+pub const REGISTERED_TOTAL: usize = 421;
 
 /// Debt entries today: the ceiling the ledger may only shrink under.
 ///
@@ -363,8 +374,15 @@ pub const REGISTERED_TOTAL: usize = 349;
 /// checked against or is the step immediately before it. A session permission here would
 /// guard a door no session can reach. This is the TABLET twin of the desktop rise in
 /// `7a5292530` (75 -> 78); the two shells carry separate pins and separate numbers. The
-/// reason is recorded in docs/records/JOURNAL.md, which is what this pin asks of a rise.
-pub const DEBT_CEILING: usize = 92;
+/// 48 -> 50 with `health::get_storage_health` and `health::record_crash_report` (50 + 44 = 94).
+/// 50 -> 51 with `health::notify_memory_pressure` (51 + 44 = 95).
+/// 95 -> 97 with `health::version_scoped` and
+/// `offline::offline_queue_status_summary_scoped` (2026-10-08): both are
+/// tablet twins of deliberately ungated bridge commands, both resolve a
+/// session and name no permission, so both join class 2 and the partition
+/// holds: `51 + 46 = 97`. Reason recorded in
+/// `docs/records/journal/JOURNAL-part-8.md`.
+pub const DEBT_CEILING: usize = 97;
 
 /// Lowered from 89 by T11: `settings::set_hardware_settings` shed its row by deletion,
 /// not by gating. Its only argument beyond the DTO was a renderer-supplied `user_id` --
@@ -401,7 +419,9 @@ pub const DEBT_CEILING: usize = 92;
 /// in this class, so it falls by the same three and the sum keeps holding: `45 + 44 = 89`.
 /// 45 -> 48 with the three email sign-in commands above. This count is a pin the generator
 /// does not recompute, so it moves by hand in the same pass as the ceiling: `48 + 44 = 92`.
-pub const NO_SESSION_RESOLUTION: usize = 48;
+/// 48 -> 50 with `health::get_storage_health` and `health::record_crash_report` (50 + 44 = 94).
+/// 50 -> 51 with `health::notify_memory_pressure` (51 + 44 = 95).
+pub const NO_SESSION_RESOLUTION: usize = 51;
 
 /// Authenticate-then-assume: a session is resolved and no permission asked.
 /// 45 + 44 = 89 = `DEBT_CEILING`, as the class counts must sum to the ledger.
@@ -412,7 +432,11 @@ pub const NO_SESSION_RESOLUTION: usize = 48;
 /// 48 + 44 = 92 after C17 retired the three unscoped branding setters (class 1 only).
 /// 45 + 44 = 89 after C17 slice 2 retired the three unscoped settings reads (class 1 only).
 /// 48 + 44 = 92 after the three `desktop_link` email sign-in commands joined class 1 (only).
-pub const RESOLVES_SESSION_NAMES_NO_PERMISSION: usize = 44;
+/// 44 -> 46 with `health::version_scoped` and
+/// `offline::offline_queue_status_summary_scoped` (2026-10-08), the same pass
+/// that raised `DEBT_CEILING` to 97: `51 + 46 = 97`. Both resolve a session
+/// and name no permission, mirroring their ungated bridge twins.
+pub const RESOLVES_SESSION_NAMES_NO_PERMISSION: usize = 46;
 
 /// Registered names whose wrapper body the generator could not find (must be 0).
 pub const UNSOURCED: usize = 0;

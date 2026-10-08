@@ -69,6 +69,7 @@ vi.mock('@/api/license', () => ({
 
 vi.mock('@/api/system', () => ({
   getVersionScoped: vi.fn(() => Promise.resolve({ version: '0.0.19' })),
+  onAppReconnect: vi.fn(() => Promise.resolve(() => {})),
 }));
 
 vi.mock('@/api/currency', () => ({
@@ -83,6 +84,12 @@ vi.mock('@/api/offline', () => ({
   pendingSyncCount: vi.fn(() => Promise.resolve(0)),
   testSyncConnection: vi.fn(),
   requestSyncToken: vi.fn(),
+  // SettingsPage.tsx:153 reads the dead-letter count for the sync nav badge
+  // (peer commit ce1098170). Without this export the call throws on mount and
+  // the component never renders, so the axe check below would have failed for
+  // a broken mock rather than a real violation. Zero keeps the badge hidden,
+  // which is the state this a11y baseline was taken in.
+  pgSyncStatusScoped: vi.fn(() => Promise.resolve({ deadLetterCount: 0 })),
 }));
 
 

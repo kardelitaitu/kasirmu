@@ -325,3 +325,29 @@ fn fingerprint_is_stable_across_permission_order() {
          bindings, so it must not read as a changed plugin set"
     );
 }
+
+#[test]
+fn oversized_script_is_rejected() {
+    let dir = tempfile::tempdir().unwrap();
+    let plugin_dir = dir.path().join("giant-plugin");
+    std::fs::create_dir(&plugin_dir).unwrap();
+
+    let manifest = r#"
+[plugin]
+name = "giant-plugin"
+version = "1.0.0"
+
+[capabilities]
+scripts = ["huge.lua"]
+"#;
+    std::fs::write(plugin_dir.join("plugin.toml"), manifest).unwrap();
+
+    let huge_content = vec![b'-'; (MAX_SCRIPT_FILE_SIZE + 1) as usize];
+    std::fs::write(plugin_dir.join("huge.lua"), huge_content).unwrap();
+
+    let registry = load_plugins(dir.path()).unwrap();
+    assert!(
+        registry.is_empty(),
+        "oversized script must cause plugin to be rejected"
+    );
+}

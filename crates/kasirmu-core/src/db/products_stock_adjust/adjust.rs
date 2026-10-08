@@ -382,6 +382,26 @@ impl Store<'_> {
             );
         }
 
+        // 6. Audit log entry (P1.1).
+        let audit = crate::AuditEntry::new(
+            source_user_id.map_or("system", platform_core::staff::UserId::as_str),
+            "stock.adjust",
+            Some("product"),
+            Some(sku),
+            Some(
+                serde_json::json!({
+                    "sku": sku,
+                    "delta": delta,
+                    "reason": reason,
+                    "location_id": location_id.as_str(),
+                    "new_qty": new_qty,
+                })
+                .to_string(),
+            ),
+            "success",
+        );
+        Self::log_audit_in_tx(tx, &audit)?;
+
         Ok(new_qty)
     }
 

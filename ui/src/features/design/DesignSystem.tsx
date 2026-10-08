@@ -7,6 +7,15 @@ import { EmptyState } from '@/components/EmptyState';
 import { ErrorState } from '@/components/ErrorState';
 import { ToastProvider, useToast } from '@/components/Toast';
 import { Button } from '@/components/Button';
+// The showcase's own sheet. Without this line the page renders UNSTYLED: it writes
+// 28 ds-* classes (ds-page, ds-section, ds-radius-grid, ds-shadow-card, …) and every
+// one of them is defined in features/design/DesignSystem.css and nowhere else, so the
+// sheet was loadable by no route and referenced by no file — only test baselines named
+// it. Both sibling pages in this feature import their own sheet (TooltipPreview.tsx:6,
+// DevToolbar.tsx:16); this one did not. Found by the screenExtraction coverage check
+// while closing BASELINE_UNCITED, where the sheet's absence of an importer was the
+// signal that it could not honestly be cited from any entry.
+import './DesignSystem.css';
 
 /**
  * Design System showcase — visual reference of every token category.

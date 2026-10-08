@@ -26,7 +26,9 @@ ABSENCE, and they stay correct no matter what gets wired later -- a checker can 
 gain a runner, never lose one. Flagging those is how a gate cries wolf on the repo's own
 historical records, which is the mistake that sank two earlier attempts this session.
 
-Also exempt: files under docs/archived, .github/workflows/attic, and dated baselines.
+Also exempt: files under docs/records/ and docs/archived/, .github/workflows/attic, and dated
+baselines. (docs/records/ was added 2026-10-02 when docs/archived/ was retired and became a
+one-file tombstone; this docstring had not been updated and had stopped describing SKIP_DIRS.)
 Those are evidence. A record of what was true on a given day is not drift, and rewriting
 one to match today destroys the only evidence that it ever differed.
 
@@ -65,8 +67,19 @@ HISTORICAL = re.compile(
     r"histor(?:y|ical)|at the time|once|dead|did not run)\b", re.I)
 # "var" is program-generated state (the database, its WAL sidecars, backups);
 # a backup archive in there is a filename, not a claim about CI.
-SKIP_DIRS = ("archived", "attic", "node_modules", "target", "dist", ".git",
-             "__tests__", "var")
+# "records" was added 2026-10-02, when "archived" became a one-file tombstone.
+# The pruning below matches a DIRECTORY NAME, so the 28 documents that used to sit
+# under docs/archived/ stopped being skipped the moment they moved to
+# docs/records/ -- and this checker went RED on one of them, because a dated
+# audit's claim ("verify-docker-persistence.sh is run in CI") stopped being
+# treated as evidence. That is the intent stated in this file's own docstring:
+# a record of what was true on a given day is not drift.
+#
+# This was the only break in the whole docs/ move that turned a gate RED rather
+# than failing silently. The other three -- build-docs, release.sh, and the CI
+# route bucket -- all stayed green while being wrong.
+SKIP_DIRS = ("archived", "records", "attic", "node_modules", "target", "dist",
+             ".git", "__tests__", "var")
 SCAN_SUFFIX = (".md", ".yml", ".yaml", ".sh", ".rs", ".toml", ".json", ".ps1",
               ".txt", ".py", ".mjs", ".ts", ".tsx")
 # .py/.mjs were MISSING at first, so a claim in a Python docstring or a Node comment was

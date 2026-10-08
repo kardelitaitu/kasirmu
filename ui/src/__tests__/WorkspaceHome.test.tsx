@@ -4,13 +4,14 @@
 // state, main workspace card rendering, keyboard navigation, role-
 // based access control, and per-workspace accent colors.
 
-import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { screen, waitFor, fireEvent, within, configure } from '@testing-library/react';
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
+import { screen, waitFor, fireEvent, within, configure, cleanup } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderWithFluent } from '@/__tests__/test-utils/render';
 import WorkspaceHome from '@/features/workspaces/WorkspaceHome';
 import { useSubscription, useAdminGate } from '@/contexts/SubscriptionContext';
 import { makeSubscriptionCaps } from '@/__tests__/test-utils/mocks/subscriptionCaps';
+import { setShellKind } from '@/utils/shellKind';
 
 // WorkspaceHome renders a heavy multi-section screen driven by async
 // context mocks; under parallel CI load a full render can exceed the
@@ -177,8 +178,10 @@ function mockEmptyWorkspaces() {
 
 describe('WorkspaceHome', () => {
   beforeEach(() => {
+    setShellKind('desktop');
     mockDefaultUser();
   });
+  afterEach(() => setShellKind('desktop'));
 
   // ── Loading state ──────────────────────────────────────────
 
@@ -305,6 +308,16 @@ describe('WorkspaceHome', () => {
       });
     });
 
+    it('does not advertise unregistered instances or the desktop topology editor on Android', async () => {
+      setShellKind('tablet');
+      mockEmptyWorkspaces();
+      await renderWithFluent(<WorkspaceHome />);
+      expect(screen.queryByTestId('workspace-card-add')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('workspace-card-quick-retail')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('workspace-card-quick-restaurant')).not.toBeInTheDocument();
+      expect(screen.getByText(/Contact an administrator/)).toBeInTheDocument();
+    });
+
     it('shows Add Workspace card for manager when no workspaces exist', async () => {
       mockManagerUser();
       mockEmptyWorkspaces();
@@ -411,6 +424,44 @@ describe('WorkspaceHome', () => {
       // 4 workspace cards + optional tools/add cards
       expect(hints.length).toBeGreaterThanOrEqual(4);
       expect(hints[0]?.textContent).toMatch(/1/);
+    });
+
+    it('exposes a separate accessible pin button that does not launch the workspace', async () => {
+      mockWorkspaceValue.mockReturnValue({
+        availableWorkspaces: sampleWorkspaces,
+        loading: false,
+        error: null,
+        retry: vi.fn(),
+        setActiveWorkspace: mockSetActiveWorkspace,
+        activeWorkspace: null,
+        workspaceScreens: [],
+        lastWorkspace: null,
+      });
+      await renderWithFluent(<WorkspaceHome />);
+      const pin = screen.getByRole('button', { name: /Pin Restaurant POS to top/i });
+      const card = screen.getByRole('button', { name: /Open Restaurant POS/i });
+      expect(card.contains(pin)).toBe(false);
+      mockSetActiveWorkspace.mockClear();
+      await userEvent.click(pin);
+      expect(mockSetActiveWorkspace).not.toHaveBeenCalled();
+      expect(screen.getByRole('button', { name: /Unpin Restaurant POS/i })).toHaveAttribute('aria-pressed', 'true');
+    });
+
+    it('hides the unsupported topology editor tool on Android', async () => {
+      setShellKind('tablet');
+      mockWorkspaceValue.mockReturnValue({
+        availableWorkspaces: sampleWorkspaces,
+        loading: false,
+        error: null,
+        retry: vi.fn(),
+        setActiveWorkspace: mockSetActiveWorkspace,
+        activeWorkspace: null,
+        workspaceScreens: [],
+        lastWorkspace: null,
+      });
+      await renderWithFluent(<WorkspaceHome />);
+      expect(screen.queryByText('Topology Editor')).not.toBeInTheDocument();
+      expect(screen.getByText('Settings')).toBeInTheDocument();
     });
 
     it('calls setActiveWorkspace when a card is clicked', async () => {
@@ -843,6 +894,36 @@ describe('WorkspaceHome', () => {
       });
     }
 
+    // ── Non-blocking licence notice ──────────────────────
+    // appShellBootGate.test.tsx rule 4 requires a non-usable licence to be
+    // "surfaced by the non-blocking badge" rather than blocked. This screen
+    // renders that notice, and its condition must be the COMPLEMENT of the
+    // `validityOpen` set in `toolLock` — not a check for one state, because
+    // five states lock every card and only `revoked` is handled upstream.
+    it('shows the licence notice for every state that locks the tools', async () => {
+      for (const state of ['unavailable', 'expired', 'canceled', 'paused'] as const) {
+        mockSubscription('free', state);
+        await renderHomeWithTools();
+        expect(
+          screen.getByTestId('workspace-licence-notice'),
+          `state=${state} locks every tool and must explain why`,
+        ).toBeInTheDocument();
+        cleanup();
+      }
+    });
+
+    it('shows no licence notice while the subscription is usable', async () => {
+      for (const state of ['active', 'grace'] as const) {
+        mockSubscription('free', state);
+        await renderHomeWithTools();
+        expect(
+          screen.queryByTestId('workspace-licence-notice'),
+          `state=${state} leaves the tools open, so there is nothing to explain`,
+        ).not.toBeInTheDocument();
+        cleanup();
+      }
+    });
+
     it('renders the three IA group headers (Operations / Insights / Configuration)', async () => {
       mockSubscription('enterprise');
       await renderHomeWithTools();
@@ -851,11 +932,10 @@ describe('WorkspaceHome', () => {
       expect(screen.getByText('Configuration')).toBeInTheDocument();
     });
 
-    it('renders the new Memo and Topology Editor cards for an entitled owner', async () => {
+    it('renders the Memo card for an entitled owner', async () => {
       mockSubscription('enterprise');
       await renderHomeWithTools();
       expect(screen.getByText('Memos')).toBeInTheDocument();
-      expect(screen.getByText('Topology Editor')).toBeInTheDocument();
     });
 
     it('locks tier-gated tools below their minimum tier (visible, non-clickable)', async () => {
@@ -867,21 +947,20 @@ describe('WorkspaceHome', () => {
       expect(locked.length).toBeGreaterThanOrEqual(5);
       expect(locked.every((el) => el.getAttribute('aria-disabled') === 'true')).toBe(true);
       // Locked-card count on Plus for an owner: analytics, reports, audit,
-      // memo, promotions (pro/premium tiers). Cloud Sync is admin-gated on
-      // the ROLE axis (hidden for non-admins), so it adds nothing here.
+      // memo, promotions (pro/premium tiers).
       // Staff stays clickable (role-only, free tier).
       expect(screen.getByText('Staff Management')).toBeInTheDocument();
       expect(screen.getByText('Staff Management').closest('[data-testid="workspace-tool-card-locked"]')).toBeNull();
     });
 
-    it('shows Settings as a locked card for managers (lockBelowRole), hides owner-only Features', async () => {
+    it('shows Settings as clickable for managers, hides admin-only Analytics', async () => {
       mockSubscription('enterprise');
       await renderHomeWithTools('manager');
-      expect(screen.getByText('Admin access required')).toBeInTheDocument();
-      const locked = screen.getAllByTestId('workspace-tool-card-locked');
-      expect(locked.length).toBe(1);
-      // Owner-only Features card is hidden from managers entirely.
-      expect(screen.queryByText('Features')).not.toBeInTheDocument();
+      // Settings is now accessible to managers directly
+      expect(screen.getByText('Settings')).toBeInTheDocument();
+      expect(screen.getByText('Settings').closest('[data-testid="workspace-tool-card-locked"]')).toBeNull();
+      // Admin-only Analytics card is hidden from managers entirely.
+      expect(screen.queryByText('Analytics')).not.toBeInTheDocument();
     });
 
     it('grace keeps role-only tools open but locks Pro tools (§B admin gate)', async () => {
@@ -905,6 +984,69 @@ describe('WorkspaceHome', () => {
       const staffCard = screen.getByText('Staff Management').closest('[data-testid="workspace-tool-card-locked"]');
       expect(staffCard).not.toBeNull();
       expect(screen.getAllByText('Subscription inactive').length).toBeGreaterThanOrEqual(1);
+    });
+
+    // ── Plan badge on a lifecycle-locked card (2026-10-03) ──────────
+    //
+    // Measured on a provisioned tablet with no subscription row: the
+    // lifecycle gate shut all 17 cards and every one carried the identical
+    // "Subscription inactive" caption, so the plan a merchant must buy was
+    // invisible on the very screen whose job is to sell it. A locked card now
+    // carries the plan as generated badge artwork pinned bottom-right, and the
+    // reason as a pill — without unlocking anything.
+    //
+    // The assertions are on the badge's intrinsic width/height rather than its
+    // `src`, because how the SVG resolves is the bundler's business (a hashed
+    // asset path under the inline threshold becomes a data URI, and vice
+    // versa). The dimensions are the part that is ours.
+
+    it('states the reason as a pill and the plan as a badge', async () => {
+      mockSubscription('enterprise', 'grace');
+      await renderHomeWithTools();
+      const memoCard = screen
+        .getByText('Memos')
+        .closest('[data-testid="workspace-tool-card-locked"]');
+      if (!memoCard) throw new Error('Memos should render as a locked card in grace');
+      // One pill for the reason, one badge for the plan.
+      expect(memoCard.querySelectorAll('.workspace-tool-lock-badge').length).toBe(1);
+      expect(memoCard.textContent).toContain('Subscription inactive');
+      const badge = memoCard.querySelector('.workspace-tool-tier-badge img');
+      if (!badge) throw new Error('Memos should carry a plan badge in grace');
+      // Memos is Pro; the manifest gives that badge a 78x40 viewBox.
+      expect(badge.getAttribute('width')).toBe('78');
+      expect(badge.getAttribute('height')).toBe('40');
+      // Decorative artwork: the accessible statement is the sr-only text.
+      expect(badge.getAttribute('alt')).toBe('');
+      expect(memoCard.textContent).toContain('Requires Pro plan');
+      // The caption changed; the gate did not.
+      expect(memoCard.getAttribute('aria-disabled')).toBe('true');
+    });
+
+    it('adds no plan badge to a free-tier card the lifecycle gate locked', async () => {
+      mockSubscription('enterprise', 'expired');
+      await renderHomeWithTools();
+      const staffCard = screen
+        .getByText('Staff Management')
+        .closest('[data-testid="workspace-tool-card-locked"]');
+      if (!staffCard) throw new Error('Staff Management should render as a locked card');
+      // Reason only — there is no plan to name.
+      expect(staffCard.querySelectorAll('.workspace-tool-lock-badge').length).toBe(1);
+      expect(staffCard.querySelectorAll('.workspace-tool-tier-badge').length).toBe(0);
+      expect(staffCard.textContent).toContain('Subscription inactive');
+    });
+
+    it('lets the badge alone state the plan when the tier is the reason', async () => {
+      mockSubscription('plus');
+      await renderHomeWithTools();
+      const memoCard = screen
+        .getByText('Memos')
+        .closest('[data-testid="workspace-tool-card-locked"]');
+      if (!memoCard) throw new Error('Memos should render as a locked card on Plus');
+      // The tier IS the reason, so no pill repeats it in words — but the badge
+      // must still be there, or the card would explain nothing at all.
+      expect(memoCard.querySelectorAll('.workspace-tool-lock-badge').length).toBe(0);
+      expect(memoCard.querySelectorAll('.workspace-tool-tier-badge').length).toBe(1);
+      expect(memoCard.textContent).toContain('Requires Pro plan');
     });
   });
 

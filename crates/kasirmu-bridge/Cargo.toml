@@ -32,6 +32,7 @@ kasirmu-plugin = { workspace = true }
 kasirmu-reporting = { workspace = true }
 kasirmu-security = { workspace = true }
 platform-core = { workspace = true }
+platform-instance-guard = { workspace = true }
 platform-kernel = { workspace = true }
 rusqlite = { workspace = true }
 serde = { workspace = true }
@@ -42,6 +43,7 @@ tokio = { workspace = true }
 tracing = { workspace = true }
 uuid = { workspace = true }
 webp = { workspace = true }
+zip = { workspace = true }
 
 # serde_json is a Wave D runtime dependency: EventSink payloads and the kds/pos
 # command bodies serialize JSON at runtime. It used to live in [dev-dependencies]

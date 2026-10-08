@@ -219,6 +219,27 @@ fn list_pending_offline_returns_only_pending_oldest_first() {
     assert_eq!(items[1].last_error.as_deref(), Some("timeout"));
 }
 
+#[test]
+fn list_pending_offline_bounded_respects_limit() {
+    let conn = fresh();
+    seed_pending_and_synced(&conn);
+    let items = store(&conn).list_pending_offline_bounded(1).unwrap();
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].id, "oq-1");
+}
+
+#[test]
+fn list_pending_offline_for_tenant_bounded_respects_limit() {
+    let conn = fresh();
+    seed_pending_and_synced(&conn);
+    let s = store(&conn);
+    let items = s
+        .list_pending_offline_for_tenant_bounded("default", 1)
+        .unwrap();
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].id, "oq-1");
+}
+
 // ── List all ────────────────────────────────────────────────────
 
 #[test]
@@ -230,6 +251,16 @@ fn list_all_offline_returns_all_statuses_most_recent_first() {
     // Most recent first (created_at DESC).
     assert_eq!(items[0].id, "oq-2");
     assert_eq!(items[3].id, "oq-4");
+}
+
+#[test]
+fn get_last_synced_at_returns_max_synced_timestamp() {
+    let conn = fresh();
+    assert_eq!(store(&conn).get_last_synced_at().unwrap(), None);
+
+    seed_pending_and_synced(&conn);
+    let last = store(&conn).get_last_synced_at().unwrap();
+    assert!(last.is_some());
 }
 
 // ── Mark synced ─────────────────────────────────────────────────
@@ -1038,6 +1069,32 @@ fn requeue_remote_failure_clears_quarantine_and_rewinds_anchor() {
 }
 
 #[test]
+fn count_dead_lettered_remote_failures_reflects_quarantine_state() {
+    let conn = fresh();
+    let s = store(&conn);
+
+    assert_eq!(s.count_dead_lettered_remote_failures().unwrap(), 0);
+
+    // Record a failure with max_retries = 3 (attempt 1 of 3: transient, not dead-lettered)
+    let dead_lettered = s
+        .record_remote_failure("item-transient", "sale", "{}", "err", 3)
+        .unwrap();
+    assert!(!dead_lettered);
+    assert_eq!(s.count_dead_lettered_remote_failures().unwrap(), 0);
+
+    // Record a failure with max_retries = 1 (attempt 1 of 1: immediately dead-lettered)
+    let dead_lettered = s
+        .record_remote_failure("item-quarantined", "sale", "{}", "err", 1)
+        .unwrap();
+    assert!(dead_lettered);
+    assert_eq!(s.count_dead_lettered_remote_failures().unwrap(), 1);
+
+    // Requeueing the quarantined item deletes the failure row and clears count to 0
+    s.requeue_remote_failure("item-quarantined").unwrap();
+    assert_eq!(s.count_dead_lettered_remote_failures().unwrap(), 0);
+}
+
+#[test]
 fn requeue_remote_failure_refuses_non_dead_lettered() {
     let conn = fresh();
     let s = store(&conn);
@@ -1802,6 +1859,47 @@ fn settled_sale_outbox_row_carries_this_install_as_origin() {
         Some("term-door"),
         "the outbox row names the terminal that produced the sale"
     );
+}
+
+#[test]
+fn settled_sale_outbox_row_carries_market_profile_snapshot() {
+    let conn = fresh();
+    seed_item(&conn, "ITEM-PROFILE", 5);
+    conn.execute(
+        "INSERT OR IGNORE INTO legal_entities (id, tenant_id, name, legal_name, country_code)
+         VALUES ('ent-snap', 'default', 'Snap Entity', 'Snap Entity', 'ID')",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "UPDATE locations SET legal_entity_id = 'ent-snap', currency = 'IDR', timezone = 'Asia/Jakarta', locale = 'id-ID' WHERE is_primary = 1",
+        [],
+    )
+    .unwrap();
+
+    let s = store(&conn);
+    let mut sale = sale_with_one_line("ITEM-PROFILE", 1, 500);
+    sale.currency = std::str::FromStr::from_str("IDR").unwrap();
+
+    s.complete_sale_deduction(&sale, None, &[split(500, None)], "user-a", None)
+        .unwrap();
+
+    let payload: String = conn
+        .query_row(
+            "SELECT payload FROM offline_queue WHERE action = 'complete_sale'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&payload).unwrap();
+    assert!(
+        parsed.get("market_profile").is_some(),
+        "payload must carry market_profile: {payload}"
+    );
+    let profile = parsed["market_profile"].as_object().unwrap();
+    assert_eq!(profile["country_code"], "ID");
+    assert_eq!(profile["tax_regime"], "PB1");
+    assert_eq!(profile["currency"], "IDR");
 }
 
 /// An UNPAIRED install must behave exactly as it does today: no id, no stamp,

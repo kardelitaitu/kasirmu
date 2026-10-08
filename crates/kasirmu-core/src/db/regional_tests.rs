@@ -507,3 +507,75 @@ fn regional_config_for_location_propagates_legal_entity_db_error() {
         "expected CoreError::Db, got {err:?}"
     );
 }
+
+#[test]
+fn update_regional_config_for_location_blocked_by_open_shift() {
+    let store_db = crate::migrations::fresh_db();
+    let store = store(&store_db);
+    insert_location(&store, "loc-shift-lock", "USD", "UTC", "en-US");
+
+    // Seed a role, user and terminal bound to this location
+    store_db
+        .execute(
+            "INSERT OR IGNORE INTO roles (id, name) VALUES ('r-cashier', 'Cashier')",
+            [],
+        )
+        .unwrap();
+    store_db
+        .execute(
+            "INSERT OR IGNORE INTO users (id, username, pin_hash, display_name, role_id)
+             VALUES ('user-reg-shift', 'cashier', 'hash', 'Cashier', 'r-cashier')",
+            [],
+        )
+        .unwrap();
+    store_db
+        .execute(
+            "INSERT OR IGNORE INTO terminals (id, name, device_id, bound_location_id, created_at, updated_at)
+             VALUES ('term-reg-1', 'POS 1', 'dev-reg-1', 'loc-shift-lock', '2026-10-02T00:00:00.000Z', '2026-10-02T00:00:00.000Z')",
+            [],
+        )
+        .unwrap();
+
+    // Open a cashier shift
+    store_db
+        .execute(
+            "INSERT INTO shifts (id, user_id, terminal_id, status)
+             VALUES ('shift-reg-open', 'user-reg-shift', 'term-reg-1', 'open')",
+            [],
+        )
+        .unwrap();
+
+    // Mutation must be strictly blocked while shift is open
+    let err = store
+        .update_regional_config_for_location("loc-shift-lock", "id-ID", "Asia/Jakarta", "IDR", "")
+        .expect_err("shift is open: regional mutation must be blocked");
+
+    assert!(
+        matches!(
+            err,
+            CoreError::Validation {
+                field: "regional_settings",
+                ..
+            }
+        ),
+        "expected CoreError::Validation on regional_settings, got {err:?}"
+    );
+
+    // Close the shift
+    store_db
+        .execute(
+            "UPDATE shifts SET closed_at = '2026-10-02T12:00:00.000Z', status = 'closed'
+             WHERE id = 'shift-reg-open'",
+            [],
+        )
+        .unwrap();
+
+    // Mutation now succeeds
+    let cfg = store
+        .update_regional_config_for_location("loc-shift-lock", "id-ID", "Asia/Jakarta", "IDR", "")
+        .expect("after shift is closed, regional mutation must succeed");
+
+    assert_eq!(cfg.currency.value, "IDR");
+    assert_eq!(cfg.timezone.value, "Asia/Jakarta");
+    assert_eq!(cfg.locale.value, "id-ID");
+}

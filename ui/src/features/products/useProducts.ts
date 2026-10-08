@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useLocalization } from '@fluent/react';
 import { listProductsScoped, listCategoriesScoped, type ProductDto, type CategoryDto } from '@/api/products';
 import { l10nErrorMessage } from '@/utils/app-error';
+import { asArray } from '@/utils/ipc-payload';
 import { isDemoMode } from '@/utils/demo-mode';
 import { type Product, type Sku } from '@/types/domain';
 
@@ -165,10 +166,15 @@ export function useProducts(sessionToken?: string): UseProductsResult {
         ]);
         if (cancelled) return;
         setError(null);
-        setCategoryMeta(cats);
-        if (dtos.length > 0) {
+        // asArray: the commands declare arrays but nothing enforces it, and the
+        // `dtos.length` below is the exact shape that blanks a screen when a
+        // transport answers undefined (see utils/ipc-payload).
+        const productDtos = asArray<typeof dtos[number]>(dtos);
+        const categories = asArray<typeof cats[number]>(cats);
+        setCategoryMeta(categories);
+        if (productDtos.length > 0) {
           const uncategorisedLabel = l10nRef.current.getString('product-lookup-uncategorised');
-          setProducts(dtos.map(dto => dtoToProduct(dto, uncategorisedLabel)));
+          setProducts(productDtos.map(dto => dtoToProduct(dto, uncategorisedLabel)));
           setUsingFallback(false);
         } else if (isDemoMode()) {
           // Empty DB in dev/demo — sample catalog for preview purposes.

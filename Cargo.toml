@@ -34,7 +34,7 @@ exclude = [
 ]
 
 [workspace.package]
-version = "0.0.40"
+version = "0.0.41"
 edition = "2024"
 rust-version = "1.88"   # axum/tower-http deps (time 0.3.47+) require ≥ 1.88
 license = "SEE LICENSE IN LICENSE"
@@ -225,7 +225,12 @@ wiremock = "0.6.5"
 missing_docs = "warn"
 
 [workspace.lints.clippy]
-assert_is_empty = "allow"
+# `const_is_empty` warns on `.is_empty()` called on a constant, where the answer is
+# fixed at compile time -- usually a mistake. (This entry read `assert_is_empty`
+# until 2026-10-05, a name clippy does not have: the allow therefore silenced
+# nothing, and every build emitted `warning[E0602]: unknown lint`. Verified with
+# `cargo clippy --explain const_is_empty`.)
+const_is_empty = "allow"
 double_must_use = "allow"
 
 [workspace.lints.rustdoc]
@@ -245,6 +250,22 @@ overflow-checks = true
 # lto and panic must be set at the workspace level when we're
 # closer to release.
 [profile.release.package.kasirmu-app]
+codegen-units = 1
+opt-level = "s"
+strip = true
+
+# kasirmu-mobile (Tauri mobile shell) — optimized for mobile binary size.
+[profile.release.package.kasirmu-mobile]
+codegen-units = 1
+opt-level = "s"
+strip = true
+
+[profile.release.package.kasirmu-bridge]
+codegen-units = 1
+opt-level = "s"
+strip = true
+
+[profile.release.package.kasirmu-core]
 codegen-units = 1
 opt-level = "s"
 strip = true

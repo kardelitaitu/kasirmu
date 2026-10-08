@@ -997,6 +997,7 @@ fn pg_daemon_status_default_values() {
     assert_eq!(status.last_pushed, 0);
     assert_eq!(status.last_pulled, 0);
     assert_eq!(status.pending_count, 0);
+    assert_eq!(status.dead_letter_count, 0);
 }
 
 #[test]
@@ -1008,6 +1009,7 @@ fn pg_daemon_status_clone() {
         last_pushed: 5,
         last_pulled: 3,
         pending_count: 10,
+        dead_letter_count: 2,
     };
 
     let cloned = status.clone();
@@ -1017,6 +1019,7 @@ fn pg_daemon_status_clone() {
     assert_eq!(cloned.last_pushed, status.last_pushed);
     assert_eq!(cloned.last_pulled, status.last_pulled);
     assert_eq!(cloned.pending_count, status.pending_count);
+    assert_eq!(cloned.dead_letter_count, status.dead_letter_count);
 }
 
 // ── SYNC-EW: the two promises `nudge` makes ───────────────────────

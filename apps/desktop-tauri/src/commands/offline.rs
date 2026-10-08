@@ -12,6 +12,9 @@
 
 use tauri::State;
 
+use kasirmu_core::permissions;
+
+use crate::commands::authz::require_permission_for_session;
 use crate::error::AppError;
 use crate::state::AppState;
 
@@ -138,14 +141,24 @@ pub async fn requeue_remote_failure_scoped(
         .map_err(Into::into)
 }
 
-/// List retained remote-application failures (scoped).
+/// List retained remote-application failures (dead-letter discovery) resolved from a session token. ADR #7.
+///
+/// Requires `SYNC_MANAGE` — a manager-only view. The bridge twin is ungated
+/// (`ungated-ok: documented split`), so the gate is enforced here rather than
+/// via delegation.
 #[tauri::command]
 pub async fn list_remote_failures_scoped(
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<RemoteSyncFailureDto>, AppError> {
-    let ctx = state.bridge_ctx();
-    kasirmu_bridge::offline::list_remote_failures_scoped(&ctx, &session_token)
-        .await
-        .map_err(Into::into)
+    let session = state.resolve_session(&session_token)?;
+    require_permission_for_session(&state, &session, permissions::SYNC_MANAGE).await?;
+    let conn_arc = state.resolve_store(&session_token)?;
+    let db_guard = conn_arc
+        .lock()
+        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
+    let db = &*db_guard;
+    let failures = run_list_remote_failures(db)?;
+    let _ = db;
+    Ok(failures)
 }

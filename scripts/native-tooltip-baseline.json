@@ -1,6 +1,6 @@
 {
   "description": "Grandfathered native browser `title=` tooltips (per-file counts) in ui/src, excluding __tests__. Enforced by ui/src/__tests__/nativeTooltipCompliance.test.ts as a ratchet: a file may never exceed its count, and the entry must be lowered when the code is cleaned. New UI must use the React <Tooltip> component from ui/src/frontend/shell/Tooltip.tsx instead (fit=\"inline\" for toolbar buttons/badges so the wrapper does not stretch them). `title` alongside `pattern` is exempt — that is HTML5 constraint-validation messaging, not a hover affordance. Do not add files to this list. To retire an entry, delete its line and set \"total\" to the sum the test prints: the ratchet asserts only that total equals the sum of counts, so any count restated in prose here is a number nothing will tell you is stale. Two measured facts for whoever picks a file up: the shell <Tooltip> is not always a legal substitute, because it wraps its child in a div — which can drop a block element into a flex row — and it surfaces text only via aria-describedby while shown, never an accessible name; and a `title=` that duplicates the `aria-label` already on the same element retires by deleting the duplicate attribute, a common shape in this tree rather than a defect class.",
-  "total": 76,
+  "total": 75,
   "counts": {
     "features/analytics/AnalyticsScreen.tsx": 1,
     "features/analytics/components/AnalyticsToolbar.tsx": 4,
@@ -35,6 +35,6 @@
     "features/retail/RetailHeader.tsx": 1,
     "features/sales/ReceiptPreview.tsx": 1,
     "features/sales/components/CartActionBar.tsx": 1,
-    "features/sales/components/CartPanel.tsx": 8
+    "features/sales/components/CartPanel.tsx": 7
   }
 }

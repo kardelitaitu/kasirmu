@@ -11,7 +11,7 @@ title = "kasir.mu Gitleaks Config"
 description = "Allowed patterns — false positives from test fixtures and config files"
 
 paths = [
-  '''docs/security/audit-2026-07-20.md''',
+  '''docs/records/audits/security/audit-2026-07-20.md''',
   '''apps/license-server/.*_test\.go$''',
   '''\.github/workflows/.*\.yml$''',
 ]

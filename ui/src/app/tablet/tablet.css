@@ -22,6 +22,67 @@
   --tablet-radius: 12px;
 }
 
+/* ── Transition animations ────────────────────────────────────── */
+
+@keyframes ws-page-enter {
+  from {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes ws-page-exit {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+}
+
+/* Fullscreen workspace (e.g. restaurant-pos, store-pos, kds) — no tab bar. */
+.workspace-fullscreen {
+  height: 100dvh;
+  overflow: hidden;
+}
+
+.workspace-fullscreen--exiting {
+  pointer-events: none;
+}
+
+/* Workspace home wrapper — fades in when returning from a workspace. */
+.workspace-home-wrapper {
+  min-height: 100%;
+}
+
+.workspace-home-wrapper--exiting {
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .workspace-fullscreen {
+    animation: ws-page-enter 0.2s var(--ease-out) both;
+  }
+
+  .workspace-fullscreen--exiting {
+    animation: ws-page-exit var(--duration-150) var(--ease-out) both;
+  }
+
+  .workspace-home-wrapper {
+    animation: ws-page-enter 0.2s var(--ease-out) both;
+  }
+
+  .workspace-home-wrapper--exiting {
+    animation: ws-page-exit var(--duration-150) var(--ease-out) both;
+  }
+}
+
 /* ── Layout ───────────────────────────────────────── */
 /* TAB-02: the tablet entry never loads AppLayout.css, so the base
  * `.app-layout` rules (display:flex etc.) must be re-declared here for
@@ -151,6 +212,28 @@
   white-space: nowrap;
 }
 
+/* The icon slot in a tab button. .tablet-tab-bar / .tablet-tab-label were both
+   defined in this sheet; the icon span between them was not, so the glyph sat on
+   the label's baseline instead of on its own line.
+
+   Scoped to .tablet-shell like its two siblings. An earlier edit here wrote the
+   broken shape INSIDE this prose — a stray comment-close between the shell
+   prefix and the class name — which ended the comment early and let the rest of
+   it through as live CSS garbage; the parser then dropped the rules around it,
+   including .tablet-shell's own height block. Never put a comment-close
+   sequence in a comment body; describe it instead (as this sentence does).
+
+   `line-height: 0` is the sub-token zero the token checker accepts only when
+   listed with its decision recorded (themeTokenCompliance "leading-token
+   freeze"): the icon box must contribute NO line height, because a non-zero one
+   makes an icon tab taller than its text-only neighbours and breaks the fixed
+   bar height this sheet is built around. That is the reason it is a deliberate
+   zero rather than a scale step. */
+.tablet-shell .tablet-tab-icon {
+  display: block;
+  line-height: 0;
+}
+
 .tablet-shell .tablet-tab-item:active {
   transform: scale(0.95);
 }
@@ -216,7 +299,7 @@
 }
 
 .tablet-shell .btn,
-.tablet-shell button:not(.tablet-tab-item) {
+.tablet-shell button:not(.tablet-tab-item):not(.resto-switch-btn):not([role="switch"]) {
   padding: var(--space-3) var(--space-5);
   font-size: var(--tablet-font-base);
   border-radius: var(--tablet-radius);
@@ -231,7 +314,7 @@
 }
 
 /* ── Input overrides ──────────────────────────────── */
-.tablet-shell input,
+.tablet-shell input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]),
 .tablet-shell select,
 .tablet-shell textarea {
   min-height: var(--tablet-tap-target);
@@ -367,13 +450,19 @@
 }
 
 /* ── Prevent text selection during rapid taps ─────── */
-.tablet-shell * {
+.tablet-shell *,
+.workspace-fullscreen * {
   -webkit-touch-callout: none;
+  -webkit-user-select: none;
   user-select: none;
 }
 
 .tablet-shell input,
-.tablet-shell textarea {
+.tablet-shell textarea,
+.tablet-shell [contenteditable="true"],
+.workspace-fullscreen input,
+.workspace-fullscreen textarea,
+.workspace-fullscreen [contenteditable="true"] {
   user-select: text;
   -webkit-user-select: text;
 }
@@ -469,5 +558,52 @@
   .tablet-shell .app-layout {
     /* Portrait contract asserted, not restated — see header. */
   }
+
+  /* Workspace grid: 2 columns portrait, 3 landscape (owner request). The base
+     rule in WorkspaceHome.css is a fixed repeat(3, 1fr) whose width fallback
+     starts at 1100px. Measured on the 23073RPBFG (density 280, DPR 1.75): the
+     CSS viewport is 1200/1.75 = 685.7px portrait and 1920/1.75 = 1097.1px
+     landscape — the landscape width lands THREE PIXELS under that fallback,
+     so the width rule out-specifies the base here in BOTH orientations and
+     held the grid at 2 columns after rotation. The branch lives HERE per
+     ADR-0001 Slice 4 (the shell owns every orientation decision); the feature
+     sheet keeps no orientation literal of its own. First applied in
+     b9d1208fe and dropped by the rebrand sweep — restored with its landscape
+     half. */
+  /* The wrapper is .workspace-home-wrapper (TabletAppShell.tsx:445), NOT
+     inside .tablet-shell: the home screen renders before any workspace is
+     active, outside TabletAppLayout. An earlier fix keyed on
+     `.tablet-shell .workspace-grid` and therefore never matched here — the
+     width fallback in WorkspaceHome.css kept ruling, which is why the grid
+     stayed at 2 columns in landscape after that fix shipped. */
+  .workspace-home-wrapper .workspace-grid,
+  .workspace-home-wrapper .workspace-skeleton-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
 }
 
+@media (orientation: landscape) {
+  .workspace-home-wrapper .workspace-grid,
+  .workspace-home-wrapper .workspace-skeleton-grid,
+  .tablet-shell .workspace-grid,
+  .tablet-shell .workspace-skeleton-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+/* ── Reduced motion ────────────────────────────────────────────────
+ * The workspace page transitions above (.workspace-fullscreen and
+ * .workspace-home-wrapper, enter + exit) are purely decorative: the
+ * content is fully usable without them. A merchant who has asked the OS
+ * for reduced motion gets the page swap with no cross-fade, which is the
+ * point of the preference. Pattern B, matching AnalyticsScreen.css:1689 —
+ * scoped to this shell's own surfaces rather than a bare `*`.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .workspace-fullscreen,
+  .workspace-fullscreen--exiting,
+  .workspace-home-wrapper,
+  .workspace-home-wrapper--exiting {
+    animation: none;
+  }
+}

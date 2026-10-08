@@ -123,6 +123,10 @@ const EXPECTED_KEYS: Record<string, string> = {
 
   // Auth
   'oz-last-login': 'features/auth/StaffLoginScreen.tsx',
+  // The last four cashiers who signed in on THIS device, so the tablet login
+  // screen can offer them again without retyping. Per-device state, and a
+  // rename would silently drop every remembered cashier on every tablet.
+  'kasirmu-recent-cashiers': 'features/auth/StaffLoginScreen.tsx',
 
   // Updater internals -- not user configuration, but persisted, so pinned: a stale
   // previous_version makes the update banner offer an upgrade that already happened.

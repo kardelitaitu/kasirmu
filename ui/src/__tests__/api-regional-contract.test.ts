@@ -5,7 +5,13 @@ vi.mock('@/utils/logged-invoke', () => ({
   loggedInvoke: (...args: unknown[]) => mockInvoke(...args),
 }));
 
-import { setRegionalConfigScoped, getRegionalConfigScoped, type RegionalConfig } from '@/api/regional';
+import {
+  setRegionalConfigScoped,
+  getRegionalConfigScoped,
+  getActiveMarketProfileScoped,
+  type RegionalConfig,
+  type ActiveMarketProfile,
+} from '@/api/regional';
 
 describe('regional.ts API contract', () => {
   const TOKEN = 'tok_regional';
@@ -69,4 +75,29 @@ describe('regional.ts API contract', () => {
     const { REGIONAL_TIMEZONE_PRESETS } = await import('@/api/regional');
     expect(REGIONAL_TIMEZONE_PRESETS).toEqual(['Asia/Jakarta', 'Asia/Makassar', 'Asia/Jayapura']);
   });
+
+  it('getActiveMarketProfileScoped calls the canonical command with location id and session token', async () => {
+    const profile: ActiveMarketProfile = {
+      location_id: 'loc-1',
+      legal_entity_id: 'ent-1',
+      country_code: 'ID',
+      currency: 'IDR',
+      default_locale: 'id-ID',
+      timezone: 'Asia/Jakarta',
+      tax_regime: 'PB1',
+      statutory_rounding: 'half_up',
+      enabled_payment_rails: ['cash', 'card', 'qris'],
+    };
+    mockInvoke.mockResolvedValue(profile);
+    const result = await getActiveMarketProfileScoped(TOKEN, 'loc-1');
+    expect(mockInvoke).toHaveBeenCalledWith('get_active_market_profile_scoped', {
+      sessionToken: TOKEN,
+      locationId: 'loc-1',
+    });
+    expect(result.location_id).toBe('loc-1');
+    expect(result.country_code).toBe('ID');
+    expect(result.statutory_rounding).toBe('half_up');
+    expect(result.enabled_payment_rails).toEqual(['cash', 'card', 'qris']);
+  });
 });
+

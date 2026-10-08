@@ -289,8 +289,10 @@ pub struct SyncDaemon {
 }
 
 /// Read sync configuration and pending offline items from a database
-/// connection. Extracted from [`SyncDaemon::run_tick`] so the read phase
-/// is independently testable.
+/// connection. Extracted from the daemon's tick so the read phase is
+/// independently testable. (Named in prose rather than linked: `run_tick` is
+/// `pub(super)` in the private `daemon_tick` module, so an intra-doc link cannot
+/// resolve it and the deny-warnings doc build fails.)
 ///
 /// Returns `Ok((config, pending))` where `config` is `None` if sync is not
 /// configured or disabled, and `Err(msg)` when the offline queue could not be
@@ -303,6 +305,9 @@ pub struct SyncDaemon {
 /// (`SyncConfig::from_settings` still treats an unreadable setting as
 /// "unconfigured": sync not being configured is a legitimate steady state, and
 /// the config read is not a data path the way the queue is.)
+/// Maximum items pushed in a single daemon cycle to prevent OOM/timeouts on low-RAM devices (Section 18 Sync Policy).
+pub const DEFAULT_MAX_OUTBOX_BATCH_ITEMS: usize = 100;
+
 pub(crate) fn read_config_and_pending(
     conn: &rusqlite::Connection,
 ) -> Result<
@@ -322,6 +327,9 @@ pub(crate) fn read_config_and_pending(
     // behind a bulk one waits a full cycle and the priority column means nothing.
     // Applied at the READ point so the same vector is pushed and applied by index.
     order_for_push(&mut pending);
+    if pending.len() > DEFAULT_MAX_OUTBOX_BATCH_ITEMS {
+        pending.truncate(DEFAULT_MAX_OUTBOX_BATCH_ITEMS);
+    }
     Ok((config, pending))
 }
 

@@ -12,7 +12,7 @@
 
 .localpay-intro {
   margin: 0 0 var(--space-3);
-  color: var(--text-secondary, #555);
+  color: var(--color-fg-secondary);
   font-size: var(--text-base);
 }
 
@@ -29,7 +29,7 @@
   justify-content: space-between;
   gap: var(--space-2);
   padding: 0.375rem 0.5rem;
-  border: 1px solid var(--border-color, #e5e5e5);
+  border: 1px solid var(--color-border);
   border-radius: 6px;
 }
 
@@ -52,7 +52,7 @@
   font-family: var(--font-mono);
   font-size: var(--text-sm);
   padding: 0.375rem 0.5rem;
-  border: 1px solid var(--border-color, #e5e5e5);
+  border: 1px solid var(--color-border);
   border-radius: 6px;
   resize: vertical;
 }
@@ -66,12 +66,12 @@
 
 .localpay-label {
   font-size: var(--text-base);
-  color: var(--text-primary, #1a1a1a);
+  color: var(--color-fg-primary);
 }
 
 .localpay-provenance {
   font-size: 0.75rem;
-  color: var(--text-tertiary, #888);
+  color: var(--color-fg-tertiary);
 }
 
 .localpay-add {
@@ -82,20 +82,20 @@
 
 .localpay-add input {
   flex: 1;
-  border: 1px solid var(--border-color, #ccc);
+  border: 1px solid var(--color-border);
   border-radius: 6px;
   padding: 0.375rem 0.5rem;
-  background: var(--bg-primary, #fff);
-  color: var(--text-primary, #1a1a1a);
+  background: var(--color-bg);
+  color: var(--color-fg-primary);
   font-size: var(--text-base);
 }
 
 .localpay-add-button {
-  border: 1px solid var(--border-color, #ccc);
+  border: 1px solid var(--color-border);
   border-radius: 6px;
   padding: 0.375rem 0.75rem;
-  background: var(--bg-secondary, #f5f5f5);
-  color: var(--text-primary, #1a1a1a);
+  background: var(--color-bg-elevated);
+  color: var(--color-fg-primary);
   font-size: var(--text-sm);
   cursor: pointer;
 }
@@ -116,8 +116,8 @@
   border: none;
   border-radius: 6px;
   padding: var(--space-2) var(--space-4);
-  background: var(--accent-color, #2563eb);
-  color: var(--accent-contrast, #fff);
+  background: var(--color-accent);
+  color: var(--color-accent-fg);
   font-size: var(--text-base);
   font-weight: 600;
   cursor: pointer;
@@ -130,24 +130,53 @@
 
 .localpay-status {
   font-size: var(--text-sm);
-  color: var(--status-success, #16a34a);
+  color: var(--color-success);
 }
 
 .localpay-error {
   font-size: var(--text-sm);
-  color: var(--status-danger, #dc2626);
+  color: var(--color-danger);
   margin: 0;
 }
 
 .localpay-empty-list {
   margin: 0;
-  color: var(--text-tertiary, #888);
+  color: var(--color-fg-tertiary);
   font-size: var(--text-sm);
 }
 
 .localpay-loading,
 .localpay-empty {
   margin: 0;
-  color: var(--text-secondary, #555);
+  color: var(--color-fg-secondary);
   font-size: var(--text-base);
+}
+
+/* ── Touch press feedback ────────────────────────────────────────────
+   Local payment rails: toggles tint (switch-shaped), add/save scale.
+   ────────────────────────────────────────────────────────────────── */
+
+.localpay-add-button:not(:disabled):active,
+.localpay-save:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+.localpay-toggle:active {
+  background: color-mix(in srgb, var(--color-fg) 12%, transparent);
+}
+
+@media (pointer: coarse) {
+.localpay-add-button:not(:disabled):active,
+.localpay-save:not(:disabled):active,
+.localpay-toggle:active {
+    min-height: var(--touch-target-min);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+.localpay-add-button:not(:disabled):active,
+.localpay-save:not(:disabled):active {
+    transform: none;
+    opacity: 0.75;
+  }
 }

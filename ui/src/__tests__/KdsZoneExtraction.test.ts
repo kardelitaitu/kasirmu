@@ -1,5 +1,18 @@
-// Unit tests for kitchen zone extraction — the logic that extracts
-// unique zones from orders and filters orders by zone/category.
+// Kitchen zone extraction and the board filter — NOW IMPORTING production
+// (2026-10-07), where this file previously retyped both.
+//
+// It was one of five KDS suites with that property; see the header of
+// KdsSettingsConversions.test.ts for the full sweep. The rewiring did two
+// things beyond deleting three local copies:
+//   1. the cases below now fail when kdsOrderView.ts moves — verified by
+//      mutation (removing the sort fails 2 cases);
+//   2. it made the three-way PRECEDENCE testable for the first time. The copies
+//      tested the two filter branches as independent functions, so nothing could
+//      observe which wins when both are active. Applying both in sequence is a
+//      plausible refactor and a behaviour change; that case now fails it.
+//
+// extractZones / filterKdsOrders live in features/kds/kdsOrderView.ts, extracted
+// verbatim from KdsScreen.tsx:303-309 and :312-318.
 
 import { describe, it, expect } from 'vitest';
 import type { KdsOrder } from '@/api/kds';
@@ -27,23 +40,23 @@ function order(overrides: Partial<KdsOrder> = {}): KdsOrder {
   };
 }
 
-/** Same zone extraction logic as KdsScreen.tsx useMemo. */
-function extractZones(orders: KdsOrder[]): string[] {
-  const zoneSet = new Set<string>();
-  for (const o of orders) {
-    if (o.kitchen_zone) zoneSet.add(o.kitchen_zone);
-  }
-  return [...zoneSet].sort();
-}
+// The implementations are IMPORTED now, not retyped. This file used to restate
+// extractZones / filterByZones / filterByStatus, and its own comments said so
+// ("Same zone extraction logic as KdsScreen.tsx useMemo"). A copy cannot fail
+// when production moves, and — more importantly — the copies tested the two
+// BRANCHES and never the PRECEDENCE between them. Both gaps are closed by
+// importing: the dispatch below is the screen's own code path.
+import { extractZones, filterKdsOrders } from '@/features/kds/kdsOrderView';
 
-/** Same filter logic as KdsScreen.tsx useMemo. */
+/** The old zone-filter helper, expressed through the real dispatcher so the
+ *  cases below keep their shape while exercising production's precedence. */
 function filterByZones(orders: KdsOrder[], zones: Set<string>): KdsOrder[] {
-  if (zones.size === 0) return orders;
-  return orders.filter((o) => o.kitchen_zone && zones.has(o.kitchen_zone));
+  return filterKdsOrders(orders, 'all', zones);
 }
 
-function filterByStatus(orders: KdsOrder[], status: string): KdsOrder[] {
-  return orders.filter((o) => o.status === status);
+/** The old status helper, likewise: 'prepared' IS the ready-status branch. */
+function filterByStatus(orders: KdsOrder[]): KdsOrder[] {
+  return filterKdsOrders(orders, 'prepared', null);
 }
 
 describe('extractZones', () => {
@@ -122,12 +135,54 @@ describe('filterByStatus', () => {
       order({ id: '2', status: 'preparing' }),
       order({ id: '3', status: 'ready' }),
     ];
-    const result = filterByStatus(orders, 'ready');
+    const result = filterByStatus(orders);
     expect(result).toHaveLength(2);
     expect(result.every((o) => o.status === 'ready')).toBe(true);
   });
 
   it('returns empty for non-matching status', () => {
-    expect(filterByStatus([order({ status: 'pending' })], 'ready')).toEqual([]);
+    // filterByStatus is now the real 'prepared' dispatch (ready only), so a
+    // pending order is excluded by the production rule rather than by a
+    // status string this test passed in.
+    expect(filterByStatus([order({ status: 'pending' })])).toEqual([]);
+  });
+});
+
+// ── The three-way PRECEDENCE ──────────────────────────────────────────────
+// New 2026-10-07, and the reason this file was worth rewiring rather than just
+// re-importing. The retyped helpers tested the two filter branches as separate
+// functions, so nothing could observe which one WINS when both are active. The
+// screen's own dispatcher decides that, and these cases pin the order.
+describe('filterKdsOrders — precedence', () => {
+  const readyGrill = order({ id: 'a', status: 'ready', kitchen_zone: 'grill' });
+  const prepGrill = order({ id: 'b', status: 'preparing', kitchen_zone: 'grill' });
+  const readyFry = order({ id: 'c', status: 'ready', kitchen_zone: 'fry' });
+  const all = [readyGrill, prepGrill, readyFry];
+
+  it("'prepared' WINS over a non-empty zone set", () => {
+    // Both filters are satisfiable, and only one may apply. If a refactor
+    // applied them in sequence this returns [] (ready AND fry) instead of the
+    // two ready orders — the exact bug the copies could not see.
+    const out = filterKdsOrders(all, 'prepared', new Set(['fry']));
+    expect(out.map((o) => o.id)).toEqual(['a', 'c']);
+  });
+
+  it("'all' with no zone filter returns everything, unchanged", () => {
+    expect(filterKdsOrders(all, 'all', null)).toBe(all);
+    expect(filterKdsOrders(all, 'all', new Set())).toBe(all);
+  });
+
+  it("'all' with a zone filter narrows to that zone", () => {
+    const out = filterKdsOrders(all, 'all', new Set(['grill']));
+    expect(out.map((o) => o.id)).toEqual(['a', 'b']);
+  });
+
+  it('an order with no zone never matches a zone filter', () => {
+    const zoneless = order({ id: 'd', status: 'ready', kitchen_zone: null });
+    expect(filterKdsOrders([zoneless], 'all', new Set(['grill']))).toEqual([]);
+  });
+
+  it("'prepared' with no zone filter keeps only ready orders", () => {
+    expect(filterKdsOrders(all, 'prepared', null).map((o) => o.id)).toEqual(['a', 'c']);
   });
 });

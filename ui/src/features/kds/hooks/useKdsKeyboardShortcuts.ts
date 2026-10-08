@@ -5,6 +5,7 @@
  * modal-open guards.
  *
  * Extracted verbatim from KdsScreen.tsx:406-411 (deselect), :413-421 (refs +
+ * — the whole cluster AS OF c965baddb^, where those numbers held it,
  * autofocus) and :423-470 (the KEY-07 listener). The handler body is the sed
  * output: no key, no branch, no precedence and no `preventDefault()` call was
  * retyped, and the declaration order of the three effects (deselect → focus →
@@ -110,7 +111,19 @@ export function useKdsShortcuts({
         });
       } else if (e.key === ' ' && selectedRef.current) {
         // Skip if a ticket button already has focus (its onClick will handle advance).
-        if ((e.target as HTMLElement).closest('.kds-ticket')) return;
+        //
+        // The `instanceof` half is load-bearing, not defensive dressing. The
+        // listener is on `document`, so when nothing is focused the target IS the
+        // Document node — and `document.closest` is undefined, so the call throws
+        // a TypeError. The throw happens inside a keydown listener, where the
+        // event system swallows it: Space silently stops advancing the selected
+        // ticket whenever focus sits outside the board, which is precisely the
+        // failure mode the document-level listener was introduced to prevent
+        // ("shortcuts stopped working whenever focus left the region", above).
+        // Measured 2026-10-07: dispatching Space on `document` advanced nothing,
+        // while the same event on `body` worked.
+        const target = e.target;
+        if (target instanceof Element && target.closest('.kds-ticket')) return;
         e.preventDefault();
         const selected = filteredOrders.find((o) => o.id === selectedRef.current);
         if (selected) {

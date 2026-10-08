@@ -3,7 +3,7 @@
 //! Plan section 9.5 names the sanctioned cross-vertical read path and sketches a
 //! four-method trait. The facade capability already SHIPS as inherent methods on
 //! [`Store`](crate::db::Store) in `crate::db::reports` (24 public query methods,
-//! inventoried in `docs/architecture/reporting-facade-inventory.md` section 2). This
+//! inventoried in `docs/records/superseded/reporting-facade-inventory.md` section 2). This
 //! module gives that surface a NAME a caller can depend on without depending on
 //! the concrete submodule types, so "the facade is the only broad read path" is a
 //! type-level fact rather than a convention.

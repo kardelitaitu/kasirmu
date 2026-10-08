@@ -23,6 +23,7 @@ import { Skeleton } from '@/components/Skeleton';
 import { deriveAsyncPhase } from '@/utils/retry-state';
 import { settleRead } from '@/utils/settle-read';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
+import { asArray } from '@/utils/ipc-payload';
 import './OfflineQueueScreen.css';
 
 // ── Helpers ─────────────────────────────────────────────────────────
@@ -92,7 +93,24 @@ function formatRelativeTime(iso: string | null): { fluentKey: string; fluentArgs
 // ui/src/utils/settle-read.ts. It used to be copied here from app/AppShell.tsx,
 // and four more screens grew their own copy before it moved.
 
-export default function OfflineQueueScreen() {
+/** Props for {@link OfflineQueueScreen}. */
+export interface OfflineQueueScreenProps {
+  /**
+   * Render as a BODY inside another page rather than as a standalone screen.
+   *
+   * REQUIRED when composed, not cosmetic. This screen's <h1> reads "Offline
+   * Queue" — the SAME accessible name as the composing scaffold's heading — so
+   * without this the section carries two headings under one name and every
+   * `getByRole('heading', { name })` on it throws on an ambiguous match. That
+   * is precisely how the tax migration failed for four rounds (see
+   * settings/screens/TaxConfigurationScreen.tsx).
+   *
+   * Default false keeps the standalone route unchanged.
+   */
+  embedded?: boolean;
+}
+
+export default function OfflineQueueScreen({ embedded = false }: OfflineQueueScreenProps = {}) {
   const { l10n } = useLocalization();
   const { sessionToken: rawToken } = useWorkspace();
   const sessionToken = rawToken || '';
@@ -145,7 +163,12 @@ export default function OfflineQueueScreen() {
         // queue itself keeps rendering either way.
         settleRead('offline_remote_failures', listRemoteFailuresScoped(sessionToken)),
       ]);
-      setItems(data);
+      // asArray: the command declares an array but nothing enforces it, and the
+      // render's `items.length` (deriveAsyncPhase below) and `items.map` (the
+      // table) both throw on undefined — the same class fixed in
+      // ExchangeRateScreen / TaxConfigurationScreen / useBackupStatus and swept
+      // across four more call sites. See utils/ipc-payload.
+      setItems(asArray<OfflineQueueItemDto>(data));
       setPendingCount(count);
       if (summary) {
         setConflictCount(summary.conflictCount);
@@ -159,7 +182,15 @@ export default function OfflineQueueScreen() {
       // because a stale list is not a current one either. The next
       // successful read (Retry, pull-to-refresh, requeue reload) replaces it
       // with what the server actually said.
-      setFailures(remoteFailures.ok ? remoteFailures.value : null);
+      //
+      // `asArray` is load-bearing on the ok arm, and NOT a style choice: the
+      // render distinguishes `failures === null` ("never answered") from
+      // `failures.length === 0` ("answered: nothing quarantined"), and a
+      // transport resolving `undefined` makes `ok` true with an undefined
+      // value. That is neither of those two states, so the `=== null` arm
+      // missed it and `failures.length` threw, blanking the section. Coercing
+      // keeps the two real states intact while removing the third.
+      setFailures(remoteFailures.ok ? asArray<RemoteSyncFailureDto>(remoteFailures.value) : null);
     } catch {
       setError(l10n.getString('offline-queue-error'));
     } finally {
@@ -282,9 +313,14 @@ export default function OfflineQueueScreen() {
     <div className="offline-queue-screen">
       <div className="offline-queue-header">
         <div className="offline-queue-title-row">
-          <Localized id="offline-queue-title">
-            <h1 className="offline-queue-title">Offline Queue</h1>
-          </Localized>
+          {/* Skipped when embedded: the composing page owns the <h1>. Two
+              headings sharing the name "Offline Queue" make that name
+              ambiguous. */}
+          {!embedded && (
+            <Localized id="offline-queue-title">
+              <h1 className="offline-queue-title">Offline Queue</h1>
+            </Localized>
+          )}
           {pendingCount > 0 && (
             <Localized id="offline-queue-pending-count" vars={{ count: String(pendingCount) }}>
               <span className="offline-queue-badge" aria-label={`${pendingCount} pending`} aria-live="polite">

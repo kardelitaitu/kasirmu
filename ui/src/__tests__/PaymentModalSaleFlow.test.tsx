@@ -83,6 +83,8 @@ const { invokeMock } = vi.hoisted(() => ({
         return Promise.resolve(null);
       case 'print_sales_receipt_scoped':
         return Promise.resolve({ printed: true });
+      case 'open_cash_drawer_scoped':
+        return Promise.resolve({ opened: true });
       case 'hold_cart':
         return Promise.resolve();
       case 'get_enabled_features':
@@ -182,6 +184,31 @@ describe('PaymentModal — sale flow', () => {
 
     await waitFor(() => {
       expect(invokeMock).toHaveBeenCalledWith('print_sales_receipt_scoped', { sessionToken: 'mock-token', args: expect.any(Object) });
+    });
+  });
+
+  it('auto-kicks cash drawer on complete for cash sale', async () => {
+    await renderWithFluent(
+      <PaymentModal
+        open
+        lineItems={[lineItem()]}
+        total={usd(700)}
+        userId="test-user-id"
+        sessionToken="mock-token"
+        onComplete={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    const input = screen.getByLabelText(/amount tendered/i);
+    await userEvent.type(input, '10');
+    await userEvent.click(screen.getByRole('button', { name: /^complete$/i }));
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith('open_cash_drawer_scoped', {
+        sessionToken: 'mock-token',
+        args: {},
+      });
     });
   });
 

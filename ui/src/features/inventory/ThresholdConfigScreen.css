@@ -122,3 +122,17 @@
   gap: var(--space-3);
   margin-top: var(--space-2);
 }
+
+/* ── Touch press feedback ────────────────────────────────────────────
+   Threshold checkbox labels are the tap target.
+   ────────────────────────────────────────────────────────────────── */
+
+.threshold-checkbox-label:active {
+  background: color-mix(in srgb, var(--color-fg) 12%, transparent);
+}
+
+@media (pointer: coarse) {
+.threshold-checkbox-label:active {
+    min-height: var(--touch-target-min);
+  }
+}

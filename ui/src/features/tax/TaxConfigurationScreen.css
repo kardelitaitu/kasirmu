@@ -359,4 +359,33 @@
   color: var(--color-warning, var(--color-fg));
 }
 
+/* ── Touch press feedback ────────────────────────────────────────────
+   Tax configuration is done from the back-office tablet. Filled buttons
+   scale; the category rows and the checkbox tint. */
+.tax-config-action-btn:not(:disabled):active,
+.tax-config-toggle-btn:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+.tax-config-cat-rate-item:active,
+.tax-config-checkbox:active {
+  background: color-mix(in srgb, var(--color-fg) 12%, transparent);
+}
+
+@media (pointer: coarse) {
+  .tax-config-action-btn,
+  .tax-config-toggle-btn,
+  .tax-config-cat-rate-item {
+    min-height: var(--touch-target-min);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tax-config-action-btn:not(:disabled):active,
+  .tax-config-toggle-btn:not(:disabled):active {
+    transform: none;
+    opacity: 0.75;
+  }
+}
+
 

@@ -305,6 +305,91 @@ impl Store<'_> {
         let rows = stmt.query_map(params_refs.as_slice(), Self::row_to_kds_line_item)?;
         rows.map(|r| Ok(r?)).collect()
     }
+
+    /// Ingest or replicate a KDS order and its line items into local SQLite (multi-terminal sync).
+    ///
+    /// Uses an explicit rusqlite transaction (INV-2) and upserts the order and line items
+    /// so that orders placed on another POS terminal appear locally.
+    pub fn ingest_kds_order(
+        &self,
+        order: &KdsOrder,
+        lines: &[KdsLineItem],
+        targets: &[String],
+    ) -> Result<(), CoreError> {
+        let tx = self.conn.unchecked_transaction()?;
+
+        // Ensure the parent sale row exists so the FOREIGN KEY(sale_id) REFERENCES sales(id)
+        // constraint is satisfied on secondary / KDS tablet terminals.
+        tx.execute(
+            "INSERT OR IGNORE INTO sales (id, total_minor, currency, line_count, status)
+             VALUES (?1, 0, 'IDR', 0, 'completed')",
+            params![order.sale_id],
+        )?;
+
+        tx.execute(
+            "INSERT OR REPLACE INTO kds_orders (
+                id, sale_id, store_id, target_instance_id, status, items_summary, item_count,
+                display_number, received_at, started_at, ready_at, served_at,
+                prep_time_seconds, kitchen_zone, notes, table_number, priority, ticket_prefix
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)",
+            params![
+                order.id,
+                order.sale_id,
+                order.store_id,
+                order.target_instance_id,
+                order.status,
+                order.items_summary,
+                order.item_count,
+                order.display_number,
+                order.received_at,
+                order.started_at,
+                order.ready_at,
+                order.served_at,
+                order.prep_time_seconds,
+                order.kitchen_zone,
+                order.notes,
+                order.table_number,
+                order.priority,
+                order.ticket_prefix,
+            ],
+        )?;
+
+        for item in lines {
+            let modifiers_json =
+                serde_json::to_string(&item.modifiers).unwrap_or_else(|_| "[]".to_string());
+            tx.execute(
+                "INSERT OR REPLACE INTO kds_line_items (
+                    id, kds_order_id, sku, display_name, qty, course, modifiers_json,
+                    line_position, item_status, started_at, ready_at, served_at, created_at
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+                params![
+                    item.id,
+                    item.kds_order_id,
+                    item.sku,
+                    item.display_name,
+                    item.qty,
+                    item.course,
+                    modifiers_json,
+                    item.line_position,
+                    item.item_status,
+                    item.started_at,
+                    item.ready_at,
+                    item.served_at,
+                    item.created_at,
+                ],
+            )?;
+        }
+
+        for target in targets {
+            tx.execute(
+                "INSERT OR IGNORE INTO kds_order_targets (kds_order_id, target_instance_id) VALUES (?1, ?2)",
+                params![order.id, target],
+            )?;
+        }
+
+        tx.commit()?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]

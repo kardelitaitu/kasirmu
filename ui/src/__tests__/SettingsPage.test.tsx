@@ -20,9 +20,9 @@
 // SettingsContext lifecycle, topbar) and stays covered below.
 
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { screen, waitFor, cleanup, fireEvent, within, configure } from '@testing-library/react';
+import { act, screen, waitFor, cleanup, fireEvent, within, configure } from '@testing-library/react';
 import type { ReactNode } from 'react';
-import { renderWithProvidersSync } from '@/__tests__/test-utils/render';
+import { renderWithProvidersSync, rerenderWithProviders } from '@/__tests__/test-utils/render';
 
 // The page mounts IPC-driven context + lazy screens; under parallel CI load a
 // full render + microtask flush can exceed the default 1s waitFor timeout.
@@ -31,7 +31,7 @@ configure({ asyncUtilTimeout: 5000 });
 
 import settingsFtl from '@/locales/settings.ftl?raw';
 import sharedFtl from '@/locales/shared.ftl?raw';
-import SettingsPage from '@/features/settings/SettingsPage';
+import SettingsPage, { PARTIAL_ERROR_TOAST_MS } from '@/features/settings/SettingsPage';
 import { BrandProvider } from '@/contexts/BrandContext';
 import { CurrencyProvider } from '@/contexts/CurrencyContext';
 import { LocaleContext } from '@/i18n/LocaleContext';
@@ -39,7 +39,8 @@ import { getAvailableLocales, getLocaleLabel } from '@/i18n';
 import { NAV_ITEMS, NAV_L10N_KEYS } from '@/features/settings/SettingsNavTree';
 import { SETTINGS_SCREENS } from '@/features/settings/screens/registry';
 import { KEPT_SECTIONS } from '@/features/settings/hooks/useSettingsHashSection';
-import { withSyncDefaults } from '@/contexts/SettingsContext';
+import { INITIAL_LOAD_DEBOUNCE_MS, withSyncDefaults } from '@/contexts/SettingsContext';
+import { setShellKind } from '@/utils/shellKind';
 
 // KEPT_SECTIONS is imported, not copied: the sweep below compares it against the
 // nav items and the screen registry rather than adding a fourth list of the 14
@@ -89,15 +90,24 @@ vi.mock('@/contexts/AuthContext', async (importOriginal) => ({
   }),
 }));
 
-const { invokeMock, defaultImpl, failCommands } = vi.hoisted(() => {
+const { invokeMock, defaultImpl, failCommands, failOnceCommands } = vi.hoisted(() => {
   const SAMPLE_CURRENCIES = [
     { code: 'USD', name: 'US Dollar', minor_exponent: 2, symbol: '$' },
     { code: 'EUR', name: 'Euro', minor_exponent: 2, symbol: '\u20ac' },
   ];
   const failCommands = new Set<string>();
+  // Commands that reject only for their next N calls — the shape of the
+  // tablet's cold-start race, where one fan-out source fails on the first
+  // (fallback) token and succeeds once the workspace token replaces it.
+  const failOnceCommands = new Map<string, number>();
 
   const impl = (_cmd: string, _args?: unknown): Promise<unknown> => {
     const cmd = _cmd;
+    const onceLeft = failOnceCommands.get(cmd);
+    if (onceLeft !== undefined && onceLeft > 0) {
+      failOnceCommands.set(cmd, onceLeft - 1);
+      return Promise.reject(new Error('Mock failure (once): ' + cmd));
+    }
     if (failCommands.has(cmd)) {
       return Promise.reject(new Error('Mock failure: ' + cmd));
     }
@@ -170,7 +180,7 @@ const { invokeMock, defaultImpl, failCommands } = vi.hoisted(() => {
     }
     return Promise.resolve(undefined);
   };
-  return { invokeMock: vi.fn(impl), defaultImpl: impl, failCommands };
+  return { invokeMock: vi.fn(impl), defaultImpl: impl, failCommands, failOnceCommands };
 });
 
 vi.mock('@tauri-apps/api/core', () => ({
@@ -182,21 +192,32 @@ vi.mock('@/contexts/ZoomContext', () => ({
   ZoomProvider: ({ children }: { children: ReactNode }) => <>{children}</>,
 }));
 
+const workspaceState = vi.hoisted(() => ({
+  sessionToken: 'test-token' as string | null,
+  availableWorkspaces: [] as Array<{ instance_id: string }>,
+  loading: false,
+  sessionError: null as string | null,
+  retry: vi.fn(),
+  retrySessionToken: vi.fn(),
+}));
+
 vi.mock('@/contexts/WorkspaceContext', () => ({
   useWorkspace: () => ({
     activeWorkspace: 'admin',
     setActiveWorkspace: vi.fn(),
     activeInstance: null,
     setActiveInstance: vi.fn(),
-    availableWorkspaces: [],
+    availableWorkspaces: workspaceState.availableWorkspaces,
     workspaceScreens: [],
-    loading: false,
+    loading: workspaceState.loading,
     error: null,
-    retry: vi.fn(),
+    retry: workspaceState.retry,
+    retrySessionToken: workspaceState.retrySessionToken,
+    sessionError: workspaceState.sessionError,
     lastWorkspace: null,
     switchStore: vi.fn(),
     resolvedStoreId: 'default',
-    sessionToken: 'test-token',
+    sessionToken: workspaceState.sessionToken,
     swapSessionToken: vi.fn(),
   }),
   useWorkspaceScope: () => null,
@@ -212,7 +233,15 @@ Element.prototype.scrollIntoView = vi.fn();
 
 beforeEach(() => {
   cleanup();
+  setShellKind('desktop');
+  workspaceState.sessionToken = 'test-token';
+  workspaceState.availableWorkspaces = [];
+  workspaceState.loading = false;
+  workspaceState.sessionError = null;
+  workspaceState.retry.mockClear();
+  workspaceState.retrySessionToken.mockClear();
   failCommands.clear();
+  failOnceCommands.clear();
   invokeMock.mockReset();
   invokeMock.mockImplementation(defaultImpl);
   // Sidebar prefs must not leak between tests.
@@ -226,6 +255,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  setShellKind('desktop');
 });
 
 function TestWrapper({ children }: { children: ReactNode }) {
@@ -301,9 +331,36 @@ async function navigateCheck(key: string) {
   });
 }
 
+describe('SettingsPage on Android without an admin instance', () => {
+  it('waits for a scoped token before mounting settings defaults or saving', async () => {
+    setShellKind('tablet');
+    workspaceState.sessionToken = null;
+    workspaceState.availableWorkspaces = [{ instance_id: 'assigned-pos' }];
+    const page = renderPage();
+    expect(document.querySelector('.settings-loading')).toBeInTheDocument();
+    expect(screen.queryByTestId('settings-sidebar')).not.toBeInTheDocument();
+    expect(invokeMock).not.toHaveBeenCalledWith('get_store_settings_scoped', expect.anything());
+
+    workspaceState.sessionToken = 'scoped-tablet-token';
+    rerenderWithProviders(page, <TestWrapper><SettingsPage /></TestWrapper>, settingsFtl, sharedFtl);
+    await waitFor(() => expect(screen.getByTestId('settings-sidebar')).toBeInTheDocument());
+    expect(lastInvokeArgs('get_store_settings_scoped')).toEqual({ sessionToken: 'scoped-tablet-token' });
+  });
+
+  it('shows a retryable error instead of an editable form when no instance exists', async () => {
+    setShellKind('tablet');
+    workspaceState.sessionToken = null;
+    renderPage();
+    expect(screen.getByRole('alert')).toHaveTextContent(/Contact an administrator/i);
+    expect(screen.queryByTestId('settings-sidebar')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /retry/i }));
+    expect(workspaceState.retry).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('SettingsPage role gate', () => {
-  it('shows the locked card — not the shell — to a manager session', async () => {
-    authState.session = sessions.manager;
+  it('shows the locked card — not the shell — to a staff session', async () => {
+    authState.session = sessions.staff;
     renderPage();
 
     const card = await screen.findByTestId('settings-locked-card');
@@ -320,8 +377,8 @@ describe('SettingsPage role gate', () => {
     expect(document.querySelector('.settings-topbar')).toBeNull();
   });
 
-  it('locks every role below the admin floor, fail-closed', async () => {
-    for (const role of ['staff', 'auditor', 'manager', 'role-manager', 'cashier', null] as const) {
+  it('locks every role below the manager floor, fail-closed', async () => {
+    for (const role of ['staff', 'auditor', 'cashier', null] as const) {
       cleanup();
       authState.session = role === null ? null : { username: 'u', role_name: role, display_name: 'U' };
       renderPage();
@@ -332,8 +389,8 @@ describe('SettingsPage role gate', () => {
     }
   });
 
-  it('unlocks for owner, bare admin, and the role-admin preset id', async () => {
-    for (const s of [sessions.owner, sessions.admin, sessions['role-admin']]) {
+  it('unlocks for owner, admin, role-admin, manager, and role-manager', async () => {
+    for (const s of [sessions.owner, sessions.admin, sessions['role-admin'], sessions.manager, sessions['role-manager']]) {
       cleanup();
       authState.session = s;
       await openShell();
@@ -415,11 +472,59 @@ describe('SettingsPage admin shell — flat 14-page IA', () => {
       // an empty terminal list, `.edc-terminals-card` is its root and
       // `.edc-terminals-empty` is the state a device with no terminals shows.
       'devices-connectivity': ['edc-terminals-card', 'edc-terminals-empty'],
+      // Migrated 2026-10-06: the screen composes the real
+      // features/currency/ExchangeRateScreen. With the mocked IPC resolving an
+      // empty rate list (and no currencies configured), the body's empty state
+      // is what proves it mounted; .exchange-rate-config is its root, so both
+      // are asserted.
+      'exchange-rates': ['exchange-rate-config', 'exchange-rate-empty'],
+      // Migrated 2026-10-06: composes the real features/settings
+      // DataManagementScreen. With the mocked IPC (and the admin gate open in
+      // this session) the body's tab strip is what proves it mounted.
+      'data-management': ['data-mgmt', 'data-mgmt-tabs'],
+      // Migrated 2026-10-06: composes the real features/tax screen with
+      // `embedded`, which suppresses its duplicate <h1>. Without that prop the
+      // section carried TWO headings named "Tax Configuration", and the
+      // `getByRole('heading', { name })` in navigateByNav throws on an
+      // ambiguous match — retried inside waitFor until the worker died with
+      // "Reached heap limit". `.tax-config` is the composed body.
+      'tax-configuration': ['tax-config'],
+      // Migrated 2026-10-06: composes the real feature-flag screen with
+      // `embedded`. .feature-toggle is its root and always renders. The search
+      // box is deliberately NOT asserted: it is gated on `!loading && !error`,
+      // and this file's IPC mock resolves `undefined`, so the composed screen
+      // legitimately lands in its error arm instead.
+      'features-modules': ['feature-toggle'],
+      // Migrated 2026-10-06: composes the real offline-queue screen with
+      // `embedded`. .offline-queue-screen is its root and always renders.
+      'offline-queue': ['offline-queue-screen'],
+      // Migrated 2026-10-06: composes the real GeneralSection, driven by
+      // hooks/useStoreDraft. The form is the body; there is no wrapper class of
+      // its own, so the marker is the store-name field the rebuild dropped.
+      'general': ['settings-general-save-btn'],
+      // Migrated 2026-10-06: composes the real SyncSection, driven by
+      // hooks/useDataSyncDraft. The Cloud Sync card is the body; the save button
+      // is this screen's own (the section's own actions live inside the card).
+      'data-sync': ['settings-data-sync-save-btn'],
+      // Migrated 2026-10-06: composes the sync-status half of SyncSection as its
+      // body, sharing hooks/useDataSyncDraft with Data Sync. The Cloud Sync card
+      // ALWAYS renders; the status indicator inside it does NOT, because this
+      // file's IPC mock resolves nothing, so the draft is unconfigured and the
+      // "not configured" arm is the correct branch to land on.
+      'sync-status': ['settings-sync-status'],
+      // Migrated 2026-10-06: the LAST scaffold, and the only greenfield one — its
+      // provenance named no source section. It renders the shared RoleBadge (the
+      // desktop shell's own component, which the tablet shows nowhere) plus the
+      // audit-trail scope note. `.settings-section-title` is the card heading;
+      // RoleBadge itself returns null without a session, which is why the heading
+      // — not the badge — is what proves the body mounted.
+      'security-account': ['settings-security-trail-note'],
     };
 
     for (const item of NAV_ITEMS) {
       const label = navLabel(item.key);
       expect(label, item.key + ' has no bundle label').not.toBe('');
+
       await navigateByNav(item.key);
 
       const root = sectionRoot();
@@ -431,13 +536,31 @@ describe('SettingsPage admin shell — flat 14-page IA', () => {
       if (markers) {
         // A migrated screen must NOT fall back to the placeholder copy.
         expect(within(body).queryByText(placeholder), item.key + ' still shows the placeholder').toBeNull();
+        // WAIT for the composed body instead of reading it synchronously. A
+        // migrated screen is a SECOND lazy hop — screens/registry lazy-imports
+        // this scaffold, which then lazy-imports (or composes) the feature
+        // screen — so the section can still be showing Suspense's
+        // `.section-loading` when navigateByNav resolves: that helper waits on
+        // the SCAFFOLD heading, which renders before the inner chunk does.
+        // MEASURED 2026-10-06: the synchronous read caught "Loading…" for
+        // tax-configuration, and when the chunk lost the race badly enough the
+        // whole worker was killed mid-resolution instead of failing the assert.
         for (const marker of markers) {
-          expect(body.querySelector('.' + marker), item.key + ' must mount its .' + marker + ' screen').not.toBeNull();
+          await waitFor(() => {
+            expect(
+              document.querySelector('.' + marker),
+              item.key + ' must mount its .' + marker + ' screen',
+            ).not.toBeNull();
+          });
         }
       } else {
-        expect(within(body).getAllByText(placeholder)).toHaveLength(1);
+        await waitFor(() => {
+          expect(within(sectionRoot()).getAllByText(placeholder)).toHaveLength(1);
+        });
       }
-      expect(within(body).getByText(migrating)).toBeInTheDocument();
+      await waitFor(() => {
+        expect(within(sectionRoot()).getByText(migrating)).toBeInTheDocument();
+      });
     }
   });
 
@@ -614,12 +737,174 @@ describe('SettingsPage load lifecycle and chrome (kept)', () => {
     });
   });
 
-  it('toasts a partial-load warning when one source fails', async () => {
-    failCommands.add('get_sync_settings_scoped');
-    await openShell();
-    await waitFor(() => {
+  it('treats an absent settings row as defaults, not a partial failure', async () => {
+    // A fresh provisioned store has NO sync row: `get_sync_settings_scoped`
+    // resolves null. That is absence, not failure — measured on the tablet
+    // 2026-10-07, where loadAll counted a resolved null as a failed source
+    // and every cold start toasted "Some settings could not be loaded" with
+    // zero rejected invokes behind it.
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      invokeMock.mockImplementation((cmd: string): Promise<unknown> => {
+        if (cmd === 'get_sync_settings_scoped') return Promise.resolve(null);
+        return defaultImpl(cmd);
+      });
+      renderPage();
+      await waitFor(() => {
+        expect(screen.getByTestId('settings-sidebar')).toBeInTheDocument();
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(PARTIAL_ERROR_TOAST_MS + 500);
+      });
+      expect(screen.queryByText(ftlValue('settings-load-partial'))).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('collapses a token-swap storm into one fan-out', async () => {
+    // The tablet's cold start: the provider mounts on the first (fallback)
+    // token and the workspace activation replaces it within moments. Firing
+    // one full fan-out per token races the activation writes and rejected a
+    // currency read mid-storm (walk-diag 2026-10-07). The initial load must
+    // wait for the token to be quiet, then run ONCE with the final token.
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const page = renderPage();
+      workspaceState.sessionToken = 'token-b';
+      rerenderWithProviders(page, <TestWrapper><SettingsPage /></TestWrapper>, settingsFtl, sharedFtl);
+      workspaceState.sessionToken = 'token-c';
+      rerenderWithProviders(page, <TestWrapper><SettingsPage /></TestWrapper>, settingsFtl, sharedFtl);
+      await act(async () => {});
+
+      const storeCalls = () => invokeMock.mock.calls.filter((c) => c[0] === 'get_store_settings_scoped');
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(INITIAL_LOAD_DEBOUNCE_MS - 100); // inside the window
+      });
+      expect(storeCalls().length).toBe(0); // nothing fired mid-storm
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(INITIAL_LOAD_DEBOUNCE_MS + 250); // past the quiet window
+      });
+      const calls = storeCalls();
+      expect(calls.length).toBe(1);
+      expect(calls[0]![1]).toEqual({ sessionToken: 'token-c' });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('toasts a partial-load warning that persists past the confirmation window', async () => {
+    // The toast is confirmation-gated (see SettingsPage): a failure must still
+    // be present PARTIAL_ERROR_TOAST_MS after initialization. A real failure
+    // is — so it still surfaces, just not at the first paint.
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      failCommands.add('get_sync_settings_scoped');
+      await openShell();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(PARTIAL_ERROR_TOAST_MS + 500);
+      });
       expect(screen.getByText(ftlValue('settings-load-partial'))).toBeInTheDocument();
-    });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not toast a partial load that the replacement token clears', async () => {
+    // The tablet race, measured 2026-10-07: the provider mounts on the first
+    // (fallback-instance) token, one source rejects, and the workspace
+    // activation swaps the token — the initial-load effect then re-runs the
+    // whole fan-out and every source succeeds. A toast fired at snapshot time
+    // was already stale by the time anyone could read it.
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      failOnceCommands.set('get_sync_settings_scoped', 1);
+      const page = renderPage();
+      // Both loads below are DEBOUNCED (SettingsContext.INITIAL_LOAD_DEBOUNCE_MS,
+      // d8d6a6aa2). Under fake timers the quiet window only elapses when advanced,
+      // so each render's load must be released explicitly.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(INITIAL_LOAD_DEBOUNCE_MS + 50);
+      });
+      await waitFor(() => {
+        expect(screen.getByTestId('settings-sidebar')).toBeInTheDocument();
+      });
+
+      // The swap: WorkspaceContext hands out the real token and the page
+      // rerenders — the provider's loadAll is keyed on sessionToken.
+      workspaceState.sessionToken = 'swapped-token';
+      rerenderWithProviders(page, <TestWrapper><SettingsPage /></TestWrapper>, settingsFtl, sharedFtl);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(INITIAL_LOAD_DEBOUNCE_MS + 50);
+      });
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(PARTIAL_ERROR_TOAST_MS + 500);
+      });
+      expect(screen.queryByText(ftlValue('settings-load-partial'))).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps the skeleton while a superseded load is still outstanding', async () => {
+    // loadAll's finally must honour the same invariant loadScoped documents:
+    // a load that a token swap superseded may NOT clear the CURRENT load's
+    // spinner. If it does, the page initializes from DEFAULT_SETTINGS in the
+    // gap — empty version, blank store — and B's real data lands into an
+    // already-initialized snapshot that never adopts it.
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    // Manual deferreds: `Promise.withResolvers` needs the ES2024 lib, which
+    // this package does not target.
+    let releaseA: (v: unknown) => void = () => {};
+    const gateA = new Promise<unknown>((resolve) => { releaseA = resolve; });
+    let releaseB: (v: unknown) => void = () => {};
+    const gateB = new Promise<unknown>((resolve) => { releaseB = resolve; });
+    try {
+      let storeCalls = 0;
+      invokeMock.mockImplementation((cmd: string) => {
+        if (cmd === 'get_store_settings_scoped') {
+          const n = storeCalls;
+          storeCalls += 1;
+          if (n === 0) return gateA;
+          if (n === 1) return gateB;
+        }
+        return defaultImpl(cmd);
+      });
+
+      const page = renderPage();
+      // The initial load is DEBOUNCED (SettingsContext.INITIAL_LOAD_DEBOUNCE_MS,
+      // added in d8d6a6aa2): nothing is in flight until the quiet window elapses,
+      // so the deferred gate below is not reached until it does. Advancing here is
+      // what makes "load A is in flight" true rather than assumed.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(INITIAL_LOAD_DEBOUNCE_MS + 50);
+      });
+      // Load A (token A) is in flight and held: the hub is still a skeleton.
+      expect(document.querySelector('.settings-loading')).not.toBeNull();
+
+      // Swap the token: the provider starts load B (held via its own gate).
+      workspaceState.sessionToken = 'swapped-token';
+      rerenderWithProviders(page, <TestWrapper><SettingsPage /></TestWrapper>, settingsFtl, sharedFtl);
+      // The token swap re-runs the same debounced effect, so load B is scheduled
+      // rather than immediate. Advancing is what puts B in flight.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(INITIAL_LOAD_DEBOUNCE_MS + 50);
+      });
+
+      // A resolves now. A is stale — it must NOT clear B's spinner.
+      await act(async () => { releaseA({ name: '', address: '', taxId: '', currency: 'USD', branch: '' }); });
+      expect(document.querySelector('.settings-loading')).not.toBeNull();
+      expect(screen.queryByTestId('settings-sidebar')).not.toBeInTheDocument();
+
+      // B resolves: the hub initializes from B's data.
+      await act(async () => { releaseB({ name: '', address: '', taxId: '', currency: 'USD', branch: '' }); });
+      expect(screen.getByTestId('settings-sidebar')).toBeInTheDocument();
+      expect(document.body.textContent).toContain('0.0.4');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('renders the footer theme toggle and app version', async () => {
@@ -635,6 +920,26 @@ describe('SettingsPage load lifecycle and chrome (kept)', () => {
     await waitFor(() => {
       expect(localStorage.getItem('settings-sidebar-collapsed')).toBe('true');
     });
+  });
+
+  it('opens mobile sidebar drawer when clicking the topbar menu button', async () => {
+    await openShell();
+    const sidebar = screen.getByTestId('settings-sidebar');
+    expect(sidebar).not.toHaveClass('mobile-open');
+
+    const expandAria = ftlValue('settings-sidebar-expand-aria');
+    const menuBtn = screen.getByRole('button', { name: expandAria });
+    expect(menuBtn).toHaveClass('settings-topbar-menu-btn');
+
+    fireEvent.click(menuBtn);
+    expect(sidebar).toHaveClass('mobile-open');
+    const backdrop = document.querySelector('.settings-sidebar-backdrop');
+    expect(backdrop).toHaveClass('visible');
+
+    // Dismiss via backdrop click
+    fireEvent.click(backdrop as HTMLElement);
+    expect(sidebar).not.toHaveClass('mobile-open');
+    expect(backdrop).not.toHaveClass('visible');
   });
 
   it('does not block window close while nothing is dirty', async () => {

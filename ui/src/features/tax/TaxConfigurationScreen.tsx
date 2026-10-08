@@ -62,8 +62,29 @@ const EMPTY_TAX_FORM: TaxFormData = {
   roundingMode: '',
 };
 
+/** Props for {@link TaxConfigurationScreen}. */
+export interface TaxConfigurationScreenProps {
+  /**
+   * Render as a BODY inside another page rather than as a standalone screen.
+   *
+   * The only difference is the title row: a composing page (Settings → Tax
+   * Configuration) already renders its own <h1>, so this screen's title would
+   * print twice. Same opt-in contract as ExchangeRateScreen's `embedded`.
+   *
+   * This is not cosmetic. Two <h1>s with the SAME accessible name inside one
+   * container make `getByRole('heading', { name })` AMBIGUOUS, and a test that
+   * retries that query in a `waitFor` loop churns allocations until the worker
+   * dies with "Reached heap limit" — which is exactly how the settings section
+   * sweep failed before this prop was passed (see the note in
+   * settings/screens/TaxConfigurationScreen.tsx).
+   *
+   * Default false keeps the standalone route (`tax-config`) unchanged.
+   */
+  embedded?: boolean;
+}
+
 /** Tax configuration screen — CRUD for tax rates, inclusive/exclusive toggle, and per-category tax rate assignment. */
-export default function TaxConfigurationScreen() {
+export default function TaxConfigurationScreen({ embedded = false }: TaxConfigurationScreenProps = {}) {
   const { l10n } = useLocalization();
   const { addToast } = useToast();
   const { sessionToken: rawToken } = useWorkspace();
@@ -150,11 +171,24 @@ export default function TaxConfigurationScreen() {
         listCategoriesScoped(sessionToken),
         listCategoryTaxRatesScoped(sessionToken),
       ]);
-      setRates(items);
-      setCategories(cats);
+      // Defensive array coercion, matching the repo's other list reads
+      // (EdcTerminalsCard.tsx:71, KdsDeviceStatusIndicator.tsx:98,
+      // useLocalPaymentRails.ts:166, and the sibling ExchangeRateScreen).
+      //
+      // The commands declare `Promise<T[]>`, but nothing at runtime ENFORCES
+      // that, and the failure mode here was severe rather than cosmetic: a
+      // transport answering `undefined` stored it straight into state, the
+      // `for...of` below threw on the non-iterable, and the render's
+      // `rates.length` (this file, the rounding-modes effect) threw INSIDE an
+      // effect — which React re-runs, so the retry loop allocated without
+      // bound until the process died with "Reached heap limit" (~6 GB).
+      // Coercing to [] turns that into the screen's own honest empty state,
+      // instead of a blank screen or a throwing render.
+      setRates(Array.isArray(items) ? items : []);
+      setCategories(Array.isArray(cats) ? cats : []);
 
       const map = new Map<string, string[]>();
-      for (const row of catTax) {
+      for (const row of Array.isArray(catTax) ? catTax : []) {
         map.set(row.category_id, row.tax_rate_ids);
       }
       setCatTaxRates(map);
@@ -178,13 +212,26 @@ export default function TaxConfigurationScreen() {
   // a form whose Save writes a rounding change nobody asked for.
   useEffect(() => {
     if (rates.length === 0) {
-      setRoundingModes({});
+      // Clear only when there is something to clear. `setRoundingModes({})`
+      // here allocated a NEW object on every run, and because this effect's deps
+      // (`[rates, sessionToken]`) see a fresh `rates` array each time `loadAll`
+      // resolves — `Array.isArray(items) ? items : []` builds a new one — the
+      // empty arm re-fired, stored another `{}`, and re-rendered forever.
+      //
+      // Guarded by identity so the empty case is a no-op once the map is
+      // already empty. Found while probing a heap blow-up in the settings
+      // sweep (measured 2026-10-06: flat ~82 MB, then "Reached heap limit");
+      // this churn is real but is NOT the whole cause of that runaway, so the
+      // fix stands on its own correctness rather than on that measurement.
+      setRoundingModes((prev) => (Object.keys(prev).length === 0 ? prev : {}));
       return;
     }
     let cancelled = false;
     listTaxRateRoundingModesScoped(sessionToken, rates.map((r) => r.id))
       .then((modes) => {
-        if (!cancelled) setRoundingModes(modes);
+        // Same coercion as loadAll: a map, not an array, but equally untrusted —
+        // an undefined payload must not reach the render.
+        if (!cancelled) setRoundingModes(modes ?? {});
       })
       .catch((err) => {
         // The shape settle() uses in app/AppShell.tsx:87-94: record
@@ -439,9 +486,14 @@ export default function TaxConfigurationScreen() {
   return (
     <div className="tax-config">
       <div className="tax-config-header">
-        <Localized id="tax-config-title">
-          <h1 className="tax-config-title">Tax Configuration</h1>
-        </Localized>
+        {/* Skipped when embedded: the composing page owns the <h1>. Two headings
+            with one accessible name would make the name ambiguous, which is a
+            correctness problem for assistive tech as well as for the tests. */}
+        {!embedded && (
+          <Localized id="tax-config-title">
+            <h1 className="tax-config-title">Tax Configuration</h1>
+          </Localized>
+        )}
         <Localized id="tax-config-add">
           <Button onClick={openCreate}>Add Tax Rate</Button>
         </Localized>

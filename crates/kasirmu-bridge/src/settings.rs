@@ -157,7 +157,8 @@ pub fn build_deployment_info() -> DeploymentInfo {
 pub mod core;
 pub use core::{
     enqueue_settings_updates, run_get_receipt_settings, run_get_setting, run_get_store_settings,
-    run_list_credit_sales, run_set_setting, run_set_settings_batch,
+    run_list_credit_sales, run_set_setting, run_set_setting_for_user, run_set_settings_batch,
+    run_set_settings_batch_for_user,
 };
 // The sync-egress gate is private to `settings::core`, but `settings_tests.rs`
 // reaches it through `use super::*` to pin the policy directly. Gated to the
@@ -756,7 +757,7 @@ pub async fn set_setting(
         let conn = ctx.db.lock().await;
         let store = kasirmu_core::db::Store::new(&conn);
         ctx.require_permission_for_user(&store, user_id, permissions::SETTINGS_EDIT)?;
-        let effective = run_set_setting(&conn, key, value, &terminal_id)?;
+        let effective = run_set_setting_for_user(&conn, key, value, &terminal_id, Some(user_id))?;
         if let Err(e) = enqueue_settings_updates(
             &store,
             &HashMap::from([(key.to_string(), effective)]),
@@ -819,7 +820,7 @@ pub async fn set_setting_scoped(
         let db = conn
             .lock()
             .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
-        run_set_setting(&db, key, value, &terminal_id)?
+        run_set_setting_for_user(&db, key, value, &terminal_id, Some(&session.user_id))?
     }; // db, store, conn dropped here — safe to .await below
 
     // Enqueue `settings.update` sync items on the GLOBAL db — the sync
@@ -890,7 +891,8 @@ pub async fn set_settings_scoped(
             .lock()
             .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
         let tx = db.unchecked_transaction()?;
-        let written = run_set_settings_batch(&tx, &entries, &terminal_id)?;
+        let written =
+            run_set_settings_batch_for_user(&tx, &entries, &terminal_id, Some(&session.user_id))?;
         tx.commit()?;
         written
     };

@@ -267,7 +267,7 @@ both is the cannibalisation case A2 exists to prevent.
 
 ## 5. Track B — technical and hosting leftovers
 
-Each of these is open in `docs/audits/seo/seo-audit-19-09-26.md` (D3–D6, D11).
+Each of these is open in `docs/records/audits/seo/seo-audit-19-09-26.md` (D3–D6, D11).
 Status re-measured today at HEAD.
 
 | # | Item | Measured now | Proposed action | Risk |

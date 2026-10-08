@@ -102,8 +102,8 @@ Renamed done- with that record in place. -->
 
 **Target Crates:** `crates/oz-core/src/kds_routing.rs`, `apps/desktop-tauri/src/commands/kds_routing.rs`  
 **Sibling Documents:**
-- [`todo-kds-agents-2.md`](./todo-kds-agents-2.md) (Agent 2 — LAN Order Event Dispatcher & State Sync)
-- [`todo-kds-agents-3.md`](./todo-kds-agents-3.md) (Agent 3 — Station UI, Modifier Badges & Expo Screen)
+- [`done-todo-kds-agents-2.md`](done-todo-kds-agents-2.md) (Agent 2 — LAN Order Event Dispatcher & State Sync)
+- [`done-todo-kds-agents-3.md`](done-todo-kds-agents-3.md) (Agent 3 — Station UI, Modifier Badges & Expo Screen)
 
 ---
 

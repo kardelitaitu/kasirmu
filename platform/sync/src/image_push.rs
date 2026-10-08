@@ -221,6 +221,7 @@ impl ImagePushScheduler {
         let mut frames: Vec<u8> = Vec::with_capacity(batch_max_bytes().min(8192));
         let mut batch_hashes: Vec<String> = Vec::with_capacity(ordered.len());
         let mut total_bytes = 0usize;
+        let mut missing_files: Vec<String> = Vec::new();
 
         for (hash, _size_bytes, _attempts) in &ordered {
             let path = self.cache_dir.join("images").join(format!("{hash}.webp"));
@@ -239,12 +240,17 @@ impl ImagePushScheduler {
                 }
                 Err(e) => {
                     tracing::warn!(hash, error = %e, "image push: missing file, skipping");
-                    // File missing — mark as a failure so the queue entry is
-                    // either retried (backoff) or eventually dead-lettered.
-                    let db = self.db.lock().await;
-                    let store = Store::new(&db);
-                    let _ = store.mark_push_attempt(hash, false);
+                    missing_files.push(hash.clone());
                 }
+            }
+        }
+
+        // O-M39: accumulate missing file failures and mark under a single lock hold
+        if !missing_files.is_empty() {
+            let db = self.db.lock().await;
+            let store = Store::new(&db);
+            for hash in &missing_files {
+                let _ = store.mark_push_attempt(hash, false);
             }
         }
 

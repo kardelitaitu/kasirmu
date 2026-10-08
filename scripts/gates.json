@@ -186,7 +186,7 @@
           "clippy"
         ]
       },
-      "_note": "Runs locally only, and not everywhere locally: its two runners are scripts/check.sh (step \"clippy workspace\") and scripts/release.sh. No live workflow runs it -- clippy occurs 0 times in both dev-ci.yml and release.yml -- so a green CI says nothing about clippy. It is also NOT run before a push: .githooks/pre-push invokes scripts/run-pre-push.py, which carries no clippy task at any tier. status=\"required\" is the policy this project holds, not a claim that a gate enforces it."
+      "_note": "Runs locally AND in CI. Locally its runners are scripts/check.sh (step \"clippy workspace\") and scripts/release.sh. **Corrected 2026-10-07:** this note asserted \"No live workflow runs it -- clippy occurs 0 times in both dev-ci.yml and release.yml\". That was true when written and is now HALF wrong: release.yml still has 0 clippy references, but dev-ci.yml has 11 and defines a live `cargo-clippy` job (`:326`, ubuntu-latest, rust 1.98.1 + the clippy component, `cargo clippy --workspace --all-targets -- -D warnings` at `:353`), and the deploy job lists it in `needs:` (`:1585`). So a green CI DOES now say something about clippy. Still true: clippy is NOT run before a push -- .githooks/pre-push invokes scripts/run-pre-push.py, which carries no clippy task at any tier -- so the pre-push lane remains the one this gate cannot rely on. The job landed in b2bf2c69d. status=\"required\" is the policy this project holds."
     },
     {
       "id": "rust-tests",
@@ -1577,7 +1577,7 @@
         "workflow": "dev-ci.yml",
         "job": "static-gates"
       },
-      "_note": "Added 2026-09-30 (Round 4 of the modular-scaffolding plan, Immediate Next Action 3). ADR-62 named the module seams; docs/architecture/module-namespace-governance.md names the rules and this enforces the mechanical half of them SOFTLY. Rule 1 (no new cross-vertical raw SQL outside the reporting facade) fails only on a NEW edge -- the two edges that exist are frozen in scripts/namespace-governance-baseline.json: modules/reporting/src/repository.rs reads sales directly (known facade-bypass debt, plan 9.5) and modules/loyalty/src/repository.rs reads gift_cards while loyalty declares only [crm] (found by this inventory, not surfaced by the plan). Rule 2 (no new unclassified handler) fails a type absent from scripts/handler-classification.json, populated from the Phase 0 census (docs/architecture/handler-census-phase0.md) with the ADR-62 D4 vocabulary. Rule 3 (undeclared dependency) is informational, not blocking, because real edges exist today. Style is deliberately soft, not strict: every module shares one SQLite connection, so a namespace boundary is a convention rather than a mechanically expressible property, and strict enforcement is deferred to Phase 4. The checker reads table names OUT of Rust string literals (a mask-strings-first scanner finds nothing, which is how the first draft reported 0 of 2 known edges); it carries --self-test, and the pair is listed under checker-selftest-companions via verify-selftests-wired.py. | Updated 2026-10-03 (Phase 4 P4.5): the gate step now runs --strict (scripts/check.sh), so an undeclared dependency (Rule 3) blocks instead of being informational. Strictness is safe because the population was clean at flip time (0 undeclared edges; 1 frozen cross-vertical edge, baselined and grant-marked)."
+      "_note": "Added 2026-09-30 (Round 4 of the modular-scaffolding plan, Immediate Next Action 3). ADR-62 named the module seams; docs/architecture/module-namespace-governance.md names the rules and this enforces the mechanical half of them SOFTLY. Rule 1 (no new cross-vertical raw SQL outside the reporting facade) fails only on a NEW edge -- the two edges that exist are frozen in scripts/namespace-governance-baseline.json: modules/reporting/src/repository.rs reads sales directly (known facade-bypass debt, plan 9.5) and modules/loyalty/src/repository.rs reads gift_cards while loyalty declares only [crm] (found by this inventory, not surfaced by the plan). Rule 2 (no new unclassified handler) fails a type absent from scripts/handler-classification.json, populated from the Phase 0 census (docs/records/superseded/handler-census-phase0.md) with the ADR-62 D4 vocabulary. Rule 3 (undeclared dependency) is informational, not blocking, because real edges exist today. Style is deliberately soft, not strict: every module shares one SQLite connection, so a namespace boundary is a convention rather than a mechanically expressible property, and strict enforcement is deferred to Phase 4. The checker reads table names OUT of Rust string literals (a mask-strings-first scanner finds nothing, which is how the first draft reported 0 of 2 known edges); it carries --self-test, and the pair is listed under checker-selftest-companions via verify-selftests-wired.py. | Updated 2026-10-03 (Phase 4 P4.5): the gate step now runs --strict (scripts/check.sh), so an undeclared dependency (Rule 3) blocks instead of being informational. Strictness is safe because the population was clean at flip time (0 undeclared edges; 1 frozen cross-vertical edge, baselined and grant-marked)."
     },
     {
       "id": "capability-parity",
@@ -1640,6 +1640,50 @@
         "workflow": "dev-ci.yml",
         "job": "static-gates"
       }
+    },
+    {
+      "id": "docs-orphans",
+      "label": "Docs orphans (unreachable documents)",
+      "status": "required",
+      "runners": {
+        "check.sh": [
+          "docs orphans"
+        ]
+      },
+      "_note": "Wired 2026-10-02. check-orphans.py shipped in the docs-auditor skill and was invoked by nothing — not check.sh, not CI, not the hook. It had been run manually once per round of the docs restructure, which is diligence, not enforcement: nothing would have failed if a document became unreachable. Green on the day it was wired (0 findings), so wiring it changes no current verdict and makes future unreachable-document drift fail a gate."
+    },
+    {
+      "id": "audit-stamps",
+      "label": "Audit stamp / footer agreement",
+      "status": "required",
+      "runners": {
+        "check.sh": [
+          "audit stamps"
+        ]
+      },
+      "_note": "Wired 2026-10-02, same reasoning as docs-orphans. check-audit-stamps.py grades the AGENTS.md footer convention (> last audited DD-MM-YY by <name>) against each document's own stamp, so a footer that under-reports its audit fails. It caught one real defect on the day it was first run (onboarding-guide's footer still read 22-09-26 after its stamp was bumped to 2026-10-02, fixed in c70242335). Left out of CI deliberately: it reads the working tree, which a runner's checkout legitimately differs from, exactly as the checker that repaired its own Windows encoding crash noted."
+    },
+    {
+      "id": "nav-paths",
+      "label": "Customer-doc navigation paths",
+      "status": "required",
+      "runners": {
+        "check.sh": [
+          "nav paths"
+        ]
+      },
+      "_note": "Wired 2026-10-02, after repairing the detector rather than before. The checker grades bolded '**Parent -> Child**' pairs in the bilingual customer docs against the UI nav model, and both of its findings were false: the 2026-09-30 customer rename sweep records '**Store -> Location**' in exactly the shape a nav instruction takes. It now treats a blockquote opening with a date as a change stamp and skips the rest of that block. Deliberately narrow - a three-way control pins that a quote NOT opening with a date is still graded - because skipping every blockquote would also skip a real nav instruction. Also fixed earlier the same day: the human-readable output crashed on Windows, where cp1252 cannot encode the arrow, so the checker could never show what it found."
+    },
+    {
+      "id": "ci-claims",
+      "label": "CI claims in documentation",
+      "status": "required",
+      "runners": {
+        "check.sh": [
+          "ci claims"
+        ]
+      },
+      "_note": "Wired 2026-10-02, after the same repair-then-wire order. The checker grades CI job and step names asserted in prose against the live workflows. All seven of its findings were inside docs/records/superseded/ and docs/records/audits/ - dated records describing the retired ci-pipeline doc - so those folders joined SKIP_DIR, mirroring ARCHIVE_PREFIXES in verify-doc-uniqueness.py. Scan scope measured before and after: 473 docs to 410, the 63 dated records excluded, 410 still graded. Its 80-line lookahead was also a bug worth naming: northflank-deploy carries its steps: 98 lines below its key, so the job fell out of the live set and a CORRECT runbook was reported as claiming a job no workflow defines."
     }
   ]
 }

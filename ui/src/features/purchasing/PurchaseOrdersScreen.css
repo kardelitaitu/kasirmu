@@ -153,3 +153,28 @@
 }
 
 .po-action-btn--danger:hover { background: var(--color-danger-bg); }
+
+/* ── Touch press feedback ────────────────────────────────────────────
+   Purchase orders are approved on the tablet, so the action button is a
+   money-adjacent tap. Filled actions scale; the filter chip tints. */
+.po-action-btn:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+.po-filter-btn:active {
+  background: color-mix(in srgb, var(--color-fg) 12%, transparent);
+}
+
+@media (pointer: coarse) {
+  .po-filter-btn,
+  .po-action-btn {
+    min-height: var(--touch-target-min);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .po-action-btn:not(:disabled):active {
+    transform: none;
+    opacity: 0.75;
+  }
+}

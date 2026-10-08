@@ -504,6 +504,46 @@ pub async fn create_session(
         }
     }
 
+    // Uphold the authorization invariant before the session exists: every
+    // scoped command authorizes the session user in the STORE DB, and a store
+    // DB created by provisioning has an empty users table — the tablet
+    // rejected `list_currencies_scoped` with `PermissionDenied("user not
+    // found")` on exactly this gap (walk-diag 2026-10-07). The identity is
+    // already proven above (picker ticket + instance access), so the
+    // replication carries no new authority: it only copies the row the
+    // global DB just authenticated.
+    {
+        // Open the store db BEFORE taking the global lock: on a cache miss
+        // `open_store` creates the file and runs migrations, and every other
+        // command goes through the global db lock — holding it across that
+        // work would stall the shell. No await follows the store lock, so
+        // the std guard never spans a suspension point.
+        let store_conn = state
+            .db_manager
+            .open_store(&args.store_id)
+            .map_err(|e| AppError::Internal(format!("opening store db: {e}")))?;
+        let global = state.db.lock().await;
+        let store_guard = store_conn
+            .lock()
+            .map_err(|e| AppError::Internal(format!("store db lock poisoned: {e}")))?;
+        let replicated = platform_core::database::identity_sync::ensure_session_user_in_store(
+            &global,
+            &store_guard,
+            &args.user_id,
+        )
+        .map_err(|e| AppError::Internal(format!("replicating session user: {e}")))?;
+        if !replicated {
+            tracing::error!(
+                user_id = %args.user_id,
+                store_id = %args.store_id,
+                "session creation denied — authenticated user vanished from the global DB"
+            );
+            return Err(AppError::Invalid(
+                "Authenticated user no longer exists".into(),
+            ));
+        }
+    }
+
     // ADR #5: the tenant subscription gates which workspace types a session
     // may open. Role access (above) and tier entitlement are orthogonal —
     // an owner whose subscription no longer covers the type (e.g. kds after
@@ -1144,6 +1184,20 @@ pub async fn refresh_picker_ticket(
     let ctx = state.bridge_ctx();
     kasirmu_bridge::auth::refresh_picker_ticket(&ctx, &session_token).map_err(Into::into)
 }
+
+/// Verify a staff PIN against the current session.
+#[command]
+pub async fn verify_pin(
+    state: State<'_, AppState>,
+    session_token: String,
+    pin: String,
+) -> Result<bool, AppError> {
+    let ctx = state.bridge_ctx();
+    kasirmu_bridge::auth::verify_pin(&ctx, &session_token, &pin)
+        .await
+        .map_err(Into::into)
+}
+
 #[cfg(test)]
 #[path = "auth_tests.rs"]
 mod tests;

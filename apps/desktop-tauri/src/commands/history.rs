@@ -35,10 +35,12 @@ pub use kasirmu_core::db::faktur_pajak::FakturPajakInfo;
 #[tauri::command]
 pub async fn list_sales_scoped(
     session_token: String,
+    limit: Option<u64>,
+    offset: Option<u64>,
     state: State<'_, AppState>,
 ) -> Result<SaleListResponse, AppError> {
     let ctx = state.bridge_ctx();
-    kasirmu_bridge::history::list_sales_scoped(&ctx, &session_token)
+    kasirmu_bridge::history::list_sales_scoped_bounded(&ctx, &session_token, limit, offset)
         .await
         .map_err(Into::into)
 }

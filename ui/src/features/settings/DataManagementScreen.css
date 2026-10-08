@@ -544,6 +544,22 @@
   margin: 0;
 }
 
+/* ── Touch press feedback ────────────────────────────────────────────
+   Data management is destructive-adjacent and performed on the tablet. Both
+   controls are checkbox/password affordances, so they tint rather than
+   scale: their state is their own visual, not a transform target. */
+.data-mgmt-type-checkbox:active,
+.data-mgmt-password-toggle:active {
+  background: color-mix(in srgb, var(--color-fg) 12%, transparent);
+}
+
+@media (pointer: coarse) {
+  .data-mgmt-type-checkbox,
+  .data-mgmt-password-toggle {
+    min-height: var(--touch-target-min);
+  }
+}
+
 
 
 

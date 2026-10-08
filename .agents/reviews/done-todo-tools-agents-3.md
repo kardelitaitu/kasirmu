@@ -12,6 +12,19 @@
 > paragraph records as "measured, not approved", and which also takes the file out of the root glob
 > triage reads. The state of a closed-but-unaccepted plan belongs in a **dated header line**, never
 > in the filename — which is what this blockquote is.
+>
+> ⚠️ **RE-READ 2026-10-07 — the file's own addendum now satisfies the rule this blockquote invokes, and the
+> title has not caught up.** The blockquote above says the prefix is not earned because `npm run check:all`
+> "was run on 14-09-26 for the first time and it **FAILED**". Line `:84` records the follow-up:
+> *"**RUN 2026-09-15, GREEN** — the condition that addendum named is met"*, and `:120` dispositions the two
+> remaining boxes (the upgrade-dialog click **ruled — declined by design**; the `RouteGuard.tsx` wrapper
+> **closed — the bypass measured shut with no new code**). So by §7.4's own test the `done-` token IS earned,
+> while the `#` title at `:1` and the two stamps below (`:137` "Prefix kept as `todo-`" and `:141`
+> "CLOSED AS A PLAN, NOT ACCEPTED — file stays `todo-`") still read the same way. **The filename and directory are right; the title and stamps are the stale half** — they describe
+> 14-09 and were not revisited after the 15-09 green run. Kept as written, since the contradiction is itself the
+> finding and rewriting a dated verdict as though it had always said this would falsify it. Two path repairs
+> made in the same pass: the sibling cross-links here and in `done-todo-tools-agents-1/2.md` named old filenames
+> and, in the agents-1/2 copies, the wrong directory — all four now resolve.
 
 **Document:** `done-todo-tools-agents-3.md`  
 **Role:** Orchestrator Agent 3 (Access Boundary & Upgrade UX Architect)  
@@ -19,8 +32,8 @@
 
 **Target Files:** `ui/src/components/RouteGuard.tsx`, `ui/src/utils/upgrade.ts`  
 **Sibling Documents:**
-- [`todo-tools-agents-1.md`](./todo-tools-agents-1.md) (Agent 1 — Entitlement, Expiry & Grace Period Engine)
-- [`todo-tools-agents-2.md`](./todo-tools-agents-2.md) (Agent 2 — Workspace Navigation & Home Grid Categorization)
+- [`done-todo-tools-agents-1.md`](../archived/done-todo/done-todo-tools-agents-1.md) (Agent 1 — Entitlement, Expiry & Grace Period Engine)
+- [`done-todo-tools-agents-2.md`](../archived/done-todo/done-todo-tools-agents-2.md) (Agent 2 — Workspace Navigation & Home Grid Categorization)
 
 ---
 

@@ -6,7 +6,7 @@ runtime because all 25 files are concatenated per locale — so the parity gate
 is green while the file layout lies. This finds those crossings.
 """
 # Promoted from the 2026-09-03 Fluent page audit; see
-# docs/records/fluent-page-audit.md for why this check exists.
+# docs/records/audits/frontend/fluent-page-audit.md for why this check exists.
 
 from __future__ import annotations
 

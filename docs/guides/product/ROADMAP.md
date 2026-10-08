@@ -519,13 +519,13 @@ This document defines the phased delivery plan for kasir.mu. Each phase has a cl
 - [ ] Custom report builder (drag-and-drop columns)
 
 ### Accessibility & i18n
-- [x] WCAG-2.1 AA audit checklist (`docs/archived/a11y.md`)
+- [x] WCAG-2.1 AA audit checklist (`docs/records/superseded/a11y.md`)
 - [x] ARIA labels on all interactive elements
 - [x] `shared-ui/locales/*.ftl` — English per-feature bundles
 - [x] `shared-ui/locales/*.id.ftl` — Bahasa Indonesia per-feature bundles
 - [x] Per-feature bundles × 2 locales — **the arithmetic no longer closes.** `ls shared-ui/locales/*.ftl | wc -l` → **54** files (measured 2026-09-23), so either the bundle count rose or some files have no twin. The `× 2 = 50` form is not re-derivable without a grouping command, which does not exist here; the 54 is re-derivable and is the number to trust.
 - [x] `@fluent/react` integration — no hardcoded strings in JSX
-- [x] `docs/archived/a11y.md` — accessibility compliance checklist
+- [x] `docs/records/superseded/a11y.md` — accessibility compliance checklist
 - [x] Lighthouse a11y score ≥ 90 on all pages — **NOT a CI gate, and this box is checked on a measurement nobody can re-derive from this checkout.** `scripts/gates.json` records the `lighthouse` gate as `"status": "retired"` ("Lighthouse a11y audit ran in ci.yml#lighthouse only"), and `ci.yml` is `ci.yml.bak`. Corrected 2026-09-23 (C30): the parenthetical claimed a CI gate that does not run.
 - [x] UI fully translated in English + Bahasa Indonesia — **re-derive the counts, both are stale.** `ls shared-ui/locales/*.ftl | wc -l` → 54 files (measured 2026-09-23), not 50. The "25 per-feature bundles" figure is unverified from this checkout: a bundle pair is only countable by grouping filenames into en/id twins, and this runbook-style count has no command that produces it — treat 25 as unsupported rather than confirmed.
 - [x] Thai locale removed — not a target market
@@ -533,7 +533,7 @@ This document defines the phased delivery plan for kasir.mu. Each phase has a cl
 ### kasirmu-reporting — Performance & Profiling
 - [ ] `tokio-console` integration macros
 - [ ] `cargo flamegraph` helpers
-- [x] Benchmark suite: barcode lookup < 1 ms, transaction commit < 5 ms (criterion benches in `crates/kasirmu-core/benches/`, targets defined in `docs/archived/benchmarks.md`)
+- [x] Benchmark suite: barcode lookup < 1 ms, transaction commit < 5 ms (criterion benches in `crates/kasirmu-core/benches/`, targets defined in `docs/records/superseded/2026-07-22-benchmarks.md`)
 - [ ] ~~Prometheus metrics endpoint (optional, in `kasirmu-reporting` behind `metrics` feature — counters, gauges, histograms + HTTP server in `platform-startup`)~~ **NOT STARTED — corrected 2026-09-12: the app-side server half was never finished, and on 2026-09-12 it was retired.** ~~What ships: `kasirmu-reporting`'s feature-gated counters, gauges and histograms.~~ **CORRECTED 2026-09-30: that half is gone too, so nothing ships at all.** `kasirmu-reporting`'s `metrics` module and the `metrics` feature that gated it were retired on 2026-09-30 (checklist C29) for the same reason recorded here for the server half — no dependent enabled the feature, so it compiled in no production build. There is now no metrics module in `kasirmu-reporting` and no `/metrics` endpoint in any shipped app. What never did: the `platform-startup` HTTP endpoint — its whole `pub mod server` sat behind `#[cfg(feature = "metrics")]`, a feature `platform/startup/Cargo.toml` does not declare, so it compiled in no build, and `start_metrics_server` had no call site in either Tauri client or in `apps/cloud-server`. The box stays unchecked: nothing serves `/metrics` in the desktop or tablet app today, and the only `/metrics` route in the tree is the cloud server's own separate registry (`apps/cloud-server/src/metrics.rs`), which this box never described. `CHANGELOG.md` keeps its original entry: a changelog records what was believed at release time.
 
 ### UI / UX — Reports, Dashboard & i18n Screens
@@ -834,7 +834,7 @@ Phase 17 (P2P Mesh) ──► Phase 18 (Franchise Fleet) ──► Phase 19 (Mic
 On-Features can be activated at any phase once the core infrastructure is in place.
 
 > [!NOTE]
-> For granular, step-by-step checklists covering admin feature configuration, restaurant workflows (`Resto POS + KDS + Inventory`), LAN peer-to-peer sync, and Docker containerized cloud server deployments (`apps/cloud-server`), see **[MODULAR_APP_PLAN.md](../../architecture/MODULAR_APP_PLAN.md)**.
+> For granular, step-by-step checklists covering admin feature configuration, restaurant workflows (`Resto POS + KDS + Inventory`), LAN peer-to-peer sync, and Docker containerized cloud server deployments (`apps/cloud-server`), see **[MODULAR_APP_PLAN.md](../../records/superseded/MODULAR_APP_PLAN.md)**.
 
 ---
 

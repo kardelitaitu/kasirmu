@@ -85,3 +85,22 @@
     transition: none;
   }
 }
+
+/* ── Touch press feedback ────────────────────────────────────────────
+   Course assignment is tapped repeatedly during a restaurant order. */
+.pos-cart-course-btn:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+@media (pointer: coarse) {
+  .pos-cart-course-btn {
+    min-height: var(--touch-target-min);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pos-cart-course-btn:not(:disabled):active {
+    transform: none;
+    opacity: 0.75;
+  }
+}

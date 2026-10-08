@@ -86,7 +86,7 @@ export interface LinkedAccountDto {
  * credentials are read by the shell; no secret is passed from here.
  */
 export async function linkDeviceGoogle(): Promise<LinkedAccountDto> {
-  return loggedInvoke('link_device_google');
+  return loggedInvoke('link_device_google', undefined, { timeoutMs: 300_000 });
 }
 
 /** The account an emailed code proved (ADR #54 §2.6). */

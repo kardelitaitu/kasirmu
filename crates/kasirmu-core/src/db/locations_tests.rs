@@ -974,3 +974,113 @@ fn ticket_prefix_same_prefix_allowed_across_tenants() {
         Some("A".to_string())
     );
 }
+
+#[test]
+fn update_location_profile_currency_and_timezone_blocked_by_open_shift() {
+    let store_db = migrations::fresh_db();
+    let (store, id) = setup(&store_db);
+
+    // Seed role, user, and terminal bound to this location
+    store_db
+        .execute(
+            "INSERT OR IGNORE INTO roles (id, name) VALUES ('r-cashier', 'Cashier')",
+            [],
+        )
+        .unwrap();
+    store_db
+        .execute(
+            "INSERT OR IGNORE INTO users (id, username, pin_hash, display_name, role_id)
+             VALUES ('user-loc-shift', 'cashier', 'hash', 'Cashier', 'r-cashier')",
+            [],
+        )
+        .unwrap();
+    store_db
+        .execute(
+            "INSERT OR IGNORE INTO terminals (id, name, device_id, bound_location_id, created_at, updated_at)
+             VALUES ('term-loc-1', 'POS 1', 'dev-loc-1', ?1, '2026-10-02T00:00:00.000Z', '2026-10-02T00:00:00.000Z')",
+            rusqlite::params![id],
+        )
+        .unwrap();
+
+    // Open shift
+    store_db
+        .execute(
+            "INSERT INTO shifts (id, user_id, terminal_id, status)
+             VALUES ('shift-loc-open', 'user-loc-shift', 'term-loc-1', 'open')",
+            [],
+        )
+        .unwrap();
+
+    // Updating non-financial metadata (name, address, tax_id) while shift is open SUCCEEDS
+    let updated = store
+        .update_location_profile(&id, "Renamed Store", "456 New St", "TAX-002", "USD", "America/New_York")
+        .expect("updating name/address with unchanged currency and timezone must succeed during open shift");
+    assert_eq!(updated.name, "Renamed Store");
+
+    // Attempting to change currency while shift is open MUST be blocked
+    let err = store
+        .update_location_profile(
+            &id,
+            "Renamed Store",
+            "456 New St",
+            "TAX-002",
+            "IDR",
+            "America/New_York",
+        )
+        .expect_err("mutating currency while shift is open must be blocked");
+    assert!(
+        matches!(
+            err,
+            CoreError::Validation {
+                field: "regional_settings",
+                ..
+            }
+        ),
+        "expected CoreError::Validation on regional_settings, got {err:?}"
+    );
+
+    // Attempting to change timezone while shift is open MUST be blocked
+    let err_tz = store
+        .update_location_profile(
+            &id,
+            "Renamed Store",
+            "456 New St",
+            "TAX-002",
+            "USD",
+            "Asia/Jakarta",
+        )
+        .expect_err("mutating timezone while shift is open must be blocked");
+    assert!(
+        matches!(
+            err_tz,
+            CoreError::Validation {
+                field: "regional_settings",
+                ..
+            }
+        ),
+        "expected CoreError::Validation on regional_settings, got {err_tz:?}"
+    );
+
+    // Close the shift
+    store_db
+        .execute(
+            "UPDATE shifts SET closed_at = '2026-10-02T12:00:00.000Z', status = 'closed'
+             WHERE id = 'shift-loc-open'",
+            [],
+        )
+        .unwrap();
+
+    // After shift is closed, currency & timezone changes SUCCEED
+    let final_profile = store
+        .update_location_profile(
+            &id,
+            "Renamed Store",
+            "456 New St",
+            "TAX-002",
+            "IDR",
+            "Asia/Jakarta",
+        )
+        .expect("after shift is closed, currency/timezone mutation must succeed");
+    assert_eq!(final_profile.currency, "IDR");
+    assert_eq!(final_profile.timezone, "Asia/Jakarta");
+}

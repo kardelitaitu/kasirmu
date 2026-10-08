@@ -50,14 +50,12 @@
  * copies a patch onto one row, or drops a row. No float, no rounding, no scale.
  */
 import { useCallback, useRef, useState, type Dispatch, type SetStateAction } from 'react';
+import type { PaymentMethod } from '@/api/types/payment';
 
 /**
- * Structural twin of the shell's PaymentMethod (PaymentModal.tsx:45), in the
- * same role the row twins already play in ./SplitTenderRows.tsx and
- * ./useTenderMath.ts: the extracted file names the union it stores without
- * importing the component that still owns the display switch over it.
+ * Mirror of the canonical PaymentMethod union (from @/api/types/payment).
  */
-type SplitRowMethod = 'cash' | 'card' | 'qris' | 'other' | 'open_bill' | 'credit';
+type SplitRowMethod = PaymentMethod;
 
 /** One split-tender row. amountMinor is the input's decimal string, not minor units. */
 export interface SplitRow {

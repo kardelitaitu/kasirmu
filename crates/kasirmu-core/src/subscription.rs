@@ -201,7 +201,42 @@ impl TenantSubscription {
 
         match result {
             Ok(sub) => Ok(Some(sub)),
-            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(rusqlite::Error::QueryReturnedNoRows) => {
+                if tenant_id == "default" {
+                    // Fallback for provisioned linked terminals where the row was written
+                    // under args.tenant_id (or server-assigned ID) instead of "default":
+                    let mut fallback_stmt = conn.prepare(
+                        "SELECT tenant_id, tier_key, status, expires_at, max_locations,
+                                max_pos_instances, allowed_types_json, signature, signed_payload,
+                                api_key, updated_at
+                         FROM tenant_subscription
+                         ORDER BY (CASE WHEN tenant_id = 'default' THEN 0 ELSE 1 END), updated_at DESC
+                         LIMIT 1",
+                    )?;
+                    let fallback_result = fallback_stmt.query_row([], |row| {
+                        Ok(TenantSubscription {
+                            tenant_id: row.get(0)?,
+                            tier: SubscriptionTier::from_db(&row.get::<_, String>(1)?),
+                            status: row.get(2)?,
+                            expires_at: row.get(3)?,
+                            max_locations: row.get(4)?,
+                            max_pos_instances: row.get(5)?,
+                            allowed_types_json: row.get(6)?,
+                            signature: row.get(7)?,
+                            signed_payload: row.get::<_, Option<String>>(8)?.unwrap_or_default(),
+                            api_key: row.get::<_, Option<String>>(9)?.unwrap_or_default(),
+                            updated_at: row.get(10)?,
+                        })
+                    });
+                    match fallback_result {
+                        Ok(sub) => Ok(Some(sub)),
+                        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+                        Err(e) => Err(CoreError::from(e)),
+                    }
+                } else {
+                    Ok(None)
+                }
+            }
             Err(e) => Err(CoreError::from(e)),
         }
     }

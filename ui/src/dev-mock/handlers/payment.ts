@@ -281,6 +281,27 @@ export function createPaymentHandlers(deps: PaymentDeps): Record<string, MockHan
     const { transactionId } = a.args ?? a;
     return { success: true, transactionId, authCode: null, cardScheme: null, cardLast4: null, message: 'void approved' };
   },
+  'edc_inquiry': (args) => {
+    const a = args as { args: { invoice?: string } };
+    const invoice = (a.args ?? a).invoice ?? 'INV-001';
+    return {
+      success: true,
+      transactionId: `TXN-${invoice}`,
+      authCode: '123456',
+      cardScheme: 'VISA',
+      cardLast4: '4242',
+      message: `inquiry approved for ${invoice}`,
+    };
+  },
+  'edc_settle': () => ({
+    success: true,
+    batchNumber: '000001',
+    batchCount: 5,
+    totalAmountMinor: 150000,
+    currency: 'IDR',
+    message: 'settlement successful',
+  }),
+  'print_edc_settlement_slip_scoped': () => ({ printed: true }),
 
   // Local payment methods (regional slice 6) — same parity rule.
   'get_local_payment_methods_scoped': (args) => getMockLocalPaymentMethods(unwrapArgs, args),

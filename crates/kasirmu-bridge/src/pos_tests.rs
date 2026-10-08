@@ -241,6 +241,8 @@ fn add_line_args_fields() {
         unit_price_minor: 350,
         unit_price_currency: None,
         course: None,
+        modifiers_json: None,
+        note: None,
     };
     assert_eq!(args.qty, 3);
     assert_eq!(args.unit_price_minor, 350);
@@ -276,6 +278,8 @@ fn line_unit_price_uses_wire_currency_over_cart_currency() {
         unit_price_minor: 500,
         unit_price_currency: Some("EUR".into()),
         course: None,
+        modifiers_json: None,
+        note: None,
     };
     let money = line_unit_price(&args, usd()).unwrap();
     assert_eq!(money.currency, "EUR".parse::<Currency>().unwrap());
@@ -291,6 +295,8 @@ fn line_unit_price_falls_back_to_cart_currency_when_absent() {
         unit_price_minor: 350,
         unit_price_currency: None,
         course: None,
+        modifiers_json: None,
+        note: None,
     };
     let money = line_unit_price(&args, usd()).unwrap();
     assert_eq!(money.currency, usd());
@@ -305,6 +311,8 @@ fn line_unit_price_rejects_invalid_currency() {
         unit_price_minor: 350,
         unit_price_currency: Some("NOPE!".into()),
         course: None,
+        modifiers_json: None,
+        note: None,
     };
     let err = line_unit_price(&args, usd()).unwrap_err();
     assert!(
@@ -335,6 +343,8 @@ fn shortfall_line_unit_price_uses_wire_currency_over_sale_currency() {
         unit_price_minor: 500,
         unit_price_currency: Some("EUR".into()),
         course: None,
+        modifiers_json: None,
+        note: None,
     };
     let money = shortfall_line_unit_price(&line_data, usd()).unwrap();
     assert_eq!(money.currency, "EUR".parse::<Currency>().unwrap());
@@ -349,6 +359,8 @@ fn shortfall_line_unit_price_falls_back_to_sale_currency_when_absent() {
         unit_price_minor: 350,
         unit_price_currency: None,
         course: None,
+        modifiers_json: None,
+        note: None,
     };
     let money = shortfall_line_unit_price(&line_data, usd()).unwrap();
     assert_eq!(money.currency, usd());
@@ -362,6 +374,8 @@ fn shortfall_line_unit_price_rejects_invalid_currency() {
         unit_price_minor: 350,
         unit_price_currency: Some("NOPE!".into()),
         course: None,
+        modifiers_json: None,
+        note: None,
     };
     let err = shortfall_line_unit_price(&line_data, usd()).unwrap_err();
     assert!(
@@ -394,6 +408,8 @@ fn complete_sale_result_debug() {
         sale_id: "sale-1".into(),
         total: Some(price(1000)),
         line_count: 2,
+        receipt_number: None,
+        statutory_number: None,
     };
     let debug = format!("{result:?}");
     assert!(debug.contains("sale-1"));
@@ -542,6 +558,8 @@ async fn scoped_sale_deducts_from_topology_warehouse_not_pos_location() {
             unit_price_minor: 1000,
             unit_price_currency: None,
             course: None,
+            modifiers_json: None,
+            note: None,
         },
     )
     .await
@@ -567,6 +585,7 @@ async fn scoped_sale_deducts_from_topology_warehouse_not_pos_location() {
             attempt_id: None,
             // F2-6: no estimate claim — the note must stay NULL.
             tax_estimated: None,
+            document_kind: None,
         },
     )
     .await;
@@ -1122,6 +1141,7 @@ async fn settle_replay_cart(
             promotion_ids: None,
             attempt_id: attempt.map(str::to_owned),
             tax_estimated: None,
+            document_kind: None,
         },
     )
     .await
@@ -1228,6 +1248,8 @@ async fn stale_attempt_id_on_a_different_cart_settles_a_new_sale() {
             unit_price_minor: 350,
             unit_price_currency: None,
             course: None,
+            modifiers_json: None,
+            note: None,
         },
     )
     .await
@@ -1272,6 +1294,8 @@ async fn stale_attempt_id_on_a_different_cart_settles_a_new_sale() {
             unit_price_minor: 350,
             unit_price_currency: None,
             course: None,
+            modifiers_json: None,
+            note: None,
         },
     )
     .await
@@ -1437,6 +1461,8 @@ async fn replayed_attempt_answers_the_rekeyed_baskets_own_receipt() {
             unit_price_minor: 350,
             unit_price_currency: None,
             course: None,
+            modifiers_json: None,
+            note: None,
         },
     )
     .await
@@ -1473,6 +1499,8 @@ async fn replayed_attempt_answers_the_rekeyed_baskets_own_receipt() {
             unit_price_minor: 350,
             unit_price_currency: None,
             course: None,
+            modifiers_json: None,
+            note: None,
         },
     )
     .await
@@ -1526,6 +1554,8 @@ async fn voided_sale_does_not_satisfy_a_replay() {
             unit_price_minor: 350,
             unit_price_currency: None,
             course: None,
+            modifiers_json: None,
+            note: None,
         },
     )
     .await
@@ -1575,6 +1605,8 @@ async fn settle_shortfall_resolution(
                 unit_price_minor: 350,
                 unit_price_currency: None,
                 course: None,
+                modifiers_json: None,
+                note: None,
             }],
             total_minor: 700,
             currency: "USD".into(),
@@ -1622,6 +1654,8 @@ async fn shortfall_retries_with_a_stable_attempt_settle_one_sale() {
             unit_price_minor: 350,
             unit_price_currency: None,
             course: None,
+            modifiers_json: None,
+            note: None,
         },
     )
     .await
@@ -1673,6 +1707,8 @@ async fn attempt_id_reuse_across_carts_settles_each_basket_under_its_own_key() {
             unit_price_minor: 350,
             unit_price_currency: None,
             course: None,
+            modifiers_json: None,
+            note: None,
         },
     )
     .await
@@ -1709,6 +1745,8 @@ async fn attempt_id_reuse_across_carts_settles_each_basket_under_its_own_key() {
             unit_price_minor: 350,
             unit_price_currency: None,
             course: None,
+            modifiers_json: None,
+            note: None,
         },
     )
     .await
@@ -1797,6 +1835,8 @@ async fn whitespace_only_attempt_id_is_unguarded_like_the_tablet() {
             unit_price_minor: 350,
             unit_price_currency: None,
             course: None,
+            modifiers_json: None,
+            note: None,
         },
     )
     .await
@@ -1989,6 +2029,8 @@ async fn set_line_course_assigns_and_clears_with_normalization() {
             unit_price_minor: 1500,
             unit_price_currency: None,
             course: None,
+            modifiers_json: None,
+            note: None,
         },
     )
     .await
@@ -2088,6 +2130,8 @@ async fn set_line_course_rejects_unknown_cart_and_line() {
             unit_price_minor: 1500,
             unit_price_currency: None,
             course: None,
+            modifiers_json: None,
+            note: None,
         },
     )
     .await
@@ -2196,6 +2240,7 @@ async fn publish_course_fired_rejects_unknown_sale_and_empty_course() {
             promotion_ids: None,
             attempt_id: None,
             tax_estimated: None,
+            document_kind: None,
         },
     )
     .await
@@ -2361,6 +2406,8 @@ async fn settle_plugin_gate_cart(ctx: &BridgeCtx<'_>) -> Result<CompleteSaleResu
             unit_price_minor: 1000,
             unit_price_currency: None,
             course: None,
+            modifiers_json: None,
+            note: None,
         },
     )
     .await
@@ -2384,6 +2431,7 @@ async fn settle_plugin_gate_cart(ctx: &BridgeCtx<'_>) -> Result<CompleteSaleResu
             promotion_ids: None,
             attempt_id: None,
             tax_estimated: None,
+            document_kind: None,
         },
     )
     .await
@@ -2509,6 +2557,8 @@ async fn shortfall_door_applies_the_same_plugin_tax_overrides_as_the_main_door()
                 unit_price_minor: 350,
                 unit_price_currency: None,
                 course: None,
+                modifiers_json: None,
+                note: None,
             }],
             total_minor: 700,
             currency: "USD".into(),

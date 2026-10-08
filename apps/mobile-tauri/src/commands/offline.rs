@@ -79,6 +79,7 @@ use crate::state::AppState;
 /// crate does not own, so the conversion could not have stayed behind. Nothing
 /// outside this module names the type.
 pub use kasirmu_bridge::offline::OfflineQueueItemDto;
+pub use kasirmu_bridge::offline::OfflineQueueSummaryDto;
 
 /// Retained remote-application failure DTO for the front-end.
 ///
@@ -272,6 +273,36 @@ pub async fn pending_offline_count_scoped(
     let count = store.pending_offline_count()?;
     drop(db);
     Ok(count)
+}
+
+/// Get a summary of the offline queue status (scoped).
+///
+/// The tablet shell never registered this command, so the offline-queue
+/// screen's read failed with "Command offline_queue_status_summary_scoped
+/// not found" twice per visit and the section rendered its empty state —
+/// measured by the device walk's IPC recorder. Tablet-native, like its
+/// neighbours here: it resolves the session through `resolve_scope` and
+/// reads the STORE database.
+#[command]
+pub async fn offline_queue_status_summary_scoped(
+    session_token: String,
+    state: State<'_, AppState>,
+) -> Result<OfflineQueueSummaryDto, AppError> {
+    let (_session, conn_arc) = state.resolve_scope(&session_token)?;
+    let db_guard = conn_arc
+        .lock()
+        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
+    let store = Store::new(&db_guard);
+    let summary = store.offline_queue_status_summary()?;
+    drop(db_guard);
+    Ok(OfflineQueueSummaryDto {
+        pending_count: summary.pending_count,
+        synced_count: summary.synced_count,
+        failed_count: summary.failed_count,
+        conflict_count: summary.conflict_count,
+        last_synced_at: summary.last_synced_at,
+        oldest_pending_at: summary.oldest_pending_at,
+    })
 }
 
 /// Attempt to sync all pending offline items through the real cloud sync resolved from a session token. ADR #7.
@@ -485,24 +516,25 @@ pub async fn requeue_remote_failure_scoped(
 ///
 /// # ADR #49 NOT APPLIED, deliberately
 ///
-/// Refused 2026-09-16 — **case 2**, on the same ground as
-/// [`list_pending_offline_scoped`]. The body already matches the twin, but the
-/// door resolves a session via `resolve_scope` and names no permission
-/// (`registration_gate_debt.generated.rs:178`), so delegating would flip the row
-/// to `Gated` and **erase debt** instead of paying it (§1).
-#[allow(clippy::needless_borrow, dropping_references)]
+/// List retained remote-application failures (dead-letter discovery) resolved from a session token. ADR #7.
+///
+/// Requires `SYNC_MANAGE` — a manager-only view. Gating this pays the
+/// debt-ledger row rather than erasing it (§1): the door's body already
+/// matches its bridge twin, so adding the gate is the narrowest repair.
 #[command]
 pub async fn list_remote_failures_scoped(
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<RemoteSyncFailureDto>, AppError> {
-    let (_session, conn_arc) = state.resolve_scope(&session_token)?;
+    let session = state.resolve_session(&session_token)?;
+    require_permission_for_session(&state, &session, permissions::SYNC_MANAGE).await?;
+    let conn_arc = state.resolve_store(&session_token)?;
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
     let db = &*db_guard;
-    let failures = run_list_remote_failures(&db)?;
-    drop(db);
+    let failures = run_list_remote_failures(db)?;
+    let _ = db;
     Ok(failures)
 }
 

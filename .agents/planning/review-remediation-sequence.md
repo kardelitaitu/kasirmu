@@ -6,6 +6,19 @@ cited here by location, not as repo history) and the report in
 `.agents/review-backlog-codebase-review.md`. *** NOTHING IN THIS REVIEW WAS COMPILED, TESTED, OR RUN AGAINST A DATABASE - THE
 ONE EXCEPTIONS ARE LISTED IN SECTION D. READ THAT BEFORE ACTING ON ANY OF IT. ***
 
+> ✅ **RESOLVED — read 2026-10-07 by a docs-auditor pass; the incident this file was written inside is over.**
+> The "ON FIRE" framing below is a 2026-09-12 state, and the two things it says are live are not:
+> (1) **`offline.rs:238` is no longer the uncommitted hunk this file describes** — that line is now a
+> doc comment on `mark_synced_on`, the file is clean in the working tree, and it has been through
+> `87aebd206` (2026-10-07, "bound offline sync outbox queries") since. The "uncommitted since ~21:40"
+> risk it names at :15-17 did not ship as a live sale-recorded-sync-refused regression. (2) The
+> **commit freeze is over** — the tree has taken hundreds of commits since 2026-09-12.
+> **What still checks out**, and is why this file is worth keeping rather than archiving: every commit
+> it cites resolves (`53fffa8c1`, `0d0c1eda5`, `707ab6889`, `3b10ea3a`, verified), its A/B/C sequencing
+> reasoning is about *process* rather than a tree state, and §D's RUN-vs-READ ledger is a record of
+> which claims were executed rather than read. Treat §A's dirty-set table as history; treat B, C and D
+> as still-useful method. NOT re-verified: §E's shipped-fix claim.
+
 ## ON FIRE / SAFE TO IGNORE TODAY
 
 **On fire.** An unreviewed second agent is editing this tree faster than the review can cite it: SEVEN COMMITS LANDED IN ~20

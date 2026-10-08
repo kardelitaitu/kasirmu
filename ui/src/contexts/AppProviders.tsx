@@ -1,7 +1,9 @@
-import type { ReactNode } from 'react';
+import { useSyncExternalStore, type ReactNode } from 'react';
 import ErrorBoundary from '@/components/ErrorBoundary';
+import { getActiveRoute, subscribeActiveRoute } from '@/utils/activeRoute';
 import { LocalizedErrorBoundary } from '@/components/LocalizedErrorBoundary';
 import { GlobalErrorReporter } from '@/components/GlobalErrorReporter';
+import { IpcErrorReporter } from '@/components/IpcErrorReporter';
 import { LocaleProvider } from '@/i18n/LocaleContext';
 import { OrgLocaleSync } from '@/i18n/OrgLocaleSync';
 import { BrandProvider } from '@/contexts/BrandContext';
@@ -30,6 +32,38 @@ interface AppProvidersProps {
 const ERROR_AUTO_REFRESH_MS = 30_000;
 
 /**
+ * The current hash route. Both shells navigate by `location.hash`, so this is
+ * the one value that means "the user moved somewhere else".
+ *
+ * It feeds `resetKeys` on the full-page boundaries below. Measured on the
+ * tablet 2026-10-07: a single bad route left the fallback up for every
+ * subsequent section, and the only recovery was the 30s auto-reload — a full
+ * process reload that logs the cashier out mid-shift. Resetting on navigation
+ * recovers in place instead.
+ */
+function useHashRoute(): string {
+  return useSyncExternalStore(
+    (onStoreChange) => {
+      window.addEventListener('hashchange', onStoreChange);
+      return () => window.removeEventListener('hashchange', onStoreChange);
+    },
+    () => window.location.hash,
+    () => '',
+  );
+}
+
+/**
+ * The route the shell navigated to BY STATE. The tablet shell and the desktop
+ * shell both move between tools with `setCurrentRoute`, never touching the
+ * hash — so a boundary tripped on one tool would not clear when the user
+ * switched tools. Shells publish through `setActiveRoute`; both values feed
+ * `resetKeys` below.
+ */
+function useActiveShellRoute(): string {
+  return useSyncExternalStore(subscribeActiveRoute, getActiveRoute, () => '');
+}
+
+/**
  * Composite provider wrapper that establishes application contexts in optimal dependency order.
  * 
  * Order of nesting:
@@ -47,13 +81,16 @@ const ERROR_AUTO_REFRESH_MS = 30_000;
  * 11. HardwareAccelProvider (CSS GPU acceleration flags)
  */
 export function AppProviders({ children }: AppProvidersProps) {
+  const hashRoute = useHashRoute();
+  const shellRoute = useActiveShellRoute();
+  const resetKeys = [hashRoute, shellRoute];
   return (
-    <ErrorBoundary autoRefreshMs={ERROR_AUTO_REFRESH_MS}>
+    <ErrorBoundary autoRefreshMs={ERROR_AUTO_REFRESH_MS} resetKeys={resetKeys}>
       <LocaleProvider>
         {/* ERR-02: inner boundary resolves fallback copy through the active
             locale; the outer ErrorBoundary stays as the locale-independent
             emergency fallback in case LocaleProvider itself fails. */}
-        <LocalizedErrorBoundary autoRefreshMs={ERROR_AUTO_REFRESH_MS}>
+        <LocalizedErrorBoundary autoRefreshMs={ERROR_AUTO_REFRESH_MS} resetKeys={resetKeys}>
         <BrandProvider>
           <ThemeProvider>
             <CurrencyProvider>
@@ -63,6 +100,9 @@ export function AppProviders({ children }: AppProvidersProps) {
                   unhandledrejection) — must live inside ToastProvider so it
                   can surface a recoverable notification. */}
               <GlobalErrorReporter />
+              {/* ERR-06 field diagnostics: bounded, redacted log of every
+                  rejected invoke, for support sessions and device walks. */}
+              <IpcErrorReporter />
               <WorkspaceProvider>
                 {/* CurrencyContext reload bridge: pushes each new session
                     token into refresh() so per-store defaults (CUR-03)

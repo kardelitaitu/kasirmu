@@ -40,7 +40,7 @@ HOW IT DECIDES
           and requires the type to appear in ``scripts/handler-classification.json``.
           A type that is absent is a NEW handler added without classification, and
           is blocking. Types that are present are NOT re-graded: the Phase 0 census
-          (``docs/architecture/handler-census-phase0.md``) classified them, and
+          (``docs/records/superseded/handler-census-phase0.md``) classified them, and
           re-grading them here would duplicate that work.
 
   Rule 3  Reported, never failed. For every cross-vertical table a module names,
@@ -131,7 +131,7 @@ from typing import Any
 # ownership opinion from anywhere else. Reporting owns no tables: it reads
 # through the sanctioned facade (ADR-62 D5).
 TABLE_OWNERS: dict[str, tuple[str, ...]] = {
-    "sales": ("sales", "sale_lines"),
+    "sales": ("sales", "sale_lines", "payments"),
     "inventory": ("products", "product_recipes", "inventory", "stock_summary"),
     "crm": ("customers",),
     "settings": ("settings",),
@@ -259,7 +259,7 @@ REGISTRY_DESCRIPTION = (
     "(docs/architecture/module-namespace-governance.md, Rule 2). Every EventHandler "
     "impl a production file declares must appear here with one of the ADR-62 D4 "
     "categories. The populating classification is the Phase 0 census "
-    "(docs/architecture/handler-census-phase0.md §3); scripts/verify-namespace-governance.py "
+    "(docs/records/superseded/handler-census-phase0.md §3); scripts/verify-namespace-governance.py "
     "fails when a NEW impl type is absent, and deliberately does not re-grade existing rows. "
     "The handlers array is GENERATED from each type's EventHandler::handler_type method "
     "(Phase 1 ticket T2): regenerate with --emit-registry, verify with --check."
@@ -1279,7 +1279,7 @@ def emit_census(root: Path, entries: list[dict[str, Any]]) -> int:
 
     Columns follow the Phase 1 ticket shape (Handler, Category, Subscribed
     topic(s), Site, Note, Status). That is a superset of the hand-written
-    ``docs/architecture/handler-census-phase0.md`` §3 columns: the registry Site
+    ``docs/records/superseded/handler-census-phase0.md`` §3 columns: the registry Site
     is the impl pointer and Status adds the tree-resolution verdict the hand
     census could not compute. A difference in the Registrant/Live columns is
     therefore expected, since this mode does not carry them.
@@ -1407,10 +1407,18 @@ def render_table_owners(owners: dict[str, tuple[str, ...]]) -> str:
     lines = ["TABLE_OWNERS: dict[str, tuple[str, ...]] = {"]
     for module, tables in owners.items():
         inner = ", ".join(f'"{table}"' for table in tables)
-        if tables:
-            lines.append(f'    "{module}": ({inner},)')
-        else:
-            lines.append(f'    "{module}": (),')
+        # Two commas matter here, and this function used to get both wrong.
+        # (1) The comma that ENDS each dict entry: putting it inside the
+        #     parens instead leaves consecutive entries with no separator, so
+        #     --emit-ownership writes Python that no longer imports and takes
+        #     every other gate in check.sh down with it.
+        # (2) A ONE-element tuple needs its own trailing comma -- ("customers")
+        #     is just a str, so dropping it turns TABLE_OWNERS["crm"] into the
+        #     characters 'c','u','s',... and the drift report degenerates into
+        #     one line per letter. Pinned by the self_test cases below.
+        if len(tables) == 1:
+            inner += ","
+        lines.append(f'    "{module}": ({inner}),')
     lines.append("}")
     return "\n".join(lines)
 
@@ -1903,6 +1911,23 @@ def self_test() -> int:
     check("render_table_owners round-trips an empty module",
           render_table_owners({"reporting": ()}).splitlines()[-2].strip(),
           '"reporting": (),')
+    # The empty-module case above is the ONE branch that was already correct,
+    # which is why both bugs survived: nothing exercised a populated entry.
+    check("render_table_owners terminates a populated entry",
+          render_table_owners({"sales": ("sales", "payments")}).splitlines()[-2].strip(),
+          '"sales": ("sales", "payments"),')
+    check("render_table_owners keeps a one-element entry a tuple",
+          render_table_owners({"crm": ("customers",)}).splitlines()[-2].strip(),
+          '"crm": ("customers",),')
+    try:
+        compile(render_table_owners({"sales": ("sales", "payments"),
+                                     "crm": ("customers",),
+                                     "reporting": ()}),
+                "<rendered TABLE_OWNERS>", "exec")
+        rendered_compiles = True
+    except SyntaxError:
+        rendered_compiles = False
+    check("render_table_owners emits a literal Python can parse", rendered_compiles, True)
 
     if failures:
         print("verify-namespace-governance: self-test FAILED", file=sys.stderr)

@@ -257,33 +257,8 @@
   width: 100%;
 }
 
-/* The nav item's <Tooltip> wrapper is now the flex item (the button moved
-   inside it), so the wrapper must absorb the free width and the button must
-   fill the wrapper. The direct-child form is kept for the search-results
-   branch, where the item button is not tooltip-wrapped.
-
-   The pin button's own `<Tooltip fit="inline">` ALSO emits a bare
-   `.tooltip-wrapper` as this row's SECOND child, so the unscoped rule handed
-   `flex: 1` to both children and split the row 50/50: measured at 1600px the
-   label fell from its natural 134px to 49.9px and every long name ellipsised
-   to "Licens…", "Devic…", "Busin…". Excluded by the `--inline` flag
-   (Tooltip.tsx:225 sets it for exactly this small-icon case) so only the
-   label's wrapper takes the free width and the pin wrapper stays
-   content-sized — which is what lets `.settings-nav-pin-btn`'s own
-   `width: 1.5rem` / `margin-left: auto` mean anything. Both render branches
-   are covered: the pinned list puts the button directly in the row and its
-   pin in the inline wrapper, the main list tooltip-wraps each. */
-.settings-nav-item-wrapper > .tooltip-wrapper:not(.tooltip-wrapper--inline) {
-  flex: 1;
-  min-width: 0;
-}
-
-.settings-nav-item-wrapper > .tooltip-wrapper--inline {
-  flex: 0 0 auto;
-}
-
-.settings-nav-item-wrapper > button.settings-nav-item,
-.settings-nav-item-wrapper > .tooltip-wrapper > button.settings-nav-item {
+/* Nav item button fills available row space, keeping pin button content-sized on the right. */
+.settings-nav-item-wrapper > button.settings-nav-item {
   flex: 1;
   min-width: 0;
 }
@@ -466,19 +441,74 @@ body:has(.memo-stack) .settings-body {
   pointer-events: none;
 }
 
-/* ── Plus-plan badge: tiny decorative pill after the label ── */
-.settings-nav-plus-badge {
+/* ── Plan badge: the generated tier artwork, after the label ──
+ *
+ * Replaces the old `.settings-nav-plus-badge` text pill ("Plus+"), which was
+ * driven by a hardcoded `plus: boolean` and therefore rendered on EVERY tier
+ * — including the ones that already have the feature. The row now renders the
+ * same `TIER_BADGE` SVG the home Tools cards use, and only when `tierSatisfies`
+ * reports the subscription falls short, so the badge means "you do not have
+ * this" rather than "this exists".
+ *
+ * Sized by HEIGHT, like the home card's badge, because the artwork's width is
+ * proportional to the tier name (PRO 78x40, ENTERPRISE 162x40) and only the
+ * height is a common measure. One step smaller than the home card's 1rem:
+ * a sidebar row is ~44px tall against a card's ~76px, and the rail is 238px
+ * wide, so the badge has to share a line with a label that already wraps to
+ * two lines. */
+.settings-nav-tier-badge {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  /* `margin-left: auto` pins it to the row's trailing edge, matching where
+     the Plus pill sat and where the count badge sits. */
+  margin-left: auto;
+}
+
+.settings-nav-tier-badge img {
+  display: block;
+  height: 0.875rem;
+  width: auto;
+}
+
+/* Visually hidden, readable by assistive tech: the badge is artwork, so this
+   span carries the accessible statement of the plan. Screen-scoped rather
+   than the global `.sr-only` (theme/components.css) for the same reason
+   WorkspaceHome.css scopes its own — the screenExtraction guard resolves an
+   entry's classnames against its own sheet, and citing another sheet is
+   all-or-nothing. */
+.settings-nav-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ── Dead-letter sync conflicts count badge ── */
+.settings-nav-count-badge {
   flex-shrink: 0;
   margin-left: auto;
-  padding: 0 var(--space-1_5);
+  min-width: 1.25rem;
+  height: 1.25rem;
+  padding: 0 var(--space-1);
   font-size: var(--text-xs);
-  font-weight: var(--font-weight-semibold);
+  font-weight: var(--font-weight-bold);
   line-height: 1.25rem;
-  color: var(--color-accent);
-  background: var(--color-accent-dim);
+  text-align: center;
+  color: var(--color-text-on-color);
+  /* No literal fallback: --color-danger is declared in every theme block of
+     ui/src/theme/tokens.css, so the old `, #ef4444` could never render and
+     merely froze a colour the themes are free to change. */
+  background: var(--color-danger);
   border-radius: var(--radius-full);
   white-space: nowrap;
 }
+
 
 /* (Historical note) `.settings-sidebar.collapsed .tooltip-content
    { display:block !important }` was removed: portal bubbles live in
@@ -751,4 +781,195 @@ body:has(.memo-stack) .settings-body {
     opacity: 1;
     pointer-events: auto;
   }
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+ * TABLET: the sidebar is PERSISTENT, never off-canvas
+ *
+ * MEASURED DEFECT (2026-10-05, Redmi 23073RPBFG, 686x1097 portrait).
+ * The `@media (max-width: 768px)` rule above turned the sidebar into a
+ * fixed off-canvas drawer at `transform: translateX(-100%)` (measured
+ * x = -245) — and NOTHING on this page ever set `mobileSidebarOpen`, so
+ * the drawer could not be opened at all. There is no hamburger in the
+ * header: the only sidebar control is `.settings-sidebar-toggle`, a
+ * COLLAPSE toggle living INSIDE the off-screen sidebar. The result was
+ * that Settings was stuck on whichever section it opened with, and the
+ * merchant could not reach the other 13.
+ *
+ * WHY THE BREAKPOINT WAS WRONG: 768px treats a portrait tablet as a
+ * phone. This device's CSS viewport is 686px portrait / 1097px landscape
+ * (1200/1.75 and 1920/1.75), so portrait fell under the phone rule while
+ * the screen is a 7-12" tablet with room for a real sidebar.
+ *
+ * Scoped to `html[data-shell="tablet"]` — the marker main.mobile.tsx
+ * sets — and NOT to a width. A width query cannot tell a portrait tablet
+ * from a landscape phone, and the two need opposite layouts. This also
+ * means the desktop shell keeps the mobile drawer for narrow windows,
+ * which is correct there.
+ * ═══════════════════════════════════════════════════════════════════ */
+
+html[data-shell='tablet'] .settings-sidebar {
+  /* Undo the off-canvas drawer: static, in flow, always visible. */
+  position: relative;
+  top: auto;
+  left: auto;
+  bottom: auto;
+  transform: none;
+  transition: none;
+  box-shadow: none;
+  z-index: 0;
+
+  /* Width is MEASURED, not guessed (2026-10-05, 686px portrait).
+     16rem (224px at the 14px root) left the harshest row 9px short:
+     "Data Management" is a SUBPAGE row, so it pays the indent AND carries
+     the "Plus+" badge (34px), and its label measured scrollWidth 77
+     against clientWidth 68 — it rendered "Data Manag…" through the
+     two-line clamp.
+     17rem (238px) returns that 14px and clears it with margin; the content
+     column still keeps 448px, which is ample for the settings cards. This
+     is the same class of measurement that set the desktop 18.75rem (see
+     the note on .settings-sidebar above) — the width is the LABEL
+     CENSUS's business, not a round number's. */
+  width: 17rem;
+  min-width: 17rem;
+}
+
+/* The drawer's backdrop has no job once the sidebar is in flow. */
+html[data-shell='tablet'] .settings-sidebar-backdrop {
+  display: none;
+}
+
+/* BELT AND BRACES: the collapsed rail is a desktop affordance (the
+   toggle is still rendered on tablet, so a merchant could collapse the
+   sidebar to a 56px icon rail and then have no way to read the labels).
+   Keep it expanded on tablet — icon-only navigation is not a useful
+   default on a touch device, where a tooltip never fires. */
+html[data-shell='tablet'] .settings-sidebar.collapsed {
+  width: 17rem;
+  min-width: 17rem;
+}
+
+html[data-shell='tablet'] .settings-sidebar.collapsed .settings-nav-label {
+  display: block;
+}
+
+html[data-shell='tablet'] .settings-sidebar.collapsed .settings-nav-item {
+  justify-content: flex-start;
+  padding: var(--space-2_5) var(--space-3);
+}
+
+html[data-shell='tablet'] .settings-sidebar.collapsed .settings-nav-item--subpage {
+  padding-left: calc(var(--space-3) + var(--space-4));
+}
+
+html[data-shell='tablet'] .settings-sidebar.collapsed .settings-nav-item--subpage::before {
+  display: block;
+}
+
+/* The resize handle is a pointer affordance (col-resize); there is no
+   mouse on the tablet, and a 6px drag strip beside a thumb-scrolled list
+   is a mis-tap waiting to happen. */
+html[data-shell='tablet'] .settings-sidebar-resize-handle {
+  display: none;
+}
+
+/* ── Label wrapping: "each wrapped properly" ──────────────────────
+   MEASURED (2026-10-05, 686px): with the old 17.5rem mobile width three
+   labels ellipsised — "License & Subscription" (132px available, needs
+   more), "Devices & Connectivity" (132px) and "Data Management" (75px).
+   `.settings-nav-label` is `white-space: nowrap; text-overflow: ellipsis`
+   (above), which is right for a fixed-width DESKTOP rail but wrong here:
+   the tablet has vertical room to spare and no way to reveal the clipped
+   text (no hover tooltip on touch).
+   Two lines, then ellipsis — so a pathologically long label degrades
+   gracefully instead of pushing the row taller without bound. */
+html[data-shell='tablet'] .settings-nav-label {
+  white-space: normal;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  line-height: var(--leading-snug);
+}
+
+/* The row grows to fit a two-line label; `min-height` (not `height`) so a
+   one-line row keeps the 44px touch floor and a wrapped row simply takes
+   the space it needs. */
+html[data-shell='tablet'] .settings-nav-item {
+  min-height: var(--touch-target-min);
+  padding-top: var(--space-2);
+  padding-bottom: var(--space-2);
+  align-items: center;
+}
+
+/* A wrapped label is taller than its icon; keep the icon optically
+   centred against the row (it already is) and aligned to the FIRST line
+   rather than the middle, which is what reads naturally when a label
+   breaks. */
+html[data-shell='tablet'] .settings-nav-icon {
+  align-self: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-shell='tablet'] .settings-sidebar {
+    transition: none;
+  }
+}
+
+/* ── Tablet: hide the desktop-only header affordances ────────────────
+ * The sidebar header holds two controls that do not belong on a tablet:
+ *
+ *  - `.settings-sidebar-toggle` COLLAPSES the rail to a 56px icon strip.
+ *    On desktop that is recoverable (hover reveals the tooltip, and the
+ *    toggle is still there to expand again). On touch there is no hover,
+ *    so collapsing costs the labels outright — the same
+ *    unreachable-navigation defect this block exists to fix, just
+ *    self-inflicted. The collapse state is also force-expanded above, so
+ *    the button would be a control that visibly does nothing.
+ *
+ *  - The keyboard-shortcuts button opens a popover of Ctrl/Alt bindings.
+ *    The tablet has no hardware keyboard, so the sheet lists keys that
+ *    cannot be pressed. (The `Ctrl + S` hint in the FOOTER is left alone:
+ *    it is a hint, not a control, and it is the same on desktop.)
+ *
+ * Hidden rather than removed: the markup is shared with the desktop shell,
+ * where both still render. */
+html[data-shell='tablet'] .settings-sidebar-toggle,
+html[data-shell='tablet'] .settings-shortcut-btn-wrap {
+  display: none;
+}
+
+/* The header becomes an empty band once both controls are gone; drop it so
+   the nav list starts at the top of the rail. */
+html[data-shell='tablet'] .settings-sidebar-header {
+  display: none;
+}
+
+/* ── Tablet: the Plus badge must not starve the label ────────────────
+ * MEASURED (2026-10-05, 686px portrait): "Data Management" is a SUBPAGE
+ * row — it carries the extra indent (padding-left) AND the "Plus+" badge,
+ * and those two together left the label 54px against a 77px need, so it
+ * rendered "Data Manag…" even with the two-line clamp. The badge is
+ * `margin-left: auto`, so it takes its width off the label's box before
+ * the label gets to wrap.
+ *
+ * Fix: let the label keep at least half the row. `min-width: 0` is what
+ * allows the flex child to shrink at all (without it the label would
+ * force the row wider and overflow the rail); the `flex` basis gives it
+ * the free space back from the badge. */
+html[data-shell='tablet'] .settings-nav-item {
+  gap: var(--space-2);
+}
+
+html[data-shell='tablet'] .settings-nav-label {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+/* The subpage indent costs 28px of a 224px rail on an already-tight row.
+   Halve it on tablet: the 2px guide border still marks the hierarchy, and
+   the label gets the space it needs to wrap to two clean lines. */
+html[data-shell='tablet'] .settings-nav-item--subpage {
+  padding-left: calc(var(--space-2) + var(--space-2));
 }

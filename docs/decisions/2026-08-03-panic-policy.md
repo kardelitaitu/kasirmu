@@ -57,7 +57,7 @@ status: Implemented (2026-08-03)
 
 ## Context
 
-RUST-07 (audit 25, Rust Backend — see `docs/records/audit-open-findings.md` for the audit record) found that panic-oriented APIs remained in
+RUST-07 (audit 25, Rust Backend — see `docs/records/findings/audit-open-findings.md` for the audit record) found that panic-oriented APIs remained in
 production startup/API paths: `oz_api::serve()` unwrapped DB open, pragma/WAL
 setup, migration application, port binding, and the server loop, and numerous
 `unwrap`/`expect` calls lived in production modules outside test contexts. A
@@ -179,7 +179,7 @@ recoverable panics converted to `Result`/fallback and the panic-inventory gate
 added (`6f7307b3`); the residual production panic inventory is 98/98
 documented invariants (from 123 before remediation; the recoverable set is
 provably zero, verified live 2026-08-03). RUST-07 is closed as fully
-remediated in audit 25 (Rust Backend audit; full record in `docs/records/audit-open-findings.md`).
+remediated in audit 25 (Rust Backend audit; full record in `docs/records/findings/audit-open-findings.md`).
 
 **2026-08-03 — upgraded to a hard gate.** The gate is now fail-closed in both
 `scripts/check.sh` and CI (`rust-panic-inventory` job in <!-- ci-claim: ok: dated ADR record (2026-08-03), kept verbatim per docs-auditor rule E; see the Currency note at the end of ## Status -->

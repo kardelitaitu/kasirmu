@@ -258,3 +258,39 @@
   font-size: var(--text-sm);
   color: var(--color-text-muted);
 }
+
+/* ── Touch press feedback ────────────────────────────────────────────
+   Topology revision browsing on the tablet. Rows tint (scaling a list row
+   reads as the panel twitching); the discrete buttons scale. Apply/restore
+   is topology-mutating, so the press cue matters.
+   `.topology-rev-browser-row-main` is excluded from the coarse floor: it is a
+   row whose own layout already sets the height. */
+.topology-rev-browser-close:not(:disabled):active,
+.topology-rev-browser-pin:not(:disabled):active,
+.topology-rev-browser-preview:not(:disabled):active,
+.topology-rev-browser-restore:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+.topology-rev-browser-row-main:active {
+  background: color-mix(in srgb, var(--color-fg) 12%, transparent);
+}
+
+@media (pointer: coarse) {
+  .topology-rev-browser-close,
+  .topology-rev-browser-pin,
+  .topology-rev-browser-preview,
+  .topology-rev-browser-restore {
+    min-height: var(--touch-target-min);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .topology-rev-browser-close:not(:disabled):active,
+  .topology-rev-browser-pin:not(:disabled):active,
+  .topology-rev-browser-preview:not(:disabled):active,
+  .topology-rev-browser-restore:not(:disabled):active {
+    transform: none;
+    opacity: 0.75;
+  }
+}

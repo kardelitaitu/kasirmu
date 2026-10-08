@@ -1,6 +1,6 @@
 # Agents Configuration & Rules
 
-<!-- Audit stamp: 2026-09-27 · BK · status: ACCURATE · version lock: 0.0.40
+<!-- Audit stamp: 2026-09-27 · BK · status: ACCURATE · version lock: 0.0.41
      change: roundtrip-economy rewrite — quick card (§0), economy protocol (§1),
      task playbook folded into §1; chunk-read rule replaced by whole-file reads (E4);
      seven-step gate count named explicitly (§2); discovery directive gains fallback order. -->
@@ -17,15 +17,27 @@
      visible to check-env-docs.py only after that checker's scope was widened to the
      Rust cloud server in round 5. -->
 
+<!-- Amendment 2026-10-07 (docs-auditor, round 52): §7.4 gains a clause the file
+     already implied but did not state — a BULK rename cannot earn `done-`. The rule
+     itself was correct and unchanged; what was missing is that nothing said a
+     batch classification is not an acceptance, which is how `68cecff21` archived ten
+     plan files under one commit subject with an R100 each and no command run. Seven of
+     the ten refuse the prefix in their own text. §7.4 now requires an ARCHIVED, NOT
+     EARNED note in any file archived that way, and the seven carry one. §0's Plan docs
+     row is left as written: "done- is earned only when the file's acceptance command
+     ran and passed" remains the whole of the earning rule. Verified with
+     `python scripts/verify-agents-mirrors.py` (exit 0, every policed mirror agrees)
+     and all eight docs checkers (exit 0). -->
+
 ## 0. Quick card — read this first
 
-Every value measured 2026-09-27 on branch `0.0.40`. Do not probe to orient (E3); if a
+Every value measured 2026-09-27 on branch `0.0.41`. Do not probe to orient (E3); if a
 value smells stale, refresh via §7.5 folded into a call you already need.
 
 | Need | Answer |
 |---|---|
 | Branch | Stay on the checked-out branch. NEVER create or switch branches. |
-| Version | Locked at `0.0.40`. NEVER modify version numbers in any manifest. |
+| Version | Locked at `0.0.41`. NEVER modify version numbers in any manifest. |
 | Commit | ONE permitted form: `git commit -m "<type>(<area>): <subject>" -- path/one path/two`. New files: one chained line `git add -- <paths> && git commit -m "..." -- <paths>`. Full policy + shared-index warnings: §7. |
 | Push | Only on the user's explicit order. Never otherwise. |
 | Gates | Opt-in per clone: `git config core.hooksPath .githooks` — seven steps, §2. |
@@ -105,7 +117,7 @@ not a pre-commit step (removed 2026-09-13); formatting is check-only via pre-pus
 | **Commits** | **ALWAYS commit with format `<type>(<area>): <description>`.** | Conventional commits, after each logical task — the permitted *form* is the Commit Writing row below and §7. |
 | **Commit Writing** | **NEVER `git add` (sole exception: the §7.3 one-line new-file chain), NEVER `git stage`, NEVER `git commit -a`, NEVER `git commit --amend`, NEVER `git stash`. Only ONE line with an explicit pathspec: `git commit -m "<type>(<area>): <subject>" -- path/one path/two`.** | The shared checkout's index is a single racing object — see §7.3. |
 | **Pushing** | **NEVER run `git push` without an explicit direct order.** | Even after all checks pass, wait for the user to say "push". |
-| **Version Lock** | **Version is locked at `0.0.40`. NEVER modify version numbers.** | `Cargo.toml`, `package.json`, `tauri.conf.json`, etc. |
+| **Version Lock** | **Version is locked at `0.0.41`. NEVER modify version numbers.** | `Cargo.toml`, `package.json`, `tauri.conf.json`, etc. |
 | **File Paths** | **ALWAYS use forward slashes (`/`) in path arguments on Windows. NEVER hardcode the checkout root** — resolve via `git rev-parse --show-toplevel` or script-relative (`$PSScriptRoot` / `__file__` / `import.meta.url`). | Escaping bugs; multi-root worktree layout. |
 | **File Reading** | **ALWAYS read whole files in ONE call (≤ 2,000 lines). Never chunk-read.** | Roundtrips are the scarce resource, not context (E4). |
 | **Discovery** | **ALWAYS use `codebase-memory-mcp` first; fallback order Grep/Glob → ONE Explore subagent (E5).** | Graph discovery saves requests; the fallback keeps the mandate actionable when the tool is absent. |
@@ -177,7 +189,7 @@ $env:KASIRMU_MASTER_KEY                  # at-rest master key (64 hex); OZ_MASTE
 *Missing `node_modules`: `cd ui && npm ci --no-audit --no-fund`.*
 
 - **No linter sees `.css`** — never cite `eslint` for a stylesheet. Verify with the
-  five walker suites; command and caveats: `docs/audits/frontend/css-verification.md`.
+  five walker suites; command and caveats: `docs/records/audits/frontend/css-verification.md`.
 
 ### 5.2 Rust backend
 
@@ -304,12 +316,21 @@ when `c5fee807` landed with it and could not be amended; the list in
   contains `todo-`, `plan-`, or `prd-` — keep the token wherever the file lives.
 - **Never rename or move another session's uncommitted plan file** — the name is shared
   state, like the index.
+- **`done-` is earned by an acceptance, and a BULK rename does not earn it.** This clause was
+  added 2026-10-07 after `68cecff21` archived ten plan files in one commit under the subject
+  *"archive completed pre-rebrand todo files to .agents/ with done- prefix"*, with an `R100` on
+  each and no acceptance run — seven of the ten argue against the prefix in their own text.
+  The rule above was already correct and was simply not read: a rename that classifies a batch
+  cannot have run each file's own command. **If a file is archived without its acceptance
+  being satisfied, say so in the file** (an *ARCHIVED, NOT EARNED* note naming the commit that
+  renamed it) rather than leaving the prefix to be read as a pass. Archival and acceptance are
+  different facts and the filename carries only one of them.
 
 ### 7.5 Orientation & freshness (the only sanctioned probes)
 When §0/§2 values must be re-verified, run these — chained (E2) into a call you already
 need, never as standalone orientation:
 ```bash
-git rev-parse --abbrev-ref HEAD      # current branch (expect: 0.0.40)
+git rev-parse --abbrev-ref HEAD      # current branch (expect: 0.0.41)
 git config --get core.hooksPath      # gates enabled? (expect: .githooks)
 git rev-parse --show-toplevel        # repo root
 ```

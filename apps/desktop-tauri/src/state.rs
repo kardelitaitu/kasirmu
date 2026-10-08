@@ -224,17 +224,20 @@ pub struct AppState {
     ///
     /// Refreshed by the command shims in `commands/kds.rs` after every
     /// kitchen transition (create / status change / line-item bump), and
-    /// read **synchronously** by the [`KdsQueueProvider`] closure attached
-    /// to the LAN forwarder in `lib.rs` — that provider runs inside the
-    /// per-peer accept task and must never touch the async DB mutex, so
-    /// the queue is materialised here instead of queried on demand.
+    /// read **synchronously** by the
+    /// [`KdsQueueProvider`](crate::lan_server::KdsQueueProvider) closure attached to
+    /// the LAN forwarder in `lib.rs` — that provider runs inside the per-peer accept
+    /// task and must never touch the async DB mutex, so the queue is materialised
+    /// here instead of queried on demand.
     ///
     /// `std::sync::RwLock` (M-1 exception, sync reader): the provider is
     /// a plain `Fn()`; write guards are taken only for the duration of a
     /// pointer swap, never across an await. Starts as the empty default;
     /// first populated when this terminal executes a KDS transition.
     ///
-    /// [`KdsQueueProvider`]: kasirmu_lan::KdsQueueProvider
+    /// In-memory active table leases tracker for distributed locking across LAN peers.
+    pub table_lease_tracker: Arc<RwLock<kasirmu_lan::TableLeaseTracker>>,
+    /// In-memory KDS active-queue snapshot served to reconnecting LAN KDS peers.
     pub kds_queue_cache: Arc<RwLock<kasirmu_lan::KdsQueueSnapshot>>,
 }
 
@@ -275,6 +278,50 @@ impl AppState {
 
         migrations::run(&mut conn)
             .map_err(|e| AppError::Internal(format!("running migrations: {e}")))?;
+
+        // ── Bootstrap-subscription reconcile (ADR #56 §2.6 option C) ──
+        // §2.6 removed the schema's BOOTSTRAP_FREE seed and assigned that row to
+        // `provision_device`'s transaction, which never wrote it. A `local`
+        // terminal therefore reaches the capabilities read with no entitlement
+        // row, that read fails closed, and the shell renders an unlicensed
+        // install. Restore the row once, here, for installs provisioned before
+        // that write existed.
+        //
+        // Non-fatal on purpose: a failed repair leaves the install exactly as it
+        // was, and refusing to boot over a repair step is the worse failure.
+        match migrations::ensure_bootstrap_subscription(&conn) {
+            Ok(true) => tracing::info!(
+                "restored the missing bootstrap Free subscription row for this local terminal"
+            ),
+            Ok(false) => {}
+            Err(e) => tracing::warn!(
+                error = %e,
+                "bootstrap-subscription reconcile failed; a local terminal with no \
+                 subscription row stays locked"
+            ),
+        }
+
+        // If a terminal has a tenant_subscription row under a server-assigned ID but
+        // is missing the 'default' key expected by client quota readers, copy it.
+        let has_default: bool = conn
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM tenant_subscription WHERE tenant_id = 'default')",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap_or(false);
+        if !has_default
+            && let Ok(written) = conn.execute(
+                "INSERT OR IGNORE INTO tenant_subscription (tenant_id, tier_key, status, expires_at, max_locations, max_pos_instances, allowed_types_json, signature, signed_payload, api_key)
+                 SELECT 'default', tier_key, status, expires_at, max_locations, max_pos_instances, allowed_types_json, signature, signed_payload, api_key
+                 FROM tenant_subscription
+                 ORDER BY updated_at DESC
+                 LIMIT 1",
+                [],
+            )
+                && written > 0 {
+                    tracing::info!("reconciled 'default' tenant_subscription from existing tenant row");
+                }
 
         // ── Tenant-integrity gate (fail loud) ────────────────────────
         // Desktop store DBs are scoped by construction to the `default`
@@ -426,6 +473,7 @@ impl AppState {
             topology_apply_lock: Mutex::new(()),
             local_api: Mutex::new(None),
             local_api_op: Mutex::new(()),
+            table_lease_tracker: Arc::new(RwLock::new(kasirmu_lan::TableLeaseTracker::new())),
             kds_queue_cache: Arc::new(RwLock::new(kasirmu_lan::KdsQueueSnapshot::default())),
         })
     }
@@ -926,6 +974,7 @@ impl AppState {
             local_api: Mutex::new(None),
             local_api_op: Mutex::new(()),
             kds_queue_cache: Arc::new(RwLock::new(kasirmu_lan::KdsQueueSnapshot::default())),
+            table_lease_tracker: Arc::new(RwLock::new(kasirmu_lan::TableLeaseTracker::new())),
         }
     }
 

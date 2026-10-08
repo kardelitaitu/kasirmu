@@ -222,7 +222,24 @@ pub async fn restore_prepare(
         }
     }
 
-    // 3. Write. The request names the candidate, the moment and the verdict,
+    // 3. Preflight disk space before writing request (Phase 3 data layer):
+    // Staging the restore candidate and writing the pre-restore snapshot
+    // requires candidate_size + live_db_size + safety margin.
+    if let Ok(space) = platform_instance_guard::get_disk_space(db_path) {
+        let candidate_size = std::fs::metadata(candidate).map(|m| m.len()).unwrap_or(0);
+        let live_size = std::fs::metadata(db_path).map(|m| m.len()).unwrap_or(0);
+        let required_bytes = candidate_size
+            .saturating_add(live_size)
+            .saturating_add(50 * 1024 * 1024);
+        if space.available_bytes < required_bytes {
+            return Err(BridgeError::Invalid(format!(
+                "insufficient disk space for restore: {} bytes available, {} bytes required",
+                space.available_bytes, required_bytes
+            )));
+        }
+    }
+
+    // 4. Write. The request names the candidate, the moment and the verdict,
     //    so the boot path re-checks nothing it has to guess at and an operator
     //    can read what is pending.
     let requested_at = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);

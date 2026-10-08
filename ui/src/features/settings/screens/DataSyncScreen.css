@@ -1,0 +1,8 @@
+/* Settings → Data Sync — the composed cloud-sync configuration form.
+   Own sheet rather than the shared screens-placeholder.css: the save rule
+   belongs to THIS screen, and a screen-specific class in the family sheet would
+   be reported as a dead rule against every scaffold that cites it. */
+
+.settings-data-sync-save-btn {
+  margin-top: var(--space-4);
+}

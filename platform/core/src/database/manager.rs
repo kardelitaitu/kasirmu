@@ -107,6 +107,10 @@ impl StoreDatabaseManager {
             .map_err(|e| PlatformError::Internal(format!("opening store db {path:?}: {e}")))?;
         conn.pragma_update(None, "foreign_keys", "ON")
             .map_err(|e| PlatformError::Internal(format!("enabling FK on {path:?}: {e}")))?;
+        // Bound page cache to 8 MiB (negative value = KiB) to prevent runaway cache memory on 3GB/4GB devices
+        let _ = conn.pragma_update(None, "cache_size", "-8000");
+        // Bound prepared statement cache capacity (Phase 3 optimization)
+        conn.set_prepared_statement_cache_capacity(64);
 
         if is_new {
             conn.pragma_update(None, "journal_mode", "WAL")

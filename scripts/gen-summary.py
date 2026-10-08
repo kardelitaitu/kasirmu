@@ -46,16 +46,26 @@ def chapter(name: str, title: str, folder: str) -> str:
 def guides() -> list[str]:
     """Every markdown file under docs/guides/, sorted by title.
 
-    Not docs/archived/. Listing that tree published 26 superseded documents
-    as current guidance while the 22 live guides in docs/guides/ never
-    appeared at all — the glob and the directory had drifted apart. And not
-    docs/README.md, which is a directory index whose relative links resolve
-    on disk but break inside the book; docs/src/intro.md covers that job.
+    Recursive as of 2026-10-02. This used to be `glob("*.md")`, and the
+    docstring here claimed the drift was fixed — it was not. docs/guides/ has
+    no loose .md at all: everything lives in developer/, platform/, product/ and
+    user/ (21 files), so the glob matched nothing and the tool reported
+    `0 guides` every run while exiting 0. The earlier fix changed WHICH tree was
+    globbed, away from docs/archived/, and left the actual failure untouched.
+    build-docs.sh had the same non-recursive `cp docs/guides/*.md`, so the book
+    received no guides either — two consumers, one cause, as with the releases
+    split in d00c08653 / 85501cc3b.
+
+    Chapter paths keep the subdirectory (`guides/developer/QUICKSTART.md`)
+    because build-docs now copies the tree recursively rather than flattening.
+
+    Still not docs/README.md: it is a directory index whose relative links
+    resolve on disk but break inside the book; docs/src/intro.md covers it.
     """
     return [
-        chapter(p.name, prettify(p.stem), "guides")
+        chapter(p.relative_to(DOCS / "guides").as_posix(), prettify(p.stem), "guides")
         for p in sorted(
-            (DOCS / "guides").glob("*.md"),
+            (DOCS / "guides").rglob("*.md"),
             key=lambda p: prettify(p.stem).lower(),
         )
     ]
@@ -86,8 +96,16 @@ def archived_decisions() -> list[str]:
 
 
 def releases() -> list[str]:
-    """Release checklists and process docs under docs/releases/."""
-    rel = DOCS / "releases"
+    """Release checklists and process docs under docs/records/releases/.
+
+    Repointed 2026-10-02 when docs/releases/ moved to docs/records/releases/.
+    The old path is not a directory any more, so the is_dir() guard below was
+    returning [] and the book silently lost all 10 release chapters -- the tool
+    printed "0 releases" and exited 0, so nothing failed. Same family as the
+    build-docs.sh copy fixed in the same pass: both feed the same mdBook portal,
+    and fixing one half does not fix the other.
+    """
+    rel = DOCS / "records" / "releases"
     if not rel.is_dir():
         return []
     return [

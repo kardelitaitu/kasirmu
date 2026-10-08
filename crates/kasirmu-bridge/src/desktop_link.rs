@@ -37,9 +37,16 @@ pub enum LinkCallback {
 /// sentence would cost more than the sentence. One line in each language beats one language
 /// that is wrong for half the merchants.
 const RELAY_PAGE: &str = "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">\
-    <title>kasir.mu</title></head><body style=\"font-family:system-ui;padding:3rem;text-align:center\">\
+    <title>kasir.mu</title><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\
+    <meta http-equiv=\"refresh\" content=\"0;url=kasirmu://return\">\
+    <style>body{font-family:system-ui,-apple-system,sans-serif;padding:2rem;text-align:center;background:#0f172a;color:#f8fafc;}\
+    .btn{display:inline-block;margin-top:1.5rem;padding:0.75rem 1.5rem;background:#3b82f6;color:white;text-decoration:none;border-radius:0.5rem;font-weight:bold;}\
+    </style></head><body>\
+    <h2>kasir.mu</h2>\
     <p>You can close this window and return to the app.</p>\
-    <p lang=\"id\">Anda dapat menutup jendela ini dan kembali ke aplikasi.</p></body></html>";
+    <p lang=\"id\">Anda dapat menutup jendela ini dan kembali ke aplikasi.</p>\
+    <a class=\"btn\" href=\"kasirmu://return\">Kembali ke kasir.mu / Return to App</a>\
+    </body></html>";
 
 /// A bound loopback listener waiting for one device-link redirect.
 #[derive(Debug)]
@@ -276,10 +283,39 @@ where
             )));
         }
     };
-    // The `?` above converts through `From<CoreError>`; a tail expression must say so.
-    consume_desktop_link(base_url, api_key, machine_id, &code)
-        .await
-        .map_err(BridgeError::from)
+    // Give the operating system a moment to transition the app window back to the
+    // foreground and unfreeze network egress before calling consume.
+    tokio::time::sleep(Duration::from_millis(600)).await;
+
+    // Retry consume_desktop_link up to 4 times on transport/network errors, because on
+    // mobile the OS network policy may take a moment to restore outbound socket permissions.
+    let mut last_err = None;
+    for attempt in 0..4 {
+        if attempt > 0 {
+            tokio::time::sleep(Duration::from_millis(600 * attempt as u64)).await;
+        }
+        match consume_desktop_link(base_url, api_key, machine_id, &code).await {
+            Ok(account) => return Ok(account),
+            Err(e) => {
+                if matches!(e, kasirmu_core::error::CoreError::Validation { .. }) {
+                    return Err(BridgeError::from(e));
+                }
+                tracing::warn!(
+                    "consume_desktop_link attempt {} failed: {:?}",
+                    attempt + 1,
+                    e
+                );
+                last_err = Some(e);
+            }
+        }
+    }
+    // INVARIANT: the loop above iterates 0..4, so its body runs at least once and always
+    // either returns Ok or returns early on Validation — every remaining path assigns to
+    // last_err. The Option is therefore Some here; the expect documents that, and cannot
+    // fire. (ADR #33 requires the invariant be stated, not merely true.)
+    Err(BridgeError::from(last_err.expect(
+        "the 0..4 loop always assigns last_err before falling through",
+    )))
 }
 #[cfg(test)]
 #[path = "desktop_link_tests.rs"]

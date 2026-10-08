@@ -283,10 +283,25 @@ pub async fn validate_token_with_secret(
     let cache_key = (secret.clone(), token_str.to_string());
 
     // Check cache first (read lock — non-blocking for concurrent readers).
+    //
+    // The entry is served only while BOTH hold: the cache entry is younger
+    // than the TTL, AND the token itself has not expired. The TTL alone was
+    // the cache's only bound until 2026-10-05, which meant a token expiring
+    // one second after it was cached kept validating for up to
+    // JWT_CACHE_TTL_SECS past its own `exp` — the cache outliving the
+    // credential. There is no revocation list, so `exp` is the ONLY thing
+    // that ends a token's life (see the module docs), and a cache must not
+    // be able to extend it.
+    //
+    // `exp` is a Unix epoch second count and `Utc::now().timestamp()` is the
+    // same clock `jsonwebtoken` compares against, so this reuses the exact
+    // comparison the crypto path already makes rather than inventing a
+    // second notion of "now".
     {
         let cache = JWT_CACHE.read().await;
         if let Some((claims, cached_at)) = cache.get(&cache_key)
             && cached_at.elapsed().as_secs() < JWT_CACHE_TTL_SECS
+            && (claims.exp as i64) > chrono::Utc::now().timestamp()
         {
             return Ok(claims.clone());
         }

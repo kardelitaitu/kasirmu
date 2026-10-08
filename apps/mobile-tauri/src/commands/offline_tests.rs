@@ -661,3 +661,62 @@ fn requeue_remote_failure_args_deserialize() {
     let args: RequeueRemoteFailureArgs = serde_json::from_str(json).unwrap();
     assert_eq!(args.item_id, "dl-1");
 }
+
+/// MEASURED 2026-10-07: the tablet's offline-queue screen calls
+/// `offline_queue_status_summary_scoped`, which the mobile shell never
+/// registered — "Command ... not found" twice per visit. The section degraded
+/// silently; the recorder surfaced it. The command must exist and read the
+/// session's store db.
+#[tokio::test]
+async fn offline_queue_status_summary_scoped_reads_the_session_store() {
+    use kasirmu_core::session::SessionContext;
+    use platform_core::StoreDatabaseManager;
+    use tauri::Manager as _;
+    let conn = kasirmu_core::migrations::fresh_db();
+    kasirmu_core::migrations::seed_provisioned_baseline(&conn);
+    let temp_dir = tempfile::tempdir().unwrap();
+    let mut state = AppState::for_test_with_conn(conn);
+    state.db_manager = StoreDatabaseManager::new(temp_dir.path().to_path_buf(), migrations::ALL);
+    state.session_store.write().unwrap().insert(
+        "summary-token".into(),
+        SessionContext::new(
+            "user-owner".into(),
+            "role-owner".into(),
+            "terminal-1".into(),
+            "store-a".into(),
+            "instance-1".into(),
+            "restaurant-pos".into(),
+            None,
+            0,
+        ),
+    );
+    let app = tauri::test::mock_builder()
+        .manage(state)
+        .build(tauri::generate_context!())
+        .unwrap();
+
+    let summary = offline_queue_status_summary_scoped("summary-token".into(), app.state())
+        .await
+        .unwrap();
+    // A freshly provisioned store has an empty queue, not an error.
+    assert_eq!(summary.pending_count, 0);
+    assert_eq!(summary.synced_count, 0);
+    assert_eq!(summary.failed_count, 0);
+}
+
+#[tokio::test]
+async fn offline_queue_status_summary_scoped_rejects_an_unknown_session() {
+    use tauri::Manager as _;
+    let conn = kasirmu_core::migrations::fresh_db();
+    kasirmu_core::migrations::seed_provisioned_baseline(&conn);
+    let state = AppState::for_test_with_conn(conn);
+    let app = tauri::test::mock_builder()
+        .manage(state)
+        .build(tauri::generate_context!())
+        .unwrap();
+    assert!(
+        offline_queue_status_summary_scoped("ghost-token".into(), app.state())
+            .await
+            .is_err()
+    );
+}

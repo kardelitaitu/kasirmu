@@ -92,9 +92,28 @@ function KitchenDisplayIcon() {
   );
 }
 
+/** Table Management / Floor plan icon — table with seating. */
+function TableChairIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      width="16"
+      height="16"
+      aria-hidden="true"
+    >
+      <path d="M4 8h16M4 8l1-3h14l1 3M5 8v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8" />
+    </svg>
+  );
+}
+
 export interface CartPanelProps {
   hidden?: boolean;
-  startResize: (e: React.MouseEvent) => void;
+  startResize: (e: React.MouseEvent | React.TouchEvent | React.PointerEvent) => void;
   cartPanelRef: React.RefObject<HTMLElement>;
   cartWidth: number;
   handleCartPanelKeyDown: (e: React.KeyboardEvent<HTMLElement>) => void;
@@ -118,9 +137,15 @@ export interface CartPanelProps {
   onNavigate: ((route: string) => void) | undefined;
   handleOpenSettings: () => void;
   handleLock: () => void;
+  onOpenCashDrawer?: () => void;
   showTableNumberSetting: boolean;
   tableNumber: string;
   setTableNumber: Dispatch<SetStateAction<string>>;
+  guestCount?: string;
+  setGuestCount?: Dispatch<SetStateAction<string>>;
+  orderType?: 'dine_in' | 'takeaway' | 'delivery';
+  setOrderType?: Dispatch<SetStateAction<'dine_in' | 'takeaway' | 'delivery'>>;
+  orderTypePromptEnabled?: boolean;
   shiftErrorExit: UseExitAnimationResult;
   closeShiftError: string | null;
   fireCourse: (courseId: CourseId) => void;
@@ -140,6 +165,8 @@ export interface CartPanelProps {
   assignCourse?: (lineId: LineId, courseId: CourseId) => void;
   /** Update or remove the kitchen / special instruction note for a line. */
   updateLineNote?: (lineId: LineId, note: string) => void;
+  /** Edit modifiers on an in-cart line item. */
+  onEditModifiers?: ((line: CartLine) => void) | undefined;
   handleRemoveLine: (line: CartLine) => void;
   handleDecreaseQty: (line: CartLine) => void;
   handleIncreaseQty: (line: CartLine) => void;
@@ -220,9 +247,15 @@ export function CartPanel({
   onNavigate,
   handleOpenSettings,
   handleLock,
+  onOpenCashDrawer,
   showTableNumberSetting,
   tableNumber,
   setTableNumber,
+  guestCount,
+  setGuestCount,
+  orderType = 'dine_in',
+  setOrderType,
+  orderTypePromptEnabled = false,
   shiftErrorExit,
   closeShiftError,
   fireCourse,
@@ -230,6 +263,7 @@ export function CartPanel({
   courseFiringEnabled,
   assignCourse,
   updateLineNote,
+  onEditModifiers,
   handleRemoveLine,
   handleDecreaseQty,
   handleIncreaseQty,
@@ -351,6 +385,8 @@ export function CartPanel({
       <div
         className={`pos-resize-handle${cartExiting ? ' pos-resize-handle--exiting' : ''}${cartEntering ? ' pos-resize-handle--entering' : ''}`}
         onMouseDown={startResize}
+        onTouchStart={startResize}
+        onPointerDown={startResize}
         aria-hidden="true"
         style={isFullyHidden ? { display: 'none' } : undefined}
       />
@@ -504,6 +540,17 @@ export function CartPanel({
                 <KitchenDisplayIcon />
               </button>
 
+              {onOpenCashDrawer && (
+                <button
+                  type="button"
+                  className="pos-cart-lock-btn"
+                  onClick={onOpenCashDrawer}
+                  aria-label={l10n.getString('pos-cart-open-drawer')}
+                >
+                  💵
+                </button>
+              )}
+
               {/* Settings is a manager/owner surface — not needed at the
                   restaurant cashier terminal (reachable from the workspace
                   picker); retail keeps it. */}
@@ -552,11 +599,55 @@ export function CartPanel({
                 setCustomerName?.('');
                 setActiveOpenBillId?.(null);
               }}
-              title={l10n.getString('pos-cart-new-tab-title') || 'Start a new tab without affecting this tab'}
               data-testid="pos-cart-new-tab-btn"
             >
               + {l10n.getString('pos-cart-new-tab') || 'New Tab'}
             </button>
+          </div>
+        )}
+
+        {/* ── Order Type Prompt (Dine-in / Takeaway / Delivery) ── */}
+        {/* Styling lives in CartPanel.css (.pos-cart-order-type-row); it used to
+            be an inline style block with hardcoded 6px values and no sheet behind it. */}
+        {(orderTypePromptEnabled || activeWorkspace === 'restaurant-pos') && setOrderType && (
+          <div className="pos-cart-order-type-row">
+            {(
+              [
+                { id: 'dine_in', label: 'Dine In', icon: '🍽️' },
+                { id: 'takeaway', label: 'Takeaway', icon: '🛍️' },
+                { id: 'delivery', label: 'Delivery', icon: '🛵' },
+              ] as const
+            ).map((opt) => {
+              const active = orderType === opt.id;
+              return (
+                <button
+                  key={opt.id}
+                  type="button"
+                  style={{
+                    flex: 1,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '4px',
+                    padding: '4px 8px',
+                    fontSize: 'var(--text-xs, 12px)',
+                    fontWeight: active ? 600 : 500,
+                    borderRadius: 'var(--radius-md, 6px)',
+                    border: active ? '1px solid var(--color-primary)' : '1px solid var(--color-border)',
+                    background: active ? 'var(--color-primary-subtle, rgba(59, 130, 246, 0.12))' : 'var(--color-surface)',
+                    color: active ? 'var(--color-primary)' : 'var(--color-fg-muted)',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                  }}
+                  onClick={() => setOrderType(opt.id)}
+                  aria-pressed={active}
+                  data-testid={`pos-order-type-${opt.id}`}
+                >
+                  <span aria-hidden="true">{opt.icon}</span>
+                  <span>{opt.label}</span>
+                </button>
+              );
+            })}
           </div>
         )}
 
@@ -594,6 +685,25 @@ export function CartPanel({
                 />
               </div>
             )}
+            {setGuestCount && (
+              <div className="pos-cart-guest-field">
+                <label htmlFor="pos-guest-count" className="pos-cart-customer-label">
+                  {l10n.getString('pos-cart-guest-count-label') || 'Pax'}
+                </label>
+                <input
+                  id="pos-guest-count"
+                  type="number"
+                  min={1}
+                  max={99}
+                  className="pos-cart-customer-input"
+                  value={guestCount ?? ''}
+                  onChange={(e) => setGuestCount(e.target.value)}
+                  aria-label={l10n.getString('pos-cart-guest-count-label') || 'Pax'}
+                  placeholder="Pax"
+                  data-testid="pos-cart-guest-input"
+                />
+              </div>
+            )}
             {isEnabled(FEATURES.TABLE_MANAGEMENT) && (
               <button
                 type="button"
@@ -603,7 +713,7 @@ export function CartPanel({
                 aria-label={requiredLocalized(l10n, 'tables-title')}
                 data-testid="pos-cart-open-tables-btn"
               >
-                🪑
+                <TableChairIcon />
               </button>
             )}
           </div>
@@ -671,6 +781,7 @@ export function CartPanel({
                   courseMenuLine,
                   onCourseMenuLineChange: setCourseMenuLine,
                 } : {})}
+                {...(onEditModifiers ? { onEditModifiers } : {})}
               />
             ))
           )}

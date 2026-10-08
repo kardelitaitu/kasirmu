@@ -45,9 +45,12 @@ the staff picker offers five of them, and the sixth is described below.
 Legend: **✓** full access · **read** view only · **assigned** only the
 workspaces assigned to the account · **—** no access.
 
-## The planned model
+## The model in force
 
-This matrix is the target for the codebase:
+This matrix is the **shipped** model, not a target — the four gaps that once stood between
+the plan and the code were closed (see [Implementation status](#implementation-status)).
+It is reproduced from `platform/core/src/rbac_presets.rs`, where `ROLE_PRESETS` is the
+authoritative list:
 
 - **Staff is a checkout-operations role.** It keeps the actions performed at
   the register — processing sales, payments, in-cart discounts, attaching

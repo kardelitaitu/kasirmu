@@ -31,11 +31,13 @@ permission/subscription/licence conditions) keeps the three-attempt budget.
 use kasirmu_core::db::Store;
 use kasirmu_core::db::offline::SyncStatusSummary;
 use kasirmu_core::error::CoreError;
-use kasirmu_core::offline::{OfflineQueueItem, OfflineQueueStatus};
+use kasirmu_core::offline::OfflineQueueItem;
 use kasirmu_core::settings::IngestPolicy;
 // `queue_tests.rs` reaches the `admits()` trait through `use super::*` to pin the
 // remote-ingest gate directly; the library build gets it via `queue::appliers`,
 // so an unconditional import here would be unused.
+#[cfg(test)]
+use kasirmu_core::offline::OfflineQueueStatus;
 #[cfg(test)]
 use kasirmu_core::settings::IngestPolicyKind;
 use kasirmu_core::settings::Settings;
@@ -128,13 +130,7 @@ impl SyncQueue {
     ///
     /// Returns `None` if nothing has been synced yet.
     pub fn last_synced_at(&self, store: &Store<'_>) -> Result<Option<String>, CoreError> {
-        let all = store.list_all_offline()?;
-        Ok(all
-            .iter()
-            .filter(|i| matches!(i.status, OfflineQueueStatus::Synced))
-            .filter_map(|i| i.synced_at.as_deref())
-            .max_by(|a, b| a.cmp(b))
-            .map(|s| s.to_owned()))
+        store.get_last_synced_at()
     }
 
     /// Apply a conflict-resolution outcome to the queue.

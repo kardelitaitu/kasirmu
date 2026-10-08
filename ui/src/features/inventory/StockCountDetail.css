@@ -238,3 +238,30 @@
 .sc-load-error p {
   margin: 0;
 }
+
+/* ── Touch press feedback ────────────────────────────────────────────
+   Counting detail on a tablet: back, add-line and remove are the three
+   controls used per item, so each tap needs to register visibly. */
+.sc-add-line-item:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+.sc-detail-back:active,
+.sc-remove-btn:active {
+  background: color-mix(in srgb, var(--color-fg) 12%, transparent);
+}
+
+@media (pointer: coarse) {
+  .sc-detail-back,
+  .sc-add-line-item,
+  .sc-remove-btn {
+    min-height: var(--touch-target-min);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sc-add-line-item:not(:disabled):active {
+    transform: none;
+    opacity: 0.75;
+  }
+}

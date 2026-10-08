@@ -78,11 +78,16 @@ export const IPC_TIMEOUT_MS = 120_000;
  * sessions by token — so a retry is safe; the timeout only stops the UI from
  * lying about being busy.
  */
+export interface InvokeCustomOptions extends Partial<InvokeOptions> {
+  timeoutMs?: number;
+}
+
 export function invoke<T>(
   cmd: string,
   args?: InvokeArgs,
-  options?: InvokeOptions,
+  options?: InvokeCustomOptions,
 ): Promise<T> {
+  const timeoutMs = options?.timeoutMs ?? IPC_TIMEOUT_MS;
   return new Promise<T>((resolve, reject) => {
     let settled = false;
     const timer = setTimeout(() => {
@@ -90,12 +95,12 @@ export function invoke<T>(
       settled = true;
       reject(
         new Error(
-          "IPC timeout: '" + cmd + "' did not respond within " + IPC_TIMEOUT_MS + 'ms. ' +
+          "IPC timeout: '" + cmd + "' did not respond within " + timeoutMs + 'ms. ' +
             'The command may have panicked, which Tauri does not report to the ' +
             'caller. Retrying is safe; the operation is idempotent.',
         ),
       );
-    }, IPC_TIMEOUT_MS);
+    }, timeoutMs);
 
     // The real Tauri call may throw synchronously when the webview lacks its
     // internals — that must reject, not escape.
@@ -106,8 +111,10 @@ export function invoke<T>(
       // (observed: a mocked invoke asserted as called with two arguments
       // received three). Passing through conditionally keeps this wrapper
       // invisible to callers and to their spies.
+      const rawOptions: InvokeOptions | undefined =
+        options?.headers !== undefined ? { headers: options.headers } : undefined;
       const forwarded =
-        options === undefined ? rawInvoke<T>(cmd, args) : rawInvoke<T>(cmd, args, options);
+        rawOptions === undefined ? rawInvoke<T>(cmd, args) : rawInvoke<T>(cmd, args, rawOptions);
       Promise.resolve(forwarded).then(
         (value) => {
           if (settled) return;

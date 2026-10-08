@@ -142,7 +142,7 @@ pub struct GatewayStatusEntry {
 }
 
 /// Full terminal hardware and local-preference configuration.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HardwareSettingsDto {
     /// Printer Connection.

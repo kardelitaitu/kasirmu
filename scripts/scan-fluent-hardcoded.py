@@ -9,7 +9,7 @@ subtree before scanning, so what remains is genuinely un-localized copy.
 Read-only. Emits JSON + a TSV worksheet to --out.
 """
 # Promoted from the 2026-09-03 Fluent page audit; see
-# docs/records/fluent-page-audit.md for why this check exists.
+# docs/records/audits/frontend/fluent-page-audit.md for why this check exists.
 
 from __future__ import annotations
 

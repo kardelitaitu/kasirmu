@@ -422,9 +422,15 @@ const EXPLICIT_EXEMPTIONS: Array<{ re: RegExp; why: string; matched: boolean }> 
  * recorded rather than silently dropped: the set is asserted exactly, and the
  * suite fails if it grows OR if an entry is fixed and left here. The list can
  * only shrink. Fixing them is the R4 follow-up.
+ *
+ * It has begun shrinking: 15 -> 13 on 2026-10-07, when the SegmentedTabs and
+ * KdsRoutingRulesEditor sheets were both brought to the floor by later touch
+ * work and their two entries became obsolete. Removing an entry is sanctioned
+ * ONLY after reading the sheet and confirming the violation is really gone —
+ * the count assertion below is what stops a quiet deletion, so do not reach for
+ * it first.
  */
 const KNOWN_VIOLATIONS: Array<{ key: string; why: string }> = [
-  { key: 'components/SegmentedTabs.css::.segmented-tab::min-height: calc(var(--text-base) + 2 * var(--space-2) + 2px)', why: "Segmented tab strip; computes to 32px at a 16px root. Deliberately tied to .btn--md height (see that sheet header), so this is a design decision, not an oversight." },
   { key: 'features/inventory/StockCountDetail.css::.sc-remove-btn::min-height: 1.75rem', why: "Stock-count row remove control; 28px floor." },
   { key: 'features/inventory/StockCountDetail.css::.sc-remove-btn::min-width: 1.75rem', why: "Stock-count row remove control; 28px floor." },
   { key: 'features/kds/KdsScreen.css::.kds-btn--filter::min-height: 34px', why: "KDS filter button; 34px floor." },
@@ -436,7 +442,6 @@ const KNOWN_VIOLATIONS: Array<{ key: string; why: string }> = [
   { key: 'features/kds/KdsScreen.css::.kds-status-btn::min-height: 34px', why: "KDS status button; 34px floor." },
   { key: 'features/kds/KdsScreen.css::.kds-tab::min-height: 34px', why: "KDS tab strip; 34px floor." },
   { key: 'features/kds/components/KdsRoutingRulesEditor.css::.kds-routing-btn::min-height: 34px', why: "KDS routing action button; 34px floor." },
-  { key: 'features/kds/components/KdsRoutingRulesEditor.css::.kds-routing-section-btn::min-height: 34px', why: "KDS routing section toggle; 34px floor." },
   { key: 'features/kiosk/KioskScreen.css::.kiosk-load-error button::min-height: var(--space-10)', why: "Kiosk load-error retry button; 2.5rem = 40px floor. The class+type compound (0,1,1) outranks the catch-all." },
   { key: 'features/locations/NodeTopologyEditor.css::.canvas-zoom-btn::min-width: 28px', why: "Topology canvas zoom control; 28px floor." },
 ];
@@ -805,7 +810,16 @@ describe('Touch target sizing compliance', () => {
     // debt. It is named and counted rather than fixed, because those sheets sit
     // outside this slice fence. This test fails if the debt is quietly enlarged
     // or if an entry is deleted without the violation being fixed.
-    expect(KNOWN_VIOLATIONS.length).toBe(15);
+    //
+    // 15 -> 13 on 2026-10-07: both removed entries were VERIFIED fixed before
+    // deletion, which is the only sanctioned way this number may fall.
+    //   * components/SegmentedTabs.css::.segmented-tab — the sheet now sets
+    //     min-height: var(--touch-target-min) on the tablet block (:169-170),
+    //     so the calc() floor the entry described no longer governs.
+    //   * features/kds/components/KdsRoutingRulesEditor.css::.kds-routing-section-btn
+    //     — the sheet gained a (pointer: coarse) override at :483.
+    // The sibling .kds-routing-btn entry is NOT fixed and stays.
+    expect(KNOWN_VIOLATIONS.length).toBe(13);
   });
 
   it('every exemption is justified, and none is a silent bypass', () => {

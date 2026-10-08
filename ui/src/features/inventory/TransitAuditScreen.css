@@ -50,7 +50,7 @@
 }
 
 .transit-card.overdue {
-  border-left: 4px solid var(--danger-500);
+  border-left: 4px solid var(--color-danger);
   background: var(--color-danger-bg);
 }
 
@@ -59,7 +59,7 @@
   position: absolute;
   top: var(--space-3);
   right: var(--space-3);
-  background: var(--danger-500);
+  background: var(--color-danger);
   color: var(--color-fg-primary);
   font-size: var(--text-2xs);
   font-weight: var(--font-weight-bold);
@@ -177,5 +177,26 @@
   .transit-lines-table th,
   .transit-lines-table td {
     word-break: break-word;
+  }
+}
+
+/* ── Touch press feedback ────────────────────────────────────────────
+   Transit audit is reviewed on the tablet.
+   ────────────────────────────────────────────────────────────────── */
+
+.reverse-btn:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+@media (pointer: coarse) {
+.reverse-btn:not(:disabled):active {
+    min-height: var(--touch-target-min);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+.reverse-btn:not(:disabled):active {
+    transform: none;
+    opacity: 0.75;
   }
 }

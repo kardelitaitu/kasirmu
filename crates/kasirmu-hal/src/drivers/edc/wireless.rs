@@ -17,7 +17,7 @@ use async_trait::async_trait;
 use kasirmu_core::Money;
 
 use crate::error::HalError;
-use crate::traits::edc::{EdcPaymentResult, EdcTerminal, TerminalStatus};
+use crate::traits::edc::{EdcPaymentResult, EdcSettlementResult, EdcTerminal, TerminalStatus};
 use crate::types::DeviceInfo;
 
 use super::stub_error;
@@ -98,7 +98,11 @@ impl EdcTerminal for WirelessEdcTerminal {
         Err(stub_error("wireless", "status"))
     }
 
-    async fn authorize(&self, _amount: Money) -> Result<String, HalError> {
+    async fn authorize(
+        &self,
+        _amount: Money,
+        _reference: Option<&str>,
+    ) -> Result<String, HalError> {
         Err(stub_error("wireless", "authorize"))
     }
 
@@ -116,6 +120,14 @@ impl EdcTerminal for WirelessEdcTerminal {
 
     async fn void(&self, _transaction_id: &str) -> Result<EdcPaymentResult, HalError> {
         Err(stub_error("wireless", "void"))
+    }
+
+    async fn settle(&self) -> Result<EdcSettlementResult, HalError> {
+        Err(stub_error("wireless", "settle"))
+    }
+
+    async fn inquiry(&self, _invoice: &str) -> Result<EdcPaymentResult, HalError> {
+        Err(stub_error("wireless", "inquiry"))
     }
 
     async fn print_receipt(&self, _transaction_id: &str) -> Result<Vec<u8>, HalError> {

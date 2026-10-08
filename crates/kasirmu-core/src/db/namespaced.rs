@@ -1,5 +1,5 @@
 //! `NamespacedStore` - a module-scoped, runtime-checked view over the shared
-//! connection (plan section 7 Phase 2, P1 of `docs/architecture/phase2-implementation-tickets.md`).
+//! connection (plan section 7 Phase 2, P1 of `docs/records/superseded/phase2-implementation-tickets.md`).
 //!
 //! The Phase 1 checker (`scripts/verify-namespace-governance.py`) governs what raw
 //! SQL a *file* may say. It cannot stop a runtime path that assembles SQL from data.
@@ -7,7 +7,7 @@
 //! connection, and every statement is validated against the table-ownership map
 //! (`crate::db::ownership`) before it runs.
 //!
-//! Design constraints, from `docs/architecture/namespaced-store-api-draft.md`:
+//! Design constraints, from `docs/records/superseded/namespaced-store-api-draft.md`:
 //! - **C1 one connection, zero copies.** The store borrows `&Connection`; it never
 //!   owns, clones, or pools one.
 //! - **C2 additive.** Existing `conn`-taking functions keep working; a module opts in

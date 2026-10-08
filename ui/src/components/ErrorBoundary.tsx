@@ -1,6 +1,7 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 import { FluentBundle, FluentResource } from '@fluent/bundle';
 import { ReactLocalization } from '@fluent/react';
+import { reportClientCrash } from '@/utils/crashReporter';
 import './ErrorBoundary.css';
 
 // Static bundle for ErrorBoundary (class component can't use hooks).
@@ -34,6 +35,19 @@ interface Props {
   title?: string;
   /** Pre-localized retry label (injected by LocalizedErrorBoundary). */
   retryLabel?: string;
+  /**
+   * Values that, when any one of them changes, clear a caught error — the
+   * standard React "reset on navigation" escape hatch.
+   *
+   * Without this the boundary holds its error forever: measured on the
+   * tablet 2026-10-07, one bad route (`#/topology`) left the whole app
+   * showing the fallback, and every section navigated to afterwards
+   * rendered "Something went wrong" until the 30s auto-reload fired —
+   * which on Android is a full process reload that logs the user out.
+   * Passing the current route here means navigating away recovers
+   * immediately, in place, with the session intact.
+   */
+  resetKeys?: ReadonlyArray<unknown>;
 }
 
 interface State {
@@ -72,6 +86,12 @@ export default class ErrorBoundary extends Component<Props, State> {
 
   override componentDidCatch(error: Error, info: ErrorInfo) {
     console.error('[ErrorBoundary]', error, info.componentStack);
+    reportClientCrash({
+      kind: 'react_error_boundary',
+      message: error.message,
+      stack: error.stack,
+      componentStack: info.componentStack ?? undefined,
+    });
   }
 
   override componentDidMount() {
@@ -80,11 +100,32 @@ export default class ErrorBoundary extends Component<Props, State> {
     }
   }
 
-  override componentDidUpdate(_prevProps: Props, prevState: State) {
+  override componentDidUpdate(prevProps: Props, prevState: State) {
+    // Navigation recovery first: if the host signalled a route change, drop
+    // the caught error and cancel the pending self-heal reload rather than
+    // letting it fire and take the whole app (and the session) down.
+    if (
+      this.state.error &&
+      this.resetKeysChanged(prevProps.resetKeys, this.props.resetKeys)
+    ) {
+      this.clearAutoReload();
+      this.setState({ error: null });
+      return;
+    }
     // Start the self-heal timer the moment the fallback appears.
     if (!prevState.error && this.state.error) {
       this.scheduleAutoReload();
     }
+  }
+
+  /** Object.is comparison across the two arrays; absent props compare equal. */
+  private resetKeysChanged(
+    prev: ReadonlyArray<unknown> | undefined,
+    next: ReadonlyArray<unknown> | undefined,
+  ): boolean {
+    const a = prev ?? [];
+    const b = next ?? [];
+    return a.length !== b.length || a.some((v, i) => !Object.is(v, b[i]));
   }
 
   override componentWillUnmount() {

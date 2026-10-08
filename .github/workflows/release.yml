@@ -185,6 +185,7 @@ jobs:
         shell: pwsh
         env:
           UPDATER_CERT: ${{ secrets.UPDATER_CERT }}
+          UPDATER_CERT_PASSWORD: ${{ secrets.UPDATER_CERT_PASSWORD }}
         run: |
           if ([string]::IsNullOrEmpty($env:UPDATER_CERT)) {
             Write-Host "UPDATER_CERT not set — skipping certificate import (installers will be UNSIGNED)"
@@ -192,9 +193,40 @@ jobs:
           }
           $bytes = [Convert]::FromBase64String($env:UPDATER_CERT)
           [IO.File]::WriteAllBytes("$env:RUNNER_TEMP\cert.pfx", $bytes)
-          Import-PfxCertificate -FilePath "$env:RUNNER_TEMP\cert.pfx" -CertStoreLocation Cert:\CurrentUser\My -Exportable
-          # CICD-03: the PFX (password-less export of the signing key) must
-          # not linger on disk after the import.
+          # Consume UPDATER_CERT_PASSWORD. A CA-issued PFX is normally
+          # password-protected, and the import used to omit the password,
+          # which meant a real certificate could not be used at all — the
+          # runbook worked around it by advising a PASSWORDLESS export, i.e.
+          # storing an unencrypted private key. Passing the password removes
+          # that pressure: an empty secret still works (some PFXs are
+          # passwordless), so this is compatible with the old advice while no
+          # longer requiring it.
+          $pwd = if ([string]::IsNullOrEmpty($env:UPDATER_CERT_PASSWORD)) {
+            $null
+          } else {
+            ConvertTo-SecureString -String $env:UPDATER_CERT_PASSWORD -AsPlainText -Force
+          }
+          $imported = if ($null -eq $pwd) {
+            Import-PfxCertificate -FilePath "$env:RUNNER_TEMP\cert.pfx" -CertStoreLocation Cert:\CurrentUser\My -Exportable
+          } else {
+            Import-PfxCertificate -FilePath "$env:RUNNER_TEMP\cert.pfx" -CertStoreLocation Cert:\CurrentUser\My -Exportable -Password $pwd
+          }
+          if (-not $imported) {
+            throw "the PFX imported no certificate; refusing to build and sign with an unknown identity"
+          }
+          # Pin the identity for the build step. `signtool /a` picks ANY
+          # suitable certificate in the store, so an unattended runner can
+          # sign with the wrong one — and with no thumbprint the build gives
+          # no sign that it did. Publishing the thumbprint as job output lets
+          # the build pass it to Tauri's native certificateThumbprint, which
+          # is the supported way to name one certificate exactly.
+          $thumb = ($imported | Select-Object -First 1).Thumbprint
+          if ([string]::IsNullOrEmpty($thumb)) {
+            throw "imported a certificate with no thumbprint; cannot pin the signing identity"
+          }
+          Write-Host "Code-signing certificate imported: thumbprint $thumb"
+          "UPDATER_CERT_THUMBPRINT=$thumb" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          # CICD-03: the PFX must not linger on disk after the import.
           Remove-Item "$env:RUNNER_TEMP\cert.pfx" -Force
 
       - name: Build desktop installers (Windows)
@@ -202,11 +234,25 @@ jobs:
         shell: bash
         env:
           UPDATER_CERT: ${{ secrets.UPDATER_CERT }}
+          # Written to $GITHUB_ENV by the import step; declared here so the
+          # dependency is visible at the point of use rather than implied by
+          # a variable another step happens to export.
+          UPDATER_CERT_THUMBPRINT: ${{ env.UPDATER_CERT_THUMBPRINT }}
         run: |
           cd apps/desktop-tauri
           if [ -n "$UPDATER_CERT" ]; then
-            echo "UPDATER_CERT configured — installers will be code-signed"
-            cargo tauri build --bundles ${{ matrix.bundles }}
+            # Name the certificate Tauri must sign with, instead of relying
+            # on the /a fallback that signs with whatever the runner has.
+            # The import step published the thumbprint; a missing one means
+            # the certificate did not land, and building would silently
+            # produce an unsigned or mis-signed installer.
+            if [ -z "$UPDATER_CERT_THUMBPRINT" ]; then
+              echo "::error::UPDATER_CERT is set but no thumbprint was imported — refusing to sign blindly"
+              exit 1
+            fi
+            echo "UPDATER_CERT configured — signing with thumbprint $UPDATER_CERT_THUMBPRINT"
+            cargo tauri build --bundles ${{ matrix.bundles }} \
+              --config "{\"bundle\":{\"windows\":{\"certificateThumbprint\":\"$UPDATER_CERT_THUMBPRINT\",\"digestAlgorithm\":\"sha256\",\"timestampUrl\":\"https://timestamp.digicert.com\"}}}"
           else
             # No cert secret: no-op signCommand so the build never invokes
             # signtool. Releases built this way are UNSIGNED — wire the

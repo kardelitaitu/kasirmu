@@ -31,9 +31,10 @@ enumerating individual keys.
 
 > **PII protection (decision 3):** routes marked `pii: true` (currently
 > only `GET /api/v1/sales/{id}`) are excluded from the `dashboard`
-> preset. Adding a new PII-bearing route requires flipping its `pii`
-> flag in `READ_KEY_MAP` — the PII-invariant test (`dashboard ∩ pii-routes
-> = ∅`) will fail until the dashboard preset is updated.
+> preset. Adding a new PII-bearing route requires editing its `pii`
+> field in the `READ_KEY_MAP` entry — the guard
+> `every_spec_get_operation_has_read_key_entry` (in `openapi_tests.rs`) will
+> fail until the map entry and the dashboard preset agree.
 
 ## Minting a scoped token
 
@@ -108,6 +109,7 @@ Every protected GET route is mapped to a registry key:
 | GET /api/v1/exchange-rates/latest/{from}/{to} | `reference:read` | no |
 | GET /api/v1/tenants/me/plan | `plan:read` | no |
 | GET /api/v1/sales/{id} | `sales:view` | **yes** |
+| GET /api/v1/memos/active | `sales:view` | no |
 | GET /api/v1/images:pack | `products:read` | no |
 | GET /api/v1/images:missing | `products:read` | no |
 | GET /api/v1/images/{hash16} | `products:read` | no |

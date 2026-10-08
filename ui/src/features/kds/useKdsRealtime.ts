@@ -4,7 +4,7 @@
  * its cancel/unlisten guard, the `visibilitychange` fallback re-fetch, the
  * mount/dep re-fetch effect, and the unmount cleanup that tears all three down.
  *
- * Extracted verbatim from KdsScreen.tsx:200-249 (the ref at :205-206, the
+ * Extracted verbatim from KdsScreen.tsx:200-249 AS OF 9fe87671b^ (the ref at :205-206, the
  * subscribe effect at :213-244, the dep fetch at :247-249). The effect bodies
  * and the `.then`/`.catch` chain are the sed output: no event name, no guard,
  * no `addEventListener`/`removeEventListener` pair and no `clearTimeout` was
@@ -60,11 +60,16 @@ export interface UseKdsRealtimeOptions {
    * starts it. This hook only clears it, once, in the unmount cleanup.
    */
   arrivalTimerRef: MutableRefObject<ReturnType<typeof setTimeout> | null>;
+  /**
+   * Optional callback when a course is explicitly fired (e.g. acoustic alert).
+   */
+  onCourseFired?: (payload: { course?: string; display_number?: number }) => void;
 }
 
 export function useKdsRealtime({
   fetchOrders,
   arrivalTimerRef,
+  onCourseFired,
 }: UseKdsRealtimeOptions): void {
   // PERF-KDS-01: the realtime subscription must not be torn down and rebuilt
   // whenever `fetchOrders` changes identity — each rebuild costs two extra
@@ -74,13 +79,17 @@ export function useKdsRealtime({
   const fetchOrdersRef = useRef(fetchOrders);
   fetchOrdersRef.current = fetchOrders;
 
+  const onCourseFiredRef = useRef(onCourseFired);
+  onCourseFiredRef.current = onCourseFired;
+
   // 1a: Real-time push via Tauri events — replaces adaptive polling.
-  // Listens for kds:orders-changed emitted by the Rust backend after
-  // order creation or status updates. Falls back to re-fetch on tab
-  // visibility change to catch any events missed while hidden.
+  // Listens for kds:orders-changed and kds:course-fired emitted by the Rust
+  // backend after order creation, course firing, or status updates. Falls back
+  // to re-fetch on tab visibility change to catch any events missed while hidden.
   // Subscribes exactly once per mount.
   useEffect(() => {
     let unlisten: (() => void) | undefined;
+    let unlistenCourse: (() => void) | undefined;
     let cancelled = false;
     // Local alias for the screen's arrival-highlight timer ref, so the cleanup
     // below reads its CURRENT handle rather than a captured value.
@@ -90,13 +99,19 @@ export function useKdsRealtime({
     listen<null>('kds:orders-changed', () => {
       void fetchOrdersRef.current();
     }).then((fn) => {
-      // The component may already have unmounted while `listen` was in
-      // flight; without this guard the subscription would leak.
       if (cancelled) fn();
       else unlisten = fn;
     }).catch(() => {
       /* event plugin unavailable (e.g. plain browser) — push is optional */
     });
+
+    listen<{ course?: string; display_number?: number }>('kds:course-fired', (event) => {
+      onCourseFiredRef.current?.(event.payload);
+      void fetchOrdersRef.current();
+    }).then((fn) => {
+      if (cancelled) fn();
+      else unlistenCourse = fn;
+    }).catch(() => {});
 
     // Visibility change fallback — re-fetch when tab becomes visible
     // to catch any events missed while the tab was hidden.
@@ -110,6 +125,7 @@ export function useKdsRealtime({
     return () => {
       cancelled = true;
       if (unlisten) unlisten();
+      if (unlistenCourse) unlistenCourse();
       document.removeEventListener('visibilitychange', onVisibilityChange);
       if (arrivalTimer.current !== null) clearTimeout(arrivalTimer.current);
     };

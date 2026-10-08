@@ -45,3 +45,12 @@ fn default_partial_cut_is_false() {
     let printer = TcpReceiptPrinter::new("localhost", info);
     assert!(!printer.partial_cut);
 }
+
+#[tokio::test]
+async fn oversized_payload_is_rejected() {
+    let info = DeviceInfo::new("Test", "TCP", "SN");
+    let printer = TcpReceiptPrinter::new("localhost", info);
+    let huge_data = vec![0u8; escpos::MAX_PRINT_PAYLOAD_BYTES + 1];
+    let res = printer.print_raw(&huge_data).await;
+    assert!(matches!(res, Err(HalError::Protocol(_))));
+}

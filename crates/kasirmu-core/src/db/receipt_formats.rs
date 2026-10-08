@@ -121,6 +121,15 @@ pub struct ReceiptContent {
     pub show_currency: bool,
     /// `dot` | `comma` | `none`.
     pub decimal_separator: String,
+    /// Market-specific tax identifier label (e.g. `NPWP`, `GST Reg No`, `Tax ID`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tax_id_label: Option<String>,
+    /// Statutory tax regime descriptor (e.g. `PB1`, `PPN`, `LOCAL/SG`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tax_regime: Option<String>,
+    /// Statutory rounding mode (`half_up` | `truncate`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub statutory_rounding: Option<String>,
 }
 
 /// The presentational layout half (workspace/terminal scope). `None` fields
@@ -278,13 +287,23 @@ impl crate::db::Store<'_> {
         now: &str,
     ) -> Result<(), CoreError> {
         validate_content(content)?;
-        let config = serde_json::json!({
+        let mut config_map = serde_json::json!({
             "required_fields": content.required_fields,
             "footer_text": content.footer_text,
             "show_tax": content.show_tax,
             "show_currency": content.show_currency,
             "decimal_separator": content.decimal_separator,
         });
+        if let Some(ref l) = content.tax_id_label {
+            config_map["tax_id_label"] = serde_json::Value::String(l.clone());
+        }
+        if let Some(ref r) = content.tax_regime {
+            config_map["tax_regime"] = serde_json::Value::String(r.clone());
+        }
+        if let Some(ref s) = content.statutory_rounding {
+            config_map["statutory_rounding"] = serde_json::Value::String(s.clone());
+        }
+        let config = config_map;
         let tx = self.conn.unchecked_transaction()?;
         tx.execute(
             "DELETE FROM receipt_formats WHERE scope_type = 'legal_entity' AND scope_id = ?1",
@@ -356,14 +375,56 @@ impl crate::db::Store<'_> {
         workspace_id: Option<&str>,
     ) -> Result<EffectiveReceiptFormat, CoreError> {
         // ── content: the primary entity's row, or legacy, or unset ──
-        let entity_id: Option<String> = self.conn
-            .query_row(
-                "SELECT legal_entity_id FROM locations WHERE is_primary = 1 AND legal_entity_id IS NOT NULL LIMIT 1",
-                [],
-                |row| row.get::<_, Option<String>>(0),
-            )
-            .optional()?
-            .flatten();
+        let mut entity_id: Option<String> = None;
+        if let Some(t_id) = terminal_id {
+            entity_id = self
+                .conn
+                .query_row(
+                    "SELECT l.legal_entity_id
+                     FROM terminals t
+                     JOIN locations l ON l.id = t.bound_location_id
+                     WHERE t.id = ?1 AND l.legal_entity_id IS NOT NULL",
+                    params![t_id],
+                    |row| row.get::<_, Option<String>>(0),
+                )
+                .optional()?
+                .flatten();
+        }
+        if entity_id.is_none() {
+            entity_id = self.conn
+                .query_row(
+                    "SELECT legal_entity_id FROM locations WHERE is_primary = 1 AND legal_entity_id IS NOT NULL LIMIT 1",
+                    [],
+                    |row| row.get::<_, Option<String>>(0),
+                )
+                .optional()?
+                .flatten();
+        }
+
+        let country_code: Option<String> = if let Some(ref eid) = entity_id {
+            self.conn
+                .query_row(
+                    "SELECT country_code FROM legal_entities WHERE id = ?1",
+                    params![eid],
+                    |row| row.get::<_, Option<String>>(0),
+                )
+                .optional()?
+                .flatten()
+        } else {
+            None
+        };
+
+        let derived_label = match country_code.as_deref() {
+            Some("ID") => Some("NPWP".to_string()),
+            Some("SG") => Some("GST Reg No".to_string()),
+            Some("MY") => Some("SST ID".to_string()),
+            Some("AU") => Some("ABN".to_string()),
+            Some("GB") => Some("VAT Reg No".to_string()),
+            Some("US") => Some("EIN".to_string()),
+            Some(_) => Some("Tax ID".to_string()),
+            None => None,
+        };
+
         let mut content = None;
         let mut content_source = ReceiptSource::Unset;
         if let Some(entity_id) = entity_id {
@@ -377,6 +438,28 @@ impl crate::db::Store<'_> {
             if let Some(raw) = raw {
                 let map = parse_json_object(&raw, "config")?;
                 let get_bool = |key: &str| map.get(key).and_then(serde_json::Value::as_bool);
+                let custom_label = map
+                    .get("tax_id_label")
+                    .and_then(serde_json::Value::as_str)
+                    .map(str::to_string);
+                let tax_regime = map
+                    .get("tax_regime")
+                    .and_then(serde_json::Value::as_str)
+                    .map(str::to_string)
+                    .or_else(|| {
+                        country_code.as_ref().map(|cc| {
+                            if cc.eq_ignore_ascii_case("ID") {
+                                "PB1".to_string()
+                            } else {
+                                format!("LOCAL/{cc}")
+                            }
+                        })
+                    });
+                let statutory_rounding = map
+                    .get("statutory_rounding")
+                    .and_then(serde_json::Value::as_str)
+                    .map(str::to_string);
+
                 content = Some(ReceiptContent {
                     required_fields: map
                         .get("required_fields")
@@ -399,6 +482,9 @@ impl crate::db::Store<'_> {
                         .and_then(|v| v.as_str())
                         .unwrap_or("dot")
                         .to_string(),
+                    tax_id_label: custom_label.or(derived_label.clone()),
+                    tax_regime,
+                    statutory_rounding,
                 });
                 content_source = ReceiptSource::Entity;
             }
@@ -436,6 +522,9 @@ impl crate::db::Store<'_> {
                     )?,
                     decimal_separator:
                         platform_core::settings::Settings::get_receipt_decimal_separator(self.conn)?,
+                    tax_id_label: derived_label,
+                    tax_regime: None,
+                    statutory_rounding: None,
                 });
                 content_source = ReceiptSource::Legacy;
             }

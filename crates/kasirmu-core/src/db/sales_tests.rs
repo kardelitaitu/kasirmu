@@ -164,6 +164,38 @@ fn test_sales_history_cap_free_tier() {
 }
 
 #[test]
+fn test_sales_history_cap_bounded_respects_limits_and_offsets() {
+    let conn = fresh();
+    let store = store(&conn);
+
+    for i in 0..5 {
+        let mut s = Sale::from_cart(&make_cart()).unwrap();
+        s.created_at = (chrono::Utc::now() - chrono::Duration::hours(i)).to_rfc3339();
+        store.create_sale(&s).unwrap();
+    }
+
+    // Limit 2 without offset
+    let (paged, capped) = store
+        .list_sales_with_history_cap_bounded(None, Some(2), None)
+        .unwrap();
+    assert!(!capped);
+    assert_eq!(paged.len(), 2);
+
+    // Limit 2 with offset 2
+    let (paged2, _) = store
+        .list_sales_with_history_cap_bounded(None, Some(2), Some(2))
+        .unwrap();
+    assert_eq!(paged2.len(), 2);
+    assert_ne!(paged[0].id, paged2[0].id);
+
+    // Limit 2 with offset 4
+    let (paged3, _) = store
+        .list_sales_with_history_cap_bounded(None, Some(2), Some(4))
+        .unwrap();
+    assert_eq!(paged3.len(), 1);
+}
+
+#[test]
 fn create_sale_persists_lines() {
     let conn = fresh();
     let cart = make_cart();

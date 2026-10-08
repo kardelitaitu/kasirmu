@@ -15,7 +15,7 @@ this defect into production: index 1 of its projection is `p.gateway_reference` 
 the field it feeds is `customer_name`, which the retail credit list renders in a
 Customer column. The pin that already covered that type built the DTO from
 hand-written values, so it pinned the wire shape and never ran the query. Measured
-and recorded in docs/records/JOURNAL.md (2026-10-04, commit a3c871787).
+and recorded in docs/records/journal/JOURNAL.md (2026-10-04, commit a3c871787).
 
 WHAT IT CHECKS
 ==============
@@ -135,13 +135,7 @@ TEMPLATE_MARKERS = ("{profile_columns}", "{user_id_param}", "{columns}", "{where
 #
 # These are REPORTED, not silently dropped: the run prints them under a heading and
 # still exits 0, so the defect stays visible without making the tree permanently red.
-ACKNOWLEDGED = {
-    ("crates/kasirmu-bridge/src/settings/core.rs", "customer_name"): (
-        "customers.name exists but the projection does not join it; choosing the "
-        "source column changes what a cashier sees on a surface already repaired "
-        "once. See docs/records/JOURNAL.md (2026-10-04) and commit a3c871787."
-    ),
-}
+ACKNOWLEDGED: dict[tuple[str, str], str] = {}
 
 
 def split_top_level_commas(text: str) -> list[str]:

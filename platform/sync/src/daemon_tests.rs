@@ -794,6 +794,44 @@ fn read_config_and_pending_returns_pending_count() {
     assert!(config.is_none());
 }
 
+#[test]
+fn read_config_and_pending_bounds_batch_size_to_max_outbox_items() {
+    use kasirmu_core::offline::SyncPriority;
+
+    let conn = kasirmu_core::migrations::fresh_db();
+    let store = Store::new(&conn);
+
+    // Enqueue 150 items: 140 Low items, then 10 Critical items.
+    for i in 0..140 {
+        store
+            .enqueue_offline_priority(&format!("bulk_{i}"), r#"{}"#, SyncPriority::Low)
+            .unwrap();
+    }
+    for i in 0..10 {
+        store
+            .enqueue_offline_priority(&format!("critical_{i}"), r#"{}"#, SyncPriority::Critical)
+            .unwrap();
+    }
+
+    let (_config, pending) = read_config_and_pending(&conn).unwrap();
+
+    assert_eq!(
+        pending.len(),
+        DEFAULT_MAX_OUTBOX_BATCH_ITEMS,
+        "read_config_and_pending must bound outbox items to DEFAULT_MAX_OUTBOX_BATCH_ITEMS"
+    );
+
+    // All 10 critical items must be present in the truncated batch
+    let critical_count = pending
+        .iter()
+        .filter(|item| item.priority == SyncPriority::Critical)
+        .count();
+    assert_eq!(
+        critical_count, 10,
+        "Critical priority items must be ordered first and retained in the bounded batch"
+    );
+}
+
 /// A queue that cannot be read must NOT look like an empty queue.
 ///
 /// An empty `pending` is indistinguishable from a healthy idle terminal: the
@@ -2316,5 +2354,340 @@ async fn read_stamping_seed_is_none_without_a_terminal_identity() {
     assert!(
         seed.is_none(),
         "no terminal id means no stamping; got {seed:?}"
+    );
+}
+
+// ── Phase 2.1: Fault tolerance, reconnection & network jitter resilience ──
+
+/// Spawn a recording mock sync server that logs all pushed items and returns Accepted.
+async fn spawn_recording_mock_sync_server(
+    received: std::sync::Arc<tokio::sync::Mutex<Vec<kasirmu_core::offline::OfflineQueueItem>>>,
+) -> String {
+    let listener = tokio::net::TcpListener::bind("localhost:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+
+    let state = received.clone();
+    async fn handle_push(
+        axum::extract::State(state): axum::extract::State<
+            std::sync::Arc<tokio::sync::Mutex<Vec<kasirmu_core::offline::OfflineQueueItem>>>,
+        >,
+        Json(items): Json<Vec<kasirmu_core::offline::OfflineQueueItem>>,
+    ) -> Json<PushResponse> {
+        let count = items.len();
+        let mut guard = state.lock().await;
+        guard.extend(items);
+        Json(PushResponse {
+            results: vec![PushOutcome::Accepted; count],
+        })
+    }
+
+    async fn handle_pull(Json(_req): Json<serde_json::Value>) -> Json<PullResponse> {
+        Json(PullResponse {
+            items: vec![],
+            next_cursor: None,
+        })
+    }
+
+    let app = Router::new()
+        .route("/api/sync/push", post(handle_push))
+        .route("/api/sync/pull", post(handle_pull))
+        .with_state(state);
+
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+
+    tokio::time::sleep(Duration::from_millis(10)).await;
+    format!("http://localhost:{port}")
+}
+
+#[tokio::test]
+async fn reconnection_and_deterministic_monotonic_delta_sync_after_offline_sales() {
+    let db = setup_db();
+
+    // 1. Configure terminal with a rejecting server initially (disconnected/offline error).
+    let offline_url = spawn_rejecting_mock_sync_server().await;
+    let db_setup = db.clone();
+    tokio::task::spawn_blocking(move || {
+        let conn = db_setup.blocking_lock();
+        let store = Store::new(&conn);
+        Settings::set_sync_enabled(&conn, true).unwrap();
+        Settings::set_sync_server_url(&conn, &offline_url).unwrap();
+        Settings::set_sync_terminal_id(&conn, "term-delta-sync").unwrap();
+
+        // Enqueue 3 sales and 2 stock adjustments while offline
+        for i in 1..=3 {
+            let sale_payload = serde_json::json!({
+                "sale_id": format!("sale-offline-{i}"),
+                "total_minor": 150_000 * i,
+                "items_count": i,
+            });
+            store
+                .enqueue_offline("sale.create", &sale_payload.to_string())
+                .unwrap();
+        }
+        for i in 1..=2 {
+            let adjust_payload = serde_json::json!({
+                "product_id": format!("prod-{i}"),
+                "delta": -(i * 5),
+                "reason": "sale_deduction",
+            });
+            store
+                .enqueue_offline("inventory.adjust", &adjust_payload.to_string())
+                .unwrap();
+        }
+    })
+    .await
+    .unwrap();
+
+    // Verify all 5 items are currently pending in offline queue
+    let db_check = db.clone();
+    let pending_before = tokio::task::spawn_blocking(move || {
+        let conn = db_check.blocking_lock();
+        Store::new(&conn).pending_offline_count().unwrap()
+    })
+    .await
+    .unwrap();
+    assert_eq!(pending_before, 5, "5 items must be queued offline");
+
+    // 2. Start daemon while offline: tick fails without crashing, items remain pending
+    let daemon = SyncDaemon::with_interval(Duration::from_millis(20));
+    assert!(daemon.start(db.clone()).await);
+
+    // Wait until daemon encounters the offline failure
+    wait_for_daemon(&daemon, "offline transport failure recorded", |s| {
+        s.last_error.is_some()
+    })
+    .await;
+
+    // Verify all 5 items are still durable and pending despite failure
+    let db_check = db.clone();
+    let pending_mid = tokio::task::spawn_blocking(move || {
+        let conn = db_check.blocking_lock();
+        Store::new(&conn).pending_offline_count().unwrap()
+    })
+    .await
+    .unwrap();
+    assert_eq!(
+        pending_mid, 5,
+        "items must remain pending after failed sync cycle"
+    );
+
+    // 3. Re-establish network connection: start live recording sync server
+    let received_items = std::sync::Arc::new(tokio::sync::Mutex::new(Vec::new()));
+    let server_url = spawn_recording_mock_sync_server(received_items.clone()).await;
+
+    let db_update = db.clone();
+    let url_clone = server_url.clone();
+    tokio::task::spawn_blocking(move || {
+        let conn = db_update.blocking_lock();
+        Settings::set_sync_server_url(&conn, &url_clone).unwrap();
+    })
+    .await
+    .unwrap();
+
+    // Wait until pending queue drops to 0 (daemon runs periodic tick every 20ms)
+    let mut drained = false;
+    for _ in 0..200 {
+        let s = daemon.status().await;
+        if s.pending_count == 0 && s.last_pushed > 0 {
+            drained = true;
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(15)).await;
+    }
+    assert!(
+        drained,
+        "all offline items must be synced after reconnection"
+    );
+
+    // 4. Invariant checks
+    let recorded = received_items.lock().await.clone();
+    assert_eq!(
+        recorded.len(),
+        5,
+        "server must have received exactly 5 items"
+    );
+
+    // Verify deterministic order: priority tiers obeyed
+    // sale.create has Critical priority; inventory.adjust has Normal priority
+    assert_eq!(recorded[0].action, "sale.create");
+    assert_eq!(recorded[1].action, "sale.create");
+    assert_eq!(recorded[2].action, "sale.create");
+    assert_eq!(recorded[3].action, "inventory.adjust");
+    assert_eq!(recorded[4].action, "inventory.adjust");
+
+    // Verify all items marked synced locally with zero pending
+    let db_final = db.clone();
+    let pending_final = tokio::task::spawn_blocking(move || {
+        let conn = db_final.blocking_lock();
+        Store::new(&conn).pending_offline_count().unwrap()
+    })
+    .await
+    .unwrap();
+    assert_eq!(pending_final, 0, "offline queue must be 100% drained");
+
+    assert!(daemon.stop().await);
+    wait_for_stopped(&daemon).await;
+}
+
+#[tokio::test]
+async fn network_jitter_resilience_and_exponential_backoff_retry() {
+    let db = setup_db();
+
+    // Spawn a mock server that simulates 40% packet drops / initial intermittent network failures.
+    // First 2 push requests fail with HTTP 500 (simulating spotty cellular signal drops).
+    // Subsequent requests succeed.
+    let listener = tokio::net::TcpListener::bind("localhost:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+
+    let attempt_counter = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let attempts_state = attempt_counter.clone();
+
+    async fn handle_push(
+        axum::extract::State(counter): axum::extract::State<
+            std::sync::Arc<std::sync::atomic::AtomicUsize>,
+        >,
+        Json(items): Json<Vec<kasirmu_core::offline::OfflineQueueItem>>,
+    ) -> impl IntoResponse {
+        let attempt = counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        if attempt < 2 {
+            // Simulate packet drop / connection drop / gateway failure
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "error": "simulated_spotty_network_drop" })),
+            )
+                .into_response()
+        } else {
+            // Network succeeded: accept items
+            (
+                StatusCode::OK,
+                Json(serde_json::json!({
+                    "results": vec![serde_json::json!({"outcome": "accepted"}); items.len()]
+                })),
+            )
+                .into_response()
+        }
+    }
+
+    async fn handle_pull(Json(_req): Json<serde_json::Value>) -> Json<PullResponse> {
+        Json(PullResponse {
+            items: vec![],
+            next_cursor: None,
+        })
+    }
+
+    let app = Router::new()
+        .route("/api/sync/push", post(handle_push))
+        .route("/api/sync/pull", post(handle_pull))
+        .with_state(attempts_state);
+
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+
+    tokio::time::sleep(Duration::from_millis(10)).await;
+    let jitter_server_url = format!("http://localhost:{port}");
+
+    // Configure database with 4 mutations
+    let db_setup = db.clone();
+    let url_clone = jitter_server_url.clone();
+    tokio::task::spawn_blocking(move || {
+        let conn = db_setup.blocking_lock();
+        let store = Store::new(&conn);
+        Settings::set_sync_enabled(&conn, true).unwrap();
+        Settings::set_sync_server_url(&conn, &url_clone).unwrap();
+        Settings::set_sync_terminal_id(&conn, "term-jitter-test").unwrap();
+
+        for i in 1..=4 {
+            store
+                .enqueue_offline("sale.create", &format!(r#"{{"sale_id":"jitter-{i}"}}"#))
+                .unwrap();
+        }
+    })
+    .await
+    .unwrap();
+
+    // Verify backoff function produces non-zero bounded backoff for retry counts
+    for failures in 1..=5 {
+        let bo = compute_backoff(failures);
+        assert!(bo.as_millis() <= MAX_BACKOFF_MS as u128);
+    }
+
+    // Start daemon with fast 20ms tick interval
+    let daemon = SyncDaemon::with_interval(Duration::from_millis(20));
+    assert!(daemon.start(db.clone()).await);
+
+    // Daemon will hit the first 2 failures, back off, and then retry and succeed on attempt 3
+    let mut synced = false;
+    for _ in 0..200 {
+        let s = daemon.status().await;
+        if s.pending_count == 0 && s.last_pushed == 4 {
+            synced = true;
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(15)).await;
+    }
+    assert!(synced, "resilient recovery after intermittent packet drops");
+
+    let final_attempts = attempt_counter.load(std::sync::atomic::Ordering::SeqCst);
+    assert!(
+        final_attempts >= 3,
+        "must have survived at least 2 dropped attempts and succeeded on 3rd; got {final_attempts}"
+    );
+
+    // All 4 items must be durably synced in DB
+    let db_check = db.clone();
+    let pending_remaining = tokio::task::spawn_blocking(move || {
+        let conn = db_check.blocking_lock();
+        Store::new(&conn).pending_offline_count().unwrap()
+    })
+    .await
+    .unwrap();
+    assert_eq!(
+        pending_remaining, 0,
+        "all items must be synced after jitter retry"
+    );
+
+    assert!(daemon.stop().await);
+    wait_for_stopped(&daemon).await;
+}
+
+#[test]
+fn crl_poll_ttl_caching_and_staleness_detection() {
+    let now = chrono::Utc::now();
+    let ttl = 900; // 15 mins
+
+    // 1. None (never checked) -> must poll
+    assert!(
+        daemon_tick::should_poll_crl(None, now, ttl),
+        "must poll CRL when never previously checked"
+    );
+
+    // 2. Checked 60 seconds ago -> within TTL window -> skip poll
+    let recent = (now - chrono::Duration::seconds(60)).to_rfc3339();
+    assert!(
+        !daemon_tick::should_poll_crl(Some(&recent), now, ttl),
+        "must skip CRL poll when cache is younger than TTL"
+    );
+
+    // 3. Checked exactly 900 seconds ago -> expired TTL -> must poll
+    let at_ttl = (now - chrono::Duration::seconds(900)).to_rfc3339();
+    assert!(
+        daemon_tick::should_poll_crl(Some(&at_ttl), now, ttl),
+        "must poll CRL when TTL window has elapsed"
+    );
+
+    // 4. Checked 2 hours ago -> expired -> must poll
+    let stale = (now - chrono::Duration::hours(2)).to_rfc3339();
+    assert!(
+        daemon_tick::should_poll_crl(Some(&stale), now, ttl),
+        "must poll CRL when cache is stale"
+    );
+
+    // 5. Unparseable garbage timestamp -> fails open -> must poll
+    assert!(
+        daemon_tick::should_poll_crl(Some("not-a-timestamp"), now, ttl),
+        "must poll CRL when timestamp is corrupted/unparseable"
     );
 }

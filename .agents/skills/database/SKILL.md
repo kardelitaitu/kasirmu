@@ -314,8 +314,8 @@ To re-sync a shared dev database after a PG schema change, use `scripts/reset-de
   shortfall (`crates/kasirmu-core/src/db/products_stock_adjust/ledger.rs`), rather than
   mutating the ledger in place.
 
-Integration coverage lives in `crates/kasirmu-core/tests/backup_restore_integration.rs` and
-`crates/kasirmu-core/tests/corruption_recovery_integration.rs`.
+Integration coverage lives in `crates/kasirmu-core/tests/integration/backup_restore.rs` and
+`crates/kasirmu-core/tests/integration/corruption_recovery.rs`.
 
 ---
 

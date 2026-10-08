@@ -17,6 +17,10 @@ findings: exemplary AUD-02..09 implementation — AUD-06 redaction (20 sensitive
 next: none | perf: SQL-computed counts per AUD-02/03
 */
 
+use std::sync::atomic::{AtomicU64, Ordering};
+
+use rusqlite::OptionalExtension;
+
 use crate::AuditEntry;
 use crate::error::CoreError;
 
@@ -250,6 +254,172 @@ fn build_audit_where(
     (where_sql, params, idx)
 }
 
+/// Maximum audit log entries allowed in a rate-limit window (P3).
+pub const AUDIT_RATE_LIMIT: u64 = 1000;
+
+/// Rate-limit sliding window duration in seconds (P3).
+pub const AUDIT_WINDOW_SECS: u64 = 60;
+
+static AUDIT_COUNT: AtomicU64 = AtomicU64::new(0);
+static AUDIT_WINDOW_START: AtomicU64 = AtomicU64::new(0);
+
+/// Check if the in-memory audit log rate limit has been exceeded (P3).
+///
+/// Returns `Ok(())` if within the budget, or `Err(CoreError::RateLimited)` if exceeded.
+pub fn check_audit_rate_limit() -> Result<(), CoreError> {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+
+    let window_start = AUDIT_WINDOW_START.load(Ordering::Relaxed);
+    if now.saturating_sub(window_start) >= AUDIT_WINDOW_SECS
+        && AUDIT_WINDOW_START
+            .compare_exchange(window_start, now, Ordering::Relaxed, Ordering::Relaxed)
+            .is_ok()
+    {
+        AUDIT_COUNT.store(1, Ordering::Relaxed);
+        return Ok(());
+    }
+
+    let count = AUDIT_COUNT.fetch_add(1, Ordering::Relaxed);
+    if count >= AUDIT_RATE_LIMIT {
+        return Err(CoreError::RateLimited("audit write rate exceeded".into()));
+    }
+    Ok(())
+}
+
+/// Reset rate limit counters to initial state (for testing).
+#[cfg(test)]
+pub(crate) fn reset_audit_rate_limit_for_test() {
+    AUDIT_COUNT.store(0, Ordering::Relaxed);
+    AUDIT_WINDOW_START.store(0, Ordering::Relaxed);
+}
+
+/// Set rate limit counters to specific values (for testing).
+#[cfg(test)]
+pub(crate) fn set_audit_rate_limit_for_test(count: u64, window_start_secs: u64) {
+    AUDIT_COUNT.store(count, Ordering::Relaxed);
+    AUDIT_WINDOW_START.store(window_start_secs, Ordering::Relaxed);
+}
+
+/// Canonical SHA-256 hash calculation for an audit log entry (P1).
+///
+/// Hashing payload format:
+/// `{previous_hash}|{id}|{user_id}|{action}|{target_type}|{target_id}|{details}|{outcome}|{created_at}`
+#[allow(clippy::too_many_arguments)] // one parameter per hashed field, on purpose: the
+// field list IS the hash contract, so bundling them into a struct would hide
+// which fields are covered and make an omission easy to miss in review
+pub fn compute_audit_entry_hash(
+    previous_hash: Option<&str>,
+    id: &str,
+    user_id: &str,
+    action: &str,
+    target_type: Option<&str>,
+    target_id: Option<&str>,
+    details: &str,
+    outcome: &str,
+    created_at: &str,
+) -> String {
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    let prev = previous_hash.unwrap_or("");
+    let tt = target_type.unwrap_or("");
+    let ti = target_id.unwrap_or("");
+    hasher.update(prev.as_bytes());
+    hasher.update(b"|");
+    hasher.update(id.as_bytes());
+    hasher.update(b"|");
+    hasher.update(user_id.as_bytes());
+    hasher.update(b"|");
+    hasher.update(action.as_bytes());
+    hasher.update(b"|");
+    hasher.update(tt.as_bytes());
+    hasher.update(b"|");
+    hasher.update(ti.as_bytes());
+    hasher.update(b"|");
+    hasher.update(details.as_bytes());
+    hasher.update(b"|");
+    hasher.update(outcome.as_bytes());
+    hasher.update(b"|");
+    hasher.update(created_at.as_bytes());
+    hex::encode(hasher.finalize())
+}
+
+/// Result of an audit log hash chain verification sweep (P1).
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct AuditChainVerificationResult {
+    /// Total number of hashed entries checked.
+    pub total_checked: u64,
+    /// Whether the hash chain is unbroken and untampered.
+    pub is_valid: bool,
+    /// ID of the first broken entry, if tamper or discontinuity was detected.
+    pub broken_at_id: Option<String>,
+}
+
+/// Action name for off-device audit log shipping (P2).
+pub const AUDIT_SHIP_ACTION: &str = "audit.ship";
+
+/// Audit log shipping payload for off-device sync (P2).
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct AuditShipPayload {
+    /// Original audit log entry ID.
+    pub id: String,
+    /// Actor user ID or empty string.
+    pub user_id: String,
+    /// Audit action.
+    pub action: String,
+    /// Optional target type.
+    pub target_type: Option<String>,
+    /// Optional target ID.
+    pub target_id: Option<String>,
+    /// Redacted and truncated details JSON.
+    pub details: String,
+    /// Outcome status ("success" or "failure").
+    pub outcome: String,
+    /// ISO-8601 creation timestamp.
+    pub created_at: String,
+    /// Previous entry hash for forensic chain validation.
+    pub previous_hash: Option<String>,
+    /// Computed cryptographic hash for forensic integrity.
+    pub hash: String,
+}
+
+/// Best-effort enqueue of an audit entry for off-device sync (P2).
+fn enqueue_audit_for_sync(
+    conn: &rusqlite::Connection,
+    entry: &AuditEntry,
+    sanitized_details: &str,
+    previous_hash: Option<&str>,
+    hash: &str,
+) -> Result<(), CoreError> {
+    let payload_struct = AuditShipPayload {
+        id: entry.id.clone(),
+        user_id: entry.user_id.clone(),
+        action: entry.action.clone(),
+        target_type: entry.target_type.clone(),
+        target_id: entry.target_id.clone(),
+        details: sanitized_details.to_string(),
+        outcome: entry.outcome.clone(),
+        created_at: entry.created_at.clone(),
+        previous_hash: previous_hash.map(String::from),
+        hash: hash.to_string(),
+    };
+    let payload = serde_json::to_string(&payload_struct)
+        .map_err(|e| CoreError::Internal(format!("serializing audit ship payload: {e}")))?;
+
+    let queue_id = crate::new_id();
+    let priority = crate::offline::SyncPriority::Low as i32;
+    let origin = super::offline::enqueue_origin(conn).ok().flatten();
+
+    conn.execute(
+        "INSERT INTO offline_queue (id, action, payload, status, retry_count, last_error, created_at, synced_at, tenant_id, priority, origin_terminal_id)
+         VALUES (?1, ?2, ?3, 'pending', 0, NULL, ?4, NULL, 'default', ?5, ?6)",
+        rusqlite::params![queue_id, AUDIT_SHIP_ACTION, payload, entry.created_at, priority, origin],
+    )?;
+    Ok(())
+}
+
 /// The single INSERT body shared by BOTH writer states ([`Store::log_audit`]
 /// in autocommit and inside a caller's transaction, and
 /// [`Store::log_audit_in_tx`]).
@@ -259,16 +429,51 @@ fn build_audit_where(
 /// disagree about what an audit row may contain. Redaction happens HERE, before
 /// the statement, so neither writer can bypass it.
 fn insert_audit(conn: &rusqlite::Connection, entry: &AuditEntry) -> Result<(), CoreError> {
+    if let Err(err) = check_audit_rate_limit() {
+        tracing::warn!(action = %entry.action, error = %err, "audit rate limit exceeded, skipping write");
+        return Ok(());
+    }
     let details = sanitize_details(&entry.details);
+
+    // Read previous row's hash (P1 chain-hash).
+    // Grandfathered rows have hash == '', so we query the latest row where hash != ''.
+    let previous_hash: Option<String> = conn
+        .query_row(
+            "SELECT hash FROM audit_log WHERE hash != '' ORDER BY created_at DESC, id DESC LIMIT 1",
+            [],
+            |row| row.get(0),
+        )
+        .optional()?;
+
+    let hash = compute_audit_entry_hash(
+        previous_hash.as_deref(),
+        &entry.id,
+        &entry.user_id,
+        &entry.action,
+        entry.target_type.as_deref(),
+        entry.target_id.as_deref(),
+        &details,
+        &entry.outcome,
+        &entry.created_at,
+    );
+
     conn.execute(
-        "INSERT INTO audit_log (id, user_id, action, target_type, target_id, details, outcome, created_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+        "INSERT INTO audit_log (id, user_id, action, target_type, target_id, details, outcome, created_at, previous_hash, hash)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
         rusqlite::params![
             entry.id, entry.user_id, entry.action,
             entry.target_type, entry.target_id,
             details, entry.outcome, entry.created_at,
+            previous_hash, hash,
         ],
     )?;
+
+    // P2: Best-effort off-device forensic log shipping.
+    if let Err(err) = enqueue_audit_for_sync(conn, entry, &details, previous_hash.as_deref(), &hash)
+    {
+        tracing::warn!(action = %entry.action, error = %err, "failed to enqueue audit entry for off-device shipping");
+    }
+
     Ok(())
 }
 
@@ -734,17 +939,80 @@ impl Store<'_> {
             Some(details),
             "success",
         );
-        tx.execute(
-            "INSERT INTO audit_log (id, user_id, action, target_type, target_id, details, outcome, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-            rusqlite::params![
-                event.id, event.user_id, event.action,
-                event.target_type, event.target_id,
-                event.details, event.outcome, event.created_at,
-            ],
-        )?;
+        insert_audit(&tx, &event)?;
         tx.commit()?;
         Ok(())
+    }
+
+    /// Verify the integrity of the audit log hash chain (P1).
+    ///
+    /// Walks the audit log in chronological order starting from the first hashed entry.
+    /// For each entry, validates that:
+    /// 1. Its `previous_hash` matches the preceding entry's `hash`.
+    /// 2. Its `hash` matches the recomputed canonical SHA-256 hash.
+    pub fn verify_audit_chain(&self) -> Result<AuditChainVerificationResult, CoreError> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, user_id, action, target_type, target_id, details, outcome, created_at, previous_hash, hash
+             FROM audit_log
+             WHERE hash != ''
+             ORDER BY created_at ASC, id ASC",
+        )?;
+
+        let mut rows = stmt.query([])?;
+        let mut expected_previous: Option<String> = None;
+        let mut total_checked = 0u64;
+
+        while let Some(row) = rows.next()? {
+            let id: String = row.get(0)?;
+            let user_id: String = row.get(1)?;
+            let action: String = row.get(2)?;
+            let target_type: Option<String> = row.get(3)?;
+            let target_id: Option<String> = row.get(4)?;
+            let details: String = row.get(5)?;
+            let outcome: String = row.get(6)?;
+            let created_at: String = row.get(7)?;
+            let previous_hash: Option<String> = row.get(8)?;
+            let stored_hash: String = row.get(9)?;
+
+            // Continuity check: previous_hash must match preceding entry's hash
+            if previous_hash != expected_previous {
+                return Ok(AuditChainVerificationResult {
+                    total_checked,
+                    is_valid: false,
+                    broken_at_id: Some(id),
+                });
+            }
+
+            // Integrity check: stored hash must match computed hash
+            let computed_hash = compute_audit_entry_hash(
+                previous_hash.as_deref(),
+                &id,
+                &user_id,
+                &action,
+                target_type.as_deref(),
+                target_id.as_deref(),
+                &details,
+                &outcome,
+                &created_at,
+            );
+
+            if stored_hash != computed_hash {
+                return Ok(AuditChainVerificationResult {
+                    total_checked,
+                    is_valid: false,
+                    broken_at_id: Some(id),
+                });
+            }
+
+            expected_previous = Some(stored_hash);
+            total_checked += 1;
+        }
+
+        Ok(AuditChainVerificationResult {
+            total_checked,
+            is_valid: true,
+            broken_at_id: None,
+        })
     }
 
     /// Most recent review checkpoint for this store (newest first).

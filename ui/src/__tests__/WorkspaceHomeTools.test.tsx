@@ -11,7 +11,7 @@
 // sections of the Settings hub, not standalone page routes.
 
 import { describe, it, expect, beforeAll } from 'vitest';
-import { TOOLS, TOOL_GROUP_ORDER } from '@/features/workspaces/tools';
+import { TOOLS, TOOL_GROUP_ORDER, resolveToolLock } from '@/features/workspaces/tools';
 import { getPage } from '@/registries/page-registry';
 import { registerAllFeatures } from '@/features';
 import { TIER_LEVEL, tierSatisfies, type TierKey } from '@/utils/tierLevel';
@@ -28,6 +28,89 @@ beforeAll(() => {
   registerAllFeatures();
 });
 
+// ── The lock decision under a loading subscription (2026-10-08) ────
+//
+// MEASURED: `caps` starts null and `state` starts 'loading'
+// (SubscriptionContext.tsx:50-51). The role-only path already stayed open
+// during the first fetch, but the TIER path did not — `tierSatisfies(null, …)`
+// is false by contract and `useAdminGate` locks on anything but `active` —
+// so every pro/premium tool flashed a locked card on every cold start, the
+// exact thing WorkspaceHome's "loading stays open" comment forbids. The
+// route's own gate re-checks fail-closed, so the optimistic-open here is
+// cosmetic only.
+describe('resolveToolLock — the first entitlement fetch must not flash-lock', () => {
+  const pro = TOOLS.find((t) => t.id === 'analytics')!; // minimumTier 'pro'
+  const free = TOOLS.find((t) => t.id === 'settings')!; // minimumTier 'free'
+
+  it('keeps tier-gated tools open while the first fetch is loading', () => {
+    expect(
+      resolveToolLock(pro, {
+        roleName: 'admin',
+        subscriptionState: 'loading',
+        capsTier: undefined,
+        adminLocked: true,
+      }),
+    ).toBe('none');
+  });
+
+  it('still fails closed once the fetch resolves to anything but active/grace', () => {
+    expect(
+      resolveToolLock(pro, {
+        roleName: 'admin',
+        subscriptionState: 'unavailable',
+        capsTier: undefined,
+        adminLocked: true,
+      }),
+    ).toBe('subscription');
+  });
+
+  it('grace never re-opens the admin-gated tier tools (§B)', () => {
+    expect(
+      resolveToolLock(pro, {
+        roleName: 'admin',
+        subscriptionState: 'grace',
+        capsTier: 'pro',
+        adminLocked: true,
+      }),
+    ).toBe('subscription');
+  });
+
+  it('grace keeps role-only tools working (operational continuity)', () => {
+    expect(
+      resolveToolLock(free, {
+        roleName: 'manager',
+        subscriptionState: 'grace',
+        capsTier: undefined,
+        adminLocked: true,
+      }),
+    ).toBe('none');
+  });
+
+  it('an active subscription unlocks by tier as before', () => {
+    const ctx = {
+      roleName: 'admin',
+      subscriptionState: 'active' as const,
+      capsTier: 'pro' as const,
+      adminLocked: false,
+    };
+    expect(resolveToolLock(pro, ctx)).toBe('none');
+    expect(
+      resolveToolLock(TOOLS.find((t) => t.id === 'promotions')!, ctx),
+    ).toBe('tier');
+  });
+
+  it('an unknown role fails closed exactly as before', () => {
+    expect(
+      resolveToolLock(pro, {
+        roleName: 'ghost',
+        subscriptionState: 'active',
+        capsTier: 'pro',
+        adminLocked: false,
+      }),
+    ).toBe('hidden');
+  });
+});
+
 // ── Access matrix (the agreed role/tier table, todo-tools.md) ─────
 
 describe('Tools catalogue — access matrix (todo-tools.md)', () => {
@@ -39,32 +122,33 @@ describe('Tools catalogue — access matrix (todo-tools.md)', () => {
     expect(tierOf('audit')).toBe('premium');
     expect(tierOf('memo')).toBe('pro');
     expect(tierOf('promotions')).toBe('premium');
-    expect(tierOf('cloud-sync')).toBe('plus');
-    expect(tierOf('data-management')).toBe('plus');
-    // Basic Offline Queue visibility is available to all active tiers.
-    expect(tierOf('offline-queue')).toBe('free');
+    expect(tierOf('settings')).toBe('free');
+    expect(tierOf('staff')).toBe('free');
+    expect(tierOf('locations')).toBe('free');
+    expect(tierOf('terminals')).toBe('free');
+    expect(tierOf('shifts')).toBe('free');
+    expect(tierOf('topology')).toBe('free');
   });
 
   it('pins the agreed minimum roles', () => {
     const roleOf = (id: string) =>
       TOOLS.find((t) => t.id === id)!.access.minimumRole;
-    expect(roleOf('settings')).toBe('admin');
-    expect(roleOf('topology-editor')).toBe('admin');
+    expect(roleOf('settings')).toBe('manager');
+    expect(roleOf('topology')).toBe('manager');
     expect(roleOf('analytics')).toBe('admin');
     expect(roleOf('staff')).toBe('manager');
     expect(roleOf('locations')).toBe('manager');
     expect(roleOf('terminals')).toBe('manager');
+    expect(roleOf('shifts')).toBe('manager');
     expect(roleOf('reports')).toBe('manager');
     expect(roleOf('audit')).toBe('manager');
     expect(roleOf('memo')).toBe('manager');
     expect(roleOf('promotions')).toBe('manager');
-    expect(roleOf('features')).toBe('owner');
-    expect(roleOf('data-management')).toBe('owner');
   });
 
-  it('Settings is the only role-locked card (managers see it locked, not hidden)', () => {
+  it('no card is role-locked on home grid (managers can access Settings directly)', () => {
     const roleLocked = TOOLS.filter((t) => t.access.lockBelowRole);
-    expect(roleLocked.map((t) => t.id)).toEqual(['settings']);
+    expect(roleLocked).toHaveLength(0);
   });
 
   it('every tool belongs to a declared group and every declared group has tools', () => {
@@ -84,7 +168,6 @@ describe('Tools catalogue — access matrix (todo-tools.md)', () => {
       (t) => t.id,
     );
     expect(operations).toEqual([
-      'topology-editor',
       'staff',
       'locations',
       'terminals',

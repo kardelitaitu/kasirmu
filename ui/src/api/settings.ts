@@ -204,6 +204,8 @@ export interface ProvisionDeviceArgs {
   mode: ProvisioningMode;
   tenant_id?: string | null;
   device_credential_id?: string | null;
+  tax_preset?: string | null;
+  seed_sample_products?: boolean | null;
 }
 
 /** What provisioning created, so the shell can route with it. */

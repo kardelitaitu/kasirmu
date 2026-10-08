@@ -4,6 +4,9 @@ import { Localized, useLocalization } from '@fluent/react';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { l10nErrorMessage } from '@/utils/app-error';
+import { asArray } from '@/utils/ipc-payload';
+import { formatMoney } from '@/types/domain';
+import { listOpenBillsScoped, type HeldCartRow } from '@/api/sales';
 import {
   listTablesScoped,
   listSectionsScoped,
@@ -11,7 +14,20 @@ import {
   releaseTableScoped,
   type Table,
 } from '@/api/tables';
+import { listen } from '@/api/tauri';
 import './TableManagementScreen.css';
+
+/** Vector Grid icon for empty floor plan state */
+function GridIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" width="32" height="32" aria-hidden="true">
+      <rect x="3" y="3" width="7" height="7" rx="1" />
+      <rect x="14" y="3" width="7" height="7" rx="1" />
+      <rect x="14" y="14" width="7" height="7" rx="1" />
+      <rect x="3" y="14" width="7" height="7" rx="1" />
+    </svg>
+  );
+}
 
 /** TBL-07: finite status enum → localized Fluent message id. Unknown values fall back to a safe localized label. */
 const STATUS_LABEL_IDS: Record<string, string> = {
@@ -24,15 +40,18 @@ const STATUS_LABEL_IDS: Record<string, string> = {
 export interface TableManagementScreenProps {
   /** Optional callback when a table is selected for assigning to the active cart / order. */
   onSelectTable?: (tableName: string) => void;
+  /** Optional callback to navigate back to POS */
+  onBack?: () => void;
 }
 
 /** Table management screen — interactive floor-plan view for managing restaurant table status (available, occupied, reserved, cleaning). */
-export default function TableManagementScreen({ onSelectTable }: TableManagementScreenProps = {}) {
+export default function TableManagementScreen({ onSelectTable, onBack }: TableManagementScreenProps = {}) {
   const { l10n } = useLocalization();
   const { sessionToken: rawToken } = useWorkspace();
   const sessionToken = rawToken || '';
   const [tables, setTables] = useState<Table[]>([]);
   const [sections, setSections] = useState<string[]>([]);
+  const [openBills, setOpenBills] = useState<HeldCartRow[]>([]);
   const [selected, setSelected] = useState<Table | null>(null);
   const [section, setSection] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -45,12 +64,26 @@ export default function TableManagementScreen({ onSelectTable }: TableManagement
   const pendingRef = useRef<string | null>(null);
   // TBL-03: localized error surfaced inside the open detail panel.
   const [actionError, setActionError] = useState<string | null>(null);
+  const [showReleaseConfirm, setShowReleaseConfirm] = useState(false);
   // Request-generation guard (TBL-02): a stale response from an earlier
   // section/token/refresh can never overwrite a fresher result.
   const loadSeqRef = useRef(0);
   // TBL-06: dialog panel + the trigger that opened it (for focus restoration).
   const detailRef = useRef<HTMLDivElement | null>(null);
   const triggerRef = useRef<HTMLElement | null>(null);
+
+  // Match table with active open bill/tab
+  const getTableBill = useCallback(
+    (tableName: string): HeldCartRow | undefined => {
+      const lowerName = tableName.toLowerCase();
+      return openBills.find((b) => {
+        if (b.label.toLowerCase().includes(`table ${lowerName}`)) return true;
+        if (b.customer_name?.toLowerCase().includes(`table ${lowerName}`)) return true;
+        return false;
+      });
+    },
+    [openBills],
+  );
 
   // TBL-07: localized label for a raw status value, with unknown fallback.
   const statusLabel = useCallback(
@@ -67,7 +100,7 @@ export default function TableManagementScreen({ onSelectTable }: TableManagement
     let cancelled = false;
     listSectionsScoped(sessionToken)
       .then((data) => {
-        if (!cancelled) setSections(data);
+        if (!cancelled) setSections(asArray<typeof data[number]>(data));
       })
       .catch(() => {
         if (!cancelled) setSections([]);
@@ -85,9 +118,14 @@ export default function TableManagementScreen({ onSelectTable }: TableManagement
     setLoading(true);
     setError(null);
     try {
-      const data = await listTablesScoped(sessionToken, section ?? undefined);
+      const [tableData, billData] = await Promise.all([
+        listTablesScoped(sessionToken, section ?? undefined),
+        listOpenBillsScoped(sessionToken).catch(() => []),
+      ]);
       if (seq !== loadSeqRef.current) return;
-      setTables(data);
+      // asArray: see utils/ipc-payload — the render maps/finds these.
+      setTables(asArray<typeof tableData[number]>(tableData));
+      setOpenBills(asArray<typeof billData[number]>(billData));
     } catch (err) {
       if (seq !== loadSeqRef.current) return;
       setError(l10nErrorMessage(err, l10n, 'app-error-generic'));
@@ -101,6 +139,45 @@ export default function TableManagementScreen({ onSelectTable }: TableManagement
     void loadTables();
   }, [loadTables, sessionToken, refreshKey]);
 
+  // Real-time floor plan synchronization via Tauri events (emitted locally or received via LAN forwarder)
+  useEffect(() => {
+    let unlistenStatus: (() => void) | undefined;
+    let unlistenDeleted: (() => void) | undefined;
+    let cancelled = false;
+
+    listen<Table>('tables:status-changed', (event) => {
+      const updated = event.payload;
+      if (updated && updated.id) {
+        setTables((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
+        setSelected((curr) => (curr && curr.id === updated.id ? updated : curr));
+      }
+    })
+      .then((fn) => {
+        if (cancelled) fn();
+        else unlistenStatus = fn;
+      })
+      .catch(() => {});
+
+    listen<{ id: string }>('tables:deleted', (event) => {
+      const { id } = event.payload;
+      if (id) {
+        setTables((prev) => prev.filter((t) => t.id !== id));
+        setSelected((curr) => (curr && curr.id === id ? null : curr));
+      }
+    })
+      .then((fn) => {
+        if (cancelled) fn();
+        else unlistenDeleted = fn;
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+      unlistenStatus?.();
+      unlistenDeleted?.();
+    };
+  }, []);
+
   const retry = useCallback(() => setRefreshKey((k) => k + 1), []);
 
   // TBL-06: opening the dialog remembers the trigger so focus can be restored
@@ -109,12 +186,14 @@ export default function TableManagementScreen({ onSelectTable }: TableManagement
   const openDetail = useCallback((t: Table) => {
     triggerRef.current = document.activeElement as HTMLElement | null;
     setActionError(null);
+    setShowReleaseConfirm(false);
     setSelected(t);
   }, []);
 
   const closeDetail = useCallback(() => {
     setSelected(null);
     setActionError(null);
+    setShowReleaseConfirm(false);
     triggerRef.current?.focus();
   }, []);
 
@@ -163,7 +242,23 @@ export default function TableManagementScreen({ onSelectTable }: TableManagement
 
   return (
     <div className="tables" role="region" aria-label={l10n.getString('tables-management-label')}>
-      <h1 className="tables-title"><Localized id="tables-title">Table Management</Localized></h1>
+      <div className="tables-header">
+        {onBack && (
+          <button
+            type="button"
+            className="tables-back-btn"
+            onClick={onBack}
+            aria-label={l10n.getString('back') || 'Back'}
+            data-testid="tables-back-btn"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="18" height="18" aria-hidden="true">
+              <line x1="19" y1="12" x2="5" y2="12" />
+              <polyline points="12 19 5 12 12 5" />
+            </svg>
+          </button>
+        )}
+        <h1 className="tables-title"><Localized id="tables-title">Table Management</Localized></h1>
+      </div>
       <div className="tables-sections">
         <Button variant="ghost" size="sm" className={`tables-section-btn ${section === null ? 'active' : ''}`}
           onClick={() => setSection(null)}><Localized id="tables-all">All</Localized></Button>
@@ -195,7 +290,7 @@ export default function TableManagementScreen({ onSelectTable }: TableManagement
 
         {showEmpty && section === null && (
           <div className="tables-empty">
-            <span className="tables-empty-icon" aria-hidden="true">▦</span>
+            <span className="tables-empty-icon" aria-hidden="true"><GridIcon /></span>
             <p className="tables-empty-title"><Localized id="tables-empty">No tables configured yet.</Localized></p>
             <p className="tables-empty-desc"><Localized id="tables-empty-desc">Add tables from the settings screen to build your floor plan.</Localized></p>
           </div>
@@ -203,7 +298,7 @@ export default function TableManagementScreen({ onSelectTable }: TableManagement
 
         {showEmpty && section !== null && (
           <div className="tables-empty">
-            <span className="tables-empty-icon" aria-hidden="true">▦</span>
+            <span className="tables-empty-icon" aria-hidden="true"><GridIcon /></span>
             <p className="tables-empty-title"><Localized id="tables-empty-filtered">No tables in this section.</Localized></p>
             <Button variant="ghost" size="sm" onClick={() => setSection(null)}>
               <Localized id="tables-all">All</Localized>
@@ -217,8 +312,9 @@ export default function TableManagementScreen({ onSelectTable }: TableManagement
           // backend bounds check, so never render a sub-2% interactive control.
           const w = Math.max(t.width, 2);
           const h = Math.max(t.height, 2);
+          const bill = getTableBill(t.name);
           return (
-            <Button variant="ghost" size="sm" key={t.id} className={`tables-table tables-table--${t.status} tables-table--${shape}`}
+            <Button variant="ghost" size="sm" key={t.id} className={`tables-table tables-table--${t.status} tables-table--${shape}${bill ? ' tables-table--has-bill' : ''}`}
               onClick={() => openDetail(t)}
               // TBL-05: the context-menu shortcut opens the accessible detail
               // panel (the visible, keyboard-operable actions menu) instead of
@@ -233,58 +329,119 @@ export default function TableManagementScreen({ onSelectTable }: TableManagement
               aria-label={l10n.getString('tables-table-label', { name: t.name, status: statusLabel(t.status) })}
             >
               <span className="tables-table-name">{t.name}</span>
-              <span className="tables-table-status">{statusLabel(t.status)}</span>
+              <span className="tables-table-status">
+                {bill ? `${bill.item_count} items` : statusLabel(t.status)}
+              </span>
             </Button>
           );
         })}
       </div>
 
-      {selected && (
-        <div className="tables-detail" ref={detailRef} role="dialog" aria-modal="true" aria-label={l10n.getString('tables-detail-label')}>
-          <h2>{selected.name}</h2>
-          <p><Localized id="tables-capacity-label" vars={{ capacity: selected.capacity }}><span>Capacity: {selected.capacity}</span></Localized></p>
-          <p><Localized id="tables-status-label" vars={{ status: statusLabel(selected.status) }}><span>Status: {statusLabel(selected.status)}</span></Localized></p>
-          <p><Localized id="tables-section-label" vars={{ section: selected.section || '—' }}><span>Section: {selected.section || '—'}</span></Localized></p>
+      {selected && (() => {
+        const activeBill = getTableBill(selected.name);
+        return (
+          <div className="tables-detail" ref={detailRef} role="dialog" aria-modal="true" aria-label={l10n.getString('tables-detail-label')}>
+            <h2>{selected.name}</h2>
+            <p><Localized id="tables-capacity-label" vars={{ capacity: selected.capacity }}><span>Capacity: {selected.capacity}</span></Localized></p>
+            <p><Localized id="tables-status-label" vars={{ status: statusLabel(selected.status) }}><span>Status: {statusLabel(selected.status)}</span></Localized></p>
+            <p><Localized id="tables-section-label" vars={{ section: selected.section || '—' }}><span>Section: {selected.section || '—'}</span></Localized></p>
 
-          {actionError && (
-            <p className="tables-action-error" role="alert">
-              <Localized id="tables-action-error">Could not update this table.</Localized>
-              <span className="tables-action-error-detail">{actionError}</span>
-            </p>
-          )}
+            {activeBill && (
+              <div className="tables-active-bill-info">
+                <div style={{ fontWeight: 600, fontSize: 'var(--text-sm)', color: 'var(--color-fg)' }}>
+                  Active Tab: {activeBill.label}
+                </div>
+                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-fg-muted)', marginTop: '4px' }}>
+                  {activeBill.item_count} items · {formatMoney({ minor_units: activeBill.total_minor, currency: activeBill.currency })}
+                </div>
+              </div>
+            )}
 
-          <div className="tables-detail-actions">
-            {onSelectTable && (
-              <Button
-                variant="primary"
-                size="sm"
-                data-testid="tables-assign-to-order-btn"
-                onClick={() => {
-                  onSelectTable(selected.name);
-                  closeDetail();
+            {actionError && (
+              <p className="tables-action-error" role="alert">
+                <Localized id="tables-action-error">Could not update this table.</Localized>
+                <span className="tables-action-error-detail">{actionError}</span>
+              </p>
+            )}
+
+            {showReleaseConfirm && activeBill && (
+              <div
+                style={{
+                  background: 'var(--color-danger-subtle, rgba(239, 68, 68, 0.1))',
+                  border: '1px solid var(--color-danger, #ef4444)',
+                  padding: '10px 12px',
+                  borderRadius: '8px',
+                  margin: '12px 0',
+                  fontSize: 'var(--text-xs)',
+                  color: 'var(--color-fg)',
                 }}
               >
-                <Localized id="tables-assign-to-order">
-                  <span>Select for Order</span>
-                </Localized>
-              </Button>
+                <div style={{ fontWeight: 600, color: 'var(--color-danger, #ef4444)', marginBottom: '4px' }}>
+                  ⚠️ Table has an active tab ({formatMoney({ minor_units: activeBill.total_minor, currency: activeBill.currency })})
+                </div>
+                <div>
+                  Releasing will mark the table as available without closing or settling this unpaid bill. Are you sure?
+                </div>
+                <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+                  <Button
+                    variant="danger"
+                    size="sm"
+                    state={pendingId === selected.id ? 'processing' : 'ready'}
+                    onClick={() => {
+                      setShowReleaseConfirm(false);
+                      void statusAction(selected);
+                    }}
+                  >
+                    Confirm Release
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={() => setShowReleaseConfirm(false)}>
+                    Cancel
+                  </Button>
+                </div>
+              </div>
             )}
-            <Button
-              variant={selected.status === 'occupied' ? 'danger' : 'primary'}
-              size="sm"
-              state={pendingId === selected.id ? 'processing' : 'ready'}
-              onClick={() => void statusAction(selected)}
-            >
-              <Localized id={selected.status === 'occupied' ? 'tables-release' : selected.status === 'available' ? 'tables-mark-reserved' : 'tables-mark-available'}>
-                {selected.status === 'occupied' ? 'Release' : selected.status === 'available' ? 'Mark Reserved' : 'Mark Available'}
-              </Localized>
-            </Button>
-            <Button variant="ghost" size="sm" onClick={closeDetail}>
-              <Localized id="close">Close</Localized>
-            </Button>
+
+            <div className="tables-detail-actions">
+              {onSelectTable && (
+                <Button
+                  variant="primary"
+                  size="sm"
+                  data-testid="tables-assign-to-order-btn"
+                  onClick={() => {
+                    onSelectTable(selected.name);
+                    closeDetail();
+                  }}
+                >
+                  <Localized id="tables-assign-to-order">
+                    <span>{activeBill ? 'Resume Tab / Order' : 'Select for Order'}</span>
+                  </Localized>
+                </Button>
+              )}
+              {!showReleaseConfirm && (
+                <Button
+                  variant={selected.status === 'occupied' ? 'danger' : 'primary'}
+                  size="sm"
+                  state={pendingId === selected.id ? 'processing' : 'ready'}
+                  onClick={() => {
+                    if (selected.status === 'occupied' && activeBill) {
+                      setShowReleaseConfirm(true);
+                    } else {
+                      void statusAction(selected);
+                    }
+                  }}
+                >
+                  <Localized id={selected.status === 'occupied' ? 'tables-release' : selected.status === 'available' ? 'tables-mark-reserved' : 'tables-mark-available'}>
+                    {selected.status === 'occupied' ? 'Release' : selected.status === 'available' ? 'Mark Reserved' : 'Mark Available'}
+                  </Localized>
+                </Button>
+              )}
+              <Button variant="ghost" size="sm" onClick={closeDetail}>
+                <Localized id="close">Close</Localized>
+              </Button>
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 }

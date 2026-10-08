@@ -28,6 +28,7 @@ import { useSubscription } from '@/contexts/SubscriptionContext';
 import { LocaleContext } from '@/i18n/LocaleContext';
 import { useContext } from 'react';
 import { openUpgradePricing } from '@/utils/upgrade';
+import { asArray, asObject } from '@/utils/ipc-payload';
 import { Card } from '@/components/Card';
 import { Button } from '@/components/Button';
 import { Skeleton } from '@/components/Skeleton';
@@ -203,7 +204,7 @@ export default function TerminalManagementScreen() {
     setError(null);
     try {
       const data = await listTerminalsScoped(sessionToken);
-      setTerminals(data);
+      setTerminals(asArray<typeof data[number]>(data));
     } catch {
       setError(l10n.getString('terminal-error-load'));
     } finally {
@@ -246,7 +247,7 @@ export default function TerminalManagementScreen() {
       setOverridesError(null);
       try {
         const data = await listTerminalOverridesScoped(sessionToken, editingId);
-        if (!cancelled) setOverrides(data);
+        if (!cancelled) setOverrides(asArray<typeof data[number]>(data));
       } catch {
         if (!cancelled) setOverridesError(l10n.getString('terminal-error-overrides-load'));
       } finally {
@@ -276,19 +277,24 @@ export default function TerminalManagementScreen() {
           listLocationsScoped(sessionToken),
         ]);
         if (!cancelled) {
-          setBinding(b);
-          setBindingStores(stores);
-          if (b.boundStoreId) {
-            setSelectedStoreId(b.boundStoreId);
+          // asObject for the binding: it is read field-by-field right here, and
+          // an absent payload must not reach those reads (utils/ipc-payload).
+          // asArray for the store list: the render maps it (:910).
+          const binding = asObject<typeof b>(b);
+          setBinding(binding);
+          setBindingStores(asArray<typeof stores[number]>(stores));
+          if (binding?.boundStoreId) {
+            setSelectedStoreId(binding.boundStoreId);
             // Load instances for the bound store (audit-open-findings: session-scoped,
             // never a hardcoded role-owner claim).
             try {
               const instances = sessionToken
-                ? await listWorkspacesForStoreScoped(sessionToken, b.boundStoreId)
+                ? await listWorkspacesForStoreScoped(sessionToken, binding.boundStoreId)
                 : [];
               if (!cancelled) {
-                setBindingInstances(instances);
-                if (b.boundInstanceId) setSelectedInstanceId(b.boundInstanceId);
+                // Coerce too: an absent instance list must not reach the render's map.
+                setBindingInstances(asArray(instances));
+                if (binding.boundInstanceId) setSelectedInstanceId(binding.boundInstanceId);
               }
             } catch {
               if (!cancelled) setBindingInstances([]);
@@ -394,7 +400,7 @@ export default function TerminalManagementScreen() {
     try {
       await setTerminalOverrideScoped(sessionToken, editingId, featureKey, !currentEnabled);
       const data = await listTerminalOverridesScoped(sessionToken, editingId);
-      setOverrides(data);
+      setOverrides(asArray<typeof data[number]>(data));
     } catch {
       setOverridesError(l10n.getString('terminal-error-override-update'));
     }

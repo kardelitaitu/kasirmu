@@ -56,7 +56,7 @@ pub fn validate_all(payload: &QrisPayload) -> Vec<QrisError> {
                 }
             }
             crate::payload::Tip::Percentage { percent } => {
-                if percent.parse::<f64>().is_err() {
+                if !crate::amount::is_valid_percent_str(percent) {
                     errors.push(QrisError::InvalidAmount(percent.clone()));
                 }
             }

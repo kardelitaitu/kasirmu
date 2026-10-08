@@ -189,12 +189,24 @@ def scan(root: Path) -> list[str]:
         identical = len(blobs) == 1
         claiming = [p for p, a in zip(paths, abs_paths) if head_claims(a)]
 
-        # An archive copy is a deliberate duplicate: `docs/archived/` exists to
-        # hold the previous version of a live document, so exactly one copy
-        # claiming authority is the POINT. Exempt that pairing -- but only that
-        # one. If two ARCHIVED copies both claim authority, or an archive and a
-        # live doc both do, that is still the bug being hunted.
-        archived = [p for p in paths if "/archived/" in p or p.startswith("docs/archived/")]
+        # An archive copy is a deliberate duplicate: the archive holds the
+        # previous version of a live document, so exactly one copy claiming
+        # authority is the POINT. Exempt that pairing -- but only that one. If
+        # two ARCHIVED copies both claim authority, or an archive and a live
+        # doc both do, that is still the bug being hunted.
+        #
+        # Widened 2026-10-02. `docs/archived/` was retired and became a
+        # one-file tombstone; its contents now live in docs/records/superseded/
+        # and docs/records/audits/. Those are the SAME class -- superseded copies
+        # of live documents -- and without this they read as live, which would
+        # stop the exemption below from ever firing and leave the genuine
+        # archive-vs-live case indistinguishable from two live docs.
+        #
+        # Widening the set does NOT hide the conflict it is paired with: the
+        # second branch still flags archive-and-live both claiming authority.
+        ARCHIVE_PREFIXES = ("docs/archived/", "docs/records/superseded/",
+                            "docs/records/audits/")
+        archived = [p for p in paths if p.startswith(ARCHIVE_PREFIXES)]
         live = [p for p in paths if p not in archived]
         if len(archived) >= 1 and len(claiming) <= 1 and not identical:
             continue

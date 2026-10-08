@@ -160,6 +160,30 @@ export function usePosState() {
   }, [setLines]);
 
   /**
+   * Update modifiers and unit price for an existing line item.
+   */
+  const updateLineModifiers = useCallback(
+    (lineId: LineId, modifiers: ModifierSelection[], newPrice: Money): boolean => {
+      if (cartCurrencyRef.current !== null && newPrice.currency !== cartCurrencyRef.current) {
+        return false;
+      }
+      setLines((prev) =>
+        prev.map((line) => {
+          if (line.id !== lineId) return line;
+          const { modifiers: _m, ...rest } = line;
+          return {
+            ...rest,
+            ...(modifiers.length > 0 ? { modifiers } : {}),
+            unit_price: newPrice,
+          };
+        }),
+      );
+      return true;
+    },
+    [],
+  );
+
+  /**
    * Assign a course to a line item, or clear it. Only applicable in
    * restaurant mode. If the line already has the same course, this is a no-op.
    *
@@ -364,6 +388,7 @@ export function usePosState() {
     removeLine,
     updateQty,
     updateLinePrice,
+    updateLineModifiers,
     updateLineNote,
     assignCourse,
     fireCourse,

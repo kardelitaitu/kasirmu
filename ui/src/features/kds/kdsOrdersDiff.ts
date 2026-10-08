@@ -44,3 +44,36 @@ export function sameOrders(a: KdsOrder[], b: KdsOrder[]): boolean {
   }
   return true;
 }
+
+/**
+ * The ids present in \`next\` that were NOT in \`previous\` — the set that drives
+ * the arrival animation.
+ *
+ * Extracted from KdsScreen.tsx:159-165 AS OF 1d0be5fdf^, the loop that built \`arrivedIds\` inside
+ * fetchOrders. Those numbers now hold the extracted call itself, so read them
+ * as the ORIGINAL range rather than a pointer.
+ * It had no test of its own: the two suites that mention
+ * \`newOrderIds\` (KdsLayoutMasonry, emptyStateCompliance) pass an empty Set as a
+ * prop, so neither exercises the diff. Naming it here is what makes it testable —
+ * the same move as sameOrders above.
+ *
+ * New means "not in the previous board", not "recently fetched": a ticket that
+ * was pushed to a different zone filter and came back is NOT new, because it was
+ * in the previous id set. The comparison is by id only — a changed ticket keeps
+ * its identity and must not re-animate.
+ *
+ * Order is not part of the result: the caller only asks whether the set is
+ * non-empty before starting the 3s highlight timer.
+ */
+export function arrivedOrderIds(previous: ReadonlySet<string>, next: KdsOrder[]): Set<string> {
+  const arrived = new Set<string>();
+  for (const order of next) {
+    if (!previous.has(order.id)) arrived.add(order.id);
+  }
+  return arrived;
+}
+
+/** The id set a board is compared against on the NEXT fetch. */
+export function orderIdSet(orders: KdsOrder[]): Set<string> {
+  return new Set(orders.map((o) => o.id));
+}

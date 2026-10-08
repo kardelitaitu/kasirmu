@@ -1,10 +1,20 @@
 //! Kernel lock lifecycle audit — verifies that the bounded-retry pattern
 //! in AppState::drop() correctly handles lock contention during shutdown.
 //!
-//! The Drop implementation uses a 500ms bounded retry loop to acquire the
-//! kernel lock. This test simulates contention scenarios and verifies the
-//! retry behaviour is correct — it should either acquire within 500ms or
-//! log a warning and proceed (never panic, never hang indefinitely).
+//! The Drop implementation uses a BOUNDED retry loop to acquire the kernel
+//! lock. Production runs `DROP_LOCK_RETRIES = 200` at 10ms per sleep, so the
+//! real window is **2000ms** (`state.rs`, the `impl Drop for AppState` body).
+//! This test simulates contention scenarios against a smaller retry count and
+//! verifies the SHAPE of the behaviour — bounded, never panicking, never
+//! hanging — rather than the production constant, which it cannot import.
+//!
+//! ⚠️ THE RETRY COUNT HERE IS DELIBERATELY NOT THE PRODUCTION VALUE, and the
+//! earlier text said "500ms" (50 × 10ms), which was the production figure at
+//! some point and is not any more. Keep them distinct on purpose: this file
+//! asserts the retry pattern's behaviour over a few iterations, and a replica
+//! that tracked the constant would have to be re-tuned every time the
+//! production window moves. What must stay in sync is the SHAPE, and the
+//! production value is named above so a reader is not misled about it.
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};

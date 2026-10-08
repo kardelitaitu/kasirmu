@@ -18,6 +18,38 @@
  * against this registry. Deriving any one of the three from another turns
  * that assertion into a list compared with itself.
  *
+ * EVERY SCREEN IN THIS MAP NOW RENDERS REAL CONTENT. VERIFIED ON THE TABLET
+ * 2026-10-07 (Redmi 23073RPBFG, debug APK embedding commit 7198980), over CDP
+ * against the running app: navigating each sidebar entry and reading
+ * `.settings-section-content`, NO section reported "This page is being rebuilt"
+ * and every one rendered its controls —
+ *
+ *   Data & Sync     8 controls  ("Server URL", "Server in use: … (pinned)")
+ *   Sync Status     3 controls  (status "Ready", Test Connection / Sync Now / Pull)
+ *   General         9 controls  (Store name / Address / Tax-VAT ID / Branch / …)
+ *   Security & Account  RoleBadge: name "Adikara Dwi Atmaja", role chip "Owner",
+ *                       and the logout control — the signed-in identity the
+ *                       tablet previously showed nowhere.
+ *
+ * As of 2026-10-06 the
+ * settings rebuild is complete: no file in this folder renders the
+ * "This page is being rebuilt" notice any more
+ * (`git grep 'id="settings-screen-placeholder"' -- ui/src/features/settings/screens`
+ * returns nothing). The path there ran through several shapes, and a future
+ * edit should know which one a given screen took rather than assume:
+ *
+ *   * COMPOSITION (most of them) — the scaffold renders an existing section as
+ *     its body: LicenceSettings, DiagnosticsSection, GeneralSection, SyncSection,
+ *     FeatureToggleScreen, DataManagementScreen, OfflineQueueScreen, the currency
+ *     screen, and the tax screen. The composed feature keeps its own stylesheet,
+ *     so each entry cites it through `parentCss` rather than muting the names.
+ *   * STATE-LIFT (three of them) — General, Data Sync and Sync Status could not
+ *     compose: their sections are presentational and take 11 / 34 / 34 props that
+ *     the flat-IA rebuild deleted the suppliers of. Those props now come from
+ *     `../hooks/useStoreDraft.ts` and `../hooks/useDataSyncDraft.ts`.
+ *   * INLINE (Security & Account) — the only greenfield screen, with no source
+ *     section to compose; it renders the shared RoleBadge directly.
+ *
  * The Suspense boundary is deliberately NOT here: it stays at the page's use
  * site, so a late chunk resolves against the section container the page owns.
  */

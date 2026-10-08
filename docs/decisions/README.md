@@ -87,15 +87,15 @@ implementation-status walkthrough.
 | 42 | [Website Admin Dashboard & User Dashboard (Subdomain Architecture)](./2026-08-28-adr42-website-admin-and-user-dashboard.md) | Partially Implemented (2026-08-28) |
 | 43 | [Cloud Sync Performance & Scale-Out Roadmap](./2026-09-02-adr43-cloud-sync-performance-scaleout-roadmap.md) | Implemented (D1–D4, D7, D9-ready) |
 | 45 | [Topology Semantic Contract v2 — Endpoint Predicates, Kind Registry, Deliberate Cold Start, and Theme Parity](./2026-09-02-adr45-topology-semantic-contract-v2.md) | Accepted — §1–§3, §4.1, §5, §4.2 storage + IPC + migration function, §4.3 ordering rule + backend parity implemented (2026-09-02); §4.2 UI swap and §4.3 checklist UI proposed |
-| 46 | [Topology Revision History, Change Notes, and Draft Restore](./2026-09-07-adr46-topology-revision-history-and-restore.md) | Accepted (2026-09-07) — Phase 1 complete (racing-publishes gate met), Phase 2 in progress (graph differ 51ad987f) |
+| 46 | [Topology Revision History, Change Notes, and Draft Restore](./2026-09-07-adr46-topology-revision-history-and-restore.md) | Accepted (2026-09-07) — Phase 1 complete (racing-publishes gate met); Phase 2 complete 2026-09-08. Amended 2026-10-07. |
 | 47 | [Scoped Authorization — Role Assignments with Explicit Scopes](./2026-09-07-adr47-scoped-authorization-assignments.md) | Accepted (2026-09-07, sole-maintainer ruling — all five recommendations adopted: `role_assignments` table, single scoped choke point, downward-only inheritance, key-set custom roles, org-wide backfill) — assignment model built across slices (scope axis 94e8a100, scoped pairs 8c0ae0b4, staff UI 7f7d4ec4, choke-point gate 453c629f); gates §B entitlements, audit baseline, Phase 3 roles |
 | 48 | [Location Timezone Representation & as_of Semantics](./2026-09-09-adr48-timezone-representation.md) | Accepted (2026-09-09) |
-| 49 | [Headless Command Bridge — Moving Command Bodies into crates/oz-bridge](./2026-09-11-adr49-headless-command-bridge.md) | Accepted (2026-09-11) — implemented for the desktop shell; tablet client not started |
+| 49 | [Headless Command Bridge — Moving Command Bodies into crates/kasirmu-bridge](./2026-09-11-adr49-headless-command-bridge.md) | Accepted (2026-09-11) — desktop built; the tablet migration has largely LANDED (53/60 command files delegate). Amended 2026-10-07. |
 | 50 | [Sync Authentication Hardening (token refresh, gating, terminal credentials)](./2026-09-11-adr50-sync-auth-hardening.md) | Accepted (2026-09-11) - partially implemented |
 | 51 | [Sealed Settings Ingest Policy — One Funnel for Every Untrusted Settings Lane](./2026-09-11-adr51-sealed-settings-ingest-policy.md) | Accepted (2026-09-11) |
 | 52 | [Tracked Settings Funnel Refuses Cleartext Credentials](./2026-09-12-adr52-tracked-settings-funnel-refuses-cleartext-credentials.md) | Accepted (2026-09-12) |
 | 53 | [The UI Vocabulary Boundary — what the application layer may say about a renderer](./2026-09-15-adr53-ui-vocabulary-boundary.md) | Adopted (2026-09-15) — Option A implemented as rule ui-framework-vocabulary at 0ca2c0f27, landing at zero findings with no baseline; the Option A premise was corrected ~22:55, see Correction. **Row added 2026-09-23 (C30): it was missing from this hand table while existing on disk and in the generated index** |
-| 54 | [Google Sign-In — web sign-in/sign-up and desktop setup-wizard account linking](./2026-09-19-adr54-google-sign-in.md) | Proposed (2026-09-19) — nothing implemented |
+| 54 | [Google Sign-In — web sign-in/sign-up and desktop setup-wizard account linking](./2026-09-19-adr54-google-sign-in.md) | Proposed (2026-09-19) — PARTLY LANDED: §2.5 desktop loopback+PKCE is implemented; §2.4 web redirect is not. Amended 2026-10-07. |
 | 55 | [One Server Origin — the compiled list, the fallback pair and the allowlists that must agree with it](./2026-09-19-adr55-server-origin-model.md) | Implemented (2026-09-19) — resolver, literal collapse, drift gate, attestation (endpoint and client) and the boot-time cascade all shipped |
 | 56 | [First-Run Provisioning — identity-first onboarding, one provisioning transaction, and the retirement of the multi-boolean boot gate](./2026-09-21-adr56-first-run-provisioning.md) | Partially implemented (2026-09-21; re-audited 2026-09-22) — §2.1, §2.2, §2.5, §2.6, §5 and the `local` tier of §2.3/§2.4 shipped; §2.3's `identify` leg (linked tier) still pending |
 | 57 | [Client Tamper Resistance Without Play Integrity — signature pinning, a bounded grace ceiling, and server-side detection](./2026-09-21-adr57-client-tamper-resistance.md) | Proposed (2026-09-21) — part implemented, part to build |
@@ -103,11 +103,14 @@ implementation-status walkthrough.
 | 59 | [Regional Topology and Modular Delivery — market scope on the Legal Entity, residency on the Organization, and the built-vs-module seam](./2026-09-21-adr59-regional-topology-and-modular-delivery.md) | Proposed (2026-09-21) — region field, admin route and audit trail shipped; topology and modules not |
 | 60 | [Orientation & Adaptive Layout Strategy — the hybrid ladder (shell media queries, container queries, a declared escape hatch, and a walker gate)](./2026-09-21-adr60-orientation-and-adaptive-layout-strategy.md) | Implemented (2026-09-21) — all four tiers landed and gated; 7 sheets migrated |
 | 61 | [Architecture Boundary Rule Tiers — a named rule for re-export-only edges and a governed expiry](./2026-09-28-adr61-architecture-boundary-rule-tiers.md) | Implemented (2026-09-28) — the core-type-shim rule, the quarter-renewal invariant, the baseline re-tier, the currency edge closure and all seven type-shim edges closed and the baseline emptied to 0 tracked findings |
-| 62 | [Module Seam Taxonomy — command contributors, projection subscribers, and the reporting-facade exception](./2026-09-30-adr62-module-seam-taxonomy.md) | Accepted (2026-09-30) — the taxonomy is written and grounded in the Phase 0 handler census; the check that enforces it (a handler_type classification gate) is not built |
-| 63 | [The EventSink Seam — grading R10 #3 with a rule that arrived at zero](./2026-10-04-adr63-event-sink-seam.md) | Implemented (2026-10-04) — rule `event-sink-seam` landed at zero findings with no baseline; the four remaining raw-handle broadcasts were routed through BridgeCtx::emitter; R10's other three invariants disposed of by measurement (D6) |
+| 62 | [Module Seam Taxonomy — command contributors, projection subscribers, and the reporting-facade exception](./2026-09-30-adr62-module-seam-taxonomy.md) | Accepted (2026-09-30) — the taxonomy is written and grounded in the Phase 0 handler census; the enforcing gate IS BUILT (`scripts/verify-namespace-governance.py` Rule 2, registered as `namespace-governance`). Amended 2026-10-07. |
+| 63 | [The EventSink Seam — grading R10 #3 with a rule that arrived at zero](./2026-10-01-adr63-event-sink-seam.md) | Implemented (2026-10-04) — rule `event-sink-seam` landed at zero findings with no baseline; the four remaining raw-handle broadcasts were routed through BridgeCtx::emitter; R10's other three invariants disposed of by measurement (D6) |
+| 64 | [The Tender Vocabulary and the Offline Tender State — one classification per payment, and no electronic tender settles on trust](./2026-10-02-adr64-tender-vocabulary-and-offline-tender-state.md) | Proposed (2026-10-02) — TO BUILD except D4's vocabulary, which SHIPPED (`20261018_gateway_status_adr64_vocabulary.sql`). Amended 2026-10-07; §1 measurements taken on branch `0.0.41` |
+| 65 | [The Compliance Chain — where fiscal integrity attaches, and the three seams a second market will exercise](./2026-10-02-adr65-compliance-chain.md) | Proposed (2026-10-02) — the anchor point is decided and D2 forbids building the chain before a market mandates it; the four acceptance rows in §3 are unproven |
 
 ## Research notes
 
+- [Global Kernel and Region Packs — strategy note](./2026-10-02-global-kernel-and-region-pack-strategy.md) — the demoted ADR-64 draft; decides nothing, defers to ADR-59
 - [On-Device ML for Demand Forecasting](./2026-07-20-ai-demand-forecasting-research.md)
 - [Cloud Warehouse Analytics Export](./2026-07-20-cloud-warehouse-analytics-research.md)
 - [CRDT-Based Conflict-Free Replication](./2026-07-20-crdt-sync-research.md)
@@ -186,7 +189,7 @@ authoritative record.
   so the files, status lines, the cells above and the in-body claims were corrected together
   (line counts preserved — cross-file line anchors still hold). The superseded labels live
   in git history; the method and the second, unfixed date cluster are recorded in
-  `docs/audits/documentation-audit-23-09-26.md`.
+  `docs/records/audits/documentation-audit-23-09-26.md`.
 - **`TODO.md` no longer exists at the repo root.** It was moved to
   `docs/plans/todo.md` by `f3d9cca60` ("tidy up project root files into docs, dev, and
   scripts") — a pure rename, content intact, so every `TODO.md` C-phase citation went dead

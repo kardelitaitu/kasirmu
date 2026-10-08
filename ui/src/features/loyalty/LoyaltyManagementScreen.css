@@ -393,3 +393,33 @@
   padding: var(--space-8) 0;
   color: var(--color-danger);
 }
+
+/* ── Touch press feedback ────────────────────────────────────────────
+   Loyalty tiers are managed on the tablet. Rows and the colour input tint
+   (rows would twitch if scaled; the colour input's value IS its colour, so
+   a scale would hide it); the edit/expand buttons scale. */
+.loyalty-expand-btn:not(:disabled):active,
+.loyalty-tier-edit-btn:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+.loyalty-table-row:active,
+.loyalty-tier-colour-input:active {
+  background: color-mix(in srgb, var(--color-fg) 12%, transparent);
+}
+
+@media (pointer: coarse) {
+  .loyalty-expand-btn,
+  .loyalty-tier-edit-btn,
+  .loyalty-table-row {
+    min-height: var(--touch-target-min);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loyalty-expand-btn:not(:disabled):active,
+  .loyalty-tier-edit-btn:not(:disabled):active {
+    transform: none;
+    opacity: 0.75;
+  }
+}

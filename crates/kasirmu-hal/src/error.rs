@@ -40,6 +40,8 @@ pub enum HalErrorKind {
     Busy,
     /// Driver present but the operation is not implemented.
     Unsupported,
+    /// Host OS permission was denied (e.g. Android Bluetooth scan/connect).
+    PermissionDenied,
 }
 
 /// Errors that can originate in a HAL driver or the HAL runtime.
@@ -83,6 +85,10 @@ pub enum HalError {
     /// unimplemented driver can never silently report success.
     #[error("operation not supported: {0}")]
     Unsupported(String),
+
+    /// Host OS permission was denied (e.g. Android Bluetooth scan/connect).
+    #[error("permission denied: {0}")]
+    PermissionDenied(String),
 }
 
 impl Clone for HalError {
@@ -97,6 +103,7 @@ impl Clone for HalError {
             Self::Protocol(s) => Self::Protocol(s.clone()),
             Self::Busy => Self::Busy,
             Self::Unsupported(s) => Self::Unsupported(s.clone()),
+            Self::PermissionDenied(s) => Self::PermissionDenied(s.clone()),
         }
     }
 }
@@ -114,6 +121,7 @@ impl HalError {
             HalError::Protocol(_) => HalErrorKind::Protocol,
             HalError::Busy => HalErrorKind::Busy,
             HalError::Unsupported(_) => HalErrorKind::Unsupported,
+            HalError::PermissionDenied(_) => HalErrorKind::PermissionDenied,
         }
     }
 }

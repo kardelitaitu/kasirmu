@@ -136,16 +136,21 @@ fn checkout_settlement_writes_one_audit_row_with_real_actor() {
     )
     .unwrap();
 
-    assert_eq!(audit_count(&conn), 1);
+    assert_eq!(audit_count(&conn), 2);
     let entries = store(&conn).list_audit_entries(10, 0).unwrap();
-    assert_eq!(entries[0].action, "sale.completed");
+    let sale_entry = entries
+        .iter()
+        .find(|e| e.action == "sale.completed")
+        .unwrap();
+    assert_eq!(sale_entry.action, "sale.completed");
     // PCI 10.2.1: the REAL actor, not the handler's empty string.
-    assert_eq!(entries[0].user_id, "cashier-1");
-    assert_eq!(entries[0].target_type.as_deref(), Some("sale"));
-    assert_eq!(entries[0].target_id.as_deref(), Some(sale.id.as_str()));
-    assert_eq!(entries[0].outcome, "success");
-    assert!(entries[0].details.contains("\"sale_id\":\""));
-    assert!(entries[0].details.contains("\"line_count\":1"));
+    assert_eq!(sale_entry.user_id, "cashier-1");
+    assert_eq!(sale_entry.target_type.as_deref(), Some("sale"));
+    assert_eq!(sale_entry.target_id.as_deref(), Some(sale.id.as_str()));
+    assert_eq!(sale_entry.outcome, "success");
+    assert!(sale_entry.details.contains("\"sale_id\":\""));
+    assert!(sale_entry.details.contains("\"line_count\":1"));
+    assert!(entries.iter().any(|e| e.action == "stock.adjust"));
 }
 
 /// HEAD-failure: explicitly NOT a HEAD-failure - passes at HEAD trivially,
@@ -213,9 +218,13 @@ fn checkout_audit_details_pass_sanitize_on_door_path() {
     .unwrap();
 
     let entries = store(&conn).list_audit_entries(10, 0).unwrap();
-    assert_eq!(entries.len(), 1);
-    assert!(entries[0].details.chars().count() <= 4012);
-    assert!(entries[0].details.ends_with("[truncated]"));
+    assert_eq!(entries.len(), 2);
+    let sale_entry = entries
+        .iter()
+        .find(|e| e.action == "sale.completed")
+        .unwrap();
+    assert!(sale_entry.details.chars().count() <= 4012);
+    assert!(sale_entry.details.ends_with("[truncated]"));
 }
 
 /// Phase 3/4: with a terminal known, the frozen 22-char receipt hierarchy code

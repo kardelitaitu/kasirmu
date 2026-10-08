@@ -6,6 +6,7 @@ import { listKdsOrdersScoped, type KdsOrder } from '@/api/kds';
 import { FALLBACK_STORE_TZ, storeOffsetMs } from '@/features/analytics/analytics-data';
 import { useStoreTimezone } from '@/hooks/useStoreTimezone';
 import './KdsCompletedView.css';
+import { asArray } from '@/utils/ipc-payload';
 
 /** Time-bucket labels and their day-range condition. Exported so tests use the real
  *  ranges instead of a second copy that nothing keeps in step. */
@@ -109,7 +110,7 @@ export function KdsCompletedView({
     listKdsOrdersScoped(sessionToken, 'served')
       .then((result) => {
         if (seq !== loadSeqRef.current) return;
-        setOrders(result);
+        setOrders(asArray<typeof result[number]>(result));
         setLoading(false);
       })
       .catch(() => {

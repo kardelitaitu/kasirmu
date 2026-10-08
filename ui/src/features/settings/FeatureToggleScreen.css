@@ -427,3 +427,30 @@
   border-color: rgba(255, 255, 255, 0.08);
 }
 
+/* ── Touch press feedback ────────────────────────────────────────────
+   Feature toggles are flipped on the tablet. The bulk button and the search
+   clear scale; the slider itself is a switch-shaped control whose knob
+   already animates, so it tints instead of double-moving. */
+.feature-toggle-bulk-btn:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+.feature-toggle-search-clear:active,
+.feature-toggle-slider:active {
+  background: color-mix(in srgb, var(--color-fg) 12%, transparent);
+}
+
+@media (pointer: coarse) {
+  .feature-toggle-search-clear,
+.feature-toggle-bulk-btn {
+    min-height: var(--touch-target-min);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .feature-toggle-bulk-btn:not(:disabled):active {
+    transform: none;
+    opacity: 0.75;
+  }
+}
+

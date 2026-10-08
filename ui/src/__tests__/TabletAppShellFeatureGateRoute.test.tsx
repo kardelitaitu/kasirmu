@@ -1,33 +1,34 @@
-// ── KNOWN-HAZARD PIN (TABLET twin of b89bae413): pageDenied at TabletAppShell.tsx:196 is a ROLE gate only ──
+// ── KNOWN-HAZARD PIN (TABLET twin of b89bae413): pageDenied at TabletAppShell.tsx:527 is a ROLE gate only ──
 //
 // Same deciding functions as the desktop pin (AppShellFeatureGateRoute.test.tsx):
 // isPageAccessible / getEnabledPages / getNavItems. Re-verified on this checkout:
-// :196 computes the IDENTICAL expression to AppShell.tsx:473 — registration +
+// :527 computes the IDENTICAL expression to AppShell.tsx:640 — registration +
 // !isPageAccessible(registration, userRole, userPermissions) — and the sidebar
-// render at :207-217 consults only that. PageRegistration.feature is never read
+// render at :639 consults only that. PageRegistration.feature is never read
 // on the render path. IT RECORDS, IT DOES NOT ENDORSE; invert, never delete.
 //
 // HOW THE TABLET DIFFERS (measured; it shapes every case below):
 //   * HASH ROUTING ADDED 2026-09-30. currentRoute is internal state
-//     (:122 default 'pos') set by handleNavigate (checks ONLY isPageAccessible,
-//     never feature), by the workspace-rebind effect (:143-152: admin->settings,
-//     warehouse->products), and NOW by a hashchange listener mirroring
-//     AppShell.tsx:350-395. The listener was added because ProvisioningFlow's
+//     (:152 default 'pos') set by handleNavigate (:263, checks ONLY
+//     isPageAccessible, never feature), by the workspace-rebind effect
+//     (:168-182: falls through the WORKSPACE_ROUTE map at :98, admin->settings,
+//     warehouse->products), and NOW by a hashchange listener (:336) mirroring
+//     AppShell's. The listener was added because ProvisioningFlow's
 //     "Set up with a phone instead" button navigates by setting
 //     window.location.hash from another component; with no listener it was a dead
 //     button on a tablet. Case 6 pins the feature-gate consequence of that new
 //     route source, cases 2-4 drive the older ones.
-//   * THREE fullscreen branches (restaurant-pos :157, store-pos :168, kds :179)
+//   * THREE fullscreen branches (restaurant-pos :587, store-pos :600, kds :613)
 //     render hardcoded screens without ever consulting getPage/pageDenied —
 //     there NEITHER gate can fire (cases 7-9). The tablet has NO isKdsKiosk
-//     branch: desktop AppShell.tsx:443 has it; this shell never imports
+//     branch: desktop AppShell.tsx:620 has it; this shell never imports
 //     useTerminalProfile. That branch is desktop-only, not shared.
 //
 // NOT COVERED, AND WHY: handleNavigate's in-shell call sites — the tabs live
 // inside TabletAppLayout and the real ones are feature-AND-role-filtered, so a
 // disabled page has no button to click; faking one would make the mock decide
-// the outcome. The fallback list at :92-96 is therefore unpinned; the CONTROL
-// (case 5) proves the deciding line :196 is live. Real registrations are not
+// the outcome. The WORKSPACE_ROUTE fallback at :98-110 is therefore unpinned;
+// the CONTROL (case 5) proves the deciding line :527 is live. Real registrations are not
 // imported (synthetic pages, same as the desktop pin). Fullscreen cases assert
 // via the same lazy-screen stubs TabletAppShell.test.tsx uses: the claim is
 // WHAT THE SHELL RETURNED, not the screens' internals.

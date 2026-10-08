@@ -9,12 +9,13 @@ import { RoleIcon } from '@/components/RoleIcon';
 import OrgSelector from '@/components/OrgSelector';
 import type { LoginSessionDto } from '@/api/staff';
 import { useSubscription, useAdminGate } from '@/contexts/SubscriptionContext';
-import { tierSatisfies } from '@/utils/tierLevel';
 import { roleAtLeast } from '@/utils/role';
-import { TOOLS, TOOL_GROUP_ORDER, type ToolItem, type ToolGroupId } from './tools';
+import { getPage } from '@/registries/page-registry';
+import { TOOLS, TOOL_GROUP_ORDER, resolveToolLock, type ToolItem, type ToolGroupId } from './tools';
 import { ToolsCategoryGrid } from './components/ToolsCategoryGrid';
 import type { ToolLockReason } from './components/ToolCard';
 import { animDuration } from '@/utils/animation';
+import { isTabletShell } from '@/utils/shellKind';
 import './WorkspaceHome.css';
 
 // ── Per-workspace accent color classes ────────────────────────────
@@ -27,14 +28,46 @@ const WS_COLORS: Record<string, string> = {
   admin: 'ws-color-admin',
 };
 
+/**
+ * Whether a home-screen tool can actually run on the shell that is rendering.
+ *
+ * `topology` is today the only tool the tablet cannot serve. None of the ten
+ * commands are registered in the mobile shell, so displaying the editor
+ * advertises reads and writes that cannot work. The bridge has portable
+ * command bodies, but a real Android port must also wire the pending-Apply
+ * recovery and revision retention that the desktop startup owns; copying
+ * command registrations alone would risk an interrupted cross-DB Apply on
+ * Android. Keep authoring on desktop until its lifecycle and touch editor
+ * have been verified on a device. Read-only Locations remains available.
+ *
+ * `isTabletShell()` is non-reactive by design (it is set once by the entry
+ * before the first render), so this is safe to call from a memo with no dep.
+ */
+function runsOnThisShell(toolId: string): boolean {
+  return !(isTabletShell() && toolId === 'topology');
+}
+
 // ── Favorites persistence (localStorage) ─────────────────────────
 
 const PINS_KEY = 'workspace-pins';
 const LAST_USED_KEY = 'workspace-last-used';
 
-function loadPins(): Set<string> {
+/**
+ * Favorites and last-used ordering are PER-USER: on a shared terminal, one
+ * operator's pins must not reorder another operator's picker. Keys are
+ * suffixed with the signed-in user's id; the un-suffixed legacy keys are read
+ * as a fallback so pins saved before the split survive the upgrade, and are
+ * never written again.
+ */
+function scopedKey(base: string, userId: string): string {
+  return userId ? `${base}:${userId}` : base;
+}
+
+function loadPins(userId: string): Set<string> {
   try {
-    const raw = localStorage.getItem(PINS_KEY);
+    const raw =
+      localStorage.getItem(scopedKey(PINS_KEY, userId)) ??
+      (userId ? localStorage.getItem(PINS_KEY) : null);
     if (!raw) return new Set();
     return new Set(JSON.parse(raw));
   } catch {
@@ -42,17 +75,19 @@ function loadPins(): Set<string> {
   }
 }
 
-function savePins(pins: Set<string>) {
+function savePins(pins: Set<string>, userId: string) {
   try {
-    localStorage.setItem(PINS_KEY, JSON.stringify(Array.from(pins)));
+    localStorage.setItem(scopedKey(PINS_KEY, userId), JSON.stringify(Array.from(pins)));
   } catch {
     // Quota / private-mode / disabled storage — fail silently (mirrors loadPins).
   }
 }
 
-function loadLastUsed(): Record<string, number> {
+function loadLastUsed(userId: string): Record<string, number> {
   try {
-    const raw = localStorage.getItem(LAST_USED_KEY);
+    const raw =
+      localStorage.getItem(scopedKey(LAST_USED_KEY, userId)) ??
+      (userId ? localStorage.getItem(LAST_USED_KEY) : null);
     if (!raw) return {};
     return JSON.parse(raw);
   } catch {
@@ -60,9 +95,9 @@ function loadLastUsed(): Record<string, number> {
   }
 }
 
-function saveLastUsed(lastUsed: Record<string, number>) {
+function saveLastUsed(lastUsed: Record<string, number>, userId: string) {
   try {
-    localStorage.setItem(LAST_USED_KEY, JSON.stringify(lastUsed));
+    localStorage.setItem(scopedKey(LAST_USED_KEY, userId), JSON.stringify(lastUsed));
   } catch {
     // Quota / private-mode / disabled storage — fail silently (mirrors loadLastUsed).
   }
@@ -305,11 +340,12 @@ export default function WorkspaceHome() {
   const [showLogoutModal, setShowLogoutModal] = useState(false);
 
   const roleName = (session?.role_name ?? '').toLowerCase();
+  const userId = session?.user_id ?? '';
 
   // ── Favorites & last-used state ────────────────────────────────
 
-  const [pinnedKeys, setPinnedKeys] = useState<Set<string>>(loadPins);
-  const [lastUsedMap, setLastUsedMap] = useState<Record<string, number>>(loadLastUsed);
+  const [pinnedKeys, setPinnedKeys] = useState<Set<string>>(() => loadPins(userId));
+  const [lastUsedMap, setLastUsedMap] = useState<Record<string, number>>(() => loadLastUsed(userId));
 
   const pinnedKeysRef = useRef(pinnedKeys);
   const lastUsedMapRef = useRef(lastUsedMap);
@@ -323,15 +359,15 @@ export default function WorkspaceHome() {
     else next.add(key);
     pinnedKeysRef.current = next;
     setPinnedKeys(next);
-    savePins(next);
-  }, []);
+    savePins(next, userId);
+  }, [userId]);
 
   const recordLastUsed = useCallback((key: string) => {
     const next = { ...lastUsedMapRef.current, [key]: Date.now() };
     lastUsedMapRef.current = next;
     setLastUsedMap(next);
-    saveLastUsed(next);
-  }, []);
+    saveLastUsed(next, userId);
+  }, [userId]);
 
   // Sort workspaces: pinned first (by pin order), then by last-used, then by static order
   const sortedWorkspaces = useMemo(() => {
@@ -380,23 +416,13 @@ export default function WorkspaceHome() {
    *  NOT mean the route would refuse. Owner ruling 2026-09-20
    *  (`done-todo-owner-rulings.md` R20): the rank stays authoritative for the home
    *  grid, and the policy is cited at the site. */
-  const canAddWorkspace = roleAtLeast(roleName, 'manager') && sortedWorkspaces.length === 0;
+  // The empty-state quick presets set a type key with NO registered instance,
+  // so they cannot mint a session. The adjacent Add Workspace card opens the
+  // desktop-only topology editor. On Android the honest empty state is the
+  // contact-admin guidance, not three buttons that lead to dead routes.
+  const canAddWorkspace = !isTabletShell() && roleAtLeast(roleName, 'manager') && sortedWorkspaces.length === 0;
 
   // ── Tools gates (.agents/archived/done-todo/done-todo-tools.md role/tier matrix) ─────────────
-
-  // Routed through `roleAtLeast` rather than compared inline, so this gate and
-  // the settings-page gate read ONE vocabulary instead of two with opposite
-  // defaults. The inline form was `roleLevel >= (ROLE_HIERARCHY[minimumRole] ?? 0)`
-  // — an unrecognised `minimumRole` demanded **0** and the gate FAILED OPEN,
-  // while `roleAtLeast` (role.ts:72) demands `Number.MAX_SAFE_INTEGER` for an
-  // unknown floor. Ruled FAIL CLOSED (2026-09-16): an unknown floor on an
-  // admin-tool gate must deny, not allow. Type-blocked today — `ToolRole` is
-  // 'owner' | 'admin' | 'manager' (tools.tsx:25) and all three are in the
-  // table — so this is behaviour-neutral now and removes a latent fail-open.
-  const canAccessTool = useCallback(
-    (access: ToolItem['access']): boolean => roleAtLeast(roleName, access.minimumRole),
-    [roleName],
-  );
 
   // C2.2/§B: capabilities + lifecycle state drive the tier and validity
   // gates. The §B admin gate (useAdminGate) locks administrative tools
@@ -405,27 +431,19 @@ export default function WorkspaceHome() {
   const { caps, state: subscriptionState } = useSubscription();
   const { locked: adminLocked } = useAdminGate();
 
+  // The decision lives in tools.tsx (`resolveToolLock`) beside the catalogue
+  // it polices — extracted so the loading behaviour can be pinned data-level.
+  // See the resolver's comment for why `loading` must stay open through the
+  // ENTIRE gate, not just the validity half.
   const toolLock = useCallback(
-    (tool: ToolItem): ToolLockReason | 'none' | 'hidden' => {
-      if (!canAccessTool(tool.access)) {
-        return tool.access.lockBelowRole ? 'role' : 'hidden';
-      }
-      // Role-only tools keep working through the signed grace window
-      // (operational continuity); everything hard-locks once the
-      // subscription is expired/canceled/paused or its data unreadable.
-      // `loading` stays open — the first fetch must not flash-lock the
-      // section. Tier-gated tools are stricter: useAdminGate locks them
-      // on anything but `active`.
-      const validityOpen =
-        subscriptionState === 'active' ||
-        subscriptionState === 'grace' ||
-        subscriptionState === 'loading';
-      if (!validityOpen) return 'subscription';
-      if (tool.access.minimumTier !== 'free' && adminLocked) return 'subscription';
-      if (!tierSatisfies(caps?.tier, tool.access.minimumTier)) return 'tier';
-      return 'none';
-    },
-    [canAccessTool, subscriptionState, adminLocked, caps],
+    (tool: ToolItem): ToolLockReason | 'none' | 'hidden' =>
+      resolveToolLock(tool, {
+        roleName,
+        subscriptionState: subscriptionState ?? 'unavailable',
+        capsTier: caps?.tier,
+        adminLocked,
+      }),
+    [roleName, subscriptionState, caps, adminLocked],
   );
 
   // Only owner/admin/manager roles see the Tools section at all — staff and
@@ -434,11 +452,13 @@ export default function WorkspaceHome() {
   // `canAddWorkspace` above — see `features/workspaces/tools.tsx:20-31`.
   const canSeeTools = roleAtLeast(roleName, 'manager');
 
+  // Tools the tablet shell cannot run are filtered out rather than shown
+  // broken — see `runsOnThisShell` for which and why.
   const toolGroups = useMemo(() => {
     if (!canSeeTools) return [];
     return TOOL_GROUP_ORDER.map((groupId) => ({
       id: groupId as ToolGroupId,
-      tools: TOOLS.filter((t) => t.group === groupId)
+      tools: TOOLS.filter((t) => t.group === groupId && runsOnThisShell(t.id))
         .map((tool) => ({ tool, lock: toolLock(tool) }))
         // Type predicate, not a plain boolean: it must NARROW the element
         // type to the union ToolsCategoryGrid accepts — with a boolean
@@ -455,11 +475,21 @@ export default function WorkspaceHome() {
   // ── Exit animation orchestration for smooth page transitions ────
   const [isExiting, setIsExiting] = useState(false);
   const exitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // The navigation the running animation is holding. Unmount cancels the
+  // ANIMATION, never the intent: see the cleanup below.
+  const pendingNavRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     return () => {
       if (exitTimerRef.current !== null) {
         clearTimeout(exitTimerRef.current);
+        // The operator asked for this navigation before whatever unmounted the
+        // screen did. The actions are window/context-level and safe past
+        // unmount, so fire instead of dropping: otherwise any unmount inside
+        // the 150ms window (session expiry, a shell-level route change) would
+        // swallow the click without a trace.
+        pendingNavRef.current?.();
+        pendingNavRef.current = null;
       }
     };
   }, []);
@@ -473,19 +503,47 @@ export default function WorkspaceHome() {
         action();
         return;
       }
+      pendingNavRef.current = action;
       exitTimerRef.current = setTimeout(() => {
+        pendingNavRef.current = null;
         action();
       }, delay);
     },
     [isExiting],
   );
 
-  // ── Shortcut navigation to tools (switches to admin workspace) ──
+  // ── Shortcut navigation to tools ──────────────────────────────
+  //
+  // The Tools cards reach two DIFFERENT kinds of destination, and they need
+  // different navigation:
+  //
+  //  - a registered FULLSCREEN page (staff, roles, locations, terminals,
+  //    shifts, memos, promotions, analytics, dashboard, audit-log, settings,
+  //    topology) renders on its own, outside any workspace. Setting a
+  //    workspace for it is not just redundant, it is ACTIVELY WRONG: the
+  //    shell's workspace-rebind effect fires on the change and overwrites
+  //    the route the hash just set. Measured 2026-10-05 on the tablet — the
+  //    Staff Management card set '#/staff' and then
+  //    setActiveWorkspace('admin') rebound the shell to the admin
+  //    workspace's own screen ('settings'), so the Settings hub rendered and
+  //    Staff Management was unreachable.
+  //
+  //  - a deep link into the Settings hub ('settings/...'). These have no page
+  //    of their own, so the hub must be open for them to resolve — hence the
+  //    workspace switch, which is what makes the hub's route reachable.
+  //
+  // Deciding from the registration (never a hand-kept list) keeps this in
+  // step with registerPage: a tool that becomes fullscreen later stops
+  // forcing a workspace without an edit here.
   const handleShortcutNav = useCallback(
     (route: string) => {
       navigateWithExit(() => {
         window.location.hash = `#/${route}`;
-        setActiveWorkspace('admin');
+        // Only a non-fullscreen destination (a Settings-hub deep link) needs
+        // a workspace to render into.
+        if (getPage(route)?.fullscreen !== true) {
+          setActiveWorkspace('admin');
+        }
       });
     },
     [setActiveWorkspace, navigateWithExit],
@@ -493,6 +551,13 @@ export default function WorkspaceHome() {
 
   const canAccess = useCallback(
     (_key: string): boolean => {
+      // Deliberately ignores the subscription state. Workspaces stay openable
+      // while the tools grid locks — offline-first POS continuity is the point:
+      // a merchant must always be able to reach the till, which is why the
+      // licence notice below says "Tools below stay locked" and not "everything
+      // is locked". The entitlement gate lives on the TOOLS (`canAccessTool`),
+      // never here; do not "fix" this into a lockout.
+
       switch (roleName) {
         case 'owner': case 'role-owner':
         case 'admin': case 'role-admin':
@@ -710,7 +775,54 @@ export default function WorkspaceHome() {
           <LayerFloatingButtons {...floatingProps} />
         </div>
         <div className="ws-main">
-          <header className="workspace-home-header" />
+          <header className="workspace-home-header">
+            {/* The pre-session org picker (SaaS-3 L194) must stay reachable
+                after the list resolves: the operator is still pre-session until
+                a workspace is opened, and the choice rides into the next
+                create_session. The skeleton mounts it too — but a list that
+                resolves in milliseconds would otherwise never show it, which
+                is how the selector became effectively invisible. */}
+            <OrgSelector />
+          </header>
+
+          {/* ── Non-blocking licence notice ─────────────────────────────
+              The boot gate admits a provisioned install even when its licence
+              is not usable (TabletAppShell.tsx:200 — `setupCompleted ||
+              installExisting`, pinned as the compatibility contract in
+              appShellBootGate.test.tsx rule 2). The design's answer to that
+              state is NOT a block: `appShellBootGate.test.tsx` rule 4 requires
+              it to be "surfaced by the non-blocking badge". The desktop does
+              so (AppShell.tsx:911-930); this screen locked all 17 tool cards
+              below without explaining why, so an operator saw the consequence
+              and never the cause.
+
+              Read from `subscriptionState` rather than the licence DTO on
+              purpose: the capabilities read is profile-independent (always
+              fails closed), so this notice appears on both debug and release
+              builds — where `get_license_status` would report `active` in
+              debug and hide the very state the operator is looking at.
+
+              The condition is the COMPLEMENT of `toolLock`'s `validityOpen`
+              (above), not a check for `unavailable` alone. Five lifecycle
+              states fail that gate — `unavailable`, `expired`, `canceled`,
+              `paused` and `revoked` — and only `revoked` is handled upstream
+              (TabletAppShell.tsx:362 renders RevokedScreen). An expired or
+              canceled subscription reaches this screen and locks all 17
+              cards, so keying on `unavailable` would leave the notice silent
+              in exactly the cases it exists for. Spelled against the same
+              three open states so an edit to one is noticed in the other. */}
+          {subscriptionState !== 'active' &&
+            subscriptionState !== 'grace' &&
+            subscriptionState !== 'loading' &&
+            subscriptionState !== 'revoked' && (
+            <div className="workspace-licence-notice" role="status" data-testid="workspace-licence-notice">
+              <Localized id="workspace-home-licence-unavailable">
+                <span>
+                  This terminal has no active licence. Tools below stay locked until it is activated.
+                </span>
+              </Localized>
+            </div>
+          )}
 
           {error && sortedWorkspaces.length === 0 ? (
             <div className="workspace-error">
@@ -747,9 +859,53 @@ export default function WorkspaceHome() {
                   <div className="workspace-grid" ref={gridRef} role="group" aria-label={l10n.getString('workspaces-aria')}>
                     <button
                       type="button"
+                      className="workspace-card workspace-card--quick ws-color-store-pos"
+                      data-testid="workspace-card-quick-retail"
+                      onClick={() => setActiveWorkspace('store-pos')}
+                      aria-label="Retail POS"
+                    >
+                      <div className="workspace-card-row">
+                        <div className="workspace-card-icon">
+                          <div className="workspace-card-icon-inner">{getIcon('store-pos')}</div>
+                        </div>
+                        <div className="workspace-card-body">
+                          <div className="workspace-card-title">
+                            <h2 className="workspace-card-name">Retail POS</h2>
+                          </div>
+                          <div className="workspace-card-text">
+                            <p className="workspace-card-desc">Barcode retail POS terminal</p>
+                          </div>
+                        </div>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      className="workspace-card workspace-card--quick ws-color-restaurant-pos"
+                      data-testid="workspace-card-quick-restaurant"
+                      onClick={() => setActiveWorkspace('restaurant-pos')}
+                      aria-label="Restaurant POS"
+                    >
+                      <div className="workspace-card-row">
+                        <div className="workspace-card-icon">
+                          <div className="workspace-card-icon-inner">{getIcon('restaurant-pos')}</div>
+                        </div>
+                        <div className="workspace-card-body">
+                          <div className="workspace-card-title">
+                            <h2 className="workspace-card-name">Restaurant POS</h2>
+                          </div>
+                          <div className="workspace-card-text">
+                            <p className="workspace-card-desc">Dining and table service POS</p>
+                          </div>
+                        </div>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
                       className="workspace-card workspace-card--add"
                       data-testid="workspace-card-add"
-                      onClick={() => handleShortcutNav('settings/topology')}
+                      onClick={() => handleShortcutNav('topology')}
                       aria-label={l10n.getString('workspace-home-add-workspace-aria')}
                     >
                       <div className="workspace-card-row">
@@ -777,6 +933,13 @@ export default function WorkspaceHome() {
                     </button>
                   </div>
                 </div>
+                {toolGroups.length > 0 && (
+                  <ToolsCategoryGrid
+                    groups={toolGroups}
+                    onNavigate={handleShortcutNav}
+                    getAriaLabel={(key) => l10n.getString(key)}
+                  />
+                )}
               </div>
             ) : isStaffRole ? (
               // A staff user with no assigned workspace has nothing to do
@@ -862,68 +1025,72 @@ export default function WorkspaceHome() {
                     }
 
                     return (
-                      <button
-                        key={ws.type_key}
-                        type="button"
-                        aria-current={isActive ? 'true' : undefined}
-                        className={`workspace-card ${colorClass}${isActive ? ' workspace-card--active' : ''}`}
-                        data-testid="workspace-card"
-                        onClick={(e) => handleCardClick(ws.type_key, e)}
-                        aria-label={l10n.getString('workspace-card-open-aria', { name: ws.name })}
-                      >
-                        <div className="workspace-card-key-hint">{idx + 1}</div>
-                        <span
-                          role="button"
+                      <div className="workspace-card-container" key={ws.type_key}>
+                        <button
+                          type="button"
+                          aria-current={isActive ? 'true' : undefined}
+                          className={`workspace-card ${colorClass}${isActive ? ' workspace-card--active' : ''}`}
+                          data-testid="workspace-card"
+                          onClick={(e) => handleCardClick(ws.type_key, e)}
+                          aria-label={l10n.getString('workspace-card-open-aria', { name: ws.name })}
+                        >
+                          <div className="workspace-card-key-hint">{idx + 1}</div>
+                          {isActive && (
+                            <div className="workspace-card-active-dot" aria-label={requiredLocalized(l10n, 'workspace-card-active-aria')}>
+                              <svg viewBox="0 0 24 24" fill="currentColor" width="10" height="10" aria-hidden="true">
+                                <circle cx="12" cy="12" r="6" />
+                              </svg>
+                            </div>
+                          )}
+                          <div className="workspace-card-row">
+                            <div className="workspace-card-icon">
+                              <div className="workspace-card-icon-inner">{getIcon(ws.type_key)}</div>
+                            </div>
+                            <div className="workspace-card-body">
+                              <div className="workspace-card-title">
+                                <h2 className="workspace-card-name">{ws.name}</h2>
+                              </div>
+                              <div className="workspace-card-text">
+                                <p className="workspace-card-desc">{ws.description}</p>
+                              </div>
+                              <div className="workspace-card-actions" />
+                            </div>
+                          </div>
+                          <div className="workspace-card-overlay" aria-hidden="true">
+                            {/* Capped at MAX_DIGIT_SHORTCUT: a card past the ninth is real, but
+                                no single keypress can name it -- the handler maps one key
+                                character with parseInt(e.key, 10) - 1. The label is the part
+                                that was wrong, so the label stops advertising it. */}
+                            {idx < MAX_DIGIT_SHORTCUT && (
+                              <span className="workspace-card-overlay-hint">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" width="12" height="12">
+                                  <rect x="2" y="4" width="20" height="16" rx="2" />
+                                  <path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01" />
+                                  <path d="M6 12h.01M10 12h.01M14 12h.01M18 12h.01" />
+                                </svg>
+                                <Localized id="workspace-home-shortcut-hint" vars={{ key: `${idx + 1}` }}>
+                                  <span>Press {idx + 1} to open</span>
+                                </Localized>
+                              </span>
+                            )}
+                          </div>
+                        </button>
+                        {/* Sibling, NOT child: a <button> inside the card <button> makes the
+                            pin ambiguous to keyboard and screen-reader users. `aria-pressed`
+                            replaces the old `role="button" tabIndex={0}` span, which needed a
+                            hand-rolled Enter/Space handler to be operable at all. */}
+                        <button
+                          type="button"
                           className={`workspace-card-pin-btn${pinnedKeys.has(ws.type_key) ? ' workspace-card-pin-btn--pinned' : ''}`}
-                          onClick={(e) => { e.stopPropagation(); togglePin(ws.type_key); }}
-                          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); togglePin(ws.type_key); } }}
+                          onClick={() => togglePin(ws.type_key)}
+                          aria-pressed={pinnedKeys.has(ws.type_key)}
                           aria-label={pinnedKeys.has(ws.type_key) ? l10n.getString('workspace-card-unpin-aria', { name: ws.name }) : l10n.getString('workspace-card-pin-aria', { name: ws.name })}
-                          tabIndex={0}
                         >
                           <svg viewBox="0 0 24 24" fill={pinnedKeys.has(ws.type_key) ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="14" height="14" aria-hidden="true">
                             <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
                           </svg>
-                        </span>
-                        {isActive && (
-                          <div className="workspace-card-active-dot" aria-label={requiredLocalized(l10n, 'workspace-card-active-aria')}>
-                            <svg viewBox="0 0 24 24" fill="currentColor" width="10" height="10" aria-hidden="true">
-                              <circle cx="12" cy="12" r="6" />
-                            </svg>
-                          </div>
-                        )}
-                        <div className="workspace-card-row">
-                          <div className="workspace-card-icon">
-                            <div className="workspace-card-icon-inner">{getIcon(ws.type_key)}</div>
-                          </div>
-                          <div className="workspace-card-body">
-                            <div className="workspace-card-title">
-                              <h2 className="workspace-card-name">{ws.name}</h2>
-                            </div>
-                            <div className="workspace-card-text">
-                              <p className="workspace-card-desc">{ws.description}</p>
-                            </div>
-                            <div className="workspace-card-actions" />
-                          </div>
-                        </div>
-                        <div className="workspace-card-overlay" aria-hidden="true">
-                          {/* Capped at MAX_DIGIT_SHORTCUT: a card past the ninth is real, but
-                              no single keypress can name it -- the handler maps one key
-                              character with parseInt(e.key, 10) - 1. The label is the part
-                              that was wrong, so the label stops advertising it. */}
-                          {idx < MAX_DIGIT_SHORTCUT && (
-                          <span className="workspace-card-overlay-hint">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" width="12" height="12">
-                              <rect x="2" y="4" width="20" height="16" rx="2" />
-                              <path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01" />
-                              <path d="M6 12h.01M10 12h.01M14 12h.01M18 12h.01" />
-                            </svg>
-                            <Localized id="workspace-home-shortcut-hint" vars={{ key: `${idx + 1}` }}>
-                              <span>Press {idx + 1} to open</span>
-                            </Localized>
-                          </span>
-                          )}
-                        </div>
-                      </button>
+                        </button>
+                      </div>
                     );
                   })}
 

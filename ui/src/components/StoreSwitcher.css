@@ -123,3 +123,27 @@
     transition: background-color var(--duration-150) var(--ease-out);
   }
 }
+
+/* ── Touch press feedback ────────────────────────────────────────────
+   Store selection: trigger scales, options tint (rows). */
+.store-switcher-trigger:not(:disabled):active {
+  transform: scale(0.98);
+}
+
+.store-switcher-option:active {
+  background: color-mix(in srgb, var(--color-fg) 12%, transparent);
+}
+
+@media (pointer: coarse) {
+  .store-switcher-trigger,
+.store-switcher-option {
+    min-height: var(--touch-target-min);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .store-switcher-trigger:not(:disabled):active {
+    transform: none;
+    opacity: 0.75;
+  }
+}

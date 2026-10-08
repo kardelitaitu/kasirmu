@@ -40,6 +40,7 @@ nav-customers = Pelanggan
 nav-inventory = Stok
 nav-general = Umum
 nav-settings = Pengaturan
+nav-topology = Topologi
 nav-reports = Laporan
 nav-design = Sistem Desain
 nav-orders = Pesanan
@@ -68,7 +69,7 @@ staff-login-license-inactive = Lisensi tidak aktif
 statusbar-conflict-count = { $count } konflik sinkronisasi terselesaikan
 # SYNC-12: StatusBar visible labels + ARIA (localized at the render boundary)
 statusbar-app-status-aria = Status aplikasi
-statusbar-version = v0.0.40
+statusbar-version = v0.0.41
 statusbar-sync-name = Sinkronisasi
 statusbar-gateway-name = Stripe
 statusbar-license = Lisensi Proprietary
@@ -126,6 +127,7 @@ app-error-validation = Periksa kembali informasi yang Anda masukkan, lalu coba l
 app-error-permission = Anda tidak memiliki izin untuk melakukan ini.
 app-error-session = Sesi Anda telah berakhir. Silakan masuk kembali.
 app-error-conflict = Catatan ini diubah oleh orang lain. Segarkan dan coba lagi.
+app-error-duplicate = Item atau kategori dengan nama atau kode ini sudah ada.
 app-error-not-found = Item yang diminta tidak ditemukan.
 app-error-offline = Anda tampaknya luring. Periksa koneksi Anda dan coba lagi.
 app-error-hardware = Perangkat keras tidak merespons. Periksa perangkat dan coba lagi.
@@ -187,6 +189,20 @@ update-banner-rollback-title = Pembaruan mungkin gagal
 update-banner-rollback-desc = Versi sebelumnya { $version } tersedia untuk diunduh. Klik untuk memulihkan.
 update-banner-rollback = Pulihkan Versi Sebelumnya
 update-banner-rollback-aria = Unduh versi sebelumnya dari GitHub
+
+# Storage Health
+storage-low-banner-title = Ruang Penyimpanan Rendah
+storage-low-banner-desc = Ruang disk yang tersedia di bawah 500 MB (tersisa { $freeMb } MB). Kosongkan ruang penyimpanan untuk mencegah kegagalan transaksi atau penguncian basis data.
+storage-low-banner-dismiss-aria = Tutup peringatan ruang penyimpanan rendah
+
+# Diagnostics Export
+settings-diagnostics-export-title = Ekspor Paket Diagnostik
+settings-diagnostics-export-subtitle = Buat arsip .zip bersih dari log sistem, status sinkronisasi, dan perangkat keras untuk dukungan teknis.
+settings-diagnostics-export-btn = Ekspor Log Diagnostik
+settings-diagnostics-export-progress = Membuat arsip diagnostik…
+settings-diagnostics-export-success = Arsip diagnostik berhasil diekspor ({ $size } MB).
+settings-diagnostics-export-error = Ekspor diagnostik gagal.
+settings-diagnostics-export-failed = Tidak dapat mengekspor arsip diagnostik. Coba lagi.
 
 # Memo Banner
 memo-banner-open-aria = Baca memo lengkap: { $title }
@@ -372,6 +388,9 @@ audit-action-audit-review = Audit Ditinjau
 audit-action-sale-create = Penjualan Dibuat
 audit-action-bulk-import = Impor Massal
 audit-action-inventory-sync = Stok Disinkronkan
+audit-action-staff-identity-read = Identitas Staf Dibaca
+audit-action-staff-payroll-read = Penggajian Staf Dibaca
+audit-action-api-write = Mutasi API
 audit-action-unknown = Tindakan Tidak Diketahui
 audit-log-outcome-success = Berhasil
 audit-log-outcome-failure = Gagal
@@ -406,6 +425,10 @@ workspace-card-no-access-aria = { $name } — tidak tersedia untuk peran Anda
 workspace-card-no-access-badge = Tidak tersedia
 workspace-home-error-title = Galat Koneksi
 workspace-home-error-desc = Tidak dapat memuat ruang kerja. Periksa koneksi Anda dan coba lagi.
+# DITAMPILKAN saat langganan tenant tidak dapat digunakan di terminal ini. Gerbang boot
+# sengaja tetap mengizinkan instalasi yang sudah diprovisikan, jadi pesan ini menyatakan
+# PENYEBAB kartu alat yang terkunci, bukan memblokir layar.
+workspace-home-licence-unavailable = Terminal ini tidak memiliki lisensi aktif. Alat di bawah tetap terkunci sampai diaktifkan.
 # DITAMPILKAN saat create_session ditolak: ruang kerja terdaftar, tetapi token sesi
 # tidak dapat dibuat, jadi perintah yang memerlukan token tidak dapat berjalan.
 workspace-session-token-error = Tidak dapat memulai sesi untuk ruang kerja ini. Periksa detail dan coba lagi.
@@ -425,6 +448,7 @@ auth-setup-google = Masuk dengan Google
 auth-setup-google-desc = Masuk, atau buat akun secara otomatis jika Anda baru.
 auth-setup-pair = Tautkan perangkat ini ke organisasi Anda
 auth-setup-pair-desc = Pindai kode dari HP atau terminal lain yang sudah disiapkan.
+auth-setup-recommended-tablet = Rekomendasi untuk Tablet
 auth-setup-email = Masuk dengan email
 auth-setup-email-desc = Kami mengirim kode sekali pakai, atau Anda bisa memakai kata sandi.
 auth-setup-back = Kembali
@@ -593,9 +617,9 @@ workspace-home-staff-title = Manajemen Staf
 workspace-home-staff-desc = Kelola staf, peran, dan izin
 workspace-home-settings-title = Pengaturan
 workspace-home-settings-desc = Konfigurasi sistem dan preferensi
-# Mirrors setup-feature-cloud-sync / -desc above, the established Indonesian wording.
-workspace-home-cloud-sync-title = Sinkronisasi Cloud
-workspace-home-cloud-sync-desc = Sinkronkan data ke PostgreSQL cloud dengan cadangan
+workspace-home-topology-title = Editor Topologi
+workspace-home-topology-desc = Bangun dan hubungkan cabang toko, kasir, dan gudang
+
 workspace-home-audit-title = Log Audit
 workspace-home-audit-desc = Lihat aktivitas sistem dan riwayat perubahan
 workspace-home-terminals-title = Terminal
@@ -604,18 +628,8 @@ workspace-home-locations-title = Lokasi
 workspace-home-locations-desc = Kelola lokasi fisik dan cabang
 workspace-home-shifts-title = Shift
 workspace-home-shifts-desc = Kelola shift dan jadwal staf
-workspace-home-tax-config-title = Tarif Pajak
-workspace-home-tax-config-desc = Konfigurasi tarif dan aturan pajak
-workspace-home-exchange-rates-title = Nilai Tukar
-workspace-home-exchange-rates-desc = Konfigurasi nilai tukar mata uang
 workspace-home-promotions-title = Promosi
 workspace-home-promotions-desc = Buat dan kelola promosi
-workspace-home-offline-queue-title = Antrean Offline
-workspace-home-offline-queue-desc = Lihat item sinkronisasi offline yang tertunda
-workspace-home-features-title = Fitur
-workspace-home-features-desc = Aktifkan atau nonaktifkan fitur
-workspace-home-data-management-title = Data
-workspace-home-data-management-desc = Cadangkan, ekspor, dan impor data
 workspace-home-workspaces-section = Workspace
 workspace-home-tools-section = Alat
 # Header grup Tools — arsitektur informasi yang disepakati
@@ -632,8 +646,7 @@ workspace-home-tools-requires-tier-premium = Perlu paket Premium
 workspace-home-tools-requires-tier-enterprise = Perlu paket Enterprise
 workspace-home-tools-subscription-inactive = Langganan tidak aktif
 workspace-home-tools-requires-role = Butuh akses Admin
-workspace-home-topology-title = Editor Topologi
-workspace-home-topology-desc = Rancang lokasi, workspace, dan tautan perangkat
+
 workspace-home-memo-title = Memo
 workspace-home-memo-desc = Tulis pemberitahuan untuk terminal dan lokasi
 workspace-home-add-workspace = Tambah Workspace

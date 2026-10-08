@@ -98,3 +98,22 @@
   background: var(--color-danger-bg);
   color: var(--color-danger);
 }
+
+/* ── Touch press feedback ────────────────────────────────────────────
+   Logout from the role badge. */
+.role-badge-logout:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+@media (pointer: coarse) {
+  .role-badge-logout {
+    min-height: var(--touch-target-min);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .role-badge-logout:not(:disabled):active {
+    transform: none;
+    opacity: 0.75;
+  }
+}

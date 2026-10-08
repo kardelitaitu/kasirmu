@@ -130,19 +130,36 @@ ROOT_RECORDS = {"CHANGELOG.md", "JOURNAL.md", "SUMMARY.md"}
 
 # The two roles of a record have to be separated, because a dated document can do
 # one of them and must not do the other. It can ORIGINATE a debt ID:
-# docs/archived/tauri-security-audit.md:162 is the plan that makes
+# docs/records/superseded/tauri-security-audit.md:162 is the plan that makes
 # `TODO(L-1)` in apps/mobile-tauri/src/lib.rs:884 resolvable, so exempting
 # that directory outright would convert a live, correctly cited security marker
 # into a finding and send someone to "fix" a citation that is already right.
-# It cannot ASSERT one. docs/records/JOURNAL.md:1961 quotes
+# It cannot ASSERT one. docs/records/journal/JOURNAL.md:1961 quotes
 # "(TODO 3f)" in a dated entry about work since completed, and the only way to
 # satisfy the gate there is to edit the journal, which destroys the evidence
 # and changes what happened on 2026-08-06 into what happens today.
 #
 # So a citation is exempt from MARKERS and keeps its power to DEFINE. The
 # asymmetry is the whole point: quoting a debt is not owing it.
+# Two entries were dropped 2026-10-02, and both were dropped for the same
+# reason — they named a directory that matches nothing:
+#
+#   docs/releases/   moved wholesale to docs/records/releases/ (B4b), which
+#                    docs/records/ already covers, so no coverage was lost.
+#   docs/specs/_archive/   did not exist before this work either — a pre-existing
+#                    dead entry, found by the same audit rather than caused by it.
+#
+# docs/archived/ stays for one more reason than the others: it still exists, as a
+# one-file tombstone (README.md) explaining where its 28 documents went. The
+# exemption is now near-vacuous rather than wrong, and the tombstone is a real
+# path a reader can be sent to.
+#
+# This list is a SCOPE, and a scope entry that silently matches nothing is the
+# same blindness as a stale input list elsewhere in this repo: the gate cannot
+# tell "I checked and found no markers" from "I looked somewhere that no longer
+# exists". Re-derive it whenever a directory moves.
 CITATION_DIRS = ("docs/records/", "docs/archived/", "docs/decisions/",
-                 "docs/releases/", "docs/specs/_done/", "docs/specs/_archive/",
+                 "docs/specs/_done/",
                  ".agents/planning/", ".agents/reviews/")
 CITATION_FILES = ("orchestrator-journal.md", "pr_body.md", "skill-drift-report.md")
 
@@ -250,7 +267,7 @@ def is_citation(rel: str) -> bool:
     Exempting the directory outright, the obvious version of this rule, is
     wrong in the other direction and was caught before it shipped: it would have
     left apps/mobile-tauri/src/lib.rs:884 unresolvable, because
-    docs/archived/tauri-security-audit.md:162 is the only definition of L-1
+    docs/records/superseded/tauri-security-audit.md:162 is the only definition of L-1
     anywhere in the tree. A live, correctly cited security marker would have been
     reported as a dangling pointer, which is the finding that trains people to
     mute the tool.

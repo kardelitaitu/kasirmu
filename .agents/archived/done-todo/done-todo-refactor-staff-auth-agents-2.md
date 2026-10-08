@@ -12,8 +12,8 @@ here was ever run. -->
 
 **Target File:** `apps/desktop-tauri/src/commands/staff.rs`  
 **Sibling Documents:**
-- [`todo-refactor-staff-auth-agents-1.md`](./todo-refactor-staff-auth-agents-1.md) (Agent 1 — Auth & PIN Verification Core)
-- [`todo-refactor-staff-auth-agents-3.md`](./todo-refactor-staff-auth-agents-3.md) (Agent 3 — Staff Management UI Deconstruction)
+- [`done-todo-refactor-staff-auth-agents-1.md`](done-todo-refactor-staff-auth-agents-1.md) (Agent 1 — Auth & PIN Verification Core)
+- [`done-todo-refactor-staff-auth-agents-3.md`](done-todo-refactor-staff-auth-agents-3.md) (Agent 3 — Staff Management UI Deconstruction)
 
 ---
 

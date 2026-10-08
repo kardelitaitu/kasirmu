@@ -9,10 +9,14 @@ import { getKdsQueueScoped, updateKdsStatusScoped, updateKdsOrderItemsScoped, up
 import { useKdsPreferences } from '@/features/kds/hooks/useKdsPreferences';
 import { useNewTicketSound } from '@/features/kds/hooks/useNewTicketSound';
 import { useKdsFilterNav } from '@/features/kds/useKdsFilterNav';
+// Zone extraction and the board filter, named so the suite that used to retype
+// them (KdsZoneExtraction.test.ts) imports the real thing — including the
+// prepared-beats-zone PRECEDENCE, which no copy exercised.
+import { extractZones, filterKdsOrders, filterKdsOrdersByScope, isBoardFiltered } from '@/features/kds/kdsOrderView';
 import { useKdsShortcuts } from '@/features/kds/hooks/useKdsKeyboardShortcuts';
 import { useKdsTabIndicator } from '@/features/kds/useKdsTabIndicator';
 import { useKdsRealtime } from '@/features/kds/useKdsRealtime';
-import type { SlaThresholds } from '@/features/kds/hooks/useTicketSla';
+import { minutesToSlaThresholds, type SlaThresholds } from '@/features/kds/hooks/useTicketSla';
 import { useSound } from '@/components/useSound';
 import { requiredLocalized } from '@/components';
 import { useWorkspaceNav } from '@/hooks/useWorkspaceNav';
@@ -31,7 +35,7 @@ import { KdsEnrollmentModal } from '@/features/kds/components/KdsEnrollmentModal
 import { KdsScreenFooter } from '@/features/kds/KdsScreenFooter';
 import { nextKdsStatus } from '@/features/kds/kdsStatus';
 import { isAutoAckEligible } from '@/features/kds/kdsAutoAccept';
-import { sameOrders } from '@/features/kds/kdsOrdersDiff';
+import { arrivedOrderIds, orderIdSet, sameOrders } from '@/features/kds/kdsOrdersDiff';
 import './KdsScreen.css';
 
 /** Props passed to every KDS layout component. */
@@ -117,7 +121,7 @@ export default function KdsScreen() {
 
   // P3-2: Chime when new tickets arrive (debounced to max 1 per 5s).
   useNewTicketSound(orders, settings.soundEnabled);
-  const { speak, setSoundEnabled } = useSound();
+  const { speak, setSoundEnabled, playBeep } = useSound();
 
   // The KDS sound preference drives the GLOBAL mute: SLA escalation
   // alerts (each card's own useSound instance) and TTS callouts route
@@ -147,24 +151,15 @@ export default function KdsScreen() {
       getKdsQueueScoped(sessionToken, zone),
     );
     const activeStoreId = workspaceScope?.storeId;
-    let filtered = fetchedOrders;
-    if (activeStoreId) {
-      filtered = fetchedOrders.filter((order) =>
-        !order.store_id || order.store_id === activeStoreId,
-      );
-    }
-    // A cancelled ticket is terminal history — it must never surface on
-    // the active kitchen board (it would only show in the history panel).
-    filtered = filtered.filter((order) => order.status !== 'cancelled');
+    // Scope + cancelled rules live in kdsOrderView.filterKdsOrdersByScope, so
+    // KdsOrderFiltering.test.ts can import them instead of restating them.
+    const filtered = filterKdsOrdersByScope(fetchedOrders, activeStoreId);
 
-    // Track new ticket IDs for arrival animation.
-    const currentIds = new Set(filtered.map((o) => o.id));
-    const arrivedIds = new Set<string>();
-    for (const id of currentIds) {
-      if (!prevOrderIdsRef.current.has(id)) {
-        arrivedIds.add(id);
-      }
-    }
+    // Track new ticket IDs for arrival animation. The diff is named in
+    // kdsOrdersDiff so it can be tested; it had none before (the two suites that
+    // mention newOrderIds pass an empty Set as a prop and never exercise it).
+    const currentIds = orderIdSet(filtered);
+    const arrivedIds = arrivedOrderIds(prevOrderIdsRef.current, filtered);
     prevOrderIdsRef.current = currentIds;
     if (arrivedIds.size > 0) {
       setNewOrderIds(arrivedIds);
@@ -197,11 +192,18 @@ export default function KdsScreen() {
     }
   }, [sessionToken, workspaceScope?.storeId, prefs.kdsZone, wrapFetch, retryPending, speak, l10n]);
 
+  const handleCourseFired = useCallback((payload: { course?: string; display_number?: number }) => {
+    playBeep();
+    if (payload?.course) {
+      speak(`${payload.course} fired!`);
+    }
+  }, [playBeep, speak]);
+
   // PERF-KDS-01 / 1a (extracted): the whole realtime subscription block — the
   // `fetchOrdersRef` indirection (each subscription rebuild costs two WebView2
   // IPC round trips, so the ref must stay), the kds:orders-changed subscribe,
   // the visibilitychange fallback and their one unmount cleanup.
-  useKdsRealtime({ fetchOrders, arrivalTimerRef });
+  useKdsRealtime({ fetchOrders, arrivalTimerRef, onCourseFired: handleCourseFired });
 
   const clearError = useCallback(() => setError(null), []);
 
@@ -293,30 +295,23 @@ export default function KdsScreen() {
   }, [prefs.kdsZone]);
 
   // 3a: Extract unique kitchen zones from orders for the zone-switching chips and filter grid.
-  const zones = useMemo(() => {
-    const zoneSet = new Set<string>();
-    for (const order of orders) {
-      if (order.kitchen_zone) zoneSet.add(order.kitchen_zone);
-    }
-    return [...zoneSet].sort();
-  }, [orders]);
+  const zones = useMemo(() => extractZones(orders), [orders]);
 
   // Filtered orders: All = all open orders; Prepared = only ready orders; Categories = zone filter.
-  const filteredOrders = useMemo(() => {
-    if (filterMode === 'prepared') return orders.filter((o) => o.status === 'ready');
-    if (filterCats && filterCats.size > 0) {
-      return orders.filter((o) => o.kitchen_zone && filterCats.has(o.kitchen_zone));
-    }
-    return orders;
-  }, [orders, filterMode, filterCats]);
+  // The precedence lives in kdsOrderView.filterKdsOrders — 'prepared' wins over a
+  // non-empty zone set, which is the part the retyped tests never covered.
+  const filteredOrders = useMemo(
+    () => filterKdsOrders(orders, filterMode, filterCats),
+    [orders, filterMode, filterCats],
+  );
 
   // H3: the settings sliders are now wired — thresholds flow into every
   // card's useTicketSla. Memoized so KdsTicketCard's memo still holds when
   // unrelated state re-renders the screen.
-  const slaThresholds = useMemo<SlaThresholds>(() => ({
-    yellowAtSec: settings.yellowThresholdMin * 60,
-    redAtSec: settings.redThresholdMin * 60,
-  }), [settings.yellowThresholdMin, settings.redThresholdMin]);
+  const slaThresholds = useMemo<SlaThresholds>(
+    () => minutesToSlaThresholds(settings.yellowThresholdMin, settings.redThresholdMin),
+    [settings.yellowThresholdMin, settings.redThresholdMin],
+  );
 
   // KEY-07 (extracted): the board keyboard cluster - deselect-on-filter, the
   // mount autofocus and the document-level keydown handler with its editable +
@@ -385,7 +380,7 @@ export default function KdsScreen() {
 
   const boardFiltered = activeTab === 'completed'
     ? completedFilter !== 'all'
-    : (filterMode === 'prepared' || (filterCats !== null && filterCats.size > 0));
+    : isBoardFiltered(filterMode, filterCats);
 
   return (
     <KdsCardColorsProvider>

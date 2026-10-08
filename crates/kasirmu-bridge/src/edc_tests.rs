@@ -85,7 +85,7 @@ async fn sale_permission_and_routing() {
     ctx.registry.register_terminal("bca-01", driver).await;
 
     // Fails closed if terminal not found
-    let err_missing = edc_sale(&ctx, &token, 50000, "IDR", Some("mandiri-01"))
+    let err_missing = edc_sale(&ctx, &token, 50000, "IDR", Some("mandiri-01"), None)
         .await
         .unwrap_err();
     assert!(matches!(
@@ -96,8 +96,8 @@ async fn sale_permission_and_routing() {
         }
     ));
 
-    // Succeeds when routing to bca-01
-    let result = edc_sale(&ctx, &token, 50000, "IDR", Some("bca-01"))
+    // Succeeds when routing to bca-01 with reference
+    let result = edc_sale(&ctx, &token, 50000, "IDR", Some("bca-01"), Some("INV-001"))
         .await
         .unwrap();
     assert!(result.success);
@@ -244,7 +244,7 @@ async fn loopback_terminal_dynamic_sync_and_payment_simulation() {
     assert_eq!(status.status, TerminalStatus::Ready);
 
     // Perform sale on loopback terminal
-    let sale_res = edc_sale(&ctx, &token_cashier, 25000, "IDR", Some(&term.id))
+    let sale_res = edc_sale(&ctx, &token_cashier, 25000, "IDR", Some(&term.id), None)
         .await
         .unwrap();
     assert!(sale_res.success);
@@ -268,9 +268,57 @@ async fn loopback_terminal_dynamic_sync_and_payment_simulation() {
     .await
     .unwrap();
 
-    let dec_res = edc_sale(&ctx, &token_cashier, 15000, "IDR", Some(&decline_term.id))
-        .await
-        .unwrap();
+    let dec_res = edc_sale(
+        &ctx,
+        &token_cashier,
+        15000,
+        "IDR",
+        Some(&decline_term.id),
+        None,
+    )
+    .await
+    .unwrap();
     assert!(!dec_res.success);
     assert_eq!(dec_res.message, "lost card");
+}
+
+#[tokio::test]
+async fn edc_settle_and_inquiry_permission_and_execution() {
+    let tb = TestBridge::new();
+    let token_cashier = tb
+        .token_granting(kasirmu_core::permissions::SALES_PROCESS)
+        .await;
+    let token_guest = tb
+        .token_granting(kasirmu_core::permissions::SETTINGS_READ)
+        .await;
+    let ctx = tb.ctx();
+
+    let driver = Arc::new(MockEdcTerminal::new());
+    driver.set_success();
+    ctx.registry.register_terminal("edc-pos1", driver).await;
+
+    // 1. Permission checks
+    let guest_settle = edc_settle(&ctx, &token_guest, Some("edc-pos1")).await;
+    assert!(matches!(
+        guest_settle,
+        Err(BridgeError::PermissionDenied(_))
+    ));
+
+    let guest_inq = edc_inquiry(&ctx, &token_guest, "INV-100", Some("edc-pos1")).await;
+    assert!(matches!(guest_inq, Err(BridgeError::PermissionDenied(_))));
+
+    // 2. Settle execution
+    let settle = edc_settle(&ctx, &token_cashier, Some("edc-pos1"))
+        .await
+        .unwrap();
+    assert!(settle.success);
+    assert_eq!(settle.batch_number.as_deref(), Some("000001"));
+    assert_eq!(settle.message, "settlement approved");
+
+    // 3. Inquiry execution
+    let inq = edc_inquiry(&ctx, &token_cashier, "INV-100", Some("edc-pos1"))
+        .await
+        .unwrap();
+    assert!(inq.success);
+    assert_eq!(inq.transaction_id.as_deref(), Some("mock-inq-INV-100"));
 }

@@ -251,7 +251,16 @@ export function userErrorKey(err: AppError | unknown): string {
       return 'app-error-session';
     case 'core': {
       const sub = (appErrorSubKind(typed) ?? '').toLowerCase();
-      if (sub === 'conflict') return 'app-error-conflict';
+      if (sub === 'conflict') {
+        const msg = ('message' in typed && typeof typed.message === 'string' ? typed.message : '').toLowerCase();
+        if (msg.includes('version') || msg.includes('revision')) {
+          return 'app-error-conflict';
+        }
+        if (msg.includes('already exists') || msg.includes('unique') || msg.includes('duplicate')) {
+          return 'app-error-duplicate';
+        }
+        return 'app-error-conflict';
+      }
       if (sub === 'notfound') return 'app-error-not-found';
       if (sub === 'validation') return 'app-error-validation';
       if (sub === 'subscriptionlimitexceeded' || sub === 'invalidsubscriptionsignature') {
@@ -274,6 +283,7 @@ export const USER_ERROR_FALLBACKS: Record<string, string> = {
   'app-error-permission': "You don't have permission to do this.",
   'app-error-session': 'Your session has expired. Please sign in again.',
   'app-error-conflict': 'This record was changed by someone else. Refresh and try again.',
+  'app-error-duplicate': 'An item or category with this name or code already exists.',
   'app-error-not-found': 'The requested item could not be found.',
   'app-error-offline': 'You appear to be offline. Check your connection and try again.',
   'app-error-hardware': 'A hardware device did not respond. Check it and try again.',

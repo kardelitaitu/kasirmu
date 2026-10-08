@@ -141,6 +141,12 @@ impl PaymentProcessorRegistry {
                 Ok(val) => return Ok(val),
                 Err(err) => {
                     let class = err.classify();
+                    // ADR-64: Deferred is an active payment intent (e.g. QR generated,
+                    // awaiting customer scan). Advancing the fallback chain would issue
+                    // a second charge intent on another gateway.
+                    if class == ErrorClass::Deferred {
+                        return Err(err);
+                    }
                     // On terminal decline or bad card, do not silently switch processor
                     if class == ErrorClass::Terminal && !matches!(err, PaymentError::Unsupported(_))
                     {

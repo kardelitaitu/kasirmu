@@ -24,7 +24,7 @@ never to list membership, and filtering the write path would break the lifecycle
 very keys. At-rest FORM was, by design, nobody's business but the typed setter's — every guarantee in this
 area was about EXIT.
 
-The census test (`crates/kasirmu-core/tests/credential_storage_form.rs`, `5a536af6a`) made the cost of that
+The census test (`crates/kasirmu-core/tests/integration/credential_storage_form.rs`, `5a536af6a`) made the cost of that
 premise measurable, and the measurement is bad on every axis it checks:
 - Through the funnel, ZERO of the fourteen credential keys land as ciphertext in either table:
   `Settings::set_tracked` writes the value into `settings.value` AND a delta row into

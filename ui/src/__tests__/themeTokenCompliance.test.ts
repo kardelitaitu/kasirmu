@@ -1348,7 +1348,7 @@ const UNDECLARED_LEAD_FAMILIES: Array<{ name: string; file: string; reason: stri
       + 'example-tenant) -- none of which the app bundles. Whether that costs anything is '
       + 'an open question this rule does NOT answer: `var(--brand-font-family)` has 0 '
       + 'references anywhere in ui, apps, crates or website, so the slot is currently '
-      + 'written and never read -- see docs/plans/notes.md item 32. Bundling tenant faces '
+      + 'written and never read -- see docs/plans/_active/notes.md item 32. Bundling tenant faces '
       + 'or deleting the slot is a branding decision (docs/decisions/'
       + '2026-07-15-whitelabel-branding-system.md), not this plan\'s.',
   },
@@ -2576,31 +2576,29 @@ function describeUnresolved(misses: Map<string, VarRef[]>): string {
  * add one.
  */
 const UNRESOLVED_VAR_TOKENS_BASELINE: string[] = [
-  "--accent-color", // 3 - settings/screens/*Card.css use a foreign naming scheme
-  "--accent-contrast", // 3 - the same three cards
-  "--animation-play", // 1 - warehouse/WarehouseConsole.css
-  "--bg-primary", // 3
-  "--bg-secondary", // 1
-  "--border-color", // 8
-  "--border-subtle", // 2 - settings/sections/DiagnosticsSection.css
-  "--color-surface-alt", // 1 - staff/components/RoleAuthoringPanel.css
-  "--color-warning-pos-darker", // 1 - retail/RetailPosScreen.css
-  "--danger-500", // 4 NO FALLBACK - a colour that renders nothing
-  "--danger-700", // 1 NO FALLBACK
-  "--danger-text", // 1 - settings/screens/StatutoryNumberingCard.css
-  "--info-500", // 1 NO FALLBACK
-  "--mouse-x", // 2 - only a TEST sets these, so nothing exists at runtime
-  "--mouse-y", // 2
-  "--rotate-x", // 1 - workspaces/WorkspaceHome.css
-  "--rotate-y", // 1
-  "--status-danger", // 3
-  "--status-success", // 3
-  "--success-500", // 2 NO FALLBACK
-  "--success-bg", // 1
-  "--text-muted", // 1
-  "--text-primary", // 10
-  "--text-secondary", // 8
-  "--text-tertiary", // 7
+  // SEVEN NAMES DELETED 2026-10-07, not added: the four Business Defaults cards
+  // (Regional / ReceiptFormat / StatutoryNumbering / LocalPayment) declared their
+  // entire colour surface in a foreign naming scheme with light-theme literals as
+  // tails. Because :root is the DEFAULT theme and those literals were light, the
+  // cards rendered --color-fg-primary-ish text at 1.06:1 on the dark background --
+  // #1a1a1a on #12141a -- i.e. invisible in the app's default theme. Re-pointed at
+  // the real tokens and the now-dead tails removed.
+  //   deleted: --accent-color, --bg-primary, --bg-secondary, --border-color,
+  //            --status-danger, --status-success, --text-secondary, --text-tertiary
+  // EMPTIED 2026-10-07, completing the sweep. The last four names were the
+  // Tailwind-step family from features/inventory/ (ShiftBar.css,
+  // TransitAuditScreen.css, TransactionLogScreen.css): a status dot, two gradient
+  // buttons and the OVERDUE badge referenced --success-500 / --info-500 /
+  // --danger-500 / --danger-700. None is defined, and -- unlike every entry that
+  // came before -- none carried a fallback, so they rendered NOTHING: no dot, no
+  // gradient, no badge fill. Re-pointed at --color-success / --color-info /
+  // --color-danger / --color-danger-700, the semantic tokens their own siblings
+  // already use.
+  //
+  // The list is empty and that is the asserted state, not a floor: a NEW name here
+  // means a sheet references a token nothing defines. The probe case below fails
+  // if the PARSER stops seeing references, so an empty list cannot be mistaken for
+  // a clean tree -- which is the one way "no entries" could lie.
 ];
 
 describe("var() token existence", () => {
@@ -2650,6 +2648,49 @@ describe("var() token existence", () => {
         "delete their lines -- the list is shrink-only in both directions.",
     ).toEqual([]);
     expect(misses.size, "the miss set moved off its own baseline").toBe(UNRESOLVED_VAR_TOKENS_BASELINE.length);
+  });
+
+  /* ── The SILENT half: a miss with NO fallback renders nothing at all ──
+     Why this is a separate case rather than a sharper version of the one above:
+     that case reports a token that is undefined, and every site it had ever been
+     calibrated on carried a comma fallback, so the reader could be shown the
+     literal that was silently doing the work. The foreign-scheme freeze has the
+     same requirement by construction (\`hasFallback\` is its predicate). A site that
+     is undefined AND fallback-less satisfies neither, so it was reported by
+     nothing — and it is the WORSE of the two, because a fallback at least paints
+     something: here the declaration is dropped and the element keeps whatever it
+     inherited.
+
+     Measured before this case existed: nine such references across three
+     features/inventory sheets, rendering no status dot, no button gradient and no
+     OVERDUE badge fill. The closure is exact rather than a floor: any
+     fallback-less miss is a bug with no legitimate shape, since the only way to
+     "accept" one is to want an element to render nothing. */
+  it("no var() reference names an undefined token WITHOUT a fallback", () => {
+    const silent = [...VAR_REFS, ...NESTED_REFS]
+      .filter((r) => !r.hasFallback && !TOKEN_DEFINED.has(r.token))
+      .map((r) => r.file + ":" + r.line + "  var(" + r.token + ") -- undefined, no fallback: renders nothing");
+    expect(
+      silent,
+      "A reference with no comma fallback and no definition paints nothing at all, "
+        + "so the declaration is dropped and the element inherits instead. Two fix "
+        + "shapes, and the token decides which: if a real token exists, name it "
+        + "(that is what every one of the nine inventory sites wanted); if none does, "
+        + "the literal has to be written out. Do not add a fallback to silence this "
+        + "— a fallback would only turn a visible bug into the invisible kind the "
+        + "case above grades:\n  " + silent.join("\n  "),
+    ).toEqual([]);
+    // The predicate must be able to fire, or an empty list means the filter is
+    // broken rather than the tree being clean -- the same discipline the probe
+    // below applies to the parser itself.
+    const probe = [
+      { file: "p.css", line: 1, token: "--not-defined-anywhere", hasFallback: false, nested: false },
+      { file: "p.css", line: 2, token: "--not-defined-either", hasFallback: true, nested: false },
+    ] as VarRef[];
+    expect(
+      probe.filter((r) => !r.hasFallback && !TOKEN_DEFINED.has(r.token)).length,
+      "the fallback-less predicate matched nothing in a probe built to match one",
+    ).toBe(1);
   });
 
   it("probe: a renamed token is caught; a runtime-set token is not", () => {
@@ -2726,67 +2767,6 @@ function foreignSchemePairs(refs: VarRef[], declared: Set<string>): Map<string, 
  * freeze that only covered the named 15 would leave the pattern unpoliced.
  */
 const FOREIGN_SCHEME_BASELINE: Array<[string, string, number]> = [
-  ["--accent", "ui/src/components/ExitSurveyModal.css", 2],
-  ["--accent", "ui/src/components/OrgSwitcher.css", 2],
-  ["--accent-bg", "ui/src/components/ExitSurveyModal.css", 1],
-  ["--accent-color", "ui/src/features/settings/screens/LocalPaymentSettingsCard.css", 1],
-  ["--accent-color", "ui/src/features/settings/screens/ReceiptFormatSettingsCard.css", 1],
-  ["--accent-color", "ui/src/features/settings/screens/RegionalSettingsCard.css", 1],
-  ["--accent-contrast", "ui/src/components/OrgSwitcher.css", 1],
-  ["--accent-contrast", "ui/src/features/settings/screens/LocalPaymentSettingsCard.css", 1],
-  ["--accent-contrast", "ui/src/features/settings/screens/ReceiptFormatSettingsCard.css", 1],
-  ["--accent-contrast", "ui/src/features/settings/screens/RegionalSettingsCard.css", 1],
-  ["--accent-subtle", "ui/src/components/OrgSelector.css", 1],
-  ["--accent-subtle", "ui/src/components/OrgSwitcher.css", 1],
-  ["--animation-play", "ui/src/features/warehouse/WarehouseConsole.css", 1],
-  ["--bg-primary", "ui/src/features/settings/screens/LocalPaymentSettingsCard.css", 1],
-  ["--bg-primary", "ui/src/features/settings/screens/ReceiptFormatSettingsCard.css", 1],
-  ["--bg-primary", "ui/src/features/settings/screens/RegionalSettingsCard.css", 1],
-  ["--bg-secondary", "ui/src/features/settings/screens/LocalPaymentSettingsCard.css", 1],
-  ["--border", "ui/src/components/ExitSurveyModal.css", 2],
-  ["--border-color", "ui/src/features/settings/screens/LocalPaymentSettingsCard.css", 4],
-  ["--border-color", "ui/src/features/settings/screens/ReceiptFormatSettingsCard.css", 2],
-  ["--border-color", "ui/src/features/settings/screens/RegionalSettingsCard.css", 1],
-  ["--border-color", "ui/src/features/settings/screens/StatutoryNumberingCard.css", 1],
-  ["--border-subtle", "ui/src/components/OrgSelector.css", 2],
-  ["--border-subtle", "ui/src/components/OrgSwitcher.css", 5],
-  ["--border-subtle", "ui/src/features/settings/sections/DiagnosticsSection.css", 2],
-  ["--color-surface-alt", "ui/src/features/staff/components/RoleAuthoringPanel.css", 1],
-  ["--color-text-on-danger", "ui/src/components/StockAlertBell.css", 1],
-  ["--color-warning-pos-darker", "ui/src/features/retail/RetailPosScreen.css", 1],
-  ["--danger", "ui/src/components/OrgSwitcher.css", 1],
-  ["--danger-text", "ui/src/features/settings/screens/StatutoryNumberingCard.css", 1],
-  ["--mouse-x", "ui/src/features/locations/NodeTopologyEditor.css", 1],
-  ["--mouse-x", "ui/src/features/workspaces/WorkspaceHome.css", 1],
-  ["--mouse-y", "ui/src/features/locations/NodeTopologyEditor.css", 1],
-  ["--mouse-y", "ui/src/features/workspaces/WorkspaceHome.css", 1],
-  ["--muted", "ui/src/components/ExitSurveyModal.css", 1],
-  ["--rotate-x", "ui/src/features/workspaces/WorkspaceHome.css", 1],
-  ["--rotate-y", "ui/src/features/workspaces/WorkspaceHome.css", 1],
-  ["--status-danger", "ui/src/features/settings/screens/LocalPaymentSettingsCard.css", 1],
-  ["--status-danger", "ui/src/features/settings/screens/ReceiptFormatSettingsCard.css", 1],
-  ["--status-danger", "ui/src/features/settings/screens/RegionalSettingsCard.css", 1],
-  ["--status-success", "ui/src/features/settings/screens/LocalPaymentSettingsCard.css", 1],
-  ["--status-success", "ui/src/features/settings/screens/ReceiptFormatSettingsCard.css", 1],
-  ["--status-success", "ui/src/features/settings/screens/RegionalSettingsCard.css", 1],
-  ["--success-bg", "ui/src/features/settings/sections/DiagnosticsSection.css", 1],
-  ["--surface", "ui/src/components/ExitSurveyModal.css", 1],
-  ["--surface", "ui/src/components/OrgSelector.css", 1],
-  ["--surface", "ui/src/components/OrgSwitcher.css", 2],
-  ["--surface-input", "ui/src/components/OrgSwitcher.css", 1],
-  ["--text-muted", "ui/src/features/settings/sections/DiagnosticsSection.css", 1],
-  ["--text-primary", "ui/src/features/settings/screens/LocalPaymentSettingsCard.css", 3],
-  ["--text-primary", "ui/src/features/settings/screens/ReceiptFormatSettingsCard.css", 4],
-  ["--text-primary", "ui/src/features/settings/screens/RegionalSettingsCard.css", 2],
-  ["--text-primary", "ui/src/features/settings/screens/StatutoryNumberingCard.css", 1],
-  ["--text-secondary", "ui/src/features/settings/screens/LocalPaymentSettingsCard.css", 2],
-  ["--text-secondary", "ui/src/features/settings/screens/ReceiptFormatSettingsCard.css", 2],
-  ["--text-secondary", "ui/src/features/settings/screens/RegionalSettingsCard.css", 2],
-  ["--text-secondary", "ui/src/features/settings/screens/StatutoryNumberingCard.css", 2],
-  ["--text-tertiary", "ui/src/features/settings/screens/LocalPaymentSettingsCard.css", 2],
-  ["--text-tertiary", "ui/src/features/settings/screens/ReceiptFormatSettingsCard.css", 2],
-  ["--text-tertiary", "ui/src/features/settings/screens/RegionalSettingsCard.css", 2],
-  ["--text-tertiary", "ui/src/features/settings/screens/StatutoryNumberingCard.css", 1],
 ];
 
 describe("foreign-scheme token freeze", () => {
@@ -2802,8 +2782,41 @@ describe("foreign-scheme token freeze", () => {
       .filter((s) => /var\(/.test(s.text) && varRefsFromCss(s.file, s.text).length === 0)
       .map((s) => shortFile(s.file));
     expect(silent, "sheets hold a literal var() the parser did not record:\n  " + silent.join("\n  ")).toEqual([]);
-    expect(harvested.size, "the foreign-scheme predicate matched no pair").toBeGreaterThanOrEqual(50);
-    expect([...harvested.values()].reduce((a, n) => a + n, 0)).toBeGreaterThanOrEqual(80);
+    // LOWERED 2026-10-07, 50 -> 26 and 80 -> 36, because the debt this freeze
+    // grandfathers was PAID for four sheets. The Business Defaults cards
+    // (Regional / ReceiptFormat / StatutoryNumbering / LocalPayment) declared their
+    // whole colour surface in a foreign scheme with light-theme literals as tails;
+    // :root is the default theme, so those literals rendered at 1.06:1 on the dark
+    // background. Re-pointed at real tokens and their 33 frozen rows deleted.
+    //
+    // The bounds are the measured population (26 pairs / 36 sites), not a guess:
+    // they exist to prove this case has an input, and a floor left at 50 would have
+    // failed on the FIX rather than on a regression -- which is the failure mode
+    // this whole file keeps warning about. They stay well above zero, and rise as
+    // frozen debt is paid back in, which is what the comment above asks for.
+    // EMPTIED 2026-10-07, and the shape of this clause changed with it. The last
+    // 20 pairs were paid off in the same pass that took the count 26 -> 0:
+    // components/OrgSelector.css, OrgSwitcher.css, ExitSurveyModal.css,
+    // StockAlertBell.css and features/.../DiagnosticsSection.css all referenced a
+    // foreign naming scheme (--surface, --border-subtle, --accent, ...) with
+    // theme-inappropriate literals as tails. Re-pointed at the semantic tokens.
+    //
+    // A floor cannot assert "there is input" when the correct population is ZERO,
+    // so this is now an EXACT bound in the direction that matters: the harvest must
+    // stay empty. That is a stronger statement than any floor was, and it is the
+    // one the freeze was always aiming at -- the list can only shrink to nothing,
+    // and nothing is where it got. If a foreign-scheme reference appears again the
+    // next case catches it by name; this case fails if the PREDICATE goes blind,
+    // because a blind predicate and a clean tree both read as an empty map.
+    // What distinguishes them is the second assertion: the parser must still be
+    // able to see a pair when one exists, which the probe case below exercises.
+    expect(
+      harvested.size,
+      "the foreign-scheme harvest is no longer empty -- a sheet went back to a " +
+        "foreign naming scheme. Add it to the baseline deliberately, with a reason, " +
+        "or re-point it at the semantic tokens as the last 20 were.",
+    ).toBe(0);
+    expect([...harvested.values()].reduce((a, n) => a + n, 0)).toBe(0);
   });
 
   it("no new foreign-scheme reference appears, and no frozen one silently vanished", () => {
@@ -2969,7 +2982,6 @@ const DISAGREEING_TAIL_BASELINE: Array<[string, string, number]> = [
   ["--color-accent-subtle-fg", "ui/src/features/locations/MultiStoreDashboardScreen.css", 1],
   ["--color-bg", "ui/src/theme/reset.css", 1],
   ["--color-bg-hover", "ui/src/components/ConnectionStatus.css", 1],
-  ["--color-bg-hover", "ui/src/features/auth/SessionLockScreen.css", 1],
   ["--color-bg-hover", "ui/src/features/auth/StaffLoginScreen.css", 1],
   ["--color-bg-hover", "ui/src/features/sales/EodReportScreen.css", 2],
   ["--color-bg-hover", "ui/src/features/sales/widgets/widgets.css", 1],
@@ -3131,7 +3143,7 @@ describe("literal tail vs block relation", () => {
 
 /* ── Appended at the bottom 2026-09-15: the leading-token FREEZE, not a rule ──
  *
- * docs/plans/notes.md item 10 (:1360) parks the question this guard
+ * docs/plans/_active/notes.md item 10 (:1360) parks the question this guard
  * deliberately does NOT answer: is the three-step --leading-* scale a target
  * the UI normalises onto, or a convention literals are allowed to take? :1364
  * says answer the scale question before funding any sweep, so this block
@@ -3247,6 +3259,12 @@ const LINE_HEIGHT_LITERAL_BASELINE: Array<[string, string, number]> = [
   // established and this is a fourth site of an existing one. Listed, not
   // invented: the parked-item rule asks a human to pick a step when one does
   // not exist, and this one does.
+  // 1 on the floating cart bar's count badge (RestaurantFloatingCartBar.css:90).
+  // Single-glyph control centring a numeral in a fixed-height pill — the same
+  // case the 2026-09-29 note above records for the restaurant search-clear button
+  // and the sidebar badge: a --leading-* step cannot express it, and the
+  // alternative is flex centring, which this badge does not use. Not a new value.
+  ["1", "ui/src/features/restaurant/components/RestaurantFloatingCartBar.css", 1],
   ["1.35", "ui/src/features/restaurant/screens/RestaurantSettingsScreens.css", 3],
 
   ["1", "ui/src/features/kds/KdsScreen.css", 2],
@@ -3277,9 +3295,14 @@ const LINE_HEIGHT_LITERAL_BASELINE: Array<[string, string, number]> = [
   ["1", "ui/src/features/reports/MenuEngineeringScreen.css", 1],
   ["1", "ui/src/features/restaurant/RestaurantMenu.css", 2],
   ["1", "ui/src/features/retail/RetailPosScreen.css", 10],
-  ["1.2", "ui/src/features/retail/RetailPosScreen.css", 3],
+  // 3 -> 2 on 2026-10-07, named step: .retail-product-name carried
+  // `line-height: 1.2` and was struck with the rest of the orphaned retail block
+  // (retail-product-name and retail-product-price had zero references anywhere in
+  // ui/src). The remaining two sites are live, so this is a paid-down deletion and
+  // not a value that vanished.
+  ["1.2", "ui/src/features/retail/RetailPosScreen.css", 2],
   ["1.3", "ui/src/features/retail/RetailPosScreen.css", 1],
-  ["1.4", "ui/src/features/retail/RetailPosScreen.css", 3],
+  ["1.4", "ui/src/features/retail/RetailPosScreen.css", 2],
   ["1.8", "ui/src/features/retail/RetailPosScreen.css", 1],
   // Decision recorded 2026-10-01: `line-height: 1` on `.pos-cart-table-select-btn`
   // is deliberate optical tightening, not a prose measure -- the control is a
@@ -3315,6 +3338,20 @@ const LINE_HEIGHT_LITERAL_BASELINE: Array<[string, string, number]> = [
   ["1.4", "ui/src/features/settings/FeatureToggleScreen.css", 1],
   ["1", "ui/src/features/settings/LicenseSettings.css", 1],
   ["1.4", "ui/src/features/settings/LicenseSettings.css", 1],
+  // Restated 2026-10-07: `1.25rem @ ui/src/features/settings/SettingsNavTree.css`
+  // 2 -> 1. Round 6's tier-badge work (dc8718834) deleted the hardcoded
+  // `.settings-nav-plus-badge`, whose own `line-height: 1.25rem` was the second
+  // site the 2026-10-04 note below counted; a tier-driven SVG badge replaced it
+  // and needs no line-height. The survivor is `.settings-nav-count-badge`
+  // (:493-502), the same single-line pill centring text in a fixed-height box --
+  // the literal is the box's own height (1.25rem, matching its sibling
+  // `min-width`/`height` at :496-497), not a step on the --leading-* scale, so
+  // it does NOT become a token. That commit did not restate this count.
+  //
+  // Prior note, kept for the record -- Restated 2026-10-04: 1 -> 2. Peer commit
+  // 75eb83d7c rebuilt the settings nav as a flat page list and added
+  // `.settings-nav-plus-badge` (:470), whose `line-height: 1.25rem` joined the
+  // existing badge at :492.
   ["1.25rem", "ui/src/features/settings/SettingsNavTree.css", 1],
   ["1.4", "ui/src/features/settings/SettingsNavTree.css", 1],
   ["1", "ui/src/features/settings/SettingsPage.css", 1],
@@ -3330,13 +3367,20 @@ const LINE_HEIGHT_LITERAL_BASELINE: Array<[string, string, number]> = [
   ["1.3", "ui/src/features/staff/StaffManagementScreen.css", 1],
   ["1.4", "ui/src/features/staff/StaffManagementScreen.css", 1],
   ["1", "ui/src/features/stock-transfers/StockTransfersScreen.css", 2],
-  ["1", "ui/src/features/warehouse/WarehouseConsole.css", 1],
   ["1", "ui/src/features/workspaces/WorkspaceHome.css", 1],
   ["1.2", "ui/src/features/workspaces/WorkspaceHome.css", 1],
   ["1.3", "ui/src/app/AppLayout.css", 2],
   ["1", "ui/src/app/StatusBar.css", 1],
   ["1.2", "ui/src/app/tablet/tablet.css", 1],
   ["1.3", "ui/src/app/tablet/tablet.css", 1],
+  // 0 on the tab-icon slot (tablet.css:230, .tablet-shell .tablet-tab-icon). The
+  // step is deliberately BELOW the scale and no --leading-* step expresses it:
+  // the icon must contribute NO line box, otherwise an icon tab is taller than
+  // its text-only neighbours and the fixed tab-bar height this sheet is built
+  // around breaks. The alternative (a --leading-* step) would be 1 or more, which
+  // is exactly the height that causes the defect. Decision: keep 0, scoped to
+  // the icon span.
+  ["0", "ui/src/app/tablet/tablet.css", 1],
   ["1", "ui/src/theme/components.css", 3],
   ["inherit", "ui/src/theme/reset.css", 2],
 ];
@@ -3540,7 +3584,7 @@ describe("leading-token freeze -- appended closes (definition values, a fourth s
       const nowNames = [...LEADING_STEP_VALUES.keys()].sort();
       expect(
         nowNames,
-        "the --leading-* namespace gained or lost a step. A FOURTH step is not drift and is not this guard's to rule on: item 10 (docs/plans/notes.md :1360) parks the scale question with the owner, so a new spelling has to be said out loud and restated here WITH that decision:",
+        "the --leading-* namespace gained or lost a step. A FOURTH step is not drift and is not this guard's to rule on: item 10 (docs/plans/_active/notes.md :1360) parks the scale question with the owner, so a new spelling has to be said out loud and restated here WITH that decision:",
       ).toEqual(frozenNames);
       for (const [name, values] of LEADING_STEP_VALUES) {
         const frozen = LEADING_STEP_BASELINE.find(([n]) => n === name)?.[1] ?? "(unfrozen)";

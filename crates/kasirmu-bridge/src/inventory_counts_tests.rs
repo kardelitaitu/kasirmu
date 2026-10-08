@@ -429,3 +429,91 @@ async fn create_stock_count_validates_count_type() {
         create_stock_count_scoped(&bridge.ctx(), "tok", make_count_args("invalid_type")).await;
     assert!(result.is_err(), "invalid count type should be rejected");
 }
+
+// ── validate_product: the two rejection branches ────────────────────
+
+/// A count line naming a SKU the store does not have is REFUSED.
+///
+/// WHY THIS EXISTS. `validate_product` (`inventory_counts.rs:262`) is reached from
+/// `add_count_line_scoped`, and every existing test for that command seeds the product
+/// first and passes the SAME sku (WG-001) -- so both of this function's refusal branches
+/// were unexercised. MEASURED: replacing the whole body with `Ok(())` left all 20 tests
+/// in this file GREEN. A count line could then reference a product the store does not
+/// have, and the difference it carries would be one no inventory report could reconcile
+/// against.
+#[tokio::test]
+async fn add_count_line_rejects_a_sku_the_store_does_not_have() {
+    let conn = crate::testing::temp_conn();
+    seed_owner(&conn);
+    let bridge = scoped_bridge(conn, "tok", "user-owner", "role-owner", "s1");
+    // Deliberately NO create_product_in_store: the sku below is unknown.
+    let count = create_stock_count_scoped(&bridge.ctx(), "tok", make_count_args("full"))
+        .await
+        .unwrap();
+
+    let result = add_count_line_scoped(
+        &bridge.ctx(),
+        "tok",
+        AddCountLineArgs {
+            count_id: count.id.clone(),
+            sku: "NOT-IN-STORE".into(),
+            product_name: "Ghost".into(),
+            expected_qty: 10,
+        },
+    )
+    .await;
+
+    match result {
+        Err(BridgeError::Invalid(msg)) => assert!(
+            msg.contains("NOT-IN-STORE") && msg.contains("was not found"),
+            "the refusal must name the sku it could not find, so an operator can tell a \
+             typo from a missing product; got: {msg}"
+        ),
+        other => panic!("an unknown sku must be refused, got {other:?}"),
+    }
+
+    // And nothing was persisted: a refused line must not leave a row behind.
+    let lines = get_count_lines_scoped(&bridge.ctx(), "tok", &count.id)
+        .await
+        .unwrap();
+    assert!(
+        lines.is_empty(),
+        "the refused line was still written: {lines:?}"
+    );
+}
+
+/// A blank or whitespace-only SKU is refused BEFORE the store is consulted.
+///
+/// The trim is what matters: a whitespace-only value is not empty under `is_empty`, so a
+/// check that skipped the trim would fall through to the query and report "was not found"
+/// -- a different and more confusing message than "must not be empty".
+#[tokio::test]
+async fn add_count_line_rejects_a_blank_sku() {
+    let conn = crate::testing::temp_conn();
+    seed_owner(&conn);
+    let bridge = scoped_bridge(conn, "tok", "user-owner", "role-owner", "s1");
+    let count = create_stock_count_scoped(&bridge.ctx(), "tok", make_count_args("full"))
+        .await
+        .unwrap();
+
+    for blank in ["", "   ", "\t"] {
+        let result = add_count_line_scoped(
+            &bridge.ctx(),
+            "tok",
+            AddCountLineArgs {
+                count_id: count.id.clone(),
+                sku: blank.into(),
+                product_name: "Ghost".into(),
+                expected_qty: 10,
+            },
+        )
+        .await;
+        match result {
+            Err(BridgeError::Invalid(msg)) => assert!(
+                msg.contains("sku must not be empty"),
+                "a blank sku must be refused as EMPTY, not as missing; got: {msg}"
+            ),
+            other => panic!("sku {blank:?} must be refused, got {other:?}"),
+        }
+    }
+}

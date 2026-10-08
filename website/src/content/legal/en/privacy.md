@@ -3,6 +3,7 @@ title: Privacy Policy
 version: "1.0"
 effective: "August 17, 2026"
 ---
+<!-- Audit stamp: 2026-10-08 · docs-auditor · status: ACCURATE AFTER REPAIR (1 finding) · §8 Security said passwords are stored as bcrypt hashes. Verified false: the cloud API stores Argon2id ($argon2id$v=19$…, crates/kasirmu-api/src/routes/users.rs:34) and the CLI requires an argon2 PHC string (crates/kasirmu-cli/src/commands/user.rs:91-96). bcrypt is used only for license-server API keys (apps/license-server/api_key.go), not for account passwords. Corrected to Argon2id. The local-storage claim (sign-in + theme) was verified true. · Repaired against branch 0.0.41. -->
 
 This Privacy Policy explains what data kasir.mu (the "Company", "we", "us", or "our") collects through the kasir.mu website, desktop application, cloud services, and related services (together, the "Service"), why we collect it, how we use and protect it, and the rights you have over it.
 
@@ -88,7 +89,7 @@ When you ask us to delete your data, we delete or anonymize it within a reasonab
 We apply reasonable technical and organizational measures to protect your data, including:
 
 - Encryption in transit (TLS) for all communication with our servers;
-- Passwords stored only as strong one-way hashes (bcrypt);
+- Passwords stored only as strong one-way hashes (Argon2id);
 - Cryptographically signed license keys to prevent tampering;
 - Access controls and logging on production systems;
 - Restricted access to production data for our team and providers.
@@ -140,3 +141,5 @@ We aim to respond to every privacy request within 30 days.
 | Version | Effective date | Summary of changes |
 | --- | --- | --- |
 | 1.0 | August 17, 2026 | Initial publication. |
+
+> last audited 08-10-26 by docs-auditor

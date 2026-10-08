@@ -1183,7 +1183,7 @@ guard is just above it, and the device check sits beside it rather than replacin
 - **Not anti-piracy DRM.** The goal is that tampering costs more than it returns, not that it is
   prevented.
 - **Not a replacement for the signed-subscription model.** §1.4 remains the load-bearing control.
-- **Not a change to quota limits or tier definitions** — `docs/guides/subscription-tiers.md` is
+- **Not a change to quota limits or tier definitions** — `docs/guides/user/subscription-tiers.md` is
   FINAL and authoritative.
 - **Not device attestation of the server.** That is ADR #55, and it protects the opposite
   direction (a credential leaving toward a lapsed host).

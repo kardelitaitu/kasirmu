@@ -140,6 +140,23 @@ impl Store<'_> {
             .map_err(Into::into)
     }
 
+    /// Count items in `sync_remote_failures` that are currently dead-lettered.
+    ///
+    /// Returns the `-1` sentinel on error; callers must not treat -1 as zero
+    /// dead letters. The value is documented here rather than named, because no
+    /// `PENDING_COUNT_UNKNOWN` constant exists in this crate — this line linked
+    /// to one until 2026-10-08, which is a broken intra-doc link under
+    /// `RUSTDOCFLAGS=-D warnings` (rustdoc reported "no item named").
+    pub fn count_dead_lettered_remote_failures(&self) -> Result<i64, CoreError> {
+        self.conn
+            .query_row(
+                "SELECT COUNT(*) FROM sync_remote_failures WHERE dead_lettered = 1",
+                [],
+                |row| row.get(0),
+            )
+            .map_err(Into::into)
+    }
+
     /// Clear a resolved remote failure after its item is applied successfully.
     pub fn clear_remote_failure(&self, item_id: &str) -> Result<(), CoreError> {
         let tx = self.conn.unchecked_transaction()?;

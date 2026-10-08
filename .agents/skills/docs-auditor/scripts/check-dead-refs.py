@@ -476,8 +476,9 @@ TEMPLATE_TAIL_RE = re.compile(r"\s*(?:<[^>]*>|\$\{[^}]*\})")
 #     <!-- superseded-package: oz-cloud-server · current-package: kasirmu-cloud -->
 # Both names are required, deliberately. A bare "this is stale" would silence every
 # claim in the file forever; naming the replacement is what makes the note a finding a
-# reviewer can check, and it is why docs/architecture/MODULAR_APP_PLAN.md can keep a
-# [x] phase item verbatim without this gate going quiet. The pair is read from the
+# reviewer can check, and it is why records/superseded/MODULAR_APP_PLAN.md can keep a
+# [x] phase item verbatim without this gate going quiet (it moved from
+# docs/architecture/ in the records restructure). The pair is read from the
 # whole document, not the line, because a stamp lives at the top of a file that is
 # hundreds of lines long.
 SUPERSEDED_PKG_RE = re.compile(

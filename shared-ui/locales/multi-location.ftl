@@ -441,3 +441,8 @@ multi-store-prefix-save-aria = Save ticket prefix
 multi-store-prefix-saved = Saved. Future tickets: { $prefix }123
 multi-store-prefix-error-load = Could not read the ticket prefix.
 multi-store-prefix-error-save = Could not save the ticket prefix.
+
+# Tablet withdrawal (plan-tablet-homescreen-settings.md §5.1): the deep link
+# must explain itself instead of mounting an editor that cannot load or save.
+topology-tablet-unavailable-title = Topology authoring needs the desktop
+topology-tablet-unavailable-body = Store layout editing runs on the desktop app. This tablet keeps read-only Locations and every checkout surface.

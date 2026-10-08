@@ -2,14 +2,21 @@
 num: 54
 area: security
 title: "ADR #54: Google Sign-In — web sign-in/sign-up and desktop setup-wizard account linking"
-status: Proposed (2026-09-19) — nothing implemented
+status: Proposed (2026-09-19) — PARTLY LANDED. Amended 2026-10-07: §2.5 (desktop loopback + PKCE) is implemented — `crates/kasirmu-core/src/desktop_link.rs` (523 lines, `generate_pkce`/`pkce_challenge`), the Go side `apps/license-server/.../desktop_link_google.go` with `/start`, `/callback` and `/consume`, and the Tauri `link_device_google` command. §2.4 (the web server-side redirect) is NOT implemented: the website Worker has no Google path. So "nothing implemented" is false for desktop and true for web.
 ---
 
 <!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 886 lines, no audit stamp, no footer and no marker. It is the largest Proposed decision record audited in this campaign, and its status line is unambiguous and welcome for that reason: Proposed, with an explicit note that NOTHING is implemented. · THAT FRAMING IS WORTH PAUSING ON, because missed status lines are the single most common failure this campaign has found in decision records. Nearly every ADR whose components shipped describes itself as Proposed or Partially Implemented; a reader has to diff status lines against the tree to find out what actually landed. This one states the negative explicitly, which means a reader of the index learns the answer before opening it. In a directory where two architecture documents had to be collapsed for exactly this reason, that is a deliberate and welcome difference. · THE SCOPE IS DELIBERATELY NOT A DESIGN VERDICT, and the stamp should not be read as one. An 886-line proposal for web sign-in and desktop setup-wizard account linking contains an authentication design, and this audit checks documentation accuracy — not whether Google sign-in is the right choice, what the threat model should be, or how much of the setup wizard it should absorb. Those belong to whoever owns the auth decision, and a stamp implying otherwise would be exactly the overreach this campaign has been careful to avoid. · THE ONE THING WORTH NAMING FOR A READER: this proposal touches the setup wizard, and the setup surface in this repository has changed substantially in the last several weeks — the wizard was RETIRED, its component deleted, and the live first-run path is now the provisioning flow. So a design document written against the wizard it existed to link accounts with is describing a surface that has since been replaced. That is not a defect in a document that is explicitly a proposal, but it does mean its premise needs restating before anyone builds it. The replacement, and the preset-derivation fix that came with the retirement, are recorded in the provisioning ADR and the setup-wizard documents audited in recent rounds. · NOT re-measured: the proposed design, its flow, and any Google API specifics. · No stamp existed; this is the first. -->
 # ADR #54: Google Sign-In — web sign-in/sign-up and desktop setup-wizard account linking
 
-**Status:** Proposed (2026-09-19). Nothing below is implemented; §1 is measurement, §1.7 is
-upstream constraint.
+**Status:** Proposed (2026-09-19). **Amended 2026-10-07 — this is no longer true of §2.5.**
+The desktop half IS implemented: `crates/kasirmu-core/src/desktop_link.rs` carries `generate_pkce`
+and `pkce_challenge` exactly as §2.5 steps 2–3 describe, the licence server exposes
+`/api/v1/desktop/link/google/{start,callback}` and `/consume`
+(`desktop_link_google.go`), and the Tauri shells wire `link_device_google`. §1 remains measurement
+and §1.7 remains upstream constraint.
+**What is still NOT implemented is the web half** — §2.4's server-side redirect. `website/worker.ts`
+has no Google path (its only `google` hit is a `fonts.googleapis.com` CSP entry). So read this ADR's
+status as "desktop linked, web pending" rather than "nothing below is implemented".
 **Date:** 2026-09-19
 **Recorded against:** branch `0.0.39` @ `1569a67ad`
 **Tags:** auth, oauth, google, identity, website, desktop-tauri, setup-wizard, security

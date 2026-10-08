@@ -89,7 +89,8 @@ vi.mock('@fluent/react', async () => {
 });
 
 vi.mock('@/contexts/SettingsContext', () => ({
-  useSettings: () => ({
+  useSettings: () => ({ settings: stableSettings }),
+  useOptionalSettings: () => ({
     settings: stableSettings,
     loading: false,
     error: null,

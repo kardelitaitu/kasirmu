@@ -23,7 +23,55 @@ import path from 'path';
 import zlib from 'zlib';
 import { describe, it, expect } from 'vitest';
 
-const PNG_DIR = path.resolve(process.cwd(), '../assets/tier-badges/png');
+/* ── Why this walks up instead of trusting process.cwd() ──────────────
+ *
+ * These paths used to read `path.resolve(process.cwd(), '../assets/…')`, which is
+ * correct only when vitest runs with ui/ as the working directory. Run from the
+ * repo root — `npx --prefix ui vitest run ui/src/__tests__/tierBadgePng.test.ts`,
+ * an easy mistake that AGENTS.md §5.1 warns about without saying why — and it
+ * resolves one level ABOVE the checkout:
+ *     repo root -> C:\dev\assets\tier-badges\png      (does not exist)
+ *     ui/       -> C:\dev\kasirmu\assets\tier-badges\png  (correct)
+ * Every existsSync then returns false, BOTH skipIf() guards fire, and the suite
+ * reports "21 skipped | exit 0" — a PASSING RUN THAT GRADED NOTHING. That is the
+ * one failure mode a skip-guard cannot see, because a legitimate skip and this one
+ * are the same shape.
+ *
+ * WHAT THIS DID *NOT* AFFECT, checked rather than assumed: CI. dev-ci.yml:732 runs
+ * `cd ui && npm test`, so the automated suite always had the correct working
+ * directory and these 21 cases were graded there all along. The exposure was to
+ * anyone running vitest by hand from the repo root — which is exactly how it was
+ * found — not to the pipeline. Saying so matters: the fix is worth having because
+ * a manual run now means the same thing as a CI run, not because coverage was
+ * silently missing.
+ *
+ * Measured 2026-10-07 across all nineteen suites under this directory that touch
+ * process.cwd(): this was the ONLY one where a wrong cwd was silently green. The
+ * rest either fail loudly (ENOENT, or vitest reporting "no tests") or are
+ * cwd-robust (eodReportExportPermissionDrift walks up already; animationCompliance
+ * uses cwd only to format a message). So the skip guard itself is not the defect —
+ * it is doing what a skip guard does — but it makes a wrong cwd INVISIBLE here,
+ * and that is what this walk removes.
+ *
+ * findRoot mirrors eodReportExportPermissionDrift.test.ts:53: walk up looking for
+ * marker files that exist only in a checkout root, and THROW if none is found, so
+ * an unresolvable root is a red rather than a skip. */
+function findRepoRoot(marker: string): string {
+  let dir = process.cwd();
+  for (let up = 0; up < 6; up += 1) {
+    const candidate = path.join(dir, marker);
+    if (fs.existsSync(candidate)) return dir;
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  throw new Error('could not locate the checkout root from ' + process.cwd());
+}
+
+const REPO_ROOT = findRepoRoot('assets/tier-badges/manifest.json');
+const LOGO_DIR = path.join(REPO_ROOT, 'assets/tier-badges/logo');
+
+const PNG_DIR = path.join(REPO_ROOT, 'assets/tier-badges/png');
 
 /** Distinct-colour count, read from the PNG's own IHDR/IDAT-derived histogram.
  *  Parsed here rather than shelling out to ImageMagick: this test must not depend
@@ -126,7 +174,7 @@ function uniqueColours(file: string): number {
   return seen.size;
 }
 
-const LOGO_DIR = path.resolve(process.cwd(), '../assets/tier-badges/logo');
+
 
 /**
  * The brand-logo PNGs share the tier badges' rasteriser, so they carry the same

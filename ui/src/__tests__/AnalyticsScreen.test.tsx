@@ -81,6 +81,7 @@ vi.mock('@/contexts/CurrencyContext', () => ({
 // vi.mocked(useWorkspace).mockReturnValue(...); restore the default after
 // every test so the override never leaks into later tests.
 afterEach(() => {
+  vi.useRealTimers();
   vi.mocked(useWorkspace).mockImplementation(() => ({
     activeWorkspace: null,
     setActiveWorkspace: vi.fn(),
@@ -1523,7 +1524,8 @@ describe('AnalyticsScreen layout shell', () => {
 
     // Nothing stays expanded after the loop
     expect(document.querySelectorAll('.analytics-card--expanded').length).toBe(0);
-  });
+    vi.useRealTimers();
+  }, 30000);
 
   it('expands a ranked-list card to reveal the full list and taller charts', async () => {
     vi.useFakeTimers();

@@ -506,3 +506,34 @@
   font-weight: var(--font-weight-medium);
   margin-top: var(--space-3);
 }
+
+/* ── Touch press feedback ────────────────────────────────────────────
+   Transfers are driven from the tablet. The action button and the modal
+   close are discrete targets (scale); the inline link and line-remove are
+   text affordances whose hit area is their glyph (tint). */
+.stock-transfers-action-btn:not(:disabled):active,
+.stock-transfers-modal-close:active {
+  transform: scale(0.97);
+}
+
+.stock-transfers-link:active,
+.stock-transfers-line-remove:active {
+  background: color-mix(in srgb, var(--color-fg) 12%, transparent);
+}
+
+@media (pointer: coarse) {
+  .stock-transfers-link,
+  .stock-transfers-action-btn,
+  .stock-transfers-modal-close,
+  .stock-transfers-line-remove {
+    min-height: var(--touch-target-min);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stock-transfers-action-btn:not(:disabled):active,
+  .stock-transfers-modal-close:active {
+    transform: none;
+    opacity: 0.75;
+  }
+}

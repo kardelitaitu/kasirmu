@@ -213,6 +213,10 @@ export interface PgDaemonStatusDto {
    *  unknown, not an empty queue: a consumer that reads it as 0 concludes the
    *  backlog is drained and stops retrying. */
   pendingCount: number;
+  /** Dead-lettered remote items in sync_remote_failures, or -1 when the count
+   *  could not be read. -1 is unknown, not zero: a manager badge that reads -1
+   *  as 0 would silently hide quarantined items from the operator. */
+  deadLetterCount: number;
 }
 
 /** Get the PostgreSQL sync settings (scoped — ADR #7). */

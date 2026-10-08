@@ -248,3 +248,24 @@
     outline-offset: 2px;
   }
 }
+
+/* ── Touch press feedback ────────────────────────────────────────────
+   Acknowledging a stock alert is a discrete action.
+   ────────────────────────────────────────────────────────────────── */
+
+.stock-alert-ack-btn:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+@media (pointer: coarse) {
+.stock-alert-ack-btn:not(:disabled):active {
+    min-height: var(--touch-target-min);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+.stock-alert-ack-btn:not(:disabled):active {
+    transform: none;
+    opacity: 0.75;
+  }
+}

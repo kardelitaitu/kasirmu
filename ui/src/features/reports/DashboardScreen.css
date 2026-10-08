@@ -355,3 +355,39 @@
   .dashboard-section { page-break-inside: avoid; }
   .card { box-shadow: none; border: 1px solid var(--color-border); }
 }
+
+/* ── Touch press feedback ────────────────────────────────────────────
+   The dashboard is read on the tablet. Filled buttons scale; the category
+   detail clear (a bare glyph) tints. Granularity buttons are a segmented
+   group, so they scale rather than tint — a fill change would fight the
+   selected-state fill that already marks the active segment. */
+.dashboard-back-btn:not(:disabled):active,
+.dashboard-export-btn:not(:disabled):active,
+.dashboard-apply-btn:not(:disabled):active,
+.dashboard-granularity-btn:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+.dashboard-category-detail-clear:active {
+  background: color-mix(in srgb, var(--color-fg) 12%, transparent);
+}
+
+@media (pointer: coarse) {
+  .dashboard-back-btn,
+  .dashboard-export-btn,
+  .dashboard-apply-btn,
+  .dashboard-granularity-btn,
+  .dashboard-category-detail-clear {
+    min-height: var(--touch-target-min);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dashboard-back-btn:not(:disabled):active,
+  .dashboard-export-btn:not(:disabled):active,
+  .dashboard-apply-btn:not(:disabled):active,
+  .dashboard-granularity-btn:not(:disabled):active {
+    transform: none;
+    opacity: 0.75;
+  }
+}

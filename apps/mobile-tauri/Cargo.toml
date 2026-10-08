@@ -41,6 +41,7 @@ kasirmu-bridge = { workspace = true }
 reqwest = { workspace = true }
 rand = { workspace = true }
 kasirmu-hal = { workspace = true }
+kasirmu-lan = { workspace = true }
 kasirmu-logging = { workspace = true }
 kasirmu-security = { workspace = true }
 # ADR #49 Slice 0: `AppState::bridge_ctx` has to name `PluginManager` to own the

@@ -3,8 +3,12 @@ set -e
 
 # Prompt to ask about preserving data.
 if [ "$1" = "remove" ] || [ "$1" = "purge" ]; then
-    echo "Note: database and config files in /var/lib/oz-pos are preserved."
-    echo "To fully remove all data, delete /var/lib/oz-pos manually."
+    echo "Note: database and config files in /var/lib/kasir.mu are preserved."
+    echo "To fully remove all data, delete /var/lib/kasir.mu manually."
+    # Pre-rename installations lived under /var/lib/oz-pos (see postinst).
+    if [ -d /var/lib/oz-pos ]; then
+        echo "(A pre-rename data directory also exists at /var/lib/oz-pos.)"
+    fi
 fi
 
 exit 0

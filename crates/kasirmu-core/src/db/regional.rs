@@ -189,6 +189,7 @@ impl Store<'_> {
         let country_code = crate::regional::validate_regional_axis_value("country", country_code)?;
         let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
         let tx = self.conn.unchecked_transaction()?;
+        crate::regional::verify_regional_mutation_allowed(&tx, location_id)?;
         let updated = tx.execute(
             "UPDATE locations
              SET locale = ?1, timezone = ?2, currency = ?3, updated_at = ?4

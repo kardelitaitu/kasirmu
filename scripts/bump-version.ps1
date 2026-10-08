@@ -140,7 +140,11 @@ Write-Host "`nUpdating version strings..." -ForegroundColor Cyan
 # would be silently skipped (it happened for 0.0.26).
 # AGENTS.md version-lock line is a table row in the current repo format (it used
 # to be a bullet). The audit stamp at the top of the file also carries the locked version.
-Update-File "AGENTS.md" "| **Version Lock** | **Version is locked at ``$currentVersion``. NEVER modify version numbers.** | Do not bump version in ``Cargo.toml``, ``package.json``, ``tauri.conf.json``, etc. |" "| **Version Lock** | **Version is locked at ``$TargetVersion``. NEVER modify version numbers.** | Do not bump version in ``Cargo.toml``, ``package.json``, ``tauri.conf.json``, etc. |"
+# §0 quick card and §7.5 orientation check also cite the active branch/version.
+Update-File "AGENTS.md" "| **Version Lock** | **Version is locked at ``$currentVersion``. NEVER modify version numbers.** | ``Cargo.toml``, ``package.json``, ``tauri.conf.json``, etc. |" "| **Version Lock** | **Version is locked at ``$TargetVersion``. NEVER modify version numbers.** | ``Cargo.toml``, ``package.json``, ``tauri.conf.json``, etc. |"
+Update-File "AGENTS.md" "| Version | Locked at ``$currentVersion``. NEVER modify version numbers in any manifest. |" "| Version | Locked at ``$TargetVersion``. NEVER modify version numbers in any manifest. |"
+Update-File "AGENTS.md" "on branch ``$currentVersion``." "on branch ``$TargetVersion``."
+Update-File "AGENTS.md" "(expect: $currentVersion)" "(expect: $TargetVersion)"
 Update-File "AGENTS.md" "version lock: $currentVersion" "version lock: $TargetVersion"
 # The second mirror, .agents/management/AGENTS.md, is GONE: deleted 2026-09-24 by 5ec0ca164
 # (a commit whose whole change was that deletion), after moving there from .agents/AGENTS.md in
@@ -173,6 +177,10 @@ Update-File "ui/src/features/auth/__tests__/LicenseActivationScreen.test.tsx" "V
 # The dev-preview tooltip prints the brand mark + version as one literal. The brand was renamed
 # OZ-POS -> kasir.mu (2d34f2674), which left this pattern matching nothing; follow the current mark.
 Update-File "ui/src/features/design/TooltipPreview.tsx" "kasir.mu v$currentVersion" "kasir.mu v$TargetVersion"
+Update-File "ui/src/features/setup/ProvisioningFlow.tsx" ('v{0} {1} kasir.mu' -f $currentVersion, [char]0x2022) ('v{0} {1} kasir.mu' -f $TargetVersion, [char]0x2022)
+Update-File "ui/src/__tests__/ProvisioningFlow.test.tsx" ('v{0} {1} kasir.mu' -f $currentVersion, [char]0x2022) ('v{0} {1} kasir.mu' -f $TargetVersion, [char]0x2022)
+Update-File "ui/src/features/staff/components/StaffManagementFooter.tsx" "v$currentVersion" "v$TargetVersion"
+Update-File "ui/src/__tests__/StaffManagementScreen.test.tsx" "'v$currentVersion'" "'v$TargetVersion'"
 
 # The status-bar version label lives in Fluent, not TSX (StatusBar.tsx renders the
 # `statusbar-version` key), so the FTL files are the real bump targets.
@@ -203,8 +211,9 @@ Update-File "ops/docker/Dockerfile.unified" "version = `"$currentVersion`"" "ver
 # a Python codebase-memory wrapper) was deleted on 08-09-26; verify-agents-mirrors.py
 # now expects exactly two mirrors and will fail if a third reappears unannounced.
 
-# README's "Latest release" claim (prose, updated per release).
-Update-File "README.md" "Latest release: **v$currentVersion** (on branch ``$currentVersion``)." "Latest release: **v$TargetVersion** (on branch ``$TargetVersion``)."
+# README's "Current release" table row and gap disclosure heading.
+Update-File "README.md" "| **Current release** | **v$currentVersion**" "| **Current release** | **v$TargetVersion**"
+Update-File "README.md" "### Transparent gap disclosure (v$currentVersion current state)" "### Transparent gap disclosure (v$TargetVersion current state)"
 
 # 2b. Sync canonical CHANGELOG.md heading (RELEASE-07)
 Write-Host "`nSyncing CHANGELOG.md heading..." -ForegroundColor Cyan
@@ -231,7 +240,7 @@ if (-not (Test-Path $changelogPath)) {
         } elseif ($DryRun) {
             Write-Host "WOULD INSERT: $changelogPath ($heading)"
         } else {
-            $block = "$heading`r`n`r`nRelease notes: see docs/releases/CHANGELOG-$TargetVersion.md (reviewed before tagging).`r`n`r`n---`r`n`r`n"
+            $block = "$heading`r`n`r`nRelease notes: see docs/records/releases/CHANGELOG-$TargetVersion.md (reviewed before tagging).`r`n`r`n---`r`n`r`n"
             $updated = $content.Substring(0, $insertAfter.Index) + $block + $content.Substring($insertAfter.Index)
             [System.IO.File]::WriteAllText($changelogPath, $updated, (New-Object System.Text.UTF8Encoding($false)))
             Write-Host "Updated: $changelogPath (inserted $heading)"
@@ -308,7 +317,7 @@ if (-not $DryRun) {
             # contains were dropped from the regex and this branch matched nothing at all --
             # a mirror left at the old version never failed the bump. Single quotes keep the
             # backticks literal and -f keeps the version a single insertion point.
-            $staleLockRe = '(?m)^\s*\|\s*\*\*Version Lock\*\*\s*\|\s*\*\*Version is locked at `?{0}`?\.|\bLatest release:\s*\*\*v{0}\*\*|- \*\*Version is locked at the current release \(`?{0}`?\)' -f [regex]::Escape($currentVersion)
+            $staleLockRe = '(?m)^\s*\|\s*\*\*Version Lock\*\*\s*\|\s*\*\*Version is locked at `?{0}`?\.|\bLatest release:\s*\*\*v{0}\*\*|\|\s*\*\*Current release\*\*\s*\|\s*\*\*v{0}\*\*|- \*\*Version is locked at the current release \(`?{0}`?\)' -f [regex]::Escape($currentVersion)
             if ($stripped -match $staleLockRe) {
                 Write-Host "STALE: $target still contains $currentVersion lock" -ForegroundColor Red
                 $stale++

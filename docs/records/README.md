@@ -50,15 +50,15 @@ Unified registry for architectural decisions (ADRs), audits, verifications, meas
 | 43 | cloud | [ADR #43: Cloud Sync Performance & Scale-Out Roadmap](../decisions/2026-09-02-adr43-cloud-sync-performance-scaleout-roadmap.md) | Implemented (D1–D4, D7, D9-ready) — remaining items deferred or infra-only (2026-09-02) |
 | 44 | topology | [ADR #44: Typed Connection Gating & Live Validation (Implementation)](../decisions/2026-08-08-adr44-typed-connection-gating.md) | Implemented (2026-08-08) |
 | 45 | topology | [ADR #45: Topology Semantic Contract v2 — Endpoint Predicates, Kind Registry, Deliberate Cold Start, and Theme Parity](../decisions/2026-09-02-adr45-topology-semantic-contract-v2.md) | Accepted — §1–§3, §4.1, §5, §4.2 storage + IPC + migration function, §4.3 ordering rule + backend parity implemented (2026-09-02); §4.2 UI swap and §4.3 checklist UI proposed |
-| 46 | topology | [ADR #46: Topology Revision History, Change Notes, and Draft Restore](../decisions/2026-09-07-adr46-topology-revision-history-and-restore.md) | Accepted — phased; Phase 1 complete (racing-publishes gate met per 9b9a1d8a; change-note 8ce2c805, immutable revision 313157be, deflate 93e519cd), Phase 2 in progress (graph differ 51ad987f) |
+| 46 | topology | [ADR #46: Topology Revision History, Change Notes, and Draft Restore](../decisions/2026-09-07-adr46-topology-revision-history-and-restore.md) | Accepted — phased; Phase 1 complete (racing-publishes gate met per 9b9a1d8a; change-note 8ce2c805, immutable revision 313157be, deflate 93e519cd), **Phase 2 COMPLETE 2026-09-08** (see "Phase 2 completion" below; graph differ topologyRevisionDiff.ts, browser TopologyRevisionBrowser.tsx, restore-to-draft via NodeTopologyEditor.tsx's restoreSeed). Amended 2026-10-07: this line read "Phase 2 in progress (graph differ 51ad987f)" while the body already recorded the completion the next day. |
 | 47 | authorization | [ADR #47: Scoped Authorization — Role Assignments with Explicit Scopes](../decisions/2026-09-07-adr47-scoped-authorization-assignments.md) | Accepted — ruled 2026-09-07 (all five recommendations adopted) |
 | 48 | regional | [ADR #48: Location Timezone Representation & as_of Semantics](../decisions/2026-09-09-adr48-timezone-representation.md) | Accepted (2026-09-09) |
-| 49 | desktop-client | [ADR #49: Headless Command Bridge — Moving Command Bodies into crates/oz-bridge](../decisions/2026-09-11-adr49-headless-command-bridge.md) | Accepted (2026-09-11) — implemented for the desktop shell; tablet client not started |
+| 49 | desktop-client | [ADR #49: Headless Command Bridge — Moving Command Bodies into crates/oz-bridge](../decisions/2026-09-11-adr49-headless-command-bridge.md) | Accepted (2026-09-11) — implemented for the desktop shell; the tablet migration has since largely LANDED. Amended 2026-10-07: "tablet client not started" was true on 2026-09-11 and is false now — 53 of the tablet's 60 command files use kasirmu_bridge::, and the 2026-10-04 amendments below (AppState::bridge_ctx() at apps/mobile-tauri/src/state.rs:473) record the migration as mostly done. The 7 that do not delegate are largely tablet-native by design (sync.rs, updater.rs, picker_ticket.rs). What genuinely remains is §"What was NOT done" item 1 — the tablet still keeps its own copy of some bodies. |
 | 50 | sync | [ADR #50: Sync Authentication Hardening (token refresh, gating, terminal credentials)](../decisions/2026-09-11-adr50-sync-auth-hardening.md) | Accepted (2026-09-11) - partially implemented |
 | 51 | settings | [ADR #51: Sealed Settings Ingest Policy — One Funnel for Every Untrusted Settings Lane](../decisions/2026-09-11-adr51-sealed-settings-ingest-policy.md) | Accepted (2026-09-11) |
 | 52 | settings | [ADR #52: Tracked Settings Funnel Refuses Cleartext Credentials](../decisions/2026-09-12-adr52-tracked-settings-funnel-refuses-cleartext-credentials.md) | Accepted (2026-09-12) |
 | 53 | architecture | [ADR #53: The UI Vocabulary Boundary — what the application layer may say about a renderer](../decisions/2026-09-15-adr53-ui-vocabulary-boundary.md) | Adopted (2026-09-15) — Option A implemented as rule ui-framework-vocabulary at 0ca2c0f27, landing at zero findings with no baseline; the Option A premise was corrected ~22:55, see Correction |
-| 54 | security | [ADR #54: Google Sign-In — web sign-in/sign-up and desktop setup-wizard account linking](../decisions/2026-09-19-adr54-google-sign-in.md) | Proposed (2026-09-19) — nothing implemented |
+| 54 | security | [ADR #54: Google Sign-In — web sign-in/sign-up and desktop setup-wizard account linking](../decisions/2026-09-19-adr54-google-sign-in.md) | Proposed (2026-09-19) — PARTLY LANDED. Amended 2026-10-07: §2.5 (desktop loopback + PKCE) is implemented — crates/kasirmu-core/src/desktop_link.rs (523 lines, generate_pkce/pkce_challenge), the Go side apps/license-server/.../desktop_link_google.go with /start, /callback and /consume, and the Tauri link_device_google command. §2.4 (the web server-side redirect) is NOT implemented: the website Worker has no Google path. So "nothing implemented" is false for desktop and true for web. |
 | 55 | security | [ADR #55: One Server Origin — the compiled list, the fallback pair and the allowlists that must agree with it](../decisions/2026-09-19-adr55-server-origin-model.md) | Implemented (2026-09-19) — resolver, literal collapse, drift gate, attestation (endpoint and client) and the boot-time cascade are all shipped |
 | 56 | topology | [ADR #56: First-Run Provisioning — identity-first onboarding, one provisioning transaction, and the retirement of the mu…](../decisions/2026-09-21-adr56-first-run-provisioning.md) | Partially implemented (2026-09-21; status re-audited 2026-09-22; §2.3 amended 2026-09-23) — §2.1, §2.2, §2.5, §2.6, §5 Q2 tablet licence gate, and the local tier of §2.3/§2.4 are IMPLEMENTED; only §2.3's identify leg for the linked tier is NOT |
 | 57 | security | [ADR #57: Client Tamper Resistance Without Play Integrity — signature pinning, a bounded grace ceiling, and server-side…](../decisions/2026-09-21-adr57-client-tamper-resistance.md) | Proposed (2026-09-21) — §2.1 (client reporting + server classification, verified on a real device), §2.2's verdict rule, §2.3's grace ceiling, §2.5's per-device renewal refusal, §2.6's sentinel guard, §Q4's escalation fold, §Q-B's pin store and §2.4's notification AND dashboard rows for the fingerprint + device-quota signals are implemented; §2.4's product/staff/location quota signals are implemented in apps/cloud-server/src/quota_detector.rs |
@@ -66,8 +66,10 @@ Unified registry for architectural decisions (ADRs), audits, verifications, meas
 | 59 | topology | [ADR #59: Regional Topology and Modular Delivery — market scope on the Legal Entity, residency on the Organization, and…](../decisions/2026-09-21-adr59-regional-topology-and-modular-delivery.md) | Proposed (2026-09-21) — the region field, admin route and audit trail are IMPLEMENTED; topology and modules are not |
 | 60 | frontend-architecture | [ADR-60: Orientation & Adaptive Layout Strategy — the hybrid ladder (shell media queries, container queries, a declared…](../decisions/2026-09-21-adr60-orientation-and-adaptive-layout-strategy.md) | Implemented (2026-09-21) — all four tiers landed and gated; 7 sheets migrated |
 | 61 | architecture | [ADR-61: Architecture Boundary Rule Tiers — a named rule for re-export-only edges and a governed expiry](../decisions/2026-09-28-adr61-architecture-boundary-rule-tiers.md) | Implemented (2026-09-28) — the core-type-shim rule, the quarter-renewal invariant and the baseline re-tier, the currency edge closure and all seven type-shim edges closed and the baseline emptied (0 tracked findings); the deadline that made the seven shims is sequenced, not done |
-| 62 | architecture | [ADR-62: Module Seam Taxonomy — command contributors, projection subscribers, and the reporting-facade exception](../decisions/2026-09-30-adr62-module-seam-taxonomy.md) | Accepted (2026-09-30) — the taxonomy is written and grounded in the Phase 0 handler census; the check that enforces it (a handler_type classification gate) is not built |
-| 63 | architecture | [ADR-63: The EventSink Seam — grading R10 #3 with a rule that arrived at zero](../decisions/2026-10-04-adr63-event-sink-seam.md) | Implemented (2026-10-04) — rule event-sink-seam landed in scripts/verify-architecture-boundaries.py at zero findings with no baseline; the four remaining raw-handle broadcasts were routed through BridgeCtx::emitter; R10's other three invariants are disposed of by measurement (D6 — #1 a written convention, #2/#4 struck) |
+| 62 | architecture | [ADR-62: Module Seam Taxonomy — command contributors, projection subscribers, and the reporting-facade exception](../decisions/2026-09-30-adr62-module-seam-taxonomy.md) | Accepted (2026-09-30) — the taxonomy is written and grounded in the Phase 0 handler census; the check that enforces it IS BUILT (scripts/verify-namespace-governance.py, Rule 2, registered as namespace-governance in scripts/gates.json). Amended 2026-10-07: this line and the body said the gate "is not built" and that it "must be registered when built" — both were true on 2026-09-30 and stale by 2026-10-05, when the gate was registered. |
+| 63 | architecture | [ADR-63: The EventSink Seam — grading R10 #3 with a rule that arrived at zero](../decisions/2026-10-01-adr63-event-sink-seam.md) | Implemented (2026-10-04) — rule event-sink-seam landed in scripts/verify-architecture-boundaries.py at zero findings with no baseline; the four remaining raw-handle broadcasts were routed through BridgeCtx::emitter; R10's other three invariants are disposed of by measurement (D6 — #1 a written convention, #2/#4 struck) |
+| 64 | payments | [ADR-64: The Tender Vocabulary and the Offline Tender State — one classification per payment, and no electronic tender s…](../decisions/2026-10-02-adr64-tender-vocabulary-and-offline-tender-state.md) | Proposed (2026-10-02) — mostly TO BUILD, with one part landed. Amended 2026-10-07: D4's CHECK constraint has shipped (20261018_gateway_status_adr64_vocabulary.sql places gateway_status over the nine values in §D4, unconfirmed included). Everything else is still TO BUILD — D1's method_kind/method_mode columns do not exist, and D4's RULES 1–4 (who may write settled, what sets settled_at) are not enforced by anything. Read "nothing has landed" as "no decision but the D4 vocabulary". |
+| 65 | compliance | [ADR-65: The Compliance Chain — where fiscal integrity attaches, and the three seams a second market will exercise](../decisions/2026-10-02-adr65-compliance-chain.md) | Proposed (2026-10-02) — the anchor point is decided; no chain, no certification module and no second locale is built |
 
 ### Research Notes
 
@@ -99,6 +101,9 @@ Unified registry for architectural decisions (ADRs), audits, verifications, meas
 - [ADR: Topology Phase 8 — KDS Fan-Out](../decisions/2026-08-09-topology-phase8-kds-fanout.md)
 - [ADR: Topology Phase 9 — Stock Routing Consumer](../decisions/2026-08-09-topology-phase9-stock-routing.md)
 
+**general:**
+- [Global Kernel and Region Packs — strategy note](../decisions/2026-10-02-global-kernel-and-region-pack-strategy.md)
+
 ## Engineering Records (`docs/records/`)
 
 Measurement records, journals and standing analyses filed beside this index. They are indexed by the
@@ -106,10 +111,77 @@ same scan that lists the other documentation directories; `README.md` itself is 
 
 | Area | Title | Status |
 | --- | --- | --- |
-| general | [JOURNAL](JOURNAL.md) | — |
 | general | [ADR #7 Conditional Scoping — the Fallback Class](adr7-conditional-scoping-fallback-class.md) | — |
-| general | [Audit Closed Findings — Archive](audit-closed-findings.md) | — |
-| general | [Audit Open Findings — Consolidated](audit-open-findings.md) | — |
+| theming | [Retail POS Theming Audit — 2026-07-28](audits/2026-07-28-retail-pos-theming-audit.md) | — |
+| ui | [Retail POS UX Audit — 2026-07-29](audits/2026-07-29-retail-pos-ux-audit.md) | — |
+| sync | [Unify Auth & Sync to Northflank](audits/2026-08-15-unify-auth-and-sync.md) | Archived (2026-08-31) — implemented; live procedure is docs/operations/runbook.md |
+| architecture | [GLM-5.3 Tauri App Review — Journal](audits/2026-08-30-glm-5.3-tauri-app-review.md) | Archived (2026-08-31) — all 11 sectors reviewed; 53 findings remediated |
+| architecture | [kasir.mu Full Crate Audit — GLM 5.3-Flash (RSA)](audits/2026-08-31-glm-5.3f-crates-audit.md) | Archived (2026-08-31) — campaign fully closed (sections 1–46), no open findings |
+| general | [api-reference.md — Full Audit (anchor-by-anchor, full audit mode)](audits/2026-09-28-api-reference-audit.md) | — |
+| general | [docs/ Folder Audit — 2026-09-28](audits/2026-09-28-docs-audit.md) | — |
+| general | [Desktop launch failure — root cause: a Low Mandatory Level ACL on the checkout](audits/2026-09-29-desktop-launch-integrity-label.md) | — |
+| general | [Documentation-Code Audit — 2026-10-08](audits/2026-10-08-docs-audit.md) | — |
+| theming | [Shadow Banding Audit — Task List](audits/TODO-shadow-audit.md) | — |
+| general | [Audit — Receipt Settings (resto-pos → Receipts) & Settings → Business Defaults](audits/audit-receipt-settings.md) | — |
+| quality | [Code Quality Audit — 0.0.14](audits/code-quality-2026-07-20.md) | — |
+| database | [Database Optimization Audit — 2026-07-20](audits/database-optimization-2026-07-20.md) | — |
+| general | [kasir.mu Design Exceptions Register](audits/design-exceptions.md) | — |
+| quality | [Developer Experience Audit — 2026-07-20](audits/dev-experience-2026-07-20.md) | — |
+| ui | [Dev-Mock Reload-State Audit](audits/dev-mock-state-audit.md) | — |
+| general | [Documentation audit — the docs system itself — 23-09-26](audits/documentation-audit-23-09-26.md) | — |
+| release | [Agent Ops Handbook — Source Citation Drift](audits/frontend/citation-drift.md) | — |
+| theming | [Agent Ops Handbook — CSS Verification](audits/frontend/css-verification.md) | — |
+| general | [Fluent Page Audit — Full Journal](audits/frontend/fluent-page-audit.md) | — |
+| ui | [Modal & Overlay Audit Checklist](audits/modal-audit-checklist.md) | — |
+| observability | [Error Handling Audit — 0.0.14](audits/observability/error-handling-2026-07-20.md) | — |
+| observability | [Structured Logging & Observability — 0.0.14](audits/observability/logging-2026-07-20.md) | — |
+| products | [Product Image Storage Plan - Review Summary](audits/plan-product-images-review.md) | — |
+| general | [Dependency Audit — 2026-07-20](audits/security/audit-2026-07-20.md) | — |
+| general | [Security Audit: Admin Dashboard Login Flow](audits/security/audit-admin-login-flow.md) | — |
+| security | [Login Flow Audit — Admin + User Dashboard (Final Pass)](audits/security/audit-login-flow-final.md) | — |
+| general | [Input Validation & Rate Limiting — 0.0.14 Hardening](audits/security/hardening-2026-07-20.md) | — |
+| subscription | [License Audit — 2026-07-20](audits/security/license-audit-2026-07-20.md) | — |
+| general | [Lua Sandbox Security Audit — P0-1](audits/security/lua-sandbox-audit.md) | — |
+| website | [Admin Dashboard Review — Long-Term Sustainability Report](audits/security/review-admin-dashboard-long-term.md) | — |
+| general | [SAST Audit — 2026-07-20](audits/security/sast-2026-07-20.md) | — |
+| security | [kasir.mu Security Audit — Completion Summary](audits/security/security-audit-completion.md) | — |
+| general | [SEO audit — kasir.mu marketing site (on-page, technical, content)](audits/seo/seo-audit-19-09-26.md) | — |
+| general | [SEO review — robots.txt and llms.txt (kasir.mu)](audits/seo/seo-robots-llms-review-19-09-26.md) | — |
+| general | [Setup wizard + login/signup — state-of-the-art working notes](audits/setup/setup-state-of-the-art.md) | — |
+| general | [Setup Wizard — Audit & Review](audits/setup/setup-wizard-audit.md) | — |
+| general | [Setup wizard — decision record and plans](audits/setup/setup-wizard-option-b-plan.md) | — |
+| general | [Wizard retirement — RESOLVED](audits/setup/setup-wizard-retirement-blocker.md) | — |
+| general | [Skill audit — .agents/skills/ — 18-09-26](audits/skills/skill-audit-18-09-26.md) | — |
+| general | [Skill audit — .agents/skills/ — 22-09-26](audits/skills/skill-audit-22-09-26.md) | — |
+| ui | [UI State Audit — 0.0.14](audits/ui-state-audit-2026-07-20.md) | — |
+| general | [Performance Benchmarks — 0.0.14](benchmarks/2026-07-20.md) | — |
+| general | [kasir.mu Performance Baselines — 2026-07-20](benchmarks/baseline-2026-07-20.md) | — |
+| general | [kasir.mu Performance Baselines — 2026-07-21](benchmarks/baseline-2026-07-21.md) | — |
+| reporting | [Coverage Report — kasir.mu](benchmarks/coverage-report-2026-07-20.md) | — |
+| products | [Benchmark Regression Tracking](benchmarks/regression-tracking.md) | — |
+| general | [MANAGER-2 JOURNAL - POS-SCREEN. LIVE STATE BLOCK (authoritative head, READ FIRST)](campaigns/manager-2-journal-posscreen.md) | — |
+| general | [MANAGER-2 CURRENT-STATE LEDGER (condensed; authoritative head - READ THIS FIRST)](campaigns/manager-2-journal.md) | — |
+| general | [Audit Closed Findings — Archive](findings/audit-closed-findings.md) | — |
+| general | [Audit Open Findings — Consolidated](findings/audit-open-findings.md) | — |
+| general | [Engineering Journal - part 1 of 8](journal/JOURNAL-part-1.md) | — |
+| general | [Engineering Journal - part 2 of 8](journal/JOURNAL-part-2.md) | — |
+| general | [Engineering Journal - part 3 of 8](journal/JOURNAL-part-3.md) | — |
+| general | [Engineering Journal - part 4 of 8](journal/JOURNAL-part-4.md) | — |
+| general | [Engineering Journal - part 5 of 8](journal/JOURNAL-part-5.md) | — |
+| general | [Engineering Journal - part 6 of 8](journal/JOURNAL-part-6.md) | — |
+| general | [Engineering Journal - part 7 of 8](journal/JOURNAL-part-7.md) | — |
+| general | [Engineering Journal - part 8 of 8](journal/JOURNAL-part-8.md) | — |
+| general | [Engineering Journal - index](journal/JOURNAL.md) | — |
+| general | [kasir.mu 0.0.25](releases/CHANGELOG-0.0.25.md) | — |
+| general | [kasir.mu 0.0.31](releases/CHANGELOG-0.0.31.md) | — |
+| general | [Changelog — kasir.mu 0.0.33](releases/CHANGELOG-0.0.33.md) | — |
+| general | [Changelog — kasir.mu 0.0.34](releases/CHANGELOG-0.0.34.md) | — |
+| general | [Changelog — kasir.mu 0.0.36](releases/CHANGELOG-0.0.36.md) | — |
+| general | [Release Checklist — kasir.mu](releases/checklist.md) | — |
+| release | [First-Release Runbook — kasir.mu](releases/first-release-runbook.md) | — |
+| general | [Mobile Release Checklist](releases/mobile-checklist.md) | — |
+| release | [Release Process — kasir.mu](releases/release-process.md) | — |
+| general | [SignPath Onboarding — Free Windows Code Signing](releases/signpath-onboarding.md) | — |
 | sync | [Sync settings ingest admits and the redirect that carries them](snapshots/2026-09-12-sync-settings-ingest-and-redirect-census.md) | — |
 | general | [ADR #51 From the Other Side — the Admitted Set and the Redirect's Second Writer](snapshots/2026-09-13-adr51-admitted-set-and-blind-sides.md) | — |
 | ui | [Appraisal: todo-review-type.md (Local-First & Frontend Architecture)](snapshots/2026-09-15-frontend-architecture-todo-appraisal.md) | — |
@@ -120,53 +192,33 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [The formatting gate is red — 50 rustfmt diffs on committed code](snapshots/2026-09-28-rustfmt-gate-red.md) | — |
 | staff | [SQLite / Postgres Roles](sqlite-pg-roles.md) | — |
 | money | [Statutory Rounding & Tax-Estimate Stamps](statutory-rounding-and-estimate-stamps.md) | — |
+| general | [kasir.mu — Performance Benchmarks](superseded/2026-07-22-benchmarks.md) | — |
+| release | [CI Pipeline Dashboard — kasir.mu](superseded/2026-08-17-ci-pipeline.md) | — |
+| release | [Test Efficiency Improvement — Plan & Journal (2026-08-22)](superseded/20260822-tests-efficiency-improvement.md) | — |
+| general | [Modular Application Master Plan: Feature-Based Configuration & Execution Roadmap](superseded/MODULAR_APP_PLAN.md) | — |
+| accessibility | [kasir.mu — Accessibility (a11y) Compliance](superseded/a11y.md) | — |
+| general | [kasir.mu API Client SDK](superseded/api-client.md) | — |
+| general | [Phase 0 — Module Handler Truthfulness Census](superseded/handler-census-phase0.md) | — |
+| general | [i18n followup: 4 untranslated Indonesian bundles](superseded/i18n-todo.md) | — |
+| inventory | [Multi-KDS Architecture Plan for Single Location (kasir.mu Specific)](superseded/multi_kds_one_location_support.md) | — |
+| inventory | [Multi-POS Architecture Plan for Single Location (kasir.mu Specific)](superseded/multi_pos_one_location_support.md) | — |
+| general | [NamespacedStore — API Draft (Phase 2, design only)](superseded/namespaced-store-api-draft.md) | — |
+| general | [Phase 1 Implementation Tickets — Modular Scaffolding](superseded/phase1-implementation-tickets.md) | — |
+| general | [Phase 2 Implementation Tickets — Module Context and Registry Hardening](superseded/phase2-implementation-tickets.md) | — |
+| general | [Phase 3 Implementation Tickets — Vertical Extraction](superseded/phase3-implementation-tickets.md) | — |
+| general | [Phase 4 Implementation Tickets — Strict Namespace Firewall](superseded/phase4-implementation-tickets.md) | — |
+| general | [Phase 5 Implementation Tickets — Core Extraction and the Inventory Seam](superseded/phase5-implementation-tickets.md) | — |
+| sync | [Media Binary Sync Strategy — PLANNED](superseded/plan-media-binary-sync.md) | — |
+| products | [Plan: Product Image Storage System](superseded/plan-product-images.md) | — |
+| inventory | [Reporting facade inventory (T5, Phase 1)](superseded/reporting-facade-inventory.md) | — |
+| release | [SQLCipher At-Rest Encryption Migration Plan](superseded/sqlcipher-migration-plan.md) | — |
+| security | [kasir.mu Tauri Security Audit](superseded/tauri-security-audit.md) | — |
+| general | [Design: Course/Modifier Data Pipeline — POS → KDS](superseded/workspace-editor-implementation.md) | — |
+| general | [Workspace Instance Architecture — Analysis & Recommendation](superseded/workspace-instance-analysis.md) | — |
 
 ## Audit Reports
 
-The per-sector audit reports were consolidated into [**Audit Open Findings**](./audit-open-findings.md) (current); fully-remediated sectors are closed by the commits recorded there.
-
-## Audit Reports (`docs/audits/`)
-
-| Area | Title | Status |
-| --- | --- | --- |
-| general | [api-reference.md — Full Audit (anchor-by-anchor, full audit mode)](../audits/2026-09-28-api-reference-audit.md) | — |
-| general | [docs/ Folder Audit — 2026-09-28](../audits/2026-09-28-docs-audit.md) | — |
-| general | [Desktop launch failure — root cause: a Low Mandatory Level ACL on the checkout](../audits/2026-09-29-desktop-launch-integrity-label.md) | — |
-| general | [Documentation audit — the docs system itself — 23-09-26](../audits/documentation-audit-23-09-26.md) | — |
-| frontend | [Agent Ops Handbook — CSS Verification](../audits/frontend/css-verification.md) | — |
-| frontend | [Fluent Page Audit — Full Journal](../audits/frontend/fluent-page-audit.md) | — |
-| seo | [SEO audit — kasir.mu marketing site (on-page, technical, content)](../audits/seo/seo-audit-19-09-26.md) | — |
-| seo | [SEO review — robots.txt and llms.txt (kasir.mu)](../audits/seo/seo-robots-llms-review-19-09-26.md) | — |
-| setup | [Setup wizard + login/signup — state-of-the-art working notes](../audits/setup/setup-state-of-the-art.md) | in progress. Round 1 corrected a bad commit and landed one UX improvement. |
-| setup | [Setup Wizard — Audit & Review](../audits/setup/setup-wizard-audit.md) | — |
-| setup | [Setup wizard — decision record and plans](../audits/setup/setup-wizard-option-b-plan.md) | — |
-| setup | [Wizard retirement — RESOLVED](../audits/setup/setup-wizard-retirement-blocker.md) | — |
-| skills | [Skill audit — .agents/skills/ — 18-09-26](../audits/skills/skill-audit-18-09-26.md) | — |
-| skills | [Skill audit — .agents/skills/ — 22-09-26](../audits/skills/skill-audit-22-09-26.md) | — |
-
-## Scattered Audit Reports (`docs/`)
-
-- **theming** — [Retail POS Theming Audit — 2026-07-28](../archived/2026-07-28-retail-pos-theming-audit.md)
-- **ui** — [Retail POS UX Audit — 2026-07-29](../archived/2026-07-29-retail-pos-ux-audit.md)
-- **sync** — [Unify Auth & Sync to Northflank](../archived/2026-08-15-unify-auth-and-sync.md)
-- **architecture** — [GLM-5.3 Tauri App Review — Journal](../archived/2026-08-30-glm-5.3-tauri-app-review.md)
-- **architecture** — [kasir.mu Full Crate Audit — GLM 5.3-Flash (RSA)](../archived/2026-08-31-glm-5.3f-crates-audit.md)
-- **quality** — [Code Quality Audit — 0.0.14](../archived/code-quality-2026-07-20.md)
-- **database** — [Database Optimization Audit — 2026-07-20](../archived/database-optimization-2026-07-20.md)
-- **quality** — [Developer Experience Audit — 2026-07-20](../archived/dev-experience-2026-07-20.md)
-- **ui** — [Dev-Mock Reload-State Audit](../archived/dev-mock-state-audit.md)
-- **ui** — [UI State Audit — 0.0.14](../archived/ui-state-audit-2026-07-20.md)
-- **ui** — [Modal & Overlay Audit Checklist](../archived/modal-audit-checklist.md)
-- **theming** — [Shadow Banding Audit — Task List](../archived/TODO-shadow-audit.md)
-- **products** — [Product Image Storage Plan - Review Summary](../archived/plan-product-images-review.md)
-- **general** — [kasir.mu Design Exceptions Register](../archived/design-exceptions.md)
-
-## System Analysis / Observability (`docs/observability/`)
-
-| Area | Title | Status |
-| --- | --- | --- |
-| observability | [Error Handling Audit — 0.0.14](../observability/error-handling-2026-07-20.md) | — |
-| observability | [Structured Logging & Observability — 0.0.14](../observability/logging-2026-07-20.md) | ✅ tracing already integrated. JSON output + correlation IDs available. File rotation via tracing-appender configured. |
+The per-sector audit reports were consolidated into [**Audit Open Findings**](./audit-open-findings.md) (generated — run the script again); fully-remediated sectors are closed by the commits recorded there.
 
 ## Conventions
 

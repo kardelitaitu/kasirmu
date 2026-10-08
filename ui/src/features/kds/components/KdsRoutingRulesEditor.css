@@ -462,3 +462,37 @@
   background: var(--color-bg-hover);
   color: var(--color-fg);
 }
+
+/* ── Touch press feedback ────────────────────────────────────────────
+   The routing editor runs on the back-office tablet. The section buttons and
+   the primary action scale; the retry, icon buttons and the switch (whose
+   knob already animates) take the tint. The `<select>` is excluded — the
+   native picker owns its own press state. */
+.kds-routing-section-btn:not(:disabled):active,
+.kds-routing-btn:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+.kds-routing-retry:active,
+.kds-routing-icon-btn:active,
+.kds-routing-switch:active {
+  background: color-mix(in srgb, var(--color-fg) 12%, transparent);
+}
+
+@media (pointer: coarse) {
+  .kds-routing-section-btn,
+  .kds-routing-retry,
+  .kds-routing-switch,
+  .kds-routing-icon-btn,
+  .kds-routing-btn {
+    min-height: var(--touch-target-min);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kds-routing-section-btn:not(:disabled):active,
+  .kds-routing-btn:not(:disabled):active {
+    transform: none;
+    opacity: 0.75;
+  }
+}

@@ -35,7 +35,9 @@
 // under is docs/records/audit-open-findings.md (2026-09-16).
 
 import type { ReactNode } from 'react';
-import type { TierKey } from '@/utils/tierLevel';
+import { roleAtLeast } from '@/utils/role';
+import type { SubscriptionUiState } from '@/contexts/SubscriptionContext';
+import { tierSatisfies, type TierKey } from '@/utils/tierLevel';
 
 export type { TierKey };
 
@@ -81,23 +83,6 @@ const svg = {
 
 export const TOOLS: ToolItem[] = [
   // ── Operations ────────────────────────────────────────────────
-  {
-    id: 'topology-editor',
-    route: 'settings/topology',
-    labelKey: 'workspace-home-topology-title',
-    descKey: 'workspace-home-topology-desc',
-    access: { minimumRole: 'admin', minimumTier: 'free' },
-    group: 'operations',
-    icon: (
-      <svg {...svg} viewBox="0 0 24 24">
-        <circle cx="18" cy="5" r="3" />
-        <circle cx="6" cy="12" r="3" />
-        <circle cx="18" cy="19" r="3" />
-        <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
-        <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
-      </svg>
-    ),
-  },
   {
     id: 'staff',
     route: 'staff',
@@ -242,7 +227,7 @@ export const TOOLS: ToolItem[] = [
     route: 'settings',
     labelKey: 'workspace-home-settings-title',
     descKey: 'workspace-home-settings-desc',
-    access: { minimumRole: 'admin', minimumTier: 'free', lockBelowRole: true },
+    access: { minimumRole: 'manager', minimumTier: 'free' },
     group: 'configuration',
     icon: (
       <svg {...svg} viewBox="0 0 24 24">
@@ -252,92 +237,69 @@ export const TOOLS: ToolItem[] = [
     ),
   },
   {
-    id: 'cloud-sync',
-    route: 'settings/sync',
-    labelKey: 'workspace-home-cloud-sync-title',
-    descKey: 'workspace-home-cloud-sync-desc',
-    access: { minimumRole: 'admin', minimumTier: 'plus' },
-    group: 'configuration',
-    icon: (
-      <svg {...svg} viewBox="0 0 24 24">
-        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-      </svg>
-    ),
-  },
-  {
-    id: 'tax-config',
-    route: 'tax-config',
-    labelKey: 'workspace-home-tax-config-title',
-    descKey: 'workspace-home-tax-config-desc',
+    id: 'topology',
+    route: 'topology',
+    labelKey: 'workspace-home-topology-title',
+    descKey: 'workspace-home-topology-desc',
     access: { minimumRole: 'manager', minimumTier: 'free' },
     group: 'configuration',
     icon: (
       <svg {...svg} viewBox="0 0 24 24">
-        <line x1="19" y1="5" x2="5" y2="19" />
-        <circle cx="6.5" cy="6.5" r="2.5" />
-        <circle cx="17.5" cy="17.5" r="2.5" />
-      </svg>
-    ),
-  },
-  {
-    id: 'exchange-rates',
-    route: 'exchange-rates',
-    labelKey: 'workspace-home-exchange-rates-title',
-    descKey: 'workspace-home-exchange-rates-desc',
-    access: { minimumRole: 'manager', minimumTier: 'free' },
-    group: 'configuration',
-    icon: (
-      <svg {...svg} viewBox="0 0 24 24">
-        <path d="M17 1l4 4-4 4" />
-        <path d="M3 11V9a4 4 0 0 1 4-4h14" />
-        <path d="M7 23l-4-4 4-4" />
-        <path d="M21 13v2a4 4 0 0 1-4 4H3" />
-      </svg>
-    ),
-  },
-  // Basic Offline Queue visibility is available to all active tiers
-  // (.agents/archived/done-todo/done-todo-tools.md §IA ownership boundaries); advanced conflict tools
-  // are Plus+ and are gated inside the page itself.
-  {
-    id: 'offline-queue',
-    route: 'offline-queue',
-    labelKey: 'workspace-home-offline-queue-title',
-    descKey: 'workspace-home-offline-queue-desc',
-    access: { minimumRole: 'manager', minimumTier: 'free' },
-    group: 'configuration',
-    icon: (
-      <svg {...svg} viewBox="0 0 24 24">
-        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-        <path d="M8 12l3 3 5-6" />
-      </svg>
-    ),
-  },
-  {
-    id: 'features',
-    route: 'features',
-    labelKey: 'workspace-home-features-title',
-    descKey: 'workspace-home-features-desc',
-    access: { minimumRole: 'owner', minimumTier: 'free' },
-    group: 'configuration',
-    icon: (
-      <svg {...svg} viewBox="0 0 24 24">
-        <path d="M13 2 3 14h9l-1 8 10-12h-9z" />
-      </svg>
-    ),
-  },
-  {
-    id: 'data-management',
-    route: 'data-management',
-    labelKey: 'workspace-home-data-management-title',
-    descKey: 'workspace-home-data-management-desc',
-    access: { minimumRole: 'owner', minimumTier: 'plus' },
-    group: 'configuration',
-    icon: (
-      <svg {...svg} viewBox="0 0 24 24">
-        <ellipse cx="12" cy="5" rx="9" ry="3" />
-        <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3" />
-        <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" />
+        <circle cx="18" cy="5" r="3" />
+        <circle cx="6" cy="12" r="3" />
+        <circle cx="18" cy="19" r="3" />
+        <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
+        <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
       </svg>
     ),
   },
 ];
+
+// ── The lock decision, extracted for testability (2026-10-08) ──────
+//
+// `toolLock` used to live inline in WorkspaceHome, untestable without
+// mounting the whole shell. The decision is policy, so it belongs beside the
+// catalogue it polices, where it can be pinned data-level like the matrix
+// above.
+
+export type ToolLockReason = 'tier' | 'subscription' | 'role';
+
+export interface ToolGateContext {
+  roleName: string;
+  subscriptionState: SubscriptionUiState;
+  capsTier: string | null | undefined;
+  adminLocked: boolean;
+}
+
+export function resolveToolLock(
+  tool: ToolItem,
+  ctx: ToolGateContext,
+): ToolLockReason | 'none' | 'hidden' {
+  // Routed through `roleAtLeast` rather than an inline level comparison, so
+  // this gate and every other role gate read ONE vocabulary with the same
+  // default: an unrecognised role floor must DENY, not allow (ruled
+  // fail-closed 2026-09-16; owner ruling R20 keeps the rank authoritative
+  // for the home grid — see the catalogue header above).
+  if (!roleAtLeast(ctx.roleName, tool.access.minimumRole)) {
+    return tool.access.lockBelowRole ? 'role' : 'hidden';
+  }
+  // Role-only tools keep working through the signed grace window
+  // (operational continuity); everything hard-locks once the subscription
+  // is expired/canceled/paused or its data unreadable.
+  const validityOpen =
+    ctx.subscriptionState === 'active' ||
+    ctx.subscriptionState === 'grace' ||
+    ctx.subscriptionState === 'loading';
+  if (!validityOpen) return 'subscription';
+  // `loading` stays open through the ENTIRE gate, not just the validity
+  // half. `caps` is still null during the first fetch, so the tier check
+  // below would fail closed (`tierSatisfies(null, …)`) and useAdminGate
+  // locks on anything but `active` — together they flash-locked every paid
+  // tool on every cold start, the exact thing WorkspaceHome's comment
+  // forbids. The route's own gate re-checks fail-closed, so a click landing
+  // mid-fetch is still caught there; this only stops the COSMETIC flash.
+  if (ctx.subscriptionState === 'loading') return 'none';
+  if (tool.access.minimumTier !== 'free' && ctx.adminLocked) return 'subscription';
+  if (!tierSatisfies(ctx.capsTier, tool.access.minimumTier)) return 'tier';
+  return 'none';
+}

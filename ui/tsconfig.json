@@ -25,5 +25,6 @@
     }
   },
   "include": ["src"],
+  "exclude": ["src/build-id.node.ts"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }

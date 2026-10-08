@@ -42,7 +42,17 @@ pub struct Payment {
     /// Unique transaction reference returned by the payment gateway.
     pub gateway_reference: Option<String>,
 
-    /// Status returned by the payment gateway (e.g. "approved", "declined").
+    /// Tender state, constrained to ADR-64 D4’s closed set (migration
+    /// 20261018_gateway_status_adr64_vocabulary.sql): "pending", "authorized",
+    /// "confirmed", "settled", "failed", "voided", "refunded", "disputed",
+    /// "unconfirmed", or NULL.
+    ///
+    /// This is kasir.mu’s own tender vocabulary, NOT the gateway’s raw status —
+    /// which is why "settled" and "unconfirmed" are expressible here and a
+    /// Stripe "requires_capture" is not. The gateway’s own words belong in
+    /// gateway_response. (This field previously documented "approved" /
+    /// "declined", a vocabulary no layer of the tree writes and which the
+    /// CHECK would reject.)
     pub gateway_status: Option<String>,
 
     /// Raw JSON response returned by the payment gateway.
@@ -68,7 +78,8 @@ pub struct PaymentSplitArg {
     /// Optional transaction reference returned by the payment gateway.
     pub gateway_reference: Option<String>,
 
-    /// Optional status returned by the payment gateway.
+    /// Optional tender state; the same ADR-64 D4 closed set documented on
+    /// `Payment::gateway_status`.
     pub gateway_status: Option<String>,
 
     /// Optional raw response returned by the payment gateway.

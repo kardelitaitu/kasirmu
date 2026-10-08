@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 r"""
 scripts/verify-ci-docs-drift.py — Catch CI documentation drift between
-docs/operations/ci-pipeline.md, docs/releases/checklist.md, the workflow
-definitions, and the local runners.
+docs/operations/ci-pipeline.md, docs/records/releases/checklist.md, the
+workflow definitions, and the local runners. (The release checklist moved
+from docs/releases/ to docs/records/releases/ on 2026-10-02; RELEASE_CHECKLIST
+below resolves the new path with a fallback to the old one.)
 
 WHY
 ===
@@ -83,7 +85,11 @@ DOCS = ROOT / "docs" / "operations" / "ci-pipeline.md"
 # list went stale the moment this session added `static-gates` -- the same drift
 # class this checker exists to catch, in the one document a release manager
 # actually reads at ship time, and outside this script's scope until now.
-RELEASE_CHECKLIST = ROOT / "docs" / "releases" / "checklist.md"
+RELEASE_CHECKLIST = (
+    ROOT / "docs" / "records" / "releases" / "checklist.md"
+    if (ROOT / "docs" / "records" / "releases" / "checklist.md").is_file()
+    else ROOT / "docs" / "releases" / "checklist.md"
+)
 # The live-workflow RULE is shared; see scripts/_live_workflows.py. Six checkers
 # had their own copy of this question and three disagreed about .yaml, so half the suite
 # would have gone quiet on a .yaml workflow while the other half still checked it. The
@@ -1330,7 +1336,7 @@ def main() -> int:
         print()
     if checklist_problems:
         print(
-            f"  RELEASE CHECKLIST JOB LIST (docs/releases/checklist.md disagrees "
+            f"  RELEASE CHECKLIST JOB LIST (docs/records/releases/checklist.md disagrees "
             f"with dev-ci.yml) — {len(checklist_problems)}:"
         )
         for p in checklist_problems:

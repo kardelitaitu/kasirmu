@@ -1,6 +1,6 @@
 /**
  * CSS Comment Balance — the SEVENTH suite in the family
- * docs/frontend/css-verification.md names, and the only one that reads the
+ * docs/records/audits/frontend/css-verification.md names, and the only one that reads the
  * comments its siblings deliberately skip.
  *
  * WHAT IT GRADES. A CSS comment nests. A /* inside a comment's own PROSE is

@@ -16,6 +16,58 @@ fn sqlite_in_memory_creates_db() {
     assert!(!pool.is_postgres());
 }
 
+/// The cutover script's own PROSE counts must match its own ARRAY.
+///
+/// WHY THIS EXISTS. `scripts/rls-cutover.sql` FORCEs a 22-table array in step 3,
+/// but its rollback note claimed "all **19** tables" — three behind, exactly the
+/// drift `db_tests.rs`'s pg test records having found and fixed in ITS copy of the
+/// same list ("Was 19: the list here had drifted three tables behind the script it
+/// counts"). The number was corrected there and left stale HERE, in the file that
+/// test reads. Nothing checked it: the pg test counts TABLES IN A DATABASE, not
+/// the comment's arithmetic.
+///
+/// Runs WITHOUT PostgreSQL on purpose. The pg-gated test is the one that competes
+/// against a real cluster, so a documentation drift in the same file could only be
+/// caught on a machine that has one — this assertion needs neither a database nor
+/// a network, which is why it lives here.
+#[test]
+fn rls_cutover_prose_counts_match_its_own_arrays() {
+    const CUTOVER: &str = include_str!("../../../scripts/rls-cutover.sql");
+
+    let start = CUTOVER
+        .find("FOREACH t IN ARRAY ARRAY[")
+        .expect("rls-cutover.sql must keep its step-3 FOREACH array");
+    let rest = &CUTOVER[start..];
+    let end = rest.find(']').expect("the FOREACH array must be closed");
+    let arr = &rest[..end];
+
+    // Split on the single-quote delimiter and keep the ODD fragments: each name sits
+    // between two quotes, so the fragments separating them are the even ones.
+    let forced: Vec<&str> = arr
+        .split('\'')
+        .enumerate()
+        .filter(|(i, frag)| i % 2 == 1 && !frag.trim().is_empty())
+        .map(|(_, frag)| frag.trim())
+        .collect();
+
+    assert!(
+        forced.len() >= 15,
+        "expected the FORCE array to hold the tenant tables; parsed {} — if the file's \
+         shape changed, fix THIS parse rather than the script",
+        forced.len()
+    );
+
+    // The rollback note's number must equal what step 3 actually FORCEs.
+    let claim = format!("NO FORCE ROW LEVEL SECURITY  (all {} tables", forced.len());
+    assert!(
+        CUTOVER.contains(&claim),
+        "the rollback note in rls-cutover.sql must say `all {} tables`, matching step 3. \
+         A stale count sends an operator reversing a cutover to the wrong set, which is \
+         the drift db_tests.rs's pg test records fixing in its own copy of the list.",
+        forced.len()
+    );
+}
+
 #[test]
 fn sqlite_conn_returns_connection() {
     let pool = DbPool::connect_sqlite_in_memory().unwrap();
@@ -965,17 +1017,27 @@ async fn pg_integration_rls_force_blocks_owner() {
         .batch_execute(CUTOVER)
         .await
         .expect("cutover script must be idempotent");
-    // Count FORCEd tables among the 19 canonical tenant-scoped tables
-    // only (a stray probe table must not skew the proof).
+    // Count FORCEd tables among the 22 tables THIS script FORCEs (its step-3
+    // loop, verbatim) only — a stray probe table must not skew the proof.
+    //
+    // Was 19: the list here had drifted three tables behind the script it
+    // counts, so it silently ignored midtrans_transactions, sync_conflicts and
+    // sync_entity_vectors — three tables the script does FORCE. The assertion
+    // passed because it was measuring a subset of its own subject. Now it
+    // names all 22.
+    //
+    // NOT 29: the generator's RLS_TABLES list is 29, but this test executes
+    // rls-cutover.sql ALONE (include_str! above). The remaining 7 are forced by
+    // scripts/rls-cutover-force-remaining.sql, which this test does not run.
     let forced: i64 = client
         .query_one(
             "SELECT count(*) FROM pg_class c
              JOIN unnest(ARRAY['bundle_items','memo_locations','memo_recipients',
-                               'memos','offline_queue','product_activity',
+                               'memos','midtrans_transactions','offline_queue','product_activity',
                                'product_bundles','product_taxes','product_variants',
                                'products','refunds','sales','sent_reports','stripe_customers',
-                               'sync_terminals','tax_rates','tenant_plans',
-                               'tenant_subscription','users']) AS t(name)
+                               'sync_conflicts','sync_entity_vectors','sync_terminals','tax_rates',
+                               'tenant_plans','tenant_subscription','users']) AS t(name)
                ON c.relname = t.name
              WHERE c.relforcerowsecurity",
             &[],
@@ -984,7 +1046,7 @@ async fn pg_integration_rls_force_blocks_owner() {
         .expect("count should succeed")
         .get(0);
     assert_eq!(
-        forced, 19,
+        forced, 22,
         "the cutover must FORCE every tenant-scoped table"
     );
     client
@@ -995,11 +1057,11 @@ async fn pg_integration_rls_force_blocks_owner() {
         .query_one(
             "SELECT count(*) FROM pg_class c
              JOIN unnest(ARRAY['bundle_items','memo_locations','memo_recipients',
-                               'memos','offline_queue','product_activity',
+                               'memos','midtrans_transactions','offline_queue','product_activity',
                                'product_bundles','product_taxes','product_variants',
                                'products','refunds','sales','sent_reports','stripe_customers',
-                               'sync_terminals','tax_rates','tenant_plans',
-                               'tenant_subscription','users']) AS t(name)
+                               'sync_conflicts','sync_entity_vectors','sync_terminals','tax_rates',
+                               'tenant_plans','tenant_subscription','users']) AS t(name)
                ON c.relname = t.name
              WHERE c.relforcerowsecurity",
             &[],

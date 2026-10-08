@@ -1,24 +1,36 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { Localized, useLocalization } from '@fluent/react';
-import Tooltip from '@/app/Tooltip';
 import Fuse from 'fuse.js';
 import type { FuseResultMatch } from 'fuse.js';
+import { useSubscription } from '@/contexts/SubscriptionContext';
+import { tierSatisfies, type TierKey } from '@/utils/tierLevel';
+import { TIER_BADGE } from '@/utils/tierBadge';
 
 // ── Sidebar nav item type ─────────────────────────────────────────
 
 /**
  * One page in the flat settings sidebar IA. The category accordion is
  * gone: every entry is a page. `subpage` marks a drill-down page
- * (rendered indented with a guide border); `plus` marks a page gated
- * behind the Plus plan (badged in the nav).
+ * (rendered indented with a guide border).
+ *
+ * `minimumTier` is the PLAN this section needs, read through the same
+ * `tierSatisfies` comparison the home Tools cards use so the two surfaces
+ * cannot disagree. It replaced a hardcoded `plus?: boolean` that rendered a
+ * "Plus+" text pill on EVERY tier — including the ones that already have the
+ * feature. A boolean cannot answer "does THIS merchant have it", which is the
+ * only question the badge is there to answer, so the badge now shows only when
+ * the subscription actually falls short, and names that merchant's gap.
+ *
+ * Omitted = available on every tier (the common case).
  */
 export interface SettingsNavItem {
   key: string;
   label: string;
   icon: React.ReactNode;
   subpage?: boolean;
-  plus?: boolean;
+  /** The lowest plan that unlocks this section. Absent = all tiers. */
+  minimumTier?: TierKey;
 }
 
 // ── Flat page list (13 pages, fixed order) ────────────────────────
@@ -108,7 +120,7 @@ const NAV_ITEMS: SettingsNavItem[] = [
     key: 'data-management',
     label: 'Data Management',
     subpage: true,
-    plus: true,
+    minimumTier: 'plus',
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
         <ellipse cx="12" cy="5" rx="9" ry="3" />
@@ -121,7 +133,7 @@ const NAV_ITEMS: SettingsNavItem[] = [
     key: 'sync-status',
     label: 'Sync Status',
     subpage: true,
-    plus: true,
+    minimumTier: 'plus',
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
         <polyline points="23 4 23 10 17 10" />
@@ -235,6 +247,39 @@ interface SettingsNavTreeProps {
   onSearchChange: (q: string) => void;
   mobileSidebarOpen: boolean;
   onMobileClose: () => void;
+  deadLetterCount?: number;
+}
+
+// ── Plan badge (shared by the pinned and the main list) ───────────
+//
+// Extracted so the two lists cannot drift: the pinned group rendered icon +
+// label but NO badge, so a pinned "Sync Status" on a Free tier looked entitled
+// — the plan requirement vanished with the pin. Both sites now call this.
+//
+// Returns null when the section is available, which is the common case: the
+// badge states a GAP (`tierSatisfies` fails closed on absent caps, so a paid
+// tenant never sees one). The artwork is decorative; the plan is stated in text
+// for assistive tech, using the same Fluent key the home Tools cards use.
+function renderTierBadge(
+  minimumTier: TierKey | undefined,
+  currentTier: string | null | undefined,
+) {
+  if (!minimumTier || tierSatisfies(currentTier, minimumTier)) return null;
+  const badge = TIER_BADGE[minimumTier];
+  return (
+    <span className="settings-nav-tier-badge">
+      <img
+        src={badge.src}
+        width={badge.width}
+        height={badge.height}
+        alt=""
+        aria-hidden="true"
+      />
+      <Localized id={`workspace-home-tools-requires-tier-${minimumTier}`}>
+        <span className="settings-nav-sr-only">Requires {minimumTier} plan</span>
+      </Localized>
+    </span>
+  );
 }
 
 // ── Component ─────────────────────────────────────────────────────
@@ -246,8 +291,14 @@ const SettingsNavTree = function SettingsNavTree({
   onSearchChange,
   mobileSidebarOpen,
   onMobileClose,
+  deadLetterCount,
 }: SettingsNavTreeProps) {
   const { l10n } = useLocalization();
+  // The tenant's tier, for the plan badges on the two Plus-gated rows. The
+  // capability read is already profile-independent and fails closed (no caps
+  // => `tierSatisfies` denies every non-free minimum), so a failed or
+  // in-flight read cannot flash a badge off a paid tenant.
+  const { caps } = useSubscription();
   const sidebarRef = useRef<HTMLElement>(null);
 
   // P60-4b: Focus trap on mobile sidebar overlay
@@ -622,19 +673,17 @@ const SettingsNavTree = function SettingsNavTree({
               on the right already owns it.) */}
           {!sidebarCollapsed && (
             <div className="settings-shortcut-btn-wrap" ref={shortcutRef}>
-              <Tooltip content={l10n.getString('settings-shortcut-btn-aria')} fit="inline" portal>
-                <button
-                  type="button"
-                  className="settings-shortcut-btn"
-                  onClick={() => setShowShortcuts((p) => !p)}
-                  aria-label={l10n.getString('settings-shortcut-btn-aria')}
-                >
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="14" height="14" aria-hidden="true">
-                    <rect x="2" y="4" width="20" height="16" rx="2" />
-                    <path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M8 12h.01M12 12h.01M16 12h.01M6 16h.01M10 16h.01M14 16h4" />
-                  </svg>
-                </button>
-              </Tooltip>
+              <button
+                type="button"
+                className="settings-shortcut-btn"
+                onClick={() => setShowShortcuts((p) => !p)}
+                aria-label={l10n.getString('settings-shortcut-btn-aria')}
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="14" height="14" aria-hidden="true">
+                  <rect x="2" y="4" width="20" height="16" rx="2" />
+                  <path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M8 12h.01M12 12h.01M16 12h.01M6 16h.01M10 16h.01M14 16h4" />
+                </svg>
+              </button>
               {showShortcuts && (
                 <div className="settings-shortcuts-popover" role="tooltip">
                   <div className="settings-shortcuts-title">{l10n.getString('settings-shortcuts-title')}</div>
@@ -704,19 +753,32 @@ const SettingsNavTree = function SettingsNavTree({
                       <span className="settings-nav-label">
                         <Localized id={NAV_L10N_KEYS[item.key] ?? ''}>{item.label}</Localized>
                       </span>
+                      {/* A pinned gated section states its plan like any other
+                          row. Without this the pin HID the requirement, so a
+                          pinned "Sync Status" on Free looked entitled. */}
+                      {renderTierBadge(item.minimumTier, caps?.tier)}
+                      {(key === 'data-sync' || key === 'sync-conflicts') &&
+                        deadLetterCount !== undefined &&
+                        deadLetterCount > 0 &&
+                        !sidebarCollapsed && (
+                          <span
+                            className="settings-nav-count-badge"
+                            aria-label={l10n.getString('sync-conflicts-badge-aria', { count: deadLetterCount })}
+                          >
+                            {deadLetterCount}
+                          </span>
+                        )}
                     </button>
-                    <Tooltip content={l10n.getString('settings-nav-unpin-title')} fit="inline" portal>
-                      <button
-                        type="button"
-                        className="settings-nav-pin-btn pinned"
-                        onClick={() => togglePin(key)}
-                        aria-label={l10n.getString('settings-nav-unpin-aria', { name: item.label })}
-                      >
-                        <svg viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="12" height="12" aria-hidden="true">
-                          <path d="M12 2L9.5 10L2 11l6 6l-1.5 7L12 18l6.5 6L17 17l6-6l-7.5-1z" />
-                        </svg>
-                      </button>
-                    </Tooltip>
+                    <button
+                      type="button"
+                      className="settings-nav-pin-btn pinned"
+                      onClick={() => togglePin(key)}
+                      aria-label={l10n.getString('settings-nav-unpin-aria', { name: item.label })}
+                    >
+                      <svg viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="12" height="12" aria-hidden="true">
+                        <path d="M12 2L9.5 10L2 11l6 6l-1.5 7L12 18l6.5 6L17 17l6-6l-7.5-1z" />
+                      </svg>
+                    </button>
                   </div>
                 );
               })}
@@ -750,47 +812,51 @@ const SettingsNavTree = function SettingsNavTree({
                 const l10nKey = NAV_L10N_KEYS[key] ?? '';
                 return (
                   <div key={key} className="settings-nav-item-wrapper" role="listitem">
-                    <Tooltip content={l10n.getString(l10nKey)} showDelay={800} portal>
+                    <button
+                      type="button"
+                      aria-current={activeSection === key ? 'page' : undefined}
+                      className={`settings-nav-item${item.subpage ? ' settings-nav-item--subpage' : ''}${activeSection === key ? ' settings-nav-item--active' : ''}`}
+                      onClick={() => onNavigate(key)}
+                      aria-label={l10n.getString(l10nKey)}
+                    >
+                      <span className="settings-nav-icon">{item.icon}</span>
+                      <span className="settings-nav-label">
+                        {q ? (
+                          highlightLabel(
+                            resolveLocalizedLabel(l10n, l10nKey || item.key, item.label),
+                            searchMatches?.get(key),
+                          )
+                        ) : (
+                          <Localized id={l10nKey}>{item.label}</Localized>
+                        )}
+                      </span>
+                      {/* The plan badge, when this section is gated above the
+                          merchant's tier. Shared with the pinned list via
+                          renderTierBadge so the two cannot drift. */}
+                      {!sidebarCollapsed && renderTierBadge(item.minimumTier, caps?.tier)}
+                      {(key === 'data-sync' || key === 'sync-conflicts') &&
+                        deadLetterCount !== undefined &&
+                        deadLetterCount > 0 &&
+                        !sidebarCollapsed && (
+                          <span
+                            className="settings-nav-count-badge"
+                            aria-label={l10n.getString('sync-conflicts-badge-aria', { count: deadLetterCount })}
+                          >
+                            {deadLetterCount}
+                          </span>
+                        )}
+                    </button>
+                    {!sidebarCollapsed && (
                       <button
                         type="button"
-                        aria-current={activeSection === key ? 'page' : undefined}
-                        className={`settings-nav-item${item.subpage ? ' settings-nav-item--subpage' : ''}${activeSection === key ? ' settings-nav-item--active' : ''}`}
-                        onClick={() => onNavigate(key)}
-                        aria-label={l10n.getString(l10nKey)}
+                        className={`settings-nav-pin-btn${pinnedSections.includes(key) ? ' pinned' : ''}`}
+                        onClick={() => togglePin(key)}
+                        aria-label={pinnedSections.includes(key) ? l10n.getString('settings-nav-unpin-aria', { name: item.label }) : l10n.getString('settings-nav-pin-aria', { name: item.label })}
                       >
-                        <span className="settings-nav-icon">{item.icon}</span>
-                        <span className="settings-nav-label">
-                          {q ? (
-                            highlightLabel(
-                              resolveLocalizedLabel(l10n, l10nKey || item.key, item.label),
-                              searchMatches?.get(key),
-                            )
-                          ) : (
-                            <Localized id={l10nKey}>{item.label}</Localized>
-                          )}
-                        </span>
-                        {item.plus && !sidebarCollapsed && (
-                          <span className="settings-nav-plus-badge" aria-label={l10n.getString('settings-nav-plus-badge-aria')}>Plus+</span>
-                        )}
+                        <svg viewBox="0 0 24 24" fill={pinnedSections.includes(key) ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="12" height="12" aria-hidden="true">
+                          <path d="M12 2L9.5 10L2 11l6 6l-1.5 7L12 18l6.5 6L17 17l6-6l-7.5-1z" />
+                        </svg>
                       </button>
-                    </Tooltip>
-                    {!sidebarCollapsed && (
-                      <Tooltip
-                        content={pinnedSections.includes(key) ? l10n.getString('settings-nav-unpin-title') : l10n.getString('settings-nav-pin-title')}
-                        fit="inline"
-                        portal
-                      >
-                        <button
-                          type="button"
-                          className={`settings-nav-pin-btn${pinnedSections.includes(key) ? ' pinned' : ''}`}
-                          onClick={() => togglePin(key)}
-                          aria-label={pinnedSections.includes(key) ? l10n.getString('settings-nav-unpin-aria', { name: item.label }) : l10n.getString('settings-nav-pin-aria', { name: item.label })}
-                        >
-                          <svg viewBox="0 0 24 24" fill={pinnedSections.includes(key) ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="12" height="12" aria-hidden="true">
-                            <path d="M12 2L9.5 10L2 11l6 6l-1.5 7L12 18l6.5 6L17 17l6-6l-7.5-1z" />
-                          </svg>
-                        </button>
-                      </Tooltip>
                     )}
                   </div>
                 );

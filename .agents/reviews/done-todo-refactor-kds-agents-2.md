@@ -18,7 +18,7 @@
 
 **Target File:** `ui/src/features/kds/KdsScreen.tsx` (Render Tree)  
 **Sibling Documents:**
-- [`todo-refactor-kds-agents-1.md`](./todo-refactor-kds-agents-1.md) (Agent 1 — KDS Ticket State Machine & Input Peripherals) — still live at the root.
+- [`done-todo-refactor-kds-agents-1.md`](done-todo-refactor-kds-agents-1.md) (Agent 1 — KDS Ticket State Machine & Input Peripherals) — still live at the root.
 - `done-todo-refactor-kds-agents-3.md` (Agent 3 — Restaurant Menu, Course Grouping & Modifier Popups) — **finished and archived**.
 
 ---

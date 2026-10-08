@@ -884,3 +884,19 @@ so both are named with their evidence base so a future order can start from it r
 Read the two boxes above first. Everything else here is a measurement at `30d6e035f` and will rot;
 re-derive before quoting, exactly as this file's own preamble demands.
 
+> **ARCHIVED, NOT EARNED — recorded 2026-10-07 so the prefix is not read as a passed acceptance.**
+> This file's own text refuses the `done-` token at :23 and :766: it was never placed at the root by the convention it invokes, and its acceptance (`npm run check:all`) failed on 14-09. That reading was correct
+> when written and is not withdrawn here. **The `done-` prefix nonetheless sits on the filename, and its
+> origin is not this plan's acceptance at all** — `68cecff21` (2026-09-17, *"docs(plans): archive completed
+> pre-rebrand todo files to .agents/ with done- prefix"*) renamed **ten files in one commit** with an
+> explicit `R100` and a one-line message. It was a blanket **archival** classification, and it could not
+> have run ten acceptance commands.
+>
+> **So read `done-` here as "archived" — the state `AGENTS.md` §7.4 does not currently distinguish.** §7.4
+> defines the token as *earned by a passed acceptance*, and says nothing about a file archived with a
+> different history. The name is kept because it is **load-bearing** — and *not* for the reason it first appeared.
+> `check-dead-refs.py:393` exempts any doc whose name contains `todo-`, `plan-` or `prd-`, and
+> `done-todo-*` matches on its `todo-` substring, so BOTH spellings stay exempt and this file's
+> checker coverage is unaffected either way. The prefix therefore decides nothing about which tool
+> reads the file; it is kept only because a second rename would be churn on a settled archive. The refusal above stays as written: it is a dated
+> verdict and rewriting it to match today would falsify it.

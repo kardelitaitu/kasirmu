@@ -154,3 +154,16 @@ flowchart TD
 The `kasir.mu` server design is not an accidental microservice-versus-monolith debate; it is an **intentional strategic moat**:
 * It trades away junior-developer familiarity and rapid throwaway prototyping.
 * In exchange, it achieves **unrivaled operational margins (<1% cloud cost)**, **zero-downtime offline reliability for store owners**, and **massive capital efficiency** that legacy competitors cannot match without destroying their own legacy businesses.
+
+> last audited 07-10-26 by docs-auditor
+
+<!-- Audit 2026-10-07 (docs-auditor): technical claims verified against the tree, not re-read.
+     Verified accurate: apps/cloud-server is Rust/Axum on :3099 (63 refs); apps/license-server
+     is Go on :8080; apps/unified exists and carries Caddyfile + supervisord.conf as described;
+     the workspace coverage figure (73.9%) matches scripts/coverage-floors.json:13 exactly.
+     NOT verified: the 1.33M+ LOC figure and the 9,000+ test count -- both are point-in-time
+     measurements with no machine-readable source in the tree, so they are claims this audit
+     could neither confirm nor refute. The market/competitor analysis (sections 4-5) is
+     business judgement, outside a docs-vs-code audit's reach.
+     Footer added: the file carried a stamp but no machine-readable footer, which
+     check-audit-stamps.py reports as a gap. -->

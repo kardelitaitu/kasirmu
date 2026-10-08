@@ -132,9 +132,12 @@ use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::broadcast;
 
+pub mod client;
+pub mod crdt_sync;
 mod kds_sync;
 mod noise;
 mod replay;
+pub mod table_sync;
 
 use replay::{OfflineReplayBuffer, ReplayKey};
 
@@ -146,11 +149,22 @@ pub(crate) use noise::{
 #[cfg(test)]
 pub(crate) use noise::{NOISE_MAX_FRAME, NOISE_PATTERN, noise_psk_bytes, noise_static_secret};
 
+pub use client::{LanClientConfig, LanClientHandle, LanEvent, start_lan_client};
+pub use crdt_sync::{
+    CRDT_EVENT_TAG_PREFIX, CrdtDeltaBroadcast, CrdtSyncEvent, CrdtSyncHandler,
+    EVENT_CRDT_DELTA_BROADCAST,
+};
 pub use kds_sync::{
     EVENT_LINE_ITEM_BUMPED, EVENT_ORDER_PLACED, EVENT_ORDER_READY, EVENT_ORDER_RECALLED,
     KDS_EVENT_TAG_PREFIX, KdsLineItemBumped, KdsOrderPlaced, KdsOrderReady, KdsOrderRecalled,
     KdsQueueProvider, KdsQueueSnapshot, KdsQueueTicket, KdsSyncEvent, KdsSyncHandler,
-    PeerSubscription, event_station_scope, should_deliver,
+    PeerSubscription, TableLeaseProvider, TableStateProvider, event_station_scope, should_deliver,
+};
+pub use table_sync::{
+    EVENT_TABLE_CLAIM_REQUESTED, EVENT_TABLE_LOCK_ACQUIRED, EVENT_TABLE_LOCK_RELEASED,
+    EVENT_TABLE_STATUS_CHANGED, TABLE_EVENT_TAG_PREFIX, TableClaimRequested, TableLease,
+    TableLeaseTracker, TableLockAcquired, TableLockReleased, TableStatusChanged, TableSyncEvent,
+    TableSyncHandler,
 };
 
 /// Whether a bind address is loopback-only (LAN-A).
@@ -265,6 +279,8 @@ struct DiscoverMsg {
     #[serde(default)]
     want_queue: bool,
     #[serde(default)]
+    want_tables: bool,
+    #[serde(default)]
     station_ids: Vec<String>,
     #[serde(default)]
     device_id: Option<String>,
@@ -299,7 +315,18 @@ pub struct LanEventForwarder {
     /// (`{"op":"discover","want_queue":true}`). `None` disables snapshot
     /// injection — legacy discovery responses are then byte-identical.
     kds_queue: Option<KdsQueueProvider>,
+    /// Live floor table snapshot source for reconnecting peers
+    /// (`{"op":"discover","want_tables":true}`).
+    table_provider: Option<TableStateProvider>,
+    /// Live active table leases snapshot source for reconnecting peers
+    /// (`{"op":"discover","want_tables":true}`).
+    lease_provider: Option<TableLeaseProvider>,
+    /// Optional handler for processing uplink messages from connected peers.
+    uplink_handler: Option<UplinkHandler>,
 }
+
+/// Callback for processing uplink lines received from connected LAN peers.
+pub type UplinkHandler = Arc<dyn Fn(String) + Send + Sync>;
 
 /// Handle for registering event bus handlers.
 ///
@@ -320,6 +347,9 @@ impl LanEventForwarder {
             psk: psk.map(Arc::new),
             discovery_payload: None,
             kds_queue: None,
+            table_provider: None,
+            lease_provider: None,
+            uplink_handler: None,
         }
     }
 
@@ -331,6 +361,12 @@ impl LanEventForwarder {
     /// identity, active devices, and version information.
     pub fn with_discovery(mut self, payload: String) -> Self {
         self.discovery_payload = Some(Arc::new(payload));
+        self
+    }
+
+    /// Attach a handler for uplink messages sent by connected LAN peers.
+    pub fn with_uplink_handler(mut self, handler: UplinkHandler) -> Self {
+        self.uplink_handler = Some(handler);
         self
     }
 
@@ -359,6 +395,18 @@ impl LanEventForwarder {
     // owned by the live registration-gate session.
     pub fn with_kds_queue(mut self, provider: KdsQueueProvider) -> Self {
         self.kds_queue = Some(provider);
+        self
+    }
+
+    /// Attach a live floor table snapshot provider for reconnect reconciliation.
+    pub fn with_table_provider(mut self, provider: TableStateProvider) -> Self {
+        self.table_provider = Some(provider);
+        self
+    }
+
+    /// Attach a live active table lease provider for reconnect reconciliation.
+    pub fn with_table_leases(mut self, provider: TableLeaseProvider) -> Self {
+        self.lease_provider = Some(provider);
         self
     }
 
@@ -410,6 +458,9 @@ impl LanEventForwarder {
 
         let psk = self.psk.clone();
         let kds_queue = self.kds_queue.clone();
+        let table_provider = self.table_provider.clone();
+        let lease_provider = self.lease_provider.clone();
+        let uplink = self.uplink_handler.clone();
 
         loop {
             match listener.accept().await {
@@ -427,6 +478,9 @@ impl LanEventForwarder {
                     let psk_clone = psk.clone();
                     let discovery = self.discovery_payload.clone();
                     let kds_queue_clone = kds_queue.clone();
+                    let table_provider_clone = table_provider.clone();
+                    let lease_provider_clone = lease_provider.clone();
+                    let uplink_clone = uplink.clone();
                     tokio::spawn(handle_peer(
                         stream,
                         addr,
@@ -435,6 +489,9 @@ impl LanEventForwarder {
                         psk_clone,
                         discovery,
                         kds_queue_clone,
+                        table_provider_clone,
+                        lease_provider_clone,
+                        uplink_clone,
                     ));
                 }
                 Err(e) => {
@@ -512,6 +569,18 @@ pub struct KdsDiscoverResponse {
     /// response.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub active_queue: Option<KdsQueueSnapshot>,
+    /// Reconnect reconciliation (multi-terminal floor tables): the current table
+    /// status snapshot, present only when the peer's discovery request opted
+    /// in with `want_tables: true` **and** a provider is configured via
+    /// [`LanEventForwarder::with_table_provider`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub table_states: Option<Vec<kasirmu_core::Table>>,
+    /// Reconnect reconciliation (multi-terminal active table leases):
+    /// the current active table leases snapshot, present only when the peer's
+    /// discovery request opted in with `want_tables: true` **and** a provider
+    /// is configured via [`LanEventForwarder::with_table_leases`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub active_leases: Option<Vec<table_sync::TableLease>>,
 }
 
 // ── Peer handler ─────────────────────────────────────────────────────
@@ -551,6 +620,9 @@ pub struct KdsDiscoverResponse {
 ///
 /// The handshake runs inside the spawned task so a slow/malicious peer
 /// cannot block the accept loop (DoS protection).
+#[allow(clippy::too_many_arguments)] // the accept loop's wiring point: each provider is an
+// independently-optional collaborator, and grouping them would add a struct whose
+// only purpose is to satisfy this lint
 async fn handle_peer(
     stream: TcpStream,
     peer_addr: String,
@@ -559,6 +631,9 @@ async fn handle_peer(
     psk: Option<Arc<String>>,
     discovery_payload: Option<Arc<String>>,
     kds_queue: Option<KdsQueueProvider>,
+    table_provider: Option<TableStateProvider>,
+    lease_provider: Option<TableLeaseProvider>,
+    uplink_handler: Option<UplinkHandler>,
 ) {
     let timeout_dur = std::time::Duration::from_secs(PSK_HANDSHAKE_TIMEOUT_SECS);
     // Per-peer kds-sync subscription; None = receive everything
@@ -705,6 +780,9 @@ async fn handle_peer(
                                     payload,
                                     d.want_queue,
                                     kds_queue.as_ref(),
+                                    d.want_tables,
+                                    table_provider.as_ref(),
+                                    lease_provider.as_ref(),
                                 );
                                 let mut out = vec![0u8; response.len() + 32];
                                 if let Ok(en) = state.write_message(response.as_bytes(), &mut out) {
@@ -768,6 +846,9 @@ async fn handle_peer(
                                 payload,
                                 d.want_queue,
                                 kds_queue.as_ref(),
+                                d.want_tables,
+                                table_provider.as_ref(),
+                                lease_provider.as_ref(),
                             );
                             let response = format!("{response}\n");
                             if let Err(e) = stream.get_mut().write_all(response.as_bytes()).await {
@@ -878,50 +959,111 @@ async fn handle_peer(
     // before initial events are flushed.
     heartbeat.tick().await;
 
-    loop {
-        tokio::select! {
-            biased;
+    if let Some(handler) = uplink_handler {
+        loop {
+            tokio::select! {
+                biased;
 
-            msg = rx.recv() => {
-                match msg {
-                    Ok(msg) => {
-                        // kds-sync: station-scoped peer filter — a line
-                        // outside this peer's stations is dropped, not
-                        // buffered (it belongs to another station).
-                        if !should_deliver(subscription.as_ref(), &msg) {
-                            continue;
+                msg = rx.recv() => {
+                    match msg {
+                        Ok(msg) => {
+                            if !should_deliver(subscription.as_ref(), &msg) {
+                                continue;
+                            }
+                            if let Err(e) = conn.send_line(&msg).await {
+                                tracing::debug!(
+                                    peer = %peer_addr,
+                                    error = %e,
+                                    "LAN peer disconnected, event buffered"
+                                );
+                                offline_buffer.push(&replay_key, &peer_addr, msg).await;
+                                return;
+                            }
                         }
-                        if let Err(e) = conn.send_line(&msg).await {
-                            tracing::debug!(
-                                peer = %peer_addr,
-                                error = %e,
-                                "LAN peer disconnected, event buffered"
-                            );
-                            // Buffer the event for replay on reconnection
-                            // under this peer's replay identity (caps
-                            // enforced by `push`).
-                            offline_buffer.push(&replay_key, &peer_addr, msg).await;
+                        Err(broadcast::error::RecvError::Lagged(count)) => {
+                            tracing::warn!(peer = %peer_addr, skipped = count, "LAN peer lagged");
+                        }
+                        Err(broadcast::error::RecvError::Closed) => {
+                            tracing::debug!(peer = %peer_addr, "LAN forwarder shutting down");
                             return;
                         }
                     }
-                    Err(broadcast::error::RecvError::Lagged(count)) => {
-                        tracing::warn!(peer = %peer_addr, skipped = count, "LAN peer lagged");
+                }
+
+                incoming_res = conn.read_line() => {
+                    match incoming_res {
+                        Ok(Some(line)) => {
+                            let trimmed = line.trim();
+                            if trimmed.starts_with(crate::kds_sync::KDS_EVENT_TAG_PREFIX)
+                                || trimmed.starts_with(crate::table_sync::TABLE_EVENT_TAG_PREFIX)
+                                || trimmed.starts_with(crate::crdt_sync::CRDT_EVENT_TAG_PREFIX)
+                            {
+                                handler(trimmed.to_string());
+                            }
+                        }
+                        Ok(None) => {
+                            tracing::debug!(peer = %peer_addr, "LAN peer disconnected (EOF)");
+                            return;
+                        }
+                        Err(e) => {
+                            tracing::debug!(peer = %peer_addr, error = %e, "LAN peer read error");
+                            return;
+                        }
                     }
-                    Err(broadcast::error::RecvError::Closed) => {
-                        tracing::debug!(peer = %peer_addr, "LAN forwarder shutting down");
+                }
+
+                _ = heartbeat.tick() => {
+                    if let Err(e) = conn.send_line("{\"type\":\"ping\"}").await {
+                        tracing::debug!(
+                            peer = %peer_addr,
+                            error = %e,
+                            "LAN peer disconnected (heartbeat)"
+                        );
                         return;
                     }
                 }
             }
+        }
+    } else {
+        loop {
+            tokio::select! {
+                biased;
 
-            _ = heartbeat.tick() => {
-                if let Err(e) = conn.send_line("{\"type\":\"ping\"}").await {
-                    tracing::debug!(
-                        peer = %peer_addr,
-                        error = %e,
-                        "LAN peer disconnected (heartbeat)"
-                    );
-                    return;
+                msg = rx.recv() => {
+                    match msg {
+                        Ok(msg) => {
+                            if !should_deliver(subscription.as_ref(), &msg) {
+                                continue;
+                            }
+                            if let Err(e) = conn.send_line(&msg).await {
+                                tracing::debug!(
+                                    peer = %peer_addr,
+                                    error = %e,
+                                    "LAN peer disconnected, event buffered"
+                                );
+                                offline_buffer.push(&replay_key, &peer_addr, msg).await;
+                                return;
+                            }
+                        }
+                        Err(broadcast::error::RecvError::Lagged(count)) => {
+                            tracing::warn!(peer = %peer_addr, skipped = count, "LAN peer lagged");
+                        }
+                        Err(broadcast::error::RecvError::Closed) => {
+                            tracing::debug!(peer = %peer_addr, "LAN forwarder shutting down");
+                            return;
+                        }
+                    }
+                }
+
+                _ = heartbeat.tick() => {
+                    if let Err(e) = conn.send_line("{\"type\":\"ping\"}").await {
+                        tracing::debug!(
+                            peer = %peer_addr,
+                            error = %e,
+                            "LAN peer disconnected (heartbeat)"
+                        );
+                        return;
+                    }
                 }
             }
         }
@@ -965,6 +1107,29 @@ impl LanForwarderHandle {
         KdsSyncHandler {
             tx: self.tx.clone(),
         }
+    }
+
+    /// Create an `EventHandler<TableSyncEvent>` that serialises the
+    /// table state transition event to JSON and broadcasts it to connected
+    /// LAN peers.
+    pub fn table_sync_handler(&self) -> TableSyncHandler {
+        TableSyncHandler {
+            tx: self.tx.clone(),
+        }
+    }
+
+    /// Create an `EventHandler<CrdtSyncEvent>` that serialises the
+    /// CRDT mutation delta event to JSON and broadcasts it to connected
+    /// LAN peers.
+    pub fn crdt_sync_handler(&self) -> CrdtSyncHandler {
+        CrdtSyncHandler {
+            tx: self.tx.clone(),
+        }
+    }
+
+    /// Broadcast a JSON line to all connected LAN peers.
+    pub fn broadcast(&self, event_json: String) {
+        let _ = self.tx.send(event_json);
     }
 }
 

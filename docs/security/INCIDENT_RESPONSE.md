@@ -378,11 +378,16 @@ What went well? What could be improved?
 
 > ⚠️ **This section describes an integration that does not exist.** Verified 08-09-26:
 > `incident.report` appears **zero times** in the Rust, TypeScript and Go sources — no
-> constant, no writer, no test. The shipped audit action vocabulary is five
-> `pub const SECURITY_ACTION_*` / `SECURITY_REASON_*` entries in
-> `crates/oz-core/src/db/audit_security.rs`: `login`, `login.failed`, `logout`,
-> `user.create`, `user.update`. Everything below is a **specification**, not a
-> description, and is still worth having — but an on-call engineer who follows step 4 of
+> constant, no writer, no test. The shipped audit action vocabulary is eight
+> `pub const SECURITY_ACTION_*` entries in
+> `crates/kasirmu-core/src/db/audit_security.rs` (`SECURITY_ACTIONS`, `:82-91`): `login`,
+> `login.failed`, `logout`, `user.create`, `user.update`, `impersonate.start`,
+> `impersonate.stop`, `org.switch`. *(Corrected 2026-10-07: this said "five" and listed
+> five; three were added since 08-09-26. `incident.report` is still absent — re-measured
+> at 0 hits in the Rust sources — so the warning this paragraph makes stands.)*
+>
+> Everything below is a **specification**, not a description, and is still
+> worth having — but an on-call engineer who follows step 4 of
 > §4.2 ("Log the incident in the audit log with action `"incident.report"`") will find no
 > such action to log. Note the contrast with this document's own §7.3 and §12, which *do*
 > mark their missing files "⚠️ Pending": the same care was never applied to a missing
@@ -438,7 +443,7 @@ ORDER BY created_at DESC;
 
 ### 10.4 No Code Changes Required
 
-The audit log system's `action` field is a free-form string (see `crates/oz-core/src/db/audit.rs`). No schema migration or code change is needed to use the `"incident.report"` action type — it follows the existing naming convention. The incident response team should use this action type when logging incident-related events via `Store::log_audit()`.
+The audit log system's `action` field is a free-form string (see `crates/kasirmu-core/src/db/audit.rs`). No schema migration or code change is needed to use the `"incident.report"` action type — it follows the existing naming convention. The incident response team should use this action type when logging incident-related events via `Store::log_audit()`.
 
 ---
 

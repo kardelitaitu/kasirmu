@@ -39,6 +39,10 @@ const testL10n = {
       'workspace-pos-scanner-heading': 'Barcode Scanner',
       'workspace-pos-scanner-mode': 'Input Mode',
       'workspace-pos-scanner-device': 'Device ID',
+      'workspace-pos-printer-bluetooth': 'Bluetooth Address (MAC)',
+      'workspace-pos-hardware-actions': 'Hardware Actions',
+      'workspace-pos-test-print': 'Test Print',
+      'workspace-pos-test-drawer': 'Test Cash Drawer',
       'save': 'Save',
       'settings-save-error': 'Save failed',
     };
@@ -53,10 +57,20 @@ const testL10n = {
 
 const apiMocks = vi.hoisted(() => ({
   setReceiptSettingsScoped: vi.fn((_token: string, _args: Record<string, unknown>) => Promise.resolve()),
+  openCashDrawerScoped: vi.fn(() => Promise.resolve({ opened: true })),
+  printSalesReceipt: vi.fn(() => Promise.resolve({ printed: true })),
 }));
 
 vi.mock('@/api/settings', () => ({
   setReceiptSettingsScoped: apiMocks.setReceiptSettingsScoped,
+}));
+
+vi.mock('@/api/hardware', () => ({
+  openCashDrawerScoped: apiMocks.openCashDrawerScoped,
+}));
+
+vi.mock('@/api/sales', () => ({
+  printSalesReceipt: apiMocks.printSalesReceipt,
 }));
 
 // ── Mock state ──────────────────────────────────────────────────────
@@ -479,5 +493,23 @@ describe('WorkspaceStorePosSettings', () => {
       toggleSpans,
       'found hardcoded English "Toggle" sr-only strings — these must be wrapped in <Localized id="toggle">',
     ).toHaveLength(0);
+  });
+
+  it('renders hardware test buttons and invokes test print and test drawer', async () => {
+    renderCard({ terminalId: 'term-1' });
+    const printBtn = screen.getByRole('button', { name: /test print/i });
+    const drawerBtn = screen.getByRole('button', { name: /test cash drawer/i });
+    expect(printBtn).toBeInTheDocument();
+    expect(drawerBtn).toBeInTheDocument();
+
+    fireEvent.click(printBtn);
+    await waitFor(() => {
+      expect(apiMocks.printSalesReceipt).toHaveBeenCalled();
+    });
+
+    fireEvent.click(drawerBtn);
+    await waitFor(() => {
+      expect(apiMocks.openCashDrawerScoped).toHaveBeenCalled();
+    });
   });
 });

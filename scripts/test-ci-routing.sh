@@ -110,8 +110,16 @@ check "ui lockfile"         "rust=false ui=true i18n=false website=false docs=fa
 check "ftl bundle"          "rust=false ui=true i18n=true website=false docs=false release=false"  "shared-ui/locales/en/reports.ftl"
 check "website only"        "rust=false ui=false i18n=false website=true docs=false release=false" "website/src/pages/index.astro"
 # prototypes/ is outside website/ but its HTML is copied into
-# website/public/dev/ verbatim by scripts/sync-dev-files.mjs on prebuild, so it
-# reaches the build and check:seo's heading rule. Pinned because before this
+# website/public/dev/ verbatim by website/scripts/sync-dev-files.mjs on prebuild
+# (public/dev/ is gitignored - it is generated there), so it reaches the build and
+# check:seo's heading rule. Pinned because before this
+# rule the path matched NO bucket and a prototypes-only PR ran no job at all.
+#
+# NOTE: the generator's path is website/scripts/, NOT the repo-root scripts/.
+# An earlier revision of this comment named it as a repo-root path and a later
+# revision of this comment wrongly concluded "nothing regenerates it" - both
+# from searching only scripts/. website/scripts/sync-dev-files.mjs has existed
+# all along and is wired in website/scripts/prebuild.mjs phase 1.
 # rule the path matched NO bucket and a prototypes-only PR ran no job at all.
 check "prototype html"      "rust=false ui=false i18n=false website=true docs=false release=false" "prototypes/kds-prototype.html"
 # Go is its own bucket because apps/license-server is a SEPARATE Go module, not a
@@ -128,7 +136,12 @@ check "docs only"           "rust=false ui=false i18n=false website=false docs=t
 # docs/releases/ matches BOTH rules. Pinned deliberately: it is the one path that
 # legitimately belongs to two buckets, and a router that made them mutually
 # exclusive would silently stop checking release docs for drift.
-check "release doc (both)"  "rust=false ui=false i18n=false website=false docs=true release=true"  "docs/releases/checklist.md"
+check "release doc (both)"  "rust=false ui=false i18n=false website=false docs=true release=true"  "docs/records/releases/checklist.md"
+# The legacy shape is pinned too: docs/releases/ moved to docs/records/releases/ on
+# 2026-10-02, and the router must keep matching both so a revert cannot quietly
+# stop exercising the release chain. This case failed until the pattern was
+# widened to ^docs/(records/)?releases/ -- see todo-docs-restructure.md 6c.
+check "release doc (legacy)" "rust=false ui=false i18n=false website=false docs=true release=true"  "docs/releases/checklist.md"
 check "gate manifest"       "rust=false ui=false i18n=false website=false docs=true release=false" "scripts/gates.json"
 check "drift checker"       "rust=false ui=false i18n=false website=false docs=true release=false" "scripts/verify-ci-docs-drift.py"
 # Release toolchain. Each of these can break a shipped auto-update while every

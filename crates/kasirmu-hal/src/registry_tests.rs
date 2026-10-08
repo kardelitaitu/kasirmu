@@ -39,6 +39,40 @@ async fn register_printer_and_drawer() {
 }
 
 #[tokio::test]
+async fn cash_drawer_default_falls_back_to_companion_kick_drawer() {
+    let reg = DriverRegistry::default();
+    let companion_drawer: Arc<dyn CashDrawer> = Arc::new(MockCashDrawer::with_info(
+        DeviceInfo::new("test", "MockKickDrawer", "0004"),
+    ));
+    reg.register_cash_drawer("drawer:kick:default", companion_drawer)
+        .await;
+    let found = reg.cash_drawer("default").await;
+    assert!(found.is_some());
+    assert_eq!(found.unwrap().device_info().model, "MockKickDrawer");
+}
+
+#[tokio::test]
+async fn cash_drawer_default_prefers_exact_standalone_drawer() {
+    let reg = DriverRegistry::default();
+    let standalone: Arc<dyn CashDrawer> = Arc::new(MockCashDrawer::with_info(DeviceInfo::new(
+        "test",
+        "StandaloneDrawer",
+        "0005",
+    )));
+    let companion: Arc<dyn CashDrawer> = Arc::new(MockCashDrawer::with_info(DeviceInfo::new(
+        "test",
+        "CompanionDrawer",
+        "0006",
+    )));
+    reg.register_cash_drawer("default", standalone).await;
+    reg.register_cash_drawer("drawer:kick:default", companion)
+        .await;
+    let found = reg.cash_drawer("default").await;
+    assert!(found.is_some());
+    assert_eq!(found.unwrap().device_info().model, "StandaloneDrawer");
+}
+
+#[tokio::test]
 async fn register_overwrites_previous() {
     let reg = DriverRegistry::default();
     let old: Arc<dyn BarcodeScanner> = Arc::new(MockBarcodeScanner::with_info(DeviceInfo::new(
@@ -180,7 +214,7 @@ async fn register_wired_terminal_installs_the_real_stub_driver() {
     // closed rather than report an approval.
     assert!(
         matches!(
-            t.authorize(usd(1000)).await,
+            t.authorize(usd(1000), None).await,
             Err(crate::error::HalError::Unsupported(_))
         ),
         "wired stub must not authorize"

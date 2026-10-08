@@ -287,3 +287,27 @@
   from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: translateY(0); }
 }
+
+/* ── Touch press feedback ────────────────────────────────────────────
+   Reports are reviewed on the tablet. Both controls are discrete and scale. */
+.sales-report-view-btn:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+.sales-report-rank-option:active {
+  background: color-mix(in srgb, var(--color-fg) 12%, transparent);
+}
+
+@media (pointer: coarse) {
+  .sales-report-view-btn,
+  .sales-report-rank-option {
+    min-height: var(--touch-target-min);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sales-report-view-btn:not(:disabled):active {
+    transform: none;
+    opacity: 0.75;
+  }
+}

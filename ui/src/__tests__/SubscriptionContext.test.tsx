@@ -178,8 +178,8 @@ describe('SubscriptionProvider', () => {
         state: 'grace',
       });
       const { result } = renderHook(() => useAdminGate(), { wrapper });
-      await waitFor(() => expect(result.current.locked).toBe(true));
-      expect(result.current.state).toBe('grace');
+      await waitFor(() => expect(result.current.state).toBe('grace'));
+      expect(result.current.locked).toBe(true);
     });
 
     it('reports locked when subscription state is expired, canceled, paused, or unavailable', async () => {
@@ -189,8 +189,8 @@ describe('SubscriptionProvider', () => {
           state: st,
         });
         const { result } = renderHook(() => useAdminGate(), { wrapper });
-        await waitFor(() => expect(result.current.locked).toBe(true));
-        expect(result.current.state).toBe(st);
+        await waitFor(() => expect(result.current.state).toBe(st));
+        expect(result.current.locked).toBe(true);
       }
     });
   });

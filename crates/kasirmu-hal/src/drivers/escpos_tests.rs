@@ -97,6 +97,16 @@ fn barcode_code39_data_integrity() {
     assert!(cmd.windows(10).any(|w| w == data));
 }
 
+#[test]
+fn barcode_clamps_data_over_255_bytes_preventing_truncation() {
+    let large_data = vec![b'A'; 300];
+    let cmd = barcode(BarcodeType::Code128, &large_data);
+    // Preamble is 10 bytes: GS h A0 (3), GS H 02 (3), GS k 73 255 (4)
+    assert!(cmd.windows(4).any(|w| w == [0x1D, 0x6B, 73, 255]));
+    assert_eq!(cmd.len(), 10 + 255);
+    assert_eq!(&cmd[10..], &vec![b'A'; 255][..]);
+}
+
 // ── QR code commands ─────────────────────────────────────────────
 
 #[test]
@@ -191,4 +201,18 @@ fn byte_based_padding_misaligns_and_cell_based_padding_does_not() {
     // What it computes now.
     let new_line = format!("{}{}", " ".repeat(10 - cell_width(s)), s);
     assert_eq!(cell_width(&new_line), 10, "cell-based pad aligns");
+}
+
+#[test]
+fn max_print_payload_bytes_is_positive_and_bounded() {
+    assert_eq!(MAX_PRINT_PAYLOAD_BYTES, 4 * 1024 * 1024);
+}
+
+#[test]
+fn default_print_job_timeout_is_bounded() {
+    // A compile-time bound rather than a runtime assert on a const, which clippy
+    // flags as an assertion with a constant value. The intent is unchanged: the
+    // default must sit inside a sane window, and this fails the BUILD if it does not.
+    const _: () = assert!(DEFAULT_PRINT_JOB_TIMEOUT_SECS >= 5);
+    const _: () = assert!(DEFAULT_PRINT_JOB_TIMEOUT_SECS <= 60);
 }

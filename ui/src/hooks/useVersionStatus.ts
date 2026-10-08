@@ -14,6 +14,7 @@
 
 import { useSyncExternalStore } from 'react';
 import { getVersion } from '@/api/tauri';
+import { buildId } from '@/build-id';
 import type { Update } from '@tauri-apps/plugin-updater';
 
 export type VersionState = 'checking' | 'latest' | 'update';
@@ -22,6 +23,16 @@ export interface VersionStatusInfo {
   state: VersionState;
   /** The currently running app version (e.g. "0.0.39"). */
   currentVersion: string;
+  /**
+   * The commit this bundle was built from, e.g. "334f7f1" or "334f7f1+dirty".
+   *
+   * `currentVersion` is a RELEASE number and does not move between builds of
+   * the same release, so it cannot tell two APKs apart. This can. `+dirty`
+   * means the tree had uncommitted edits, so the code is NOT what that commit
+   * contains. Exposed here rather than read directly by each caller so every
+   * surface reports one value from one source.
+   */
+  buildId: string;
   /** The available update version, if any. */
   availableVersion: string | null;
   /**
@@ -39,6 +50,10 @@ export interface VersionStatusInfo {
 const INITIAL: VersionStatusInfo = {
   state: 'checking',
   currentVersion: '0.0.0',
+  // Available synchronously: the build id is a compile-time constant, not a
+  // probe result, so it is present from the first render rather than arriving
+  // with the version. A footer can therefore show it while 'checking'.
+  buildId: buildId(),
   availableVersion: null,
   instance: null,
 };
@@ -77,6 +92,7 @@ async function probe(gen: number): Promise<void> {
       emit({
         state: 'update',
         currentVersion,
+        buildId: buildId(),
         availableVersion: update.version,
         instance: update,
       });
@@ -90,6 +106,7 @@ async function probe(gen: number): Promise<void> {
   emit({
     state: 'latest',
     currentVersion,
+    buildId: buildId(),
     availableVersion: null,
     instance: null,
   });

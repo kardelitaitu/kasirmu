@@ -246,3 +246,25 @@
   background: var(--color-bg-hover);
   color: var(--color-fg-primary);
 }
+
+/* ── Touch press feedback ────────────────────────────────────────────
+   CSS-module sheet: class names are locally scoped, so these selectors are
+   plain `.close-btn`. Same press contract as the sibling stylesheets.
+   ────────────────────────────────────────────────────────────────── */
+
+.close-btn:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+@media (pointer: coarse) {
+.close-btn:not(:disabled):active {
+    min-height: var(--touch-target-min);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+.close-btn:not(:disabled):active {
+    transform: none;
+    opacity: 0.75;
+  }
+}

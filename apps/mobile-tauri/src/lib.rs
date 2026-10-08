@@ -73,7 +73,55 @@ use kasirmu_core::db::Store;
 #[cfg(not(test))]
 use kasirmu_core::sync_client::SyncConfig;
 #[cfg(not(test))]
-use tauri::Manager;
+use tauri::{Emitter, Manager};
+
+/// Global hook for Android WorkManager to nudge the tablet sync daemon.
+#[cfg(not(test))]
+static SYNC_WAKEUP_HOOK: std::sync::OnceLock<std::sync::Arc<tokio::sync::Notify>> =
+    std::sync::OnceLock::new();
+
+/// Global handle for the LAN client connection to send uplink messages to the server.
+pub static LAN_CLIENT_HANDLE: std::sync::RwLock<Option<kasirmu_lan::LanClientHandle>> =
+    std::sync::RwLock::new(None);
+
+/// Send a raw JSON uplink event (e.g. KdsSyncEvent or TableSyncEvent) to the LAN server.
+pub fn send_lan_uplink(msg: String) {
+    if let Ok(guard) = LAN_CLIENT_HANDLE.read()
+        && let Some(ref handle) = *guard
+    {
+        let _ = handle.send(msg);
+    }
+}
+
+/// JNI bridge called by `mu.kasir.mobile.SyncWorker` to trigger an immediate
+/// background sync drain when Android WorkManager fires.
+// Edition 2024 makes `unsafe_attr_outside_unsafe` a hard error, so the
+// attribute has to be `#[unsafe(no_mangle)]`. A host build never reaches this
+// line — the `target_os = "android"` cfg above excludes it — which is why
+// `cargo check -p kasirmu-mobile` stays green while the Android cross-build
+// fails on it. Both JNI entry points below need the same form.
+#[cfg(all(not(test), target_os = "android"))]
+#[unsafe(no_mangle)]
+pub unsafe extern "system" fn Java_mu_kasir_mobile_SyncWorker_00024Companion_nativeNudgeSync(
+    _env: *mut std::ffi::c_void,
+    _class: *mut std::ffi::c_void,
+) {
+    if let Some(notify) = SYNC_WAKEUP_HOOK.get() {
+        notify.notify_one();
+    }
+}
+
+/// Fallback JNI symbol for direct static invocation.
+#[cfg(all(not(test), target_os = "android"))]
+#[unsafe(no_mangle)]
+pub unsafe extern "system" fn Java_mu_kasir_mobile_SyncWorker_nativeNudgeSync(
+    _env: *mut std::ffi::c_void,
+    _class: *mut std::ffi::c_void,
+) {
+    if let Some(notify) = SYNC_WAKEUP_HOOK.get() {
+        notify.notify_one();
+    }
+}
 
 /// Application entry point, called by `main.rs`.
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -116,6 +164,28 @@ pub fn run() {
             // (which resolves the URI via the content resolver) and writes them to
             // a real cache path first. See the module note in Cargo.toml.
             .plugin(tauri_plugin_fs::init())
+            .on_window_event(|window, event| {
+                match event {
+                    tauri::WindowEvent::Focused(true) => {
+                        let _ = window.emit("kasirmu://reconnect", ());
+                        if let Some(state) = window.app_handle().try_state::<AppState>() {
+                            state.sync_wakeup.notify_one();
+                        }
+                    }
+                    tauri::WindowEvent::Focused(false) => {
+                        // Backgrounding / window losing focus: flush WAL so dirty pages are
+                        // checkpointed to disk before the Android OS suspends or kills the process.
+                        if let Some(state) = window.app_handle().try_state::<AppState>() {
+                            let db = state.db.clone();
+                            platform_startup::spawn_once("wal checkpoint on blur", async move {
+                                let conn = db.lock().await;
+                                let _ = conn.execute_batch("PRAGMA wal_checkpoint(PASSIVE);");
+                            });
+                        }
+                    }
+                    _ => {}
+                }
+            })
             .setup(|app| {
                 // ── Structured logging: file sink first, stdout fallback ──────
                 // Wiring landed 2026-09-29. On Android the resolved directory is
@@ -139,6 +209,9 @@ pub fn run() {
                     "kasirmu",
                     30,
                 );
+
+                // ── Crash telemetry panic hook (Phase 2.2) ────────────────────
+                kasirmu_bridge::diagnostics::install_panic_hook(log_dir.clone());
 
                 // ── Pending restore request (C8, slice S4b) ───────────────────
                 // Consumed BEFORE `AppState::new` below, which opens the database
@@ -516,6 +589,51 @@ pub fn run() {
                     });
                 }
 
+                // ── Audit log hash chain integrity verification daemon (P1) ──
+                // Periodically walks the audit log hash chain and logs a warning
+                // if tampering is detected. The `verify_audit_chain()` method
+                // checks continuity (each entry's previous_hash matches the prior
+                // entry's hash) and integrity (each entry's hash matches its
+                // recomputed canonical SHA-256). A broken chain is critical — it
+                // means the audit log has been tampered with.
+                {
+                    let chain_handle = app_handle.clone();
+                    platform_startup::spawn_daemon("tablet audit chain verification", async move {
+                        let mut interval =
+                            tokio::time::interval(std::time::Duration::from_secs(3600));
+                        interval.tick().await;
+                        loop {
+                            interval.tick().await;
+                            let Some(state) = chain_handle.try_state::<AppState>() else {
+                                continue;
+                            };
+                            let conn = state.db.lock().await;
+                            let store = kasirmu_core::db::Store::new(&conn);
+                            match store.verify_audit_chain() {
+                                Ok(result) if result.is_valid => {
+                                    tracing::debug!(
+                                        checked = result.total_checked,
+                                        "tablet audit chain verification: hash chain is valid"
+                                    );
+                                }
+                                Ok(result) => {
+                                    tracing::error!(
+                                        checked = result.total_checked,
+                                        broken_at_id = ?result.broken_at_id,
+                                        "CRITICAL: tablet audit log hash chain integrity check FAILED — audit tampering detected"
+                                    );
+                                }
+                                Err(e) => {
+                                    tracing::warn!(
+                                        error = %e,
+                                        "tablet audit chain verification query failed"
+                                    );
+                                }
+                            }
+                        }
+                    });
+                }
+
                 // ── Background sync daemon ────────────────────────────────
                 // Uses the same 3-phase split as the Tauri commands:
                 // read DB → async HTTP → write DB, so the DB lock is never
@@ -529,6 +647,7 @@ pub fn run() {
                     .state::<AppState>()
                     .sync_wakeup
                     .clone();
+                let _ = SYNC_WAKEUP_HOOK.set(sync_wakeup.clone());
                 platform_startup::spawn_daemon("tablet sync daemon", async move {
                     let periodic = std::time::Duration::from_secs(30);
                     const WAKEUP_DEBOUNCE: std::time::Duration =
@@ -552,6 +671,23 @@ pub fn run() {
 
                         match sync_app_handle.try_state::<AppState>() {
                             Some(state) => {
+                                let pressure = state
+                                    .memory_pressure_level
+                                    .load(std::sync::atomic::Ordering::Relaxed);
+                                if pressure >= 10 {
+                                    tracing::warn!(
+                                        level = pressure,
+                                        "tablet sync daemon: memory pressure active ({pressure}) — backing off background sync cycle"
+                                    );
+                                    let _ = state.memory_pressure_level.compare_exchange(
+                                        pressure,
+                                        pressure.saturating_sub(5),
+                                        std::sync::atomic::Ordering::Relaxed,
+                                        std::sync::atomic::Ordering::Relaxed,
+                                    );
+                                    continue;
+                                }
+
                                 // Phase 1: Read config + pending items (brief lock).
                                 let (config_opt, pending_items) = {
                                     let db = state.db.lock().await;
@@ -567,7 +703,7 @@ pub fn run() {
                                         }
                                     };
                                     let pending =
-                                        store.list_pending_offline().unwrap_or_else(|e| {
+                                        store.list_pending_offline_bounded(100).unwrap_or_else(|e| {
                                             tracing::error!(
                                                 error = %e,
                                                 "tablet sync daemon: failed to list pending offline"
@@ -651,6 +787,7 @@ pub fn run() {
                 // up to 40 images per cycle with 2 GETs in flight; LRU
                 // eviction keeps the cache within the 256 MB budget.
                 // Wakes on jittered cadence (configurable via OZ_IMG_PULL_*).
+                let img_app_handle = app_handle.clone();
                 platform_startup::spawn_daemon("tablet image download", async move {
                     let mut manager = crate::image_download::ImageDownloadManager::new();
                     // Initial delay so the daemon doesn't hammer on boot.
@@ -659,7 +796,7 @@ pub fn run() {
                     ))
                     .await;
                     loop {
-                        match app_handle.try_state::<AppState>() {
+                        match img_app_handle.try_state::<AppState>() {
                             Some(state) => {
                                 let cache_dir = state
                                     .app
@@ -683,6 +820,181 @@ pub fn run() {
                             crate::image_download::jitter_max(),
                         ))
                         .await;
+                    }
+                });
+
+                // ── LAN peer client daemon (Track 2 / 3 multi-terminal sync) ──
+                // Connects to the local store LAN server (if configured), receives
+                // live table occupancy transitions, KDS order bumps, and course firing,
+                // and broadcasts them to the WebView via Tauri events.
+                let lan_app_handle = app_handle.clone();
+                platform_startup::spawn_daemon("tablet lan client", async move {
+                    let mut backoff_check = std::time::Duration::from_secs(5);
+                    loop {
+                        let config_opt = if let Some(state) = lan_app_handle.try_state::<AppState>() {
+                            let db = state.db.lock().await;
+                            let server_addr = kasirmu_core::Settings::get(&db, "lan_client.server_addr")
+                                .ok()
+                                .flatten()
+                                .filter(|s| !s.trim().is_empty());
+                            let psk = platform_core::settings::Settings::get_lan_server_psk(&db)
+                                .ok()
+                                .flatten()
+                                .filter(|s| !s.trim().is_empty());
+                            let terminal_id = state.terminal_id.lock().await.clone();
+                            drop(db);
+                            server_addr.map(|addr| kasirmu_lan::LanClientConfig {
+                                server_addr: addr,
+                                psk,
+                                device_id: terminal_id,
+                                station_ids: vec![],
+                                want_queue: true,
+                                want_tables: true,
+                            })
+                        } else {
+                            None
+                        };
+
+                        if let Some(config) = config_opt {
+                            let (client_handle, mut rx) = kasirmu_lan::start_lan_client(config);
+                            if let Ok(mut guard) = LAN_CLIENT_HANDLE.write() {
+                                *guard = Some(client_handle);
+                            }
+                            while let Ok(event) = rx.recv().await {
+                                match event {
+                                    kasirmu_lan::LanEvent::Table(kasirmu_lan::TableSyncEvent::StatusChanged(sc)) => {
+                                        let _ = lan_app_handle.emit("tables:status-changed", &sc.table);
+                                    }
+                                    // Lease traffic. TableSyncEvent gained these three
+                                    // variants in 9d46d3912 while this match kept only
+                                    // StatusChanged, so the arm set was non-exhaustive and
+                                    // the Android build died at E0004 (the whole crate is
+                                    // one match arm short of compiling). Each is forwarded
+                                    // whole rather than filtered: the UI is what decides
+                                    // whether a lock belongs to this terminal, and it needs
+                                    // the acquiring terminal id to tell.
+                                    kasirmu_lan::LanEvent::Table(kasirmu_lan::TableSyncEvent::LockAcquired(lock)) => {
+                                        let _ = lan_app_handle.emit("tables:lock-acquired", &lock);
+                                    }
+                                    kasirmu_lan::LanEvent::Table(kasirmu_lan::TableSyncEvent::LockReleased(lock)) => {
+                                        let _ = lan_app_handle.emit("tables:lock-released", &lock);
+                                    }
+                                    kasirmu_lan::LanEvent::Table(kasirmu_lan::TableSyncEvent::ClaimRequested(claim)) => {
+                                        let _ = lan_app_handle.emit("tables:claim-requested", &claim);
+                                    }
+                                    kasirmu_lan::LanEvent::Kds(kds_ev) => {
+                                        if let Some(state) = lan_app_handle.try_state::<AppState>() {
+                                            let db = state.db.lock().await;
+                                            let store = kasirmu_core::db::Store::new(&db);
+                                            match &kds_ev {
+                                                kasirmu_lan::KdsSyncEvent::OrderPlaced(placed) => {
+                                                    let order = kasirmu_core::KdsOrder {
+                                                        id: placed.kds_order_id.clone(),
+                                                        sale_id: placed.sale_id.clone(),
+                                                        store_id: placed.store_id.clone(),
+                                                        target_instance_id: placed.stations.first().cloned(),
+                                                        status: "pending".to_string(),
+                                                        items_summary: placed.items.iter().map(|i| format!("{}x {}", i.qty, i.display_name)).collect::<Vec<_>>().join(", "),
+                                                        item_count: placed.items.iter().map(|i| i.qty).sum(),
+                                                        display_number: placed.display_number,
+                                                        ticket_prefix: placed.ticket_prefix.clone(),
+                                                        received_at: placed.occurred_at.clone(),
+                                                        started_at: None,
+                                                        ready_at: None,
+                                                        served_at: None,
+                                                        prep_time_seconds: 0,
+                                                        kitchen_zone: Some("kitchen".to_string()),
+                                                        notes: placed.notes.clone(),
+                                                        table_number: placed.table_number.clone(),
+                                                        priority: placed.priority,
+                                                    };
+                                                    let _ = store.ingest_kds_order(&order, &placed.items, &placed.stations);
+                                                }
+                                                kasirmu_lan::KdsSyncEvent::LineItemBumped(bump) => {
+                                                    let _ = store.update_kds_line_item_status(&bump.line_item_id, &bump.to_status);
+                                                }
+                                                kasirmu_lan::KdsSyncEvent::OrderReady(ready) => {
+                                                    let _ = store.update_kds_status(&ready.kds_order_id, "ready");
+                                                }
+                                                kasirmu_lan::KdsSyncEvent::Recalled(recalled) => {
+                                                    let _ = store.update_kds_status(&recalled.kds_order_id, &recalled.recall_to);
+                                                }
+                                            }
+                                        }
+                                        let _ = lan_app_handle.emit("kds:orders-changed", serde_json::Value::Null);
+                                    }
+                                    kasirmu_lan::LanEvent::Crdt(kasirmu_lan::CrdtSyncEvent::DeltaBroadcast(delta)) => {
+                                        if let Some(state) = lan_app_handle.try_state::<AppState>() {
+                                            let mut db = state.db.lock().await;
+                                            if let Ok(tx) = db.transaction() {
+                                                for item in &delta.batch {
+                                                    let _ = tx.execute(
+                                                        "INSERT OR IGNORE INTO offline_queue
+                                                         (id, action, payload, status, retry_count, tenant_id, created_at, priority, origin_terminal_id)
+                                                         VALUES (?1, ?2, ?3, 'pending', 0, ?4, ?5, ?6, ?7)",
+                                                        rusqlite::params![
+                                                            item.id,
+                                                            item.action,
+                                                            item.payload,
+                                                            item.tenant_id,
+                                                            item.created_at,
+                                                            item.priority.as_str(),
+                                                            item.origin_terminal_id,
+                                                        ],
+                                                    );
+                                                }
+                                                let _ = tx.commit();
+                                            }
+                                        }
+                                        let _ = lan_app_handle.emit("sync:crdt-delta-received", serde_json::to_value(&delta).unwrap_or_default());
+                                    }
+                                    kasirmu_lan::LanEvent::RawJson(raw) => {
+                                        if raw.contains("order.course_fired") {
+                                            if let Ok(val) = serde_json::from_str::<serde_json::Value>(&raw) {
+                                                let _ = lan_app_handle.emit("kds:course-fired", &val);
+                                            }
+                                            let _ = lan_app_handle.emit("kds:orders-changed", serde_json::Value::Null);
+                                        } else if raw.contains("sale.completed") {
+                                            let _ = lan_app_handle.emit("kds:orders-changed", serde_json::Value::Null);
+                                        }
+                                    }
+                                    kasirmu_lan::LanEvent::Discovery(discovery) => {
+                                        if let Some(queue) = discovery.active_queue {
+                                            if let Some(state) = lan_app_handle.try_state::<AppState>() {
+                                                let db = state.db.lock().await;
+                                                let store = kasirmu_core::db::Store::new(&db);
+                                                for ticket in queue.tickets {
+                                                    let _ = store.ingest_kds_order(&ticket.order, &ticket.line_items, &ticket.stations);
+                                                }
+                                            }
+                                            let _ = lan_app_handle.emit("kds:orders-changed", serde_json::Value::Null);
+                                        }
+                                        if let Some(tables) = discovery.table_states {
+                                            if let Some(state) = lan_app_handle.try_state::<AppState>() {
+                                                let db = state.db.lock().await;
+                                                let store = kasirmu_core::db::Store::new(&db);
+                                                for table in &tables {
+                                                    if store.get_table(&table.id).ok().flatten().is_some() {
+                                                        let _ = store.update_table(table);
+                                                    } else {
+                                                        let _ = store.create_table(table);
+                                                    }
+                                                }
+                                            }
+                                            let _ = lan_app_handle.emit("tables:status-changed", serde_json::Value::Null);
+                                        }
+                                        if let Some(leases) = discovery.active_leases {
+                                            for lease in &leases {
+                                                let _ = lan_app_handle.emit("tables:lock-acquired", lease);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        tokio::time::sleep(backoff_check).await;
+                        backoff_check = std::cmp::min(backoff_check * 2, std::time::Duration::from_secs(30));
                     }
                 });
 
@@ -712,6 +1024,7 @@ pub fn run() {
                 // SaaS-3 L194: multi-organization user switching.
                 commands::auth::list_organizations,
                 commands::auth::switch_organization,
+                commands::auth::verify_pin,
                 // Own-avatar read (parity gap closed 2026-09-19): the shared
                 // PosScreen restaurant sidebar reads this on mount and this shell
                 // renders that screen. The two writes join it in b-full Phase 3,
@@ -808,8 +1121,13 @@ pub fn run() {
                 commands::inventory_counts::list_stock_adjustments_scoped,
                 commands::health::ping,
                 commands::health::version,
+                commands::health::version_scoped,
                 commands::health::get_device_id,
                 commands::health::get_local_ip,
+                commands::health::get_storage_health,
+                commands::health::export_diagnostics,
+                commands::health::record_crash_report,
+                commands::health::notify_memory_pressure,
                 // ADR #57 §2.1: makes the APK signing-certificate read observable
                 // on any device, including one with no licence activated — the
                 // state in which its only other caller (the licence-status call)
@@ -946,6 +1264,7 @@ pub fn run() {
                 commands::hardware::open_cash_drawer_scoped,
                 commands::hardware::print_receipt_scoped,
                 commands::hardware::print_sales_receipt_scoped,
+                commands::hardware::print_edc_settlement_slip_scoped,
                 commands::hardware::start_scanner_scoped,
                 commands::hardware::stop_scanner_scoped,
                 commands::hardware::list_displays_scoped,
@@ -964,6 +1283,14 @@ pub fn run() {
                 commands::kds::get_kds_queue_scoped,
                 commands::kds::list_kds_orders_scoped,
                 commands::kds::update_kds_status_scoped,
+                commands::kds::update_kds_order_items_scoped,
+                commands::kds::print_kds_chit_scoped,
+                commands::kds::get_kds_order_lines_scoped,
+                commands::kds::update_kds_line_item_status_scoped,
+                commands::kds_device::register_kds_device_scoped,
+                commands::kds_device::list_kds_devices_scoped,
+                commands::kds_routing::get_kds_routing_rules_scoped,
+                commands::kds_routing::save_kds_routing_rules_scoped,
                 commands::legal_entities::list_legal_entities_scoped,
                 commands::legal_entities::get_legal_entity_scoped,
                 commands::legal_entities::create_legal_entity_scoped,
@@ -976,10 +1303,20 @@ pub fn run() {
                 // Primary-location read: the shared Business Defaults cards
                 // (regional / local-payment / receipt-format) resolve it first.
                 commands::locations::get_primary_location_scoped,
+                commands::locations::list_locations_scoped,
+                commands::locations::get_location_profile_scoped,
+                commands::locations::create_location_profile_scoped,
+                commands::locations::update_location_profile_scoped,
+                commands::locations::set_primary_location_scoped,
+                commands::locations::delete_location_profile_scoped,
+                commands::locations::get_location_ticket_prefix_scoped,
+                commands::locations::set_location_ticket_prefix_scoped,
                 // Regional configuration read model (slice 2, saas-2 design).
                 commands::regional::get_regional_config_scoped,
                 // Regional configuration write path (slice 3, saas-2 design).
                 commands::regional::set_regional_config_scoped,
+                // Active market profile compiled read model.
+                commands::regional::get_active_market_profile_scoped,
                 // Local payment methods & gateways (slice 6, saas-2 design).
                 commands::local_payment::get_local_payment_methods_scoped,
                 commands::local_payment::set_local_payment_methods_scoped,
@@ -997,6 +1334,7 @@ pub fn run() {
                 commands::offline::list_pending_offline_scoped,
                 commands::offline::list_remote_failures_scoped,
                 commands::offline::pending_offline_count_scoped,
+                commands::offline::offline_queue_status_summary_scoped,
                 commands::offline::requeue_remote_failure_scoped,
                 commands::offline::retry_offline_sync_scoped,
                 commands::product_variants::create_product_variant_scoped,
@@ -1020,6 +1358,7 @@ pub fn run() {
                 // succeeds and then the write fails as "command not found".
                 commands::products_images::products_set_image_scoped,
                 commands::products_images::products_clear_image_scoped,
+                commands::products_images::products_list_images_scoped,
                 commands::promotions::apply_promotion_scoped,
                 commands::promotions::create_promotion_scoped,
                 commands::promotions::delete_promotion_scoped,
@@ -1046,6 +1385,8 @@ pub fn run() {
                 commands::fiscal::list_document_number_sequences_scoped,
                 commands::fiscal::list_document_number_sequences_for_entity_scoped,
                 commands::fiscal::list_fiscal_schemes_scoped,
+                commands::fiscal::issue_tax_invoice_scoped,
+                commands::fiscal::get_sale_statutory_number_scoped,
                 commands::settings::get_receipt_settings_scoped,
                 commands::settings::get_setting_scoped,
                 commands::settings::get_store_settings_scoped,
@@ -1087,6 +1428,53 @@ pub fn run() {
                 commands::terminals::register_terminal_scoped,
                 commands::terminals::set_terminal_override_scoped,
                 commands::terminals::update_terminal_scoped,
+                commands::shifts::open_shift_scoped,
+                commands::shifts::close_shift_scoped,
+                commands::shifts::get_active_shift_scoped,
+                commands::shifts::list_shifts_scoped,
+                commands::shifts::get_shift_scoped,
+                commands::shifts::create_cash_payout_scoped,
+                commands::shifts::get_shift_report_scoped,
+                // Multi-location inventory, shifts, transactions, thresholds, alerts, and sale checkout
+                commands::inventory::create_inventory_location,
+                commands::inventory::list_inventory_locations,
+                commands::inventory::update_inventory_location,
+                commands::inventory::deactivate_inventory_location,
+                commands::inventory::get_workspace_locations_scoped,
+                commands::inventory::invalidate_location_cache_scoped,
+                commands::inventory::set_workspace_inventory_locations,
+                commands::inventory::get_workspace_inventory_locations,
+                commands::inventory::start_inventory_shift,
+                commands::inventory::end_inventory_shift,
+                commands::inventory::get_active_inventory_shift,
+                commands::inventory::list_inventory_shifts,
+                commands::inventory::create_inventory_transaction,
+                commands::inventory::list_inventory_transactions,
+                commands::inventory::list_inventory_transactions_for_shift,
+                commands::inventory::get_inventory_transaction,
+                commands::inventory::set_stock_threshold,
+                commands::inventory::get_stock_thresholds,
+                commands::inventory::delete_stock_threshold,
+                commands::inventory::get_low_stock_alerts_at_location_scoped,
+                commands::inventory::active_stock_alerts_scoped,
+                commands::inventory::acknowledge_stock_alert_scoped,
+                commands::inventory::finalize_sale,
+                commands::inventory::void_pending_sale,
+                // EDC payment terminal commands
+                commands::edc::edc_terminal_status_scoped,
+                commands::edc::edc_sale,
+                commands::edc::edc_refund,
+                commands::edc::edc_void,
+                commands::edc::edc_settle,
+                commands::edc::edc_inquiry,
+                commands::edc::list_edc_terminals_scoped,
+                commands::edc::create_edc_terminal_scoped,
+                commands::edc::update_edc_terminal_scoped,
+                commands::edc::delete_edc_terminal_scoped,
+                // In-App Self-Updater commands (todo-android-updater.md)
+                commands::updater::check_app_update,
+                commands::updater::start_apk_download,
+                commands::updater::prepare_and_launch_update,
             ])
             .run(tauri::generate_context!())
             .map_err(AppError::from);

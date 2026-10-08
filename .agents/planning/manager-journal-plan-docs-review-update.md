@@ -21,6 +21,18 @@ Docs (lines @ 2026-09-14 07:26):
 Rules that bind this work: AGENTS.md — no new branches, no push, pathspec-only commits
 (`git commit -m "docs(<area>): <subject>" -- <paths>`), never leave things staged, forward slashes.
 
+> ✅ **OUTCOME RE-MEASURED 2026-10-07 — the wave succeeded; all 11 docs were updated, finished and archived.**
+> Every path in the list above is gone from the repo root, which reads as loss until you look for the
+> replacement. All 11 survive as `done-todo-*` with the `done-` token earned:
+> **2** in `.agents/archived/done-todo/` (`done-todo-payment.md`, `done-todo-payment-agents-4.md`) and
+> **9** in `.agents/reviews/` (`refactor-cloud-sync-agents-1`, `-devmock-agents-3`, `-kds-agents-1`,
+> `-kds-agents-2`, `-pos-screen-agents-2`, `-pos-screen-agents-3`, `-settings-agents-2`,
+> `-settings-agents-3`, and `-oz-pos-app-agents-3` — the last keeps its pre-rebrand spelling, which is
+> why a search for "kasirmu-app-agents-3" finds nothing). **The line counts in the list above (38/49/51/…)
+> are the 2026-09-14 pre-edit measurements** and were never meant to survive the pass. One consequence
+> worth carrying forward: this file's own §"SETTLED DOSSIERS" facts are anchored to `plan-docs-facts-2026-09-14.md`,
+> which is itself now marked a historical snapshot — read those as evidence-of-what-was-then.
+
 ## Live Dashboard
 | id | role | fence | state |
 |---|---|---|---|

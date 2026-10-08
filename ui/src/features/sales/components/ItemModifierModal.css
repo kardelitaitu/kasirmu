@@ -401,3 +401,31 @@
     animation: none;
   }
 }
+
+/* ── Touch press feedback ────────────────────────────────────────────
+   Modifier picking is rapid, repeated tapping during order entry. Options are
+   rows (tint); close and confirm are discrete buttons (scale). */
+.modifier-close-btn:not(:disabled):active,
+.modifier-confirm-btn:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+.modifier-option:active {
+  background: color-mix(in srgb, var(--color-fg) 12%, transparent);
+}
+
+@media (pointer: coarse) {
+  .modifier-close-btn,
+.modifier-option,
+.modifier-confirm-btn {
+    min-height: var(--touch-target-min);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .modifier-close-btn:not(:disabled):active,
+.modifier-confirm-btn:not(:disabled):active {
+    transform: none;
+    opacity: 0.75;
+  }
+}

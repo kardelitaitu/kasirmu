@@ -30,3 +30,22 @@
 .impersonation-banner-stop:hover {
   background: color-mix(in srgb, var(--color-pos-on-primary) 15%, transparent);
 }
+
+/* ── Touch press feedback ────────────────────────────────────────────
+   Stopping impersonation is a significant, safety-relevant action. */
+.impersonation-banner-stop:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+@media (pointer: coarse) {
+  .impersonation-banner-stop {
+    min-height: var(--touch-target-min);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .impersonation-banner-stop:not(:disabled):active {
+    transform: none;
+    opacity: 0.75;
+  }
+}

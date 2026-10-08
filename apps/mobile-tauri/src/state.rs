@@ -155,6 +155,9 @@ pub struct AppState {
     /// immediately. Wired here so Tauri commands (e.g. `complete_sale_scoped`)
     /// can fire it without reaching into the daemon's closure.
     pub sync_wakeup: Arc<tokio::sync::Notify>,
+
+    /// Current memory pressure level reported by the Android OS (0 = none, 5 = moderate, 10 = low, 15 = critical, 80 = complete).
+    pub memory_pressure_level: Arc<std::sync::atomic::AtomicU8>,
 }
 
 impl AppState {
@@ -173,6 +176,11 @@ impl AppState {
             .map_err(|e| AppError::Internal(format!("enabling foreign_keys: {e}")))?;
         conn.pragma_update(None, "journal_mode", "WAL")
             .map_err(|e| AppError::Internal(format!("enabling WAL: {e}")))?;
+        // 4GB Android memory budget: bound page cache to 16MB (-16384 KiB) and auto-checkpoint WAL every 1,000 pages (~4MB)
+        conn.pragma_update(None, "cache_size", "-16384")
+            .map_err(|e| AppError::Internal(format!("setting cache_size: {e}")))?;
+        conn.pragma_update(None, "wal_autocheckpoint", "1000")
+            .map_err(|e| AppError::Internal(format!("setting wal_autocheckpoint: {e}")))?;
 
         // ── Lock tolerance, then a writability gate ──────────────────
         // A tablet shares this file with the bridge, the sync daemon and any second
@@ -199,6 +207,51 @@ impl AppState {
 
         migrations::run(&mut conn)
             .map_err(|e| AppError::Internal(format!("running migrations: {e}")))?;
+
+        // ── Bootstrap-subscription reconcile (ADR #56 §2.6 option C) ──
+        // §2.6 removed the schema's BOOTSTRAP_FREE seed and assigned that row to
+        // `provision_device`'s transaction, which never wrote it. A `local`
+        // terminal therefore reaches the capabilities read with no entitlement
+        // row, that read fails closed, and the home screen renders every tool
+        // locked behind "Subscription inactive". Restore the row once, here, for
+        // installs provisioned before that write existed.
+        //
+        // Non-fatal on purpose: a failed repair leaves the terminal exactly as it
+        // was — a locked terminal, not a broken one — and refusing to boot over a
+        // repair step is the worse failure.
+        match migrations::ensure_bootstrap_subscription(&conn) {
+            Ok(true) => tracing::info!(
+                "restored the missing bootstrap Free subscription row for this local terminal"
+            ),
+            Ok(false) => {}
+            Err(e) => tracing::warn!(
+                error = %e,
+                "bootstrap-subscription reconcile failed; a local terminal with no \
+                 subscription row stays locked"
+            ),
+        }
+
+        // If a terminal has a tenant_subscription row under a server-assigned ID but
+        // is missing the 'default' key expected by client quota readers, copy it.
+        let has_default: bool = conn
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM tenant_subscription WHERE tenant_id = 'default')",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap_or(false);
+        if !has_default
+            && let Ok(written) = conn.execute(
+                "INSERT OR IGNORE INTO tenant_subscription (tenant_id, tier_key, status, expires_at, max_locations, max_pos_instances, allowed_types_json, signature, signed_payload, api_key)
+                 SELECT 'default', tier_key, status, expires_at, max_locations, max_pos_instances, allowed_types_json, signature, signed_payload, api_key
+                 FROM tenant_subscription
+                 ORDER BY updated_at DESC
+                 LIMIT 1",
+                [],
+            )
+                && written > 0 {
+                    tracing::info!("reconciled 'default' tenant_subscription from existing tenant row");
+                }
 
         // ── Tenant-integrity gate (fail loud) ────────────────────────
         // Tablet store DBs are scoped by construction to the `default`
@@ -257,6 +310,7 @@ impl AppState {
             db_manager,
             picker_ticket_secret: uuid::Uuid::new_v4().as_bytes().to_vec(),
             sync_wakeup: Arc::new(tokio::sync::Notify::new()),
+            memory_pressure_level: Arc::new(std::sync::atomic::AtomicU8::new(0)),
         })
     }
 
@@ -557,17 +611,27 @@ impl AppState {
             cache: create_cache("", 300),
             plugins: Mutex::new(None),
             topology_apply_lock: Mutex::new(()),
+            // Per-instance store directory: store DBs PERSIST in temp_dir, and
+            // tests that write users into a store db (session-user replication)
+            // must not collide with rows from earlier runs under different ids.
             db_manager: StoreDatabaseManager::new(
-                std::env::temp_dir(),
+                std::env::temp_dir().join(format!("kasirmu-test-store-{}", uuid::Uuid::now_v7())),
                 kasirmu_core::migrations::ALL,
             ),
             picker_ticket_secret: b"test-picker-ticket-secret".to_vec(),
             sync_wakeup: Arc::new(tokio::sync::Notify::new()),
+            memory_pressure_level: Arc::new(std::sync::atomic::AtomicU8::new(0)),
         }
     }
 
     /// Construct an `AppState` with a pre-configured connection (migrations
     /// already run). Used by integration tests that need a seeded database.
+    ///
+    /// The store directory is PER-INSTANCE for the same reason as
+    /// [`Self::for_test`]: store DBs are real files under `temp_dir` and
+    /// therefore survive between runs, and a test that writes users into a
+    /// store db (session-user replication) must not inherit identities from
+    /// an earlier run.
     pub fn for_test_with_conn(conn: Connection) -> Self {
         Self {
             db: Arc::new(Mutex::new(conn)),
@@ -583,11 +647,12 @@ impl AppState {
             plugins: Mutex::new(None),
             topology_apply_lock: Mutex::new(()),
             db_manager: StoreDatabaseManager::new(
-                std::env::temp_dir(),
+                std::env::temp_dir().join(format!("kasirmu-test-store-{}", uuid::Uuid::now_v7())),
                 kasirmu_core::migrations::ALL,
             ),
             picker_ticket_secret: b"test-picker-ticket-secret".to_vec(),
             sync_wakeup: Arc::new(tokio::sync::Notify::new()),
+            memory_pressure_level: Arc::new(std::sync::atomic::AtomicU8::new(0)),
         }
     }
 

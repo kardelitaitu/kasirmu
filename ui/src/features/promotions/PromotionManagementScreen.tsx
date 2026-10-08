@@ -16,6 +16,7 @@ import { useToast } from '@/components/Toast';
 import { requiredLocalized, EmptyState } from '@/components';
 import { NoPromotionsIcon } from '@/components/EmptyStateIllustrations';
 import { l10nErrorMessage } from '@/utils/app-error';
+import { asArray } from '@/utils/ipc-payload';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { Card } from '@/components/Card';
 import { Button } from '@/components/Button';
@@ -91,8 +92,9 @@ function PromotionManagementScreenContent() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
+      // asArray: the render maps/filters `promotions` (see utils/ipc-payload).
       const items = await listPromotions(sessionToken);
-      setPromotions(items);
+      setPromotions(asArray<typeof items[number]>(items));
     } catch {
       addToast({ message: requiredLocalized(l10n, 'promotions-error-load'), type: 'error' });
     } finally {

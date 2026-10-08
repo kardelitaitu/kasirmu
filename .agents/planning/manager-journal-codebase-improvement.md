@@ -685,6 +685,28 @@ Three checkers assert LITERAL line numbers inside the very files they police:
 - scripts/verify-ipc-parity.py:1182,1194,1237,2816 -- an ALLOWLIST_READER_CALL_SITES constant plus its self-test strings, naming run-pre-push.py:107 (moved to :252 by f8c11fc5c, which is now a COMMENT line) and check.sh:56 (that line is now the no-raw-params step; ipc-parity itself is :65).
 - scripts/verify-scoped-reads.py:184,1076,1203,1650,2970 -- check.sh:72, which is BLANK.
 - scripts/verify-agents-mirrors.py:230 -- pre-commit:331 in a 262-LINE FILE, i.e. beyond EOF.
+
+> ⚠️ **RE-MEASURED 2026-10-07 — the class is STILL LIVE, and two of the three are unchanged.** This is the
+> section worth reading this file for, so it is the section worth keeping honest. Re-read against the tree:
+>
+> | checker constant | claims the runner is at | that line actually holds | the runner is really at |
+> |---|---|---|---|
+> | `verify-ipc-parity.py:1290-1291` (`ALLOWLIST_READER_CALL_SITES`) | `dev-ci.yml:590`, `check.sh:56`, `run-pre-push.py:107` | `POSTGRES_DB: oz_test_db`, a **comment**, a **comment** | `:1521`, `:137`, `:252` |
+> | `verify-scoped-reads.py:184` (`READER_RUNS_BARE_AT`) | `dev-ci.yml:596`, `check.sh:72` | `--health-timeout 3s`, an `echo` banner | (same drift class) |
+> | `verify-agents-mirrors.py:230`'s `pre-commit:331` | 331 | file is **263** lines, so `:331` is past EOF | — |
+>
+> **The proof that this is not cosmetic: both checkers still exit 0.** `verify-ipc-parity.py` prints `IPC
+> parity: OK` and `verify-scoped-reads.py` prints `clean for desktop`, while asserting coordinates that name
+> comments and unrelated YAML keys. A constant nothing validates drifts silently and still reports success —
+> which is this entry's own point, one layer further in. The self-inflicted part: **`verify-ipc-parity.py`
+> contradicts itself.** Its comment at `:2503` cites `run-pre-push.py:252`, `dev-ci.yml:694` and
+> `check.sh:71` — the correct locations — while the enforced `ALLOWLIST_READER_CALL_SITES` tuple at
+> `:1290-1291` and its self-test copy at `:3465` still carry `:107`, `:590` and `:56`. One file, two
+> answers, and the *comment* is the accurate one. The self-test at `:3469` compares the tuple against
+> itself, so it passes either way and cannot catch this. NOT RE-CHECKED: the round-19
+> fixes to `verify-agents-mirrors.py` that took the file from 262 to 263 lines and may have repaired `:230`'s
+> rule — the constant is the part confirmed here.
+
 THIS IS THE SESSION'S THESIS AT A DIFFERENT LAYER: not prose claiming enforcement, but a checker whose idea of 'the runner calls me at X' is a typed integer someone maintained by hand. Every one of these is stable under exactly the edits that are most likely -- inserting a leg above the tuple -- and its failure mode is invisible because the assertion is about a coordinate, not a behaviour. f5c20331's recommendation, which I accept: replace the literals with a PATTERN/grep form (find the call site by the name it invokes) so the checker survives its own file moving. CAVEAT BEFORE ANY CODER TOUCHES THIS: a pattern form can also silently widen what is matched -- verify-ipc-parity's case is currently RED for an unrelated reason and aeb2a5a6 is inside that file, so this waits for the settle. And verify-agents-mirrors.py:230 asserting beyond EOF raises the question of what its green MEANS tonight; that is a live vacuity candidate, and it belongs to the same census the self-test researcher is running.
 - Also from that lane, confirmed live-false doc pointers NOT in its fence, queued: AGENTS.md:42,:73 + .agents/AGENTS.md:42,:73 (check.sh:44 -> :53, :211 -> :285) -- the mirrors must follow README's de-numbering or the pages disagree; docs/operations/ci-pipeline.md:108; gates.json:203,210,233,426; todo-refactor-kasirmu-app-agents-3.md x5, todo-refactor-cloud-sync-agents-1.md x2, todo-font-system.md:1131, .agents/review-backlog-codebase-review.md:146.
 

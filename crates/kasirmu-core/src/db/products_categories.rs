@@ -82,10 +82,23 @@ impl Store<'_> {
             });
         }
 
-        let rows = self.conn.execute(
+        let result = self.conn.execute(
             "UPDATE categories SET name = ?1, colour = ?2, icon = ?3 WHERE id = ?4",
             params![name.trim(), colour, icon, id],
-        )?;
+        );
+
+        let rows = match result {
+            Err(rusqlite::Error::SqliteFailure(e, _))
+                if e.code == rusqlite::ErrorCode::ConstraintViolation =>
+            {
+                return Err(CoreError::Conflict {
+                    entity: "category",
+                    field: "name",
+                });
+            }
+            Err(e) => return Err(e.into()),
+            Ok(r) => r,
+        };
 
         if rows == 0 {
             return Err(CoreError::NotFound {

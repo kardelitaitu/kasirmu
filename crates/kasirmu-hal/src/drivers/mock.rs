@@ -24,7 +24,7 @@ use crate::error::HalError;
 use crate::traits::barcode::BarcodeScanner;
 use crate::traits::cash_drawer::CashDrawer;
 use crate::traits::customer_display::{CustomerDisplay, DisplayContent};
-use crate::traits::edc::{EdcPaymentResult, EdcTerminal, TerminalStatus};
+use crate::traits::edc::{EdcPaymentResult, EdcSettlementResult, EdcTerminal, TerminalStatus};
 use crate::traits::printer::{PaperStatus, PrinterStatus, ReceiptPrinter};
 use crate::traits::weight_scale::{WeightReading, WeightScale};
 use crate::types::{Barcode, DeviceInfo};
@@ -472,6 +472,10 @@ pub struct MockEdcTerminal {
     pub refund_calls: Arc<AtomicUsize>,
     /// Number of times `void` has been called.
     pub void_calls: Arc<AtomicUsize>,
+    /// Number of times `settle` has been called.
+    pub settle_calls: Arc<AtomicUsize>,
+    /// Number of times `inquiry` has been called.
+    pub inquiry_calls: Arc<AtomicUsize>,
     /// Number of times `print_receipt` has been called.
     pub print_calls: Arc<AtomicUsize>,
     /// Device identity reported by `device_info()`.
@@ -497,6 +501,8 @@ impl MockEdcTerminal {
             sale_calls: Arc::new(AtomicUsize::new(0)),
             refund_calls: Arc::new(AtomicUsize::new(0)),
             void_calls: Arc::new(AtomicUsize::new(0)),
+            settle_calls: Arc::new(AtomicUsize::new(0)),
+            inquiry_calls: Arc::new(AtomicUsize::new(0)),
             print_calls: Arc::new(AtomicUsize::new(0)),
             info,
         }
@@ -566,7 +572,11 @@ impl EdcTerminal for MockEdcTerminal {
         }
     }
 
-    async fn authorize(&self, _amount: Money) -> Result<String, HalError> {
+    async fn authorize(
+        &self,
+        _amount: Money,
+        _reference: Option<&str>,
+    ) -> Result<String, HalError> {
         self.authorize_calls.fetch_add(1, Ordering::SeqCst);
         if self.is_armed() {
             Ok("mock-txn-001".into())
@@ -584,9 +594,13 @@ impl EdcTerminal for MockEdcTerminal {
         }
     }
 
-    async fn sale(&self, amount: Money) -> Result<EdcPaymentResult, HalError> {
+    async fn sale(
+        &self,
+        amount: Money,
+        reference: Option<&str>,
+    ) -> Result<EdcPaymentResult, HalError> {
         self.sale_calls.fetch_add(1, Ordering::SeqCst);
-        let txn_id = self.authorize(amount).await?;
+        let txn_id = self.authorize(amount, reference).await?;
         self.capture(&txn_id).await
     }
 
@@ -623,6 +637,37 @@ impl EdcTerminal for MockEdcTerminal {
             })
         } else {
             Err(self.unsupported("void"))
+        }
+    }
+
+    async fn settle(&self) -> Result<EdcSettlementResult, HalError> {
+        self.settle_calls.fetch_add(1, Ordering::SeqCst);
+        if self.is_armed() {
+            Ok(EdcSettlementResult {
+                success: true,
+                batch_number: Some("000001".into()),
+                transaction_count: 1,
+                total_amount: None,
+                message: "settlement approved".into(),
+            })
+        } else {
+            Err(self.unsupported("settle"))
+        }
+    }
+
+    async fn inquiry(&self, invoice: &str) -> Result<EdcPaymentResult, HalError> {
+        self.inquiry_calls.fetch_add(1, Ordering::SeqCst);
+        if self.is_armed() {
+            Ok(EdcPaymentResult {
+                success: true,
+                transaction_id: Some(format!("mock-inq-{invoice}")),
+                auth_code: Some("MOCKINQ".into()),
+                card_scheme: Some("Visa".into()),
+                card_last4: Some("1111".into()),
+                message: "inquiry approved".into(),
+            })
+        } else {
+            Err(self.unsupported("inquiry"))
         }
     }
 

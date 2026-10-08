@@ -12,8 +12,8 @@ session happened to stage under your subject. Immediately before each commit, co
 router is clean against HEAD: `git --no-optional-locks status --porcelain -- ui/src/dev-mock/tauri-api.ts`.
 If it holds edits that are not yours, stop and report rather than committing them.  
 **Sibling Documents:**
-- [`todo-refactor-devmock-agents-1.md`](./todo-refactor-devmock-agents-1.md) (Agent 1 — Dev-Mock Storage Core & Seeding Engine)
-- [`todo-refactor-devmock-agents-3.md`](../../todo-refactor-devmock-agents-3.md) (Agent 3 — Enterprise Mocks: Staff, Workspaces, Topology & Settings)
+- [`done-todo-refactor-devmock-agents-1.md`](done-todo-refactor-devmock-agents-1.md) (Agent 1 — Dev-Mock Storage Core & Seeding Engine)
+- [`done-todo-refactor-devmock-agents-3.md`](../../reviews/done-todo-refactor-devmock-agents-3.md) (Agent 3 — Enterprise Mocks: Staff, Workspaces, Topology & Settings)
 
 ---
 
@@ -34,14 +34,14 @@ If it holds edits that are not yours, stop and report rather than committing the
 ## 📋 Task Checklist
 
 > **Coverage note (2026-09-13):** the "~196 entries have no owner" figure below was true when
-> phases 2.1 and 2.2 landed; [`todo-refactor-devmock-agents-4.md`](./todo-refactor-devmock-agents-4.md)
+> phases 2.1 and 2.2 landed; [`done-todo-refactor-devmock-agents-4.md`](done-todo-refactor-devmock-agents-4.md)
 > was opened for that tail and has since extracted most of it. The agent-2 leftovers this lane
 > still owns are **14** entries (12 bundle keys + `get_low_stock_alerts` + `open_cash_drawer`),
 > measured at HEAD on 2026-09-13, not the "~196" or agent 4's earlier "~12".
 
 > **Lane status (2026-09-13):** phases 2.1 and 2.2 are **done and committed** (`6105ce224`,
 > `efd766226`); the counts recorded under each match those commits. Only the unowned tail
-> noted at the foot of this file is open, and [`todo-refactor-devmock-agents-4.md`](./todo-refactor-devmock-agents-4.md)
+> noted at the foot of this file is open, and [`done-todo-refactor-devmock-agents-4.md`](done-todo-refactor-devmock-agents-4.md)
 > now owns most of it — do not re-run 2.1 or 2.2.
 
 ### Phase 2.0: Baseline Audit

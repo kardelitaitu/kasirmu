@@ -11,6 +11,7 @@ import {
 import type { LoginSessionDto, CreateSessionResult } from '@/api/staff';
 import type { WorkspaceDto } from '@/api/workspaces';
 import { withFluent } from '@/i18n/test-utils';
+import { setShellKind } from '@/utils/shellKind';
 
 // ── Opt out of the global WorkspaceContext stub ──────────────────────
 // The setupFile installs a safe-default mock for useWorkspace and
@@ -194,6 +195,7 @@ async function waitForLoaded(result: HookResult) {
 // ── Setup ──────────────────────────────────────────────────────────────
 
 beforeEach(() => {
+  setShellKind('desktop');
   mocks.resolveBootStore.mockResolvedValue({
     is_bound: false,
     store_id: 'store-1',
@@ -215,6 +217,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  setShellKind('desktop');
   vi.clearAllMocks();
 });
 
@@ -382,6 +385,31 @@ describe('WorkspaceContext', () => {
   });
 
   describe('session token lifecycle', () => {
+    it('mints an Android settings token from a real assigned instance when admin is absent', async () => {
+      setShellKind('tablet');
+      const { result } = renderWorkspaceHook();
+      await waitForLoaded(result);
+      await waitFor(() => expect(result.current.workspace.sessionToken).toBe('tok-abc-123'), FAST_WAIT);
+      expect(mocks.createSession).toHaveBeenCalledWith(expect.objectContaining({
+        store_id: 'store-1',
+        instance_id: 'inst-restaurant',
+        type_key: 'restaurant-pos',
+        picker_ticket: DEFAULT_TICKET,
+      }));
+      // A scoped token must not open a POS screen or imply the user chose it.
+      expect(result.current.workspace.activeWorkspace).toBeNull();
+      expect(result.current.workspace.activeInstance).toBeNull();
+    });
+
+    it('does not mint a tablet token from a fabricated instance when the picker is empty', async () => {
+      setShellKind('tablet');
+      mocks.listWorkspaces.mockResolvedValue([]);
+      const { result } = renderWorkspaceHook();
+      await waitForLoaded(result);
+      expect(result.current.workspace.sessionToken).toBeNull();
+      expect(mocks.createSession).not.toHaveBeenCalled();
+    });
+
     it('creates a session token when workspace is selected', async () => {
       const { result } = renderWorkspaceHook();
 

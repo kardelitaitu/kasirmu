@@ -210,6 +210,21 @@
   flex-shrink: 0;
 }
 
+/* Leading icon slot. Third member of the btn__ family — .btn__spinner (:158) and
+   .btn__check (:209) were both defined while this one was not, so the icon had no
+   rule of its own. .btn is inline-flex with gap: var(--space-2) (:10-13), which
+   spaces it from the label; what it lacked was the shrink guard the other two
+   carry, so a long label could squash an icon inside a constrained button.
+   Sized in em so it tracks the button's own font-size, as .btn__spinner does. */
+.btn__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 1em;
+  height: 1em;
+}
+
 @media (prefers-reduced-motion: no-preference) {
   .btn--success-state .btn__check {
     animation: btn-check-pop var(--duration-200) var(--ease-out) both;
@@ -342,6 +357,21 @@
    a genuinely large, soft --shadow-sm pane (the preview column's own rail), so
    it takes the overlay rather than an exemption. */
 .restaurant-preview-card::after,
+/* Restaurant cart sheet + floating cart bar (portrait tablet, 53df57eae). The
+   panel is a --shadow-2xl bottom sheet and the bar a --shadow-xl full-width
+   pill, so both band and both take the overlay. Each element also carries
+   className="noise-dither" in its TSX (RestaurantCartSheet.tsx /
+   RestaurantFloatingCartBar.tsx); the selectors are named here too because
+   noiseDitherCompliance.test.ts walks CSS, not JSX - the same reason stated
+   for .restaurant-preview-card directly above.
+    The bar's inner .restaurant-floating-cart-action-btn is listed as well: it is a
+   small --shadow-sm pill (the .btn case for banding), so it was tried as an
+   exemption first -- and that breached the frozen EXEMPT_SELECTOR_PREFIXES
+   ceiling (8), which is the tripwire doing its job. Giving it the overlay
+   directly needs no waiver on either door, so the narrower fix wins. */
+.restaurant-cart-sheet-panel::after,
+.restaurant-floating-cart-bar::after,
+.restaurant-floating-cart-action-btn::after,
 /* The mat the thermal roll sits on: the full-width stage behind the receipt
    preview, carrying inset --shadow-inner. Large enough to band, so it takes the
    overlay rather than an exemption. (The two other shadowed selectors this
@@ -355,6 +385,17 @@
    the dither from the dithered parent, exactly as .modal-close-btn does. */
 .memo-banner::after,
 .memo-expanded-card::after,
+/* Diagnostic export card — the --shadow-sm pane the one-click archive export
+   renders into (DiagnosticExportCard.css:13). Named here rather than given
+   .noise-dither in the TSX because the card element carries no utility class
+   today, and the explicit-::after route is the one this file documents for a
+   surface that already shipped. Its two feedback banners take --shadow-* only
+   through colour tokens, not elevation, so they are not surfaces. */
+.diagnostic-export-card::after,
+/* Restaurant menu size control — a 48px square button with --shadow-xs. Given the
+   overlay rather than a waiver: the exempt-prefix door it was tried on first
+   breached that door's frozen ceiling (9 > 8). */
+.restaurant-size-btn::after,
 /* ⚠ DEPRECATED LEGACY SELECTORS — do not add new ones here.
    Instead, add className="noise-dither" to the TSX element.
    (wire-rename-input / wire-label-pill are positioned absolute with
@@ -537,8 +578,17 @@
   .topology-rev-browser::after,
   .restaurant-preview-card::after,
   .resto-receipt-paper-wrapper::after,
+  .restaurant-cart-sheet-panel::after,
+  .restaurant-floating-cart-bar::after,
+  .restaurant-floating-cart-action-btn::after,
   .memo-banner::after,
   .memo-expanded-card::after,
+  /* Parity with the dither block: the diagnostic export card is an elevated
+     --shadow-sm surface, so it opts out of the overlay in both modes too. */
+  .diagnostic-export-card::after,
+  /* Same parity for the restaurant menu size control (see its KNOWN_NOISE_SELECTORS
+     entry: the overlay was granted, not waived). */
+  .restaurant-size-btn::after,
   .retail-shift-modal::after,
   .retail-held-carts-modal::after,
   .retail-discount-modal::after,
@@ -676,8 +726,17 @@
   .topology-rev-browser::after,
   .restaurant-preview-card::after,
   .resto-receipt-paper-wrapper::after,
+  .restaurant-cart-sheet-panel::after,
+  .restaurant-floating-cart-bar::after,
+  .restaurant-floating-cart-action-btn::after,
   .memo-banner::after,
   .memo-expanded-card::after,
+  /* Parity with the dither block: the diagnostic export card is an elevated
+     --shadow-sm surface, so it opts out of the overlay in both modes too. */
+  .diagnostic-export-card::after,
+  /* Same parity for the restaurant menu size control (see its KNOWN_NOISE_SELECTORS
+     entry: the overlay was granted, not waived). */
+  .restaurant-size-btn::after,
   .retail-shift-modal::after,
   .retail-held-carts-modal::after,
   .retail-discount-modal::after,
@@ -1523,6 +1582,24 @@
   summary, label {
     min-height: var(--touch-target-min);
     min-width: var(--touch-target-min);
+  }
+  /* Checkboxes and radios are exempt from the floor above. A bare
+     `input[type=checkbox]` has no intrinsic width, so min-width: 44px stretches
+     the BOX ITSELF: on the tablet a raw checkbox rendered as a 44x44 grey square
+     with its label sitting off-centre beside it (verified on device — the sync
+     conflict screen's "show resolved history" control showed exactly that, and
+     the ReceiptFormat / ExportSection / RoleAssignmentMatrix checkboxes had no
+     rule of their own to stop it).
+     The tap target the floor exists for is not lost: every one of those sites
+     pairs the input with a <label>, and `label` keeps the 44px floor above, so
+     the tappable area is the label. Toggle switches are unaffected either way —
+     they already set width/height: 0 on the input and draw a slider sibling.
+     Scoped to the checkbox/radio types so text inputs and selects keep the
+     floor they legitimately want. */
+  input[type="checkbox"],
+  input[type="radio"] {
+    min-width: 0;
+    min-height: 0;
   }
   .btn, .card-clickable, .nav-item,
   [role="tablist"] [role="tab"] {

@@ -10,10 +10,11 @@
 // needs no BridgeCtx; the scoped twins arrive with a later slice that
 // also builds the tablet seam.
 
-use tauri::command;
+use tauri::{Manager, command};
 
 use crate::error::AppError;
 
+pub use kasirmu_bridge::diagnostics::{CrashReport, DiagnosticExportResult};
 pub use kasirmu_bridge::health::VersionInfo;
 
 /// Liveness probe. Returns `Ok("pong")` if the Tauri runtime is alive.
@@ -35,12 +36,103 @@ pub async fn version() -> Result<VersionInfo, AppError> {
     .map_err(Into::into)
 }
 
-/// Get the stable device identifier (hostname) for terminal binding.
+/// Version info resolved from a session token. ADR #7.
+///
+/// The tablet shell never registered `version_scoped`, so the settings
+/// fan-out's call failed with "Command version_scoped not found" on every
+/// cold start and silently fell back to unscoped `version`
+/// (`ui/src/api/system.ts`) — measured by the device walk's IPC recorder.
+/// The body matches the bridge twin: resolve the session, then report the
+/// same compile-time version.
 #[command]
-pub async fn get_device_id() -> Result<String, AppError> {
-    kasirmu_bridge::health::get_device_id()
-        .await
-        .map_err(Into::into)
+pub async fn version_scoped(
+    session_token: String,
+    state: tauri::State<'_, crate::state::AppState>,
+) -> Result<VersionInfo, AppError> {
+    // The session is the whole point of the scoped call: a dead token must
+    // not get version data.
+    let _session = state.resolve_session(&session_token)?;
+    kasirmu_bridge::health::version(
+        env!("CARGO_PKG_NAME"),
+        env!("CARGO_PKG_VERSION"),
+        env!("CARGO_PKG_RUST_VERSION"),
+        option_env!("TARGET").unwrap_or("unknown"),
+    )
+    .await
+    .map_err(Into::into)
+}
+
+/// Get the stable device identifier for terminal binding.
+///
+/// On Android, resolves or generates a persistent device UUID stored in
+/// settings (`device.terminal_id`) and cached in `AppState::terminal_id`.
+/// If an existing provisioning row exists (e.g. legacy `unknown-device`),
+/// it adopts that row so existing installs do not re-onboard on update.
+/// On desktop/host builds, falls back to `COMPUTERNAME` / `HOSTNAME` or persistent ID.
+#[command]
+pub async fn get_device_id(
+    state: tauri::State<'_, crate::state::AppState>,
+) -> Result<String, AppError> {
+    resolve_device_id(&state).await
+}
+
+pub(crate) async fn resolve_device_id(state: &crate::state::AppState) -> Result<String, AppError> {
+    {
+        let cached = state.terminal_id.lock().await;
+        if let Some(id) = cached.as_ref() {
+            return Ok(id.clone());
+        }
+    }
+
+    let is_android = cfg!(target_os = "android");
+    let id = {
+        let conn = state.db.lock().await;
+        resolve_persistent_device_id(&conn, is_android)?
+    };
+
+    let mut cached = state.terminal_id.lock().await;
+    *cached = Some(id.clone());
+    Ok(id)
+}
+
+pub(crate) fn resolve_persistent_device_id(
+    conn: &rusqlite::Connection,
+    is_android: bool,
+) -> Result<String, AppError> {
+    if !is_android
+        && let Ok(id) = std::env::var("COMPUTERNAME").or_else(|_| std::env::var("HOSTNAME"))
+        && !id.trim().is_empty()
+    {
+        return Ok(id);
+    }
+
+    if let Ok(Some(existing_id)) = kasirmu_core::Settings::get(conn, "device.terminal_id")
+        && !existing_id.trim().is_empty()
+    {
+        return Ok(existing_id);
+    }
+
+    let existing_rows: Vec<String> = conn
+        .prepare("SELECT terminal_id FROM provisioning")
+        .and_then(|mut stmt| {
+            let rows = stmt.query_map([], |r| r.get(0))?;
+            Ok(rows.filter_map(Result::ok).collect())
+        })
+        .unwrap_or_default();
+
+    let id = if existing_rows.len() == 1 {
+        // Adopt the single existing provisioned terminal_id (e.g. legacy 'unknown-device')
+        existing_rows[0].clone()
+    } else {
+        // Fresh install: generate a persistent random device UUID
+        format!("android-{}", uuid::Uuid::new_v4().simple())
+    };
+
+    if let Err(e) = kasirmu_core::Settings::set(conn, "device.terminal_id", &id) {
+        tracing::warn!(error = %e, "failed to persist device.terminal_id to settings");
+    }
+
+    Ok(id)
 }
 
 /// Get the local IP address of the machine.
@@ -79,6 +171,98 @@ pub async fn get_build_fingerprint() -> Result<Option<String>, AppError> {
     tokio::task::spawn_blocking(kasirmu_bridge::build_integrity::apk_signing_fingerprint)
         .await
         .map_err(|e| AppError::Internal(format!("fingerprint read panicked: {e}")))
+}
+
+/// Storage health status and capacity info.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StorageHealthResult {
+    /// Available bytes on the database volume.
+    pub available_bytes: u64,
+    /// Total bytes on the database volume.
+    pub total_bytes: u64,
+    /// Whether available space is below the 500 MB threshold.
+    pub is_low_space: bool,
+    /// Critical low storage threshold in bytes (500 MiB).
+    pub threshold_bytes: u64,
+}
+
+#[command]
+/// Check storage capacity and low space warning on mobile.
+pub async fn get_storage_health(
+    state: tauri::State<'_, crate::state::AppState>,
+) -> Result<StorageHealthResult, AppError> {
+    let db_path = &state.db_path;
+    let space = platform_instance_guard::get_disk_space(db_path)
+        .map_err(|e| AppError::Internal(format!("failed to query storage space: {e}")))?;
+    let is_low_space = space.available_bytes < platform_instance_guard::LOW_STORAGE_THRESHOLD_BYTES;
+    Ok(StorageHealthResult {
+        available_bytes: space.available_bytes,
+        total_bytes: space.total_bytes,
+        is_low_space,
+        threshold_bytes: platform_instance_guard::LOW_STORAGE_THRESHOLD_BYTES,
+    })
+}
+
+#[command]
+/// Export comprehensive diagnostic archive (.zip) containing system telemetry,
+/// sync status, and sanitized logs on mobile.
+pub async fn export_diagnostics(
+    session_token: String,
+    output_path: String,
+    app_handle: tauri::AppHandle,
+    state: tauri::State<'_, crate::state::AppState>,
+) -> Result<DiagnosticExportResult, AppError> {
+    let ctx = state.bridge_ctx();
+    let db_path = &state.db_path;
+    let log_dir = app_handle.path().app_log_dir().ok();
+
+    kasirmu_bridge::diagnostics::export_diagnostics(
+        &ctx,
+        &session_token,
+        &output_path,
+        db_path,
+        log_dir.as_deref(),
+        env!("CARGO_PKG_NAME"),
+        env!("CARGO_PKG_VERSION"),
+        env!("CARGO_PKG_RUST_VERSION"),
+        option_env!("TARGET").unwrap_or("unknown"),
+    )
+    .await
+    .map_err(Into::into)
+}
+
+#[command]
+/// Record fatal frontend or runtime crash telemetry report without sensitive PII.
+pub async fn record_crash_report(
+    report: CrashReport,
+    app_handle: tauri::AppHandle,
+) -> Result<(), AppError> {
+    let log_dir = app_handle.path().app_log_dir().ok();
+    kasirmu_bridge::diagnostics::record_crash_report(log_dir.as_deref(), report)
+        .await
+        .map_err(Into::into)
+}
+
+#[command]
+/// Dispatched when Android OS reports memory pressure (onTrimMemory / onLowMemory).
+///
+/// Levels >= 10 (`TRIM_MEMORY_RUNNING_LOW` or higher) cause background sync
+/// to back off, conserving process memory and thread pool resources for cashier checkout.
+pub async fn notify_memory_pressure(
+    level: u8,
+    state: tauri::State<'_, crate::state::AppState>,
+) -> Result<(), AppError> {
+    state
+        .memory_pressure_level
+        .store(level, std::sync::atomic::Ordering::Relaxed);
+    if level >= 10 {
+        tracing::warn!(
+            level,
+            "Android memory pressure notification received; background sync backed off"
+        );
+    }
+    Ok(())
 }
 
 #[cfg(test)]

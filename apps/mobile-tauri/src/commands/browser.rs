@@ -45,14 +45,29 @@ pub async fn open_product_images(sku: String, state: State<'_, AppState>) -> Res
         urlencoding(&query)
     );
 
-    open_in_browser(&url).await
+    open_in_browser(state.app.as_ref(), &url).await
 }
 
 /// Open a URL in the OS default browser via `tauri-plugin-opener`.
 /// Shared with the device-link command (ADR #54 §2.5), which hands it the consent URL.
-pub(crate) async fn open_in_browser(url: &str) -> Result<(), AppError> {
-    tauri_plugin_opener::open_url(url, None::<&str>)
-        .map_err(|e| AppError::Internal(format!("opening browser: {e}")))
+///
+/// On mobile (Android/iOS), `tauri-plugin-opener` requires the `OpenerExt` method on
+/// `AppHandle` to invoke the platform-native plugin (which fires `Intent.ACTION_VIEW` on Android).
+/// The free function `tauri_plugin_opener::open_url` falls back to desktop `xdg-open` / shell,
+/// which does not exist on Android.
+pub(crate) async fn open_in_browser(
+    app: Option<&tauri::AppHandle>,
+    url: &str,
+) -> Result<(), AppError> {
+    if let Some(app) = app {
+        use tauri_plugin_opener::OpenerExt;
+        app.opener()
+            .open_url(url, None::<&str>)
+            .map_err(|e| AppError::Internal(format!("opening browser: {e}")))
+    } else {
+        tauri_plugin_opener::open_url(url, None::<&str>)
+            .map_err(|e| AppError::Internal(format!("opening browser: {e}")))
+    }
 }
 
 #[cfg(test)]

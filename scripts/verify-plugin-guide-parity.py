@@ -72,6 +72,11 @@ GUIDE = ROOT / "docs" / "guides" / "developer" / "plugin-guide.md"
 MANAGER = ROOT / "crates" / "kasirmu-plugin" / "src" / "manager.rs"
 OZ_LUA_LIB = ROOT / "crates" / "kasirmu-lua" / "src" / "lib.rs"
 OZ_CLI = ROOT / "crates" / "kasirmu-cli" / "src" / "cli.rs"
+# The CLI's own README is the second place a subcommand name is written down.
+# It is the more load-bearing of the two: it carries a table of every command
+# and its arguments, so a row naming a command that does not exist sends a
+# reader straight to a clap error.
+CLI_README = ROOT / "crates" / "kasirmu-cli" / "README.md"
 
 # `oz.<name>` tokens anywhere in the guide (over-detection is safe).
 OZ_TOKEN = re.compile(r"\boz\.([a-z][a-z0-9_]*)\b")
@@ -85,12 +90,14 @@ OZ_SET = re.compile(r'oz\.set\("([a-z][a-z0-9_]*)",')
 LEGACY_HEAD = re.compile(r"LEGACY_HOOK_NAMES\b[^\n]*?=\s*&\s*\[")
 # CLI subcommands documented in the guide: `cargo run -p kasirmu-cli -- name`
 CLI_DOC = re.compile(r"cargo run -p kasirmu-cli --\s+([a-z][a-z0-9-]*)", re.I)
+# …and in the crate README's command table, written as `kasir <name>`.
+CLI_README_DOC = re.compile(r"\bkasir ([a-z][a-z0-9-]*)\b")
 # Phantom commands that historically never existed and must not return.
 PHANTOM_CLI = {"run-script", "validate-plugins"}
 
 DESCRIPTION = (
     "Verify every oz.* binding and kasirmu-cli subcommand documented in "
-    "docs/guides/plugin-guide.md is actually implemented in the Rust source. "
+    "docs/guides/developer/plugin-guide.md is actually implemented in the Rust source. "
     "See the module docstring for rationale."
 )
 
@@ -186,17 +193,33 @@ def implemented_bindings() -> tuple[set[str], set[str]]:
     return oz, legacy
 
 
+def _kebab(name: str) -> str:
+    """CamelCase enum variant -> the kebab-case name clap actually exposes.
+
+    Comparing a lowercase-unkebabed `InitDb` against a documented `init-db`
+    reports a phantom on every multi-word subcommand. That mismatch was latent
+    while the plugin guide documented none of them; it becomes live the moment
+    any doc names a multi-word command.
+    """
+    return re.sub(r"(?<!^)(?=[A-Z])", "-", name).lower()
+
+
 def documented_cli() -> set[str]:
-    text = GUIDE.read_text(encoding="utf-8")
-    return {m.group(1).lower() for m in CLI_DOC.finditer(text)}
+    found = set()
+    if GUIDE.exists():
+        text = GUIDE.read_text(encoding="utf-8")
+        found |= {m.group(1).lower() for m in CLI_DOC.finditer(text)}
+    if CLI_README.exists():
+        text = CLI_README.read_text(encoding="utf-8")
+        found |= {m.group(1).lower() for m in CLI_README_DOC.finditer(text)}
+    return found
 
 
 def implemented_cli() -> set[str]:
     if not OZ_CLI.exists():
         return set()
     text = OZ_CLI.read_text(encoding="utf-8")
-    # Enum variants are CamelCase; normalize to lowercase for comparison.
-    return {m.group(1).lower() for m in re.finditer(r"^\s{4}([A-Z][A-Za-z0-9]*)\s*,?", text, re.M)}
+    return {_kebab(m.group(1)) for m in re.finditer(r"^\s{4}([A-Z][A-Za-z0-9]*)\s*,?", text, re.M)}
 
 
 def main() -> int:

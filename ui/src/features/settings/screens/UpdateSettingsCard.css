@@ -1,0 +1,294 @@
+/* UpdateSettingsCard.css — In-App Self-Updater styles */
+
+.update-settings-card {
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg, 8px);
+  padding: var(--space-6);
+  margin-top: var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.update-settings-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+
+.update-settings-title {
+  margin: 0;
+  font-size: var(--text-xl);
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.update-settings-subtitle {
+  margin: var(--space-1) 0 0 0;
+  font-size: var(--text-base);
+  color: var(--color-text-secondary);
+}
+
+.update-settings-version-tags {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.update-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--space-1) var(--space-2_5);
+  border-radius: var(--radius-full, 9999px);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.update-badge--current {
+  background: var(--color-bg-hover);
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-border);
+}
+
+.update-badge--latest {
+  background: var(--color-success-subtle);
+  color: var(--color-success-dim);
+  border: 1px solid var(--color-success-dim);
+}
+
+.update-settings-body {
+  margin-top: var(--space-2);
+}
+
+.update-state-box {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.update-state-box--loading {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: var(--space-3);
+  color: var(--color-text-secondary);
+  font-size: var(--text-base);
+}
+
+.update-spinner {
+  width: var(--space-5);
+  height: var(--space-5);
+  border: 2px solid var(--color-border);
+  border-top-color: var(--color-primary);
+  border-radius: 50%;
+}
+
+/* Gated, not merely styled: an always-on rotation is the exact shape WCAG
+   2.3.3 covers, and this was the one un-gated decorative animation in the
+   tree (animationCompliance). `no-preference` is the house form -- the same
+   opt-in `theme/components.css` uses for `.spinner` -- rather than a
+   `reduce` block that switches it off, so a user who never expressed a
+   preference still gets the motion. The ring keeps its shape either way;
+   only the rotation stops. */
+@media (prefers-reduced-motion: no-preference) {
+  .update-spinner {
+    animation: update-spin 0.8s linear infinite;
+  }
+}
+
+@keyframes update-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.update-state-box--ok {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+
+.update-status-icon {
+  width: var(--space-8);
+  height: var(--space-8);
+  border-radius: 50%;
+  background: var(--color-success-bg);
+  color: var(--color-success-dim);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+}
+
+.update-status-message {
+  margin: 0;
+  font-size: var(--text-md);
+  color: var(--color-text);
+  font-weight: 500;
+}
+
+.update-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-accent-dim);
+  border: 1px solid var(--color-accent-alpha);
+  border-radius: var(--radius-md, 6px);
+}
+
+.update-banner-icon {
+  font-size: var(--text-xl);
+}
+
+.update-banner-text {
+  margin: 0;
+  font-size: var(--text-base);
+  font-weight: 500;
+  color: var(--color-primary-hover);
+}
+
+.update-banner--ready {
+  background: var(--color-success-subtle);
+  border-color: var(--color-success-dim);
+}
+
+.update-banner--ready .update-banner-text {
+  color: var(--color-success-dim);
+}
+
+.update-release-notes {
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md, 6px);
+  padding: var(--space-3) var(--space-4);
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.update-notes-title {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-secondary);
+  margin-bottom: var(--space-1_5);
+}
+
+.update-notes-content {
+  font-size: var(--text-base);
+  color: var(--color-text);
+  white-space: pre-wrap;
+  line-height: var(--leading-snug);
+}
+
+.update-action-row {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.update-state-box--progress {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+/* Two more steps in the same family as --loading / --ok / --progress / --error
+   above: "an update is available" and "ready to install". Both render a
+   .update-banner as their first child, so they share the base column layout and
+   only need the step's own breathing room. */
+.update-state-box--available,
+.update-state-box--ready {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.update-progress-meta {
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+}
+
+/* The "Downloading… (42% · 3.1 MB/s)" line and the ETA beside it. Both sit in
+   .update-progress-meta above, which already sets the row layout and colour —
+   they were the only two members of the update-* family never defined, while
+   -meta / -track / -fill all were. The ETA is the quieter of the pair. */
+.update-progress-label {
+  min-width: 0;
+}
+
+.update-progress-eta {
+  flex-shrink: 0;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+.update-progress-track {
+  width: 100%;
+  height: 8px;
+  background: var(--color-bg-hover);
+  border-radius: var(--radius-full, 9999px);
+  overflow: hidden;
+}
+
+.update-progress-fill {
+  height: 100%;
+  background: var(--color-primary);
+  transition: width 0.2s ease-in-out;
+}
+
+.update-permission-box {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  background: var(--color-warning-subtle);
+  border: 1px solid var(--color-warning-dim);
+  border-radius: var(--radius-md, 6px);
+}
+
+.update-permission-text {
+  margin: 0;
+  font-size: var(--text-base);
+  color: var(--color-warning-dim);
+}
+
+.update-state-box--error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-danger-subtle);
+  border: 1px solid var(--color-danger-dim);
+  border-radius: var(--radius-md, 6px);
+  gap: var(--space-4);
+}
+
+.update-error-text {
+  margin: 0;
+  font-size: var(--text-base);
+  color: var(--color-danger-700);
+}
+
+.update-modal-actions {
+  display: flex;
+  gap: var(--space-3);
+  justify-content: flex-end;
+}
+
+.update-offline-body {
+  margin: 0;
+  font-size: var(--text-md);
+  color: var(--color-text);
+  line-height: var(--leading-normal);
+}

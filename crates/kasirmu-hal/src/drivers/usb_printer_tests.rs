@@ -102,3 +102,23 @@ fn try_new_preserves_usb_info() {
     assert_eq!(printer.usb_info.pid, 0x5011);
     assert_eq!(printer.usb_info.serial, "SN009");
 }
+
+#[tokio::test]
+async fn oversized_payload_is_rejected() {
+    let usb_info = UsbDeviceInfo {
+        vid: 0x0416,
+        pid: 0x5011,
+        manufacturer: "Epson".into(),
+        product: "TM-T20".into(),
+        serial: "SN009".into(),
+        interface_number: 0,
+        endpoint_in: 0x81,
+        endpoint_out: Some(0x02),
+        category: DeviceCategory::Printer,
+        label: String::new(),
+    };
+    let printer = UsbReceiptPrinter::try_new(usb_info);
+    let huge_data = vec![0u8; escpos::MAX_PRINT_PAYLOAD_BYTES + 1];
+    let res = printer.print_raw(&huge_data).await;
+    assert!(matches!(res, Err(HalError::Protocol(_))));
+}

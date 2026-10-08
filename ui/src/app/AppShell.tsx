@@ -12,12 +12,14 @@ import { isAnyAriaModalOpen, consumeShortcut } from '@/utils/modal-guard';
 import { isCommandModifier } from '@/utils/keyboard-modifier';
 import AppLayout, { type AppRoute, isSidebarOverlayPresented } from './AppLayout';
 import { getFirstRunState } from '@/api/settings';
-import { getDeviceId } from '@/api/system';
+import { getDeviceId, notifyMemoryPressure } from '@/api/system';
+import { isTabletShell } from '@/utils/shellKind';
 import { useFeatures } from '@/hooks/useFeatures';
 import { useTerminalProfile } from '@/hooks/useTerminalProfile';
 import { getPage, isPageAccessible, type PageRegistration } from '@/registries/page-registry';
 import { recordMark } from '@/utils/perf-metrics';
 import { settleRead } from '@/utils/settle-read';
+import { setActiveRoute } from '@/utils/activeRoute';
 import PermissionDenied from '@/components/PermissionDenied';
 import { ErrorState } from '@/components/ErrorState';
 import { LazyBoundary } from '@/components/LazyBoundary';
@@ -132,7 +134,7 @@ export default function AppShell() {
   // ADR #58 §2.6: subscription state needed to gate the revoked screen before
   // the boot-allowed check. `revoked` lands here when the ride-along daemon
   // has written and cached a revocation verdict from the licence server.
-  const { state: subscriptionState } = useSubscription();
+  const { state: subscriptionState, refresh: refreshSubscription } = useSubscription();
   // Stable ref so the mount effect below can call addToast without
   // listing it as a dependency (which would cause the effect to re-run
   // whenever the toast context re-creates its callback reference, resetting
@@ -159,6 +161,22 @@ export default function AppShell() {
     window.addEventListener('app:lock', handler);
     return () => window.removeEventListener('app:lock', handler);
   }, [session]);
+
+  // ── Global Android OS memory pressure listener (Phase 2 audit) ──
+  useEffect(() => {
+    const handleMemoryTrim = (e: Event) => {
+      const level = (e as CustomEvent<{ level?: number }>).detail?.level ?? 80;
+      if (isTabletShell()) {
+        void notifyMemoryPressure(level).catch(() => {});
+      }
+    };
+    window.addEventListener('kasirmu:trimMemory', handleMemoryTrim);
+    window.addEventListener('kasirmu:lowMemory', handleMemoryTrim);
+    return () => {
+      window.removeEventListener('kasirmu:trimMemory', handleMemoryTrim);
+      window.removeEventListener('kasirmu:lowMemory', handleMemoryTrim);
+    };
+  }, []);
 
   const handleUnlock = useCallback(() => {
     setIsLocked(false);
@@ -382,6 +400,12 @@ export default function AppShell() {
       // applies the section.
       if (getPage(route)) {
         setCurrentRoute(route);
+      } else if (route.startsWith('settings/topology')) {
+        if (getPage('topology')) {
+          setCurrentRoute('topology');
+        } else if (getPage('settings')) {
+          setCurrentRoute('settings');
+        }
       } else if (route.startsWith('settings/')) {
         if (getPage('settings')) {
           setCurrentRoute('settings');
@@ -518,9 +542,14 @@ export default function AppShell() {
         return p && isPageAccessible(p, userRole, userPermissions);
       }) ?? 'products';
       setCurrentRoute(fallback);
+      // Publish for the full-page error boundary's resetKeys: like the tablet
+      // shell, user-driven navigation here is state, not the hash, so a
+      // boundary tripped on one page must clear when the user moves off it.
+      setActiveRoute(fallback);
       return;
     }
     setCurrentRoute(route);
+    setActiveRoute(route);
   }, [userRole, userPermissions]);
 
   const { splashMounted, splashExiting } = useSplashExit(loading);
@@ -602,6 +631,7 @@ export default function AppShell() {
               // answer is stale. Without this the merchant returned to
               // "Create Owner PIN" immediately after being told setup succeeded.
               setHasAnyUsers(true);
+              refreshSubscription();
             }}
           />
         </LazyBoundary>
@@ -893,13 +923,17 @@ function ActivationFlow({
   initialError: string | null;
   onComplete: () => void;
 }) {
+  const { refresh: refreshSubscription } = useSubscription();
   const [step, setStep] = useState<'activate' | 'bootstrap'>('activate');
 
   if (step === 'activate') {
     return (
       <LicenseActivationScreen
         initialError={initialError}
-        onActivated={() => setStep('bootstrap')}
+        onActivated={() => {
+          setStep('bootstrap');
+          refreshSubscription();
+        }}
       />
     );
   }

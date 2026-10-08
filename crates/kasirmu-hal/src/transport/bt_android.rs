@@ -107,11 +107,15 @@ fn exception_message(env: &mut JNIEnv) -> HalError {
         }
     }
     let _ = env.exception_clear();
-    HalError::Bluetooth(if text.is_empty() {
-        "java exception (no message)".into()
+    if text.contains("SecurityException") || text.to_ascii_lowercase().contains("permission") {
+        HalError::PermissionDenied(text)
     } else {
-        text
-    })
+        HalError::Bluetooth(if text.is_empty() {
+            "java exception (no message)".into()
+        } else {
+            text
+        })
+    }
 }
 
 /// Fetch a `java.lang.String` result as a Rust `String`.

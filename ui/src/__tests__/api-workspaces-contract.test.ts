@@ -10,6 +10,8 @@ import {
   listWorkspacesScoped,
   listWorkspaceScreensScoped,
   listWorkspaces,
+  listAllWorkspacesScoped,
+  DEFAULT_WORKSPACE_TYPES,
 } from '@/api/workspaces';
 
 describe('workspaces.ts API contract', () => {
@@ -45,6 +47,25 @@ describe('workspaces.ts API contract', () => {
     mockInvoke.mockResolvedValue([]);
     await listWorkspaces('ticket-1', 'store-1');
     expect(mockInvoke).toHaveBeenCalledWith('list_workspaces', { ticket: 'ticket-1', storeId: 'store-1' });
+  });
+
+  it('listAllWorkspacesScoped calls list_all_workspaces_scoped when available', async () => {
+    const customTypes = [{ key: 'custom', name: 'Custom', description: '', icon: '' }];
+    mockInvoke.mockResolvedValue(customTypes);
+    const result = await listAllWorkspacesScoped('tok');
+    expect(mockInvoke).toHaveBeenCalledWith('list_all_workspaces_scoped', { sessionToken: 'tok' });
+    expect(result).toEqual(customTypes);
+  });
+
+  it('listAllWorkspacesScoped falls back to DEFAULT_WORKSPACE_TYPES on command not found', async () => {
+    mockInvoke.mockRejectedValue(new Error('Command list_all_workspaces_scoped not found'));
+    const result = await listAllWorkspacesScoped('tok');
+    expect(result).toEqual(DEFAULT_WORKSPACE_TYPES);
+  });
+
+  it('listAllWorkspacesScoped propagates unexpected errors', async () => {
+    mockInvoke.mockRejectedValue(new Error('boom'));
+    await expect(listAllWorkspacesScoped('tok')).rejects.toThrow('boom');
   });
 
   it('propagates errors', async () => {

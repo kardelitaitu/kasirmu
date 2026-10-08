@@ -58,8 +58,11 @@ impl EdcTerminal for TestTerminal {
         Ok(TerminalStatus::Ready)
     }
 
-    async fn authorize(&self, _amount: Money) -> Result<String, HalError> {
-        self.calls.lock().unwrap().push("authorize".into());
+    async fn authorize(&self, _amount: Money, reference: Option<&str>) -> Result<String, HalError> {
+        self.calls
+            .lock()
+            .unwrap()
+            .push(format!("authorize:{}", reference.unwrap_or("none")));
         if self.fail_authorize {
             Err(HalError::Unsupported("declined at auth".into()))
         } else {
@@ -84,6 +87,25 @@ impl EdcTerminal for TestTerminal {
         Ok(approved("void-1"))
     }
 
+    async fn settle(&self) -> Result<EdcSettlementResult, HalError> {
+        self.calls.lock().unwrap().push("settle".into());
+        Ok(EdcSettlementResult {
+            success: true,
+            batch_number: Some("000001".into()),
+            transaction_count: 5,
+            total_amount: Some(usd(5000)),
+            message: "settlement ok".into(),
+        })
+    }
+
+    async fn inquiry(&self, invoice: &str) -> Result<EdcPaymentResult, HalError> {
+        self.calls
+            .lock()
+            .unwrap()
+            .push(format!("inquiry:{invoice}"));
+        Ok(approved("inquiry-txn-42"))
+    }
+
     async fn print_receipt(&self, _transaction_id: &str) -> Result<Vec<u8>, HalError> {
         Ok(vec![0x1B, 0x40])
     }
@@ -96,11 +118,11 @@ impl EdcTerminal for TestTerminal {
 #[tokio::test]
 async fn default_sale_chains_authorize_then_capture() {
     let t = TestTerminal::new();
-    let result = t.sale(usd(1000)).await.unwrap();
+    let result = t.sale(usd(1000), Some("INV-001")).await.unwrap();
     assert_eq!(
         t.recorded(),
-        vec!["authorize".to_string(), "capture".to_string()],
-        "sale must authorize before capturing"
+        vec!["authorize:INV-001".to_string(), "capture".to_string()],
+        "sale must authorize with reference before capturing"
     );
     assert!(result.success);
     assert_eq!(result.transaction_id.as_deref(), Some("txn-42"));
@@ -109,22 +131,38 @@ async fn default_sale_chains_authorize_then_capture() {
 #[tokio::test]
 async fn default_sale_propagates_authorize_failure_without_capturing() {
     let t = TestTerminal::failing_authorize();
-    let err = t.sale(usd(1000)).await.unwrap_err();
+    let err = t.sale(usd(1000), None).await.unwrap_err();
     assert!(
         matches!(err, HalError::Unsupported(_)),
         "expected Unsupported, got {err:?}"
     );
     assert_eq!(
         t.recorded(),
-        vec!["authorize".to_string()],
+        vec!["authorize:none".to_string()],
         "a failed authorization must never reach capture"
+    );
+}
+
+#[tokio::test]
+async fn settle_and_inquiry_methods_work() {
+    let t = TestTerminal::new();
+    let settle_res = t.settle().await.unwrap();
+    assert!(settle_res.success);
+    assert_eq!(settle_res.batch_number.as_deref(), Some("000001"));
+    assert_eq!(settle_res.transaction_count, 5);
+
+    let inq_res = t.inquiry("INV-999").await.unwrap();
+    assert!(inq_res.success);
+    assert_eq!(
+        t.recorded(),
+        vec!["settle".to_string(), "inquiry:INV-999".to_string()]
     );
 }
 
 #[tokio::test]
 async fn unsupported_error_keeps_its_message_and_discriminant() {
     let t = TestTerminal::failing_authorize();
-    let err = t.authorize(usd(100)).await.unwrap_err();
+    let err = t.authorize(usd(100), None).await.unwrap_err();
     assert!(
         matches!(err.kind(), crate::error::HalErrorKind::Unsupported),
         "expected the Unsupported discriminant, got {:?}",

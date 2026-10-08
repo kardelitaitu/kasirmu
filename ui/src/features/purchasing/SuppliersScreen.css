@@ -194,3 +194,22 @@
   min-height: 3.75rem;
   font-family: inherit;
 }
+
+/* ── Touch press feedback ────────────────────────────────────────────
+   A single discrete action button on the supplier screen. */
+.suppliers-action-btn:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+@media (pointer: coarse) {
+  .suppliers-action-btn {
+    min-height: var(--touch-target-min);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .suppliers-action-btn:not(:disabled):active {
+    transform: none;
+    opacity: 0.75;
+  }
+}

@@ -17,6 +17,21 @@
   box-sizing: border-box;
   padding: var(--space-3) var(--space-4);
   gap: var(--space-2);
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.restaurant-menu input,
+.restaurant-menu textarea,
+.restaurant-menu [contenteditable="true"] {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.restaurant-menu img {
+  -webkit-user-drag: none;
+  user-select: none;
 }
 
 .restaurant-menu--sidebar-open {
@@ -25,12 +40,9 @@
   padding-left: calc(18rem + 8px + var(--space-4));
 }
 
-/* Disable text selection only on interactive chrome, not content. */
-.restaurant-header,
-.restaurant-categories,
-.restaurant-search {
-  user-select: none;
-  -webkit-user-select: none;
+.restaurant-menu--has-floating-bar {
+  /* Extra bottom padding so the floating cart bar does not obscure the bottom row of menu items */
+  padding-bottom: calc(4.75rem + env(safe-area-inset-bottom, 0px));
 }
 
 /* ── Header row ──────────────────────────────────── */
@@ -750,6 +762,8 @@
       transform: scale(1);
     }
   }
+}
+
 /* When dragging the cart divider, freeze card transforms and hover states
    so resizing is 100% fluid and cards don't pop up under the moving cursor */
 body.is-resizing .restaurant-card,

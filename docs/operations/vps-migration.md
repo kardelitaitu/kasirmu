@@ -1048,8 +1048,8 @@ This is the safety net — it always works regardless of Layers 1 and 2.
 |----------|---------|---------|
 | `OZ_DB_PATH` | `/data/kasir.db` | Path to the SQLite database file |
 | `OZ_API_PORT` | `3099` | HTTP server listen port |
-| `OZ_REDIRECT_ONLY` | (unset) | Run in redirect-only mode. Requires `OZ_SYNC_REDIRECT_URL`. |
-| `OZ_SYNC_REDIRECT_URL` | (unset) | New server URL for migration redirect. |
+| `OZ_REDIRECT_ONLY` | (unset) | Run in redirect-only mode. Requires `OZ_SYNC_REDIRECT_URL` — `config.rs:194` refuses to start without it (`OZ_REDIRECT_ONLY=true requires OZ_SYNC_REDIRECT_URL to be set`), because the redirect router `.expect()`s a URL that construction guarantees. |
+| `OZ_SYNC_REDIRECT_URL` | (unset) | New server URL for migration redirect. **Set it only together with `OZ_REDIRECT_ONLY=true`** — `config_validator.rs:194-205` rejects the URL on its own with `OZ_SYNC_REDIRECT_URL is set but OZ_REDIRECT_ONLY is not 'true'`, and that validator runs at startup (`main.rs:241`, `:266`). Both directions are enforced, in two different files. |
 | `OZ_API_SECRET` | (required) | JWT signing secret for API authentication |
 | `RUST_LOG` | `info` | Log level filter (`debug`, `info`, `warn`, `error`) |
 
@@ -1144,6 +1144,7 @@ This is the safety net — it always works regardless of Layers 1 and 2.
 |---------|-------------|-----|
 | `curl` to old server returns 200, not 421 | Forgot to set `OZ_REDIRECT_ONLY=true` | Check env vars, restart container |
 | Redirect returns 421 but wrong URL | `OZ_SYNC_REDIRECT_URL` misconfigured | Verify the env var, restart |
+| Server exits at startup: `OZ_SYNC_REDIRECT_URL is set but OZ_REDIRECT_ONLY is not 'true'` | The URL was set without the mode flag — both directions are validated | Add `OZ_REDIRECT_ONLY=true`, or unset `OZ_SYNC_REDIRECT_URL` if you did not mean to run in redirect mode |
 | Terminals not migrating after hours | Terminals are offline or have long sync intervals | Check `tail -f` logs on old server; wait up to 30 days |
 | Old server OOM or crash in redirect mode | Very unlikely (~5 MB RAM usage) | Check `docker stats oz-cloud-redirect` |
 | New server shows "database opened" but no data | DB wasn't transferred correctly | Re-run Data Transfer verification steps |

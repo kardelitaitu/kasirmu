@@ -45,6 +45,9 @@ export const ACTION_FLUENT_IDS: Record<string, string> = {
   'bulk.import': 'audit-action-bulk-import',
   'inventory.sync': 'audit-action-inventory-sync',
   'audit.review': 'audit-action-audit-review',
+  'staff.identity.read': 'audit-action-staff-identity-read',
+  'staff.payroll.read': 'audit-action-staff-payroll-read',
+  'api.write': 'audit-action-api-write',
 };
 
 /** Safe localized label used when an action is not in the catalog. */
@@ -65,6 +68,7 @@ export const OUTCOME_FALLBACK_ID = 'audit-log-outcome-unknown';
  */
 export const CRITICAL_ACTIONS = new Set([
   'login.failed', 'user.create', 'user.update',
+  'staff.identity.read', 'staff.payroll.read', 'api.write',
   'setting.change', 'setting.update', 'settings.updated',
   'system.backup', 'system.restore',
   'system.export', 'system.import', 'bulk.import', 'product.delete',

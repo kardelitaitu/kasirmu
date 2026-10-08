@@ -13,8 +13,11 @@ import {
 } from '@/api/license';
 import { isTabletShell } from '@/utils/shellKind';
 import { useToast } from '@/components/Toast';
+import { useVersionStatus } from '@/hooks/useVersionStatus';
+import { formatDisplayVersion } from '@/build-id';
 import { Button } from '@/components/Button';
 import { l10nErrorMessage } from '@/utils/app-error';
+import { useSubscription } from '@/contexts/SubscriptionContext';
 import { QRCodeSVG } from 'qrcode.react';
 
 import './ProvisioningFlow.css';
@@ -101,6 +104,32 @@ const STORE_TYPES: { value: Preset; kind: LocationKind; emoji: string; labelId: 
   },
 ];
 
+export type TaxPreset = 'ppn11' | 'ppn11_service5' | 'tax_free';
+
+const TAX_PRESETS: { value: TaxPreset; labelId: string; fallbackLabel: string; descId: string; fallbackDesc: string }[] = [
+  {
+    value: 'ppn11',
+    labelId: 'setup-tax-preset-ppn11',
+    fallbackLabel: 'PPN 11%',
+    descId: 'setup-tax-preset-ppn11-desc',
+    fallbackDesc: 'Indonesian VAT standard (11%)',
+  },
+  {
+    value: 'ppn11_service5',
+    labelId: 'setup-tax-preset-ppn11-service5',
+    fallbackLabel: 'PPN 11% + Service 5%',
+    descId: 'setup-tax-preset-ppn11-service5-desc',
+    fallbackDesc: 'Restaurant & cafe with service charge',
+  },
+  {
+    value: 'tax_free',
+    labelId: 'setup-tax-preset-tax-free',
+    fallbackLabel: 'Tax-free (0%)',
+    descId: 'setup-tax-preset-tax-free-desc',
+    fallbackDesc: 'Non-taxable enterprise',
+  },
+];
+
 /**
  * The currency and timezone this terminal is provisioned with.
  *
@@ -175,7 +204,12 @@ const STEPS: { id: string; labelId: string; fallback: string }[] = [
 
 export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProps) {
   const { l10n } = useLocalization();
+  // Real version + stamped commit. This footer was added to MATCH the other
+  // surfaces, whose strings were themselves hardcoded -- so all of them could
+  // drift from the app together. See src/build-id.ts.
+  const { currentVersion: appVersion, buildId: appBuildId } = useVersionStatus();
   const { addToast } = useToast();
+  const { refresh: refreshSubscription } = useSubscription();
   // 'linked' is the DEFAULT, not merely an offered choice: the free plan attaches
   // to a kasir.mu account (Google or an emailed code), so a fresh terminal signs
   // up before it opens a register. The 'local' mode stays reachable — a merchant
@@ -184,6 +218,8 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
   const [provisionMode, setProvisionMode] = useState<ProvisioningMode>('linked');
   const [isOffline, setIsOffline] = useState(() => (typeof navigator !== 'undefined' ? !navigator.onLine : false));
   const [storeType, setStoreType] = useState<Preset | null>(null);
+  const [taxPreset, setTaxPreset] = useState<TaxPreset>('ppn11');
+  const [seedSampleProducts, setSeedSampleProducts] = useState(true);
   const [locationName, setLocationName] = useState('');
   const [ownerName, setOwnerName] = useState('');
   const [ownerUsername, setOwnerUsername] = useState('');
@@ -225,14 +261,10 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
 
   // Tablet pairing state.
   //
-  // 'email' is the DEFAULT, not 'pair'. QR pairing asks the merchant to have a
-  // phone with the kasir.mu account ALREADY signed in, hold it over the terminal,
-  // and scan — a three-part precondition on the very first screen of setup, and
-  // the one a merchant setting up a single terminal alone simply cannot meet.
-  // The emailed code needs one thing (the account address) and works on any
-  // device. Both routes stay one tap apart, so QR is still reachable for the
-  // merchant who has a second device on the counter.
-  const [tabletTab, setTabletTab] = useState<'pair' | 'email'>('email');
+  // 'pair' is the HERO on tablets (Option 3): QR pairing offers an instant scan
+  // affordance with a phone. Direct Google Login is unblocked as a first-class tab,
+  // and Email Code remains the fallback for solo merchants.
+  const [tabletTab, setTabletTab] = useState<'pair' | 'google' | 'email'>('pair');
   const [pairingSession, setPairingSession] = useState<PairingSessionStart | null>(null);
   const [pairingLoading, setPairingLoading] = useState(false);
   const [pairingExpired, setPairingExpired] = useState(false);
@@ -324,7 +356,8 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
       const account = await linkDeviceGoogle();
       setLink({ kind: 'linked', account });
       setLinkedAccount(account);
-    } catch {
+    } catch (err) {
+      console.error('[ProvisioningFlow] linkWithGoogle failed:', err);
       // No `setErrorMsg` here: the failure is rendered inline, beside the
       // control that caused it, by the `link.kind === 'failed'` branch below.
       // Setting both drew the same sentence twice on one screen — once in the
@@ -554,12 +587,15 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
           mode: provisionMode,
           tenant_id: provisionMode === 'linked' ? (linkedAccount?.tenantId ?? null) : null,
           device_credential_id: provisionMode === 'linked' ? (linkedAccount?.terminal?.terminalId ?? terminalId) : null,
+          tax_preset: taxPreset,
+          seed_sample_products: seedSampleProducts,
         });
         addToast({
           type: 'success',
           message: l10n.getString('setup-provision-success'),
         });
         void result;
+        refreshSubscription();
         onProvisioned();
       } catch (err: unknown) {
         // Beside the button, not in the top banner — see `submitError` above.
@@ -580,7 +616,10 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
       ownerUsername,
       pin,
       provisionMode,
+      refreshSubscription,
+      seedSampleProducts,
       storeType,
+      taxPreset,
     ],
   );
 
@@ -780,6 +819,15 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
                   <button
                     type="button"
                     role="tab"
+                    aria-selected={tabletTab === 'google'}
+                    className={`provisioning-subtab ${tabletTab === 'google' ? 'active' : ''}`}
+                    onClick={() => setTabletTab('google')}
+                  >
+                    <Localized id="setup-tab-google">Google Sign-in</Localized>
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
                     aria-selected={tabletTab === 'email'}
                     className={`provisioning-subtab ${tabletTab === 'email' ? 'active' : ''}`}
                     onClick={() => setTabletTab('email')}
@@ -849,6 +897,35 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
                         </p>
                       </div>
                     ) : null}
+                  </div>
+                ) : tabletTab === 'google' ? (
+                  <div className="provisioning-account-input-group">
+                    <p className="provisioning-note">
+                      <Localized id="auth-setup-google-desc">
+                        <span>Sign in, or create an account automatically if you are new.</span>
+                      </Localized>
+                    </p>
+                    <Button
+                      variant="primary"
+                      type="button"
+                      data-testid="provision-google-button"
+                      onClick={() => void linkWithGoogle()}
+                      disabled={link.kind === 'linking' || isOffline}
+                    >
+                      <Localized id="setup-account-google">Continue with Google</Localized>
+                    </Button>
+                    {link.kind === 'linking' && (
+                      <p className="provisioning-note" role="status">
+                        <Localized id="setup-account-waiting">Waiting for your browser…</Localized>
+                      </p>
+                    )}
+                    {link.kind === 'failed' && (
+                      <p className="provisioning-field-error" role="alert">
+                        <Localized id="auth-setup-google-failed">
+                          <span>Could not sign in with Google. Please try again.</span>
+                        </Localized>
+                      </p>
+                    )}
                   </div>
                 ) : (
                   <div className="provisioning-account-input-group">
@@ -997,6 +1074,7 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
         )}
 
         {activeStep === 1 && (
+        <>
         <fieldset className="provisioning-fieldset">
           <legend>
             <Localized id="setup-provision-store-type">
@@ -1025,6 +1103,51 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
             ))}
           </div>
         </fieldset>
+
+        <fieldset className="provisioning-fieldset" style={{ marginTop: 'var(--space-4)' }}>
+          <legend>
+            <Localized id="setup-provision-tax-preset">
+              <span>Tax Preset</span>
+            </Localized>
+          </legend>
+          <div className="provisioning-tax-presets" role="radiogroup">
+            {TAX_PRESETS.map((p) => (
+              <button
+                key={p.value}
+                type="button"
+                className={`provisioning-tax-preset${taxPreset === p.value ? ' is-selected' : ''}`}
+                aria-pressed={taxPreset === p.value}
+                id={`provision-tax-preset-${p.value}`}
+                data-testid={`tax-preset-${p.value}`}
+                onClick={() => setTaxPreset(p.value)}
+              >
+                <Localized id={p.labelId}>
+                  <strong>{p.fallbackLabel}</strong>
+                </Localized>
+                <Localized id={p.descId}>
+                  <small>{p.fallbackDesc}</small>
+                </Localized>
+              </button>
+            ))}
+          </div>
+        </fieldset>
+
+        <div className="provisioning-seed-toggle" style={{ marginTop: 'var(--space-4)' }}>
+          {/* eslint-disable-next-line jsx-a11y/label-has-associated-control -- text via Localized span */}
+          <label className="provisioning-checkbox-label" htmlFor="provision-seed-sample-products">
+            <input
+              id="provision-seed-sample-products"
+              type="checkbox"
+              checked={seedSampleProducts}
+              onChange={(e) => setSeedSampleProducts(e.target.checked)}
+              data-testid="provision-seed-sample-products"
+            />
+            <Localized id="setup-provision-seed-catalog">
+              <span>Seed 5 sample products to get started</span>
+            </Localized>
+          </label>
+        </div>
+        </>
         )}
 
         {activeStep === 2 && (
@@ -1215,7 +1338,7 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
             different one here. Not localized: it is a version string and a legal
             line, and every sibling surface renders it identically. */}
         <p className="provisioning-footer" data-testid="provisioning-footer">
-          v0.0.40 • kasir.mu © 2026 All rights reserved.
+          {`${formatDisplayVersion(appVersion, null, appBuildId)} • kasir.mu © 2026 All rights reserved.`}
         </p>
       </form>
     </div>

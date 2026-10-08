@@ -2,15 +2,15 @@
 
 Created 2026-09-05 from the Tools-category design review. Phase 1 of 3.
 Sibling phases:
-[`todo-global-saas-2.md`](./todo-global-saas-2.md) (Phase 2 — P1 product
-maturity) · [`todo-global-saas-3.md`](./todo-global-saas-3.md) (Phase 3 —
+[`done-todo-global-saas-2.md`](done-todo-global-saas-2.md) (Phase 2 — P1 product
+maturity) · [`done-todo-global-saas-3.md`](done-todo-global-saas-3.md) (Phase 3 —
 P2 scale & operations).
 
 This file carries the shared contract every phase must preserve (current
 baseline, core access contract, canonical hierarchy, adopted target policy,
 and the decisions list) plus the Phase 1 work list: the P0 foundations that
 make the platform safe to call multi-tenant. Phase 1 gates the full Tools
-redesign ([`todo-tools.md`](../../todo-tools.md)).
+redesign ([`done-todo-tools.md`](done-todo/done-todo-tools.md)).
 
 Supersedes the single-file `todo-global-saas.md` (split into phases
 2026-09-05). The Tools IA is tracked separately in `todo-tools.md`.

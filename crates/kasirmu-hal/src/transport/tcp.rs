@@ -48,20 +48,25 @@ pub async fn connect(addr: &str) -> Result<TcpStream, HalError> {
 pub async fn write_all(stream: &mut TcpStream, data: &[u8]) -> Result<(), HalError> {
     use tokio::io::AsyncWriteExt;
 
-    timeout(Duration::from_secs(10), stream.write_all(data))
-        .await
-        .map_err(|_| HalError::Timeout(10_000))?
-        .map_err(|e| {
-            if e.kind() == std::io::ErrorKind::ConnectionReset
-                || e.kind() == std::io::ErrorKind::ConnectionAborted
-            {
-                HalError::Disconnected
-            } else {
-                HalError::Io(e)
-            }
-        })?;
+    for chunk in data.chunks(crate::drivers::escpos::DEFAULT_PRINT_CHUNK_SIZE) {
+        timeout(Duration::from_secs(10), stream.write_all(chunk))
+            .await
+            .map_err(|_| HalError::Timeout(10_000))?
+            .map_err(|e| {
+                if e.kind() == std::io::ErrorKind::ConnectionReset
+                    || e.kind() == std::io::ErrorKind::ConnectionAborted
+                {
+                    HalError::Disconnected
+                } else {
+                    HalError::Io(e)
+                }
+            })?;
+    }
 
-    stream.flush().await.map_err(HalError::Io)?;
+    timeout(Duration::from_secs(5), stream.flush())
+        .await
+        .map_err(|_| HalError::Timeout(5_000))?
+        .map_err(HalError::Io)?;
 
     Ok(())
 }

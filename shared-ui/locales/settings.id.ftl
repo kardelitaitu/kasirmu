@@ -58,6 +58,9 @@ settings-nav-devices-connectivity = Perangkat & Konektivitas
 settings-nav-business-defaults = Default Bisnis
 settings-nav-features-modules = Fitur & Modul
 settings-nav-security-account = Keamanan & Akun
+# Heading of the Security & Account page's single card: the signed-in user, their
+# role, and the sign-out control (rendered by components/RoleBadge.tsx).
+settings-section-security = Sesi aktif
 settings-nav-data-sync = Data & Sinkronisasi
 settings-nav-data-management = Manajemen Data
 settings-nav-sync-status = Status Sinkronisasi
@@ -70,12 +73,13 @@ settings-screen-placeholder = Halaman ini sedang dibangun ulang.
 settings-screen-migrating = Konten setelan yang ada akan dipindahkan ke sini secara selektif.
 # Gerbang lantai halaman Setelan: roleAtLeast (utils/role.ts) menampilkan teks ini
 # untuk peran di bawah lantai admin.
-# Lencana Plus di bilah sisi: dibaca oleh item navigasi datar yang halamannya
-# digerbangi paket Plus. Masuk bersama markup lencana yang mereferensikannya
-# (gerbang orphan: kunci harus direferensikan oleh commitnya sendiri).
-settings-nav-plus-badge-aria = Memerlukan paket Plus
+# (Kunci `settings-nav-plus-badge-aria` lama ada di sini. Dihapus saat pil teks
+# "Plus+" di bilah sisi menjadi TIER_BADGE SVG yang mengikuti paket: lencana kini
+# menyatakan paket lewat `workspace-home-tools-requires-tier-<tier>` di
+# shared.ftl, kunci yang sama dengan kartu Tools beranda, agar kedua permukaan
+# tidak berbeda kata.)
 settings-locked-title = Setelan dibatasi
-settings-locked-desc = Setelan hanya tersedia untuk pemilik dan administrator.
+settings-locked-desc = Setelan hanya tersedia untuk manajer, administrator, dan pemilik.
 settings-sidebar-nav-aria = Navigasi pengaturan
 settings-sidebar-expand-aria = Buka bilah sisi pengaturan
 settings-sidebar-collapse-aria = Tutup bilah sisi pengaturan
@@ -176,12 +180,21 @@ setup-mode-local-desc = Jaga terminal ini sepenuhnya offline. Tanpa akun, tanpa 
 setup-mode-linked-title = Tautkan akun kasir.mu Anda
 setup-mode-linked-desc = Daftar atau masuk untuk menautkan terminal ini ke akun Anda, untuk sinkronisasi antarperangkat, backup cloud, dan paket Anda.
 setup-tab-pair = Pasangkan QR
+setup-tab-google = Masuk Google
 setup-tab-email = Kode Email
 setup-provision-store-type = Jenis usaha apa ini?
 setup-store-type-simple-retail = Toko
 setup-store-type-simple-retail-blurb = Barcode, tunai, struk, stok, pajak
 setup-store-type-restaurant = Restoran atau kafe
 setup-store-type-restaurant-blurb = Meja, layar dapur, login staf
+setup-provision-tax-preset = Pengaturan Pajak
+setup-tax-preset-ppn11 = PPN 11%
+setup-tax-preset-ppn11-desc = Standar PPN Indonesia (11%)
+setup-tax-preset-ppn11-service5 = PPN 11% + Layanan 5%
+setup-tax-preset-ppn11-service5-desc = Restoran & kafe dengan biaya layanan
+setup-tax-preset-tax-free = Bebas Pajak (0%)
+setup-tax-preset-tax-free-desc = Usaha Non-PKP tanpa pungutan pajak
+setup-provision-seed-catalog = Isi 5 produk contoh untuk memulai
 setup-provision-location-label = Nama toko
 setup-provision-owner-name-label = Nama Anda
 setup-provision-owner-username-label = Nama masuk
@@ -269,6 +282,8 @@ settings-currency-loading = Memuat mata uang…
 settings-section-display = Tampilan
 settings-section-receipt = Nota
 settings-field-store-name = Nama toko
+# Shown under the store-name input when it is left empty on blur.
+settings-store-name-required = Nama toko wajib diisi
 settings-field-address = Alamat
 settings-field-branch = Cabang
 settings-field-tax-id = NPWP
@@ -839,7 +854,11 @@ workspace-pos-footer = Footer Struk
 workspace-pos-printer-heading = Printer
 workspace-pos-printer-connection = Koneksi
 workspace-pos-printer-ip = Alamat IP
+workspace-pos-printer-bluetooth = Alamat Bluetooth (MAC)
 workspace-pos-printer-paper-size = Ukuran Kertas
+workspace-pos-hardware-actions = Tindakan Perangkat Keras
+workspace-pos-test-print = Uji Cetak
+workspace-pos-test-drawer = Uji Coba Laci Kas
 workspace-pos-scanner-heading = Pemindai Barcode
 workspace-pos-scanner-mode = Mode Input
 workspace-pos-scanner-device = ID Perangkat
@@ -955,7 +974,7 @@ settings-local-api-token-label-placeholder =
     .placeholder = integrasi-saya
 settings-local-api-generate = Buat Token
 settings-local-api-token = Token API
-settings-local-api-token-hint = Token memberikan akses baca ke semua data lokal selama 30 hari. Penulisan data master memerlukan kunci operator tambahan — lihat docs/guides/EXTENDING.md.
+settings-local-api-token-hint = Token memberikan akses baca ke semua data lokal selama 30 hari. Penulisan data master memerlukan kunci operator tambahan — lihat docs/guides/developer/EXTENDING.md.
 settings-local-api-token-expires = Kedaluwarsa { $expires }
 settings-local-api-copy-url = Salin URL
 settings-local-api-copy-token = Salin
@@ -1170,3 +1189,53 @@ settings-edc-default-auto = Otomatis (Pertama Dibuat)
 settings-edc-saved = Terminal EDC berhasil disimpan.
 settings-edc-deleted = Terminal EDC berhasil dihapus.
 settings-edc-delete-confirm = Apakah Anda yakin ingin menghapus terminal EDC ini?
+
+# Panel Konflik Sinkronisasi Terkarantina (Dead-letter recovery)
+sync-conflicts-panel-title = Konflik Sinkronisasi Terkarantina
+sync-conflicts-panel-empty = Tidak ada konflik gagal permanen (dead-letter).
+sync-conflicts-panel-table-aria = Tabel konflik terkarantina
+sync-conflicts-col-action = Aksi
+sync-conflicts-col-attempts = Percobaan
+sync-conflicts-col-error = Kesalahan Terakhir
+sync-conflicts-col-actions = Aksi
+sync-conflicts-retry = Coba Lagi
+sync-conflicts-retrying = Mencoba lagi…
+sync-conflicts-retry-aria = Coba sinkronisasi ulang item { $id }
+sync-conflicts-requeue-all = Coba Lagi Semua
+sync-conflicts-requeueing-all = Mencoba lagi ({ $current }/{ $total })…
+sync-conflicts-requeue-all-aria = Coba lagi semua konflik sinkronisasi terkarantina
+sync-conflicts-payload-inspect = Periksa
+sync-conflicts-payload-hide = Sembunyikan
+sync-conflicts-payload-inspect-aria = Periksa payload untuk item { $id }
+sync-conflicts-payload-hide-aria = Sembunyikan payload untuk item { $id }
+sync-conflicts-payload-copy = Salin JSON
+sync-conflicts-payload-copied = Tersalin!
+sync-conflicts-badge-aria = { $count } konflik sinkronisasi terkarantina
+
+# Android In-App Self-Updater
+settings-updater-title = Pembaruan Aplikasi
+receipts-drawer-kick-failed = Tidak dapat membuka laci kas. Periksa perangkat.
+settings-pos-hardware-failed = Tindakan perangkat keras gagal. Periksa perangkat dan coba lagi.
+settings-updater-check-failed = Tidak dapat memeriksa pembaruan. Coba lagi.
+settings-updater-subtitle = Periksa dan pasang pembaruan sistem POS Android dengan aman.
+settings-updater-current-version = Versi Saat Ini: { $version }
+settings-updater-latest-version = Versi Tersedia: v{ $version }
+settings-updater-check-btn = Periksa Pembaruan
+settings-updater-checking = Memeriksa pembaruan…
+settings-updater-up-to-date = Aplikasi Anda sudah versi terbaru.
+settings-updater-available-banner = Versi baru tersedia untuk perangkat Anda!
+settings-updater-download-btn = Unduh Pembaruan ({ $size })
+settings-updater-install-btn = Pasang Pembaruan Sekarang
+settings-updater-permission-btn = Izinkan Pemasangan Paket
+settings-updater-permission-note = Android memerlukan izin untuk memasang paket dari aplikasi ini.
+settings-updater-progress = Mengunduh: { $percent }% ({ $speed } MB/s)
+settings-updater-eta = Perkiraan sisa waktu: { $eta } detik
+settings-updater-backup-creating = Membuat cadangan database sebelum pembaruan…
+settings-updater-error-prefix = Kesalahan pembaruan: { $error }
+settings-updater-offline-warning-title = Transaksi Belum Tersinkronisasi Terdeteksi
+settings-updater-offline-warning-body = Anda memiliki { $count } transaksi yang belum tersinkronisasi di antrean offline. Harap sinkronkan ke cloud sebelum memperbarui untuk mencegah potensi kehilangan data.
+settings-updater-offline-sync-now = Sinkronkan Sekarang
+settings-updater-offline-ignore-proceed = Tetap Lanjutkan
+settings-updater-cancel = Batal
+
+

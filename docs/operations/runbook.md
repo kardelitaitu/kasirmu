@@ -1,7 +1,7 @@
 <!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 1,744 lines, with a prior marker re-verified rather than replaced. It is, by a wide margin, the MOST-CITED DOCUMENT IN THE REPOSITORY — nineteen files reference it, including this campaign's own stamps on the migration record, the ADR-55 origin model, the SQLCipher plan and the licence audit. That citation count is the reason this pass checked its load-bearing claims rather than its content. · THE LOAD-BEARING CLAIM IS ABOUT THE ORIGIN, AND IT IS CORRECT IN A WAY THAT MATTERS. The deployment section names the Northflank service and describes the public URL as "two names, one service": the current domain canonical, with the previous one as an alias. That is exactly the main-plus-fallback pair ADR-55 created and that this campaign verified in the code last round — the main and fallback origin constants in the core crate's server-origin module. So the runbook and the code agree, and the several old-domain references a grep finds in it are the documented ALIAS rather than rebrand drift. Filing them would have been the second false positive of this kind in two rounds, and the stamp says so explicitly so the next auditor does not make it. · THE OTHER CLAIM CHECKS OUT TOO. The build trigger is described as a push to main running Dev CI with a deploy job building the linked branch, and that job is live in the current workflow set — the same live-versus-archived distinction the archived CI dashboard, the SAST audit and the regression tracker all turned on, and here the runbook is on the right side of it. · SCOPE, because a 1,744-line operations runbook is a document class this campaign has audited before under a different name. Its content is procedure, and procedure is verified by running it against a deployment, which a checkout-based audit cannot do. What this pass established is narrower and is what a reader of the index actually needs: that the most-cited document in the tree still describes the deployment that exists, on the two facts most likely to have drifted. · NOT re-measured: any command, probe interval, rollback step or credential procedure. A runbook that is wrong about the world is dangerous; a runbook whose commands are unverified by this audit is merely unaudited, and the stamp distinguishes the two. · Prior marker retained; footer re-dated to match the new stamp. -->
 # Operations Runbook — kasir.mu (unified Northflank deployment)
 
-<!-- Superseded audit marker (2026-09-08 · DSH, body kept verbatim) · DSH · status: ACCURATE after repair (4 findings) · SUPERSEDES the 2026-08-31 stamp, which was honest when written — "ACCURATE (0 findings)", verified against HEAD that apps/unified/healthcheck.sh and docs/archived/2026-08-15-unify-auth-and-sync.md exist and that the sync-path claims held. It was overtaken by events, and that is the finding: 23c963303 retired ten workflows to .bak on 2026-09-02, two days later, and swept none of the operational docs that named them. · REPAIRED: (1) §8.5 headline claimed "Merges to main now auto-deploy" via deploy.yml — that file is .bak, and its successor northflank-deploy sits in dev-ci.yml, whose on: block has only pull_request + workflow_dispatch, so the job's own push-branch condition is unreachable dead logic (flagged, not fixed: adding push: branches: [main] reinstates automatic production deploys, and that job omits release-readiness from its needs). Deploys are manual-only via Run workflow. (2) The §8 summary table repeated the same false trigger. (3) §8.5 recommended deploy.yml as "the preferred, auditable path" over Northflank native git triggers — the recommended path is gone, leaving the discouraged one as the only automatic option. (4) §9 claimed the website deploys via website.yml → npx wrangler deploy — zero wrangler references exist in any live workflow, and dev-ci.yml#website stops at Build; the deploy is npm run deploy from website/, by hand. · CODE FINDINGS FLAGGED, NOT PATCHED: the dead push branch above, and website/package.json:17 ("deploy": "bash ../scripts/wrangler-deploy.sh") — the only npm script in the repo invoking bare bash, which AGENTS.md records as resolving to WSL on this platform where it hangs until killed or runs Linux node against Windows-built node_modules. AGENTS.md's own env-var section recommends that command while its own Windows section says bare bash hangs: two correct documents, one contradiction, neither wrong when written. · REV 2 (09-09-26, docs-auditor, CI-claim pass) — status: ACCURATE AFTER REPAIR (4 findings) + 3 more stale-CI instructions fixed in the same section, all of them leftovers of the same retirement. Repaired: §9.2 named the PR `check` job and the `deploy` job (both only in `website.yml.bak:71`/`:144`) and §9.5 told the reader to treat a red `deploy` job as an incident (`.github/workflows/website.yml.bak` is inert since `23c963303`, 2026-09-02) — §9.2 now states plainly that nothing deploys the website and that a rejected token no longer has any CI surface at all, and §9.5 pages on the live-site probe instead. Also dead: §9.3 probe #1 (`gh run list --workflow "Website Deploy"` lists no runs — the empty list is the missing workflow, not health), the §9.3 note claiming the fail-fast credential step runs as the deploy job's first step (`website.yml.bak:155`, retired with it), §9.4 step 4's "re-run the last failed run / push a trivial change" (no run exists, and `dev-ci.yml` has no push trigger; `dev-ci.yml:137-163` builds the site and stops), and §9.1/§9.4's "put it in the GitHub secret store" (`git grep -l CLOUDFLARE_API_TOKEN -- .github/workflows` → `website.yml.bak` only; the live consumer is `scripts/wrangler-deploy.sh:42` reading the environment). Verified from the files: live workflows are `dev-ci.yml` + `release.yml` only; `dev-ci.yml` `on:` is `pull_request: branches: [main]` + `workflow_dispatch` with no `push:` and no `schedule:`; `static-gates` has 28 named steps. Nothing weakened: every open recommendation in §9.5 stays open and is now explicitly unbuilt. · STILL TRUE, re-checked not assumed: backup-pb.sh and litestream.yml are server-side artifacts the operator creates under /opt/oz, not repo files, so their absence from the tree is correct and my sweep's flags against them are false positives. · WHY THIS SLIPPED THE NET: verify-ci-docs-drift.py polices ci-pipeline.md, releases/checklist.md and the pre-commit hook — not this runbook. A workflow retirement updates the checked page and leaves the unchecked one naming the dead file. -->
+<!-- Superseded audit marker (2026-09-08 · DSH, body kept verbatim) · DSH · status: ACCURATE after repair (4 findings) · SUPERSEDES the 2026-08-31 stamp, which was honest when written — "ACCURATE (0 findings)", verified against HEAD that apps/unified/healthcheck.sh and docs/records/audits/2026-08-15-unify-auth-and-sync.md exist and that the sync-path claims held. It was overtaken by events, and that is the finding: 23c963303 retired ten workflows to .bak on 2026-09-02, two days later, and swept none of the operational docs that named them. · REPAIRED: (1) §8.5 headline claimed "Merges to main now auto-deploy" via deploy.yml — that file is .bak, and its successor northflank-deploy sits in dev-ci.yml, whose on: block has only pull_request + workflow_dispatch, so the job's own push-branch condition is unreachable dead logic (flagged, not fixed: adding push: branches: [main] reinstates automatic production deploys, and that job omits release-readiness from its needs). Deploys are manual-only via Run workflow. (2) The §8 summary table repeated the same false trigger. (3) §8.5 recommended deploy.yml as "the preferred, auditable path" over Northflank native git triggers — the recommended path is gone, leaving the discouraged one as the only automatic option. (4) §9 claimed the website deploys via website.yml → npx wrangler deploy — zero wrangler references exist in any live workflow, and dev-ci.yml#website stops at Build; the deploy is npm run deploy from website/, by hand. · CODE FINDINGS FLAGGED, NOT PATCHED: the dead push branch above, and website/package.json:17 ("deploy": "bash ../scripts/wrangler-deploy.sh") — the only npm script in the repo invoking bare bash, which AGENTS.md records as resolving to WSL on this platform where it hangs until killed or runs Linux node against Windows-built node_modules. AGENTS.md's own env-var section recommends that command while its own Windows section says bare bash hangs: two correct documents, one contradiction, neither wrong when written. · REV 2 (09-09-26, docs-auditor, CI-claim pass) — status: ACCURATE AFTER REPAIR (4 findings) + 3 more stale-CI instructions fixed in the same section, all of them leftovers of the same retirement. Repaired: §9.2 named the PR `check` job and the `deploy` job (both only in `website.yml.bak:71`/`:144`) and §9.5 told the reader to treat a red `deploy` job as an incident (`.github/workflows/website.yml.bak` is inert since `23c963303`, 2026-09-02) — §9.2 now states plainly that nothing deploys the website and that a rejected token no longer has any CI surface at all, and §9.5 pages on the live-site probe instead. Also dead: §9.3 probe #1 (`gh run list --workflow "Website Deploy"` lists no runs — the empty list is the missing workflow, not health), the §9.3 note claiming the fail-fast credential step runs as the deploy job's first step (`website.yml.bak:155`, retired with it), §9.4 step 4's "re-run the last failed run / push a trivial change" (no run exists, and `dev-ci.yml` has no push trigger; `dev-ci.yml:137-163` builds the site and stops), and §9.1/§9.4's "put it in the GitHub secret store" (`git grep -l CLOUDFLARE_API_TOKEN -- .github/workflows` → `website.yml.bak` only; the live consumer is `scripts/wrangler-deploy.sh:42` reading the environment). Verified from the files: live workflows are `dev-ci.yml` + `release.yml` only; `dev-ci.yml` `on:` is `pull_request: branches: [main]` + `workflow_dispatch` with no `push:` and no `schedule:`; `static-gates` has 28 named steps. Nothing weakened: every open recommendation in §9.5 stays open and is now explicitly unbuilt. · STILL TRUE, re-checked not assumed: backup-pb.sh and litestream.yml are server-side artifacts the operator creates under /opt/oz, not repo files, so their absence from the tree is correct and my sweep's flags against them are false positives. · WHY THIS SLIPPED THE NET: verify-ci-docs-drift.py polices ci-pipeline.md, releases/checklist.md and the pre-commit hook — not this runbook. A workflow retirement updates the checked page and leaves the unchecked one naming the dead file. -->
 
 One Northflank service, one Docker image. Two functions behind one caddy
 reverse proxy (single public port):
@@ -11,7 +11,7 @@ reverse proxy (single public port):
 | Auth (license) | PocketBase + Go hooks | 8080 | PocketBase SQLite (`pb_data/data.db`) |
 | Sync (cloud) | Rust axum | 3099 | Postgres (managed addon) |
 
-This runbook covers the §11 reliability contract of `docs/archived/2026-08-15-unify-auth-and-sync.md`:
+This runbook covers the §11 reliability contract of `docs/records/audits/2026-08-15-unify-auth-and-sync.md`:
 Postgres PITR, PocketBase backup, restore drills, and alerting on retention
 flatline, queue depth, webhook 5xx, and token-mint rate. It also documents the
 metrics that make each incident observable.
@@ -158,7 +158,7 @@ the throwaway. A drill that has never been executed is not a backup strategy.
 ### 4.2 PocketBase SQLite (auth)
 
 Low-traffic, but irreplaceable: `tenants`, `license_keys`, `subscriptions`,
-`tenant_machines`. Two acceptable strategies per `docs/archived/2026-08-15-unify-auth-and-sync.md`:
+`tenant_machines`. Two acceptable strategies per `docs/records/audits/2026-08-15-unify-auth-and-sync.md`:
 
 **Option A — litestream (continuous, recommended):** replicate
 `/data/pb_data/data.db` to object storage continuously. Minimal config:
@@ -314,7 +314,7 @@ data is exposed:
 
 The sync limiter and snapshot cache are **per-process** (in-memory); scaling
 past one sync instance requires moving both to a shared store (Redis) — see
-the growth path in `docs/archived/2026-08-15-unify-auth-and-sync.md`.
+the growth path in `docs/records/audits/2026-08-15-unify-auth-and-sync.md`.
 
 ---
 
@@ -407,7 +407,7 @@ docker volume prune
 | Dockerfile | `ops/docker/Dockerfile.unified` (under `ops/docker/`) |
 | Port | `80` (caddy; routes to :8080 PocketBase / :3099 Rust) |
 | Volume | single volume at `/data` (Northflank free tier = 1 volume) |
-| Build trigger | A push to **`main`** runs Dev CI, and `northflank-deploy` builds the linked branch automatically when `NORTHFLANK_API_TOKEN` is set (`dev-ci.yml:791`). A manual **Actions → Dev CI → Run workflow** also works — but dispatch it **from `main`**: Northflank builds the service's linked branch (`main`, see §8.6) and a dispatch from a `0.0.*` branch is deliberately refused (§8.5), so **code reaches production by landing on `main`, not by dispatching from a release branch**. |
+| Build trigger | A push to **`main`** runs Dev CI, and `northflank-deploy` builds the linked branch automatically when `NORTHFLANK_API_TOKEN` is set (`dev-ci.yml:1671`, consumed as `secrets.NORTHFLANK_API_TOKEN` at `:1685`). A manual **Actions → Dev CI → Run workflow** also works — but dispatch it **from `main`**: Northflank builds the service's linked branch (`main`, see §8.6) and a dispatch from a `0.0.*` branch is deliberately refused (§8.5), so **code reaches production by landing on `main`, not by dispatching from a release branch**. |
 
 **Single-volume layout (DOCKER-11):**
 
@@ -419,7 +419,7 @@ docker volume prune
 Both live under `/data` so one persistent volume covers the whole service.
 The old `pb_data:/pb/pb_data` mount from the standalone license service no
 longer exists — migrating that data requires a PocketBase backup → restore
-(see `docs/archived/2026-08-15-unify-auth-and-sync.md` §Phase 3.5).
+(see `docs/records/audits/2026-08-15-unify-auth-and-sync.md` §Phase 3.5).
 
 ### Environment variables
 
@@ -433,7 +433,7 @@ longer exists — migrating that data requires a PocketBase backup → restore
 | `OZ_ENFORCE_PLANS` | `1` | reject free-plan sync (403 plan_required) |
 | `OZ_CORS_ORIGINS` | optional | extra origins beyond the default allowlist |
 | `OZ_DB_POOL_SIZE` | `20` | Postgres pool size (ignored for SQLite) |
-| `DATABASE_URL` | `postgres://user:pass@host:5432/db?sslmode=require` | optional — switch from SQLite to the managed PostgreSQL addon (free on Northflank). Requires `sslmode=require` (fail-fast at boot). See `docs/archived/2026-08-15-unify-auth-and-sync.md` §Phase 3.5 for the full cutover. The image defaults to `/data/kasir.db` (SQLite); this variable overrides the connection string. |
+| `DATABASE_URL` | `postgres://user:pass@host:5432/db?sslmode=require` | optional — switch from SQLite to the managed PostgreSQL addon (free on Northflank). Requires `sslmode=require` (fail-fast at boot). See `docs/records/audits/2026-08-15-unify-auth-and-sync.md` §Phase 3.5 for the full cutover. The image defaults to `/data/kasir.db` (SQLite); this variable overrides the connection string. |
 | `OZ_LOG_FORMAT` | `json` or unset | log output format (plain unless `json`) |
 | `OZ_APPLY_SCHEMA` | `0` post-cutover | default applies full DDL at startup; set `0` once the schema exists and the app runs as the restricted `oz_app` role (§6.3) |
 | `OZ_REDIRECT_ONLY` / `OZ_SYNC_REDIRECT_URL` | optional | sync-redirect mode — `OZ_REDIRECT_ONLY=true` requires `OZ_SYNC_REDIRECT_URL`; dev/testing only |
@@ -474,7 +474,7 @@ Sessions are in-memory (`web_otp.go:13-19`), so a restart drops admin sessions: 
 > latency growing) — enable the **free Northflank PostgreSQL addon** and set
 > `DATABASE_URL` (see the env table above). The managed PG addon eliminates
 > the single-writer lock and is the documented production target (see
-> `docs/archived/2026-08-15-unify-auth-and-sync.md` §Phase 3.5 for the full cutover,
+> `docs/records/audits/2026-08-15-unify-auth-and-sync.md` §Phase 3.5 for the full cutover,
 > including the RLS migration). Keep the `/data` volume either way — PocketBase
 > stays on SQLite under `/data/pb_data`.
 
@@ -485,7 +485,7 @@ Sessions are in-memory (`web_otp.go:13-19`), so a restart drops admin sessions: 
 > **empty** — the Caddy reverse-proxy peer, i.e. loopback. Nothing in this repo seeded it, so the
 > production key collapsed to loopback and **all clients shared ONE 5-per-hour budget across nine
 > lanes**, meaning the fifth request from anywhere on earth 429'd everyone else. Full analysis:
-> `docs/records/2026-09-21-license-ratelimit-collapse.md`. A fix exists in commits `fb0626518`
+> `docs/records/snapshots/2026-09-21-license-ratelimit-collapse.md`. A fix exists in commits `fb0626518`
 > (attest split onto its own 60/hr budget), `e6e254881` (`seedClientIPSettings` + the
 > XFF-collapsing middleware, `apps/license-server/main.go:131-144`), `0ce2483a1` (hop-index clamp,
 > `helpers.go:307-310`) and `061f3bff6` (a 429 no longer advances the origin ladder) — **and it is
@@ -1133,7 +1133,7 @@ pairing path at `apps/desktop-tauri/src/sync_bootstrap.rs:248`; `set_pg_sync_pas
 `set_lan_server_psk` (`platform/core/src/settings/typed.rs:643`) have **no production
 caller at all** — the only hits are their own definitions, the never-invoked
 `crates/kasirmu-core/src/settings.rs:570` facade wrapper, tests and comments, and
-`crates/kasirmu-core/tests/credential_storage_form.rs:258` already records one of them in
+`crates/kasirmu-core/tests/integration/credential_storage_form.rs:258` already records one of them in
 those terms. So the only production write of `rate_sync.api_key` and `lan_server.psk`
 is `platform/core/src/settings/typed.rs:560` and
 `platform/core/src/settings/typed.rs:646`, inside setters nobody invokes, while both
@@ -1398,7 +1398,8 @@ a fresh-install-only path:
    present, which **gives up per-file atomicity** (`:119-125`, and the audit note at `:5-6`).
 
 That is survivable for most of the registry and **not** survivable for four entries, which are
-pinned as a measured residual by `crates/kasirmu-core/src/migrations_tests.rs:361-366`:
+nailed by the dropped/renamed source each one reads — verified in the migration SQL itself, and
+incident-documented for the first of them at `crates/kasirmu-core/src/migrations_tests.rs:493-503`:
 
 | Migration | Why re-running it is impossible by construction |
 |---|---|
@@ -1407,9 +1408,10 @@ pinned as a measured residual by `crates/kasirmu-core/src/migrations_tests.rs:36
 | `20260911_memo_fk_restrict.sql` | Rebuilds `memos` reading `location_id`, which its successor then drops |
 | `20260913_memo_locations.sql` | Rebuilds a table out of a definition it replaces |
 
-All four files are present in `crates/kasirmu-core/migrations/`. The reasoning is the test's
-own (`:343-354`): each is a one-shot data/rename migration whose script **consumes the state it
-transforms**, and the forward-only contract (DB-03, `crates/kasirmu-core/src/migrations.rs:20-37`)
+All four files are present in `crates/kasirmu-core/migrations/`. The reasoning is the SQL's
+own: each is a one-shot data/rename migration whose script **consumes the state it transforms**
+— `20260831` drops the `earn_multiplier` column it converted FROM, `20260906` renames six tables,
+and `20260911`/`20260913` drop and recreate `memos`/`memo_recipients`. The forward-only contract (DB-03, `crates/kasirmu-core/src/migrations.rs:20-37`)
 already assigns that class to *backup-plus-forward-repair* rather than to re-apply.
 
 **This is why an operator must not start an upgrade without the snapshot.** A migration that
@@ -1488,12 +1490,12 @@ The swap therefore happens at boot, before anything opens the database.
 
 The request is a file beside the live database:
 
-- **`<db>.restore-request.json`** — writer `crates/kasirmu-bridge/src/data.rs:1001-1019`
-  (constant `:1009`); consumers `apps/desktop-tauri/src/recovery.rs:31` and
+- **`<db>.restore-request.json`** — writer `crates/kasirmu-bridge/src/data/restore.rs:184-262`
+  (constant `:41`); consumers `apps/desktop-tauri/src/recovery.rs:31` and
   `apps/mobile-tauri/src/recovery.rs:36`. The suffix exists as two copies on purpose (the
   bridge's is private) and is pinned against the **consumer's own literal** by a bridge test
   (`crates/kasirmu-bridge/src/data_tests.rs:995-1002`).
-- **Shape** — five keys (`crates/kasirmu-bridge/src/data.rs:211-224`): `candidate_path`,
+- **Shape** — five keys (`crates/kasirmu-bridge/src/data/restore.rs:228-235`): `candidate_path`,
   `requested_at`, `verdict`, `candidate_schema`, `confirmed_store_name`. The boot path
   deserializes **only** `candidate_path` and re-validates everything itself, so a verdict
   written by an earlier process is never trusted
@@ -1506,9 +1508,9 @@ Two mechanisms exist, and **which one is available is not the same on the two sh
 **A. In-app request — the preferred path. Registered on the DESKTOP shell only.**
 `restore_prepare` validates the candidate, checks a typed confirmation against the candidate's
 own `store.name`, requires `SETTINGS_EDIT`, and writes the request file
-(`crates/kasirmu-bridge/src/data.rs:1152-1221`). `list_restore_candidates` lists the backup
-generations with their verdicts (`:1092-1128`); `restore_status` reports what is pending
-(`:1233-1266`).
+(`crates/kasirmu-bridge/src/data/restore.rs:184-262`). `list_restore_candidates` lists the backup
+generations with their verdicts (`:124-175`); `restore_status` reports what is pending
+(`:265-299`).
 
 > **Re-derive this, do not trust it — it changed once already.**
 > This section stated "no IPC command is registered for any of the three" until 2026-09-23,
@@ -1517,8 +1519,18 @@ generations with their verdicts (`:1092-1128`); `restore_status` reports what is
 > ```bash
 > grep -n 'list_restore_candidates\|restore_prepare\|restore_status' apps/*/src/lib.rs
 > ```
-> **Expected today: three hits, all in `apps/desktop-tauri/src/lib.rs` (`:971`, `:972`, `:973`)
+> **Expected today: three hits, all in `apps/desktop-tauri/src/lib.rs` (`:1341`, `:1342`, `:1343`)
 > and none in `apps/mobile-tauri/src/lib.rs`.** If that changes, this section is stale again.
+>
+> **It changed once, and the block above caught it — 2026-10-07.** The count and the file were
+> still right (three hits, all desktop, none mobile); the LINE numbers had moved `:971-973` →
+> `:1341-1343`, which is exactly the drift the "re-derive, do not trust it" instruction exists
+> for. The same pass found six more citations in §11 that a **module split on 2026-09-28** had
+> invalidated: the restore surface moved out of `crates/kasirmu-bridge/src/data.rs` into
+> `crates/kasirmu-bridge/src/data/restore.rs` (`restore.rs:8` records the split), leaving that
+> file 786 lines where the doc quoted `:1043`, `:1075`, `:1092`, `:1152` and `:1233` — the last
+> three past its own end. All six were repointed to the module they now live in, and each was
+> verified to land on the named item rather than merely on an existing line.
 
 **The three commands, and the permission each one enforces.** The gate sits on the
 renderer-reachable wrapper in `apps/desktop-tauri/src/commands/data.rs`, not on the bridge
@@ -1540,9 +1552,9 @@ at `apps/desktop-tauri/tests/gate_audit.rs:117-121`.
 
 > ⚠️ **What the bridge functions themselves take is NOT uniform — do not generalise from the two
 > reads.** `list_restore_candidates(db_path)` and `restore_status(db_path)` take **no session
-> token by design** — they are pure reads (`crates/kasirmu-bridge/src/data.rs:1092`, `:1233`).
+> token by design** — they are pure reads (`crates/kasirmu-bridge/src/data/restore.rs:124`, `:265`).
 > `restore_prepare` **does** take one: its signature is
-> `(ctx, session_token, db_path, args)` and it enforces `SETTINGS_EDIT` itself at `:1158-1160`.
+> `(ctx, session_token, db_path, args)` and it enforces `SETTINGS_EDIT` itself at `:190-192`.
 > So the wrapper gate on `restore_prepare` is not an independent second check — removing it still
 > denies via the bridge, which is why `gate_audit.rs:111-116` calls the ledger row, not the
 > runtime behaviour, the thing that makes the wrapper gate observable.
@@ -1639,7 +1651,7 @@ A `Refused` reason always carries the verdict name and the validator's own sente
 `CandidateVerdict` (`crates/kasirmu-core/src/db/recovery.rs:50-64`) has exactly four values,
 each carrying a human-readable `reason`. The wire names are spelled out rather than derived
 from `Debug`, so a refactor cannot silently change what the file and the IPC surface say
-(`crates/kasirmu-bridge/src/data.rs:1043-1054`).
+(`crates/kasirmu-bridge/src/data/restore.rs:75-86`).
 
 | Verdict | Meaning | Restorable? | What the boot does |
 |---|---|---|---|
@@ -1712,7 +1724,7 @@ invariant (`crates/kasirmu-core/src/db/recovery.rs:20-21`), pinned on both shell
 3. **Fix the cause, or decide not to restore.** The common cases:
    - `Corrupt` — the candidate is unusable. Choose another generation.
      `list_restore_candidates` lists every generation that exists **including** the unusable
-     ones, precisely so you can read why (`crates/kasirmu-bridge/src/data.rs:1075-1085`).
+     ones, precisely so you can read why (`crates/kasirmu-bridge/src/data/restore.rs:124-159`).
      `list_restore_candidates` is itself an IPC command on the desktop shell (§11.2), so you can
      read the verdicts without leaving the app.
    - `NewerThanThisBuild` — the candidate came from a **newer** build. Do not force it: run the

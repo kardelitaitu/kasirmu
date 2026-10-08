@@ -1,40 +1,41 @@
-//! Location commands — the tablet shell's copy of the desktop read surface.
+//! Location commands — tenant location profiles and KDS ticket prefix.
 //!
-//! The settings hub lives in the shared `ui/`, so Settings → Business Defaults
-//! renders in BOTH shells: its three cards (regional defaults, local payment
-//! methods, receipt format) each resolve the tenant's primary location FIRST
-//! via `get_primaryLocationScoped`, and that first call was the one command
-//! the tablet shell had never registered — the rejection surfaced as three
-//! permanent error banners that all had the same single root cause.
-//!
-//! READ-ONLY ON PURPOSE. Only `get_primary_location_scoped` is registered
-//! here: it is the one command the shared settings cards (and the shared
-//! locale-sync hook) reach on this shell. The full location-profile CRUD
-//! surface (`list`/`get`/`create`/`update`/`set_primary`/`delete` and the
-//! ticket-prefix pair) stays desktop-only — the multi-store dashboard,
-//! topology editor and store switcher are back-office screens, not tablet
-//! ones, so their commands remain in the tablet allowlist as recorded gaps.
-//!
-//! Each body is the same headless `kasirmu_bridge::locations` call the
-//! desktop command makes, borrowing a `BridgeCtx` from `AppState` and mapping
-//! `BridgeError` back to `AppError` (the `From` impl lives in
-//! `commands/authz.rs`, the same seam the other tablet shims use). The
-//! command name and parameter list are IDENTICAL to the desktop one, so the
-//! UI's `invoke` call resolves unchanged.
+//! Multi-store location profiles and primary location resolution.
+//! Delegates directly to `kasirmu_bridge::locations`.
 
 use tauri::State;
 
 use crate::error::AppError;
 use crate::state::AppState;
 
-pub use kasirmu_bridge::locations::LocationProfileDto;
+pub use kasirmu_bridge::locations::{CreateLocationArgs, LocationProfileDto, UpdateLocationArgs};
+
+/// List all location profiles for the session's tenant (ADR #7).
+#[tauri::command]
+pub async fn list_locations_scoped(
+    session_token: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<LocationProfileDto>, AppError> {
+    let ctx = state.bridge_ctx();
+    kasirmu_bridge::locations::list_locations_scoped(&ctx, &session_token)
+        .await
+        .map_err(Into::into)
+}
+
+/// Get a location profile by ID for the session's tenant (ADR #7).
+#[tauri::command]
+pub async fn get_location_profile_scoped(
+    id: String,
+    session_token: String,
+    state: State<'_, AppState>,
+) -> Result<Option<LocationProfileDto>, AppError> {
+    let ctx = state.bridge_ctx();
+    kasirmu_bridge::locations::get_location_profile_scoped(&ctx, &session_token, &id)
+        .await
+        .map_err(Into::into)
+}
 
 /// Get the primary location for the session's tenant (ADR #7).
-///
-/// The Business Defaults cards' first hop: each card resolves the tenant's
-/// primary location (for its timezone / local rails / receipt scope) before
-/// loading its own scoped config, so this read must answer on every shell
-/// the settings hub renders on.
 #[tauri::command]
 pub async fn get_primary_location_scoped(
     session_token: String,
@@ -42,6 +43,85 @@ pub async fn get_primary_location_scoped(
 ) -> Result<Option<LocationProfileDto>, AppError> {
     let ctx = state.bridge_ctx();
     kasirmu_bridge::locations::get_primary_location_scoped(&ctx, &session_token)
+        .await
+        .map_err(Into::into)
+}
+
+/// Create a location profile for the session's tenant (ADR #7).
+#[tauri::command]
+pub async fn create_location_profile_scoped(
+    args: CreateLocationArgs,
+    session_token: String,
+    state: State<'_, AppState>,
+) -> Result<LocationProfileDto, AppError> {
+    let ctx = state.bridge_ctx();
+    kasirmu_bridge::locations::create_location_profile_scoped(&ctx, &session_token, &args)
+        .await
+        .map_err(Into::into)
+}
+
+/// Update a location profile for the session's tenant (ADR #7).
+#[tauri::command]
+pub async fn update_location_profile_scoped(
+    args: UpdateLocationArgs,
+    session_token: String,
+    state: State<'_, AppState>,
+) -> Result<LocationProfileDto, AppError> {
+    let ctx = state.bridge_ctx();
+    kasirmu_bridge::locations::update_location_profile_scoped(&ctx, &session_token, &args)
+        .await
+        .map_err(Into::into)
+}
+
+/// Set a location as primary for the session's tenant (ADR #7).
+#[tauri::command]
+pub async fn set_primary_location_scoped(
+    id: String,
+    session_token: String,
+    state: State<'_, AppState>,
+) -> Result<LocationProfileDto, AppError> {
+    let ctx = state.bridge_ctx();
+    kasirmu_bridge::locations::set_primary_location_scoped(&ctx, &session_token, &id)
+        .await
+        .map_err(Into::into)
+}
+
+/// Delete a location profile for the session's tenant (ADR #7).
+#[tauri::command]
+pub async fn delete_location_profile_scoped(
+    id: String,
+    session_token: String,
+    state: State<'_, AppState>,
+) -> Result<(), AppError> {
+    let ctx = state.bridge_ctx();
+    kasirmu_bridge::locations::delete_location_profile_scoped(&ctx, &session_token, &id)
+        .await
+        .map_err(Into::into)
+}
+
+/// Read one location's KDS ticket prefix for the session's tenant.
+#[tauri::command]
+pub async fn get_location_ticket_prefix_scoped(
+    id: String,
+    session_token: String,
+    state: State<'_, AppState>,
+) -> Result<Option<String>, AppError> {
+    let ctx = state.bridge_ctx();
+    kasirmu_bridge::locations::get_location_ticket_prefix_scoped(&ctx, &session_token, &id)
+        .await
+        .map_err(Into::into)
+}
+
+/// Set (or clear) one location's KDS ticket prefix.
+#[tauri::command]
+pub async fn set_location_ticket_prefix_scoped(
+    id: String,
+    prefix: String,
+    session_token: String,
+    state: State<'_, AppState>,
+) -> Result<Option<String>, AppError> {
+    let ctx = state.bridge_ctx();
+    kasirmu_bridge::locations::set_location_ticket_prefix_scoped(&ctx, &session_token, &id, &prefix)
         .await
         .map_err(Into::into)
 }

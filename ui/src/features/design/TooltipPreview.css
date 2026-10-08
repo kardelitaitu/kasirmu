@@ -267,3 +267,38 @@
   background: var(--color-accent-subtle);
   color: var(--color-accent);
 }
+
+/* ── Touch press feedback ────────────────────────────────────────────
+   Design-preview affordances; the sidebar rows tint.
+   ────────────────────────────────────────────────────────────────── */
+
+.tp-trigger:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+.tp-sidebar-item:active {
+  background: color-mix(in srgb, var(--color-fg) 12%, transparent);
+}
+
+@media (pointer: coarse) {
+.tp-trigger:not(:disabled):active,
+.tp-sidebar-item:active {
+    min-height: var(--touch-target-min);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+.tp-trigger:not(:disabled):active {
+    transform: none;
+    opacity: 0.75;
+  }
+}
+
+/* A sub-heading inside a .tp-section. .tp-section-title and .tp-section-desc are
+   both defined above; this third level was not. Note the call site also carries
+   an inline font-size/colour pair, so this rule is what makes the name honest
+   rather than what changes the render. */
+.tp-section-subtitle {
+  font-weight: var(--font-weight-medium);
+  color: var(--color-fg-secondary);
+}

@@ -81,7 +81,7 @@ fn create_payment_with_gateway_ref() {
         method: "card".into(),
         amount_minor: 500,
         gateway_reference: Some("txn_abc123".into()),
-        gateway_status: Some("approved".into()),
+        gateway_status: Some("settled".into()),
         gateway_response: Some(r#"{"id":"txn_abc123","status":"approved"}"#.into()),
         idempotency_key: None,
     }];
@@ -92,12 +92,12 @@ fn create_payment_with_gateway_ref() {
         .unwrap();
     assert_eq!(payments.len(), 1);
     assert_eq!(payments[0].gateway_reference.as_deref(), Some("txn_abc123"));
-    assert_eq!(payments[0].gateway_status.as_deref(), Some("approved"));
+    assert_eq!(payments[0].gateway_status.as_deref(), Some("settled"));
 
     let listed = store.list_payments_for_sale(&sale_id).unwrap();
     assert_eq!(listed.len(), 1);
     assert_eq!(listed[0].gateway_reference.as_deref(), Some("txn_abc123"));
-    assert_eq!(listed[0].gateway_status.as_deref(), Some("approved"));
+    assert_eq!(listed[0].gateway_status.as_deref(), Some("settled"));
     assert_eq!(
         listed[0].gateway_response.as_deref(),
         Some(r#"{"id":"txn_abc123","status":"approved"}"#)
@@ -168,7 +168,7 @@ fn create_payment_zero_amount() {
     insert_sale(&conn, &sale_id, 0, now);
 
     let splits = vec![PaymentSplitArg {
-        method: "voucher".into(),
+        method: "credit".into(),
         amount_minor: 0,
         gateway_reference: None,
         gateway_status: None,
@@ -223,7 +223,7 @@ fn create_payment_with_declined_gateway() {
         method: "card".into(),
         amount_minor: 5000,
         gateway_reference: Some("txn_declined".into()),
-        gateway_status: Some("declined".into()),
+        gateway_status: Some("failed".into()),
         gateway_response: Some(r#"{"error":"insufficient_funds"}"#.into()),
         idempotency_key: None,
     }];
@@ -232,10 +232,10 @@ fn create_payment_with_declined_gateway() {
     let payments = store
         .create_payments(&sale_id, &splits, &currency, now)
         .unwrap();
-    assert_eq!(payments[0].gateway_status.as_deref(), Some("declined"));
+    assert_eq!(payments[0].gateway_status.as_deref(), Some("failed"));
 
     let listed = store.list_payments_for_sale(&sale_id).unwrap();
-    assert_eq!(listed[0].gateway_status.as_deref(), Some("declined"));
+    assert_eq!(listed[0].gateway_status.as_deref(), Some("failed"));
 }
 
 #[test]
@@ -361,7 +361,7 @@ fn create_payments_multiple_calls_same_sale() {
                     method: "card".into(),
                     amount_minor: 1000,
                     gateway_reference: Some("txn_b1".into()),
-                    gateway_status: Some("approved".into()),
+                    gateway_status: Some("settled".into()),
                     gateway_response: None,
                     idempotency_key: None,
                 },
@@ -372,12 +372,12 @@ fn create_payments_multiple_calls_same_sale() {
         .unwrap();
     assert_eq!(batch1.len(), 2);
 
-    // Second batch: voucher
+    // Second batch: credit
     let batch2 = store
         .create_payments(
             &sale_id,
             &[PaymentSplitArg {
-                method: "voucher".into(),
+                method: "credit".into(),
                 amount_minor: 1000,
                 gateway_reference: None,
                 gateway_status: None,
@@ -444,7 +444,7 @@ fn payment_very_long_gateway_reference() {
         method: "card".into(),
         amount_minor: 1000,
         gateway_reference: Some(long_ref.clone()),
-        gateway_status: Some("approved".into()),
+        gateway_status: Some("settled".into()),
         gateway_response: None,
         idempotency_key: None,
     }];
@@ -481,7 +481,7 @@ fn payment_gateway_response_large_payload() {
         method: "card".into(),
         amount_minor: 999,
         gateway_reference: Some("txn_big".into()),
-        gateway_status: Some("approved".into()),
+        gateway_status: Some("settled".into()),
         gateway_response: Some(large_response.clone()),
         idempotency_key: None,
     }];
@@ -563,7 +563,7 @@ fn create_payments_with_idempotency_key_dedup() {
         method: "card".into(),
         amount_minor: 300,
         gateway_reference: Some("txn_first".into()),
-        gateway_status: Some("approved".into()),
+        gateway_status: Some("settled".into()),
         gateway_response: None,
         idempotency_key: Some(ik.clone()),
     }];
@@ -579,7 +579,7 @@ fn create_payments_with_idempotency_key_dedup() {
         method: "card".into(),
         amount_minor: 999, // different amount, should be ignored due to dedup
         gateway_reference: Some("txn_second".into()),
-        gateway_status: Some("approved".into()),
+        gateway_status: Some("settled".into()),
         gateway_response: None,
         idempotency_key: Some(ik.clone()),
     }];

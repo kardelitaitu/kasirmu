@@ -254,6 +254,34 @@ export function createRegionalHandlers(deps: RegionalDeps): Record<string, MockH
     return getMockReceiptFormat(args);
   }
 
+  function getMockActiveMarketProfile(args: unknown): {
+    location_id: string;
+    legal_entity_id: string;
+    country_code: string;
+    currency: string;
+    default_locale: string;
+    timezone: string;
+    tax_regime: string;
+    statutory_rounding: 'half_up' | 'truncate';
+    enabled_payment_rails: string[];
+  } {
+    const { locationId } = unwrapArgs<{ locationId?: string }>(args);
+    const stores = getMockStores();
+    const location = stores.find((loc) => loc.id === locationId) ?? stores[0] ?? MOCK_STORE;
+    const countryCode = mockRegionalCountryCode ?? 'ID';
+    return {
+      location_id: location.id,
+      legal_entity_id: 'default:default-legal-entity',
+      country_code: countryCode,
+      currency: location.currency || 'IDR',
+      default_locale: mockRegionalLocale.get(location.id) ?? 'id-ID',
+      timezone: location.timezone || 'Asia/Jakarta',
+      tax_regime: countryCode.toUpperCase() === 'ID' ? 'PB1' : (countryCode ? `LOCAL/${countryCode}` : 'NONE'),
+      statutory_rounding: 'half_up',
+      enabled_payment_rails: ['cash', 'card', 'qris'],
+    };
+  }
+
   return {
     // Regional configuration read model (regional slice 2). Registered here
     // because scripts/verify-ipc-parity.py treats a missing dev-mock handler
@@ -264,6 +292,8 @@ export function createRegionalHandlers(deps: RegionalDeps): Record<string, MockH
     'get_regional_config_scoped': getMockRegionalConfig,
     // Regional configuration write path (regional slice 3) — same parity rule.
     'set_regional_config_scoped': setMockRegionalConfig,
+    // Active market profile compiled read model — same parity rule.
+    'get_active_market_profile_scoped': getMockActiveMarketProfile,
     // Receipt format (regional receipt-format axis) — same parity rule.
     'get_receipt_format_scoped': getMockReceiptFormat,
     'set_receipt_layout_scoped': setMockReceiptLayout,

@@ -488,3 +488,46 @@
     pointer-events: none;
   }
 }
+
+/* ── Touch press feedback ────────────────────────────────────────────
+   Kitchen product picking: the qty steppers and the confirm/cancel pair are
+   tapped rapidly, often with gloves. The product tiles are large filled
+   surfaces that scale well; the close and clear-search affordances are bare
+   glyphs and take the tint instead. */
+.kds-picker-product:not(:disabled):active,
+.kds-picker-qty-btn:not(:disabled):active,
+.kds-picker-cancel:not(:disabled):active,
+.kds-picker-confirm:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+.kds-picker-close:active,
+.kds-picker-retry:active,
+.kds-picker-clear-search:active,
+.kds-picker-picked-course:active,
+.kds-picker-picked-remove:active {
+  background: color-mix(in srgb, var(--color-fg) 12%, transparent);
+}
+
+@media (pointer: coarse) {
+  .kds-picker-close,
+  .kds-picker-retry,
+  .kds-picker-clear-search,
+  .kds-picker-qty-btn,
+  .kds-picker-picked-remove,
+  .kds-picker-cancel,
+  .kds-picker-confirm,
+  .kds-picker-picked-course {
+    min-height: var(--touch-target-min);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kds-picker-product:not(:disabled):active,
+  .kds-picker-qty-btn:not(:disabled):active,
+  .kds-picker-cancel:not(:disabled):active,
+  .kds-picker-confirm:not(:disabled):active {
+    transform: none;
+    opacity: 0.75;
+  }
+}

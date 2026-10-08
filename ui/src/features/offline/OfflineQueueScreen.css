@@ -4,23 +4,11 @@
 
 /* ── Stale poll notice (ERR-07) ────────────────────────────────── */
 
-.offline-queue-stale {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-3);
-  margin-bottom: var(--space-4);
-  font-size: var(--text-sm);
-  color: var(--color-warning-dim);
-  background: var(--color-warning-bg);
-  border: 1px solid var(--color-warning-border);
-  border-radius: var(--radius-sm);
-}
-
-.offline-queue-stale-time {
-  margin-left: auto;
-  color: var(--color-fg-secondary);
-}
+/* Both .offline-queue-stale and .offline-queue-stale-time are defined once each,
+   in the ERR-07 block near the bottom of this sheet. An earlier pair here was a
+   strict subset of that one — same declarations except margin-bottom and the two
+   border properties, all of which the later block sets — so every rule in it was
+   unreachable. Removed 2026-10-07. */
 
 /* ── Pull-to-refresh indicator ────────────────────────────────── */
 
@@ -485,4 +473,23 @@
   background: var(--color-bg-surface);
   border: 1px dashed var(--color-border);
   border-radius: var(--radius-md);
+}
+
+/* ── Touch press feedback ────────────────────────────────────────────
+   Queue actions are taken on the tablet while offline. */
+.offline-queue-action-btn:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+@media (pointer: coarse) {
+  .offline-queue-action-btn {
+    min-height: var(--touch-target-min);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .offline-queue-action-btn:not(:disabled):active {
+    transform: none;
+    opacity: 0.75;
+  }
 }

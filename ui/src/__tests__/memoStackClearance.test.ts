@@ -26,9 +26,9 @@ import { resolve } from 'path';
  *     calc(var(--statusbar-height) + var(--space-6))
  *     → the desktop shell's stack clears the 28px status bar (4px over).
  *   SettingsPage.css (body:has(.settings-footer))
- *     calc(2.75rem + var(--space-6))
+ *     calc(2rem + var(--space-6))
  *     → the fullscreen settings route has no shell ancestor, so its
- *       footer (45px, theme-toggle-driven) is cleared by a body-level
+ *       footer (33px, theme-toggle-driven) is cleared by a body-level
  *       override — .settings-page is NOT an ancestor of the fixed
  *       stack, which renders as its SIBLING under #root.
  *   MemoBanner.css (.memo-stack, the consumer)
@@ -185,15 +185,15 @@ describe('Memo stack clearance — the token chain', () => {
       'SettingsPage.css must declare --memo-bottom-inset on body:has(.settings-footer) — the settings route is a FULLSCREEN page whose .settings-page is a SIBLING of the fixed .memo-stack under #root, so an override on the page root can never reach the stack',
     ).toBeGreaterThan(0);
     expect(
-      bodyRule.some((b) => /--memo-bottom-inset:\s*calc\(2\.75rem\s*\+\s*var\(--space-6\)\)/.test(b)),
-      'SettingsPage.css body:has(.settings-footer) --memo-bottom-inset must be calc(2.75rem + var(--space-6)) — the footer\'s height is set by its tallest child, the coarse-pointer theme toggle (2.75rem), per the "own bottom chrome height + --space-6" contract',
+      bodyRule.some((b) => /--memo-bottom-inset:\s*calc\(2rem\s*\+\s*var\(--space-6\)\)/.test(b)),
+      'SettingsPage.css body:has(.settings-footer) --memo-bottom-inset must be calc(2rem + var(--space-6)) — the footer\'s height is set by its tallest child, the theme toggle (2rem), per the "own bottom chrome height + --space-6" contract',
     ).toBe(true);
     // The footer that sets the chrome height must keep the toggle that
-    // sizes it, or the 2.75rem above drifts silently.
+    // sizes it, or the 2rem above drifts silently.
     const footer = blocksOf(css, '\\.settings-footer-theme-toggle');
     expect(
-      footer.some((b) => /height:\s*2\.75rem/.test(b)),
-      'SettingsPage.css .settings-footer-theme-toggle must keep height: 2.75rem under pointer:coarse — it is the value the body override\'s calc is derived from',
+      footer.some((b) => /height:\s*2rem/.test(b)),
+      'SettingsPage.css .settings-footer-theme-toggle must keep height: 2rem under pointer:coarse — it is the value the body override\'s calc is derived from',
     ).toBe(true);
   });
 

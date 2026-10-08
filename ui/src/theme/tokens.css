@@ -102,6 +102,7 @@
   --color-accent-subtle-fg:#e8eaef;
   --color-accent-secondary:#1A8FFF;
   --color-primary:         #1155CC;
+  --color-primary-hover:   #0E47A8;
   --color-primary-soft:    rgba(17, 85, 204, 0.10);
 
   /* ── Semantic: Links ──────────────────────────────────────── */
@@ -112,6 +113,62 @@
   /* ── Semantic: Status ─────────────────────────────────────── */
   --color-success:         #6FE884;
   --color-success-bg:      rgba(111, 232, 132, 0.10);
+  /* ── FOUR tokens are now exact duplicates of another token in the set ──
+     Measured 2026-10-07, per theme rather than in aggregate — the families do NOT
+     agree with each other, which is why each row is listed:
+
+       token                  dark      light     dark-solid
+       --color-danger-dim     = danger  = danger  = danger
+       --color-warning-dim    = warning = warning = warning
+       --color-success-dim    = success = success = success
+       --color-danger-border  = danger  = danger  (undefined)
+       --color-warning-border = warning DIFFERS   = warning
+
+     So a name promising a SUBDUED variant delivers the full-strength colour, and 71
+     call sites (42 of them borders, where the intent is clearest) render a hard edge
+     where a quiet one was wanted. --color-warning-border is the one survivor of the
+     collapse, in light only: that asymmetry is the tell that the others were meant to
+     differ too, and it is visible without leaving this file.
+
+     Provenance is exact — 3c446e3cf (2026-08-28) rewrote 333 lines of this file and
+     collapsed the four:
+       success-dim #4ade80 -> #6FE884   warning-dim #fbbf24 -> #FFA94D
+       danger-dim  #fecaca -> #FF6B68   danger-border #dc2626 -> #FC3D39
+     Its subject is "fix(db): add DROP TABLE IF EXISTS to 20260824_media_edc.sql", so
+     a token-semantics change rode in under a database commit and a reviewer of that
+     commit had no reason to open this file. Audited at the same time: that commit
+     renamed ZERO tokens (74 removed names, 74 still present; 2 genuinely new —
+     --color-text-on-color, --ease-bounce), so nothing could have broken on a name.
+
+     ── WAS THIS A MISTAKE? MEASURED, AND THE ANSWER IS NOT THE OBVIOUS ONE ──
+     Contrast of each old value against its theme's --color-bg (#12141a dark /
+     #f4f5f7 light), WCAG relative-luminance:
+
+       token/theme         BEFORE          AFTER
+       danger-dim/dark    #fca5a5  9.70   #FF6B68  6.62    both pass 3:1
+       danger-dim/light   #fecaca  1.33   #FC3D39  3.28    BEFORE FAILS
+       warning-dim/dark   #fbbf24 11.03   #FFA94D  9.67    both pass
+       warning-dim/light  #fbbf24  1.53   #CC6600  3.52    BEFORE FAILS
+       success-dim/dark   #4ade80 10.56   #6FE884 11.88    both pass
+       success-dim/light  #4ade80  1.60   #2E9E3E  3.17    BEFORE FAILS
+
+     In the LIGHT theme the old values were 1.33-1.60 — unreadable — and the collapse
+     is what brought them to 3.2-3.5. So this was NOT a pure regression, and an earlier
+     version of this note called it one. The dark theme lost some headroom (9.70 -> 6.62)
+     but never fell below the floor.
+
+     WHY NOTHING CAUGHT IT EITHER WAY: colorContrastCompliance.test.ts grades the BASE
+     tokens only — it contains ZERO references to any *-dim or *-border token. So this
+     family has no contrast floor at all, which is why the collapse was silent AND why
+     the old unreadable values were silent before it. That is the finding worth acting
+     on: not "restore the old values" (they fail in light) and not "raise the alarm"
+     (the current ones pass), but that these four tokens are outside every gate.
+
+     DO NOT edit the four values in a drive-by: 71 sites consume them (42 borders),
+     and any distinct "dim" must be chosen against BOTH backgrounds, which is a design
+     task with an arithmetic constraint — see the table. The durable fix is a floor for
+     the family in the contrast suite; the value choice follows from it. */
+
   --color-success-dim:     #6FE884;
   --color-success-fg:      #12141a;
   --color-success-subtle:  rgba(111, 232, 132, 0.08);
@@ -512,6 +569,7 @@
   --color-accent-subtle-fg:#1a1d23;
   --color-accent-secondary:#2874A6;
   --color-primary:         #147EFB;
+  --color-primary-hover:   #0E5FD0;
   --color-primary-soft:    rgba(20, 126, 251, 0.15);
 
   /* ── Links ────────────────────────────────────────────────── */
@@ -533,7 +591,17 @@
   --color-warning-dim:     #CC6600;
   --color-warning-fg:      #ffffff;
   --color-warning-subtle:  rgba(253, 148, 38, 0.08);
-  --color-warning-border:  #FD9426;
+  /* Was #FD9426 — the light-theme amber, for visual continuity with the subtle
+     tint above, and the ONE member of this family in any theme that did not carry
+     its base value. It measured 2.04:1 on --color-bg #f4f5f7, below the 3:1 floor,
+     and it is used as a border and as a 2px focus ring (CartPanel.css:201/:212,
+     LicenseSettings.css:195, SettingsPage.css:1123, OfflineQueueScreen.css:91,
+     RestaurantSettingsScreens.css:1199) — so the low-contrast case was the one
+     that carries meaning. Set to the base value, which matches what its danger
+     sibling has always done (--color-danger-border == --color-danger) and measures
+     3.52:1. Found by the derived-variant floor added to colorContrastCompliance
+     the same day; before that test existed, nothing read this token at all. */
+  --color-warning-border:  #CC6600;
   --color-warning-pos:     #d97706;
 
   --color-danger:          #FC3D39;
@@ -657,6 +725,7 @@
   --color-accent-subtle-fg:#e8eaef;
   --color-accent-secondary:#1A8FFF;
   --color-primary:         #1155CC;
+  --color-primary-hover:   #0E47A8;
 
   /* ── Links ────────────────────────────────────────────────── */
   --color-link:            #1A8FFF;

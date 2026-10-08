@@ -132,7 +132,13 @@ impl<'a> InventoryRepository<'a> {
             // Nothing caught it: the mapper is positional, and every fixture in
             // repository_tests.rs leaves BOTH columns unset, so the correct and
             // incorrect indices returned the same None.
-            is_active: row.get::<_, i64>(18).unwrap_or(1) != 0,
+            // PROPAGATES the read rather than defaulting to `1`. `.unwrap_or(1)` made a
+            // failed column read report the product as ACTIVE — the permissive direction,
+            // and the opposite of `track_serial` one field up, which defaults to `0`. The
+            // mapper's own note at `image_hash` below records the general hazard: a failed
+            // read here returns a silently wrong answer either way, so the only safe
+            // default is one that cannot claim the product is sellable.
+            is_active: row.get::<_, i64>(18)? != 0,
             default_supplier_id: row.get(19).unwrap_or(None),
             image_hash: row.get(21).unwrap_or(None),
         })

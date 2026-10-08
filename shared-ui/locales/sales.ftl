@@ -8,6 +8,7 @@ cart-total-label = Total
 
 # POS
 sale-pay-button = Pay
+pos-cash-drawer-failed = Could not open the cash drawer. Check the device and try again.
 pos-cart-panel-title = Current Sale
 pos-cart-panel-title-order = Current Order
 pos-cart-deducting-label = Deducting: { $name }
@@ -64,7 +65,13 @@ payment-charge-amount = Charge amount
 payment-method-label = Payment Method
 payment-method-cash = Cash
 payment-method-card = Card
+payment-method-card-debit = Debit Card
+payment-method-card-credit = Credit Card
 payment-method-qris = QRIS
+payment-method-qris-manual = Manual QRIS
+payment-method-bank-transfer = Bank Transfer
+payment-method-ewallet = E-Wallet
+payment-method-pay-later = PayLater
 payment-method-credit = Credit
 payment-method-other =
     .aria-label = Other payment method
@@ -187,6 +194,8 @@ payment-toast-loyalty-failed = Failed to load loyalty account
 payment-toast-points-value-failed = Failed to load points value
 payment-toast-kds-failed = Payment succeeded, but the kitchen ticket could not be created — notify the kitchen manually
 payment-toast-print-failed = Nothing was printed — check that a printer is set up and reachable
+payment-toast-invoice-issued = Tax invoice issued successfully
+payment-toast-invoice-failed = Failed to issue tax invoice
 payment-customer-placeholder = e.g. John Doe
 payment-loyalty-points-aria = Points
 payment-search-customers-aria = Search customers
@@ -601,6 +610,7 @@ pos-cart-hold = Hold
 pos-cart-label-placeholder =
     .placeholder = Label (optional)
 pos-cart-lock = Lock
+pos-cart-open-drawer = Open Cash Drawer
 pos-cart-pct-placeholder =
     .placeholder = %
 pos-cart-subtotal = Subtotal
@@ -1032,6 +1042,7 @@ receipt-preview-qr-aria = Payment QR code
 receipt-preview-thanks = Thank you for your purchase!
 receipt-preview-skip = Skip
 receipt-preview-print = Print Receipt
+receipt-preview-issue-invoice = Issue Tax Invoice
 
 # Dashboard
 # Daily Sales Dashboard — Free tier lock (C2.2, §6)
@@ -1090,3 +1101,5 @@ pos-cart-customer-placeholder = Name (optional)...
 pos-cart-customer-aria = Customer name (optional)
 pos-cart-new-tab = New Tab
 pos-cart-new-tab-title = Clear active cart to start a new tab
+pos-cart-guest-count-label = Guests
+edit-modifiers = Edit

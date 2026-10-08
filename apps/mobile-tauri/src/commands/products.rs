@@ -144,6 +144,11 @@ fn map_products_to_dtos(
     store: &Store<'_>,
     products: Vec<kasirmu_core::db::ProductWithDetails>,
 ) -> Result<Vec<ProductDto>, AppError> {
+    // PROD-12/O-H14: batch-load tax rates for all products in one query,
+    // replacing the N+1 per-product lookup (get_product_tax_rates_batch).
+    let skus: Vec<String> = products.iter().map(|p| p.product.sku.to_string()).collect();
+    let tax_rates = store.get_product_tax_rates_batch(&skus).unwrap_or_default();
+
     let dtos: Vec<ProductDto> = products
         .into_iter()
         .map(|pwd| {
@@ -165,8 +170,9 @@ fn map_products_to_dtos(
                 created_at: pwd.product.created_at,
                 price_updated_at: pwd.product.price_updated_at,
                 product_type: pwd.product.product_type.as_str().to_owned(),
-                tax_rate_ids: store
-                    .get_product_tax_rates(pwd.product.sku.as_str())
+                tax_rate_ids: tax_rates
+                    .get(pwd.product.sku.as_str())
+                    .cloned()
                     .unwrap_or_default(),
                 cost_minor: pwd.product.cost_minor,
                 brand: pwd.product.brand.clone(),

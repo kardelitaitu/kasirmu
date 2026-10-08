@@ -4,7 +4,9 @@ import { requiredLocalized } from '@/components';
 import { useAuth } from '@/contexts/AuthContext';
 import { Localized } from '@/components/Localized';
 import { useLocalization } from '@fluent/react';
+import { l10nErrorMessage } from '@/utils/app-error';
 import ProductLookupScreen from '@/features/products/ProductLookupScreen';
+import { useProducts } from '@/features/products/useProducts';
 import RestaurantMenu from '@/features/restaurant/RestaurantMenu';
 import type { RestaurantSidebarActions, RestaurantSidebarProfile } from '@/features/restaurant/components/RestaurantSidebar';
 import { isTauriWebview } from '@/api/tauri';
@@ -14,13 +16,17 @@ import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { FEATURES, useFeatures } from '@/hooks/useFeatures';
 import TableManagementScreen from '@/features/tables/TableManagementScreen';
 import SalesHistoryScreen from '@/features/sales/SalesHistoryScreen';
+import RestaurantMenuEditorScreen from '@/features/restaurant/screens/RestaurantMenuEditorScreen';
 import RestaurantReceiptsScreen from '@/features/restaurant/screens/RestaurantReceiptsScreen';
 import RestaurantPaymentsScreen from '@/features/restaurant/screens/RestaurantPaymentsScreen';
 import RestaurantSettingsScreen from '@/features/restaurant/screens/RestaurantSettingsScreen';
+import { RestaurantFloatingCartBar } from '@/features/restaurant/components/RestaurantFloatingCartBar';
+import { RestaurantCartSheet } from '@/features/restaurant/components/RestaurantCartSheet';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useWorkspaceNav } from '@/hooks/useWorkspaceNav';
+import { useOrientation } from '@/hooks/useOrientation';
 
-import { formatMoney, type CartLine, type LineId, type Product, type Sku } from '@/types/domain';
+import { formatMoney, getProductModifierGroups, type CartLine, type LineId, type ModifierSelection, type Product, type Sku } from '@/types/domain';
 import { useSwipe } from '@/hooks/useSwipe';
 import {
   deleteHeldCartScoped,
@@ -38,7 +44,7 @@ import { CartPanel } from './components/CartPanel';
 import type { CartPanelProps } from './components/CartPanel';
 import { CloseShiftConfirm, ShiftSummary, OpenShiftModal } from './components/ShiftModals';
 import { OpenBillInput, OpenBillsPanel } from './components/OpenBillModals';
-import type { BarcodeScannedPayload } from '@/api/hardware';
+import { openCashDrawerScoped, type BarcodeScannedPayload } from '@/api/hardware';
 import { usePosState } from './usePosState';
 import { useBarcodeScanner } from './useBarcodeScanner';
 import { useCustomerDisplay } from './useCustomerDisplay';
@@ -50,8 +56,11 @@ import { useCartResize } from './hooks/useCartResize';
 import PaymentModal from './PaymentModal';
 import PriceOverrideModal from './PriceOverrideModal';
 import PromotionsModal from './PromotionsModal';
+import ItemModifierModal from './components/ItemModifierModal';
 import type { Promotion } from '@/api/promotions';
 import FastPINOverlay from '@/components/FastPINOverlay';
+import { notifyMemoryPressure } from '@/api/system';
+import { isTabletShell } from '@/utils/shellKind';
 
 import './PosScreen.css';
 import './CartPanel.css';
@@ -109,6 +118,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     removeLine,
     updateQty,
     updateLinePrice,
+    updateLineModifiers,
     updateLineNote,
     fireCourse,
     fireAllCourses,
@@ -126,6 +136,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   const { session, logout, isManager } = useAuth();
   const { activeWorkspace, setActiveWorkspace, sessionToken: rawToken } = useWorkspace();
   const sessionToken = rawToken || '';
+  const { products } = useProducts(sessionToken || undefined);
   const { isEnabled } = useFeatures();
   const userId = session?.user_id ?? '';
 
@@ -137,8 +148,9 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     }
   }, [onNavigate, setActiveWorkspace]);
 
-  // ── Restore locked cart on mount ────────────────────────────────
+  // ── Restore locked cart or active draft on mount ────────────────
   const LOCKED_CART_KEY = 'pos-locked-cart';
+  const ACTIVE_DRAFT_KEY = 'pos-active-draft';
   // PROMO-5/PROMO-3: promotions selected in the picker. They no longer
   // map onto the cart-discount pipeline — the selected ids ride to
   // checkout (PaymentModal → complete_sale promotionIds) and the backend
@@ -149,7 +161,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   const [appliedPromotions, setAppliedPromotions] = useState<Promotion[]>([]);
   useEffect(() => {
     try {
-      const raw = localStorage.getItem(LOCKED_CART_KEY);
+      const raw = localStorage.getItem(LOCKED_CART_KEY) ?? localStorage.getItem(ACTIVE_DRAFT_KEY);
       if (!raw) return;
       const data = JSON.parse(raw);
       if (data.lines && Array.isArray(data.lines)) {
@@ -194,13 +206,18 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
       if (typeof data.customerName === 'string') {
         setCustomerName(data.customerName);
       }
+      if (typeof data.guestCount === 'string') {
+        setGuestCount(data.guestCount);
+      }
       localStorage.removeItem(LOCKED_CART_KEY);
     } catch { /* ignore */ }
   }, [setLines, setDiscount, setAppliedPromotions, setTipPercent, setServiceCharge]);
+
   const [showOptions, setShowOptions] = useState(false);
   const [showTables, setShowTables] = useState(false);
   const [showSalesHistory, setShowSalesHistory] = useState(false);
   const [showStockInquiry, setShowStockInquiry] = useState(false);
+  const [showMenuEditor, setShowMenuEditor] = useState(false);
   const [showReceiptsSettings, setShowReceiptsSettings] = useState(false);
   const [showPaymentsSettings, setShowPaymentsSettings] = useState(false);
   const [showRestaurantSettings, setShowRestaurantSettings] = useState(false);
@@ -211,15 +228,101 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   const [discountName, setDiscountName] = useState('');
   const [tableNumber, setTableNumber] = useState('');
   const [customerName, setCustomerName] = useState('');
+  const [guestCount, setGuestCount] = useState('');
+  const [editingCartLine, setEditingCartLine] = useState<CartLine | null>(null);
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [showTableNumberSetting, setShowTableNumberSetting] = useState(false);
+
+  // ── Auto-persist active draft cart (crash & low-memory recovery) ─
+  useEffect(() => {
+    if (lines.length > 0) {
+      try {
+        const draft = {
+          lines: lines.map((l) => ({
+            sku: l.sku,
+            name: l.name,
+            category: l.category,
+            qty: l.qty,
+            unit_price: l.unit_price,
+            ...(l.courseId ? { courseId: l.courseId } : {}),
+            ...(l.coursingStatus ? { coursingStatus: l.coursingStatus } : {}),
+            ...(l.modifiers && l.modifiers.length > 0 ? { modifiers: l.modifiers } : {}),
+            ...(l.note ? { note: l.note } : {}),
+          })),
+          discountPercent,
+          discountLabel,
+          appliedPromotions,
+          tipPercent,
+          serviceChargeEnabled,
+          serviceChargePercent,
+          tableNumber,
+          customerName,
+          guestCount,
+        };
+        localStorage.setItem(ACTIVE_DRAFT_KEY, JSON.stringify(draft));
+      } catch {
+        // Storage quota or transient browser fault
+      }
+    } else {
+      localStorage.removeItem(ACTIVE_DRAFT_KEY);
+    }
+  }, [lines, discountPercent, discountLabel, appliedPromotions, tipPercent, serviceChargeEnabled, serviceChargePercent, tableNumber, customerName, guestCount]);
+
+  // ── Listen for Android OS memory trim callbacks (Phase 2 audit) ─
+  useEffect(() => {
+    const handleMemoryTrim = (e: Event) => {
+      const level = (e as CustomEvent<{ level?: number }>).detail?.level ?? 80;
+      if (isTabletShell()) {
+        void notifyMemoryPressure(level).catch(() => {});
+      }
+      if (lines.length > 0) {
+        try {
+          const draft = {
+            lines: lines.map((l) => ({
+              sku: l.sku,
+              name: l.name,
+              category: l.category,
+              qty: l.qty,
+              unit_price: l.unit_price,
+              ...(l.courseId ? { courseId: l.courseId } : {}),
+              ...(l.coursingStatus ? { coursingStatus: l.coursingStatus } : {}),
+              ...(l.modifiers && l.modifiers.length > 0 ? { modifiers: l.modifiers } : {}),
+              ...(l.note ? { note: l.note } : {}),
+            })),
+            discountPercent,
+            discountLabel,
+            appliedPromotions,
+            tipPercent,
+            serviceChargeEnabled,
+            serviceChargePercent,
+            tableNumber,
+            customerName,
+            guestCount,
+          };
+          localStorage.setItem(ACTIVE_DRAFT_KEY, JSON.stringify(draft));
+        } catch { /* ignore */ }
+      }
+    };
+    window.addEventListener('kasirmu:trimMemory', handleMemoryTrim);
+    window.addEventListener('kasirmu:lowMemory', handleMemoryTrim);
+    return () => {
+      window.removeEventListener('kasirmu:trimMemory', handleMemoryTrim);
+      window.removeEventListener('kasirmu:lowMemory', handleMemoryTrim);
+    };
+  }, [lines, discountPercent, discountLabel, appliedPromotions, tipPercent, serviceChargeEnabled, serviceChargePercent, tableNumber, customerName, guestCount]);
   // Restaurant coursing: `restaurant.course_firing` gates the firing bar +
   // per-line course chip. Defaults to the workspace check alone until the
   // setting loads, so a slow settings read never hides coursing that the
   // workspace implies; an explicit "false" hides it.
   const [courseFiringEnabled, setCourseFiringEnabled] = useState<boolean | null>(null);
+  const [orderTypePromptEnabled, setOrderTypePromptEnabled] = useState(false);
+  const [orderType, setOrderType] = useState<'dine_in' | 'takeaway' | 'delivery'>('dine_in');
   const [restaurantSidebarOpen, setRestaurantSidebarOpen] = useState(false);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
   const { goToWorkspacePicker } = useWorkspaceNav();
+  const { orientation } = useOrientation();
+  const [cartSheetOpen, setCartSheetOpen] = useState(false);
+  const isPortraitRestaurant = activeWorkspace === 'restaurant-pos' && !orientation.isLandscape;
 
   // ── Sidebar header identity ────────────────────────────
   // The avatar hash is read through `get_own_avatar_scoped`, not the staff
@@ -474,6 +577,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
       return;
     }
     if (!total) return;
+    setCartSheetOpen(false);
     setShowPayment(true);
   }, [total, addToast, activeShiftRef, shiftUnavailableRef]);
 
@@ -481,6 +585,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   const cartSwipe = useSwipe({
     onSwipeLeft: () => {
       if (total && (activeShiftRef.current || shiftUnavailableRef.current)) {
+        setCartSheetOpen(false);
         setShowPayment(true);
       }
     },
@@ -517,6 +622,8 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     setTableNumber,
     customerName,
     setCustomerName,
+    orderType,
+    setOrderType,
   });
 
   const { handlePaymentComplete: customerDisplayPaymentComplete } = useCustomerDisplay({
@@ -568,11 +675,15 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
       loadOpenBills();
     }
     resetCart();
+    try {
+      localStorage.removeItem(ACTIVE_DRAFT_KEY);
+    } catch { /* ignore */ }
     setTableNumber('');
     setCustomerName('');
+    setGuestCount('');
     // Also clear the customer-facing pole display.
     customerDisplayPaymentComplete();
-  }, [resetCart, setTableNumber, setCustomerName, customerDisplayPaymentComplete, activeOpenBillId, loadOpenBills, addToast, sessionToken, deductionLocationIdRef, setActiveOpenBillId, setCartId, setDeductionLocationName, setDeductionOverridden]);
+  }, [resetCart, setTableNumber, setCustomerName, setGuestCount, customerDisplayPaymentComplete, activeOpenBillId, loadOpenBills, addToast, sessionToken, deductionLocationIdRef, setActiveOpenBillId, setCartId, setDeductionLocationName, setDeductionOverridden]);
 
   // ── Lock: save cart state to localStorage, then logout ───────────
 
@@ -599,6 +710,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
           serviceChargePercent,
           tableNumber,
           customerName,
+          guestCount,
         };
         localStorage.setItem(LOCKED_CART_KEY, JSON.stringify(data));
       } else {
@@ -606,7 +718,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
       }
     } catch { /* storage quota or unavailable — ignore */ }
     logout();
-  }, [lines, discountPercent, discountLabel, appliedPromotions, tipPercent, serviceChargeEnabled, serviceChargePercent, tableNumber, customerName, logout]);
+  }, [lines, discountPercent, discountLabel, appliedPromotions, tipPercent, serviceChargeEnabled, serviceChargePercent, tableNumber, customerName, guestCount, logout]);
 
   // ── Keyboard navigation (↑ / ↓ / + / − / Del / Enter) ─────────
   // Behaviour lives in useCartKeyboardNav; the cart-line ref Map and its
@@ -668,6 +780,22 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     return () => { courseFiringSeq.current += 1; };
   }, [sessionToken]);
 
+  const orderTypePromptSeq = useRef(0);
+  useEffect(() => {
+    const seq = ++orderTypePromptSeq.current;
+    const stale = () => orderTypePromptSeq.current !== seq;
+    getSettingScoped(sessionToken || null, 'restaurant.order_type_prompt')
+      .then((raw) => {
+        if (stale()) return;
+        setOrderTypePromptEnabled(raw === 'true');
+      })
+      .catch(() => {
+        if (stale()) return;
+        setOrderTypePromptEnabled(false);
+      });
+    return () => { orderTypePromptSeq.current += 1; };
+  }, [sessionToken]);
+
   const handleRequestExit = useCallback(() => {
     if (activeShift !== null) {
       handleCloseShiftClick();
@@ -676,42 +804,116 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     }
   }, [activeShift, handleCloseShiftClick]);
 
+  const handleOpenCashDrawer = useCallback(async () => {
+    if (!sessionToken) {
+      addToast({ message: 'Authentication required to open cash drawer', type: 'error' });
+      return;
+    }
+    try {
+      const res = await openCashDrawerScoped(sessionToken);
+      if (res && res.opened !== false) {
+        addToast({ message: 'Cash drawer opened', type: 'success' });
+      } else {
+        addToast({ message: 'Cash drawer did not open: device returned unconfirmed', type: 'warning' });
+      }
+    } catch (err) {
+      addToast({
+        // ERR-05: the interpolated raw error was reaching the cashier. The prefix
+        // carried the context; the localized copy now carries it entirely.
+        message: l10nErrorMessage(err, l10n, 'pos-cash-drawer-failed'),
+        type: 'error',
+      });
+    }
+  }, [sessionToken, addToast, l10n]);
+
+  const handleEditModifiers = useCallback(
+    async (line: CartLine) => {
+      let prod = products.find((p) => p.sku === line.sku);
+      if (!prod && sessionToken) {
+        try {
+          const dto = await lookupProductBySkuScoped(sessionToken, line.sku);
+          if (dto) {
+            prod = {
+              sku: dto.sku as Sku,
+              name: dto.name,
+              category: dto.category ?? 'Uncategorized',
+              price: { minor_units: dto.price.minor_units, currency: dto.price.currency },
+              barcode: dto.barcode,
+              inStock: dto.in_stock,
+              stockQty: dto.stock_qty,
+              productType: dto.product_type as Product['productType'],
+              notes: dto.notes ?? null,
+            };
+          }
+        } catch { /* ignore */ }
+      }
+      if (!prod) {
+        addToast({ message: 'Product details not found', type: 'error' });
+        return;
+      }
+      const groups = getProductModifierGroups(prod);
+      if (groups.length === 0) {
+        addToast({ message: 'No modifiers configured for this item', type: 'info' });
+        return;
+      }
+      setEditingCartLine(line);
+      setEditingProduct(prod);
+    },
+    [products, sessionToken, addToast],
+  );
+
+  const handleConfirmEditModifiers = useCallback(
+    (selections: ModifierSelection[], totalPriceMinor: number) => {
+      if (!editingCartLine || !editingProduct) return;
+      updateLineModifiers(
+        editingCartLine.id,
+        selections,
+        { minor_units: totalPriceMinor, currency: editingCartLine.unit_price.currency },
+      );
+      setEditingCartLine(null);
+      setEditingProduct(null);
+    },
+    [editingCartLine, editingProduct, updateLineModifiers],
+  );
+
+  const handleSelectTableFromManagement = useCallback(
+    (tableName: string) => {
+      setTableNumber(tableName);
+      setShowTables(false);
+      // Find active tab matching this table to resume order if exists
+      const matchingBill = openBills.find(
+        (b) =>
+          b.label.toLowerCase().includes(`table ${tableName.toLowerCase()}`) ||
+          (b.customer_name && b.customer_name.toLowerCase().includes(`table ${tableName.toLowerCase()}`)),
+      );
+      if (matchingBill) {
+        void handleResumeOpenBill(matchingBill.id);
+      }
+      if (sessionToken) {
+        void listTablesScoped(sessionToken)
+          .then((tables) => {
+            const match = tables.find(
+              (t) => t.name === tableName || t.id === tableName,
+            );
+            if (match && match.status !== 'occupied') {
+              return updateTableStatusScoped(sessionToken, match.id, 'occupied');
+            }
+          })
+          .catch(() => {});
+      }
+    },
+    [openBills, handleResumeOpenBill, sessionToken],
+  );
+
   // ── Sub-screen: Table Management ─────────────────────────────
   if (showTables) {
     return (
       <div className="pos-screen">
         <div style={{ flex: 1, overflow: 'auto' }}>
           <TableManagementScreen
-            onSelectTable={(tableName) => {
-              setTableNumber(tableName);
-              setShowTables(false);
-              // Mark the table as occupied in the backend when it is assigned
-              // to an active cart. Failure is non-fatal — the cart assignment
-              // (setTableNumber) already succeeded; the table status is cosmetic.
-              if (sessionToken) {
-                void listTablesScoped(sessionToken)
-                  .then((tables) => {
-                    const match = tables.find(
-                      (t) => t.name === tableName || t.id === tableName,
-                    );
-                    if (match && match.status !== 'occupied') {
-                      return updateTableStatusScoped(sessionToken, match.id, 'occupied');
-                    }
-                  })
-                  .catch(() => {});
-              }
-            }}
+            onSelectTable={handleSelectTableFromManagement}
+            onBack={() => setShowTables(false)}
           />
-        </div>
-        <div style={{ padding: '8px 16px', borderTop: '1px solid var(--color-border, #ddd)' }}>
-          <button
-            type="button"
-            className="pos-cart-pay-btn"
-            onClick={() => setShowTables(false)}
-            style={{ width: '100%' }}
-          >
-            &larr; {l10n.getString('back')}
-          </button>
         </div>
       </div>
     );
@@ -720,19 +922,24 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   // ── Sub-screen: Sales History (F6) ───────────────────────────
   if (showSalesHistory) {
     return (
-      <div className="pos-screen">
-        <div style={{ flex: 1, overflow: 'auto' }}>
-          <SalesHistoryScreen />
-        </div>
-        <div style={{ padding: '8px 16px', borderTop: '1px solid var(--color-border, #ddd)' }}>
+      <div className="pos-screen" style={{ flexDirection: 'column' }}>
+        <header className="restaurant-subscreen-top-bar">
           <button
             type="button"
-            className="pos-cart-pay-btn"
+            className="restaurant-subscreen-back-btn"
             onClick={() => setShowSalesHistory(false)}
-            style={{ width: '100%' }}
+            aria-label={l10n.getString('back') || 'Back'}
           >
-            &larr; {l10n.getString('back')}
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="18" height="18" aria-hidden="true">
+              <line x1="19" y1="12" x2="5" y2="12" />
+              <polyline points="12 19 5 12 12 5" />
+            </svg>
+            <span>{l10n.getString('back') || 'Back'}</span>
           </button>
+          <span className="restaurant-subscreen-top-title">{l10n.getString('sales-history-title') || 'Sales History'}</span>
+        </header>
+        <div style={{ flex: 1, overflow: 'auto' }}>
+          <SalesHistoryScreen />
         </div>
       </div>
     );
@@ -741,19 +948,38 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   // ── Sub-screen: Stock Inquiry (F8) ───────────────────────────
   if (showStockInquiry) {
     return (
-      <div className="pos-screen">
+      <div className="pos-screen" style={{ flexDirection: 'column' }}>
+        <header className="restaurant-subscreen-top-bar">
+          <button
+            type="button"
+            className="restaurant-subscreen-back-btn"
+            onClick={() => setShowStockInquiry(false)}
+            aria-label={l10n.getString('back') || 'Back'}
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="18" height="18" aria-hidden="true">
+              <line x1="19" y1="12" x2="5" y2="12" />
+              <polyline points="12 19 5 12 12 5" />
+            </svg>
+            <span>{l10n.getString('back') || 'Back'}</span>
+          </button>
+          <h2 className="restaurant-subscreen-top-title">{l10n.getString('nav-inventory') || 'Stock Inquiry'}</h2>
+        </header>
         <div style={{ flex: 1, overflow: 'auto' }}>
           <ProductLookupScreen onAddProduct={handleAddProduct} />
         </div>
-        <div style={{ padding: '8px 16px', borderTop: '1px solid var(--color-border, #ddd)' }}>
-          <button
-            type="button"
-            className="pos-cart-pay-btn"
-            onClick={() => setShowStockInquiry(false)}
-            style={{ width: '100%' }}
-          >
-            &larr; {l10n.getString('back')}
-          </button>
+      </div>
+    );
+  }
+
+  // ── Sub-screen: Restaurant Menu Editor ───────────────────────
+  if (showMenuEditor) {
+    return (
+      <div className="pos-screen">
+        <div style={{ flex: 1, overflow: 'auto' }}>
+          <RestaurantMenuEditorScreen
+            onBack={() => setShowMenuEditor(false)}
+            sessionToken={sessionToken}
+          />
         </div>
       </div>
     );
@@ -839,7 +1065,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   };
   const hubNav = {
     isEnabled, setShowTables, setShowSalesHistory, setShowStockInquiry,
-    onNavigate, handleOpenSettings, handleLock,
+    onNavigate, handleOpenSettings, handleLock, onOpenCashDrawer: handleOpenCashDrawer,
   };
   const tableNumberRow = {
     showTableNumberSetting,
@@ -847,11 +1073,17 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     setTableNumber,
     customerName,
     setCustomerName,
+    guestCount,
+    setGuestCount,
+    orderType,
+    setOrderType,
+    orderTypePromptEnabled,
   };
   const cartLineRows = {
     lines, fireCourse, fireAllCourses, assignCourse, setCartLineRef,
     handleRemoveLine, handleDecreaseQty, handleIncreaseQty,
     updateLineNote,
+    onEditModifiers: handleEditModifiers,
     isManager, setOverrideTarget, ensureCart,
     animatedUndoStack, handleUndoRemove, handleDismissUndo,
     courseFiringEnabled,
@@ -894,15 +1126,27 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     onOpenTables: () => setShowTables(true),
     onOpenHistory: () => setShowSalesHistory(true),
     onOpenKitchenDisplay: () => onNavigate?.('kds'),
+    onOpenMenuEditor: () => setShowMenuEditor(true),
     onOpenReceipts: () => setShowReceiptsSettings(true),
     onOpenPayments: () => setShowPaymentsSettings(true),
     onOpenSettings: () => setShowRestaurantSettings(true),
+    onOpenCashDrawer: handleOpenCashDrawer,
     onRequestExit: handleRequestExit,
   };
 
   return (
     <>
-    <div className="pos-screen" ref={posScreenRef}>
+    <div
+      className="pos-screen"
+      ref={posScreenRef}
+      onContextMenu={(e) => {
+        const target = e.target as HTMLElement | null;
+        if (target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA' || target?.isContentEditable) {
+          return;
+        }
+        e.preventDefault();
+      }}
+    >
       {/* ── Left: Product lookup ─────────────────── */}
       <div className="pos-products">
         {activeWorkspace === 'restaurant-pos' ? (
@@ -915,17 +1159,42 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
             onChangePhoto={() => { void handleChangePhoto(); }}
             onRequestExit={handleRequestExit}
             isManager={isManager}
+            hasFloatingCartBar={isPortraitRestaurant}
           />
         ) : (
           <ProductLookupScreen onAddProduct={handleAddProduct} />
         )}
       </div>
 
-      {/* ── Resize handle & Cart panel ─────────────── */}
-      <CartPanel
-        {...cartPanelProps}
-        hidden={activeWorkspace === 'restaurant-pos' && restaurantSidebarOpen}
-      />
+      {/* ── Resize handle & Cart panel (landscape / desktop) ── */}
+      {!isPortraitRestaurant && (
+        <CartPanel
+          {...cartPanelProps}
+          hidden={activeWorkspace === 'restaurant-pos' && restaurantSidebarOpen}
+        />
+      )}
+
+      {/* ── Restaurant Portrait: Floating Cart Bar & Bottom Sheet Drawer ── */}
+      {isPortraitRestaurant && (
+        <>
+          <RestaurantFloatingCartBar
+            lines={lines}
+            total={total}
+            tableNumber={tableNumber}
+            onOpenCart={() => setCartSheetOpen(true)}
+          />
+          <RestaurantCartSheet
+            open={cartSheetOpen}
+            onClose={() => setCartSheetOpen(false)}
+            tableNumber={tableNumber}
+          >
+            <CartPanel
+              {...cartPanelProps}
+              hidden={false}
+            />
+          </RestaurantCartSheet>
+        </>
+      )}
 
       {/* ── F2-3: cart-tax watcher (retry bumps the key) ─ */}
       <CartTaxWatcher
@@ -953,6 +1222,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
           taxEstimated={taxEstimated}
           {...(sessionToken ? { sessionToken } : {})}
           tableNumber={tableNumber}
+          orderType={orderType}
           onComplete={handlePaymentComplete}
           onClose={() => setShowPayment(false)}
         />
@@ -1045,6 +1315,23 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
         variant="warning"
         confirmLabel={l10n.getString('restaurant-exit-confirm-btn')}
       />
+
+      {/* ── Item Modifier Modal (in-cart customization editing) ────── */}
+      {editingCartLine && editingProduct && (
+        <ItemModifierModal
+          open={true}
+          productName={editingProduct.name}
+          basePriceMinor={editingProduct.price.minor_units}
+          currency={editingCartLine.unit_price.currency}
+          groups={getProductModifierGroups(editingProduct)}
+          initialSelections={editingCartLine.modifiers}
+          onConfirm={handleConfirmEditModifiers}
+          onClose={() => {
+            setEditingCartLine(null);
+            setEditingProduct(null);
+          }}
+        />
+      )}
     </div>
   </>
   );

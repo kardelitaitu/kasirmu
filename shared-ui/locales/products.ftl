@@ -4,10 +4,83 @@
 restaurant-menu-search-placeholder = Search Menu
 restaurant-menu-hamburger-aria = Menu
 restaurant-sidebar-toggle-aria = Sidebar
+restaurant-sidebar-menu-editor = Menu Editor
 restaurant-sidebar-receipts = Receipts
 restaurant-sidebar-payments = Payments
 restaurant-sidebar-settings = Settings
 restaurant-manager-required = Manager+
+restaurant-menu-editor-title = Menu Editor
+restaurant-menu-editor-categories = Categories
+restaurant-menu-editor-all-categories = All Items
+restaurant-menu-editor-new-category = New category name
+restaurant-menu-editor-add-category = Add
+restaurant-menu-editor-create-category = New Category
+restaurant-menu-editor-edit-category = Edit Category
+restaurant-menu-editor-save-category = Save Category
+restaurant-menu-editor-category-saved = Category updated
+restaurant-menu-editor-category-name-exists = A category with this name already exists.
+restaurant-menu-editor-new-item = Add item
+restaurant-menu-editor-empty = No items in this category yet.
+restaurant-menu-editor-loading = Loading menu…
+restaurant-menu-editor-uncategorised = Uncategorised
+restaurant-menu-editor-hidden = Hidden
+restaurant-menu-editor-field-name = Name
+restaurant-menu-editor-field-price = Price
+restaurant-menu-editor-field-category = Category
+restaurant-menu-editor-field-notes = Description / Notes
+restaurant-menu-editor-notes-placeholder = Cooking instructions, allergens, spice level
+restaurant-menu-editor-field-active = Available to sell
+restaurant-menu-editor-edit-item-aria = Edit { $name }
+restaurant-menu-editor-delete-item-aria = Delete { $name }
+restaurant-menu-editor-edit-category-aria = Edit category { $name }
+restaurant-menu-editor-delete-category-aria = Delete category { $name }
+restaurant-menu-editor-category-deleted-moved = Category deleted; { $count } item(s) moved
+restaurant-menu-editor-save-success = Menu updated
+restaurant-menu-editor-delete-success = Item deleted
+restaurant-menu-editor-error-load = Failed to load the menu
+restaurant-menu-editor-error-save = Failed to save the menu
+restaurant-menu-editor-error-delete = Failed to delete
+restaurant-menu-editor-search-placeholder = Search dishes by name, SKU, or notes…
+restaurant-menu-editor-filter-all = All
+restaurant-menu-editor-filter-available = Available
+restaurant-menu-editor-filter-hidden = Hidden (86)
+restaurant-menu-editor-no-match = No items match your search.
+restaurant-menu-editor-clear-search = Clear search
+restaurant-menu-editor-status-available = Available
+restaurant-menu-editor-status-hidden = Hidden (86)
+restaurant-menu-editor-sku = SKU
+restaurant-menu-editor-toggle-availability-aria = Toggle availability for { $name }
+restaurant-menu-editor-duplicate = Duplicate
+restaurant-menu-editor-duplicate-item-aria = Duplicate { $name }
+restaurant-menu-editor-sort-label = Sort
+restaurant-menu-editor-sort-default = Default
+restaurant-menu-editor-sort-name-asc = Name (A–Z)
+restaurant-menu-editor-sort-name-desc = Name (Z–A)
+restaurant-menu-editor-sort-price-asc = Price (Low to High)
+restaurant-menu-editor-sort-price-desc = Price (High to Low)
+restaurant-menu-editor-modifiers-title = Modifier Groups & Variations
+restaurant-menu-editor-add-modifier-group = Add Modifier Group
+restaurant-menu-editor-group-name-placeholder = Group name (e.g. Size, Spice Level)
+restaurant-menu-editor-add-option = Add Option
+restaurant-menu-editor-option-name-placeholder = Option name (e.g. Large, Extra Cheese)
+restaurant-menu-editor-option-price-label = Surcharge
+restaurant-menu-editor-modifiers-badge = { $count } Modifiers
+restaurant-menu-editor-bulk-available = Make all available
+restaurant-menu-editor-bulk-hide = 86 All (Hide)
+restaurant-menu-editor-bulk-updated = { $count } items updated
+restaurant-menu-editor-modifier-min = Min choices
+restaurant-menu-editor-modifier-max = Max choices
+restaurant-menu-editor-mode-optional-multi = Optional (Multi)
+restaurant-menu-editor-mode-optional-single = Optional (1)
+restaurant-menu-editor-mode-required-single = Required (1)
+restaurant-menu-editor-hint-optional-multi = Optional — customer can select up to { $max } choices (e.g. less sugar, less ice)
+restaurant-menu-editor-hint-optional-single = Optional — customer can select at most 1 choice
+restaurant-menu-editor-hint-required-single = Required — customer must select 1 choice
+restaurant-menu-editor-hint-required-multi = Required — customer must select between { $min } and { $max } choices
+restaurant-menu-editor-delete-item-title = Delete Menu Item
+restaurant-menu-editor-delete-item-confirm = Are you sure you want to delete "{ $name }"? This dish will be removed from the restaurant menu.
+restaurant-menu-editor-delete-category-title = Delete Category
+restaurant-menu-editor-delete-category-confirm = Are you sure you want to delete category "{ $name }"? Items in this category will become uncategorised.
 restaurant-receipts-title = Receipt & Printer Settings
 restaurant-receipts-subtitle = Configure receipt layout and device printer connections
 restaurant-payments-title = Payment Settings
@@ -27,6 +100,7 @@ restaurant-settings-error-save = Failed to save settings
 restaurant-test-print = Test Print
 restaurant-test-print-success = Test receipt sent to printer
 restaurant-test-print-failed = Test print failed
+restaurant-test-drawer = Test Cash Drawer
 restaurant-payment-methods-heading = Payment Methods
 restaurant-payment-methods-sub = Enable or disable accepted payment methods at checkout
 restaurant-payment-rails-heading = Local Payment Rails
@@ -383,3 +457,16 @@ product-mgmt-alert-count =
         [one] Open stock alerts ({ $count } active)
        *[other] Open stock alerts ({ $count } active)
     }
+
+# ── Restaurant POS Portrait Cart ──
+restaurant-cart-view-order = View Order
+restaurant-cart-sheet-title = Current Order
+restaurant-cart-sheet-close = Close Cart
+restaurant-cart-items-count =
+    { $count ->
+        [one] 1 item
+       *[other] { $count } items
+    }
+restaurant-cart-table-badge = Table { $table }
+restaurant-cart-empty = Cart is empty
+

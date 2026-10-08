@@ -685,11 +685,13 @@ fn settle_shortfall_resolved(
         )
         .map_err(AppError::from)
     {
-        Ok(_) => Ok(SaleSettlement {
+        Ok(deduct) => Ok(SaleSettlement {
             result: CompleteSaleResult {
                 sale_id: sale.id.clone(),
                 total: Some(sale.total),
                 line_count,
+                receipt_number: Some(deduct.receipt_number),
+                statutory_number: deduct.statutory_number,
             },
             sale: Some(sale),
         }),

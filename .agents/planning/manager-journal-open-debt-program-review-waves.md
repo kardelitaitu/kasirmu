@@ -53,7 +53,7 @@ CROSS-OWNED with the rival doc and line, not deleted — the review needs the ma
 ### WAVE 1 — measure, then the three docs boxes and the bypass probe (4 boxes + 1 support row)
 | wave | box | TASK (one outcome) | FENCE (exact paths, single owner) | ACCEPT | ROLE | BLOCKED-BY |
 |---|---|---|---|---|---|---|
-| 1 | S1 (support, not one of the 11) | Re-measure the release profile before anyone acts on a stale count: `docs/records/JOURNAL.md:11057` claims "the release-profile fixture campaign cleared every mechanical red", while this plan's `1231 passed / 76 failed` still stands in prose. One number, one date. | none (read-only) | `cd $(git rev-parse --show-toplevel) && CARGO_TARGET_DIR=target-release cargo test -p oz-bridge --release 2>&1 | tail -4` | tester | - |
+| 1 | S1 (support, not one of the 11) | Re-measure the release profile before anyone acts on a stale count: `docs/records/journal/JOURNAL-part-7.md:897` (pre-split `JOURNAL.md:11057`, per the index's own worked example)` claims "the release-profile fixture campaign cleared every mechanical red", while this plan's `1231 passed / 76 failed` still stands in prose. One number, one date. | none (read-only) | `cd $(git rev-parse --show-toplevel) && CARGO_TARGET_DIR=target-release cargo test -p oz-bridge --release 2>&1 | tail -4` | tester | - |
 | 1 | **B1 `:206`** | Design doc for the scope axis that is LEFT. The organisation half is **already shipped**, so the doc must say so and rule only on the terminal axis: which entity owns a terminal-scoped assignment at the enforcement boundary under ADR #4 (per-store DBs vs global identity DB) and what explicit `all` means. No migration, no code. | `docs/plans/terminal-scope-design.md` (new) | `test $(grep -cE '^## ' docs/plans/terminal-scope-design.md) -ge 4 && grep -c 'ScopeType::Organization' docs/plans/terminal-scope-design.md` | docs | - |
 | 1 | **B2 `:261`** | R5 design doc: `method -> Vec<processor>` chain, `ResilientProcessor`, breaker keying on `(tenant_id, gateway)`, expiry/reconciliation job — written AGAINST the code a peer already has in flight, labelled in-flight, not as accepted design. | `docs/plans/payment-resilience-design.md` (new) | `test $(for w in 'method' 'ResilientProcessor' 'tenant_id' 'expiry'; do grep -c "$w" docs/plans/payment-resilience-design.md; done | grep -vc '^0$') -ge 4` | docs | - |
 | 1 | **B3 `:262`** | R4/R6/R7 decision record: each stated as blocked-on-input naming the exact input (second real EDC terminal · sandbox credentials + merchant account + per-merchant acquirer activation · hardware or vendor protocol docs), so nobody re-opens them as "unknown". Reads `todo-payment-agents-4.md`; writes only its own file. | `docs/records/payment-remainder-blocked-inputs.md` (new) | `test $(grep -cE 'R4|R6|R7' docs/records/payment-remainder-blocked-inputs.md) -ge 3 && grep -c 'crates/oz-hal/src/drivers/edc' docs/records/payment-remainder-blocked-inputs.md` | docs | - |
@@ -106,7 +106,7 @@ kept apart here only because rule W1 forbids two boxes sharing a file in a wave.
 
 | plan row | Box it names | Rival owner (doc:line) | Note |
 |---|---|---|---|
-| `:106` | Classify each of the 76 | `todo-refactor-kasirmu-app-agents-3.md:142` + `docs/records/JOURNAL.md:11057` | The journal entry is titled as a completed campaign ("cleared every mechanical red"), so S1 re-measures before anyone re-dispatches this |
+| `:106` | Classify each of the 76 | `todo-refactor-kasirmu-app-agents-3.md:142` + `docs/records/journal/JOURNAL-part-7.md:897` (pre-split `JOURNAL.md:11057`, per the index's own worked example)` | The journal entry is titled as a completed campaign ("cleared every mechanical red"), so S1 re-measures before anyone re-dispatches this |
 | `:110` | Fix the profile-dishonest fixtures | same two lines | The both-profile idiom already exists at `crates/oz-core/src/db/audit_security_tests.rs` and `crates/oz-bridge/src/subscription_tests.rs` |
 | `:111` | Decide `sync_tests.rs` cfg | same two lines | Ridged into the fixture campaign, not this programme's call |
 | `:154` | Per-domain wire audit | `todo-refactor-kasirmu-app-agents-3.md:113-123` ("Phase 3.3: Tablet Client Command Sharing") | My earlier draft's A-boxes all live there |
@@ -149,5 +149,5 @@ separate decision on `ui/src/utils/role.ts` + `ui/src/__tests__/role.test.ts`; a
   and they retire two of the programme's three blocked items.
 - Numbers to re-derive, never quote: the 27/3 box census, the 33-entry dirty set (21 of them inside paths this
   schedule fences), the `1231 / 76` release pair, and the `54` tablet-struct population (measured at
-  `c93965f32`; test files land hourly and `docs/records/JOURNAL.md:11057` already claims part of it is done).
+  `c93965f32`; test files land hourly and `docs/records/journal/JOURNAL-part-7.md:897` (pre-split `JOURNAL.md:11057`, per the index's own worked example)` already claims part of it is done).
 

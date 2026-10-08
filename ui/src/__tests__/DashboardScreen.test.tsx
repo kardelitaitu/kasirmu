@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import React from 'react';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, act } from '@testing-library/react';
 import { FluentBundle, FluentResource } from '@fluent/bundle';
 import { ReactLocalization, LocalizationProvider } from '@fluent/react';
 import DashboardScreen from '@/features/reports/DashboardScreen';
@@ -502,5 +502,17 @@ describe('DashboardScreen', () => {
       const input = screen.getByLabelText('dashboard-filter-from') as HTMLInputElement;
       expect(input.value).toBe('2026-01-05');
     });
+  });
+
+  it('resets report caches when kasirmu:trimMemory event is dispatched', async () => {
+    resolveAllWithDefaults();
+    renderScreen();
+    await waitFor(() => expect(screen.getByText('Revenue Trend')).toBeTruthy());
+
+    act(() => {
+      window.dispatchEvent(new CustomEvent('kasirmu:trimMemory', { detail: { level: 80 } }));
+    });
+
+    expect(screen.getByText('Revenue Trend')).toBeTruthy();
   });
 });

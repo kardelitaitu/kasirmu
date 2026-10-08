@@ -531,3 +531,202 @@ fn region_code_parse_rejects_anything_outside_the_closed_set() {
         assert!(RegionCode::parse(raw).is_err(), "{raw:?} must be rejected");
     }
 }
+
+// ── ActiveMarketProfile: load + verify_regional_mutation_allowed ─────────
+
+/// Seed a minimal location with legal entity and payment rail for profile tests.
+fn profile_seed(conn: &rusqlite::Connection) {
+    // legal entity
+    conn.execute(
+        "INSERT OR IGNORE INTO legal_entities (id, tenant_id, name, legal_name, country_code)
+         VALUES ('ent-profile', 'default', 'Profile Entity', 'Profile Entity', 'ID')",
+        [],
+    )
+    .unwrap();
+    // location linked to the entity
+    conn.execute(
+        "INSERT OR IGNORE INTO locations
+             (id, name, tenant_id, legal_entity_id, currency, timezone, locale)
+         VALUES ('loc-profile', 'Profile Store', 'default', 'ent-profile', 'IDR', 'Asia/Jakarta', 'id-ID')",
+        [],
+    )
+    .unwrap();
+    // enabled payment rail at legal_entity scope
+    conn.execute(
+        "INSERT OR IGNORE INTO local_payment_methods
+             (id, tenant_id, scope_type, scope_id, rail_code, label, is_enabled, parameters, created_at, updated_at)
+         VALUES ('lpm-1', 'default', 'legal_entity', 'ent-profile', 'cash', 'Cash', 1, '{}',
+                 '2026-10-02T00:00:00.000Z', '2026-10-02T00:00:00.000Z')",
+        [],
+    )
+    .unwrap();
+    // disabled rail at location scope (should be excluded)
+    conn.execute(
+        "INSERT OR IGNORE INTO local_payment_methods
+             (id, tenant_id, scope_type, scope_id, rail_code, label, is_enabled, parameters, created_at, updated_at)
+         VALUES ('lpm-2', 'default', 'location', 'loc-profile', 'card', 'Card', 0, '{}',
+                 '2026-10-02T00:00:00.000Z', '2026-10-02T00:00:00.000Z')",
+        [],
+    )
+    .unwrap();
+    // enabled qris at location scope
+    conn.execute(
+        "INSERT OR IGNORE INTO local_payment_methods
+             (id, tenant_id, scope_type, scope_id, rail_code, label, is_enabled, parameters, created_at, updated_at)
+         VALUES ('lpm-3', 'default', 'location', 'loc-profile', 'qris', 'QRIS', 1, '{}',
+                 '2026-10-02T00:00:00.000Z', '2026-10-02T00:00:00.000Z')",
+        [],
+    )
+    .unwrap();
+}
+
+#[test]
+fn load_active_market_profile_basic() {
+    let conn = crate::migrations::fresh_db();
+    profile_seed(&conn);
+
+    let profile = load_active_market_profile(&conn, "loc-profile").unwrap();
+
+    assert_eq!(profile.location_id, "loc-profile");
+    assert_eq!(profile.legal_entity_id, "ent-profile");
+    assert_eq!(profile.country_code, "ID");
+    assert_eq!(profile.currency, "IDR");
+    assert_eq!(profile.default_locale, "id-ID");
+    assert_eq!(profile.timezone, "Asia/Jakarta");
+    assert_eq!(
+        profile.tax_regime, "PB1",
+        "Indonesia (country_code=ID) must resolve to PB1"
+    );
+    // Only is_enabled=1 rails: cash (entity) and qris (location); card is disabled
+    assert!(profile.enabled_payment_rails.contains(&"cash".to_owned()));
+    assert!(profile.enabled_payment_rails.contains(&"qris".to_owned()));
+    assert!(
+        !profile.enabled_payment_rails.contains(&"card".to_owned()),
+        "disabled rail must be excluded"
+    );
+}
+
+#[test]
+fn load_active_market_profile_missing_location() {
+    let conn = crate::migrations::fresh_db();
+    let err = load_active_market_profile(&conn, "loc-does-not-exist").unwrap_err();
+    assert!(
+        matches!(
+            err,
+            crate::CoreError::NotFound {
+                entity: "location",
+                ..
+            }
+        ),
+        "missing location must produce NotFound"
+    );
+}
+
+#[test]
+fn load_active_market_profile_no_legal_entity_country_code() {
+    // A location without a legal entity should produce country_code="" and tax_regime="NONE"
+    let conn = crate::migrations::fresh_db();
+    let now = "2026-10-02T00:00:00.000Z";
+    conn.execute(
+        "INSERT INTO locations (id, name, tenant_id, currency, timezone, locale, created_at, updated_at)
+         VALUES ('loc-bare', 'Bare', 'default', 'USD', 'UTC', 'en-US', ?1, ?1)",
+        rusqlite::params![now],
+    )
+    .unwrap();
+    let profile = load_active_market_profile(&conn, "loc-bare").unwrap();
+    assert_eq!(profile.country_code, "");
+    assert_eq!(profile.tax_regime, "NONE");
+    assert!(profile.enabled_payment_rails.is_empty());
+}
+
+#[test]
+fn verify_regional_mutation_allowed_no_terminal() {
+    // When there is no terminal bound to the location, no open shift can exist
+    // (the join is empty), so the guard must pass.
+    let conn = crate::migrations::fresh_db();
+    profile_seed(&conn);
+    verify_regional_mutation_allowed(&conn, "loc-profile")
+        .expect("guard must pass when no terminal is bound to the location");
+}
+
+#[test]
+fn verify_regional_mutation_allowed_blocks_when_shift_open() {
+    let conn = crate::migrations::fresh_db();
+    profile_seed(&conn);
+
+    // Seed a terminal bound to our location (no FK on user_id/terminal_id after
+    // 20261016_shifts_drop_cross_db_fks.sql, so no user row needed)
+    conn.execute(
+        "INSERT OR IGNORE INTO terminals (id, name, device_id, bound_location_id, created_at, updated_at)
+         VALUES ('term-1', 'POS 1', 'dev-1', 'loc-profile', '2026-10-02T00:00:00.000Z', '2026-10-02T00:00:00.000Z')",
+        [],
+    )
+    .unwrap();
+    // Open a shift (closed_at IS NULL)
+    conn.execute(
+        "INSERT INTO shifts (id, user_id, terminal_id, status)
+         VALUES ('shift-1', 'user-shift', 'term-1', 'open')",
+        [],
+    )
+    .unwrap();
+
+    let err = verify_regional_mutation_allowed(&conn, "loc-profile").unwrap_err();
+    assert!(
+        matches!(
+            err,
+            crate::CoreError::Validation {
+                field: "regional_settings",
+                ..
+            }
+        ),
+        "guard must return Validation error when shift is open: {err:?}"
+    );
+}
+
+#[test]
+fn verify_regional_mutation_allowed_passes_after_shift_close() {
+    let conn = crate::migrations::fresh_db();
+    profile_seed(&conn);
+
+    conn.execute(
+        "INSERT OR IGNORE INTO terminals (id, name, device_id, bound_location_id, created_at, updated_at)
+         VALUES ('term-2', 'POS 2', 'dev-2', 'loc-profile', '2026-10-02T00:00:00.000Z', '2026-10-02T00:00:00.000Z')",
+        [],
+    )
+    .unwrap();
+    let now = "2026-10-02T08:00:00.000Z";
+    // Shift is CLOSED (closed_at IS NOT NULL)
+    conn.execute(
+        "INSERT INTO shifts (id, user_id, terminal_id, status, closed_at)
+         VALUES ('shift-closed', 'user-shift2', 'term-2', 'closed', ?1)",
+        rusqlite::params![now],
+    )
+    .unwrap();
+
+    verify_regional_mutation_allowed(&conn, "loc-profile")
+        .expect("guard must pass after shift is closed");
+}
+
+#[test]
+fn active_market_profile_serializes_as_snake_case_json() {
+    // The Tauri IPC wire shape — serde must produce snake_case keys that the
+    // TypeScript side can consume without a custom mapper.
+    let profile = ActiveMarketProfile {
+        location_id: "loc-1".into(),
+        legal_entity_id: "ent-1".into(),
+        country_code: "ID".into(),
+        currency: "IDR".into(),
+        default_locale: "id-ID".into(),
+        timezone: "Asia/Jakarta".into(),
+        tax_regime: "PB1".into(),
+        statutory_rounding: RoundingMode::HalfUp,
+        enabled_payment_rails: vec!["cash".into(), "qris".into()],
+    };
+    let json = serde_json::to_string(&profile).unwrap();
+    assert!(
+        json.contains("\"location_id\""),
+        "must serialize as snake_case"
+    );
+    assert!(json.contains("\"enabled_payment_rails\""));
+    assert!(json.contains("\"statutory_rounding\""));
+}

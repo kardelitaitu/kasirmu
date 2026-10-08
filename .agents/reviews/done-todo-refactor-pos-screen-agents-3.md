@@ -2,6 +2,22 @@
 
 <!-- Audit stamp: 2026-09-15 · DSH · status: SUPERSEDED-BY-EXECUTION (15 payment/ files landed, 2,120 ln total; PaymentModal.tsx reduced from 2,436 to 1,810 lines (-626 ln); usePaymentStateMachine declined on processing invariant; useSplitTenders superseded by discrete math/state/currency/rows parts; both 3.1 seams landed: splitDistribution.ts in 8213cfa49 and useEdcTenderPhase.ts in 80afc7e02; no file in payment/ exceeds 450 lines) -->
 
+> ✅ **RE-VERIFIED 2026-10-07 — this file is the best-maintained doc on this surface, and the check is
+> worth recording BECAUSE it is the one place where stale headings are already annotated rather than
+> left to mislead.** Every `❌ NOT STARTED` heading in §3.1–3.4 above is contradicted by the tree and by
+> this file's own later sections; the stamp at `:3` says so first (*SUPERSEDED-BY-EXECUTION*), and the later
+> sections `:373` (§"Verdict on Phase 3.1"), `:381` (§3.2's *SUPERSEDED-BY-PARTS* line) and `:393`
+> (§"Execution Update") annotate each stale heading with the commits that closed it. Verified independently: **all four
+> tender panels exist** (`CashTenderPanel`, `CardTenderPanel`, `QrisTenderPanel`, `LoyaltyTenderPanel` in
+> `ui/src/features/sales/payment/`), so §3.3's "the inline blocks are still inline" is false; and §3.2's
+> split-tender work is `useSplitTenderState.ts` — **landed under a different name and from a different
+> campaign**, its own header citing *"Slice W5-c of the PaymentModal extraction campaign"*. §3.1's exact
+> artifact (`usePaymentStateMachine.ts`) still does not exist and its `NOT-A-TASK` annotation correctly says
+> so. **The two headline figures have moved past the stamp, as expected:** `payment/` holds **17 files /
+> 2,708 lines** today against the stamp's 15 / 2,120, and `PaymentModal.tsx` is **2,103** — larger than the
+> 1,810 recorded, because later work added to it. Read those as 2026-09-15 measurements, not as current
+> drift. NOT re-verified: the per-phase commit attributions.
+
 **Document:** `todo-refactor-pos-screen-agents-3.md`  
 **Role:** Orchestrator Agent 3 (Payment & Checkout Architect)  
 **Goal:** Decompose `PaymentModal.tsx` (2,436 lines as measured 2026-09-14 by `wc -l ui/src/features/sales/PaymentModal.tsx`) from a monolithic checkout modal into modular tender providers, split-payment state machines, currency conversion helpers, and receipt preview layers.
@@ -13,7 +29,7 @@
 
 **Sibling Documents:**
 - `done-todo-refactor-pos-screen-agents-1.md` (Agent 1 — Cart Engine & State Architect) — **FINISHED**; cited by bare name with no `./` prefix: retired under the `done-todo-` convention (its only root commit is `238912974`; `git log -- todo-refactor-pos-screen-agents-1.md` under the old name is empty, so there is **no rename event to cite for this file**, and `94b5da2cc`, which renamed other work orders, never touched it), and one clause only: a separate session has an *uncommitted, in-flight* move of retired work orders out of the repo root, which is why no path is written here. This is the same fact as the "wait for Agent 1" gate in the sibling doc: that gate is waiting on completed work.
-- [`todo-refactor-pos-screen-agents-2.md`](./todo-refactor-pos-screen-agents-2.md) (Agent 2 — Cart UI Panels, Modals & Peripherals)
+- [`done-todo-refactor-pos-screen-agents-2.md`](done-todo-refactor-pos-screen-agents-2.md) (Agent 2 — Cart UI Panels, Modals & Peripherals)
 
 > ⚠️ **Blast-radius correction:** this modal has **two** consumers, not one. It is imported at `ui/src/features/sales/PosScreen.tsx:43` (rendered `:800`) **and** at `ui/src/features/retail/RetailPosScreen.tsx:15` — the 1,808-line tablet/desktop `store-pos` screen (`ui/src/app/AppShell.tsx:551`, `ui/src/app/tablet/TabletAppShell.tsx:173`). Any decomposition here changes both POS shells.
 >
@@ -392,3 +408,20 @@ no box names at all**.
   2. `open_bill` / `credit` panel extractions (currently inline in shell).
   3. Registration of `payment/` components in `ui/src/__tests__/screenExtraction.test.ts`.
   4. Full unscoped `npm run test` and `check:all` verification runs.
+
+> **ARCHIVED, NOT EARNED — recorded 2026-10-07 so the prefix is not read as a passed acceptance.**
+> This file's own text refuses the `done-` token at :213 and :286: `:131` (full UI tests), `:132` (`check:all`), `:63` and `:128` are unrun or failed, and the extraction boxes stay work. That reading was correct
+> when written and is not withdrawn here. **The `done-` prefix nonetheless sits on the filename, and its
+> origin is not this plan's acceptance at all** — `68cecff21` (2026-09-17, *"docs(plans): archive completed
+> pre-rebrand todo files to .agents/ with done- prefix"*) renamed **ten files in one commit** with an
+> explicit `R100` and a one-line message. It was a blanket **archival** classification, and it could not
+> have run ten acceptance commands.
+>
+> **So read `done-` here as "archived" — the state `AGENTS.md` §7.4 does not currently distinguish.** §7.4
+> defines the token as *earned by a passed acceptance*, and says nothing about a file archived with a
+> different history. The name is kept because it is **load-bearing** — and *not* for the reason it first appeared.
+> `check-dead-refs.py:393` exempts any doc whose name contains `todo-`, `plan-` or `prd-`, and
+> `done-todo-*` matches on its `todo-` substring, so BOTH spellings stay exempt and this file's
+> checker coverage is unaffected either way. The prefix therefore decides nothing about which tool
+> reads the file; it is kept only because a second rename would be churn on a settled archive. The refusal above stays as written: it is a dated
+> verdict and rewriting it to match today would falsify it.

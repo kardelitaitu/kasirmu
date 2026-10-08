@@ -984,6 +984,34 @@ fn analytics_query_uses_status_created_date_index() {
     );
 }
 
+#[test]
+fn offline_queue_query_uses_status_or_tenant_status_index() {
+    let mut conn = fresh();
+    run(&mut conn).unwrap();
+
+    let mut stmt = conn
+        .prepare(
+            "EXPLAIN QUERY PLAN
+             SELECT id, action, payload, status, retry_count, last_error, created_at, synced_at, tenant_id, priority, origin_terminal_id
+               FROM offline_queue
+              WHERE status = 'pending' AND tenant_id = ?1
+              ORDER BY created_at ASC
+              LIMIT 100",
+        )
+        .unwrap();
+    let plan = stmt
+        .query_map(["default"], |r| r.get::<_, String>(3))
+        .unwrap()
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap()
+        .join("\n");
+
+    assert!(
+        plan.contains("idx_offline_queue"),
+        "offline queue query did not use an offline_queue index; plan:\n{plan}"
+    );
+}
+
 /// Simulate the documented existing-dev-DB upgrade path. A pre-reset
 /// database carries legacy `schema_migrations` rows (now absent from the
 /// registry) and has already been seeded. Running the incremental
@@ -3548,3 +3576,303 @@ fn stock_summary_negative_guard_is_not_an_unconditional_check() {
 // its first apply is always the *whole* registry and therefore byte-identical
 // every iteration, so it clones one cached apply via `final_schema()` instead.
 // ---------------------------------------------------------------------------
+
+#[test]
+fn payments_method_check_and_gateway_status_constraints_enforced() {
+    let conn = fresh_db();
+
+    // Seed a dummy sale for FK
+    conn.execute(
+        "INSERT OR IGNORE INTO sales (id, total_minor, currency, line_count, status)
+         VALUES ('sale-pm-test', 1000, 'IDR', 1, 'completed')",
+        [],
+    )
+    .unwrap();
+
+    let valid_methods = [
+        "cash",
+        "card",
+        "card_debit",
+        "card_credit",
+        "qris_manual",
+        "qris",
+        "bank_transfer",
+        "ewallet",
+        "open_bill",
+        "credit",
+        "pay_later",
+        "other",
+    ];
+
+    for (i, method) in valid_methods.iter().enumerate() {
+        let res = conn.execute(
+            "INSERT INTO payments (id, sale_id, method, amount_minor, currency, created_at)
+             VALUES (?1, 'sale-pm-test', ?2, 1000, 'IDR', '2026-10-02T00:00:00.000Z')",
+            rusqlite::params![format!("pay-valid-{i}"), method],
+        );
+        assert!(res.is_ok(), "valid method {method} must succeed: {res:?}");
+    }
+
+    // Invalid method must be rejected by CHECK constraint
+    for invalid in ["bitcoin", "cheque", "stripe_direct", "CASH", ""] {
+        let res = conn.execute(
+            "INSERT INTO payments (id, sale_id, method, amount_minor, currency, created_at)
+             VALUES (?1, 'sale-pm-test', ?2, 1000, 'IDR', '2026-10-02T00:00:00.000Z')",
+            rusqlite::params![format!("pay-invalid-{invalid}"), invalid],
+        );
+        assert!(
+            res.is_err(),
+            "invalid method {invalid} must be rejected by CHECK constraint"
+        );
+    }
+
+    // ADR-64 D4's decided set, not the set 20261017 happened to ship. The two
+    // diverged (20261018 repaired it): the migration omitted 'voided',
+    // 'disputed' and 'unconfirmed' and invented 'chargeback'. Asserting the
+    // decided values is the point -- a list copied from the implementation
+    // cannot detect the implementation disagreeing with the decision.
+    let valid_statuses = [
+        "pending",
+        "authorized",
+        "confirmed",
+        "settled",
+        "failed",
+        "voided",
+        "refunded",
+        "disputed",
+        "unconfirmed",
+    ];
+
+    for (i, status) in valid_statuses.iter().enumerate() {
+        let res = conn.execute(
+            "INSERT INTO payments (id, sale_id, method, amount_minor, currency, created_at, gateway_status)
+             VALUES (?1, 'sale-pm-test', 'card', 1000, 'IDR', '2026-10-02T00:00:00.000Z', ?2)",
+            rusqlite::params![format!("pay-status-{i}"), status],
+        );
+        assert!(
+            res.is_ok(),
+            "valid gateway_status {status} must succeed: {res:?}"
+        );
+    }
+
+    // Invalid gateway_status must be rejected. 'chargeback' belongs here now:
+    // 20261017 accepted it, ADR-64 D4 does not, and 20261018 removed it. Pinning
+    // a formerly-accepted value as rejected is what stops it creeping back.
+    for invalid_status in ["processing", "waiting", "PENDING", "unknown", "chargeback"] {
+        let res = conn.execute(
+            "INSERT INTO payments (id, sale_id, method, amount_minor, currency, created_at, gateway_status)
+             VALUES (?1, 'sale-pm-test', 'card', 1000, 'IDR', '2026-10-02T00:00:00.000Z', ?2)",
+            rusqlite::params![format!("pay-status-inv-{invalid_status}"), invalid_status],
+        );
+        assert!(
+            res.is_err(),
+            "invalid gateway_status {invalid_status} must be rejected"
+        );
+    }
+
+    // Reconstructed indexes must exist on payments
+    let index_count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND tbl_name = 'payments'
+             AND name IN ('idx_payments_idempotency_key', 'idx_payments_sale_id')",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        index_count, 2,
+        "both idx_payments_idempotency_key and idx_payments_sale_id must exist"
+    );
+}
+
+// ── The bootstrap-subscription reconcile (ADR #56 §2.6 option C / §2.4) ──────
+//
+// §2.6 option C removed the schema's `BOOTSTRAP_FREE` seed and assigned that row
+// to `provision_device`'s transaction; `provision_device` never wrote it. So a
+// `local` terminal ships with no entitlement row, the capabilities read fails
+// closed on it, and the home screen renders every tool locked behind
+// "Subscription inactive". These tests pin the repair — and, just as
+// importantly, the three things it must NOT do.
+
+fn subscription_rows(conn: &rusqlite::Connection) -> i64 {
+    conn.query_row(
+        "SELECT COUNT(*) FROM tenant_subscription WHERE tenant_id = 'default'",
+        [],
+        |r| r.get(0),
+    )
+    .unwrap()
+}
+
+/// The fixture the reconcile exists for: a provisioned `local` terminal whose
+/// subscription row is absent — what `provision_device` actually produces today.
+fn local_terminal_without_a_subscription() -> rusqlite::Connection {
+    let conn = fresh_db();
+    conn.execute(
+        "INSERT INTO provisioning (terminal_id, mode) VALUES ('t-local', 'local')",
+        [],
+    )
+    .unwrap();
+    assert_eq!(subscription_rows(&conn), 0, "the fixture starts rowless");
+    conn
+}
+
+#[test]
+fn reconcile_writes_the_row_a_local_terminal_is_missing() {
+    let conn = local_terminal_without_a_subscription();
+
+    assert!(
+        ensure_bootstrap_subscription(&conn).unwrap(),
+        "it wrote the row"
+    );
+    assert_eq!(subscription_rows(&conn), 1);
+
+    let sub = crate::subscription::TenantSubscription::load(&conn, "default")
+        .unwrap()
+        .expect("the row is now readable");
+    assert_eq!(sub.tier, crate::subscription::SubscriptionTier::Free);
+    assert_eq!(sub.status, "active");
+    assert!(
+        sub.expires_at.is_none(),
+        "a local tier has no expiry to approach"
+    );
+    assert_eq!(
+        sub.signature,
+        crate::subscription::BOOTSTRAP_FREE_SIGNATURE,
+        "the row must carry the sentinel the verifier honours, not an empty string"
+    );
+    // The whole point of the row: the capabilities read can now verify it. A row
+    // that writes but does not verify would leave the lock-out exactly where it
+    // was, which is how this defect stayed invisible.
+    sub.verify_signature().expect("the restored row verifies");
+}
+
+#[test]
+fn reconcile_is_idempotent_and_reports_nothing_to_do_the_second_time() {
+    let conn = local_terminal_without_a_subscription();
+    assert!(ensure_bootstrap_subscription(&conn).unwrap());
+    assert!(
+        !ensure_bootstrap_subscription(&conn).unwrap(),
+        "the second call is a no-op"
+    );
+    assert_eq!(subscription_rows(&conn), 1);
+}
+
+/// The guard that keeps this from becoming a licence bypass: a row that EXISTS
+/// but does not verify must be left alone, never replaced with a good one.
+#[test]
+fn reconcile_never_launders_a_tampered_row() {
+    let conn = local_terminal_without_a_subscription();
+    conn.execute(
+        "INSERT INTO tenant_subscription (tenant_id, tier_key, status, max_locations, max_pos_instances, allowed_types_json, signature)
+         VALUES ('default', 'premium', 'active', 99, 99, '[]', 'tampered')",
+        [],
+    )
+    .unwrap();
+
+    assert!(
+        !ensure_bootstrap_subscription(&conn).unwrap(),
+        "a present row is not this function's business"
+    );
+    assert_eq!(subscription_rows(&conn), 1);
+    let sub = crate::subscription::TenantSubscription::load(&conn, "default")
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        sub.signature, "tampered",
+        "the forged signature survives verbatim"
+    );
+    assert_eq!(
+        sub.tier,
+        crate::subscription::SubscriptionTier::Premium,
+        "and so does the forged tier"
+    );
+    assert!(
+        sub.verify_signature().is_err(),
+        "it still fails to verify, so every gate still fails closed"
+    );
+}
+
+#[test]
+fn reconcile_leaves_a_linked_install_to_the_server_grant() {
+    let conn = fresh_db();
+    conn.execute(
+        "INSERT INTO provisioning (terminal_id, mode, tenant_id, device_id) \
+         VALUES ('t-linked', 'linked', 'acme', 'dev-1')",
+        [],
+    )
+    .unwrap();
+    assert!(!ensure_bootstrap_subscription(&conn).unwrap());
+    assert_eq!(
+        subscription_rows(&conn),
+        0,
+        "a linked install's entitlement is the server's, and a missing grant must keep failing closed"
+    );
+}
+
+#[test]
+fn reconcile_ignores_an_unprovisioned_database() {
+    // `fresh_db()` is the unprovisioned state §2.6 option C leaves behind, and the
+    // state `capabilities_fail_closed_when_subscription_row_missing` pins: no
+    // terminal, so there is no entitlement to restore.
+    let conn = fresh_db();
+    assert!(!ensure_bootstrap_subscription(&conn).unwrap());
+    assert_eq!(subscription_rows(&conn), 0);
+}
+
+/// The correspondence the second copy of this row rests on. If
+/// `seed_provisioned_baseline` and the reconcile ever disagree, every fixture
+/// built from the seed would describe a terminal production never provisions —
+/// exactly the drift this repo keeps paying for.
+#[test]
+fn the_reconcile_writes_the_row_the_baseline_seeds() {
+    fn row_shape(conn: &rusqlite::Connection) -> String {
+        conn.query_row(
+            "SELECT tenant_id, tier_key, status, expires_at, max_locations, max_pos_instances,
+                    allowed_types_json, signature, signed_payload, api_key
+             FROM tenant_subscription WHERE tenant_id = 'default'",
+            [],
+            |row| {
+                let text = |i: usize| {
+                    row.get::<_, Option<String>>(i)
+                        .ok()
+                        .flatten()
+                        .unwrap_or_default()
+                };
+                let int = |i: usize| {
+                    row.get::<_, Option<i64>>(i)
+                        .ok()
+                        .flatten()
+                        .unwrap_or_default()
+                };
+                Ok(format!(
+                    "{}|{}|{}|{}|{}|{}|{}|{}|{}|{}",
+                    text(0),
+                    text(1),
+                    text(2),
+                    text(3),
+                    int(4),
+                    int(5),
+                    text(6),
+                    text(7),
+                    text(8),
+                    text(9),
+                ))
+            },
+        )
+        .unwrap()
+    }
+
+    let seeded = fresh_db();
+    seed_provisioned_baseline(&seeded);
+
+    let repaired = local_terminal_without_a_subscription();
+    assert!(ensure_bootstrap_subscription(&repaired).unwrap());
+
+    // `updated_at` is a column DEFAULT evaluated at INSERT time, so the two rows
+    // legitimately differ there; every other column must match.
+    assert_eq!(
+        row_shape(&repaired),
+        row_shape(&seeded),
+        "the reconcile and the seed must write the same row"
+    );
+}

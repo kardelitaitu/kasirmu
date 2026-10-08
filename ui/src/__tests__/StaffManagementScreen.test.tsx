@@ -1984,7 +1984,12 @@ describe('StaffManagementScreen feedback and route entry', () => {
       'M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z'
     );
     expect(screen.getByTestId('staff-footer-refresh-btn')).toBeInTheDocument();
-    expect(screen.getByTestId('staff-footer-version')).toHaveTextContent('v0.0.40');
+    // Live version + build stamp, not the hardcoded 'v0.0.41' this asserted
+    // before 2026-10-04. The stamp is what distinguishes one build from
+    // another within a single release.
+    expect(screen.getByTestId('staff-footer-version')).toHaveTextContent(
+      /^v\d+\.\d+\.\d+( · [0-9a-f]{7}(\+dirty)?)?$/,
+    );
 
     fireEvent.click(screen.getByTestId('staff-footer-refresh-btn'));
     await waitFor(() => {

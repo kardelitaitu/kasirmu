@@ -47,6 +47,8 @@ pub(super) fn replay_receipt(sale: &kasirmu_core::Sale) -> CompleteSaleResult {
         sale_id: sale.id.clone(),
         total: Some(sale.total),
         line_count: sale.lines.len(),
+        receipt_number: Some(sale.id.clone()),
+        statutory_number: None,
     }
 }
 

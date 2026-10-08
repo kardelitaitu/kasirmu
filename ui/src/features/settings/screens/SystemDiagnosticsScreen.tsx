@@ -13,6 +13,9 @@
 
 import { Localized } from '@fluent/react';
 import DiagnosticsSection from '../sections/DiagnosticsSection';
+import { DiagnosticExportCard } from './DiagnosticExportCard';
+import { UpdateSettingsCard } from './UpdateSettingsCard';
+import { isTabletShell } from '@/utils/shellKind';
 import './screens-placeholder.css';
 
 /** Settings → System Diagnostics: heading + the real DiagnosticsSection body. */
@@ -31,6 +34,12 @@ export function SystemDiagnosticsScreen() {
         </Localized>
       </p>
       <DiagnosticsSection />
+      <DiagnosticExportCard />
+      {/* The in-app self-updater is Android-only by design: it downloads an APK
+          and hands off to the Android package installer, and only the tablet
+          shell registers those commands (C41/C47 shell-guard idiom). Mounting
+          it on desktop would call commands that shell never registers. */}
+      {isTabletShell() && <UpdateSettingsCard />}
     </section>
   );
 }

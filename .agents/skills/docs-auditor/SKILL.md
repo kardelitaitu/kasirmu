@@ -369,7 +369,7 @@ Two anchors verified, one drift found, one-line patch — that is the whole loop
   repo, so treat any stack you meet as a defect to merge, not a style to continue. The
   earlier reading was 116 of 122; the six exceptions were five §SKILL.md files under
   `.agents/skills/··/SKILL.md that a 2026-09-03 audit had stamped as "rev 2" *beneath* the
-  2026-08-31 original, plus one in docs/releases/, and three more had been created by this
+  2026-08-31 original, plus one in docs/records/releases/, and three more had been created by this
   session pattern-matching "newest-first history" from an earlier note instead of reading
   this line. Merging is mechanical and lossless: parse every stamp, sort by date, keep the
   newest as the stamp, and append the superseded bodies verbatim under

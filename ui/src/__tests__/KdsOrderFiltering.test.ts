@@ -1,5 +1,16 @@
-// Unit tests for order filtering — the logic that filters KDS orders
-// by store scope and excludes cancelled tickets from the active board.
+// Order filtering — the store-scope and cancelled-exclusion rules that shape a
+// fetched batch before it reaches the board. NOW IMPORTING production
+// (2026-10-07); this file used to retype the two filters in `filterOrders`,
+// labelled "Same filtering logic as KdsScreen.tsx fetchOrders".
+//
+// That label is worth keeping: the logic lives INSIDE a useCallback with the
+// fetch above it and the arrival-animation bookkeeping below, which is why there
+// was nothing to import. It is now filterKdsOrdersByScope in
+// features/kds/kdsOrderView.ts, extracted verbatim from KdsScreen.tsx:154-162
+// AS OF df585537d^ (the number holds the extracted call now, not the original).
+//
+// One of five KDS suites that retyped production logic; see the header of
+// KdsSettingsConversions.test.ts for the sweep that found them.
 
 import { describe, it, expect } from 'vitest';
 import type { KdsOrder } from '@/api/kds';
@@ -27,14 +38,10 @@ function order(overrides: Partial<KdsOrder> = {}): KdsOrder {
   };
 }
 
-/** Same filtering logic as KdsScreen.tsx fetchOrders. */
-function filterOrders(orders: KdsOrder[], activeStoreId: string | null): KdsOrder[] {
-  let filtered = orders;
-  if (activeStoreId) {
-    filtered = filtered.filter((o) => !o.store_id || o.store_id === activeStoreId);
-  }
-  return filtered.filter((o) => o.status !== 'cancelled');
-}
+import { filterKdsOrdersByScope } from '@/features/kds/kdsOrderView';
+
+/** The imported rule under the name the cases below already use. */
+const filterOrders = filterKdsOrdersByScope;
 
 describe('filterOrders', () => {
   // ── Cancelled exclusion ─────────────────────────────────────────

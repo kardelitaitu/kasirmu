@@ -428,7 +428,7 @@ step "client type drift self-test" "python3 scripts/check-client-type-drift.py -
 # compares the Nth column against the field name.
 # One acknowledged mismatch is REPORTED each run and does not fail it: the source
 # column above is a product ruling, not a repair, and the record lives in
-# docs/records/JOURNAL.md (2026-10-04, a3c871787). The suppression is keyed by
+# docs/records/journal/JOURNAL.md (2026-10-04, a3c871787). The suppression is keyed by
 # (file, field), so any OTHER mapper with the same defect still fails.
 # Exits 2 on a refused --roots list, so a starved corpus never reads as clean.
 step "mapper alignment" "python3 scripts/check-mapper-alignment.py" python3 scripts/check-mapper-alignment.py
@@ -804,7 +804,7 @@ step "updater signature self-test" "node scripts/verify-updater-signature.mjs --
 # is deliberately ungated for good rather than pending a gate". Its non-zero exit is a
 # REPORT, not a verdict, so a blocking step here would fail every run on a decision that
 # was taken on purpose. Same shape as the docker-digests gate. Provenance and the full
-# reasoning: docs/records/audit-open-findings.md, finding GI-4.
+# reasoning: docs/records/findings/audit-open-findings.md, finding GI-4.
 step "quota coverage self-test" "bash scripts/verify-quota-coverage.sh --self-test" bash scripts/verify-quota-coverage.sh --self-test
 
 # The two SQLite maintenance scripts carry a --self-test each, because the defect
@@ -883,7 +883,7 @@ fi
 # apps/unified/test-healthcheck.sh).
 step "healthcheck script test" "sh apps/unified/test-healthcheck.sh" sh apps/unified/test-healthcheck.sh
 
-# ── CI docs drift (AUDIT-27 CI-08) — docs/ci-pipeline.md must stay in
+# ── CI docs drift (AUDIT-27 CI-08) — docs/operations/ci-pipeline.md must stay in
 # sync with the workflows and the local runner gate vocabulary. The gate
 # names + status derive from scripts/gates.json (the single source of
 # truth shared with ci.yml, nightly.yml, and check:all). Mirrors the
@@ -960,6 +960,23 @@ step "adr status drift" "python3 .agents/skills/docs-auditor/scripts/check-adr-s
 # them x public/ files and _redirects sources -- and resolves each markdown link
 # against it. Green from day one (38 content docs). Gate: scripts/gates.json -> "site-links".
 step "site links" "python3 .agents/skills/docs-auditor/scripts/check-site-links.py" python3 .agents/skills/docs-auditor/scripts/check-site-links.py
+# Two docs-auditor checkers that existed but nothing invoked — the same failure
+# mode the script-tests leg above records, where a suite sits red for an unknown
+# period precisely because no runner reaches it. Both were green before being
+# wired (measured 2026-10-02), so this locks in current state and makes future
+# drift fail a gate instead of waiting to be noticed. check-orphans.py has been
+# run manually every round of the docs restructure; that is not enforcement.
+# The other two were repaired and wired the same day, in the order this note
+# set out: fix the detector first, then wire it. check-nav-paths.py learned that
+# a blockquote opening with a date is a change stamp rather than a nav
+# instruction; check-ci-claims.py learned that docs/records/superseded/ and
+# docs/records/audits/ are dated records, mirroring verify-doc-uniqueness.py's
+# ARCHIVE_PREFIXES. Both reported only false positives before that, so wiring
+# them without the repair would have turned the gate red for documented reasons.
+step "docs orphans" "python3 .agents/skills/docs-auditor/scripts/check-orphans.py" python3 .agents/skills/docs-auditor/scripts/check-orphans.py
+step "audit stamps" "python3 .agents/skills/docs-auditor/scripts/check-audit-stamps.py" python3 .agents/skills/docs-auditor/scripts/check-audit-stamps.py
+step "nav paths" "python3 .agents/skills/docs-auditor/scripts/check-nav-paths.py" python3 .agents/skills/docs-auditor/scripts/check-nav-paths.py
+step "ci claims" "python3 .agents/skills/docs-auditor/scripts/check-ci-claims.py" python3 .agents/skills/docs-auditor/scripts/check-ci-claims.py
 # scripts/__tests__/*.test.mjs is a whole suite that ui/package.json exposes as
 # `npm run test:scripts` and that NOTHING invoked -- not the hook, not CI, not check.sh.
 # It had been red for an unknown period for exactly that reason: verify-ci-docs-drift.test.mjs

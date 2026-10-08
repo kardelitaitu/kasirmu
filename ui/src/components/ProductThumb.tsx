@@ -18,7 +18,7 @@
 //! per-effect `cancelled` flag below is sufficient — it covers unmount and
 //! dependency change without any cross-effect state.
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, memo } from 'react';
 import { convertFileSrc } from '@/api/tauri';
 import { getAppCacheDir } from '@/api/cache';
 
@@ -62,7 +62,7 @@ export interface ProductThumbProps {
   shape?: 'square' | 'circle';
 }
 
-export function ProductThumb({
+export const ProductThumb = memo(function ProductThumb({
   hash,
   name,
   className = '',
@@ -154,4 +154,4 @@ export function ProductThumb({
       {initial}
     </div>
   );
-}
+});

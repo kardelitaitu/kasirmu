@@ -38,6 +38,21 @@
      would silently capture these tiers — a live concern now, where before there
      was nothing to capture. */
   container-type: inline-size;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.pos-screen input,
+.pos-screen textarea,
+.pos-screen [contenteditable="true"] {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.pos-screen img {
+  -webkit-user-drag: none;
+  user-select: none;
 }
 
 /* ── Left: Product lookup area ────────────────────────── */
@@ -747,4 +762,99 @@
 
 /* Settings sub-screen (tablet) — removed in Phase 6, ADR #22 */
 /* (CSS classes pos-settings-tab, pos-settings-tab--active removed) */
+
+/* ── Unified Sub-screen Header Bar ─────────────────── */
+.restaurant-subscreen-top-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3, 12px);
+  padding: var(--space-3, 12px) var(--space-4, 16px);
+  background: var(--color-bg-surface);
+  border-bottom: 1px solid var(--color-border);
+  flex-shrink: 0;
+}
+
+.restaurant-subscreen-back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px var(--space-3, 12px);
+  border-radius: var(--radius-md, 6px);
+  border: 1px solid var(--color-border);
+  background: var(--color-bg);
+  color: var(--color-fg);
+  font-size: var(--text-sm, 14px);
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.restaurant-subscreen-back-btn:hover {
+  background: var(--color-bg-subtle);
+  border-color: var(--color-border-hover);
+}
+
+.restaurant-subscreen-top-title {
+  margin: 0;
+  font-size: var(--text-lg, 18px);
+  font-weight: 600;
+  color: var(--color-fg);
+}
+
+/* ── Touch ergonomics and press feedback (tablet) ─────────────────────
+   A tablet has no hover state, so a control whose only feedback is `:hover`
+   reads as inert under a finger. Each interactive control below already had a
+   `transition`, which is the tell that it was designed to animate — but nothing
+   ever triggered it on touch. `:active` is the press state the finger actually
+   produces, and it is what the rest of the tablet surfaces (ProvisioningFlow,
+   StaffManagementScreen, SettingsPage) already do.
+
+   `.restaurant-subscreen-back-btn` is included because it is the only route out
+   of a sub-screen on the tablet, and it carried `:hover` only. */
+.pos-shift-close-btn:not(:disabled):active,
+.pos-hold-confirm-btn:not(:disabled):active,
+.pos-held-item-resume:not(:disabled):active,
+.pos-close-shift-dismiss-btn:not(:disabled):active,
+.restaurant-subscreen-back-btn:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+/* Icon-only dismissers are transparent at rest, so a scale on the glyph reads
+   as the whole target shrinking. A tinted background is the feedback that
+   matches their resting style instead. */
+.pos-shift-error-dismiss:active,
+.pos-held-list-close:active {
+  background: color-mix(in srgb, var(--color-fg) 12%, transparent);
+}
+
+/* ── Coarse-pointer touch floors ──────────────────────────────────────
+   The controls above are sized by their padding, which on a 14px root can
+   land under the 44px minimum this repo states (tokens.css
+   `--touch-target-min`). Both files in this family use that token directly;
+   these are the two here that were sized by whitespace alone. */
+@media (pointer: coarse) {
+  .pos-shift-close-btn,
+  .pos-shift-error-dismiss,
+  .pos-hold-confirm-btn,
+  .pos-held-list-close,
+  .pos-held-item-resume,
+  .restaurant-subscreen-back-btn {
+    min-height: var(--touch-target-min);
+  }
+}
+
+/* Reduced motion: the scale is the only thing that moves, and a vestibular-
+   sensitive user should still get a press cue. Drop the transform and keep a
+   static opacity step so the control does not stop responding. */
+@media (prefers-reduced-motion: reduce) {
+  .pos-shift-close-btn:not(:disabled):active,
+  .pos-hold-confirm-btn:not(:disabled):active,
+  .pos-held-item-resume:not(:disabled):active,
+  .pos-close-shift-dismiss-btn:not(:disabled):active,
+  .restaurant-subscreen-back-btn:not(:disabled):active {
+    transform: none;
+    opacity: 0.75;
+  }
+}
+
 

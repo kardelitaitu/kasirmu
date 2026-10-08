@@ -1,12 +1,12 @@
 import { useState, useMemo, useCallback, useEffect, useLayoutEffect, useRef } from 'react';
-import { type CourseId, type ModifierSelection, type Product } from '@/types/domain';
+import { type CourseId, type ModifierSelection, type Product, getProductModifierGroups } from '@/types/domain';
 import { useLocalization } from '@fluent/react';
 import { useProducts } from '@/features/products/useProducts';
 import { useAuth } from '@/contexts/AuthContext';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import * as locationsApi from '@/api/locations';
 import * as settingsApi from '@/api/settings';
-import ItemModifierModal, { type ModifierGroup } from '@/features/sales/components/ItemModifierModal';
+import ItemModifierModal from '@/features/sales/components/ItemModifierModal';
 import { MenuCategoryTabBar } from './components/MenuCategoryTabBar';
 import { MenuItemGrid } from './components/MenuItemGrid';
 import { MenuItemContextMenu, type RestaurantContextMenuState } from './components/MenuItemContextMenu';
@@ -42,6 +42,8 @@ export interface RestaurantMenuProps {
   onRequestExit?: () => void;
   /** Override manager status for sidebar permissions. */
   isManager?: boolean | undefined;
+  /** Whether the floating cart bar is shown in portrait mode (adjusts bottom padding). */
+  hasFloatingCartBar?: boolean | undefined;
 }
 
 // ── Helpers ────────────────────────────────────────────────────────
@@ -145,22 +147,6 @@ function saveUnavailable(unavail: Set<string>, uid: string, locId?: string | nul
   } catch { /* storage unavailable */ }
 }
 
-/** Extract configured modifier groups from a product or its serialized metadata. */
-function getProductModifierGroups(product: Product): ModifierGroup[] {
-  if (product.modifierGroups && product.modifierGroups.length > 0) {
-    return product.modifierGroups;
-  }
-  if (product.notes && product.notes.startsWith('[')) {
-    try {
-      const parsed = JSON.parse(product.notes);
-      if (Array.isArray(parsed) && parsed.length > 0 && parsed[0].modifiers) {
-        return parsed as ModifierGroup[];
-      }
-    } catch { /* malformed notes */ }
-  }
-  return [];
-}
-
 /** Sort so pinned items appear first, preserving original order within each group. */
 function sortPinnedFirst(items: Product[], pinned: Set<string>): Product[] {
   const pinnedList: Product[] = [];
@@ -190,10 +176,14 @@ export default function RestaurantMenu({
   onChangePhoto,
   onRequestExit,
   isManager,
+  hasFloatingCartBar,
 }: RestaurantMenuProps) {
   const { l10n } = useLocalization();
-  const { sessionToken } = useWorkspace();
+  const { sessionToken, sessionError, retrySessionToken } = useWorkspace();
+  const isWaitingForSession = !sessionToken && !sessionError;
   const { products, categoryMeta, loading, error, reload } = useProducts(sessionToken ?? undefined);
+  const missingTokenError = l10n.getString('product-lookup-error-load');
+  const isTransientSessionError = isWaitingForSession && error === missingTokenError;
   const { session } = useAuth();
   const userId = session?.user_id ?? 'default';
   const [internalMenuOpen, setInternalMenuOpen] = useState(false);
@@ -511,7 +501,7 @@ export default function RestaurantMenu({
   // derived from restaurant products rather than the shared catalog category
   // list, otherwise a retail-only category can leak into this menu.
   const restaurantProducts = useMemo(
-    () => products.filter((p) => p.productType === 'restaurant'),
+    () => products.filter((p) => p.productType === 'restaurant' && p.isActive !== false),
     [products],
   );
 
@@ -572,7 +562,7 @@ export default function RestaurantMenu({
   return (
     <div
       ref={setMenuRoot}
-      className={`restaurant-menu ${menuOpen ? 'restaurant-menu--sidebar-open' : ''}`}
+      className={`restaurant-menu ${menuOpen ? 'restaurant-menu--sidebar-open' : ''}${hasFloatingCartBar ? ' restaurant-menu--has-floating-bar' : ''}`}
       style={{ '--card-size': cardSize, '--font-size': fontSize } as React.CSSProperties}
     >
       {/* ── Header row: sidebar + preferences hamburger + search ── */}
@@ -638,9 +628,12 @@ export default function RestaurantMenu({
 
       {/* ── Product grid ───────────────────────────── */}
       <MenuItemGrid
-        loading={loading}
-        error={error}
-        onRetry={reload}
+        loading={loading || isTransientSessionError}
+        error={isTransientSessionError ? null : (sessionError ?? error)}
+        onRetry={() => {
+          if (sessionError) retrySessionToken?.();
+          reload();
+        }}
         items={filtered}
         hasActiveFilter={effectiveCategory !== 'All' || searchQuery.trim().length > 0}
         onClearFilter={() => { setSearchQuery(''); setActiveCategory('All'); }}

@@ -26,6 +26,11 @@ export interface UseWarehouseScannerOptions {
   onProductNotFound?: (code: string) => void;
   /** Called on scanner errors. */
   onError?: (error: string) => void;
+  /**
+   * Minimum time (ms) between identical scans to suppress contact bounce or trigger hold.
+   * Defaults to 250ms.
+   */
+  cooldownMs?: number;
 }
 
 /**
@@ -35,11 +40,13 @@ export interface UseWarehouseScannerOptions {
 export function useWarehouseScanner({
   sessionToken,
   scannerId: preferredId,
+  cooldownMs = 250,
   onProductFound,
   onProductNotFound,
   onError,
 }: UseWarehouseScannerOptions) {
   const startedRef = useRef(false);
+  const lastScanRef = useRef<{ code: string; time: number } | null>(null);
 
   const onProductFoundRef = useRef(onProductFound);
   onProductFoundRef.current = onProductFound;
@@ -60,6 +67,10 @@ export function useWarehouseScanner({
       const scannerId = preferredId ?? (await autoDetectScanner(sessionToken));
       if (!scannerId || cancelled) return;
       await startScannerScoped(sessionToken, scannerId);
+      if (cancelled) {
+        stopScannerScoped(sessionToken).catch(() => {});
+        return;
+      }
       startedRef.current = true;
     })();
 
@@ -82,6 +93,16 @@ export function useWarehouseScanner({
   }, [preferredId, sessionToken]);
 
   const handleScan = useCallback(async (payload: BarcodeScannedPayload) => {
+    const now = Date.now();
+    if (
+      lastScanRef.current &&
+      lastScanRef.current.code === payload.code &&
+      now - lastScanRef.current.time < cooldownMs
+    ) {
+      return;
+    }
+    lastScanRef.current = { code: payload.code, time: now };
+
     // T21 (b2), same reason as the sales twin: no shell registers `lookup_by_barcode`, and
     // screens that scan already resolve the store through a session token (AppShell.tsx:518,
     // tablet/TabletAppShell.tsx:194). Not-found without a token matches the existing `catch`.
@@ -105,7 +126,7 @@ export function useWarehouseScanner({
     // the first render forever. A screen mounted before login, or kept alive across a store
     // switch, scanned against the previous session. Adding it re-runs the subscription effect
     // at :93, which is what that effect's [handleScan, handleError] deps were already for.
-  }, [sessionToken]);
+  }, [sessionToken, cooldownMs]);
 
   const handleError = useCallback((error: string) => {
     onErrorRef.current?.(error);

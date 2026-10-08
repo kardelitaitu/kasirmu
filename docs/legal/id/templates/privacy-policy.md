@@ -1,3 +1,4 @@
+<!-- Audit stamp: 2026-10-08 · docs-auditor · status: ACCURATE AFTER REPAIR — template annotated, not rewritten · Supersedes the marker below, kept verbatim. Three OPERATOR NOTES were added (as HTML comments, so they do not render as part of the instrument) because the page states things no code implements, and an operator publishing it should know which: (1) §4 retention "at least 5 years" is a POLICY OBLIGATION under UU KUP, not a software mechanism — the cloud server prunes SYNC data at 90 days (apps/cloud-server/src/prune.rs:20,66,74), and there is no account-deletion/erasure code path in apps/cloud-server at all; (2) §5.1 names "fitur ekspor data mandiri" whose real formats are CSV/JSON, not Excel; (3) §7 names privacy@kasir.mu, which appears nowhere in the codebase — the software's only @kasir.mu sender is no-reply@kasir.mu (apps/license-server/smtp_mail.go:146). The instrument's text was NOT rewritten: these are legal commitments and their sufficiency is the operator's call. · Repaired against branch 0.0.41. -->
 <!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file, with no prior stamp, footer or marker. It belongs to the Indonesian legal and regulatory set, whose audit scope this campaign states explicitly rather than leaving implicit. · THE SUBJECT IS EXTERNAL LAW AND NO REPOSITORY CAN VERIFY IT: statutes, portals, fee schedules and contract sufficiency are confirmed against their sources by someone who can reach them. What IS checkable — and what this pass checked — is what the documents assert about EACH OTHER and about this codebase: shared identifiers, cross-references, and the claims a reader would act on directly. · NOT re-measured: any regulatory, financial or contractual claim. The status this document carries about its own legal content is ITS claim, reproduced without endorsement. · A TEMPLATE IS AN INPUT, NOT A DESCRIPTION, so its failure mode is propagation: an error here reaches a published document rather than misinforming a colleague, and a privacy policy is the instrument most likely to be read by someone other than the team. That asymmetry is why the check performed was the referential one — this template is named by the directory index, exists at the path named, and the set's internal links resolve. Whether the clauses discharge the regime its own title cites is a question for counsel and is explicitly not adjudicated here. · A CROSS-DOCUMENT CHECK WORTH NAMING, because it is the kind of thing that drifts silently: the Indonesian set's digital-compliance document builds its data obligations on a personal-data statute, and this template is the instrument meant to discharge them. The title naming that statute explicitly is a real coherence between the two, and it is the kind of cross-reference that rots quietly if either document is revised alone. · The one thing a future reader should pair this with is the set's own settings-ingest story, which is engineering rather than legal but bears on the same data: the sealed ingest policy that refuses credential and device keys from untrusted lanes is the mechanism that keeps personal and device data from leaving a terminal, and a privacy policy is a promise about exactly that. THIS AUDIT DID NOT CHECK the correspondence between the two, which spans law and code and belongs with counsel. · No stamp existed; this is the first. -->
 # Template — Kebijakan Privasi Kasir.mu (Privacy Policy compliant with UU PDP 27/2022)
 
@@ -64,11 +65,24 @@ Tujuan pemrosesan mencakup:
 3. **Periode Retensi Data**:
    Kami menyimpan data transaksi selama akun Merchant berstatus aktif dan sekurang-kurangnya selama 5 (lima) tahun setelah penutupan akun guna memenuhi ketentuan retensi dokumen pembukuan perpajakan sesuai UU Ketentuan Umum dan Tata Cara Perpajakan (UU KUP).
 
+   <!-- docs-auditor 2026-10-08 — OPERATOR NOTE, not part of the published instrument:
+        the sentence above states a POLICY OBLIGATION tied to UU KUP; it is not a
+        description of an enforced software mechanism. What the code actually does
+        today (verified): the cloud server prunes SYNC data at 90 days —
+        archive_stock_movements(90) and offline_queue deletion, both in
+        apps/cloud-server/src/prune.rs:20,66,74 — while transaction history lives in
+        the tenant's own SQLite DB on the device, where no 5-year floor is enforced.
+        There is also NO account-deletion / erasure code path in apps/cloud-server —
+        the "Right to Erasure" promise in §5.3 has no software implementation yet.
+        Resolve those two gaps before relying on this clause as a description of the
+        service, or keep it and state that retention/deletion is performed
+        operationally. -->
+
 ---
 
 ### 5. HAK-HAK SUBJEK DATA PRIBADI (SESUAI UU PDP)
 Sebagai pemilik Data Pribadi, Anda memiliki hak-hak yang dijamin oleh hukum:
-1. **Hak Akses dan Salinan**: Hak untuk meminta konfirmasi dan salinan data pribadi yang Kami kelola melalui fitur ekspor data mandiri pada aplikasi.
+1. **Hak Akses dan Salinan**: Hak untuk meminta konfirmasi dan salinan data pribadi yang Kami kelola melalui fitur ekspor data mandiri pada aplikasi. <!-- docs-auditor 2026-10-08: the export exists but the format is CSV/JSON (crates/kasirmu-core/src/export/mod.rs); no Excel writer ships. If this clause names formats, keep it to those two. -->
 2. **Hak Koreksi**: Hak untuk melengkapi atau memperbaiki ketidakakuratan data pribadi akun Anda kapan saja.
 3. **Hak Penghapusan (*Right to Erasure*)**: Hak untuk meminta penghapusan akun dan data pribadi dari server cloud Kami apabila Anda memutuskan berhenti berlangganan, sepanjang tidak bertentangan dengan kewajiban retensi hukum perundang-undangan.
 4. **Hak Penarikan Persetujuan**: Hak untuk mencabut persetujuan pemrosesan data pribadi yang sebelumnya telah diberikan.
@@ -86,4 +100,10 @@ Apabila Anda memiliki pertanyaan, keberatan, atau ingin melaksanakan hak-hak sub
 * **Petugas Perlindungan Data / Kontak Privasi**: `privacy@kasir.mu`
 * **Alamat Kantor**: PT [Nama PT Anda], [Alamat Lengkap Perusahaan]
 
-> last audited 29-09-26 by docs-auditor
+<!-- docs-auditor 2026-10-08 — OPERATOR NOTE: `privacy@kasir.mu` is not referenced
+     anywhere in the codebase; the software's only `@kasir.mu` sender is
+     `no-reply@kasir.mu` (apps/license-server/smtp_mail.go:146). Provision the
+     mailbox — a data-subject contact a privacy policy names is one an operator
+     must actually monitor. -->
+
+> last audited 08-10-26 by docs-auditor

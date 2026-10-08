@@ -9,7 +9,8 @@ Four real findings produced this check, all in one session:
     exists only in ci.yml.bak.
   - ui/e2e/README.md described the e2e job in a retired workflow in present tense. No live
     workflow defines e2e, and AGENTS.md itself says E2E is not enforced in CI.
-  - docs/releases/checklist.md made the OPPOSITE error: it dismissed release-validate as
+  - docs/records/releases/checklist.md (then at docs/releases/) made the OPPOSITE error: it
+  dismissed release-validate as
     dead because release.yml had once been renamed to .bak and was later restored, so the
     doc denied a gate that really does run.
 
@@ -48,7 +49,16 @@ NOT_JOB = set(["push", "pull_request", "workflow_dispatch", "workflow_call", "sc
               "deployments", "inputs", "outputs", "container", "secrets"])
 STOP_WORDS = set(["yml", "bak", "sh", "py", "rs", "md", "ci", "true", "false", "main",
                   "tag", "ok", "the", "job", "step", "gate"])
-SKIP_DIR = ("docs/archived", "/archived", "node_modules", "references", "target/", "dist/")
+# Dated-record folders join the skip list 2026-10-02. `docs/records/superseded/`
+# and `docs/records/audits/` are records of what was true on a date, exactly as
+# `docs/archived/` already was, so a job name they describe (`check`, `docs`,
+# `required` in the retired ci-pipeline doc) is evidence, not a live claim. This
+# mirrors ARCHIVE_PREFIXES in scripts/verify-doc-uniqueness.py — same class, same
+# treatment. Before the addition this checker reported 7 findings, every one of
+# them inside a dated record, which is the §6p case: a number that looks like a
+# backlog and is not.
+SKIP_DIR = ("docs/archived", "/archived", "docs/records/superseded",
+            "docs/records/audits", "node_modules", "references", "target/", "dist/")
 BACKUP_SUFFIX = (".md.bak", ".bak")
 # Manager journals are NAMED manager-journal-<topic>.md - the token LEADS, it does not close
 # the name. A suffix test for "-journal.md" therefore matched none of the live corpus: the
@@ -105,7 +115,17 @@ def parse_ci(files):
             m = re.match("^  ([A-Za-z][A-Za-z0-9_-]*):", l)
             if not m or m.group(1) in NOT_JOB:
                 continue
-            body = NL.join(lines[i:i + 80])
+            # Bound the body by the NEXT job key, not by a fixed line count.
+            # A job's steps:/uses: can sit arbitrarily far below its key -
+            # northflank-deploy is 98 lines down - and a fixed 80-line window
+            # drops such a job from the live set, after which the checker
+            # reports every correct reference to it as a phantom claim.
+            end = len(lines)
+            for k in range(i + 1, len(lines)):
+                if re.match("^  [A-Za-z][A-Za-z0-9_-]*:", lines[k]):
+                    end = k
+                    break
+            body = NL.join(lines[i:end])
             if re.search("^    (steps|uses|services):", body, re.M):
                 found.add(m.group(1))
                 for sm in re.finditer("^      - name: (.+)$", body, re.M):

@@ -17,7 +17,7 @@ use kasirmu_core::audit::AuditEntry;
 use kasirmu_core::db::Store;
 use kasirmu_core::events::{ProductCreated, SaleCompleted, SettingsUpdated, StockAdjusted};
 use kasirmu_core::offline::SyncPriority;
-use rusqlite::Connection;
+use rusqlite::{Connection, OptionalExtension};
 use tracing::{error, info};
 
 /// Handler that enqueues completed sales to the offline sync queue.
@@ -53,14 +53,32 @@ impl EventHandler<SaleCompleted> for SaleSyncEnqueuer {
             .map_err(|e| anyhow::anyhow!("sync enqueuer: db lock failed: {e}"))?;
         let store = Store::new(&conn);
 
-        let payload = serde_json::json!({
+        let location_id = event.store_id.clone().or_else(|| {
+            conn.query_row(
+                "SELECT id FROM locations WHERE is_primary = 1 LIMIT 1",
+                [],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()
+            .ok()
+            .flatten()
+        });
+        let market_profile = location_id
+            .as_deref()
+            .and_then(|loc_id| kasirmu_core::load_active_market_profile(&conn, loc_id).ok());
+
+        let mut payload_map = serde_json::json!({
             "sale_id": event.sale_id,
             "total_minor": event.total_minor,
             "currency": event.currency,
             "customer_id": event.customer_id,
             "line_items": event.line_items,
-        })
-        .to_string();
+        });
+        if let Some(profile) = market_profile {
+            payload_map["market_profile"] =
+                serde_json::to_value(profile).unwrap_or(serde_json::Value::Null);
+        }
+        let payload = payload_map.to_string();
 
         // OUTBOX GUARD: the two wired settlement doors (sales_checkout.rs
         // :527 and sales_lifecycle.rs :470) now write this row INSIDE the

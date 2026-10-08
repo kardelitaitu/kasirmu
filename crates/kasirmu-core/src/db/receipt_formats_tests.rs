@@ -45,6 +45,9 @@ fn content() -> ReceiptContent {
         show_tax: true,
         show_currency: false,
         decimal_separator: "comma".into(),
+        tax_id_label: None,
+        tax_regime: None,
+        statutory_rounding: None,
     }
 }
 
@@ -427,4 +430,42 @@ fn an_unreadable_settings_table_is_an_error_not_an_unconfigured_register() {
         matches!(err, CoreError::Platform(_)),
         "expected the read failure to surface as a Platform error, got {err:?}"
     );
+}
+
+#[test]
+fn effective_receipt_format_derives_entity_tax_label_and_regime() {
+    let conn = migrations::fresh_db();
+    conn.execute(
+        "INSERT INTO legal_entities (id, tenant_id, name, country_code, tax_id)
+         VALUES ('ent-sg', 'default', 'SG Entity', 'SG', 'M12345678X')",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO locations (id, name, tenant_id, legal_entity_id, is_primary)
+         VALUES ('loc-sg', 'SG Store', 'default', 'ent-sg', 1)",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO terminals (id, name, device_id, bound_location_id)
+         VALUES ('term-sg', 'POS SG', 'dev-sg', 'loc-sg')",
+        [],
+    )
+    .unwrap();
+
+    let store = Store::new(&conn);
+    let mut c = content();
+    c.tax_id_label = None;
+    store
+        .set_receipt_content_for_entity("ent-sg", &c, "2026-10-02T00:00:00.000Z")
+        .unwrap();
+
+    let eff = store
+        .effective_receipt_format(Some("term-sg"), None)
+        .expect("should resolve format");
+    assert_eq!(eff.content_source, ReceiptSource::Entity);
+    let content = eff.content.unwrap();
+    assert_eq!(content.tax_id_label.as_deref(), Some("GST Reg No"));
+    assert_eq!(content.tax_regime.as_deref(), Some("LOCAL/SG"));
 }

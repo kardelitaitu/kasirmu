@@ -167,16 +167,20 @@ pub async fn start_desktop_link(
     verifier: &str,
     redirect_uri: &str,
 ) -> Result<String, CoreError> {
+    let mut payload = serde_json::json!({
+        "machine_id": machine_id,
+        "code_verifier": verifier,
+        "state": state,
+        "redirect_uri": redirect_uri,
+    });
+    if api_key.is_empty() {
+        payload["pre_activation"] = serde_json::Value::Bool(true);
+    }
     let response = post_json(
         base_url,
         LINK_START_PATH,
         api_key,
-        &serde_json::json!({
-            "machine_id": machine_id,
-            "code_verifier": verifier,
-            "state": state,
-            "redirect_uri": redirect_uri,
-        }),
+        &payload,
         "link start",
         "account",
     )
@@ -205,11 +209,15 @@ pub async fn consume_desktop_link(
     machine_id: &str,
     link_code: &str,
 ) -> Result<LinkedAccount, CoreError> {
+    let mut payload = serde_json::json!({ "link_code": link_code, "machine_id": machine_id });
+    if api_key.is_empty() {
+        payload["pre_activation"] = serde_json::Value::Bool(true);
+    }
     let response = post_json(
         base_url,
         LINK_CONSUME_PATH,
         api_key,
-        &serde_json::json!({ "link_code": link_code, "machine_id": machine_id }),
+        &payload,
         "link consume",
         "link_code",
     )
@@ -354,13 +362,20 @@ async fn post_json(
         .timeout(LINK_TIMEOUT)
         .build()
         .map_err(|e| CoreError::Internal(format!("{what} client: {e}")))?;
-    let response = client
-        .post(&url)
-        .bearer_auth(api_key)
-        .json(body)
-        .send()
-        .await
-        .map_err(|e| CoreError::Internal(format!("{what} request to {base_url} failed: {e}")))?;
+
+    let mut req = client.post(&url);
+    if !api_key.is_empty() {
+        req = req.bearer_auth(api_key);
+    }
+    let response = req.json(body).send().await.map_err(|e| {
+        let mut chain = format!("{e}");
+        let mut curr: Option<&(dyn std::error::Error + 'static)> = std::error::Error::source(&e);
+        while let Some(src) = curr {
+            chain.push_str(&format!(" -> {src}"));
+            curr = src.source();
+        }
+        CoreError::Internal(format!("{what} request to {base_url} failed: {chain}"))
+    })?;
     let status = response.status();
     if status.is_success() {
         return Ok(response);

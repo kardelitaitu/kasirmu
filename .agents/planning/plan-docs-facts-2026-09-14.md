@@ -4,6 +4,19 @@ Authoritative measured facts for the doc-editing workers on the 0.0.37 plan-doc 
 Every number below was taken against this checkout, with the reproducing command beside it.
 **Cite this file; do not re-derive a number, and do not carry forward a figure from a doc.**
 
+> ⚠️ **HISTORICAL SNAPSHOT — re-measured 2026-10-07, and almost every provenance fact has moved.**
+> The standing instruction above ("cite this file; do not re-derive") was written for one plan-doc
+> pass on one branch, and it cannot be honoured today: the numbers are 0.0.37 measurements and the
+> tree is 0.0.41. Verified drift in the three most-quoted sections — repo root `C:/dev/ozpos` →
+> `C:/dev/kasirmu`; branch `main` → `0.0.41`; HEAD `ec2edf25…` → `98917cb7…`; migration `.sql` files
+> **59 → 74** (§2); SQLite (non-PG) **58 → 73**; and the crate/dir names throughout (§9, §11) are
+> pre-rename (`oz-core` → `kasirmu-core`, `oz-hal` → `kasirmu-hal`, `apps/{desktop,tablet}-client` →
+> `apps/{desktop,mobile}-tauri`). **How to use it now:** the *commands* in the third column are still
+> the right instrument and are the part worth keeping — re-run them and take the fresh number; do NOT
+> quote a value from the tables. The one thing this file is still authoritative about is which command
+> answers which question, and the methodological notes (e.g. §2's "re-measure rather than quoting it as
+> a constant", §11's "never quote one for the other"). §2 already said this in its own words.
+
 | Provenance | value | command |
 |---|---|---|
 | Repo root | `C:/dev/ozpos` | `git rev-parse --show-toplevel` |

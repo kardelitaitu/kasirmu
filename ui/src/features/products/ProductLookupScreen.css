@@ -457,6 +457,44 @@
   transition: background-color 120ms ease, color 120ms ease, border-color 120ms ease;
 }
 
+/* ── Press feedback for touch ─────────────────────────────────────────
+   Every control below carried a `transition` and a `:hover` state but no
+   `:active`: on a hoverless tablet the animation never fired and a tap gave
+   no acknowledgement. `transform: scale()` (rather than a colour shift) is
+   right for the two that own their full surface — the scan button and the
+   product card — because a fill change on an already-filled or image-backed
+   tile is hard to see. The chips and text buttons get the tint. */
+.product-scan-btn:not(:disabled):active,
+.product-card-btn:not(:disabled):active,
+.product-retry-btn:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+.product-category-chip:active,
+.product-empty-clear-search:active {
+  background: color-mix(in srgb, var(--color-fg) 10%, transparent);
+}
+
+/* The product grid is the primary tap surface in this screen and is sized by
+   its own padding, so it needs the token floor explicitly under a finger. */
+@media (pointer: coarse) {
+  .product-scan-btn,
+  .product-retry-btn,
+  .product-empty-clear-search {
+    min-height: var(--touch-target-min);
+  }
+}
+
+/* Reduced motion keeps a cue: no movement, a static opacity step instead. */
+@media (prefers-reduced-motion: reduce) {
+  .product-scan-btn:not(:disabled):active,
+  .product-card-btn:not(:disabled):active,
+  .product-retry-btn:not(:disabled):active {
+    transform: none;
+    opacity: 0.75;
+  }
+}
+
 .product-empty-clear-search:hover {
   background: var(--color-primary-soft);
   border-color: var(--color-primary);

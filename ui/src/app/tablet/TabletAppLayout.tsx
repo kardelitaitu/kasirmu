@@ -3,6 +3,7 @@ import { Localized, useLocalization } from '@fluent/react';
 import { requiredLocalized } from '@/components/requiredLocalized';
 import { getNavItems } from '@/registries/menu-registry';
 import MemoBanner from '@/features/memo/MemoBanner';
+import StorageBanner from '@/app/StorageBanner';
 import './tablet.css';
 
 // ── Props ───────────────────────────────────────────────────────────
@@ -122,6 +123,7 @@ export default function TabletAppLayout({
         </a>
         {/* ── Main content area ─────────────────────── */}
         <main className="app-content" role="main" id="tablet-main-content">
+          <StorageBanner />
           <MemoBanner />
           <div className="app-content-inner" key={route}>
             {children}

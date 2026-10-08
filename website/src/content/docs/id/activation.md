@@ -19,7 +19,7 @@ Aktivasi untuk berpindah ke paket berbayar.
 
 ## Masukkan kunci di aplikasi
 
-Buka Pengaturan → Lisensi, tempel kunci lisensi Anda (contoh
+Buka Pengaturan → Lisensi & Langganan, tempel kunci lisensi Anda (contoh
 `OZ-PRO-ABCD-EFGH`), lalu aktifkan. Kunci diverifikasi terhadap server
 lisensi dan langganan bertanda tangan disimpan di perangkat.
 

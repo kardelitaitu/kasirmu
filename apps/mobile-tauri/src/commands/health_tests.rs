@@ -78,3 +78,162 @@ async fn build_fingerprint_is_absent_off_android() {
 async fn build_fingerprint_never_panics() {
     let _ = get_build_fingerprint().await;
 }
+
+// ── Persistent Device Identity & Adoption (todo-android-device-identity) ───────
+
+#[test]
+fn resolve_persistent_device_id_fresh_install_generates_stable_id() {
+    let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+    kasirmu_core::migrations::run(&mut conn).unwrap();
+
+    // 1. Fresh install on Android generates a unique persistent ID
+    let first = resolve_persistent_device_id(&conn, true).unwrap();
+    assert!(
+        first.starts_with("android-"),
+        "device id must start with android- prefix: {first}"
+    );
+    assert_ne!(
+        first, "unknown-device",
+        "fresh install must NOT use unknown-device"
+    );
+
+    // 2. Saved into settings
+    let saved = kasirmu_core::Settings::get(&conn, "device.terminal_id").unwrap();
+    assert_eq!(saved.as_deref(), Some(first.as_str()));
+
+    // 3. Second boot / call returns the exact same identifier
+    let second = resolve_persistent_device_id(&conn, true).unwrap();
+    assert_eq!(second, first, "device ID must be stable across boots");
+}
+
+#[test]
+fn resolve_persistent_device_id_adopts_existing_unknown_device_row() {
+    let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+    kasirmu_core::migrations::run(&mut conn).unwrap();
+
+    // Simulate an already-installed tablet that provisioned as 'unknown-device'
+    conn.execute_batch(
+        "INSERT INTO locations (id, name) VALUES ('loc-1', 'Main');
+         INSERT INTO roles (id, name) VALUES ('owner', 'Owner');
+         INSERT INTO users (id, username, pin_hash, display_name, role_id) VALUES ('user-1', 'owner', 'x', 'Owner', 'owner');
+         INSERT INTO provisioning (terminal_id, location_id, owner_user_id, mode, home_region)
+         VALUES ('unknown-device', 'loc-1', 'user-1', 'local', 'global');"
+    ).unwrap();
+
+    // On update, resolving device ID must adopt the single existing row
+    let resolved = resolve_persistent_device_id(&conn, true).unwrap();
+    assert_eq!(
+        resolved, "unknown-device",
+        "must adopt existing unknown-device row to avoid re-onboarding"
+    );
+
+    // Setting is persisted
+    let saved = kasirmu_core::Settings::get(&conn, "device.terminal_id").unwrap();
+    assert_eq!(saved.as_deref(), Some("unknown-device"));
+
+    // Second call is stable
+    let again = resolve_persistent_device_id(&conn, true).unwrap();
+    assert_eq!(again, "unknown-device");
+}
+
+#[test]
+fn resolve_persistent_device_id_respects_existing_setting() {
+    let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+    kasirmu_core::migrations::run(&mut conn).unwrap();
+
+    kasirmu_core::Settings::set(&conn, "device.terminal_id", "preconfigured-tablet-01").unwrap();
+
+    let resolved = resolve_persistent_device_id(&conn, true).unwrap();
+    assert_eq!(resolved, "preconfigured-tablet-01");
+}
+
+#[tokio::test]
+async fn resolve_device_id_caches_in_app_state() {
+    let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+    kasirmu_core::migrations::run(&mut conn).unwrap();
+    let state = crate::state::AppState::for_test_with_conn(conn);
+
+    assert!(state.terminal_id.lock().await.is_none());
+
+    let resolved = resolve_device_id(&state).await.unwrap();
+    assert!(!resolved.is_empty());
+
+    let cached = state.terminal_id.lock().await.clone();
+    assert_eq!(cached.as_deref(), Some(resolved.as_str()));
+}
+
+#[tokio::test]
+async fn notify_memory_pressure_updates_state() {
+    let state = crate::state::AppState::for_test();
+    assert_eq!(
+        state
+            .memory_pressure_level
+            .load(std::sync::atomic::Ordering::Relaxed),
+        0
+    );
+
+    // Simulate memory pressure level 15 (TRIM_MEMORY_RUNNING_CRITICAL)
+    state
+        .memory_pressure_level
+        .store(15, std::sync::atomic::Ordering::Relaxed);
+    assert_eq!(
+        state
+            .memory_pressure_level
+            .load(std::sync::atomic::Ordering::Relaxed),
+        15
+    );
+}
+
+// ── version_scoped (ADR #7) ──────────────────────────────────────
+//
+// MEASURED 2026-10-07: the tablet's settings fan-out calls
+// `version_scoped`, which the mobile shell had never registered —
+// "Command version_scoped not found" on every cold start. The UI falls back
+// to unscoped `version` (ADR #7), so the bug was silent; the recorder is
+// what surfaced it. The command must exist and resolve a session.
+
+fn scoped_state_with_session(token: &str) -> tauri::App<tauri::test::MockRuntime> {
+    use kasirmu_core::session::SessionContext;
+    let conn = kasirmu_core::migrations::fresh_db();
+    kasirmu_core::migrations::seed_provisioned_baseline(&conn);
+    let state = crate::state::AppState::for_test_with_conn(conn);
+    state.session_store.write().unwrap().insert(
+        token.to_string(),
+        SessionContext::new(
+            "user-owner".into(),
+            "role-owner".into(),
+            "terminal-1".into(),
+            "default".into(),
+            "default-restaurant-pos".into(),
+            "restaurant-pos".into(),
+            None,
+            0,
+        ),
+    );
+    tauri::test::mock_builder()
+        .manage(state)
+        .build(tauri::generate_context!())
+        .unwrap()
+}
+
+#[tokio::test]
+async fn version_scoped_reports_the_version_for_a_live_session() {
+    let app = scoped_state_with_session("live-token");
+    let v = version_scoped("live-token".into(), app.state())
+        .await
+        .unwrap();
+    assert_eq!(v.version, env!("CARGO_PKG_VERSION"));
+    assert!(!v.name.is_empty());
+    assert!(!v.target.is_empty());
+}
+
+#[tokio::test]
+async fn version_scoped_rejects_an_unknown_session() {
+    // Fail closed: no session, no version — the same gate the bridge twin runs.
+    let app = scoped_state_with_session("live-token");
+    assert!(
+        version_scoped("ghost-token".into(), app.state())
+            .await
+            .is_err()
+    );
+}

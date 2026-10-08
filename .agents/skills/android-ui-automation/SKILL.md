@@ -412,6 +412,51 @@ embedded bundle and needs no server at all. The build/install half — the
 path, and the APK themselves — is the `android-apk-build` skill; do not re-derive
 it here.
 
+### The CLI can auto-detect the WRONG interface (measured 03-10-26)
+
+On this host `cargo tauri android dev` picked **`172.16.0.2`** — a
+**CloudflareWARP** adapter — instead of the Wi-Fi address `192.168.0.168`. The
+app then rendered `Failed to request http://172.16.0.2:1422/`, which reads exactly
+like the missing-dev-server case above but is not: the server was up and bound to
+`0.0.0.0` the whole time.
+
+Diagnose by interface **metric**, not by which address the CLI chose. WARP
+installs an interface with a *lower* metric than Wi-Fi, so it wins the default
+route and the CLI's LAN probe:
+
+```powershell
+Get-NetIPInterface -AddressFamily IPv4 | Sort-Object InterfaceMetric | Select InterfaceAlias, InterfaceMetric
+# CloudflareWARP  5      <- wins, and is not the tablet's network
+# Wi-Fi 2        55
+```
+
+Confirm from the **tablet**, which is the only reading that decides it — the same
+two URLs disagree:
+
+```bash
+adb shell 'curl -s -m 8 -o /dev/null -w %{http_code} http://192.168.0.168:1422/'  # 200
+adb shell 'curl -s -m 8 -o /dev/null -w %{http_code} http://172.16.0.2:1422/'    # 000
+```
+
+**`TAURI_DEV_HOST` does NOT fix this.** That name appears in the CLI binary only
+inside a help string about the *frontend* dev server; the CLI resolves
+`devUrl`'s host itself and ignores it for this purpose. Measured: exporting
+`TAURI_DEV_HOST=192.168.0.168` and re-running `cargo tauri android dev` rebuilt
+the APK still pointed at `172.16.0.2`. The remedy that works is a config merge,
+which `devUrl` respects — keep the override file OUTSIDE the checkout:
+
+```bash
+# {"build":{"devUrl":"http://192.168.0.168:1422"}}
+cargo tauri android dev --no-watch --no-dev-server-wait --config /path/to/devurl-override.json
+```
+
+`apps/mobile-tauri/tauri.conf.json` must stay `http://localhost:1422`. Re-check it
+after any dev session — a merged `devUrl` left behind would ship in the next build:
+
+```bash
+git status --porcelain -- apps/mobile-tauri/tauri.conf.json   # must print nothing
+```
+
 ---
 
-> last audited 22-09-26 by Budak-Korporat
+> last audited 03-10-26 by Budak-Korporat

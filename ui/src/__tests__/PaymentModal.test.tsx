@@ -833,14 +833,25 @@ describe('PaymentModal — rendering & fast interaction', () => {
   });
 });
 
-// ── Stale closure on the checkout payload ─────────────────────────────
+// ── Stale closure on the checkout payload — FIXED, kept as the reason these exist ──
 //
-// PosScreen.tsx:1982 passes `promotionIds={appliedPromotions.map((p) => p.id)}` -- a fresh array on
-// every parent render. Both checkout callbacks read it (PaymentModal.tsx:706 for QR, :956 for cash)
-// and neither lists it in its useCallback deps; eslint reports exactly that at :811 and :1082, but
-// as a *warning*, and `eslint .` exits 0 with warnings, so nothing gates it. A stale capture commits
-// the sale with whatever promotions existed when the callback was last rebuilt rather than the ones
-// on screen when the cashier pressed Complete. That is a money bug with no automated check.
+// THE BUG THIS SUITE WAS WRITTEN FOR NO LONGER EXISTS. Re-read 2026-10-07: both
+// checkout callbacks DO list promotionIds in their dependency arrays —
+// PaymentModal.tsx:607 (the QR callback) and :759 (the cash callback) — so the
+// stale capture cannot occur and these cases now guard the CORRECT behaviour
+// rather than exposing a defect.
+//
+// What it was, because the guard is only meaningful with the history:
+// PosScreen.tsx:1198 passes `promotionIds={appliedPromotions.map((p) => p.id)}` --
+// a fresh array on every parent render. Both callbacks read it and, at the time,
+// neither listed it in its deps; eslint reported that at two now-different lines,
+// but only as a *warning*, and `eslint .` exits 0 with warnings, so nothing gated
+// it. A stale capture would have committed the sale with whatever promotions
+// existed when the callback was last rebuilt rather than the ones on screen when
+// the cashier pressed Complete — a money bug with no automated check. The lesson
+// the guard preserves is that the deps array is the only thing standing between
+// here and there, which is why the cases below assert the payload the modal
+// actually hands to invoke().
 describe('PaymentModal — promotionIds reach the checkout payload', () => {
   beforeEach(() => {
     invokeMock.mockClear();

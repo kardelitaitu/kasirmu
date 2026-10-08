@@ -173,6 +173,7 @@ impl PaymentProcessor for MockPaymentProcessor {
 
         Ok(PaymentResult {
             success: true,
+            phase: crate::types::PaymentPhase::Confirmed,
             transaction_id: Some(format!("mock_txn_{:09}", 1)),
             auth_code: Some("MOCKAUTH".into()),
             amount_charged: request.amount,
@@ -186,6 +187,7 @@ impl PaymentProcessor for MockPaymentProcessor {
 
         Ok(PaymentResult {
             success: true,
+            phase: crate::types::PaymentPhase::Confirmed,
             transaction_id: Some("mock_capture_001".into()),
             auth_code: Some("MOCKCAPTURE".into()),
             amount_charged: Money::zero(Currency(*b"USD")),
@@ -205,6 +207,7 @@ impl PaymentProcessor for MockPaymentProcessor {
 
         Ok(PaymentResult {
             success: true,
+            phase: crate::types::PaymentPhase::Confirmed,
             transaction_id: Some(format!("mock_sale_{:09}", 1)),
             auth_code: Some("MOCKSALE".into()),
             amount_charged: request.amount,
@@ -222,6 +225,7 @@ impl PaymentProcessor for MockPaymentProcessor {
 
         Ok(PaymentResult {
             success: true,
+            phase: crate::types::PaymentPhase::Confirmed,
             transaction_id: Some("mock_refund_001".into()),
             auth_code: None,
             amount_charged: Money::zero(Currency(*b"USD")),
@@ -234,6 +238,7 @@ impl PaymentProcessor for MockPaymentProcessor {
 
         Ok(PaymentResult {
             success: true,
+            phase: crate::types::PaymentPhase::Confirmed,
             transaction_id: Some("mock_void_001".into()),
             auth_code: None,
             amount_charged: Money::zero(Currency(*b"USD")),

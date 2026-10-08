@@ -1892,3 +1892,39 @@ body:has(.memo-stack) .staff-mgmt-main {
   }
 }
 
+/* ── Touch press feedback ────────────────────────────────────────────
+   Staff administration runs on the tablet. `.staff-mgmt-radio` and
+   `.staff-mgmt-ws-checkbox` already carry their own `:active` rules and are
+   deliberately NOT repeated here. Filled buttons and cards scale; the back
+   affordance, the sort control and the search clear tint. */
+.staff-mgmt-footer-btn:not(:disabled):active,
+.staff-drawer-action-btn:not(:disabled):active,
+.staff-mgmt-card:not(:disabled):active {
+  transform: scale(0.98);
+}
+
+.staff-mgmt-back-btn:active,
+.staff-mgmt-search-clear:active,
+.staff-mgmt-sort:active {
+  background: color-mix(in srgb, var(--color-fg) 12%, transparent);
+}
+
+@media (pointer: coarse) {
+  .staff-mgmt-back-btn,
+  .staff-mgmt-footer-btn,
+  .staff-mgmt-sort,
+  .staff-mgmt-search-clear,
+  .staff-drawer-action-btn {
+    min-height: var(--touch-target-min);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .staff-mgmt-footer-btn:not(:disabled):active,
+  .staff-drawer-action-btn:not(:disabled):active,
+  .staff-mgmt-card:not(:disabled):active {
+    transform: none;
+    opacity: 0.75;
+  }
+}
+

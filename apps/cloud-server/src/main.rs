@@ -356,15 +356,17 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         }
         db::DbPool::Postgres(pg_pool) => {
             info!("running with PostgreSQL backend");
-            // Tenant isolation: say out loud, once at boot, whether the
-            // connection can bypass row-level security. The generated schema
-            // enables RLS and creates a tenant_isolation policy on 34 tenant
-            // tables, but a superuser - and the table owner, absent FORCE ROW
-            // LEVEL SECURITY - bypasses those policies, which leaves them
-            // inert while looking present. Any verdict other than "enforced"
-            // is therefore an ERROR: on a shared cloud database it means one
-            // tenant can read another's rows.
-            report_rls_posture(pg_pool).await;
+            // Tenant isolation: check once at boot whether the connection can
+            // bypass row-level security. The generated schema enables RLS and
+            // creates a tenant_isolation policy on every tenant table, but a
+            // superuser - and the table owner, absent FORCE ROW LEVEL SECURITY -
+            // bypasses those policies, which leaves them inert while looking
+            // present. On a shared cloud database that means one tenant can read
+            // another's rows, so under OZ_PRODUCTION=1 a bypass is fatal rather
+            // than an ERROR line nobody acts on (see report_rls_posture).
+            report_rls_posture(pg_pool, config.production)
+                .await
+                .map_err(|e| format!("startup rejected: {e}"))?;
             // The kasirmu-api REST handlers dispatch on `state.pg` (Some →
             // Postgres data layer, None → the SQLite `Store` path), so the
             // API layer reads/writes Postgres here. The in-memory SQLite is
@@ -420,40 +422,164 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 }
 
 /// Report, at boot, whether the PostgreSQL connection can bypass row-level
-/// security.
+/// security — and, in production, REFUSE to start when it can.
 ///
-/// Advisory, never fatal: the server still starts when the verdict is bad, but
-/// the operator gets an ERROR line naming the role and the reason. Failure to
-/// read the catalog is a warning, not a verdict — "unknown" is not "enforced".
-async fn report_rls_posture(pool: &deadpool_postgres::Pool) {
+/// # Why this is fatal in production
+///
+/// The verdict was advisory until 2026-10-06, and the consequence was measured
+/// rather than imagined: production answered `rls_posture =
+/// "bypassed_by_owner_role"` on `/health`, meaning tenant isolation was inert on
+/// every protected table while the policies looked present. An advisory ERROR
+/// line did not stop that state from being the state.
+///
+/// The rule now matches the one `validate_production_secrets` already applies to
+/// a missing signing secret: a misconfigured public server refuses to serve
+/// rather than failing open. Losing tenant isolation is that class of problem —
+/// on a shared cloud database it means one tenant can read another's rows.
+///
+/// # What is fatal, and what is not
+///
+/// Fatal (production only): `BypassedBySuperuser`, `BypassedByOwnerRole`,
+/// `PartiallyEnforced`. Each means at least one protected table's policies are
+/// inert.
+///
+/// NOT fatal: `NoProtectedTables`. That verdict says this database carries no
+/// `tenant_isolation` policy at all — the legitimate shape for a single-tenant
+/// deployment or a database that has not had the schema applied. Treating it as
+/// a breach would refuse to boot a configuration that has nothing to isolate.
+///
+/// NOT fatal: a catalog read that failed. "Unknown" is not "enforced", but it is
+/// also not proof of a bypass, and grounding a deployment on a transient pool
+/// error would be its own outage. It warns loudly and continues.
+///
+/// # Escape hatch
+///
+/// `OZ_ALLOW_INERT_RLS=1` downgrades the refusal to an ERROR line. It exists for
+/// an operator mid-cutover who must restart the service before the FORCE
+/// migration has run — the state this gate is meant to make visible, not to make
+/// unrecoverable.
+///
+/// # Errors
+///
+/// Returns `Err` with an operator-facing message when production is set, the
+/// posture is a bypass, and the escape hatch is absent.
+async fn report_rls_posture(
+    pool: &deadpool_postgres::Pool,
+    production: bool,
+) -> Result<(), String> {
     let facts = match pool.get().await {
         Ok(client) => match crate::db::rls_facts(&client).await {
             Ok(facts) => facts,
             Err(e) => {
                 tracing::warn!(error = %e, "tenant-isolation posture unknown: could not read the catalog");
-                return;
+                return Ok(());
             }
         },
         Err(e) => {
             tracing::warn!(error = %e, "tenant-isolation posture unknown: no connection from the pool");
-            return;
+            return Ok(());
         }
     };
 
     let posture = crate::db::RlsPosture::from_facts(&facts);
     let message = posture.message(&facts.role);
+
     if posture.is_enforced() {
         info!(rls_posture = posture.as_str(), "{}", message);
-    } else {
-        tracing::error!(
-            rls_posture = posture.as_str(),
-            role = %facts.role,
-            forced_tables = facts.forced_tables,
-            protected_tables = facts.protected_tables,
-            "{}",
-            message
-        );
+        return Ok(());
     }
+
+    // Not a breach: this database carries no tenant_isolation policy at all, so
+    // no query can be leaking through one (a single-tenant deployment, or an
+    // unapplied schema). Warn and continue — see rls_verdict_is_fatal.
+    if matches!(posture, crate::db::RlsPosture::NoProtectedTables) {
+        tracing::warn!(rls_posture = posture.as_str(), "{}", message);
+        return Ok(());
+    }
+
+    // From here the posture IS a bypass. Report it at ERROR with the counts.
+    tracing::error!(
+        rls_posture = posture.as_str(),
+        role = %facts.role,
+        forced_tables = facts.forced_tables,
+        protected_tables = facts.protected_tables,
+        "{}",
+        message
+    );
+
+    // The decision is pure (rls_verdict_is_fatal); the branches below only
+    // render it. Asked ONCE so the hatch path stays reachable — an earlier
+    // shape folded allow_inert_rls() into `fatal`, which made the
+    // "starting anyway" branch below dead code (the hatch silently skipped the
+    // ERROR that is its whole purpose).
+    if !rls_verdict_is_fatal(posture, production, allow_inert_rls()) {
+        // Either production is off (dev/test connect as owner by design) or the
+        // operator opted out. Only the opt-out needs saying out loud; a
+        // non-production run is already covered by the ERROR above.
+        if production {
+            tracing::error!(
+                rls_posture = posture.as_str(),
+                "OZ_ALLOW_INERT_RLS=1 is set — starting anyway with tenant isolation NOT enforced. \
+                 Unset it once the FORCE ROW LEVEL SECURITY cutover has run."
+            );
+        }
+        return Ok(());
+    }
+
+    Err(format!(
+        "tenant isolation is NOT enforced (rls_posture={}, role={}, {}/{} protected tables forced). \
+         OZ_PRODUCTION=1 requires FORCE ROW LEVEL SECURITY: run scripts/rls-cutover.sql, then \
+         scripts/rls-cutover-force-remaining.sql, and confirm /health reports \
+         \"rls_posture\":\"enforced\". To start anyway during a migration window, set \
+         OZ_ALLOW_INERT_RLS=1.",
+        posture.as_str(),
+        facts.role,
+        facts.forced_tables,
+        facts.protected_tables
+    ))
+}
+
+/// Whether the operator has explicitly accepted inert tenant isolation.
+///
+/// Split out for the reason parse_worker_threads is: the env read cannot be
+/// tested without mutating process env (UB on async workers, and why db_tests.rs
+/// opts out of unsafe_code for it), so the decision keeps exactly one env access
+/// and everything else stays pure.
+fn allow_inert_rls() -> bool {
+    std::env::var("OZ_ALLOW_INERT_RLS")
+        .map(|v| matches!(v.as_str(), "1" | "true" | "TRUE" | "on" | "ON"))
+        .unwrap_or(false)
+}
+
+/// Whether a non-enforced posture must refuse startup.
+///
+/// Pure so the policy table is unit-testable without a database — the same split
+/// parse_worker_threads and RlsPosture::from_facts use.
+///
+/// The rule in one sentence: a bypass is fatal in production; "nothing to
+/// isolate" never is.
+///
+/// - Enforced — nothing to gate.
+/// - NoProtectedTables — this database carries no tenant_isolation policy, so no
+///   query can be leaking through one. Legitimate for a single-tenant deployment
+///   or an unapplied schema; refusing to boot here would break a configuration
+///   with nothing to isolate.
+/// - BypassedBySuperuser / BypassedByOwnerRole / PartiallyEnforced — at least one
+///   protected table's policies are inert. Fatal under OZ_PRODUCTION=1 unless the
+///   operator opted out.
+fn rls_verdict_is_fatal(
+    posture: crate::db::RlsPosture,
+    production: bool,
+    allow_inert: bool,
+) -> bool {
+    use crate::db::RlsPosture;
+    let bypass = matches!(
+        posture,
+        RlsPosture::BypassedBySuperuser { .. }
+            | RlsPosture::BypassedByOwnerRole { .. }
+            | RlsPosture::PartiallyEnforced { .. }
+    );
+    bypass && production && !allow_inert
 }
 
 /// Start the HTTP server on the configured port with graceful shutdown.

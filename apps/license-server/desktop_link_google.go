@@ -171,17 +171,31 @@ func handleDesktopLinkStart(app core.App) func(e *core.RequestEvent) error {
 
 		e.Request.Body = http.MaxBytesReader(e.Response, e.Request.Body, webMaxBodyBytes)
 		var req struct {
-			MachineID    string `json:"machine_id"`
-			CodeVerifier string `json:"code_verifier"`
-			State        string `json:"state"`
-			RedirectURI  string `json:"redirect_uri"`
+			MachineID     string `json:"machine_id"`
+			CodeVerifier  string `json:"code_verifier"`
+			State         string `json:"state"`
+			RedirectURI   string `json:"redirect_uri"`
+			PreActivation bool   `json:"pre_activation"`
 		}
 		if err := json.NewDecoder(e.Request.Body).Decode(&req); err != nil {
 			return e.JSON(http.StatusBadRequest, map[string]any{"error": "invalid JSON body"})
 		}
-		tenant, ok := authenticateDevice(app, e, req.MachineID)
-		if !ok {
-			return nil // response already sent
+		var tenantID string
+		if req.PreActivation {
+			if strings.TrimSpace(req.MachineID) == "" {
+				return e.JSON(http.StatusBadRequest, map[string]any{"error": "machine_id is required"})
+			}
+			if token, err := extractBearerToken(e); err == nil && token != "" {
+				if t, err := findTenantByAPIKey(app, token); err == nil && t != nil {
+					tenantID = t.Id
+				}
+			}
+		} else {
+			tenant, ok := authenticateDevice(app, e, req.MachineID)
+			if !ok {
+				return nil // response already sent
+			}
+			tenantID = tenant.Id
 		}
 		if !loopbackRedirect(req.RedirectURI) {
 			return e.JSON(http.StatusBadRequest, map[string]any{
@@ -195,7 +209,7 @@ func handleDesktopLinkStart(app core.App) func(e *core.RequestEvent) error {
 			return e.JSON(http.StatusBadRequest, map[string]any{"error": "code_verifier must be 43-128 characters"})
 		}
 		if !desktopLinkState.put(req.State, &desktopLinkPending{
-			tenantID:    tenant.Id,
+			tenantID:    tenantID,
 			machineID:   req.MachineID,
 			verifier:    req.CodeVerifier,
 			redirectURI: req.RedirectURI,
@@ -255,15 +269,17 @@ func handleDesktopLinkCallback(app core.App) func(e *core.RequestEvent) error {
 			return linkErrorRedirect(e, pending.redirectURI, "server_error")
 		}
 		switch outcome {
-		case IdentityBound, IdentityLinked:
+		case IdentityBound, IdentityLinked, IdentityCreated:
 			log.Printf("/desktop/link/google: %s identity on tenant %s (%s)", providerGoogle, tenant.Id, outcome)
 		case IdentityConflict, IdentityRefusedMismatch, IdentityRefusedReserved, IdentityRefusedUnverified:
 			return linkErrorRedirect(e, pending.redirectURI, string(outcome))
 		default:
-			// IdentityCreated cannot happen here (the tenant is already proven), so seeing it
-			// would mean the claimed tenant id did not resolve.
 			log.Printf("/desktop/link/google/callback: unexpected outcome %q", outcome)
 			return linkErrorRedirect(e, pending.redirectURI, "server_error")
+		}
+
+		if _, err := registerMachine(app, pending.machineID, tenant.Id, false); err != nil {
+			log.Printf("/desktop/link/google: registerMachine warning for %s: %v", pending.machineID, err)
 		}
 
 		code, err := generateLinkCode()
@@ -272,7 +288,7 @@ func handleDesktopLinkCallback(app core.App) func(e *core.RequestEvent) error {
 			return linkErrorRedirect(e, pending.redirectURI, "server_error")
 		}
 		if !desktopLinkCodes.put(code, &desktopLinkCode{
-			tenantID:  pending.tenantID,
+			tenantID:  tenant.Id,
 			machineID: pending.machineID,
 			subject:   claims.Subject,
 			email:     claims.Email,
@@ -300,21 +316,28 @@ func handleDesktopLinkConsume(app core.App) func(e *core.RequestEvent) error {
 	return func(e *core.RequestEvent) error {
 		e.Request.Body = http.MaxBytesReader(e.Response, e.Request.Body, webMaxBodyBytes)
 		var req struct {
-			LinkCode  string `json:"link_code"`
-			MachineID string `json:"machine_id"`
+			LinkCode      string `json:"link_code"`
+			MachineID     string `json:"machine_id"`
+			PreActivation bool   `json:"pre_activation"`
 		}
 		if err := json.NewDecoder(e.Request.Body).Decode(&req); err != nil {
 			return e.JSON(http.StatusBadRequest, map[string]any{"error": "invalid JSON body"})
 		}
-		tenant, ok := authenticateDevice(app, e, req.MachineID)
-		if !ok {
-			return nil
+		var tenant *core.Record
+		if !req.PreActivation {
+			var ok bool
+			tenant, ok = authenticateDevice(app, e, req.MachineID)
+			if !ok {
+				return nil
+			}
+		} else if strings.TrimSpace(req.MachineID) == "" {
+			return e.JSON(http.StatusBadRequest, map[string]any{"error": "machine_id is required"})
 		}
 		code, ok := desktopLinkCodes.take(req.LinkCode)
 		if !ok {
 			return e.JSON(http.StatusBadRequest, map[string]any{"error": "invalid or expired link code"})
 		}
-		if code.tenantID != tenant.Id || code.machineID != req.MachineID {
+		if (tenant != nil && code.tenantID != tenant.Id) || code.machineID != req.MachineID {
 			// Same answer as an unknown code: a mismatch is either a replay from elsewhere or a
 			// device that did not start this flow. Note the code is ALREADY burned by take()
 			// above — deliberate, like a one-time password: the cost of a leaked code is a
@@ -324,10 +347,10 @@ func handleDesktopLinkConsume(app core.App) func(e *core.RequestEvent) error {
 		// The device is linked; the sync credential is what lets it sync as a registered
 		// terminal (ADR #54 §2.5 step 6). Best-effort: see sync_terminals.go.
 		return e.JSON(http.StatusOK, map[string]any{
-			"tenantId": tenant.Id,
+			"tenantId": code.tenantID,
 			"provider": providerGoogle,
 			"email":    code.email,
-			"terminal": terminalPayloadForLink(code.machineID, tenant.Id),
+			"terminal": terminalPayloadForLink(code.machineID, code.tenantID),
 		})
 	}
 }

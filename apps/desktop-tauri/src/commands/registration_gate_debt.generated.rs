@@ -84,6 +84,12 @@ pub const DEBT_LEDGER: &[(&str, &str)] = &[
         "health::get_local_ip_scoped",
         "resolves_session_names_no_permission",
     ),
+    ("health::get_storage_health", "no_session_resolution"),
+    (
+        "health::export_diagnostics",
+        "resolves_session_names_no_permission",
+    ),
+    ("health::record_crash_report", "no_session_resolution"),
     ("settings::set_setting", "no_session_resolution"),
     ("setup::get_enabled_features", "no_session_resolution"),
     ("setup::get_preset_features", "no_session_resolution"),
@@ -168,7 +174,7 @@ pub const DEBT_LEDGER: &[(&str, &str)] = &[
 /// Re-read 22-09-26: regenerated to 468 with the floor's raise for the staff/role trash's
 /// five gated commands. 74 debt rows before and after, which is the measurement saying they
 /// arrived already gated.)
-pub const REGISTERED_TOTAL: usize = 481;
+pub const REGISTERED_TOTAL: usize = 494;
 
 /// Debt entries today: the ceiling the ledger may only shrink under.
 /// 70 -> 69: `security::rotate_encryption_key` was deregistered, and its ledger row
@@ -211,10 +217,52 @@ pub const DEBT_CEILING: usize = 78;
 /// 48 -> 51: the three email sign-in commands above. This count is a pin the generator
 /// does not recompute, so it moves by hand in the same pass as the ceiling.
 /// `51 + 27 = 78` partitions `DEBT_CEILING`.
-pub const NO_SESSION_RESOLUTION: usize = 51;
+/// 51 -> 53: the three `health::` rows added on 2026-10-07. `health::get_storage_health`
+/// (`9d46d3912`) and `health::record_crash_report` (`f25a91e7c`) land in THIS class;
+/// `health::export_diagnostics` (`bf8e004f9`) lands in class 2. Measured, not carried: the
+/// pre-raise assertion read `measured 53 no_session_resolution (ceiling 51) and 18
+/// resolves_session_names_no_permission (ceiling 27)`. Like every step above, this pin is one
+/// the generator does not recompute, so it moves by hand in the same pass as the ceiling.
+/// **The sum no longer partitions `DEBT_CEILING` and should not be made to:** class 2's own
+/// measurement FELL to 18, so `53 + 18 = 71` is the live row count and the two ceilings are
+/// now independently slack rather than jointly tight. Forcing them back to a 78 sum would
+/// mean raising a ceiling for a class that shrank — the opposite of what this ratchet is for.
+///
+/// **`health::export_diagnostics` is a FALSE POSITIVE in this class, verified 2026-10-08.**
+/// The bridge function it delegates to IS genuinely gated: `crates/kasirmu-bridge/src/diagnostics.rs:160`
+/// resolves the session and then calls `require_session_permission(&session, permissions::SETTINGS_READ)`.
+/// The sweep still files it as class 2, and the reason is structural rather than an oversight.
+/// `run_sweep`'s bridge rule asks whether the SHIM'S MODULE stem is a gated stem, and the stem
+/// set is built by asking which files under `kasirmu-bridge/src` name a permission. The
+/// permission for this command lives in `diagnostics.rs`, while the shim's module is `health`
+/// -- and `kasirmu-bridge/src/health.rs` names no permission, so `health` never enters the stem
+/// set. The shim's own body matches `resolves_session` (its `session_token: String` parameter)
+/// and matches no guard marker, which lands it in class 2.
+///
+/// DIRECTION, which is why this is a note and not a defect: the misclassification INFLATES
+/// debt, so the class-2 ceiling is TIGHTER than reality rather than looser. A false positive
+/// here spends ceiling that a real hole would need -- the fail-safe way round. It is recorded
+/// because this count is read as a security measure and one of the 18 is known not to be one.
+/// Correcting it means teaching the sweep to follow a shim into the bridge module it actually
+/// calls, which is a classifier change rather than an edit to this number. Until then the
+/// honest statement is: class 2 holds 17 real debt rows plus this one already-gated shim.
+pub const NO_SESSION_RESOLUTION: usize = 53;
 
 /// Authenticate-then-assume: a session is resolved and no permission asked.
-pub const RESOLVES_SESSION_NAMES_NO_PERMISSION: usize = 27;
+///
+/// 27 -> 18, corrected 2026-10-08. The paragraph above already recorded that this class
+/// FELL to 18 and that "53 + 18 = 71 is the live row count" — but the constant was left
+/// at 27, the value from BEFORE the fall. MEASURED: the ledger holds exactly 53
+/// `no_session_resolution` rows and 18 of this class, and setting this ceiling to 18
+/// keeps all 14 registration-gate legs green, so 18 is the true count and 27 was stale.
+///
+/// WHY IT MATTERED, and it is the permissive direction: the assertion in
+/// `registration_gate_tests.rs` is `assume <= RESOLVES_SESSION_NAMES_NO_PERMISSION`, so a
+/// ceiling nine above the live count silently absorbs nine class-2 regressions —
+/// authenticate-then-assume doors, the class this ratchet exists to shrink. A stale-LOW
+/// floor fails loudly; a stale-HIGH ceiling passes quietly, which is why this one needed
+/// measuring rather than reading.
+pub const RESOLVES_SESSION_NAMES_NO_PERMISSION: usize = 18;
 
 /// Registered names whose wrapper body the generator could not find (must be 0).
 pub const UNSOURCED: usize = 0;

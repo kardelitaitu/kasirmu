@@ -15,6 +15,8 @@ import { l10nErrorMessage } from '@/utils/app-error';
 
 import { ConflictDiffViewer } from './components/ConflictDiffViewer';
 
+import './SyncConflictReviewScreen.css';
+
 // Shared hub scaffold styling — the screen mounts inside the settings
 // placeholder section like every other page in the flat IA.
 import '@/features/settings/screens/screens-placeholder.css';

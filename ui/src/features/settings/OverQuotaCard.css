@@ -1,0 +1,102 @@
+/* Settings → License & Subscription — the over-quota card.
+ *
+ * This component is mounted by LicenseSettings.tsx:662 (which imports only its
+ * own sheet) and renders SEVEN classes that no stylesheet ever defined —
+ * a repo-wide git grep for the first of those names returns nothing.
+ * It also uses four shared settings classes (settings-section-title,
+ * settings-form, settings-hint, settings-error) that ARE defined in
+ * SettingsPage.css, which the settings shell loads; those are inherited, not
+ * restated here.
+ *
+ * The visible effect of the gap: the over-quota list rendered as an unstyled
+ * <ul> with bulleted rows and a dim/current pair jammed together, inside an
+ * otherwise-styled settings card. This sheet is the missing half. */
+
+/* List of dimensions the tenant is over on. */
+.settings-license-quota-list {
+  list-style: none;
+  margin: var(--space-2) 0 var(--space-3);
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+/* One dimension per row: label left, current/limit right. */
+.settings-license-quota-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-subtle);
+}
+
+.settings-license-quota-dim {
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-fg);
+}
+
+.settings-license-quota-detail {
+  font-size: var(--text-sm);
+  color: var(--color-fg-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* The "over quota — archive or upgrade" lead line. It also carries
+   `settings-hint`, so only the emphasis it adds is set here. */
+.settings-license-quota-over-heading {
+  font-weight: var(--font-weight-medium);
+  color: var(--color-fg);
+}
+
+/* The register-recovery block, deliberately outside the over-quota block
+   (see the comment above its conditional in the component). */
+.settings-license-quota-remedy {
+  margin-top: var(--space-4);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border);
+}
+
+.settings-license-quota-remedy-heading {
+  font-weight: var(--font-weight-medium);
+  color: var(--color-fg);
+}
+
+/* ── Four more names the same component renders ───────────────────────
+   Round 29 wrote the seven the guard reported; these four are in the same file
+   but were not in that report, because OverQuotaCard has no SCREENS entry of
+   its own — the guard only ever saw the sheet through LicenseSettings. Found by
+   re-sweeping the file rather than trusting the earlier list to be complete. */
+
+/* The suspend/restore button row under the remedy paragraph. */
+.settings-license-quota-remedy-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  margin-top: var(--space-2);
+}
+
+/* A store id quoted inside the remedy note: mono and slightly emphasised, so it
+   reads as an identifier rather than as part of the sentence. */
+.settings-license-quota-remedy-store {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--color-fg);
+}
+
+/* The per-location region and its heading. The heading also carries
+   .settings-hint, so only the emphasis it adds is set. */
+.settings-license-quota-locations {
+  margin-top: var(--space-3);
+}
+
+.settings-license-quota-loc-heading {
+  font-weight: var(--font-weight-medium);
+  color: var(--color-fg);
+}

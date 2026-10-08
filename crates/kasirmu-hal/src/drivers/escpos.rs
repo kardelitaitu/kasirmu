@@ -10,6 +10,15 @@ next: none | perf: N/A
 //! `SerialReceiptPrinter` — which `BtReceiptPrinter` is an alias for — and
 //! `TcpReceiptPrinter`) and the receipt formatter (`super::receipt`).
 
+/// Maximum allowable raw print payload in bytes (4 MB) to guard against unbounded memory buffers.
+pub const MAX_PRINT_PAYLOAD_BYTES: usize = 4 * 1024 * 1024;
+
+/// Default chunk size (4 KB) for streaming and spooling print payloads to prevent hardware buffer overruns.
+pub const DEFAULT_PRINT_CHUNK_SIZE: usize = 4096;
+
+/// Default timeout for completing a single receipt print job (15 seconds).
+pub const DEFAULT_PRINT_JOB_TIMEOUT_SECS: u64 = 15;
+
 /// Initialize printer.
 pub const ESC_INIT: &[u8] = &[0x1B, 0x40];
 /// Print and carriage return.
@@ -89,16 +98,20 @@ pub enum BarcodeType {
 ///
 /// `data` must be valid for the chosen symbology (numeric-only for
 /// UPC/EAN/ITF, alphanumeric for Code39, full ASCII for Code128).
+///
+/// If `data` exceeds 255 bytes, it is clamped to 255 to prevent length byte
+/// truncation and protocol desync on hardware (O-L16).
 pub fn barcode(barcode_type: BarcodeType, data: &[u8]) -> Vec<u8> {
-    let n = data.len();
-    let mut buf = Vec::with_capacity(4 + n);
+    let slice = if data.len() > 255 { &data[..255] } else { data };
+    let n = slice.len() as u8;
+    let mut buf = Vec::with_capacity(4 + slice.len());
     // Set barcode height to ~162 dots (~80px at 203dpi)
     buf.extend_from_slice(&[0x1D, 0x68, 0xA0]);
     // Set human-readable (HRI) position below the barcode
     buf.extend_from_slice(&[0x1D, 0x48, 0x02]);
     // Print barcode: GS k m n d1..dn
-    buf.extend_from_slice(&[0x1D, 0x6B, barcode_type as u8, n as u8]);
-    buf.extend_from_slice(data);
+    buf.extend_from_slice(&[0x1D, 0x6B, barcode_type as u8, n]);
+    buf.extend_from_slice(slice);
     buf
 }
 

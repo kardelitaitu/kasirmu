@@ -276,4 +276,67 @@ describe('ReceiptPreview', () => {
     // The finder patterns at corners exercise the boundary check on lines 250
     expect(qrVisual?.querySelector('svg')).toBeInTheDocument();
   });
+
+  // ── Market profile & fiscal fields coverage ──
+  it('renders dynamic store name and custom tax registration label', async () => {
+    const marketReceipt: PrintSalesReceiptArgs = {
+      ...mockReceipt,
+      storeName: 'Marina Bay Retail SG',
+      taxId: 'M90372819X',
+      taxIdLabel: 'GST Reg No',
+      receiptNumber: '01-02-261002-05-000123',
+    };
+
+    await renderWithFluent(<ReceiptPreview {...defaultProps} receipt={marketReceipt} />);
+
+    expect(screen.getByText('Marina Bay Retail SG')).toBeInTheDocument();
+    expect(screen.getByText('GST Reg No: M90372819X')).toBeInTheDocument();
+    expect(screen.getByText('01-02-261002-05-000123')).toBeInTheDocument();
+  });
+
+  it('renders tax regime descriptor in tax line when provided', async () => {
+    const regimeReceipt: PrintSalesReceiptArgs = {
+      ...mockReceipt,
+      taxRegime: 'PB1',
+    };
+
+    await renderWithFluent(<ReceiptPreview {...defaultProps} receipt={regimeReceipt} />);
+
+    expect(screen.getByText('PB1:')).toBeInTheDocument();
+  });
+
+  it('renders TAX INVOICE banner, statutory invoice number and customer info when isInvoice is true', async () => {
+    const invoiceReceipt: PrintSalesReceiptArgs = {
+      ...mockReceipt,
+      isInvoice: true,
+      documentKind: 'invoice',
+      statutoryNumber: 'INV-2026-00099',
+      customerName: 'Global Enterprises Pte Ltd',
+      customerTaxId: 'SG12345678',
+    };
+
+    await renderWithFluent(<ReceiptPreview {...defaultProps} receipt={invoiceReceipt} />);
+
+    expect(screen.getByText('TAX INVOICE')).toBeInTheDocument();
+    expect(screen.getByText('Invoice No: INV-2026-00099')).toBeInTheDocument();
+    expect(screen.getByText('Billed To: Global Enterprises Pte Ltd')).toBeInTheDocument();
+    expect(screen.getByText('Tax ID: SG12345678')).toBeInTheDocument();
+  });
+
+  it('calls onIssueTaxInvoice when Issue Tax Invoice button is clicked', async () => {
+    const onIssueTaxInvoice = vi.fn();
+    await renderWithFluent(
+      <ReceiptPreview
+        {...defaultProps}
+        onIssueTaxInvoice={onIssueTaxInvoice}
+      />,
+    );
+
+    const issueBtn = screen.getByRole('button', { name: /issue tax invoice/i });
+    expect(issueBtn).toBeInTheDocument();
+    await waitFor(() => {
+      issueBtn.click();
+    });
+    expect(onIssueTaxInvoice).toHaveBeenCalledTimes(1);
+  });
 });

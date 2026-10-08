@@ -163,6 +163,9 @@ pub async fn set_receipt_content_scoped(
         show_tax: content.show_tax,
         show_currency: content.show_currency,
         decimal_separator: content.decimal_separator,
+        tax_id_label: content.tax_id_label,
+        tax_regime: content.tax_regime,
+        statutory_rounding: content.statutory_rounding,
     };
     let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
     store.set_receipt_content_for_entity(&entity_id, &core_content, &now)?;
@@ -183,6 +186,15 @@ pub struct ReceiptContentArgs {
     pub show_currency: bool,
     /// `dot` | `comma` | `none`.
     pub decimal_separator: String,
+    #[serde(default)]
+    /// Market-specific tax identifier label (e.g. `NPWP`, `GST Reg No`, `Tax ID`).
+    pub tax_id_label: Option<String>,
+    #[serde(default)]
+    /// Statutory tax regime descriptor (e.g. `PB1`, `PPN`, `LOCAL/SG`).
+    pub tax_regime: Option<String>,
+    #[serde(default)]
+    /// Statutory rounding mode (`half_up` | `truncate`).
+    pub statutory_rounding: Option<String>,
 }
 
 #[cfg(test)]

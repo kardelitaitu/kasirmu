@@ -287,7 +287,7 @@ main question rather than an afterthought.
 - `docs/decisions/2026-09-11-adr50-sync-auth-hardening.md` — 401 semantics (P1) and terminal
   credentials (P3), both load-bearing for §2.4-§2.5.
 - `docs/decisions/2026-07-13-zero-downtime-vps-migration.md` and
-  `docs/archived/2026-08-15-unify-auth-and-sync.md` — the 421 redirect and the unification of
+  `docs/records/audits/2026-08-15-unify-auth-and-sync.md` — the 421 redirect and the unification of
   auth and sync into one deployment.
 - `docs/decisions/2026-09-19-adr54-google-sign-in.md` — the OAuth flow whose redirect URIs and
   `next` allowlist depend on this record's host set.

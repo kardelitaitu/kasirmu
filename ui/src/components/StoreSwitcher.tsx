@@ -3,6 +3,7 @@ import { useLocalization } from '@fluent/react';
 import { listLocationsScoped, setPrimaryLocationScoped, type LocationProfile } from '@/api/locations';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import './StoreSwitcher.css';
+import { asArray } from '@/utils/ipc-payload';
 
 /**
  * Dropdown to switch between available stores.
@@ -37,7 +38,12 @@ export default function StoreSwitcher() {
   //   feeds one -- it becomes money and needs the guard with it.
   const load = useCallback(async () => {
     try {
-      const data = await listLocationsScoped(sessionToken!);
+      // asArray BEFORE any read: `data.find` on the next line is the exact
+      // shape that blanks a screen when a transport answers undefined (see
+      // utils/ipc-payload), and it would throw before the guard could help.
+      const data = asArray<Awaited<ReturnType<typeof listLocationsScoped>>[number]>(
+        await listLocationsScoped(sessionToken!),
+      );
       setStores(data);
       const p = data.find((s) => s.is_primary) ?? data[0] ?? null;
       setPrimary(p);

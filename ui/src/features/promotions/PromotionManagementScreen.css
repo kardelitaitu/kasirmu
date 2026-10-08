@@ -311,3 +311,31 @@
     transition: transform var(--duration-200);
   }
 }
+
+/* ── Touch press feedback ────────────────────────────────────────────
+   Promotions are managed on the tablet. Buttons scale; the toggle tints
+   (its knob already animates). */
+.promo-mgmt-btn:not(:disabled):active,
+.promo-mgmt-modal-close:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+.promo-mgmt-toggle:active {
+  background: color-mix(in srgb, var(--color-fg) 12%, transparent);
+}
+
+@media (pointer: coarse) {
+  .promo-mgmt-btn,
+.promo-mgmt-toggle,
+.promo-mgmt-modal-close {
+    min-height: var(--touch-target-min);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .promo-mgmt-btn:not(:disabled):active,
+.promo-mgmt-modal-close:not(:disabled):active {
+    transform: none;
+    opacity: 0.75;
+  }
+}

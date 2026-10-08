@@ -43,6 +43,20 @@
   touch-action: none;
 }
 
+/* Expand touch target hit area on mobile/tablet without expanding visual width */
+.pos-resize-handle::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  /* --space-4 is exactly this reach at the tablet's 14px root (1rem x 14px =
+     14px), so the touch target keeps its measured size while the value stops
+     being a literal the scale cannot see. */
+  left: calc(var(--space-4) * -1);
+  right: calc(var(--space-4) * -1);
+  z-index: var(--z-sticky, 20);
+}
+
 .pos-resize-handle:hover,
 .pos-resize-handle:focus-visible {
   background: var(--color-accent-dim);
@@ -458,6 +472,28 @@
   flex: 1 1 auto;
 }
 
+/* Order-type prompt row (Dine-in / Takeaway / Delivery). The rule was on this
+   element as an inline `style={{...}}` with literal 6px values and no matching
+   class, which is why screenExtraction reported the name as used-but-undefined:
+   a class in the markup with no sheet behind it styles nothing. Moved here so the
+   values are tokens and the guard can see them. */
+.pos-cart-order-type-row {
+  display: flex;
+  gap: var(--space-1_5);
+  padding: var(--space-1_5) var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+  /* No fallback tail: --color-bg-subtle is declared in every theme block, so the
+     literal could never render (the token-tail guard's own rule). */
+  background: var(--color-bg-subtle);
+}
+
+/* Pax input beside the customer field. Was inline `width: 64px`; 4rem is the
+   token step this file already uses for the same size (see .pos-cart-table-input). */
+.pos-cart-guest-field {
+  width: 4rem;
+  flex: 0 0 auto;
+}
+
 .pos-cart-table-label,
 .pos-cart-customer-label {
   font-size: var(--text-xs);
@@ -698,6 +734,45 @@
      handle finally unmounts. It is already fading out. */
   .pos-resize-handle--exiting {
     flex-basis: 0;
+  }
+}
+
+/* ── Touch press feedback ────────────────────────────────────────────
+   A tablet has no hover. These cart controls carried a `transition` and, for
+   some, a `:hover` rule — but a finger never fires hover, so a tap gave no
+   acknowledgement on the surface a cashier taps most. `:active` is the state
+   touch actually produces. Filled controls scale; transparent ones tint. */
+.pos-cart-lock-btn:not(:disabled):active,
+.pos-cart-new-tab-btn:not(:disabled):active,
+.pos-cart-table-select-btn:not(:disabled):active,
+.pos-cart-undo-btn:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+.pos-cart-deduction-badge:active,
+.pos-cart-undo-dismiss:active,
+.pos-cart-held-badge:active {
+  background: color-mix(in srgb, var(--color-fg) 12%, transparent);
+}
+
+@media (pointer: coarse) {
+  .pos-cart-lock-btn,
+  .pos-cart-undo-btn,
+  .pos-cart-new-tab-btn,
+  .pos-cart-table-select-btn,
+  .pos-cart-undo-dismiss {
+    min-height: var(--touch-target-comfortable);
+    min-width: var(--touch-target-comfortable);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pos-cart-lock-btn:not(:disabled):active,
+  .pos-cart-new-tab-btn:not(:disabled):active,
+  .pos-cart-table-select-btn:not(:disabled):active,
+  .pos-cart-undo-btn:not(:disabled):active {
+    transform: none;
+    opacity: 0.75;
   }
 }
 

@@ -51,11 +51,14 @@ export interface WorkspaceTypeDto {
 
 // ── Boot Resolution (ADR #4 Phase 3) ──────────────────────────────────
 
-/** DTO returned by resolve_boot_store. */
+/** DTO returned by resolve_boot_store. Supports both camelCase (from Serde) and snake_case. */
 export interface BootResolution {
-  is_bound: boolean;
-  store_id: string;
-  instance_id: string | null;
+  is_bound?: boolean;
+  isBound?: boolean;
+  store_id?: string;
+  storeId?: string;
+  instance_id?: string | null;
+  instanceId?: string | null;
 }
 
 /**
@@ -221,11 +224,61 @@ export async function listWorkspaceScreens(
 
 // ── Legacy Commands (backward compatible, deprecated) ──────────────────
 
-/** List all workspace types (scoped — ADR #7). */
+/** Standard seeded workspace types used as fallback when scoped listing is unavailable. */
+export const DEFAULT_WORKSPACE_TYPES: WorkspaceTypeDto[] = [
+  {
+    key: 'restaurant-pos',
+    name: 'Restaurant POS',
+    description: 'Cashier terminal for restaurant ordering with menu categories and table management',
+    icon: 'restaurant',
+  },
+  {
+    key: 'store-pos',
+    name: 'Store POS',
+    description: 'Cashier terminal for retail with product lookup, customer management, and loyalty',
+    icon: 'store',
+  },
+  {
+    key: 'retail-pos',
+    name: 'Retail POS',
+    description: 'Cashier terminal for retail checkout',
+    icon: 'store',
+  },
+  {
+    key: 'warehouse',
+    name: 'Warehouse',
+    description: 'Manage products, stock levels, bundles, categories, and inventory reports',
+    icon: 'inventory',
+  },
+  {
+    key: 'admin',
+    name: 'Admin',
+    description: 'System settings, staff management, reports, audit logs, and configuration',
+    icon: 'admin',
+  },
+  {
+    key: 'kds',
+    name: 'Kitchen Display',
+    description: 'Order queue display for the kitchen — tap tickets to advance their status',
+    icon: 'kds',
+  },
+];
+
+/** List all workspace types (scoped — ADR #7). Falls back to standard types if unavailable. */
 export async function listAllWorkspacesScoped(
   sessionToken: string,
 ): Promise<WorkspaceTypeDto[]> {
-  return loggedInvoke<WorkspaceTypeDto[]>('list_all_workspaces_scoped', { sessionToken });
+  return loggedInvoke<WorkspaceTypeDto[]>('list_all_workspaces_scoped', { sessionToken }).catch((err) => {
+    const msg = typeof err === 'string' ? err : err instanceof Error ? err.message : String(err ?? '');
+    if (
+      msg.includes('list_all_workspaces_scoped') ||
+      msg.toLowerCase().includes('not found') ||
+      msg.toLowerCase().includes('unrecognized')
+    ) {
+      return DEFAULT_WORKSPACE_TYPES;
+    }
+    throw err;
+  });
 }
 
 // ── §J Quota Remediation (over-quota suspend / recover) ─────────────────

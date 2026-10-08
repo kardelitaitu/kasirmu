@@ -356,6 +356,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  min-width: var(--touch-target-comfortable);
+  min-height: var(--touch-target-comfortable);
   height: 48px;
   font-size: var(--text-lg);
   font-weight: var(--font-weight-semibold);

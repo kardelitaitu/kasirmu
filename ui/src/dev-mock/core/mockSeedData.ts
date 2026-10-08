@@ -102,6 +102,30 @@ export const MOCK_STAFF: Record<string, {
 
 // ── Catalog shape ─────────────────────────────────────────────────
 
+/**
+ * The seeded category list: the retail PC-component tree, then the restaurant
+ * menu's four.
+ *
+ * The restaurant half was MISSING until 2026-10-08, and its absence was a real
+ * defect rather than an omission: the catalogue fixtures carry four restaurant
+ * categories by name ("Food", "Hot Drinks", "Cold Drinks", "Dessert") and
+ * `ProductDto.category` is a NAME, so every one of those products pointed at a
+ * category that did not exist. A screen that joins products to categories —
+ * `RestaurantMenu` for its pills and metadata, the menu editor for its rail —
+ * then had nothing to join to in the preview, so the menu looked empty while the
+ * products were plainly there.
+ *
+ * Names must match the fixture strings EXACTLY, because the join is by name and
+ * nothing normalises the two sides. That is the whole reason the restaurant
+ * entries are listed with the same capitalisation the products use.
+ *
+ * Icons are drawn from `ui/src/features/categories/categoryIcons.ts`. The
+ * retail entries still carry ids that set does not define (`cpu-1`, `gpu-1`…),
+ * so they render as no glyph at all: `CategoryIconSvg` returns null for an
+ * unknown id. They are left as they are here because changing them is a
+ * separate decision about the retail demo, not a side effect of adding the
+ * restaurant half.
+ */
 export const MOCK_CATEGORIES = [
   { id: 'cat-cpu', name: 'Processors (CPU)', colour: '#e74c3c', icon: 'cpu-1' },
   { id: 'cat-gpu', name: 'Graphics Cards (GPU)', colour: '#2ecc71', icon: 'gpu-1' },
@@ -110,6 +134,12 @@ export const MOCK_CATEGORIES = [
   { id: 'cat-mb', name: 'Motherboards', colour: '#f39c12', icon: 'mb-1' },
   { id: 'cat-psu', name: 'Power Supply', colour: '#1abc9c', icon: 'psu-1' },
   { id: 'cat-cooling', name: 'Cooling & Cases', colour: '#34495e', icon: 'cool-1' },
+  // ── Restaurant menu ────────────────────────────────────────────
+  { id: 'cat-food', name: 'Food', colour: '#f97316', icon: 'food' },
+  { id: 'cat-snack', name: 'Snack', colour: '#f59e0b', icon: 'snack' },
+  { id: 'cat-hot-drink', name: 'Hot Drinks', colour: '#ef4444', icon: 'hot-drink' },
+  { id: 'cat-cold-drink', name: 'Cold Drinks', colour: '#06b6d4', icon: 'cold-drink' },
+  { id: 'cat-dessert', name: 'Dessert', colour: '#ec4899', icon: 'dots-2' },
 ];
 
 // ── Store, terminal, money ────────────────────────────────────────

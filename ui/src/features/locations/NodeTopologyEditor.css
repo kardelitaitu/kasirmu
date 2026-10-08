@@ -288,8 +288,10 @@
   position: absolute;
   inset: 0;
   border-radius: inherit;
+  /* Same debris as WorkspaceHome.css: nothing sets --mouse-x/-y anywhere in the
+     tree (only a TEST names them), so this read 50%/50% always. */
   background: radial-gradient(
-    120px circle at var(--mouse-x, 50%) var(--mouse-y, 50%),
+    120px circle at 50% 50%,
     color-mix(in srgb, var(--color-accent) 10%, transparent) 0%,
     transparent 70%
   );
@@ -415,88 +417,14 @@
   border-radius: var(--radius-full);
 }
 
-/* Template sub-widgets */
-.rack-template-pop {
-  display: flex;
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-3);
-}
-
-.rack-template-input {
-  flex: 1;
-  min-width: 0;
-  padding: var(--space-1) var(--space-2);
-  font-size: var(--text-sm);
-  font-family: inherit;
-  background: var(--color-bg-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  color: var(--color-fg);
-}
-
-.rack-template-input:focus {
-  outline: 2px solid var(--color-border-focus);
-  outline-offset: -1px;
-}
-
-.rack-template-save {
-  flex-shrink: 0;
-  padding: var(--space-1) var(--space-3);
-  font-size: var(--text-sm);
-  font-weight: var(--font-weight-semibold);
-  background: var(--color-accent);
-  color: var(--color-accent-fg);
-  border: none;
-  border-radius: var(--radius-md);
-  cursor: pointer;
-}
-
-.rack-template-list {
-  padding: var(--space-2) var(--space-3);
-}
-
-.rack-template-items {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-}
-
-.rack-template-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: var(--space-1) var(--space-2);
-  border-radius: var(--radius-md);
-}
-
-.rack-template-item:hover {
-  background: var(--color-bg-hover);
-}
-
-.rack-template-name {
-  font-size: var(--text-sm);
-  color: var(--color-fg);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.rack-template-actions {
-  display: flex;
-  gap: var(--space-2);
-}
-
-.rack-template-actions button {
-  font-size: var(--text-xs);
-  color: var(--color-accent);
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 0;
-}
+/* Template sub-widgets.
+   These rules live in the .rack-share-row block further down this sheet, where
+   they carry backgrounds, borders and radii the copies here did not. This block
+   was a partial duplicate: its declarations either repeated the later values or
+   were shadowed by them, and the few that had no counterpart (font-family,
+   flex-shrink, font-weight, outline-offset, border-radius, background) were
+   folded into the later rules first. Removed 2026-10-07 — no declaration that
+   was reachable before is unreachable now. */
 
 @media (prefers-reduced-motion: reduce) {
   .rack-panel { animation: none; }
@@ -661,6 +589,14 @@
   flex: 1;
   min-width: 0;
   padding: var(--space-1) var(--space-2);
+  font-family: inherit;
+  /* Kept alongside background-color below: the ORIGINAL sheet had a
+     `background:` shorthand here and a `background-color:` longhand in the
+     later block. Whether the longhand fully replaces the shorthand's colour was
+     not verified on device (style injection is blocked in the app WebView), so
+     the shorthand is preserved rather than reasoned away. If a later audit
+     confirms the longhand wins, delete this line — nothing else depends on it. */
+  background: var(--color-bg-surface);
   background-color: var(--color-bg);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
@@ -670,11 +606,18 @@
 
 .rack-template-input:focus {
   outline: none;
+  outline-offset: -1px;
   border-color: var(--color-accent);
 }
 
 .rack-template-save {
+  flex-shrink: 0;
   padding: var(--space-1) var(--space-3);
+  font-weight: var(--font-weight-semibold);
+  /* Same note as .rack-template-input: the original pair was
+     `background: var(--color-accent)` here and a `background-color:` longhand
+     later. Both are kept. */
+  background: var(--color-accent);
   background-color: var(--color-accent);
   border: 1px solid var(--color-accent);
   border-radius: var(--radius-sm);
@@ -712,10 +655,19 @@
   justify-content: space-between;
   gap: var(--space-2);
   padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-md);
   font-size: var(--text-xs);
 }
 
+/* Kept from the removed early block: this rule had no counterpart in the merged
+   set, so deleting it with the rest would have dropped the row hover tint. */
+.rack-template-item:hover {
+  background: var(--color-bg-hover);
+}
+
 .rack-template-name {
+  font-size: var(--text-sm);
+  color: var(--color-fg);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -729,7 +681,7 @@
 
 .rack-template-actions button {
   padding: var(--space-0) var(--space-2);
-  background-color: transparent;
+  background: none;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
   color: var(--color-fg);
@@ -3144,4 +3096,97 @@
   stroke: var(--color-accent);
   stroke-width: 1;
   pointer-events: none;
+}
+
+/* ── Gaps in the node-card families ───────────────────────────────────
+   Eight classes rendered by topologyNodeCard.tsx whose siblings above ARE
+   defined but which themselves never got a rule — `.node-action-btn`,
+   `.node-subtitle`, `.node-stock-wire-hint`, `.node-port-column` and
+   `.node-validation-note-dismiss` all exist; only these variants were
+   missing. Each is written to match the sibling it extends. */
+
+/* Properties / Rename: like --disconnect, these are plain action buttons that
+   share the base chrome, so no override is needed beyond the base — declared
+   here so the name resolves and a later restyle has an obvious hook. */
+.node-action-btn--properties,
+.node-action-btn--rename {
+  /* Intentionally inherits .node-action-btn. */
+}
+
+/* The description half of the subtitle line (siblings .node-subtitle-type and
+   .node-subtitle-sep are styled above). */
+.node-subtitle-desc {
+  color: var(--color-fg-muted);
+}
+
+/* The real <input type="checkbox"> behind the config toggle: visually hidden by
+   the shared .sr-only utility, so only the parts .sr-only cannot say are set. */
+.node-config-toggle-input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Body text of the stock-wire hint (its container and icon are styled above). */
+.node-stock-wire-hint-text {
+  min-width: 0;
+  line-height: var(--leading-tight);
+}
+
+/* Left/right halves of the port footer. .node-port-column already sets the
+   column layout and flex:1 1 0; these only name the side so the port markers
+   can be aligned independently. */
+.node-port-column--left {
+  align-items: flex-start;
+}
+
+.node-port-column--right {
+  align-items: flex-end;
+}
+
+/* ── Four more family gaps ────────────────────────────────────────────
+   Same shape as the block above: the family exists, one variant was never
+   written. The bare .node-validation-note is the base its -chip above sits on. */
+.node-validation-note {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  cursor: help;
+}
+
+/* "Later" — the dismiss half of the migration dialog's action row. The row and
+   its generic button rules are above; this names the quiet variant so it does
+   not read as the primary action. */
+.topology-migration-later {
+  color: var(--color-fg-muted);
+}
+
+.topology-migration-later:hover {
+  color: var(--color-fg);
+}
+
+/* One message inside the validation banner. The banner is a flex column, so
+   each item is its own line without needing a separator. */
+.topology-validation-banner-item {
+  display: block;
+}
+
+/* The mono hint line under an inspector field. */
+.inspector-hint {
+  font-size: var(--text-xs);
+  color: var(--color-fg-muted);
+  line-height: var(--leading-tight);
+}
+
+/* The workspace-purpose picker in the inspector drawer. The drawer imports no
+   sheet of its own — it renders through this one, whose .inspector-select above
+   is the same control in a different field — so this matches it exactly rather
+   than defining a second select style. */
+.topology-purpose-select {
+  padding: var(--space-2);
+  background-color: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-fg);
+  font-size: var(--text-sm);
 }

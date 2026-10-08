@@ -9,7 +9,7 @@
 //! never commit — they exist so the queue row is written in the SAME transaction
 //! as the mutation it describes, which is what makes the outbox crash-safe.
 
-use rusqlite::params;
+use rusqlite::{OptionalExtension, params};
 
 use crate::db::Store;
 use crate::error::CoreError;
@@ -285,11 +285,25 @@ impl Store<'_> {
         sale: &crate::Sale,
         currency: &str,
     ) -> Result<(), CoreError> {
-        let tenant_id: String = tx.query_row(
-            "SELECT COALESCE(tenant_id, 'default') FROM sales WHERE id = ?1",
+        let (tenant_id, store_id): (String, Option<String>) = tx.query_row(
+            "SELECT COALESCE(tenant_id, 'default'), store_id FROM sales WHERE id = ?1",
             params![sale.id],
-            |row| row.get(0),
+            |row| Ok((row.get(0)?, row.get(1)?)),
         )?;
+        let location_id = store_id.or_else(|| {
+            tx.query_row(
+                "SELECT id FROM locations WHERE is_primary = 1 LIMIT 1",
+                [],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()
+            .ok()
+            .flatten()
+        });
+        let market_profile = location_id
+            .as_deref()
+            .and_then(|loc_id| crate::regional::load_active_market_profile(tx, loc_id).ok());
+
         let line_items: Vec<serde_json::Value> = sale
             .lines
             .iter()
@@ -303,14 +317,18 @@ impl Store<'_> {
                 })
             })
             .collect();
-        let payload = serde_json::json!({
+        let mut payload_map = serde_json::json!({
             "sale_id": sale.id,
             "total_minor": sale.total.minor_units,
             "currency": currency,
             "customer_id": sale.customer_id,
             "line_items": line_items,
-        })
-        .to_string();
+        });
+        if let Some(profile) = market_profile {
+            payload_map["market_profile"] =
+                serde_json::to_value(profile).unwrap_or(serde_json::Value::Null);
+        }
+        let payload = payload_map.to_string();
         Self::enqueue_offline_in_tx(
             tx,
             "complete_sale",

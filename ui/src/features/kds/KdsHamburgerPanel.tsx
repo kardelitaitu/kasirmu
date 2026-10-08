@@ -6,6 +6,9 @@ import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { useSwipe } from '@/hooks/useSwipe';
 import type { DisplayDensity, KdsSettings } from '@/features/kds/kdsSettingsModel';
 import { RED_MAX_MIN, YELLOW_MAX_MIN } from '@/features/kds/kdsThresholdMinutes';
+// The density bounds live in a module so the copies that used to sit in
+// KdsSettingsConversions.test.ts can import them instead of restating them.
+import { isDensityAtMax, isDensityAtMin, stepDensity } from '@/features/kds/kdsDensity';
 import { useKdsCardColors } from '@/features/kds/KdsCardColorsContext';
 import { KdsRoutingRulesSection } from '@/features/kds/components/KdsRoutingRulesEditor';
 import { requiredLocalized } from '@/components';
@@ -312,9 +315,9 @@ export function KdsHamburgerPanel({
                 <div className="kds-setting-row">
                   <span className="kds-setting-label"><Localized id="kds-settings-density">Column</Localized></span>
                   <div className="kds-zoom-row">
-                    <button className="kds-btn kds-btn--muted kds-zoom-btn" onClick={() => onChangeDensity(Math.max(1, settings.density - 1))} disabled={settings.density <= 1} aria-label="Decrease columns" data-testid="kds-settings-density-out">−</button>
+                    <button className="kds-btn kds-btn--muted kds-zoom-btn" onClick={() => onChangeDensity(stepDensity(settings.density, 'down'))} disabled={isDensityAtMin(settings.density)} aria-label="Decrease columns" data-testid="kds-settings-density-out">−</button>
                     <span className="kds-zoom-value" data-testid="kds-settings-density-value">{settings.density}</span>
-                    <button className="kds-btn kds-btn--muted kds-zoom-btn" onClick={() => onChangeDensity(Math.min(5, settings.density + 1))} disabled={settings.density >= 5} aria-label="Increase columns" data-testid="kds-settings-density-in">+</button>
+                    <button className="kds-btn kds-btn--muted kds-zoom-btn" onClick={() => onChangeDensity(stepDensity(settings.density, 'up'))} disabled={isDensityAtMax(settings.density)} aria-label="Increase columns" data-testid="kds-settings-density-in">+</button>
                   </div>
                 </div>
 
@@ -490,7 +493,16 @@ export function KdsHamburgerPanel({
                     value={settings.yellowThresholdMin}
                     onChange={onChangeYellowThreshold}
                     onDragValue={(v) => setDragYellow(v || null)}
-                    color="var(--kds-warning, #fd9426)"
+                    // Was `var(--kds-warning, #fd9426)` — a token that is defined
+                    // NOWHERE, so the hardcoded fallback always rendered. Two
+                    // problems in one: the dead reference, and #fd9426 itself, which
+                    // measures 2.04:1 on the light background (the same value the
+                    // KDS family's only contrast failure was fixed from, 2026-10-07).
+                    // --color-warning is what the sibling value label
+                    // (.kds-slider-value--warning, KdsScreen.css:875) already uses, so
+                    // the number beside the track and the track's own colour now agree
+                    // by construction rather than by two literals happening to match.
+                    color="var(--color-warning)"
                     ariaLabel={requiredLocalized(l10n, 'kds-settings-yellow-aria')}
                     ariaValueText={l10n.getString('kds-slider-value-min', { min: settings.yellowThresholdMin })}
                     dataTestId="kds-settings-yellow-slider"
@@ -508,7 +520,13 @@ export function KdsHamburgerPanel({
                     value={settings.redThresholdMin}
                     onChange={onChangeRedThreshold}
                     onDragValue={(v) => setDragRed(v || null)}
-                    color="var(--kds-danger, #fc3d39)"
+                    // Same dead reference as the yellow slider above, same fix, and
+                    // for the same reason: --color-danger is what
+                    // .kds-slider-value--danger (KdsScreen.css:876) uses. #fc3d39
+                    // happened to be the correct value already, which is exactly why
+                    // the dead token went unnoticed for so long — the fallback looked
+                    // right. The reference was still unreachable.
+                    color="var(--color-danger)"
                     ariaLabel={requiredLocalized(l10n, 'kds-settings-red-aria')}
                     ariaValueText={l10n.getString('kds-slider-value-min', { min: settings.redThresholdMin })}
                     dataTestId="kds-settings-red-slider"

@@ -80,9 +80,18 @@ viewport query can see.
 aspect ratio including extreme portrait, and the tablet window resizes on rotation. Any strategy
 that hard-codes an orientation assumption is wrong on hardware the product already ships.
 
-**7. There is no gate.** No walker suite in `docs/audits/frontend/css-verification.md` asserts
+**7. There is no gate.** No walker suite in `docs/records/audits/frontend/css-verification.md` asserts
 anything about orientation or adaptiveness, and no CSS linter exists in this repo at all.
 A rule added as prose is a rule that will not survive the next feature.
+
+> **Closed 2026-10-07.** Half of this was already fixed when the ADR was accepted and the rest
+> followed: `ui/src/__tests__/orientationAdaptiveWalker.test.ts` is the SIXTH suite in that family
+> and enforces exactly this — an `orientation` literal outside the shell sheets
+> (`ui/src/app/AppLayout.css`, `ui/src/app/tablet/tablet.css`) fails, and a declared `layout` no call
+> site consumes fails. It runs green (6/6) and carries a planted-violation case, so it is known to be
+> able to go red rather than merely red today. **The second half of the claim still holds:** there is
+> still no CSS linter in this repo, so a rule that is not one of the graded shapes is still prose.
+> See `docs/records/audits/frontend/css-verification.md` for the family and its stated limits.
 
 ## Decision
 
@@ -115,7 +124,7 @@ place that reads it. A structural orientation need becomes data, reviewable in a
 than a `useOrientation` call buried in a component.
 
 **T4.** Enforcement is a **walker suite** in the existing five-suite family
-(`docs/audits/frontend/css-verification.md`), because that is the only thing in this repo that reads
+(`docs/records/audits/frontend/css-verification.md`), because that is the only thing in this repo that reads
 `.css` at all. Two assertions: (a) a stylesheet that declares an orientation branch outside the
 shell, or a second copy of the landscape literal, fails; (b) a page registration whose declared
 layout is not consumed by a call site fails. It prints its denominator, like its siblings.
@@ -231,7 +240,7 @@ grep -rln "@media[^{]*orientation" ui/src --include='*.css' | wc -l
 grep -n "--bp-" ui/src/theme/tokens.css
 
 # The walker family; the orientation suite (T4) is the sixth member and DOES assert orientation
-sed -n '13,20p' docs/audits/frontend/css-verification.md
+sed -n '13,20p' docs/records/audits/frontend/css-verification.md
 ```
 
 **Measured 2026-09-21** (replaces the briefed 97/115 figure, which no command reproduced):

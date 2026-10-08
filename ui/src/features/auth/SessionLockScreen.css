@@ -324,24 +324,11 @@
   height: clamp(14px, 2.5vw, 18px);
 }
 
-.session-lock-rate-limit {
-  display: inline;
-  font-weight: var(--font-weight-semibold);
-  color: var(--color-warning);
-}
-
-/* Pulse only for users who allow motion — the warning text itself stays
-   visible either way, so reduced-motion users just see it statically. */
-@media (prefers-reduced-motion: no-preference) {
-  .session-lock-rate-limit {
-    animation: session-lock-rate-pulse var(--duration-1000) var(--ease-in-out) infinite;
-  }
-}
-
-@keyframes session-lock-rate-pulse {
-  0%, 100% { opacity: 1; }
-  50%      { opacity: 0.6; }
-}
+/* .session-lock-rate-limit and its pulse keyframes were removed 2026-10-07
+   (BASELINE_UNCITED 15 -> 14). b47727174 replaced the inline rate-limit span with
+   the .session-lock-countdown block below and deleted the markup, leaving the CSS
+   behind: git log -S "session-lock-rate-limit" on this screen's TSX shows the
+   removal and no later re-add. */
 
 /* U1: Countdown timer — visible lockout indicator */
 .session-lock-countdown {
@@ -571,78 +558,4 @@
   pointer-events: none;
 }
 
-.session-lock-connection-group {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  pointer-events: auto;
-}
 
-/* ── Connection status pills (matches ConnectionStatus.css) ───── */
-
-.connection-status {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-1) var(--space-2);
-  background: var(--color-bg-surface);
-  border: 1px solid var(--color-border-strong);
-  border-radius: var(--radius-lg);
-  font-size: var(--text-sm);
-  color: var(--color-fg);
-  opacity: 0.7;
-  appearance: none;
-  transition: all var(--duration-200);
-  user-select: none;
-}
-
-.connection-status:hover {
-  opacity: 1;
-  background: var(--color-bg-hover, var(--color-bg-surface));
-  border-color: var(--color-border-hover);
-}
-
-.status-indicator {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-
-.status-indicator.checking {
-  background-color: var(--color-warning);
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  .status-indicator.checking {
-    animation: cs-pulse var(--duration-1500) infinite var(--ease-in-out);
-  }
-}
-
-.status-indicator.online {
-  background-color: var(--color-success);
-  box-shadow: var(--shadow-glow-success);
-}
-
-.status-indicator.offline {
-  background-color: var(--color-danger);
-  box-shadow: var(--shadow-glow-danger);
-}
-
-.connection-label {
-  font-weight: 500;
-  letter-spacing: 0.5px;
-  text-transform: uppercase;
-}
-
-.connection-latency {
-  font-family: var(--font-mono);
-  color: var(--color-fg-secondary);
-  margin-left: var(--space-1);
-}
-
-@keyframes cs-pulse {
-  0% { opacity: 0.5; }
-  50% { opacity: 1; }
-  100% { opacity: 0.5; }
-}

@@ -77,6 +77,12 @@ pub struct PgDaemonStatus {
     /// pending_count` and `HealthResponse::sync_queue_depth` already avoid with
     /// the `-1` sentinel.
     pub pending_count: i64,
+    /// Number of dead-lettered remote items in `sync_remote_failures`, or
+    /// [`PENDING_COUNT_UNKNOWN`] when the count could not be read.
+    ///
+    /// `-1` means unknown, NOT zero dead letters. A manager badge that reads
+    /// unknown as "0 dead letters" would hide failures from the operator.
+    pub dead_letter_count: i64,
 }
 
 impl HasRunningFlag for PgDaemonStatus {
@@ -262,9 +268,13 @@ impl PgSyncDaemon {
                 // a failed read would skip the push and report a clean cycle while
                 // the durable backlog kept growing — indistinguishable from a
                 // healthy idle terminal. Propagate so it reaches `read_error`.
-                let pending = store.list_pending_offline().map_err(|e| {
+                let mut pending = store.list_pending_offline().map_err(|e| {
                     format!("could not read the offline queue; refusing to report an empty push list: {e}")
                 })?;
+                kasirmu_core::offline::order_for_push(&mut pending);
+                if pending.len() > crate::daemon::DEFAULT_MAX_OUTBOX_BATCH_ITEMS {
+                    pending.truncate(crate::daemon::DEFAULT_MAX_OUTBOX_BATCH_ITEMS);
+                }
                 // SYNC-01 parity: the durable pull anchor (since + composite
                 // cursor) survives restarts and advances only after a page
                 // applied — never re-derive it from the local queue's synced
@@ -657,11 +667,41 @@ impl PgSyncDaemon {
             }
         };
 
+        // Get dead-letter count. Same sentinel logic as pending_count: -1 means
+        // the read failed, not that there are no dead letters. A manager badge
+        // that reads -1 as 0 would silently hide quarantined items from the
+        // operator on every tick where the read fails.
+        let db_clone = db.clone();
+        let dead_letter_count = match tokio::task::spawn_blocking(move || {
+            let conn = db_clone.blocking_lock();
+            let store = Store::new(&conn);
+            store.count_dead_lettered_remote_failures()
+        })
+        .await
+        {
+            Ok(Ok(count)) => count,
+            Ok(Err(e)) => {
+                tracing::warn!(
+                    error = %e,
+                    "pg sync status: could not read dead-letter count; reporting unknown"
+                );
+                PENDING_COUNT_UNKNOWN
+            }
+            Err(e) => {
+                tracing::warn!(
+                    error = %e,
+                    "pg sync status: dead-letter count read panicked; reporting unknown"
+                );
+                PENDING_COUNT_UNKNOWN
+            }
+        };
+
         // Update daemon status
         let mut s = daemon_status.write().await;
         s.last_sync_at =
             Some(chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true));
         s.pending_count = pending_count;
+        s.dead_letter_count = dead_letter_count;
         s.last_pushed = pushed;
         s.last_pulled = pulled;
         // If the read phase panicked, surface that error in the status.

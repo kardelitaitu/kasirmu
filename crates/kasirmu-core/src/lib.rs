@@ -293,6 +293,7 @@ pub use cart::{Cart, CartError, CartId, CartLine};
 pub use cash_payout::CashPayout;
 pub use category::Category;
 pub use customer::Customer;
+pub use db::audit::{AUDIT_SHIP_ACTION, AuditChainVerificationResult, AuditShipPayload};
 pub use db::facade::ReportingFacade;
 pub use db::plans::TenantPlan;
 pub use db::reports::{
@@ -330,6 +331,7 @@ pub use location_profile::LocationProfile;
 /// Deprecated compatibility alias for the pre-Phase 1 site-unit name.
 #[deprecated(note = "use LocationProfile; Store is now Location")]
 pub type StoreProfile = LocationProfile;
+pub use db::fiscal::{DocumentKind, DocumentNumberSequence, FiscalScheme, ResetPeriod};
 pub use location_resolver::{
     get_default_location_id, resolve_all_locations, resolve_location_chain_for_sku,
     resolve_primary_location,
@@ -349,7 +351,10 @@ pub use purchase_order::{PurchaseOrder, PurchaseOrderLine, PurchaseOrderWithLine
 pub use rate_limiter::LoginRateLimiter;
 pub use recipe::RecipeItem;
 pub use refund::{Refund, RefundLine};
-pub use regional::{ConfigScope, RegionalConfig, RegionalLayer, RegionalValue};
+pub use regional::{
+    ActiveMarketProfile, ConfigScope, RegionalConfig, RegionalLayer, RegionalValue,
+    load_active_market_profile, verify_regional_mutation_allowed,
+};
 pub use sale::{Sale, SaleLine};
 pub use sale_deduction::{
     CompleteSaleResult, LocationAllocation, LocationStock, PartialStockResult, ResolvedShortfall,

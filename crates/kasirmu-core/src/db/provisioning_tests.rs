@@ -303,7 +303,79 @@ fn args_for(terminal_id: &str) -> ProvisionDeviceArgs {
         mode: ProvisioningMode::Local,
         tenant_id: None,
         device_credential_id: None,
+        tax_preset: None,
+        seed_sample_products: None,
     }
+}
+
+#[test]
+fn provisioning_with_tax_preset_ppn11_and_sample_products_seeds_starter_catalog() {
+    let conn = fresh();
+    let mut args = args_for("dev-starter-01");
+    args.tax_preset = Some("ppn11".to_owned());
+    args.seed_sample_products = Some(true);
+
+    let out = provision_device(&conn, &args).unwrap();
+    assert!(out.created);
+
+    // Verify tax_rates contains default PPN 11%
+    let (tax_name, tax_bps, is_def): (String, i64, i64) = conn
+        .query_row(
+            "SELECT name, rate_bps, is_default FROM tax_rates WHERE is_default = 1",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        )
+        .unwrap();
+    assert_eq!(tax_name, "PPN 11%");
+    assert_eq!(tax_bps, 1100);
+    assert_eq!(is_def, 1);
+
+    // Verify exactly 5 sample products seeded
+    let count: i64 = conn
+        .query_row("SELECT count(*) FROM products", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(count, 5, "must seed exactly 5 starter products");
+
+    // Verify inventory rows seeded with positive stock for each product
+    let inv_count: i64 = conn
+        .query_row("SELECT count(*) FROM inventory WHERE qty > 0", [], |r| {
+            r.get(0)
+        })
+        .unwrap();
+    assert_eq!(inv_count, 5, "all 5 products must have initial inventory");
+}
+
+#[test]
+fn provisioning_with_tax_preset_ppn11_service5() {
+    let conn = fresh();
+    let mut args = args_for("dev-starter-02");
+    args.tax_preset = Some("ppn11_service5".to_owned());
+
+    provision_device(&conn, &args).unwrap();
+
+    let count: i64 = conn
+        .query_row("SELECT count(*) FROM tax_rates", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(count, 2, "must seed PPN 11% and Service Charge 5%");
+}
+
+#[test]
+fn provisioning_with_tax_preset_tax_free() {
+    let conn = fresh();
+    let mut args = args_for("dev-starter-03");
+    args.tax_preset = Some("tax_free".to_owned());
+
+    provision_device(&conn, &args).unwrap();
+
+    let (tax_name, tax_bps): (String, i64) = conn
+        .query_row(
+            "SELECT name, rate_bps FROM tax_rates WHERE is_default = 1",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!(tax_name, "Non-PKP (0%)");
+    assert_eq!(tax_bps, 0);
 }
 
 #[test]
@@ -375,6 +447,94 @@ fn provisioning_a_terminal_end_to_end_leaves_a_working_terminal() {
     assert_eq!(
         crate::Settings::get_default_currency(&conn).unwrap(),
         Some("IDR".to_string())
+    );
+}
+
+/// `provision_device` must leave the install LICENSED, not merely configured.
+///
+/// ADR #56 §2.4 makes `local` a supported permanent Free tier, and §2.6 moved the
+/// `BOOTSTRAP_FREE` seed out of the schema and into this function's transaction.
+/// It wrote the location and the workspaces but never the subscription, so a
+/// provisioned terminal reached the capabilities read with no entitlement row —
+/// that read fails closed, projects `state: 'unavailable'`, and `unavailable` is
+/// not in `WorkspaceHome.toolLock`'s open set (`active`/`grace`/`loading`), so the
+/// FIRST gate rejects every tool before the tier check is reached. The visible
+/// result was a home screen of 17 locked cards reading "Subscription inactive".
+///
+/// The row is therefore part of "a working terminal", the standard the test above
+/// asserts §2.3 requires. Pinning it here keeps the write at its SOURCE, so the
+/// startup reconcile that repairs installs provisioned before it existed stays a
+/// repair rather than becoming the only writer.
+#[test]
+fn provisioning_writes_the_bootstrap_subscription_the_local_tier_needs() {
+    let conn = fresh();
+    provision_device(&conn, &args_for("dev-001")).unwrap();
+
+    // tenant_id defaults to "default" when args carry none, which is the tenant
+    // the capabilities read and the reconcile's own default both use.
+    let (tier, status, signature): (String, String, String) = conn
+        .query_row(
+            "SELECT tier_key, status, signature FROM tenant_subscription WHERE tenant_id = 'default'",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        )
+        .expect("a provisioned local terminal must have its bootstrap subscription row");
+
+    // Free and ACTIVE: `active` is what the fail-closed validity gate admits, and
+    // Free is the tier §2.4 says a `local` terminal permanently holds.
+    assert_eq!(tier, "free");
+    assert_eq!(status, "active");
+    // The sentinel the schema used to seed, kept so the row is recognisable as the
+    // bootstrap rather than a server grant — which is why the reconcile's guard 2
+    // refuses to touch a PRESENT row.
+    assert_eq!(signature, "BOOTSTRAP_FREE");
+}
+
+/// `provision_device` writes its location to the GLOBAL db and leaves the store db alone.
+///
+/// This is the fact that makes the read-repair in
+/// `kasirmu-bridge::workspaces::list_workspaces` fail in production. The repair copies
+/// global `workspace_instances` rows into `store-<id>.sqlite`, but that table's
+/// `location_id` is `REFERENCES locations(id)`
+/// (`20260813_init.sql:986-988`, after `20260906_rename_store_to_location.sql:14` renamed
+/// the target table) — and nothing in production ever writes a `locations` row into a
+/// store db. `create_location_profile` has no caller outside tests.
+///
+/// So when the repair inserts into the store db, its foreign key has no target, SQLite
+/// raises `FOREIGN KEY constraint failed`, and the repair's `let _ =` discards it. The
+/// rows are returned to the caller and never cached. Asserted here, at the provisioning
+/// end, so the premise is pinned where it is created rather than only where it bites.
+#[test]
+fn provisioning_writes_its_location_to_the_global_db_not_a_store_db() {
+    // `fresh()` is the global identity database — the one the bridge hands to
+    // `provision_device` (`kasirmu-bridge/src/setup.rs:370`, `ctx.lock_global()`).
+    let conn = fresh();
+    let out = provision_device(&conn, &args_for("dev-001")).unwrap();
+
+    // The location exists HERE, with the id the result names.
+    let name: String = conn
+        .query_row(
+            "SELECT name FROM locations WHERE id = ?1",
+            rusqlite::params![out.location_id],
+            |r| r.get(0),
+        )
+        .expect("provisioning writes the location into this db");
+    assert_eq!(name, "Sunset Cafe");
+
+    // And this db is the only one in play: `provision_device` takes one connection and
+    // opens no store file, which is why a store db for the same location starts empty.
+    // The repair's FK therefore has no target unless something else provisions it —
+    // and per the module comment above, nothing in production does.
+    let instances: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM workspace_instances WHERE location_id = ?1",
+            rusqlite::params![out.location_id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert!(
+        instances > 0,
+        "provisioning writes the workspaces HERE too — which is the split-brain: the"
     );
 }
 
@@ -502,6 +662,135 @@ fn a_linked_provision_requires_its_tenant_and_credential() {
     assert_eq!(out.record.mode, ProvisioningMode::Linked);
     assert_eq!(out.record.tenant_id.as_deref(), Some("tenant-abc"));
     assert_eq!(out.record.device_id.as_deref(), Some("cred-1"));
+}
+
+/// A linked provision must write NO subscription row, and today it writes one.
+///
+/// The invariant, first, because that is what this asserts: a linked install's
+/// entitlement is the server's grant, so `provision_device` must leave
+/// `tenant_subscription` empty. It currently does not. Step 5b keys the row on
+/// `args.tenant_id`, so a linked install writes `tenant-abc`; but the
+/// capabilities read looks for
+/// `'default'` alone (`entitlements.rs`: "no tenant_subscription row for
+/// 'default' — failing closed"), and so does the reconcile's existence check
+/// (`migrations.rs`). The two never meet, so a linked terminal that just wrote
+/// its own subscription row still reads `Ok(None)`, fails closed, projects
+/// `state: 'unavailable'`, and locks every tool.
+///
+/// The deeper defect is not the tenant key but the MISSING GUARD. The write
+/// does not ask `args.mode` at all, while the reconcile for the same row does:
+/// `migrations.rs` writes only when `EXISTS(... provisioning.mode = 'local')`,
+/// and its guard-1 doc explains why a linked install must be left alone —
+/// "A `linked` install's entitlement is the server's grant, and a missing row
+/// there is an anomaly that must keep failing closed — writing Free would also
+/// risk pre-empting the real grant." Step 5b's own comment invokes the same
+/// premise ("`local` is a supported permanent Free tier") and then applies it
+/// in every mode. So a linked install gets a local `BOOTSTRAP_FREE` grant where
+/// the design says the server's grant belongs, under a tenant no tablet reader
+/// consults.
+///
+/// Reachable through the shipping first-run flow: the setup wizard's
+/// provisioning screen initialises `provisionMode` to `'linked'` and sends the
+/// account's `tenantId`. The fix is one guard — write only for `ProvisioningMode::Local`,
+/// mirroring the reconcile — which also settles the tenant question, because a
+/// `local` install's tenant is `None` and therefore `"default"`.
+///
+/// `#[ignore]`d on purpose, in this repo's characterisation idiom (see
+/// `products_stock_adjust_tests.rs`: a test ignored "as a CHARACTERISATION of
+/// the loss", later un-ignored and inverted when its fix landed). It asserts
+/// the INVARIANT the pending Step 5b breaks rather than the row it currently
+/// writes, so it needs no edit when the guard lands — only the `#[ignore]`
+/// comes off. Ignored rather than live because it fails today, and a red build
+/// is no gift to whoever is editing `provisioning.rs`.
+///
+/// The invariant is the reconcile's, not this test's invention:
+/// `migrations_tests.rs`'s `reconcile_leaves_a_linked_install_to_the_server_grant`
+/// asserts it for the other entry point — "a linked install's entitlement is the
+/// server's, and a missing grant must keep failing closed". The two run through
+/// different functions, so neither test covers the other; this closes that.
+///
+/// Full analysis, and the one-line guard that settles it:
+/// `todo-tablet-provisioned-workspaces-invisible-to-picker.md` (rounds 17-21).
+#[test]
+fn a_linked_provision_leaves_no_bootstrap_subscription_row() {
+    let conn = fresh();
+    let mut linked = args_for("dev-linked");
+    linked.mode = ProvisioningMode::Linked;
+    linked.tenant_id = Some("tenant-abc".to_owned());
+    linked.device_credential_id = Some("cred-1".to_owned());
+    provision_device(&conn, &linked).unwrap();
+
+    // Step 5b currently writes one, under the linked tenant. The reconcile
+    // refuses to write one at all for the same install — it writes only when
+    // `EXISTS(... provisioning.mode = 'local')` — so the two entry points
+    // disagree, and the design is the reconcile's: a linked install's
+    // entitlement is the server's grant, and writing Free risks pre-empting it.
+    let rows: i64 = conn
+        .query_row("SELECT COUNT(*) FROM tenant_subscription", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(
+        rows, 0,
+        "a linked install's entitlement is the server's, and a missing grant must keep \
+         failing closed — provision_device must not write a local BOOTSTRAP_FREE row"
+    );
+}
+
+/// What a LINKED install's entitlement reads as once Step 5b stopped writing.
+///
+/// Pinned as a CHARACTERISATION of the state, not as an endorsement of it.
+/// Step 5b is now `Local`-only (`c22fb6421`), and every other writer is gated
+/// the same way — `migrations::ensure_bootstrap_subscription` returns early
+/// unless `provisioning.mode = 'local'`, and the shell's startup reconcile only
+/// copies a row that already exists, so it writes nothing against an empty
+/// table. A linked provision therefore ends with **no** `tenant_subscription`
+/// row, `entitlements.rs`'s provisioning-tenant fallback finds nothing either,
+/// and the install reads `Unavailable` — which is outside
+/// `WorkspaceHome.toolLock`'s open set (`active`/`grace`/`loading`), so every
+/// tool locks.
+///
+/// That IS the design's answer: a linked install's entitlement is the server's
+/// grant, and a missing grant must fail closed. It is reachable in practice
+/// only where the licence gate did not run first — which a **debug** build
+/// allows, because `get_license_status` reports `Valid`/`free` with no payload
+/// and so satisfies `bootAllowed` without any activation. A release build
+/// routes through `LicenseActivationScreen` first, and activation writes tenant
+/// `default` via `INSERT OR REPLACE` (`license.rs:177`), so the row exists by
+/// the time provisioning runs.
+///
+/// Recorded because nothing pinned it: the only linked-side test was the
+/// negative one above. **If ownership rules that the linked flow must end at a
+/// usable terminal, this is the test to invert** — do not delete it, and do not
+/// "fix" it by widening Step 5b, which would re-break
+/// `a_linked_provision_leaves_no_bootstrap_subscription_row`.
+#[test]
+fn a_linked_provision_with_no_server_grant_reads_unavailable() {
+    let conn = fresh();
+    let mut linked = args_for("dev-linked");
+    linked.mode = ProvisioningMode::Linked;
+    linked.tenant_id = Some("tenant-abc".to_owned());
+    linked.device_credential_id = Some("cred-1".to_owned());
+    provision_device(&conn, &linked).unwrap();
+
+    let rows: i64 = conn
+        .query_row("SELECT COUNT(*) FROM tenant_subscription", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(rows, 0, "a linked provision writes no subscription row");
+
+    let s = store(&conn);
+    let ent = crate::entitlements::build_entitlements(
+        &s,
+        crate::availability::UsageCounts::default(),
+        false,
+    );
+    assert!(
+        !ent.loaded,
+        "no row exists to load, so `loaded` must stay false"
+    );
+    assert_eq!(
+        ent.state,
+        crate::subscription::SubscriptionLifecycleState::Unavailable
+    );
+    assert_eq!(ent.tier, crate::SubscriptionTier::Free);
 }
 
 #[test]

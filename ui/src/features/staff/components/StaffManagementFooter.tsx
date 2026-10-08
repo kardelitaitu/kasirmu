@@ -13,6 +13,8 @@
 import { useContext } from 'react';
 import { Localized, useLocalization } from '@fluent/react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useVersionStatus } from '@/hooks/useVersionStatus';
+import { formatDisplayVersion } from '@/build-id';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { BrandContext } from '@/contexts/BrandContext';
 
@@ -48,6 +50,8 @@ export function StaffManagementFooter({
 }: StaffManagementFooterProps) {
   const { l10n } = useLocalization();
   const { activeInstance, orgLabel } = useWorkspace();
+  // Live version + stamped commit, not the literal this used to render.
+  const { currentVersion, buildId } = useVersionStatus();
   const brand = useContext(BrandContext);
   const { session } = useAuth();
   const locale = [...l10n.bundles][0]?.locales[0] ?? 'en-US';
@@ -168,7 +172,7 @@ export function StaffManagementFooter({
           </>
         )}
         <span className="staff-mgmt-footer-version" data-testid="staff-footer-version">
-          v0.0.40
+          {formatDisplayVersion(currentVersion, null, buildId)}
         </span>
       </div>
     </footer>

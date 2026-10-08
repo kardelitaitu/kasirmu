@@ -780,6 +780,11 @@ pub(super) fn insert_payment_in_tx(
     tx: &rusqlite::Transaction<'_>,
     payload: &PaymentPayload,
 ) -> Result<(), CoreError> {
+    let method = payload.method.to_ascii_lowercase();
+    let gateway_status = payload
+        .gateway_status
+        .as_deref()
+        .map(str::to_ascii_lowercase);
     tx.execute(
         "INSERT INTO payments (id, sale_id, method, amount_minor, currency, created_at,
                                gateway_reference, gateway_status, gateway_response, idempotency_key)
@@ -787,12 +792,12 @@ pub(super) fn insert_payment_in_tx(
         rusqlite::params![
             payload.id,
             payload.sale_id,
-            payload.method,
+            method,
             payload.amount_minor,
             payload.currency,
             payload.created_at,
             payload.gateway_reference,
-            payload.gateway_status,
+            gateway_status,
             payload.gateway_response,
             payload.idempotency_key,
         ],

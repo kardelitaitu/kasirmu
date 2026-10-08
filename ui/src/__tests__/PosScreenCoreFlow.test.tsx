@@ -1705,4 +1705,76 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
       expect(screen.getByRole('button', { name: /back/i })).toBeInTheDocument();
     });
   });
+
+  // ── Android Low-Memory & Draft Resilience (Phase 2 Audit) ───────────
+
+  it('restores active draft cart from pos-active-draft on mount', async () => {
+    const draftData = {
+      lines: [
+        {
+          sku: 'ITEM-001',
+          name: 'Recovered Draft Item',
+          qty: 2,
+          unit_price: { minor_units: 700, currency: 'USD' },
+        },
+      ],
+      discountPercent: 10,
+      tableNumber: 'Table 5',
+    };
+    localStorage.setItem('pos-active-draft', JSON.stringify(draftData));
+
+    await renderWithProviders(
+      <PosScreen />,
+      salesFtl,
+      productsFtl,
+      inventoryFtl,
+      settingsFtl,
+      testCoreFtl,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Recovered Draft Item')).toBeInTheDocument();
+    });
+
+    localStorage.removeItem('pos-active-draft');
+  });
+
+  it('persists active draft when kasirmu:trimMemory event is dispatched', async () => {
+    localStorage.removeItem('pos-active-draft');
+
+    await renderWithProviders(
+      <PosScreen />,
+      salesFtl,
+      productsFtl,
+      inventoryFtl,
+      settingsFtl,
+      testCoreFtl,
+    );
+
+    // Wait for initial render
+    await waitFor(() => {
+      expect(screen.getByText('0m')).toBeInTheDocument();
+    });
+
+    // Simulate scanning or adding a barcode
+    act(() => {
+      mockedBarcode.triggerScan('BARCODE-001');
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('Test Item')).toBeInTheDocument();
+    });
+
+    // Dispatch memory trim event
+    act(() => {
+      window.dispatchEvent(new CustomEvent('kasirmu:trimMemory', { detail: { level: 80 } }));
+    });
+
+    const stored = localStorage.getItem('pos-active-draft');
+    expect(stored).not.toBeNull();
+    const parsed = JSON.parse(stored!);
+    expect(parsed.lines.some((l: { sku: string }) => l.sku === 'ITEM-001')).toBe(true);
+
+    localStorage.removeItem('pos-active-draft');
+  });
 });

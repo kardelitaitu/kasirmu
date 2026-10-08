@@ -231,6 +231,30 @@ fn list_exchange_rates_for_pair_bounds_to_pair_and_orders_recent_first() {
 }
 
 #[test]
+fn list_exchange_rates_bounded_respects_limit() {
+    let conn = fresh();
+    seed_currency(&conn, "USD", "840", "US Dollar", 2, "$");
+    seed_currency(&conn, "EUR", "978", "Euro", 2, "\u{20ac}");
+    let repo = CurrencyRepository::new(&conn);
+
+    for day in 1..=10 {
+        repo.create_exchange_rate(
+            "USD",
+            "EUR",
+            900_000 + day * 1000,
+            "manual",
+            &format!("2026-06-{:02}", day),
+        )
+        .unwrap();
+    }
+
+    let rates_3 = repo.list_exchange_rates_bounded(3).unwrap();
+    assert_eq!(rates_3.len(), 3);
+    assert_eq!(rates_3[0].effective_date, "2026-06-10");
+    assert_eq!(rates_3[2].effective_date, "2026-06-08");
+}
+
+#[test]
 fn upsert_creates_separate_rows_for_different_dates() {
     let conn = fresh();
     seed_currency(&conn, "USD", "840", "US Dollar", 2, "$");

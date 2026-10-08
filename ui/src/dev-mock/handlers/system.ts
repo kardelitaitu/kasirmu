@@ -455,6 +455,24 @@ export const systemHandlers: Record<string, MockHandler> = {
   // system, since it is a system/boot read.
   'get_local_ip': () => '192.168.1.100',
 
+  'get_storage_health': () => ({
+    availableBytes: 10 * 1024 * 1024 * 1024,
+    totalBytes: 64 * 1024 * 1024 * 1024,
+    isLowSpace: false,
+    thresholdBytes: 500 * 1024 * 1024,
+  }),
+
+  'export_diagnostics': (args: unknown) => {
+    const a = (args as { outputPath?: string }) ?? {};
+    return {
+      path: a.outputPath ?? '/exports/kasirmu_diagnostics_mock.zip',
+      sizeBytes: 1024 * 1024 * 2,
+      filesIncluded: ['system_info.json', 'sync_diagnostics.json', 'audit_summary.json', 'logs/kasirmu.log'],
+    };
+  },
+
+  'record_crash_report': (_args: unknown) => null,
+
   'bootstrap_owner': (_args) => {
     return {
       session: {
@@ -961,6 +979,31 @@ export const systemHandlers: Record<string, MockHandler> = {
     // header) to stay in lockstep with the shipped app.
     return { app_version: pkg.version };
   },
+
+  // ═══════════════════════════════════════════════════════════════
+  // ANDROID IN-APP UPDATER
+  // ═══════════════════════════════════════════════════════════════
+
+  'check_app_update': (_args) => ({
+    update_available: false,
+    current_version: pkg.version,
+    latest_version: pkg.version,
+    release_notes: '### Updates\nNo update available in mock mode.',
+    download_url: null,
+    sha256: null,
+    file_size_bytes: null,
+    abi_matched: 'arm64-v8a',
+  }),
+
+  'start_apk_download': (_args) => '/mock/cache/updates/kasirmu-mock.apk',
+
+  'prepare_and_launch_update': (_args) => ({
+    success: true,
+    backup_path: '/mock/cache/backups/pre_update_mock.db',
+    apk_path: '/mock/cache/updates/kasirmu-mock.apk',
+  }),
+
+  'notify_memory_pressure': (_args) => null,
 };
 
 export { MOCK_ROLE_PERMISSIONS, mockHandlerPayload };

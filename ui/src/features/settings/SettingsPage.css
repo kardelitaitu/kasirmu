@@ -87,16 +87,45 @@
 
 /* ── Top bar — 5-column grid ─────────────────────────── */
 
+/*
+ * Three columns — the SAME grid as the Staff Management header
+ * (.staff-mgmt-header): `1fr auto 1fr`, so the MIDDLE column is centred by the
+ * grid rather than by leftover space. That is what keeps the search box centred
+ * whether the title is "General" or "License & Subscription", and whether the
+ * save cluster is showing its Revert button or not. The old 4-column form
+ * (`auto minmax(0,auto) 1fr auto`) packed everything left and left the search
+ * floating at whatever x the title happened to end at.
+ *
+ * The two outer columns are pinned to their edges by justify-self below;
+ * without that, both would sit against the search in the middle.
+ *
+ * `--color-bg-surface`, not `-elevated`: this bar sits directly above a footer
+ * and beside a sidebar that both paint `-elevated`, and Staff Management's
+ * header paints `-surface`. Using the same token as the Staff header is what
+ * makes the two management screens read as one family; `-elevated` also made
+ * the bar indistinguishable from the body it borders.
+ */
 .settings-topbar {
   flex: 0 0 auto;
   min-height: var(--topbar-height);
   display: grid;
-  grid-template-columns: auto minmax(0, auto) 1fr auto;
+  grid-template-columns: 1fr auto 1fr;
   align-items: center;
   gap: var(--space-3);
   padding: var(--space-2) var(--space-8);
-  background: var(--color-bg-elevated);
+  background: var(--color-bg-surface);
   border-bottom: 1px solid var(--color-border);
+}
+
+/* Outer columns pinned to their edges (mirrors .staff-mgmt-header-lead /
+   -actions). Keeps the lead group hard against the start and the save cluster
+   hard against the end, so the centred middle really is centred. */
+.settings-topbar__col--lead {
+  justify-self: start;
+}
+
+.settings-topbar__col--actions {
+  justify-self: end;
 }
 
 .settings-topbar__col {
@@ -106,18 +135,24 @@
 
 /* COL 1: mobile menu (hidden on desktop, shown on mobile) */
 
-/* COL 2: branding (icon + name) */
-.settings-topbar__col--brand {
-  gap: var(--space-3);
+/* Lead group: back button + section icon + section title, one flex row.
+   Same shape as .staff-mgmt-header-title-group, with the back button folded in
+   so the whole group is a single grid item. min-width: 0 lets the title
+   ellipsise rather than push the grid columns apart. */
+.settings-topbar__col--lead {
+  gap: var(--space-2);
+  min-width: 0;
 }
 
-/* COL 3: search (fills remaining space) */
+/* COL 2: search — the centre column. `justify-content: center` centres the
+   search inside the auto-width column; the column itself is centred in the bar
+   by the grid's `1fr auto 1fr`. */
 .settings-topbar__col--search {
   justify-content: center;
   min-width: 0;
 }
 
-/* COL 4: actions (revert + save) */
+/* COL 3: actions (revert + save). justify-self: end is set with --lead above. */
 .settings-topbar__col--actions {
   gap: var(--space-3);
 }
@@ -148,35 +183,66 @@
   white-space: nowrap;
 }
 
+/* Ghost square — no border and no fill at rest, exactly like the Staff
+   Management header's back button (.staff-mgmt-back-btn). It used to carry
+   `border: 1px solid var(--color-border)` on a transparent fill, so the only
+   thing visible was a bare outlined box; on the old -elevated bar the fill was
+   the very surface it sat on and read as empty. The two management screens now
+   present the same affordance. */
 .settings-back-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 2.25rem;
-  height: 2.25rem;
+  /* Sized off the touch-target token, not a literal: this screen is operated
+     on tablets, and the repo's touch-target ratchet (touchTargetSizing.test.ts)
+     fails a literal below the 44px floor. `var(--touch-target-min)` is the same
+     token .staff-mgmt-back-btn uses, so the two headers' back buttons match. */
+  width: var(--touch-target-min);
+  height: var(--touch-target-min);
   padding: 0;
-  border: 1px solid var(--color-border);
+  border: none;
+  flex-shrink: 0;
   border-radius: var(--radius-md);
   background: transparent;
   color: var(--color-fg-secondary);
   cursor: pointer;
   transition:
     background-color var(--duration-100) var(--ease-out),
-    color var(--duration-100) var(--ease-out),
-    border-color var(--duration-100) var(--ease-out);
+    color var(--duration-100) var(--ease-out);
 }
 
-.settings-back-btn:hover {
-  background: var(--color-bg-surface);
+/* Off-canvas sidebar drawer toggle button for narrow viewports. Hidden on desktop. */
+.settings-topbar-menu-btn {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: var(--touch-target-min);
+  height: var(--touch-target-min);
+  padding: 0;
+  border: none;
+  flex-shrink: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-fg-secondary);
+  cursor: pointer;
+  transition:
+    background-color var(--duration-100) var(--ease-out),
+    color var(--duration-100) var(--ease-out);
+}
+
+.settings-back-btn:hover,
+.settings-topbar-menu-btn:hover {
+  background: var(--color-bg-elevated);
   color: var(--color-fg);
-  border-color: var(--color-border-hover);
 }
 
-.settings-back-btn:focus-visible {
+.settings-back-btn:focus-visible,
+.settings-topbar-menu-btn:focus-visible {
   box-shadow: inset 0 0 0 1px var(--color-accent);
 }
 
-.settings-back-btn svg {
+.settings-back-btn svg,
+.settings-topbar-menu-btn svg {
   width: 1.25rem;
   height: 1.25rem;
 }
@@ -389,8 +455,12 @@
 
 @media (pointer: coarse) {
   .settings-footer-theme-toggle {
-    width: 2.75rem;
-    height: 2.75rem;
+    width: 2rem;
+    height: 2rem;
+  }
+
+  .settings-footer-shortcut {
+    display: none;
   }
 }
 
@@ -408,17 +478,13 @@
    Per the --memo-bottom-inset contract: "the shell's own bottom chrome
    height + --space-6". The settings route's bottom chrome IS this footer,
    whose height is set by its tallest child — the theme toggle above
-   (2.75rem under pointer:coarse, 2rem otherwise) plus a 1px border-top.
-   2.75rem dominates, so the inset uses it; the border and the fine-pointer
-   case are covered by the --space-6 clearance (68px inset vs 45px footer,
-   measured). :root's default (tokens.css, flat --space-6) left the stack
-   24px INTO the footer — covering the theme toggle 37x23px.
+   (2rem) plus a 1px border-top. The border is covered by the --space-6 clearance.
 
    Real tablet build unaffected: there settings renders INSIDE
    .tablet-shell, which declares its own (nearer) --memo-bottom-inset, and
    a nearer ancestor's declaration wins over an inherited body value. */
 body:has(.settings-footer) {
-  --memo-bottom-inset: calc(2.75rem + var(--space-6));
+  --memo-bottom-inset: calc(2rem + var(--space-6));
 }
 
 .settings-footer-theme-toggle:hover {
@@ -439,6 +505,10 @@ body:has(.settings-footer) {
 
 /* ── Responsive: mobile layout adjustments ──────────────────── */
 @media (max-width: 768px) {
+  .settings-topbar-menu-btn {
+    display: inline-flex;
+  }
+
   .settings-topbar-search-input {
     width: 10rem;
   }
@@ -466,7 +536,21 @@ body:has(.settings-footer) {
   }
 }
 
+@media (max-width: 640px) {
+  .settings-topbar-name {
+    max-width: 9rem;
+  }
+}
+
 @media (max-width: 480px) {
+  .settings-topbar-icon {
+    display: none;
+  }
+
+  .settings-topbar-search-input {
+    width: 7rem;
+  }
+
   .settings-footer-right {
     display: none;
   }
@@ -683,6 +767,108 @@ body:has(.settings-footer) {
 .settings-input--error:focus-visible {
   border-color: var(--color-danger);
   box-shadow: inset 0 0 0 1px var(--color-danger);
+}
+
+/* ── Two sync-family names that were never defined ──────────────────
+   Both are REAL markup, not runtime-composed values:
+   SyncSection.tsx:353 and LocalApiSection.tsx:387 write
+   `settings-sync-status-text` literally, and SyncSection.tsx:280 writes
+   `settings-sync-token-actions`. Until now the guard excused them through
+   knownDynamicFragments on the SettingsPage entry, which asserts the name is
+   composed at runtime — false for these two, and the field's own docstring says
+   muting a literal there "then travels into case 3: a muted name is never
+   reported dead anywhere". Defining them is what makes the claim true-by-removal. */
+.settings-sync-status-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The Request-token / Copy row under the token hint. */
+.settings-sync-token-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  margin-top: var(--space-2);
+}
+
+/* Read-only counterpart of .settings-input in a horizontal settings field: the
+   value sits where an input would, without the control chrome. Used by the
+   workspace store-info card, whose rows all carry .settings-field--horizontal
+   from this sheet. It was the one member of the settings-field-* family with no
+   rule. */
+.settings-field-value {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--text-sm);
+  color: var(--color-fg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Range input and the value beside it ────────────────────────────
+   `.settings-range` / `.settings-range-value` are used by three workspace
+   cards (TerminalPreferencesCard, WorkspaceKdsSettings, WorkspaceInventory
+   Settings) and were defined in NO sheet — they are family members that were
+   never written, like .settings-select and .settings-error-banner below.
+   Without them a native range rendered at the browser's default width and the
+   value label sat against it. */
+.settings-range {
+  flex: 1;
+  min-width: 0;
+  accent-color: var(--color-accent);
+  cursor: pointer;
+}
+
+.settings-range-value {
+  min-width: 3.5rem;
+  font-size: var(--text-sm);
+  color: var(--color-fg-muted);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* ── Native select ──────────────────────────────────────────────────
+   Matches .settings-input's geometry so a select and a text input in the same
+   form read as the same control. */
+.settings-select {
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-base);
+  color: var(--color-fg);
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-sizing: border-box;
+  cursor: pointer;
+}
+
+.settings-select:focus-visible {
+  outline: none;
+  border-color: var(--color-accent);
+  box-shadow: inset 0 0 0 1px var(--color-accent);
+}
+
+/* ── Error banner ───────────────────────────────────────────────────
+   Distinct from .settings-error (the inline form error): this is a standalone
+   alert block below the card. */
+.settings-error-banner {
+  margin-top: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-danger);
+  border-radius: var(--radius-md);
+  /* No fallback tail: --color-danger-dim is declared in every theme block, so a
+     literal here could never render (the token-tail guard's own rule). */
+  background: var(--color-danger-dim);
+  /* --color-danger-fg, not --color-danger: tokens.css declares color and
+     danger-dim as the SAME hex in every theme (#FF6B68 dark), so the old pair
+     was 1.00:1 and the banner text did not render at all. Same fix and same
+     reasoning as VoidOrdersScreen.css:239, which found this first. */
+  color: var(--color-danger-fg);
+  font-size: var(--text-sm);
 }
 
 .settings-actions {
@@ -1133,4 +1319,76 @@ body:has(.settings-footer) {
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
   border-width: 0;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+ * TABLET: keep the DESKTOP proportions
+ *
+ * The `@media (max-width: 768px)` block above is written for a narrow
+ * WINDOW, not for a tablet: it trims the topbar padding to `space-4` and the
+ * section padding to `space-4` (16px). A portrait tablet is 686px CSS but a
+ * 7-12" physical screen, so the phone-sized gutters read as cramped and put
+ * the cards hard against the sidebar.
+ *
+ * Keyed on the shell marker, not a width: a landscape phone and a portrait
+ * tablet share a viewport but need opposite treatments, and the marker is
+ * the only thing that tells them apart.
+ * ═══════════════════════════════════════════════════════════════════ */
+
+html[data-shell='tablet'] .settings-topbar {
+  padding: var(--space-2) var(--space-4);
+}
+
+/* Tablet keeps the sidebar persistent in-flow (SettingsNavTree.css:811), so the
+   off-canvas hamburger menu button remains hidden on tablet viewports. */
+html[data-shell='tablet'] .settings-topbar-menu-btn {
+  display: none;
+}
+
+/* Tablet is operated by touch: hide desktop Ctrl+S keyboard shortcut. */
+html[data-shell='tablet'] .settings-footer-shortcut {
+  display: none;
+}
+
+html[data-shell='tablet'] .settings-section-content {
+  padding: var(--space-6) var(--space-6);
+}
+
+/* The tablet portrait rail is 16rem, so the content column is ~460px. Give
+   the cards the full width rather than inheriting a desktop max-width that
+   would leave them floating in the middle of a narrow column. */
+html[data-shell='tablet'] .settings-content {
+  min-width: 0;
+}
+
+/* ── Touch press feedback (settings) ─────────────────────────────────
+   A tablet has no hover, so a control whose only cue is `:hover` gives no
+   acknowledgement under a finger. This sheet already carried its
+   coarse-pointer block; what was missing is the press state a touch
+   actually produces.
+
+   The toggle-shaped controls (`.settings-toggle`, `.settings-input-toggle`,
+   `.settings-footer-theme-toggle`) take the TINT, not the scale: their knob
+   already animates on change, and a press-scale on top of that transition
+   reads as a double-move. Filled buttons scale. */
+.settings-topbar-menu-btn:not(:disabled):active,
+.settings-btn-revert:not(:disabled):active,
+.settings-size-btn:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+.settings-toggle:active,
+.settings-input-toggle:active,
+.settings-footer-theme-toggle:active,
+.settings-topbar-search-clear:active {
+  background: color-mix(in srgb, var(--color-fg) 12%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .settings-topbar-menu-btn:not(:disabled):active,
+  .settings-btn-revert:not(:disabled):active,
+  .settings-size-btn:not(:disabled):active {
+    transform: none;
+    opacity: 0.75;
+  }
 }

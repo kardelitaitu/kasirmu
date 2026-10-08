@@ -3,7 +3,7 @@
  *   chip plus one chip per kitchen zone, rendered as an ARIA tablist with a
  *   roving tabindex.
  *
- * Extracted verbatim from KdsScreen.tsx:818-847 by the KDS merged-lane
+ * Extracted verbatim from KdsScreen.tsx:818-847 AS OF b63b48469^ by the KDS merged-lane
  * zone-chips slice (the region the plan calls "zone chips", listed as
  * "cheapest remaining win" of slice 3's header work). The moved block is
  * byte-identical except for five reads that became props.

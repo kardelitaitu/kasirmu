@@ -145,7 +145,26 @@ async fn a_configured_terminal_row_makes_the_tender_resolve() {
         currency: "USD".parse::<foundation::Currency>().unwrap(),
     };
     assert!(matches!(
-        terminal.authorize(money).await,
+        terminal.authorize(money, None).await,
         Err(kasirmu_hal::HalError::Unsupported(_))
     ));
+}
+
+#[test]
+fn settlement_dto_serde_serialization() {
+    let dto = super::EdcSettlementDto {
+        success: true,
+        batch_number: Some("000001".into()),
+        transaction_count: 12,
+        total_amount: Some(150000),
+        currency: Some("IDR".into()),
+        message: "settlement ok".into(),
+    };
+    let json = serde_json::to_value(&dto).unwrap();
+    assert_eq!(json["success"], true);
+    assert_eq!(json["batchNumber"], "000001");
+    assert_eq!(json["transactionCount"], 12);
+    assert_eq!(json["totalAmount"], 150000);
+    assert_eq!(json["currency"], "IDR");
+    assert_eq!(json["message"], "settlement ok");
 }

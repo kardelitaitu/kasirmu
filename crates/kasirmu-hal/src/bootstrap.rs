@@ -329,15 +329,25 @@ pub async fn apply_config(registry: &DriverRegistry, config: &HardwareConfig) ->
                 report.registered.push(key);
             }
             Connection::Bluetooth { port } => {
-                registry
-                    .register_bluetooth_printer(
-                        &printer.id,
-                        port,
-                        DEFAULT_BAUD,
-                        printer.info.clone(),
-                    )
-                    .await;
-                report.registered.push(key);
+                #[cfg(not(target_os = "android"))]
+                {
+                    registry
+                        .register_bluetooth_printer(
+                            &printer.id,
+                            port,
+                            DEFAULT_BAUD,
+                            printer.info.clone(),
+                        )
+                        .await;
+                    report.registered.push(key);
+                }
+                #[cfg(target_os = "android")]
+                {
+                    registry
+                        .register_bt_android_printer(&printer.id, port, printer.info.clone())
+                        .await;
+                    report.registered.push(key);
+                }
             }
             Connection::Network { addr } => {
                 registry

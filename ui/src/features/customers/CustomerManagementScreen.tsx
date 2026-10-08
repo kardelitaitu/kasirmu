@@ -24,6 +24,7 @@ import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { usePagedList } from '@/hooks/usePagedList';
 import { formatMoney } from '@/types/domain';
 import { l10nErrorMessage } from '@/utils/app-error';
+import { asArray } from '@/utils/ipc-payload';
 import './CustomerManagementScreen.css';
 
 // ── Form state ──────────────────────────────────────────────────────
@@ -163,7 +164,7 @@ export default function CustomerManagementScreen() {
     try {
       const data = await listCustomersScoped(sessionToken);
       if (seq !== loadSeqRef.current) return;
-      setCustomers(data);
+      setCustomers(asArray<typeof data[number]>(data));
       hasLoadedOnceRef.current = true;
     } catch (err) {
       // CUST-03: a failed load must not be indistinguishable from an empty store.

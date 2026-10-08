@@ -118,3 +118,18 @@ pub async fn products_clear_image_scoped(
         .await
         .map_err(Into::into)
 }
+
+pub use kasirmu_bridge::products_images::ProductImageDto;
+
+/// List all images assigned to slots for a product.
+#[command]
+pub async fn products_list_images_scoped(
+    session_token: String,
+    product_id: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<ProductImageDto>, AppError> {
+    let ctx = state.bridge_ctx();
+    kasirmu_bridge::products_images::list_images_scoped(&ctx, &session_token, &product_id)
+        .await
+        .map_err(Into::into)
+}

@@ -30,6 +30,62 @@ async fn expired_token_is_rejected() {
     assert!(result.is_err(), "expired token should be rejected");
 }
 
+/// A cached token must not be served past its own `exp`.
+///
+/// This is the one defect the other expiry tests structurally cannot reach.
+/// `cache.insert` (auth.rs) runs only AFTER `decode` succeeds, so an
+/// already-expired token is never cached and re-validating one proves
+/// nothing. The cache was bounded only by JWT_CACHE_TTL_SECS (60s), so the
+/// defect needed a token that was cached while still VALID and then expired
+/// while its entry was still inside the TTL -- valid-then-expired, with the
+/// entry surviving. That is the window this test constructs directly.
+///
+/// The entry is seeded into JWT_CACHE by hand (the same shape
+/// `validate_token_with_secret` writes: claims plus a fresh `Instant`), with
+/// an `exp` one second in the past and a `cached_at` of now -- i.e. exactly
+/// the state the old code would have honoured for another minute. The secret
+/// must match what `validate_token` resolves, so the cache key lines up.
+#[tokio::test]
+async fn a_cached_entry_is_not_served_past_the_tokens_expiry() {
+    let secret = signing_secret_for_tests();
+    let token = "seeded-expiring-token";
+    let now = chrono::Utc::now();
+
+    // Claims whose `exp` is already in the past, cached as if just validated
+    // a moment before expiry. This is the exact overlap the old TTL-only
+    // guard got wrong.
+    let claims = ApiTokenClaims {
+        sub: "cache-seeded".into(),
+        jti: uuid::Uuid::now_v7().to_string(),
+        exp: (now.timestamp() - 1) as usize,
+        iat: (now.timestamp() - 3600) as usize,
+        tenant_id: None,
+        terminal_id: None,
+        permissions: None,
+    };
+    {
+        let mut cache = JWT_CACHE.write().await;
+        cache.insert(
+            (secret.clone(), token.to_string()),
+            (claims.clone(), std::time::Instant::now()),
+        );
+    }
+
+    // The seeded entry is fresh and unexpired-by-TTL, so ONLY the `exp`
+    // check can reject it. Without that check this returns the cached claims
+    // and the assertion fails -- which is what makes this a regression test.
+    let result = validate_token(token).await;
+    assert!(
+        result.is_err(),
+        "a cached entry past the token's exp must be rejected, not served"
+    );
+
+    // Clean up so the seeded entry cannot leak into another test in this
+    // process (JWT_CACHE is a process-global static).
+    let mut cache = JWT_CACHE.write().await;
+    cache.remove(&(secret, token.to_string()));
+}
+
 #[tokio::test]
 async fn empty_token_is_rejected() {
     assert!(validate_token("").await.is_err());

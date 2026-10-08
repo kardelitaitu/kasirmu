@@ -75,10 +75,20 @@ fn seed_payment(conn: &rusqlite::Connection, gateway_ref: &str, sale_id: &str) {
     )
     .ok();
 
+    // No `INSERT OR IGNORE` here, deliberately. It used to be an OR IGNORE,
+    // which turned a stale fixture into a SILENT no-op: this row wrote
+    // gateway_status = 'requires_capture' — an invalid value once
+    // 20261017 added the CHECK — so the insert was swallowed, the payments
+    // table stayed empty, and every test built on this helper failed with a
+    // misleading 404 "no sale found" rather than naming the real cause.
+    // A plain INSERT fails loudly on the next such drift.
+    //
+    // 'authorized' is the ADR-64 D4 value for a gateway-authorised,
+    // not-yet-settled tender, which is what this fixture models.
     conn.execute(
-        "INSERT OR IGNORE INTO payments (id, sale_id, method, amount_minor, currency,
+        "INSERT INTO payments (id, sale_id, method, amount_minor, currency,
                                           gateway_reference, gateway_status, created_at)
-         VALUES (?1, ?2, 'card', 1000, 'USD', ?3, 'requires_capture', '2026-07-01T00:00:00Z')",
+         VALUES (?1, ?2, 'card', 1000, 'USD', ?3, 'authorized', '2026-07-01T00:00:00Z')",
         params![uuid::Uuid::now_v7().to_string(), sale_id, gateway_ref],
     )
     .unwrap();

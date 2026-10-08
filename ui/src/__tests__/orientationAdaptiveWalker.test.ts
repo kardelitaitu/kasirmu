@@ -1,6 +1,6 @@
 /**
  * Orientation-Adaptive Walker — ADR-0001 Slice 4 (T4 enforcement), the SIXTH
- * suite in the family `docs/frontend/css-verification.md` names.
+ * suite in the family `docs/records/audits/frontend/css-verification.md` names.
  *
  * WHAT IT GRADES. The shell owns orientation. The two declared shell sheets —
  * `ui/src/app/AppLayout.css` and `ui/src/app/tablet/tablet.css` — are the only

@@ -949,15 +949,37 @@
 
 .resto-switch-btn {
   position: relative;
-  width: 44px;
-  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  width: 48px;
+  height: 26px;
+  min-height: 0;
   background: var(--color-bg-elevated);
   border-radius: var(--radius-full);
-  border: 1px solid var(--color-border);
+  border: 1.5px solid var(--color-border);
   cursor: pointer;
   transition: background-color 0.2s ease, border-color 0.2s ease;
   padding: 0;
+  margin: 0;
+  box-sizing: border-box;
   flex-shrink: 0;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* Touch hit-area expansion: ensures a 44px tap target without distorting visual track */
+.resto-switch-btn::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 56px;
+  height: 44px;
+  pointer-events: auto;
 }
 
 .resto-switch-btn[aria-checked="true"] {
@@ -967,18 +989,25 @@
 
 .resto-switch-handle {
   position: absolute;
-  top: 2px;
+  top: 1.5px;
   left: 2px;
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
   border-radius: 50%;
-  background: var(--receipt-paper);
-  transition: transform 0.2s ease;
-  box-shadow: var(--shadow-sm);
+  background: var(--receipt-paper, #ffffff);
+  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25), var(--shadow-sm);
+  pointer-events: none;
 }
 
 .resto-switch-btn[aria-checked="true"] .resto-switch-handle {
-  transform: translateX(20px);
+  transform: translateX(22px);
+  background: var(--receipt-paper, #ffffff);
+}
+
+.resto-switch-btn:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
 }
 
 /* Textarea for Receipt Footer */
@@ -1199,6 +1228,32 @@
 .resto-logo-remove-btn:hover:not(:disabled) {
   background: var(--color-danger-bg);
   color: var(--color-danger-hover);
+}
+
+/* ── Non-interactive Settings Group Cards ───────────────────── */
+
+.resto-settings-cards-list {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-4);
+  width: 100%;
+  align-items: start;
+}
+
+@media (min-width: 960px) {
+  .resto-settings-cards-list {
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--space-4);
+  }
+}
+
+.resto-settings-group-card {
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg, 12px);
+  padding: var(--space-3) var(--space-4);
+  box-sizing: border-box;
+  width: 100%;
 }
 
 /* ── Expandable Payment Method Cards Template ──────────────── */
@@ -1541,42 +1596,67 @@
   position: relative;
   display: inline-flex;
   align-items: center;
-  width: 44px;
-  height: 24px;
+  justify-content: center;
+  width: 48px;
+  height: 26px;
+  min-height: 0;
   flex-shrink: 0;
   cursor: pointer;
   vertical-align: middle;
+  padding: 0;
+  margin: 0;
+  box-sizing: border-box;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* Touch hit-area expansion: ensures a 56px x 44px tap target without distorting visual track */
+.settings-toggle-switch::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 56px;
+  height: 44px;
+  pointer-events: auto;
 }
 
 .settings-toggle-switch input {
+  position: absolute;
   opacity: 0;
   width: 0;
   height: 0;
-  position: absolute;
   margin: 0;
+  padding: 0;
+  border: none;
+  pointer-events: none;
 }
 
 .settings-toggle-slider {
   position: absolute;
   inset: 0;
   background: var(--color-bg-elevated);
-  border: 1px solid var(--color-border);
+  border: 1.5px solid var(--color-border);
   border-radius: var(--radius-full);
   pointer-events: none;
+  box-sizing: border-box;
   transition: background-color 0.2s ease, border-color 0.2s ease;
 }
 
 .settings-toggle-slider::before {
   content: '';
   position: absolute;
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
   left: 2px;
-  top: 2px;
+  top: 1.5px;
   background: var(--receipt-paper, #ffffff);
   border-radius: 50%;
-  transition: transform 0.2s ease;
-  box-shadow: var(--shadow-sm);
+  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25), var(--shadow-sm);
 }
 
 .settings-toggle-switch input:checked + .settings-toggle-slider {
@@ -1585,7 +1665,7 @@
 }
 
 .settings-toggle-switch input:checked + .settings-toggle-slider::before {
-  transform: translateX(20px);
+  transform: translateX(22px);
   background: var(--receipt-paper, #ffffff);
 }
 
@@ -1611,6 +1691,54 @@
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+/* ── Touch press feedback (restaurant settings) ───────────────────────
+   A tablet has no hover, so a control whose only cue is `:hover` reads as
+   inert under a finger. These carried transitions but no `:active`. Split by
+   resting shape: filled controls scale, transparent/outline ones tint.
+
+   The switch-shaped controls (`.resto-switch-btn`, `.settings-toggle-switch`)
+   are deliberately EXCLUDED from the scale: they are two-state controls whose
+   knob already animates on change, and a press-scale on top would fight the
+   toggle transition. They get the tint only — which is also what keeps the
+   on/off affordance legible mid-press. */
+.resto-test-print-btn:not(:disabled):active,
+.resto-segmented-btn:not(:disabled):active,
+.resto-card-expand-btn:not(:disabled):active,
+.resto-compact-btn:not(:disabled):active,
+.restaurant-settings-back-btn:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+.resto-switch-btn:active,
+.settings-toggle-switch:active,
+.restaurant-rail-remove:active,
+.resto-compact-chip:active {
+  background: color-mix(in srgb, var(--color-fg) 12%, transparent);
+}
+
+@media (pointer: coarse) {
+  .restaurant-settings-back-btn,
+  .resto-test-print-btn,
+  .resto-segmented-btn,
+  .resto-card-expand-btn,
+  .resto-compact-btn,
+  .resto-compact-chip,
+  .restaurant-rail-remove {
+    min-height: var(--touch-target-min);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .resto-test-print-btn:not(:disabled):active,
+  .resto-segmented-btn:not(:disabled):active,
+  .resto-card-expand-btn:not(:disabled):active,
+  .resto-compact-btn:not(:disabled):active,
+  .restaurant-settings-back-btn:not(:disabled):active {
+    transform: none;
+    opacity: 0.75;
   }
 }
 

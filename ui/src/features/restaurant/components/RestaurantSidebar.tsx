@@ -54,9 +54,12 @@ export interface RestaurantSidebarActions {
   onOpenHistory: () => void;
   onOpenKitchenDisplay: () => void;
   /** Full-page configuration sub-screens */
+  onOpenMenuEditor?: () => void;
   onOpenReceipts?: () => void;
   onOpenPayments?: () => void;
   onOpenSettings?: () => void;
+  /** Open cash drawer manually */
+  onOpenCashDrawer?: () => void;
   /** Request exit from workspace; handled by host to check shifts. */
   onRequestExit?: () => void;
 }
@@ -142,6 +145,14 @@ const LockSmallGlyph = () => (
   </svg>
 );
 
+const MenuEditorGlyph = () => (
+  <svg {...GLYPH}>
+    <path d="M4 3h11l5 5v13a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z" />
+    <path d="M14 3v6h6" />
+    <path d="M8 13h8M8 17h5" />
+  </svg>
+);
+
 const ReceiptGlyph = () => (
   <svg {...GLYPH}>
     <path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z" />
@@ -175,6 +186,14 @@ const DeductionGlyph = () => (
   <svg {...GLYPH} width={14} height={14}>
     <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
     <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+  </svg>
+);
+
+const DrawerGlyph = () => (
+  <svg {...GLYPH}>
+    <rect x="2" y="4" width="20" height="16" rx="2" />
+    <line x1="2" y1="12" x2="22" y2="12" />
+    <circle cx="12" cy="16" r="1.5" />
   </svg>
 );
 
@@ -447,6 +466,31 @@ export function RestaurantSidebar({
             className={`restaurant-sidebar-item${!effectiveIsManager ? ' restaurant-sidebar-item--disabled' : ''}`}
             disabled={!effectiveIsManager}
             onKeyDown={handleSidebarKeyDown}
+            aria-label={l10n.getString('restaurant-sidebar-menu-editor')}
+            data-testid="restaurant-sidebar-menu-editor"
+            onClick={() => {
+              // The button is disabled for non-managers, so a non-manager click
+              // can never reach here; no guard is needed.
+              cartActions.onOpenMenuEditor?.();
+              onOpenChange(false);
+            }}
+          >
+            <Tile>
+              <MenuEditorGlyph />
+            </Tile>
+            <Localized id="restaurant-sidebar-menu-editor"><span>Menu Editor</span></Localized>
+            {!effectiveIsManager && (
+              <span className="restaurant-sidebar-badge-manager">
+                <LockSmallGlyph />
+                <Localized id="restaurant-manager-required"><span>Manager+</span></Localized>
+              </span>
+            )}
+          </button>
+          <button
+            type="button"
+            className={`restaurant-sidebar-item${!effectiveIsManager ? ' restaurant-sidebar-item--disabled' : ''}`}
+            disabled={!effectiveIsManager}
+            onKeyDown={handleSidebarKeyDown}
             aria-label={l10n.getString('restaurant-sidebar-receipts')}
             onClick={() => {
               // The button is disabled for non-managers, so a non-manager
@@ -515,6 +559,23 @@ export function RestaurantSidebar({
               </span>
             )}
           </button>
+          {cartActions.onOpenCashDrawer && (
+            <button
+              type="button"
+              className="restaurant-sidebar-item"
+              onKeyDown={handleSidebarKeyDown}
+              aria-label={l10n.getString('pos-cart-open-drawer')}
+              onClick={() => {
+                cartActions.onOpenCashDrawer?.();
+                onOpenChange(false);
+              }}
+            >
+              <Tile>
+                <DrawerGlyph />
+              </Tile>
+              <Localized id="pos-cart-open-drawer"><span>Open Cash Drawer</span></Localized>
+            </button>
+          )}
           <div className="restaurant-sidebar-divider" role="separator" />
         </>
       )}

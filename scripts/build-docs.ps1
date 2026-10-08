@@ -12,7 +12,7 @@
 # unless they carry a UTF-8 BOM, so non-ASCII characters (em-dashes, check
 # marks, arrows) corrupt string literals and break parsing.
 #
-# See docs/plans/documentation-portal-plan.md for the plan behind this layout.
+# See docs/plans/_active/documentation-portal-plan.md for the plan behind this layout.
 [CmdletBinding()]
 param(
     [switch]$Open = $true,
@@ -75,10 +75,10 @@ if (Test-Path "$BookSrc\decisions") { Remove-Item -Recurse -Force "$BookSrc\deci
 if (Test-Path "$BookSrc\releases") { Remove-Item -Recurse -Force "$BookSrc\releases" }
 if (Test-Path "$BookSrc\operations") { Remove-Item -Recurse -Force "$BookSrc\operations" }
 New-Item -ItemType Directory -Force -Path "$BookSrc\guides", "$BookSrc\decisions\archived", "$BookSrc\releases", "$BookSrc\operations" | Out-Null
-Copy-Item (Join-Path $WorkspaceRoot "docs\guides\*.md") "$BookSrc\guides\" -ErrorAction SilentlyContinue
+Copy-Item (Join-Path $WorkspaceRoot "docs\guides\*") "$BookSrc\guides\" -Recurse -ErrorAction SilentlyContinue
 Copy-Item (Join-Path $WorkspaceRoot "docs\decisions\*.md") "$BookSrc\decisions\" -ErrorAction SilentlyContinue
 Copy-Item (Join-Path $WorkspaceRoot "docs\decisions\archived\*.md") "$BookSrc\decisions\archived\" -ErrorAction SilentlyContinue
-Copy-Item (Join-Path $WorkspaceRoot "docs\releases\*.md") "$BookSrc\releases\" -ErrorAction SilentlyContinue
+Copy-Item (Join-Path $WorkspaceRoot "docs\records\releases\*.md") "$BookSrc\releases\" -ErrorAction SilentlyContinue
 Copy-Item (Join-Path $WorkspaceRoot "docs\operations\*.md") "$BookSrc\operations\" -ErrorAction SilentlyContinue
 Write-Host "[SUCCESS] guides + ADRs + releases + operations copied into docs/src/" -ForegroundColor Green
 

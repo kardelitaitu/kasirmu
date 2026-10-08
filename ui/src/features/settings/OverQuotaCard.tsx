@@ -18,6 +18,7 @@ import {
 } from '@/api/workspaces';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { isTabletShell } from '@/utils/shellKind';
+import './OverQuotaCard.css';
 
 /** Dimension key → FTL label, referenced literally so bundle parity can
  *  see every key is live (no dynamic composition). */

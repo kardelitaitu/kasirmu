@@ -24,21 +24,48 @@ pub async fn link_device_google(
 ) -> Result<kasirmu_core::desktop_link::LinkedAccount, AppError> {
     let (api_key, machine_id) = {
         let ctx = state.bridge_ctx();
-        kasirmu_bridge::license::stored_credentials(&ctx).await?
+        match kasirmu_bridge::license::stored_credentials(&ctx).await {
+            Ok(creds) => creds,
+            Err(_) => {
+                let machine_id = kasirmu_bridge::license::get_machine_id(&ctx).await?;
+                (String::new(), machine_id)
+            }
+        }
     };
     let base_url = kasirmu_core::attestation::resolved_origin().url;
-    let account = kasirmu_bridge::desktop_link::link_device(
+    tracing::info!(
+        "link_device_google: starting Google link flow for machine_id={}",
+        machine_id
+    );
+    let app_handle = state.app.clone();
+    let account = match kasirmu_bridge::desktop_link::link_device(
         &base_url,
         &api_key,
         &machine_id,
         LINK_WAIT,
-        |url: String| async move {
-            crate::commands::browser::open_in_browser(&url)
-                .await
-                .map_err(|e| kasirmu_bridge::error::BridgeError::Internal(e.to_string()))
+        move |url: String| {
+            let app_handle = app_handle.clone();
+            async move {
+                crate::commands::browser::open_in_browser(app_handle.as_ref(), &url)
+                    .await
+                    .map_err(|e| kasirmu_bridge::error::BridgeError::Internal(e.to_string()))
+            }
         },
     )
-    .await?;
+    .await
+    {
+        Ok(acc) => {
+            tracing::info!(
+                "link_device_google: successfully linked account email={}",
+                acc.email
+            );
+            acc
+        }
+        Err(e) => {
+            tracing::error!("link_device_google: linking failed: {:?}", e);
+            return Err(e.into());
+        }
+    };
     // The link earned a sync credential whenever the server could issue one; store it now so
     // the device is ready to sync (ADR #54 §2.5 step 7).
     store_earned_credential(&state, account.terminal.as_ref()).await?;

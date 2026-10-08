@@ -1,10 +1,18 @@
-# Module Boot Sequence (Phase 2)
+# Module Boot Sequence
+
+<!-- Audit stamp: 2026-10-08 · docs-auditor · status: ACCURATE AFTER REPAIR (2 findings) · Repaired: (1) the title read "(Phase 2)" while Phase 4 has landed — retitled, with a historical-scope note above; (2) the "Raw connection access" bullet described `NamespacedStore::raw` in the present tense while the very next paragraph said it was removed 2026-10-03, and `fn raw` no longer exists in `crates/kasirmu-core/src/db/namespaced.rs` (0 hits) — rewritten to past tense. Path references repointed this pass: `docs/architecture/phase2-implementation-tickets.md` and `namespaced-store-api-draft.md` -> `docs/records/superseded/` (both verified present). · Repaired against branch `0.0.41` at `134aaed1b`. -->
+
+
+<!-- Historical scope: written at Phase 2, and the body below still describes that state. Phase 4 has
+     since landed (namespace governance runs `--strict` in `scripts/check.sh:509`; capability parity at
+     `:532`), so read the Phase-2 markers as the snapshot they are. Corrected 2026-10-08: the `raw()`
+     bullet is now past tense, matching the removal the next paragraph already recorded. -->
 
 This page describes what actually happens between `init_module_system` being
 called and the first domain event being delivered, naming the real functions and
 line anchors on the commit that landed Phase 2. It is the narrative companion to
 the machine-checked rules in `docs/architecture/module-namespace-governance.md`
-and to the tickets in `docs/architecture/phase2-implementation-tickets.md`.
+and to the tickets in `docs/records/superseded/phase2-implementation-tickets.md`.
 
 ## 1. The sequence at a glance
 
@@ -137,11 +145,12 @@ pass:
   boots; its gated subscriptions take outcome 3 above and each logs a
   deprecation warning naming the module. Populating the vertical manifests is
   the remaining migration; the mechanism is live and tested now.
-- **Raw connection access.** `NamespacedStore::raw`
-  (`crates/kasirmu-core/src/db/namespaced.rs`) runs the namespace check and
-  returns the SQL unchanged — the escape hatch that lets the Phase 1 code keep
-  compiling while it migrates. `Grants` has no `write` field, so there is no
-  sanctioned cross-namespace write to open.
+- **Raw connection access (REMOVED).** `NamespacedStore::raw`
+  (`crates/kasirmu-core/src/db/namespaced.rs`) used to run the namespace check and
+  return the SQL unchanged — an escape hatch that let the Phase 1 code keep
+  compiling while it migrated. It no longer exists in the file (P4.3, 2026-10-03).
+  `Grants` has no `write` field, so there is no sanctioned cross-namespace write
+  to open.
 
 Phase 4 closes both: `raw()` was **removed 2026-10-03** (P4.3) and strict namespace enforcement
 (reject unauthorised cross-namespace access) replaces the soft posture. The
@@ -169,11 +178,15 @@ What the namespace firewall as a whole now guarantees — and the one named runt
 
 ## References
 
-- `docs/architecture/phase2-implementation-tickets.md` — the P1–P5 tickets
+- `docs/records/superseded/phase2-implementation-tickets.md` — the P1–P5 tickets
 - `docs/architecture/module-namespace-governance.md` — the soft-governance rules
-- `docs/architecture/namespaced-store-api-draft.md` — the store design
+- `docs/records/superseded/namespaced-store-api-draft.md` — the store design
 - `platform/kernel/src/kernel/lifecycle.rs` — register / declare / verify / load / start
 - `platform/kernel/src/capability.rs` — the capability vocabulary and registry
 - `foundation/src/contracts.rs` — `Module`, `ModuleContext`, `EventHandler`
 - `platform/startup/src/lib.rs` — the real boot path
 - `scripts/verify-namespace-governance.py` — the checker
+
+---
+
+> last audited 08-10-26 by docs-auditor

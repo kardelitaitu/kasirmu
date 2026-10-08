@@ -5,6 +5,7 @@ import type { ReactLocalization } from '@fluent/react';
 import { Card } from '@/components/Card';
 import { Button } from '@/components/Button';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { SyncConflictsPanel } from '../SyncConflictsPanel';
 import type {
   SyncSettingsDto,
   SyncAttemptResult,
@@ -557,6 +558,8 @@ export default function SyncSection({
                 )}
               </div>
             )}
+
+            <SyncConflictsPanel onRequeueSuccess={refreshQueueSummary} />
           </>
         )}
       </div>

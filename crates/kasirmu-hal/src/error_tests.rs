@@ -48,3 +48,10 @@ fn busy_display() {
     let e = HalError::Busy;
     assert_eq!(e.to_string(), "device busy");
 }
+
+#[test]
+fn permission_denied_display() {
+    let e = HalError::PermissionDenied("BLUETOOTH_CONNECT".into());
+    assert_eq!(e.to_string(), "permission denied: BLUETOOTH_CONNECT");
+    assert_eq!(e.kind(), HalErrorKind::PermissionDenied);
+}

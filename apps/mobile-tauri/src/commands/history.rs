@@ -16,9 +16,6 @@ use kasirmu_core::subscription::TenantSubscription;
 pub use kasirmu_bridge::history::StampFakturPajakArgs;
 
 use crate::commands::authz::require_permission_for_session;
-// R3: the SAME window arithmetic the products door uses and that
-// `paginate()` implements in the UI, rather than a second paging rule here.
-use crate::commands::products::page_window;
 use crate::error::AppError;
 use crate::state::AppState;
 
@@ -328,15 +325,10 @@ pub async fn list_sales_scoped(
         .ok_or_else(|| AppError::Internal("default tenant subscription not found".into()))?;
     sub.verify_signature()?;
     let days = sub.effective_tier().sales_history_days();
-    let (sales, capped) = store.list_sales_with_history_cap(days)?;
+    let (sales, capped) = store.list_sales_with_history_cap_bounded(days, limit, offset)?;
     drop(db);
-    // R3: window the tier-capped list. With no bounds this is a no-op, so the
-    // unpaged caller sees exactly the list it saw before.
-    let mut sales = sales;
-    let (start, end) = page_window(sales.len(), limit, offset);
-    let page = sales.drain(start..end).collect::<Vec<_>>();
     Ok(SaleListResponse {
-        sales: page
+        sales: sales
             .into_iter()
             .map(|s| SaleListItem {
                 id: s.id,

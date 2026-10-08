@@ -4,19 +4,19 @@
 //
 //   A page whose 'feature' is DISABLED still renders when its hash route is
 //   entered directly ('#/some-route'). The nav/list path filters by feature
-//   (getNavItems at menu-registry/index.ts:100, getEnabledPages at
-//   page-registry/index.ts:126), but the render-decision path does not:
-//   AppShell.tsx:473 computes
+//   (getNavItems at menu-registry/index.ts:94, getEnabledPages at
+//   page-registry/index.ts:147), but the render-decision path does not:
+//   AppShell.tsx:640 computes
 //       pageDenied = pageRegistration && !isPageAccessible(pageRegistration, userRole, userPermissions)
-//   and isPageAccessible (page-registry/index.ts:92-104) forwards ONLY
+//   and isPageAccessible (page-registry/index.ts:119-131) forwards ONLY
 //   requiredRole + requiredPermission to passesGate. PageRegistration.feature
 //   is never read on the render path — 'enabled' from useFeatures() reaches
-//   AppShell only as a prop to AppLayout (AppShell.tsx:80, :605-607), i.e. the
+//   AppShell only as a prop to AppLayout (AppShell.tsx:126, :805-810), i.e. the
 //   sidebar. The gap was re-verified against this checkout before writing:
 //   isPageAccessible takes (registration, userRole, permissions) only.
 //
 // This is the feature-shaped twin of the role/permission case already pinned in
-// AppShell.test.tsx ('hash-route entry is access-gated', :893-1069). That suite
+// AppShell.test.tsx ('hash-route entry is access-gated', :977). That suite
 // proves the ROLE gate does close the hash path; nothing here re-pins it beyond
 // the one CONTROL case below, whose only job is to show this file's green is not
 // the result of a dead render decision.
@@ -33,28 +33,41 @@
 // THEM. A flipped expectation keeps the decision on record; a deleted one leaves
 // the fix as unobserved as the hole was.
 //
-// COVERAGE of the four WORKSPACE fullscreen branches (line numbers re-read in
-// this checkout: isKdsKiosk :443, restaurant-pos :477, store-pos :519, kds :560;
-// pageDenied is computed at :473 but first consulted at :579 and again at :609):
-//   * isKdsKiosk     :443  — covered below (KDS screen mounts with the
+// COVERAGE of the four WORKSPACE fullscreen branches (line numbers re-read
+// 2026-10-07 against this checkout; the previous set was 443/477/519/560 for the
+// branches and 473/579/609 for pageDenied, all stale):
+// isKdsKiosk :620, restaurant-pos :699, store-pos :743, kds :786. pageDenied is
+// computed at :640, first consulted at :647 and again at :813.
+//   * isKdsKiosk     :620  — covered below (KDS screen mounts with the
 //                            'kitchen-display' feature disabled).
-//   * restaurant-pos :477  — covered below.
-//   * store-pos      :519  — covered below.
-//   * kds            :560  — covered below.
+//   * restaurant-pos :699  — covered below.
+//   * store-pos      :743  — covered below.
+//   * kds            :786  — covered below.
 // All four are exercised for 'the feature gate is not consulted'. They also show
 // the stronger form of the gap: each renders a HARDCODED screen and never consults
 // getPage(currentRoute) / pageDenied, so on those paths neither the feature gate
 // NOR the role gate can fire at all.
 //
 // WHAT THIS FILE DOES NOT REACH:
-//   * TabletAppShell.tsx:196 carries the same pageDenied expression; only the
-//     desktop shell is rendered here.
-//   * Real feature registrations are NOT imported — they are lazy
+//   * TabletAppShell.tsx:527 carries the same pageDenied expression; only the
+//     desktop shell is rendered here. That twin IS covered — by
+//     __tests__/TabletAppShellFeatureGateRoute.test.tsx, which renders
+//     <TabletAppShell />, asserts the denial path, and carries its own CONTROL
+//     proving the deciding line is live. So this is a scope boundary of THIS
+//     file, not an uncovered behaviour: the two suites are deliberately split.
+//   * Real feature registrations are NOT imported HERE — they are lazy
 //     (ui/src/features/*/register.tsx; 12 of those files carry feature: on
 //     registerPage, measured with
 //     'grep -rl "feature:" --include=register.tsx ui/src/features | wc -l' = 12).
 //     Every page below is a SYNTHETIC registration of the same shape, so real
 //     registration order / route-override behaviour is not exercised.
+//     PARTLY CLOSED 2026-10-07 by __tests__/realFeatureRegistrations.test.tsx,
+//     which drives four real register* functions against the real registries and
+//     pins the real cardinality (kds installs TWO routes behind one feature;
+//     reports mixes one gated page with four role-gated; registration is
+//     idempotent). That file is a REGISTRY test and mounts no shell, so what
+//     remains open here is specifically the RENDER path over real pages — this
+//     file still does not render one.
 //   * The backend that decides which features are enabled (getEnabledFeatures) is
 //     mocked at the API boundary, as in AppShell.test.tsx, and the useFeatures
 //     mock below is the only source of 'enabled'. That narrows the claim but not

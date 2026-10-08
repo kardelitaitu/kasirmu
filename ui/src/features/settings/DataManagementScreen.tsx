@@ -32,13 +32,27 @@ import { RestoreSection } from './components/RestoreSection';
  * administrative SaaS feature — it locks while the subscription is not
  * `active` while POS operational runtime continues through grace.
  */
-export default function DataManagementScreen() {
-  const { locked } = useAdminGate();
-  if (locked) return <AdminLockedFeature />;
-  return <DataManagementScreenContent />;
+/** Props for {@link DataManagementScreen}. */
+export interface DataManagementScreenProps {
+  /**
+   * Render as a BODY inside another page rather than as a standalone screen.
+   *
+   * The only difference is the title row: a composing page (Settings → Data
+   * Management) already renders its own <h1>, so this screen's title would
+   * print twice. Same opt-in contract as ExchangeRateScreen's `embedded`.
+   *
+   * Default false keeps the standalone route (`data-management`) unchanged.
+   */
+  embedded?: boolean;
 }
 
-function DataManagementScreenContent() {
+export default function DataManagementScreen({ embedded = false }: DataManagementScreenProps = {}) {
+  const { locked } = useAdminGate();
+  if (locked) return <AdminLockedFeature />;
+  return <DataManagementScreenContent embedded={embedded} />;
+}
+
+function DataManagementScreenContent({ embedded = false }: DataManagementScreenProps = {}) {
   const { l10n } = useLocalization();
   const { sessionToken: rawSessionToken } = useWorkspace();
   const sessionToken = rawSessionToken ?? '';
@@ -109,11 +123,15 @@ function DataManagementScreenContent() {
         onConfirm={confirmImport}
         onCancel={() => setShowImportConfirm(false)}
       />
-      <div className="data-mgmt-header">
-        <Localized id="data-mgmt-title">
-          <h1 className="data-mgmt-title">Data Management</h1>
-        </Localized>
-      </div>
+      {/* Skipped when embedded: the composing page owns the <h1>. The tab bar
+          below is the screen's real navigation and stays either way. */}
+      {!embedded && (
+        <div className="data-mgmt-header">
+          <Localized id="data-mgmt-title">
+            <h1 className="data-mgmt-title">Data Management</h1>
+          </Localized>
+        </div>
+      )}
 
       {/* ── Tab bar ────────────────────────────────── */}
       {/* The underline strip this used to draw (`.data-mgmt-tab::after`, an

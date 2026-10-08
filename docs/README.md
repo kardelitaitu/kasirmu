@@ -12,19 +12,35 @@
 | Directory | Purpose | Key files |
 |-----------|---------|-----------|
 | [`decisions/`](./decisions/) | Architectural Decision Records (ADRs) — numbered ADRs, research notes, phased implementation docs, and the implementation-status table | [`README.md`](./decisions/README.md) — status table with deviations |
-| [`records/`](./records/) | Unified registry — generated index of ADRs, research notes, phased docs and observability reports | [`README.md`](./records/README.md) — generated; [`audit-open-findings.md`](./records/audit-open-findings.md) |
-| [`specs/`](./specs/) | Active and completed specs — workspace-settings phases, audit plans, module manifests | [`_active/`](./specs/_active/) — in-progress specs |
-| [`operations/`](./operations/) | Production runbook, deployment guides, platform build/test guides | [`runbook.md`](./operations/runbook.md) — unified Northflank deployment runbook |
-| [`security/`](./security/) | Security audits, checklists, hardening guides, incident response, data-governance policy | [`PCI-DSS_CHECKLIST.md`](./security/PCI-DSS_CHECKLIST.md), [`data-residency-and-retention.md`](./security/data-residency-and-retention.md) |
+| [`records/`](./records/) | **Records** — anything that was true on a date and is not a live claim. Holds the generated index plus lifecycle subfolders: `audits/` (audit reports), `superseded/` (retired docs, old plans, obsolete guides), `journal/`, `campaigns/`, `findings/`, `snapshots/`, `benchmarks/`, `releases/` | [`README.md`](./records/README.md) — generated, never hand-edited; [`audit-open-findings.md`](./records/findings/audit-open-findings.md) |
+| [`specs/`](./specs/) | Design specs — what should exist. Three numbering schemes coexist here and two IDs are duplicated across `_active/` and `_done/`; the README explains all of it | [`README.md`](./specs/README.md) — layout, the `0043-`/`c1-`/`p1-` prefixes, and the known 0047/0049 collision |
+| [`operations/`](./operations/) | Production runbook, deployment guides, platform build/test guides, and the agent operations handbook | [`runbook.md`](./operations/runbook.md) — unified Northflank deployment runbook; [`agent-gates.md`](./operations/agent-gates.md) — the seven pre-commit gates and their CI backstops, which AGENTS.md §2 cites by path but nothing linked to |
+| [`security/`](./security/) | **Policy only** since 2026-10-02 — incident response, PCI-DSS, data residency. The 9 dated audits moved to [`records/audits/security/`](./records/audits/security/) | [`INCIDENT_RESPONSE.md`](./security/INCIDENT_RESPONSE.md), [`PCI-DSS_CHECKLIST.md`](./security/PCI-DSS_CHECKLIST.md), [`data-residency-and-retention.md`](./security/data-residency-and-retention.md) — all three named, because a runbook nothing links to is a runbook nobody finds |
 | [`legal/`](./legal/) | Corporate and compliance documents, scoped by jurisdiction | [`README.md`](./legal/README.md) — jurisdiction index; [`id/`](./legal/id/) — PT Perorangan (Indonesia) |
-| [`guides/`](./guides/) | Reference documentation — architecture, user/admin guides, whitepapers, roadmaps | [`ARCHITECTURE.md`](../ARCHITECTURE.md) — at repo root, canonical since 2026-09-23 |
-| [`architecture/`](./architecture/) | Cross-cutting design docs — the critical-path invariants and their enforcing tests, plus modular-app and workspace plans | [`CRITICAL_PATH_INVARIANTS.md`](./architecture/CRITICAL_PATH_INVARIANTS.md) — stock ≥ 0, sale total, refund ≤ settled, sync convergence |
-| [`releases/`](./releases/) | Changelogs, release process, checklists | [`CHANGELOG-0.0.33.md`](./releases/CHANGELOG-0.0.33.md) |
-| [`observability/`](./observability/) | Logging, error handling, metrics | [`logging-2026-07-20.md`](./observability/logging-2026-07-20.md) |
-| [`benchmarks/`](./benchmarks/) | Performance benchmarks and regression tracking | [`baseline-2026-07-21.md`](./benchmarks/baseline-2026-07-21.md) |
-| [`audits/`](./audits/) | Audit reports — full audits of the docs system, the API reference, CSS verification, and SEO/crawler reviews | [`2026-09-28-docs-audit.md`](./audits/2026-09-28-docs-audit.md); [`frontend/css-verification.md`](./audits/frontend/css-verification.md) — no linter sees `.css` |
-| [`archived/`](./archived/) | Truly retired documents — completed/superseded audits, old plans, obsolete guides | *(26 files; the 2026-08-31 retirement pass moved the last three repo-root docs here — see [`records/`](./records/) index)* |
-| [`plans/`](./plans/) | Active improvement plans | [`northflank-p1-p7-plan.md`](./plans/_active/northflank-p1-p7-plan.md) |
+| [`guides/`](./guides/) | Reference documentation — architecture, user/admin guides, whitepapers, roadmaps | [`developer/`](./guides/developer/) · [`platform/`](./guides/platform/) · [`product/`](./guides/product/) · [`user/`](./guides/user/) — 21 guides in four groups, the four subdirectories linked rather than the files individually; [`ARCHITECTURE.md`](../ARCHITECTURE.md) — at repo root, canonical since 2026-09-23 |
+| [`architecture/`](./architecture/) | **Live design truth only** since 2026-10-02 — the canonical architecture document, the critical-path invariants and their enforcing tests, UX guidelines, module boot order and the namespace firewall/governance rules. The 11 dated plans, phase tickets, drafts and inventories moved to [`records/superseded/`](./records/superseded/) | [`ARCHITECTURE.md`](./architecture/ARCHITECTURE.md), [`CRITICAL_PATH_INVARIANTS.md`](./architecture/CRITICAL_PATH_INVARIANTS.md) — stock ≥ 0, sale total, refund ≤ settled, sync convergence, [`UX_GUIDELINES.md`](./architecture/UX_GUIDELINES.md), [`module-boot-sequence.md`](./architecture/module-boot-sequence.md), [`module-namespace-firewall.md`](./architecture/module-namespace-firewall.md), [`module-namespace-governance.md`](./architecture/module-namespace-governance.md) — all six named so each is reachable from here |
+| [`archived/`](./archived/) | A one-file **tombstone** — retired 2026-10-02. Its documents moved into `records/` (see the note below); the stub remains so older references still resolve | [`README.md`](./archived/README.md) |
+| [`plans/`](./plans/) | Task lists with an acceptance command — how to build it and how to know it is done | [`README.md`](./plans/README.md) — the `_active` → `_done` lifecycle, and why the `done-`/`todo-` token is a tool contract checked by `check-dead-refs.py` |
+
+> **Restructured 2026-10-02** (`todo-docs-restructure.md` §5). This table is a **navigation
+> surface**, so it now lists **only directories that exist**. Five struck-through `Removed
+> 2026-10-02` rows had accumulated in it — `releases/`, `observability/`, `benchmarks/`,
+> `audits/`, `archived/` — and were taken out: an index that grows a dead row per move stops
+> being an index. The migration, once:
+>
+> | Retired | Now |
+> |---|---|
+> | `releases/` (10 files) | [`records/releases/`](./records/releases/) |
+> | `observability/` (2) | [`records/audits/observability/`](./records/audits/observability/) |
+> | `benchmarks/` (4) | [`records/benchmarks/`](./records/benchmarks/) |
+> | `audits/` (14) | [`records/audits/`](./records/audits/) |
+> | `archived/` (26 + 2 journals) | [`records/audits/`](./records/audits/), [`records/superseded/`](./records/superseded/), [`records/campaigns/`](./records/campaigns/) |
+> | `coverage/` (1) | [`records/benchmarks/coverage-report-2026-07-20.md`](./records/benchmarks/coverage-report-2026-07-20.md) |
+>
+> `docs/archived/` survives as a **one-file tombstone** and is listed above for that reason.
+> **The counts in the dated audit notes further down are historical and deliberately left
+> unedited** — they record what those audits measured on their dates; do not read them as
+> current.
 
 ## Quick links
 
@@ -33,7 +49,7 @@
 - [CI Pipeline](./operations/ci-pipeline.md) — job matrix, gate policy, local verification
 - [PCI-DSS Checklist](./security/PCI-DSS_CHECKLIST.md) — compliance status
 - [Data Residency & Retention](./security/data-residency-and-retention.md) — where data lives, retention schedule, deletion/export handling
-- [Security Audit Completion](./security/security-audit-completion.md) — final report
+- [Security Audit Completion](./records/audits/security/security-audit-completion.md) — final report
 - [Architecture](../ARCHITECTURE.md) — system overview (canonical; the former `guides/` copy was merged into it 2026-09-23 and is now a pointer stub)
 - [Extending kasir.mu](./guides/developer/EXTENDING.md) — scripting & integration surfaces (REST API, Lua plugins, CLI)
 - [Quickstart](./guides/developer/QUICKSTART.md) — getting started
@@ -41,13 +57,21 @@
 ## Conventions
 
 - **ADR naming (new records):** `YYYY-MM-DD-adrNN-<slug>.md` in `decisions/` — the
-  `adrNN` segment is required for anything added from here on. Only 13 of the 66 files
-  currently in `decisions/` carry it; the other 53 predate the convention and are **not
-  drift to be renamed**. Highest number in use: adr47. (Corrected 09-09-26: this read 64/51
-  and was already wrong when written — `git ls-tree 04407b60e -- docs/decisions` counts 66
-  tracked `.md` files, 13 with the segment.)
+  `adrNN` segment is required for anything added from here on. Most files in `decisions/`
+  predate the convention and are **not drift to be renamed**. **Every number in this bullet is
+  derived, not quoted**, because a quoted one has rotted three times now:
+  - total files — `ls docs/decisions/*.md | wc -l`
+  - files carrying the `adrNN` segment — `ls docs/decisions/ | grep -c 'adr[0-9]'`
+  - highest number in use — `ls docs/decisions/ | grep -oE 'adr[0-9]+' | sed 's/adr//' | sort -n | tail -1`
+
+  (History, kept deliberately: this bullet read *"Only 13 of the 66 files … the other 53 …
+  Highest number in use: adr47"* and was **already wrong when written** — the 09-09-26 correction
+  below recorded that `git ls-tree 04407b60e -- docs/decisions` counted 66 tracked `.md` files,
+  13 with the segment. By 2026-10-02 it had drifted again to 81 files, 30 with the segment,
+  highest `adr63`. Fixing the number would have been the third restatement of a value that goes
+  stale on every ADR; the derivation commands above are the fix.)
 - **Spec phases:** `workspace-settings-phase-<N>-<slug>.md` in `specs/`
-- **Audit findings:** tracked in [`records/audit-open-findings.md`](./records/audit-open-findings.md)
+- **Audit findings:** tracked in [`records/audit-open-findings.md`](./records/findings/audit-open-findings.md)
 
 ### The records index is generated, and nothing enforces its freshness
 
@@ -144,3 +168,21 @@ branch, kept on purpose and recorded as such in the script rather than quietly r
 > that note. Not an audit: the directory is new and its contents are founder-side working
 > drafts, not documentation of shipped behaviour. Content carries its own status markers
 > (`[UNVERIFIED]`/`[PENDING]`/`[DECIDED]`) — see [`legal/README.md`](./legal/README.md).
+>
+> **Correction (02-10-26, todo-docs-restructure.md §4 A5.1–A5.2):** the note above lists `coverage/`
+> among "3 unlisted dirs" still excluded from this index. **`docs/coverage/` no longer exists** —
+> its single generated report moved to [`records/benchmarks/coverage-report-2026-07-20.md`](./records/benchmarks/coverage-report-2026-07-20.md)
+> and the folder was removed. The two genuinely-excluded dirs are now `src/` + `theme/` (the mdBook
+> portal, D1). The note itself is left unedited because it is a dated record of what that audit
+> measured. A second loose end closed in the same pass: `docs/audit-receipt-settings.md` — a real
+> audit report sitting at the `docs/` root with **zero** inbound references — moved to
+> [`records/audits/audit-receipt-settings.md`](./records/audits/audit-receipt-settings.md).
+>
+> **Correction (02-10-26, todo-docs-restructure.md §4 A5):** the `archived/` row claimed **26 files**
+> against an actual **28**, and the ADR-naming bullet claimed **"13 of the 66 files … highest adr47"**
+> against an actual **30 of 81, highest `adr63`**. This is the *third* time a hand-quoted count in
+> this file was found stale — the 08-09-26 note below records the second. Both were therefore
+> **replaced with derivation commands rather than restated**, on the same principle this file
+> already uses elsewhere ("Re-derive both numbers rather than quoting these", README tech table).
+> No other live number in this file was changed; the counts inside the dated audit notes are
+> records of what past audits measured and are deliberately left alone.

@@ -1,3 +1,4 @@
+<!-- Audit stamp: 2026-10-08 · docs-auditor · status: ACCURATE AFTER REPAIR (1 finding, previously flagged) · Supersedes the 2026-09-29 marker below, kept verbatim. The prior stamp had already FLAGGED "OZ_DB_POOL_SIZE documented/claimed as 20 throughout but code default is 8 … left for the config owner"; this pass FIXED it rather than carrying the flag forward. Six present-tense claims of a 20-connection pool now state the code default (**8**, `apps/cloud-server/src/config.rs:226`), and the two RAM figures derived from 20 connections (~30 MB) are recomputed for 8 (~12 MB) with the scaling stated. The capacity/CPU snapshot figures the prior stamp called unverified are untouched. · Repaired against branch `0.0.41` at `134aaed1b`. -->
 <!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 532 lines, with a prior marker re-verified rather than replaced. A server performance ANALYSIS is a measurement document, and that determines the audit scope precisely: its numbers are properties of a deployed system at a moment in time, and no amount of reading establishes whether they still hold. What can be checked is whether the systems it measured still exist in the shape it describes, and whether its structural claims have been overtaken. · NEITHER WAS. The analysis targets the cloud server, and that server is live at `apps/cloud-server/` with the architecture this campaign has verified repeatedly — the sync router, the metrics endpoint, the rate-limiting middleware, and the retention and prune jobs the dependency-audit round found referenced only from a retired workflow. The document's subject did not go anywhere, which for a measurement document is the outcome that matters: its numbers are stale, its subject is not. · A CROSS-REFERENCE THAT MAKES THE STALENESS CONCRETE rather than abstract. The logging companion in the same directory, audited in round 14, records that `sync_pushes_total`, `sync_pull_row_decode_failures_total` and `sync_anchor_expired_total` are the CURRENT metric names in `apps/cloud-server/src/metrics.rs` — and those same counters are what a server performance analysis would express throughput in. So the vocabulary a reader would use to interpret these numbers still exists under the same names, while the numbers themselves belong to a past run. That is the most useful pairing this campaign can offer for a document like this: the units survive even when the measurements do not. · NOT re-measured, and the omission is the point rather than a gap: no benchmark, profile, query plan or load figure was re-derived, because doing so is a performance-engineering task with its own tooling and its own baseline, and restating stale numbers as current is precisely the drift this campaign exists to prevent. · Prior stamp retained as original evidence; footer re-dated to match the new stamp. -->
 # Server Performance Analysis
 <!-- Superseded audit marker (2026-09-09, body kept verbatim) · DSH · status: ACCURATE AFTER REPAIR (3 findings) . Repaired 3 wrong file:line citations in the section 11 optimization Where column to match current source: main.rs:470 to main.rs:691 (CompressionLayer-removal comment, confirmed at apps/cloud-server/src/main.rs:691-692), sync_api.rs:357 to sync_api.rs:519 (SNAPSHOT_CACHE_TTL_SECS=900), auth.rs:34 to crates/kasirmu-api/src/auth.rs:35 (JWT validation cache def lives in crates/kasirmu-api/src/auth.rs, not apps/cloud-server/src/auth.rs which does not exist). Verified-true: ports 3099/8080/80 (Dockerfile.unified:205,7; apps/cloud-server/src/config.rs:139; license-server/docker-compose.yml:22), OZ_CORS_ORIGINS (apps/cloud-server/src/main.rs:605; .env.example:51), OZ_ENFORCE_PLANS (apps/cloud-server/src/config.rs:146), OZ_SKIP_PUSH_VALIDATION (apps/cloud-server/src/sync_api.rs:128), schema crates/kasirmu-core/migrations/20260813_init.pg.sql, all 8 Prometheus metrics in apps/cloud-server/src/metrics.rs, concurrency 10/40 (apps/cloud-server/src/main.rs:658,663), JWT cache (crates/kasirmu-api/src/auth.rs:35-54), CompressionLayer removed (apps/cloud-server/src/main.rs:691-692), snapshot TTL 900s (apps/cloud-server/src/sync_api.rs:519). FLAGGED not fixed: OZ_DB_POOL_SIZE documented/claimed as 20 throughout but code default is 8 (apps/cloud-server/src/config.rs:49,160); .env.example:27 also says default 20, so this is config drift between .env.example and config.rs, left for the config owner. Capacity and CPU figures (200-400 terminals, ~0.08 core, per-optimization CPU-saved and +terminal counts) are a 2026-08-21 snapshot with no re-derivation path; kept verbatim and flagged as unverified historical measurement, not deleted. -->
@@ -74,12 +75,12 @@ Two worker threads by default. This is adequate for the I/O-bound sync workload 
 | Component | Value |
 |-----------|-------|
 | Backend | PostgreSQL (Northflank free addon) |
-| Connection pool | `deadpool_postgres::Pool`, 20 connections (`OZ_DB_POOL_SIZE`) |
+| Connection pool | `deadpool_postgres::Pool`, `OZ_DB_POOL_SIZE` connections (code default **8** — `apps/cloud-server/src/config.rs:226`) |
 | Tenant isolation | `SET LOCAL oz.tenant_id` per transaction (RLS-ready) |
 | Schema | Auto-applied on first boot from `20260813_init.pg.sql` |
 | Fallback | In-memory SQLite for unported handlers only (health is PG-aware) |
 
-**PostgreSQL** opens a transaction per request, sets the tenant GUC for RLS, performs the INSERT, then commits. The 20-connection pool handles 20 concurrent writes without contention. Each terminal gets its own async transaction — no mutex, no waiting.
+**PostgreSQL** opens a transaction per request, sets the tenant GUC for RLS, performs the INSERT, then commits. The pool handles that many concurrent writes without contention; raising `OZ_DB_POOL_SIZE` trades RAM for it. Each terminal gets its own async transaction — no mutex, no waiting.
 
 ---
 
@@ -99,8 +100,8 @@ Two worker threads by default. This is adequate for the I/O-bound sync workload 
 
 The PostgreSQL addon is free on Northflank and eliminates the SQLite single-writer lock bottleneck:
 
-- **No mutex contention** — each terminal gets its own async transaction via `deadpool_postgres::Pool` (20 connections)
-- **Concurrent writes** — 20 terminals can push simultaneously without waiting
+- **No mutex contention** — each terminal gets its own async transaction via `deadpool_postgres::Pool`
+- **Concurrent writes** — terminals up to the configured pool size push simultaneously without waiting
 - **RLS-ready** — `SET LOCAL oz.tenant_id` per transaction, ready for row-level security cutover
 - **Managed backups** — Northflank handles backups, no manual `cp` needed
 - **Zero config** — just set `DATABASE_URL` env var, server auto-detects and switches
@@ -217,7 +218,7 @@ The license server's rate limiter persists bucket state to SQLite so server rest
 | Snapshot requests/s | ~20–50 (single snapshot_all query, cached 15 min) |
 | Memory per connection | ~50 KB (tokio task + buffer) |
 | Memory for 200 connections | ~10 MB (well within 512 MB) |
-| PG pool overhead | ~30 MB (20 connections × ~1.5 MB each) |
+| PG pool overhead | ~12 MB at the default 8 connections (~1.5 MB each); scales with `OZ_DB_POOL_SIZE` |
 | Total memory | ~60 MB server + ~30 MB PG pool = ~90 MB |
 
 **Practical limit: 200–400 active terminals** on the free tier with PostgreSQL. The binding constraint is now CPU (0.2 cores), not database contention. Each terminal gets its own async transaction — no mutex, no waiting.
@@ -266,7 +267,7 @@ With PostgreSQL handling concurrency, the binding constraint shifts to CPU (0.2 
 
 ### 7.2 Connection Pool Saturation
 
-The 20-connection PG pool (`OZ_DB_POOL_SIZE=20`) handles concurrent requests. When all 20 connections are busy, new requests queue in the pool.
+The PG pool (`OZ_DB_POOL_SIZE`, **default 8**) handles concurrent requests. When every connection is busy, new requests queue in the pool.
 
 **Impact:** Under burst conditions (20+ simultaneous sync pushes), requests wait for a pool connection. Typical wait: 5–20 ms.
 
@@ -370,7 +371,7 @@ The `/health` endpoint runs two async SQL queries on PostgreSQL (queue depth, la
 | **Total** | **~143 MB** |
 | **Headroom** | **~369 MB (72%)** |
 
-The server is well within the 512 MB limit with PostgreSQL. The connection pool adds ~30 MB (20 connections × ~1.5 MB each), but this is well worth the concurrency gains.
+The server is well within the 512 MB limit with PostgreSQL. The connection pool adds ~12 MB at the default 8 connections (~1.5 MB each), scaling with `OZ_DB_POOL_SIZE`, and is well worth the concurrency gains.
 
 ### 10.2 Standard Tier (4 GB)
 
@@ -530,4 +531,4 @@ The current architecture is single-instance (SQLite mutex, in-memory cache, in-m
 | Caddy routing | `apps/unified/Caddyfile` | Path-based routing to :8080 / :3099 |
 | Client sync daemon | `platform/sync/src/daemon.rs` | Push/pull cycle, backoff, heartbeat |
 
-> last audited 29-09-26 by docs-auditor
+> last audited 08-10-26 by docs-auditor

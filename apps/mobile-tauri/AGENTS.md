@@ -263,7 +263,7 @@ it: 26.9 MB matches the 25.8 MB arm64 `.so` plus packaging, whereas the four-ABI
 `apk/universal/release/app-universal-release.apk` measured 2026-09-20 is **104,737,268 B** and
 ships `arm64-v8a`, `armeabi-v7a`, `x86` and `x86_64`. A four-ABI *debug* APK is far larger again —
 the four debug `.so` under `target/` sum to 577,077,264 B, and the audit records the resulting APK
-at ~583 MB (`docs/records/2026-09-20-audit-android-shell.md`, H5). Add `--target aarch64` to either
+at ~583 MB (`docs/records/snapshots/2026-09-20-audit-android-shell.md`, H5). Add `--target aarch64` to either
 command to reproduce the table.
 
 The gap is debug info, not code. `[profile.dev]` had `debug = true`, which put **413.5 MB** of
@@ -279,6 +279,19 @@ Two consequences worth knowing:
   shrank, a debug APK still measured 412.6 MB on disk while holding only 152.7 MB: the
   packager kept the previous entry offsets and left the difference as padding. A
   `gradlew clean` (or deleting `gen/android/app/build/outputs/apk/`) reports the true size.
+- **⚠️ The signing key is permanent, and Android identifies the app by it — not by the package
+  name.** A build signed with one key cannot be installed over a build signed with another;
+  Android refuses with `INSTALL_FAILED_UPDATE_INCOMPATIBLE` and the only way forward is to
+  uninstall first, which deletes the app's SQLite database. There is no recovery: an RSA key
+  cannot be regenerated from its alias or password, so a thrown-away keystore takes its app
+  identity with it. Consequences:
+  - **Never sign a device you intend to keep with a throwaway key.** Use the real keystore, or
+    expect to uninstall the moment a differently-signed build appears.
+  - **Delete an APK when you delete its key.** A signed APK outliving its keystore is a trap
+    for whoever uninstalls: the one artifact that would still update the device is unattached to
+    any key that can produce another.
+  - For Google Play, enable **Play App Signing** so Google holds the signing key and only your
+    *upload* key is local — that one they can reset. Everywhere else the key is yours alone.
 
 ### Build speed: check `CARGO_BUILD_JOBS` first
 

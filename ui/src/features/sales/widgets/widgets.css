@@ -109,6 +109,40 @@
 
 /* ── Reporting Dashboard Grid ─────────────────────────────────────── */
 
+/* ⚠ FOUR NAMES IN THIS BLOCK ARE ALSO DEFINED IN SalesDashboardScreen.css.
+   Measured 2026-10-07: .reporting-dashboard, .reporting-dashboard-title,
+   .reporting-dashboard-grid and .reporting-dashboard-empty appear in BOTH sheets
+   with DIFFERENT values, and SalesDashboardScreen.tsx imports this file at :7 and
+   that one at :8 — later import wins, so every rule in the group below is
+   currently DEAD. The visible differences are:
+
+     .reporting-dashboard-grid   repeat(2, 1fr) / gap --space-3            (here, dead)
+                                 repeat(auto-fill, minmax(17.5rem, 1fr))
+                                 / gap --space-4                          (there, live)
+     .reporting-dashboard-title  font-weight: 700                         (here, dead)
+                                 font-weight: var(--font-weight-bold)     (there)
+     .reporting-dashboard-empty  padding: --space-8 0                     (here, dead)
+                                 padding: --space-6 0                     (there)
+
+   The two sheets disagree on the dashboard's actual grid, so this is a latent
+   bug and not tidiness: swapping the two import lines in SalesDashboardScreen.tsx
+   would silently re-lay-out the dashboard. It is NOT fixed here because choosing
+   the intended grid is a product decision, and the suite that would normally
+   force the question (screenExtraction's per-entry duplicate-name check) does not
+   grade this sheet — widgets.css is in BASELINE_UNCITED, so nothing sees the
+   collision. Decide the grid, delete the losing copy, then cite widgets.css from
+   the SalesDashboardScreen entry so it stays graded. Found while adding that cite;
+   the cite was reverted because the suite fails on exactly this duplication.
+
+   CORRECTION 2026-10-07: an earlier draft of this note claimed the live auto-fill
+   grid made .widget-width-*'s `grid-column: span 2` INERT, and that the explicit
+   repeat(2, 1fr) here was therefore the intended design. That is wrong —
+   auto-fill creates real columns and a span is honoured against them. Both grids
+   render the width classes correctly, so the evidence does NOT pick a winner:
+   auto-fill adapts to the viewport, repeat(2, 1fr) is a fixed two-column
+   dashboard. Only the owner can say which the dashboard wants. Do not treat the
+   import order as a tiebreak. */
+
 .reporting-dashboard {
   padding: var(--space-4);
 }
@@ -116,7 +150,11 @@
 .reporting-dashboard-title {
   margin: 0 0 var(--space-4);
   font-size: var(--text-2xl);
-  font-weight: 700;
+  /* --font-weight-bold is 700; the literal that stood here was equivalent but
+     off-scale, and themeTokenCompliance scans THIS sheet (it holds two frozen
+     tail entries for it), so the token is the form that stays honest if the
+     scale ever moves. */
+  font-weight: var(--font-weight-bold);
 }
 
 .reporting-dashboard-grid {
@@ -144,4 +182,27 @@
   .reporting-widget-hour-bar {
     transition: width var(--duration-300) var(--ease-out);
   }
+}
+
+/* ── Per-widget identity hooks ────────────────────────────────────────
+   Five modifiers every widget declares on its root — reporting-widget--category,
+   --daily-total, --heatmap, --revenue, --hourly — none of which any stylesheet
+   defined. They are NOT missing styling: every widget shares one interior
+   (header → reporting-widget-title → body), and the tile's chrome — Card,
+   width and grid slot — belongs to SalesDashboardScreen.css, whose own comment
+   says so ("the widget tiles' chrome belongs to widgets.css and a screen may
+   not borrow it"). The modifier names WHICH widget a tile is, for markup
+   readers, tests and DevTools; it does not select a different look.
+
+   Declared explicitly rather than left undefined so the name resolves, and so a
+   widget that later DOES need its own rule has an obvious, correct hook instead
+   of inventing a second class alongside it. Keep these empty: if one grows a
+   rule, the widget has stopped sharing the family interior and that is worth
+   noticing in review. */
+.reporting-widget--category,
+.reporting-widget--daily-total,
+.reporting-widget--heatmap,
+.reporting-widget--revenue,
+.reporting-widget--hourly {
+  /* Intentionally inherits .reporting-widget. */
 }

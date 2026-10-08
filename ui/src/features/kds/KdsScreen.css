@@ -2298,7 +2298,7 @@
    behaviour every non-shell mount had is preserved rather than guessed at.
 
    WHY IT IS LAST IN THE SHEET. It is a property block, and the walker suites
-   grade cascade order (`docs/frontend/css-verification.md`): the last rule
+   grade cascade order (`docs/records/audits/frontend/css-verification.md`): the last rule
    wins, and this one is written to win. */
 .kds-workspace {
   container-type: inline-size;

@@ -10,7 +10,7 @@ use super::*;
 use crate::error::PaymentError;
 use crate::processor::PaymentProcessor;
 
-use crate::types::{PaymentReceipt, PaymentRequest, PaymentResult};
+use crate::types::{PaymentPhase, PaymentReceipt, PaymentRequest, PaymentResult};
 
 struct FlakyMockProcessor {
     call_count: AtomicU32,
@@ -100,6 +100,7 @@ impl PaymentProcessor for FlakyMockProcessor {
         } else {
             Ok(PaymentResult {
                 success: true,
+                phase: PaymentPhase::Confirmed,
                 transaction_id: Some("tx_123".into()),
                 auth_code: Some("auth_ok".into()),
                 amount_charged: Money::from_major(10, Self::usd()).unwrap(),
@@ -113,6 +114,7 @@ impl PaymentProcessor for FlakyMockProcessor {
         self.maybe_fail()?;
         Ok(PaymentResult {
             success: true,
+            phase: PaymentPhase::Confirmed,
             transaction_id: Some("tx_123".into()),
             auth_code: None,
             amount_charged: Money::from_major(10, Self::usd()).unwrap(),
@@ -128,6 +130,7 @@ impl PaymentProcessor for FlakyMockProcessor {
     ) -> Result<PaymentResult, PaymentError> {
         Ok(PaymentResult {
             success: true,
+            phase: PaymentPhase::Confirmed,
             transaction_id: Some("tx_ref".into()),
             auth_code: None,
             amount_charged: Money::from_major(10, Self::usd()).unwrap(),
@@ -140,6 +143,7 @@ impl PaymentProcessor for FlakyMockProcessor {
         self.maybe_fail()?;
         Ok(PaymentResult {
             success: true,
+            phase: PaymentPhase::Confirmed,
             transaction_id: None,
             auth_code: None,
             amount_charged: Money::zero(Self::usd()),

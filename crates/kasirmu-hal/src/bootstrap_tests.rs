@@ -318,10 +318,13 @@ async fn card_terminals_register_wired_and_wireless() {
     // and must fail closed rather than approve a card.
     assert!(matches!(
         front
-            .authorize(kasirmu_core::Money {
-                minor_units: 100,
-                currency: "USD".parse::<kasirmu_core::Currency>().unwrap(),
-            })
+            .authorize(
+                kasirmu_core::Money {
+                    minor_units: 100,
+                    currency: "USD".parse::<kasirmu_core::Currency>().unwrap(),
+                },
+                None,
+            )
             .await,
         Err(crate::error::HalError::Unsupported(_))
     ));

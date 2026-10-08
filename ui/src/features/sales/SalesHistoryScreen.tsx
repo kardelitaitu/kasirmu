@@ -12,6 +12,8 @@ import {
   voidSaleScoped,
   stampFakturPajakScoped,
   createFakturPenggantiScoped,
+  issueTaxInvoiceScoped,
+  getSaleStatutoryNumberScoped,
   type SaleListItem,
   type SaleDetail,
   type RefundDto,
@@ -263,6 +265,19 @@ export default function SalesHistoryScreen() {
   // P2-4: Sale detail cache — avoids re-fetching the same sale on modal re-open.
   // Invalidated when a sale is voided or refunded (status-changing events).
   const detailCacheRef = useRef<Map<string, SaleDetail>>(new Map());
+
+  // ── Evict detail cache on Android OS memory trim callbacks (Phase 2 audit) ─
+  useEffect(() => {
+    const handleMemoryTrim = () => {
+      detailCacheRef.current.clear();
+    };
+    window.addEventListener('kasirmu:trimMemory', handleMemoryTrim);
+    window.addEventListener('kasirmu:lowMemory', handleMemoryTrim);
+    return () => {
+      window.removeEventListener('kasirmu:trimMemory', handleMemoryTrim);
+      window.removeEventListener('kasirmu:lowMemory', handleMemoryTrim);
+    };
+  }, []);
 
   const invalidateCache = useCallback((saleId: string) => {
     detailCacheRef.current.delete(saleId);
@@ -553,6 +568,8 @@ export default function SalesHistoryScreen() {
           },
         ],
         fakturPajak: detail.fakturPajak?.formatted ?? null,
+        statutoryNumber: detail.statutoryNumber ?? null,
+        isInvoice: Boolean(detail.statutoryNumber),
       });
     } catch (printErr) {
       // Was `catch { /* Ignore print errors. */ }` — the quietest failure on this
@@ -648,6 +665,32 @@ export default function SalesHistoryScreen() {
       setPenggantiLoading(false);
     }
   }, [detail, sessionToken, invalidateCache, load, addToast, l10n]);
+
+  // ── Statutory Tax Invoice handler ──────────────────────────────────
+  const [issuingInvoice, setIssuingInvoice] = useState(false);
+
+  const handleIssueTaxInvoice = useCallback(async () => {
+    if (!detail || !sessionToken) return;
+    setIssuingInvoice(true);
+    try {
+      const invNumber = await issueTaxInvoiceScoped(sessionToken, detail.id);
+      const verified = await getSaleStatutoryNumberScoped(sessionToken, detail.id);
+      setDetail((prev) => (prev ? { ...prev, statutoryNumber: verified ?? invNumber } : null));
+      invalidateCache(detail.id);
+      load();
+      addToast({
+        message: `Statutory Tax Invoice issued: ${invNumber}`,
+        type: 'success',
+      });
+    } catch (err) {
+      addToast({
+        message: plainErrorMessage(err, 'Failed to issue statutory tax invoice'),
+        type: 'error',
+      });
+    } finally {
+      setIssuingInvoice(false);
+    }
+  }, [detail, sessionToken, invalidateCache, load, addToast]);
 
   // ── Refund handlers ──────────────────────────────────────────
   const openRefund = useCallback(() => {
@@ -1601,6 +1644,44 @@ export default function SalesHistoryScreen() {
                           </Button>
                         )}
                       </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* ── Statutory Tax Invoice Section (Cross-border B2B Invoicing) ── */}
+                <div
+                  className="sales-history-statutory-invoice-section"
+                  style={{
+                    margin: '1rem 0',
+                    padding: '0.75rem 1rem',
+                    background: 'var(--bg-subtle, #f8f9fa)',
+                    borderRadius: '6px',
+                    border: '1px solid var(--border-color, #e2e8f0)',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>Statutory Tax Invoice</div>
+                      {detail.statutoryNumber ? (
+                        <div style={{ fontSize: '0.8125rem', marginTop: '0.25rem', display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                          <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>{detail.statutoryNumber}</span>
+                          <Badge variant="success">Issued</Badge>
+                        </div>
+                      ) : (
+                        <div style={{ fontSize: '0.8125rem', color: 'var(--text-muted, #64748b)', marginTop: '0.25rem' }}>
+                          No statutory tax invoice issued
+                        </div>
+                      )}
+                    </div>
+                    {session && detail.status === 'Completed' && !detail.statutoryNumber && (
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={handleIssueTaxInvoice}
+                        loading={issuingInvoice}
+                      >
+                        Issue Tax Invoice
+                      </Button>
                     )}
                   </div>
                 </div>

@@ -2,6 +2,20 @@
 
 <!-- Authorship: opened 2026-09-15 at HEAD d6d06c3c7 by DSH, on the owner directive "continue the implementation, we go with your recommendation" after done-todo-refactor-devmock-agents-3.md's close surfaced that the router consolidation had no live owner. Every number below carries its command and is stamped to this commit; they move with every router edit. -->
 
+> ✅ **RE-VERIFIED 2026-10-07 — the completion claims hold, including the ones a reader would have to trust.**
+> This file is the honest kind of `done-`: it carries a §4 waiver for a whole-tree red it never observed, and it
+> keeps the acceptance box UNTICKED while renaming, saying why in as many words. Checked against the tree:
+> **line count** `ui/src/dev-mock/tauri-api.ts` = 369 total, and the composition is **119 code / 213 comment /
+> 37 blank** — the doc's 368 / 119 / 213 / 36 is the same file measured with the trailing-newline convention, and
+> the two figures a reader would quote (code 119, comment 213) match exactly. **The `entryHandlers` end state is
+> as described**: two imported spreads plus 2 documented cross-domain residue stubs, and the `handlers['x'] = …`
+> patches are down to those stubs. **The dispatcher-identity invariant is enforced, not just asserted** —
+> `ui/src/__tests__/dev-mock-scoped-aliases.test.ts` imports the real registry and asserts set equality between the
+> source scan and `Object.keys(handlers)`, and it passes **40/40** today. Note that the test's own floor is
+> `> 500` (`:190`), not 681: the exact 681-count and its `sha256 105d29730df2…60681c` live only in this document,
+> in a throwaway dump that was deleted as designed, so **re-derive the count rather than quoting it** if the
+> invariant ever needs re-checking. This file is worth reading as the model for how to rename on a waiver.
+
 **Document:** `done-todo-refactor-devmock-router-consolidation.md`
 **Status:** ✅ COMPLETE — renamed to `done-` by **owner §4 waiver, 2026-09-16** (precedent: `273b0a455`, `agents-3`). Opened as `todo-refactor-devmock-router-consolidation.md` at `1938a0782`. `check:all` does not exit 0 in this shared checkout, but with **zero dev-mock/this-order reds** — the non-green is a moving mix of ~44 foreign **uncommitted** files the CSS/tree walkers grade, the documented i18n **WSL-bash env trap** (passes under Git `bin`), and the E2E **Dockerfile** infra defect (since fixed at HEAD `8f5ccba35`), none of which this order owns or may touch (§3). Every gate this order actually controls is re-verified green at HEAD `8f5ccba35`: ESLint, `tsc` exit 0, `10005` unit tests incl. all **96** `dev-mock-*` suites, and the **681**-command dispatcher identity (`105d29730df2…`). Full waiver record at the foot of this file.
 **Role:** Orchestrator Agent 5 (Dev-Mock Router Consolidation)

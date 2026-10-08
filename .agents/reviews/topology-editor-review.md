@@ -262,4 +262,19 @@ done
 
 **What did move on the topology surface.** One file, and it is not one this review reasoned about: `ui/src/features/locations/TopologyApplyConfirm.css`. A stylesheet in the Apply-confirmation dialog carries no weight for F1–F5, which are all assertions about Rust control flow and test assertions. It is named here so that the "topology was untouched" claim is bounded rather than absolute.
 
-**Consequence for the register.** F1–F5 and M1–M5 remain live at `35011a227` without re-reading. The recommended order in §6 is unaffected. Had any blob differed, the affected findings would have needed re-reading before they could be quoted again — a review's line numbers are a cache, and this is the check that says the cache is still valid.
+**Consequence for the register.** F1–F5 and M1–M5 remain live at `35011a227` without re-reading. The recommended order in §6 is unaffected.
+
+> **Register updated 2026-10-07 — F1 IS FIXED, and this file still carried it as live.** `32abb9cbb`
+> (2026-09-16, *"fix(topology): the ownership gate and the save boundary now consult the target
+> store's own registry"*) landed the exact change §3 F1 asks for, one day after this review: the gate's
+> registry slice now takes the effective store's connection. In today's tree
+> (`crates/kasirmu-bridge/src/topology/commands.rs`, post-rename) that is `:630-633` —
+> `let mut registries: Vec<&rusqlite::Connection> = vec![&global_db, &branch_db];` followed by
+> `if let Some(db) = effective_db.as_deref() { registries.push(db); }` — where `effective_conn` is opened
+> at `:615-616` and the comment at `:608` states the intent: *"The effective store's registry joins the
+> slice."* Verified against the review's own HEAD: the blob at `257ff6122` contains neither
+> `effective_db` nor `registries.push`, so F1 described a real gap and is now closed. **The other four
+> (F2–F5) and M1–M5 were NOT re-verified by this pass** — read this note as F1 closed and the rest
+> still open, not as the register being cleared.
+
+Had any blob differed, the affected findings would have needed re-reading before they could be quoted again — a review's line numbers are a cache, and this is the check that says the cache is still valid.

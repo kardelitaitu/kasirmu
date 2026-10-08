@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "description": "Handler classification registry for the soft namespace-governance rule (docs/architecture/module-namespace-governance.md, Rule 2). Every EventHandler impl a production file declares must appear here with one of the ADR-62 D4 categories. The populating classification is the Phase 0 census (docs/architecture/handler-census-phase0.md §3); scripts/verify-namespace-governance.py fails when a NEW impl type is absent, and deliberately does not re-grade existing rows.",
+  "description": "Handler classification registry for the soft namespace-governance rule (docs/architecture/module-namespace-governance.md, Rule 2). Every EventHandler impl a production file declares must appear here with one of the ADR-62 D4 categories. The populating classification is the Phase 0 census (docs/records/superseded/handler-census-phase0.md §3); scripts/verify-namespace-governance.py fails when a NEW impl type is absent, and deliberately does not re-grade existing rows.",
   "categories": {
     "command_contributor": "Runs synchronously in the sale transaction and may reject it (ADR-62 D1/D2).",
     "projection_subscriber": "Runs after commit, derives a projection, may not reject the sale (ADR-62 D1/D3).",
@@ -21,28 +21,28 @@
       "name": "InventorySyncEnqueuer",
       "category": "projection_subscriber",
       "topic": "product.created, stock.adjusted",
-      "site": "platform/startup/src/event_handlers.rs:147",
+      "site": "platform/startup/src/event_handlers.rs:165",
       "note": "One struct, two subscriptions."
     },
     {
       "name": "AuditLogHandler",
       "category": "projection_subscriber",
       "topic": "sale.completed, stock.adjusted, product.created",
-      "site": "platform/startup/src/event_handlers.rs:248",
+      "site": "platform/startup/src/event_handlers.rs:266",
       "note": "One struct, three subscriptions."
     },
     {
       "name": "LoyaltyEarnHandler",
       "category": "command_contributor",
       "topic": "sale.completed",
-      "site": "platform/startup/src/event_handlers.rs:439",
+      "site": "platform/startup/src/event_handlers.rs:457",
       "note": "In-transaction loyalty award also lives at sales_lifecycle.rs apply_customer_stats_on_completion."
     },
     {
       "name": "SettingsUpdatedHandler",
       "category": "projection_subscriber",
       "topic": "settings.updated",
-      "site": "platform/startup/src/event_handlers.rs:510",
+      "site": "platform/startup/src/event_handlers.rs:528",
       "note": "ADR #22 relay."
     },
     {
@@ -70,14 +70,14 @@
       "name": "SaleCompletedHandler",
       "category": "plugin_bridge",
       "topic": "sale.completed",
-      "site": "crates/kasirmu-lan/src/lib.rs:978",
+      "site": "crates/kasirmu-lan/src/lib.rs:1140",
       "note": "LAN fan-out; wired by the desktop shell (apps/desktop-tauri/src/lib.rs:978)."
     },
     {
       "name": "CourseFiredHandler",
       "category": "plugin_bridge",
       "topic": "order.course_fired",
-      "site": "crates/kasirmu-lan/src/lib.rs:998",
+      "site": "crates/kasirmu-lan/src/lib.rs:1160",
       "note": "LAN fan-out."
     },
     {
@@ -86,6 +86,20 @@
       "topic": "kds.sync",
       "site": "crates/kasirmu-lan/src/kds_sync.rs:245",
       "note": "LAN fan-out."
+    },
+    {
+      "name": "CrdtSyncHandler",
+      "category": "plugin_bridge",
+      "topic": "crdt.sync",
+      "site": "crates/kasirmu-lan/src/crdt_sync.rs:60",
+      "note": "LAN fan-out of CRDT deltas; wired by the desktop shell (apps/desktop-tauri/src/lib.rs:1200)."
+    },
+    {
+      "name": "TableSyncHandler",
+      "category": "plugin_bridge",
+      "topic": "table.sync",
+      "site": "crates/kasirmu-lan/src/table_sync.rs:236",
+      "note": "LAN fan-out of table-status changes; wired by the desktop shell (apps/desktop-tauri/src/lib.rs:1198)."
     },
     {
       "name": "InventoryStockHandler",

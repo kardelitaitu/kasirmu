@@ -327,6 +327,18 @@ body:has(.memo-stack) .ws-layer-content {
 
 /* ── Card ────────────────────────────────────────────────────────── */
 
+/* The open-card and pin actions must be siblings: a button inside a button
+   makes the pin unreachable/ambiguous to keyboard and screen-reader users. */
+.workspace-card-container {
+  position: relative;
+  min-width: 0;
+}
+
+.workspace-card-container > .workspace-card {
+  width: 100%;
+  height: 100%;
+}
+
 .workspace-card {
   position: relative;
   text-align: left;
@@ -364,8 +376,17 @@ body:has(.memo-stack) .ws-layer-content {
   position: absolute;
   inset: 0;
   border-radius: inherit;
+  /* Was `at var(--mouse-x, 50%) var(--mouse-y, 50%)`. d360dc606 replaced the JS
+     cursor tracker with a pure-CSS sway animation and deleted the three
+     setProperty calls that fed --mouse-x/-y/-rotate-x/-rotate-y — but only rewired
+     the ONE tilt rule it was updating. This gradient kept its reference, so it has
+     rendered at a fixed 50%/50% ever since: a static centred glow, not the
+     cursor-following one the token name still implies. The literal that actually
+     renders is now written directly, so the decoration says what it does.
+     Not restored: the tracking effect was removed on purpose (the commit's whole
+     subject is the pure-CSS replacement), and reviving it is a design decision. */
   background: radial-gradient(
-    600px circle at var(--mouse-x, 50%) var(--mouse-y, 50%),
+    600px circle at 50% 50%,
     var(--ws-glow, rgba(99, 102, 241, 0.08)) 0%,
     transparent 60%
   );
@@ -582,9 +603,15 @@ body:has(.memo-stack) .ws-layer-content {
   cursor: not-allowed;
 }
 
+/* Dimming alone is not "greyed out" on the dark theme — the icon's hue stays
+   vivid, the same gap the tool cards fixed with their per-element pairing.
+   Unlike a locked TOOL card there is no tier artwork to preserve (the disabled
+   state comes from the role gate, and the badge only says "Not available"), so
+   row and badge grey together. */
 .workspace-card--disabled .workspace-card-row,
 .workspace-card--disabled .workspace-card-badge {
   opacity: 0.45;
+  filter: grayscale(1);
 }
 
 .workspace-card--disabled:hover {
@@ -641,7 +668,11 @@ body:has(.memo-stack) .ws-layer-content {
   border-color: var(--ws-accent, var(--color-accent));
   background: var(--ws-accent-bg, var(--color-bg-elevated));
   backdrop-filter: blur(var(--blur-amount));
-  transform: perspective(800px) rotateX(var(--rotate-x, 0deg)) rotateY(var(--rotate-y, 0deg)) translateY(-0.25rem);
+  /* d360dc606's second site (see the gradient note above): the same removal left
+     rotateX(0deg) rotateY(0deg) here, which is the identity matrix — so
+     perspective() and both rotations contributed nothing and only the lift did.
+     The no-op wrappers are dropped rather than kept as decoration. */
+  transform: translateY(-0.25rem);
 }
 
 .workspace-card-active-dot {
@@ -703,9 +734,16 @@ body:has(.memo-stack) .ws-layer-content {
   border-radius: var(--radius-md);
 }
 
-.workspace-card-pin-btn:hover {
+.workspace-card-pin-btn:hover,
+.workspace-card-pin-btn:focus-visible {
   color: var(--color-warning);
+  opacity: 1;
   transform: translate(-0.25rem, -0.25rem) scale(1);
+}
+
+.workspace-card-pin-btn:focus-visible {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 2px;
 }
 
 .workspace-card-pin-btn--pinned {
@@ -718,17 +756,33 @@ body:has(.memo-stack) .ws-layer-content {
   opacity: 0.6;
 }
 
-.workspace-card:hover .workspace-card-pin-btn:not(.workspace-card-pin-btn--pinned) {
+.workspace-card-container:hover .workspace-card-pin-btn:not(.workspace-card-pin-btn--pinned),
+.workspace-card-container:focus-within .workspace-card-pin-btn:not(.workspace-card-pin-btn--pinned) {
   opacity: 0.6;
   transform: translate(-0.25rem, -0.25rem) scale(1);
 }
 
-.workspace-card:hover .workspace-card-pin-btn:not(.workspace-card-pin-btn--pinned):hover {
+.workspace-card-container:hover .workspace-card-pin-btn:not(.workspace-card-pin-btn--pinned):hover,
+.workspace-card-container:focus-within .workspace-card-pin-btn:focus-visible {
   opacity: 1;
 }
 
-.workspace-card--disabled .workspace-card-pin-btn {
+/* A disabled card offers nothing to pin, and the star sits outside the card
+   now, so it is hidden as the card's next sibling — not as its descendant. */
+.workspace-card--disabled + .workspace-card-pin-btn {
   display: none;
+}
+
+/* Touch screens have no hover: an opacity-0 1.5rem star is invisible AND
+   unreachable there. Show it always and size it to --space-12, which is 48px
+   at the 16px root (theme/reset.css:24) — Material's 48dp minimum target. */
+@media (hover: none), (pointer: coarse) {
+  .workspace-card-pin-btn {
+    width: var(--space-12);
+    height: var(--space-12);
+    opacity: 1;
+    transform: none;
+  }
 }
 
 /* ── Card key hint (number badge) ──────────────────────────────── */
@@ -936,6 +990,28 @@ body:has(.memo-stack) .ws-layer-content {
   color: var(--color-fg-secondary);
   margin: 0;
   line-height: var(--leading-relaxed);
+}
+
+/* ── Licence notice ────────────────────────────────────────────────
+ * Non-blocking: the boot gate admits a provisioned install whose licence
+ * is not usable, and appShellBootGate.test.tsx rule 4 requires that state
+ * be surfaced rather than blocked. Advisory tone — it states the cause of
+ * the locked cards below, it does not take the screen. */
+
+.workspace-licence-notice {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-warning);
+  border-radius: var(--radius-md);
+  background: var(--color-warning-bg);
+  color: var(--color-fg);
+  font-size: var(--text-sm);
+  /* --leading-snug is exactly 1.4; the literal was a scale step the tokens
+     already name, so this changes no rendering. */
+  line-height: var(--leading-snug);
 }
 
 /* ── Error state ─────────────────────────────────────────────────── */
@@ -1345,6 +1421,16 @@ body:has(.memo-stack) .ws-layer-content {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
   gap: var(--space-3);
+  /* Every card the same height, across every row and every group.
+     `align-items: stretch` is the grid default, but the cards were still
+     three different heights (54 / 64 / 76 px, measured on the tablet) because
+     each one sized to its own content: a locked card reserves the tier badge's
+     band via padding-bottom, and a two-line description adds a line. Row-mates
+     therefore ended at different y, which is what read as "not wrapped
+     properly". Stretching the ITEM to the row is only half of it — the card is
+     a flex row, so its inner column also has to fill the height, which the
+     `.workspace-tool-body` rule below does. */
+  grid-auto-rows: 1fr;
 }
 
 /* ── Tool card ──────────────────────────────────────────────── */
@@ -1353,6 +1439,22 @@ body:has(.memo-stack) .ws-layer-content {
   display: flex;
   align-items: center;
   gap: var(--space-3);
+  /* Fill the grid row so row-mates are equal, and keep the icon centred
+     against the taller card the stretch produces. */
+  height: 100%;
+  box-sizing: border-box;
+  /* ONE height for every card, in every group. `grid-auto-rows: 1fr` equalised
+     a row but not the grid, so the three groups still measured 65 / 76 / 64 px
+     (Operations / Insights / Configuration) — the difference tracking the
+     DESCRIPTION's line count, since a card whose description wraps to two
+     lines is one line taller than its neighbours.
+     Sizing the card to the two-line case makes them all equal and keeps both
+     lines readable, rather than clamping the text to save 12px. The floor
+     lives on the BODY rather than the card so it composes with the card's own
+     padding and the badge band instead of duplicating their arithmetic —
+     a `min-height` on the card set an absolute 66.5px and was wrong the
+     moment the two-line body needed 43px of its own. Measured: the tallest
+     body is 43px at this scale (root font 14px on the tablet). */
   padding: var(--space-3) var(--space-4);
   background: var(--color-bg-elevated);
   border: 1px solid var(--color-border);
@@ -1399,6 +1501,16 @@ body:has(.memo-stack) .ws-layer-content {
   flex-direction: column;
   gap: 0.125rem;
   min-width: 0;
+  /* Grow into the stretched card so the content block is the same size on
+     every card, and centre it vertically against the taller ones.
+     The floor is the two-line case: a card whose description wraps to two
+     lines is one line taller than its neighbours, which is what made the three
+     groups measure 65 / 76 / 64 px. Reserving that height here keeps every card
+     identical while leaving both lines readable. 43px is the tallest measured
+     body at this scale (root font 14px on the tablet). */
+  flex: 1 1 auto;
+  justify-content: center;
+  min-height: 3.0714rem; /* 43px at the tablet's 14px root */
 }
 
 .workspace-tool-name {
@@ -1444,13 +1556,43 @@ body:has(.memo-stack) .ws-layer-content {
    localized minimum-tier badge, and is not clickable"). */
 
 .workspace-tool-card--locked {
+  /* Positioning context for the tier badge pinned to the bottom-right. */
+  position: relative;
   cursor: default;
   opacity: 0.62;
+  /* Dimming alone is not "greyed out", so the card's own parts are
+     desaturated — but NOT with a `filter` on the card. `filter` applies to
+     the whole subtree, so a card-level grayscale(1) also greyed the tier
+     badge's artwork, and a `filter` cannot be undone on a descendant. The
+     badge must keep its colour: it names the plan required, which is the one
+     piece of information on a locked card a merchant is meant to act on.
+     So the icon and text are greyed individually below, and the badge is
+     left alone. Same intent as NodeTopologyEditor.css:2041-2044's
+     opacity + grayscale pairing, applied per element instead of per card. */
+  filter: none;
   background: var(--color-bg-surface);
+  /* Reserve the badge's corner. The badge is 1rem tall and sits --space-2 off
+     the bottom edge, so it occupies the band 8..24px above the card's bottom
+     border; without this padding that band overlaps the description's second
+     line on a short card. Measured against the badge heights in
+     assets/tier-badges/manifest.json (40px at 1x, scaled to 1rem here). */
+  padding-bottom: var(--space-6);
 }
 
 .workspace-tool-card--locked .workspace-tool-icon {
   color: var(--color-fg-tertiary);
+  /* The card-level grayscale this replaces is gone, so the icon greys here.
+     It is a single glyph in currentColor, so a colour swap is both simpler
+     and stronger than a filter. */
+  filter: grayscale(1);
+}
+
+/* The card's TEXT greys too — but only the text. Descendants are targeted
+   individually so `.workspace-tool-tier-badge` (below) never matches, which
+   is the whole point of the split. */
+.workspace-tool-card--locked .workspace-tool-name,
+.workspace-tool-card--locked .workspace-tool-desc {
+  filter: grayscale(1);
 }
 
 .workspace-tool-lock-badge {
@@ -1467,6 +1609,62 @@ body:has(.memo-stack) .ws-layer-content {
   line-height: var(--leading-tight);
   white-space: nowrap;
   width: fit-content;
+}
+
+/* ── Tier badge: the plan a locked card needs, bottom-right ─── */
+/* Generated artwork from assets/tier-badges/svg/ (see utils/tierBadge.ts).
+   It states the PLAN; the pill above states the REASON.
+
+   The badge keeps its colour on a locked card, deliberately. The card is
+   dimmed with `opacity` and its icon and text are desaturated one by one —
+   never with a `filter` on the card, which would reach this artwork and could
+   not be undone here. `opacity: 1` restores the badge against the card's
+   0.62, so the plan stays legible as the one actionable fact on the card.
+   Precedent for exempting a marked element from a dimmed parent: the tool
+   card's badge is the same kind of "the reason you are looking at this"
+   affordance as a disabled-but-primary action, which
+   CartPanelActions.css:85-89 already keeps at partial strength rather than
+   greying out. */
+
+.workspace-tool-tier-badge {
+  position: absolute;
+  right: var(--space-3);
+  bottom: var(--space-2);
+  display: inline-flex;
+  align-items: center;
+  /* Undo the locked card's 0.62 so the badge reads at full strength. Only
+     `opacity` needs restoring — the colour was never filtered out. */
+  opacity: 1;
+}
+
+/* Height drives the scale; the width follows from each badge's own viewBox
+   ratio, so ENTERPRISE (162x40) stays undistorted where PRO (78x40) would. */
+.workspace-tool-tier-badge img {
+  display: block;
+  height: 1rem;
+  width: auto;
+}
+
+/* Visually hidden, readable by assistive tech: the badge is artwork, so this
+   span carries the accessible statement of the plan.
+   Screen-scoped rather than the global `.sr-only` (theme/components.css), and
+   the recipe is identical. Reason: the WorkspaceHome entry in
+   screenExtraction.test.ts resolves its used-classNames against its own sheet
+   UNION `parentCss`, and a `parentCss` citation is all-or-nothing — the guard
+   requires the cited sheet to define EVERY name the entry's own CSS misses, so
+   components.css cannot be cited while any other name in this screen is still
+   unstyled. Same call, and the same recipe, as RetailPosScreen.css:209
+   `.retail-sr-only`. */
+.workspace-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 /* ── Add workspace card (+) ───────────────────────────────── */
@@ -1489,10 +1687,58 @@ body:has(.memo-stack) .ws-layer-content {
   opacity: 1;
 }
 
+/* ── Quick-launch preset cards ──────────────────────────────── */
+
+/* The two presets (Retail / Restaurant POS) offered while the terminal has no
+   workspace yet. They are ordinary cards **on purpose**: explicitly not the
+   dashed, dimmed treatment `.workspace-card--add` gives the "+" card, so a
+   preset reads as a real destination and the "+" stays the only card that
+   reads as an action. The two declarations below are the defaults restated —
+   they exist to pin that contrast, so a future change to `.workspace-card`
+   cannot quietly make the presets look like the add card.
+   `workspace-card--quick` previously had NO rule at all while `WorkspaceHome`
+   applied it, which is what `screenExtraction.test.ts` case 1 reports. */
+.workspace-card--quick {
+  border-style: solid;
+  opacity: 1;
+}
+
 /* ── Reduced motion for tools ───────────────────────────────── */
 
 @media (prefers-reduced-motion: reduce) {
   .workspace-tool-card {
     transition: none;
+  }
+}
+
+/* ── Touch press feedback ────────────────────────────────────────────
+   The workspace picker is the tablet's first screen after login. Filled
+   buttons scale; the user-profile row tints (it opens a menu rather than
+   performing an action, so a scale would overstate it). */
+.workspace-error-retry:not(:disabled):active,
+.workspace-home-fullscreen-btn:not(:disabled):active,
+.workspace-home-logout-btn:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+.workspace-home-user-profile:active {
+  background: color-mix(in srgb, var(--color-fg) 12%, transparent);
+}
+
+@media (pointer: coarse) {
+  .workspace-error-retry,
+  .workspace-home-fullscreen-btn,
+  .workspace-home-logout-btn,
+  .workspace-home-user-profile {
+    min-height: var(--touch-target-min);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .workspace-error-retry:not(:disabled):active,
+  .workspace-home-fullscreen-btn:not(:disabled):active,
+  .workspace-home-logout-btn:not(:disabled):active {
+    transform: none;
+    opacity: 0.75;
   }
 }

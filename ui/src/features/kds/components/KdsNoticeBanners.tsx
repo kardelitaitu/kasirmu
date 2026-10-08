@@ -3,7 +3,7 @@
  * dismissible error banner, the local-persistence warning (OFF-08), the
  * dead-letter warning (OFF-05) and the offline/queued banner (3b).
  *
- * Extracted verbatim from KdsScreen.tsx:967-1081 by KDS merged-lane slice 1.
+ * Extracted verbatim from KdsScreen.tsx:967-1081 AS OF 038ddee63^ by KDS merged-lane slice 1.
  * The moved block is byte-identical to that range except for five onClick
  * handlers, which became the props carrying the same closures.
  *

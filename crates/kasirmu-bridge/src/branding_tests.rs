@@ -64,11 +64,6 @@ fn validate_logo_empty_path_is_allowed() {
     assert!(validate_logo_path_inner("").unwrap().is_empty());
 }
 
-#[test]
-fn validate_logo_empty_path_is_allowed_duplicate() {
-    assert!(validate_logo_path_inner("").is_ok());
-}
-
 /// Inline helper that bypasses the AppHandle requirement for unit tests.
 fn validate_logo_path_inner(path: &str) -> Result<String, BridgeError> {
     if path.is_empty() {
@@ -189,4 +184,106 @@ fn validate_logo_allows_png() {
 fn validate_logo_allows_svg() {
     let result = validate_logo_path_inner("/tmp/logo.svg");
     assert!(result.is_ok(), "svg extension should be allowed");
+}
+
+// ── validate_logo_path: the REAL function, on a real filesystem ─────────
+//
+// WHY THESE EXIST. Everything above exercises `validate_logo_path_inner`, a
+// hand-written LINE-BY-LINE REPLICA that deliberately skips canonicalisation
+// ("Skip canonicalization in unit tests — it requires a real filesystem"). The
+// replica is not the production rule: `validate_logo_path` also asserts the
+// resolved path is INSIDE the app data directory, and that containment check —
+// the one that stops a traversal out of the data dir — is not reachable through
+// the replica at all. MEASURED: deleting the whole containment block from
+// `branding.rs` left this file's 10 tests GREEN, so a security check could be
+// removed with nothing objecting.
+//
+// These use `tempfile` to satisfy the canonicalisation the real function needs,
+// and call the REAL `validate_logo_path` — the replica stays for the cheap
+// extension cases, but nothing here depends on it.
+
+/// Write a file inside `dir` and return its path as a string.
+fn file_in(dir: &std::path::Path, name: &str) -> String {
+    let p = dir.join(name);
+    std::fs::write(&p, b"x").expect("write fixture file");
+    p.to_str().expect("utf-8 path").to_string()
+}
+
+/// A path INSIDE the app data dir with an allowed extension is accepted.
+#[test]
+fn validate_logo_path_accepts_a_file_inside_app_data() {
+    let app_data = tempfile::tempdir().expect("temp dir");
+    let logo = file_in(app_data.path(), "logo.png");
+    let ok = validate_logo_path(&Ok(app_data.path().to_path_buf()), &logo)
+        .expect("a png inside app data must be accepted");
+    assert!(ok.ends_with("logo.png"), "returns the canonical path: {ok}");
+}
+
+/// THE CONTAINMENT CHECK: a path OUTSIDE app data is refused even when the
+/// extension is allowed.
+///
+/// This is the case the replica cannot express, and the reason the deletion
+/// above went unnoticed. An allowed `.png` outside the data directory must still
+/// be rejected — otherwise the extension list becomes the only control, and any
+/// readable image on the host is a valid "logo".
+#[test]
+fn validate_logo_path_refuses_a_path_outside_app_data() {
+    let app_data = tempfile::tempdir().expect("app data dir");
+    let elsewhere = tempfile::tempdir().expect("another dir");
+    let logo = file_in(elsewhere.path(), "logo.png");
+    let err = validate_logo_path(&Ok(app_data.path().to_path_buf()), &logo)
+        .expect_err("a png OUTSIDE app data must be refused");
+    let msg = format!("{err}");
+    assert!(
+        msg.contains("inside the application data directory"),
+        "the refusal must name containment, not the extension: {msg}"
+    );
+}
+
+/// A traversal that RESOLVES out of app data is refused after canonicalisation.
+///
+/// `..` is the shape the canonicalisation step exists for: a naive string prefix
+/// check would see the app-data prefix and pass. The sibling directory is reached
+/// through the traversal, so only the post-canonicalisation comparison catches it.
+#[test]
+fn validate_logo_path_refuses_a_traversal_out_of_app_data() {
+    let root = tempfile::tempdir().expect("root");
+    let app_data = root.path().join("appdata");
+    let evil = root.path().join("evil");
+    std::fs::create_dir_all(&app_data).expect("mkdir appdata");
+    std::fs::create_dir_all(&evil).expect("mkdir evil");
+    std::fs::write(evil.join("logo.png"), b"x").expect("write evil file");
+
+    let traversal = app_data.join("..").join("evil").join("logo.png");
+    let err = validate_logo_path(&Ok(app_data.clone()), traversal.to_str().expect("utf-8"))
+        .expect_err("a traversal resolving outside app data must be refused");
+    assert!(
+        format!("{err}").contains("inside the application data directory"),
+        "expected a containment refusal, got: {err}"
+    );
+}
+
+/// An allowed extension inside app data still passes, and a disallowed one inside
+/// app data is refused — both through the REAL function.
+#[test]
+fn validate_logo_path_extension_rules_hold_through_the_real_function() {
+    let app_data = tempfile::tempdir().expect("temp dir");
+    let good = file_in(app_data.path(), "logo.svg");
+    assert!(validate_logo_path(&Ok(app_data.path().to_path_buf()), &good).is_ok());
+
+    let bad = file_in(app_data.path(), "payload.exe");
+    let err = validate_logo_path(&Ok(app_data.path().to_path_buf()), &bad)
+        .expect_err("an .exe must be refused");
+    assert!(
+        format!("{err}").contains("not allowed"),
+        "expected an extension refusal, got: {err}"
+    );
+}
+
+/// An empty path clears the logo and needs no filesystem.
+#[test]
+fn validate_logo_path_allows_the_empty_clear_path() {
+    let app_data = tempfile::tempdir().expect("temp dir");
+    let ok = validate_logo_path(&Ok(app_data.path().to_path_buf()), "").expect("empty clears");
+    assert!(ok.is_empty());
 }

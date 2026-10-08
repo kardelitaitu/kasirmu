@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "kasir.mu",
-  "version": "0.0.40",
+  "version": "0.0.41",
   "identifier": "mu.kasir.mobile",
   "build": {
     "beforeDevCommand": "npm run dev:mobile --prefix ../ui",
@@ -18,8 +18,8 @@
       }
     ],
     "security": {
-"csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' https://license.kasir.mu https://license.ozpos.my.id; img-src 'self' data: asset: https://asset.localhost; font-src 'self' data:; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests",
-      "devCsp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' http://localhost:1422 https://license.kasir.mu https://license.ozpos.my.id; img-src 'self' data: asset: https://asset.localhost; font-src 'self' data:; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'",
+"csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' https://api.ipify.org https://license.kasir.mu https://license.ozpos.my.id; img-src 'self' data: asset: https://asset.localhost; font-src 'self' data:; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests",
+      "devCsp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' http://localhost:1422 https://api.ipify.org https://license.kasir.mu https://license.ozpos.my.id; img-src 'self' data: asset: https://asset.localhost; font-src 'self' data:; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'",
       "assetProtocol": {
         "enable": true,
         "scope": ["$APPCACHE/images/**"]

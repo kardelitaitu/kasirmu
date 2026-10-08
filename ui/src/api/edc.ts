@@ -66,6 +66,16 @@ export interface UpdateEdcTerminalDto {
   isActive: boolean;
 }
 
+/** Result of an EDC batch settlement operation. */
+export interface EdcSettlementDto {
+  success: boolean;
+  batchNumber: string | null;
+  transactionCount: number;
+  totalAmount: number | null;
+  currency: string | null;
+  message: string;
+}
+
 /** Query an EDC terminal's current status. */
 export const edcTerminalStatus = (terminalId?: string | null): Promise<EdcStatus> =>
   loggedInvoke<EdcStatus>('edc_terminal_status', { terminalId });
@@ -90,12 +100,14 @@ export const edcSale = (
   amountMinor: number,
   currency: string,
   terminalId?: string | null,
+  reference?: string | null,
 ): Promise<EdcResult> =>
   loggedInvoke<EdcResult>('edc_sale', {
     sessionToken,
     amountMinor,
     currency,
     terminalId,
+    reference,
   });
 
 /** Refund a previously captured card transaction (SALES_REFUND). */
@@ -121,6 +133,21 @@ export const edcVoid = (
   terminalId?: string | null,
 ): Promise<EdcResult> =>
   loggedInvoke<EdcResult>('edc_void', { sessionToken, transactionId, terminalId });
+
+/** Perform batch settlement on the EDC terminal (SALES_PROCESS or SETTINGS_EDIT). */
+export const edcSettle = (
+  sessionToken: string,
+  terminalId?: string | null,
+): Promise<EdcSettlementDto> =>
+  loggedInvoke<EdcSettlementDto>('edc_settle', { sessionToken, terminalId });
+
+/** Query/reconcile transaction status by invoice reference (SALES_PROCESS). */
+export const edcInquiry = (
+  sessionToken: string,
+  invoice: string,
+  terminalId?: string | null,
+): Promise<EdcResult> =>
+  loggedInvoke<EdcResult>('edc_inquiry', { sessionToken, invoice, terminalId });
 
 /** List configured card-payment terminals (SETTINGS_READ or SALES_PROCESS). */
 export const listEdcTerminalsScoped = (

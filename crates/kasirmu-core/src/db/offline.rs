@@ -151,6 +151,19 @@ impl Store<'_> {
         rows.map(|r| Ok(r?)).collect()
     }
 
+    /// List pending (unsynced) offline queue items with a bounded limit, oldest first.
+    pub fn list_pending_offline_bounded(
+        &self,
+        limit: usize,
+    ) -> Result<Vec<OfflineQueueItem>, CoreError> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, action, payload, status, retry_count, last_error, created_at, synced_at, tenant_id, priority, origin_terminal_id
+             FROM offline_queue WHERE status = 'pending' ORDER BY created_at ASC LIMIT ?1",
+        )?;
+        let rows = stmt.query_map(params![limit as i64], Self::row_to_offline_queue_item)?;
+        rows.map(|r| Ok(r?)).collect()
+    }
+
     /// List all offline queue items.
     pub fn list_all_offline(&self) -> Result<Vec<OfflineQueueItem>, CoreError> {
         let mut stmt = self.conn.prepare(
@@ -159,6 +172,17 @@ impl Store<'_> {
         )?;
         let rows = stmt.query_map([], Self::row_to_offline_queue_item)?;
         rows.map(|r| Ok(r?)).collect()
+    }
+
+    /// Get the timestamp of the most recently synced item directly via SQL MAX (O-M36).
+    ///
+    /// Avoids loading the entire historical offline queue into memory.
+    pub fn get_last_synced_at(&self) -> Result<Option<String>, CoreError> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT MAX(synced_at) FROM offline_queue WHERE status = 'synced'")?;
+        let res: Option<String> = stmt.query_row([], |row| row.get(0))?;
+        Ok(res)
     }
 
     /// List pending offline items scoped to a tenant.
@@ -171,6 +195,23 @@ impl Store<'_> {
              FROM offline_queue WHERE status = 'pending' AND tenant_id = ?1 ORDER BY created_at ASC",
         )?;
         let rows = stmt.query_map(params![tenant_id], Self::row_to_offline_queue_item)?;
+        rows.map(|r| Ok(r?)).collect()
+    }
+
+    /// List pending offline items scoped to a tenant with a bounded limit.
+    pub fn list_pending_offline_for_tenant_bounded(
+        &self,
+        tenant_id: &str,
+        limit: usize,
+    ) -> Result<Vec<OfflineQueueItem>, CoreError> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, action, payload, status, retry_count, last_error, created_at, synced_at, tenant_id, priority, origin_terminal_id
+             FROM offline_queue WHERE status = 'pending' AND tenant_id = ?1 ORDER BY created_at ASC LIMIT ?2",
+        )?;
+        let rows = stmt.query_map(
+            params![tenant_id, limit as i64],
+            Self::row_to_offline_queue_item,
+        )?;
         rows.map(|r| Ok(r?)).collect()
     }
 

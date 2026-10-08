@@ -180,3 +180,22 @@
     color-mix(in srgb, var(--color-danger, #ef4444) 8%, transparent)
   );
 }
+
+/* ── Touch press feedback ────────────────────────────────────────────
+   The update banner appears over the tablet UI; its button is the only action. */
+.update-banner-btn:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+@media (pointer: coarse) {
+  .update-banner-btn {
+    min-height: var(--touch-target-min);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .update-banner-btn:not(:disabled):active {
+    transform: none;
+    opacity: 0.75;
+  }
+}

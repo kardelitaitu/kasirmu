@@ -40,6 +40,7 @@ app-error-validation = Please check the information you entered and try again.
 app-error-permission = You don't have permission to do this.
 app-error-session = Your session has expired. Please sign in again.
 app-error-conflict = This record was changed by someone else. Refresh and try again.
+app-error-duplicate = An item or category with this name or code already exists.
 app-error-not-found = The requested item could not be found.
 app-error-offline = You appear to be offline. Check your connection and try again.
 app-error-hardware = A hardware device did not respond. Check it and try again.
@@ -48,6 +49,7 @@ app-error-global = Something unexpected happened. If this keeps happening, resta
 
 # Navigation
 nav-inventory = Inventory
+nav-topology = Topology
 
 # Common / Global
 cancel = Cancel
@@ -159,6 +161,20 @@ update-banner-rollback-title = Update may have failed
 update-banner-rollback-desc = Previous version { $version } available for download. Click to restore.
 update-banner-rollback = Restore Previous Version
 update-banner-rollback-aria = Download previous version from GitHub
+
+# Storage Health
+storage-low-banner-title = Low Storage Space
+storage-low-banner-desc = Available disk space is below 500 MB ({ $freeMb } MB remaining). Free up space to prevent transaction errors or database lock.
+storage-low-banner-dismiss-aria = Dismiss low storage warning
+
+# Diagnostics Export
+settings-diagnostics-export-title = Diagnostic Package Export
+settings-diagnostics-export-subtitle = Generate a sanitized .zip archive of system logs, sync health, and hardware state for technical support.
+settings-diagnostics-export-btn = Export Diagnostic Logs
+settings-diagnostics-export-progress = Generating diagnostic archive…
+settings-diagnostics-export-success = Diagnostic archive exported successfully ({ $size } MB).
+settings-diagnostics-export-error = Diagnostic export failed.
+settings-diagnostics-export-failed = Could not export the diagnostics archive. Try again.
 
 # Memo Banner
 memo-banner-open-aria = Read the full memo: { $title }
@@ -352,6 +368,10 @@ workspace-home-shortcut-hint = Press { $key } to open
 workspace-home-user-aria = Logged in as { $name }
 workspace-home-error-title = Connection Error
 workspace-home-error-desc = Could not load your workspaces. Check your connection and try again.
+# Shown when the tenant subscription is not usable on this terminal. The boot gate
+# deliberately still admits a provisioned install (appShellBootGate.test.tsx rule 2),
+# so this states the CAUSE of the locked tool cards rather than blocking the screen.
+workspace-home-licence-unavailable = This terminal has no active licence. Tools below stay locked until it is activated.
 # Shown when create_session is rejected: the workspace is listed, but no session
 # token could be minted for it, so token-taking commands cannot run. The toast's
 # Show detail carries the backend reason (clock rollback, denied workspace type,
@@ -385,7 +405,7 @@ staff-login-license-inactive = License inactive
 statusbar-conflict-count = { $count } sync conflict(s) resolved
 # SYNC-12: StatusBar visible labels + ARIA (localized at the render boundary)
 statusbar-app-status-aria = Application status
-statusbar-version = v0.0.40
+statusbar-version = v0.0.41
 statusbar-sync-name = Sync
 statusbar-gateway-name = Stripe
 statusbar-license = Proprietary License
@@ -430,6 +450,9 @@ audit-action-audit-review = Audit Reviewed
 audit-action-sale-create = Sale Created
 audit-action-bulk-import = Bulk Import
 audit-action-inventory-sync = Inventory Synced
+audit-action-staff-identity-read = Staff Identity Read
+audit-action-staff-payroll-read = Staff Payroll Read
+audit-action-api-write = API Mutation
 audit-action-unknown = Unknown Action
 audit-log-outcome-success = Success
 audit-log-outcome-failure = Failure
@@ -465,6 +488,7 @@ auth-setup-google = Sign in with Google
 auth-setup-google-desc = Sign in, or create an account automatically if you are new.
 auth-setup-pair = Pair this device to your organization
 auth-setup-pair-desc = Scan a code from a phone or another terminal that is already set up.
+auth-setup-recommended-tablet = Recommended for Tablets
 auth-setup-email = Sign in with email
 auth-setup-email-desc = We email a one-time code, or you can use your password.
 auth-setup-back = Back
@@ -611,10 +635,9 @@ workspace-home-staff-title = Staff Management
 workspace-home-staff-desc = Manage staff, roles, and permissions
 workspace-home-settings-title = Settings
 workspace-home-settings-desc = System configuration and preferences
-# Reuses the wording already approved for this feature at setup-feature-cloud-sync
-# and -desc above, rather than inventing new copy for the same capability.
-workspace-home-cloud-sync-title = Cloud Sync
-workspace-home-cloud-sync-desc = Sync data to cloud PostgreSQL with backup
+workspace-home-topology-title = Topology Editor
+workspace-home-topology-desc = Build and connect store branches, registers, and warehouses
+
 workspace-home-audit-title = Audit Log
 workspace-home-audit-desc = View system activity and change history
 workspace-home-terminals-title = Terminals
@@ -623,18 +646,8 @@ workspace-home-locations-title = Locations
 workspace-home-locations-desc = Manage physical locations and branches
 workspace-home-shifts-title = Shifts
 workspace-home-shifts-desc = Manage staff shifts and schedules
-workspace-home-tax-config-title = Tax Rates
-workspace-home-tax-config-desc = Configure tax rates and rules
-workspace-home-exchange-rates-title = Exchange Rates
-workspace-home-exchange-rates-desc = Configure currency exchange rates
 workspace-home-promotions-title = Promotions
 workspace-home-promotions-desc = Create and manage promotions
-workspace-home-offline-queue-title = Offline Queue
-workspace-home-offline-queue-desc = View pending offline sync items
-workspace-home-features-title = Features
-workspace-home-features-desc = Toggle feature availability
-workspace-home-data-management-title = Data
-workspace-home-data-management-desc = Back up, export, and import data
 workspace-home-workspaces-section = Workspaces
 workspace-home-tools-section = Tools
 # Tools group headers — the agreed information architecture
@@ -651,8 +664,7 @@ workspace-home-tools-requires-tier-premium = Requires Premium plan
 workspace-home-tools-requires-tier-enterprise = Requires Enterprise plan
 workspace-home-tools-subscription-inactive = Subscription inactive
 workspace-home-tools-requires-role = Admin access required
-workspace-home-topology-title = Topology Editor
-workspace-home-topology-desc = Design locations, workspaces, and device links
+
 workspace-home-memo-title = Memos
 workspace-home-memo-desc = Write notices for terminals and locations
 workspace-home-add-workspace = Add Workspace

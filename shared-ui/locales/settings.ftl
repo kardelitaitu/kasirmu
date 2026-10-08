@@ -100,12 +100,21 @@ setup-mode-local-desc = Keep this terminal completely offline. No account, no cl
 setup-mode-linked-title = Link your kasir.mu account
 setup-mode-linked-desc = Sign up or sign in to attach this terminal to your account, for multi-device sync, cloud backup, and your plan.
 setup-tab-pair = QR Pairing
+setup-tab-google = Google Sign-in
 setup-tab-email = Email Code
 setup-provision-store-type = What kind of shop is this?
 setup-store-type-simple-retail = Shop
 setup-store-type-simple-retail-blurb = Barcode, cash, receipt, inventory, tax
 setup-store-type-restaurant = Restaurant or cafe
 setup-store-type-restaurant-blurb = Tables, kitchen display, staff login
+setup-provision-tax-preset = Tax Preset
+setup-tax-preset-ppn11 = PPN 11%
+setup-tax-preset-ppn11-desc = Indonesian VAT standard (11%)
+setup-tax-preset-ppn11-service5 = PPN 11% + Service 5%
+setup-tax-preset-ppn11-service5-desc = Restaurant & cafe with service charge
+setup-tax-preset-tax-free = Tax-free (0%)
+setup-tax-preset-tax-free-desc = Non-taxable enterprise
+setup-provision-seed-catalog = Seed 5 sample products to get started
 setup-provision-location-label = Shop name
 setup-provision-owner-name-label = Your name
 setup-provision-owner-username-label = Login name
@@ -210,6 +219,9 @@ settings-nav-devices-connectivity = Devices & Connectivity
 settings-nav-business-defaults = Business Defaults
 settings-nav-features-modules = Features & Modules
 settings-nav-security-account = Security & Account
+# Heading of the Security & Account page's single card: the signed-in user, their
+# role, and the sign-out control (rendered by components/RoleBadge.tsx).
+settings-section-security = Active session
 settings-nav-data-sync = Data & Sync
 settings-nav-data-management = Data Management
 settings-nav-sync-status = Sync Status
@@ -222,12 +234,13 @@ settings-screen-placeholder = This page is being rebuilt.
 settings-screen-migrating = Existing settings content will move here selectively.
 # The settings page floor gate: roleAtLeast (utils/role.ts) shows this copy to any
 # role below the admin floor.
-# Sidebar Plus badge: read by the flat nav items whose page is gated behind
-# the Plus plan. Lands together with the badge markup that references it
-# (orphan gate: a key must be referenced by its own commit).
-settings-nav-plus-badge-aria = Requires Plus plan
+# (The old `settings-nav-plus-badge-aria` key lived here. It was retired when the
+# sidebar's hardcoded "Plus+" text pill became a tier-driven TIER_BADGE SVG:
+# the badge now states the plan through `workspace-home-tools-requires-tier-<tier>`
+# in shared.ftl, the same key the home Tools cards use, so the two surfaces
+# cannot word the requirement differently.)
 settings-locked-title = Settings restricted
-settings-locked-desc = Settings are available to owners and administrators only.
+settings-locked-desc = Settings are available to managers, administrators, and owners only.
 settings-sidebar-nav-aria = Settings navigation
 settings-sidebar-expand-aria = Expand settings sidebar
 settings-sidebar-collapse-aria = Collapse settings sidebar
@@ -275,6 +288,9 @@ settings-currency-loading = Loading currencies…
 settings-section-display = Display
 settings-section-receipt = Receipt
 settings-field-store-name = Store name
+# Shown under the store-name input when it is left empty on blur. Mirrors the
+# `required` attribute the input already carries.
+settings-store-name-required = Store name is required
 settings-field-address = Address
 settings-field-branch = Branch
 settings-field-tax-id = Tax / VAT ID
@@ -859,7 +875,11 @@ workspace-pos-footer = Receipt Footer
 workspace-pos-printer-heading = Printer
 workspace-pos-printer-connection = Connection
 workspace-pos-printer-ip = IP Address
+workspace-pos-printer-bluetooth = Bluetooth Address (MAC)
 workspace-pos-printer-paper-size = Paper Size
+workspace-pos-hardware-actions = Hardware Actions
+workspace-pos-test-print = Test Print
+workspace-pos-test-drawer = Test Cash Drawer
 workspace-pos-scanner-heading = Barcode Scanner
 workspace-pos-scanner-mode = Input Mode
 workspace-pos-scanner-device = Device ID
@@ -976,7 +996,7 @@ settings-local-api-token-label-placeholder =
     .placeholder = my-integration
 settings-local-api-generate = Generate Token
 settings-local-api-token = API token
-settings-local-api-token-hint = The token grants read access to all local data for 30 days. Master-data writes additionally require the operator key — see docs/guides/EXTENDING.md.
+settings-local-api-token-hint = The token grants read access to all local data for 30 days. Master-data writes additionally require the operator key — see docs/guides/developer/EXTENDING.md.
 settings-local-api-token-expires = Expires { $expires }
 settings-local-api-copy-url = Copy URL
 settings-local-api-copy-token = Copy
@@ -1191,3 +1211,53 @@ settings-edc-default-auto = Auto (Earliest Created)
 settings-edc-saved = EDC Terminal saved successfully.
 settings-edc-deleted = EDC Terminal deleted.
 settings-edc-delete-confirm = Are you sure you want to delete this EDC terminal?
+
+# Quarantined Sync Conflicts Panel (Dead-letter recovery)
+sync-conflicts-panel-title = Quarantined Sync Conflicts
+sync-conflicts-panel-empty = No dead-lettered conflicts.
+sync-conflicts-panel-table-aria = Quarantined conflicts table
+sync-conflicts-col-action = Action
+sync-conflicts-col-attempts = Attempts
+sync-conflicts-col-error = Last Error
+sync-conflicts-col-actions = Actions
+sync-conflicts-retry = Retry
+sync-conflicts-retrying = Retrying…
+sync-conflicts-retry-aria = Retry sync for item { $id }
+sync-conflicts-requeue-all = Requeue All
+sync-conflicts-requeueing-all = Requeueing ({ $current }/{ $total })…
+sync-conflicts-requeue-all-aria = Requeue all quarantined sync conflicts
+sync-conflicts-payload-inspect = Inspect
+sync-conflicts-payload-hide = Hide
+sync-conflicts-payload-inspect-aria = Inspect payload for item { $id }
+sync-conflicts-payload-hide-aria = Hide payload for item { $id }
+sync-conflicts-payload-copy = Copy JSON
+sync-conflicts-payload-copied = Copied!
+sync-conflicts-badge-aria = { $count } quarantined sync conflicts
+
+# Android In-App Self-Updater
+settings-updater-title = Application Updates
+receipts-drawer-kick-failed = Could not open the cash drawer. Check the device.
+settings-pos-hardware-failed = The hardware action failed. Check the device and try again.
+settings-updater-check-failed = Could not check for updates. Try again.
+settings-updater-subtitle = Check for and install Android POS system updates safely.
+settings-updater-current-version = Current Version: { $version }
+settings-updater-latest-version = Available Version: v{ $version }
+settings-updater-check-btn = Check for Updates
+settings-updater-checking = Checking for updates…
+settings-updater-up-to-date = Your application is up to date.
+settings-updater-available-banner = A newer version is available for your device!
+settings-updater-download-btn = Download Update ({ $size })
+settings-updater-install-btn = Install Update Now
+settings-updater-permission-btn = Grant Install Permission
+settings-updater-permission-note = Android requires permission to install packages from this app.
+settings-updater-progress = Downloading: { $percent }% ({ $speed } MB/s)
+settings-updater-eta = Estimated time remaining: { $eta }s
+settings-updater-backup-creating = Creating pre-update database backup…
+settings-updater-error-prefix = Update error: { $error }
+settings-updater-offline-warning-title = Unsynced Transactions Detected
+settings-updater-offline-warning-body = You have { $count } unsynced transactions in your offline queue. Please sync them with the cloud before updating to prevent potential data loss.
+settings-updater-offline-sync-now = Sync Now
+settings-updater-offline-ignore-proceed = Proceed Anyway
+settings-updater-cancel = Cancel
+
+

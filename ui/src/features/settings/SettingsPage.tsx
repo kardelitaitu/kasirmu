@@ -11,7 +11,7 @@ import { roleAtLeast, normalizeRole } from '@/utils/role';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { DEFAULT_RESOLVED_ORIGIN, SettingsProvider, useSettings } from '@/contexts/SettingsContext';
 import { useCurrency } from '@/contexts/CurrencyContext';
-import { type SyncSettingsDto } from '@/api/offline';
+import { type SyncSettingsDto, pgSyncStatusScoped } from '@/api/offline';
 
 // The brand writes moved out with the save orchestration (./hooks/useSettingsSave);
 // only the BrandContext refresh handle is still read here.
@@ -24,6 +24,7 @@ import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
 import { useKeyboardAvoidance } from '@/hooks/useKeyboardAvoidance';
 import { useSettingsHashSection } from './hooks/useSettingsHashSection';
+import { isTabletShell } from '@/utils/shellKind';
 import { useSettingsSave } from './hooks/useSettingsSave';
 import SettingsNavTree from './SettingsNavTree';
 import { SettingsFooter } from './components/SettingsFooter';
@@ -67,8 +68,42 @@ function renderSection(key: string) {
 
 // ── Component ─────────────────────────────────────────────────────
 
+/**
+ * How long a partial-load failure must persist before its toast fires.
+ * Exported because the contract is pinned by test: a failure that clears
+ * inside this window (the tablet's token-swap race) toasts nothing.
+ */
+export const PARTIAL_ERROR_TOAST_MS = 2_000;
+
 /** Settings hub — sidebar-driven navigation across general, appearance, features, data management, staff, terminals, multi-store, audit, offline queue, shifts, tax, currency, and promotions. */
 export default function SettingsPage() {
+  const {
+    sessionToken,
+    availableWorkspaces,
+    loading: workspacesLoading,
+    sessionError,
+    retry,
+    retrySessionToken,
+  } = useWorkspace();
+
+  // SettingsProvider treats a missing scoped token as an answered load and
+  // publishes DEFAULT_SETTINGS. On the tablet the settings route is fullscreen
+  // (no active workspace required), so its forms otherwise render defaults and
+  // Save silently returns false. Keep the provider UNMOUNTED until the context
+  // mints a real scoped token; otherwise the page's one-time draft initialization
+  // would snapshot those defaults and never adopt the subsequent store read.
+  if (isTabletShell() && !sessionToken) {
+    if (sessionError || (!workspacesLoading && availableWorkspaces.length === 0)) {
+      return (
+        <SettingsLoadError
+          errorId={sessionError ? 'workspace-session-token-error' : 'workspace-home-empty-desc'}
+          onRetry={sessionError ? () => retrySessionToken?.() : retry}
+        />
+      );
+    }
+    return <SettingsLoadingChrome />;
+  }
+
   return (
     <SettingsProvider>
       <SettingsPageContent />
@@ -136,16 +171,39 @@ function SettingsPageContent() {
   const [, setSyncApiKeyVisible] = useState(false);
 
   const { session } = useAuth();
-  // ── Role gate: Settings is admin/owner-only ──────────────────
+  // ── Role gate: Settings is manager/admin/owner-accessible ──
   // roleAtLeast fails closed (missing/blank/retired/unknown roles never
-  // clear the floor), so managers, staff, auditors — and anyone with an
+  // clear the floor), so staff, auditors — and anyone with an
   // unrecognized role — get the locked card instead of the shell. The gate
   // normalizes first: the session carries the backend's DISPLAY role name
   // (capitalized, e.g. 'Owner', 'Manager' — kasirmu-bridge/src/auth.rs:485),
   // while roleAtLeast's table is keyed lowercase, so an unnormalized 'Owner'
   // scores 0 and locks a real owner out (reproduced in the browser).
-  const adminUp = roleAtLeast(normalizeRole(session?.role_name ?? null), 'admin');
+  const canAccessSettings = roleAtLeast(normalizeRole(session?.role_name ?? null), 'manager');
   const { sessionToken } = useWorkspace();
+  const [deadLetterCount, setDeadLetterCount] = useState<number>(0);
+
+  useEffect(() => {
+    if (!sessionToken) return;
+    // PG sync is a desktop/server capability: `pg_sync_status_scoped` lives in
+    // apps/desktop-tauri/src/commands/sync.rs and there is no Postgres sync
+    // daemon on a tablet, which registers no door for it. Skipping the read
+    // keeps the nav's dead-letter badge hidden rather than rendering a
+    // fabricated zero — the same "not answered" discipline the queue summary
+    // The call sits inside this `if` block on purpose: that brace is the guard
+    // scripts/verify-ipc-parity.py's shell-blind leg reads.
+    if (!isTabletShell()) {
+      pgSyncStatusScoped(sessionToken)
+        .then((status) => {
+          if (status && status.deadLetterCount > 0) {
+            setDeadLetterCount(status.deadLetterCount);
+          } else {
+            setDeadLetterCount(0);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [sessionToken]);
 
   const [displayCardSize, setDisplayCardSize] = useState(0);
   const [displayFontSize, setDisplayFontSize] = useState(0);
@@ -260,14 +318,30 @@ function SettingsPageContent() {
         brandStoreName: s.brand.storeName,
       };
 
-      // Show toast for partial load failures (regression guard from Phase 0b)
-      if (settingsCtx.hasPartialError) {
-        addToast({ message: l10n.getString('settings-load-partial'), type: 'error' });
-      }
-
       setInitialized(true);
     }
-  }, [settingsCtx.loading, settingsCtx.settings, settingsCtx.hasPartialError, initialized, defaultCurrency, addToast, l10n]);
+  }, [settingsCtx.loading, settingsCtx.settings, initialized, defaultCurrency]);
+
+  // ── Partial-load toast (confirmation-gated) ─────────────────
+  // The snapshot effect above runs the moment the FIRST load settles. On the
+  // tablet that first load can start on a soon-to-be-replaced session token:
+  // one source rejects, `hasPartialError` flips true, and the workspace
+  // activation swaps the token — the provider's initial-load effect re-runs
+  // the fan-out and clears the flag. Measured 2026-10-07: every cold start
+  // toasted a failure that was already stale by the time it could be read.
+  // So the toast fires only if the failure is STILL present after this
+  // window; a real persistent failure surfaces just as surely, 2s later.
+  const settingsCtxRef = useRef(settingsCtx);
+  settingsCtxRef.current = settingsCtx;
+  useEffect(() => {
+    if (!initialized || !settingsCtx.hasPartialError) return;
+    const timer = setTimeout(() => {
+      if (settingsCtxRef.current.hasPartialError) {
+        addToast({ message: l10n.getString('settings-load-partial'), type: 'error' });
+      }
+    }, PARTIAL_ERROR_TOAST_MS);
+    return () => clearTimeout(timer);
+  }, [initialized, settingsCtx.hasPartialError, addToast, l10n]);
 
   // Derive loading/error state from context
   const loading = settingsCtx.loading && !initialized;
@@ -357,8 +431,8 @@ function SettingsPageContent() {
   // ── Role gate render: locked card instead of the whole shell ────────
   // Positioned AFTER every hook in this component so the locked shell and
   // the full shell run the same hook sequence (rules of hooks). Rendered
-  // for manager/staff/auditor; admin/owner get the app.
-  if (!adminUp) {
+  // for staff/auditor/unrecognized; manager/admin/owner get the app.
+  if (!canAccessSettings) {
     return (
       <div className="settings-page">
         {/* role="status" (polite announcement) cannot share an element with
@@ -398,6 +472,7 @@ function SettingsPageContent() {
         activeSection={activeSection}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
+        onOpenMobileSidebar={() => setMobileSidebarOpen(true)}
         isDirty={isDirty}
         saving={saving}
         saved={saved}
@@ -415,6 +490,7 @@ function SettingsPageContent() {
           onSearchChange={setSearchQuery}
           mobileSidebarOpen={mobileSidebarOpen}
           onMobileClose={() => setMobileSidebarOpen(false)}
+          deadLetterCount={deadLetterCount}
         />
 
         {/* ── Main content ──────────────────────────────── */}

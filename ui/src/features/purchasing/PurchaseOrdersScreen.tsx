@@ -17,6 +17,7 @@ import { useCurrency } from '@/contexts/CurrencyContext';
 import { minorUnitExponent } from '@/types/domain';
 import PurchaseOrderForm from './PurchaseOrderForm';
 import './PurchaseOrdersScreen.css';
+import { asArray } from '@/utils/ipc-payload';
 
 const STATUSES = ['draft', 'pending', 'approved', 'received', 'cancelled'];
 
@@ -47,8 +48,11 @@ export default function PurchaseOrdersScreen() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
+      // asArray: the command declares an array but nothing enforces it, and the
+      // render filters `orders` below (and the empty state reads its length).
+      // See utils/ipc-payload for the class.
       const data = await listPurchaseOrdersScoped(sessionToken);
-      setOrders(data);
+      setOrders(asArray<typeof data[number]>(data));
     } catch {
       addToast({ message: requiredLocalized(l10nRef.current, 'po-error-load'), type: 'error' });
     } finally {

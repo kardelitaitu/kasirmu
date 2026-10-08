@@ -667,9 +667,6 @@
   transform: none;
   box-shadow: none;
 }
-.retail-product-btn--out-of-stock .retail-product-price {
-  color: var(--color-fg-tertiary);
-}
 
 .retail-product-stock-badge {
   position: relative;
@@ -689,20 +686,6 @@
 .retail-stock-medium { background: var(--color-warning-pos); }
 .retail-stock-high { background: var(--color-success-pos-darker); }
 
-.retail-product-name {
-  font-size: var(--text-xs);
-  font-weight: var(--font-weight-semibold);
-  text-align: center;
-  line-height: 1.2;
-  word-break: break-word;
-}
-
-.retail-product-price {
-  font-size: var(--text-sm);
-  font-weight: var(--font-weight-bold);
-  color: var(--color-success-pos);
-  margin-top: var(--space-0_5);
-}
 
 /* SKU input bar */
 
@@ -857,6 +840,33 @@
   font-size: var(--text-xs);
 }
 
+/* Manager-only "Override" affordance on a cart line's unit price. It sits inside
+   .retail-cart-line-unit above, so it inherits that cell's --text-xs; this adds
+   only the link treatment and a touch-sized hit area. Was the one member of the
+   retail-cart-line-* family with no rule. */
+.retail-cart-line-override {
+  display: block;
+  margin-top: var(--space-0_5);
+  padding: 0;
+  min-height: var(--touch-target-min);
+  border: none;
+  background: none;
+  color: var(--color-accent);
+  font-size: var(--text-xs);
+  font-weight: var(--font-weight-medium);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.retail-cart-line-override:hover {
+  color: var(--color-accent-hover);
+}
+
+.retail-cart-line-override:focus-visible {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 2px;
+}
+
 .retail-cart-line-qty {
   display: inline-flex;
   align-items: center;
@@ -971,6 +981,26 @@
   padding: var(--space-1_5) var(--space-2_5);
   background: var(--color-border-hover);
   border-top: 1px solid var(--color-border);
+}
+
+/* The attached-customer chip under the cart totals (RetailCartPanel.tsx:398):
+   icon + name. Named retail-customer-* but it belongs to the CART, so it is
+   styled with the cart's type scale rather than the customer modal's. Was
+   undefined while the rest of the family (retail-customer-overlay, -modal…,
+   :1207+) was complete. */
+.retail-customer-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  max-width: 100%;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-full, 9999px);
+  background: var(--color-bg-subtle);
+  color: var(--color-fg-secondary);
+  font-size: var(--text-xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .retail-cart-action-btn {
@@ -1144,41 +1174,12 @@
 }
 
 .retail-grid-empty svg,
-.retail-cart-empty svg,
-.retail-grid-loading svg {
+.retail-cart-empty svg {
   width: var(--space-12);
   height: var(--space-12);
   opacity: 0.6;
   color: var(--color-accent);
   animation: retail-breathe var(--duration-3000) var(--ease-in-out) infinite;
-}
-
-.retail-grid-loading {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-3);
-  height: 100%;
-  color: var(--color-fg-tertiary);
-  font-size: var(--text-sm);
-  font-style: italic;
-  padding: var(--space-6);
-  min-height: 200px;
-}
-
-.retail-grid-loading svg {
-  animation: retail-loading-spin 1s linear infinite;
-}
-
-@keyframes retail-loading-spin {
-  to { transform: rotate(360deg); }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .retail-grid-loading svg {
-    animation: none;
-  }
 }
 
 .retail-cart-empty span {
@@ -1207,8 +1208,6 @@
 .retail-customer-overlay,
 .retail-held-carts-overlay,
 .retail-shortcuts-overlay,
-.retail-preview-overlay,
-.retail-quick-return-overlay,
 .retail-credit-overlay,
 .retail-clear-overlay {
   position: fixed;
@@ -1228,8 +1227,6 @@
 .retail-customer-modal,
 .retail-held-carts-modal,
 .retail-shortcuts-modal,
-.retail-preview-modal,
-.retail-quick-return-modal,
 .retail-credit-modal,
 .retail-clear-modal {
   position: relative;
@@ -1342,8 +1339,7 @@
 .retail-qty-modal h3,
 .retail-customer-modal h3,
 .retail-held-carts-modal h3,
-.retail-shortcuts-modal h3,
-.retail-preview-modal h3 {
+.retail-shortcuts-modal h3 {
   margin: 0 0 var(--space-3);
   font-size: var(--text-md);
   color: var(--color-pos-modal-heading);
@@ -1655,10 +1651,6 @@
   );
   background-size: 200% 100%;
   animation: retail-shimmer 1.5s ease-in-out infinite;
-}
-
-.retail-skeleton-shimmer--narrow {
-  width: 60%;
 }
 
 .retail-skeleton-shimmer--wide {
@@ -1992,231 +1984,8 @@
   background: var(--color-border-hover);
 }
 
-/* ── Options Menu ──────────────────────────────────────────── */
-
-.retail-menu-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 900;
-}
-
-.retail-menu {
-  position: fixed;
-  bottom: var(--space-9);
-  right: 0;
-  min-width: 13.75rem;
-  background: var(--color-bg-popover);
-  border: 1px solid var(--color-border-strong);
-  border-bottom: none;
-  box-shadow: var(--shadow-glow);
-  z-index: 901;
-}
-
-.retail-menu-header {
-  padding: var(--space-1_5) var(--space-3);
-  background: var(--color-primary-pos);
-  color: var(--color-pos-on-primary);
-  font-size: var(--text-xs);
-  font-weight: var(--font-weight-bold);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.retail-menu-item {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  width: 100%;
-  padding: var(--space-2) var(--space-3);
-  border: none;
-  border-bottom: 1px solid var(--color-border-hover);
-  background: transparent;
-  color: var(--color-fg);
-  font-size: var(--text-sm);
-  font-family: inherit;
-  cursor: pointer;
-  text-align: left;
-}
-
-.retail-menu-item:hover {
-  background: var(--color-primary-pos-light);
-}
-
-.retail-menu-item svg {
-  flex-shrink: 0;
-  color: var(--color-accent);
-}
-
-.retail-menu-item--danger {
-  color: var(--color-danger);
-}
-
-.retail-menu-item--danger svg {
-  color: var(--color-danger);
-}
-
-.retail-menu-item--danger:hover {
-  background: var(--color-danger-bg);
-}
-
-.retail-menu-divider {
-  height: 1px;
-  background: var(--color-border-hover);
-}
-
-.retail-menu-footer {
-  padding: var(--space-1_5) var(--space-3);
-  font-size: var(--text-xs);
-  color: var(--color-fg-tertiary);
-  background: var(--color-bg-pos);
-  border-top: 1px solid var(--color-border-hover);
-}
 
 
-/* ── Receipt Preview card ────────────────────────────── */
-
-.retail-receipt-preview {
-  background: var(--color-bg-elevated);
-  border: 1px solid var(--color-border-hover);
-  padding: var(--space-4) var(--space-3);
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
-  line-height: 1.4;
-  color: var(--color-fg);
-  box-sizing: border-box;
-}
-
-/* ── Preview popup overlay ───────────────────────────── */
-
-/* Base overlay/modal styles inherited from combined block.
-   Preview uses higher z-index (9999) and has no entry animation. */
-.retail-preview-overlay {
-  z-index: 9999;
-  animation: none;
-}
-
-.retail-preview-modal {
-  max-width: 95vw;
-  max-height: 95vh;
-  overflow: auto;
-  animation: none;
-}
-
-.retail-preview-close {
-  position: sticky;
-  top: 0;
-  float: right;
-  width: var(--space-7);
-  height: var(--space-7);
-  border: none;
-  background: var(--color-dark-bg-pos);
-  color: var(--color-pos-on-primary);
-  font-size: var(--text-lg);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1;
-  margin-bottom: var(--space-2);
-}
-
-.retail-preview-close:hover {
-  background: var(--color-danger);
-}
-
-.retail-receipt-header {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--space-0_5);
-  text-align: center;
-}
-
-.retail-receipt-header strong {
-  font-size: var(--text-sm);
-  text-transform: uppercase;
-}
-
-.retail-receipt-header small {
-  font-size: inherit;
-  color: var(--color-fg-secondary);
-}
-
-.retail-receipt-divider {
-  border-top: 1px dashed var(--color-border-strong);
-  margin: var(--space-2) 0;
-}
-
-.retail-receipt-items-head {
-  display: flex;
-  font-weight: var(--font-weight-bold);
-  text-transform: uppercase;
-  border-bottom: 1px solid var(--color-fg);
-  padding-bottom: var(--space-0_5);
-  margin-bottom: var(--space-1);
-}
-
-.retail-receipt-items-head span:first-child {
-  flex: 1;
-}
-
-.retail-receipt-items-head span:nth-child(2) {
-  width: 28px;
-  text-align: center;
-}
-
-.retail-receipt-items-head span:last-child {
-  width: 5rem;
-  text-align: right;
-}
-
-.retail-receipt-item {
-  display: flex;
-  padding: var(--space-0_5) 0;
-  min-width: 0;
-}
-
-.retail-receipt-item-name {
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.retail-receipt-item-qty {
-  width: 28px;
-  text-align: center;
-}
-
-.retail-receipt-item-price {
-  width: 5rem;
-  text-align: right;
-}
-
-.retail-receipt-totals {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-0_5);
-}
-
-.retail-receipt-total-line {
-  display: flex;
-  justify-content: space-between;
-}
-
-.retail-receipt-total-line--grand {
-  font-weight: var(--font-weight-bold);
-  font-size: var(--text-sm);
-  border-top: 1px solid var(--color-fg);
-  padding-top: var(--space-1);
-  margin-top: var(--space-1);
-}
-
-.retail-receipt-footer {
-  text-align: center;
-  color: var(--color-fg-secondary);
-  font-style: italic;
-}
 
 /* ── Undo bar (inside cart) ─────────────────────────────────── */
 
@@ -2512,6 +2281,8 @@
 }
 
 .retail-qty-num-btn {
+  min-height: var(--touch-target-comfortable);
+  min-width: var(--touch-target-comfortable);
   padding: var(--space-2) 0;
   font-size: var(--text-md);
   font-weight: var(--font-weight-bold);
@@ -2661,85 +2432,7 @@
   }
 }
 
-/* ── Recent products strip ──────────────────────────────────── */
 
-.retail-recent-strip {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-  padding: var(--space-1) var(--space-1_5);
-  background: var(--color-bg-elevated);
-  border-bottom: 1px solid var(--color-border-hover);
-  flex-shrink: 0;
-}
-
-.retail-recent-label {
-  font-size: var(--text-xs);
-  font-weight: var(--font-weight-bold);
-  text-transform: uppercase;
-  color: var(--color-fg-tertiary);
-  letter-spacing: 0.5px;
-  flex-shrink: 0;
-}
-
-.retail-recent-items {
-  display: flex;
-  /* 0.1875rem (3px) is sub-token exempt */
-  gap: 0.1875rem;
-  overflow-x: auto;
-  flex: 1;
-}
-
-.retail-recent-items::-webkit-scrollbar {
-  height: 6px;
-}
-
-.retail-recent-btn {
-  flex-shrink: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: var(--space-1) var(--space-2_5);
-  background: var(--color-bg-elevated);
-  border: 1px solid var(--color-border-hover);
-  border-top: 2px solid var(--color-accent);
-  cursor: pointer;
-  font-family: inherit;
-  min-width: 64px;
-  border-radius: 0 0 var(--radius-md) var(--radius-md);
-  transition:
-    background-color var(--duration-150) var(--ease-out),
-    border-color var(--duration-150) var(--ease-out),
-    transform var(--duration-150) var(--ease-out),
-    box-shadow var(--duration-150) var(--ease-out);
-}
-
-.retail-recent-btn:hover {
-  background: var(--color-accent-subtle);
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-sm);
-}
-
-.retail-recent-btn:focus-visible {
-  outline: 2px solid var(--color-primary-pos);
-  outline-offset: 2px;
-}
-
-.retail-recent-name {
-  font-size: var(--text-xs);
-  font-weight: var(--font-weight-semibold);
-  color: var(--color-fg);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 4.5rem;
-}
-
-.retail-recent-price {
-  font-size: var(--text-xs);
-  font-weight: var(--font-weight-bold);
-  color: var(--color-success-pos);
-}
 
 /* ── Touch-friendly: larger tap targets ─────────────────────── */
 
@@ -2935,29 +2628,6 @@
 .retail-edit-modal-btn--primary:hover {
   background: var(--color-success-pos-darker);
   border-color: var(--color-success-pos-darker);
-}
-
-/* ── Retail Credit Reminder Banner ─────────────────────────── */
-.retail-credit-reminder-container {
-  padding: var(--space-1) var(--space-2);
-}
-
-.retail-credit-reminder-btn {
-  width: 100%;
-  padding: var(--space-1_5);
-  font-size: var(--text-xs);
-  font-weight: var(--font-weight-bold);
-  font-family: inherit;
-  background: var(--color-warning-pos-darker, #d97706);
-  color: var(--color-pos-on-primary);
-  border: none;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  transition: filter var(--duration-150) var(--ease-out);
-}
-
-.retail-credit-reminder-btn:hover {
-  filter: brightness(1.1);
 }
 
 /* ── Inline-style extraction (P2-P4) ────────────────────────────── */

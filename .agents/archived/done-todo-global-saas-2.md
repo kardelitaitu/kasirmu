@@ -1,10 +1,10 @@
 # Global SaaS POS — Phase 2: P1 Product Maturity
 
 Phase 2 of 3. Sibling phases:
-[`todo-global-saas-1.md`](./todo-global-saas-1.md) (Phase 1 — P0 platform
+[`done-todo-global-saas-1.md`](done-todo-global-saas-1.md) (Phase 1 — P0 platform
 foundations; carries the shared contract: baseline, access contract, canonical
 hierarchy, adopted policy §A/B/E/F/G/H/I, and the decisions list) ·
-[`todo-global-saas-3.md`](./todo-global-saas-3.md) (Phase 3 — P2 scale &
+[`done-todo-global-saas-3.md`](done-todo-global-saas-3.md) (Phase 3 — P2 scale &
 operations).
 
 This file holds the P1 work list and the domain specs it implements: Memo

@@ -233,3 +233,30 @@
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-md);
 }
+
+/* ── Touch press feedback ────────────────────────────────────────────
+   Bundles are built on the tablet. Buttons scale; the toggle and the bare
+   per-item remove tint. */
+.bundle-mgmt-action-btn:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+.bundle-mgmt-toggle:active,
+.bundle-mgmt-item-remove:active {
+  background: color-mix(in srgb, var(--color-fg) 12%, transparent);
+}
+
+@media (pointer: coarse) {
+  .bundle-mgmt-action-btn,
+.bundle-mgmt-toggle,
+.bundle-mgmt-item-remove {
+    min-height: var(--touch-target-min);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bundle-mgmt-action-btn:not(:disabled):active {
+    transform: none;
+    opacity: 0.75;
+  }
+}

@@ -576,6 +576,14 @@ async fn product_created_on_terminal_a_appears_on_terminal_b() {
         )
         .unwrap();
 
+    // Clear incidental audit.ship entries from local product creation
+    conn_a
+        .execute(
+            "DELETE FROM offline_queue WHERE action = ?1",
+            rusqlite::params![kasirmu_core::AUDIT_SHIP_ACTION],
+        )
+        .unwrap();
+
     // Enqueue the product creation for sync (as the event handler would)
     let product_payload = serde_json::json!({
         "sku": "SYNC-COFFEE",
@@ -728,6 +736,14 @@ async fn stock_adjustment_on_terminal_a_reflected_on_terminal_b() {
     .to_string();
     store_a
         .enqueue_offline("stock.adjusted", &stock_payload)
+        .unwrap();
+
+    // Clear incidental audit.ship entries from local product creation and stock adjustment
+    conn_a
+        .execute(
+            "DELETE FROM offline_queue WHERE action = ?1",
+            rusqlite::params![kasirmu_core::AUDIT_SHIP_ACTION],
+        )
         .unwrap();
 
     // ── Push: Terminal A → server (both items) ──────────────────────
@@ -892,6 +908,14 @@ async fn large_scale_sync_throughput() {
         )
         .unwrap();
 
+    // Clear incidental audit.ship entries from local product creation
+    conn_a
+        .execute(
+            "DELETE FROM offline_queue WHERE action = ?1",
+            rusqlite::params![kasirmu_core::AUDIT_SHIP_ACTION],
+        )
+        .unwrap();
+
     // Enqueue a product.created FIRST so Terminal B can create the product.
     let product_payload = serde_json::json!({
         "sku": "THRUPUT",
@@ -936,10 +960,14 @@ async fn large_scale_sync_throughput() {
         "Terminal A should push all {} items",
         ITEM_COUNT + 1
     );
+    let pending_items = store_a.list_pending_offline().unwrap();
+    let pending_business_items = pending_items
+        .iter()
+        .filter(|item| item.action != kasirmu_core::AUDIT_SHIP_ACTION)
+        .count();
     assert_eq!(
-        store_a.pending_offline_count().unwrap(),
-        0,
-        "Terminal A's pending queue should be empty"
+        pending_business_items, 0,
+        "Terminal A's pending queue should have no unsynced business items"
     );
 
     // ── Terminal B: empty database, pull all items ───────────────────

@@ -1,5 +1,7 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { useKeyboardAvoidance } from '@/hooks/useKeyboardAvoidance';
+import { useVersionStatus } from '@/hooks/useVersionStatus';
+import { formatDisplayVersion } from '@/build-id';
 import { checkUsername } from '@/api/staff';
 import { useAuth } from '@/contexts/AuthContext';
 import { useBrand } from '@/contexts/BrandContext';
@@ -147,6 +149,11 @@ const LOCKOUT_DURATION_MS = 30_000;
 export default function StaffLoginScreen() {
   const { l10n } = useLocalization();
   const { login, loading: authLoading, error, clearError, session } = useAuth();
+  // The footer reports the REAL version and the stamped commit, not literals.
+  // `currentVersion` reached the screen as a hardcoded 'v0.0.41' until
+  // 2026-10-04, so a build from any point in the release's life looked
+  // identical; `buildId` is what actually distinguishes one build from another.
+  const { currentVersion, buildId } = useVersionStatus();
   const { addToast } = useToast();
   const [step, setStep] = useState<Step>('username');
   const [username, setUsername] = useState('');
@@ -167,6 +174,47 @@ export default function StaffLoginScreen() {
       }
     } catch { /* ignore */ }
   }, []);
+interface RecentCashier {
+  username: string;
+  displayName: string;
+}
+
+function normalizeCashier(item: unknown): RecentCashier | null {
+  if (typeof item === 'string' && item.trim()) {
+    return { username: item.trim(), displayName: item.trim() };
+  }
+  if (
+    item &&
+    typeof item === 'object' &&
+    'username' in item &&
+    typeof (item as { username: unknown }).username === 'string' &&
+    (item as { username: string }).username.trim()
+  ) {
+    const u = (item as { username: string }).username.trim();
+    const d =
+      'displayName' in item &&
+      typeof (item as { displayName: unknown }).displayName === 'string' &&
+      (item as { displayName: string }).displayName.trim()
+        ? (item as { displayName: string }).displayName.trim()
+        : u;
+    return { username: u, displayName: d };
+  }
+  return null;
+}
+
+  const [recentCashiers, setRecentCashiers] = useState<RecentCashier[]>([]);
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('kasirmu-recent-cashiers');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          setRecentCashiers(parsed.map(normalizeCashier).filter((c): c is RecentCashier => c !== null));
+        }
+      }
+    } catch { /* ignore */ }
+  }, []);
+
   const usernameInputRef = useRef<HTMLInputElement>(null);
   const pinWrapRef = useRef<HTMLDivElement>(null);
   const pinSubmitted = useRef(false);
@@ -178,14 +226,29 @@ export default function StaffLoginScreen() {
 
   const cardRef = useRef<HTMLDivElement>(null);
 
-  // U5: Store last login timestamp when session becomes active.
+  // U5: Store last login timestamp and recent cashiers when session becomes active.
   useEffect(() => {
     if (session) {
       try {
         localStorage.setItem('oz-last-login', new Date().toISOString());
+        const u = username.trim();
+        if (u) {
+          const raw = localStorage.getItem('kasirmu-recent-cashiers');
+          const parsed = raw ? JSON.parse(raw) : [];
+          const list: RecentCashier[] = Array.isArray(parsed)
+            ? parsed.map(normalizeCashier).filter((c): c is RecentCashier => c !== null)
+            : [];
+          const entry: RecentCashier = {
+            username: u,
+            displayName: session.display_name || u,
+          };
+          const next = [entry, ...list.filter((x) => x.username.toLowerCase() !== u.toLowerCase())].slice(0, 4);
+          localStorage.setItem('kasirmu-recent-cashiers', JSON.stringify(next));
+          setRecentCashiers(next);
+        }
       } catch { /* ignore */ }
     }
-  }, [session]);
+  }, [session, username]);
 
   // ── Shake card + toast + rate-limit on PIN error ──────────────
 
@@ -353,6 +416,35 @@ export default function StaffLoginScreen() {
       e.preventDefault();
       setUsername('');
     }
+  }, []);
+
+  const handleSelectRecentCashier = useCallback(
+    async (selectedUser: string) => {
+      setUsername(selectedUser);
+      setUsernameChecking(true);
+      clearError();
+      try {
+        await checkUsername({ username: selectedUser });
+        setUsernameAccepted(true);
+        setStep('pin');
+      } catch {
+        addToast({ type: 'error', message: l10n.getString('staff-login-error-connection') });
+      } finally {
+        setUsernameChecking(false);
+      }
+    },
+    [clearError, addToast, l10n],
+  );
+
+  const handleRemoveRecentCashier = useCallback((e: React.MouseEvent, targetUser: string) => {
+    e.stopPropagation();
+    setRecentCashiers((prev) => {
+      const next = prev.filter((c) => c.username !== targetUser);
+      try {
+        localStorage.setItem('kasirmu-recent-cashiers', JSON.stringify(next));
+      } catch { /* ignore */ }
+      return next;
+    });
   }, []);
 
   // ── Auto-submit when PIN reaches max length ──────────────────
@@ -542,50 +634,91 @@ export default function StaffLoginScreen() {
         {/* ── Main area: form ────────────────────────────────── */}
         <div className="staff-login-main-area">
           {step === 'username' && (
-            <form onSubmit={handleUsernameSubmit} className="staff-login-form">
-              <div className="staff-login-input-wrap">
-                <Localized id="staff-login-username-placeholder" attrs={{ placeholder: true }}>
-                  <Localized id="staff-login-username-aria" attrs={{ 'aria-label': true }}>
-                    <input
-                      ref={usernameInputRef}
-                      type="text"
-                      id="staff-login-username"
-                      name="username-off"
-                      className="staff-login-input"
-                      placeholder="Username"
-                      value={username}
-                      onChange={handleUsernameChange}
-                      onKeyDown={handleUsernameKeyDown}
-                      autoComplete="off"
-                      autoCorrect="off"
-                      spellCheck={false}
-                      data-1p-ignore="true"
-                      aria-label={l10n.getString('username-aria')}
-                      disabled={authLoading}
-                    />
+            <div className="staff-login-username-step">
+              <form onSubmit={handleUsernameSubmit} className="staff-login-form">
+                <div className="staff-login-input-wrap">
+                  <Localized id="staff-login-username-placeholder" attrs={{ placeholder: true }}>
+                    <Localized id="staff-login-username-aria" attrs={{ 'aria-label': true }}>
+                      <input
+                        ref={usernameInputRef}
+                        type="text"
+                        id="staff-login-username"
+                        name="username-off"
+                        className="staff-login-input"
+                        placeholder="Username"
+                        value={username}
+                        onChange={handleUsernameChange}
+                        onKeyDown={handleUsernameKeyDown}
+                        autoComplete="off"
+                        autoCorrect="off"
+                        spellCheck={false}
+                        data-1p-ignore="true"
+                        aria-label={l10n.getString('username-aria')}
+                        disabled={authLoading}
+                      />
+                    </Localized>
                   </Localized>
-                </Localized>
-                <button
-                  type="submit"
-                  className={`staff-login-submit-btn ${usernameAccepted ? 'staff-login-submit-btn--accepted' : ''}`}
-                  disabled={!username.trim() || usernameChecking}
-                  aria-label={l10n.getString('staff-login-next-aria')}
+                  <button
+                    type="submit"
+                    className={`staff-login-submit-btn ${usernameAccepted ? 'staff-login-submit-btn--accepted' : ''}`}
+                    disabled={!username.trim() || usernameChecking}
+                    aria-label={l10n.getString('staff-login-next-aria')}
+                  >
+                    {usernameChecking ? (
+                      <span className="staff-login-btn-spinner" />
+                    ) : usernameAccepted ? (
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" width="20" height="20" aria-hidden="true">
+                        <polyline points="20 6 9 17 4 12" />
+                      </svg>
+                    ) : (
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" width="20" height="20" aria-hidden="true">
+                        <line x1="5" y1="12" x2="19" y2="12" />
+                        <polyline points="12 5 19 12 12 19" />
+                      </svg>
+                    )}
+                  </button>
+                </div>
+              </form>
+
+              {recentCashiers.length > 0 && (
+                <div
+                  className="staff-login-recent"
+                  role="region"
+                  aria-label={l10n.getString('staff-login-recent-aria') || 'Recent staff accounts'}
                 >
-                  {usernameChecking ? (
-                    <span className="staff-login-btn-spinner" />
-                  ) : usernameAccepted ? (
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" width="20" height="20" aria-hidden="true">
-                      <polyline points="20 6 9 17 4 12" />
-                    </svg>
-                  ) : (
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" width="20" height="20" aria-hidden="true">
-                      <line x1="5" y1="12" x2="19" y2="12" />
-                      <polyline points="12 5 19 12 12 19" />
-                    </svg>
-                  )}
-                </button>
-              </div>
-            </form>
+                  <span className="staff-login-recent-label">
+                    <Localized id="staff-login-recent-label">Quick Login</Localized>
+                  </span>
+                  <div className="staff-login-recent-chips">
+                    {recentCashiers.map((c) => (
+                      <div key={c.username} className="staff-login-chip">
+                        <button
+                          type="button"
+                          className="staff-login-chip-btn"
+                          onClick={() => handleSelectRecentCashier(c.username)}
+                          disabled={usernameChecking || authLoading}
+                        >
+                          <span className="staff-login-chip-avatar" aria-hidden="true">
+                            {(c.displayName || c.username).charAt(0).toUpperCase()}
+                          </span>
+                          <span className="staff-login-chip-text">
+                            {c.displayName || c.username}
+                          </span>
+                        </button>
+                        <button
+                          type="button"
+                          className="staff-login-chip-remove"
+                          onClick={(e) => handleRemoveRecentCashier(e, c.username)}
+                          aria-label={l10n.getString('staff-login-recent-remove-aria', { user: c.username }) || `Remove ${c.username}`}
+                        >
+                          &times;
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
           )}
 
           {step === 'pin' && (
@@ -622,7 +755,12 @@ export default function StaffLoginScreen() {
       {/* ── Footer: version + copyright + sync status ────── */}
       <div className="staff-login-footer">
         <div className="staff-login-footer-left">
-          <span className="staff-login-footer-version">v0.0.40</span>
+          {/* Version and build id, from the shared formatter rather than a
+              literal. The build id is rendered as text, not a `title=`: native
+              titles are the banned square tooltip (nativeTooltipCompliance). */}
+          <span className="staff-login-footer-version">
+            {formatDisplayVersion(currentVersion, null, buildId)}
+          </span>
           <Localized id="staff-login-copyright">
             <span className="staff-login-footer-copyright">&copy; 2026 kasir.mu. All rights reserved.</span>
           </Localized>

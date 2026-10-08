@@ -94,3 +94,21 @@ pub async fn set_regional_config_scoped(
         .await
         .map_err(Into::into)
 }
+
+/// Read the compiled, locked market profile for one location of the
+/// session's store (regional slice 7 — cold-boot profile).
+///
+/// Permission gate: `settings:read` inside `kasirmu_bridge::regional`.
+/// Loaded once on cold boot. The result is cached in application state;
+/// zero runtime database reads happen during the sale lifecycle.
+#[tauri::command]
+pub async fn get_active_market_profile_scoped(
+    location_id: String,
+    session_token: String,
+    state: State<'_, AppState>,
+) -> Result<kasirmu_core::ActiveMarketProfile, AppError> {
+    let ctx = state.bridge_ctx();
+    kasirmu_bridge::regional::get_active_market_profile(&ctx, &session_token, &location_id)
+        .await
+        .map_err(Into::into)
+}

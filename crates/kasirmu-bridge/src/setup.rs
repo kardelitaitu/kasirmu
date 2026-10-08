@@ -140,6 +140,8 @@ impl From<ProvisionDeviceArgs> for kasirmu_core::db::provisioning::ProvisionDevi
             mode: a.mode,
             tenant_id: a.tenant_id,
             device_credential_id: a.device_credential_id,
+            tax_preset: a.tax_preset,
+            seed_sample_products: a.seed_sample_products,
         }
     }
 }
@@ -180,6 +182,12 @@ pub struct ProvisionDeviceArgs {
     /// The device credential; required for `linked`.
     #[serde(default)]
     pub device_credential_id: Option<String>,
+    /// Tax configuration preset ('ppn11', 'ppn11_service5', 'tax_free').
+    #[serde(default)]
+    pub tax_preset: Option<String>,
+    /// Whether to seed 5 starter sample products.
+    #[serde(default)]
+    pub seed_sample_products: Option<bool>,
 }
 
 // ── Response types ───────────────────────────────────────────────────

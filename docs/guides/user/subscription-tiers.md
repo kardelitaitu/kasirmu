@@ -282,8 +282,23 @@ runtime types are `retail-pos`, `resto-pos`, `kds`, and `warehouse`; the old
 | Feature | Free | Plus | Pro | Premium | Enterprise |
 | :--- | :---: | :---: | :---: | :---: | :---: |
 | Cash & manual split | ✓ | ✓ | ✓ | ✓ | ✓ |
-| QRIS (Midtrans dynamic) | ✗ | ✓ | ✓ | ✓ | ✓ |
+| QRIS (Midtrans dynamic) | ✓ ⚠️ | ✓ | ✓ | ✓ | ✓ |
 | QRIS (static / at-counter) | ✓ | ✓ | ✓ | ✓ | ✓ |
+
+> ⚠️ **QRIS dynamic on Free — DECIDED, NOT YET ENFORCED (owner ruling, 2026-09-29).**
+> The owner ruled dynamic QRIS available on Free, matching what the QRIS landing page
+> ("Both ship on every plan, including Free") and the docs' licensing matrix already
+> said. This row was the outlier and is corrected here to record the decision.
+>
+> **`SubscriptionTier::supports_qris()` is still `false` on Free/OneTime**
+> (`crates/kasirmu-core/src/subscription/tier.rs:217-222`) and the POS still gates the
+> QRIS tender behind the upgrade prompt (`ui/src/features/sales/PaymentModal.tsx:1909`,
+> `QrisTenderPanel.tsx`), so the ✓ above describes the DECISION while the app currently
+> refuses the rail at checkout. That divergence is deliberate and pinned:
+> `website/src/components/__tests__/pricing-content-invariants.test.ts` asserts the
+> decision, and its comment states that a silent revert in either direction is a product
+> change, not a cleanup. The change was ordered website-first. Do not flip this row back,
+> and do not read it as proof the entitlement exists.
 | Stripe cards | ✗ | ✗ | ✓ | ✓ | ✓ |
 | Multi-currency | ✗ | ✗ | ✓ | ✓ | ✓ |
 
@@ -893,4 +908,4 @@ Target: >100% (growth from existing customers)
 
 ---
 
-> last audited 29-09-26 by docs-auditor
+> last audited 08-10-26 by docs-auditor

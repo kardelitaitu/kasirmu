@@ -24,20 +24,31 @@ fn extract_handler_commands(src: &str) -> Vec<String> {
     // Find the matching closing `]` by counting brackets.
     let rest = &src[start..];
     let mut depth = 1;
-    let mut end = 0;
+    let mut end = None;
     for (i, ch) in rest.chars().enumerate() {
         match ch {
             '[' => depth += 1,
             ']' => {
                 depth -= 1;
                 if depth == 0 {
-                    end = i;
+                    end = Some(i);
                     break;
                 }
             }
             _ => {}
         }
     }
+    // AN UNCLOSED BLOCK MUST NOT READ AS "NO COMMANDS". A missing `]` used to leave
+    // `end` at 0, so the slice was empty and every duplicate assertion below passed
+    // vacuously -- a guard that fails OPEN and reports the wiring as clean. Panicking
+    // here is the right direction: this parser runs only over a lib.rs the developer
+    // is editing, so a malformed block is an editing mistake to surface, never a
+    // production input to tolerate.
+    let end = end.unwrap_or_else(|| {
+        panic!(
+            "unterminated `generate_handler![` block: no matching `]` was found, so the              command list cannot be read and this audit would pass without examining anything"
+        )
+    });
 
     let block = &rest[..end];
 
@@ -50,8 +61,24 @@ fn extract_handler_commands(src: &str) -> Vec<String> {
             if trimmed.starts_with("//") || trimmed.is_empty() {
                 return None;
             }
-            // Remove trailing comma and whitespace
-            let path = trimmed.trim_end_matches(',').trim();
+            // STRIP THE TRAILING COMMENT BEFORE THE COMMA. Doing it the other way round
+            // (`trim_end_matches(',')` first) leaves the comment attached to the path
+            // -- `commands::a::b, // note` stayed as `commands::a::b, // note` -- and
+            // then two entries for the SAME command compare unequal in the HashSet,
+            // so a duplicate that panics Tauri at runtime is reported as clean.
+            // Measured: duplicating `commands::audit::list_audit_log_scoped` with a
+            // trailing comment on the second line kept this audit GREEN, while the
+            // same duplicate without the comment was caught.
+            let line = match trimmed.find("//") {
+                Some(i) => &trimmed[..i],
+                None => trimmed,
+            };
+            // TRIM FIRST, THEN THE COMMA. Slicing at `//` leaves the space that
+            // preceded it -- `"commands::a::b, "` from `"commands::a::b, // note"` --
+            // so `trim_end_matches(',')` sees a string ending in a SPACE and removes
+            // nothing, and the comma survives into the path. Order matters, and the
+            // first version of this fix got it wrong; the test above caught it.
+            let path = line.trim().trim_end_matches(',').trim();
             if path.starts_with("commands::") {
                 Some(path.to_string())
             } else {
@@ -284,4 +311,91 @@ fn tablet_client_staff_commands_use_scoped_boundary() {
             "tablet client must not register legacy unscoped command: {legacy}"
         );
     }
+}
+
+// ── extract_handler_commands: the parser's own contract ────────────────
+//
+// WHY THESE EXIST. Every assertion in this file compares a HashSet against the
+// paths this parser returns, so a parser that returns the WRONG STRINGS makes
+// the audit pass while the wiring is broken. The duplicate checks guard against a
+// Tauri v2 runtime panic, and the two defects below were both proven by
+// measurement before being fixed -- neither was reachable from the current lib.rs,
+// which is exactly why nothing had caught them.
+
+/// A trailing line-comment on a command entry must not become part of the path.
+///
+/// PROVEN FALSE NEGATIVE, not a hypothetical. Duplicating
+/// `commands::audit::list_audit_log_scoped` in the real `lib.rs` was CAUGHT when
+/// both lines were bare, and MISSED when the second carried a `// note`: the old
+/// order (`trim_end_matches(',')` then nothing) left the comment glued to the path,
+/// so the HashSet held two different strings for one command. A duplicate in
+/// `generate_handler!` panics the app at startup, so a missed one is a shipped
+/// crash that this audit was supposed to prevent.
+#[test]
+fn extract_strips_a_trailing_comment_from_a_command_entry() {
+    let src = "generate_handler![\n    commands::a::b, // note\n    commands::c::d, // other\n]\n";
+    assert_eq!(
+        extract_handler_commands(src),
+        vec!["commands::a::b".to_string(), "commands::c::d".to_string()],
+        "a trailing comment must not be part of the path"
+    );
+}
+
+/// Two entries for the SAME command differ only by comment -- still a duplicate.
+///
+/// This is the shape the fix exists for, stated as the user-visible consequence
+/// rather than as a parsing detail: the HashSet must see ONE path, not two.
+#[test]
+fn extract_yields_one_path_for_a_duplicate_carrying_a_comment() {
+    let src = "generate_handler![\n    commands::a::b,\n    commands::a::b, // dup\n]\n";
+    let cmds = extract_handler_commands(src);
+    assert_eq!(cmds.len(), 2, "both entries must be read: {cmds:?}");
+    let unique: HashSet<&String> = cmds.iter().collect();
+    assert_eq!(
+        unique.len(),
+        1,
+        "the two entries name one command, so the duplicate set must collapse them: {cmds:?}"
+    );
+}
+
+/// A whole-line comment inside the block contributes nothing.
+#[test]
+fn extract_ignores_comment_lines_inside_the_block() {
+    let src =
+        "generate_handler![\n    // a comment about commands::nope::x\n    commands::a::b,\n]\n";
+    assert_eq!(
+        extract_handler_commands(src),
+        vec!["commands::a::b".to_string()],
+        "a commented path is not a registration"
+    );
+}
+
+/// Nested brackets are skipped, so a bracket in an inner macro does not end the block.
+#[test]
+fn extract_handles_a_nested_bracket_in_the_block() {
+    let src = "generate_handler![\n    commands::a::b,\n    inner![x],\n    commands::c::d,\n]\n";
+    assert_eq!(
+        extract_handler_commands(src),
+        vec!["commands::a::b".to_string(), "commands::c::d".to_string()],
+        "the nested bracket must not truncate the block"
+    );
+}
+
+/// An UNTERMINATED block panics rather than reading as an empty command list.
+///
+/// The old behaviour left the slice empty, so every duplicate assertion passed
+/// without examining anything -- the guard reported clean wiring for a lib.rs it
+/// had not read. Failing loudly is the only safe direction: the alternative is an
+/// audit that cannot distinguish "no duplicates" from "could not parse".
+#[test]
+#[should_panic(expected = "unterminated")]
+fn extract_panics_on_an_unterminated_block() {
+    let _ = extract_handler_commands("generate_handler![\n    commands::a::b,\n");
+}
+
+/// No `generate_handler![` at all yields no commands -- which is why the CALLERS
+/// assert the list is non-empty, and why this case is stated explicitly here.
+#[test]
+fn extract_returns_nothing_when_the_macro_is_absent() {
+    assert!(extract_handler_commands("fn main() {}\n").is_empty());
 }

@@ -125,3 +125,23 @@
   outline: 2px solid var(--color-accent);
   outline-offset: -2px;
 }
+
+/* ── Touch press feedback ────────────────────────────────────────────
+   The enroll button is the actionable half of this indicator. The status
+   chip itself is display-only and gets no press state on purpose. */
+.kds-device-enroll-btn:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+@media (pointer: coarse) {
+  .kds-device-enroll-btn {
+    min-height: var(--touch-target-min);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kds-device-enroll-btn:not(:disabled):active {
+    transform: none;
+    opacity: 0.75;
+  }
+}

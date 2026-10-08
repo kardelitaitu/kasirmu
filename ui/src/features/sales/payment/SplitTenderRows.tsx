@@ -44,17 +44,12 @@
  */
 import { Localized, useLocalization } from '@fluent/react';
 import { formatMoney, type Money } from '@/types/domain';
+import type { PaymentMethod } from '@/api/types/payment';
 
 /**
- * Mirror of the shell's local PaymentMethod union (PaymentModal.tsx:45) and of the SplitRow that
- * ./useSplitTenderState.ts:63 exports — the same "structural twin" role ./useTenderMath.ts:45 plays.
- * The union stays a twin because it is module-local to the page importing THIS file, where a
- * type-only cycle is the alternative; SplitRow IS exported now, having moved with the state that
- * owns it, and this file still mirrors it on purpose so the row component never depends on the
- * hook that allocates the ids. The union is the shell's full set, NOT the narrower 'cash' |
- * 'card' | 'other' a row can hold, so the hook's updateSplit stays assignable to onUpdateSplit.
+ * Mirror of the canonical PaymentMethod union (from @/api/types/payment).
  */
-type SplitRowMethod = 'cash' | 'card' | 'qris' | 'other' | 'open_bill' | 'credit';
+type SplitRowMethod = PaymentMethod;
 
 /** Structural twin of useSplitTenderState's SplitRow (:63): same four fields, same order. */
 export interface SplitTenderRow {

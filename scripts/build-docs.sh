@@ -9,7 +9,7 @@
 #   5. generate SUMMARY.md from the copied trees
 #   6. mdbook build     → docs/book/
 #
-# See docs/plans/documentation-portal-plan.md for the plan behind this layout.
+# See docs/plans/_active/documentation-portal-plan.md for the plan behind this layout.
 set -eo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -45,10 +45,10 @@ echo ""
 echo "[3/7] Copying detailed docs into the book source..."
 rm -rf "$BOOK_SRC/guides" "$BOOK_SRC/decisions" "$BOOK_SRC/releases" "$BOOK_SRC/operations"
 mkdir -p "$BOOK_SRC/guides" "$BOOK_SRC/decisions/archived" "$BOOK_SRC/releases" "$BOOK_SRC/operations"
-cp "$WORKSPACE_ROOT"/docs/guides/*.md "$BOOK_SRC/guides/" 2>/dev/null || true
+cp -r "$WORKSPACE_ROOT"/docs/guides/. "$BOOK_SRC/guides/" 2>/dev/null || true
 cp "$WORKSPACE_ROOT"/docs/decisions/*.md "$BOOK_SRC/decisions/" 2>/dev/null || true
 cp "$WORKSPACE_ROOT"/docs/decisions/archived/*.md "$BOOK_SRC/decisions/archived/" 2>/dev/null || true
-cp "$WORKSPACE_ROOT"/docs/releases/*.md "$BOOK_SRC/releases/" 2>/dev/null || true
+cp "$WORKSPACE_ROOT"/docs/records/releases/*.md "$BOOK_SRC/releases/" 2>/dev/null || true
 cp "$WORKSPACE_ROOT"/docs/operations/*.md "$BOOK_SRC/operations/" 2>/dev/null || true
 echo "✔ guides + ADRs + releases + operations copied into docs/src/"
 

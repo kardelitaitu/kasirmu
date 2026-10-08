@@ -31,3 +31,27 @@ fn empty_merchant_name_fails() {
     p.merchant_name.clear();
     assert!(validate(&p).is_err());
 }
+
+#[test]
+fn percentage_tip_scientific_notation_or_nan_fails_validation() {
+    let mut p = valid();
+    p.tip = Some(crate::payload::Tip::Percentage {
+        percent: "1e3".to_string(),
+    });
+    assert!(validate(&p).is_err());
+
+    p.tip = Some(crate::payload::Tip::Percentage {
+        percent: "NaN".to_string(),
+    });
+    assert!(validate(&p).is_err());
+
+    p.tip = Some(crate::payload::Tip::Percentage {
+        percent: "inf".to_string(),
+    });
+    assert!(validate(&p).is_err());
+
+    p.tip = Some(crate::payload::Tip::Percentage {
+        percent: "5.5".to_string(),
+    });
+    assert!(validate(&p).is_ok());
+}

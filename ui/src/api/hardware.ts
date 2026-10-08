@@ -61,10 +61,22 @@ export interface PrintSalesReceiptArgs {
     method: string;
     amount: { minorUnits: number; currency: string };
     change?: { minorUnits: number; currency: string } | null;
+    reference?: string | null | undefined;
+    cardLastFour?: string | null | undefined;
   }[];
   tableNumber?: string | null;
   /** Phase 6: optional 17-digit DJP Faktur Pajak string. */
-  fakturPajak?: string | null;
+  fakturPajak?: string | null | undefined;
+  storeName?: string | undefined;
+  taxId?: string | null | undefined;
+  taxIdLabel?: string | null | undefined;
+  taxRegime?: string | null | undefined;
+  statutoryRounding?: string | null | undefined;
+  documentKind?: 'receipt' | 'invoice' | undefined;
+  isInvoice?: boolean | undefined;
+  statutoryNumber?: string | null | undefined;
+  customerName?: string | null | undefined;
+  customerTaxId?: string | null | undefined;
 }
 
 /** Print a structured sales receipt (scoped — ADR #7). */
@@ -73,6 +85,26 @@ export const printSalesReceiptScoped = (
   args: PrintSalesReceiptArgs,
 ): Promise<{ printed: boolean }> =>
   loggedInvoke<{ printed: boolean }>('print_sales_receipt_scoped', { sessionToken, args });
+
+/** Arguments for printing an EDC settlement slip. */
+export interface PrintEdcSettlementArgs {
+  settlement: {
+    success: boolean;
+    batchNumber?: string | null;
+    transactionCount: number;
+    totalAmount?: number | null;
+    currency?: string | null;
+    message: string;
+  };
+  date: string;
+}
+
+/** Print an EDC settlement slip (scoped). */
+export const printEdcSettlementSlipScoped = (
+  sessionToken: string,
+  args: PrintEdcSettlementArgs,
+): Promise<{ printed: boolean }> =>
+  loggedInvoke<{ printed: boolean }>('print_edc_settlement_slip_scoped', { sessionToken, args });
 
 // ── Barcode Scanner ──────────────────────────────────────────────
 

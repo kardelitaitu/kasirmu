@@ -464,3 +464,42 @@
   animation: spinner-rotate var(--duration-600) var(--ease-linear) infinite;
 }
 
+/* ── Touch press feedback ────────────────────────────────────────────
+   The audit log is reviewed on the tablet; both controls scale. */
+.audit-log-chip:not(:disabled):active,
+.audit-log-load-more:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+@media (pointer: coarse) {
+  .audit-log-chip,
+.audit-log-load-more {
+    min-height: var(--touch-target-min);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .audit-log-chip:not(:disabled):active,
+.audit-log-load-more:not(:disabled):active {
+    transform: none;
+    opacity: 0.75;
+  }
+}
+
+/* ── Two names the Security Trail reuses from this sheet ──────────────
+   SecurityTrailScreen.tsx:38 imports AuditLogScreen.css; its scope note and its
+   loading line carry audit-log-* names that were never defined. */
+.audit-log-search-label {
+  font-size: var(--text-sm);
+  color: var(--color-fg-muted);
+  line-height: var(--leading-normal);
+  margin: 0;
+}
+
+.audit-log-loading-text {
+  font-size: var(--text-sm);
+  color: var(--color-fg-muted);
+  text-align: center;
+  padding: var(--space-6) 0;
+  margin: 0;
+}

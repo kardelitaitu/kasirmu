@@ -55,8 +55,8 @@ two versions side by side, choose a winner, and leave an audit trail.
 
 **Target:** `ui/src/features/sync/` (NEW — the directory does not exist yet)
 **Sibling Documents:**
-- [`todo-sync-conflict-agents-1.md`](./todo-sync-conflict-agents-1.md) (Agent 1 — Causality Clock & Delta Merge Contract)
-- [`todo-sync-conflict-agents-2.md`](./todo-sync-conflict-agents-2.md) (Agent 2 — Cloud Conflict Detection)
+- [`done-todo-sync-conflict-agents-1.md`](done-todo-sync-conflict-agents-1.md) (Agent 1 — Causality Clock & Delta Merge Contract)
+- [`done-todo-sync-conflict-agents-2.md`](done-todo-sync-conflict-agents-2.md) (Agent 2 — Cloud Conflict Detection)
 
 ---
 

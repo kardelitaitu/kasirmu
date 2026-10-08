@@ -80,6 +80,7 @@ fn make_detail(note: Option<String>) -> SaleDetail {
         tax_estimate_note: note,
         display_code: None,
         faktur_pajak: None,
+        statutory_number: None,
     }
 }
 
@@ -142,6 +143,7 @@ fn sale_detail_debug() {
         tax_estimate_note: None,
         display_code: None,
         faktur_pajak: None,
+        statutory_number: None,
     };
     let d = format!("{detail:?}");
     assert!(d.contains("sd1"));
@@ -165,6 +167,7 @@ fn sale_detail_serialize() {
         tax_estimate_note: None,
         display_code: None,
         faktur_pajak: None,
+        statutory_number: None,
     };
     let json = serde_json::to_value(&detail).unwrap();
     assert_eq!(json["id"], "sd2");
@@ -403,4 +406,12 @@ fn sale_detail_serializes_faktur_pajak_when_stamped() {
     assert_eq!(json["fakturPajak"]["nsfp"], "2600000000123");
     assert_eq!(json["fakturPajak"]["kodeTransaksi"], "01");
     assert_eq!(json["fakturPajak"]["status"], "00");
+}
+
+#[test]
+fn sale_detail_serializes_statutory_number() {
+    let mut detail = make_detail(None);
+    detail.statutory_number = Some("INV-2026-0001".into());
+    let json = serde_json::to_value(&detail).unwrap();
+    assert_eq!(json["statutoryNumber"], "INV-2026-0001");
 }

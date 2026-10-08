@@ -22,6 +22,7 @@ use std::sync::Arc;
 
 use kasirmu_core::db::edc_terminals::{EdcTerminalConfig, NewEdcTerminal};
 use kasirmu_hal::{EdcPaymentResult, EdcTerminal, HalErrorKind, TerminalStatus};
+pub use kasirmu_hal::{EdcResponse, EdcSettlementResult};
 
 use crate::ctx::BridgeCtx;
 use crate::error::BridgeError;
@@ -45,7 +46,7 @@ pub struct EdcStatusDto {
     pub status: TerminalStatus,
 }
 
-/// Result of a card-present sale/refund/void.
+/// Result of a card-present sale/refund/void/inquiry.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EdcResultDto {
@@ -72,6 +73,37 @@ impl From<EdcPaymentResult> for EdcResultDto {
             card_scheme: r.card_scheme,
             card_last4: r.card_last4,
             message: r.message,
+        }
+    }
+}
+
+/// Result of an EDC batch settlement operation.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EdcSettlementDto {
+    /// Whether the batch was successfully closed.
+    pub success: bool,
+    /// Batch number closed (e.g. "000001").
+    pub batch_number: Option<String>,
+    /// Number of transactions settled.
+    pub transaction_count: u32,
+    /// Total amount settled in minor units, if provided by the terminal.
+    pub total_amount: Option<i64>,
+    /// Currency code of the settled amount, if provided.
+    pub currency: Option<String>,
+    /// Host message.
+    pub message: String,
+}
+
+impl From<EdcSettlementResult> for EdcSettlementDto {
+    fn from(s: EdcSettlementResult) -> Self {
+        Self {
+            success: s.success,
+            batch_number: s.batch_number,
+            transaction_count: s.transaction_count,
+            total_amount: s.total_amount.as_ref().map(|m| m.minor_units),
+            currency: s.total_amount.as_ref().map(|m| m.currency.to_string()),
+            message: s.message,
         }
     }
 }
@@ -320,6 +352,9 @@ pub async fn edc_terminal_status_scoped(
 
 /// Process a card-present sale (authorize + capture in one call).
 ///
+/// Accepts an optional `reference` (invoice / order number) to tie the sale
+/// to the EDC transaction and printed receipt slip.
+///
 /// # Errors
 ///
 /// Returns [`BridgeError::InvalidSession`], [`BridgeError::PermissionDenied`],
@@ -331,13 +366,64 @@ pub async fn edc_sale(
     amount_minor: i64,
     currency: &str,
     terminal_id: Option<&str>,
+    reference: Option<&str>,
 ) -> Result<EdcResultDto, BridgeError> {
     let session = ctx.resolve_session(session_token)?;
     ctx.require_session_permission(&session, kasirmu_core::permissions::SALES_PROCESS)
         .await?;
     let amount = parse_amount(amount_minor, currency)?;
     let terminal = resolve_terminal(ctx, terminal_id).await?;
-    Ok(terminal.sale(amount).await?.into())
+    Ok(terminal.sale(amount, reference).await?.into())
+}
+
+/// Perform a batch settlement / closing on the specified EDC terminal.
+///
+/// Accessible to cashiers closing shifts (`SALES_PROCESS`) or managers (`SETTINGS_EDIT`).
+///
+/// # Errors
+///
+/// Returns [`BridgeError::InvalidSession`], [`BridgeError::PermissionDenied`],
+/// [`BridgeError::Hardware`] when no matching terminal is registered and propagated
+/// terminal errors.
+pub async fn edc_settle(
+    ctx: &BridgeCtx<'_>,
+    session_token: &str,
+    terminal_id: Option<&str>,
+) -> Result<EdcSettlementDto, BridgeError> {
+    let session = ctx.resolve_session(session_token)?;
+    if ctx
+        .require_session_permission(&session, kasirmu_core::permissions::SALES_PROCESS)
+        .await
+        .is_err()
+    {
+        ctx.require_session_permission(&session, kasirmu_core::permissions::SETTINGS_EDIT)
+            .await?;
+    }
+    let terminal = resolve_terminal(ctx, terminal_id).await?;
+    Ok(terminal.settle().await?.into())
+}
+
+/// Query or reconcile transaction status by invoice or bill reference.
+///
+/// Allows the POS to safely confirm transaction outcome after a network interruption
+/// without blindly retrying or double-charging.
+///
+/// # Errors
+///
+/// Returns [`BridgeError::InvalidSession`], [`BridgeError::PermissionDenied`],
+/// [`BridgeError::Hardware`] when no matching terminal is registered and propagated
+/// terminal errors.
+pub async fn edc_inquiry(
+    ctx: &BridgeCtx<'_>,
+    session_token: &str,
+    invoice: &str,
+    terminal_id: Option<&str>,
+) -> Result<EdcResultDto, BridgeError> {
+    let session = ctx.resolve_session(session_token)?;
+    ctx.require_session_permission(&session, kasirmu_core::permissions::SALES_PROCESS)
+        .await?;
+    let terminal = resolve_terminal(ctx, terminal_id).await?;
+    Ok(terminal.inquiry(invoice).await?.into())
 }
 
 /// Refund a previously captured card transaction.

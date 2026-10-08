@@ -1,3 +1,4 @@
+<!-- Audit stamp: 2026-10-08 · docs-auditor · status: ACCURATE AFTER REPAIR (1 major finding) · Supersedes the 2026-07-22 marker below, kept verbatim. Repaired: the §CI/CD Pipelines section described TWO live workflows, Android and iOS, each with triggers, numbered steps and a secrets table. There is ONE: `.github/workflows/ios.yml` was renamed to `.github/workflows/attic/ios.yml.bak` by `23c963303` (2026-09-02) and GitHub never executes a `.bak`; the four live workflows are dev-ci, release, android and website. The iOS section is now marked RETIRED with its secret manifest kept as revival documentation (matching apps/mobile-tauri/AGENTS.md and docs/guides/platform/ios-build-guide.md). The Android half was re-read from the live workflow and corrected in three places: **JDK 21** (not 17 — the workflow's own comment records 17 as the retired pin), an explicit **NDK 30.0.14904198** install, and **no `cargo tauri android init` step** (the scaffold is committed). Its trigger list was also wrong: `v*` tags and `workflow_dispatch` only, deliberately **no PR trigger**. · Repaired against branch 0.0.41. -->
 <!-- Audit stamp: 2026-07-22 · Hermes-Agent · status: ACCURATE (0 findings, 1 low-severity observe) · all concrete paths verified: ui/vite.mobile.config.ts, ui/src/main.mobile.tsx, ui/src/app/tablet/, ui/src/hooks/{useOrientation,useSwipe,useKeyboardAvoidance}.ts, ui/index.mobile.html, .github/workflows/{android,ios}.yml, apps/mobile-tauri/Cargo.toml crate-type [staticlib,cdylib,rlib], apps/mobile-tauri/AGENTS.md (linked) · observe: line 429 references ui/dist-mobile/ as a stale build dir to delete — that is a gitignored vite build artifact, not in tree (expected; it is an instruction, not a claim the dir exists) · iOS/Android build commands + signing env vars match the mobile-tauri setup · WCAG 2.2 44x44 touch targets consistent with docs/a11y.md -->
 <!-- dead-ref-prefix-ok: apps/mobile-tauri/gen/ -->
 
@@ -190,61 +191,49 @@ IPA:  apps/mobile-tauri/gen/apple/build/kasirmu-mobile.ipa
 
 ## CI/CD Pipelines
 
-kasir.mu provides two GitHub Actions workflows for automated mobile builds:
+**One mobile workflow is live: `android.yml`.** This section previously described
+two, including an iOS pipeline — that workflow is **retired** and GitHub never
+executes it. Corrected 2026-10-08 against the live file.
 
-### Android CI (`android.yml`)
+### Android CI (`android.yml`) — LIVE
 
-Triggered by:
-- Push/PR to `main` (build verification only)
-- Tag `v*` (release artifact)
-- Manual `workflow_dispatch`
+Triggered by **tag `v*`** and **manual `workflow_dispatch`** only. There is
+**no PR trigger**, deliberately: a workflow nobody can exercise locally must not
+be able to block a merge.
 
-Pipeline steps:
-1. Setup JDK 17 + Android SDK 34
-2. Install Rust targets (`aarch64-linux-android`, `armv7-linux-androideabi`, `x86_64-linux-android`)
-3. Install UI dependencies + build tablet frontend
-4. Install `cargo-ndk` + `tauri-cli`
-5. Initialize Tauri Android project (`cargo tauri android init --ci`)
-6. Decode keystore from `ANDROID_KEYSTORE_BASE64` secret
-7. Build signed APK + AAB
-8. Upload artifacts (90-day retention)
+Pipeline steps (re-read from `.github/workflows/android.yml`, 2026-10-08):
+1. Setup **JDK 21** (matching `apps/mobile-tauri/AGENTS.md` — the earlier text here said JDK 17, which the workflow's own comment records as the retired pin)
+2. Setup Android SDK
+3. Install **Android NDK 30.0.14904198** explicitly and export `ANDROID_NDK_HOME`
+4. Install the `aarch64-linux-android` Rust target
+5. Build via the Tauri CLI, which runs `npm run build:mobile --prefix ../ui` as its `beforeBuildCommand` — the tablet UI is **not** built as a separate step
+6. Decode the keystore from `ANDROID_KEYSTORE_BASE64` (only when that secret is set; an absent keystore yields an **UNSIGNED** APK that still proves the target compiles)
+7. Upload the artifact
 
-**Required secrets:**
+The project scaffold is **committed** (`apps/mobile-tauri/gen/android/`), so
+there is no `cargo tauri android init` step — the earlier text here described one.
+
+**Secrets:**
 
 | Secret | Purpose |
 |--------|---------|
 | `ANDROID_KEYSTORE_BASE64` | Base64-encoded `.keystore` file |
 | `KEYSTORE_PASSWORD` | Keystore master password |
-| `KEY_PASSWORD` | Key password |
+| `KEY_PASSWORD` | Key password (defaults to `KEYSTORE_PASSWORD`) |
 | `KEY_ALIAS` | Key alias in the keystore |
 
-### iOS CI (`ios.yml`)
+### iOS CI — RETIRED
 
-Triggered by:
-- Tag `v*` (release artifact)
-- Manual `workflow_dispatch`
+There is **no live iOS workflow**. `.github/workflows/ios.yml` was renamed to
+`.github/workflows/attic/ios.yml.bak` by `23c963303` (2026-09-02); GitHub never
+executes a `.bak` file. Even if restored it could not run: no `gen/apple/`
+scaffold is committed.
 
-> **Note:** PR builds are skipped because macOS runners are significantly more expensive.
-
-Pipeline steps:
-1. Install Rust targets (`aarch64-apple-ios`, `x86_64-apple-ios`, `aarch64-apple-ios-sim`)
-2. Install UI dependencies + build tablet frontend
-3. Install `tauri-cli`
-4. Initialize Tauri iOS project
-5. Setup code signing (keychain + certificate + provisioning profile)
-6. Build signed IPA
-7. Upload artifact (90-day retention)
-
-**Required secrets:**
-
-| Secret | Purpose |
-|--------|---------|
-| `APPLE_TEAM_ID` | Apple Developer team ID |
-| `APPLE_BUNDLE_ID` | Bundle identifier (e.g., `mu.kasir.tablet`) |
-| `APPLE_PROV_PROFILE_BASE64` | Base64-encoded provisioning profile |
-| `APPLE_CERT_BASE64` | Base64-encoded distribution certificate p12 |
-| `APPLE_CERT_PASSWORD` | Certificate password |
-| `KEYCHAIN_PASSWORD` | Temporary keychain password |
+The manifest it consumed is kept as **revival documentation**, not today's
+pipeline (`.github/workflows/attic/ios.yml.bak:13-19`): `APPLE_TEAM_ID`,
+`APPLE_BUNDLE_ID`, `APPLE_PROV_PROFILE_BASE64`, `APPLE_CERT_BASE64`,
+`APPLE_CERT_PASSWORD`, `KEYCHAIN_PASSWORD`. See
+`docs/guides/platform/ios-build-guide.md` for the full retirement record.
 
 ---
 
@@ -267,7 +256,7 @@ The tablet client (`apps/mobile-tauri`) shares most code with the desktop client
 ### Key Differences from Desktop
 
 - **Bottom navigation bar** instead of sidebar
-- **Touch targets ≥ 48px** (WCAG 2.2 minimum)
+- **Touch targets ≥ 44×44px** (the WCAG 2.2 minimum; the bottom nav uses 48px — see the §Touch Target Sizes table below, which this line contradicted until 2026-10-08)
 - **Larger typography** (16–28px body text)
 - **Safe-area inset support** for notched devices (`env(safe-area-inset-*)`)
 - **Scrollbar styling** for touch (thin, transparent)
@@ -458,4 +447,4 @@ the APK/AAB builds unsigned.
 - [`apps/mobile-tauri/AGENTS.md`](../../../apps/mobile-tauri/AGENTS.md) — Android-specific dev notes
 - [ADR #4: Frontend Restructure](../../../docs/decisions/2026-03-01-frontend-restructure.md)
 
-> last audited 22-07-26 by Hermes-Agent
+> last audited 08-10-26 by docs-auditor

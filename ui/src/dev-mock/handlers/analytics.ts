@@ -331,13 +331,18 @@ export const analyticsHandlers: Record<string, MockHandler> = {
     const byCat = new Map<string, { category_id: string | null; category_name: string; total_minor: number; sale_count: number }>();
     MOCK_PRODUCTS.forEach((p, i) => {
       if (p.product_type !== 'retail') return;
+      // A category breakdown has nothing to say about an uncategorised item, and
+      // `category` is nullable because deleting a category rehomes its products
+      // to no category. Skip rather than keying the map on null.
+      if (!p.category) return;
+      const category = p.category;
       const total = mockRevenue(i) % 4_000_000;
-      const existing = byCat.get(p.category);
+      const existing = byCat.get(category);
       if (existing) {
         existing.total_minor += total;
         existing.sale_count += 1;
       } else {
-        byCat.set(p.category, { category_id: p.category, category_name: p.category, total_minor: total, sale_count: 1 });
+        byCat.set(category, { category_id: category, category_name: category, total_minor: total, sale_count: 1 });
       }
     });
     const rows = [...byCat.values()];

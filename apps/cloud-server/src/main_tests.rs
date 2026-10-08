@@ -1213,3 +1213,159 @@ async fn request_id_middleware_preserves_incoming_id() {
         .unwrap();
     assert_eq!(req_id, custom_id);
 }
+
+// ── RLS boot gate policy (report_rls_posture's decision, pure) ──────
+//
+// The gate refuses to start a production server whose tenant isolation is
+// inert. These pin the policy table rather than the message: a bypass is
+// fatal in production, "nothing to isolate" never is, and the escape hatch
+// is the only thing that softens it.
+
+use crate::db::RlsPosture;
+
+/// Every posture that means "at least one protected table's policies are inert".
+const BYPASSES: [RlsPosture; 3] = [
+    RlsPosture::BypassedBySuperuser { tables: 29 },
+    RlsPosture::BypassedByOwnerRole { total: 29 },
+    RlsPosture::PartiallyEnforced {
+        forced: 22,
+        total: 29,
+    },
+];
+
+#[test]
+fn every_bypass_is_fatal_in_production() {
+    for posture in BYPASSES {
+        assert!(
+            rls_verdict_is_fatal(posture, true, false),
+            "{posture:?} must refuse a production boot"
+        );
+    }
+}
+
+#[test]
+fn a_bypass_never_blocks_a_non_production_boot() {
+    // Dev and test runs connect as the owner by design; refusing to start
+    // there would make the gate unusable on the machines that develop it.
+    for posture in BYPASSES {
+        assert!(
+            !rls_verdict_is_fatal(posture, false, false),
+            "{posture:?} must not block a non-production start"
+        );
+    }
+}
+
+#[test]
+fn the_escape_hatch_softens_a_bypass_and_nothing_else() {
+    for posture in BYPASSES {
+        assert!(
+            !rls_verdict_is_fatal(posture, true, true),
+            "OZ_ALLOW_INERT_RLS=1 must let {posture:?} start"
+        );
+    }
+}
+
+#[test]
+fn enforced_is_never_fatal() {
+    assert!(!rls_verdict_is_fatal(
+        RlsPosture::Enforced { tables: 29 },
+        true,
+        false
+    ));
+}
+
+#[test]
+fn no_protected_tables_is_never_fatal_even_in_production() {
+    // The verdict says this database carries no tenant_isolation policy at all,
+    // so no query can be leaking through one. That is the legitimate shape for a
+    // single-tenant deployment or an unapplied schema, and treating it as a
+    // breach would refuse to boot a configuration with nothing to isolate.
+    assert!(!rls_verdict_is_fatal(
+        RlsPosture::NoProtectedTables,
+        true,
+        false
+    ));
+}
+
+#[test]
+fn the_deployed_posture_would_be_refused() {
+    // The value production actually answered on 2026-10-06
+    // (GET https://license.kasir.mu/health -> "bypassed_by_owner_role").
+    // This is the regression: without the gate, that state starts and serves.
+    assert!(rls_verdict_is_fatal(
+        RlsPosture::BypassedByOwnerRole { total: 29 },
+        true,
+        false
+    ));
+}
+
+/// The escape hatch must be read in EXACTLY ONE place, and that place is total.
+///
+/// This guards a real defect shipped and caught on review 2026-10-06:
+/// `report_rls_posture` called `allow_inert_rls()` inside `rls_verdict_is_fatal`
+/// AND again on its own error path, so the second read sat behind an early
+/// return that the first read had already made unconditional. The hatch still
+/// worked (it did not refuse the boot) but its "starting anyway" ERROR was
+/// unreachable — the operator got silence where the whole point is a record.
+///
+/// The pure predicate cannot see control flow, so it cannot catch that on its
+/// own. What it CAN pin is the property the double-call violated: the decision
+/// is a TOTAL function of its three arguments, defined for every combination,
+/// with no branch that a caller could reach twice to different effect.
+#[test]
+fn the_decision_matrix_is_total_and_self_consistent() {
+    let postures = [
+        RlsPosture::Enforced { tables: 29 },
+        RlsPosture::NoProtectedTables,
+        RlsPosture::BypassedBySuperuser { tables: 29 },
+        RlsPosture::BypassedByOwnerRole { total: 29 },
+        RlsPosture::PartiallyEnforced {
+            forced: 22,
+            total: 29,
+        },
+    ];
+    for posture in postures {
+        for production in [false, true] {
+            for allow_inert in [false, true] {
+                // Calling it repeatedly must never disagree with itself — the
+                // property a second env read on a later branch would break if
+                // the environment could change mid-call.
+                let first = rls_verdict_is_fatal(posture, production, allow_inert);
+                let again = rls_verdict_is_fatal(posture, production, allow_inert);
+                assert_eq!(
+                    first, again,
+                    "{posture:?} prod={production} hatch={allow_inert} must be stable"
+                );
+
+                // And the hatch may only ever SOFTEN: turning it on can never
+                // make a non-fatal verdict fatal.
+                if first {
+                    assert!(
+                        !rls_verdict_is_fatal(posture, production, true),
+                        "{posture:?} prod={production}: the hatch must only soften, never harden"
+                    );
+                }
+            }
+        }
+    }
+}
+
+/// Only a real bypass can be gated. Enforced and NoProtectedTables are inert by
+/// definition — a gate that fired on either would refuse boots it has no reason to.
+#[test]
+fn only_a_bypass_is_ever_gateable() {
+    for production in [false, true] {
+        for allow_inert in [false, true] {
+            assert!(!rls_verdict_is_fatal(
+                RlsPosture::Enforced { tables: 29 },
+                production,
+                allow_inert
+            ));
+            assert!(!rls_verdict_is_fatal(
+                RlsPosture::NoProtectedTables,
+                production,
+                allow_inert
+            ));
+        }
+    }
+}

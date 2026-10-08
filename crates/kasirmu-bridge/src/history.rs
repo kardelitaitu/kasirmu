@@ -68,6 +68,17 @@ pub async fn list_sales_scoped(
     ctx: &BridgeCtx<'_>,
     session_token: &str,
 ) -> Result<SaleListResponse, BridgeError> {
+    list_sales_scoped_bounded(ctx, session_token, None, None).await
+}
+
+/// List sales for the store resolved from a session token, bounded by optional
+/// `limit` and `offset` pushed down to the SQLite query (Phase 3 unbounded query protection).
+pub async fn list_sales_scoped_bounded(
+    ctx: &BridgeCtx<'_>,
+    session_token: &str,
+    limit: Option<u64>,
+    offset: Option<u64>,
+) -> Result<SaleListResponse, BridgeError> {
     // F-017: enforce per-domain permission on this scoped command.
     let session = ctx.resolve_session(session_token)?;
     ctx.require_session_permission(&session, permissions::SALES_VIEW)
@@ -89,7 +100,7 @@ pub async fn list_sales_scoped(
         .lock()
         .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
     let store = Store::new(&db);
-    let (sales, capped) = store.list_sales_with_history_cap(days)?;
+    let (sales, capped) = store.list_sales_with_history_cap_bounded(days, limit, offset)?;
     // Phase 4: attach the frozen receipt hierarchy code to each list row in a
     // single batch read (no per-row N+1). The list is capped to the tier's
     // history window, so the IN-set is small.
@@ -170,6 +181,9 @@ pub struct SaleDetail {
     /// Phase 6: e-Faktur Pajak compliance metadata (DJP Coretax PER-11/PJ/2025).
     #[serde(default)]
     pub faktur_pajak: Option<FakturPajakInfo>,
+    /// Statutory document number (e.g. formal Tax Invoice or Receipt sequence number).
+    #[serde(default)]
+    pub statutory_number: Option<String>,
 }
 
 /// Fetch a single sale by ID from the store resolved from a session token.
@@ -209,8 +223,20 @@ pub async fn get_sale_scoped(
         Some(s) => store.get_faktur_pajak(&s.id)?,
         None => None,
     };
+    let statutory_number = match &sale {
+        Some(s) => store.sale_statutory_number(&s.id)?,
+        None => None,
+    };
     drop(db);
-    Ok(sale.map(|s| map_sale_to_detail(s, tax_estimate_note, display_code, faktur_pajak)))
+    Ok(sale.map(|s| {
+        map_sale_to_detail(
+            s,
+            tax_estimate_note,
+            display_code,
+            faktur_pajak,
+            statutory_number,
+        )
+    }))
 }
 
 /// Shared mapping from `kasirmu_core::Sale` to `SaleDetail`.
@@ -219,6 +245,7 @@ fn map_sale_to_detail(
     tax_estimate_note: Option<String>,
     display_code: Option<String>,
     faktur_pajak: Option<FakturPajakInfo>,
+    statutory_number: Option<String>,
 ) -> SaleDetail {
     SaleDetail {
         id: s.id,
@@ -235,6 +262,7 @@ fn map_sale_to_detail(
         tax_estimate_note,
         display_code,
         faktur_pajak,
+        statutory_number,
     }
 }
 

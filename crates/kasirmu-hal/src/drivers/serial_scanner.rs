@@ -30,6 +30,9 @@ use crate::types::{Barcode, DeviceInfo};
 /// Common baud rates supported by most serial barcode scanners.
 pub const DEFAULT_BAUD: u32 = 9600;
 
+/// Maximum length of a single scanned barcode buffer (1024 bytes) to bound memory.
+pub const MAX_BARCODE_LEN: usize = 1024;
+
 /// A barcode scanner driven through a serial port.
 pub struct SerialBarcodeScanner {
     port_name: String,
@@ -151,6 +154,10 @@ impl BarcodeScanner for SerialBarcodeScanner {
                             return Ok(Some(Barcode::new(code)));
                         }
                         buf.push(byte[0]);
+                        if buf.len() >= MAX_BARCODE_LEN {
+                            let code = String::from_utf8_lossy(&buf).trim().to_owned();
+                            return Ok(Some(Barcode::new(code)));
+                        }
                     }
                     Ok(n) => {
                         for &b in &byte[..n] {
@@ -162,6 +169,10 @@ impl BarcodeScanner for SerialBarcodeScanner {
                                 return Ok(Some(Barcode::new(code)));
                             }
                             buf.push(b);
+                            if buf.len() >= MAX_BARCODE_LEN {
+                                let code = String::from_utf8_lossy(&buf).trim().to_owned();
+                                return Ok(Some(Barcode::new(code)));
+                            }
                         }
                     }
                 }

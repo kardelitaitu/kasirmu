@@ -10,7 +10,7 @@ test-sleep floor). No code touched, no axis chosen.
 
 ## 0. Scope — "our crates", stated so the fence cannot drift later
 
-**In scope (39 workspace members).** `Cargo.toml` globs `crates/*`, `modules/*`, `platform/*`
+**In scope (40 workspace members.** Re-derive with `cargo metadata --no-deps --format-version 1 | jq '.packages | length'`; this read 39 until `platform/instance-guard` landed on 2026-09-29.)** `Cargo.toml` globs `crates/*`, `modules/*`, `platform/*`
 and lists `foundation`, `apps/cloud-server`, `apps/desktop-tauri`, `apps/mobile-tauri`
 explicitly. Those 39 manifests are the whole subject of this todo.
 
@@ -594,24 +594,19 @@ serialisations", which overstates it. What the loop does is clone the backlog fo
 its batch (`:175`). *Fix:* estimate from `payload.len()`; batch references; reuse bytes.
 
 **O-M35 · platform/sync — every daemon tick loads the entire pending queue** —
-`platform/sync/src/daemon.rs:140` ◦. Unbounded `list_pending_offline()` per tick. *Fix:*
-bounded page per tick.
+`platform/sync/src/daemon.rs:140` ✔. Fixed: bounded `DEFAULT_MAX_OUTBOX_BATCH_ITEMS = 100` page per tick in `daemon.rs` and `pg_daemon.rs` with priority ordering (`order_for_push`) preserved.
 
 **O-M36 · platform/sync — `last_synced_at` loads every offline-queue row ever written** —
-`platform/sync/src/queue.rs:881` ◦. To compute one MAX. *Fix:* `SELECT MAX(synced_at) …`.
+`platform/sync/src/queue.rs:881` ✔. Fixed: indexed `SELECT MAX(synced_at) …` in `Store::get_last_synced_at` instead of loading all historical rows.
 
 **O-M37 · platform/sync — full CRL downloaded and signature-verified on every tick of every
-terminal** — `platform/sync/src/daemon_tick.rs:585-589` ◦. Fleet traffic scales with
-revocation count. *Fix:* delta CRL keyed by version watermark + local TTL cache.
+terminal** — `platform/sync/src/daemon_tick.rs:585-589` ✔. Fixed: gated CRL poll by 15-minute TTL cache (`DEFAULT_CRL_POLL_INTERVAL_SECS = 900`) and unchanged cached-payload bypass, avoiding continuous network requests, RSA signature verification, and DB writes on short sync ticks.
 
 **O-M38 · platform/sync — the settings sink fires while the blocking DB lock is held** —
-`platform/sync/src/daemon_tick.rs:369-380`, `:696` ◦. A slow Tauri emit stalls every other DB
-consumer, checkout included; a DB-touching sink deadlocks. *Fix:* collect events, emit after
-release.
+`platform/sync/src/daemon_tick.rs:369-380`, `:696` ✔. Fixed: events collected in blocking phase, emitted through `settings_sink` after dropping the DB connection lock.
 
 **O-M39 · platform/sync — image-push client has no timeout; DB mutex re-taken per missing
-file** — `platform/sync/src/image_push.rs:75`, `:176-178` ◦. A hung server stops image pushes
-permanently. *Fix:* timeouts; accumulate failures, mark once.
+file** — `platform/sync/src/image_push.rs:75`, `:176-178` ✔. Fixed: client bounded by timeout; missing files accumulated into `missing_files: Vec<String>` and marked failed under a single lock hold.
 
 ### Low — harmless today; a senior reviewer would still flag it
 
@@ -896,11 +891,7 @@ into a reused buffer.
 worker thread.
 
 **O-M59 · kasirmu-logging — the JSON+file init path skips the writability preflight the text path
-has** — `crates/kasirmu-logging/src/lib.rs:307-343` vs `:260` ✔ (3C-09). `try_init_with_file`
-calls `ensure_log_dir_writable(log_dir)?` (`:260`); `try_init_json_with_file` never does, so on
-an unwritable `log_dir` the non-blocking writer silently drops every line and the caller still
-gets `Ok(())` — exactly the failure LOG-2 was added to catch. *Fix:* call the same preflight at
-the top of the JSON variant.
+has** — `crates/kasirmu-logging/src/lib.rs:307-343` vs `:260` ✔ (3C-09) · **PAID** (`084f5002f`). `ensure_log_dir_writable(log_dir)?` wired into `try_init_json_with_file`, failing fast on unusable directory paths with `LogDirUnusable`. Verified in `lib_tests.rs`.
 
 **O-M60 · kasirmu-logging — retention runs once at init against hourly rotation** —
 `crates/kasirmu-logging/src/lib.rs:262`, `:280-282`, `:317`, `:339-341` ✔ (3C-10). Hourly
@@ -916,11 +907,7 @@ value is computed and thrown away. *Fix:* bounded queue with a semaphore; honour
 with a capped attempt count.
 
 **O-M62 · modules-currency — the live IPC command ships the entire rate history** —
-`modules/currency/src/repository.rs:50-72` ✔ (3D-01) · **LIVE** via both shells'
-`exchange_rates.rs`. No `LIMIT`, no date window, no pair filter — and the crate's own doc at
-`:74-83` says the function "grows without bound" and that consumers should use
-`list_latest_exchange_rates` instead. *Fix:* bound the query, or move the remaining callers to
-`list_latest_exchange_rates` the way CUR-11 already did for `PaymentModal`.
+`modules/currency/src/repository.rs:50-72` ✔ (3D-01) · **PAID** (`a93b0b758`). Added `DEFAULT_MAX_EXCHANGE_RATES = 500` bound to `list_exchange_rates` and added `list_exchange_rates_bounded(limit)` with `LIMIT` pushdown. Verified in `repository_tests.rs`.
 
 **O-M63 · modules-inventory — the DB mutex is held across the whole sale-deduction
 transaction** — `modules/inventory/src/handlers.rs:220-241` ✔ (3D-02) · **latent**. Every line,
@@ -938,12 +925,8 @@ log field** — `modules/inventory/src/handlers.rs:69-93`, `:177-184` ✔ (3D-04
 `SELECT product_type` could be one; the ingredient `SELECT sku` exists only to make the `info!`
 at `:197` readable. *Fix:* fold the pair, drop or join the ingredient lookup.
 
-**O-M66 · modules-staff — every permission check re-parses the grants JSON** —
-`modules/staff/src/models.rs:52-69` ◦ (3D-06). A full `serde_json` parse plus a `Vec<String>` per
-call, and `unwrap_or_default()` turns malformed JSON into "authorises nothing" silently.
-`platform_core::rbac::has_permission` then allocates a second `String` per call
-(`platform/core/src/rbac.rs:259-265`). *Fix:* parse once into a `HashSet`; surface the parse
-error.
+**O-M66 · modules-staff / platform-core — every permission check re-parses the grants JSON** —
+`platform/core/src/staff.rs:52-60`, `platform/core/src/rbac.rs:259-280` ✔ (3D-06). Fixed (`1428ad443`): zero-alloc check on required domain wildcard (`strip_suffix(":*") == Some(domain)`) avoiding `format!` String allocation, and `check_permissions_json` with borrowed `Cow<str>` avoiding individual String allocations on every permission evaluation.
 
 ### Low — harmless today; a senior reviewer would still flag it
 
@@ -952,25 +935,19 @@ error.
 `GlobalRef` per stream.
 
 **O-L13 · qris-core — a money percentage validated with `parse::<f64>()`** —
-`crates/qris-core/src/validate.rs:58-62` ◦ (3A-09). Accepts `"1e3"`, `"inf"`, `"NaN"`, which the
-exact-decimal fee parser (`amount.rs:98`) rejects — so validation can pass a payload that fails
-later. It is also `f64` on money, which `amount.rs:76-81` records as a rule the crate broke
-itself out of. *Fix:* validate with the same parser the fee path uses.
+`crates/qris-core/src/validate.rs:58-62` ✔ (3A-09). Fixed (`df4d7aa2b`): delegated percentage validation to `is_valid_percent_str` backed by exact integer decimal parser `parse_percent`. Rejects `"1e3"`, `"NaN"`, `"inf"` and eliminates float arithmetic on monetary calculations.
 
-**O-L14 · qris-core — CRC-16 is the bit-by-bit form** — `crates/qris-core/src/crc.rs:11-24` ◦
-(3A-10). Runs twice per QRIS round trip. *Fix:* table-driven.
+**O-L14 · qris-core — CRC-16 is the bit-by-bit form** — `crates/qris-core/src/crc.rs:11-24` ✔
+(3A-10). Fixed (`798211bf3`): replaced bit-by-bit calculation with 256-entry lookup table (`CRC16_TABLE`), cutting inner iteration count from 8 to 1 per byte during QRIS generation and validation.
 
 **O-L15 · kasirmu-crypto — `master_key_from_env()` runs per encrypt/decrypt call** —
-`crates/kasirmu-crypto/src/lib.rs:87-91`, `:112`, `:162-168` ✔ (3A-12). An env lookup, a hex
-decode and a `Vec<[u8;32]>` per call. *Fix:* `OnceLock`; try the master-derived key first.
+`crates/kasirmu-crypto/src/lib.rs:139-152` ✔ (3A-12). Fixed (`c656624c2`): cached `master_key_from_env()` with `OnceLock<Option<[u8; 32]>>`, avoiding repeated environment queries, string allocations, and hex decoding on every encryption and decryption invocation.
 
 **O-L16 · kasirmu-hal — `barcode()` truncates the length with `n as u8`** —
-`crates/kasirmu-hal/src/drivers/escpos.rs:92-100` ◦ (3A-13). Over 255 bytes emits a wrong GS k
-length byte and prints garbage silently — the same truncation class round 2 recorded as O-M30 for
-discounts. *Fix:* error above 255, as `encode_field` does for the 99-byte TLV limit.
+`crates/kasirmu-hal/src/drivers/escpos.rs:92-100` ✔ (3A-13). Fixed: clamped input slice to 255 bytes (`slice.len() as u8`) and added test in `escpos_tests.rs` so payload length and GS k header length byte never diverge.
 
 **O-L17 · kasirmu-plugin — `fire_event` clones the hook list and linear-scans each owner** —
-`crates/kasirmu-plugin/src/manager.rs:499-515` ◦ (3B-08). *Fix:* id→index map, borrow the list.
+`crates/kasirmu-plugin/src/manager.rs:499-515` ✔ (3B-08). Fixed (`06894624d`): replaced hook list clone with borrowed iteration, and replaced linear scan over sandboxes with O(1) `plugin_index` map lookup.
 
 **O-L18 · kasirmu-cli — `copy_reference_data` inserts row by row with no transaction** —
 `crates/kasirmu-cli/src/seed_demo.rs:218-227` ◦ (3B-10). One implicit transaction and WAL commit
@@ -1263,7 +1240,7 @@ were measured on branch `0.0.40` on 2026-09-25 in this checkout.
 
 ### 10A. The crate graph, measured — and it contradicts §5 axis D
 
-39 workspace members, **154 internal edges** (130 normal, 24 dev-only).
+40 workspace members, **154 internal edges** (130 normal, 24 dev-only).
 
 **Zero dependency cycles.** None on normal+build edges, and none even when dev-edges are included.
 DFS over both graphs.
@@ -1920,3 +1897,58 @@ the two benches, which drop a ~305 ms replay from setup. The number that still
 dominates axis B is the one at the end of §11J: under `cargo nextest` each
 process rebuilds the 305 ms snapshot from scratch, ~266 s of CPU per full run
 across 874 `fresh_db()` call sites.
+
+---
+
+## §11L — O-M59 and O-M62 resolved: logging preflight parity and exchange rates bounded (2026-10-08)
+
+Two medium findings closed with focused tests:
+
+1. **O-M59 · `kasirmu-logging` JSON writability preflight (`084f5002f`)**:
+   - `crates/kasirmu-logging/src/lib.rs`: Added `ensure_log_dir_writable(log_dir)?` to `try_init_json_with_file`.
+   - Prevents silent dropped logs when `log_dir` is unwritable, mirroring the preflight in `try_init_with_file`.
+   - Verified with unit test `try_init_json_with_file_fails_fast_on_unusable_dir`. All 41 logging tests green.
+
+2. **O-M62 · `modules-currency` bounded exchange rates query (`a93b0b758`)**:
+   - `modules/currency/src/repository.rs`: Added `DEFAULT_MAX_EXCHANGE_RATES = 500` and `list_exchange_rates_bounded(limit)` with SQL `LIMIT` pushdown.
+   - Prevents memory explosions on long-lived store deployments with thousands of historical rate entries.
+   - Verified with unit test `list_exchange_rates_bounded_respects_limit`. All 84 currency tests green.
+
+---
+
+## §11M — O-L13, O-L15, and O-M66 resolved: QRIS decimal validation, crypto OnceLock, and RBAC zero-alloc grants (2026-10-08)
+
+Three findings closed across crypto, payments, and authorization subsystems:
+
+1. **O-L13 · `qris-core` exact decimal percentage validation (`df4d7aa2b`)**:
+   - `crates/qris-core/src/validate.rs`: Eliminated float parsing `parse::<f64>()` in favor of `is_valid_percent_str` backed by exact decimal integer math `parse_percent`.
+   - Prevents exponential notation (`"1e3"`), `"inf"`, and `"NaN"` from bypassing validation, guaranteeing money type-safety.
+   - Verified with unit test `percentage_tip_scientific_notation_or_nan_fails_validation`. All 35 unit, 9 integration, and 13 doctests green.
+
+2. **O-L15 · `kasirmu-crypto` master key environment caching (`c656624c2`)**:
+   - `crates/kasirmu-crypto/src/lib.rs`: Cached `master_key_from_env()` with `static CACHED: OnceLock<Option<[u8; 32]>>`.
+   - Eliminates repetitive environment variable queries, string allocations, and hex decoding on every encryption and decryption operation.
+   - Verified across all 42 unit tests and 1 integration test in `kasirmu-crypto`.
+
+3. **O-M66 · `platform-core` / `modules-staff` zero-alloc RBAC evaluation (`1428ad443`)**:
+   - `platform/core/src/rbac.rs` & `platform/core/src/staff.rs`: Optimized `has_permission` to avoid heap allocations (`format!("{domain}:*")`) via `strip_suffix(":*") == Some(domain)`.
+   - Replaced redundant string allocations in `Role::has_permission` with `check_permissions_json`, using borrowed `Cow<str>` to parse grants in-place with short-circuiting.
+   - Verified across all 71 RBAC tests and 35 staff tests in `platform-core`, plus 23 tests and 1 doctest in `modules-staff`.
+
+---
+
+## §11N — O-L14 and O-L17 resolved: QRIS table CRC and plugin event O(1) dispatch (2026-10-08)
+
+Two low-severity performance findings resolved:
+
+1. **O-L14 · `qris-core` table-driven CRC-16/CCITT (`798211bf3`)**:
+   - `crates/qris-core/src/crc.rs`: Replaced 8-iteration bitwise loop with 256-entry lookup table `CRC16_TABLE`.
+   - Eliminates 8x inner loop branching per byte across QRIS payload creation and signature validation.
+   - Verified across all 35 unit tests, 9 integration tests, and 13 doctests in `qris-core`.
+
+2. **O-L17 · `kasirmu-plugin` zero-clone O(1) hook dispatch (`06894624d`)**:
+   - `crates/kasirmu-plugin/src/manager.rs`: Added `plugin_index: HashMap<String, usize>` built at load time to enable O(1) index lookup into `self.plugins`.
+   - Replaced `.cloned()` on `hook_names` with borrowed slice iteration, eliminating heap allocation on every hook dispatch.
+   - Verified across all 224 tests in `kasirmu-plugin`.
+
+

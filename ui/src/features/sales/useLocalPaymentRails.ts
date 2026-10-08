@@ -19,6 +19,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { getLocalPaymentMethodsScoped, readStaticQrPayload, type LocalPaymentRail } from '@/api/local-payment';
 import { getPrimaryLocationScoped } from '@/api/locations';
+import type { ActiveMarketProfile } from '@/api/regional';
 
 export interface LocalPaymentRails {
   /** null while loading / no session / error; the effective list otherwise. */
@@ -69,14 +70,60 @@ const TENDER_RAILS: ReadonlyArray<{ method: TenderMethod; railCode: string | nul
 ];
 
 /**
- * The tender tabs to offer for `rails`, in operator order. Same list the
- * modal hardcoded, now named: an entry survives unless a non-empty rail
+ * The tender tabs to offer for `rails` and optional `marketProfile`, in operator order.
+ * Same list the modal hardcoded, now named: an entry survives unless a non-empty rail
  * list answers that its `railCode` is withheld.
  */
-export function visibleMethods(rails: LocalPaymentRail[] | null): TenderMethod[] {
-  return TENDER_RAILS.filter(
+export function visibleMethods(
+  rails: LocalPaymentRail[] | null,
+  marketProfile?: ActiveMarketProfile | null,
+): TenderMethod[] {
+  const methods = TENDER_RAILS.filter(
     ({ railCode }) => railCode === null || railOffered(rails, railCode),
   ).map(({ method }) => method);
+
+  if (marketProfile && Array.isArray(marketProfile.enabled_payment_rails) && marketProfile.enabled_payment_rails.length > 0) {
+    return methods.filter((m) => {
+      const rail = TENDER_RAILS.find((t) => t.method === m);
+      if (!rail || rail.railCode === null) {
+        return true;
+      }
+      return marketProfile.enabled_payment_rails.includes(rail.railCode);
+    });
+  }
+
+  return methods;
+}
+
+/**
+ * Resolve the dynamic market tender label for a method.
+ *
+ * For electronic/QR rails (e.g. `qris`), priority order:
+ *  1. Custom display label on the active `local_payment_methods` rail (e.g. "PayNow", "PromptPay", "PIX").
+ *  2. Statutory/national QR scheme mapped from `ActiveMarketProfile.country_code` (e.g. SG -> "PayNow / SGQR", MY -> "DuitNow QR", TH -> "PromptPay", IN -> "UPI", BR -> "PIX", non-ID -> "QR Code").
+ *  3. Localized default string (e.g. "QRIS").
+ */
+export function resolveTenderDisplayName(
+  method: string,
+  rails: LocalPaymentRail[] | null,
+  marketProfile: ActiveMarketProfile | null | undefined,
+  fallback: string,
+): string {
+  if (method === 'qris' || method.toLowerCase() === 'qris') {
+    const rail = rails?.find((r) => r.rail_code === 'qris');
+    if (rail?.label && rail.label.trim().length > 0) {
+      return rail.label.trim();
+    }
+    const cc = marketProfile?.country_code?.toUpperCase();
+    if (cc === 'SG') return 'PayNow / SGQR';
+    if (cc === 'MY') return 'DuitNow QR';
+    if (cc === 'TH') return 'PromptPay';
+    if (cc === 'IN') return 'UPI';
+    if (cc === 'BR') return 'PIX';
+    if (cc && cc !== 'ID') return 'QR Code';
+    return fallback;
+  }
+  return fallback;
 }
 
 /**

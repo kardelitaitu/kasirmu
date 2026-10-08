@@ -52,7 +52,6 @@ import { useMemo } from 'react';
 
 import { Localized, useLocalization } from '@fluent/react';
 import { Button } from '@/components/Button';
-import Tooltip from '@/app/Tooltip';
 import { ContextMenu, useContextMenu, requiredLocalized } from '@/components';
 import { useWorkspaceNav } from '@/hooks/useWorkspaceNav';
 import { NAV_ITEMS, NAV_L10N_KEYS } from '../SettingsNavTree';
@@ -63,6 +62,8 @@ interface SettingsTopbarProps {
   /** Threaded because the sidebar filter reads the same page state. */
   searchQuery: string;
   onSearchChange: (value: string) => void;
+  /** Callback to open off-canvas sidebar drawer on narrow viewports. */
+  onOpenMobileSidebar?: () => void;
   /** Drives the dirty dot, the Revert button's hidden class and its tabIndex. */
   isDirty: boolean;
   saving: boolean;
@@ -76,6 +77,7 @@ export function SettingsTopbar({
   activeSection,
   searchQuery,
   onSearchChange,
+  onOpenMobileSidebar,
   isDirty,
   saving,
   saved,
@@ -112,24 +114,38 @@ export function SettingsTopbar({
           onClose={cm.close}
         />
       )}
+      {/* Three-column grid — the SAME shape as the Staff Management
+          header (1fr auto 1fr), with the SEARCH in the middle where that
+          page puts its tab strip. The centre is centred by the grid, not
+          by available space, so the search does not drift as the title or
+          the action cluster changes width. */}
       <header className="settings-topbar">
-        {/* COL 1: back to the workspace picker */}
-        <div className="settings-topbar__col">
-          <Tooltip content={l10n.getString('settings-back-aria')} fit="inline" portal>
+        {/* COL 1: back + title (the lead group, pinned to the start) */}
+        <div className="settings-topbar__col settings-topbar__col--lead">
+          {onOpenMobileSidebar && (
             <button
               type="button"
-              className="settings-back-btn"
-              onClick={() => goToWorkspacePicker()}
-              aria-label={l10n.getString('settings-back-aria')}
+              className="settings-topbar-menu-btn"
+              onClick={onOpenMobileSidebar}
+              aria-label={l10n.getString('settings-sidebar-expand-aria')}
             >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <polyline points="16 5 8 12 16 19" />
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <line x1="3" y1="12" x2="21" y2="12" />
+                <line x1="3" y1="6" x2="21" y2="6" />
+                <line x1="3" y1="18" x2="21" y2="18" />
               </svg>
             </button>
-          </Tooltip>
-        </div>
-        {/* COL 2: branding */}
-        <div className="settings-topbar__col settings-topbar__col--brand">
+          )}
+          <button
+            type="button"
+            className="settings-back-btn"
+            onClick={() => goToWorkspacePicker()}
+            aria-label={l10n.getString('settings-back-aria')}
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <polyline points="16 5 8 12 16 19" />
+            </svg>
+          </button>
           <div className="settings-topbar-icon" aria-hidden="true">
             {currentNavItem?.icon ?? (
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -144,7 +160,7 @@ export function SettingsTopbar({
             </Localized>
           </h1>
         </div>
-        {/* COL 3: search */}
+        {/* COL 2: search (centre) */}
         <div className="settings-topbar__col settings-topbar__col--search">
           <div className="settings-topbar-search">
             <svg className="settings-topbar-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -177,7 +193,7 @@ export function SettingsTopbar({
             )}
           </div>
         </div>
-        {/* COL 4: actions */}
+        {/* COL 3: actions (pinned to the end) */}
         <div className="settings-topbar__col settings-topbar__col--actions">
           <div className="settings-save-bar">
             {/* Revert button is always rendered but invisible when not dirty.

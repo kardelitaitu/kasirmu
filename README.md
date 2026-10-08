@@ -1,9 +1,11 @@
 # kasir.mu — the POS that keeps selling when the internet doesn't
 
-[![Code Size](https://img.shields.io/badge/code%20size-1%2C334.8k%20lines-blue?style=flat-square)](./stats.json)
+<!-- Audit stamp: 2026-10-08 · docs-auditor · status: ACCURATE AFTER REPAIR (4 findings) · First audit stamp this page has carried. Repaired against `stats.json` (the page's OWN cited source, which it contradicted): code size 1,334,821 lines / 5,954 files -> **1,250,487 / 5,730** (badge, §Engineering overview, §4 intro, §4 table and ASCII art), and the whole §4 per-language table regenerated so its rows sum EXACTLY to the stats totals (verified: 5,730 files / 1,250,487 lines). Test counts 9,026 / 623 -> **9,378 `#[test]`** (11,078 with `#[tokio::test]`) / **654** front-end test files, re-measured with `grep`. The "all 6 roadmap phases delivered" claim -> "phases 1–7 of the 20-phase roadmap delivered", matching `docs/guides/product/ROADMAP.md`. The ">508,000 lines of test code" figure is NOT re-derived here: no script computes it and `stats.json` carries no test-only breakdown, so it is left as written and flagged rather than replaced with a guess. · Repaired against branch `0.0.41` at `134aaed1b`. -->
+
+[![Code Size](https://img.shields.io/badge/code%20size-1%2C250.5k%20lines-blue?style=flat-square)](./stats.json)
 [![Server Cost](https://img.shields.io/badge/server%20cost-%3C1%25%20of%20revenue-success?style=flat-square)](#side-a-slashing-server-costs-to-under-1-of-gross-revenue-for-the-business)
 [![Rust Coverage](https://img.shields.io/badge/rust%20coverage-73.9%25-brightgreen?style=flat-square)](./scripts/coverage-floors.json)
-[![Tests](https://img.shields.io/badge/tests-9%2C000%2B%20rust%20%7C%20620%2B%20ui-orange?style=flat-square)](./README-3.md)
+[![Tests](https://img.shields.io/badge/tests-11%2C000%2B%20rust%20%7C%20650%2B%20ui-orange?style=flat-square)](./README-technical.md)
 [![Built with AI](https://img.shields.io/badge/development-solo%20dev%20%7C%2095%25%20AI%20written-purple?style=flat-square)](#4-engineering-scale--the-ai-native-development-model)
 
 > **Point-of-sale software that runs on the hardware you already own and needs no connection
@@ -12,8 +14,13 @@
 >
 > **How to read this page.** This is the product and technical overview: what kasir.mu does for a merchant,
 > how the architecture and economics work, and what is deliberately not built yet. The engineering README is
-> [`README-3.md`](./README-3.md) — architecture, commands, and verified figures. Pricing and quotas
-> below are quoted exactly as [`docs/guides/user/subscription-tiers.md`](./docs/guides/user/subscription-tiers.md)
+> [`README-technical.md`](./README-technical.md) — architecture, commands, and verified
+> figures. *(Renamed from `README-3.md` on 2026-10-02: that name was a merge-conflict suffix and
+> **nothing in the repository linked to it** — it is the only home of the Technology Stack table and
+> the repo-root Repository Structure tree, and it was unreachable. Its content is current and
+> actively maintained; only the name was wrong.)*
+> Pricing and quotas below are quoted exactly as
+> [`docs/guides/user/subscription-tiers.md`](./docs/guides/user/subscription-tiers.md)
 > writes them, and that file is the authority when the two ever disagree.
 
 ---
@@ -38,15 +45,15 @@
 
 | Dimension | Specification | Reference |
 |---|---|---|
-| **Codebase size** | **1,334,821 lines of code** across **5,954 files** | [`stats.json`](./stats.json) |
-| **Core technology stack** | Native Rust backend + Tauri v2 native shell + React 18 / TypeScript frontend | [`README-3.md`](./README-3.md) |
+| **Codebase size** | **1,250,487 lines of code** across **5,730 files** | [`stats.json`](./stats.json) |
+| **Core technology stack** | Native Rust backend + Tauri v2 native shell + React 18 / TypeScript frontend | [`README-technical.md`](./README-technical.md) |
 | **Local database** | SQLite (rusqlite WAL mode) on each terminal; zero server round-trips during checkout | [`docs/architecture/`](./docs/architecture/) |
 | **Cloud database** | PostgreSQL sync receiver with asynchronous outbox delta replication | [`crates/kasirmu-core/`](./crates/kasirmu-core/) |
 | **Test coverage** | **73.9% measured Rust workspace line coverage** (99.4% in `foundation`, 83.8% in `kasirmu-core`) | [`scripts/coverage-floors.json`](./scripts/coverage-floors.json) |
-| **Automated test suite** | **9,026 Rust `#[test]` functions** and **623 frontend test files** | [`README-3.md`](./README-3.md) |
+| **Automated test suite** | **11,078 Rust `#[test]` attributes** and **654 frontend test files** | [`README-technical.md`](./README-technical.md) |
 | **Test code volume** | **>508,000 lines of test code** (>50% of the entire codebase is automated verification) | [`stats.json`](./stats.json) |
 | **Development model** | **Solo developer — 95% of code authored and verified with AI** | [Section 4 below](#4-engineering-scale--the-ai-native-development-model) |
-| **Current release** | **v0.0.40** (all 6 roadmap phases delivered) | [Status below](#6-20-phase-strategic-platform-roadmap) |
+| **Current release** | **v0.0.41** (phases 1–7 of the 20-phase roadmap delivered) | [Status below](#6-20-phase-strategic-platform-roadmap) |
 
 ---
 
@@ -155,8 +162,8 @@ A point-of-sale system sits directly between a merchant and their revenue. It ca
 3. **Transactional ACID guarantees:** Every inventory movement, refund, and shift closure executes within an explicit `rusqlite` database transaction. Write-ahead logging (WAL) prevents corruption even if power is cut mid-transaction.
 4. **Tested like mission-critical software:**
    - **73.9% measured Rust workspace line coverage** (reaching **99.4%** in `foundation` and **83.8%** in `kasirmu-core`).
-   - **9,026 Rust unit and integration tests** (`#[test]`) running in CI.
-   - **623 frontend test suites** in Vitest covering UI components, accessibility, and offline caching.
+   - **11,078 Rust unit and integration test functions** (`#[test]` / `#[tokio::test]`) across the workspace.
+   - **654 frontend test suites** in Vitest covering UI components, accessibility, and offline caching.
    - **>508,000 lines of test code** (>50% of the entire codebase is automated test suites, mocks, and property checks).
 5. **Universal Hardware Abstraction Layer (HAL):** Vendor-independent driver traits for printers, scanners, cash drawers, scales, customer displays, and payment terminals—backed by mock implementations that allow 100% CI testing without physical hardware.
 6. **Deterministic offline conflict resolution:**
@@ -220,23 +227,23 @@ The primary failure mode of AI-generated code is accumulating untested technical
 
 ### Codebase metrics breakdown ([`stats.json`](./stats.json))
 
-The repository encompasses **1,334,821 lines of code** across **5,954 source files**:
+The repository encompasses **1,250,487 lines of code** across **5,730 source files**:
 
 | Language / Domain | Files | Lines | Primary Scope |
 |---|---:|---:|---|
-| **Rust** | 1,389 | 510,786 | Domain logic, SQLite engine, HAL device drivers, security, cryptography, sync outbox |
-| **TypeScript / TSX** | 1,514 | 387,698 | React POS UI, state machines, Kitchen Display (KDS), tablet layouts, API clients |
-| **Markdown** | 420 | 132,955 | Comprehensive system architecture, ADRs, test strategies, user guides |
-| **HTML** | 1,208 | 102,514 | Prototypes, KDS layouts, web views, documentation templates |
-| **CSS** | 150 | 62,045 | Design system, tokenized responsive styling, print receipt layouts |
-| **Go** | 106 | 44,882 | Standalone licensing server (`apps/license-server`) |
-| **Python** | 80 | 40,590 | Verification gates, migration generators, drift checkers, E2E orchestration |
-| **JavaScript / MJS** | 834 | 16,241 | Tooling scripts, build pipelines, prototype engines |
-| **Fluent (`.ftl`)** | 54 | 12,619 | 10,000+ bilingual localization entries (English and Bahasa Indonesia) |
-| **SQL** | 72 | 8,666 | 70 migration schemas (SQLite primary + generated PostgreSQL replica) |
-| **Shell & PowerShell** | 76 | 12,829 | CI/CD automation, build scripts, Windows setup tooling |
-| **Astro** | 51 | 2,996 | Marketing website & documentation portal |
-| **Total** | **5,954** | **1,334,821** | Complete repository footprint |
+| **Rust** | 1,260 | 478,816 | Domain logic, SQLite engine, HAL device drivers, security, cryptography, sync outbox |
+| **TypeScript / TSX** | 1,489 | 367,824 | React POS UI, state machines, Kitchen Display (KDS), tablet layouts, API clients |
+| **Markdown** | 384 | 115,016 | Comprehensive system architecture, ADRs, test strategies, user guides |
+| **HTML** | 1,207 | 102,183 | Prototypes, KDS layouts, web views, documentation templates |
+| **CSS** | 148 | 60,215 | Design system, tokenized responsive styling, print receipt layouts |
+| **Go** | 106 | 44,831 | Standalone licensing server (`apps/license-server`) |
+| **Python** | 56 | 30,519 | Verification gates, migration generators, drift checkers, E2E orchestration |
+| **JavaScript / MJS** | 831 | 15,732 | Tooling scripts, build pipelines, prototype engines |
+| **Fluent (`.ftl`)** | 54 | 12,167 | 10,000+ bilingual localization entries (English and Bahasa Indonesia) |
+| **SQL** | 70 | 8,564 | Migration schemas (SQLite primary + generated PostgreSQL replica) |
+| **Shell & PowerShell** | 74 | 11,792 | CI/CD automation, build scripts, Windows setup tooling |
+| **Astro** | 51 | 2,828 | Marketing website & documentation portal |
+| **Total** | **5,730** | **1,250,487** | Complete repository footprint |
 
 ---
 
@@ -314,7 +321,7 @@ The kasir.mu platform is architected around a structured 20-phase master roadmap
 | **19** | **Embedded Merchant Micro-Financing** | Cash-flow underwriting scoring, revenue-based working capital financing integration for MSMEs | **Expected Q3 2028** |
 | **20** | **Global Emerging Markets Mesh** | Regional Southeast Asia expansion (Philippines, Vietnam, Thailand), multi-currency mesh, local tax engines | **Expected Q4 2028** |
 
-### Transparent gap disclosure (v0.0.40 current state)
+### Transparent gap disclosure (v0.0.41 current state)
 
 We believe in radical transparency:
 - **Platform readiness (Windows-only production today):** As of today, the **Windows 10/11 desktop application is the only working production-ready build**. The Android tablet APK (`apps/mobile-tauri`) and Linux builds are in active development (application shell and UI are scaffolded, with physical device testing and hardware binding currently in progress).
@@ -348,7 +355,7 @@ cd ui && npm ci --no-audit --no-fund && cd ..
 cd apps/desktop-tauri && cargo tauri dev
 ```
 
-For full architecture deep-dives, verified commands, and CI gate reproduction, see [`README-3.md`](./README-3.md) and [`docs/guides/developer/QUICKSTART.md`](./docs/guides/developer/QUICKSTART.md).
+For full architecture deep-dives, verified commands, and CI gate reproduction, see [`README-technical.md`](./README-technical.md) and [`docs/guides/developer/QUICKSTART.md`](./docs/guides/developer/QUICKSTART.md).
 
 ---
 
@@ -371,9 +378,9 @@ For comprehensive technical, financial, and market documentation, see:
 ## 9. Next steps & engagement
 
 ### For developers & contributors
-- **Explore verified architecture:** Inspect the engineering specification in [`README-3.md`](./README-3.md).
+- **Explore verified architecture:** Inspect the engineering specification in [`README-technical.md`](./README-technical.md).
 - **Run locally:** Follow the quickstart instructions above or in [`docs/guides/developer/QUICKSTART.md`](./docs/guides/developer/QUICKSTART.md).
-- **Inspect automated tests:** Run `cargo test --workspace` (9,026 tests) or Vitest (623 frontend test suites).
+- **Inspect automated tests:** Run `cargo test --workspace` (11,078 test functions) or Vitest (654 frontend test suites).
 
 ### For investors & commercial partners
 - **Schedule a Demonstration:** Contact **support@kasir.mu** to review live benchmarks, edge synchronization, and the visual node topology canvas.
@@ -392,3 +399,7 @@ This software is **proprietary commercial software**. No part of this codebase, 
 - **Commercial Licensing & Partnerships:** **support@kasir.mu**
 
 See [LICENSE](./LICENSE) for formal terms and conditions.
+
+---
+
+> last audited 08-10-26 by docs-auditor

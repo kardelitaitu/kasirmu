@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useRef, type CSSProperties, type KeyboardEvent } from 'react';
 import { contrastFg } from '@/utils/color';
+import { asArray } from '@/utils/ipc-payload';
 import { Localized, useLocalization } from '@fluent/react';
 import {
   listCategoriesScoped,
@@ -16,168 +17,43 @@ import { SettingsPopup, requiredLocalized, EmptyState } from '@/components';
 import { NoCategoriesIcon } from '@/components/EmptyStateIllustrations';
 import { useToast } from '@/components/Toast';
 import { l10nErrorMessage } from '@/utils/app-error';
+import {
+  CATEGORY_ICON_OPTIONS,
+  CATEGORY_ICON_IDS,
+  CATEGORY_COLOURS,
+  categoryIconLabelId,
+  nextRadioValue,
+  randomCategoryIcon,
+} from './categoryIcons';
+import { CategoryIconSvg } from './CategoryIconSvg';
 import './CategoryManagementScreen.css';
 
 // ── Predefined colour palette for the colour picker ──────────────────
+//
+// The palette and the icon set both live in ./categoryIcons, because the
+// restaurant menu editor creates categories too and a second copy is how two
+// screens end up disagreeing about what "orange" is. The alias keeps this
+// file's existing call sites reading unchanged.
 
-const COLOURS = [
-  '#06b6d4', // cyan
-  '#f97316', // orange
-  '#10b981', // emerald
-  '#6366f1', // indigo
-  '#ec4899', // pink
-  '#f59e0b', // amber
-  '#8b5cf6', // violet
-  '#14b8a6', // teal
-  '#ef4444', // red
-  '#84cc16', // lime
-  '#3b82f6', // blue
-  '#a855f7', // purple
-  '#e11d48', // rose
-  '#0ea5e9', // sky
-  '#22c55e', // green
-  '#d946ef', // fuchsia
-];
+const COLOURS = CATEGORY_COLOURS;
 
 // ── Icon set ─────────────────────────────────────────────
+//
+// The icons, their renderer and the radiogroup traversal all live in
+// ./categoryIcons now, because this screen was the only place that had them and
+// the restaurant menu editor needs the same set. The aliases below keep this
+// file's existing call sites reading unchanged.
 
-interface IconOption {
-  id: string;
-  label: string;
-}
+const ICON_OPTIONS = CATEGORY_ICON_OPTIONS;
+const ICON_IDS = CATEGORY_ICON_IDS;
 
-const ICON_OPTIONS: IconOption[] = [
-  { id: 'food',       label: 'Food'       },
-  { id: 'snack',      label: 'Snack'      },
-  { id: 'hot-drink',  label: 'Hot drink'  },
-  { id: 'cold-drink', label: 'Cold drink' },
-  { id: 'dots-1',     label: 'Generic ·'  },
-  { id: 'dots-2',     label: 'Generic ··' },
-  { id: 'dots-3',     label: 'Generic ···'},
-];
 
-/** Icon ids in display order, for arrow-key navigation over the radiogroup. */
-const ICON_IDS: readonly string[] = ICON_OPTIONS.map((opt) => opt.id);
+// ── Helpers ──────────────────────────────────────────────────────────
 
-/** Render the SVG for a given icon id. Returns null for no-icon. */
-function CategoryIconSvg({ icon, size = 18 }: { icon: string; size?: number }) {
-  const strokeProps = {
-    fill: 'none',
-    stroke: 'currentColor',
-    strokeWidth: 2,
-    strokeLinecap: 'round' as const,
-    strokeLinejoin: 'round' as const,
-    width: size,
-    height: size,
-    'aria-hidden': true,
-  };
-
-  if (icon === 'food') {
-    return (
-      <svg viewBox="0 0 24 24" {...strokeProps}>
-        {/* Fork */}
-        <path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2" />
-        <line x1="7" y1="11" x2="7" y2="22" />
-        {/* Knife */}
-        <path d="M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3z" />
-        <line x1="21" y1="15" x2="21" y2="22" />
-      </svg>
-    );
-  }
-  if (icon === 'snack') {
-    return (
-      <svg viewBox="0 0 24 24" {...strokeProps}>
-        {/* Bowl */}
-        <path d="M4 12h16" />
-        <path d="M4 12c0 5.5 3.6 9 8 9s8-3.5 8-9" />
-        {/* Snack items */}
-        <circle cx="9" cy="9" r="2" fill="currentColor" stroke="none" />
-        <circle cx="13" cy="8" r="2" fill="currentColor" stroke="none" />
-        <circle cx="17" cy="9" r="2" fill="currentColor" stroke="none" />
-      </svg>
-    );
-  }
-  if (icon === 'hot-drink') {
-    return (
-      <svg viewBox="0 0 24 24" {...strokeProps}>
-        {/* Cup */}
-        <path d="M6 8h12l-1.5 12h-9L6 8z" />
-        {/* Handle */}
-        <path d="M17 11h2a2 2 0 0 1 0 4h-2" />
-        {/* Steam */}
-        <path d="M8 8C8.8 6.5 7.2 5.5 8 4" />
-        <path d="M13 8C13.8 6.5 12.2 5.5 13 4" />
-      </svg>
-    );
-  }
-  if (icon === 'cold-drink') {
-    return (
-      <svg viewBox="0 0 24 24" {...strokeProps}>
-        {/* Cup body */}
-        <path d="M5 7h14l-2 15H7L5 7z" />
-        {/* Rim */}
-        <line x1="3" y1="7" x2="21" y2="7" />
-        {/* Straw */}
-        <line x1="16" y1="2" x2="12" y2="22" />
-      </svg>
-    );
-  }
-  if (icon === 'dots-1') {
-    return (
-      <svg viewBox="0 0 16 16" fill="currentColor" width={size} height={size} aria-hidden="true">
-        <circle cx="8" cy="8" r="3.5" />
-      </svg>
-    );
-  }
-  if (icon === 'dots-2') {
-    return (
-      <svg viewBox="0 0 16 16" fill="currentColor" width={size} height={size} aria-hidden="true">
-        <circle cx="4.5" cy="8" r="3" />
-        <circle cx="11.5" cy="8" r="3" />
-      </svg>
-    );
-  }
-  if (icon === 'dots-3') {
-    return (
-      <svg viewBox="0 0 16 16" fill="currentColor" width={size} height={size} aria-hidden="true">
-        <circle cx="2.5" cy="8" r="2.5" />
-        <circle cx="8" cy="8" r="2.5" />
-        <circle cx="13.5" cy="8" r="2.5" />
-      </svg>
-    );
-  }
-  return null;
-}
-
-// ── Default random colour ────────────────────────────────────────────
-
+/** A colour from the palette above, for a new category's initial state. */
 function randomColour(): string {
   return COLOURS[Math.floor(Math.random() * COLOURS.length)]!;
 }
-
-function randomIcon(): string {
-  return ICON_OPTIONS[Math.floor(Math.random() * ICON_OPTIONS.length)]!.id;
-}
-
-/** WAI-ARIA radiogroup: Arrow keys move focus AND selection; Tab leaves the
- *  group. Returns the next value (wrapping) or null for a non-arrow key. */
-function nextRadioValue(
-  options: readonly string[],
-  current: string,
-  key: string,
-): string | null {
-  const idx = options.indexOf(current);
-  if (idx < 0) return null;
-  if (key === 'ArrowRight' || key === 'ArrowDown') {
-    return options[(idx + 1) % options.length]!;
-  }
-  if (key === 'ArrowLeft' || key === 'ArrowUp') {
-    return options[(idx - 1 + options.length) % options.length]!;
-  }
-  return null;
-}
-
-// ── Helpers ──────────────────────────────────────────────────────────
 
 function colourToId(name: string): string {
   const slug = name
@@ -235,7 +111,7 @@ export default function CategoryManagementScreen() {
   const [newName, setNewName] = useState('');
   // Lazy initializers so Math.random() runs once (not on every render).
   const [newColour, setNewColour] = useState(() => randomColour());
-  const [newIcon, setNewIcon] = useState(() => randomIcon());
+  const [newIcon, setNewIcon] = useState(() => randomCategoryIcon());
   const [saving, setSaving] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   // CAT-09: track that the operator has typed into the name field so the
@@ -270,7 +146,8 @@ export default function CategoryManagementScreen() {
     try {
       const cats = await listCategoriesScoped(sessionToken);
       if (seq !== loadSeqRef.current) return;
-      setCategories(cats);
+      // asArray: the render maps/filters categories (see utils/ipc-payload).
+      setCategories(asArray<typeof cats[number]>(cats));
       hasLoadedOnceRef.current = true;
     } catch (err) {
       // CAT-03: a failed load must not be indistinguishable from an empty store.
@@ -292,7 +169,7 @@ export default function CategoryManagementScreen() {
   const openCreate = useCallback(() => {
     setNewName('');
     setNewColour(randomColour());
-    setNewIcon(randomIcon());
+    setNewIcon(randomCategoryIcon());
     setCreateError(null);
     setNameTouched(false);
     setShowModal(true);
@@ -653,13 +530,7 @@ export default function CategoryManagementScreen() {
                 ref={(el) => { iconRadioRefs.current[opt.id] = el; }}
                 tabIndex={newIcon === opt.id ? 0 : -1}
                 aria-checked={newIcon === opt.id}
-                aria-label={l10n.getString(
-                  opt.id === 'food' ? 'categories-icon-food' :
-                  opt.id === 'snack' ? 'categories-icon-snack' :
-                  opt.id === 'hot-drink' ? 'categories-icon-hot-drink' :
-                  opt.id === 'cold-drink' ? 'categories-icon-cold-drink' :
-                  'categories-icon-generic'
-                )}
+                aria-label={l10n.getString(categoryIconLabelId(opt.id))}
                 className={
                   newIcon === opt.id
                     ? 'cat-mgmt-icon-btn cat-mgmt-icon-btn--selected'
@@ -771,13 +642,7 @@ export default function CategoryManagementScreen() {
                 ref={(el) => { editIconRadioRefs.current[opt.id] = el; }}
                 tabIndex={editIcon === opt.id ? 0 : -1}
                 aria-checked={editIcon === opt.id}
-                aria-label={l10n.getString(
-                  opt.id === 'food' ? 'categories-icon-food' :
-                  opt.id === 'snack' ? 'categories-icon-snack' :
-                  opt.id === 'hot-drink' ? 'categories-icon-hot-drink' :
-                  opt.id === 'cold-drink' ? 'categories-icon-cold-drink' :
-                  'categories-icon-generic'
-                )}
+                aria-label={l10n.getString(categoryIconLabelId(opt.id))}
                 className={
                   editIcon === opt.id
                     ? 'cat-mgmt-icon-btn cat-mgmt-icon-btn--selected'

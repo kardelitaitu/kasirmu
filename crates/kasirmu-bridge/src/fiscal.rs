@@ -212,6 +212,61 @@ pub async fn list_fiscal_schemes_scoped(
     Ok(store.list_fiscal_schemes()?)
 }
 
+/// Issue a formal statutory Tax Invoice for a sale in the store resolved from a session token.
+///
+/// ADR #7. Claims the next sequential number from the legal entity's `invoice`
+/// document number sequence (`document_kind = 'invoice'`) and stamps it onto
+/// `sales.statutory_number`.
+///
+/// Gated by `permissions::SALES_PROCESS`.
+///
+/// # Errors
+///
+/// Returns [`BridgeError::InvalidSession`], [`BridgeError::PermissionDenied`],
+/// or [`BridgeError::Core`] if the sale is not found, voided, or no invoice sequence
+/// is configured for the legal entity.
+pub async fn issue_tax_invoice_scoped(
+    ctx: &BridgeCtx<'_>,
+    session_token: &str,
+    sale_id: &str,
+) -> Result<String, BridgeError> {
+    let session = ctx.resolve_session(session_token)?;
+    ctx.require_session_permission(&session, permissions::SALES_PROCESS)
+        .await?;
+    let conn = ctx.resolve_store(session_token)?;
+    let db = conn
+        .lock()
+        .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
+    let store = Store::new(&db);
+    let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+
+    let primary_location =
+        kasirmu_core::location_resolver::resolve_primary_location(&db, &session.instance_id, None)?;
+
+    let invoice_number =
+        store.issue_tax_invoice_for_sale(sale_id, primary_location.as_str(), &now)?;
+    Ok(invoice_number)
+}
+
+/// Read the statutory document number stamped on a sale in the store resolved from a session token.
+///
+/// Gated by `permissions::SALES_VIEW`.
+pub async fn get_sale_statutory_number_scoped(
+    ctx: &BridgeCtx<'_>,
+    session_token: &str,
+    sale_id: &str,
+) -> Result<Option<String>, BridgeError> {
+    let session = ctx.resolve_session(session_token)?;
+    ctx.require_session_permission(&session, permissions::SALES_VIEW)
+        .await?;
+    let conn = ctx.resolve_store(session_token)?;
+    let db = conn
+        .lock()
+        .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
+    let store = Store::new(&db);
+    Ok(store.sale_statutory_number(sale_id)?)
+}
+
 #[cfg(test)]
 #[path = "fiscal_tests.rs"]
 mod tests;

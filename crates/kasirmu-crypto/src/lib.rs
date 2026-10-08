@@ -139,12 +139,15 @@ fn master_key_raw_from(preferred: Option<String>, legacy: Option<String>) -> Opt
 /// install configured before the rename keeps decrypting. A malformed value is
 /// treated as unset, exactly as before.
 fn master_key_from_env() -> Option<[u8; 32]> {
-    let raw = master_key_raw_from(
-        std::env::var(MASTER_KEY_ENV).ok(),
-        std::env::var(MASTER_KEY_ENV_LEGACY).ok(),
-    )?;
-    let decoded = hex::decode(raw.trim()).ok()?;
-    decoded.try_into().ok()
+    static CACHED: OnceLock<Option<[u8; 32]>> = OnceLock::new();
+    *CACHED.get_or_init(|| {
+        let raw = master_key_raw_from(
+            std::env::var(MASTER_KEY_ENV).ok(),
+            std::env::var(MASTER_KEY_ENV_LEGACY).ok(),
+        )?;
+        let decoded = hex::decode(raw.trim()).ok()?;
+        decoded.try_into().ok()
+    })
 }
 
 /// HMAC-SHA256(master, domain) — the master-key portable derivation.

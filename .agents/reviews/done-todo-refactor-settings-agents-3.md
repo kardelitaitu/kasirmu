@@ -13,10 +13,29 @@
 > `.ozpkg`, not CSV), **one has a live backend and no UI** (audit-log retention), and **one could not be
 > located at any layer** (factory reset). Searched vocabularies and evidence are recorded per item below.
 
+> ⚠️ **RE-MEASURED 2026-10-07 — this status is now STALE in the direction of under-reporting: the
+> decomposition LANDED, under `components/` + `hooks/` rather than the planned `data/`.** The 1,016-line
+> monolith is **214 lines** today (`ui/src/features/settings/DataManagementScreen.tsx`), composing ten
+> extracted modules: `components/{BackupSection,ExportSection,ImportSection,RestoreSection}` and
+> `hooks/{useBackupStatus,useExportWizard,useImportWizard,useRestore,useFlashRows}`, plus
+> `dataManagementIcons`. **All four of the sub-panels this file says are missing or partial now exist** —
+> including the restore path, which the paragraph above records as absent: `useRestore.ts` (224 lines)
+> drives a restore tab whose header says *"**It does not perform a restore.** The request is written to
+> `<db>.restore-request.json` and consumed by the BOOT path"* — so the boot-time safe-mode consumer is
+> the other half, and it is a deliberate design, not an omission.
+>
+> **Why the plan's own prescription is the wrong place to look:** the `data/` directory it names still
+> does not exist, and never did. Reading this file as "not started" would be wrong twice over — the work
+> is done, and its provenance is a **different plan**: `useRestore.ts`'s own header cites *"C8 slice S5b"*,
+> a slice of the C-series remediation checklist, not this lane. That is the pattern this whole review
+> surface shows: the goal is met, but not by the plan that specified it. NOT re-verified: the
+> per-sub-panel evidence blocks below, and whether the audit-log-retention UI this file calls absent has
+> since landed.
+
 **Target File:** `ui/src/features/settings/DataManagementScreen.tsx` (stated baseline: 915 lines · **measured 2026-09-14: 1,016 lines** — it grew)  
 **Sibling Documents:**
 - `done-todo-refactor-settings-agents-1.md` (Agent 1 — Settings Backend IPC Modularization; completed and archived, so cited by name with no path prefix)
-- [`todo-refactor-settings-agents-2.md`](./todo-refactor-settings-agents-2.md) (Agent 2 — Master-Detail Settings Screen Deconstruction)
+- [`done-todo-refactor-settings-agents-2.md`](done-todo-refactor-settings-agents-2.md) (Agent 2 — Master-Detail Settings Screen Deconstruction)
 
 ---
 
@@ -591,3 +610,20 @@ the second pass left it, and the open set is still `:111`, `:130`, `:144`, `:147
 - **Lengths, with the boundary named so it is not mistaken for a discrepancy:** `wc -l < todo-refactor-settings-agents-3.md` = **577** before this block and **588** after it (11 added lines below `:144`, which is why they could be added at all); `wc -l < todo-refactor-settings-agents-2.md` = **614** before and after — three lines folded in place, zero added, so the dispatch's "plan-2 at 615" and "plan-3 at 578" are the `split('\n')` reading of 614 and 577, one high, and both plans' figures in the brief were consistent with the file and not with `wc`. Plan-2's census is unchanged at **8 ticked / 2 open** by design: the two panel boxes were retired, not completed.
 
 > **Not run here, so nothing below the line above is a green of any kind:** no test suite, no `npx`, no `tsc`, no cargo, no guard run (the guard is red at HEAD and a lane is clearing it). Two dead-name findings recorded, zero fixed. Docs-only, both plans.
+
+> **ARCHIVED, NOT EARNED — recorded 2026-10-07 so the prefix is not read as a passed acceptance.**
+> This file's own text refuses the `done-` token at :3 (the stamp's `NOT STARTED`) and :231: three verification boxes are unrun. That reading was correct
+> when written and is not withdrawn here. **The `done-` prefix nonetheless sits on the filename, and its
+> origin is not this plan's acceptance at all** — `68cecff21` (2026-09-17, *"docs(plans): archive completed
+> pre-rebrand todo files to .agents/ with done- prefix"*) renamed **ten files in one commit** with an
+> explicit `R100` and a one-line message. It was a blanket **archival** classification, and it could not
+> have run ten acceptance commands.
+>
+> **So read `done-` here as "archived" — the state `AGENTS.md` §7.4 does not currently distinguish.** §7.4
+> defines the token as *earned by a passed acceptance*, and says nothing about a file archived with a
+> different history. The name is kept because it is **load-bearing** — and *not* for the reason it first appeared.
+> `check-dead-refs.py:393` exempts any doc whose name contains `todo-`, `plan-` or `prd-`, and
+> `done-todo-*` matches on its `todo-` substring, so BOTH spellings stay exempt and this file's
+> checker coverage is unaffected either way. The prefix therefore decides nothing about which tool
+> reads the file; it is kept only because a second rename would be churn on a settled archive. The refusal above stays as written: it is a dated
+> verdict and rewriting it to match today would falsify it.
