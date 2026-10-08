@@ -585,6 +585,18 @@ reintroduced bug, which fails it with
 self-tests alone were not sufficient — two earlier guards in this repo passed theirs
 while being wrong.
 
+**A SECOND guard covers spelling 3** (round 8):
+`ui/src/__tests__/baselineLoadSignal.test.ts` asserts every file that seeds an
+`originalsRef` baseline MENTIONS a load-failure signal (`loadFailed` /
+`hasPartialError`). It is a floor, not a proof — it cannot tell whether the signal
+is wired to the Save gate, which each file's own test does.
+
+Its exemption list is narrow, dated and reasoned, and it has a **stale-exemption
+case**: if an exempted file gains a signal, the guard FAILS until the entry is
+deleted. That is what stops the list quietly outliving the condition it records —
+the failure mode `scripts/ipc-parity-allowlist.json` documents. One entry today:
+`RestaurantPaymentsScreen.tsx`, blocked on another lane's uncommitted change.
+
 **THE ROOT, found in round 8: `useTerminalHardware` itself.** Every hardware-seeded
 baseline traces back to this hook, whose load catch
 (`ui/src/hooks/useTerminalHardware.ts:246-249`) substituted
