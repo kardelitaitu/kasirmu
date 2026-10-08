@@ -635,6 +635,11 @@ pub async fn print_edc_settlement_slip_scoped(
     args: PrintEdcSettlementArgs,
     session_token: &str,
 ) -> Result<PrintSalesReceiptResult, BridgeError> {
+    // ungated-ok: KNOWN GAP (BRIDGE-7) - device access is currently open to any
+    // authenticated operator. Gating it is a product ruling, not a repair. This
+    // is the settlement-slip printer, in the same class as print_receipt_scoped
+    // and print_sales_receipt_scoped above; EDC settlement still requires a
+    // session (`resolve_scope`), it simply names no permission.
     ctx.resolve_scope(session_token)?;
     let terminal_id = ctx.terminal_id().await;
     let (config, store_info) = {

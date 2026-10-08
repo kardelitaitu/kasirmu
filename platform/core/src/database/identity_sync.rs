@@ -62,8 +62,7 @@ pub fn ensure_session_user_in_store(
             ))),
         })?;
 
-    let Some((username, pin_hash, display_name, role_id, is_active, created_at, tenant_id)) =
-        user
+    let Some((username, pin_hash, display_name, role_id, is_active, created_at, tenant_id)) = user
     else {
         return Ok(false);
     };
