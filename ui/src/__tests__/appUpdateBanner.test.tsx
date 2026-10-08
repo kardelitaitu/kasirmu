@@ -19,7 +19,7 @@
 // compatible one.
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { FluentBundle, FluentResource } from '@fluent/bundle';
 import { ReactLocalization, LocalizationProvider } from '@fluent/react';
 import UpdateBanner from '@/app/UpdateBanner';
@@ -113,6 +113,19 @@ describe('app/UpdateBanner (the SHIPPED banner)', () => {
     await waitFor(() => expect(screen.getByText(/Update not available/i)).toBeInTheDocument());
     // The incompatible banner REPLACES the update banner — no install control.
     expect(screen.queryByText(/^Install$/)).toBeNull();
+  });
+
+  it('dismisses the version-blocked banner when Dismiss is clicked', async () => {
+    // The Priority-2 (version-blocked) branch returns BEFORE the `dismissed` check,
+    // and did not consult it at all -- so this button set state that nothing read.
+    // A control that silently does nothing is worse than no control.
+    setUpdate(JSON.stringify({ min_version: '1.0.0' }));
+    render(<UpdateBanner />, { wrapper });
+    await waitFor(() => expect(screen.getByText(/Update not available/i)).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: /dismiss/i }));
+
+    await waitFor(() => expect(screen.queryByText(/Update not available/i)).toBeNull());
   });
 
   it('CLEARS the block when a later probe reports a compatible update (the latch)', async () => {

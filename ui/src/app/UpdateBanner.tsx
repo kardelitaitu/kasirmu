@@ -251,7 +251,13 @@ async function persistUpdaterSetting(key: string, value: string): Promise<void> 
   }
 
   // Priority 2: Version blocked banner
-  if (versionBlocked) {
+  //
+  // ⚠️ This branch sits BEFORE the `dismissed` check on Priority 3, so it must test
+  // `dismissed` itself. It did not, and the banner's own Dismiss button set state
+  // that nothing read — a control that silently does nothing. Found 2026-10-09 while
+  // retiring the dead `components/UpdateBanner` twin, whose copy of this button
+  // routed through `useExitAnimation` and therefore worked.
+  if (versionBlocked && !dismissed) {
     return (
       <div className="update-banner update-banner--warning" role="alert" aria-live="polite">
         <div className="update-banner-content">
