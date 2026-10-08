@@ -1,6 +1,6 @@
 # todo — Restaurant POS reliability: tauri-desktop + tauri-mobile
 
-> **Created 2026-10-09 · status: OPEN — analysis complete, repair not started.**
+> **Created 2026-10-09 · status: OPEN — analysis complete, decisions D1–D4 settled, P0 baseline captured; repair starts at P1.**
 > Owner surface: `ui/src/features/restaurant/**`, the restaurant settings screens
 > reached from `RestaurantSidebar`, and the shared `WorkspaceRestaurantPosSettings`
 > card both shells mount. Shells in scope: `apps/desktop-tauri` and `apps/mobile-tauri`.
@@ -229,12 +229,14 @@ Each phase is independently landable and has its own acceptance. **Do not start 
 phase before the prior phase's acceptance passes** — F1/F2 edits move the very
 lines F4's tests assert against.
 
-### P0 — Baseline (no code change)
+### P0 — Baseline (no code change) — ✅ DONE 2026-10-09
 
-- Capture the current green: `cd ui && npm run lint && npm run typecheck && npm run test`
-  and `python scripts/verify-ipc-parity.py`.
-- Record in §5 the exact counts so a later regression is attributable.
-- **Acceptance:** both commands exit 0; output pasted into §5.
+- Captured the current green: `cd ui && npm run lint && npm run typecheck` and a
+  targeted `npx vitest run Restaurant CartPanel WorkspaceRestaurantPosSettings
+  SettingsPage interaction`, plus `python scripts/verify-ipc-parity.py`.
+- Counts recorded in §5.
+- **Acceptance met:** lint exit 0 (0 errors / 62 pre-existing warnings), typecheck
+  exit 0, 21 test files / 344 tests passed, IPC parity exit 0.
 
 ### P1 — One source of truth for restaurant settings (fixes F1, F2, F3)
 
@@ -340,19 +342,89 @@ lines F4's tests assert against.
 
 ---
 
-## 4. Decisions this plan needs from the owner
+## 4. Decisions — SETTLED 2026-10-09
 
-1. **P1 key authority** — should `restaurant.table_number` be retired in favour of
-   `receipt.showTableNumber`, or kept and made the restaurant-only gate? Both are
-   defensible; the plan assumes *retire*, because the receipt key already has a live
-   reader.
-2. **P1 default-on upgrade** — when a dead toggle becomes live, do we default it on
-   (no merchant loses a control) or off (matching the current `DEFAULT_RESTAURANT_SETTINGS`)?
-   The plan assumes *on* for anything already visible on restaurant POS.
-3. **P5 authority** — DB or localStorage as the source of truth for interaction
-   prefs and receipt prefs.
-4. **P4 Kitchen Display** — hide the row when unreachable, or keep it and show a
-   "requires KDS access" affordance like the manager badge?
+All four open questions are decided. Each answer records the evidence that decided
+it, not just the choice, so a later reader can re-derive it.
+
+### D1 — `restaurant.table_number` is RETIRED in favour of `receipt.showTableNumber`
+
+**Decision.** Collapse to one key: keep `receipt.showTableNumber`, delete
+`restaurant.table_number` and the mirror at `RestaurantSettingsScreen.tsx:326-339`.
+Fix the labels so each screen says what it actually controls.
+
+**Why it is safe.** `receipt.show_table_number` is not a UI-only flag — it is a real
+legacy receipt key with live readers on both sides:
+
+- `crates/kasirmu-core/src/db/receipt_formats.rs:72` lists `receipt.show_table_number`
+  in `LEGACY_RECEIPT_KEYS`.
+- `crates/kasirmu-bridge/src/receipt_format.rs:90` and `hardware.rs:406` feed it into
+  the receipt layout.
+- `crates/kasirmu-bridge/src/settings.rs:521` persists it via the scoped receipt write
+  (`Settings::set_receipt_show_table_number`).
+
+`restaurant.table_number` has **zero** readers anywhere. The collapse therefore
+*removes* code and needs no Rust or schema change.
+
+**Cost accepted.** The two keys are semantically different: `restaurant.table_number`
+meant "prompt/capture the table on the POS", `receipt.showTableNumber` means "print it
+on the receipt". Collapsing loses capture-without-print. Accepted because you cannot
+print a table number you never captured, and the mirror at `:326-339` already couples
+them today — so today's behaviour is preserved exactly.
+
+**Rejected alternative (keep in reserve).** If the owner later wants
+capture-without-print: keep both keys, make `restaurant.table_number` the capture gate,
+drop the mirror, and gate the receipt on `capture && print`. Do not do both at once.
+
+### D2 — Newly-wired toggles default ON, and ONLY the two already forced on
+
+**Decision.** `receipt.showTableNumber` and `restaurant.order_type_prompt` default
+**true** for a restaurant workspace. Every other key keeps its current
+`DEFAULT_RESTAURANT_SETTINGS` value (`holdOrder` true, `saveTab` true, `soundChime`
+true, `customerName` true, `guestCount` false, `autoPrintKitchen` false,
+`courseFiring` false).
+
+**Why.** Those two are precisely the controls the
+`|| activeWorkspace === 'restaurant-pos'` override at `CartPanel.tsx:612`/`:655`
+forces on today. Removing the override without raising the default would make every
+existing merchant lose the table input and the order-type selector on upgrade — a
+regression dressed up as a fix. No other key is currently forced, so flipping any
+other default would be an unrequested behaviour change.
+
+### D3 — The DB is authoritative; localStorage is a write-through cache
+
+**Decision.** Persist to the DB as the source of truth. After a successful load, write
+the DB value through to the runtime keys (`pos.interaction_*`, and reconcile
+`resto_rcpt_*`). On conflict the DB wins. localStorage is consulted only when the DB
+read **fails** — the same failure-vs-absence distinction P2 introduces.
+
+**Why.** Two codebase-specific facts:
+
+1. `setSettingsScoped` on the tablet enqueues to the **store sync queue**
+   (`apps/mobile-tauri/src/commands/settings.rs:783`), so DB values propagate to the
+   desktop and the cloud. `localStorage` never leaves the device webview — which is
+   exactly why F6 bites: a second terminal or a cleared cache silently reverts to the
+   `true` default.
+2. The DB value is already scoped to the session's store, which is the entire point of
+   the scoped write (ADR #7).
+
+### D4 — Hide the Kitchen Display row when the route is unreachable
+
+**Decision.** Hide it, matching Table Management. Do not show a disabled row.
+
+**Why.**
+
+- `RestaurantSidebar` already hides Table Management behind `showTables` (`:426`),
+  and its module doc calls that gating deliberate: *"Table Management is feature-gated:
+  render-and-hide is not an option."* Kitchen Display is the odd one out.
+- A "Manager+" badge would be **wrong here**: KDS reachability is a feature/route
+  entitlement (`isPageAccessible('kds')` at `TabletAppShell.tsx:264-281`), not a role.
+  Borrowing the manager badge would mislabel the reason.
+
+**Mechanism.** A hidden row must be known before render, so the shell supplies it: add
+a `showKitchenDisplay` prop computed by the shell (tablet: `isPageAccessible(getPage('kds'), …)`;
+desktop: its own KDS gate) and thread it through `RestaurantMenu` exactly as
+`showTables` already is. A click-time return value from `onNavigate` cannot hide a row.
 
 ---
 
@@ -363,8 +435,27 @@ _Fill in as phases land. One row per acceptance command run._
 | Date | Phase | Command | Result | Notes |
 |---|---|---|---|---|
 | 2026-10-09 | analysis | `python scripts/verify-ipc-parity.py` | exit 0 | 75 tablet allowlisted entries; no new gap found |
-| 2026-10-09 | analysis | `cd ui && npm run typecheck` | _not run_ | baseline owed in P0 |
-| 2026-10-09 | analysis | `cd ui && npm run test -- Restaurant` | _not run_ | baseline owed in P0 |
+| 2026-10-09 | P0 | `cd ui && npm run lint` | exit 0 | **0 errors, 62 warnings** (all pre-existing; none in the restaurant lane) |
+| 2026-10-09 | P0 | `cd ui && npm run typecheck` | exit 0 | clean |
+| 2026-10-09 | P0 | `cd ui && npx vitest run Restaurant CartPanel WorkspaceRestaurantPosSettings SettingsPage interaction` | exit 0 | **21 files, 344 tests passed** |
+
+**P0 baseline (measured 2026-10-09).** These four are the reference figures for
+attributing any later regression:
+
+- lint: **0 errors / 62 warnings** — the warnings are `consistent-type-imports` in test
+  files, `react-refresh/only-export-components`, and one `exhaustive-deps` pair in
+  `StaffLoginScreen.tsx`. None is in `features/restaurant/`.
+- typecheck: clean.
+- targeted tests: 21 files / 344 tests, including `RestaurantSettingsScreen.test.tsx`
+  (7 cases), `RestaurantPosSidebar.test.tsx`, `RestaurantReceiptsScreen.test.tsx`
+  (35 tests), `RestaurantPaymentsScreen.test.tsx`, `WorkspaceRestaurantPosSettings.test.tsx`,
+  `SettingsPage.test.tsx`, and the `interaction` pair.
+- IPC parity: exit 0.
+
+**Known trap for later phases:** `npx vitest run --reporter=basic` **fails** in this
+repo — `basic` is not a loadable reporter in the installed Vitest and aborts at
+startup with `Failed to load custom Reporter from basic`. Use the default reporter
+(the `npm run test` script does).
 
 ---
 
