@@ -966,8 +966,7 @@ async fn large_scale_sync_throughput() {
         .filter(|item| item.action != kasirmu_core::AUDIT_SHIP_ACTION)
         .count();
     assert_eq!(
-        pending_business_items,
-        0,
+        pending_business_items, 0,
         "Terminal A's pending queue should have no unsynced business items"
     );
 
