@@ -705,6 +705,55 @@ describe('PaymentModal — rendering & fast interaction', () => {
     }, { timeout: 2000 });
   });
 
+  // ── Backdrop click (click the area outside the modal) ──
+
+  it('closes when the backdrop is clicked', async () => {
+    const onClose = vi.fn();
+    await renderWithFluent(
+      <PaymentModal
+        open
+        lineItems={[lineItem()]}
+        total={usd(700)}
+        userId="test-user-id"
+        onComplete={vi.fn()}
+        onClose={onClose}
+      />,
+    );
+
+    // The backdrop is the role=presentation overlay; the dialog is the panel
+    // INSIDE it. Clicking the overlay itself is "outside the modal".
+    const backdrop = document.querySelector('.payment-overlay') as HTMLElement;
+    expect(backdrop).not.toBeNull();
+    fireEvent.click(backdrop);
+
+    await waitFor(() => {
+      expect(onClose).toHaveBeenCalled();
+    }, { timeout: 2000 });
+  });
+
+  it('does NOT close when a click lands inside the modal panel', async () => {
+    const onClose = vi.fn();
+    await renderWithFluent(
+      <PaymentModal
+        open
+        lineItems={[lineItem()]}
+        total={usd(700)}
+        userId="test-user-id"
+        onComplete={vi.fn()}
+        onClose={onClose}
+      />,
+    );
+
+    // A click on the panel bubbles to the overlay handler, so the handler must
+    // compare target to currentTarget rather than assume every bubble is a
+    // backdrop click -- otherwise selecting a tender would dismiss the modal.
+    fireEvent.click(screen.getByTestId('payment-modal'));
+
+    // Give the 300ms leave animation room to start if it were going to.
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
   // ── Quick tender presets ──
 
   it('clicking a quick tender preset sets the tendered amount', async () => {

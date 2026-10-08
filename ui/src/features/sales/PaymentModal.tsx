@@ -1260,6 +1260,28 @@ retryCurrencyLoad,
     if (!showCustomerSearch && !showQr) animateLeave(onClose);
   });
 
+  /**
+   * Backdrop click closes the modal — the repo-wide overlay idiom
+   * (Modal.tsx:84, SettingsPopup.tsx:101, and a dozen feature sheets).
+   *
+   * Guarded exactly like Escape above, because a backdrop click is the same
+   * intent expressed with a pointer:
+   *   - `processing`/`done`: a charge in flight must not be abandoned by a
+   *     stray tap, and a completed sale is already past the point of closing;
+   *   - `showQr`/`showCustomerSearch`: those are NESTED dialogs. Closing the
+   *     payment modal underneath one would tear down the surface the operator is
+   *     looking at, so the inner dialog owns the click until it is dismissed.
+   */
+  const handleBackdropClick = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      if (e.target !== e.currentTarget) return;
+      if (processing || done) return;
+      if (showCustomerSearch || showQr) return;
+      animateLeave(onClose);
+    },
+    [processing, done, showCustomerSearch, showQr, animateLeave, onClose],
+  );
+
   // ── Focus trap for nested customer search modal ────────────
   useFocusTrap(customerSearchPanelRef, showCustomerSearch, () => setShowCustomerSearch(false));
 
@@ -1338,8 +1360,20 @@ retryCurrencyLoad,
   const modalStateClass = leaving ? 'payment-modal--exit' : 'payment-modal--enter';
 
   return (
-      <Localized id="payment-dialog-aria" attrs={{ 'aria-label': true }}>
-        <div className={`payment-overlay ${stateClass}`} role="dialog" aria-modal="true" {...paymentSwipe}>
+      <>
+        {/* The BACKDROP, not the dialog. role="presentation" because this element
+            is a click target and nothing more: ARIA forbids a click handler on a
+            non-interactive role, and naming it "dialog" made the backdrop the
+            dialog while the modal panel inside was an unlabelled child. The role
+            and the label now sit on .payment-modal below, which is the element
+            the operator actually reads — the structure FastPINOverlay.tsx:524-539
+            already uses for the same reason. */}
+        <div
+          className={`payment-overlay ${stateClass}`}
+          role="presentation"
+          onClick={handleBackdropClick}
+          {...paymentSwipe}
+        >
       <QrisQrDisplay
         amount={total.minor_units}
         currency={total.currency}
@@ -1540,11 +1574,24 @@ retryCurrencyLoad,
       )}
 
       {!shortfallResult && (
-      <div className={`payment-modal ${modalStateClass}`} data-testid="payment-modal" ref={(el) => {
-        // Combine panelRef (focus trap) with keyboardAvoidRef (scroll-into-view)
-        (panelRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
-        (keyboardAvoidRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
-      }}>
+      // `payment-dialog-aria` is a Fluent ATTRIBUTE (.aria-label = Payment), not a
+      // message value, so it must be applied through <Localized attrs> —
+      // l10n.getString() returns the raw key name for an attribute, which is the
+      // trap PaymentModal.test.tsx:296-298 pins. Wrapping the panel rather than
+      // the backdrop keeps the accessible name on the element a screen reader
+      // should announce.
+      <Localized id="payment-dialog-aria" attrs={{ 'aria-label': true }}>
+      <div
+        className={`payment-modal ${modalStateClass}`}
+        data-testid="payment-modal"
+        role="dialog"
+        aria-modal="true"
+        ref={(el) => {
+          // Combine panelRef (focus trap) with keyboardAvoidRef (scroll-into-view)
+          (panelRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
+          (keyboardAvoidRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
+        }}
+      >
         {done && receiptArgs ? (
           <ReceiptPreview
             receipt={receiptArgs}
@@ -2110,8 +2157,9 @@ retryCurrencyLoad,
           </>
         )}
       </div>
+      </Localized>
       )}
     </div>
-      </Localized>
+      </>
   );
 }
