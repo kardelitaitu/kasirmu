@@ -59,7 +59,14 @@ import {
   formatMinorForInput,
   generateMenuSku,
   filterMenuItems,
+  sortMenuItems,
+  createDuplicateDraft,
+  parseDraftModifierGroups,
+  serializeDraftModifierGroups,
   type MenuItemStatusFilter,
+  type MenuItemSortOption,
+  type DraftModifierGroup,
+  type DraftModifierOption,
 } from './menuEditorLogic';
 import './RestaurantSettingsScreens.css';
 import './RestaurantMenuEditorScreen.css';
@@ -74,6 +81,7 @@ interface MenuDraft {
   priceMinor: number;
   isActive: boolean;
   notes: string;
+  modifierGroups: DraftModifierGroup[];
 }
 
 /** Form state for category creation or editing modal. */
@@ -186,6 +194,26 @@ function NoteGlyph() {
   );
 }
 
+/** Decorative duplicate / copy glyph. */
+function CopyGlyph() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      width="15"
+      height="15"
+      aria-hidden="true"
+    >
+      <rect width="14" height="14" x="8" y="8" rx="2" ry="2" />
+      <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
+    </svg>
+  );
+}
+
 const EMPTY_DRAFT: MenuDraft = {
   sku: null,
   name: '',
@@ -193,6 +221,7 @@ const EMPTY_DRAFT: MenuDraft = {
   priceMinor: 0,
   isActive: true,
   notes: '',
+  modifierGroups: [],
 };
 
 export interface RestaurantMenuEditorScreenProps {
@@ -210,6 +239,8 @@ export default function RestaurantMenuEditorScreen({ onBack }: RestaurantMenuEdi
   const [selectedCategoryName, setSelectedCategoryName] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<MenuItemStatusFilter>('all');
+  const [sortOption, setSortOption] = useState<MenuItemSortOption>('default');
+  const [bulkUpdating, setBulkUpdating] = useState(false);
   const [draft, setDraft] = useState<MenuDraft | null>(null);
   const [categoryModal, setCategoryModal] = useState<CategoryModalState | null>(null);
   const [loading, setLoading] = useState(true);
@@ -278,6 +309,12 @@ export default function RestaurantMenuEditorScreen({ onBack }: RestaurantMenuEdi
     [restaurantItems, selectedCategoryName, searchQuery, statusFilter],
   );
 
+  // Sort items according to active sort option
+  const processedItems = useMemo(
+    () => sortMenuItems(filteredItems, sortOption),
+    [filteredItems, sortOption],
+  );
+
   /** Resolve category name to id for backend calls. */
   const categoryIdFor = useCallback(
     (name: string): string | null => categories.find((c) => c.name === name)?.id ?? null,
@@ -291,6 +328,7 @@ export default function RestaurantMenuEditorScreen({ onBack }: RestaurantMenuEdi
       ...EMPTY_DRAFT,
       categoryName: selectedCategoryName || categories[0]?.name || '',
       notes: '',
+      modifierGroups: [],
     });
     setDirty(true);
     setTimeout(() => {
@@ -299,14 +337,25 @@ export default function RestaurantMenuEditorScreen({ onBack }: RestaurantMenuEdi
   }, [selectedCategoryName, categories]);
 
   const beginEdit = useCallback((p: ProductDto) => {
+    const isJsonNotes = Boolean(p.notes?.startsWith('['));
     setDraft({
       sku: p.sku,
       name: p.name,
       categoryName: p.category ?? '',
       priceMinor: p.price.minor_units,
       isActive: p.is_active !== false,
-      notes: p.notes ?? '',
+      notes: isJsonNotes ? '' : (p.notes ?? ''),
+      modifierGroups: parseDraftModifierGroups(p.notes),
     });
+    setDirty(true);
+    setTimeout(() => {
+      formRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' });
+    }, 50);
+  }, []);
+
+  const handleDuplicateItem = useCallback((p: ProductDto) => {
+    const dup = createDuplicateDraft(p);
+    setDraft(dup);
     setDirty(true);
     setTimeout(() => {
       formRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' });
@@ -356,10 +405,172 @@ export default function RestaurantMenuEditorScreen({ onBack }: RestaurantMenuEdi
     [sessionToken, categoryIdFor, addToast, l10n, currency],
   );
 
+  const handleBulkSetAvailability = useCallback(
+    async (targetActive: boolean) => {
+      if (!sessionToken || bulkUpdating) return;
+      const targetItems = filteredItems.filter((p) => (p.is_active !== false) !== targetActive);
+      if (targetItems.length === 0) return;
+
+      setBulkUpdating(true);
+      const targetSkus = new Set(targetItems.map((p) => p.sku));
+      setItems((prev) =>
+        prev.map((item) =>
+          targetSkus.has(item.sku) ? { ...item, is_active: targetActive } : item,
+        ),
+      );
+
+      try {
+        await Promise.all(
+          targetItems.map((p) =>
+            updateProductScoped(sessionToken, {
+              sku: p.sku,
+              name: p.name,
+              priceMinor: p.price.minor_units,
+              currency,
+              categoryId: categoryIdFor(p.category ?? ''),
+              productType: 'restaurant',
+              taxRateIds: p.tax_rate_ids ?? [],
+              isActive: targetActive,
+              notes: p.notes ?? null,
+            }),
+          ),
+        );
+        addToast({
+          message: l10n.getString('restaurant-menu-editor-bulk-updated', {
+            count: targetItems.length,
+          }),
+          type: 'success',
+        });
+      } catch (err) {
+        const freshProds = await listProductsScoped(sessionToken);
+        setItems(freshProds);
+        addToast({
+          message: l10nErrorMessage(err, l10n, 'restaurant-menu-editor-error-save'),
+          type: 'error',
+        });
+      } finally {
+        setBulkUpdating(false);
+      }
+    },
+    [sessionToken, bulkUpdating, filteredItems, currency, categoryIdFor, addToast, l10n],
+  );
+
+  const handleAddModifierGroup = useCallback(() => {
+    setDraft((prev) => {
+      if (!prev) return prev;
+      const newGroup: DraftModifierGroup = {
+        id: `mg-${Date.now().toString(36)}-${prev.modifierGroups.length}`,
+        name: '',
+        minSelections: 0,
+        maxSelections: 1,
+        options: [
+          {
+            id: `opt-${Date.now().toString(36)}-0`,
+            name: '',
+            priceMinor: 0,
+          },
+        ],
+      };
+      return {
+        ...prev,
+        modifierGroups: [...prev.modifierGroups, newGroup],
+      };
+    });
+    setDirty(true);
+  }, []);
+
+  const handleRemoveModifierGroup = useCallback((groupId: string) => {
+    setDraft((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        modifierGroups: prev.modifierGroups.filter((g) => g.id !== groupId),
+      };
+    });
+    setDirty(true);
+  }, []);
+
+  const handleUpdateModifierGroup = useCallback(
+    (groupId: string, patch: Partial<DraftModifierGroup>) => {
+      setDraft((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          modifierGroups: prev.modifierGroups.map((g) =>
+            g.id === groupId ? { ...g, ...patch } : g,
+          ),
+        };
+      });
+      setDirty(true);
+    },
+    [],
+  );
+
+  const handleAddModifierOption = useCallback((groupId: string) => {
+    setDraft((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        modifierGroups: prev.modifierGroups.map((g) => {
+          if (g.id !== groupId) return g;
+          const newOpt: DraftModifierOption = {
+            id: `opt-${Date.now().toString(36)}-${g.options.length}`,
+            name: '',
+            priceMinor: 0,
+          };
+          return {
+            ...g,
+            options: [...g.options, newOpt],
+          };
+        }),
+      };
+    });
+    setDirty(true);
+  }, []);
+
+  const handleRemoveModifierOption = useCallback((groupId: string, optionId: string) => {
+    setDraft((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        modifierGroups: prev.modifierGroups.map((g) => {
+          if (g.id !== groupId) return g;
+          return {
+            ...g,
+            options: g.options.filter((o) => o.id !== optionId),
+          };
+        }),
+      };
+    });
+    setDirty(true);
+  }, []);
+
+  const handleUpdateModifierOption = useCallback(
+    (groupId: string, optionId: string, patch: Partial<DraftModifierOption>) => {
+      setDraft((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          modifierGroups: prev.modifierGroups.map((g) => {
+            if (g.id !== groupId) return g;
+            return {
+              ...g,
+              options: g.options.map((o) => (o.id === optionId ? { ...o, ...patch } : o)),
+            };
+          }),
+        };
+      });
+      setDirty(true);
+    },
+    [],
+  );
+
   const handleSaveDraft = useCallback(async () => {
     if (!draft || !sessionToken || !draft.name.trim()) return;
     setSaving(true);
+    const serializedModifiers = serializeDraftModifierGroups(draft.modifierGroups);
     const trimmedNotes = draft.notes.trim() || null;
+    const finalNotes = serializedModifiers ?? trimmedNotes;
     try {
       if (draft.sku) {
         await updateProductScoped(sessionToken, {
@@ -371,7 +582,7 @@ export default function RestaurantMenuEditorScreen({ onBack }: RestaurantMenuEdi
           productType: 'restaurant',
           taxRateIds: [],
           isActive: draft.isActive,
-          notes: trimmedNotes,
+          notes: finalNotes,
         });
         setItems((prev) =>
           prev.map((p) =>
@@ -383,7 +594,7 @@ export default function RestaurantMenuEditorScreen({ onBack }: RestaurantMenuEdi
                   price: { minor_units: draft.priceMinor, currency },
                   product_type: 'restaurant',
                   is_active: draft.isActive,
-                  notes: trimmedNotes,
+                  notes: finalNotes,
                 }
               : p,
           ),
@@ -400,7 +611,7 @@ export default function RestaurantMenuEditorScreen({ onBack }: RestaurantMenuEdi
           initialStock: 0,
           taxRateIds: [],
           isActive: draft.isActive,
-          notes: trimmedNotes,
+          notes: finalNotes,
         });
         setItems((prev) => [
           ...prev,
@@ -417,7 +628,7 @@ export default function RestaurantMenuEditorScreen({ onBack }: RestaurantMenuEdi
             price_updated_at: new Date().toISOString(),
             product_type: 'restaurant',
             is_active: draft.isActive,
-            notes: trimmedNotes,
+            notes: finalNotes,
           },
         ]);
       }
@@ -817,20 +1028,45 @@ export default function RestaurantMenuEditorScreen({ onBack }: RestaurantMenuEdi
                     {selectedCategoryName || l10n.getString('restaurant-menu-editor-all-categories')}
                   </h2>
                   <span className="restaurant-menu-editor-view-badge">
-                    {filteredItems.length}
+                    {processedItems.length}
                   </span>
                 </div>
 
-                {!draft && (
-                  <button
-                    type="button"
-                    className="btn btn--primary btn--sm restaurant-menu-editor-btn-add-item"
-                    onClick={beginCreate}
-                    data-testid="restaurant-menu-editor-new-item"
-                  >
-                    + <Localized id="restaurant-menu-editor-new-item">Add item</Localized>
-                  </button>
-                )}
+                <div className="restaurant-menu-editor-toolbar-actions">
+                  {filteredItems.length > 0 && (
+                    <div className="restaurant-menu-editor-bulk-group">
+                      <button
+                        type="button"
+                        className="btn btn--secondary btn--sm restaurant-menu-editor-btn-bulk"
+                        disabled={bulkUpdating}
+                        onClick={() => handleBulkSetAvailability(true)}
+                        data-testid="restaurant-menu-editor-bulk-avail"
+                      >
+                        <Localized id="restaurant-menu-editor-bulk-available">Make all available</Localized>
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn--secondary btn--sm restaurant-menu-editor-btn-bulk"
+                        disabled={bulkUpdating}
+                        onClick={() => handleBulkSetAvailability(false)}
+                        data-testid="restaurant-menu-editor-bulk-hide"
+                      >
+                        <Localized id="restaurant-menu-editor-bulk-hide">86 All (Hide)</Localized>
+                      </button>
+                    </div>
+                  )}
+
+                  {!draft && (
+                    <button
+                      type="button"
+                      className="btn btn--primary btn--sm restaurant-menu-editor-btn-add-item"
+                      onClick={beginCreate}
+                      data-testid="restaurant-menu-editor-new-item"
+                    >
+                      + <Localized id="restaurant-menu-editor-new-item">Add item</Localized>
+                    </button>
+                  )}
+                </div>
               </div>
 
               {/* Search & Status Filters */}
@@ -886,6 +1122,25 @@ export default function RestaurantMenuEditorScreen({ onBack }: RestaurantMenuEdi
                   >
                     <Localized id="restaurant-menu-editor-filter-hidden">Hidden (86)</Localized> ({hiddenInCategory})
                   </button>
+                </div>
+
+                <div className="restaurant-menu-editor-sort-select-wrapper">
+                  <label htmlFor="restaurant-menu-editor-sort" className="restaurant-menu-editor-sort-label">
+                    <Localized id="restaurant-menu-editor-sort-label">Sort</Localized>
+                  </label>
+                  <select
+                    id="restaurant-menu-editor-sort"
+                    className="restaurant-menu-editor-sort-select"
+                    value={sortOption}
+                    onChange={(e) => setSortOption(e.target.value as MenuItemSortOption)}
+                    data-testid="restaurant-menu-editor-sort-select"
+                  >
+                    <option value="default">{l10n.getString('restaurant-menu-editor-sort-default')}</option>
+                    <option value="name-asc">{l10n.getString('restaurant-menu-editor-sort-name-asc')}</option>
+                    <option value="name-desc">{l10n.getString('restaurant-menu-editor-sort-name-desc')}</option>
+                    <option value="price-asc">{l10n.getString('restaurant-menu-editor-sort-price-asc')}</option>
+                    <option value="price-desc">{l10n.getString('restaurant-menu-editor-sort-price-desc')}</option>
+                  </select>
                 </div>
               </div>
             </div>
@@ -982,6 +1237,150 @@ export default function RestaurantMenuEditorScreen({ onBack }: RestaurantMenuEdi
                       />
                     </label>
 
+                    {/* Modifier Groups & Variations Builder */}
+                    <div className="restaurant-menu-editor-modifiers-section">
+                      <div className="restaurant-menu-editor-modifiers-head">
+                        <h4 className="restaurant-menu-editor-modifiers-title">
+                          <Localized id="restaurant-menu-editor-modifiers-title">
+                            Modifier Groups & Variations
+                          </Localized>
+                        </h4>
+                        <button
+                          type="button"
+                          className="btn btn--secondary btn--sm"
+                          onClick={handleAddModifierGroup}
+                          data-testid="restaurant-menu-editor-add-group-btn"
+                        >
+                          + <Localized id="restaurant-menu-editor-add-modifier-group">Add Modifier Group</Localized>
+                        </button>
+                      </div>
+
+                      {draft.modifierGroups.length > 0 && (
+                        <div className="restaurant-menu-editor-groups-list">
+                          {draft.modifierGroups.map((group, gIdx) => (
+                            <div
+                              key={group.id}
+                              className="restaurant-menu-editor-group-card"
+                              data-testid={`modifier-group-${gIdx}`}
+                            >
+                              <div className="restaurant-menu-editor-group-header">
+                                <input
+                                  type="text"
+                                  className="restaurant-menu-editor-group-name-input"
+                                  value={group.name}
+                                  placeholder={l10n.getString('restaurant-menu-editor-group-name-placeholder')}
+                                  onChange={(e) =>
+                                    handleUpdateModifierGroup(group.id, { name: e.target.value })
+                                  }
+                                  data-testid={`modifier-group-name-${gIdx}`}
+                                />
+                                <div className="restaurant-menu-editor-group-bounds">
+                                  <label className="restaurant-menu-editor-bound-label">
+                                    <Localized id="restaurant-menu-editor-modifier-min">Min choices</Localized>
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      max="10"
+                                      value={group.minSelections}
+                                      onChange={(e) =>
+                                        handleUpdateModifierGroup(group.id, {
+                                          minSelections: Math.max(0, parseInt(e.target.value, 10) || 0),
+                                        })
+                                      }
+                                      className="restaurant-menu-editor-bound-input"
+                                    />
+                                  </label>
+                                  <label className="restaurant-menu-editor-bound-label">
+                                    <Localized id="restaurant-menu-editor-modifier-max">Max choices</Localized>
+                                    <input
+                                      type="number"
+                                      min="1"
+                                      max="10"
+                                      value={group.maxSelections}
+                                      onChange={(e) =>
+                                        handleUpdateModifierGroup(group.id, {
+                                          maxSelections: Math.max(1, parseInt(e.target.value, 10) || 1),
+                                        })
+                                      }
+                                      className="restaurant-menu-editor-bound-input"
+                                    />
+                                  </label>
+                                </div>
+                                <button
+                                  type="button"
+                                  className="restaurant-menu-editor-btn-icon-danger"
+                                  onClick={() => handleRemoveModifierGroup(group.id)}
+                                  aria-label="Remove Group"
+                                  title="Remove Group"
+                                  data-testid={`modifier-group-remove-${gIdx}`}
+                                >
+                                  <TrashGlyph />
+                                </button>
+                              </div>
+
+                              <div className="restaurant-menu-editor-options-list">
+                                {group.options.map((opt, oIdx) => (
+                                  <div key={opt.id} className="restaurant-menu-editor-option-row">
+                                    <input
+                                      type="text"
+                                      className="restaurant-menu-editor-option-name-input"
+                                      value={opt.name}
+                                      placeholder={l10n.getString(
+                                        'restaurant-menu-editor-option-name-placeholder',
+                                      )}
+                                      onChange={(e) =>
+                                        handleUpdateModifierOption(group.id, opt.id, {
+                                          name: e.target.value,
+                                        })
+                                      }
+                                      data-testid={`modifier-option-name-${gIdx}-${oIdx}`}
+                                    />
+                                    <div className="restaurant-menu-editor-option-price-box">
+                                      <span className="restaurant-menu-editor-option-currency">
+                                        + {currency}
+                                      </span>
+                                      <input
+                                        type="text"
+                                        inputMode="decimal"
+                                        className="restaurant-menu-editor-option-price-input"
+                                        value={formatMinorForInput(opt.priceMinor)}
+                                        placeholder="0"
+                                        onChange={(e) => {
+                                          const minor = parsePriceToMinor(e.target.value, currency);
+                                          handleUpdateModifierOption(group.id, opt.id, {
+                                            priceMinor: minor ?? 0,
+                                          });
+                                        }}
+                                        data-testid={`modifier-option-price-${gIdx}-${oIdx}`}
+                                      />
+                                    </div>
+                                    <button
+                                      type="button"
+                                      className="restaurant-menu-editor-btn-icon-subtle"
+                                      onClick={() => handleRemoveModifierOption(group.id, opt.id)}
+                                      aria-label="Remove Option"
+                                      data-testid={`modifier-option-remove-${gIdx}-${oIdx}`}
+                                    >
+                                      <TrashGlyph />
+                                    </button>
+                                  </div>
+                                ))}
+
+                                <button
+                                  type="button"
+                                  className="restaurant-menu-editor-btn-add-opt"
+                                  onClick={() => handleAddModifierOption(group.id)}
+                                  data-testid={`modifier-option-add-${gIdx}`}
+                                >
+                                  + <Localized id="restaurant-menu-editor-add-option">Add Option</Localized>
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
                     <label className="restaurant-menu-editor-checkbox">
                       <input
                         type="checkbox"
@@ -1013,7 +1412,7 @@ export default function RestaurantMenuEditorScreen({ onBack }: RestaurantMenuEdi
                 )}
 
                 {/* ── Item Cards List ── */}
-                {filteredItems.length === 0 && !draft ? (
+                {processedItems.length === 0 && !draft ? (
                   <div className="restaurant-menu-editor-empty-state">
                     {searchQuery ? (
                       <>
@@ -1042,8 +1441,9 @@ export default function RestaurantMenuEditorScreen({ onBack }: RestaurantMenuEdi
                   </div>
                 ) : (
                   <div className="restaurant-menu-editor-item-grid">
-                    {filteredItems.map((p) => {
+                    {processedItems.map((p) => {
                       const isActive = p.is_active !== false;
+                      const modGroups = parseDraftModifierGroups(p.notes);
                       return (
                         <div
                           key={p.sku}
@@ -1070,10 +1470,17 @@ export default function RestaurantMenuEditorScreen({ onBack }: RestaurantMenuEdi
                                   {p.category}
                                 </span>
                               )}
+                              {modGroups.length > 0 && (
+                                <span className="restaurant-menu-editor-badge-modifiers">
+                                  {l10n.getString('restaurant-menu-editor-modifiers-badge', {
+                                    count: modGroups.length,
+                                  })}
+                                </span>
+                              )}
                               <span className="restaurant-menu-editor-badge-sku">{p.sku}</span>
                             </div>
 
-                            {p.notes && (
+                            {p.notes && !p.notes.startsWith('[') && (
                               <div className="restaurant-menu-editor-card-notes">
                                 <NoteGlyph />
                                 <span>{p.notes}</span>
@@ -1102,6 +1509,16 @@ export default function RestaurantMenuEditorScreen({ onBack }: RestaurantMenuEdi
                             </button>
 
                             <div className="restaurant-menu-editor-card-actions">
+                              <button
+                                type="button"
+                                className="restaurant-menu-editor-card-btn restaurant-menu-editor-card-btn--duplicate"
+                                onClick={() => handleDuplicateItem(p)}
+                                aria-label={l10n.getString('restaurant-menu-editor-duplicate-item-aria', { name: p.name })}
+                                title={l10n.getString('restaurant-menu-editor-duplicate')}
+                                data-testid={`restaurant-menu-editor-dup-${p.sku}`}
+                              >
+                                <CopyGlyph />
+                              </button>
                               <button
                                 type="button"
                                 className="restaurant-menu-editor-card-btn"

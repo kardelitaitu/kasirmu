@@ -277,4 +277,124 @@ describe('RestaurantMenuEditorScreen', () => {
       expect(productsApi.deleteCategoryScoped).toHaveBeenCalledWith(expect.any(String), 'cat-mains');
     });
   });
+
+  it('duplicates an existing menu item with 1-click clone and pre-filled draft', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<RestaurantMenuEditorScreen />, productsFtl);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('restaurant-menu-editor-dup-MN001')).toBeInTheDocument();
+    });
+
+    // Click duplicate button on MN001
+    await user.click(screen.getByTestId('restaurant-menu-editor-dup-MN001'));
+
+    // Draft form should open prefilled
+    const form = screen.getByTestId('restaurant-menu-editor-form');
+    expect(form).toBeInTheDocument();
+    const nameInput = screen.getByTestId('restaurant-menu-editor-name') as HTMLInputElement;
+    expect(nameInput.value).toBe('Nasi Goreng Kampung (Copy)');
+
+    const categorySelect = screen.getByTestId('restaurant-menu-editor-draft-category') as HTMLSelectElement;
+    expect(categorySelect.value).toBe('Mains');
+
+    // Save duplicated item
+    await user.click(within(form).getByRole('button', { name: /save/i }));
+
+    await waitFor(() => {
+      expect(productsApi.createProductScoped).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          name: 'Nasi Goreng Kampung (Copy)',
+          priceMinor: 35000,
+          notes: 'Served with crackers and pickles',
+          productType: 'restaurant',
+          isActive: true,
+        }),
+      );
+    });
+  });
+
+  it('sorts menu items dynamically via sort selector', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<RestaurantMenuEditorScreen />, productsFtl);
+
+    await waitFor(() => {
+      expect(screen.getByText('Nasi Goreng Kampung')).toBeInTheDocument();
+      expect(screen.getByText('Es Teh Manis')).toBeInTheDocument();
+    });
+
+    const sortSelect = screen.getByTestId('restaurant-menu-editor-sort-select');
+
+    // Sort price-asc: Es Teh Manis (8000) should appear before Nasi Goreng Kampung (35000)
+    await user.selectOptions(sortSelect, 'price-asc');
+    const cards = screen.getAllByTestId(/^menu-item-card-/);
+    expect(cards[0]).toHaveTextContent('Es Teh Manis');
+    expect(cards[1]).toHaveTextContent('Nasi Goreng Kampung');
+
+    // Sort price-desc: Nasi Goreng Kampung (35000) before Es Teh Manis (8000)
+    await user.selectOptions(sortSelect, 'price-desc');
+    const cardsDesc = screen.getAllByTestId(/^menu-item-card-/);
+    expect(cardsDesc[0]).toHaveTextContent('Nasi Goreng Kampung');
+    expect(cardsDesc[1]).toHaveTextContent('Es Teh Manis');
+  });
+
+  it('updates availability in bulk for category items', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<RestaurantMenuEditorScreen />, productsFtl);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('restaurant-menu-editor-bulk-avail')).toBeInTheDocument();
+    });
+
+    // Make all available: MN002 is currently inactive (is_active: false)
+    await user.click(screen.getByTestId('restaurant-menu-editor-bulk-avail'));
+
+    await waitFor(() => {
+      expect(productsApi.updateProductScoped).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          sku: 'MN002',
+          isActive: true,
+        }),
+      );
+    });
+  });
+
+  it('builds and saves modifier groups for dish variations', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<RestaurantMenuEditorScreen />, productsFtl);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('restaurant-menu-editor-edit-MN001')).toBeInTheDocument();
+    });
+
+    // Edit MN001
+    await user.click(screen.getByTestId('restaurant-menu-editor-edit-MN001'));
+
+    const addGroupBtn = screen.getByTestId('restaurant-menu-editor-add-group-btn');
+    await user.click(addGroupBtn);
+
+    // Group should appear
+    expect(screen.getByTestId('modifier-group-0')).toBeInTheDocument();
+    await user.type(screen.getByTestId('modifier-group-name-0'), 'Level Pedas');
+
+    // Option name and price
+    await user.type(screen.getByTestId('modifier-option-name-0-0'), 'Extra Pedas');
+    await user.type(screen.getByTestId('modifier-option-price-0-0'), '2000');
+
+    // Save draft
+    const form = screen.getByTestId('restaurant-menu-editor-form');
+    await user.click(within(form).getByRole('button', { name: /save/i }));
+
+    await waitFor(() => {
+      expect(productsApi.updateProductScoped).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          sku: 'MN001',
+          notes: expect.stringContaining('Level Pedas'),
+        }),
+      );
+    });
+  });
 });

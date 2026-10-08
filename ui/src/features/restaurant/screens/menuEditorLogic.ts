@@ -71,13 +71,17 @@ export function parsePriceToMinor(input: string, currency: string): number | nul
  * Prefixed `MN` so a generated item is recognisable in the Products workspace,
  * where a manager can rename it to the store's own scheme if it has one.
  */
+let skuCounter = 0;
+
 export function generateMenuSku(seed: number = Date.now()): string {
+  skuCounter = (skuCounter + 1) % 10000;
   const stamp = Math.trunc(Math.abs(seed)).toString(36).toUpperCase();
-  const salt = Math.random().toString(36).slice(2, 6).toUpperCase();
+  const seq = skuCounter.toString(36).toUpperCase();
+  const salt = Math.random().toString(36).slice(2, 8).toUpperCase();
   // Strip anything the validator would reject, then guarantee non-empty:
   // an SKU of '' fails validate_sku, and so would the bare prefix if both
   // halves were somehow empty.
-  const clean = (stamp + salt).replace(/[^0-9A-Z]/g, '');
+  const clean = (stamp + seq + salt).replace(/[^0-9A-Z]/g, '');
   return `MN${clean || 'ITEM'}`;
 }
 
@@ -138,4 +142,136 @@ export function filterMenuItems<
 
     return true;
   });
+}
+
+export type MenuItemSortOption = 'default' | 'name-asc' | 'name-desc' | 'price-asc' | 'price-desc';
+
+/**
+ * Sort menu items according to selected SaaS ordering criteria.
+ */
+export function sortMenuItems<
+  T extends {
+    name: string;
+    price: { minor_units: number };
+  },
+>(items: T[], sortOption: MenuItemSortOption): T[] {
+  if (sortOption === 'default') return items;
+  return [...items].sort((a, b) => {
+    switch (sortOption) {
+      case 'name-asc':
+        return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+      case 'name-desc':
+        return b.name.localeCompare(a.name, undefined, { sensitivity: 'base' });
+      case 'price-asc':
+        return a.price.minor_units - b.price.minor_units;
+      case 'price-desc':
+        return b.price.minor_units - a.price.minor_units;
+      default:
+        return 0;
+    }
+  });
+}
+
+/**
+ * Create a clone draft from an existing menu item for quick duplication.
+ */
+export function createDuplicateDraft<
+  T extends {
+    name: string;
+    category?: string | null;
+    price: { minor_units: number };
+    notes?: string | null;
+    is_active?: boolean;
+  },
+>(item: T, copySuffix = ' (Copy)'): {
+  sku: null;
+  name: string;
+  categoryName: string;
+  priceMinor: number;
+  isActive: boolean;
+  notes: string;
+  modifierGroups: DraftModifierGroup[];
+} {
+  const isJsonNotes = Boolean(item.notes?.startsWith('['));
+  return {
+    sku: null,
+    name: `${item.name}${copySuffix}`,
+    categoryName: item.category ?? '',
+    priceMinor: item.price.minor_units,
+    isActive: item.is_active !== false,
+    notes: isJsonNotes ? '' : (item.notes ?? ''),
+    modifierGroups: parseDraftModifierGroups(item.notes),
+  };
+}
+
+export interface DraftModifierOption {
+  id: string;
+  name: string;
+  priceMinor: number;
+}
+
+export interface DraftModifierGroup {
+  id: string;
+  name: string;
+  minSelections: number;
+  maxSelections: number;
+  options: DraftModifierOption[];
+}
+
+/**
+ * Parse modifier groups from dish notes when encoded as JSON.
+ */
+export function parseDraftModifierGroups(notes: string | null | undefined): DraftModifierGroup[] {
+  if (!notes || !notes.startsWith('[')) return [];
+  try {
+    const parsed: unknown = JSON.parse(notes);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter((g): g is Record<string, unknown> => typeof g === 'object' && g !== null)
+      .map((g, gIdx) => ({
+        id: typeof g['id'] === 'string' ? g['id'] : `mg-${gIdx}`,
+        name: typeof g['name'] === 'string' ? g['name'] : '',
+        minSelections: typeof g['minSelections'] === 'number' ? g['minSelections'] : 0,
+        maxSelections: typeof g['maxSelections'] === 'number' ? g['maxSelections'] : 1,
+        options: Array.isArray(g['modifiers'])
+          ? g['modifiers']
+              .filter((m): m is Record<string, unknown> => typeof m === 'object' && m !== null)
+              .map((m, mIdx) => ({
+                id: typeof m['id'] === 'string' ? m['id'] : `opt-${mIdx}`,
+                name: typeof m['name'] === 'string' ? m['name'] : '',
+                priceMinor: typeof m['priceMinor'] === 'number' ? m['priceMinor'] : 0,
+              }))
+          : [],
+      }));
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Serialize modifier groups into the JSON shape expected by `getProductModifierGroups`.
+ */
+export function serializeDraftModifierGroups(groups: DraftModifierGroup[]): string | null {
+  const cleanGroups = groups
+    .filter((g) => g.name.trim() !== '')
+    .map((g, gIdx) => ({
+      id: g.id || `mg-${Date.now().toString(36)}-${gIdx}`,
+      name: g.name.trim(),
+      minSelections: Math.max(0, g.minSelections),
+      maxSelections: Math.max(1, g.maxSelections),
+      sortOrder: gIdx,
+      modifiers: g.options
+        .filter((o) => o.name.trim() !== '')
+        .map((o, oIdx) => ({
+          id: o.id || `opt-${Date.now().toString(36)}-${oIdx}`,
+          name: o.name.trim(),
+          priceMinor: Math.max(0, o.priceMinor),
+          sortOrder: oIdx,
+          isDefault: oIdx === 0 && g.minSelections > 0,
+        })),
+    }))
+    .filter((g) => g.modifiers.length > 0);
+
+  if (cleanGroups.length === 0) return null;
+  return JSON.stringify(cleanGroups);
 }

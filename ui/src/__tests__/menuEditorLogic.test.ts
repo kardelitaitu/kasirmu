@@ -4,6 +4,10 @@ import {
   formatMinorForInput,
   generateMenuSku,
   filterMenuItems,
+  sortMenuItems,
+  createDuplicateDraft,
+  parseDraftModifierGroups,
+  serializeDraftModifierGroups,
 } from '../features/restaurant/screens/menuEditorLogic';
 
 // The price field is the one place a menu edit can silently corrupt an invoice,
@@ -211,5 +215,136 @@ describe('filterMenuItems', () => {
       statusFilter: 'available',
     });
     expect(noMatch).toHaveLength(0);
+  });
+});
+
+describe('sortMenuItems', () => {
+  const items = [
+    { name: 'Burger', price: { minor_units: 45000 } },
+    { name: 'Apple Pie', price: { minor_units: 20000 } },
+    { name: 'Steak', price: { minor_units: 120000 } },
+  ];
+
+  it('preserves order on default sort', () => {
+    expect(sortMenuItems(items, 'default')).toEqual(items);
+  });
+
+  it('sorts by name ascending and descending', () => {
+    const asc = sortMenuItems(items, 'name-asc');
+    expect(asc.map((i) => i.name)).toEqual(['Apple Pie', 'Burger', 'Steak']);
+
+    const desc = sortMenuItems(items, 'name-desc');
+    expect(desc.map((i) => i.name)).toEqual(['Steak', 'Burger', 'Apple Pie']);
+  });
+
+  it('sorts by price low-to-high and high-to-low', () => {
+    const lowHigh = sortMenuItems(items, 'price-asc');
+    expect(lowHigh.map((i) => i.price.minor_units)).toEqual([20000, 45000, 120000]);
+
+    const highLow = sortMenuItems(items, 'price-desc');
+    expect(highLow.map((i) => i.price.minor_units)).toEqual([120000, 45000, 20000]);
+  });
+});
+
+describe('createDuplicateDraft', () => {
+  it('creates an un-minted draft copying name, price, category, notes, and active status', () => {
+    const original = {
+      sku: 'MN001',
+      name: 'Nasi Goreng',
+      category: 'Mains',
+      price: { minor_units: 35000 },
+      notes: 'Extra pedas',
+      is_active: true,
+    };
+
+    const draft = createDuplicateDraft(original);
+    expect(draft.sku).toBeNull();
+    expect(draft.name).toBe('Nasi Goreng (Copy)');
+    expect(draft.categoryName).toBe('Mains');
+    expect(draft.priceMinor).toBe(35000);
+    expect(draft.notes).toBe('Extra pedas');
+    expect(draft.isActive).toBe(true);
+    expect(draft.modifierGroups).toEqual([]);
+  });
+
+  it('parses modifier groups into draft when notes contains serialized groups', () => {
+    const original = {
+      sku: 'MN002',
+      name: 'Kopi Susu',
+      category: 'Drinks',
+      price: { minor_units: 18000 },
+      notes: JSON.stringify([
+        {
+          id: 'g1',
+          name: 'Sweetness',
+          modifiers: [{ id: 'm1', name: 'Less Sugar', priceMinor: 0 }],
+        },
+      ]),
+      is_active: true,
+    };
+
+    const draft = createDuplicateDraft(original);
+    expect(draft.name).toBe('Kopi Susu (Copy)');
+    expect(draft.notes).toBe('');
+    expect(draft.modifierGroups).toHaveLength(1);
+    expect(draft.modifierGroups[0]?.name).toBe('Sweetness');
+  });
+});
+
+describe('modifier groups serialization & parsing', () => {
+  it('parses empty array for missing or plain text notes', () => {
+    expect(parseDraftModifierGroups(null)).toEqual([]);
+    expect(parseDraftModifierGroups('')).toEqual([]);
+    expect(parseDraftModifierGroups('Allergens: nuts')).toEqual([]);
+    expect(parseDraftModifierGroups('{invalid')).toEqual([]);
+  });
+
+  it('parses valid modifier groups from JSON notes', () => {
+    const json = JSON.stringify([
+      {
+        id: 'mg-1',
+        name: 'Size',
+        minSelections: 1,
+        maxSelections: 1,
+        modifiers: [
+          { id: 'opt-reg', name: 'Regular', priceMinor: 0 },
+          { id: 'opt-lrg', name: 'Large', priceMinor: 5000 },
+        ],
+      },
+    ]);
+
+    const parsed = parseDraftModifierGroups(json);
+    expect(parsed).toHaveLength(1);
+    expect(parsed[0]?.name).toBe('Size');
+    expect(parsed[0]?.options).toHaveLength(2);
+    expect(parsed[0]?.options[1]?.priceMinor).toBe(5000);
+  });
+
+  it('serializes draft groups into JSON compatible with domain getProductModifierGroups', () => {
+    const draftGroups = [
+      {
+        id: 'mg-1',
+        name: 'Spice Level',
+        minSelections: 1,
+        maxSelections: 1,
+        options: [
+          { id: 'opt-1', name: 'Mild', priceMinor: 0 },
+          { id: 'opt-2', name: 'Hot', priceMinor: 2000 },
+        ],
+      },
+    ];
+
+    const serialized = serializeDraftModifierGroups(draftGroups);
+    expect(serialized).not.toBeNull();
+    expect(serialized?.startsWith('[')).toBe(true);
+
+    const decoded = JSON.parse(serialized!);
+    expect(decoded[0].modifiers[0].isDefault).toBe(true);
+    expect(decoded[0].modifiers[1].priceMinor).toBe(2000);
+  });
+
+  it('returns null when groups are empty or have no options', () => {
+    expect(serializeDraftModifierGroups([])).toBeNull();
+    expect(serializeDraftModifierGroups([{ id: '1', name: '', minSelections: 0, maxSelections: 1, options: [] }])).toBeNull();
   });
 });

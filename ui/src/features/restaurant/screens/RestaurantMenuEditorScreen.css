@@ -761,3 +761,244 @@
   color: var(--color-fg-muted);
   font-size: var(--text-sm);
 }
+
+/* ── SaaS Extensions: Sorting, Bulk Actions, Modifiers ────────── */
+
+.restaurant-menu-editor-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.restaurant-menu-editor-bulk-group {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.restaurant-menu-editor-btn-bulk {
+  font-size: var(--text-xs);
+  min-height: var(--space-8);
+  padding: 0 var(--space-3);
+}
+
+.restaurant-menu-editor-sort-select-wrapper {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-left: auto;
+}
+
+.restaurant-menu-editor-sort-label {
+  font-size: var(--text-xs);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-fg-muted);
+}
+
+.restaurant-menu-editor-sort-select {
+  min-height: var(--touch-target-min);
+  padding: 0 var(--space-3);
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-fg);
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+
+.restaurant-menu-editor-sort-select:focus-visible {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 1px;
+}
+
+.restaurant-menu-editor-badge-modifiers {
+  font-size: var(--text-xs);
+  font-weight: var(--font-weight-semibold);
+  background: var(--color-primary-subtle);
+  color: var(--color-primary);
+  border: 1px solid var(--color-primary);
+  border-radius: var(--radius-sm);
+  padding: 0 var(--space-2);
+}
+
+.restaurant-menu-editor-card-btn--duplicate:hover {
+  background: var(--color-primary-subtle);
+  color: var(--color-primary);
+}
+
+/* ── Modifier Groups Builder ───────────────────────────────────── */
+
+.restaurant-menu-editor-modifiers-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border);
+}
+
+.restaurant-menu-editor-modifiers-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.restaurant-menu-editor-modifiers-title {
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-fg);
+}
+
+.restaurant-menu-editor-groups-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.restaurant-menu-editor-group-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+}
+
+.restaurant-menu-editor-group-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.restaurant-menu-editor-group-name-input {
+  flex: 2;
+  min-width: 140px;
+  min-height: var(--touch-target-min);
+  padding: 0 var(--space-2);
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-fg);
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-medium);
+}
+
+.restaurant-menu-editor-group-bounds {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.restaurant-menu-editor-bound-label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--text-xs);
+  color: var(--color-fg-muted);
+}
+
+.restaurant-menu-editor-bound-input {
+  width: var(--space-12);
+  min-height: var(--space-8);
+  padding: 0 var(--space-1);
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-fg);
+  font-size: var(--text-xs);
+  text-align: center;
+}
+
+.restaurant-menu-editor-btn-icon-danger,
+.restaurant-menu-editor-btn-icon-subtle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--space-7);
+  height: var(--space-7);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--color-fg-muted);
+  cursor: pointer;
+  transition: color var(--transition-fast), background var(--transition-fast);
+}
+
+.restaurant-menu-editor-btn-icon-danger:hover,
+.restaurant-menu-editor-btn-icon-subtle:hover {
+  background: var(--color-danger-subtle);
+  color: var(--color-danger);
+}
+
+.restaurant-menu-editor-options-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-left: var(--space-2);
+  border-left: 2px solid var(--color-border);
+}
+
+.restaurant-menu-editor-option-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.restaurant-menu-editor-option-name-input {
+  flex: 2;
+  min-width: 120px;
+  min-height: var(--space-8);
+  padding: 0 var(--space-2);
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-fg);
+  font-size: var(--text-xs);
+}
+
+.restaurant-menu-editor-option-price-box {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 0 var(--space-2);
+  min-height: var(--space-8);
+}
+
+.restaurant-menu-editor-option-currency {
+  font-size: var(--text-xs);
+  color: var(--color-fg-muted);
+  white-space: nowrap;
+}
+
+.restaurant-menu-editor-option-price-input {
+  width: var(--space-16);
+  border: none;
+  background: transparent;
+  color: var(--color-fg);
+  font-size: var(--text-xs);
+  outline: none;
+}
+
+.restaurant-menu-editor-btn-add-opt {
+  align-self: flex-start;
+  background: transparent;
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-fg-muted);
+  font-size: var(--text-xs);
+  padding: var(--space-1) var(--space-3);
+  cursor: pointer;
+  transition: border-color var(--transition-fast), color var(--transition-fast);
+}
+
+.restaurant-menu-editor-btn-add-opt:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
