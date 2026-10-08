@@ -891,11 +891,7 @@ into a reused buffer.
 worker thread.
 
 **O-M59 · kasirmu-logging — the JSON+file init path skips the writability preflight the text path
-has** — `crates/kasirmu-logging/src/lib.rs:307-343` vs `:260` ✔ (3C-09). `try_init_with_file`
-calls `ensure_log_dir_writable(log_dir)?` (`:260`); `try_init_json_with_file` never does, so on
-an unwritable `log_dir` the non-blocking writer silently drops every line and the caller still
-gets `Ok(())` — exactly the failure LOG-2 was added to catch. *Fix:* call the same preflight at
-the top of the JSON variant.
+has** — `crates/kasirmu-logging/src/lib.rs:307-343` vs `:260` ✔ (3C-09) · **PAID** (`084f5002f`). `ensure_log_dir_writable(log_dir)?` wired into `try_init_json_with_file`, failing fast on unusable directory paths with `LogDirUnusable`. Verified in `lib_tests.rs`.
 
 **O-M60 · kasirmu-logging — retention runs once at init against hourly rotation** —
 `crates/kasirmu-logging/src/lib.rs:262`, `:280-282`, `:317`, `:339-341` ✔ (3C-10). Hourly
@@ -911,11 +907,7 @@ value is computed and thrown away. *Fix:* bounded queue with a semaphore; honour
 with a capped attempt count.
 
 **O-M62 · modules-currency — the live IPC command ships the entire rate history** —
-`modules/currency/src/repository.rs:50-72` ✔ (3D-01) · **LIVE** via both shells'
-`exchange_rates.rs`. No `LIMIT`, no date window, no pair filter — and the crate's own doc at
-`:74-83` says the function "grows without bound" and that consumers should use
-`list_latest_exchange_rates` instead. *Fix:* bound the query, or move the remaining callers to
-`list_latest_exchange_rates` the way CUR-11 already did for `PaymentModal`.
+`modules/currency/src/repository.rs:50-72` ✔ (3D-01) · **PAID** (`a93b0b758`). Added `DEFAULT_MAX_EXCHANGE_RATES = 500` bound to `list_exchange_rates` and added `list_exchange_rates_bounded(limit)` with `LIMIT` pushdown. Verified in `repository_tests.rs`.
 
 **O-M63 · modules-inventory — the DB mutex is held across the whole sale-deduction
 transaction** — `modules/inventory/src/handlers.rs:220-241` ✔ (3D-02) · **latent**. Every line,
@@ -1913,3 +1905,19 @@ the two benches, which drop a ~305 ms replay from setup. The number that still
 dominates axis B is the one at the end of §11J: under `cargo nextest` each
 process rebuilds the 305 ms snapshot from scratch, ~266 s of CPU per full run
 across 874 `fresh_db()` call sites.
+
+---
+
+## §11L — O-M59 and O-M62 resolved: logging preflight parity and exchange rates bounded (2026-10-08)
+
+Two medium findings closed with focused tests:
+
+1. **O-M59 · `kasirmu-logging` JSON writability preflight (`084f5002f`)**:
+   - `crates/kasirmu-logging/src/lib.rs`: Added `ensure_log_dir_writable(log_dir)?` to `try_init_json_with_file`.
+   - Prevents silent dropped logs when `log_dir` is unwritable, mirroring the preflight in `try_init_with_file`.
+   - Verified with unit test `try_init_json_with_file_fails_fast_on_unusable_dir`. All 41 logging tests green.
+
+2. **O-M62 · `modules-currency` bounded exchange rates query (`a93b0b758`)**:
+   - `modules/currency/src/repository.rs`: Added `DEFAULT_MAX_EXCHANGE_RATES = 500` and `list_exchange_rates_bounded(limit)` with SQL `LIMIT` pushdown.
+   - Prevents memory explosions on long-lived store deployments with thousands of historical rate entries.
+   - Verified with unit test `list_exchange_rates_bounded_respects_limit`. All 84 currency tests green.
