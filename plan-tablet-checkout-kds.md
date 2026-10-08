@@ -8,7 +8,7 @@
 
 ## 0. Why this audit exists
 
-`plan-tablet-homescreen-settings.md` covered two surfaces — the homescreen and
+`done-plan-tablet-homescreen-settings.md` (renamed 2026-10-08 after its acceptance ran) covered two surfaces — the homescreen and
 the settings hub. The screen a merchant actually lives on (checkout) and the
 screen a kitchen actually lives on (KDS) had never been checked against the
 tablet's IPC surface. This is that check.
@@ -96,7 +96,7 @@ matters most.
 - **The installed APK is stale.** The walk measured a bundle that still throws
   `useSettings must be used within a <SettingsProvider>` on `#/topology`, i.e.
   it predates commit `4a90d10e5`. Every live result in this document and in
-  `plan-tablet-homescreen-settings.md` §6 describes pre-fix behaviour until the
+  `done-plan-tablet-homescreen-settings.md` §6 describes pre-fix behaviour until the
   bundle is rebuilt and reinstalled.
 - **`list_kds_devices_scoped` failing is currently silent** — the indicator is
   in the KDS header, and its failure mode was not measured on a device.
