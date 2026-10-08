@@ -93,6 +93,18 @@ Recorded because each one is still live in some document a worker might read, an
 
 ---
 
+## 2026-10-08: a SECOND unguarded security check — the logo path-traversal guard had ZERO coverage. Fixed in `c160bc939`.
+
+**Found by generalising R164's question** ("does any test consume what this list produces?) into "is any security check exercised through a REPLICA rather than the function itself". `crates/kasirmu-bridge/src/branding_tests.rs` defines `validate_logo_path_inner` — a hand-written line-by-line copy of `validate_logo_path` that its own comment says skips canonicalisation because *"it requires a real filesystem"* — and every logo test calls the copy. **The copy is not the production rule:** `validate_logo_path` additionally asserts the canonicalised path is INSIDE the app data directory (`branding.rs:72`), and that containment check is unreachable through the replica at all.
+
+**MEASURED: deleting the entire containment block left the file's 10 tests GREEN.** A path-traversal protection — the control that stops a logo path pointing anywhere on the host — could be removed with nothing objecting. The extension allow-list was the only covered half, which is exactly the false confidence a replica produces: the tests looked like they covered "logo path validation" and covered one of its two rules.
+
+**Fixed by testing the REAL function on a real filesystem**, using `tempfile` to satisfy the canonicalisation the replica avoids: an allowed `.png` inside app data is accepted; the SAME extension OUTSIDE app data is refused with a message naming containment; and a `..` traversal that resolves out of app data is refused after canonicalisation — the case a naive string-prefix check would pass. Plus the extension rules re-asserted through the real function so they are covered on both paths. **Kill-tested: the containment deletion is now KILLED, caught by both containment tests by name.** 10 → 14 tests (15 minus one below).
+
+**Also removed: `validate_logo_empty_path_is_allowed_duplicate`** — a verbatim duplicate of the test immediately above it (`assert!(validate_logo_path_inner("").unwrap().is_empty())` vs `assert!(...is_ok())`), same input, same call, weaker assertion. A duplicate that adds no case is worse than nothing: it inflates the count a reviewer reads as coverage.
+
+**Generalising the pattern, since this is the third round it has paid**: the defect is consistently a test that exercises a COPY, a LIST, or a PIN instead of the thing it names. R160 (a replica of the drop-retry loop), R164 (a sweep derived from the list it guards), R165 (a replica of the path validator). All three were invisible to a green suite, and all three were found by making the subject FAIL on purpose.
+
 ## 2026-10-08: an UNGUARDED security invariant — deleting the credential-exfiltration key from its refusal list broke nothing. Fixed in `b9d484bd8`.
 
 **Found by asking a different question of the audit surface: not "is this guard's parser right" but "does any test consume what this list produces".** `PEER_NAMED_HAZARD_KEYS` (`platform/core/src/settings/keys.rs:393`) is the six-name list `RemoteSync` refuses so a peer cannot redirect this install's transport. Its own doc calls `sync_server_url` *"the sharpest"* of the six, because `crates/kasirmu-core/src/sync_auth.rs:72` sends `Authorization: Bearer <sync api key>` to whatever that setting holds — **planting the name exfiltrates a credential without ever naming a credential key.**
