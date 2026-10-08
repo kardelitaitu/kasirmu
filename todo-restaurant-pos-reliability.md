@@ -220,13 +220,36 @@ into this lane's verification rather than treating as new work:
   (`scripts/ipc-parity-allowlist.json`, tablet section); `SettingsPage.tsx:195`
   guards it with `if (!isTabletShell())`. Recorded, not fixed here.
 
-### F13 — Duplicate settings module (LOW, hygiene)
+### F13 — Duplicate settings modules (CLOSED: one is live composition, one is dead)
 
-`ui/src/features/settings/DataManagementScreen.tsx` and
-`ui/src/features/settings/screens/DataManagementScreen.tsx` both exist, and both
-`features/settings/sections/AppearanceSection.tsx` and
-`features/settings/AppearanceSettings.tsx` exist. Confirm which is mounted before
-deleting anything (AGENTS.md §6.3 "dead-screen checks need three greps").
+⚠️ **My first pass called both pairs "duplicates to resolve". That was half wrong,
+and the three greps AGENTS.md §6.3 prescribes are what corrected it.**
+
+**Pair 1 — `DataManagementScreen` — NOT a duplicate. Both halves are live and
+intentionally split.**
+
+- `features/settings/DataManagementScreen.tsx` is the real data-management body
+  (tabs: Export / Import / Backup / Restore).
+- `features/settings/screens/DataManagementScreen.tsx:24` **imports** it as
+  `DataManagementBody` and renders it `embedded` (suppressing a duplicate `<h1>`),
+  adding the settings-hub scaffold. Its header says so at `:3-11`.
+
+So this is a composition shell over a feature screen — the documented pattern for
+this hub (registry.ts's own header describes COMPOSITION as one of the three
+shapes). Nothing to delete.
+
+**Pair 2 — `AppearanceSection` — genuinely dead, and already marked so.**
+`sections/AppearanceSection.tsx:1-6` carries a DEAD note dated 2026-09-15: no
+`appearance` key exists in `SETTINGS_SCREENS`, so `renderSection` can never mount
+it, and nothing in production imports it. `AppearanceSettings.tsx` IS registered
+and live.
+
+**Verdict: no change is warranted, and P8 is closed as a no-op.** The dead
+`AppearanceSection` is a deliberate, dated, comment-only marker ("Comment only —
+the code below is deliberately untouched"), not an oversight, and its own tests are
+its tombstone. Deleting it is a separate refactor with no reliability payoff, and
+it is outside this lane's scope. **Recorded rather than "fixed"** — the finding was
+my misread, and the correction is the useful output.
 
 ### F14 — Provisioning and the POS read DIFFERENT databases (HIGH — blocks D1's seed)
 
@@ -497,9 +520,16 @@ clean — this is a coordination constraint, not a technical one.
 - **Acceptance:** `python scripts/verify-ipc-parity.py` exits 0 with **no new**
   entries in `scripts/ipc-parity-allowlist.json`.
 
-### P8 — Duplicate-module hygiene (F13, only if P0-P7 leave budget)
+### P8 — Duplicate-module hygiene (F13) — ✅ CLOSED 2026-10-09 as a NO-OP
 
-- Three greps per AGENTS.md §6.3 before deleting either file.
+The three greps AGENTS.md §6.3 prescribes showed the pair is not a duplicate:
+`screens/DataManagementScreen.tsx` **composes** the feature screen
+(`import DataManagementBody from '../DataManagementScreen'`, `:24`) — the
+documented settings-hub pattern — and `sections/AppearanceSection.tsx` is already
+marked DEAD with a dated header and is intentionally left in place.
+
+**No code change.** The finding was a misread on my part; see F13 for the evidence.
+This is the one phase whose correct output is a correction rather than a diff.
 
 ---
 
