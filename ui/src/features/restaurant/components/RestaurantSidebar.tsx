@@ -52,6 +52,16 @@ export interface RestaurantSidebarActions {
   showTables: boolean;
   onOpenTables: () => void;
   onOpenHistory: () => void;
+  /**
+   * Whether the Kitchen Display row is reachable for this user.
+   *
+   * KDS access is a feature/route ENTITLEMENT, not a role, so a disabled row with
+   * a "Manager+" badge would mislabel the reason. It is hidden instead, matching
+   * `showTables` — and for the same cause: the host decides before render, because
+   * a click-time answer cannot hide a row that is already on screen. Without this
+   * the row silently no-opped or bounced the user to Products (F7).
+   */
+  showKitchenDisplay: boolean;
   onOpenKitchenDisplay: () => void;
   /** Full-page configuration sub-screens */
   onOpenMenuEditor?: () => void;
@@ -449,18 +459,20 @@ export function RestaurantSidebar({
             </Tile>
             <Localized id="retail-fn-history"><span>History</span></Localized>
           </button>
-          <button
-            type="button"
-            className="restaurant-sidebar-item"
-            onKeyDown={handleSidebarKeyDown}
-            aria-label={l10n.getString('kds-title')}
-            onClick={() => { cartActions.onOpenKitchenDisplay(); onOpenChange(false); }}
-          >
-            <Tile>
-              <KitchenGlyph />
-            </Tile>
-            <Localized id="kds-title"><span>Kitchen Display</span></Localized>
-          </button>
+          {cartActions.showKitchenDisplay && (
+            <button
+              type="button"
+              className="restaurant-sidebar-item"
+              onKeyDown={handleSidebarKeyDown}
+              aria-label={l10n.getString('kds-title')}
+              onClick={() => { cartActions.onOpenKitchenDisplay(); onOpenChange(false); }}
+            >
+              <Tile>
+                <KitchenGlyph />
+              </Tile>
+              <Localized id="kds-title"><span>Kitchen Display</span></Localized>
+            </button>
+          )}
           <button
             type="button"
             className={`restaurant-sidebar-item${!effectiveIsManager ? ' restaurant-sidebar-item--disabled' : ''}`}

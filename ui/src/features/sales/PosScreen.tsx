@@ -62,6 +62,7 @@ import type { Promotion } from '@/api/promotions';
 import FastPINOverlay from '@/components/FastPINOverlay';
 import { notifyMemoryPressure } from '@/api/system';
 import { isTabletShell } from '@/utils/shellKind';
+import { getPage, isPageAccessible } from '@/registries/page-registry';
 
 import './PosScreen.css';
 import './CartPanel.css';
@@ -1177,6 +1178,12 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     showTables: isEnabled(FEATURES.TABLE_MANAGEMENT),
     onOpenTables: () => setShowTables(true),
     onOpenHistory: () => setShowSalesHistory(true),
+    // F7/D4: hide the row when KDS is unreachable rather than let it no-op or
+    // bounce to Products. Computed with the SAME predicate the shell's
+    // `handleNavigate` uses (`isPageAccessible`), so the row is visible exactly
+    // when the navigation would succeed — a second predicate would be free to
+    // disagree with the thing it is predicting.
+    showKitchenDisplay: isPageAccessible(getPage('kds'), session?.role_name ?? '', session?.permissions),
     onOpenKitchenDisplay: () => onNavigate?.('kds'),
     onOpenMenuEditor: () => setShowMenuEditor(true),
     onOpenReceipts: () => setShowReceiptsSettings(true),

@@ -409,7 +409,7 @@ here.
 - **Acceptance met:** `npx vitest run RestaurantSettingsScreen` → **10 tests
   passed**, including a case asserting localStorage carries the loaded DB value.
 
-### P4 — Crash isolation (F9) — ✅ DONE 2026-10-09; F7/F8 still open
+### P4 — Crash isolation (F9) and the Kitchen Display row (F7) — ✅ DONE 2026-10-09; F8 still open
 
 **F9 landed.** `LocalizedErrorBoundary` (the locale-aware wrapper the workspace
 cards use) now wraps:
@@ -431,9 +431,16 @@ could pass with the boundary removed.
 **Kill-tested.** Removing the sidebar wrapper fails the guard with
 *"`<RestaurantSidebar\b` is NOT inside a `<LocalizedErrorBoundary>`"*.
 
-**F7 and F8 are NOT done** — they need a product decision (hide the Kitchen
-Display row vs. a "requires KDS access" affordance; role vs. `SETTINGS_EDIT`
-permission for the manager rows) and are listed in §4.
+**F7 landed** (D4). `RestaurantSidebar` now renders the Kitchen Display row only
+when `showKitchenDisplay` is true, and `PosScreen` computes that with the SAME
+predicate the shell's `handleNavigate` uses — `isPageAccessible(getPage('kds'),
+role, permissions)`. Reusing the predicate rather than inventing a second one is
+the point: a second predicate is free to disagree with the navigation it is
+predicting. Hidden rather than disabled-with-a-badge, because KDS access is an
+entitlement, not a role.
+
+**F8 is NOT done** — it needs the owner to choose role vs. `SETTINGS_EDIT`
+permission for the manager rows (listed in §4).
 
 - **Acceptance met:** `cd ui && npm run typecheck` exit 0; eslint 0 errors;
   `npx vitest run Restaurant PosScreen CartPanel restaurantPosCrashIsolation` →

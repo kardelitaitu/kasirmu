@@ -45,6 +45,9 @@ function makeActions(overrides: Partial<RestaurantSidebarActions> = {}): Restaur
     showTables: false,
     onOpenTables: vi.fn(),
     onOpenHistory: vi.fn(),
+    // Default true so the existing cases keep exercising the row; the gating
+    // case overrides it to false.
+    showKitchenDisplay: true,
     onOpenKitchenDisplay: vi.fn(),
     onOpenReceipts: vi.fn(),
     onOpenPayments: vi.fn(),
@@ -212,6 +215,24 @@ describe('RestaurantSidebar — action row handlers', () => {
     const actions = makeActions({ showTables: false });
     renderSidebar({ cartActions: actions });
     expect(screen.queryByRole('button', { name: /Table Management/i })).toBeNull();
+  });
+
+  // F7: KDS access is an entitlement, not a role, so the row is HIDDEN rather
+  // than shown disabled with a Manager+ badge. Before this the row always
+  // rendered and its click silently no-opped (or bounced to Products).
+  it('omits the Kitchen Display row when the user cannot reach the route', () => {
+    const actions = makeActions({ showKitchenDisplay: false });
+    renderSidebar({ cartActions: actions });
+    expect(screen.queryByRole('button', { name: /Kitchen Display/i })).toBeNull();
+  });
+
+  it('renders and fires the Kitchen Display row when it is reachable', () => {
+    const actions = makeActions({ showKitchenDisplay: true });
+    const onOpenChange = vi.fn();
+    renderSidebar({ cartActions: actions, onOpenChange });
+    fireEvent.click(screen.getByRole('button', { name: /Kitchen Display/i }));
+    expect(actions.onOpenKitchenDisplay).toHaveBeenCalled();
+    expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
   it('deduction row renders with the location and fires onOverrideDeduction when clicked', () => {
