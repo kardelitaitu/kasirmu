@@ -219,7 +219,9 @@ fn scoped_state_with_session(token: &str) -> tauri::App<tauri::test::MockRuntime
 #[tokio::test]
 async fn version_scoped_reports_the_version_for_a_live_session() {
     let app = scoped_state_with_session("live-token");
-    let v = version_scoped("live-token".into(), app.state()).await.unwrap();
+    let v = version_scoped("live-token".into(), app.state())
+        .await
+        .unwrap();
     assert_eq!(v.version, env!("CARGO_PKG_VERSION"));
     assert!(!v.name.is_empty());
     assert!(!v.target.is_empty());
@@ -229,5 +231,9 @@ async fn version_scoped_reports_the_version_for_a_live_session() {
 async fn version_scoped_rejects_an_unknown_session() {
     // Fail closed: no session, no version — the same gate the bridge twin runs.
     let app = scoped_state_with_session("live-token");
-    assert!(version_scoped("ghost-token".into(), app.state()).await.is_err());
+    assert!(
+        version_scoped("ghost-token".into(), app.state())
+            .await
+            .is_err()
+    );
 }
