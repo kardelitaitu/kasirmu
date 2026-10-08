@@ -158,8 +158,29 @@ as saved. Fixed in `f0a2a8b25`.
 **What the third instance says about the finding:** F5 was filed as two sites and
 was actually three. All three are the same mistake — mutating a client-side mirror
 before the durable write resolves — which suggests the pattern, not the file, is
-the thing to watch for. A future sweep should grep for `localStorage.setItem`
-preceding an `await` rather than trust a per-file list.
+the thing to watch for.
+
+**The pattern is now guarded.** `ui/src/__tests__/mirrorBeforeAwait.test.ts` scans
+production source for a `localStorage.setItem` that precedes a durable write in the
+same function, and asserts there are none. **Verified zero across `ui/src`** on
+2026-10-09.
+
+**Building that guard took FOUR wrong detectors, and the lesson is the useful
+part.** Each wrong version passed its own self-tests and was caught only by
+reintroducing the real bug:
+
+| Version | Why it was wrong | How it was caught |
+|---|---|---|
+| 1. brace depth | netted to zero across the mirror's own `try { }` | kill-test |
+| 2. depth + transparent try/catch | same reason | kill-test |
+| 3. "any await in the function" | 14 false positives — a later `await new Promise(setTimeout)` UI delay is an await, not a write | clean-tree run |
+| 4. `await …Scoped(` / `.save(` | missed this very file: the durable calls are `tasks.push(setReceiptSettingsScoped(...))`, and the only awaited line is `await Promise.all(tasks)` | kill-test |
+| 5. **`await Promise.all(tasks)` OR a direct scoped/save call** | correct on both the clean tree and the reintroduced bug | — |
+
+**The transferable rule:** a test written before the fix proves nothing until it
+has been shown to FAIL against the bug. Versions 1, 2 and 4 all passed on a clean
+tree AND on the bug — the exact vacuous state. Only running the detector against a
+deliberately reintroduced defect distinguishes a real guard from a comforting one.
 
 ### F6 — Interaction prefs are stored twice and only the local copy is honoured (MEDIUM)
 
