@@ -239,7 +239,10 @@ export default function SalesHistoryScreen() {
   // failed read tries a refund the database will refuse for a reason the screen
   // has hidden. `refundsUnknown` keeps the three states apart.
   const [refundsUnknown, setRefundsUnknown] = useState(false);
-  const [_refundsLoading, setRefundsLoading] = useState(false);
+  // A `_refundsLoading` flag lived here, set true/false around the read and never
+  // READ by anything. `refundsUnknown` below carries the state that matters (the
+  // three-way ok/empty/failed split), so the flag only bought two re-renders per
+  // refunds load. Removed 2026-10-09; `refundsUnknown` is unchanged.
   const { session, isManager } = useAuth();
   const { sessionToken } = useWorkspace();
   // ── Per-line cost / margin (HPP) for the open sale detail ──
@@ -703,11 +706,9 @@ export default function SalesHistoryScreen() {
   }, []);
 
   const loadRefunds = useCallback(async (saleId: string) => {
-    setRefundsLoading(true);
     const data = await settleRead('refunds', listRefundsScoped(sessionToken!, saleId));
     setRefundsUnknown(!data.ok);
     setRefunds(data.ok ? data.value : []);
-    setRefundsLoading(false);
     // sessionToken is a free variable from useWorkspace() at :164, read at :451. The sibling
     // effect above already lists [sessionToken, l10n] at :227, so the token was understood to
     // change -- this array just omitted it. With [] the callback kept the mount-time token, and
