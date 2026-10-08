@@ -565,9 +565,25 @@ were filed as specific sites; each has now been found again somewhere new. F5 go
 static guard (round 5). F4 does NOT yet have one — it has been fixed in three
 places by hand (`RestaurantSettingsScreen`, `WorkspaceRestaurantPosSettings`,
 `RestaurantReceiptsScreen`) and the next file will be found the same slow way.
-**A guard for the F4 shape is the highest-value remaining work in this plan:**
-grep for a `.catch(` that swallows a load error whose result seeds a dirty-tracking
-baseline.
+**A guard for the F4 shape is now BUILT** — `ui/src/__tests__/loadFailureSeedsBaseline.test.ts`
+(round 7). It scans production source for a `.catch(...)` handler whose body assigns
+`originalsRef`, and asserts there are none.
+
+**⚠️ Its scope is PARTIAL, and that is stated in the file because a partial guard
+read as a total one is worse than none.** It catches the **direct** spelling — the
+catch itself seeds the baseline. That covers 3 of the 6 historical instances
+(`WorkspaceKdsSettings`, `WorkspaceInventorySettings`, `WorkspaceRestaurantPosSettings`).
+It does **not** catch the **indirect** spelling, where `.catch(() => null)` feeds a
+default that seeds the baseline further down; that needs dataflow analysis.
+`RestaurantSettingsScreen`, `RestaurantReceiptsScreen` and the still-open
+`RestaurantPaymentsScreen:454-455` are indirect. **A green run means "no direct
+re-introduction", not "F4 is impossible".**
+
+The detector is self-tested (4 shape cases) **and kill-tested** against a
+reintroduced bug, which fails it with
+`features\settings\workspace-cards\WorkspaceInventorySettings.tsx:87`. The
+self-tests alone were not sufficient — two earlier guards in this repo passed theirs
+while being wrong.
 
 **TWO MORE F4 INSTANCES FOUND AND FIXED (round 6)**, by scanning all 8 files that
 use `originalsRef` against the 3 that had `loadFailed`:
