@@ -93,6 +93,18 @@ Recorded because each one is still live in some document a worker might read, an
 
 ---
 
+## 2026-10-08: the RLS cutover's rollback note named 19 tables where step 3 FORCEs 22 — and the drift was ALREADY DOCUMENTED as fixed. Fixed in `505568528`.
+
+**Found by following a doc claim into the file it describes.** `sync_store_tests.rs:1597` calls itself *"the regression guard for the two lists that must stay in sync"* (`RLS_TABLES` in `generate-pg-migration.py` and the lists in `rls-cutover.sql`) and warns that drift there is *"completely silent"*. Following that into `scripts/rls-cutover.sql` surfaced a smaller but real version of it.
+
+**The script's step-3 array holds 22 tables. Its rollback note said "all 19 tables".** Worse, the pg-gated test in the same crate carries the fix's own postmortem at `db_tests.rs:971`: *"**Was 19**: the list here had drifted three tables behind the script it counts … The assertion passed because it was measuring a subset of its own subject. Now it names all 22."* **The number was corrected in the TEST's copy of the list and left stale in the SCRIPT the test reads.** An operator following the rollback note would reverse 19 of 22 tables.
+
+**Two checks I made before calling it a defect, one of which cleared something that LOOKED wrong.** (a) The script's step-4 verification query says *"expect 21 rows"* while listing an IN-clause — I extracted both lists and confirmed it deliberately covers **21 of the 22**, omitting `midtrans_transactions`; the comment is CORRECT and I left it alone. (b) The test's hardcoded 22-name array and the script's 22-name array match **exactly**, element for element, so the code was never wrong — only the prose.
+
+**The guard is deliberately NOT pg-gated.** The existing test that reads this file (`db_tests.rs:955`, `include_str!(rls-cutover.sql)`) is `#[cfg_attr(not(feature = "pg-tests"), ignore)]`, so the drift could only be caught on a machine with a live PostgreSQL cluster. My assertion parses the script's FOREACH array and requires the rollback note's number to equal the array's length — no database, no network, runs everywhere. **Kill-tested: restoring "19" FAILS it**, with a message naming the number and the consequence. 424 tests in the crate still pass; clippy Finished.
+
+**Running tally: 14 guards examined, 6 sound, 8 with defects found and fixed.** The recurring shape — now for the third round — is **a claim written down somewhere and nothing checking it**: a comment asserting a two-copy invariant (R168), a doc asserting a list is protected (R164), and now a postmortem asserting a count was corrected.
+
 ## 2026-10-08: a documented two-copy invariant with NO guard — the timing mask's twin could regress in silence. Fixed in `710aff4e4`.
 
 **Found by following a doc comment rather than a grep.** `crates/kasirmu-bridge/src/auth/session.rs:175-176` says its STAFF-06 timing mask is the *"Twin of the tablet's copy (`apps/mobile-tauri/src/commands/auth.rs`), which was fixed first; the two are ADR-49 duplicates and **must stay in step**."* Nothing asserted that.
