@@ -93,6 +93,18 @@ Recorded because each one is still live in some document a worker might read, an
 
 ---
 
+## 2026-10-08: a repo-wide byte/char sweep and the Money surface — both SOUND. Nothing changed.
+
+**R182 noted the recent hits were concentrating in one function family, so this round widened to a census instead of a third one-off.**
+
+**Byte/char, swept repo-wide.** Narrowing 468 raw `.len()` comparison sites to the HAL-1 shape — a length feeding a TRUNCATE, PAD or SLICE — left **six** production sites, and every one uses `chars()` correctly: `audit::truncate_details`, `profile::mask_last4`, `export::email_sender`, `hal::receipt::truncate`, `hal::serial_display::write_line`, `security::mask_token`. The freshest of those is `profile::mask_last4`, a national-ID masker (ADR #35 D6) where getting this wrong would leak the middle of an identity number — it reads `value.chars().count()` once and derives every bound from it.
+
+**I followed the appending-marker hazard rather than assuming it away.** `truncate_details` caps at `MAX_DETAIL_LEN` = 4000 chars and then appends `"…[truncated]"`, so the RESULT can exceed the cap — a "cap" that does not cap. I checked whether anything depends on 4000 being the true ceiling: the `details` column is unbounded `TEXT DEFAULT '{}'` with no length CHECK, and `sales_checkout_tests.rs:186-193` documents that the truncation branch IS the sanitize-path proof on the checkout door. **The marker is deliberate, so this is intended behaviour rather than a defect.**
+
+**Money arithmetic.** `foundation::money` exposes `checked_add/sub/mul/div/negate/abs` and call sites in `products_stock_adjust`, `payables`, `loyalty` use the checked forms. I read a currency-guard asymmetry into `checked_mul`/`checked_div` and then **disproved it on myself**: only `checked_add` and `checked_sub` take another `Money`; the rest take a scalar or `self`, so there is no second currency to compare and the guard is structurally unnecessary. (My scan had also mis-listed `min` as unguarded — it takes `&self`, a regex artefact, not a finding.) The two PANICKING variants, `negate` and `abs`, both carry a warning naming the exact condition (`i64::MIN`, panics in release, wraps in dev) and a pointer to the checked alternative — and **neither has a production caller**, confirmed by grep.
+
+**Running tally: 29 guards examined, 15 sound, 15 with defects found and fixed.** The last three rounds have found one fix and two clean sweeps, and this one covered a wider surface than either. **One method note worth carrying: the asymmetry I "found" was a false positive that reading the signatures disproved — the same shape as R166's grep and R173's heuristic, and the third time this campaign that inspecting my own instrument mattered as much as inspecting the subject.**
+
 ## 2026-10-08: the HAL-1 byte/char surface is SOUND — three probes, no defect. Nothing changed.
 
 **I went looking for R181's pattern specifically: code that measures TEXT in BYTES, and tests that pin the resulting hazard as a caveat.** Two of the three leads were tests already doing the right thing, and one was a real surface that is properly guarded.
