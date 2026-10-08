@@ -85,6 +85,82 @@ fn no_bridge_module_answers_an_unreadable_ledger_with_the_wall_clock() {
     );
 }
 
+/// The timing mask's TWO copies must both degrade to a non-constant seed.
+///
+/// WHY THIS EXISTS. `auth/session.rs` carries the STAFF-06 timing mask and its own
+/// comment names the copy in `apps/mobile-tauri/src/commands/auth.rs` as a twin that
+/// "must stay in step" (ADR-49 duplicates). Nothing asserted that. MEASURED: replacing
+/// the tablet's per-attempt fallback with a bare `return 12345;` — the exact thing the
+/// shared comment says "would defeat the mask, which is this line's whole purpose" —
+/// left the whole `kasirmu-mobile` suite GREEN at 720 passed. So one half of a
+/// documented invariant could regress in silence.
+///
+/// WHAT IT ASSERTS, and why not a text comparison. The two copies already differ in
+/// their COMMENT WORDING, so pinning their source text would be brittle and would fail
+/// on a harmless reflow — the mistake the guards above record being fixed twice. What
+/// must hold is the INVARIANT: each copy seeds its fallback from a process-local
+/// counter that changes per attempt, never a constant. That is checked structurally:
+/// each file must contain the fallback counter and must NOT contain an arm that yields
+/// a literal, which is what a "simplification" to a constant looks like.
+///
+/// A SOURCE assertion, deliberately. The fallback arm needs a system clock set BEFORE
+/// the UNIX epoch, which no test can arrange in-process, so the branch is unreachable —
+/// the honest scope is the shape, not the behaviour. Same reasoning as the ledger guard
+/// above, and stated for the same reason.
+///
+/// Whitespace-insensitive, per the formatter-reflow note on this file's other sweeps.
+#[test]
+fn both_timing_mask_copies_degrade_to_a_non_constant_seed() {
+    let copies = [
+        ("auth/session.rs", include_str!("auth/session.rs")),
+        (
+            "apps/mobile-tauri/src/commands/auth.rs (twin)",
+            include_str!("../../../apps/mobile-tauri/src/commands/auth.rs"),
+        ),
+    ];
+
+    for (name, source) in copies {
+        let compact: String = source.chars().filter(|c| !c.is_whitespace()).collect();
+
+        // The mask itself must be present, or this assertion is vacuous for that copy.
+        assert!(
+            compact.contains(".map(|d|d.subsec_nanos())"),
+            "{name} no longer computes the STAFF-06 timing mask from subsec_nanos; if the mask \
+             moved, move this assertion with it rather than deleting it"
+        );
+
+        // The fallback must seed from the advancing counter.
+        assert!(
+            compact.contains("staticFALLBACK_SEQ:AtomicU32") && compact.contains("fetch_add("),
+            "{name} lost the per-attempt counter fallback. A CONSTANT seed would defeat the \
+             mask, which is the whole reason this fallback exists"
+        );
+
+        // And the arm must not RETURN anything directly. Checked as "no return statement
+        // inside the arm" rather than against a guessed literal, because my first version
+        // matched `|_|{return` and a mutation that put the return AFTER the warn --
+        // `|_|{tracing::warn!(...);return12345;` -- walked straight past it. Asserting the
+        // ABSENCE of the construct is what makes this robust to where the statement sits.
+        let arm_start = compact
+            .find(".unwrap_or_else(|_|{")
+            .unwrap_or_else(|| panic!("{name} has no .unwrap_or_else(|_|{{ ... }}) clock arm"));
+        // TAKE A FIXED WINDOW, not "up to the first `);`" — my first attempt searched for
+        // the arm's close and stopped at the `);` that ends the `tracing::warn!` INSIDE
+        // it, truncating the slice before the injected `return`. A fixed window past the
+        // warn is enough to see every statement this arm is allowed to contain, and it
+        // cannot be fooled by an early close.
+        let arm_rest = &compact[arm_start..];
+        let arm = &arm_rest[..arm_rest.len().min(360)];
+        assert!(
+            !arm.contains("return"),
+            "{name} RETURNS from the clock fallback arm. The arm must produce a value whose \
+             seed still differs per attempt; a return hands back whatever the statement \
+             computed, and the shared comment records that a CONSTANT here defeats the mask. \
+             Arm was: {arm}"
+        );
+    }
+}
+
 /// No bridge module may resolve a deduction location through a DEFAULTED fallback.
 ///
 /// `resolve_primary_location` already returns tier 4 (the canonical default) for a
