@@ -789,6 +789,11 @@ _Fill in as phases land. One row per acceptance command run._
 | 2026-10-09 | F4 | `cd ui && npx vitest run WorkspaceKdsSettings WorkspaceInventorySettings -t 'read rejects'` (kill-test) | **first version PASSED against the bug** | asserted only "disabled", which is true on the bug too; strengthened to edit-then-assert |
 | 2026-10-09 | F4 | `cd ui && npx vitest run WorkspaceKdsSettings WorkspaceInventorySettings -t 'FAILED settings read'` (kill-test, v2) | **2 FAILURES (killed)** | both discriminate after strengthening |
 | 2026-10-09 | F4 | `cd ui && npx vitest run Workspace Restaurant Settings` | exit 0 | **66 files, 1085 passed / 22 skipped** |
+| 2026-10-09 | F4 guard | `cd ui && npx vitest run loadFailureSeedsBaseline` | exit 0 | **6 tests passed**; 4 detector self-cases |
+| 2026-10-09 | F4 guard | `cd ui && npx vitest run loadFailureSeedsBaseline` (kill-test) | **FAIL (killed)** | names `WorkspaceInventorySettings.tsx:87`; restored, passes |
+| 2026-10-09 | F4 | `cd ui && npx vitest run WorkspaceStorePosSettings -t 'partial context load'` (kill-test v1) | **PASSED against the bug** | asserted only "disabled" + banner, both true on the bug; strengthened with an edit |
+| 2026-10-09 | F4 | same, kill-test v2 | **FAIL (killed)** | discriminates after strengthening |
+| 2026-10-09 | F4 | `cd ui && npx vitest run Workspace Settings loadFailureSeedsBaseline mirrorBeforeAwait` | exit 0 | **55 files, 875 passed / 22 skipped** |
 
 **P0 baseline (measured 2026-10-09).** These four are the reference figures for
 attributing any later regression:
