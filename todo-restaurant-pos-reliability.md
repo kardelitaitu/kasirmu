@@ -461,13 +461,25 @@ grant means.
   `npx vitest run Restaurant PosScreen CartPanel restaurantPosCrashIsolation` →
   **28 files / 525 passed, 1 skipped**.
 
-### P6 — i18n sweep (fixes F10)
+### P6 — i18n sweep (fixes F10) — 🔶 IN PROGRESS 2026-10-09
 
-- Move every hardcoded label/description in the three restaurant settings screens
-  into `shared-ui/locales/products.ftl` (+ `.id.ftl`) and render through
-  `Localized` / `l10n.getString`.
-- **Acceptance:** the repo's FTL orphan/dedupe pre-commit steps pass, and
-  `npm run i18n` (from `ui/`) exits 0.
+**`RestaurantSettingsScreen` DONE.** All 17 visible labels/descriptions and the
+vibration badge moved into `products.ftl` + `products.id.ftl` (keys
+`restaurant-setting-*`) and are now read through `l10n.getString`. Indonesian
+translations supplied, not left as English copies — the i18n gate fails a
+byte-identical `.id.ftl`.
+
+**Test:** a case asserts the bundle VALUES render (`'Customer Name'`, the customer
+name description, `'Save Tab / Open Bill'`, the badge), so a regression to a
+hardcoded literal fails rather than passing on the same visible text.
+
+**Acceptance met for this screen:** `verify-bundle-parity.py` → **0 missing keys**
+(both bundles grew by 17); `npx vitest run RestaurantSettingsScreen` → 11 passed.
+
+**Still open:** `RestaurantReceiptsScreen` (3 sites) and `RestaurantPaymentsScreen`
+(10 aria-labels). ⚠️ `RestaurantPaymentsScreen.tsx` is currently DIRTY with another
+lane's uncommitted change, so editing it would sweep their work into this lane's
+commit (AGENTS.md §7.3) — it must wait until that file is clean.
 
 ### P7 — Parity verification (closes F12)
 

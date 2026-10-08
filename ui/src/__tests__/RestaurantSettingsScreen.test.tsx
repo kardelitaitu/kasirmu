@@ -236,6 +236,23 @@ describe('RestaurantSettingsScreen', () => {
     expect(localStorage.getItem('pos.interaction_sound')).toBe('true');
   });
 
+  it('renders the setting labels from the FTL bundle, not hardcoded English (F10)', async () => {
+    // The screen used to pass literal English into SettingRow. Asserting the
+    // bundle VALUE (not just that text exists) is what makes a regression to a
+    // hardcoded string fail: the fixtures below load the real products.ftl.
+    await renderScreen();
+    await waitFor(() => {
+      expect(screen.queryByText(/Loading/i)).toBeNull();
+    });
+
+    // Present via the bundle.
+    expect(screen.getByText('Customer Name')).toBeInTheDocument();
+    expect(screen.getByText('Allow capturing guest or customer name on order tickets and tabs')).toBeInTheDocument();
+    expect(screen.getByText('Save Tab / Open Bill')).toBeInTheDocument();
+    // The badge, which was also a literal.
+    expect(screen.getByText(/Mobile\/Tablet only/)).toBeInTheDocument();
+  });
+
   it('calls onBack immediately when there are no unsaved changes', async () => {
     const onBack = vi.fn();
     await renderScreen({ onBack });

@@ -518,24 +518,24 @@ export function RestaurantSettingsScreen({ onSaved, onBack }: RestaurantSettings
               <div className="resto-compact-form">
                 <SettingRow
                   id="resto-setting-customer-name"
-                  label="Customer Name"
-                  description="Allow capturing guest or customer name on order tickets and tabs"
+                  label={l10n.getString('restaurant-setting-customer-name')}
+                  description={l10n.getString('restaurant-setting-customer-name-desc')}
                   checked={customerName}
                   onChange={setCustomerName}
                   testId="setting-toggle-customer-name"
                 />
                 <SettingRow
                   id="resto-setting-guest-count"
-                  label="Guest Count (Pax)"
-                  description="Prompt for party size and number of seated guests per table"
+                  label={l10n.getString('restaurant-setting-guest-count')}
+                  description={l10n.getString('restaurant-setting-guest-count-desc')}
                   checked={guestCount}
                   onChange={setGuestCount}
                   testId="setting-toggle-guest-count"
                 />
                 <SettingRow
                   id="resto-setting-order-type"
-                  label="Order Type Selection"
-                  description="Require selecting Dine-in, Takeaway, or Delivery before adding items"
+                  label={l10n.getString('restaurant-setting-order-type')}
+                  description={l10n.getString('restaurant-setting-order-type-desc')}
                   checked={orderTypePrompt}
                   onChange={setOrderTypePrompt}
                   testId="setting-toggle-order-type"
@@ -548,24 +548,24 @@ export function RestaurantSettingsScreen({ onSaved, onBack }: RestaurantSettings
               <div className="resto-compact-form">
                 <SettingRow
                   id="resto-setting-hold-order"
-                  label="Hold Order"
-                  description="Allow cashier to park or temporarily hold in-progress orders"
+                  label={l10n.getString('restaurant-setting-hold-order')}
+                  description={l10n.getString('restaurant-setting-hold-order-desc')}
                   checked={holdOrder}
                   onChange={setHoldOrder}
                   testId="setting-toggle-hold-order"
                 />
                 <SettingRow
                   id="resto-setting-save-tab"
-                  label="Save Tab / Open Bill"
-                  description="Enable running customer tabs and table tabs for deferred settlement"
+                  label={l10n.getString('restaurant-setting-save-tab')}
+                  description={l10n.getString('restaurant-setting-save-tab-desc')}
                   checked={saveTab}
                   onChange={setSaveTab}
                   testId="setting-toggle-save-tab"
                 />
                 <SettingRow
                   id="resto-setting-course-firing"
-                  label="Course Firing"
-                  description="Enable coursing rules (appetizers, mains, desserts) for kitchen firing"
+                  label={l10n.getString('restaurant-setting-course-firing')}
+                  description={l10n.getString('restaurant-setting-course-firing-desc')}
                   checked={courseFiring}
                   onChange={setCourseFiring}
                   testId="setting-toggle-course-firing"
@@ -578,16 +578,16 @@ export function RestaurantSettingsScreen({ onSaved, onBack }: RestaurantSettings
               <div className="resto-compact-form">
                 <SettingRow
                   id="resto-setting-auto-print-kitchen"
-                  label="Auto-Print Kitchen Ticket (KOT)"
-                  description="Automatically send order tickets to kitchen printer upon saving or holding"
+                  label={l10n.getString('restaurant-setting-auto-print')}
+                  description={l10n.getString('restaurant-setting-auto-print-desc')}
                   checked={autoPrintKitchen}
                   onChange={setAutoPrintKitchen}
                   testId="setting-toggle-auto-print-kitchen"
                 />
                 <SettingRow
                   id="resto-setting-sound-chime"
-                  label="Order Sound Notifications"
-                  description="Play an audible confirmation chime when orders are sent or updated"
+                  label={l10n.getString('restaurant-setting-sound-chime')}
+                  description={l10n.getString('restaurant-setting-sound-chime-desc')}
                   checked={soundChime}
                   onChange={setSoundChime}
                   testId="setting-toggle-sound-chime"
@@ -616,7 +616,7 @@ export function RestaurantSettingsScreen({ onSaved, onBack }: RestaurantSettings
                     l10n.getString('restaurant-settings-interaction-vibration-desc') ||
                     'Device vibration on taps (supported on Android/tablet only; not available on Windows, Linux, or macOS)'
                   }
-                  badge="Mobile/Tablet only (not on Win/Linux/Mac)"
+                  badge={l10n.getString('restaurant-setting-vibration-badge')}
                   checked={interactionVibration}
                   onChange={setInteractionVibration}
                   testId="setting-toggle-interaction-vibration"
