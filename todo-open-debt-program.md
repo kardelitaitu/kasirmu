@@ -93,6 +93,20 @@ Recorded because each one is still live in some document a worker might read, an
 
 ---
 
+## 2026-10-08: the profile-seal read/write split is SOUND in BOTH directions. Three probes, no defect.
+
+**Probed the at-rest PII path in `kasirmu-core/src/db/profile.rs`, which I had not examined, by looking for the two ways it could fail: leaking ciphertext on the read, and erasing it on the write.**
+
+**Probe 1 — the fail-closed read.** `decrypt_sensitive` collapses three column states for display and returns `None` on a decrypt failure. **MEASURED: mutating that `None` into `Some(stored.clone())` — the fail-OPEN direction, returning raw ciphertext — FAILED 4 tests.**
+
+**Probe 2 — the preserve rule on write.** `StoredCipher` is a three-state enum whose own comment states the invariant: *"A read failure is never evidence that a field is empty; the only safe verdict for a present-but-unopenable seal."* **MEASURED: folding `Unreadable` into `Absent` — so a write would null out ciphertext a later key restore could still read — FAILED 4 tests.**
+
+**Both directions of the same hazard are pinned, which is the unusual part.** A reviewer can be satisfied by either half alone: a read that does not leak looks safe, and a write that does not erase looks safe, but only the pair is the contract. The design gets there by *deliberately* keeping the read path and the write path on different types — `decrypt_sensitive` returns `Option<String>` and collapses absent/empty/unreadable for a renderer, while `StoredCipher` keeps all three apart because *"only one of them may be overwritten with a null"* — and the doc says exactly why the distinction cannot be shared.
+
+**Also checked and cleared:** `stored_sensitive_columns`'s `row.unwrap_or_default()` looked like a fail-open default, but it fires only when the `users` row does not exist, where `StoredCipher::Absent` is the correct verdict rather than a fallback; and `user_profile_has_unreadable_seal` is documented as *"a diagnostic, not a gate — it does not itself deny any read"*, so its boolean cannot be mistaken for an authorisation decision. `decrypt_sensitive` also logs the failure at warn rather than returning `None` silently (COR-24), so an undecryptable PII column no longer reads as "this staff member has no national id". 96/96 green; production restored byte-for-byte.
+
+**Running tally: 35 guards examined, 19 sound, 19 with defects found and fixed.**
+
 ## 2026-10-08: the crypto crate's H1 invariant is SOUND, and the byte/char sweep came up empty. Nothing changed.
 
 **Two investigations, neither producing a defect, and one of them closes the sweep R186 began.**
