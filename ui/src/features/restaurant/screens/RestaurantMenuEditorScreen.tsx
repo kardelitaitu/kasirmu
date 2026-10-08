@@ -51,11 +51,20 @@ import { parsePriceToMinor, formatMinorForInput, generateMenuSku } from './menuE
 import './RestaurantSettingsScreens.css';
 import './RestaurantMenuEditorScreen.css';
 
-/** A menu item being authored. Price is held in minor units, as the API wants. */
+/**
+ * A menu item being authored. Price is held in minor units, as the API wants.
+ *
+ * `categoryName` rather than an id, because that is the shape the wire uses:
+ * `ProductDto.category` is the category's NAME (a plain string), while
+ * `list_products_scoped` and its write twins take an id. The editor therefore
+ * works in names — the same currency as the product rows it displays — and
+ * resolves the id only at the call site, exactly as RetailPosScreen does
+ * (`categories.find((c) => c.name === ...)`).
+ */
 interface MenuDraft {
   sku: string | null;
   name: string;
-  categoryId: string;
+  categoryName: string;
   priceMinor: number;
   isActive: boolean;
 }
@@ -92,7 +101,7 @@ const DEFAULT_CATEGORY_COLOUR = CATEGORY_COLOURS[0]!;
 const EMPTY_DRAFT: MenuDraft = {
   sku: null,
   name: '',
-  categoryId: '',
+  categoryName: '',
   priceMinor: 0,
   isActive: true,
 };
@@ -108,7 +117,9 @@ export default function RestaurantMenuEditorScreen({ onBack }: RestaurantMenuEdi
 
   const [items, setItems] = useState<ProductDto[]>([]);
   const [categories, setCategories] = useState<CategoryDto[]>([]);
-  const [selectedCategoryId, setSelectedCategoryId] = useState<string>('');
+  // The selected category's NAME. ProductDto.category carries a name (not an id),
+  // so a filter can only match on a name.
+  const [selectedCategoryName, setSelectedCategoryName] = useState<string>('');
   const [draft, setDraft] = useState<MenuDraft | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -140,7 +151,7 @@ export default function RestaurantMenuEditorScreen({ onBack }: RestaurantMenuEdi
         if (cancelled) return;
         setItems(prods);
         setCategories(cats);
-        setSelectedCategoryId(cats[0]?.id ?? '');
+        setSelectedCategoryName(cats[0]?.name ?? '');
       } catch (err) {
         if (!cancelled) {
           addToast({
@@ -158,20 +169,35 @@ export default function RestaurantMenuEditorScreen({ onBack }: RestaurantMenuEdi
   }, [sessionToken, addToast, l10n]);
 
   const visibleItems = useMemo(
-    () => items.filter((p) => (p.category ?? '') === selectedCategoryId),
-    [items, selectedCategoryId],
+    () => items.filter((p) => (p.category ?? '') === selectedCategoryName),
+    [items, selectedCategoryName],
+  );
+
+  /**
+   * Resolve a category NAME to its id, for the write calls.
+   *
+   * `ProductDto.category` is a name; `create_product_scoped` and
+   * `update_product_scoped` take an id. Names are what the product rows carry
+   * and what the draft holds, so the translation happens here, once, at the
+   * boundary — the same move RetailPosScreen makes inline. An unknown name
+   * yields null, which the API reads as "no category" rather than as a
+   * dangling reference.
+   */
+  const categoryIdFor = useCallback(
+    (name: string): string | null => categories.find((c) => c.name === name)?.id ?? null,
+    [categories],
   );
 
   const beginCreate = useCallback(() => {
-    setDraft({ ...EMPTY_DRAFT, categoryId: selectedCategoryId });
+    setDraft({ ...EMPTY_DRAFT, categoryName: selectedCategoryName });
     setDirty(true);
-  }, [selectedCategoryId]);
+  }, [selectedCategoryName]);
 
   const beginEdit = useCallback((p: ProductDto) => {
     setDraft({
       sku: p.sku,
       name: p.name,
-      categoryId: p.category ?? '',
+      categoryName: p.category ?? '',
       priceMinor: p.price.minor_units,
       isActive: p.is_active !== false,
     });
@@ -216,7 +242,7 @@ export default function RestaurantMenuEditorScreen({ onBack }: RestaurantMenuEdi
           name: draft.name,
           priceMinor: draft.priceMinor,
           currency,
-          categoryId: draft.categoryId || null,
+          categoryId: categoryIdFor(draft.categoryName),
           taxRateIds: [],
           isActive: draft.isActive,
         });
@@ -226,7 +252,7 @@ export default function RestaurantMenuEditorScreen({ onBack }: RestaurantMenuEdi
               ? {
                   ...p,
                   name: draft.name,
-                  category: draft.categoryId || null,
+                  category: draft.categoryName || null,
                   price: { minor_units: draft.priceMinor, currency },
                   is_active: draft.isActive,
                 }
@@ -243,7 +269,7 @@ export default function RestaurantMenuEditorScreen({ onBack }: RestaurantMenuEdi
           name: draft.name,
           priceMinor: draft.priceMinor,
           currency,
-          categoryId: draft.categoryId || null,
+          categoryId: categoryIdFor(draft.categoryName),
           initialStock: 0,
           taxRateIds: [],
           isActive: draft.isActive,
@@ -256,7 +282,7 @@ export default function RestaurantMenuEditorScreen({ onBack }: RestaurantMenuEdi
           {
             sku,
             name: draft.name,
-            category: draft.categoryId || null,
+            category: draft.categoryName || null,
             price: { minor_units: draft.priceMinor, currency },
             barcode: null,
             in_stock: false,
@@ -280,7 +306,7 @@ export default function RestaurantMenuEditorScreen({ onBack }: RestaurantMenuEdi
     } finally {
       setSaving(false);
     }
-  }, [draft, sessionToken, addToast, l10n]);
+  }, [draft, sessionToken, categoryIdFor, addToast, l10n]);
 
   const handleDeleteItem = useCallback(
     async (sku: string) => {
@@ -317,7 +343,9 @@ export default function RestaurantMenuEditorScreen({ onBack }: RestaurantMenuEdi
       // Re-roll the icon for the next one, so a second add does not silently
       // inherit the first category's glyph.
       setNewCategoryIcon(randomCategoryIcon());
-      if (res?.id) setSelectedCategoryId(res.id);
+      // Select the category just created, by the name we sent: the rail filters
+      // on names, and re-reading the list would not tell us which row is new.
+      if (res?.id) setSelectedCategoryName(name);
     } catch (err) {
       addToast({
         message: l10nErrorMessage(err, l10n, 'restaurant-menu-editor-error-save'),
@@ -327,15 +355,18 @@ export default function RestaurantMenuEditorScreen({ onBack }: RestaurantMenuEdi
   }, [newCategoryName, newCategoryIcon, sessionToken, addToast, l10n]);
 
   const handleDeleteCategory = useCallback(
-    async (id: string) => {
+    async (category: CategoryDto) => {
       if (!sessionToken) return;
       try {
-        const res = await deleteCategoryScoped(sessionToken, id);
+        const res = await deleteCategoryScoped(sessionToken, category.id);
         const cats = await listCategoriesScoped(sessionToken);
         const prods = await listProductsScoped(sessionToken);
         setCategories(cats);
         setItems(prods);
-        if (selectedCategoryId === id) setSelectedCategoryId(cats[0]?.id ?? '');
+        // Deleting the category being viewed must move the selection, or the
+        // right-hand pane would filter on a name that no longer exists and show
+        // an empty list with no explanation.
+        if (selectedCategoryName === category.name) setSelectedCategoryName(cats[0]?.name ?? '');
         // The backend reports how many products were rehomed rather than deleted;
         // surfacing it is the difference between "it worked" and "it moved my items".
         if (res?.affected_products) {
@@ -355,7 +386,7 @@ export default function RestaurantMenuEditorScreen({ onBack }: RestaurantMenuEdi
         });
       }
     },
-    [sessionToken, selectedCategoryId, addToast, l10n],
+    [sessionToken, selectedCategoryName, addToast, l10n],
   );
 
   return (
@@ -453,19 +484,19 @@ export default function RestaurantMenuEditorScreen({ onBack }: RestaurantMenuEdi
                 <li key={c.id}>
                   <button
                     type="button"
-                    className={`restaurant-menu-editor-category${c.id === selectedCategoryId ? ' restaurant-menu-editor-category--active' : ''}`}
-                    onClick={() => setSelectedCategoryId(c.id)}
-                    aria-current={c.id === selectedCategoryId ? 'true' : undefined}
+                    className={`restaurant-menu-editor-category${c.name === selectedCategoryName ? ' restaurant-menu-editor-category--active' : ''}`}
+                    onClick={() => setSelectedCategoryName(c.name)}
+                    aria-current={c.name === selectedCategoryName ? 'true' : undefined}
                   >
                     <span className="restaurant-menu-editor-category-name">{c.name}</span>
                     <span className="restaurant-menu-editor-category-count">
-                      {items.filter((p) => (p.category ?? '') === c.id).length}
+                      {items.filter((p) => (p.category ?? '') === c.name).length}
                     </span>
                   </button>
                   <button
                     type="button"
                     className="restaurant-menu-editor-category-delete"
-                    onClick={() => handleDeleteCategory(c.id)}
+                    onClick={() => handleDeleteCategory(c)}
                     aria-label={l10n.getString('restaurant-menu-editor-delete-category-aria', { name: c.name })}
                   >
                     {'\u00d7'}
@@ -550,7 +581,7 @@ export default function RestaurantMenuEditorScreen({ onBack }: RestaurantMenuEdi
                     type="button"
                     className="btn btn--primary btn--sm restaurant-menu-editor-new-item"
                     onClick={beginCreate}
-                    disabled={!selectedCategoryId}
+                    disabled={!selectedCategoryName}
                     data-testid="restaurant-menu-editor-new-item"
                   >
                     <Localized id="restaurant-menu-editor-new-item">
@@ -596,13 +627,13 @@ export default function RestaurantMenuEditorScreen({ onBack }: RestaurantMenuEdi
                       <Localized id="restaurant-menu-editor-field-category">Category</Localized>
                       <select
                         id="restaurant-menu-editor-draft-category"
-                        value={draft.categoryId}
-                        onChange={(e) => setDraft({ ...draft, categoryId: e.target.value })}
+                        value={draft.categoryName}
+                        onChange={(e) => setDraft({ ...draft, categoryName: e.target.value })}
                         data-testid="restaurant-menu-editor-draft-category"
                       >
                         <option value="">{l10n.getString('restaurant-menu-editor-uncategorised')}</option>
                         {categories.map((c) => (
-                          <option key={c.id} value={c.id}>
+                          <option key={c.id} value={c.name}>
                             {c.name}
                           </option>
                         ))}
