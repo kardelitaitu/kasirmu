@@ -204,7 +204,7 @@ export function SyncStatusScreen() {
             {plan?.ok && plan.plan && (
               <div
                 className={`settings-sync-plan-row${plan.plan === 'free' ? ' settings-sync-plan-row--free' : ''}`}
-                data-testid="sync-plan-row"
+                data-testid="sync-status-plan-row"
               >
                 <Localized id="settings-sync-plan-label"><span className="settings-sync-plan-label">Plan</span></Localized>
                 {plan.plan === 'pro' ? (
@@ -226,7 +226,7 @@ export function SyncStatusScreen() {
 
             {/* ── Detailed queue status ──────────────── */}
             {summary && (
-              <div className="settings-sync-summary" data-testid="sync-queue-summary">
+              <div className="settings-sync-summary" data-testid="sync-status-queue-summary">
                 <div className="settings-sync-summary-grid">
                   <span className="settings-sync-summary-item">
                     <strong>{summary.pendingCount}</strong>
