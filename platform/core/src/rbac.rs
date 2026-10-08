@@ -119,8 +119,7 @@ impl Role {
     /// ```
     #[must_use]
     pub fn has_permission(&self, required: &str) -> bool {
-        let granted: Vec<String> = serde_json::from_str(&self.permissions).unwrap_or_default();
-        has_permission(&granted, required)
+        check_permissions_json(&self.permissions, required)
     }
 
     /// Convenience: same as [`has_permission`] but returns
@@ -255,6 +254,35 @@ impl fmt::Display for Permission {
 /// // Empty set denies everything
 /// assert!(!has_permission(&[] as &[String], "sales:void"));
 /// ```
+/// Check if a single granted permission pattern satisfies the required permission.
+#[inline]
+fn grant_matches(grant: &str, required: &str, domain: &str, well_formed: bool) -> bool {
+    grant == "*"
+        || grant == required
+        || (well_formed && grant.strip_suffix(":*") == Some(domain))
+}
+
+/// Check whether a serialized JSON array of permission strings grants a required permission.
+///
+/// Borrows sequence elements via `Cow<str>` to avoid allocating individual permission
+/// strings on the heap. Malformed JSON is treated as deny all.
+#[must_use]
+pub fn check_permissions_json(json: &str, required: &str) -> bool {
+    let (domain, _action) = required.split_once(':').unwrap_or((required, ""));
+    let well_formed = !domain.is_empty() && !domain.contains('*') && !_action.contains('*');
+
+    match serde_json::from_str::<Vec<std::borrow::Cow<'_, str>>>(json) {
+        Ok(grants) => grants
+            .iter()
+            .any(|grant| grant_matches(grant.as_ref(), required, domain, well_formed)),
+        Err(_) => false,
+    }
+}
+
+/// Resolve whether the granted permissions satisfy the required permission.
+///
+/// Supports exact match, domain wildcard (e.g. `sales:*`), and global wildcard (`*`).
+/// Operates with zero heap allocations on the required domain pattern.
 #[must_use]
 pub fn has_permission(granted: &[String], required: &str) -> bool {
     let (domain, _action) = required.split_once(':').unwrap_or((required, ""));
@@ -268,15 +296,10 @@ pub fn has_permission(granted: &[String], required: &str) -> bool {
     // this can only ever fire on a future/mistaken caller -- which is
     // exactly the caller the note in this file's header warned about.
     let well_formed = !domain.is_empty() && !domain.contains('*') && !_action.contains('*');
-    let wildcard_domain = if well_formed {
-        format!("{domain}:*")
-    } else {
-        String::new()
-    };
 
     granted
         .iter()
-        .any(|p| p == "*" || p == required || p == &wildcard_domain)
+        .any(|p| grant_matches(p, required, domain, well_formed))
 }
 
 // ── Built-in role ids ───────────────────────────────────────────────

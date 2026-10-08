@@ -6,7 +6,7 @@
 //! foundation would make it depend on a crate that depends on it. Every impl moved with its type,
 //! including the hand-written `Debug` that redacts `User::pin_hash` (MSL-9 / E-1).
 
-use crate::rbac::{AuthorizationError, has_permission};
+use crate::rbac::{AuthorizationError, check_permissions_json};
 use serde::{Deserialize, Serialize};
 
 /// A staff role with a set of permissions.
@@ -51,8 +51,7 @@ impl Role {
     /// Check if role grants required permission.
     #[must_use]
     pub fn has_permission(&self, required: &str) -> bool {
-        let granted: Vec<String> = serde_json::from_str(&self.permissions).unwrap_or_default();
-        has_permission(&granted, required)
+        check_permissions_json(&self.permissions, required)
     }
 
     /// The raw permission keys granted by this role, verbatim from the
