@@ -551,6 +551,24 @@ deliberate revert). Rewritten to target `#resto-header-title` and to assert the
 exact typed value; it now fails on the bug with
 `expected 'ChangedTitle' not to be 'ChangedTitle'`.
 
+**F4 RECURRED in the same file — fixed 2026-10-09.** `RestaurantReceiptsScreen`
+seeds its state and `originalsRef` from localStorage/context BEFORE the
+`getUserPreferencesScoped` read resolves, and that read ended in
+`.catch(() => { /* Fall back gracefully */ })` (`:463-465`). A rejected read
+therefore left `dirty` false and the screen looking saved — with Save enabled over
+values that were never confirmed, the exact F4 loss. Now: `loadFailed` disables
+Save, the header stops claiming "All changes saved", and a banner with Retry
+clears the one-shot init ref and re-runs the effect.
+
+⚠️ **F4 and F5 are both recurring in this file, which is the real finding.** They
+were filed as specific sites; each has now been found again somewhere new. F5 got a
+static guard (round 5). F4 does NOT yet have one — it has been fixed in three
+places by hand (`RestaurantSettingsScreen`, `WorkspaceRestaurantPosSettings`,
+`RestaurantReceiptsScreen`) and the next file will be found the same slow way.
+**A guard for the F4 shape is the highest-value remaining work in this plan:**
+grep for a `.catch(` that swallows a load error whose result seeds a dirty-tracking
+baseline.
+
 **Still open:** `RestaurantPaymentsScreen` (10 `aria-label`s). ⚠️ That file is
 currently DIRTY with another lane's uncommitted change, so editing it would sweep
 their work into this lane's commit (AGENTS.md §7.3). It must wait until the file is

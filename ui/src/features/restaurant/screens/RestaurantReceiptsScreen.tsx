@@ -228,6 +228,14 @@ export default function RestaurantReceiptsScreen({
   // Track originals for dirty state
   const originalsRef = useRef<ReceiptFormValues | null>(null);
   const [loaded, setLoaded] = useState(false);
+
+  // True when the user-preferences read FAILED (F4). The screen seeds its state
+  // and `originalsRef` from localStorage/context BEFORE that read resolves, so a
+  // rejected read used to leave `dirty` false and the screen looking saved — with
+  // Save enabled over values that were never confirmed. Same guard as
+  // RestaurantSettingsScreen: no Save, an explicit error, and a retry.
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [reloadNonce, setReloadNonce] = useState(0);
   const receiptInitializedRef = useRef(false);
   const hwInitializedRef = useRef(false);
 
@@ -458,13 +466,19 @@ export default function RestaurantReceiptsScreen({
               originalsRef.current.businessLogo = p['resto_rcpt_logo'];
             }
           }
+          setLoadFailed(false);
           setDirtyVersion((v) => v + 1);
         })
         .catch(() => {
-          // Fall back gracefully
+          // A FAILED preferences read is not an answer. Do NOT leave the screen
+          // looking saved over values that were never confirmed (F4) — the
+          // operator's next Save would write them over the real ones.
+          setLoadFailed(true);
         });
     }
-  }, [settings.receipt, settings.store.logo, settings.store.name, settings.store.address, sessionToken, hw.profile, settingsCtx?.loading]);
+    // `reloadNonce` is the Retry control's re-run trigger. The init guard above
+    // is a ref, so Retry must clear it too (see the handler).
+  }, [settings.receipt, settings.store.logo, settings.store.name, settings.store.address, sessionToken, hw.profile, settingsCtx?.loading, reloadNonce]);
 
   // Overlay the SCOPED receipt format (the same layer the Settings → Business
   // Defaults card owns) on top of the legacy base above, and remember the
@@ -1267,12 +1281,36 @@ export default function RestaurantReceiptsScreen({
           </div>
         </div>
 
+        {/* Load failure (F4): shown instead of trusting the controls. Retry clears
+            the one-shot init guard so the effect re-runs. */}
+        {loadFailed && (
+          <div className="settings-error-banner" role="alert" data-testid="restaurant-receipts-load-error">
+            <span>
+              <Localized id="restaurant-settings-error-load">
+                <span>Failed to load restaurant settings</span>
+              </Localized>
+            </span>
+            <button
+              type="button"
+              className="btn btn--secondary btn--sm"
+              data-testid="restaurant-receipts-retry-btn"
+              onClick={() => {
+                receiptInitializedRef.current = false;
+                setReloadNonce((n) => n + 1);
+              }}
+            >
+              <Localized id="retry"><span>Retry</span></Localized>
+            </button>
+          </div>
+        )}
+
         <div className="restaurant-settings-header-actions">
           <span
             className="restaurant-settings-header-dirty"
             style={{ color: dirty ? 'var(--color-warning)' : 'var(--color-fg-muted)' }}
           >
-            {dirty ? (
+            {/* A failed load must not claim "All changes saved" (F4). */}
+            {loadFailed ? null : dirty ? (
               <Localized id="restaurant-unsaved-changes">Unsaved changes</Localized>
             ) : (
               <Localized id="restaurant-all-saved">All changes saved</Localized>
@@ -1281,7 +1319,7 @@ export default function RestaurantReceiptsScreen({
           <button
             type="button"
             className={`btn btn--primary btn--md resto-anim-btn ${saving ? 'resto-anim-btn--loading' : ''}`}
-            disabled={!dirty || saving}
+            disabled={!dirty || saving || loadFailed}
             aria-busy={saving || undefined}
             onClick={handleSave}
             data-testid="restaurant-receipts-save-btn"

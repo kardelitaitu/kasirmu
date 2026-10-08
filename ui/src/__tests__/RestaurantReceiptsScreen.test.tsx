@@ -690,6 +690,40 @@ describe('RestaurantReceiptsScreen — Test Print Codes & Results', () => {
     });
   });
 
+  it('refuses to look saved when the user-preferences read FAILS (F4)', async () => {
+    // The screen seeds from localStorage/context before the prefs read resolves,
+    // so a rejected read used to leave dirty false and Save enabled over
+    // unconfirmed values.
+    const { getUserPreferencesScoped } = await import('@/api/settings');
+    vi.mocked(getUserPreferencesScoped).mockRejectedValueOnce(new Error('ipc down'));
+
+    await renderScreen();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('restaurant-receipts-load-error')).toBeInTheDocument();
+    });
+    expect(screen.getByTestId('restaurant-receipts-save-btn')).toBeDisabled();
+    expect(screen.queryByText(/All changes saved/i)).toBeNull();
+    expect(screen.getByTestId('restaurant-receipts-retry-btn')).toBeInTheDocument();
+  });
+
+  it('re-reads the preferences when Retry is pressed after a failure', async () => {
+    const { getUserPreferencesScoped } = await import('@/api/settings');
+    vi.mocked(getUserPreferencesScoped).mockRejectedValueOnce(new Error('ipc down'));
+
+    await renderScreen();
+    await waitFor(() => {
+      expect(screen.getByTestId('restaurant-receipts-load-error')).toBeInTheDocument();
+    });
+
+    vi.mocked(getUserPreferencesScoped).mockResolvedValue({});
+    await userEvent.click(screen.getByTestId('restaurant-receipts-retry-btn'));
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('restaurant-receipts-load-error')).toBeNull();
+    });
+  });
+
   it('does not write the localStorage cache when the save is rejected (F5)', async () => {
     // The cache is what a fresh mount renders from, so writing it before the
     // writes resolve would show an un-persisted edit as if it had saved.
