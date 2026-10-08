@@ -146,6 +146,42 @@
   outline-offset: 2px;
 }
 
+/* ── Category icon picker ──────────────────────────────────────── */
+
+.restaurant-menu-editor-icon-picker {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-2);
+}
+
+.restaurant-menu-editor-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--touch-target-min);
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-fg-muted);
+  cursor: pointer;
+}
+
+.restaurant-menu-editor-icon-btn:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-fg);
+}
+
+.restaurant-menu-editor-icon-btn:focus-visible {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 2px;
+}
+
+.restaurant-menu-editor-icon-btn--selected {
+  background: var(--color-bg-hover);
+  color: var(--color-fg);
+  border-width: 2px;
+}
+
 .restaurant-menu-editor-add-category {
   display: flex;
   gap: var(--space-2);

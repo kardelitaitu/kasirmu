@@ -38,6 +38,15 @@ import {
   type ProductDto,
   type CategoryDto,
 } from '@/api/products';
+import {
+  CATEGORY_ICON_OPTIONS,
+  CATEGORY_ICON_IDS,
+  CATEGORY_COLOURS,
+  categoryIconLabelId,
+  nextRadioValue,
+  randomCategoryIcon,
+} from '@/features/categories/categoryIcons';
+import { CategoryIconSvg } from '@/features/categories/CategoryIconSvg';
 import { parsePriceToMinor, formatMinorForInput, generateMenuSku } from './menuEditorLogic';
 import './RestaurantSettingsScreens.css';
 import './RestaurantMenuEditorScreen.css';
@@ -71,6 +80,15 @@ function EditGlyph() {
   );
 }
 
+/**
+ * The colour a category created here is given.
+ *
+ * This screen deliberately offers no colour picker — the request was for icons —
+ * but the API requires a colour, so the category takes the palette's first entry.
+ * It is restylable in Category Management, which owns the colour UI.
+ */
+const DEFAULT_CATEGORY_COLOUR = CATEGORY_COLOURS[0]!;
+
 const EMPTY_DRAFT: MenuDraft = {
   sku: null,
   name: '',
@@ -97,6 +115,11 @@ export default function RestaurantMenuEditorScreen({ onBack }: RestaurantMenuEdi
   const [dirty, setDirty] = useState(false);
   const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
+  // The icon a NEW category will carry. The API also requires a colour, and this
+  // screen offers no picker for it (the ask here was icons): the category takes
+  // DEFAULT_CATEGORY_COLOUR, which the Category Management screen can restyle.
+  const [newCategoryIcon, setNewCategoryIcon] = useState<string>(() => randomCategoryIcon());
+  const iconRadioRefs = useRef<Record<string, HTMLButtonElement | null>>({});
 
   // Guards the load effect against a resolve arriving after unmount, and against
   // React 18's double-invoke in development remounting the fetch.
@@ -285,12 +308,15 @@ export default function RestaurantMenuEditorScreen({ onBack }: RestaurantMenuEdi
       const res = await createCategoryScoped(sessionToken, {
         id: `cat-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
         name,
-        colour: '#6b7280',
-        icon: 'dots-2',
+        colour: DEFAULT_CATEGORY_COLOUR,
+        icon: newCategoryIcon,
       });
       const cats = await listCategoriesScoped(sessionToken);
       setCategories(cats);
       setNewCategoryName('');
+      // Re-roll the icon for the next one, so a second add does not silently
+      // inherit the first category's glyph.
+      setNewCategoryIcon(randomCategoryIcon());
       if (res?.id) setSelectedCategoryId(res.id);
     } catch (err) {
       addToast({
@@ -298,7 +324,7 @@ export default function RestaurantMenuEditorScreen({ onBack }: RestaurantMenuEdi
         type: 'error',
       });
     }
-  }, [newCategoryName, sessionToken, addToast, l10n]);
+  }, [newCategoryName, newCategoryIcon, sessionToken, addToast, l10n]);
 
   const handleDeleteCategory = useCallback(
     async (id: string) => {
@@ -447,6 +473,44 @@ export default function RestaurantMenuEditorScreen({ onBack }: RestaurantMenuEdi
                 </li>
               ))}
             </ul>
+            {/* Icon picker for the category about to be created. Same
+                radiogroup contract as CategoryManagementScreen: arrows move
+                focus AND selection, Tab leaves the group, and each button is
+                named by its own Fluent label because it renders an icon only. */}
+            <div
+              className="restaurant-menu-editor-icon-picker"
+              role="radiogroup"
+              aria-label={l10n.getString('categories-icon-picker-aria')}
+            >
+              {CATEGORY_ICON_OPTIONS.map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  role="radio"
+                  ref={(el) => { iconRadioRefs.current[opt.id] = el; }}
+                  tabIndex={newCategoryIcon === opt.id ? 0 : -1}
+                  aria-checked={newCategoryIcon === opt.id}
+                  aria-label={l10n.getString(categoryIconLabelId(opt.id))}
+                  className={
+                    newCategoryIcon === opt.id
+                      ? 'restaurant-menu-editor-icon-btn restaurant-menu-editor-icon-btn--selected'
+                      : 'restaurant-menu-editor-icon-btn'
+                  }
+                  style={newCategoryIcon === opt.id ? { borderColor: DEFAULT_CATEGORY_COLOUR } : undefined}
+                  onClick={() => setNewCategoryIcon(opt.id)}
+                  onKeyDown={(e) => {
+                    const next = nextRadioValue(CATEGORY_ICON_IDS, newCategoryIcon, e.key);
+                    if (next === null) return;
+                    e.preventDefault();
+                    setNewCategoryIcon(next);
+                    iconRadioRefs.current[next]?.focus();
+                  }}
+                  data-testid={`restaurant-menu-editor-icon-${opt.id}`}
+                >
+                  <CategoryIconSvg icon={opt.id} size={20} />
+                </button>
+              ))}
+            </div>
             <div className="restaurant-menu-editor-add-category">
               <input
                 type="text"
