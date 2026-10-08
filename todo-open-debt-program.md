@@ -93,6 +93,18 @@ Recorded because each one is still live in some document a worker might read, an
 
 ---
 
+## 2026-10-08: the guard-vocabulary leg is SOUND, and I made its figures visible rather than chasing a stale one. Fixed in `c2f1a7875`.
+
+**Found by applying R170's lesson to a new class: count claims inside a GUARD's own doc.** `registration_gate_tests.rs:2019` dates its figures — *"Measured 05:45 on **e046e2f26**: 242 production files, 18 distinct spellings, 657 call sites"* — so unlike R169's and R170's claims these are **honest provenance, not a stale assertion**. I checked the commit exists (it does), which is what distinguishes a dated measurement from a claim about the present.
+
+**Measured the live shape rather than trusting the dated one, and reproduced the sweep independently before touching anything.** My own walk of the four roots found **309 production files and 18 distinct spellings** — the spelling count, which is the one the leg enforces, **still holds exactly at 18**. Call sites differed (595 by my simpler regex vs the leg's 657) because the leg's `guard_call_sites` counts more shapes than my pattern; I did not treat that gap as a defect, since the leg is the authority on its own query.
+
+**The actual gap was that nothing RE-MEASURED anything on a green run.** The leg computes `files`, `sites` and `seen.len()` and used them **only inside failure messages**, comparing against deliberately loose floors (14 spellings, 200 files) as anti-vacuity bounds. So a vocabulary that doubled or halved would pass, and no reader could tell whether the dated 242/657/18 still described the tree. It now `println!`s the live triple — visible under `--nocapture`, costing nothing otherwise — and the doc records the measured movement (242 -> 309 files, 657 -> 595 sites by my count) alongside the exhausted caveat. **Deliberately NOT asserted**: pinning these numbers would red on every unrelated command registration, which is exactly the brittleness the loose floors exist to avoid.
+
+**Worth recording what this leg does WELL, since it is the strongest guard I have read this campaign:** a self-check that the sweep can see an unseen spelling (`require_zzz_unseen_permission` in a four-line scratch string) *before* it reads the tree; an assertion that the probe spelling is not itself a marker or exception, so the self-check cannot rot into tautology; existence checks on all four root directories, because *"a moved directory turns this pin into a check that inspects nothing, which is the one outcome worse than red"*; a check for stale exceptions as well as unknown spellings; and `is_guard_shape` deliberately WIDER than the marker list, so a new spelling surfaces as drift instead of passing. **No defect found in it.**
+
+**Running tally: 16 guards examined, 7 sound, 9 with defects found and fixed.** This round corrected nothing in the guard's behaviour — the change is reporting plus a dated caveat — which is the honest outcome when the subject is already right.
+
 ## 2026-10-08: the protected-table count cited a 29-table list and named 34. Fixed in `275921824`.
 
 **The same shape as R169, one file further in, and found by continuing that investigation rather than closing it.** R169's fix left a question I could not answer then: the pg test's comment says *"the generator's `RLS_TABLES` list is 29"*. This round I extracted all three lists and confirmed the invariant holds exactly — **`RLS_TABLES` 29, cutover FORCE 22, cutover-force-remaining 7, 22 + 7 = 29, with ZERO discrepancy in either direction.** That invariant, which R169's doc calls *"completely silent"* when it breaks, is currently intact.
