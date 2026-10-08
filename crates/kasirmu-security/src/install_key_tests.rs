@@ -526,7 +526,10 @@ fn accepts_a_stored_key_with_surrounding_whitespace() {
             .unwrap_or_else(|e| panic!("a whitespace-padded key must still resolve: {e:?}"));
         match resolved {
             InstallKeyResolution::Ready { secret, source } => {
-                assert_eq!(secret, [0xabu8; 32], "the decoded key must be the padded one");
+                assert_eq!(
+                    secret, [0xabu8; 32],
+                    "the decoded key must be the padded one"
+                );
                 assert!(
                     matches!(source, InstallKeySource::Loaded),
                     "a present entry is Loaded, never Generated"
@@ -537,6 +540,9 @@ fn accepts_a_stored_key_with_surrounding_whitespace() {
 
         // And the stored value is left exactly as it was found -- resolving must not
         // rewrite the entry (the same no-rewrite rule as loads_an_existing_key).
-        assert_eq!(keyring.peek(INSTALL_KEY_ENTRY).as_deref(), Some(padded.as_str()));
+        assert_eq!(
+            keyring.peek(INSTALL_KEY_ENTRY).as_deref(),
+            Some(padded.as_str())
+        );
     }
 }
