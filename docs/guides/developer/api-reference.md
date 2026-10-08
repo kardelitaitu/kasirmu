@@ -345,7 +345,7 @@ Statutory number series and fiscal schemes, per legal entity. Desktop and tablet
 - **`ping`** [D+T] — Liveness probe. Returns `Ok("pong")` if the Tauri runtime is alive.
 - **`ping_scoped`** [D] — Session-scoped variant of [`ping`].
 - **`version`** [D+T] — Version.
-- **`version_scoped`** [D] — Version info resolved from a session token. ADR #7.
+- **`version_scoped`** [D+T] — Version info resolved from a session token. ADR #7.
 
 - **`get_build_fingerprint`** [T] — Report this installation's APK signing-certificate fingerprint (ADR #57 §2.1).
 - **`notify_memory_pressure`** [T] — Dispatched when Android OS reports memory pressure (`onTrimMemory` / `onLowMemory`); levels ≥ 10 back background sync off.
@@ -549,7 +549,7 @@ The terminal memo board. Authoring and publishing are desktop-side; acknowledgem
 - **`list_all_offline_scoped`** [D+T] — List all offline queue items (scoped).
 - **`list_pending_offline_scoped`** [D+T] — List all pending (unsynced) offline queue items (scoped).
 - **`list_remote_failures_scoped`** [D+T] — List retained remote-application failures (scoped).
-- **`offline_queue_status_summary_scoped`** [D] — Get a summary of the offline queue status (scoped).
+- **`offline_queue_status_summary_scoped`** [D+T] — Get a summary of the offline queue status (scoped).
 - **`pending_offline_count_scoped`** [D+T] — Get the count of pending offline items (scoped).
 - **`requeue_remote_failure_scoped`** [D+T] — Requeue a dead-lettered remote item (scoped).
 - **`retry_offline_sync_scoped`** [D+T] — Attempt to sync all pending offline items (scoped).
