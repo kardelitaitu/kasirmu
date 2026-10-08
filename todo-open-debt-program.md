@@ -93,6 +93,20 @@ Recorded because each one is still live in some document a worker might read, an
 
 ---
 
+## 2026-10-08: the crypto crate's H1 invariant is SOUND, and the byte/char sweep came up empty. Nothing changed.
+
+**Two investigations, neither producing a defect, and one of them closes the sweep R186 began.**
+
+**The byte/char sweep finished clean.** Sweeping every remaining `.len()` bound in production and checking each `> N` / `< N` site: the survivors are all correct, and for a structural reason rather than luck. `escpos::barcode`'s `&data[..255]` is BYTES by design (a byte protocol whose length byte counts bytes); `is_safe_sql_identifier` (255) and `is_safe_gcp_project_id` (63) both require ASCII-only charsets, so byte count equals character count for those inputs; `terminal_id` and `tenant` in the file R187 fixed are ASCII-enforced for the same reason. **No site needed a change.** The rule that emerged across R185-R187 holds: a byte bound is correct exactly when the charset is constrained, and wrong when the field is free text.
+
+**The crypto crate: hazard H1 is guarded, and I measured it rather than reading it.** `candidate_keys`'s doc states the invariant as *"the install branch lands in the SAME slice as the `portable_key` arm (hazard H1): a writer that used a derivation no reader tries would brick the install immediately, on its own rows."* **MEASURED: removing the install branch from the READER side FAILED 5 tests** — so the writer/reader agreement is pinned, and a write under a derivation no reader tries cannot ship.
+
+**The other half of H1 is enforced by a SIGNATURE, which is stronger than a check.** The doc warns that a write must never use the previous key ("if the old key could win a write, a rekey that died half way would leave the surviving rows split across two writers"), and `portable_key_from` takes `install`, `master` and `legacy` — **no `previous` parameter exists**, so the wrong behaviour is not merely asserted against, it is unrepresentable. Worth recording as the strongest form of the guard this campaign has found.
+
+**Also checked and cleared:** the twelve `*_DOMAIN` prefixes are all unique (a collision would let one credential family's ciphertext decrypt under another's domain), and `PAYMENT_GATEWAY_AT_REST_DOMAIN`'s different prefix namespace (`kasirmu.` where the other eleven use `oz-pos.`) is harmless — a domain separator only needs to be unique and STABLE, and changing it to match would break decryption of every row already written under it.
+
+**Running tally: 34 guards examined, 17 sound, 19 with defects found and fixed.**
+
 ## 2026-10-08: the terminal label — and the test that covered the INPUT but not the UNIT. Fixed in `11fe8c8a1`.
 
 **Completed R186's sweep by looking for the limits that had NOT been converted, and found one with an instructive near-miss in its own test.**
