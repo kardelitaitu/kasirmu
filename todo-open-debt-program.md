@@ -93,6 +93,20 @@ Recorded because each one is still live in some document a worker might read, an
 
 ---
 
+## 2026-10-08: `decode_stored_key`'s `trim()` was load-bearing and unguarded. Fixed in `279139276`.
+
+**Four probes on `install_key.rs`, one real gap — and the gap was the last one, found by mutating the part that looked cosmetic.**
+
+**The three that held.** `decode_stored_key` (`:150`) has two refusals: non-hex input, and a decoded length that is not 32 bytes. **Mutating the 32-byte `try_into` into a zero-padded copy FAILED 1 test**; **mutating the hex refusal into `vec![0u8; 32]` FAILED 2 tests.** Both correct-by-design behaviours are pinned, including the hard refusal to regenerate — the orphaning hazard the doc names. All 17 pre-existing tests in `install_key_tests.rs` are genuinely about this code.
+
+**The gap: `hex::decode(stored.trim())`.** **MEASURED: deleting `.trim()` left all 17 tests GREEN.** It is load-bearing rather than cosmetic, and the reason is the interaction of two decisions: `hex::decode` rejects ANY non-hex character including `\n`, and the refusal path is a deliberate HARD STOP ("a key that cannot be parsed may still decrypt existing rows... replacing it would orphan them"). So a stored value carrying a trailing newline — which keychain CLIs routinely add — would make the store refuse to boot, with rows the operator cannot re-enter for two of the six at-rest families. **The `trim()` is what keeps that a non-event, and nothing was watching it.**
+
+**What I added, and why it pairs with the existing test.** `accepts_a_stored_key_with_surrounding_whitespace` covers three paddings (`\n`, spaces, `\t...\r\n`), asserts the decoded value equals the padded key, asserts the source is `Loaded` rather than `Generated`, and asserts the entry is left byte-identical — the same no-rewrite rule the neighbouring test enforces. **It sits beside `refuses_a_malformed_entry_and_never_regenerates_it` on purpose**: the same function must be tolerant of formatting and intolerant of corruption, and a suite that tested only the refusals would pass just as happily if the trim were removed. **KILL-TESTED: removing `.trim()` FAILS it.** 18/18 green; clippy Finished; production restored byte-for-byte.
+
+**A note on how I nearly missed the file's coverage.** My first grep searched for the error STRINGS (`"not valid hex"`) and the function name in `*_tests.rs`, returned nothing for the strings, and I briefly read that as "untested" — the same instrument error as R166's grep and R178's census. The tests were there and thorough; they simply assert via `matches!(...)` on the variant rather than by matching the message text. **Mutation settled it in one run.**
+
+**Running tally: 30 guards examined, 15 sound, 16 with defects found and fixed.**
+
 ## 2026-10-08: a repo-wide byte/char sweep and the Money surface — both SOUND. Nothing changed.
 
 **R182 noted the recent hits were concentrating in one function family, so this round widened to a census instead of a third one-off.**
