@@ -93,6 +93,20 @@ Recorded because each one is still live in some document a worker might read, an
 
 ---
 
+## 2026-10-08: no further stale pins — all four class ceilings across BOTH shells now measure EXACT. Verified, nothing changed.
+
+**I went looking for more of R172's defect and found none. Recorded because "I checked and it was clean" is a result, and because the check itself is what makes the previous round's fix trustworthy.**
+
+**The desktop ledgers, measured row-by-row against their constants (the same method that found R172):** `no_session_resolution` 53 rows = const 53; `resolves_session_names_no_permission` 18 rows = const **18** (R172's fix); total 71 against `DEBT_CEILING` 78. **Exact on both class ceilings.**
+
+**The TABLET twin — which I had never measured — is also exact:** 51 rows = const 51, 46 rows = const 46, total 97 = `DEBT_CEILING` 97. So R172's staleness was a **desktop-only** miss rather than a pattern, and the twin that R168's lesson says "must stay in step" was in step all along. Both gates green: **desktop 14/14, tablet 12/12.**
+
+**One asymmetry I checked and cleared rather than reported:** the tablet's `DEBT_CEILING` is EXACT to its row count while the desktop's carries 7 rows of headroom (78 against 71). That is not the R172 defect — a CEILING with headroom is the ratchet's design, and the desktop's doc enumerates every rise (`72 -> 74`, `74 -> 75`, `75 -> 78`) with the `JOURNAL.md` reason the pin demands. What R172 found was different in kind: a **class** ceiling sitting 9 above its live count with no rise recorded at all, because the class FELL and the constant was not moved with it.
+
+**A false positive I caught in my own tooling, worth noting since it is the third time this campaign.** I wrote a heuristic pairing each constant with the nearest preceding `N -> M:` move-claim, and it flagged `RESOLVES_SESSION_NAMES_NO_PERMISSION` as drifted — the claim it matched (`51 -> 53`) belongs to the NEIGHBOURING constant, and R172's own correction uses the `27 -> 18` form further up. Reading the region settled it. **The heuristic was wrong, not the file** — the same lesson as R166's grep.
+
+**Running tally: 18 guards examined, 8 sound, 10 with defects found and fixed.** Two consecutive rounds with no new defect, and this one positively confirms R172's fix holds on both shells.
+
 ## 2026-10-08: the authenticate-then-assume CEILING was 9 above the live count — a stale-high pin in the PERMISSIVE direction. Fixed in `ac161817c`.
 
 **Found by the same question R170 and R171 applied, but this time against a PIN rather than a comment.** Following the registration ratchet's own documentation: `registration_gate_debt.generated.rs:226-229` says, in as many words, *"class 2's own measurement FELL to 18, so **53 + 18 = 71** is the live row count"* — while the constant two lines below reads `RESOLVES_SESSION_NAMES_NO_PERMISSION: usize = 27`, the value from BEFORE the fall.
