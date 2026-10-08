@@ -598,6 +598,12 @@ _Fill in as phases land. One row per acceptance command run._
 | 2026-10-09 | P4 | `cd ui && npx vitest run Restaurant PosScreen CartPanel restaurantPosCrashIsolation` | exit 0 | **28 files, 525 passed / 1 skipped** |
 | 2026-10-09 | P1 | `cd ui && npx vitest run CartPanel PosScreen Restaurant` | exit 0 | **28 files, 529 passed / 1 skipped** |
 | 2026-10-09 | all | `cd ui && npx vitest run` (full suite) | exit 0 | **673 files, 11346 passed / 24 skipped / 3 todo** |
+| 2026-10-09 | P1 | `cd ui && npx vitest run CartPanel CartActionBar PosScreen Restaurant` | exit 0 | **29 files, 540 passed / 1 skipped** |
+| 2026-10-09 | P4/F7 | `cd ui && npx vitest run RestaurantSidebar` | exit 0 | **2 files, 32 passed** |
+| 2026-10-09 | P4/F8 | `cd ui && npx vitest run RestaurantSidebar -t 'lacks settings:edit'` (kill-test) | **FAIL (killed)** | role-only gating fails the case; restored, passes |
+| 2026-10-09 | P4/F8 | `cd ui && npx vitest run Restaurant PosScreen CartPanel` | exit 0 | **28 files, 537 passed / 1 skipped** |
+| 2026-10-09 | all | `cd ui && npx vitest run` (full suite, round 3) | exit 0 | **673 files, 11354 passed / 24 skipped / 3 todo** |
+| 2026-10-09 | all | `python scripts/verify-ipc-parity.py` (round 3) | exit 0 | IPC parity: OK |
 
 **P0 baseline (measured 2026-10-09).** These four are the reference figures for
 attributing any later regression:
