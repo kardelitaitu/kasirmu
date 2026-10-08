@@ -93,6 +93,18 @@ Recorded because each one is still live in some document a worker might read, an
 
 ---
 
+## 2026-10-08: the HAL-1 byte/char surface is SOUND — three probes, no defect. Nothing changed.
+
+**I went looking for R181's pattern specifically: code that measures TEXT in BYTES, and tests that pin the resulting hazard as a caveat.** Two of the three leads were tests already doing the right thing, and one was a real surface that is properly guarded.
+
+**Lead 1 — the caveat-naming tests, both clean.** `credential_deltas_tests.rs:581` guards that a NOTICE names the pragma and the copy command (about operator text, not a bug), and `kds_tests.rs:2480-2495` states a limitation honestly and says why it cannot be pinned: the cutoff's `%.3f` renders byte-identically to `%3f` and a one-second margin swamps the spelling difference, so the test pins the RETENTION BOUNDARY instead and says so. **That is the opposite of R181's defect** — a limitation recorded as a limitation rather than encoded as an expected value.
+
+**Lead 2 — `escpos.rs`, where HAL-1 was a real historical bug.** The module documents that `str::len()` counts bytes while `{:<width$}` counts characters, so mixing them "silently steals padding" and shifted every price column on EUR/GBP/JPY/PHP/THB/KRW receipts. The fix is `cell_width(s) = s.chars().count()`. **MEASURED: reverting it to `s.len()` FAILED 6 tests.** I also checked every call site — all padding and centring in `receipt.rs` and `kds_chit.rs` goes through `cell_width`, and a grep for raw `.len()`-derived padding in the crate found none, so there is no mixed call site left to reintroduce the bug.
+
+**Also checked and cleared, with the reason:** `escpos::barcode` slices `&data[..255]` — BYTES by design, because ESC/POS is a byte protocol and the length byte counts bytes; `truncate` takes `max - 1` CHARACTERS rather than slicing, which the file notes is "inherently UTF-8 boundary-safe", and its `max <= 1` branch is covered; `right_pad` compares `cell_width` and then formats, with `right_pad_pads_to_cells_not_bytes` pinning the multibyte case. **No change made.**
+
+**Running tally: 28 guards examined, 13 sound, 15 with defects found and fixed.** Two rounds, one real fix (R181's `mask_name`) and one clean sweep. The pattern I set out to find did not recur here, which is worth recording rather than passing over: after finding five defects in six rounds, the last two rounds' hits have been concentrated in ONE function family rather than spread.
+
 ## 2026-10-08: `mask_name` measured names in BYTES and produced MORE characters than it masked. A real fix, in `72bc2d670`.
 
 **Found by applying R180's lens to the sibling function.** R180 showed that a test can exercise an input and still guard a NEIGHBOURING property. `mask_name` has a test named `mask_name_byte_vs_char_caveat` — and reading it is what found the defect, because **the test pinned the bug as the expected behaviour**: it asserted `mask_name('😊') == '😊**😊'`.
