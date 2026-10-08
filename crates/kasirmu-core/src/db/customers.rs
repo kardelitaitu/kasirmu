@@ -212,12 +212,12 @@ impl Store<'_> {
                 message: "customer name must not be empty".into(),
             });
         }
-        if name.len() > 255 {
+        if name.chars().count() > 255 {
             return Err(CoreError::Validation {
                 field: "name",
                 message: format!(
                     "customer name must not exceed 255 characters, got {}",
-                    name.len()
+                    name.chars().count()
                 ),
             });
         }
@@ -271,12 +271,12 @@ impl Store<'_> {
                 message: "customer name must not be empty".into(),
             });
         }
-        if name.len() > 255 {
+        if name.chars().count() > 255 {
             return Err(CoreError::Validation {
                 field: "name",
                 message: format!(
                     "customer name must not exceed 255 characters, got {}",
-                    name.len()
+                    name.chars().count()
                 ),
             });
         }
