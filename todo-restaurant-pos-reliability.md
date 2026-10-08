@@ -708,6 +708,11 @@ _Fill in as phases land. One row per acceptance command run._
 | 2026-10-09 | P6/F5 | `cd ui && npx vitest run RestaurantReceiptsScreen` | exit 0 | **36 passed** |
 | 2026-10-09 | all | `cd ui && npx vitest run` (full suite, round 4 final) | exit 0 | **673 files, 11356 passed / 24 skipped / 3 todo** |
 | 2026-10-09 | all | `python scripts/verify-ipc-parity.py` (round 4 final) | exit 0 | IPC parity: OK |
+| 2026-10-09 | F5 guard | two ad-hoc scans (`node .f5detect.cjs`, brace-depth variant) | 0 sites | detector validated against a synthetic fixture FIRST |
+| 2026-10-09 | F5 guard | `cd ui && npx vitest run mirrorBeforeAwait` (kill-test, 3 attempts) | **versions 1-4 wrong** | v1/v2 passed on the bug; v3 false-positived; v4 missed it. v5 correct on both |
+| 2026-10-09 | F5 guard | `cd ui && npx vitest run mirrorBeforeAwait` | exit 0 | **7 tests passed**; 0 offenders across `ui/src` |
+| 2026-10-09 | F5 guard | `cd ui && npx vitest run mirrorBeforeAwait RestaurantReceiptsScreen RestaurantSettingsScreen` | exit 0 | **3 files, 54 passed** |
+| 2026-10-09 | F5 guard | `git diff --stat RestaurantReceiptsScreen.tsx` after the kill-test | empty | file byte-identical to committed state |
 
 **P0 baseline (measured 2026-10-09).** These four are the reference figures for
 attributing any later regression:
