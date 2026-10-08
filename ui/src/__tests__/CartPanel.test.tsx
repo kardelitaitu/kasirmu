@@ -324,6 +324,11 @@ describe('CartPanel — restaurant cart-field gates (P1)', () => {
     setGuestCount: noop,
   });
 
+  // The action bar (and so the Save Tab button) only mounts once a subtotal
+  // exists — `CartPanel.tsx:854` guards CartFooterTotals on `subtotal &&`.
+  // Every save-tab case therefore supplies one.
+  const withSubtotal = () => ({ ...withFields(), subtotal: SUBTOTAL });
+
   it('shows both fields when the gates are absent (retail / unset key)', () => {
     renderPanel(withFields());
 
@@ -351,5 +356,18 @@ describe('CartPanel — restaurant cart-field gates (P1)', () => {
 
     expect(screen.getByTestId('pos-cart-customer-input')).toBeInTheDocument();
     expect(screen.getByTestId('pos-cart-guest-input')).toBeInTheDocument();
+  });
+  it('hides the Save Tab action when save_tab is explicitly false', () => {
+    renderPanel({ ...withSubtotal(), saveTabEnabled: false });
+
+    expect(screen.queryByTestId('pos-cart-save-tab-btn')).toBeNull();
+    // The other gates are independent settings and must be unaffected.
+    expect(screen.getByTestId('pos-cart-customer-input')).toBeInTheDocument();
+  });
+
+  it('shows the Save Tab action when save_tab is absent or true', () => {
+    // Absent = show, which is what retail and an unset key both need.
+    renderPanel(withSubtotal());
+    expect(screen.getByTestId('pos-cart-save-tab-btn')).toBeInTheDocument();
   });
 });

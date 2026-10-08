@@ -32,6 +32,13 @@ export interface CartActionBarProps {
   customerName?: string | undefined;
   activeOpenBillId?: string | null | undefined;
   handleOpenBill?: (() => Promise<void>) | undefined;
+  /**
+   * Whether the Save Tab / Open Bill action is offered. `restaurant.save_tab`,
+   * owned by RestaurantSettingsScreen. Absent = show, so retail and every test
+   * render are unaffected; only an explicit `false` hides it. The same `!== false`
+   * idiom CartPanel uses for the customer/pax gates.
+   */
+  saveTabEnabled?: boolean | undefined;
 }
 
 
@@ -50,6 +57,7 @@ export function CartActionBar({
   customerName,
   activeOpenBillId,
   handleOpenBill,
+  saveTabEnabled,
 }: CartActionBarProps) {
   const { l10n } = useLocalization();
 
@@ -95,7 +103,11 @@ export function CartActionBar({
         </Localized>
       </button>
 
-      {/* Save Tab / Update Tab button */}
+      {/* Save Tab / Update Tab button.
+          `saveTabEnabled !== false` — an ABSENT prop shows the button, because
+          retail passes nothing and `restaurant.save_tab` unset must not remove an
+          action the cashier has always had. Only a stored `"false"` hides it. */}
+      {saveTabEnabled !== false && (
       <button
         type="button"
         className="pos-cart-open-bill-btn"
@@ -121,6 +133,7 @@ export function CartActionBar({
           ? (l10n.getString('pos-cart-update-tab') || 'Update Tab')
           : (l10n.getString('pos-cart-save-tab') || 'Save Tab')}
       </button>
+      )}
     </div>
   );
 }

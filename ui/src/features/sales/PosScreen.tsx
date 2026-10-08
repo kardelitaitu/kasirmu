@@ -795,6 +795,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   // must not remove a POS capability.
   const [customerNameEnabled, setCustomerNameEnabled] = useState<boolean | null>(null);
   const [guestCountEnabled, setGuestCountEnabled] = useState<boolean | null>(null);
+  const [saveTabEnabled, setSaveTabEnabled] = useState<boolean | null>(null);
 
   const orderTypePromptSeq = useRef(0);
   useEffect(() => {
@@ -828,6 +829,9 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     void getSettingScoped(sessionToken, 'restaurant.guest_count')
       .then((raw) => { if (!cancelled) setGuestCountEnabled(raw === null ? null : raw === 'true'); })
       .catch(() => { if (!cancelled) setGuestCountEnabled(null); });
+    void getSettingScoped(sessionToken, 'restaurant.save_tab')
+      .then((raw) => { if (!cancelled) setSaveTabEnabled(raw === null ? null : raw === 'true'); })
+      .catch(() => { if (!cancelled) setSaveTabEnabled(null); });
     return () => { cancelled = true; };
   }, [sessionToken]);
 
@@ -1122,6 +1126,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     setGuestCount,
     customerNameEnabled: customerNameEnabled ?? true,
     guestCountEnabled: guestCountEnabled ?? true,
+    saveTabEnabled: saveTabEnabled ?? true,
     orderType,
     setOrderType,
     orderTypePromptEnabled,

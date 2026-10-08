@@ -152,6 +152,8 @@ export interface CartPanelProps {
   customerNameEnabled?: boolean;
   /** Whether the pax field shows. `restaurant.guest_count`; absent = show. */
   guestCountEnabled?: boolean;
+  /** Whether the Save Tab action shows. `restaurant.save_tab`; absent = show. */
+  saveTabEnabled?: boolean;
   orderType?: 'dine_in' | 'takeaway' | 'delivery';
   setOrderType?: Dispatch<SetStateAction<'dine_in' | 'takeaway' | 'delivery'>>;
   orderTypePromptEnabled?: boolean;
@@ -263,6 +265,7 @@ export function CartPanel({
   guestCount,
   customerNameEnabled,
   guestCountEnabled,
+  saveTabEnabled,
   setGuestCount,
   orderType = 'dine_in',
   setOrderType,
@@ -895,6 +898,7 @@ export function CartPanel({
               customerName={customerName}
               activeOpenBillId={activeOpenBillId}
               handleOpenBill={handleOpenBill}
+              saveTabEnabled={saveTabEnabled}
             />
           </CartFooterTotals>
         )}
