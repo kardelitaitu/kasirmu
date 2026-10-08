@@ -1,5 +1,14 @@
 # Agents Configuration & Rules
 
+<!-- Amendment 2026-10-09 (BK): §2 gains an EIGHTH step — **Rust format
+     (staged)**, a check-only `rustfmt --check` over the .rs files a commit
+     stages. The stamp below names a "seven-step gate count", which was right
+     when written and is right no longer: the step was added because the
+     workspace-wide `cargo fmt --all -- --check` was red at HEAD almost daily
+     from other lanes' hunks, so enforcing it at pre-push failed every
+     Rust-touching push for drift it did not introduce (measured 2026-10-08).
+     The step never auto-formats — see the hook header for why that matters. -->
+
 <!-- Audit stamp: 2026-09-27 · BK · status: ACCURATE · version lock: 0.0.41
      change: roundtrip-economy rewrite — quick card (§0), economy protocol (§1),
      task playbook folded into §1; chunk-read rule replaced by whole-file reads (E4);
@@ -88,7 +97,7 @@ and re-plans instead of grinding):
 | UI change | Read → edit → `npm run lint && npm run typecheck` (from `ui/`) → commit | 4–6 |
 | Migration change | Edit `*.sql` + registry in `migrations.rs` → `python3 scripts/generate-pg-migration.py` → commit both paths | 5–8 |
 
-## 2. Pre-commit gates — seven steps
+## 2. Pre-commit gates — eight steps
 
 Opt in per clone: `git config core.hooksPath .githooks`. Each step fires only on the
 paths it cares about:
@@ -100,6 +109,7 @@ paths it cares about:
 5. **PG schema drift guard**
 6. **Go gate**
 7. **FTL orphan lint**
+8. **Rust format (staged)**
 
 The labels are bold for a reason: `scripts/verify-agents-mirrors.py` grades this list
 (`N. **name**`) against the hook's own section names, and an unbolded list is read as a
