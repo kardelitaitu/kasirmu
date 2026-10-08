@@ -11,7 +11,7 @@
 // sections of the Settings hub, not standalone page routes.
 
 import { describe, it, expect, beforeAll } from 'vitest';
-import { TOOLS, TOOL_GROUP_ORDER } from '@/features/workspaces/tools';
+import { TOOLS, TOOL_GROUP_ORDER, resolveToolLock } from '@/features/workspaces/tools';
 import { getPage } from '@/registries/page-registry';
 import { registerAllFeatures } from '@/features';
 import { TIER_LEVEL, tierSatisfies, type TierKey } from '@/utils/tierLevel';
@@ -26,6 +26,89 @@ const ROLE_LEVEL: Record<string, number> = {
 
 beforeAll(() => {
   registerAllFeatures();
+});
+
+// ── The lock decision under a loading subscription (2026-10-08) ────
+//
+// MEASURED: `caps` starts null and `state` starts 'loading'
+// (SubscriptionContext.tsx:50-51). The role-only path already stayed open
+// during the first fetch, but the TIER path did not — `tierSatisfies(null, …)`
+// is false by contract and `useAdminGate` locks on anything but `active` —
+// so every pro/premium tool flashed a locked card on every cold start, the
+// exact thing WorkspaceHome's "loading stays open" comment forbids. The
+// route's own gate re-checks fail-closed, so the optimistic-open here is
+// cosmetic only.
+describe('resolveToolLock — the first entitlement fetch must not flash-lock', () => {
+  const pro = TOOLS.find((t) => t.id === 'analytics')!; // minimumTier 'pro'
+  const free = TOOLS.find((t) => t.id === 'settings')!; // minimumTier 'free'
+
+  it('keeps tier-gated tools open while the first fetch is loading', () => {
+    expect(
+      resolveToolLock(pro, {
+        roleName: 'admin',
+        subscriptionState: 'loading',
+        capsTier: undefined,
+        adminLocked: true,
+      }),
+    ).toBe('none');
+  });
+
+  it('still fails closed once the fetch resolves to anything but active/grace', () => {
+    expect(
+      resolveToolLock(pro, {
+        roleName: 'admin',
+        subscriptionState: 'unavailable',
+        capsTier: undefined,
+        adminLocked: true,
+      }),
+    ).toBe('subscription');
+  });
+
+  it('grace never re-opens the admin-gated tier tools (§B)', () => {
+    expect(
+      resolveToolLock(pro, {
+        roleName: 'admin',
+        subscriptionState: 'grace',
+        capsTier: 'pro',
+        adminLocked: true,
+      }),
+    ).toBe('subscription');
+  });
+
+  it('grace keeps role-only tools working (operational continuity)', () => {
+    expect(
+      resolveToolLock(free, {
+        roleName: 'manager',
+        subscriptionState: 'grace',
+        capsTier: undefined,
+        adminLocked: true,
+      }),
+    ).toBe('none');
+  });
+
+  it('an active subscription unlocks by tier as before', () => {
+    const ctx = {
+      roleName: 'admin',
+      subscriptionState: 'active' as const,
+      capsTier: 'pro' as const,
+      adminLocked: false,
+    };
+    expect(resolveToolLock(pro, ctx)).toBe('none');
+    expect(
+      resolveToolLock(TOOLS.find((t) => t.id === 'promotions')!, ctx),
+    ).toBe('tier');
+  });
+
+  it('an unknown role fails closed exactly as before', () => {
+    expect(
+      resolveToolLock(pro, {
+        roleName: 'ghost',
+        subscriptionState: 'active',
+        capsTier: 'pro',
+        adminLocked: false,
+      }),
+    ).toBe('hidden');
+  });
 });
 
 // ── Access matrix (the agreed role/tier table, todo-tools.md) ─────

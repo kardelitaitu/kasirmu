@@ -34,10 +34,10 @@
 
 import type { ReactElement } from 'react';
 import { Localized } from '@fluent/react';
-import type { ToolItem } from '../tools';
+import type { ToolItem, ToolLockReason } from '../tools';
 import { TIER_BADGE } from '@/utils/tierBadge';
 
-export type ToolLockReason = 'tier' | 'subscription' | 'role';
+export type { ToolLockReason };
 
 export interface ToolCardProps {
   tool: ToolItem;

@@ -35,7 +35,9 @@
 // under is docs/records/audit-open-findings.md (2026-09-16).
 
 import type { ReactNode } from 'react';
-import type { TierKey } from '@/utils/tierLevel';
+import { roleAtLeast } from '@/utils/role';
+import type { SubscriptionUiState } from '@/contexts/SubscriptionContext';
+import { tierSatisfies, type TierKey } from '@/utils/tierLevel';
 
 export type { TierKey };
 
@@ -252,3 +254,52 @@ export const TOOLS: ToolItem[] = [
     ),
   },
 ];
+
+// ── The lock decision, extracted for testability (2026-10-08) ──────
+//
+// `toolLock` used to live inline in WorkspaceHome, untestable without
+// mounting the whole shell. The decision is policy, so it belongs beside the
+// catalogue it polices, where it can be pinned data-level like the matrix
+// above.
+
+export type ToolLockReason = 'tier' | 'subscription' | 'role';
+
+export interface ToolGateContext {
+  roleName: string;
+  subscriptionState: SubscriptionUiState;
+  capsTier: string | null | undefined;
+  adminLocked: boolean;
+}
+
+export function resolveToolLock(
+  tool: ToolItem,
+  ctx: ToolGateContext,
+): ToolLockReason | 'none' | 'hidden' {
+  // Routed through `roleAtLeast` rather than an inline level comparison, so
+  // this gate and every other role gate read ONE vocabulary with the same
+  // default: an unrecognised role floor must DENY, not allow (ruled
+  // fail-closed 2026-09-16; owner ruling R20 keeps the rank authoritative
+  // for the home grid — see the catalogue header above).
+  if (!roleAtLeast(ctx.roleName, tool.access.minimumRole)) {
+    return tool.access.lockBelowRole ? 'role' : 'hidden';
+  }
+  // Role-only tools keep working through the signed grace window
+  // (operational continuity); everything hard-locks once the subscription
+  // is expired/canceled/paused or its data unreadable.
+  const validityOpen =
+    ctx.subscriptionState === 'active' ||
+    ctx.subscriptionState === 'grace' ||
+    ctx.subscriptionState === 'loading';
+  if (!validityOpen) return 'subscription';
+  // `loading` stays open through the ENTIRE gate, not just the validity
+  // half. `caps` is still null during the first fetch, so the tier check
+  // below would fail closed (`tierSatisfies(null, …)`) and useAdminGate
+  // locks on anything but `active` — together they flash-locked every paid
+  // tool on every cold start, the exact thing WorkspaceHome's comment
+  // forbids. The route's own gate re-checks fail-closed, so a click landing
+  // mid-fetch is still caught there; this only stops the COSMETIC flash.
+  if (ctx.subscriptionState === 'loading') return 'none';
+  if (tool.access.minimumTier !== 'free' && ctx.adminLocked) return 'subscription';
+  if (!tierSatisfies(ctx.capsTier, tool.access.minimumTier)) return 'tier';
+  return 'none';
+}

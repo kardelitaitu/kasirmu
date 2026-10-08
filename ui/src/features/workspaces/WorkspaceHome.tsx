@@ -9,10 +9,9 @@ import { RoleIcon } from '@/components/RoleIcon';
 import OrgSelector from '@/components/OrgSelector';
 import type { LoginSessionDto } from '@/api/staff';
 import { useSubscription, useAdminGate } from '@/contexts/SubscriptionContext';
-import { tierSatisfies } from '@/utils/tierLevel';
 import { roleAtLeast } from '@/utils/role';
 import { getPage } from '@/registries/page-registry';
-import { TOOLS, TOOL_GROUP_ORDER, type ToolItem, type ToolGroupId } from './tools';
+import { TOOLS, TOOL_GROUP_ORDER, resolveToolLock, type ToolItem, type ToolGroupId } from './tools';
 import { ToolsCategoryGrid } from './components/ToolsCategoryGrid';
 import type { ToolLockReason } from './components/ToolCard';
 import { animDuration } from '@/utils/animation';
@@ -425,20 +424,6 @@ export default function WorkspaceHome() {
 
   // ── Tools gates (.agents/archived/done-todo/done-todo-tools.md role/tier matrix) ─────────────
 
-  // Routed through `roleAtLeast` rather than compared inline, so this gate and
-  // the settings-page gate read ONE vocabulary instead of two with opposite
-  // defaults. The inline form was `roleLevel >= (ROLE_HIERARCHY[minimumRole] ?? 0)`
-  // — an unrecognised `minimumRole` demanded **0** and the gate FAILED OPEN,
-  // while `roleAtLeast` (role.ts:72) demands `Number.MAX_SAFE_INTEGER` for an
-  // unknown floor. Ruled FAIL CLOSED (2026-09-16): an unknown floor on an
-  // admin-tool gate must deny, not allow. Type-blocked today — `ToolRole` is
-  // 'owner' | 'admin' | 'manager' (tools.tsx:25) and all three are in the
-  // table — so this is behaviour-neutral now and removes a latent fail-open.
-  const canAccessTool = useCallback(
-    (access: ToolItem['access']): boolean => roleAtLeast(roleName, access.minimumRole),
-    [roleName],
-  );
-
   // C2.2/§B: capabilities + lifecycle state drive the tier and validity
   // gates. The §B admin gate (useAdminGate) locks administrative tools
   // the moment the subscription leaves `active` — grace never re-opens
@@ -446,27 +431,19 @@ export default function WorkspaceHome() {
   const { caps, state: subscriptionState } = useSubscription();
   const { locked: adminLocked } = useAdminGate();
 
+  // The decision lives in tools.tsx (`resolveToolLock`) beside the catalogue
+  // it polices — extracted so the loading behaviour can be pinned data-level.
+  // See the resolver's comment for why `loading` must stay open through the
+  // ENTIRE gate, not just the validity half.
   const toolLock = useCallback(
-    (tool: ToolItem): ToolLockReason | 'none' | 'hidden' => {
-      if (!canAccessTool(tool.access)) {
-        return tool.access.lockBelowRole ? 'role' : 'hidden';
-      }
-      // Role-only tools keep working through the signed grace window
-      // (operational continuity); everything hard-locks once the
-      // subscription is expired/canceled/paused or its data unreadable.
-      // `loading` stays open — the first fetch must not flash-lock the
-      // section. Tier-gated tools are stricter: useAdminGate locks them
-      // on anything but `active`.
-      const validityOpen =
-        subscriptionState === 'active' ||
-        subscriptionState === 'grace' ||
-        subscriptionState === 'loading';
-      if (!validityOpen) return 'subscription';
-      if (tool.access.minimumTier !== 'free' && adminLocked) return 'subscription';
-      if (!tierSatisfies(caps?.tier, tool.access.minimumTier)) return 'tier';
-      return 'none';
-    },
-    [canAccessTool, subscriptionState, adminLocked, caps],
+    (tool: ToolItem): ToolLockReason | 'none' | 'hidden' =>
+      resolveToolLock(tool, {
+        roleName,
+        subscriptionState: subscriptionState ?? 'unavailable',
+        capsTier: caps?.tier,
+        adminLocked,
+      }),
+    [roleName, subscriptionState, caps, adminLocked],
   );
 
   // Only owner/admin/manager roles see the Tools section at all — staff and
