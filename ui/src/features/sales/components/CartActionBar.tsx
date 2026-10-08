@@ -7,6 +7,19 @@ import type { ShiftDto } from '@/api/shifts';
 
 export interface CartActionBarProps {
   activeShift: ShiftDto | null;
+  /**
+   * The shift service could not be reached, so `activeShift` is null for a
+   * reason the cashier cannot act on.
+   *
+   * This exists because gating the button on `activeShift` alone re-blocked the
+   * till that PosScreen's own guard had just unblocked: `handlePay` permits a
+   * sale when a shift is open OR the service is unreachable
+   * (usePosShifts.ts:44-55 -- "an informational feature silently blocked every
+   * sale"), so a disabled button here made that branch dead code. Required
+   * rather than optional so a new call site has to state which it means instead
+   * of defaulting to "block the sale".
+   */
+  shiftUnavailable: boolean;
   handlePay: () => void;
   addToast: (toast: Omit<Toast, 'id'> & { id?: string }) => string;
   setShowOpenBillInput: Dispatch<SetStateAction<boolean>>;
@@ -24,6 +37,7 @@ export interface CartActionBarProps {
 
 export function CartActionBar({
   activeShift,
+  shiftUnavailable,
   handlePay,
   addToast,
   setShowOpenBillInput,
@@ -38,6 +52,10 @@ export function CartActionBar({
   handleOpenBill,
 }: CartActionBarProps) {
   const { l10n } = useLocalization();
+
+  // PosScreen refuses a sale only when there is no shift AND the shift service
+  // answered; see the prop doc above.
+  const payBlocked = !activeShift && !shiftUnavailable;
 
   return (
     <div className="pos-cart-actions-row">
@@ -58,12 +76,18 @@ export function CartActionBar({
         </button>
       </Localized>
 
-      {/* Pay button */}
+      {/* Pay button.
+          `payBlocked` mirrors PosScreen's handlePay guard EXACTLY: a sale needs a
+          shift OR an unreachable shift service. Gating on `!activeShift` alone
+          greyed the button out in the unreachable case, so the guard's stand-down
+          branch could never run and an informational feature still blocked the
+          till -- the defect usePosShifts.ts:44-55 records having fixed one layer
+          down. When they disagree the button is the one that is wrong. */}
       <button
         type="button"
-        className={`pos-cart-pay-btn${!activeShift ? ' pos-cart-pay-btn--disabled' : ''}`}
+        className={`pos-cart-pay-btn${payBlocked ? ' pos-cart-pay-btn--disabled' : ''}`}
         onClick={handlePay}
-        disabled={!activeShift}
+        disabled={payBlocked}
         aria-label={l10n.getString('pos-cart-charge-aria')}
       >
         <Localized id="pos-cart-pay">

@@ -49,7 +49,7 @@ const OPEN_SHIFT: ShiftDto = {
   updatedAt: STAMP,
 };
 
-function renderBar(activeShift: ShiftDto | null) {
+function renderBar(activeShift: ShiftDto | null, shiftUnavailable = false) {
   const deductionLocationIdRef: MutableRefObject<string | null> = {
     current: 'loc-7',
   };
@@ -63,6 +63,7 @@ function renderBar(activeShift: ShiftDto | null) {
 
   const props: CartActionBarProps = {
     activeShift,
+    shiftUnavailable,
     handlePay,
     addToast,
     setShowOpenBillInput,
@@ -105,6 +106,7 @@ describe('CartActionBar', () => {
     };
     const props: CartActionBarProps = {
       activeShift: OPEN_SHIFT,
+      shiftUnavailable: false,
       handlePay: vi.fn(),
       addToast: vi.fn(() => 'toast-1'),
       setShowOpenBillInput: vi.fn(),
@@ -132,6 +134,33 @@ describe('CartActionBar', () => {
     // Open Bill guards at click time, so neither is disabled here.
     expect(clearBtn()).not.toBeDisabled();
     expect(openBillBtn()).not.toBeDisabled();
+  });
+
+  it('keeps Pay enabled when the shift service is unreachable', () => {
+    // The mirror of the case above, and the one that used to be unreachable:
+    // PosScreen's handlePay permits payment when EITHER a shift is open OR the
+    // shift service could not be reached (usePosShifts.ts:44-55 -- "an
+    // informational feature silently blocked every sale"). Gating the button on
+    // `!activeShift` alone greyed it out in exactly that state, so the guard
+    // that stands down could never run: the till was blocked by a reporting
+    // feature, which is the defect the guard was written to remove.
+    const { props } = renderBar(null, true);
+
+    expect(payBtn()).not.toBeDisabled();
+    expect(payBtn().className).not.toContain('pos-cart-pay-btn--disabled');
+    fireEvent.click(payBtn());
+    expect(props.handlePay).toHaveBeenCalledTimes(1);
+  });
+
+  it('still disables Pay when there is no shift AND the service answered', () => {
+    // The guard must not be loosened into "always enabled": a reachable shift
+    // service reporting no open shift is the one state that legitimately blocks
+    // the sale, because the cashier can act on it.
+    const { props } = renderBar(null, false);
+
+    expect(payBtn()).toBeDisabled();
+    fireEvent.click(payBtn());
+    expect(props.handlePay).not.toHaveBeenCalled();
   });
 
   it('enables Pay and calls handlePay once when a shift is open', () => {

@@ -855,6 +855,7 @@ export function CartPanel({
           >
             <CartActionBar
               activeShift={activeShift}
+              shiftUnavailable={shiftUnavailable}
               handlePay={handlePay}
               addToast={addToast}
               setShowOpenBillInput={setShowOpenBillInput}
