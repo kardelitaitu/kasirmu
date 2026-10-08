@@ -609,6 +609,19 @@ consumers gate Save on it (`TerminalPreferencesCard`, `RestaurantReceiptsScreen`
 `WorkspaceRestaurantPosSettings`, `WorkspaceStorePosSettings`). This is the first fix
 in the whole F4 campaign that closes a whole dimension at once rather than one file.
 
+**⚠️ ROUND-8'S OWN FIX INTRODUCED A LATCH, caught and fixed in round 9.** Gating
+Save on `loadFailed` is only safe if the flag can be CLEARED. Nothing in those four
+consumers called `hw.reload()`, and `hw.loadFailed` is not reset by `save()` either —
+so a single transient read failure disabled Save for the **rest of the session**,
+with no way back. The three banners now carry a Retry control (and
+`WorkspaceRestaurantPosSettings` gained the `reloadNonce` its effect needed to
+bypass the once-per-session latch).
+
+**The lesson is about the shape of a guard, not the bug:** a flag that disables a
+control must ship with its RE-ENABLE path in the same change. I added four
+Save-gates and zero recovery affordances, and no test noticed because every test
+asserted the disabled state. The new assertion checks the Retry control EXISTS.
+
 **A SEVENTH INSTANCE, and a different shape (round 7):** `WorkspaceStorePosSettings`
 seeds its baseline from `settings.receipt` — the CONTEXT, not a per-key read — and
 consumed `useSettings()` without ever reading `hasPartialError`. A partially-failed

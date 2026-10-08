@@ -272,9 +272,17 @@ export function TerminalPreferencesCard({
           card compares against is not the terminal's real config. */}
       {hw.loadFailed && (
         <div className="settings-error-banner" role="alert" data-testid="terminal-prefs-load-error">
-          <Localized id="settings-load-failed">
-            <span>Failed to load settings</span>
-          </Localized>
+          <span>
+            <Localized id="settings-load-failed">
+              <span>Failed to load settings</span>
+            </Localized>
+          </span>
+          {/* `loadFailed` would otherwise be a ONE-WAY LATCH: nothing else in this
+              card clears it, so a transient read failure would disable Save for the
+              rest of the session. `hw.reload()` re-runs the load and clears it. */}
+          <Button variant="secondary" onClick={() => hw.reload()} data-testid="terminal-prefs-retry-btn">
+            <Localized id="retry"><span>Retry</span></Localized>
+          </Button>
         </div>
       )}
 

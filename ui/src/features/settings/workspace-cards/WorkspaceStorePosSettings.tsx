@@ -32,7 +32,7 @@ export function WorkspaceStorePosSettings({
   variant = 'full-page',
   onSaved,
 }: WorkspaceCardProps) {
-  const { settings, markSettingsUpdated, hasPartialError } = useSettings();
+  const { settings, markSettingsUpdated, hasPartialError, refetch } = useSettings();
   const { sessionToken } = useWorkspace();
   const { l10n } = useLocalization();
   const { addToast } = useToast();
@@ -473,11 +473,21 @@ export function WorkspaceStorePosSettings({
       {receiptSection}
       {printerSection}
       {scannerSection}
-      {hasPartialError && (
+      {(hasPartialError || hw.loadFailed) && (
         <div className="settings-error-banner" role="alert" data-testid="resto-storepos-partial-error">
-          <Localized id="settings-load-failed">
-            <span>Failed to load settings</span>
-          </Localized>
+          <span>
+            <Localized id="settings-load-failed">
+              <span>Failed to load settings</span>
+            </Localized>
+          </span>
+          {/* Without this the flags are a one-way latch and Save never returns. */}
+          <Button
+            variant="secondary"
+            data-testid="resto-storepos-retry-btn"
+            onClick={() => { void refetch(); hw.reload(); }}
+          >
+            <Localized id="retry"><span>Retry</span></Localized>
+          </Button>
         </div>
       )}
 

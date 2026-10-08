@@ -255,6 +255,10 @@ describe('TerminalPreferencesCard', () => {
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /save/i })).toBeDisabled();
     });
+
+    // Retry must exist: without it `loadFailed` is a ONE-WAY LATCH and the card
+    // could never save again for the rest of the session.
+    expect(screen.getByTestId('terminal-prefs-retry-btn')).toBeInTheDocument();
   });
 
   // ── Variants ─────────────────────────────────────────────────

@@ -51,6 +51,9 @@ export function WorkspaceRestaurantPosSettings({
   // `courseFiring: false` into `originalsRef`, so a failed read looked clean and
   // the next Save wrote that false over the merchant's real setting.
   const [loadFailed, setLoadFailed] = useState(false);
+  // Retry trigger. `loadFailed` would otherwise be a ONE-WAY LATCH — nothing else
+  // clears it, so a transient read failure would disable Save for the session.
+  const [reloadNonce, setReloadNonce] = useState(0);
 
   // Originals for dirty tracking — captured after initial load
   const originalsRef = useRef<Record<string, unknown>>({ tableManagement, courseFiring });
@@ -76,7 +79,9 @@ export function WorkspaceRestaurantPosSettings({
     // reset), so listing sessionToken in the deps alone would have changed nothing -- the guard
     // short-circuits every later run. Latching on the token makes a store switch re-seed, which
     // is what the touchedRef guard at :71 is already built for.
-    if (originalsLoadedForRef.current === sessionToken) return;
+    // `reloadNonce > 0` means Retry was pressed, which must bypass the once-per-
+    // session latch or the re-read would be short-circuited.
+    if (reloadNonce === 0 && originalsLoadedForRef.current === sessionToken) return;
     originalsLoadedForRef.current = sessionToken;
 
     setTableManagement(settings.receipt.showTableNumber);
@@ -102,7 +107,7 @@ export function WorkspaceRestaurantPosSettings({
     return () => { cancelled = true; };
     // sessionToken is read at :68 from useWorkspace() at :32. The save path at :125 already lists
     // it, so the omission here is an inconsistency rather than a design decision.
-  }, [settings.receipt, originalsLoaded, sessionToken]);
+  }, [settings.receipt, originalsLoaded, sessionToken, reloadNonce]);
 
   // ── Save ─────────────────────────────────────────────────────
 
@@ -285,9 +290,19 @@ export function WorkspaceRestaurantPosSettings({
 
       {loadFailed && (
         <div className="settings-error-banner" role="alert" data-testid="resto-card-load-error">
-          <Localized id="restaurant-settings-error-load">
-            <span>Failed to load restaurant settings</span>
-          </Localized>
+          <span>
+            <Localized id="restaurant-settings-error-load">
+              <span>Failed to load restaurant settings</span>
+            </Localized>
+          </span>
+          {/* Without this the flag is a one-way latch and Save never returns. */}
+          <Button
+            variant="secondary"
+            data-testid="resto-card-retry-btn"
+            onClick={() => { setReloadNonce((n) => n + 1); hw.reload(); }}
+          >
+            <Localized id="retry"><span>Retry</span></Localized>
+          </Button>
         </div>
       )}
 
