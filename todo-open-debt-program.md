@@ -93,6 +93,18 @@ Recorded because each one is still live in some document a worker might read, an
 
 ---
 
+## 2026-10-08: the authenticate-then-assume CEILING was 9 above the live count — a stale-high pin in the PERMISSIVE direction. Fixed in `ac161817c`.
+
+**Found by the same question R170 and R171 applied, but this time against a PIN rather than a comment.** Following the registration ratchet's own documentation: `registration_gate_debt.generated.rs:226-229` says, in as many words, *"class 2's own measurement FELL to 18, so **53 + 18 = 71** is the live row count"* — while the constant two lines below reads `RESOLVES_SESSION_NAMES_NO_PERMISSION: usize = 27`, the value from BEFORE the fall.
+
+**MEASURED, both halves, before changing anything.** Counting the class labels in `DEBT_LEDGER` gives **exactly 53 `no_session_resolution` rows and 18 `resolves_session_names_no_permission` rows — 53 + 18 = 71**, so the paragraph was right and the constant was stale. (My first extraction returned 45 rows of one class because the multi-line entries did not match a single-line pattern; counting the label strings directly is what corrected it — the same "my parse is not the file" trap as R166.) Then the decisive probe: **replacing the ceiling with the literal `18` keeps all 14 registration-gate legs GREEN**, which proves the live class-2 count is 18 and that 27 was absorbing nine rows of headroom.
+
+**Why a stale-HIGH ceiling is the dangerous direction, and the reason this was worth finding.** The assertion is `assume <= RESOLVES_SESSION_NAMES_NO_PERMISSION`. A stale-LOW floor fails loudly the moment the tree moves past it — that is what happened in R142 and made the ratchet red. A stale-HIGH **ceiling** does the opposite: it passes quietly while nine new `authenticate-then-assume` doors — the class this ratchet exists to shrink, a session resolved and no permission asked — ship without the ceiling noticing. **One direction of pin fails safe and the other fails open, and only the second needed measuring to find.**
+
+**The corrected doc records the mechanism, not just the number**, so the next hand-move in the same pass understands which way the pin is load-bearing: "a stale-LOW floor fails loudly; a stale-HIGH ceiling passes quietly, which is why this one needed measuring rather than reading."
+
+**Running tally: 17 guards examined, 7 sound, 10 with defects found and fixed.** Four consecutive rounds have found a written claim that nothing compared to its subject — a two-copy comment (R168), a rollback note (R169), a provenance line (R170) and now a ceiling constant. The distinction this round added: the previous three were documentation drift, while this one was **an operative pin**, so the defect was not cosmetic.
+
 ## 2026-10-08: the guard-vocabulary leg is SOUND, and I made its figures visible rather than chasing a stale one. Fixed in `c2f1a7875`.
 
 **Found by applying R170's lesson to a new class: count claims inside a GUARD's own doc.** `registration_gate_tests.rs:2019` dates its figures — *"Measured 05:45 on **e046e2f26**: 242 production files, 18 distinct spellings, 657 call sites"* — so unlike R169's and R170's claims these are **honest provenance, not a stale assertion**. I checked the commit exists (it does), which is what distinguishes a dated measurement from a claim about the present.
