@@ -183,3 +183,51 @@ async fn notify_memory_pressure_updates_state() {
         15
     );
 }
+
+// ── version_scoped (ADR #7) ──────────────────────────────────────
+//
+// MEASURED 2026-10-07: the tablet's settings fan-out calls
+// `version_scoped`, which the mobile shell had never registered —
+// "Command version_scoped not found" on every cold start. The UI falls back
+// to unscoped `version` (ADR #7), so the bug was silent; the recorder is
+// what surfaced it. The command must exist and resolve a session.
+
+fn scoped_state_with_session(token: &str) -> tauri::App<tauri::test::MockRuntime> {
+    use kasirmu_core::session::SessionContext;
+    let conn = kasirmu_core::migrations::fresh_db();
+    kasirmu_core::migrations::seed_provisioned_baseline(&conn);
+    let mut state = crate::state::AppState::for_test_with_conn(conn);
+    state.session_store.write().unwrap().insert(
+        token.to_string(),
+        SessionContext::new(
+            "user-owner".into(),
+            "role-owner".into(),
+            "terminal-1".into(),
+            "default".into(),
+            "default-restaurant-pos".into(),
+            "restaurant-pos".into(),
+            None,
+            0,
+        ),
+    );
+    tauri::test::mock_builder()
+        .manage(state)
+        .build(tauri::generate_context!())
+        .unwrap()
+}
+
+#[tokio::test]
+async fn version_scoped_reports_the_version_for_a_live_session() {
+    let app = scoped_state_with_session("live-token");
+    let v = version_scoped("live-token".into(), app.state()).await.unwrap();
+    assert_eq!(v.version, env!("CARGO_PKG_VERSION"));
+    assert!(!v.name.is_empty());
+    assert!(!v.target.is_empty());
+}
+
+#[tokio::test]
+async fn version_scoped_rejects_an_unknown_session() {
+    // Fail closed: no session, no version — the same gate the bridge twin runs.
+    let app = scoped_state_with_session("live-token");
+    assert!(version_scoped("ghost-token".into(), app.state()).await.is_err());
+}

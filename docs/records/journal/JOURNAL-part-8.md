@@ -1338,3 +1338,36 @@ recompute", which is why those two move by hand in the same pass.
 **Verified:** `cargo test -p kasirmu-app --lib registration_gate` → **14 passed, 0 failed**;
 `cargo test -p kasirmu-mobile --lib registration_gate` → **12 passed, 0 failed**. Both were
 red before this entry: the desktop at 10 passed / 4 failed, the tablet at 8 / 4.
+
+## 2026-10-08 — two tablet commands registered, and why they stay ungated
+
+**What landed.** `health::version_scoped` and
+`offline::offline_queue_status_summary_scoped` are now registered in
+`apps/mobile-tauri/src/lib.rs`. Both were reachable from the tablet UI and
+absent from the shell, which the device walk's IPC recorder named in as many
+words: *"Command version_scoped not found"* on every cold start and
+*"Command offline_queue_status_summary_scoped not found"* twice per visit to
+the offline-queue screen. Neither crashed a screen — the first silently fell
+back to unscoped `version` (`ui/src/api/system.ts`, ADR #7) and the second left
+the section on its empty state — which is exactly why they survived until a
+recorder existed to see them.
+
+**Why they are ungated, and not debt paid in the wrong direction.** Both are
+twins of bridge commands that are deliberately ungated there:
+`kasirmu_bridge::health::version_scoped` resolves the session and returns the
+same compile-time version constants, and
+`kasirmu_bridge::offline::offline_queue_status_summary_scoped` carries the
+`ungated-ok: documented split (module header) - queue-status read` marker.
+The tablet bodies mirror them: each resolves a session (`resolve_session` /
+`resolve_scope`) and neither names a permission, so both land in class 2
+(`resolves_session_names_no_permission`). Gating the tablet alone would make
+the two shells disagree about the same door, which is the divergence this
+repo's parity work exists to prevent.
+
+**What moved, and in the same pass.** `REGISTERED_FLOOR` 419 -> 421;
+`DEBT_CEILING` 95 -> 97; `RESOLVES_SESSION_NAMES_NO_PERMISSION` 44 -> 46, so
+the partition still sums: `51 + 46 = 97`. `NO_SESSION_RESOLUTION` stays at 51 —
+neither command is class 1. `REGISTERED_TOTAL` and the two ledger rows were
+written by the generator, not by hand:
+`KASIRMU_REGENERATE_GATE_LEDGER=1 cargo test -p kasirmu-mobile --lib
+drift_pin_generated_ledger_is_the_sweeps_own_output -- --nocapture`.

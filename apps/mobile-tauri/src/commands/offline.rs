@@ -79,6 +79,7 @@ use crate::state::AppState;
 /// crate does not own, so the conversion could not have stayed behind. Nothing
 /// outside this module names the type.
 pub use kasirmu_bridge::offline::OfflineQueueItemDto;
+pub use kasirmu_bridge::offline::OfflineQueueSummaryDto;
 
 /// Retained remote-application failure DTO for the front-end.
 ///
@@ -272,6 +273,37 @@ pub async fn pending_offline_count_scoped(
     let count = store.pending_offline_count()?;
     drop(db);
     Ok(count)
+}
+
+/// Get a summary of the offline queue status (scoped).
+///
+/// The tablet shell never registered this command, so the offline-queue
+/// screen's read failed with "Command offline_queue_status_summary_scoped
+/// not found" twice per visit and the section rendered its empty state —
+/// measured by the device walk's IPC recorder. Tablet-native, like its
+/// neighbours here: it resolves the session through `resolve_scope` and
+/// reads the STORE database.
+#[command]
+pub async fn offline_queue_status_summary_scoped(
+    session_token: String,
+    state: State<'_, AppState>,
+) -> Result<OfflineQueueSummaryDto, AppError> {
+    let (_session, conn_arc) = state.resolve_scope(&session_token)?;
+    let db_guard = conn_arc
+        .lock()
+        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
+    let db = &*db_guard;
+    let store = Store::new(&db);
+    let summary = store.offline_queue_status_summary()?;
+    drop(db);
+    Ok(OfflineQueueSummaryDto {
+        pending_count: summary.pending_count,
+        synced_count: summary.synced_count,
+        failed_count: summary.failed_count,
+        conflict_count: summary.conflict_count,
+        last_synced_at: summary.last_synced_at,
+        oldest_pending_at: summary.oldest_pending_at,
+    })
 }
 
 /// Attempt to sync all pending offline items through the real cloud sync resolved from a session token. ADR #7.

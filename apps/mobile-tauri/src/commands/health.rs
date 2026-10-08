@@ -36,6 +36,32 @@ pub async fn version() -> Result<VersionInfo, AppError> {
     .map_err(Into::into)
 }
 
+/// Version info resolved from a session token. ADR #7.
+///
+/// The tablet shell never registered `version_scoped`, so the settings
+/// fan-out's call failed with "Command version_scoped not found" on every
+/// cold start and silently fell back to unscoped `version`
+/// (`ui/src/api/system.ts`) — measured by the device walk's IPC recorder.
+/// The body matches the bridge twin: resolve the session, then report the
+/// same compile-time version.
+#[command]
+pub async fn version_scoped(
+    session_token: String,
+    state: tauri::State<'_, crate::state::AppState>,
+) -> Result<VersionInfo, AppError> {
+    // The session is the whole point of the scoped call: a dead token must
+    // not get version data.
+    let _session = state.resolve_session(&session_token)?;
+    kasirmu_bridge::health::version(
+        env!("CARGO_PKG_NAME"),
+        env!("CARGO_PKG_VERSION"),
+        env!("CARGO_PKG_RUST_VERSION"),
+        option_env!("TARGET").unwrap_or("unknown"),
+    )
+    .await
+    .map_err(Into::into)
+}
+
 /// Get the stable device identifier for terminal binding.
 ///
 /// On Android, resolves or generates a persistent device UUID stored in

@@ -241,7 +241,11 @@ mod debt;
 /// `health::notify_memory_pressure` (ungated, client health callback for OS trim memory)
 /// and 5 KDS commands (`kds::enroll_kds_device_scoped`, `kds::list_kds_routing_rules_scoped`,
 /// `kds::set_kds_routing_rule_scoped`, `kds::delete_kds_routing_rule_scoped`, `kds::publish_course_fired_scoped`).
-const REGISTERED_FLOOR: usize = 419;
+// 419 -> 421 with `health::version_scoped` and
+// `offline::offline_queue_status_summary_scoped` (2026-10-08). Both are
+// ungated by design, so the ceiling moved too — see
+// docs/records/journal/JOURNAL-part-8.md.
+const REGISTERED_FLOOR: usize = 421;
 /// How far the parsed count may rise without regenerating: names are added by ordinary
 /// feature work, so the floor is a lower bound plus slack and never an equality.
 /// Crossing the slack is the signal that the ledger needs regenerating in the same pass.
