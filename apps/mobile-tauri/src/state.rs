@@ -626,6 +626,12 @@ impl AppState {
 
     /// Construct an `AppState` with a pre-configured connection (migrations
     /// already run). Used by integration tests that need a seeded database.
+    ///
+    /// The store directory is PER-INSTANCE for the same reason as
+    /// [`Self::for_test`]: store DBs are real files under `temp_dir` and
+    /// therefore survive between runs, and a test that writes users into a
+    /// store db (session-user replication) must not inherit identities from
+    /// an earlier run.
     pub fn for_test_with_conn(conn: Connection) -> Self {
         Self {
             db: Arc::new(Mutex::new(conn)),
@@ -641,7 +647,7 @@ impl AppState {
             plugins: Mutex::new(None),
             topology_apply_lock: Mutex::new(()),
             db_manager: StoreDatabaseManager::new(
-                std::env::temp_dir(),
+                std::env::temp_dir().join(format!("kasirmu-test-store-{}", uuid::Uuid::now_v7())),
                 kasirmu_core::migrations::ALL,
             ),
             picker_ticket_secret: b"test-picker-ticket-secret".to_vec(),
