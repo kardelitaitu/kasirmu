@@ -1319,7 +1319,7 @@ export default function RestaurantReceiptsScreen({
           <button
             type="button"
             className={`btn btn--primary btn--md resto-anim-btn ${saving ? 'resto-anim-btn--loading' : ''}`}
-            disabled={!dirty || saving || loadFailed}
+            disabled={!dirty || saving || loadFailed || hw.loadFailed}
             aria-busy={saving || undefined}
             onClick={handleSave}
             data-testid="restaurant-receipts-save-btn"

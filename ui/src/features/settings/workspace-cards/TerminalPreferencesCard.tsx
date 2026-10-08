@@ -268,6 +268,16 @@ export function TerminalPreferencesCard({
         </div>
       </Card>
 
+      {/* F4: `hw.profile` is a DEFAULT when the read failed, so the baseline this
+          card compares against is not the terminal's real config. */}
+      {hw.loadFailed && (
+        <div className="settings-error-banner" role="alert" data-testid="terminal-prefs-load-error">
+          <Localized id="settings-load-failed">
+            <span>Failed to load settings</span>
+          </Localized>
+        </div>
+      )}
+
       {hw.error && (
         <div className="settings-error-banner" role="alert">
           {hw.error}
@@ -277,7 +287,7 @@ export function TerminalPreferencesCard({
       {/* Save button */}
       {variant !== 'inspector-drawer' && (
         <div className="settings-actions">
-          <Button variant="primary" onClick={handleSave} disabled={!dirty || saving}>
+          <Button variant="primary" onClick={handleSave} disabled={!dirty || saving || hw.loadFailed}>
             <Localized id="save">Save</Localized>
           </Button>
         </div>

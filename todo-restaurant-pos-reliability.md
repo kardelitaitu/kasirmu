@@ -585,6 +585,18 @@ reintroduced bug, which fails it with
 self-tests alone were not sufficient — two earlier guards in this repo passed theirs
 while being wrong.
 
+**THE ROOT, found in round 8: `useTerminalHardware` itself.** Every hardware-seeded
+baseline traces back to this hook, whose load catch
+(`ui/src/hooks/useTerminalHardware.ts:246-249`) substituted
+`createDefaultProfile(...)` silently. So `profile` was a DEFAULT after a failed read,
+and five consumer surfaces seeded their dirty baseline from it. `TerminalPreferencesCard`
+was the visible one — it had NO load signal at all.
+
+Fixed at the source: the hook now returns `loadFailed`, set in that catch. Four
+consumers gate Save on it (`TerminalPreferencesCard`, `RestaurantReceiptsScreen`,
+`WorkspaceRestaurantPosSettings`, `WorkspaceStorePosSettings`). This is the first fix
+in the whole F4 campaign that closes a whole dimension at once rather than one file.
+
 **A SEVENTH INSTANCE, and a different shape (round 7):** `WorkspaceStorePosSettings`
 seeds its baseline from `settings.receipt` — the CONTEXT, not a per-key read — and
 consumed `useSettings()` without ever reading `hasPartialError`. A partially-failed

@@ -52,6 +52,9 @@ const mocks = vi.hoisted(() => ({
     defaultEdcTerminalId: '',
   },
   hwError: null as string | null,
+  // Controllable so the F4 case can simulate a FAILED profile read, where
+  // `profile` is a default rather than the terminal's real config.
+  hwLoadFailed: false,
 }));
 
 // Stable profile object — must NOT create a new reference on each
@@ -76,6 +79,7 @@ vi.mock('@/hooks/useTerminalHardware', () => ({
   useTerminalHardware: (terminalId: string) => {
     if (!terminalId) return {
       profile: null, isLoading: false, error: mocks.hwError,
+      loadFailed: mocks.hwLoadFailed,
       updatePrinter: vi.fn(), updateScale: vi.fn(), updateScanner: vi.fn(),
       updateLocalPrefs: vi.fn(), save: vi.fn(), reload: vi.fn(),
     };
@@ -84,6 +88,7 @@ vi.mock('@/hooks/useTerminalHardware', () => ({
       profile: stableProfile,
       isLoading: false,
       error: mocks.hwError,
+      loadFailed: mocks.hwLoadFailed,
       updatePrinter: vi.fn(),
       updateScale: vi.fn(),
       updateScanner: vi.fn(),
@@ -165,6 +170,7 @@ function renderCard(overrides: Record<string, unknown> = {}) {
 beforeEach(() => {
   Object.assign(mocks.localPrefs, { soundVolume: 80, darkMode: false, scaleAutoZero: true, defaultEdcTerminalId: '' });
   mocks.hwError = null;
+  mocks.hwLoadFailed = false;
 });
 
 // ── Tests ───────────────────────────────────────────────────────────
@@ -226,6 +232,28 @@ describe('TerminalPreferencesCard', () => {
     await waitFor(() => {
       const btn = screen.getByRole('button', { name: /save/i });
       expect(btn).not.toBeDisabled();
+    });
+  });
+
+  it('keeps Save disabled after a FAILED profile read, even once the user edits (F4)', async () => {
+    // `hw.profile` is a DEFAULT when the read failed, so the baseline this card
+    // compares against is not the terminal's real config.
+    //
+    // The discriminating property is the EDIT: on the buggy path `dirty` is false
+    // so Save is disabled either way, and the banner renders from `hw.loadFailed`
+    // independently. Asserting only "disabled" passes on the bug.
+    mocks.hwLoadFailed = true;
+
+    renderCard();
+
+    expect(screen.getByTestId('terminal-prefs-load-error')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /save/i })).toBeDisabled();
+
+    // Now edit. On the bug this sets dirty=true and re-enables Save.
+    fireEvent.change(screen.getByLabelText('Sound volume'), { target: { value: '50' } });
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /save/i })).toBeDisabled();
     });
   });
 

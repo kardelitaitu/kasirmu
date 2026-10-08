@@ -301,7 +301,7 @@ export function WorkspaceRestaurantPosSettings({
           could not read, so saving would overwrite the real one. */}
       {variant !== 'inspector-drawer' && (
         <div className="settings-actions">
-          <Button variant="primary" onClick={handleSave} disabled={!dirty || saving || loadFailed}>
+          <Button variant="primary" onClick={handleSave} disabled={!dirty || saving || loadFailed || hw.loadFailed}>
             <Localized id="save">Save</Localized>
           </Button>
         </div>

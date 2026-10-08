@@ -181,6 +181,18 @@ export interface UseTerminalHardwareResult {
   isLoading: boolean;
   /** Error from the most recent operation, or null. */
   error: string | null;
+  /**
+   * True when the profile READ failed and `profile` is therefore a DEFAULT, not
+   * the terminal's stored configuration (F4).
+   *
+   * This is deliberately separate from `error`: `error` reports the most recent
+   * operation (usually a save), while this reports the LOAD specifically. The
+   * catch below used to substitute `createDefaultProfile` silently, so a consumer
+   * seeding its dirty baseline from `profile` got defaults, looked clean, and
+   * would have saved those defaults over the real hardware config. Consumers that
+   * track dirtiness MUST gate Save on this.
+   */
+  loadFailed: boolean;
   /** Update printer configuration (local state only, call save() to persist). */
   updatePrinter: (partial: Partial<PrinterConfig>) => void;
   /** Update kitchen printer configuration. */
@@ -218,6 +230,7 @@ export function useTerminalHardware(
   const [profile, setProfile] = useState<TerminalHardwareProfile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
   const initializedRef = useRef(false);
   const { sessionToken: rawSessionToken } = useWorkspace();
   const sessionToken = rawSessionToken ?? '';
@@ -242,10 +255,16 @@ export function useTerminalHardware(
         : await getHardwareSettings();
       const resolved = fromHardwareSettingsDto(terminalId, storeId, dto);
       setProfile(resolved);
+      setLoadFailed(false);
       setIsLoading(false);
     } catch {
-      // IPC unavailable (non-Tauri env, dev mock) — use defaults
+      // IPC unavailable (non-Tauri env, dev mock) — use defaults.
+      //
+      // The defaults still go in (a blank card beats no card), but `loadFailed`
+      // marks them as UNCONFIRMED so a consumer seeding its dirty baseline from
+      // `profile` can refuse to save them over the terminal's real config (F4).
       setProfile(createDefaultProfile(terminalId, storeId));
+      setLoadFailed(true);
       setIsLoading(false);
     }
   }, [terminalId, storeId, sessionToken]);
@@ -364,6 +383,7 @@ export function useTerminalHardware(
     profile,
     isLoading,
     error,
+    loadFailed,
     updatePrinter,
     updateKitchenPrinter,
     updateScale,

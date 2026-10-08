@@ -462,7 +462,7 @@ export function WorkspaceStorePosSettings({
 
   const saveButton = variant !== 'inspector-drawer' ? (
     <div className="settings-actions">
-      <Button variant="primary" onClick={handleSave} disabled={!dirty || saving || hasPartialError}>
+      <Button variant="primary" onClick={handleSave} disabled={!dirty || saving || hasPartialError || hw.loadFailed}>
         <Localized id="save">Save</Localized>
       </Button>
     </div>
