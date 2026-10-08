@@ -1522,21 +1522,11 @@ export default function RestaurantMenuEditorScreen({
                         </button>
                       </>
                     ) : (
-                      <>
-                        <p className="restaurant-menu-editor-empty">
-                          <Localized id="restaurant-menu-editor-empty">
-                            <span>No items in this category yet.</span>
-                          </Localized>
-                        </p>
-                        <button
-                          type="button"
-                          className="btn btn--primary btn--sm"
-                          onClick={beginCreate}
-                          data-testid="restaurant-menu-editor-empty-new-item"
-                        >
-                          + <Localized id="restaurant-menu-editor-new-item">Add item</Localized>
-                        </button>
-                      </>
+                      <p className="restaurant-menu-editor-empty">
+                        <Localized id="restaurant-menu-editor-empty">
+                          <span>No items in this category yet.</span>
+                        </Localized>
+                      </p>
                     )}
                   </div>
                 ) : (
