@@ -27,6 +27,10 @@
   .restaurant-menu-editor-layout {
     grid-template-columns: 1fr;
   }
+
+  .restaurant-menu-editor-rail {
+    position: static;
+  }
 }
 
 /* ── Category rail ─────────────────────────────────────────────── */
@@ -173,12 +177,18 @@
   opacity: 1;
 }
 
+@media (hover: none) {
+  .restaurant-menu-editor-category-row-actions {
+    opacity: 1;
+  }
+}
+
 .restaurant-menu-editor-category-action-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: var(--space-6);
-  height: var(--space-6);
+  width: var(--touch-target-min);
+  height: var(--touch-target-min);
   background: transparent;
   border: none;
   border-radius: var(--radius-sm);
@@ -996,4 +1006,90 @@
 .restaurant-menu-editor-btn-add-opt:hover {
   border-color: var(--color-primary);
   color: var(--color-primary);
+}
+
+/* ── Mobile Ergonomics (<= 600px and <= 480px) ─────────────────── */
+
+@media (max-width: 600px) {
+  .restaurant-menu-editor-filter-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .restaurant-menu-editor-search-box {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .restaurant-menu-editor-status-tabs {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .restaurant-menu-editor-status-tab {
+    flex: 1;
+    text-align: center;
+  }
+
+  .restaurant-menu-editor-toolbar-actions {
+    flex-direction: column;
+    align-items: stretch;
+    width: 100%;
+  }
+
+  .restaurant-menu-editor-bulk-group {
+    width: 100%;
+  }
+
+  .restaurant-menu-editor-btn-bulk {
+    flex: 1;
+  }
+
+  .restaurant-menu-editor-sort-select-wrapper {
+    width: 100%;
+    margin-left: 0;
+    justify-content: space-between;
+  }
+
+  .restaurant-menu-editor-sort-select {
+    flex: 1;
+  }
+
+  .restaurant-menu-editor-item-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 480px) {
+  .restaurant-menu-editor-option-row {
+    flex-wrap: wrap;
+  }
+
+  .restaurant-menu-editor-option-name-input {
+    width: 100%;
+    flex: 1 1 100%;
+  }
+
+  .restaurant-menu-editor-option-price-box {
+    flex: 1;
+  }
+
+  .restaurant-menu-editor-group-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .restaurant-menu-editor-group-name-input {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .restaurant-menu-editor-group-bounds {
+    justify-content: space-between;
+    width: 100%;
+  }
+
+  .restaurant-menu-editor-modal-card {
+    padding: var(--space-4);
+  }
 }
