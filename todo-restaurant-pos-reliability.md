@@ -754,6 +754,12 @@ _Fill in as phases land. One row per acceptance command run._
 | 2026-10-09 | F5 guard | `cd ui && npx vitest run mirrorBeforeAwait` | exit 0 | **7 tests passed**; 0 offenders across `ui/src` |
 | 2026-10-09 | F5 guard | `cd ui && npx vitest run mirrorBeforeAwait RestaurantReceiptsScreen RestaurantSettingsScreen` | exit 0 | **3 files, 54 passed** |
 | 2026-10-09 | F5 guard | `git diff --stat RestaurantReceiptsScreen.tsx` after the kill-test | empty | file byte-identical to committed state |
+| 2026-10-09 | F4 | `cd ui && npx vitest run RestaurantReceiptsScreen -t 'FAILS'` (kill-test) | **FAIL (killed)** | reverting the catch to a silent fallback fails the case; restored |
+| 2026-10-09 | F4 | `cd ui && npx vitest run RestaurantReceiptsScreen RestaurantSettingsScreen mirrorBeforeAwait` | exit 0 | **3 files, 56 passed** |
+| 2026-10-09 | F4 audit | `node .f4scan.cjs` over all 8 `originalsRef` files | 2 new instances | KDS + inventory; 1 false positive (`TerminalPreferencesCard`) |
+| 2026-10-09 | F4 | `cd ui && npx vitest run WorkspaceKdsSettings WorkspaceInventorySettings -t 'read rejects'` (kill-test) | **first version PASSED against the bug** | asserted only "disabled", which is true on the bug too; strengthened to edit-then-assert |
+| 2026-10-09 | F4 | `cd ui && npx vitest run WorkspaceKdsSettings WorkspaceInventorySettings -t 'FAILED settings read'` (kill-test, v2) | **2 FAILURES (killed)** | both discriminate after strengthening |
+| 2026-10-09 | F4 | `cd ui && npx vitest run Workspace Restaurant Settings` | exit 0 | **66 files, 1085 passed / 22 skipped** |
 
 **P0 baseline (measured 2026-10-09).** These four are the reference figures for
 attributing any later regression:
