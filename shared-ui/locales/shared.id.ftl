@@ -127,6 +127,7 @@ app-error-validation = Periksa kembali informasi yang Anda masukkan, lalu coba l
 app-error-permission = Anda tidak memiliki izin untuk melakukan ini.
 app-error-session = Sesi Anda telah berakhir. Silakan masuk kembali.
 app-error-conflict = Catatan ini diubah oleh orang lain. Segarkan dan coba lagi.
+app-error-duplicate = Item atau kategori dengan nama atau kode ini sudah ada.
 app-error-not-found = Item yang diminta tidak ditemukan.
 app-error-offline = Anda tampaknya luring. Periksa koneksi Anda dan coba lagi.
 app-error-hardware = Perangkat keras tidak merespons. Periksa perangkat dan coba lagi.

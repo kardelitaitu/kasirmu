@@ -40,6 +40,7 @@ app-error-validation = Please check the information you entered and try again.
 app-error-permission = You don't have permission to do this.
 app-error-session = Your session has expired. Please sign in again.
 app-error-conflict = This record was changed by someone else. Refresh and try again.
+app-error-duplicate = An item or category with this name or code already exists.
 app-error-not-found = The requested item could not be found.
 app-error-offline = You appear to be offline. Check your connection and try again.
 app-error-hardware = A hardware device did not respond. Check it and try again.

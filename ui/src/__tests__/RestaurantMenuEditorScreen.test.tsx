@@ -198,6 +198,25 @@ describe('RestaurantMenuEditorScreen', () => {
     });
   });
 
+  it('prevents creating a category with duplicate name client-side', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<RestaurantMenuEditorScreen />, productsFtl);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('restaurant-menu-editor-btn-add-cat')).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByTestId('restaurant-menu-editor-btn-add-cat'));
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+
+    // 'Mains' already exists in mockCategories
+    await user.type(screen.getByTestId('restaurant-menu-editor-cat-input-name'), 'Mains');
+    await user.click(screen.getByTestId('restaurant-menu-editor-cat-save'));
+
+    expect(productsApi.createCategoryScoped).not.toHaveBeenCalled();
+    expect(screen.getByText('A category with this name already exists.')).toBeInTheDocument();
+  });
+
   it('prompts confirmation dialog before deleting an item and executes delete on confirm', async () => {
     const user = userEvent.setup();
     renderWithProviders(<RestaurantMenuEditorScreen />, productsFtl);

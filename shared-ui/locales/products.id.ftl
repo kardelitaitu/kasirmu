@@ -17,6 +17,7 @@ restaurant-menu-editor-create-category = Kategori Baru
 restaurant-menu-editor-edit-category = Ubah Kategori
 restaurant-menu-editor-save-category = Simpan Kategori
 restaurant-menu-editor-category-saved = Kategori diperbarui
+restaurant-menu-editor-category-name-exists = Kategori dengan nama ini sudah ada.
 restaurant-menu-editor-new-item = Tambah item
 restaurant-menu-editor-empty = Belum ada item di kategori ini.
 restaurant-menu-editor-loading = Memuat menu…

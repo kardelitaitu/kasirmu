@@ -476,6 +476,20 @@ export default function RestaurantMenuEditorScreen({ onBack }: RestaurantMenuEdi
     const trimmedName = categoryModal.name.trim();
     if (!trimmedName) return;
 
+    // Prevent duplicate category names with immediate localized feedback
+    const isDuplicate = categories.some(
+      (c) => c.name.toLowerCase() === trimmedName.toLowerCase() && c.id !== categoryModal.id,
+    );
+    if (isDuplicate) {
+      addToast({
+        message:
+          l10n.getString('restaurant-menu-editor-category-name-exists') ||
+          'A category with this name already exists.',
+        type: 'error',
+      });
+      return;
+    }
+
     setCategorySaving(true);
     try {
       if (categoryModal.id) {

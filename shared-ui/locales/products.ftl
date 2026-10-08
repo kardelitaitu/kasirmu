@@ -18,6 +18,7 @@ restaurant-menu-editor-create-category = New Category
 restaurant-menu-editor-edit-category = Edit Category
 restaurant-menu-editor-save-category = Save Category
 restaurant-menu-editor-category-saved = Category updated
+restaurant-menu-editor-category-name-exists = A category with this name already exists.
 restaurant-menu-editor-new-item = Add item
 restaurant-menu-editor-empty = No items in this category yet.
 restaurant-menu-editor-loading = Loading menu…

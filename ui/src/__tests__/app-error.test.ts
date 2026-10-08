@@ -113,6 +113,9 @@ describe('userErrorKey / userErrorMessage', () => {
     expect(userErrorKey({ kind: 'permissionDenied', message: 'owner only' })).toBe('app-error-permission');
     expect(userErrorKey({ kind: 'invalidSession' })).toBe('app-error-session');
     expect(userErrorKey({ kind: 'core', subKind: 'Conflict', message: 'x' })).toBe('app-error-conflict');
+    expect(userErrorKey({ kind: 'core', subKind: 'Conflict', message: 'conflict: category already exists (name)' })).toBe('app-error-duplicate');
+    expect(userErrorKey({ kind: 'core', subKind: 'Conflict', message: 'conflict: product already exists (sku or barcode)' })).toBe('app-error-duplicate');
+    expect(userErrorKey({ kind: 'core', subKind: 'Conflict', message: 'conflict: product already exists (version)' })).toBe('app-error-conflict');
     expect(userErrorKey({ kind: 'core', subKind: 'NotFound', message: 'x' })).toBe('app-error-not-found');
     expect(userErrorKey({ kind: 'core', subKind: 'Validation', message: 'x' })).toBe('app-error-validation');
     expect(userErrorKey({ kind: 'hardware', subKind: 'Timeout', message: 'x' })).toBe('app-error-hardware');
