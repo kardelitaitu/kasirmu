@@ -93,6 +93,18 @@ Recorded because each one is still live in some document a worker might read, an
 
 ---
 
+## 2026-10-08: `validate_customer_fields` had zero coverage over FOUR call sites. Fixed in `e1daf96ac`.
+
+**Applied R175's method to the rest of R166's unprobed list, and the results split cleanly: one target was excellent, the other had R175's exact defect.**
+
+**`validate_create_rate_args` (`currency.rs:151`) is SOUND — the strongest coverage of the two.** It has FIVE refusal branches (empty from/to, non-positive rate, same-currency pair, non-ISO-4217 code for each field, malformed effective date). Removing the ISO-4217 loop AND the date check together produced **3 FAILURES**: `validate_rejects_non_iso_to_currency`, `create_exchange_rate_rejects_non_iso_currency_code` and `create_exchange_rate_rejects_malformed_effective_date`. Both pure-function and command-level tests exist, and the positive case is pinned beside the negatives. 30 tests green. **No change needed.**
+
+**`validate_customer_fields` (`customers.rs:233`) had NONE.** It guards four call sites — `create_customer`, `update_customer`, `create_customer_scoped`, `update_customer_scoped` — and `customers_tests.rs` covered only the args structs' serde and Debug shapes. **MEASURED: replacing the entire body with `let _ = (name, email, phone);` left all 50 tests in the file GREEN.** Three tests added: blank-name refusal (three spellings), the email SHAPE test (five malformed values read out of `foundation::Email::validate` rather than guessed, plus an accepted address so the loop cannot be satisfied by refusing everything), and the phone test (plus that omitting both optional fields is allowed — the branch the `if let Some` exists for). **All 3 KILL the mutation: 48 passed / 3 FAILED.** Production restored byte-for-byte; 51/51 green; clippy Finished.
+
+**A tooling hazard worth recording, because it cost two calls and could have produced a false reading.** `currency.rs` was REFORMATTED by a parallel session (`7c3fcb442`, "apply cargo fmt after the kasirmu rebrand") **between my read and my mutation**, so my first two `replace` calls silently returned the input unchanged — whitespace anchors no longer matched. The first mutation run therefore executed the ORIGINAL code and reported "ALL OK", which would have been a **false negative** had I trusted it. I caught it because the run printed `mutA (ISO loop) applies: false`, and I had made printing that check a habit. **On a shared checkout an anchor can be invalidated by another agent between two calls, so the mutation must prove it applied before its result means anything.**
+
+**Running tally: 21 guards examined, 10 sound, 11 with defects found and fixed.** Two consecutive rounds where mutation found real gaps that reading had not — the method is now the reliable detector, not a supplement to reading.
+
 ## 2026-10-08: `validate_product` had ZERO coverage — both refusal branches. Tests landed as `825ed3efe`.
 
 **Found by mutation, not by reading, on a surface R166 listed and later rounds had not reached.** `validate_product` (`crates/kasirmu-bridge/src/inventory_counts.rs:262`) is reached from `add_count_line_scoped` at `:429` and is the guard that stops a stock-count line referencing a product the store does not have. **MEASURED: replacing its entire body with `Ok(())` left all 20 tests in `inventory_counts_tests.rs` GREEN.** The reason is visible once looked for — all five existing `add_count_line_scoped` tests seed the product first and pass the SAME sku (`WG-001`), so neither the empty-sku branch nor the not-found branch was ever exercised. A count line could reference a nonexistent product and carry a difference no inventory report could reconcile.
