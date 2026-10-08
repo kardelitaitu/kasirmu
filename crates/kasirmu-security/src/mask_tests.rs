@@ -271,13 +271,41 @@ fn mask_pan_exact_invariant_11_through_19() {
 /// (not Unicode scalar values). This test documents the boundary
 /// so future readers know what to expect for multi-byte input.
 ///
-/// `'é'` (U+00E9) is 2 bytes UTF-8 → falls in the short-string branch
-/// and is returned unchanged. `'😊'` (U+1F60A) is 4 bytes UTF-8 →
-/// enters the masking branch and becomes `<first>**<last>`.
+/// Masking must never produce MORE characters than the input.
+///
+/// WAS A CAVEAT, NOW AN INVARIANT. This test previously pinned
+/// `mask_name('😊') == '😊**😊'` as EXPECTED, which recorded a byte-vs-char bug as
+/// a contract. `part.len()` counts BYTES, so a 4-byte single-character emoji yielded
+/// `masked_len = 2` and came back three characters long — longer than the one-character
+/// secret, with that character visible at both ends. `"ééé"` (6 bytes, 3 chars) came back
+/// as `"é****é"`: six characters from three.
+///
+/// A name is TEXT, so the unit is the character. The property below is what the function
+/// is for; the byte length is an implementation detail that must not leak into the result.
 #[test]
-fn mask_name_byte_vs_char_caveat() {
+fn mask_name_never_grows_the_value_it_masks() {
+    for name in [
+        "\u{00E9}",
+        "\u{1F60A}",
+        "\u{00E9}\u{00E9}\u{00E9}",
+        "J\u{00F6}hn",
+        "\u{1F60A}\u{1F60A}\u{1F60A}\u{1F60A}",
+    ] {
+        let masked = mask_name(name);
+        assert!(
+            masked.chars().count() <= name.chars().count(),
+            "masking must never emit MORE characters than the input: {name:?} ({} chars) \
+             became {masked:?} ({} chars)",
+            name.chars().count(),
+            masked.chars().count()
+        );
+    }
+    // A part of one or two characters is too short to mask and is returned as-is.
     assert_eq!(mask_name("\u{00E9}"), "\u{00E9}");
-    assert_eq!(mask_name("\u{1F60A}"), "\u{1F60A}**\u{1F60A}");
+    assert_eq!(mask_name("\u{1F60A}"), "\u{1F60A}");
+    // Three characters mask exactly the middle one, whatever its byte width.
+    assert_eq!(mask_name("\u{00E9}\u{00E9}\u{00E9}"), "\u{00E9}*\u{00E9}");
+    assert_eq!(mask_name("Bob"), "B*b");
 }
 
 /// `split_whitespace` collapses runs of any unicode whitespace
