@@ -424,6 +424,56 @@ async fn create_session_rejects_forged_role_id() {
     );
 }
 
+/// MEASURED 2026-10-08: the DESKTOP has the same gap the tablet had.
+/// `locations::create_location_profile` calls `db_manager.create_store_db`
+/// (`locations.rs:290`) — "file-only, zero rows" by its own comment — and the
+/// bridge's `create_session` never replicated the session user into the store
+/// DB, so the first scoped command on a freshly created store would answer
+/// `PermissionDenied("user not found")` exactly as the tablet did.
+#[tokio::test]
+async fn create_session_replicates_the_user_into_the_store_db() {
+    // `temp_conn()` is already provisioned (it seeds the baseline itself).
+    let conn = crate::testing::temp_conn();
+    let store = Store::new(&conn);
+    store.seed_default_roles().unwrap();
+    conn.execute(
+        "INSERT INTO users (id, username, pin_hash, display_name, role_id, is_active, created_at, updated_at)
+         VALUES ('user-owner', 'owner', 'hash', 'Owner', 'role-owner', 1, '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z')",
+        [],
+    )
+    .unwrap();
+    let app = test_app(conn);
+
+    let result = create_session(
+        &app.ctx(),
+        &CreateSessionArgs {
+            user_id: "user-owner".into(),
+            role_id: "role-owner".into(),
+            store_id: "default".into(),
+            instance_id: "default-restaurant-pos".into(),
+            type_key: "restaurant-pos".into(),
+            terminal_id: "terminal-1".into(),
+            picker_ticket: test_picker_ticket("user-owner"),
+            org_id: None,
+        },
+    )
+    .await
+    .expect("owner session must mint");
+    let _ = result;
+
+    // The invariant: the store DB authorizes the session user afterwards.
+    let ctx = app.ctx();
+    let conn_arc = ctx
+        .db_manager
+        .open_store("default")
+        .expect("store db opens");
+    let guard = conn_arc.lock().expect("store db lock");
+    let store = Store::new(&guard);
+    store
+        .require_permission("user-owner", kasirmu_core::permissions::SETTINGS_READ)
+        .expect("the session user must be authorized in the store DB after mint");
+}
+
 #[tokio::test]
 async fn create_session_rejects_unknown_user() {
     let conn = crate::testing::temp_conn();

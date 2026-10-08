@@ -658,6 +658,44 @@ pub async fn create_session(
         }
     }
 
+    // Uphold the authorization invariant before the session exists: scoped
+    // commands authorize the session user in the STORE DB, and the desktop can
+    // create one with no users at all — `locations::create_location_profile`
+    // calls `db_manager.create_store_db` (`locations.rs:290`, "file-only, zero
+    // rows" by its own comment). Measured 2026-10-08: a session bound to such a
+    // store answered `PermissionDenied("user not found")` on its first scoped
+    // read, the same defect the tablet carried. The identity is already proven
+    // above (picker ticket + instance access), so this copies the row the
+    // global DB just authenticated and adds no authority.
+    {
+        // Open the store db BEFORE taking the global lock: on a cache miss
+        // `open_store` creates the file and runs migrations.
+        let store_conn = ctx
+            .db_manager
+            .open_store(&args.store_id)
+            .map_err(|e| BridgeError::Internal(format!("opening store db: {e}")))?;
+        let global = ctx.lock_global().await;
+        let store_guard = store_conn
+            .lock()
+            .map_err(|e| BridgeError::Internal(format!("store db lock poisoned: {e}")))?;
+        let replicated = platform_core::database::identity_sync::ensure_session_user_in_store(
+            &global,
+            &store_guard,
+            &args.user_id,
+        )
+        .map_err(|e| BridgeError::Internal(format!("replicating session user: {e}")))?;
+        if !replicated {
+            tracing::error!(
+                user_id = %args.user_id,
+                store_id = %args.store_id,
+                "session creation denied — authenticated user vanished from the global DB"
+            );
+            return Err(BridgeError::Invalid(
+                "Authenticated user no longer exists".into(),
+            ));
+        }
+    }
+
     // ADR #5: the tenant subscription gates which workspace types a session
     // may open. Role access (above) and tier entitlement are orthogonal —
     // an owner whose subscription no longer covers the type (e.g. kds after
