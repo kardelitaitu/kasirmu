@@ -1,9 +1,13 @@
 # todo — Restaurant POS reliability: tauri-desktop + tauri-mobile
 
-> **Created 2026-10-09 · status: OPEN — analysis complete, P0 baseline captured, D3/D4 settled.**
-> **D1 and D2 were partially WITHDRAWN after F14:** the provisioning seed does not work,
-> because provisioning writes the global DB while the POS reads the store DB. D1 now
-> carries an open choice (recommended: option C). Repair starts at P1.
+> **Created 2026-10-09 · status: OPEN — P0–P5 DONE, P1 partially done (6 of 7 keys).**
+> **Remaining: P1's last key pair, P6 (i18n), P7 (parity), P8 (hygiene), F11.**
+>
+> **D1/D2 history:** the provisioning seed was WITHDRAWN after F14 (provisioning
+> writes the global DB, the POS reads the store DB, so a restaurant default for
+> `receipt.show_table_number` is not expressible as a provisioning fact). **Option C
+> was then chosen and implemented:** the table-number toggle was removed from the
+> sidebar screen and table capture is unconditional on restaurant POS.
 > Owner surface: `ui/src/features/restaurant/**`, the restaurant settings screens
 > reached from `RestaurantSidebar`, and the shared `WorkspaceRestaurantPosSettings`
 > card both shells mount. Shells in scope: `apps/desktop-tauri` and `apps/mobile-tauri`.
@@ -487,7 +491,7 @@ grant means.
 All four open questions are decided. Each answer records the evidence that decided
 it, not just the choice, so a later reader can re-derive it.
 
-### D1 — Collapse to `receipt.showTableNumber`; the restaurant DEFAULT is still open
+### D1 — Collapse to `receipt.showTableNumber`; RESOLVED by option C
 
 **The collapse itself is settled.** Keep `receipt.showTableNumber`, delete
 `restaurant.table_number` and the mirror at `RestaurantSettingsScreen.tsx:326-339`.
@@ -501,8 +505,10 @@ as "seed `receipt.show_table_number = true` at provisioning for a restaurant" an
 implemented that way in `provision_device`. **It does not work**, and the attempt is
 reverted (uncommitted, never landed). See F14 for the measurement.
 
-**So the restaurant default is now an open decision.** The options, re-derived after
-F14:
+**Resolved: option C was implemented** (`2c28d90bc`). The sidebar table-number
+toggle is gone; table capture is unconditional on restaurant POS and the only
+table-number control is the PRINT toggle in `RestaurantReceiptsScreen`. The options
+that were weighed, kept for the record:
 
 | Option | Mechanism | Cost |
 |---|---|---|
