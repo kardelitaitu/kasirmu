@@ -93,6 +93,18 @@ Recorded because each one is still live in some document a worker might read, an
 
 ---
 
+## 2026-10-08: the protected-table count cited a 29-table list and named 34. Fixed in `275921824`.
+
+**The same shape as R169, one file further in, and found by continuing that investigation rather than closing it.** R169's fix left a question I could not answer then: the pg test's comment says *"the generator's `RLS_TABLES` list is 29"*. This round I extracted all three lists and confirmed the invariant holds exactly — **`RLS_TABLES` 29, cutover FORCE 22, cutover-force-remaining 7, 22 + 7 = 29, with ZERO discrepancy in either direction.** That invariant, which R169's doc calls *"completely silent"* when it breaks, is currently intact.
+
+**Following the number rather than the code found the defect.** `apps/cloud-server/src/db_rls_tests.rs:11-14` reads *"The number of protected tenant tables the generated schema creates a `tenant_isolation` policy for. (`20260813_init.pg.sql`, RLS_TABLES.)` `const EXPECTED_TOTAL: u32 = 34;`* — **but that list is 29**, and I checked the alternatives before calling it wrong: not 34 tables carry a `tenant_id` column either (33 of 104 `CREATE TABLE` statements), and `db_tests.rs:1029` explicitly says *"NOT 29"* about a DIFFERENT count, so 34 was not borrowed from there.
+
+**Critically, I measured whether the number matters before proposing to change it**, and it does — mutating 34 to 999 FAILS two of the file's tests, so it is a load-bearing fixture rather than a decorative one. (The file's other assertions use the literal `34` directly, which is why the mutation surfaced at all.) **So the number stayed 34 and only the CLAIM was corrected** — it is now documented as a representative fixture value, with the stale provenance named and the real 29 recorded beside it, plus an explicit instruction NOT to "fix" the discrepancy by making the fixture equal the schema, which is what the old comment invited.
+
+**The guard pins 29 against the generator, deliberately not against a database.** `RLS_FACTS_SQL` derives `protected_tables` from `pg_policies` "rather than from a Rust constant, so it follows the generated schema instead of drifting away from it" — so the live path is already self-consistent and the only unguarded thing was the CURATED list, which nothing counted. Kill-tested: removing one entry from `RLS_TABLES` FAILS it with `left: 28, right: 29` and a message naming it as a security decision rather than a refactor. It reads `include_str!` of the `.py`, so it needs no PostgreSQL and runs everywhere. 11 RLS tests green, clippy Finished.
+
+**Running tally: 15 guards examined, 6 sound, 9 with defects found and fixed.** The shape has now repeated four rounds: **a number or invariant written into prose with nothing comparing it to its subject** — a two-copy comment (R168), a rollback note (R169), and this provenance claim.
+
 ## 2026-10-08: the RLS cutover's rollback note named 19 tables where step 3 FORCEs 22 — and the drift was ALREADY DOCUMENTED as fixed. Fixed in `505568528`.
 
 **Found by following a doc claim into the file it describes.** `sync_store_tests.rs:1597` calls itself *"the regression guard for the two lists that must stay in sync"* (`RLS_TABLES` in `generate-pg-migration.py` and the lists in `rls-cutover.sql`) and warns that drift there is *"completely silent"*. Following that into `scripts/rls-cutover.sql` surfaced a smaller but real version of it.
