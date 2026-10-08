@@ -603,9 +603,15 @@ body:has(.memo-stack) .ws-layer-content {
   cursor: not-allowed;
 }
 
+/* Dimming alone is not "greyed out" on the dark theme — the icon's hue stays
+   vivid, the same gap the tool cards fixed with their per-element pairing.
+   Unlike a locked TOOL card there is no tier artwork to preserve (the disabled
+   state comes from the role gate, and the badge only says "Not available"), so
+   row and badge grey together. */
 .workspace-card--disabled .workspace-card-row,
 .workspace-card--disabled .workspace-card-badge {
   opacity: 0.45;
+  filter: grayscale(1);
 }
 
 .workspace-card--disabled:hover {
