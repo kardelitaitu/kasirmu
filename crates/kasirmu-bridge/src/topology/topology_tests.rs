@@ -16,7 +16,7 @@ use crate::topology::persistence::{
     save_topology_json_at_key_with_revision, topology_setting_key, validate_apply_gate,
     validate_semantic_ownership, validate_semantic_ownership_in,
 };
-use crate::topology::semantics::legacy_topology_belongs_to_branch;
+use crate::topology::semantics::{legacy_topology_belongs_to_branch, validate_load_shape};
 
 fn fresh_conn() -> Connection {
     crate::testing::temp_conn()
@@ -1404,4 +1404,85 @@ fn wire_with_no_optional_fields() {
     assert!(wire.label.is_none());
     assert!(wire.from_port.is_none());
     assert!(wire.to_port.is_none());
+}
+
+// ── validate_load_shape: the minimal load-time gate ──────────────────
+
+/// A stored node or wire without a usable `id` must be refused at load.
+///
+/// WHY THIS EXISTS. `validate_load_shape` (`semantics.rs:265`) is the ONLY shape gate
+/// on the editor's load path -- `commands.rs:223` runs it after
+/// `validate_topology_envelope` and deliberately runs NEITHER the structural gate NOR
+/// the semantic-ownership gate there. It had no test: MEASURED, gutting its helper
+/// `require_load_id` left all 318 tests in this module GREEN. The editor keys every
+/// node and wire by id, so a row that lost its id would be handed to a UI that cannot
+/// address it.
+#[test]
+fn load_shape_requires_a_usable_id_on_every_node_and_wire() {
+    let parse = |s: &str| serde_json::from_str::<serde_json::Value>(s).unwrap();
+
+    // Absent, null, non-string, empty and whitespace-only ids all fail. The
+    // whitespace case is the one a naive presence check would let through.
+    for bad in [
+        r#"{"name":"A"}"#,
+        r#"{"id":null}"#,
+        r#"{"id":7}"#,
+        r#"{"id":""}"#,
+        r#"{"id":"   "}"#,
+    ] {
+        let value = parse(bad);
+        // Borrowed via from_ref rather than cloned: the point is that the SAME value is
+        // refused in BOTH positions, and clippy is right that neither call needs to own
+        // a slice of its own to say so.
+        assert!(
+            validate_load_shape(std::slice::from_ref(&value), &[]).is_err(),
+            "a node with {bad} must be refused"
+        );
+        assert!(
+            validate_load_shape(&[], std::slice::from_ref(&value)).is_err(),
+            "the same value as a WIRE must be refused too; the check is not node-only"
+        );
+    }
+
+    assert!(
+        validate_load_shape(&[parse(r#"{"id":"n1"}"#)], &[parse(r#"{"id":"w1"}"#)]).is_ok(),
+        "a node and wire carrying ids must pass"
+    );
+}
+
+/// The fields this gate deliberately does NOT require must stay optional.
+///
+/// This is the half that guards against a future well-meaning tightening. The
+/// function's own doc argues at length that requiring name/x/y, endpoints or ports
+/// would "brick a whole topology over one legacy row", and that the frontend heals
+/// those at the load path instead. A test that checked only the refusals would pass
+/// just as happily if someone added those requirements -- so they are pinned here.
+#[test]
+fn load_shape_does_not_require_the_fields_the_frontend_heals() {
+    let parse = |s: &str| serde_json::from_str::<serde_json::Value>(s).unwrap();
+
+    // A bare id, with none of the display, geometry, port or endpoint fields.
+    assert!(
+        validate_load_shape(&[parse(r#"{"id":"n1"}"#)], &[parse(r#"{"id":"w1"}"#)]).is_ok(),
+        "display and geometry fields must NOT be required at load"
+    );
+
+    // A wire with NO endpoints at all, which the doc calls out explicitly: the
+    // ghost-wire filter drops it, so load must serve it rather than refuse.
+    assert!(
+        validate_load_shape(&[], &[parse(r#"{"id":"w1"}"#)]).is_ok(),
+        "an endpoint-less legacy wire must be served, not refused"
+    );
+
+    // Unknown/extra fields are tolerated, since the editor folds unknown types.
+    assert!(
+        validate_load_shape(
+            &[parse(
+                r#"{"id":"n1","kind":"something-new","x":null,"extra":[1,2]}"#
+            )],
+            &[]
+        )
+        .is_ok(),
+        "unknown node kinds and extra fields are healed by the frontend, not refused here"
+    );
 }
