@@ -57,6 +57,10 @@ export function WorkspaceKdsSettings({
   const [draft, setDraft] = useState<KdsDraftState>(DEFAULT_KDS);
   const [saving, setSaving] = useState(false);
   const [dirtyVersion, setDirtyVersion] = useState(0);
+  // True when the settings read FAILED (F4). The catch below used to seed
+  // `originalsRef` from `DEFAULT_KDS`, so a failed read looked clean and Save
+  // stayed enabled over values the card never confirmed.
+  const [loadFailed, setLoadFailed] = useState(false);
 
   // Originals for dirty tracking — captured after initial load
   const originalsRef = useRef<KdsDraftState>({ ...draft });
@@ -117,10 +121,13 @@ export function WorkspaceKdsSettings({
         }
         return merged;
       });
+      setLoadFailed(false);
       originalsRef.current = loaded;
     }).catch(() => {
-      // Fallback: keep DEFAULT_KDS values
-      originalsRef.current = { ...draft };
+      // A FAILED read is not an answer (F4). Do NOT seed `originalsRef` from the
+      // defaults — that is what made a failure look saved. `loadFailed` disables
+      // Save instead.
+      setLoadFailed(true);
     }).finally(() => {
       setOriginalsLoaded(true);
     });
@@ -316,7 +323,7 @@ export function WorkspaceKdsSettings({
       {/* Save button */}
       {variant !== 'inspector-drawer' && (
         <div className="settings-actions">
-          <Button variant="primary" onClick={handleSave} disabled={!dirty || saving}>
+          <Button variant="primary" onClick={handleSave} disabled={!dirty || saving || loadFailed}>
             <Localized id="save">Save</Localized>
           </Button>
         </div>

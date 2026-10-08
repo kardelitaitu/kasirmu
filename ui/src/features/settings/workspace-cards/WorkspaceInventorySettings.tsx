@@ -38,6 +38,10 @@ export function WorkspaceInventorySettings({
   const [saving, setSaving] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [dirtyVersion, setDirtyVersion] = useState(0);
+  // True when the settings read FAILED (F4). The catch used to seed
+  // `originalsRef` from the defaults, so a failed read looked clean and Save
+  // stayed enabled over values the card never confirmed.
+  const [loadFailed, setLoadFailed] = useState(false);
   // The session the originals below were fetched for. Replaces `loaded` as the fetch guard so a
   // store switch re-reads; `loaded` stays for the dirty-tracking memo.
   const loadedForRef = useRef<string | undefined>(undefined);
@@ -75,12 +79,15 @@ export function WorkspaceInventorySettings({
       if (!touchedRef.current.has('deductionPreferWarehouse')) {
         setDeductionPreferWarehouse(preferWhRaw === 'true');
       }
+      setLoadFailed(false);
       originalsRef.current = {
         lowStockThreshold: !isNaN(t) && t >= 0 ? t : 10,
         deductionPreferWarehouse: preferWhRaw === 'true',
       };
     }).catch(() => {
-      originalsRef.current = { lowStockThreshold: 10, deductionPreferWarehouse: false };
+      // A FAILED read is not an answer (F4). Seeding the defaults here made a
+      // failure look saved; `loadFailed` disables Save instead.
+      setLoadFailed(true);
     }).finally(() => {
       setLoaded(true);
     });
@@ -217,7 +224,7 @@ export function WorkspaceInventorySettings({
       {/* Save button */}
       {variant !== 'inspector-drawer' && (
         <div className="settings-actions">
-          <Button variant="primary" onClick={handleSave} disabled={!dirty || saving}>
+          <Button variant="primary" onClick={handleSave} disabled={!dirty || saving || loadFailed}>
             <Localized id="save">Save</Localized>
           </Button>
         </div>

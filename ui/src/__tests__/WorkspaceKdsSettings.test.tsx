@@ -248,6 +248,26 @@ describe('WorkspaceKdsSettings', () => {
     expect(toggle.checked).toBe(true);
   });
 
+  it('keeps Save disabled after a FAILED settings read, even once the user edits (F4)', async () => {
+    // The discriminating property is the EDIT: on the buggy path the catch seeded
+    // originalsRef from DEFAULT_KDS, so a toggle made afterwards sets dirty=true
+    // and Save ENABLES over values the card never read. Asserting only "disabled"
+    // before any edit passes on both the bug and the fix, which is what the first
+    // version of this test did.
+    vi.mocked(getSettingScoped).mockRejectedValue(new Error('ipc down'));
+
+    renderCard();
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /save/i })).toBeDisabled();
+    });
+
+    // Now edit. On the bug this is what re-enables Save.
+    fireEvent.click(document.getElementById('kds-auto-ack') as HTMLInputElement);
+
+    expect(screen.getByRole('button', { name: /save/i })).toBeDisabled();
+  });
+
   it('hides Save button in inspector-drawer variant', () => {
     renderCard({ variant: 'inspector-drawer' });
     expect(screen.queryByRole('button', { name: /save/i })).not.toBeInTheDocument();

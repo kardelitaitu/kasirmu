@@ -569,6 +569,29 @@ places by hand (`RestaurantSettingsScreen`, `WorkspaceRestaurantPosSettings`,
 grep for a `.catch(` that swallows a load error whose result seeds a dirty-tracking
 baseline.
 
+**TWO MORE F4 INSTANCES FOUND AND FIXED (round 6)**, by scanning all 8 files that
+use `originalsRef` against the 3 that had `loadFailed`:
+
+| File | The catch |
+|---|---|
+| `WorkspaceKdsSettings.tsx:121-123` | seeded `originalsRef` from `DEFAULT_KDS` |
+| `WorkspaceInventorySettings.tsx:82-83` | seeded `{ lowStockThreshold: 10, deductionPreferWarehouse: false }` |
+
+Both now set `loadFailed`, which disables Save. `TerminalPreferencesCard.tsx:70`
+was checked and is a **false positive**: its catch populates an EDC dropdown, and
+its `originalsRef` is seeded separately from `hw.profile` at `:88`.
+
+`RestaurantPaymentsScreen.tsx:454-455` is a **real instance still open** — it
+`.catch(() => null)`s two gateway reads whose results seed the drafts baseline. It
+is blocked on another lane's uncommitted change to that file.
+
+**The recurring-test lesson, again.** My first version of both new tests asserted
+only "Save is disabled after a failed read" — and **passed against the bug**,
+because on the buggy path `dirty` is already false so Save is disabled either way.
+The discriminating property is the EDIT: on the bug, editing afterwards sets
+`dirty` true and re-enables Save. Both tests now edit after the failure and both
+fail against a reintroduced bug.
+
 **Still open:** `RestaurantPaymentsScreen` (10 `aria-label`s). ⚠️ That file is
 currently DIRTY with another lane's uncommitted change, so editing it would sweep
 their work into this lane's commit (AGENTS.md §7.3). It must wait until the file is
