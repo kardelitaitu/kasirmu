@@ -58,6 +58,30 @@ export function parsePriceToMinor(input: string, currency: string): number | nul
 }
 
 /**
+ * Mint a SKU for a new menu item.
+ *
+ * The backend does NOT generate one: `create_product_scoped` passes
+ * `args.sku` straight to the store, and `foundation::validate_sku` rejects
+ * empty, non-ASCII and non-alphanumeric values — so a blank SKU is a hard
+ * failure, not a default. A menu editor has no SKU field (nobody authoring a
+ * dish wants to invent a stock code), so the editor mints one.
+ *
+ * The format is deliberately ASCII alphanumeric ONLY: `validate_sku` rejects
+ * both hyphens and dots, which is why this does not use a `-${...}` style.
+ * Prefixed `MN` so a generated item is recognisable in the Products workspace,
+ * where a manager can rename it to the store's own scheme if it has one.
+ */
+export function generateMenuSku(seed: number = Date.now()): string {
+  const stamp = Math.trunc(Math.abs(seed)).toString(36).toUpperCase();
+  const salt = Math.random().toString(36).slice(2, 6).toUpperCase();
+  // Strip anything the validator would reject, then guarantee non-empty:
+  // an SKU of '' fails validate_sku, and so would the bare prefix if both
+  // halves were somehow empty.
+  const clean = (stamp + salt).replace(/[^0-9A-Z]/g, '');
+  return `MN${clean || 'ITEM'}`;
+}
+
+/**
  * Render integer minor units back into the plain digits the operator edits:
  * no currency symbol, no grouping separators. `5000` -> `"50"`, `5050` -> `"50.50"`.
  */

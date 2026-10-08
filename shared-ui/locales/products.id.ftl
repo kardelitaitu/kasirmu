@@ -21,6 +21,7 @@ restaurant-menu-editor-field-name = Nama
 restaurant-menu-editor-field-price = Harga
 restaurant-menu-editor-field-category = Kategori
 restaurant-menu-editor-field-active = Tersedia untuk dijual
+restaurant-menu-editor-edit-item-aria = Ubah { $name }
 restaurant-menu-editor-delete-item-aria = Hapus { $name }
 restaurant-menu-editor-delete-category-aria = Hapus kategori { $name }
 restaurant-menu-editor-category-deleted-moved = Kategori dihapus; { $count } item dipindahkan

@@ -111,6 +111,7 @@
 }
 
 .restaurant-menu-editor-category-delete,
+.restaurant-menu-editor-item-edit,
 .restaurant-menu-editor-item-delete {
   flex-shrink: 0;
   display: inline-flex;
@@ -133,7 +134,13 @@
   color: var(--color-danger);
 }
 
+.restaurant-menu-editor-item-edit:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-fg);
+}
+
 .restaurant-menu-editor-category-delete:focus-visible,
+.restaurant-menu-editor-item-edit:focus-visible,
 .restaurant-menu-editor-item-delete:focus-visible {
   outline: 2px solid var(--color-border-focus);
   outline-offset: 2px;

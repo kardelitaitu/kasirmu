@@ -38,7 +38,7 @@ import {
   type ProductDto,
   type CategoryDto,
 } from '@/api/products';
-import { parsePriceToMinor, formatMinorForInput } from './menuEditorLogic';
+import { parsePriceToMinor, formatMinorForInput, generateMenuSku } from './menuEditorLogic';
 import './RestaurantSettingsScreens.css';
 import './RestaurantMenuEditorScreen.css';
 
@@ -49,6 +49,26 @@ interface MenuDraft {
   categoryId: string;
   priceMinor: number;
   isActive: boolean;
+}
+
+/** Decorative pencil glyph; the button carries the accessible name. */
+function EditGlyph() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      width="16"
+      height="16"
+      aria-hidden="true"
+    >
+      <path d="M12 20h9" />
+      <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+    </svg>
+  );
 }
 
 const EMPTY_DRAFT: MenuDraft = {
@@ -191,8 +211,12 @@ export default function RestaurantMenuEditorScreen({ onBack }: RestaurantMenuEdi
           ),
         );
       } else {
-        const res = await createProductScoped(sessionToken, {
-          sku: '',
+        // The backend does not mint a SKU, and foundation::validate_sku rejects a
+        // blank one — so the editor supplies it. See generateMenuSku for why the
+        // format is alphanumeric-only (hyphens are rejected too).
+        const sku = generateMenuSku();
+        await createProductScoped(sessionToken, {
+          sku,
           name: draft.name,
           priceMinor: draft.priceMinor,
           currency,
@@ -201,9 +225,26 @@ export default function RestaurantMenuEditorScreen({ onBack }: RestaurantMenuEdi
           taxRateIds: [],
           isActive: draft.isActive,
         });
-        const created = await listProductsScoped(sessionToken);
-        setItems(created);
-        if (res?.sku) setSelectedCategoryId(draft.categoryId);
+        // Append the created row rather than refetching the catalog: the row is
+        // fully known here, and a refetch would discard a draft the operator had
+        // open on another category.
+        setItems((prev) => [
+          ...prev,
+          {
+            sku,
+            name: draft.name,
+            category: draft.categoryId || null,
+            price: { minor_units: draft.priceMinor, currency },
+            barcode: null,
+            in_stock: false,
+            stock_qty: 0,
+            tax_rate_ids: [],
+            created_at: new Date().toISOString(),
+            price_updated_at: new Date().toISOString(),
+            product_type: 'standard',
+            is_active: draft.isActive,
+          },
+        ]);
       }
       setDraft(null);
       setDirty(false);
@@ -553,6 +594,18 @@ export default function RestaurantMenuEditorScreen({ onBack }: RestaurantMenuEdi
                               </Localized>
                             </span>
                           )}
+                        </button>
+                        {/* An explicit Edit control beside the row: clicking the
+                            name also opens the editor, but a manager should not
+                            have to discover that. */}
+                        <button
+                          type="button"
+                          className="restaurant-menu-editor-item-edit"
+                          onClick={() => beginEdit(p)}
+                          aria-label={l10n.getString('restaurant-menu-editor-edit-item-aria', { name: p.name })}
+                          data-testid={`restaurant-menu-editor-edit-${p.sku}`}
+                        >
+                          <EditGlyph />
                         </button>
                         <button
                           type="button"

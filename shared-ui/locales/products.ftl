@@ -22,6 +22,7 @@ restaurant-menu-editor-field-name = Name
 restaurant-menu-editor-field-price = Price
 restaurant-menu-editor-field-category = Category
 restaurant-menu-editor-field-active = Available to sell
+restaurant-menu-editor-edit-item-aria = Edit { $name }
 restaurant-menu-editor-delete-item-aria = Delete { $name }
 restaurant-menu-editor-delete-category-aria = Delete category { $name }
 restaurant-menu-editor-category-deleted-moved = Category deleted; { $count } item(s) moved

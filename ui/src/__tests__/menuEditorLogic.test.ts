@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parsePriceToMinor, formatMinorForInput } from '../features/restaurant/screens/menuEditorLogic';
+import { parsePriceToMinor, formatMinorForInput, generateMenuSku } from '../features/restaurant/screens/menuEditorLogic';
 
 // The price field is the one place a menu edit can silently corrupt an invoice,
 // so the rounding boundary is pinned rather than assumed.
@@ -58,6 +58,41 @@ describe('formatMinorForInput', () => {
   it('returns empty for values an operator could not have entered', () => {
     expect(formatMinorForInput(-1)).toBe('');
     expect(formatMinorForInput(Number.NaN)).toBe('');
+  });
+});
+
+describe('generateMenuSku', () => {
+  // foundation::validate_sku rejects empty, non-ASCII and non-alphanumeric input,
+  // and the backend does NOT mint a SKU — so these assertions are the contract
+  // between the editor and the store.
+  const VALID_SKU = /^[A-Za-z0-9]+$/;
+
+  it('produces an ASCII alphanumeric value with no separators', () => {
+    // Hyphens and dots are explicitly rejected by validate_sku, so a
+    // human-readable "MN-ABC-123" shape would fail on the backend.
+    for (let i = 0; i < 25; i += 1) {
+      const sku = generateMenuSku();
+      expect(sku).toMatch(VALID_SKU);
+      expect(sku).not.toContain('-');
+      expect(sku).not.toContain('.');
+      expect(sku.length).toBeGreaterThan(2);
+    }
+  });
+
+  it('is prefixed so a generated item is recognisable in Products', () => {
+    expect(generateMenuSku().startsWith('MN')).toBe(true);
+  });
+
+  it('never returns an empty body for an adverse seed', () => {
+    for (const seed of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(generateMenuSku(seed)).toMatch(VALID_SKU);
+    }
+  });
+
+  it('does not collide across a burst of creations', () => {
+    const seen = new Set<string>();
+    for (let i = 0; i < 200; i += 1) seen.add(generateMenuSku());
+    expect(seen.size).toBe(200);
   });
 });
 
