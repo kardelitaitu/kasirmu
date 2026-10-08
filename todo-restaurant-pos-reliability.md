@@ -818,6 +818,12 @@ _Fill in as phases land. One row per acceptance command run._
 | 2026-10-09 | F4 | `cd ui && npx vitest run WorkspaceStorePosSettings -t 'partial context load'` (kill-test v1) | **PASSED against the bug** | asserted only "disabled" + banner, both true on the bug; strengthened with an edit |
 | 2026-10-09 | F4 | same, kill-test v2 | **FAIL (killed)** | discriminates after strengthening |
 | 2026-10-09 | F4 | `cd ui && npx vitest run Workspace Settings loadFailureSeedsBaseline mirrorBeforeAwait` | exit 0 | **55 files, 875 passed / 22 skipped** |
+| 2026-10-09 | F4 root | `cd ui && npx vitest run TerminalPreferencesCard useTerminalHardware WorkspaceSettings Restaurant Settings` | exit 0 | **52 files, 954 passed / 22 skipped** |
+| 2026-10-09 | F4 root | `cd ui && npx vitest run TerminalPreferencesCard -t 'FAILED profile read'` (kill-test) | **FAIL (killed)** | discriminates after adding the edit step |
+| 2026-10-09 | F4 guard 2 | `cd ui && npx vitest run baselineLoadSignal` | exit 0 | **3 tests passed** |
+| 2026-10-09 | F4 guard 2 | `cd ui && npx vitest run baselineLoadSignal` (kill-test) | **FAIL (killed)** | names `TerminalPreferencesCard.tsx`; restored |
+| 2026-10-09 | all | `cd ui && npx vitest run` (full suite, round 8 final) | exit 0 | **676 files, 11378 passed / 24 skipped / 3 todo** |
+| 2026-10-09 | all | `python scripts/verify-bundle-parity.py` (round 8) | exit 0 | 0 missing keys |
 
 **P0 baseline (measured 2026-10-09).** These four are the reference figures for
 attributing any later regression:
