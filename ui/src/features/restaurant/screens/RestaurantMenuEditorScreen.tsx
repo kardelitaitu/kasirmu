@@ -943,7 +943,6 @@ export default function RestaurantMenuEditorScreen({ onBack }: RestaurantMenuEdi
                 className="restaurant-menu-editor-btn-add-cat"
                 onClick={beginCreateCategory}
                 aria-label={l10n.getString('restaurant-menu-editor-create-category')}
-                title={l10n.getString('restaurant-menu-editor-create-category')}
                 data-testid="restaurant-menu-editor-btn-add-cat"
               >
                 +
@@ -998,7 +997,6 @@ export default function RestaurantMenuEditorScreen({ onBack }: RestaurantMenuEdi
                       className="restaurant-menu-editor-category-action-btn"
                       onClick={() => beginEditCategory(c)}
                       aria-label={l10n.getString('restaurant-menu-editor-edit-category-aria', { name: c.name })}
-                      title={l10n.getString('restaurant-menu-editor-edit-category')}
                       data-testid={`restaurant-menu-editor-cat-edit-${c.id}`}
                     >
                       <EditGlyph />
@@ -1059,7 +1057,7 @@ export default function RestaurantMenuEditorScreen({ onBack }: RestaurantMenuEdi
                   {!draft && (
                     <button
                       type="button"
-                      className="btn btn--primary btn--sm restaurant-menu-editor-btn-add-item"
+                      className="btn btn--primary btn--sm"
                       onClick={beginCreate}
                       data-testid="restaurant-menu-editor-new-item"
                     >
@@ -1311,7 +1309,6 @@ export default function RestaurantMenuEditorScreen({ onBack }: RestaurantMenuEdi
                                   className="restaurant-menu-editor-btn-icon-danger"
                                   onClick={() => handleRemoveModifierGroup(group.id)}
                                   aria-label="Remove Group"
-                                  title="Remove Group"
                                   data-testid={`modifier-group-remove-${gIdx}`}
                                 >
                                   <TrashGlyph />
@@ -1493,10 +1490,9 @@ export default function RestaurantMenuEditorScreen({ onBack }: RestaurantMenuEdi
                             {/* Quick Availability Toggle */}
                             <button
                               type="button"
-                              className={`restaurant-menu-editor-toggle-btn${isActive ? ' restaurant-menu-editor-toggle-btn--active' : ' restaurant-menu-editor-toggle-btn--hidden'}`}
+                              className="restaurant-menu-editor-toggle-btn"
                               onClick={() => handleToggleItemAvailability(p)}
                               aria-label={l10n.getString('restaurant-menu-editor-toggle-availability-aria', { name: p.name })}
-                              title={l10n.getString('restaurant-menu-editor-toggle-availability-aria', { name: p.name })}
                             >
                               <span
                                 className={`restaurant-menu-editor-status-dot${isActive ? ' restaurant-menu-editor-status-dot--active' : ' restaurant-menu-editor-status-dot--hidden'}`}
@@ -1514,7 +1510,6 @@ export default function RestaurantMenuEditorScreen({ onBack }: RestaurantMenuEdi
                                 className="restaurant-menu-editor-card-btn restaurant-menu-editor-card-btn--duplicate"
                                 onClick={() => handleDuplicateItem(p)}
                                 aria-label={l10n.getString('restaurant-menu-editor-duplicate-item-aria', { name: p.name })}
-                                title={l10n.getString('restaurant-menu-editor-duplicate')}
                                 data-testid={`restaurant-menu-editor-dup-${p.sku}`}
                               >
                                 <CopyGlyph />
