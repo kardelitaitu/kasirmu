@@ -93,6 +93,20 @@ Recorded because each one is still live in some document a worker might read, an
 
 ---
 
+## 2026-10-08: a documented two-copy invariant with NO guard — the timing mask's twin could regress in silence. Fixed in `710aff4e4`.
+
+**Found by following a doc comment rather than a grep.** `crates/kasirmu-bridge/src/auth/session.rs:175-176` says its STAFF-06 timing mask is the *"Twin of the tablet's copy (`apps/mobile-tauri/src/commands/auth.rs`), which was fixed first; the two are ADR-49 duplicates and **must stay in step**."* Nothing asserted that.
+
+**MEASURED: replacing the tablet's per-attempt counter fallback with a literal `return 12345;` — precisely what the SHARED comment says "would defeat the mask, which is this line's whole purpose" — left the entire `kasirmu-mobile` suite GREEN at 720 passed.** One half of a documented invariant could regress with nothing objecting.
+
+**The guard asserts the INVARIANT, not the text, and that choice was load-bearing.** The two copies already differ in comment WORDING, so a source-text comparison would be brittle and would fail on a harmless reflow — the exact mistake the sibling guards in this file record being fixed twice. What must hold is structural: the mask is present, the fallback seeds from the advancing `FALLBACK_SEQ` counter, and **no `return` appears inside the arm**. It is a SOURCE assertion, stated as such, because the fallback needs a system clock set before the UNIX epoch — unreachable in-process.
+
+**My first two versions of the guard both SURVIVED the mutation, and each failure taught the same lesson.** (1) I matched `|_|{return`, assuming the return was the arm's FIRST statement, but the injected code sits AFTER `tracing::warn!` — `|_|{tracing::warn!(...);return12345;` — so the pattern never matched. (2) I then extracted the arm by searching for its closing `);`, which stopped at the `);` ending the `warn!` INSIDE the arm, truncating the slice before the `return`. **Both were assertions written against an imagined shape rather than the real one**, and both were only exposed because I re-ran the mutation after each edit instead of trusting the green. The fix is a fixed-length window past the arm's start, which no early close can fool. Third attempt: **KILLED**, naming the twin and the reason.
+
+**Suite: 57 auth tests green, clippy Finished, fmt clean, twin restored.**
+
+**Running tally: 13 guards examined, 6 sound, 7 with defects found and fixed.** The pattern worth naming: this defect existed because a COMMENT documented an invariant and nothing enforced it — the same shape as R164's refusal list and R165's containment check.
+
 ## 2026-10-08: the validator and diagnostics surface is SOUND — two more probes, no defect. Reported as such.
 
 **Applied R166's correction (probe by mutation, not by grep) to the two candidate surfaces left in that round's survey.** Both are clean, and the honest entry is that nothing was found.
