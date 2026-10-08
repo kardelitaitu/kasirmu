@@ -516,6 +516,15 @@ _Fill in as phases land. One row per acceptance command run._
 | 2026-10-09 | P0 | `cd ui && npm run lint` | exit 0 | **0 errors, 62 warnings** (all pre-existing; none in the restaurant lane) |
 | 2026-10-09 | P0 | `cd ui && npm run typecheck` | exit 0 | clean |
 | 2026-10-09 | P0 | `cd ui && npx vitest run Restaurant CartPanel WorkspaceRestaurantPosSettings SettingsPage interaction` | exit 0 | **21 files, 344 tests passed** |
+| 2026-10-09 | P1 | `cd ui && npm run typecheck` | exit 0 | option C: table-number toggle removed |
+| 2026-10-09 | P1 | `cd ui && npx vitest run RestaurantSettingsScreen CartPanel PosScreen WorkspaceRestaurantPosSettings RestaurantPosSidebar` | exit 0 | **15 files, 318 passed / 1 skipped** |
+| 2026-10-09 | P2 | `cd ui && npx vitest run restaurantSettingsModel RestaurantSettingsScreen WorkspaceRestaurantPosSettings` | exit 0 | **4 files, 34 tests passed** |
+| 2026-10-09 | P3 | `cd ui && npx vitest run RestaurantSettingsScreen -t 'local sound mirror'` | **FAIL (killed)** | buggy ordering fails `expected 'false' to be 'true'`; restored, passes |
+| 2026-10-09 | P3+P5 | `cd ui && npx vitest run Restaurant Settings Workspace interaction` | exit 0 | **68 files, 1120 passed / 22 skipped** |
+| 2026-10-09 | all | `cd ui && npx vitest run` (full suite) | exit 0 | **672 files, 11336 passed / 24 skipped / 3 todo** |
+| 2026-10-09 | all | `python scripts/verify-ipc-parity.py` (repo root) | exit 0 | IPC parity: OK; no new allowlist entry |
+| 2026-10-09 | all | `cd ui && npm run typecheck` | exit 0 | after every phase |
+| 2026-10-09 | all | `cd ui && npx eslint <changed files>` | exit 0 | 0 errors on every file this lane touched |
 
 **P0 baseline (measured 2026-10-09).** These four are the reference figures for
 attributing any later regression:
