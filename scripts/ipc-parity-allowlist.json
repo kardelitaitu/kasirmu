@@ -45,7 +45,6 @@
     "get_terminal_profile_scoped",
     "get_user_workspace_instances_scoped",
     "get_workspace_instance_scoped",
-    "list_all_workspaces_scoped",
     "list_authored_memos_scoped",
     "list_restore_candidates",
     "list_terminal_profiles_scoped",

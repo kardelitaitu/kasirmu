@@ -21,12 +21,9 @@ use crate::state::AppState;
 
 type HmacSha256 = Hmac<Sha256>;
 
-// ADR #49: `WorkspaceScreenDto` is the bridge's, re-exported rather than
-// restated. The two definitions were byte-identical — same two fields, same doc
-// comments, and **no `rename_all` on either**, so the wire stays snake_case and
-// the renderer sees no change at all. Keeping a second copy here is the
-// duplication ADR #49 exists to end.
-pub use kasirmu_bridge::workspaces::WorkspaceScreenDto;
+// ADR #49: `WorkspaceScreenDto` and `WorkspaceTypeDto` are the bridge's,
+// re-exported rather than restated.
+pub use kasirmu_bridge::workspaces::{WorkspaceScreenDto, WorkspaceTypeDto};
 
 /// List workspace instances for the pre-session workspace picker.
 ///
@@ -85,6 +82,18 @@ pub async fn list_workspace_screens(
     // `("workspaces::list_workspace_screens", "no_session_resolution")` — holds.
     let ctx = state.bridge_ctx();
     kasirmu_bridge::workspaces::list_workspace_screens(&ctx, ticket, type_key, store_id)
+        .await
+        .map_err(Into::into)
+}
+
+/// List all workspace types resolved from a session token. ADR #7.
+#[tauri::command]
+pub async fn list_all_workspaces_scoped(
+    session_token: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<WorkspaceTypeDto>, AppError> {
+    let ctx = state.bridge_ctx();
+    kasirmu_bridge::workspaces::list_all_workspaces_scoped(&ctx, &session_token)
         .await
         .map_err(Into::into)
 }

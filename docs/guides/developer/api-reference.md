@@ -936,7 +936,7 @@ Android in-app self-updater. **Tablet-only ([T]): the module lives in `apps/mobi
 - **`create_workspace_instance_scoped`** [D] — Create a new workspace instance (admin). Permission from session. ADR #7.
 - **`get_user_workspace_instances_scoped`** [D] — Get instance IDs assigned to a user. Permission check from session. ADR #7.
 - **`get_workspace_instance_scoped`** [D] — Get a single workspace instance. `is_default` reflects the session user. ADR #7.
-- **`list_all_workspaces_scoped`** [D] — List all workspace types resolved from a session token. ADR #7.
+- **`list_all_workspaces_scoped`** [D+T] — List all workspace types resolved from a session token. ADR #7.
 - **`list_workspace_screens`** [D+T] — List screens (nav items) for a workspace type during boot/workspace
 - **`list_workspace_screens_scoped`** [D] — List screens for a workspace type from the store-scoped database. ADR #7.
 - **`list_workspaces`** [D+T] — List workspace instances for the pre-session workspace picker.
