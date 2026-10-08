@@ -16,6 +16,7 @@ import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { FEATURES, useFeatures } from '@/hooks/useFeatures';
 import TableManagementScreen from '@/features/tables/TableManagementScreen';
 import SalesHistoryScreen from '@/features/sales/SalesHistoryScreen';
+import RestaurantMenuEditorScreen from '@/features/restaurant/screens/RestaurantMenuEditorScreen';
 import RestaurantReceiptsScreen from '@/features/restaurant/screens/RestaurantReceiptsScreen';
 import RestaurantPaymentsScreen from '@/features/restaurant/screens/RestaurantPaymentsScreen';
 import RestaurantSettingsScreen from '@/features/restaurant/screens/RestaurantSettingsScreen';
@@ -216,6 +217,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   const [showTables, setShowTables] = useState(false);
   const [showSalesHistory, setShowSalesHistory] = useState(false);
   const [showStockInquiry, setShowStockInquiry] = useState(false);
+  const [showMenuEditor, setShowMenuEditor] = useState(false);
   const [showReceiptsSettings, setShowReceiptsSettings] = useState(false);
   const [showPaymentsSettings, setShowPaymentsSettings] = useState(false);
   const [showRestaurantSettings, setShowRestaurantSettings] = useState(false);
@@ -969,6 +971,17 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     );
   }
 
+  // ── Sub-screen: Restaurant Menu Editor ───────────────────────
+  if (showMenuEditor) {
+    return (
+      <div className="pos-screen">
+        <div style={{ flex: 1, overflow: 'auto' }}>
+          <RestaurantMenuEditorScreen onBack={() => setShowMenuEditor(false)} />
+        </div>
+      </div>
+    );
+  }
+
   // ── Sub-screen: Restaurant Receipts Settings ─────────────────
   if (showReceiptsSettings) {
     return (
@@ -1110,6 +1123,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     onOpenTables: () => setShowTables(true),
     onOpenHistory: () => setShowSalesHistory(true),
     onOpenKitchenDisplay: () => onNavigate?.('kds'),
+    onOpenMenuEditor: () => setShowMenuEditor(true),
     onOpenReceipts: () => setShowReceiptsSettings(true),
     onOpenPayments: () => setShowPaymentsSettings(true),
     onOpenSettings: () => setShowRestaurantSettings(true),

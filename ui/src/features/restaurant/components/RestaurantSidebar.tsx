@@ -54,6 +54,7 @@ export interface RestaurantSidebarActions {
   onOpenHistory: () => void;
   onOpenKitchenDisplay: () => void;
   /** Full-page configuration sub-screens */
+  onOpenMenuEditor?: () => void;
   onOpenReceipts?: () => void;
   onOpenPayments?: () => void;
   onOpenSettings?: () => void;
@@ -141,6 +142,14 @@ const LockSmallGlyph = () => (
   <svg {...GLYPH} width={12} height={12}>
     <rect x="4" y="10" width="16" height="11" rx="2" />
     <path d="M8 10V7a4 4 0 0 1 8 0v3" />
+  </svg>
+);
+
+const MenuEditorGlyph = () => (
+  <svg {...GLYPH}>
+    <path d="M4 3h11l5 5v13a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z" />
+    <path d="M14 3v6h6" />
+    <path d="M8 13h8M8 17h5" />
   </svg>
 );
 
@@ -451,6 +460,31 @@ export function RestaurantSidebar({
               <KitchenGlyph />
             </Tile>
             <Localized id="kds-title"><span>Kitchen Display</span></Localized>
+          </button>
+          <button
+            type="button"
+            className={`restaurant-sidebar-item${!effectiveIsManager ? ' restaurant-sidebar-item--disabled' : ''}`}
+            disabled={!effectiveIsManager}
+            onKeyDown={handleSidebarKeyDown}
+            aria-label={l10n.getString('restaurant-sidebar-menu-editor')}
+            data-testid="restaurant-sidebar-menu-editor"
+            onClick={() => {
+              // The button is disabled for non-managers, so a non-manager click
+              // can never reach here; no guard is needed.
+              cartActions.onOpenMenuEditor?.();
+              onOpenChange(false);
+            }}
+          >
+            <Tile>
+              <MenuEditorGlyph />
+            </Tile>
+            <Localized id="restaurant-sidebar-menu-editor"><span>Menu Editor</span></Localized>
+            {!effectiveIsManager && (
+              <span className="restaurant-sidebar-badge-manager">
+                <LockSmallGlyph />
+                <Localized id="restaurant-manager-required"><span>Manager+</span></Localized>
+              </span>
+            )}
           </button>
           <button
             type="button"
