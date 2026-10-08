@@ -174,6 +174,17 @@ impl Store<'_> {
         rows.map(|r| Ok(r?)).collect()
     }
 
+    /// Get the timestamp of the most recently synced item directly via SQL MAX (O-M36).
+    ///
+    /// Avoids loading the entire historical offline queue into memory.
+    pub fn get_last_synced_at(&self) -> Result<Option<String>, CoreError> {
+        let mut stmt = self.conn.prepare(
+            "SELECT MAX(synced_at) FROM offline_queue WHERE status = 'synced'",
+        )?;
+        let res: Option<String> = stmt.query_row([], |row| row.get(0))?;
+        Ok(res)
+    }
+
     /// List pending offline items scoped to a tenant.
     pub fn list_pending_offline_for_tenant(
         &self,

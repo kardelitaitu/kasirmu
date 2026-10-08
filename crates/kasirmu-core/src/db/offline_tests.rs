@@ -253,6 +253,16 @@ fn list_all_offline_returns_all_statuses_most_recent_first() {
     assert_eq!(items[3].id, "oq-4");
 }
 
+#[test]
+fn get_last_synced_at_returns_max_synced_timestamp() {
+    let conn = fresh();
+    assert_eq!(store(&conn).get_last_synced_at().unwrap(), None);
+
+    seed_pending_and_synced(&conn);
+    let last = store(&conn).get_last_synced_at().unwrap();
+    assert!(last.is_some());
+}
+
 // ── Mark synced ─────────────────────────────────────────────────
 
 #[test]
