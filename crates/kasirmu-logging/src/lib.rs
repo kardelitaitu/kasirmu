@@ -377,6 +377,9 @@ pub fn try_init_json_with_file(
         eprintln!("{warning}");
     }
 
+    // LOG-2 (O-M59): prove the directory is writable BEFORE the subscriber is set.
+    ensure_log_dir_writable(log_dir)?;
+
     let file_appender = tracing_appender::rolling::hourly(log_dir, file_prefix);
     // L-1 fix: the guard is retained process-wide (see FILE_LOG_GUARDS);
     // dropping it locally shut the file writer down immediately.
