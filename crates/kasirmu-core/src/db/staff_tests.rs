@@ -616,6 +616,63 @@ fn create_user_empty_username() {
     assert!(matches!(err, CoreError::Validation { field, .. } if field == "username"));
 }
 
+/// The username length limit counts CHARACTERS, not UTF-8 bytes.
+///
+/// WHY THIS EXISTS. The refusal message has always read "must not exceed 100
+/// characters", but the check and the number it reported both used the byte length.
+/// MEASURED: swapping the check to a character count left all 96 tests in this file
+/// GREEN, so the unit was never pinned. The visible failure is self-contradicting: a
+/// 100-character accented username was refused with a message saying it exceeded 100
+/// characters and reporting 200.
+///
+/// Both sides of the boundary are asserted, because a limit that rejected everything
+/// would satisfy the refusal alone.
+#[test]
+fn create_user_measures_the_username_in_characters_not_bytes() {
+    let conn = fresh();
+    seed_roles(&conn);
+    let s = store(&conn);
+
+    // 100 multi-byte characters is AT the limit: 200 bytes, 100 chars. Must pass.
+    let at_limit = "\u{00E9}".repeat(100);
+    assert_eq!(at_limit.chars().count(), 100);
+    assert_eq!(
+        at_limit.len(),
+        200,
+        "the fixture must be multi-byte or it proves nothing"
+    );
+    s.create_user(&at_limit, "hash", "E", "role-staff")
+        .expect("100 characters is within the limit whatever its byte width");
+
+    // 101 characters is over it, and the message must report the CHARACTER count.
+    let over = "\u{00E9}".repeat(101);
+    let err = s.create_user(&over, "hash", "E", "role-staff").unwrap_err();
+    match err {
+        CoreError::Validation { field, message } => {
+            assert_eq!(field, "username");
+            let expected = "101";
+            assert!(
+                message.contains(expected),
+                "the refusal must report the CHARACTER count (101); a byte count would be 202. got: {message}"
+            );
+        }
+        other => panic!("expected a validation error, got {other:?}"),
+    }
+}
+
+/// The display-name limit counts characters too, with the same reasoning.
+#[test]
+fn create_user_measures_the_display_name_in_characters_not_bytes() {
+    let conn = fresh();
+    seed_roles(&conn);
+    let s = store(&conn);
+
+    let at_limit = "\u{00E9}".repeat(255);
+    assert_eq!(at_limit.len(), 510, "multi-byte fixture");
+    s.create_user("diana", "hash", &at_limit, "role-staff")
+        .expect("255 characters is within the display-name limit");
+}
+
 #[test]
 fn create_user_empty_display_name() {
     let conn = fresh();
