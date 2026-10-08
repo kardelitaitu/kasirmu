@@ -194,6 +194,48 @@ describe('RestaurantSettingsScreen', () => {
     expect(screen.getByTestId('setting-toggle-hold-order')).toBeInTheDocument();
   });
 
+  it('writes the loaded DB preference through to the localStorage the runtime reads (F6)', async () => {
+    // The runtime (utils/interaction.ts) reads localStorage only, so a fresh
+    // device must be given the DB value on load or it keeps the default.
+    localStorage.clear();
+    mocks.getSetting.mockImplementation((_tok: string, key: string) => {
+      if (key === 'restaurant.interaction_sound') return Promise.resolve('false');
+      if (key === 'restaurant.interaction_vibration') return Promise.resolve('false');
+      return Promise.resolve('true');
+    });
+
+    await renderScreen();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('setting-toggle-interaction-sound')).toHaveAttribute('aria-checked', 'false');
+    });
+    expect(localStorage.getItem('pos.interaction_sound')).toBe('false');
+    expect(localStorage.getItem('pos.interaction_vibration')).toBe('false');
+  });
+
+  it('does not move the local sound mirror when the save is rejected (F5)', async () => {
+    // localStorage is what the runtime reads, so a failed save that had already
+    // flipped it would leave the device disagreeing with the DB.
+    localStorage.clear();
+    localStorage.setItem('pos.interaction_sound', 'true');
+    mocks.setSettings.mockRejectedValueOnce(new Error('ipc down'));
+
+    await renderScreen();
+    await waitFor(() => {
+      expect(screen.getByTestId('setting-toggle-interaction-sound')).toBeInTheDocument();
+    });
+
+    // Turn sound OFF, then fail the save.
+    fireEvent.click(screen.getByTestId('setting-toggle-interaction-sound'));
+    fireEvent.click(screen.getByTestId('restaurant-settings-save-btn'));
+
+    await waitFor(() => {
+      expect(mocks.setSettings).toHaveBeenCalled();
+    });
+    // The mirror must still say what the DB still says.
+    expect(localStorage.getItem('pos.interaction_sound')).toBe('true');
+  });
+
   it('calls onBack immediately when there are no unsaved changes', async () => {
     const onBack = vi.fn();
     await renderScreen({ onBack });

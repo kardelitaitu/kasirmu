@@ -218,6 +218,21 @@ export function RestaurantSettingsScreen({ onSaved, onBack }: RestaurantSettings
         setInteractionSound(values.interactionSound);
         setInteractionVibration(values.interactionVibration);
 
+        // F6 / D3 — the DB is authoritative, and the RUNTIME reads localStorage.
+        //
+        // `utils/interaction.ts` decides whether to play a sound or vibrate by
+        // reading `pos.interaction_sound` / `pos.interaction_vibration` from
+        // localStorage. The DB keys above are what actually sync across devices,
+        // so without this write-through a fresh device, a cleared webview cache,
+        // or a second terminal keeps the localStorage default (true) and ignores
+        // the saved preference entirely. The save path already writes these two;
+        // this closes the same gap on the load path.
+        //
+        // Idempotent when the key was unset: the value came FROM localStorage, so
+        // writing it back changes nothing.
+        setInteractionSoundEnabled(values.interactionSound);
+        setInteractionVibrationEnabled(values.interactionVibration);
+
         originalsRef.current = { ...values };
         setDirtyVersion((v) => v + 1);
       } catch {
@@ -289,11 +304,18 @@ export function RestaurantSettingsScreen({ onSaved, onBack }: RestaurantSettings
         }),
       );
 
-      // 2. Keep local interaction preference in sync immediately
+      await Promise.all(tasks);
+
+      // 2. Mirror the interaction preferences to localStorage — AFTER the DB
+      //    write, not before (P3/F5).
+      //
+      //    This used to run before `await`, so a rejected save left localStorage
+      //    saying "sound off" while the DB still said "sound on": the device and
+      //    the store disagreed, and the runtime believes localStorage. Doing it
+      //    after the await means a failed save leaves the local mirror exactly as
+      //    it was, matching the DB it failed to change.
       setInteractionSoundEnabled(interactionSound);
       setInteractionVibrationEnabled(interactionVibration);
-
-      await Promise.all(tasks);
 
       originalsRef.current = {
         customerName,

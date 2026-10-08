@@ -338,18 +338,46 @@ cases for the banner, the disabled Save, the header copy and Retry.
   → **4 files / 34 tests passed**; wider `npx vitest run Restaurant Settings Workspace`
   → **65 files / 1065 passed, 22 skipped**; eslint on all six changed files exit 0.
 
-### P3 — Atomic-or-reported saves (fixes F5)
+### P3 — Never mutate localStorage before the DB write resolves (fixes F5) — ✅ DONE 2026-10-09
 
-1. Split the save into ordered, individually-reported steps, or use
-   `Promise.allSettled` and report which parts failed. Never mutate localStorage
-   before the DB write resolves.
-2. Update `originalsRef` for the parts that succeeded so the dirty state tells the
-   truth.
-3. Decide and document the rollback story for a partial receipt+settings write.
+**Landed.** `RestaurantSettingsScreen.handleSave` now mirrors the interaction
+preferences to localStorage **after** `await Promise.all(tasks)`, not before. A
+rejected save previously left localStorage saying "sound off" while the DB still
+said "sound on" — and the runtime believes localStorage, so the device and the
+store disagreed with no way to tell.
 
-- **Tests:** a rejected `setSettingsScoped` after a successful
-  `setReceiptSettingsScoped` must leave the screen dirty and name the failed part.
-- **Acceptance:** `cd ui && npm run test -- WorkspaceRestaurantPosSettings`
+The table-number half of this phase **dissolved**: the receipt-sync block it
+described was removed outright in P1 (option C), so the only cross-store write left
+on this screen was the localStorage mirror. `WorkspaceRestaurantPosSettings` has no
+localStorage write at all.
+
+**Kill-tested.** Restoring the old ordering fails the new case with
+`expected 'false' to be 'true'` — the exact divergence. The test is therefore not
+vacuous.
+
+- **Acceptance met:** `cd ui && npm run typecheck` exit 0; eslint on both changed
+  files exit 0; `npx vitest run Restaurant Settings Workspace interaction` →
+  **68 files / 1120 passed, 22 skipped**.
+
+### P5 — Persist interaction prefs where the runtime reads them (fixes F6) — ✅ DONE 2026-10-09
+
+**Landed.** The load path now writes the DB value through to the
+`pos.interaction_*` localStorage keys the runtime actually reads
+(`utils/interaction.ts`). Without it a fresh device, a cleared webview cache, or a
+second terminal kept the localStorage default (`true`) and ignored the saved
+preference — the DB value never reached the code that acts on it.
+
+Authority is **D3**: the DB wins, localStorage is a write-through cache. The write
+is idempotent when the key was unset, because the value came FROM localStorage in
+that case.
+
+**F11 (`resto_rcpt_*`) is NOT done** and is deliberately left open: those keys have
+a different reader path (`RestaurantReceiptsScreen` overlays
+`getUserPreferencesScoped`) and deserve their own phase rather than being folded in
+here.
+
+- **Acceptance met:** `npx vitest run RestaurantSettingsScreen` → **10 tests
+  passed**, including a case asserting localStorage carries the loaded DB value.
 
 ### P4 — Sidebar action gating and crash isolation (fixes F7, F8, F9)
 
@@ -365,18 +393,6 @@ cases for the banner, the disabled Save, the header copy and Retry.
   Display when the route is unreachable" case; a throw inside the sidebar renders
   the boundary fallback, not a blank POS.
 - **Acceptance:** `cd ui && npm run test -- RestaurantPosSidebar`
-
-### P5 — Persist interaction prefs where the runtime reads them (fixes F6, F11)
-
-1. On load, apply the DB value to the `pos.interaction_*` localStorage keys so a
-   fresh device honours the saved preference.
-2. Decide the authority order (DB vs localStorage) and write it down; the current
-   two-store split has no rule.
-3. Same decision for the `resto_rcpt_*` keys in `RestaurantReceiptsScreen`.
-
-- **Tests:** a load with DB `false` and empty localStorage must leave
-  `isInteractionSoundEnabled() === false`.
-- **Acceptance:** `cd ui && npm run test -- interaction RestaurantReceiptsScreen`
 
 ### P6 — i18n sweep (fixes F10)
 
