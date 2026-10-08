@@ -657,6 +657,31 @@ so no keys were orphaned. The stale doc reference in
 `docs/decisions/2026-07-16-desktop-app-updater.md` was corrected separately
 (`3f4422c20`).
 
+**A DEAD DISMISS BUTTON, found by retiring the dead twin (round 12).** Reading the
+shipped banner to retire its twin surfaced a real defect: the version-blocked branch
+(`app/UpdateBanner.tsx:254`) returns BEFORE the `dismissed` check on Priority 3 and
+did not test `dismissed` itself — so its own Dismiss button set state nothing read.
+**A control that silently does nothing.** The dead twin's copy of the same button
+routed through `useExitAnimation` and therefore worked, which is how the shipped one
+hid. Fixed at `f80207d66`; pinned by a test that failed first.
+
+**The scan also found `_refundsLoading`** (`SalesHistoryScreen.tsx:242`): set
+true/false around a refunds read and never read, costing two re-renders per load.
+Removed at `8f684d387`.
+
+**⚠️ The guard for this class is the WEAKEST of the four, and I measured that.**
+`ui/src/__tests__/unreadStateFlag.test.ts` flags a `useState(false)` flag that is set
+and never MENTIONED. Kill-testing showed it does **NOT** catch the UpdateBanner bug
+that motivated it: reverting `versionBlocked && !dismissed` leaves it GREEN, because
+`dismissed` is still read at the Priority-3 gate further down. The defect was that one
+BRANCH returned before that read — distinguishing "read somewhere" from "read on the
+path that matters" needs control flow, not a mention count.
+
+It DOES catch `_refundsLoading` (verified by reintroducing it). Its first version did
+not: the detector counted mentions inside COMMENTS, and my own removal comment named
+the flag. That is recorded in the file, along with the fact that the UpdateBanner
+regression is pinned only by its own behavioural test.
+
 **A guard for the whole class** (round 10): `ui/src/__tests__/disabledFlagLatch.test.ts`
 asserts no production flag that gates a `disabled` prop is only ever set to `true`.
 Its detector reads the ARGUMENT, not the call count — counting calls flagged
@@ -901,6 +926,13 @@ _Fill in as phases land. One row per acceptance command run._
 | 2026-10-09 | latch guard | `cd ui && npx vitest run disabledFlagLatch` | exit 0 | **6 tests passed**; 4 detector self-cases |
 | 2026-10-09 | latch guard | `cd ui && npx vitest run disabledFlagLatch` (kill-test) | **FAIL (killed)** | names `app/UpdateBanner.tsx :: versionBlocked`; restored |
 | 2026-10-09 | all | `cd ui && npx vitest run` (full suite, round 10) | exit 0 | **678 files, 11389 passed / 24 skipped / 3 todo** |
+| 2026-10-09 | dead twin | `cd ui && npx vitest run focusVisibleCompliance popupBackgroundCompliance` | exit 0 | **2 files, 8 passed** after updating both baselines |
+| 2026-10-09 | dead twin | `cd ui && npx vitest run Compliance themeToken popoverSurface noiseDither animationCompliance motionImportantEscapes` | exit 0 | **23 files, 298 passed**; harvest unchanged |
+| 2026-10-09 | dead twin | `python .agents/skills/docs-auditor/scripts/check-dead-refs.py` | exit 0 | 0 unresolved refs in 13 live docs |
+| 2026-10-09 | dead control | `cd ui && npx vitest run appUpdateBanner -t 'dismisses the version-blocked'` (RED first) | **FAIL, then PASS** | button was a no-op; fixed at `f80207d66` |
+| 2026-10-09 | dead control | `cd ui && npx vitest run unreadStateFlag` (kill-test v1) | **PASSED against the bug** | detector counted comment mentions; fixed to strip comments |
+| 2026-10-09 | dead control | same, kill-test v2 | **FAIL (killed)** | names `SalesHistoryScreen.tsx :: _refundsLoading` |
+| 2026-10-09 | all | `cd ui && npx vitest run` (full suite, round 12) | exit 0 | **678 files, 11389 passed / 24 skipped / 3 todo** |
 
 **P0 baseline (measured 2026-10-09).** These four are the reference figures for
 attributing any later regression:
