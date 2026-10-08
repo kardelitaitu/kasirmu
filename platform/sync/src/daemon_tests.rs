@@ -2652,3 +2652,43 @@ async fn network_jitter_resilience_and_exponential_backoff_retry() {
     assert!(daemon.stop().await);
     wait_for_stopped(&daemon).await;
 }
+
+#[test]
+fn crl_poll_ttl_caching_and_staleness_detection() {
+    let now = chrono::Utc::now();
+    let ttl = 900; // 15 mins
+
+    // 1. None (never checked) -> must poll
+    assert!(
+        daemon_tick::should_poll_crl(None, now, ttl),
+        "must poll CRL when never previously checked"
+    );
+
+    // 2. Checked 60 seconds ago -> within TTL window -> skip poll
+    let recent = (now - chrono::Duration::seconds(60)).to_rfc3339();
+    assert!(
+        !daemon_tick::should_poll_crl(Some(&recent), now, ttl),
+        "must skip CRL poll when cache is younger than TTL"
+    );
+
+    // 3. Checked exactly 900 seconds ago -> expired TTL -> must poll
+    let at_ttl = (now - chrono::Duration::seconds(900)).to_rfc3339();
+    assert!(
+        daemon_tick::should_poll_crl(Some(&at_ttl), now, ttl),
+        "must poll CRL when TTL window has elapsed"
+    );
+
+    // 4. Checked 2 hours ago -> expired -> must poll
+    let stale = (now - chrono::Duration::hours(2)).to_rfc3339();
+    assert!(
+        daemon_tick::should_poll_crl(Some(&stale), now, ttl),
+        "must poll CRL when cache is stale"
+    );
+
+    // 5. Unparseable garbage timestamp -> fails open -> must poll
+    assert!(
+        daemon_tick::should_poll_crl(Some("not-a-timestamp"), now, ttl),
+        "must poll CRL when timestamp is corrupted/unparseable"
+    );
+}
+
