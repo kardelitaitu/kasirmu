@@ -811,6 +811,74 @@ fn an_ordinary_lowercase_manager_key_is_still_admitted_by_the_manager_door_and_r
     }
 }
 
+/// EVERY peer-named hazard key must be refused by `RemoteSync` — swept, not listed.
+///
+/// WHY THIS EXISTS, and it is a measured gap rather than a defensive addition.
+/// The fold-leg test above names THREE of the six hazard keys as sloppy spellings
+/// (`sync_enabled`, `Pg_Sync.Host`, and `SYNC_ENABLED` again), and the three-list
+/// disjointness assertion in `raw.rs` checks only that the lists do not OVERLAP —
+/// neither sweeps the list through the gate that consumes it. So `SYNC_SERVER_URL`,
+/// which the list's own doc calls the sharpest of the six (`sync_auth.rs` sends
+/// `Authorization: Bearer <sync api key>` to whatever that setting holds, so
+/// planting the name exfiltrates a credential without naming one), was never
+/// asserted refused by anything.
+///
+/// MEASURED: deleting `SYNC_SERVER_URL` from `PEER_NAMED_HAZARD_KEYS` left the whole
+/// `platform-core` settings suite GREEN — 168 passed, 0 failed. The protection could
+/// be removed without a single test objecting, which is the definition of an
+/// unguarded invariant.
+///
+/// Driven off the constant rather than a copied list, so a SEVENTH name added to
+/// `PEER_NAMED_HAZARD_KEYS` is covered the moment it is written — the failure this
+/// catches is exactly the one a hand-written list would reintroduce.
+#[test]
+fn every_peer_named_hazard_key_is_refused_by_remote_sync() {
+    // ANCHORED MEMBERSHIP FIRST, and this half is the one my first draft missed.
+    // A sweep driven off `PEER_NAMED_HAZARD_KEYS` cannot see a name being DELETED
+    // from that list: the expected set shrinks with the subject and every remaining
+    // entry still passes. Measured — dropping `SYNC_SERVER_URL` left that draft
+    // GREEN. So the literal below is the oracle, and the list is checked against it
+    // exactly as `gate_error_mapping_tests` checks ten live copies against
+    // `CANONICAL_ARMS`. Removing a protected name now fails HERE, naming it.
+    const EXPECTED_HAZARD_KEYS: &[&str] = &[
+        "sync_server_url",
+        "sync_enabled",
+        // These four use DOTS, not underscores — the constant names are SNAKE_CASE
+        // but their values are not, and my first literal got that wrong. The test
+        // caught it, which is the reason the literal is worth having at all.
+        "pg_sync.host",
+        "pg_sync.user",
+        "pg_sync.dbname",
+        "redis.cache_ttl",
+    ];
+    let declared: Vec<&str> = keys::PEER_NAMED_HAZARD_KEYS.to_vec();
+    assert_eq!(
+        declared, EXPECTED_HAZARD_KEYS,
+        "PEER_NAMED_HAZARD_KEYS changed. Every name here is refused at the replication \
+         egress, so a REMOVAL re-opens a hole (sync_server_url exfiltrates the sync API \
+         key through its own Authorization header) and an ADDITION needs a deliberate \
+         review. Update this literal only after deciding the policy change is intended."
+    );
+
+    assert!(
+        !declared.is_empty(),
+        "the hazard list is empty, so this sweep would pass vacuously"
+    );
+    for key in declared {
+        assert!(
+            !IngestPolicy::RemoteSync.admits(key),
+            "{key:?} is a peer-named hazard and must be refused by RemoteSync"
+        );
+        // The asymmetry is the point: a package restore legitimately carries these,
+        // so the refusal must NOT leak onto the package lane. Asserting both halves
+        // keeps a future 'tidy-up' from folding the list into a shared predicate.
+        assert!(
+            IngestPolicy::PortablePackage.admits(key),
+            "{key:?} must still ride in a package: the hazard refusal belongs to ONE lane"
+        );
+    }
+}
+
 // ── DRIFT PIN — the prefix literals inside `is_manager_owned_key` against ──
 // the constants that spell the manager's real keys ────────────────────────
 
