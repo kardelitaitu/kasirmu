@@ -309,3 +309,47 @@ describe('CartPanel — course assignment wiring', () => {
     expect(assignCourse).toHaveBeenCalledWith(line.id, 'dessert');
   });
 });
+
+describe('CartPanel — restaurant cart-field gates (P1)', () => {
+  // 'restaurant.customer_name' / 'restaurant.guest_count' used to be written by
+  // RestaurantSettingsScreen and read by nothing. These pin the gate that makes
+  // them real, and — more importantly — the '!== false' semantics: an ABSENT
+  // prop must SHOW the field, because retail passes nothing and an unset key
+  // must not remove a field that has always been there.
+
+  const withFields = () => ({
+    activeWorkspace: 'restaurant-pos' as const,
+    lines: [makeLine('Espresso')],
+    setCustomerName: noop,
+    setGuestCount: noop,
+  });
+
+  it('shows both fields when the gates are absent (retail / unset key)', () => {
+    renderPanel(withFields());
+
+    expect(screen.getByTestId('pos-cart-customer-input')).toBeInTheDocument();
+    expect(screen.getByTestId('pos-cart-guest-input')).toBeInTheDocument();
+  });
+
+  it('hides the customer field when customer_name is explicitly false', () => {
+    renderPanel({ ...withFields(), customerNameEnabled: false });
+
+    expect(screen.queryByTestId('pos-cart-customer-input')).toBeNull();
+    // The pax field is a SEPARATE setting and must be unaffected.
+    expect(screen.getByTestId('pos-cart-guest-input')).toBeInTheDocument();
+  });
+
+  it('hides the pax field when guest_count is explicitly false', () => {
+    renderPanel({ ...withFields(), guestCountEnabled: false });
+
+    expect(screen.queryByTestId('pos-cart-guest-input')).toBeNull();
+    expect(screen.getByTestId('pos-cart-customer-input')).toBeInTheDocument();
+  });
+
+  it('treats an explicit true as show', () => {
+    renderPanel({ ...withFields(), customerNameEnabled: true, guestCountEnabled: true });
+
+    expect(screen.getByTestId('pos-cart-customer-input')).toBeInTheDocument();
+    expect(screen.getByTestId('pos-cart-guest-input')).toBeInTheDocument();
+  });
+});

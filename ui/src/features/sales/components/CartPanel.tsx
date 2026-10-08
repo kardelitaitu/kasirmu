@@ -143,6 +143,15 @@ export interface CartPanelProps {
   setTableNumber: Dispatch<SetStateAction<string>>;
   guestCount?: string;
   setGuestCount?: Dispatch<SetStateAction<string>>;
+  /**
+   * Whether the customer-name field shows. `restaurant.customer_name`, owned by
+   * RestaurantSettingsScreen. Absent = show, so retail and every test render are
+   * unaffected; only an explicit `false` hides it. Same `!== false` idiom as
+   * `courseFiringEnabled`.
+   */
+  customerNameEnabled?: boolean;
+  /** Whether the pax field shows. `restaurant.guest_count`; absent = show. */
+  guestCountEnabled?: boolean;
   orderType?: 'dine_in' | 'takeaway' | 'delivery';
   setOrderType?: Dispatch<SetStateAction<'dine_in' | 'takeaway' | 'delivery'>>;
   orderTypePromptEnabled?: boolean;
@@ -252,6 +261,8 @@ export function CartPanel({
   tableNumber,
   setTableNumber,
   guestCount,
+  customerNameEnabled,
+  guestCountEnabled,
   setGuestCount,
   orderType = 'dine_in',
   setOrderType,
@@ -680,7 +691,11 @@ export function CartPanel({
                 placeholder={l10n.getString('pos-cart-table-placeholder')}
               />
             </div>
-            {setCustomerName && (
+            {/* `!== false` (not truthiness) so an ABSENT prop shows the field:
+                retail passes nothing, and only RestaurantSettingsScreen's explicit
+                `restaurant.customer_name = false` hides it. Same idiom as
+                `courseFiringEnabled` above. */}
+            {setCustomerName && customerNameEnabled !== false && (
               <div className="pos-cart-customer-field">
                 <label htmlFor="pos-customer-name" className="pos-cart-customer-label">
                   {l10n.getString('pos-cart-customer-label') || 'Customer (opt)'}
@@ -697,7 +712,7 @@ export function CartPanel({
                 />
               </div>
             )}
-            {setGuestCount && (
+            {setGuestCount && guestCountEnabled !== false && (
               <div className="pos-cart-guest-field">
                 <label htmlFor="pos-guest-count" className="pos-cart-customer-label">
                   {l10n.getString('pos-cart-guest-count-label') || 'Pax'}

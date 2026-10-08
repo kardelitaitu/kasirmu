@@ -287,12 +287,21 @@ after the P1 code change.
 
 | Key | Verdict | Evidence | Recommended action |
 |---|---|---|---|
-| `restaurant.customer_name` | **WIRE** | The cart field it would gate already exists — `CartPanel.tsx:683-699`, `data-testid="pos-cart-customer-input"`, prop `setCustomerName` already threaded from `PosScreen`. | Gate that block on the setting. Smallest, highest-value wire in the set. |
-| `restaurant.guest_count` | **WIRE** | Same shape — `CartPanel.tsx:700-720`, `data-testid="pos-cart-guest-input"`, `setGuestCount` already a prop. Default is `false`, so this one *removes* a control by default, which is what an operator would expect from an off toggle. | Gate on the setting. |
+| `restaurant.customer_name` | ✅ **WIRED** 2026-10-09 | `CartPanel` gates the field on `customerNameEnabled !== false`; `PosScreen` reads the key. Defaults to SHOW, so retail and an unset key are unaffected. | Done. |
+| `restaurant.guest_count` | ✅ **WIRED** 2026-10-09 | Same shape, `guestCountEnabled !== false`. Note the model default is `false` but the GATE defaults to show for an unset key — see below. | Done. |
 | `restaurant.hold_order` | **WIRE** | The mechanism is real: `holdCartScoped` is called at `usePosHeldCarts.ts:175` and `PaymentModal.tsx:1022`. The key is simply never consulted before that call. | Read it where the hold action fires; off = refuse to hold. |
 | `restaurant.save_tab` | **WIRE** | Same: `bill_type: 'open_bill'` is a live concept (`PaymentModal.tsx:1028`, `usePosHeldCarts.ts:181`) and the tender is already restaurant-gated (`PaymentModal.tsx:324`). | Gate the open-bill tender on it. |
 | `restaurant.auto_print_kitchen` | **DELETE or BUILD** | **No consumer exists.** Zero call sites outside the settings screen; the only auto-print in the tree is KDS-side (`kasirmu-bridge/src/kds.rs:262`, `try_auto_print_kds_chit_jobs`), which is a different feature and already automatic. | Owner call: delete the toggle, or build a KOT-send path that honours it. Do not leave it writing a dead key. |
 | `restaurant.sound_chime` | **DELETE or BUILD** | **No consumer exists.** The only chime is `useNewTicketSound` (KDS new-ticket), which has its own debounce and no restaurant-settings input. | Owner call: delete, or wire to an order-sent chime. |
+
+**The `guest_count` default trap, and how it was handled.** The model's default for
+`guest_count` is `false`, but the field has ALWAYS rendered on restaurant POS. Wiring
+the gate naively to the resolved value would therefore have hidden the pax field for
+every merchant who had never saved the setting — the same regression D2 exists to
+prevent. The gate is therefore `!== false` on an ABSENT prop, and `PosScreen` maps
+`null` (never written) to show. Only an explicit stored `"false"` hides it. This is
+the one place where "what the setting means when unset" and "what the control has
+always done" disagree, and the control wins.
 
 **Why these are split into WIRE vs DELETE/BUILD:** the four WIRE keys have a real,
 already-existing consumer to gate, so the change is small and the behaviour is

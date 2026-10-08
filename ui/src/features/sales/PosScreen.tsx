@@ -786,6 +786,16 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     return () => { courseFiringSeq.current += 1; };
   }, [sessionToken]);
 
+  // ── Restaurant cart-field gates (P1) ────────────────────────────
+  // `restaurant.customer_name` / `restaurant.guest_count` gate the cart's two
+  // optional fields. Both use `null` = "never written" as SHOW, matching the
+  // `!== false` props on CartPanel, so an unset key cannot hide a field that has
+  // always been visible. A failed read is also SHOW, for the same reason the
+  // course-firing flag falls back to its workspace default: a settings outage
+  // must not remove a POS capability.
+  const [customerNameEnabled, setCustomerNameEnabled] = useState<boolean | null>(null);
+  const [guestCountEnabled, setGuestCountEnabled] = useState<boolean | null>(null);
+
   const orderTypePromptSeq = useRef(0);
   useEffect(() => {
     const seq = ++orderTypePromptSeq.current;
@@ -808,6 +818,18 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     // fallback is computed FROM the workspace. Omitting it would leave the
     // pre-switch workspace's answer in state after a store switch.
   }, [sessionToken, activeWorkspace]);
+
+  useEffect(() => {
+    if (!sessionToken) return;
+    let cancelled = false;
+    void getSettingScoped(sessionToken, 'restaurant.customer_name')
+      .then((raw) => { if (!cancelled) setCustomerNameEnabled(raw === null ? null : raw === 'true'); })
+      .catch(() => { if (!cancelled) setCustomerNameEnabled(null); });
+    void getSettingScoped(sessionToken, 'restaurant.guest_count')
+      .then((raw) => { if (!cancelled) setGuestCountEnabled(raw === null ? null : raw === 'true'); })
+      .catch(() => { if (!cancelled) setGuestCountEnabled(null); });
+    return () => { cancelled = true; };
+  }, [sessionToken]);
 
   const handleRequestExit = useCallback(() => {
     if (activeShift !== null) {
@@ -1098,6 +1120,8 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     setCustomerName,
     guestCount,
     setGuestCount,
+    customerNameEnabled: customerNameEnabled ?? true,
+    guestCountEnabled: guestCountEnabled ?? true,
     orderType,
     setOrderType,
     orderTypePromptEnabled,
