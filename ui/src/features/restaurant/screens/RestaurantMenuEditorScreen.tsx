@@ -1282,6 +1282,53 @@ export default function RestaurantMenuEditorScreen({
                                   }
                                   data-testid={`modifier-group-name-${gIdx}`}
                                 />
+                                <div className="restaurant-menu-editor-group-presets">
+                                  <button
+                                    type="button"
+                                    className={`restaurant-menu-editor-preset-btn${group.minSelections === 0 && group.maxSelections > 1 ? ' restaurant-menu-editor-preset-btn--active' : ''}`}
+                                    onClick={() =>
+                                      handleUpdateModifierGroup(group.id, {
+                                        minSelections: 0,
+                                        maxSelections: Math.max(2, group.options.length || 2),
+                                      })
+                                    }
+                                    data-testid={`modifier-preset-opt-multi-${gIdx}`}
+                                  >
+                                    <Localized id="restaurant-menu-editor-mode-optional-multi">
+                                      <span>Optional (Multi)</span>
+                                    </Localized>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className={`restaurant-menu-editor-preset-btn${group.minSelections === 0 && group.maxSelections === 1 ? ' restaurant-menu-editor-preset-btn--active' : ''}`}
+                                    onClick={() =>
+                                      handleUpdateModifierGroup(group.id, {
+                                        minSelections: 0,
+                                        maxSelections: 1,
+                                      })
+                                    }
+                                    data-testid={`modifier-preset-opt-single-${gIdx}`}
+                                  >
+                                    <Localized id="restaurant-menu-editor-mode-optional-single">
+                                      <span>Optional (1)</span>
+                                    </Localized>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className={`restaurant-menu-editor-preset-btn${group.minSelections === 1 && group.maxSelections === 1 ? ' restaurant-menu-editor-preset-btn--active' : ''}`}
+                                    onClick={() =>
+                                      handleUpdateModifierGroup(group.id, {
+                                        minSelections: 1,
+                                        maxSelections: 1,
+                                      })
+                                    }
+                                    data-testid={`modifier-preset-req-single-${gIdx}`}
+                                  >
+                                    <Localized id="restaurant-menu-editor-mode-required-single">
+                                      <span>Required (1)</span>
+                                    </Localized>
+                                  </button>
+                                </div>
                                 <div className="restaurant-menu-editor-group-bounds">
                                   <label className="restaurant-menu-editor-bound-label">
                                     <Localized id="restaurant-menu-editor-modifier-min">Min choices</Localized>
@@ -1323,6 +1370,34 @@ export default function RestaurantMenuEditorScreen({
                                 >
                                   <TrashGlyph />
                                 </button>
+                              </div>
+
+                              <div className="restaurant-menu-editor-group-mode-hint">
+                                {group.minSelections === 0 && group.maxSelections > 1 ? (
+                                  <span className="restaurant-menu-editor-hint-badge restaurant-menu-editor-hint-badge--optional">
+                                    <Localized id="restaurant-menu-editor-hint-optional-multi" vars={{ max: group.maxSelections }}>
+                                      <span>{`Optional — customer can select up to ${group.maxSelections} choices (e.g. less sugar, less ice)`}</span>
+                                    </Localized>
+                                  </span>
+                                ) : group.minSelections === 0 && group.maxSelections === 1 ? (
+                                  <span className="restaurant-menu-editor-hint-badge restaurant-menu-editor-hint-badge--optional">
+                                    <Localized id="restaurant-menu-editor-hint-optional-single">
+                                      <span>Optional — customer can select at most 1 choice</span>
+                                    </Localized>
+                                  </span>
+                                ) : group.minSelections >= 1 && group.maxSelections === 1 ? (
+                                  <span className="restaurant-menu-editor-hint-badge restaurant-menu-editor-hint-badge--required">
+                                    <Localized id="restaurant-menu-editor-hint-required-single">
+                                      <span>Required — customer must select 1 choice</span>
+                                    </Localized>
+                                  </span>
+                                ) : (
+                                  <span className="restaurant-menu-editor-hint-badge restaurant-menu-editor-hint-badge--required">
+                                    <Localized id="restaurant-menu-editor-hint-required-multi" vars={{ min: group.minSelections, max: group.maxSelections }}>
+                                      <span>{`Required — customer must select between ${group.minSelections} and ${group.maxSelections} choices`}</span>
+                                    </Localized>
+                                  </span>
+                                )}
                               </div>
 
                               <div className="restaurant-menu-editor-options-list">

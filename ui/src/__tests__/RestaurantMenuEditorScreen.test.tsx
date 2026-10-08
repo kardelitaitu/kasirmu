@@ -428,6 +428,52 @@ describe('RestaurantMenuEditorScreen', () => {
     expect(screen.queryByTestId('modifier-group-0')).not.toBeInTheDocument();
   });
 
+  it('supports configuring optional multi-select modifier variants with presets', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<RestaurantMenuEditorScreen />, productsFtl);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('restaurant-menu-editor-new-item')).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByTestId('restaurant-menu-editor-new-item'));
+
+    // Fill item details for Ice Tea
+    await user.type(screen.getByTestId('restaurant-menu-editor-name'), 'Ice Tea');
+    await user.type(screen.getByTestId('restaurant-menu-editor-price'), '10000');
+
+    // Add modifier group
+    await user.click(screen.getByTestId('restaurant-menu-editor-add-group-btn'));
+    await user.type(screen.getByTestId('modifier-group-name-0'), 'Sugar & Ice Level');
+
+    // Add options
+    await user.type(screen.getByTestId('modifier-option-name-0-0'), 'Less Sugar');
+    await user.click(screen.getByTestId('modifier-option-add-0'));
+    await user.type(screen.getByTestId('modifier-option-name-0-1'), 'Less Ice');
+    await user.click(screen.getByTestId('modifier-option-add-0'));
+    await user.type(screen.getByTestId('modifier-option-name-0-2'), 'No Sugar');
+
+    // Click "Optional (Multi)" preset
+    await user.click(screen.getByTestId('modifier-preset-opt-multi-0'));
+
+    // Verify hint badge displays optional multi-select explanation
+    expect(screen.getByText(/Optional — customer can select up to/i)).toBeInTheDocument();
+
+    // Save item
+    const form = screen.getByTestId('restaurant-menu-editor-form');
+    await user.click(within(form).getByRole('button', { name: /save/i }));
+
+    await waitFor(() => {
+      expect(productsApi.createProductScoped).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          name: 'Ice Tea',
+          notes: expect.stringMatching(/"minSelections":0.*"maxSelections":3/),
+        }),
+      );
+    });
+  });
+
   it('filters dishes by availability status tabs', async () => {
     const user = userEvent.setup();
     renderWithProviders(<RestaurantMenuEditorScreen />, productsFtl);
