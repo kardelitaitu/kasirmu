@@ -292,8 +292,7 @@ pub async fn offline_queue_status_summary_scoped(
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let db = &*db_guard;
-    let store = Store::new(&db);
+    let store = Store::new(&db_guard);
     let summary = store.offline_queue_status_summary()?;
     drop(db_guard);
     Ok(OfflineQueueSummaryDto {
