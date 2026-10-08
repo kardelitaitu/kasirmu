@@ -2101,9 +2101,15 @@ export default function RestaurantReceiptsScreen({
                   <div className="resto-logo-row">
                     <div className="resto-logo-thumb-box">
                       {businessLogo ? (
-                        <img src={businessLogo} alt="Logo preview" className="resto-logo-thumb" />
+                        <img
+                          src={businessLogo}
+                          alt={l10n.getString('restaurant-logo-preview-alt')}
+                          className="resto-logo-thumb"
+                        />
                       ) : (
-                        <span style={{ fontSize: '10px', color: 'var(--color-fg-muted)' }}>No logo</span>
+                        <span style={{ fontSize: '10px', color: 'var(--color-fg-muted)' }}>
+                          <Localized id="restaurant-logo-no-logo"><span>No logo</span></Localized>
+                        </span>
                       )}
                     </div>
                     <div className="resto-logo-actions">
@@ -2163,7 +2169,11 @@ export default function RestaurantReceiptsScreen({
                       <div className="resto-toggle-desc" style={{ marginBottom: '4px', fontWeight: 500 }}>
                         <Localized id="restaurant-logo-position-heading">Logo Position</Localized>
                       </div>
-                      <div className="resto-segmented-group" role="group" aria-label="Logo Position">
+                      <div
+                        className="resto-segmented-group"
+                        role="group"
+                        aria-label={l10n.getString('restaurant-logo-position-heading')}
+                      >
                         <button
                           type="button"
                           className={`resto-segmented-btn ${logoPosition === 'left' ? 'resto-segmented-btn--active' : ''}`}

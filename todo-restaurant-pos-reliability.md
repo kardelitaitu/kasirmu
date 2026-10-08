@@ -476,10 +476,15 @@ hardcoded literal fails rather than passing on the same visible text.
 **Acceptance met for this screen:** `verify-bundle-parity.py` → **0 missing keys**
 (both bundles grew by 17); `npx vitest run RestaurantSettingsScreen` → 11 passed.
 
-**Still open:** `RestaurantReceiptsScreen` (3 sites) and `RestaurantPaymentsScreen`
-(10 aria-labels). ⚠️ `RestaurantPaymentsScreen.tsx` is currently DIRTY with another
-lane's uncommitted change, so editing it would sweep their work into this lane's
-commit (AGENTS.md §7.3) — it must wait until that file is clean.
+**`RestaurantReceiptsScreen` DONE** too: the `No logo` placeholder, the logo
+preview `alt`, and the `Logo Position` group's `aria-label` are now bundle-backed
+(`restaurant-logo-no-logo`, `restaurant-logo-preview-alt`, and the already-existing
+`restaurant-logo-position-heading`). 35 tests pass; parity 0 missing.
+
+**Still open:** `RestaurantPaymentsScreen` (10 `aria-label`s). ⚠️ That file is
+currently DIRTY with another lane's uncommitted change, so editing it would sweep
+their work into this lane's commit (AGENTS.md §7.3). It must wait until the file is
+clean — this is a coordination constraint, not a technical one.
 
 ### P7 — Parity verification (closes F12)
 
