@@ -690,6 +690,35 @@ describe('RestaurantReceiptsScreen — Test Print Codes & Results', () => {
     });
   });
 
+  it('does not write the localStorage cache when the save is rejected (F5)', async () => {
+    // The cache is what a fresh mount renders from, so writing it before the
+    // writes resolve would show an un-persisted edit as if it had saved.
+    const { setUserPreferencesScoped } = await import('@/api/settings');
+    vi.mocked(setUserPreferencesScoped).mockRejectedValueOnce(new Error('ipc down'));
+
+    localStorage.removeItem('resto_rcpt_header_title');
+    const user = userEvent.setup();
+    await renderScreen();
+
+    // Target the receipt-title field by its own id. Using the FIRST textbox (an
+    // earlier attempt) edited some other control, so the save never carried a
+    // changed value and the case passed for the wrong reason — it survived the
+    // kill-test, which is how that was caught.
+    const input = document.getElementById('resto-header-title') as HTMLInputElement;
+    expect(input).not.toBeNull();
+    await user.clear(input);
+    await user.type(input, 'ChangedTitle');
+
+    const saveBtn = screen.getByTestId('restaurant-receipts-save-btn');
+    await waitFor(() => expect(saveBtn).not.toBeDisabled());
+    await user.click(saveBtn);
+
+    await waitFor(() => expect(setUserPreferencesScoped).toHaveBeenCalled());
+    // The DB write failed, so the cache must not have been advanced. Asserting on
+    // the exact typed value is what makes this discriminating.
+    expect(localStorage.getItem('resto_rcpt_header_title')).not.toBe('ChangedTitle');
+  });
+
   it('normalizes pasted SVG snippets to data URLs in logo text input', async () => {
     const user = userEvent.setup();
     await renderScreen();

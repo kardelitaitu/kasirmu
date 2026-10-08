@@ -1007,7 +1007,15 @@ export default function RestaurantReceiptsScreen({
         );
       }
 
-      // Cache to localStorage for instantaneous client load
+      await Promise.all(tasks);
+
+      // Cache to localStorage for instantaneous client load — AFTER the writes
+      // resolve, not before (F5, the same defect fixed in
+      // RestaurantSettingsScreen). Writing the cache first meant a REJECTED save
+      // left localStorage holding the new values while the DB still held the old
+      // ones, so the next mount would render the un-persisted edit as if it had
+      // been saved. Doing it after the await keeps the cache consistent with what
+      // actually committed.
       try {
         localStorage.setItem('resto_rcpt_header_title', headerTitle);
         localStorage.setItem('resto_rcpt_header_line1', headerLine1);
@@ -1026,8 +1034,6 @@ export default function RestaurantReceiptsScreen({
       } catch {
         // Safe to ignore
       }
-
-      await Promise.all(tasks);
 
       originalsRef.current = {
         paperWidth,

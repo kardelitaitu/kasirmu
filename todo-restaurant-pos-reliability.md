@@ -505,6 +505,19 @@ preview `alt`, and the `Logo Position` group's `aria-label` are now bundle-backe
 (`restaurant-logo-no-logo`, `restaurant-logo-preview-alt`, and the already-existing
 `restaurant-logo-position-heading`). 35 tests pass; parity 0 missing.
 
+**Bonus fix in the same file (F5).** `RestaurantReceiptsScreen` had the *same*
+save-ordering defect as `RestaurantSettingsScreen`: its localStorage cache was
+written at `:1010-1028`, BEFORE `await Promise.all(tasks)` at `:1030`. A rejected
+save therefore advanced the cache while the DB kept the old values, so the next
+mount rendered an un-persisted edit as saved. The cache now follows the await.
+
+⚠️ **My first version of that test passed against the BUG** — it edited
+`getAllByRole('textbox')[0]`, which is not the title field, so the save carried no
+change and the assertion was vacuous. The kill-test caught it (the case survived a
+deliberate revert). Rewritten to target `#resto-header-title` and to assert the
+exact typed value; it now fails on the bug with
+`expected 'ChangedTitle' not to be 'ChangedTitle'`.
+
 **Still open:** `RestaurantPaymentsScreen` (10 `aria-label`s). ⚠️ That file is
 currently DIRTY with another lane's uncommitted change, so editing it would sweep
 their work into this lane's commit (AGENTS.md §7.3). It must wait until the file is
