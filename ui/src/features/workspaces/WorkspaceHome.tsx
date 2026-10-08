@@ -546,6 +546,13 @@ export default function WorkspaceHome() {
 
   const canAccess = useCallback(
     (_key: string): boolean => {
+      // Deliberately ignores the subscription state. Workspaces stay openable
+      // while the tools grid locks — offline-first POS continuity is the point:
+      // a merchant must always be able to reach the till, which is why the
+      // licence notice below says "Tools below stay locked" and not "everything
+      // is locked". The entitlement gate lives on the TOOLS (`canAccessTool`),
+      // never here; do not "fix" this into a lockout.
+
       switch (roleName) {
         case 'owner': case 'role-owner':
         case 'admin': case 'role-admin':
