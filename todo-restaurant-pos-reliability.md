@@ -409,7 +409,7 @@ here.
 - **Acceptance met:** `npx vitest run RestaurantSettingsScreen` → **10 tests
   passed**, including a case asserting localStorage carries the loaded DB value.
 
-### P4 — Crash isolation (F9) and the Kitchen Display row (F7) — ✅ DONE 2026-10-09; F8 still open
+### P4 — Crash isolation (F9), Kitchen Display row (F7), permission gating (F8) — ✅ DONE 2026-10-09
 
 **F9 landed.** `LocalizedErrorBoundary` (the locale-aware wrapper the workspace
 cards use) now wraps:
@@ -439,8 +439,19 @@ the point: a second predicate is free to disagree with the navigation it is
 predicting. Hidden rather than disabled-with-a-badge, because KDS access is an
 entitlement, not a role.
 
-**F8 is NOT done** — it needs the owner to choose role vs. `SETTINGS_EDIT`
-permission for the manager rows (listed in §4).
+**F8 landed.** The four manager rows (Menu Editor / Receipts / Payments /
+Settings) now gate on the same thing the backend enforces — `settings:edit` — via
+`hasGrantedPermission`, which mirrors the backend's wildcard rule (the Owner
+preset's `["*"]` is not a literal match). When the session carries no permission
+list it falls back to the role, so an older session shape is not silently locked
+out. `isManagerProp` still wins when a host supplies it.
+
+**Kill-tested:** reverting to role-only gating fails
+*"disables the manager rows when the session lacks settings:edit"*.
+
+**This closes P4.** The `passesGate`/`hasGrantedPermission` pair was reused rather
+than re-implemented, so the sidebar and the page registry cannot drift on what a
+grant means.
 
 - **Acceptance met:** `cd ui && npm run typecheck` exit 0; eslint 0 errors;
   `npx vitest run Restaurant PosScreen CartPanel restaurantPosCrashIsolation` →

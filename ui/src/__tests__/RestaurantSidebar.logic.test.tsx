@@ -25,8 +25,15 @@ vi.mock('@/hooks/useWorkspaceNav', () => ({
   useWorkspaceNav: () => ({ goToWorkspacePicker: mockGoToWorkspacePicker }),
 }));
 
+// F8 needs the session's granted keys to be controllable per case: the manager
+// rows are gated on `settings:edit` when the session carries permissions, and
+// fall back to the role when it does not.
+const mockAuth = vi.hoisted(() => ({
+  session: undefined as { role_name?: string; permissions?: string[] } | undefined,
+  isManager: false,
+}));
 vi.mock('@/contexts/AuthContext', () => ({
-  useAuth: () => ({ isManager: false, isOwner: false }),
+  useAuth: () => ({ isManager: mockAuth.isManager, isOwner: false, session: mockAuth.session }),
 }));
 
 vi.mock('@/hooks/useVersionStatus', () => ({
@@ -81,6 +88,48 @@ function Harness({ open = true, cartActions, onRequestExit, isManager, onOpenCha
 }
 
 const FTL = [salesFtl, productsFtl, inventoryFtl, settingsFtl, tablesFtl, kdsFtl];
+describe('RestaurantSidebar — manager rows follow settings:edit (F8)', () => {
+  beforeEach(() => { mockGoToWorkspacePicker.mockClear(); });
+
+  // The backend refuses every one of these screens' writes without
+  // `settings:edit`. Gating on the role alone produced an enabled control whose
+  // save always failed. These four cases pin the permission as authoritative.
+
+  it('disables the manager rows when the session lacks settings:edit', () => {
+    mockAuth.isManager = true; // the role says manager...
+    mockAuth.session = { role_name: 'Manager', permissions: ['sales:process'] }; // ...the grant says no
+    renderSidebar({ cartActions: makeActions() });
+
+    expect(screen.getByTestId('restaurant-sidebar-settings')).toBeDisabled();
+    expect(screen.getByTestId('restaurant-sidebar-menu-editor')).toBeDisabled();
+  });
+
+  it('enables the manager rows when the session holds settings:edit', () => {
+    mockAuth.session = { role_name: 'Manager', permissions: ['settings:edit'] };
+    renderSidebar({ cartActions: makeActions() });
+
+    expect(screen.getByTestId('restaurant-sidebar-settings')).not.toBeDisabled();
+    expect(screen.getByTestId('restaurant-sidebar-menu-editor')).not.toBeDisabled();
+  });
+
+  it('accepts the Owner wildcard, which is not a literal settings:edit match', () => {
+    // The Owner preset grants ['*'], so a raw includes() would lock an owner out.
+    mockAuth.session = { role_name: 'Owner', permissions: ['*'] };
+    renderSidebar({ cartActions: makeActions() });
+
+    expect(screen.getByTestId('restaurant-sidebar-settings')).not.toBeDisabled();
+  });
+
+  it('falls back to the role when the session carries no permission list', () => {
+    // An older session shape cannot answer the permission question, so it must
+    // not be silently locked out of every settings screen.
+    mockAuth.isManager = true;
+    mockAuth.session = { role_name: 'Manager' };
+    renderSidebar({ cartActions: makeActions() });
+
+    expect(screen.getByTestId('restaurant-sidebar-settings')).not.toBeDisabled();
+  });
+});
 
 const renderSidebar = (props: HarnessProps) =>
   renderWithFluentSync((<Harness {...props} />) as ReactElement, ...FTL);
@@ -93,7 +142,13 @@ const exitRow = () => screen.getByRole('button', { name: /Exit Terminal/i });
 const lockRow = () => screen.getByRole('button', { name: /Lock Terminal/i });
 
 describe('RestaurantSidebar — roving keyboard navigation', () => {
-  beforeEach(() => mockGoToWorkspacePicker.mockClear());
+  beforeEach(() => {
+    mockGoToWorkspacePicker.mockClear();
+    // Default: no session permissions, so the pre-existing cases keep exercising
+    // the role fallback they were written against.
+    mockAuth.session = undefined;
+    mockAuth.isManager = false;
+  });
 
   it('ignores non-roving keys without moving focus', () => {
     renderSidebar({});

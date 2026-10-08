@@ -27,6 +27,7 @@ import { useWorkspaceNav } from '@/hooks/useWorkspaceNav';
 import { useVersionStatus } from '@/hooks/useVersionStatus';
 import { useAuth } from '@/contexts/AuthContext';
 import { isRovingKey, computeRovingIndex } from './sidebarLogic';
+import { hasGrantedPermission } from '@/registries/page-registry';
 
 /** The signed-in cashier, as the sidebar header shows them. */
 export interface RestaurantSidebarProfile {
@@ -232,8 +233,29 @@ export function RestaurantSidebar({
   isManager: isManagerProp,
 }: RestaurantSidebarProps) {
   const { l10n } = useLocalization();
-  const { isManager: authIsManager } = useAuth();
-  const effectiveIsManager = isManagerProp ?? authIsManager;
+  const { isManager: authIsManager, session } = useAuth();
+
+  // F8: the manager rows (Menu Editor / Receipts / Payments / Settings) all write
+  // through commands that enforce `permissions::SETTINGS_EDIT` on the backend —
+  // e.g. `kasirmu-bridge/src/settings.rs` on every settings write. Gating them on
+  // the ROLE alone let a user whose role is "manager" but whose grant omits
+  // `settings:edit` reach a control whose save is then refused at the IPC
+  // boundary: an enabled button that always errors.
+  //
+  // The check now mirrors the backend: when the session carries granted keys, the
+  // PERMISSION is authoritative (wildcard-aware via `hasGrantedPermission`, which
+  // handles the Owner preset's `["*"]`). When it carries none — an older session
+  // shape — it falls back to the role, so a session that cannot answer the
+  // question is not silently locked out. That is exactly `passesGate`'s contract.
+  //
+  // `isManagerProp` still wins when supplied: it is the explicit override the
+  // workspace-card and inspector hosts pass, and it predates this fix.
+  const canEditSettings =
+    isManagerProp ??
+    (session?.permissions !== undefined
+      ? hasGrantedPermission(session.permissions, 'settings:edit')
+      : authIsManager);
+  const effectiveIsManager = canEditSettings;
   // The live app version, from the ONE shared probe (`StatusBar` reads the same
   // singleton, so this adds no second updater check). Not a hardcoded string:
   // the login footer's `v0.0.39` is already duplicated in three files.
