@@ -93,6 +93,16 @@ Recorded because each one is still live in some document a worker might read, an
 
 ---
 
+## 2026-10-08: `validate_contained_path` is SOUND — and my grep said it had no tests. Corrected by mutation.
+
+**I went hunting for the R165 pattern and made the same class of mistake I have been documenting.** `crates/kasirmu-bridge/src/data/helpers.rs:38` defines `validate_contained_path` (reject `..` components), called at FIVE production sites — `data.rs:290` (export output), `:455` and `:484` (import file), `:772`, and `data/restore.rs:195`. Searching for a test by the words "traversal" or "ParentDir" returned only my own R165 additions and the production doc, so I concluded "5 call sites, zero tests".
+
+**MEASURED: making the check a no-op FAILED the suite** — `data::data_tests::restore_prepare_rejects_a_candidate_path_with_traversal`, exit with 1 failure. The test exists and is thorough: it asserts the `path traversal` message AND that `restore_request_file` was never written, so it pins the refusal and its side effect rather than the message alone. **My grep missed it because I searched for the vocabulary I expected ("traversal", "ParentDir") rather than for the behaviour**, and the test is named for the call site (`restore_prepare_…`) instead of the helper. That is the same error as the static-query-as-coverage-proxy mistake this campaign opened with: a search that cannot find a test is not evidence the test is absent. Mutation is.
+
+**No fix was needed, and none was made.** Two things I checked while there and deliberately did NOT change: (a) the helper does not reject an absolute path with no `..` component (`/etc/foo`, `C:\\Windows\\foo`) — but its doc says it "ensure[s] the path does not contain `..` segments", so the behaviour matches its contract and only the NAME overclaims; (b) four of the five call sites have no direct test of their own, but they pass a user-supplied path through the same helper, so the one call-site test covers the shared rule. Rewriting the helper to do real containment would be a behaviour change on four commands, which is a decision for the lanes that own them, not a drive-by.
+
+**Running tally across the guard probes: 10 examined, 4 sound (`capability_parity`, `window_visibility`, `gate_error_mapping`, `validate_contained_path`), 6 with defects found and fixed.** The last three rounds have found one real defect and two sound guards, which is the honest rate — and the round's own lesson is that I nearly reported a tenth defect that was a search artefact.
+
 ## 2026-10-08: a SECOND unguarded security check — the logo path-traversal guard had ZERO coverage. Fixed in `c160bc939`.
 
 **Found by generalising R164's question** ("does any test consume what this list produces?) into "is any security check exercised through a REPLICA rather than the function itself". `crates/kasirmu-bridge/src/branding_tests.rs` defines `validate_logo_path_inner` — a hand-written line-by-line copy of `validate_logo_path` that its own comment says skips canonicalisation because *"it requires a real filesystem"* — and every logo test calls the copy. **The copy is not the production rule:** `validate_logo_path` additionally asserts the canonicalised path is INSIDE the app data directory (`branding.rs:72`), and that containment check is unreachable through the replica at all.
