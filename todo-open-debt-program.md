@@ -93,6 +93,20 @@ Recorded because each one is still live in some document a worker might read, an
 
 ---
 
+## 2026-10-08: `mask_pan`'s `.max(4)` floor was unguarded — and an EXISTING test checked a neighbouring property. Fixed in `c4f016c68`.
+
+**First round on a crate I had never probed.** With the bridge validators exhausted and two sound rounds behind me, I moved to `kasirmu-security`, whose `mask.rs` implements the PCI-DSS 3.3 display rules. The target: the `digits.len() <= 10` branch, which computes `masked_len = len - 4` and then floors it with `.max(4)`.
+
+**MEASURED: deleting `.max(4)` left every mask test GREEN.** For lengths 8, 9 and 10 the raw subtraction already yields 4, 5 and 6, so the floor only bites at **7 digits** — where it emits THREE stars: `***4567`, which is the input with one character replaced. **For a 7-digit value the function returns the value, and the mask disappears.**
+
+**The instructive part: an existing test covered this input and still did not catch it.** `mask_pan_7_digits_does_not_leak_more_than_4` exists, uses exactly `"1234567"`, and passes under the mutation. It counts **visible digits** (`split('*')`, concat, assert `<= 4`) — and the mutated `***4567` **also shows exactly 4 digits**, so the count is unchanged. Two genuinely different properties: the existing test guards the PCI-DSS "at most first-6 + last-4 visible" rule, while nothing guarded that the value is **masked at all** rather than echoed. A 7-digit code rendering as `***4567` satisfies the digit-count rule while being visually indistinguishable from an unmasked short code. **My four tests fail on the mutation where the existing one passes**, which is the only evidence that they add anything.
+
+**What I added:** the 7-digit exact-string case (`****4567`, plus `assert_ne!` against the input, which names the failure directly); the 8- and 9-digit boundaries as literals; the 11-digit boundary where the general branch sees its thinnest masking (one star), with the 10-digit case beside it since the branches meet there; and a **property** over 7..=10 asserting at least four masked characters, the last-four suffix preserved, and the result never SHORTER than the input — a shorter result would mean a digit was dropped rather than replaced. 42 tests green (was 38); clippy Finished; production restored byte-for-byte.
+
+**A measurement error I made and corrected, worth recording.** My first mutation run printed "38 passed" and I read "ALL OK" as a clean result. The subsequent run showed **42** tests — the number had moved because a parallel session's commits were landing, and my earlier count was taken against a different tree state. Re-running the mutation with my tests in place showed **2 FAILED**, which is the number that matters. **The lesson is the same one R176 taught from the other direction: on a shared checkout, a count printed once is a snapshot of a moving tree, so a mutation result must be re-taken after any edit and never inferred from an earlier run.**
+
+**Running tally: 26 guards examined, 12 sound, 14 with defects found and fixed.**
+
 ## 2026-10-08: the corrected census finds NO uncovered validator, and two hard probes agree. Nothing changed by design.
 
 **Rebuilt the census module-aware, which is what R178's correction required.** Searching every `*_tests.rs` in the crate rather than assuming a sibling filename: **24 validators, ZERO with no test mention.** The R177 backlog is closed as an artefact — but "mentioned" is not "covered", so I probed the two thinnest by mutation rather than trusting the count.
